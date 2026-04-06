@@ -220,7 +220,7 @@ class ParametricSketchBuilder:
         # These are processed last to ensure all base geometry and dimensions are stable.
         s_list = spec.get('Steps', [])
         if s_list:
-            self.logger.log(f"   [PHASE] Entering Steps ({len(s_list)} items)", "BUILD")
+            self.logger.log(f"   [PHASE] Entering Steps ({len(s_list)} items) in '{s_name}'", "BUILD")
             sketch.isComputeDeferred = False
             for s in s_list:
                 if not self.resolver.is_spec_enabled(s, s.get('ID')): continue

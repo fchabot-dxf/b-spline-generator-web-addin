@@ -120,7 +120,13 @@ class StepHandler:
                         self._set_id(off_c, sketch_name, "offset", override_id=target_id)
                 
                 if corner_ids:
+                    # CRITICAL: Force a solve if the sketch is deferred, otherwise new points will have (0,0) coordinates
+                    orig_defer = self.sketch.isComputeDeferred
+                    if orig_defer: self.sketch.isComputeDeferred = False
+                    
                     self._identify_corners(offset_curves, sketch_name, corner_ids)
+                    
+                    if orig_defer: self.sketch.isComputeDeferred = True
         except Exception as e:
             self.logger.log(f"   (CRASH) OFFSET: {e}", "ERROR")
 
@@ -135,18 +141,28 @@ class StepHandler:
                     pts.append(sp)
         
         if len(pts) < 4:
-            self.logger.log(f"   (WARN) CORNER: Found {len(pts)} points, but need 4 for identification", "WARNING")
+            self.logger.log(f"   (WARN) CORNER: Found only {len(pts)} points in '{sketch_name}', need 4 for TL/TR/BL/BR", "WARNING")
+            for i, p in enumerate(pts):
+                self.logger.log(f"      [PT {i}] ({p.geometry.x:.4f}, {p.geometry.y:.4f})", "DEBUG")
             return
         
+        # Sort points by coordinates to find extremes
         min_x = min(p.geometry.x for p in pts)
         max_x = max(p.geometry.x for p in pts)
-        tol = 0.01
+        min_y = min(p.geometry.y for p in pts)
+        max_y = max(p.geometry.y for p in pts)
+        width  = max_x - min_x
+        height = max_y - min_y
+        
+        # Log the bounding box of found points
+        self.logger.log(f"   [STEP] Found corner bbox: ({min_x:.2f},{min_y:.2f}) -> ({max_x:.2f},{max_y:.2f}) size {width:.2f}x{height:.2f}", "DEBUG")
+
+        tol = width * 0.05 # 5% of width as grouping tolerance
         l_pts = sorted([p for p in pts if abs(p.geometry.x - min_x) < tol], key=lambda p: p.geometry.y, reverse=True)
         r_pts = sorted([p for p in pts if abs(p.geometry.x - max_x) < tol], key=lambda p: p.geometry.y, reverse=True)
         
-        # Guard against zero-length segments fusing points
         if len(l_pts) < 2 or len(r_pts) < 2:
-            self.logger.log(f"   (WARN) CORNER: Geometry too small, failed to distinguish points", "WARNING")
+            self.logger.log(f"   (WARN) CORNER: ID failed on '{sketch_name}'. Found {len(l_pts)} Left / {len(r_pts)} Right points.", "WARNING")
             return
 
         m = {"TL": l_pts[0], "BL": l_pts[-1], "TR": r_pts[0], "BR": r_pts[-1]}
@@ -154,4 +170,4 @@ class StepHandler:
             cid = corner_ids.get(key)
             if cid and pt:
                 self._set_id(pt, sketch_name, "corner", override_id=cid)
-                self.logger.log(f"   (OK) CORNER: Identified {cid}", "STEP")
+                self.logger.log(f"   (OK) CORNER: {cid} at ({pt.geometry.x:.2f}, {pt.geometry.y:.2f})", "STEP")

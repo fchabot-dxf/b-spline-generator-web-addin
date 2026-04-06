@@ -25,7 +25,7 @@ class ProjectionHandler:
             base_id = parts[0]
             src_ent = self.entity_map.get(src_sk_name, {}).get(base_id)
             if not src_ent:
-                self.logger.log(f"   (FAIL) PROJECT: Source '{base_id}' not found in '{src_sk_name}'", "ERROR")
+                self.logger.log(f"   (FAIL) PROJECT: Source Entity '{base_id}' not found in '{src_sk_name}' Map. Project failed.", "ERROR")
                 return
             
             if len(parts) > 1:
