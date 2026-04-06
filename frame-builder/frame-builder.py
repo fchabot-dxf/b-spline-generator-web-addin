@@ -25,6 +25,12 @@ try:
     from engine import frame_engine
     from sketches.template_1 import template_data_1
     from sketches.template_2 import template_data_2
+    from sketches.template_3 import template_data_3
+    from sketches.template_4 import template_data_4
+    importlib.reload(template_data_1)
+    importlib.reload(template_data_2)
+    importlib.reload(template_data_3)
+    importlib.reload(template_data_4)
     importlib.reload(frame_engine)
     diag_logger.log("SUCCESS: frame_engine imported and reloaded.")
 except Exception as e:
@@ -150,10 +156,10 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             cmd.setDialogInitialSize(600, 400)
 
             # --- STYLE SELECTION ---
-            rules = ["Signature (Template 1)", "Signature (Template 2)"]
+            rules = ["Template 1", "Template 2", "Template 3", "Template 4"]
             drop_rule = inputs.addDropDownCommandInput('style_select', 'Synthesis Rule', adsk.core.DropDownStyles.LabeledIconDropDownStyle)
             for r in rules:
-                is_selected = (r == "Signature (Template 1)") # Defaulting to Template 1
+                is_selected = (r == "Template 1") # Defaulting to Template 1
                 drop_rule.listItems.add(r, is_selected, '', -1)
             sel_item = drop_rule.selectedItem
             sel_name = sel_item.name if sel_item else rules[0]
@@ -183,7 +189,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             h = p_h.value if p_h else 22.0
 
             # Fetch the selected template by name (matches style_select items)
-            templates = [template_data_1.TEMPLATE_1, template_data_2.TEMPLATE_2]
+            templates = [template_data_1.TEMPLATE_1, template_data_2.TEMPLATE_2, template_data_3.TEMPLATE_3, template_data_4.TEMPLATE_4]
             current_template = next((t for t in templates if t["Name"] == sel_name), templates[0])
             all_params = current_template.get("Parameters", [])
 

@@ -180,6 +180,9 @@ class BuildContext:
     def classify_points_by_quadrant(self, points, center_pt=None):
         """
         Classify a set of points into TL, TR, BL, BR relative to a center point.
+        For each quadrant, selects the point farthest from center (the outer corner),
+        not just the last point iterated — which is wrong for curved shapes with
+        multiple vertices per quadrant.
         Returns a dict: {'TL': point, 'TR': point, 'BL': point, 'BR': point}
         """
         if not points:
@@ -190,23 +193,28 @@ class BuildContext:
             g = center_pt.geometry
             cx, cy = g.x, g.y
         else:
-            # Fallback: compute average
+            # Fallback: compute average position
             for p in points:
                 cx += p.geometry.x
                 cy += p.geometry.y
             cx /= len(points)
             cy /= len(points)
 
-        results = {}
+        # For each quadrant, keep the point with maximum squared distance from center
+        best = {}  # quadrant -> (dist_sq, point)
         for p in points:
             g = p.geometry
             dx, dy = g.x - cx, g.y - cy
-            if dx >= 0 and dy >= 0: results["TR"] = p
-            elif dx < 0 and dy >= 0: results["TL"] = p
-            elif dx >= 0 and dy < 0: results["BR"] = p
-            elif dx < 0 and dy < 0: results["BL"] = p
+            dist_sq = dx * dx + dy * dy
+            if   dx >= 0 and dy >= 0: quad = "TR"
+            elif dx <  0 and dy >= 0: quad = "TL"
+            elif dx >= 0 and dy <  0: quad = "BR"
+            else:                      quad = "BL"
 
-        return results
+            if quad not in best or dist_sq > best[quad][0]:
+                best[quad] = (dist_sq, p)
+
+        return {q: v[1] for q, v in best.items()}
 
     def create_or_update_param(self, name, val, unit):
         """Create a new user parameter or update its expression if it already exists."""

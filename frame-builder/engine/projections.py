@@ -106,11 +106,15 @@ def _log_projection(ctx, proj, proj_name, ent, s_name):
     coords = None
     if hasattr(ent, 'geometry') and ent.geometry:
         g = ent.geometry
-        coords = f"({getattr(g, 'x', '?'):.3f}, {getattr(g, 'y', '?'):.3f})"
+        x, y = getattr(g, 'x', None), getattr(g, 'y', None)
+        is_num = isinstance(x, (int, float)) and isinstance(y, (int, float))
+        coords = f"({x:.3f}, {y:.3f})" if is_num else f"({x}, {y})"
     elif (hasattr(ent, 'startSketchPoint') and ent.startSketchPoint
           and hasattr(ent.startSketchPoint, 'geometry')):
         g = ent.startSketchPoint.geometry
-        coords = f"({getattr(g, 'x', '?'):.3f}, {getattr(g, 'y', '?'):.3f})"
+        x, y = getattr(g, 'x', None), getattr(g, 'y', None)
+        is_num = isinstance(x, (int, float)) and isinstance(y, (int, float))
+        coords = f"({x:.3f}, {y:.3f})" if is_num else f"({x}, {y})"
 
     ctx.logger.log(
         f"PROJECTION: Source={proj['SourceSketch']}:{proj['SourceID']} "

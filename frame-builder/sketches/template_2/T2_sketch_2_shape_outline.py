@@ -1,4 +1,4 @@
-def get_sketch():
+def get_sketch(geometry):
     """
     Logic for Sketch 2 (Template 2): Shape Outline.
     Standardized with Phase 8 Miter support for profile splitting.
@@ -28,13 +28,24 @@ def get_sketch():
 
         'PreGeometry': [
             # Skeleton Pins
-            {'ID': 'skel_shoulder_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0, 'TopGap'], ['ShoulderSpan/2', 'TopGap']], 'StartID': 'skel_shoulder_pin_R:S', 'EndID': 'skel_shoulder_pin_R:E'},
-            {'ID': 'skel_shoulder_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0, 'TopGap'], ['-ShoulderSpan/2', 'TopGap']], 'StartID': 'skel_shoulder_pin_L:S', 'EndID': 'skel_shoulder_pin_L:E'},
-            {'ID': 'skel_waist_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0, 0], ['WaistSpan/2', 0]], 'StartID': 'skel_waist_pin_R:S', 'EndID': 'skel_waist_pin_R:E'},
-            {'ID': 'skel_waist_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0, 0], ['-WaistSpan/2', 0]], 'StartID': 'skel_waist_pin_L:S', 'EndID': 'skel_waist_pin_L:E'},
-            {'ID': 'skel_hip_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0, '-BottomGap'], ['HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_R:S', 'EndID': 'skel_hip_pin_R:E'},
-            {'ID': 'skel_hip_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0, '-BottomGap'], ['-HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_L:S', 'EndID': 'skel_hip_pin_L:E'},
+            # Pin starts seeded at x=0.01 to avoid Fusion auto-snap to Y_AXIS (explicit Coincident handles it)
+            {'ID': 'skel_shoulder_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 'TopGap'], ['ShoulderSpan/2', 'TopGap']], 'StartID': 'skel_shoulder_pin_R:S', 'EndID': 'skel_shoulder_pin_R:E'},
+            {'ID': 'skel_shoulder_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 'TopGap'], ['-ShoulderSpan/2', 'TopGap']], 'StartID': 'skel_shoulder_pin_L:S', 'EndID': 'skel_shoulder_pin_L:E'},
+            {'ID': 'skel_waist_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 0.01], ['WaistSpan/2', 0.01]], 'StartID': 'skel_waist_pin_R:S', 'EndID': 'skel_waist_pin_R:E'},
+            {'ID': 'skel_waist_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 0.01], ['-WaistSpan/2', 0.01]], 'StartID': 'skel_waist_pin_L:S', 'EndID': 'skel_waist_pin_L:E'},
+            {'ID': 'skel_hip_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, '-BottomGap'], ['HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_R:S', 'EndID': 'skel_hip_pin_R:E'},
+            {'ID': 'skel_hip_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, '-BottomGap'], ['-HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_L:S', 'EndID': 'skel_hip_pin_L:E'},
             
+            # Surround Rectangle (1.25x scale)
+            {
+                'ID': 'surround_rect', 
+                'Type': 'RectangleCenter', 
+                'IsConstruction': False, 
+                'Center': [0, 0], 
+                'Size': ['widthIn * 1.25', 'heightIn * 1.25'],
+                'LineIDs': ['surround_top', 'surround_right', 'surround_bottom', 'surround_left']
+            },
+
             # Closing edges
             {'ID': 'top_edge', 'Type': 'Line', 'Points': [[f'-({outer_x})', top_y], [outer_x, top_y]], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
             {'ID': 'bottom_edge', 'Type': 'Line', 'Points': [[outer_x, bot_y], [f'-({outer_x})', bot_y]], 'StartID': 'bottom_edge:S', 'EndID': 'bottom_edge:E'},
@@ -61,6 +72,10 @@ def get_sketch():
             {'Type': 'Equal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L']},
             {'Type': 'Equal', 'Targets': ['skel_waist_pin_R',    'skel_waist_pin_L']},
             {'Type': 'Equal', 'Targets': ['skel_hip_pin_R',      'skel_hip_pin_L']},
+            # Pair the shared center points so each pin-pair forms one chain on the Y-axis slider
+            {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S']},
+            {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S',    'skel_waist_pin_L:S']},
+            {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S',      'skel_hip_pin_L:S']},
 
             # Shape Outline Anchoring
             {'Type': 'Coincident', 'Targets': ['top_edge:S',    'proj_off_corner_TL']},
@@ -76,10 +91,11 @@ def get_sketch():
         ],
 
         'Geometry': [
-            {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point', 'Points': [[6.166, 2.193], [7.71, 4.29], [8.255, 6.845]], 'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E', 'CenterID': 'arc_shoulder_R:C'},
-            {'ID': 'arc_hip_R',      'Type': 'Arc3Point', 'Points': [[8.255, -4.694], [7.82, -3.09], [6.624, -1.929]], 'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E', 'CenterID': 'arc_hip_R:C'},
-            {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point', 'Points': [[-8.255, 6.845], [-7.71, 4.29], [-6.166, 2.193]], 'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E', 'CenterID': 'arc_shoulder_L:C'},
-            {'ID': 'arc_hip_L',      'Type': 'Arc3Point', 'Points': [[-6.624, -1.929], [-7.82, -3.09], [-8.255, -4.694]], 'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C'},
+            # Seed points use widthIn/heightIn ratios derived from the original hand-tuned geometry
+            {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point', 'Points': [['widthIn * 0.347', 'heightIn * 0.096'], ['widthIn * 0.434', 'heightIn * 0.188'], [outer_x, 'heightIn * 0.299']], 'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E', 'CenterID': 'arc_shoulder_R:C'},
+            {'ID': 'arc_hip_R',      'Type': 'Arc3Point', 'Points': [[outer_x, '-(heightIn * 0.205)'], ['widthIn * 0.440', '-(heightIn * 0.135)'], ['widthIn * 0.373', '-(heightIn * 0.084)']], 'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E', 'CenterID': 'arc_hip_R:C'},
+            {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point', 'Points': [[f'-({outer_x})', 'heightIn * 0.299'], ['-(widthIn * 0.434)', 'heightIn * 0.188'], ['-(widthIn * 0.347)', 'heightIn * 0.096']], 'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E', 'CenterID': 'arc_shoulder_L:C'},
+            {'ID': 'arc_hip_L',      'Type': 'Arc3Point', 'Points': [['-(widthIn * 0.373)', '-(heightIn * 0.084)'], ['-(widthIn * 0.440)', '-(heightIn * 0.135)'], [f'-({outer_x})', '-(heightIn * 0.205)']], 'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C'},
         ],
 
         'Constraints': [
@@ -94,8 +110,9 @@ def get_sketch():
         ],
 
         'PostGeometry': [
-            {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [[6.166, 2.193], [5.33, 0.01], [6.624, -1.929]], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C'},
-            {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [[-6.624, -1.929], [-5.33, 0.01], [-6.166, 2.193]], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C'},
+            # Waist arc seeds: connect shoulder junction to hip junction through the waist pinch
+            {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [['widthIn * 0.347', 'heightIn * 0.096'], ['widthIn * 0.300', 0], ['widthIn * 0.373', '-(heightIn * 0.084)']], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C'},
+            {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [['-(widthIn * 0.373)', '-(heightIn * 0.084)'], ['-(widthIn * 0.300)', 0], ['-(widthIn * 0.347)', 'heightIn * 0.096']], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C'},
         ],
 
         'PostConstraints': [
@@ -113,6 +130,11 @@ def get_sketch():
             {'Type': 'Tangent',    'Targets': ['arc_waist_R',    'arc_hip_R']},
             {'Type': 'Tangent',    'Targets': ['arc_shoulder_L', 'arc_waist_L']},
             {'Type': 'Tangent',    'Targets': ['arc_waist_L',    'arc_hip_L']},
+            # Vertical constraints on horns applied after arcs are solved
+            {'Type': 'Vertical', 'Targets': ['horn_TR']},
+            {'Type': 'Vertical', 'Targets': ['horn_BR']},
+            {'Type': 'Vertical', 'Targets': ['horn_TL']},
+            {'Type': 'Vertical', 'Targets': ['horn_BL']},
         ],
 
         'Dimensions': [

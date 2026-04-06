@@ -10,10 +10,12 @@ try:
     from sketches.template_1 import template_data_1
     from sketches.template_2 import template_data_2
     from sketches.template_3 import template_data_3
+    from sketches.template_4 import template_data_4
     importlib.reload(parametric_engine)
     importlib.reload(template_data_1)
     importlib.reload(template_data_2)
     importlib.reload(template_data_3)
+    importlib.reload(template_data_4)
     importlib.reload(logger)
 except Exception as e:
     # Attempt to log error if logger exists, otherwise use basic print
@@ -30,12 +32,12 @@ except Exception as e:
 
 
 
-def build_sketch_logic(style_id="Signature (Template 1)", joint_prefix="joint"):
+def build_sketch_logic(style_id="Template 1", joint_prefix="joint"):
     """Entry point for the 'Generate Sketch' command."""
     builder = FrameBuilder()
     builder.run_sketch_only(style_id, joint_prefix)
 
-def build_frame_logic(style_id="Signature (Template 1)", joint_prefix="joint"):
+def build_frame_logic(style_id="Template 1", joint_prefix="joint"):
     """Entry point for the 'Create Frame' command."""
     builder = FrameBuilder()
     builder.run_full_synthesis(style_id, joint_prefix)
@@ -80,6 +82,7 @@ class FrameBuilder:
             template, prefix = template_data_1.TEMPLATE_1, "T1"
             if "Template 2" in style_id: template, prefix = template_data_2.TEMPLATE_2, "T2"
             if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
+            if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix)
             builder.build_template(template)
@@ -105,6 +108,7 @@ class FrameBuilder:
             template, prefix = template_data_1.TEMPLATE_1, "T1"
             if "Template 2" in style_id: template, prefix = template_data_2.TEMPLATE_2, "T2"
             if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
+            if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix)
             builder.build_template(template)
@@ -134,7 +138,7 @@ class FrameBuilder:
         comp.name = name
         return comp
 
-    def _create_skeletal_parameters(self, target_body=None, style_id="Signature (Template 1)"):
+    def _create_skeletal_parameters(self, target_body=None, style_id="Template 1"):
         # 1. Base Requirements
         requirements = {
             'Skel_Frame_Offset': -1.905,
@@ -177,6 +181,7 @@ class FrameBuilder:
         template = template_data_1.TEMPLATE_1
         if "Template 2" in style_id: template = template_data_2.TEMPLATE_2
         if "Template 3" in style_id: template = template_data_3.TEMPLATE_3
+        if "Template 4" in style_id: template = template_data_4.TEMPLATE_4
 
         if template and "Parameters" in template:
             self.logger.log(f"Initializing {len(template['Parameters'])} drivers for {style_id}")

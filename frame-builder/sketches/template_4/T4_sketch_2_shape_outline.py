@@ -1,8 +1,7 @@
-def get_sketch(geometry=None):
+def get_sketch(geometry):
     """
-    Logic for Sketch 2 (Template 1): Shape Outline.
-    Standardized clone of T3 — same variables, same IDs, same phased build pattern.
-    Ready for independent customization.
+    Logic for Sketch 2 (Template 2): Shape Outline.
+    Standardized with Phase 8 Miter support for profile splitting.
     """
     outer_x = "widthIn/2 - boundingboxoffset"
     top_y   = "-(heightIn/2 - boundingboxoffset)"
@@ -32,29 +31,29 @@ def get_sketch(geometry=None):
             # Pin starts seeded at x=0.01 to avoid Fusion auto-snap to Y_AXIS (explicit Coincident handles it)
             {'ID': 'skel_shoulder_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 'TopGap'], ['ShoulderSpan/2', 'TopGap']], 'StartID': 'skel_shoulder_pin_R:S', 'EndID': 'skel_shoulder_pin_R:E'},
             {'ID': 'skel_shoulder_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 'TopGap'], ['-ShoulderSpan/2', 'TopGap']], 'StartID': 'skel_shoulder_pin_L:S', 'EndID': 'skel_shoulder_pin_L:E'},
-            {'ID': 'skel_waist_pin_R',    'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 0.01], ['WaistSpan/2', 0.01]], 'StartID': 'skel_waist_pin_R:S', 'EndID': 'skel_waist_pin_R:E'},
-            {'ID': 'skel_waist_pin_L',    'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 0.01], ['-WaistSpan/2', 0.01]], 'StartID': 'skel_waist_pin_L:S', 'EndID': 'skel_waist_pin_L:E'},
-            {'ID': 'skel_hip_pin_R',      'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, '-BottomGap'], ['HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_R:S', 'EndID': 'skel_hip_pin_R:E'},
-            {'ID': 'skel_hip_pin_L',      'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, '-BottomGap'], ['-HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_L:S', 'EndID': 'skel_hip_pin_L:E'},
-
+            {'ID': 'skel_waist_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 0.01], ['WaistSpan/2', 0.01]], 'StartID': 'skel_waist_pin_R:S', 'EndID': 'skel_waist_pin_R:E'},
+            {'ID': 'skel_waist_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, 0.01], ['-WaistSpan/2', 0.01]], 'StartID': 'skel_waist_pin_L:S', 'EndID': 'skel_waist_pin_L:E'},
+            {'ID': 'skel_hip_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, '-BottomGap'], ['HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_R:S', 'EndID': 'skel_hip_pin_R:E'},
+            {'ID': 'skel_hip_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.01, '-BottomGap'], ['-HipSpan/2', '-BottomGap']], 'StartID': 'skel_hip_pin_L:S', 'EndID': 'skel_hip_pin_L:E'},
+            
             # Surround Rectangle (1.25x scale)
             {
-                'ID': 'surround_rect',
-                'Type': 'RectangleCenter',
-                'IsConstruction': False,
-                'Center': [0, 0],
+                'ID': 'surround_rect', 
+                'Type': 'RectangleCenter', 
+                'IsConstruction': False, 
+                'Center': [0, 0], 
                 'Size': ['widthIn * 1.25', 'heightIn * 1.25'],
                 'LineIDs': ['surround_top', 'surround_right', 'surround_bottom', 'surround_left']
             },
 
             # Closing edges
-            {'ID': 'top_edge',    'Type': 'Line', 'Points': [[f'-({outer_x})', top_y], [outer_x, top_y]],   'StartID': 'top_edge:S',    'EndID': 'top_edge:E'},
-            {'ID': 'bottom_edge', 'Type': 'Line', 'Points': [[outer_x, bot_y], [f'-({outer_x})', bot_y]],   'StartID': 'bottom_edge:S', 'EndID': 'bottom_edge:E'},
+            {'ID': 'top_edge', 'Type': 'Line', 'Points': [[f'-({outer_x})', top_y], [outer_x, top_y]], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
+            {'ID': 'bottom_edge', 'Type': 'Line', 'Points': [[outer_x, bot_y], [f'-({outer_x})', bot_y]], 'StartID': 'bottom_edge:S', 'EndID': 'bottom_edge:E'},
             # Horns
-            {'ID': 'horn_TR', 'Type': 'Line', 'Points': [[outer_x, top_y],          [outer_x, shldr_y]],           'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
-            {'ID': 'horn_BR', 'Type': 'Line', 'Points': [[outer_x, hip_y],           [outer_x, bot_y]],             'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
-            {'ID': 'horn_TL', 'Type': 'Line', 'Points': [[f'-({outer_x})', shldr_y], [f'-({outer_x})', top_y]],    'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
-            {'ID': 'horn_BL', 'Type': 'Line', 'Points': [[f'-({outer_x})', bot_y],   [f'-({outer_x})', hip_y]],    'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
+            {'ID': 'horn_TR', 'Type': 'Line', 'Points': [[outer_x, top_y], [outer_x, shldr_y]], 'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
+            {'ID': 'horn_BR', 'Type': 'Line', 'Points': [[outer_x, hip_y], [outer_x, bot_y]], 'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
+            {'ID': 'horn_TL', 'Type': 'Line', 'Points': [[f'-({outer_x})', shldr_y], [f'-({outer_x})', top_y]], 'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
+            {'ID': 'horn_BL', 'Type': 'Line', 'Points': [[f'-({outer_x})', bot_y], [f'-({outer_x})', hip_y]], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
         ],
 
         'PreConstraints': [
@@ -79,10 +78,12 @@ def get_sketch(geometry=None):
             {'Type': 'Coincident', 'Targets': ['top_edge:E',    'proj_off_corner_TR']},
             {'Type': 'Coincident', 'Targets': ['bottom_edge:S', 'proj_off_corner_BR']},
             {'Type': 'Coincident', 'Targets': ['bottom_edge:E', 'proj_off_corner_BL']},
+            # Removing redundant V/H constraints that clash with drive dimensions
+            # They are already defined by coincidence to projections and pins.
             {'Type': 'Coincident', 'Targets': ['top_edge:E',    'horn_TR:S']},
-            {'Type': 'Coincident', 'Targets': ['horn_BR:E',     'bottom_edge:S']},
+            {'Type': 'Coincident', 'Targets': ['horn_BR:E',    'bottom_edge:S']},
             {'Type': 'Coincident', 'Targets': ['bottom_edge:E', 'horn_BL:S']},
-            {'Type': 'Coincident', 'Targets': ['horn_TL:E',     'top_edge:S']},
+            {'Type': 'Coincident', 'Targets': ['horn_TL:E',    'top_edge:S']},
         ],
 
         'Geometry': [
@@ -94,14 +95,14 @@ def get_sketch(geometry=None):
         ],
 
         'Constraints': [
-            {'Type': 'Coincident', 'Targets': ['horn_TR:E',       'arc_shoulder_R:E']},
-            {'Type': 'Coincident', 'Targets': ['arc_hip_R:S',     'horn_BR:S']},
-            {'Type': 'Tangent',    'Targets': ['horn_TR',          'arc_shoulder_R']},
-            {'Type': 'Tangent',    'Targets': ['arc_hip_R',        'horn_BR']},
+            {'Type': 'Coincident', 'Targets': ['horn_TR:E',      'arc_shoulder_R:E']},
+            {'Type': 'Coincident', 'Targets': ['arc_hip_R:S',    'horn_BR:S']},
+            {'Type': 'Tangent',    'Targets': ['horn_TR',         'arc_shoulder_R']},
+            {'Type': 'Tangent',    'Targets': ['arc_hip_R',       'horn_BR']},
             {'Type': 'Coincident', 'Targets': ['arc_shoulder_L:S', 'horn_TL:S']},
             {'Type': 'Coincident', 'Targets': ['horn_BL:E',        'arc_hip_L:E']},
             {'Type': 'Tangent',    'Targets': ['arc_shoulder_L',   'horn_TL']},
-            {'Type': 'Tangent',    'Targets': ['horn_BL',          'arc_hip_L']},
+            {'Type': 'Tangent',    'Targets': ['horn_BL',           'arc_hip_L']},
         ],
 
         'PostGeometry': [
@@ -156,9 +157,9 @@ def get_sketch(geometry=None):
         ],
 
         'Miters': [
-            {'Source': 'horn_TL:E',     'Target': 'inner_corner_TL', 'IsConstruction': False},
-            {'Source': 'horn_TR:S',     'Target': 'inner_corner_TR', 'IsConstruction': False},
-            {'Source': 'horn_BR:E',     'Target': 'inner_corner_BR', 'IsConstruction': False},
-            {'Source': 'bottom_edge:E', 'Target': 'inner_corner_BL', 'IsConstruction': False},
+            {'Source': 'horn_TL:E',      'Target': 'inner_corner_TL', 'IsConstruction': False},
+            {'Source': 'horn_TR:S',      'Target': 'inner_corner_TR', 'IsConstruction': False},
+            {'Source': 'horn_BR:E',      'Target': 'inner_corner_BR', 'IsConstruction': False},
+            {'Source': 'bottom_edge:E',   'Target': 'inner_corner_BL', 'IsConstruction': False}
         ]
     }

@@ -1,6 +1,6 @@
 def get_sketch():
     """
-    Logic for Sketch 1 (Template 1): Bounding Box.
+    Logic for Sketch 1: Bounding Box.
     Defines the outer limits and creates the inner boundary via Offset.
     Utilizes a center-point rectangle anchored to the origin.
     """
@@ -25,7 +25,7 @@ def get_sketch():
         ],
         "Dimensions": [
             {"Target": "BB_top",   "Expression": "widthIn",  "Name": "dim_width"},
-            {"Target": "BB_right", "Expression": "heightIn", "Name": "dim_height"}
+            {"Target": "BB_right",  "Expression": "heightIn", "Name": "dim_height"}
         ],
         "Steps": [
             {

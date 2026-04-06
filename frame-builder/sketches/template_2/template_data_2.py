@@ -19,13 +19,13 @@ def get_template_logic():
     geometry_loop = assemble_12nd_order(skel, show_skeleton=True, seal_manifold=False)
     
     return {
-        "Name": "Signature (Template 2)",
+        "Name": "Template 2",
         "Description": "Symmetric Arc Series - Phased Solver Pattern",
         "Parameters": [
             {"Name": "widthIn",           "Val": 7.0,   "Unit": "in"},
             {"Name": "heightIn",          "Val": 9.0,   "Unit": "in"},
-            {"Name": "boundingboxoffset", "Val": 0.25,  "Unit": "in"},
-            {"Name": "Skel_Frame_Offset", "Val": -0.75, "Unit": "in"},
+            {"Name": "boundingboxoffset", "Val": "0.25 in",  "Unit": "in"},
+            {"Name": "Skel_Frame_Offset", "Val": "-0.75 in", "Unit": "in"},
             
             # Sub-parameters (Standardized DNA)
             {"Name": "ShoulderSpan",      "Val": "widthIn * 0.8",  "Unit": "in"},

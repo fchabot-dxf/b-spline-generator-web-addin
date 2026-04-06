@@ -154,9 +154,9 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
         f"OFFSET RUN: {s_name} Distance={d_val:.3f} cm "
         f"DirPt=({dir_pt.x:.3f},{dir_pt.y:.3f})")
 
-    # Attempt 1: original direction
+    # Attempt 1: centroid is inside the shape, so use abs(d_val) to offset inward
     try:
-        result = sketch.offset(coll, dir_pt, d_val)
+        result = sketch.offset(coll, dir_pt, abs(d_val))
         if result and result.count > 0:
             return result
     except Exception as e:
@@ -216,45 +216,118 @@ def _compute_centroid_direction(ctx, coll, s_name):
 # Result tagging
 # ------------------------------------------------------------------
 def _tag_offset_results(ctx, s_name, off, offset_curves):
-    """Assign IDs to the offset result curves and identify corners."""
+    """
+    Assign IDs to the offset result curves and register :S / :E endpoints.
+
+    For loops with more than 4 target IDs (e.g. a 12-segment body outline),
+    each offset curve is matched to the source curve whose centroid is nearest
+    (proximity mapping). For exactly 4 curves, the legacy spatial
+    classify_rect_lines path is used for backward compatibility.
+    """
     curves = [offset_curves.item(i) for i in range(offset_curves.count)]
-    
-    # spatial classification for clean naming
-    classified = ctx.classify_rect_lines(curves)
-    t_ids = off.get("TargetIDs", ["offset_top", "offset_right", "offset_bottom", "offset_left"])
-    
-    mapping = {
-        "top": t_ids[0] if len(t_ids) > 0 else "offset_top",
-        "right": t_ids[1] if len(t_ids) > 1 else "offset_right",
-        "bottom": t_ids[2] if len(t_ids) > 2 else "offset_bottom",
-        "left": t_ids[3] if len(t_ids) > 3 else "offset_left"
-    }
+    t_ids  = off.get("TargetIDs", ["offset_top", "offset_right", "offset_bottom", "offset_left"])
 
-    for semantic, curve in classified.items():
-        ctx.set_id(curve, s_name, "offset", override_id=mapping[semantic])
-        ctx.logger.log(f"OFFSET {s_name} {semantic}: Assigned ID={mapping[semantic]}")
+    if len(t_ids) > 4:
+        # --- Multi-curve path: match each offset curve to nearest source curve ---
+        _tag_by_proximity(ctx, s_name, off, curves, t_ids)
+    else:
+        # --- 4-curve rectangular path: spatial top/right/bottom/left classify ---
+        classified = ctx.classify_rect_lines(curves)
+        mapping = {
+            "top":    t_ids[0] if len(t_ids) > 0 else "offset_top",
+            "right":  t_ids[1] if len(t_ids) > 1 else "offset_right",
+            "bottom": t_ids[2] if len(t_ids) > 2 else "offset_bottom",
+            "left":   t_ids[3] if len(t_ids) > 3 else "offset_left",
+        }
+        for semantic, curve in classified.items():
+            cid = mapping[semantic]
+            _register_curve(ctx, s_name, curve, cid)
 
+    # --- Corner tagging: pick outermost vertex per quadrant ---
     corner_ids = off.get("CornerIDs", {})
     if corner_ids:
-        # Use our new quadrant-based vertex identification
         all_pts = []
         for c in curves:
             all_pts.extend([c.startSketchPoint, c.endSketchPoint])
-        
+
         unique_pts = {}
         for p in all_pts:
             unique_pts[p.entityToken] = p
-        
-        # Center of the offset loop can be computed from the curves
+
         ctx.logger.log(f"CLASSIFYING OFFSET CORNERS in {s_name}")
         quadrants = ctx.classify_points_by_quadrant(list(unique_pts.values()))
-        
+
         for quad, p in quadrants.items():
             cid = corner_ids.get(quad)
             if cid:
                 ctx.set_id(p, s_name, "corner", override_id=cid)
                 g = p.geometry
                 ctx.logger.log(f"DYNAMIC CORNER {quad}: Tagged {cid} at ({g.x:.3f}, {g.y:.3f})")
+
+
+def _curve_centroid(curve):
+    """Return (cx, cy) for a sketch curve via its bounding box."""
+    try:
+        b = curve.boundingBox
+        return (
+            (b.minPoint.x + b.maxPoint.x) / 2,
+            (b.minPoint.y + b.maxPoint.y) / 2,
+        )
+    except Exception:
+        return (0.0, 0.0)
+
+
+def _register_curve(ctx, s_name, curve, cid):
+    """Tag a curve and its endpoints under the given ID."""
+    ctx.set_id(curve, s_name, "offset", override_id=cid)
+    ctx.logger.log(f"OFFSET {s_name}: Assigned ID={cid}")
+    try:
+        ctx.set_id(curve.startSketchPoint, s_name, "point", override_id=f"{cid}:S")
+        ctx.set_id(curve.endSketchPoint,   s_name, "point", override_id=f"{cid}:E")
+    except Exception:
+        pass
+
+
+def _tag_by_proximity(ctx, s_name, off, offset_curves, t_ids):
+    """
+    Match each offset curve to the nearest source curve by centroid distance,
+    then assign the corresponding TargetID.  Any unmatched offset curves get
+    a generic fallback ID so they still appear in the entity_map.
+    """
+    # Build source centroids list: (cx, cy, t_id)
+    src_centroids = []
+    for sid, tid in zip(off["SourceID"], t_ids):
+        src_entity = ctx.entity_map[s_name].get(sid)
+        if src_entity and hasattr(src_entity, 'boundingBox'):
+            cx, cy = _curve_centroid(src_entity)
+            src_centroids.append((cx, cy, tid))
+
+    used = set()
+    for curve in offset_curves:
+        ocx, ocy = _curve_centroid(curve)
+        best_tid  = None
+        best_dist = float('inf')
+        best_idx  = -1
+
+        for i, (scx, scy, tid) in enumerate(src_centroids):
+            if i in used:
+                continue
+            d = (ocx - scx) ** 2 + (ocy - scy) ** 2
+            if d < best_dist:
+                best_dist = d
+                best_tid  = tid
+                best_idx  = i
+
+        if best_tid is not None:
+            used.add(best_idx)
+            _register_curve(ctx, s_name, curve, best_tid)
+        else:
+            # fallback: generic sequential ID
+            fallback = f"offset_{len(used)}"
+            _register_curve(ctx, s_name, curve, fallback)
+            ctx.logger.log(
+                f"OFFSET PROXIMITY: No source match for curve at ({ocx:.3f},{ocy:.3f}) "
+                f"in {s_name}, using {fallback}", "WARNING")
 
 
 # ------------------------------------------------------------------

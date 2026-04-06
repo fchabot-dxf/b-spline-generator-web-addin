@@ -1,54 +1,49 @@
-# Exhaustive Command-Driven Specification for Template 3
-# (Placeholder for future design variants)
+import importlib
+from . import T3_sketch_1_bounding_box, T3_sketch_2_shape_outline
 
-TEMPLATE_3 = {
-    "Name": "Template 3",
-    "Parameters": [
-        {"Name": "widthIn", "Val": 17.78, "Unit": "cm"},
-        {"Name": "heightIn", "Val": 22.86, "Unit": "cm"},
-        {"Name": "Skel_Frame_Offset", "Val": -1.905, "Unit": "cm"}
-    ],
-    "Sketches": [
-        {
-            "Name": "1_bounding-box",
-            "Geometry": [
-                {
-                    "ID": "main_bounding_rectangle", 
-                    "Type": "Rectangle", 
-                    "Center": [0, 0], 
-                    "Size": [17.78, 22.86],
-                    "LineIDs": ["edge_bottom", "edge_right", "edge_top", "edge_left"] 
-                }
-            ],
-            "Constraints": [
-                {"Type": "Coincident", "Targets": ["main_bounding_rectangle:D1", "ORIGIN"]},
-                {"Type": "Coincident", "Targets": ["main_bounding_rectangle:D2", "ORIGIN"]}
-            ]
-        },
-        {
-            "Name": "2_shape-outline",
-            "Projections": [
-                {"SourceSketch": "1_bounding-box", "SourceID": "edge_top:MINX", "TargetID": "outer_corner_top_left"},
-                {"SourceSketch": "1_bounding-box", "SourceID": "edge_top:MAXX", "TargetID": "outer_corner_top_right"},
-                {"SourceSketch": "1_bounding-box", "SourceID": "edge_bottom:MINX", "TargetID": "outer_corner_bot_left"},
-                {"SourceSketch": "1_bounding-box", "SourceID": "edge_bottom:MAXX", "TargetID": "outer_corner_bot_right"}
-            ],
-            "Geometry": [
-                {"ID": "outline_edge_top", "Type": "Line", "Points": [[-8.89, 11.43], [8.89, 11.43]]},
-                {"ID": "outline_edge_bottom", "Type": "Line", "Points": [[-8.89, -11.43], [8.89, -11.43]]},
-                {"ID": "outline_edge_left", "Type": "Line", "Points": [[-8.89, -11.43], [-8.89, 11.43]]},
-                {"ID": "outline_edge_right", "Type": "Line", "Points": [[8.89, -11.43], [8.89, 11.43]]}
-            ],
-            "Constraints": [
-                {"Type": "Coincident", "Targets": ["outline_edge_top:S", "outer_corner_top_left"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_top:E", "outer_corner_top_right"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_bottom:S", "outer_corner_bot_left"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_bottom:E", "outer_corner_bot_right"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_left:S", "outer_corner_bot_left"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_left:E", "outer_corner_top_left"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_right:S", "outer_corner_bot_right"]},
-                {"Type": "Coincident", "Targets": ["outline_edge_right:E", "outer_corner_top_right"]}
-            ]
-        }
-    ]
-}
+importlib.reload(T3_sketch_1_bounding_box)
+importlib.reload(T3_sketch_2_shape_outline)
+
+from .T3_sketch_1_bounding_box import get_sketch as get_sketch_1
+from .T3_sketch_2_shape_outline import get_sketch as get_sketch_2
+
+def get_template_logic():
+    """
+    Returns the parametric logic for Template 3 (Cloned from Template 2).
+    """
+    from engine.template_factory import get_skeleton, assemble_12nd_order
+    
+    # Initialize Skeleton & Curve Logic
+    skel = get_skeleton()
+    geometry_loop = assemble_12nd_order(skel, show_skeleton=True, seal_manifold=False)
+    
+    return {
+        "Name": "Template 3",
+        "Description": "Dynamic Clone of Template 2 - Ready for customization",
+        "Parameters": [
+            {"Name": "widthIn",           "Val": 7.0,   "Unit": "in"},
+            {"Name": "heightIn",          "Val": 9.0,   "Unit": "in"},
+            {"Name": "boundingboxoffset", "Val": "0.25 in",  "Unit": "in"},
+            {"Name": "Skel_Frame_Offset", "Val": "-0.75 in", "Unit": "in"},
+            
+            # Sub-parameters (Standardized DNA)
+            {"Name": "ShoulderSpan",      "Val": "widthIn * 0.8",  "Unit": "in"},
+            {"Name": "WaistSpan",         "Val": "widthIn * 0.95", "Unit": "in"},
+            {"Name": "HipSpan",           "Val": "widthIn * 0.8",  "Unit": "in"},
+            {"Name": "TopGap",            "Val": "heightIn * 0.15", "Unit": "in"},
+            {"Name": "BottomGap",         "Val": "heightIn * 0.15", "Unit": "in"},
+
+            # UI Toggles
+            {"Name": "en_ShoulderSpan",   "Val": 1.0, "Unit": ""},
+            {"Name": "en_WaistSpan",      "Val": 0.0, "Unit": ""},
+            {"Name": "en_HipSpan",        "Val": 1.0, "Unit": ""},
+            {"Name": "en_TopGap",         "Val": 1.0, "Unit": ""},
+            {"Name": "en_BottomGap",      "Val": 1.0, "Unit": ""}
+        ],
+        "Sketches": [
+            get_sketch_1(),
+            get_sketch_2(geometry_loop),
+        ]
+    }
+
+TEMPLATE_3 = get_template_logic()
