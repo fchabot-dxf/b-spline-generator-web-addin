@@ -128,10 +128,31 @@ class SolidBuilder:
                 return
             self.log.log(f"SOLID SKETCH found: '{sketch.name}' (Prefix inferred: {prefix})")
 
+            # --- 1. CAPTURE ORIGINAL APPEARANCE ---
+            core_body = self.to_face.body if self.to_face else None
+            original_app = None
+            if core_body:
+                original_app = core_body.appearance
+                self.log.log(f"RESTORE PREP: Captured '{core_body.name}' app='{original_app.name}'")
+
+            # --- 2. EXECUTE SYNTHESIS ---
             bodies = self._extrude_profiles(comp, sketch, prefix)
             self.log.log(
                 f"EXTRUDE COMPLETE: {len(bodies) if bodies else 0} body/bodies returned")
 
+            # --- 3. RESTORE CORE APPEARANCE ---
+            # This kills any "vandalism" Fusion did during the Cut operation.
+            if core_body and original_app:
+                try:
+                    core_body.appearance = original_app
+                    # Explicitly clear all face-level overrides Fusion might have stamped
+                    for face in core_body.faces:
+                        face.appearance = None 
+                    self.log.log(f"RESTORE SUCCESS: '{core_body.name}' reset to '{original_app.name}'")
+                except Exception as e:
+                    self.log.log(f"RESTORE FAIL: {e}", "WARNING")
+
+            # --- 4. APPLY FRAME APPEARANCE ---
             if self.appearance_name and self.appearance_name != "(none)":
                 if bodies:
                     self._apply_appearance(bodies)
@@ -319,9 +340,9 @@ class SolidBuilder:
                 skipped += 1
                 self.log.log(f"PROFILE {i}: SKIP — center void")
 
-        # 2. Sort so SURROUND (Trimming Cut) happens BEFORE the Bars are created.
-        # This prevents the cut from interacting with or coloring the new frame bodies.
-        profiles_to_process.sort(key=lambda x: 0 if x[1] == "SURROUND" else 1)
+        # 2. Sort so SURROUND (Trimming Cut) happens LAST.
+        #    This is your requested "Build-then-Trim" order.
+        profiles_to_process.sort(key=lambda x: 1 if x[1] == "SURROUND" else 0)
 
         for prof, ctype, i in profiles_to_process:
             # Bounding box info for logging
@@ -345,47 +366,60 @@ class SolidBuilder:
 
                 ext_in = extrudes.createInput(prof, op)
 
-                # Safety: For Cuts, specifically target the Core Body (to_face.body).
-                # This prevents the cut from accidentally hitting the new frame bars.
+                # Safety: Target the Core Body directly. If selected in UI, it's already a Proxy!
                 if ctype == "SURROUND":
                     try:
                         if self.to_face and self.to_face.body:
                             coll = adsk.core.ObjectCollection.create()
                             coll.add(self.to_face.body)
                             ext_in.participantBodies = coll
-                            self.log.log("  Cut Targeted: Core body set as participant")
-                    except:
-                        self.log.log("  Cut Warning: Failed to set participant body — using default", "WARNING")
+                            ext_in.isParticipantsAutomated = False
+                            self.log.log(f"  Cut Targeted: Direct UI selection '{self.to_face.body.name}' set as participant")
+                    except Exception as e:
+                        self.log.log(f"  Cut Warning: Failed to set participant body — {e}", "WARNING")
 
                 # Start offset from sketch plane (if non-zero)
                 if start_def:
                     ext_in.startExtent = start_def
 
                 # ── Extent definitions ───────────────────────────────────
-                # One-side "to object" extent (for Bars) OR "Deep Distance" (for Trimming Cut)
                 if ctype == "BAR":
                     ext_in.setOneSideExtent(to_def, positive_dir, zero_taper)
                 else:
-                    # Trimming Cut: Use a "Through-All" extent to ensure it completely clears the core.
-                    # Correct API class: ThroughAllExtentDefinition
+                    # Trimming Cut: Use a "Through-All" extent
                     all_def = adsk.fusion.ThroughAllExtentDefinition.create()
                     ext_in.setOneSideExtent(all_def, positive_dir, zero_taper)
-                    self.log.log("  Cut: Using 'Through-All' extent (Correction)")
 
                 feat  = extrudes.add(ext_in)
                 
-                # Naming & Collection (only for new bodies)
+                # --- NAMING & COLLECTION (CORRECTLY SEPARATED) ---
                 if ctype == "BAR":
                     label = self._profile_label(prof, i)
-                    feat.name = f"{prefix}_bar_{label}"
-                    self.log.log(f"  BAR CREATED: '{feat.name}' with {feat.bodies.count} body(s)")
+                    name_full = f"frame_{label.lower()}"
+                    feat.name = f"{prefix}_{name_full}_Extrude"
                     for b in feat.bodies:
+                        b.name = name_full
                         new_bodies.append(b)
-                        self.log.log(f"    Added to coloring list: '{b.name}' (parent={b.parentComponent.name})")
+                        self.log.log(f"    Body named: '{b.name}' (parent={b.parentComponent.name})")
                     bodies_created += 1
-                else:
+                
+                elif ctype == "SURROUND":
                     feat.name = f"{prefix}_TRIM_CUT"
-                    self.log.log(f"  TRIM COMPLETE: '{feat.name}' — affected bodies={[b.name for b in feat.bodies]}")
+                    self.log.log(f"  TRIM COMPLETE: '{feat.name}'")
+                    
+                    # FINAL POLISH: Reset all new face appearances to 'None' (Inherit from Body)
+                    # Because this is now properly indented under "SURROUND", it actually cleans the B-Spline!
+                    try:
+                        for face in feat.faces:
+                            face.appearance = None
+                        self.log.log("    Cut Faces: Reset to inherit body appearance (Torrefied Maple/Pine/etc)")
+                    except Exception as ex: 
+                        self.log.log(f"    Warning: Failed to reset cut face appearances: {ex}")
+
+            except Exception as e:
+                self.log.log(
+                    f"PROFILE {i}: EXTRUDE FAIL — {e}\n{traceback.format_exc()}",
+                    "ERROR")
 
             except Exception as e:
                 self.log.log(
@@ -521,16 +555,19 @@ class SolidBuilder:
     @staticmethod
     def _profile_label(prof, fallback_idx):
         """
-        Return a human-readable quadrant label (TL/TR/BL/BR) based on
-        the centroid of the profile bounding box, or index if unclear.
+        Returns a human-readable bar label (TOP/BOTTOM/LEFT/RIGHT).
         """
         try:
             bb = prof.boundingBox
+            dx = abs(bb.maxPoint.x - bb.minPoint.x)
+            dy = abs(bb.maxPoint.y - bb.minPoint.y)
             cx = (bb.minPoint.x + bb.maxPoint.x) / 2
             cy = (bb.minPoint.y + bb.maxPoint.y) / 2
-            v  = "T" if cy >= 0 else "B"
-            h  = "R" if cx >= 0 else "L"
-            return f"{v}{h}"
+
+            if dx > dy:
+                return "TOP" if cy > 0 else "BOTTOM"
+            else:
+                return "RIGHT" if cx > 0 else "LEFT"
         except Exception:
             return str(fallback_idx)
 
