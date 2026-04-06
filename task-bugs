@@ -1,0 +1,36 @@
+main refactor/restoring the app, 
+wire all controls from the different tool panels, wire the download export step
+check generate new seed button
+check the multiexport send data iun chunks to comply with size limit
+
+# STAGED STATUS - 2026-03-30 08:51
+########################################
+# FINISHED & WIRED:
+# - edge filet radius & power: fully wired (per-layer) in state.js/main.js. [FIXED]
+# - SVG Editor Toolbar: Select, Draw, Rect, etc. are now VISUALLY ACTIVE. [FIXED]
+# - SVG Editor Modal: 'Apply' and 'Cancel' buttons now close the modal. [FIXED]
+# - Expand Outlines: Stroke-to-path logic implemented with canvg tracing. [FIXED]
+# - Fusion 360 Naming: Each batch exports with priority-friendly names. [FIXED]
+#
+# STILL WORKING ON:
+# - Regression testing for complex text expansion.
+#
+# NEEDS ATTENTION:
+# 1. verify text expansion in SVG editor with real font payloads.
+########################################
+
+expand outlines not working in svg editor, still not working.
+add a feature that seperates different vector stamping by layers in order to configurate them differently,, with possibility to come back in them to edit them.
+expand text is down again, or has been regressed. use bezier and smoothing
+for stamping, in tool profile, vbit should have a drop down with different angles, 30, 45,60, 90, 120
+when exporting to fusion, only leave the most detailed versin visible, and hide the others. for exemple, if there is stamped solid, use it and hide clean surface, clean solid and stamped surface. if theres only stamped surface and clean surface use stamped surface as visible. if theres clean surface and clean solid use clean solid.
+6: edge filet radius not wired or broken..
+7: CRITICAL: stampEdgeFilletRadius missing from DEFAULT state in state.js (caused initialization errors).
+8: CRITICAL: stampLayers config objects missing edgeFilletRadius and filletPower properties (caused layer desync).
+9: WIRING: Layer switching in main.js failed to sync new fillet properties (controls remained on previous layer's values).
+10: WIRING: SVG Editor "#toolExpand" button has no event listener (DEAD BUTTON).
+11: LOGIC: editor-geometry.js "expandCurrent" is a placeholder (non-functional).
+12: REGRESSION: Expand Text feature is missing or broken in logic.
+editor  background is missing
+editor navigation button wont working
+

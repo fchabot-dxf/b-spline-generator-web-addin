@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "symmetric-b-spline-gen",
+    "author": "danse",
+    "description": {
+        "": "Symmetric B-Spline Generator: Procedural surface and solid generation for Fusion 360."
+    },
+    "version": "1.0.2",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}

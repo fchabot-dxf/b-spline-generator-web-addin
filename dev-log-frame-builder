@@ -1,0 +1,45 @@
+# Dev Log: Frame Builder Add-in
+
+## 2026-03-29: Standardization to High-Fidelity Parametric Template 1
+
+### Objective
+Focus the entire Frame Builder add-in on the "Template 1" architecture, ensuring 100% geometric and relational parity with the original audit files while removing legacy algorithmic styles.
+
+### Achievements
+- **UI Streamlining**: Removed "Classic", "Notched Ratio", and other legacy synthesis rules. The add-in is now a dedicated agent for the Template 1 standard.
+- **Exhaustive Parametric Mapping (In Progress)**:
+    - Currently mapping the full set of 60+ sketch entities (G_00 to G_33) from `SKETCHES.json` and DXF point audits.
+    - Implementing every internal Geometric Constraint (Collinear, Tangent, Perpendicular) found in the template's relational audit.
+- **Command-Driven Synthesis**: 
+    - Re-confirmed the use of native `Offset2` and `Project2` commands.
+    - Verified that all generated sketches remain fully editable and parametric in the Fusion 360 timeline.
+- **Parameter Unification**: Standardized variable naming across the engine to use the template's native identifiers.
+
+### II. Native Command Architecture: Technical Findings & Stability
+
+Developing the high-fidelity Parametric Synthesis Engine yielded several critical insights into the Fusion 360 Python API:
+
+1. **The Offset command (`addOffset2`) is Type-Sensitive**:
+   - **Finding**: Passing a generic `SketchEntity` (even if it's a line) to `createOffsetInput` results in a silent `TypeError`. 
+   - **Solution**: Explicitly use `adsk.fusion.SketchCurve.cast(entity)` before adding to the `ObjectCollection`. The SWIG vector mapping requires the base `SketchCurve` pointer.
+
+2. **Projected Entity Filtering**:
+   - **Finding**: The `sketch.project()` command returns a collection that includes both the curve and its endpoints. Attempting to offset the entire collection fails.
+   - **Solution**: The engine now filters the projection results, selectively mapping only entities where `objectType != SketchPoint.classType()`.
+
+3. **Bounding Box "Welding" vs. Coordinates**:
+   - **Finding**: Simply drawing lines at matching coordinates does not create a parametric closed loop. When dimensions shift, the box can "break" at the corners.
+   - **Solution**: Implemented an explicit **Corner Welding** strategy using `Coincident` constraints on specific `:START` and `:END` sketch points. This ensures the frame behaves as a single rigid body.
+
+4. **Origin-Anchored Centering**:
+   - **Finding**: Anchoring to construction axes often leads to "SOLVING_FAILED" (over-constraint) when combined with global parameters.
+   - **Solution**: Standardized on a double-Midpoint anchor to the `ORIGIN` point. This centers the template horizontally and vertically with minimum DOF overhead.
+
+5. **Incremental Assembly Organization**:
+   - **Finding**: Overwriting sketches at the root level clutter the timeline and causes history-tracking errors.
+   - **Solution**: Every synthesis run now creates a unique `Frame_N` sub-component. This isolates the geometry and allows for side-by-side design comparisons.
+
+### Next Steps
+- Finalize the `template_data_1.py` with the complete entity list.
+- Clean up `frame_engine.py` to remove legacy synthesis fallbacks.
+- Proof-of-Concept validation in Fusion 360 with variable-driven updates.
