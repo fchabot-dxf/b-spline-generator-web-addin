@@ -1,185 +1,235 @@
 import adsk.core, adsk.fusion, traceback
-import importlib
 import time
 from . import resolver, geometry_handler, constraint_handler, dimension_handler, projection_handler, step_handler
 
-# Force internal reload to ensure every component sees the latest fixes
-for mod in [resolver, geometry_handler, constraint_handler, dimension_handler, projection_handler, step_handler]:
-    importlib.reload(mod)
-
 class ParametricSketchBuilder:
-    """Orchestrates phased geometric construction across multiple handlers with Soft Seed recovery."""
+    """Modular Orchestrator that coordinates sketch construction handlers."""
     def __init__(self, target_comp, design, logger, prefix="T2", local_values=None):
         self.target = target_comp
         self.design = design
         self.logger = logger
         self.prefix = prefix
-        self.local_values = local_values or {}
-        self.resolver = resolver.ValueResolver(design, logger, self.local_values)
-        
-        self.sketches = {}
-        self.entity_map = {}
+        self.resolver = resolver.Resolver(design, logger, local_values)
+        self.entity_map = {} 
         self.feature_count = 1
 
-    def _set_id(self, entity, sketch_name, base_type, override_id=None):
-        """Standardizes naming and registration for geometric entities."""
-        ent_id = override_id or f"{base_type}_{self.feature_count}"
-        if sketch_name not in self.entity_map: self.entity_map[sketch_name] = {}
-        self.entity_map[sketch_name][ent_id] = entity
+    def _set_id(self, entity, s_name, kind, override_id=None):
+        if not entity: return False
+        final_id = override_id if override_id else f"{kind}_{self.feature_count}"
+        self.feature_count += 1
         
-        # 3. Native Fusion Naming (For searchability and inspection)
-        if hasattr(entity, 'name'):
-            try: entity.name = ent_id
-            except: pass # some entities don't support naming (like points)
-            
-        # 4. Attribute Injection (Permanent Metadata for points and Curves)
+        if s_name not in self.entity_map: self.entity_map[s_name] = {}
+        self.entity_map[s_name][final_id] = entity
+        
         try:
-            # We use a standard namespace for the engine to allow discovery by Fusion-ID v9 or other tools
-            entity.attributes.add("ParametricEngine", "ID", ent_id)
-        except: pass
-        
-        self.logger.log_sketch(f"   [REGISTER] {ent_id} ({base_type})", "DEBUG")
-        
-        if not override_id: self.feature_count += 1
-        return ent_id
-
-    def _is_spec_enabled(self, spec):
-        """Checks 'EnabledParam' and 'BlockedParam' in the spec to determine active status."""
-        en_param = spec.get('EnabledParam')
-        if en_param:
-            val = self.local_values.get(en_param, 1.0) # Default to ON
-            if val < 0.5: return False
-            
-        block_param = spec.get('BlockedParam')
-        if block_param:
-            val = self.local_values.get(block_param, 0.0) # Default to OFF
-            if val > 0.5: return False
-            
-        return True
-
-    def build_template_with_retry(self, template, max_retries=3):
-        """Robust entry point with parameter nudging for recovery."""
-        for attempt in range(max_retries):
-            try:
-                self.build_template(template)
-                return True
-            except Exception as e:
-                self.logger.log_sketch(f"   (RETRY) Attempt {attempt + 1} failed: {e}", "WARNING")
-                if attempt < max_retries - 1:
-                    self._nudge_local_values()
-                    self._cleanup_failed_attempt()
-                else: raise e
-        return False
-
-    def _nudge_local_values(self):
-        for k in self.local_values:
-            if isinstance(self.local_values[k], (int, float)) and not k.startswith('en_'):
-                self.local_values[k] *= 1.002
-
-    def _cleanup_failed_attempt(self):
-        for sk in list(self.sketches.values()):
-            if sk.isValid: sk.deleteMe()
-        self.sketches = {}
-        self.entity_map = {}
-        self.feature_count = 1
+            if hasattr(entity, 'name'):
+                try: entity.name = final_id
+                except: pass
+            if hasattr(entity, 'attributes'):
+                entity.attributes.add('FrameBuilder', 'name', final_id)
+            # Register endpoint/center points as first-class entity_map entries
+            # so templates can reference them directly by ID (e.g. "skel_shoulder_pin_R:S")
+            for suffix, attr in [('S', 'startSketchPoint'), ('E', 'endSketchPoint'), ('C', 'centerSketchPoint')]:
+                if hasattr(entity, attr):
+                    pt = getattr(entity, attr)
+                    if pt:
+                        pt_id = f"{final_id}:{suffix}"
+                        self.entity_map[s_name][pt_id] = pt
+                        if hasattr(pt, 'attributes'):
+                            pt.attributes.add('FrameBuilder', 'name', pt_id)
+            return True
+        except: return True
 
     def build_template(self, template):
-        t_name = template.get('Name', 'Unnamed')
-        self.logger.log_sketch(f"STARTING SYNTHESIS (Modular-v2): {t_name}")
-        for sketch_spec in template.get("Sketches", []):
-            try: self.build_sketch(sketch_spec)
-            except Exception as e: self.logger.log_error(f"Sketch Build Failed: {e}")
-        self.logger.log_sketch("SYNTHESIS COMPLETE (Modular-v2 Architecture)")
+        start = time.time()
+        self.logger.log(f"--- START MODULAR BUILD: {template.get('Name', 'Unnamed')} ---", "BUILD")
+        
+        for p in template.get("Parameters", []):
+            if not self.resolver.is_spec_enabled(p, p.get("Name")): continue
+            name, unit = p["Name"], p.get("Unit", "cm")
+            val = self.resolver.resolve(p.get("Val", 0))
+            
+            existing = self.design.userParameters.itemByName(name)
+            if not existing:
+                self.design.userParameters.add(name, adsk.core.ValueInput.createByReal(val), unit, "")
+                self.logger.log(f"   (PARAM) NEW: {name}={val} {unit}", "BUILD")
+            else:
+                self.logger.log(f"   (PARAM) PRESERVE: {name}={existing.value}", "BUILD")
 
-    def build_sketch(self, sketch_spec):
-        sketch_name = f"{self.prefix}_{sketch_spec['Name']}"
-        self.logger.log_sketch(f"PHASE: Sketch {sketch_name}")
+        for sketch_spec in template.get("Sketches", []):
+            self.build_sketch(sketch_spec)
+            
+        self.logger.log(f"--- FINISH BUILD in {time.time()-start:.2f}s ---", "BUILD")
+
+    def build_sketch(self, spec):
+        s_name = f"{self.prefix}_{spec['Name']}"
+        self.logger.log(f"BUILDING {s_name}", "BUILD")
         
         sketch = self.target.sketches.add(self.target.xZConstructionPlane)
-        sketch.name = sketch_name
-        self.sketches[sketch_name] = sketch
+        sketch.name = s_name
+        self.entity_map[s_name] = {"ORIGIN": sketch.originPoint}
+        y_axis_proj = sketch.project(self.target.zConstructionAxis)
+        if y_axis_proj and y_axis_proj.count > 0:
+            self._set_id(y_axis_proj.item(0), s_name, "proj", override_id="Y_AXIS")
         
-        origin = sketch.originPoint
+        geo = geometry_handler.GeometryHandler(sketch, self.resolver, self.logger, self._set_id)
+        con = constraint_handler.ConstraintHandler(sketch, self.entity_map, self.logger)
+        dim = dimension_handler.DimensionHandler(sketch, self.entity_map, self.logger)
+        pro = projection_handler.ProjectionHandler(sketch, self.entity_map, self.logger, self._set_id)
+        stp = step_handler.StepHandler(sketch, self.resolver, self.logger, self._set_id)
+
+        # DEBUG: Log all available keys in the template
+        self.logger.log(f"   [DEBUG] Available Phase Keys: {list(spec.keys())}", "BUILD")
+
+        for p in spec.get('BoundingBoxProjections', []): pro.handle_proj(s_name, p, self.prefix)
+        for p in spec.get('SkeletonProjections', []): pro.handle_proj(s_name, p, self.prefix)
         
-        # Project Native Origin Axes into the sketch (Official API approach)
-        # Note: On XZ Plane, 'Vertical' is the Global Z-Axis.
-        proj_x, proj_z = None, None
-        try:
-            proj_x = sketch.project(self.target.xOriginAxis).item(0)
-            proj_z = sketch.project(self.target.zOriginAxis).item(0)
-            self.logger.log_sketch(f"   (AXIS) Projected native axes (X, Z) in {sketch_name}", "DEBUG")
-        except:
-            # FALLBACK: Create physical construction axes if projection fails AND sketch is empty
-            if sketch.sketchCurves.count == 0:
-                lines = sketch.sketchCurves.sketchLines
-                proj_x = lines.addByTwoPoints(origin, adsk.core.Point3D.create(1.0, 0, 0))
-                proj_z = lines.addByTwoPoints(origin, adsk.core.Point3D.create(0, 1.0, 0))
-                proj_x.isConstruction = True
-                proj_z.isConstruction = True
-                sketch.geometricConstraints.addHorizontal(proj_x)
-                sketch.geometricConstraints.addVertical(proj_z)
-                self.logger.log_sketch(f"   (AXIS) Fallback: Drew construction axes in {sketch_name}", "DEBUG")
-            else:
-                self.logger.log_sketch(f"   (AXIS) Skip fallback: Geometry already exists in {sketch_name}", "DEBUG")
+        def _dispatch_geo(g, emap):
+            t = g.get('Type')
+            self.logger.log(f"   [GEO] Dispatching {g.get('ID', '?')} ({t})", "BUILD")
+            if   t == 'Line': geo.line_step(s_name, g, emap)
+            elif t in ('Arc', 'Arc3Point'): geo.arc_3pt_step(s_name, g, emap)
+            elif t in ('Rectangle', 'RectangleCenter'): geo.rect_center_step(s_name, g, emap)
 
-        # Guaranteed Registration
-        if proj_x: proj_x.isConstruction = True
-        if proj_z: proj_z.isConstruction = True
+        sketch.isComputeDeferred = True
         
-        self.entity_map[sketch_name] = {
-            "ORIGIN": origin,
-            "X_AXIS": proj_x,
-            "Y_AXIS": proj_z   # Z-axis acts as the 'Y' (Vertical) in an XZ sketch
-        }
+        # Phase 1: Pre-Geometry
+        pg_list = spec.get('PreGeometry', [])
+        if pg_list: self.logger.log(f"   [PHASE] Entering Pre-Geometry ({len(pg_list)} items)", "BUILD")
+        for g in pg_list:
+            if not self.resolver.is_spec_enabled(g, g.get('ID')): continue
+            _dispatch_geo(g, self.entity_map)
         
-        gh = geometry_handler.GeometryHandler(sketch, self.resolver, self.logger, self._set_id)
-        ch = constraint_handler.ConstraintHandler(sketch, self.logger)
-        dh = dimension_handler.DimensionHandler(sketch, self.resolver, self.logger)
-        ph = projection_handler.ProjectionHandler(sketch, self.logger, self._set_id)
-        sh = step_handler.StepHandler(sketch, self.resolver, self.logger, self._set_id)
+        # Phase 2: Pre-Constraints
+        pc1_list = spec.get('PreConstraints', [])
+        if pc1_list: self.logger.log(f"   [PHASE] Entering Pre-Constraints ({len(pc1_list)} items)", "BUILD")
+        for r in pc1_list:
+            if not self.resolver.is_spec_enabled(r): continue
+            con.handle_rel(s_name, r)
 
-        # 1. Projections
-        for proj in sketch_spec.get("SkeletonProjections", []) + sketch_spec.get("BoundingBoxProjections", []):
-            ph.project_step(sketch_name, proj, self.entity_map)
-
-        # 2. Phased Geometry/Constraints (Retry-Drop Ready)
-        phases = [("PreGeometry", "PreConstraints"), ("Geometry", "Constraints"), ("PostGeometry", "PostConstraints")]
-        for g_phase, c_phase in phases:
-            sketch.isComputeDeferred = True
-            for spec in sketch_spec.get(g_phase, []):
-                if self._is_spec_enabled(spec):
-                    try:
-                        t = spec['Type']
-                        if t == "Line": gh.line_step(sketch_name, spec, self.entity_map)
-                        elif t == "Arc": gh.arc_step(sketch_name, spec, self.entity_map)
-                        elif t == "Arc3Point": gh.arc_3pt_step(sketch_name, spec, self.entity_map)
-                        elif t in ["Rectangle", "RectangleCenter"]: gh.rect_center_step(sketch_name, spec, self.entity_map)
-                    except Exception as e: self.logger.log_sketch(f"   (DROPPED) {g_phase}: {e}")
-
-            for spec in sketch_spec.get(c_phase, []):
-                if self._is_spec_enabled(spec):
-                    try: ch.constraint_step(sketch_name, spec, self.entity_map)
-                    except Exception as e: self.logger.log_sketch(f"   (DROPPED) {c_phase}: {spec.get('Type','?')}")
-            sketch.isComputeDeferred = False
-
-        # 3. Dimensions (with DIM SOFT SEED support)
-        for dim in sketch_spec.get("Dimensions", []):
-            # If feature is disabled, run as Soft Seed (Apply + Move + Delete)
-            is_enabled = self._is_spec_enabled(dim)
-            try:
-                dh.dimension_step(sketch_name, dim, self.entity_map, is_soft_seed=(not is_enabled))
-            except Exception as e:
-                self.logger.log_sketch(f"   (DROPPED) DIM: {dim.get('Name','?')} -> {e}")
-                
-        # 4. Steps (Offset, etc.)
-        for step in sketch_spec.get("Steps", []):
-            if self._is_spec_enabled(step):
-                try:
-                    t = step.get('Type')
-                    if t == "Offset": sh.offset_step(sketch_name, step, self.entity_map)
-                    elif t == "Line": gh.line_step(sketch_name, step, self.entity_map)
-                    elif t in ["Coincident", "Horizontal", "Vertical", "Tangent"]:
-                        ch.constraint_step(sketch_name, step, self.entity_map)
-                except Exception as e: self.logger.log_sketch(f"   (DROPPED) STEP: {step.get('Type','?')} -> {e}")
+        # Phase 4: Geometry
+        g_list = spec.get('Geometry', [])
+        if g_list: self.logger.log(f"   [PHASE] Entering Main Geometry ({len(g_list)} items)", "BUILD")
+        for g in g_list:
+            if not self.resolver.is_spec_enabled(g, g.get('ID')): continue
+            _dispatch_geo(g, self.entity_map)
             
-        self.logger.log_sketch(f"DONE: {sketch_name}")
+        # Phase 5: Constraints
+        c_list = spec.get('Constraints', [])
+        if c_list: self.logger.log(f"   [PHASE] Entering Constraints ({len(c_list)} items)", "BUILD")
+        for r in c_list:
+            if not self.resolver.is_spec_enabled(r): continue
+            con.handle_rel(s_name, r)
+            
+        # Phase 6: Post-Geometry
+        pg2_list = spec.get('PostGeometry', spec.get('Post-Geometry', spec.get('Post_Geometry', [])))
+        if pg2_list: self.logger.log(f"   [PHASE] Entering Post-Geometry ({len(pg2_list)} items)", "BUILD")
+        else: self.logger.log(f"   [DEBUG] No Post-Geometry found (Checked: PostGeometry, Post-Geometry, Post_Geometry)", "BUILD")
+        for g in pg2_list:
+            if not self.resolver.is_spec_enabled(g, g.get('ID')): continue
+            _dispatch_geo(g, self.entity_map)
+            
+        # Phase 7.5: Temp Dimensions — guidance seeds applied BEFORE tangency, then deleted.
+        # These are unconditional (no EnabledParam gating); they simply nudge geometry
+        # into a sensible position so the solver has a good starting state for tangency.
+        td_list = spec.get('TempDimensions', [])
+        if td_list: self.logger.log(f"   [PHASE] Entering TempDimensions ({len(td_list)} items)", "BUILD")
+        sketch.isComputeDeferred = False
+        temp_dim_names = []
+        for d in td_list:
+            result = dim.handle_dim(s_name, d, is_snap_only=False)
+            if result:
+                temp_dim_names.append(d.get('Name') or d.get('ID'))
+        sketch.isComputeDeferred = True
+
+        # Phase 7.55: Pre-Tangent Dimensions — permanent parametric dims (e.g. TopGap, BottomGap)
+        # applied WITH isComputeDeferred=False so the solver settles before tangency fires.
+        # EnabledParam / BlockedParam gating is respected here.
+        ptd_list = spec.get('PreTangentDimensions', [])
+        if ptd_list: self.logger.log(f"   [PHASE] Entering PreTangentDimensions ({len(ptd_list)} items)", "BUILD")
+        sketch.isComputeDeferred = False
+        for d in ptd_list:
+            if self.resolver.is_spec_enabled(d, d.get('ID') or d.get('Name')):
+                dim.handle_dim(s_name, d, is_snap_only=False)
+        sketch.isComputeDeferred = True
+
+        # Phase 8: Tangent Constraints — fired BEFORE PostConstraints so arc centers
+        # still have at least one free DOF. Once PostConstraints pins each arc center
+        # to a skeleton pin endpoint the DOF drops to zero and the VCS rejects any
+        # new constraint, including a geometrically valid tangency.
+        tc_list = spec.get('TangentConstraints', [])
+        if tc_list: self.logger.log(f"   [PHASE] Entering TangentConstraints ({len(tc_list)} items)", "BUILD")
+        for t_spec in tc_list:
+            if not self.resolver.is_spec_enabled(t_spec): continue
+            targets = f"{t_spec.get('Source')} ↔ {t_spec.get('Target')}"
+            t1 = con._resolve_target(t_spec.get('Source'), s_name)
+            t2 = con._resolve_target(t_spec.get('Target'), s_name)
+            if not t1 or not t2:
+                self.logger.log(f"   (SKIP) Tangent {targets}: entity not found", "WARNING")
+                continue
+            sketch.isComputeDeferred = False
+            try:
+                sketch.geometricConstraints.addTangent(t1, t2)
+                self.logger.log(f"   (OK) Tangent {targets}", "SKETCH")
+            except Exception as e:
+                # Settle-flip nudge: force VCS to fully solve then retry once
+                sketch.isComputeDeferred = True
+                sketch.isComputeDeferred = False
+                try:
+                    sketch.geometricConstraints.addTangent(t1, t2)
+                    self.logger.log(f"   (OK/NUDGE) Tangent {targets} after nudge", "SKETCH")
+                except Exception as e2:
+                    self.logger.log(f"   (FAIL) Tangent {targets}: {str(e2)[:80]}", "WARNING")
+            sketch.isComputeDeferred = True
+
+        # Phase 9: Post-Constraints — arc-center cross-pins to skeleton pin endpoints,
+        # plus surround_rect:C→ORIGIN coincident. Runs AFTER tangency so arc centers
+        # are still free (≥1 DOF) when tangency fires above.
+        pc2_list = spec.get('PostConstraints', spec.get('Post-Constraints', spec.get('Post_Constraints', [])))
+        if pc2_list: self.logger.log(f"   [PHASE] Entering Post-Constraints ({len(pc2_list)} items)", "BUILD")
+        sketch.isComputeDeferred = False
+        for r in pc2_list:
+            if not self.resolver.is_spec_enabled(r): continue
+            con.handle_rel(s_name, r)
+        sketch.isComputeDeferred = True
+
+        # Delete TempDimensions now that PostConstraints has fully settled geometry
+        if temp_dim_names:
+            self.logger.log(f"   [PHASE] Deleting {len(temp_dim_names)} TempDimensions", "BUILD")
+            sketch.isComputeDeferred = False
+            for tname in temp_dim_names:
+                ent = self.entity_map.get(s_name, {}).get(tname)
+                if ent:
+                    try:
+                        ent.deleteMe()
+                        self.logger.log(f"   (DEL) TempDim '{tname}' removed", "BUILD")
+                    except Exception as e:
+                        self.logger.log(f"   (SKIP) TempDim '{tname}' del failed: {str(e)[:60]}", "WARNING")
+            sketch.isComputeDeferred = True
+
+        # Phase 10: Dimensions — remaining parametric dimensions
+        d_list = spec.get('Dimensions', [])
+        if d_list: self.logger.log(f"   [PHASE] Entering Dimensions ({len(d_list)} items)", "BUILD")
+        sketch.isComputeDeferred = False
+        for d in d_list:
+            if not self.resolver.is_spec_enabled(d, d.get('ID') or d.get('Name')): continue
+            dim.handle_dim(s_name, d, is_snap_only=False)
+        sketch.isComputeDeferred = True
+
+        # Phase 11: Steps — final advanced operations (Offset, special Lines)
+        # These are processed last to ensure all base geometry and dimensions are stable.
+        s_list = spec.get('Steps', [])
+        if s_list:
+            self.logger.log(f"   [PHASE] Entering Steps ({len(s_list)} items)", "BUILD")
+            sketch.isComputeDeferred = False
+            for s in s_list:
+                if not self.resolver.is_spec_enabled(s, s.get('ID')): continue
+                t = s.get('Type')
+                if t == 'Offset': stp.offset_step(s_name, s, self.entity_map)
+                elif t == 'Line': stp.line_step(s_name, s, self.entity_map)
+            sketch.isComputeDeferred = True
+
+        # Final settle
+        sketch.isComputeDeferred = False
+        sketch.isComputeDeferred = True
+        self.logger.log(f"DONE {s_name}", "BUILD")

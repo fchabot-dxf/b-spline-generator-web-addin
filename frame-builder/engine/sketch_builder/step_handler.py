@@ -1,5 +1,5 @@
 import adsk.core, adsk.fusion, traceback
-import os, math
+import math
 
 class StepHandler:
     """Handles advanced sketch operations like Offsets and Corner Identification."""
@@ -9,82 +9,149 @@ class StepHandler:
         self.logger = logger
         self._set_id = set_id_callback
 
+    def _dist(self, p1, p2):
+        return ((p1.x - p2.x)**2 + (p1.y - p2.y)**2)**0.5
+
+    def _get_midpoint(self, curve):
+        try:
+            sp, ep = curve.startSketchPoint.geometry, curve.endSketchPoint.geometry
+            return adsk.core.Point3D.create((sp.x + ep.x)/2, (sp.y + ep.y)/2, 0)
+        except: return adsk.core.Point3D.create(0, 0, 0)
+
+    def _resolve_point(self, pid, entity_map, sketch_name):
+        if not pid: return None
+        parts = pid.split(':')
+        base_id = parts[0]
+        ent = entity_map.get(sketch_name, {}).get(base_id)
+        if not ent: return None
+        target = ent
+        if len(parts) > 1:
+            suff = parts[1]
+            if   suff == "S" and hasattr(ent, 'startSketchPoint'): target = ent.startSketchPoint
+            elif suff == "E" and hasattr(ent, 'endSketchPoint'):   target = ent.endSketchPoint
+            elif suff == "C":
+                if   hasattr(ent, 'centerSketchPoint'): target = ent.centerSketchPoint
+                elif hasattr(ent, 'geometry') and hasattr(ent.geometry, 'center'): target = ent.centerSketchPoint
+        return target
+
+    def line_step(self, sketch_name, spec, entity_map):
+        line_id = spec.get('ID')
+        p1_id, p2_id = spec.get('StartID'), spec.get('EndID')
+        p1 = self._resolve_point(p1_id, entity_map, sketch_name)
+        p2 = self._resolve_point(p2_id, entity_map, sketch_name)
+
+        if p1 and p2:
+            try:
+                line = self.sketch.sketchCurves.sketchLines.addByTwoPoints(p1.geometry, p2.geometry)
+                try: self.sketch.geometricConstraints.addCoincident(line.startSketchPoint, p1)
+                except: pass
+                try: self.sketch.geometricConstraints.addCoincident(line.endSketchPoint, p2)
+                except: pass
+                if line_id: self._set_id(line, sketch_name, "step_line", override_id=line_id)
+                self.logger.log(f"   (OK) LINE STEP: {line_id or '?'} ({p1_id}->{p2_id})", "STEP")
+            except Exception as e:
+                self.logger.log(f"   (FAIL) LINE STEP: {line_id or '?'} {e}", "ERROR")
+
     def offset_step(self, sketch_name, spec, entity_map):
         source_ids = spec.get('SourceID', [])
         dist_expr = spec.get('DistanceExpr', '0')
-        target_ids = spec.get('TargetIDs', [])
+        tgt_ids_list = spec.get('TargetIDs', [])
+        single_tgt = spec.get('TargetID')
         corner_ids = spec.get('CornerIDs', {})
         
-        # 1. Collect Source Curves
         curves = adsk.core.ObjectCollection.create()
         for sid in source_ids:
             ent = entity_map.get(sketch_name, {}).get(sid)
             if ent: curves.add(ent)
             
-        if curves.count == 0:
-            self.logger.log_sketch(f"OFFSET FAIL: No source curves found for {source_ids}", "WARNING")
-            return
+        if curves.count == 0: return
 
         try:
-            # 2. Perform Offset
+            # --- Hardening: Support construction line offset ---
+            src_states = {}
+            for i in range(curves.count):
+                c = curves.item(i)
+                if hasattr(c, 'isConstruction'):
+                    src_states[c.entityToken] = c.isConstruction
+                    c.isConstruction = False
+
             dist_val = self.resolver.resolve(dist_expr)
-            # Use small asymmetric seed vector to help Fusion's solver avoid diagonal collisions
-            seed_point = adsk.core.Point3D.create(0.05, 0.07, 0)
-            offset_results = self.sketch.offset(curves, seed_point, dist_val)
+            dir_raw = spec.get("Direction") or [0.5, 0.5, 0]
+            dir_pt = adsk.core.Point3D.create(dir_raw[0], dir_raw[1], 0)
             
-            # 3. Map Target Curves and Points
-            for i in range(min(offset_results.count, len(target_ids))):
-                curve = offset_results.item(i)
-                cid = target_ids[i]
-                
-                # Register Curve
-                self._set_id(curve, sketch_name, "offset_curve", override_id=cid)
-                
-                # Register Points (Ensures connectivity naming)
-                if hasattr(curve, 'startSketchPoint') and curve.startSketchPoint:
-                    self._set_id(curve.startSketchPoint, sketch_name, "point", override_id=f"{cid}:S")
-                if hasattr(curve, 'endSketchPoint'):
-                    self._set_id(curve.endSketchPoint, sketch_name, "point", override_id=f"{cid}:E")
-                if hasattr(curve, 'centerSketchPoint'):
-                    self._set_id(curve.centerSketchPoint, sketch_name, "point", override_id=f"{cid}:C")
+            offset_curves = None
+            try:
+                offset_curves = self.sketch.offset(curves, dir_pt, dist_val)
+            except:
+                offset_curves = self.sketch.offset(curves, dir_pt, -dist_val)
             
-            # 4. robust Corner ID (Manual Quadrant Search)
-            if corner_ids:
-                self._identify_corners(offset_results, sketch_name, corner_ids)
+            # Restore states
+            for i in range(curves.count):
+                c = curves.item(i)
+                if c.entityToken in src_states:
+                    c.isConstruction = src_states[c.entityToken]
+
+            if offset_curves and offset_curves.count > 0:
+                # Restoration: Map curves by explicit TargetIDs or Proximity
+                abs_d = abs(dist_val)
+                for i in range(offset_curves.count):
+                    off_c = offset_curves.item(i)
+                    
+                    # 1. Precise TargetID (Legacy/Main)
+                    if single_tgt and i == 0:
+                        self._set_id(off_c, sketch_name, "offset", override_id=single_tgt)
+                        continue
+
+                    # 2. Targeted Mapping (Proximity-based for multiple curves)
+                    mp_off = self._get_midpoint(off_c)
+                    best_sid, min_err = None, 1.0e6
+                    for idx, sid in enumerate(source_ids):
+                        src_c = entity_map.get(sketch_name, {}).get(sid)
+                        if not src_c: continue
+                        mp_src = self._get_midpoint(src_c)
+                        d = self._dist(mp_off, mp_src)
+                        err = abs(d - abs_d)
+                        if err < min_err:
+                            min_err = err
+                            best_sid, best_idx = sid, idx
+                    
+                    if best_sid and min_err < 0.1:
+                        target_id = tgt_ids_list[best_idx] if best_idx < len(tgt_ids_list) else f"frame_inner_{best_sid}"
+                        self._set_id(off_c, sketch_name, "offset", override_id=target_id)
                 
-            self.logger.log_sketch(f"OFFSET OK: {len(source_ids)} curves offset by {dist_expr}")
+                if corner_ids:
+                    self._identify_corners(offset_curves, sketch_name, corner_ids)
         except Exception as e:
-            self.logger.log_error(f"OFFSET FAIL: {e}")
+            self.logger.log(f"   (CRASH) OFFSET: {e}", "ERROR")
 
     def _identify_corners(self, curves, sketch_name, corner_ids):
-        """Finds unique sketch points and assigns them to TL, TR, BL, BR based on coordinates."""
         seen = set()
         pts = []
         for i in range(curves.count):
             c = curves.item(i)
             for sp in [c.startSketchPoint, c.endSketchPoint]:
-                if sp and sp.entityToken not in seen:
+                if sp and sp.isValid and sp.entityToken not in seen:
                     seen.add(sp.entityToken)
                     pts.append(sp)
         
-        if len(pts) < 4: return
+        if len(pts) < 4:
+            self.logger.log(f"   (WARN) CORNER: Found {len(pts)} points, but need 4 for identification", "WARNING")
+            return
         
-        # Quadrant Logic (Extreme X/Y)
         min_x = min(p.geometry.x for p in pts)
         max_x = max(p.geometry.x for p in pts)
         tol = 0.01
+        l_pts = sorted([p for p in pts if abs(p.geometry.x - min_x) < tol], key=lambda p: p.geometry.y, reverse=True)
+        r_pts = sorted([p for p in pts if abs(p.geometry.x - max_x) < tol], key=lambda p: p.geometry.y, reverse=True)
         
-        left_pts = sorted([p for p in pts if abs(p.geometry.x - min_x) < tol], key=lambda p: p.geometry.y, reverse=True)
-        right_pts = sorted([p for p in pts if abs(p.geometry.x - max_x) < tol], key=lambda p: p.geometry.y, reverse=True)
-        
-        rect_map = {
-            "TL": left_pts[0] if left_pts else None,
-            "BL": left_pts[-1] if left_pts else None,
-            "TR": right_pts[0] if right_pts else None,
-            "BR": right_pts[-1] if right_pts else None
-        }
-        
-        for key, pt in rect_map.items():
+        # Guard against zero-length segments fusing points
+        if len(l_pts) < 2 or len(r_pts) < 2:
+            self.logger.log(f"   (WARN) CORNER: Geometry too small, failed to distinguish points", "WARNING")
+            return
+
+        m = {"TL": l_pts[0], "BL": l_pts[-1], "TR": r_pts[0], "BR": r_pts[-1]}
+        for key, pt in m.items():
             cid = corner_ids.get(key)
             if cid and pt:
                 self._set_id(pt, sketch_name, "corner", override_id=cid)
+                self.logger.log(f"   (OK) CORNER: Identified {cid}", "STEP")
