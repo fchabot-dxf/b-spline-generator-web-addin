@@ -127,15 +127,24 @@ class FrameBuilder:
             self.logger.log(f"run_full_synthesis completed in {elapsed:.2f} seconds")
 
     def _create_incremental_component(self):
+        # Scan all existing components in the root for the highest Frame_N index
+        # We check comp.name instead of occ.name to avoid issues with ":1" suffixes
+        existing_names = [occ.component.name for occ in self.root.occurrences if occ.component.name.startswith("Frame_")]
+        
         index = 1
         while True:
             name = f"Frame_{index}"
-            existing = self.root.occurrences.itemByName(name)
-            if not existing: break
+            if name not in existing_names: break
             index += 1
+            
         occ = self.root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
         comp = occ.component
         comp.name = name
+        
+        # Tag the component for robust discovery by other add-ins (e.g. Solid Builder)
+        try: comp.attributes.add('FrameBuilder', 'ComponentType', 'Frame')
+        except: pass
+        
         return comp
 
     def _create_skeletal_parameters(self, target_body=None, style_id="Template 1"):
@@ -205,24 +214,40 @@ class FrameBuilder:
                         except: pass
     def _discover_aesthetic_core(self):
         self.logger.log("Discovering aesthetic core body")
+        
+        # 1. Official Discovery: Search via Universal Attribute Tagging
+        attrs = self.design.findAttributes('FrameBuilder', 'ComponentType')
+        for attr in attrs:
+            if attr.value == 'AestheticCore':
+                comp = adsk.fusion.Component.cast(attr.parent)
+                if comp and comp.bRepBodies.count > 0:
+                    self.logger.log(f"Aesthetic core found via Attribute on component: {comp.name}")
+                    return comp.bRepBodies.item(0)
+
+        # 2. Legacy/Named discovery:
         existing_occ = self.root.occurrences.itemByName("AESTHETIC_CORE")
         if existing_occ and existing_occ.component.bRepBodies.count > 0:
             self.logger.log("Found AESTHETIC_CORE occurrence")
             return existing_occ.component.bRepBodies.item(0)
 
+        # Search by name patterns in occurrences (using comp.name for stability)
         for occ in self.root.occurrences:
-            if "b-spline set" in occ.name.lower() or "terrain" in occ.name.lower():
-                self.logger.log(f"Candidate occurrence found: {occ.name}")
-                target_occ = occ
-                if occ.childOccurrences.count > 0:
-                    for child in occ.childOccurrences:
-                        if "clean solid" in child.name.lower():
-                            self.logger.log(f"Using child occurrence for core: {child.name}")
-                            target_occ = child
+            c_name = occ.component.name.lower()
+            if "b-spline set" in c_name or "terrain" in c_name:
+                self.logger.log(f"Candidate component found: {occ.component.name}")
+                target_comp = occ.component
+                
+                # Check for "clean solid" sub-bodies
+                if target_comp.bRepBodies.count == 0:
+                    # Look deeper if it's a container
+                    for sub_occ in occ.childOccurrences:
+                        if "clean solid" in sub_occ.component.name.lower():
+                            target_comp = sub_occ.component
                             break
-                if target_occ.component.bRepBodies.count > 0:
-                    self.logger.log(f"Aesthetic core found in occurrence: {target_occ.name}")
-                    return target_occ.component.bRepBodies.item(0)
+                            
+                if target_comp.bRepBodies.count > 0:
+                    self.logger.log(f"Aesthetic core body found in: {target_comp.name}")
+                    return target_comp.bRepBodies.item(0)
 
         if self.root.bRepBodies.count > 0:
             self.logger.log("Using first body in root component as aesthetic core")

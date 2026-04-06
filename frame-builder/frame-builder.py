@@ -21,8 +21,8 @@ except Exception as e:
 
 # Modular logic import with detailed diagnostics
 try:
-    diag_logger.log("Attempting to import frame_engine...")
-    from engine import frame_engine
+    diag_logger.log("Attempting to import frame_engine and solid_builder...")
+    from engine import frame_engine, solid_builder
     from sketches.template_1 import template_data_1
     from sketches.template_2 import template_data_2
     from sketches.template_3 import template_data_3
@@ -32,7 +32,8 @@ try:
     importlib.reload(template_data_3)
     importlib.reload(template_data_4)
     importlib.reload(frame_engine)
-    diag_logger.log("SUCCESS: frame_engine imported and reloaded.")
+    importlib.reload(solid_builder)
+    diag_logger.log("SUCCESS: frame_engine and solid_builder imported.")
 except Exception as e:
     try: 
         diag_logger.log(f"IMPORT FAILURE: {e}", "ERROR")
@@ -55,14 +56,16 @@ def run(context):
             {
                 'id': 'FrameSketchCommand',
                 'name': 'Generate Sketch',
-                'tooltip': 'Auto-Fit Master Skeleton to the active model',
-                'logic': frame_engine.build_sketch_logic
+                'tooltip': 'Build parametric shape-outline sketches for the selected template',
+                'logic': frame_engine.build_sketch_logic,
+                'handler_class': CommandCreatedHandler
             },
             {
-                'id': 'FrameBuildCommand',
-                'name': 'Create Frame',
-                'tooltip': 'Synthesize 4-body frame around active model',
-                'logic': frame_engine.build_frame_logic
+                'id': 'FrameSolidCommand',
+                'name': 'Build Solid',
+                'tooltip': 'Extrude the frame profile sketch into solid bar bodies',
+                'logic': None,   # handled by SolidCommandCreatedHandler
+                'handler_class': SolidCommandCreatedHandler
             }
         ]
 
@@ -81,7 +84,8 @@ def run(context):
             except: pass
 
             new_def = cmd_defs.addButtonDefinition(cmd_id, cmd_info['name'], cmd_info['tooltip'], res_path)
-            on_created = CommandCreatedHandler(cmd_info['logic'])
+            handler_cls = cmd_info.get('handler_class', CommandCreatedHandler)
+            on_created = handler_cls(cmd_info.get('logic'))
             new_def.commandCreated.add(on_created)
             handlers.append(on_created)
 
@@ -122,7 +126,7 @@ def stop(context):
         cmd_defs = ui.commandDefinitions
 
         # Remove command definitions
-        for cmd_id in ['FrameSketchCommand', 'FrameBuildCommand']:
+        for cmd_id in ['FrameSketchCommand', 'FrameSolidCommand', 'FrameBuildCommand']:
             try:
                 cmd_def = cmd_defs.itemById(cmd_id)
                 if cmd_def:
@@ -282,7 +286,7 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
             sel_style = inputs.itemById('style_select').selectedItem
 
             keys = ['ShoulderSpan', 'WaistSpan', 'HipSpan', 'TopGap', 'BottomGap']
-            
+
             # Fetch current bounding box totals
             h = up.itemByName('heightIn').value if up.itemByName('heightIn') else 22.0
             w = up.itemByName('widthIn').value if up.itemByName('widthIn') else 17.0
@@ -303,11 +307,125 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
                         ui_pct = val_in.valueOne
                         total = w if 'Span' in k else h
                         real_val = (ui_pct / 100.0) * total
-                        p_val.value = real_val 
+                        p_val.value = real_val
                         diag_logger.log(f"UI SYNC: {p_val.name} = {real_val:.3f} cm ({ui_pct:.1f}%)")
 
             if sel_style:
                 self.action_func(sel_style.name, "joint")
         except:
             try: diag_logger.log_error(f"CommandExecute CRASH:\n{traceback.format_exc()}")
+            except: pass
+
+
+# ---------------------------------------------------------------------------
+# Solid Builder Command — separate UI from the sketch command
+# ---------------------------------------------------------------------------
+class SolidCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    """
+    Handles the FrameSolidCommand created event.
+    Builds a dedicated dialog for extruding frame profiles into solid bodies.
+    """
+    def __init__(self, action_func=None):
+        super().__init__()
+        # action_func unused; kept for uniform handler construction signature
+
+    def notify(self, args):
+        try:
+            event_args = adsk.core.CommandCreatedEventArgs.cast(args)
+            cmd    = event_args.command
+            inputs = cmd.commandInputs
+            cmd.setDialogInitialSize(520, 380)
+
+            # ── Target component ──────────────────────────────────────────
+            app    = adsk.core.Application.get()
+            design = adsk.fusion.Design.cast(app.activeProduct)
+            root   = design.rootComponent if design else None
+
+            frame_names = ["(auto — latest Frame_N)"]
+            if root:
+                for occ in root.occurrences:
+                    if occ.name.startswith("Frame_"):
+                        frame_names.append(occ.name)
+
+            drop_comp = inputs.addDropDownCommandInput(
+                'solid_comp', 'Target Component',
+                adsk.core.DropDownStyles.LabeledIconDropDownStyle)
+            for n in frame_names:
+                drop_comp.listItems.add(n, n == frame_names[0], '', -1)
+
+            # ── Terminus face (canvas select — any face type incl. B-spline) ─
+            sel_face = inputs.addSelectionInput(
+                'solid_face', 'Extent To Face',
+                'Click a face on the body to extrude up to')
+            sel_face.addSelectionFilter('Faces')   # accepts planar AND b-spline faces
+            sel_face.setSelectionLimits(1, 1)      # exactly 1 face required
+
+            # ── Start offset from sketch plane ───────────────────────────
+            inputs.addStringValueInput('solid_start_offset', 'Start offset', '-1 in')
+
+            # ── Appearance dropdown ───────────────────────────────────────
+            drop_app = inputs.addDropDownCommandInput(
+                'solid_appearance', 'Appearance',
+                adsk.core.DropDownStyles.LabeledIconDropDownStyle)
+            for ap in solid_builder.APPEARANCE_PRESETS:
+                drop_app.listItems.add(ap, ap == "(none)", '', -1)
+
+            on_execute = SolidCommandExecuteHandler()
+            cmd.execute.add(on_execute)
+            handlers.append(on_execute)
+
+        except Exception:
+            try: diag_logger.log_error(f"SolidCommandCreated CRASH:\n{traceback.format_exc()}")
+            except: pass
+
+
+class SolidCommandExecuteHandler(adsk.core.CommandEventHandler):
+    """Reads the solid dialog inputs and calls solid_builder.build_solid_logic."""
+    def __init__(self):
+        super().__init__()
+
+    def notify(self, args):
+        try:
+            ev     = adsk.core.CommandEventArgs.cast(args)
+            inputs = ev.command.commandInputs
+
+            # Component name (None = auto)
+            sel_comp  = inputs.itemById('solid_comp').selectedItem
+            comp_name = None
+            if sel_comp and not sel_comp.name.startswith("(auto"):
+                comp_name = sel_comp.name
+
+            # Terminus face — canvas-selected BRepFace (b-spline or planar)
+            sel_face_input = inputs.itemById('solid_face')
+            to_face = None
+            if sel_face_input and sel_face_input.selectionCount > 0:
+                to_face = adsk.fusion.BRepFace.cast(
+                    sel_face_input.selection(0).entity)
+
+            if not to_face:
+                diag_logger.log_error("SOLID ABORT: no face selected")
+                return
+
+            # Start offset (from sketch plane)
+            start_offset = inputs.itemById('solid_start_offset').value
+
+            # Appearance
+            sel_app    = inputs.itemById('solid_appearance').selectedItem
+            appearance = sel_app.name if sel_app else "(none)"
+
+            diag_logger.log(
+                f"SOLID CMD: comp={comp_name}  "
+                f"face={to_face.entityToken[:40] if to_face else 'None'}  "
+                f"start_offset='{start_offset}'  "
+                f"appearance='{appearance}'")
+
+            solid_builder.build_solid_logic(
+                comp_name         = comp_name,
+                to_face           = to_face,
+                start_offset_expr = start_offset,
+                appearance_name   = appearance,
+            )
+
+        except Exception:
+            try: diag_logger.log_error(f"SolidCommandExecute CRASH:\n{traceback.format_exc()}")
             except: pass

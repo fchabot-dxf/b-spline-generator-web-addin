@@ -502,7 +502,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview and not is_append:
                 _remove_last_import()
                 current_import_group = root_comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
-                current_import_group.component.name = "B-Spline Set"
+                comp = current_import_group.component
+                comp.name = "B-Spline Set"
+                # Universal Attribute Tagging for add-in discovery
+                try: comp.attributes.add('FrameBuilder', 'ComponentType', 'AestheticCore')
+                except: pass
 
             primary_imported_occurrence = None
 
