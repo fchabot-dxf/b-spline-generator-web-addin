@@ -21,22 +21,34 @@ except Exception as e:
 
 # Modular logic import with detailed diagnostics
 try:
-    diag_logger.log("Attempting to import frame_engine and solid_builder...")
-    from engine import frame_engine, solid_builder
+    diag_logger.log("--- STARTUP RELOAD SEQUENCE ---")
+    from engine import frame_engine, solid_coordinator, appearance_manager
+    diag_logger.log("IMPORT: Engine modules loaded.")
+    
     from sketches.template_1 import template_data_1
     from sketches.template_2 import template_data_2
     from sketches.template_3 import template_data_3
     from sketches.template_4 import template_data_4
+    diag_logger.log("IMPORT: Template data loaded.")
+    
+    # RELOAD ORDER: Sub-dependencies MUST be reloaded before the parent modules
+    importlib.reload(appearance_manager)
+    diag_logger.log("RELOAD: appearance_manager OK.")
+    importlib.reload(solid_coordinator)
+    diag_logger.log("RELOAD: solid_coordinator OK.")
+    importlib.reload(frame_engine)
+    diag_logger.log("RELOAD: frame_engine OK.")
+    
     importlib.reload(template_data_1)
     importlib.reload(template_data_2)
     importlib.reload(template_data_3)
     importlib.reload(template_data_4)
-    importlib.reload(frame_engine)
-    importlib.reload(solid_builder)
-    diag_logger.log("SUCCESS: frame_engine and solid_builder imported.")
+    diag_logger.log("RELOAD: All templates OK.")
+    
+    diag_logger.log("SUCCESS: All engine modules active.")
 except Exception as e:
     try: 
-        diag_logger.log(f"IMPORT FAILURE: {e}", "ERROR")
+        diag_logger.log(f"CRITICAL STARTUP ERROR: {e}", "ERROR")
         diag_logger.log(traceback.format_exc(), "ERROR")
     except: pass
 
@@ -336,22 +348,10 @@ class SolidCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs = cmd.commandInputs
             cmd.setDialogInitialSize(520, 380)
 
-            # ── Target component ──────────────────────────────────────────
-            app    = adsk.core.Application.get()
-            design = adsk.fusion.Design.cast(app.activeProduct)
-            root   = design.rootComponent if design else None
-
-            frame_names = ["(auto — latest Frame_N)"]
-            if root:
-                for occ in root.occurrences:
-                    if occ.name.startswith("Frame_"):
-                        frame_names.append(occ.name)
-
-            drop_comp = inputs.addDropDownCommandInput(
-                'solid_comp', 'Target Component',
-                adsk.core.DropDownStyles.LabeledIconDropDownStyle)
-            for n in frame_names:
-                drop_comp.listItems.add(n, n == frame_names[0], '', -1)
+            # ── Target component (AUTO-DISCOVERY ACTIVE) ──────────────────
+            # Manual selector removed to simplify UI; failsafe scavenging logic 
+            # now automatically finds the latest "Frame_N" component.
+            pass
 
             # ── Terminus face (canvas select — any face type incl. B-spline) ─
             sel_face = inputs.addSelectionInput(
@@ -363,12 +363,14 @@ class SolidCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             # ── Start offset from sketch plane ───────────────────────────
             inputs.addStringValueInput('solid_start_offset', 'Start offset', '-1 in')
 
-            # ── Appearance dropdown ───────────────────────────────────────
+            # ── Appearance dropdown (Default to first in list) ─────────────
             drop_app = inputs.addDropDownCommandInput(
                 'solid_appearance', 'Appearance',
                 adsk.core.DropDownStyles.LabeledIconDropDownStyle)
-            for ap in solid_builder.APPEARANCE_PRESETS:
-                drop_app.listItems.add(ap, ap == "(none)", '', -1)
+            
+            # Remove '(none)' logic: ensure first item is selected by default
+            for i, ap in enumerate(solid_coordinator.APPEARANCE_PRESETS):
+                drop_app.listItems.add(ap, i == 0, '', -1)
 
             on_execute = SolidCommandExecuteHandler()
             cmd.execute.add(on_execute)
@@ -389,11 +391,10 @@ class SolidCommandExecuteHandler(adsk.core.CommandEventHandler):
             ev     = adsk.core.CommandEventArgs.cast(args)
             inputs = ev.command.commandInputs
 
-            # Component name (None = auto)
-            sel_comp  = inputs.itemById('solid_comp').selectedItem
+            # Component discovery (AUTO-DISCOVERY / SCAVENGE)
+            # The manual selector was removed; the engine will now automatically 
+            # find the latest "Frame" component via its failsafe scanner.
             comp_name = None
-            if sel_comp and not sel_comp.name.startswith("(auto"):
-                comp_name = sel_comp.name
 
             # Terminus face — canvas-selected BRepFace (b-spline or planar)
             sel_face_input = inputs.itemById('solid_face')
@@ -409,9 +410,9 @@ class SolidCommandExecuteHandler(adsk.core.CommandEventHandler):
             # Start offset (from sketch plane)
             start_offset = inputs.itemById('solid_start_offset').value
 
-            # Appearance
+            # Appearance (Always returns a valid selection since (none) is gone)
             sel_app    = inputs.itemById('solid_appearance').selectedItem
-            appearance = sel_app.name if sel_app else "(none)"
+            appearance = sel_app.name if sel_app else solid_coordinator.APPEARANCE_PRESETS[0]
 
             diag_logger.log(
                 f"SOLID CMD: comp={comp_name}  "
@@ -419,7 +420,7 @@ class SolidCommandExecuteHandler(adsk.core.CommandEventHandler):
                 f"start_offset='{start_offset}'  "
                 f"appearance='{appearance}'")
 
-            solid_builder.build_solid_logic(
+            solid_coordinator.build_solid_logic(
                 comp_name         = comp_name,
                 to_face           = to_face,
                 start_offset_expr = start_offset,

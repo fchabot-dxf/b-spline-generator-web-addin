@@ -726,6 +726,30 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     _log(f'SVG Stamp Import/Project failed: {e}')
 
             # ── Finalise ─────────────────────────────────────────────────────────
+            # Assign a default 'Paint' appearance if none exists (Surgical Fix)
+            # This ensures there is a restorable 'Color appearance' for the Frame Builder.
+            try:
+                target_occ = primary_imported_occurrence or (last_imported_occurrences[0] if last_imported_occurrences else None)
+                if target_occ:
+                    # Look for White Paint (A safe neutral standard)
+                    white_paint = des.appearances.itemByName("Paint - Enamel Glossy (White)")
+                    if not white_paint:
+                        # Library Search
+                        for lib in app.materialLibraries:
+                            try:
+                                lib_app = lib.appearances.itemByName("Paint - Enamel Glossy (White)")
+                                if lib_app:
+                                    white_paint = des.appearances.addByCopy(lib_app, "Paint - Enamel Glossy (White)")
+                                    break
+                            except: continue
+                    
+                    if white_paint:
+                        for body in target_occ.component.bRepBodies:
+                            body.appearance = white_paint
+                        _log(f"      [APPEARANCE] Applied '{white_paint.name}' to core bodies.")
+            except Exception as e_app:
+                _log(f"      [APPEARANCE] Warning: Could not assign default color: {e_app}")
+
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
