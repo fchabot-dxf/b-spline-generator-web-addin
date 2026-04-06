@@ -49,9 +49,9 @@
         .linked-list { margin: 0 0 10px 10px; padding: 0; font-size: 0.95em; }
         .linked-list li { margin-bottom: 2px; list-style: decimal inside; }
         .meta { color: #888; font-size: 0.85em; margin-top: 15px; font-family: 'Consolas', monospace; border-top: 1px solid #ddd; padding-top: 8px; }
-        #copy-btn, #copy-short-btn, #dump-btn {
+        #copy-btn, #copy-short-btn {
             display: inline-block;
-            width: 32%;
+            width: 48%;
             margin-top: 12px;
             padding: 8px 0;
             background: #0077c8;
@@ -64,9 +64,9 @@
             cursor: pointer;
             letter-spacing: 0.02em;
         }
-        #copy-btn:hover, #copy-short-btn:hover, #dump-btn:hover { background: #005fa3; }
-        #copy-btn.ok, #copy-short-btn.ok, #dump-btn.ok { background: #388E3C; }
-        #copy-btn.err, #copy-short-btn.err, #dump-btn.err { background: #c0392b; }
+        #copy-btn:hover, #copy-short-btn:hover { background: #005fa3; }
+        #copy-btn.ok, #copy-short-btn.ok { background: #388E3C; }
+        #copy-btn.err, #copy-short-btn.err { background: #c0392b; }
         
         .btn-container { display: flex; justify-content: space-between; gap: 4%; }
     </style>
@@ -87,7 +87,6 @@
     <div class="btn-container">
         <button id="copy-btn" onclick="copyToClipboard()" title="Copy everything">Full Copy</button>
         <button id="copy-short-btn" onclick="copyShort()" title="Copy Name & Coords only">Copy Name</button>
-        <button id="dump-btn" onclick="dumpAttrs()" title="Dump selected entity attributes to inspector log">Dump Attrs</button>
     </div>
 
     <script>
@@ -177,46 +176,25 @@
 
         var currentData = null;
 
-        function isPointDetailLine(line) {
-            var trimmed = (line || '').trim();
-            return trimmed.indexOf('Start:') === 0 || trimmed.indexOf('End:') === 0 || trimmed.indexOf('Center:') === 0;
-        }
-
-        function compactBatchLines(linked) {
-            var lines = [];
-            var current = null;
-            for (var i = 0; i < linked.length; i++) {
-                var raw = linked[i] || '';
-                if (raw.indexOf('  ') === 0) {
-                    if (current) current.push(raw.trim());
-                    continue;
-                }
-                if (current) lines.push(current.join('\n'));
-                current = [raw];
-            }
-            if (current) lines.push(current.join('\n'));
-            return lines;
-        }
-
         function copyShort() {
             var btn = document.getElementById('copy-short-btn');
             if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
             
-            var lines = [];
+            var text = "";
             if (currentData.count > 1 && currentData.linked) {
-                lines = compactBatchLines(currentData.linked);
-            } else {
-                lines.push(currentData.mainFeature || 'Entity');
-                if (currentData.coord) lines.push(currentData.coord);
-                if (currentData.linked && currentData.linked.length > 0) {
-                    for (var i = 0; i < currentData.linked.length; i++) {
-                        if (isPointDetailLine(currentData.linked[i])) {
-                            lines.push(currentData.linked[i]);
-                        }
-                    }
+                // Batch Mode: Copy just the names for the whole list
+                var names = [];
+                for (var i = 0; i < currentData.linked.length; i++) {
+                    var str = currentData.linked[i];
+                    // Extract name before the ' | ' separator
+                    var name = str.split(' | ')[0];
+                    names.push(name);
                 }
+                text = names.join('\n');
+            } else {
+                // Single Mode
+                text = currentData.mainFeature || 'Entity';
             }
-            var text = lines.join('\n');
             performCopy(text, btn);
         }
 
@@ -235,22 +213,11 @@
                 lines.push(currentData.mainFeature || '');
                 if (currentData.coord) lines.push(currentData.coord);
                 if (currentData.linked && currentData.linked.length > 0) {
-                    var pointLines = [];
-                    var connectionLines = [];
-                    for (var j = 0; j < currentData.linked.length; j++) {
-                        if (isPointDetailLine(currentData.linked[j])) pointLines.push(currentData.linked[j]);
-                        else connectionLines.push(currentData.linked[j]);
-                    }
-                    if (pointLines.length > 0) {
-                        lines.push('Points:');
-                        for (var p = 0; p < pointLines.length; p++) lines.push('  ' + pointLines[p]);
-                    }
-                    if (connectionLines.length > 0) {
-                        lines.push('Connections:');
-                        for (var c = 0; c < connectionLines.length; c++) lines.push('  ' + connectionLines[c]);
-                    }
+                    lines.push('Connections:');
+                    for (var j = 0; j < currentData.linked.length; j++) lines.push('  ' + currentData.linked[j]);
                 }
             }
+            if (currentData.meta) lines.push(currentData.meta);
             var text = lines.join('\n');
             
             performCopy(text, btn);
@@ -264,28 +231,6 @@
                 }).catch(function() { copyViaPython(text, btn, originalText); });
             } else {
                 copyViaPython(text, btn, originalText);
-            }
-        }
-
-        function dumpAttrs() {
-            var btn = document.getElementById('dump-btn');
-            var originalText = btn.textContent;
-            try {
-                if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
-                    flashBtn(btn, 'No Bridge', false, originalText);
-                    return;
-                }
-                adsk.fusionSendData('dumpAttrs', 'selected').then(function(result) {
-                    if (result && (result === 'ok' || result.indexOf('ok') === 0)) {
-                        flashBtn(btn, 'Dumped', true, originalText);
-                    } else {
-                        flashBtn(btn, 'Error', false, originalText);
-                    }
-                }).catch(function() {
-                    flashBtn(btn, 'Error', false, originalText);
-                });
-            } catch (e) {
-                flashBtn(btn, 'Error', false, originalText);
             }
         }
 

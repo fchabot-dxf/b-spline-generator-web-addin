@@ -41,42 +41,34 @@ def get_arc_trio(side, skel):
     prefix = "L" if is_left else "R"
     x_val = f"-widthIn/2 + boundingboxoffset" if is_left else f"widthIn/2 - boundingboxoffset"
 
-    # Seed points expressed as width/height ratios (baseline fit: widthIn=7, heightIn=9).
-    # This keeps seeds scalable while preserving the tuned left/right mirrored shape.
+    # Seed bulge offset: 1.25in from chord line gives ~1.25in radius arcs
+    # Outward = away from center, Inward = toward center (waist)
     if is_left:
-        shoulder_start = ["-(8.26/7)*widthIn", "(4.57/9)*heightIn"]
-        shoulder_bulge = ["-(6.12/7)*widthIn", "(2.25/9)*heightIn"]
-        shoulder_end = ["-(7.85/7)*widthIn", "(3.26/9)*heightIn"]
-
-        hip_start = ["-(8.26/7)*widthIn", "-(4.57/9)*heightIn"]
-        hip_bulge = ["-(6.12/7)*widthIn", "-(2.25/9)*heightIn"]
-        hip_end = ["-(7.85/7)*widthIn", "-(3.26/9)*heightIn"]
-
-        waist_start = ["-(8.13/7)*widthIn", "-(2.54/9)*heightIn"]
-        waist_bulge = ["-(5.54/7)*widthIn", "0"]
-        waist_end = ["-(8.05/7)*widthIn", "(2.54/9)*heightIn"]
+        out_x = f"-widthIn/2 + boundingboxoffset - 1.25 * 2.54"  # outward (more negative)
+        in_x  = f"-widthIn/2 + boundingboxoffset + 1.25 * 2.54"  # inward (toward center)
     else:
-        shoulder_start = ["(8.26/7)*widthIn", "(4.57/9)*heightIn"]
-        shoulder_bulge = ["(6.12/7)*widthIn", "(2.25/9)*heightIn"]
-        shoulder_end = ["(7.85/7)*widthIn", "(3.26/9)*heightIn"]
+        out_x = f"widthIn/2 - boundingboxoffset + 1.25 * 2.54"   # outward (more positive)
+        in_x  = f"widthIn/2 - boundingboxoffset - 1.25 * 2.54"   # inward (toward center)
 
-        hip_start = ["(8.26/7)*widthIn", "-(4.57/9)*heightIn"]
-        hip_bulge = ["(6.12/7)*widthIn", "-(2.25/9)*heightIn"]
-        hip_end = ["(7.85/7)*widthIn", "-(3.26/9)*heightIn"]
+    # 1. Shoulder Arc (Joint Top -> Joint Waist)
+    mid_s_y = f"({skel['SHOULDER_Y']} + {skel['WAIST_Y']})/2"
+    bulge_s = [out_x, mid_s_y] # OUTWARD
 
-        waist_start = ["(8.13/7)*widthIn", "-(2.54/9)*heightIn"]
-        waist_bulge = ["(5.54/7)*widthIn", "0"]
-        waist_end = ["(8.05/7)*widthIn", "(2.54/9)*heightIn"]
+    # 2. Waist Arc (Joint Waist -> Joint Hip)
+    mid_w_y = f"({skel['WAIST_Y']} + {skel['HIP_Y']})/2"
+    bulge_w = [in_x, mid_w_y] # INWARD
 
-    # Arc seeds are fully defined by explicit S/B/E points.
+    # 3. Hip Arc (Joint Hip -> Joint Hip Bot)
+    mid_h_y = f"({skel['HIP_Y']} + {skel['HIP_BOT_Y']})/2"
+    bulge_h = [out_x, mid_h_y] # OUTWARD
     
     return [
         {"ID": f"arc_shoulder_{prefix}", "Type": "Arc3Point",
-         "Points": [shoulder_start, shoulder_bulge, shoulder_end]},
+         "Points": [[x_val, skel["SHOULDER_Y"]], bulge_s, [x_val, skel["WAIST_Y"]]]},
         {"ID": f"arc_waist_{prefix}", "Type": "Arc3Point",
-         "Points": [waist_start, waist_bulge, waist_end]},
+         "Points": [[x_val, skel["WAIST_Y"]], bulge_w, [x_val, skel["HIP_Y"]]]},
         {"ID": f"arc_hip_{prefix}", "Type": "Arc3Point",
-            "Points": [hip_start, hip_bulge, hip_end]}
+         "Points": [[x_val, skel["HIP_Y"]], bulge_h, [x_val, skel["HIP_BOT_Y"]]]}
     ]
 
 def assemble_12nd_order(skel, show_skeleton=True, seal_manifold=False):

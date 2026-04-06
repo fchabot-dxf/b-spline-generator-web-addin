@@ -254,9 +254,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         # Signal JS and then hide
                         pal.sendInfoToHTML('import_ready', '{}')
                         pal.isVisible = False  # CORRECT API for closing/hiding palette
-                    # One-shot completion signal: prevent repeated auto-hide loops
-                    # if old polling intervals are still alive in HTML.
-                    importing_done = False
                 return
 
             if action == 'ping':
@@ -865,7 +862,6 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
 
     def notify(self, args):
         try:
-            global importing_done, chunk_buffer
             palettes = ui.palettes
             palette  = palettes.itemById(PALETTE_ID)
             if not palette:
@@ -888,10 +884,6 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
                 _log('Palette created/wired (HTML + Closed events)')
             else:
                 _log('Palette already exists — making visible and resetting UI state')
-                # Reset completion/payload state when user reopens the palette so
-                # stale polling from a prior export cannot immediately re-close it.
-                importing_done = False
-                chunk_buffer = []
                 palette.isVisible = True
                 palette.sendInfoToHTML('reset_ui', '{}')
         except Exception:

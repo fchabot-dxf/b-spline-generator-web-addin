@@ -1,191 +1,259 @@
-import adsk.core, adsk.fusion, traceback
-import time
-import os
-import sys
+import adsk.core, adsk.fusion, adsk.cam, traceback
+import os, json
 import importlib
+import time
 
-# Ensure the root 'frame-builder' is in path for sketches import
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.append(root_dir)
-
-def nuclear_reload(prefix="engine"):
-    """Forcibly evicts sub-modules from cache. Does NOT evict the engine package
-    itself — doing so breaks relative imports in the currently executing module."""
-    to_delete = [
-        name for name in sys.modules
-        if (name.startswith(prefix + ".") or name.startswith("sketches"))
-        and name != __name__  # never evict ourselves
-    ]
-    for name in to_delete:
-        del sys.modules[name]
-
-def run_sketch_only(comp, design, logger, prefix="T2"):
-    """Synthesizes the complete frame silhouette using modular design templates."""
-
-    # Hot-reload sub-modules only (NOT the engine package root)
-    nuclear_reload("engine")
-    nuclear_reload("sketches")
-
+# Modular logic import
+try:
+    from . import parametric_engine, template_factory
+    from utils import logger
+    from sketches.template_1 import template_data_1
+    from sketches.template_2 import template_data_2
+    from sketches.template_3 import template_data_3
+    importlib.reload(parametric_engine)
+    importlib.reload(template_data_1)
+    importlib.reload(template_data_2)
+    importlib.reload(template_data_3)
+    importlib.reload(logger)
+except Exception as e:
+    # Attempt to log error if logger exists, otherwise use basic print
     try:
-        from engine.sketch_builder import builder
-        from sketches.template_2 import T2_sketch_1_bounding_box, T2_sketch_2_shape_outline
-    except Exception as e:
-        logger.log(f"   (FAIL) IMPORT: {e}\n{traceback.format_exc()}", "ERROR")
-        return False
+        from utils import logger
+        addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        _l = logger.DebugLogger(addin_root)
+        _l.log(f"CRITICAL: frame_engine failed imports: {e}", "ERROR")
+        _l.log(traceback.format_exc(), "ERROR")
+    except:
+        pass
+    raise e
 
-    try:
-        template = {
-            "Name": "Signature (High-Fidelity)",
-            "Parameters": [],
-            "Sketches": [
-                T2_sketch_1_bounding_box.get_sketch(),
-                T2_sketch_2_shape_outline.get_sketch()
-            ]
+
+
+
+def build_sketch_logic(style_id="Signature (Template 1)", joint_prefix="joint"):
+    """Entry point for the 'Generate Sketch' command."""
+    builder = FrameBuilder()
+    builder.run_sketch_only(style_id, joint_prefix)
+
+def build_frame_logic(style_id="Signature (Template 1)", joint_prefix="joint"):
+    """Entry point for the 'Create Frame' command."""
+    builder = FrameBuilder()
+    builder.run_full_synthesis(style_id, joint_prefix)
+
+class FrameBuilder:
+    def __init__(self):
+        self.app = adsk.core.Application.get()
+        self.design = adsk.fusion.Design.cast(self.app.activeProduct)
+        self.root = self.design.rootComponent if self.design else None
+        self.user_params = self.design.userParameters if self.design else None
+        self.params_dna = {}
+        addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        self.logger = logger.DebugLogger(addin_root)
+        self.logger.log("FrameBuilder initialized")
+        self.logger.log(f"Design loaded: {'yes' if self.design else 'no'}")
+        self.logger.log(f"Root component exists: {'yes' if self.root else 'no'}")
+        self.logger.log(f"User params: {'yes' if self.user_params else 'no'}")
+
+    def _ensure_document(self):
+        self.logger.log("Ensuring document is active")
+        if not self.design:
+            self.logger.log("No active design, creating new Fusion design document")
+            self.app.documents.add(adsk.core.DocumentTypes.FusionDesignDocumentType)
+            self.design = adsk.fusion.Design.cast(self.app.activeProduct)
+            self.root = self.design.rootComponent
+            self.user_params = self.design.userParameters
+            self.logger.log("New design created, re-pointed root and user_params")
+
+    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint"):
+        start_time = time.time()
+        try:
+            self.logger.session_start(f"SKETCH ONLY: {style_id}")
+            self.logger.log("run_sketch_only started")
+            self._ensure_document()
+            target_body = self._discover_aesthetic_core()
+            self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
+            self._create_skeletal_parameters(target_body, style_id)
+            frame_comp = self._create_incremental_component()
+            self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
+
+            # Selection Logic: Resolve Template Data and Prefix
+            template, prefix = template_data_1.TEMPLATE_1, "T1"
+            if "Template 2" in style_id: template, prefix = template_data_2.TEMPLATE_2, "T2"
+            if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
+
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix)
+            builder.build_template(template)
+        except:
+            self.logger.log_error("CRASH in run_sketch_only")
+            traceback.print_exc()
+        finally:
+            elapsed = time.time() - start_time
+            self.logger.log(f"run_sketch_only completed in {elapsed:.2f} seconds")
+
+    def run_full_synthesis(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint"):
+        start_time = time.time()
+        try:
+            self.logger.session_start(f"FULL SYNTHESIS: {style_id}")
+            self.logger.log("run_full_synthesis started")
+            self._ensure_document()
+            target_body = self._discover_aesthetic_core()
+            self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
+            self._create_skeletal_parameters(target_body, style_id)
+            frame_comp = self._create_incremental_component()
+            self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
+
+            template, prefix = template_data_1.TEMPLATE_1, "T1"
+            if "Template 2" in style_id: template, prefix = template_data_2.TEMPLATE_2, "T2"
+            if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
+
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix)
+            builder.build_template(template)
+            
+            sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame")
+            if sketch:
+                self._extrude_jesmo_frame(sketch, target_body, frame_comp)
+                
+            if target_body and frame_comp:
+                self._create_assembly_joints(target_body, frame_comp, joint_prefix)
+        except:
+            self.logger.log_error("CRASH in run_full_synthesis")
+            traceback.print_exc()
+        finally:
+            elapsed = time.time() - start_time
+            self.logger.log(f"run_full_synthesis completed in {elapsed:.2f} seconds")
+
+    def _create_incremental_component(self):
+        index = 1
+        while True:
+            name = f"Frame_{index}"
+            existing = self.root.occurrences.itemByName(name)
+            if not existing: break
+            index += 1
+        occ = self.root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
+        comp = occ.component
+        comp.name = name
+        return comp
+
+    def _create_skeletal_parameters(self, target_body=None, style_id="Signature (Template 1)"):
+        # 1. Base Requirements
+        requirements = {
+            'Skel_Frame_Offset': -1.905,
+            'Skel_Slot_Tolerance': 0.635,
+            'boundingboxoffset': 0.635,
+            'Skel_Frame_Taper': 0.0,
+            'Skel_Frame_Thickness': 2.54
         }
-    except Exception as e:
-        logger.log(f"   (FAIL) TEMPLATE LOAD: {e}", "ERROR")
-        return False
+        for name, val in requirements.items():
+            existing = self.user_params.itemByName(name)
+            if not existing:
+                unit = 'deg' if 'Taper' in name else 'cm'
+                self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Frame Builder Parameter')
+            else:
+                existing.value = val
 
-    ss_p = design.userParameters.itemByName("ShoulderSpan")
-    ws_p = design.userParameters.itemByName("WaistSpan")
-    hs_p = design.userParameters.itemByName("HipSpan")
-    tg_p = design.userParameters.itemByName("TopGap")
-    bg_p = design.userParameters.itemByName("BottomGap")
-    vo_p = design.userParameters.itemByName("VerticalOffset")
-
-    local_map = {
-        "ShoulderSpan":   ss_p.value if ss_p else 14.224,
-        "WaistSpan":      ws_p.value if ws_p else 16.891,
-        "HipSpan":        hs_p.value if hs_p else 14.224,
-        "TopGap":         tg_p.value if tg_p else 6.401,
-        "BottomGap":      bg_p.value if bg_p else 8.001,
-        "VerticalOffset": vo_p.value if vo_p else 0.0
-    }
-
-    builder_obj = builder.ParametricSketchBuilder(comp, design, logger, prefix=prefix, local_values=local_map)
-    try:
-        builder_obj.build_template(template)
-        logger.log(f"   (OK) HIGH-FIDELITY SYNTHESIS COMPLETE", "BUILD")
-        return True
-    except Exception as e:
-        logger.log(f"   (CRASH) BUILD: {e}\n{traceback.format_exc()}", "ERROR")
-        return False
-
-def run_full_synthesis(comp, design, logger):
-    """Execution bridge for Solid Builder (Extrude sequence)."""
-    if not run_sketch_only(comp, design, logger):
-        return False
-
-    from engine import solid_builder
-    sb = solid_builder.SolidBuilder(design, logger)
-    try:
-        sketch = None
-        for i in range(comp.sketches.count):
-            sk = comp.sketches.item(i)
-            if "2_shape" in sk.name.lower() or "outline" in sk.name.lower():
-                sketch = sk
-                break
-        if not sketch and comp.sketches.count > 0:
-            sketch = comp.sketches.item(comp.sketches.count - 1)
-        target_face = sb.discover_aesthetic_core()
-        if target_face and sketch:
-            sb.extrude_4_segments(sketch, target_face, comp)
-            return True
-        return False
-    except Exception as e:
-        logger.log(f"   (CRASH) SOLID: {e}", "ERROR")
-        return False
-
-# ---------------------------------------------------------------------------
-# Bridge functions — called by frame-builder.py
-# ---------------------------------------------------------------------------
-
-def _ensure_base_params(design, logger):
-    """Guarantees foundational parameters exist before any sketch runs."""
-    import adsk.core
-    base_params = [
-        ("boundingboxoffset", 0.25 * 2.54, "in"),
-        ("Skel_Frame_Offset", -0.75 * 2.54, "in"),
-    ]
-    up = design.userParameters
-    for name, val_cm, unit in base_params:
-        if not up.itemByName(name):
+        # 2. Dynamic Model Measurement (Scale Stabilization)
+        if target_body:
+            bbox = target_body.boundingBox
+            # Corrected: Use Z-axis for height since we build on XZ plane
+            w = abs(bbox.maxPoint.x - bbox.minPoint.x)
+            h = abs(bbox.maxPoint.z - bbox.minPoint.z)
+            
+            self.logger.log(f"MEASURED CORE (XZ): Width={w:.3f} cm, Height={h:.3f} cm")
+            
             try:
-                up.add(name, adsk.core.ValueInput.createByReal(val_cm), unit, "")
-                logger.log(f"   (PARAM) CREATED: {name} = {val_cm:.4f} cm", "BUILD")
+                for name, val in [("widthIn", w), ("heightIn", h)]:
+                    existing = self.user_params.itemByName(name)
+                    if not existing:
+                        # Injects exact database centimeters
+                        self.user_params.add(name, adsk.core.ValueInput.createByReal(val), 'cm', 'Auto-Measured Body Span')
+                        self.logger.log(f"CREATED PARAM: {name} = {val:.3f} cm")
+                    else:
+                        existing.value = val
+                        self.logger.log(f"UPDATED PARAM: {name} = {val:.3f} cm")
             except Exception as e:
-                logger.log(f"   (WARN) Could not create {name}: {e}", "WARNING")
+                self.logger.log_error(f"Error setting measured params: {e}")
+                raise
+    def _discover_aesthetic_core(self):
+        self.logger.log("Discovering aesthetic core body")
+        existing_occ = self.root.occurrences.itemByName("AESTHETIC_CORE")
+        if existing_occ and existing_occ.component.bRepBodies.count > 0:
+            self.logger.log("Found AESTHETIC_CORE occurrence")
+            return existing_occ.component.bRepBodies.item(0)
 
-def _get_or_create_frame_comp(design):
-    """Returns the 'Frame' sub-component, creating it if it doesn't exist."""
-    root = design.rootComponent
-    for i in range(root.occurrences.count):
-        occ = root.occurrences.item(i)
-        if occ.component.name == "Frame":
-            return occ.component
-    matrix = adsk.core.Matrix3D.create()
-    occ = root.occurrences.addNewComponent(matrix)
-    occ.component.name = "Frame"
-    return occ.component
+        for occ in self.root.occurrences:
+            if "b-spline set" in occ.name.lower() or "terrain" in occ.name.lower():
+                self.logger.log(f"Candidate occurrence found: {occ.name}")
+                target_occ = occ
+                if occ.childOccurrences.count > 0:
+                    for child in occ.childOccurrences:
+                        if "clean solid" in child.name.lower():
+                            self.logger.log(f"Using child occurrence for core: {child.name}")
+                            target_occ = child
+                            break
+                if target_occ.component.bRepBodies.count > 0:
+                    self.logger.log(f"Aesthetic core found in occurrence: {target_occ.name}")
+                    return target_occ.component.bRepBodies.item(0)
 
-def _show_drop_popup(app, logger):
-    """Shows a Fusion messageBox if any constraints were dropped during the build."""
-    drop_notes = [
-        n for n in logger.notifications
-        if any(kw in n for kw in ['(FAIL)', '(RETRY)', '(CRASH)'])
-    ]
-    if not drop_notes:
-        return
-    ui = app.userInterface
-    lines = drop_notes[:12]
-    msg = "One or more constraints were dropped by the solver:\n\n"
-    msg += "\n".join(lines)
-    if len(drop_notes) > 12:
-        msg += f"\n\n...and {len(drop_notes) - 12} more — check the build log."
-    msg += "\n\nTry reducing a slider value or turning off a lock to give the solver more room."
-    ui.messageBox(msg, "Frame Builder — Constraint Drop")
+        if self.root.bRepBodies.count > 0:
+            self.logger.log("Using first body in root component as aesthetic core")
+            return self.root.bRepBodies.item(0)
 
+        self.logger.log("No aesthetic core found")
+        return None
 
-def build_sketch_logic(style, mode, local_map):
-    """Entry point for Generate Sketch button."""
-    import adsk.core, adsk.fusion, os
-    from utils.logger import DebugLogger
-    app    = adsk.core.Application.get()
-    design = adsk.fusion.Design.cast(app.activeProduct)
-    comp   = _get_or_create_frame_comp(design)
-    logger = DebugLogger(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    logger.session_start("SKETCH-ONLY")
-    _ensure_base_params(design, logger)
-    for key, val in (local_map or {}).items():
-        existing = design.userParameters.itemByName(key)
+    def _extrude_jesmo_frame(self, sketch, target_body, target_comp):
+        self.logger.log("Starting extrusion of frame sketch")
+        feats = target_comp.features
+        extrudes = feats.extrudeFeatures
+        thickness_val = self.design.userParameters.itemByName('Skel_Frame_Thickness').name
+        taper_val = self.design.userParameters.itemByName('Skel_Frame_Taper').name
+
+        self.logger.log(f"Extrusion parameters: thickness={thickness_val}, taper={taper_val}")
+
+        for i in range(sketch.profiles.count):
+            prof = sketch.profiles.item(i)
+            try:
+                ext_input = extrudes.createInput(prof, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
+                dist = adsk.core.ValueInput.createByString(f"-{thickness_val}")
+                taper = adsk.core.ValueInput.createByString(taper_val)
+                ext_input.setDistanceExtent(False, dist)
+                ext_input.taperAngle = taper
+                feat = extrudes.add(ext_input)
+                
+                bbox = prof.boundingBox
+                cx = (bbox.minPoint.x + bbox.maxPoint.x) / 2
+                cy = (bbox.minPoint.y + bbox.maxPoint.y) / 2
+                side_info = ""
+                if abs(cx) > abs(cy): side_info = "SIDE_LEFT" if cx < 0 else "SIDE_RIGHT"
+                else: side_info = "SPAN_BOTTOM" if cy < 0 else "SPAN_TOP"
+                feat.name = f"FRAME_{side_info}"
+                self.logger.log(f"Extruded profile {i}: {feat.name}")
+            except Exception as e:
+                self.logger.log_error(f"Extrude profile {i} failed: {e}")
+
+    def _create_assembly_joints(self, target_body, frame_comp, prefix="FrameJoint"):
+        self.logger.log("Creating assembly joints")
         try:
-            if existing:
-                existing.value = val
-            else:
-                design.userParameters.add(key, adsk.core.ValueInput.createByReal(val), "cm", "")
+            core_occ = target_body.assemblyContext
+            if not core_occ:
+                self.logger.log("No core assembly context found; skipping joints")
+                return
+            frame_occ = frame_comp.assemblyContext
+            if frame_comp.bRepBodies.count == 0:
+                self.logger.log("No bodies in frame component; skipping joints")
+                return
+            joints = self.root.joints
+            geo1 = adsk.fusion.JointGeometry.createByPoint(frame_comp.originPoint)
+            geo2 = adsk.fusion.JointGeometry.createByPoint(core_occ.component.originPoint)
+            joint_input = joints.createInput(geo1, geo2)
+            joint_input.setAsRigidJointMotion()
+            joint = joints.add(joint_input)
+            index = 1
+            while True:
+                name = f"{prefix}_{index}"
+                if not joints.itemByName(name): break
+                index += 1
+            joint.name = name
+            self.logger.log(f"Created joint: {name}")
         except Exception as e:
-            logger.log(f"   (WARN) Could not set {key}: {e}", "WARNING")
-    run_sketch_only(comp, design, logger)
-    _show_drop_popup(app, logger)
-
-def build_frame_logic(style, mode, local_map):
-    """Entry point for Create Frame button."""
-    import adsk.core, adsk.fusion, os
-    from utils.logger import DebugLogger
-    app    = adsk.core.Application.get()
-    design = adsk.fusion.Design.cast(app.activeProduct)
-    comp   = design.rootComponent
-    logger = DebugLogger(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    logger.session_start("FULL-FRAME")
-    _ensure_base_params(design, logger)
-    for key, val in (local_map or {}).items():
-        existing = design.userParameters.itemByName(key)
-        try:
-            if existing:
-                existing.value = val
-            else:
-                design.userParameters.add(key, adsk.core.ValueInput.createByReal(val), "cm", "")
-        except Exception as e:
-            logger.log(f"   (WARN) Could not set {key}: {e}", "WARNING")
-    run_full_synthesis(comp, design, logger)
+            self.logger.log_error(f"Create assembly joints failed: {e}")

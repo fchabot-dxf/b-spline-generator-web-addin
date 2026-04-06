@@ -26,7 +26,7 @@ import {
     updatePreviewSculptMode, sculptClear 
 } from './sculpt-interaction.js';
 import { 
-    fusLog, pollMode, startFusionPolling, stopFusionPolling, sendFusionPreview, sendFusionPayloadChunked, sendFusionMeshPreview 
+    fusLog, pollMode, startFusionPolling, sendFusionPreview, sendFusionPayloadChunked, sendFusionMeshPreview 
 } from './fusion-bridge.js';
 
 import { TerrainPreview } from './preview.js';
@@ -199,10 +199,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.body.classList.add('fusion-mode');
                     const dlBtn = document.getElementById('btnDownloadAddin');
                     if (dlBtn) dlBtn.style.display = 'none';
-                    // On every Fusion-mode load (including palette hide/re-show HTML reloads),
-                    // reset the Apply button to 'OK' so it never shows the default text.
-                    const applyBtn = document.getElementById('btnFusionApply');
-                    if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'OK'; }
                     initApp();
                     initSvgEditor();
                 },
@@ -213,37 +209,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             );
         });
-    });
-
-    // Bridge callbacks from Python (onFusionNotify in index.html).
-    // Without this, stale polling can continue after first export and re-hide the palette.
-    window.addEventListener('fusionHandshake', (ev) => {
-        const action = ev?.detail?.action;
-        if (!action) return;
-
-        if (action === 'import_ready') {
-            stopFusionPolling();
-            const btn = document.getElementById('btnFusionApply');
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'OK';
-            }
-            return;
-        }
-
-        if (action === 'reset_ui') {
-            stopFusionPolling();
-            const btn = document.getElementById('btnFusionApply');
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'OK';
-            }
-            return;
-        }
-
-        if (action === 'pong') {
-            return;
-        }
     });
 });
 
@@ -798,7 +763,6 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
     if (btn && !isAppend) {
         btn.disabled = true;
         btn.textContent = isFusionMode ? 'Baking...' : 'Generating...';
-        if (isFusionMode) stopFusionPolling();
     }
 
     // If options not provided (e.g. direct call from Wizard), pull from Wizard checkboxes
