@@ -30,6 +30,13 @@ class DebugLogger:
             try:
                 with open(path, "a", encoding="utf-8") as f:
                     f.write(entry)
+                
+                # Check line count and truncate to 2000 if necessary
+                with open(path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                if len(lines) > 2000:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.writelines(lines[-2000:])
             except:
                 pass # Silent fallback if one location is locked
 

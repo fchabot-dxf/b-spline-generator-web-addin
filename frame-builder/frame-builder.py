@@ -23,6 +23,8 @@ except Exception as e:
 try:
     diag_logger.log("Attempting to import frame_engine...")
     from engine import frame_engine
+    from sketches.template_1 import template_data_1
+    from sketches.template_2 import template_data_2
     importlib.reload(frame_engine)
     diag_logger.log("SUCCESS: frame_engine imported and reloaded.")
 except Exception as e:
@@ -144,18 +146,88 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             cmd = event_args.command
             inputs = cmd.commandInputs
 
-            # Synthesis rule dropdown for multi-template support
-            rules = ["Signature (Template 1)", "Signature (Template 2)", "Signature (Template 3)"]
+            # --- UI: Window Optimization ---
+            cmd.setDialogInitialSize(600, 400)
+
+            # --- STYLE SELECTION ---
+            rules = ["Signature (Template 1)", "Signature (Template 2)"]
             drop_rule = inputs.addDropDownCommandInput('style_select', 'Synthesis Rule', adsk.core.DropDownStyles.LabeledIconDropDownStyle)
             for r in rules:
-                is_selected = (r == "Signature (Template 1)")
+                is_selected = (r == "Signature (Template 1)") # Defaulting to Template 1
                 drop_rule.listItems.add(r, is_selected, '', -1)
+            sel_item = drop_rule.selectedItem
+            sel_name = sel_item.name if sel_item else rules[0]
 
-            # Arc radius inputs (3 pairs — L/R share same value)
-            # Each needs its own ValueInput (Fusion consumes the object)
-            inputs.addValueInput('rad_shoulder', 'Shoulder Radius', 'in', adsk.core.ValueInput.createByString("1 in"))
-            inputs.addValueInput('rad_waist', 'Waist Radius', 'in', adsk.core.ValueInput.createByString("1 in"))
-            inputs.addValueInput('rad_hip', 'Hip Radius', 'in', adsk.core.ValueInput.createByString("1 in"))
+            # --- SKELETON UI (Stability Guarded) ---
+            grp_skel = inputs.addGroupCommandInput('grp_skel', 'Skeleton & Proportions')
+            grp_skel.isExpanded = True
+            skel_inputs = grp_skel.children
+            skel_inputs.addTextBoxCommandInput('skel_status', 'Status', '<b>0/4 Locked | STABLE</b>', 1, True)
+
+            drivers = [
+                ('ShoulderSpan', 'Shoulder Width'),
+                ('WaistSpan',    'Waist Width'),
+                ('HipSpan',      'Hip Width'),
+                ('TopGap',       'Top Aperture'),
+                ('BottomGap',    'Bottom Aperture')
+            ]
+
+            # Fetch existing parameter state to initialize the UI
+            design = adsk.fusion.Design.cast(adsk.core.Application.get().activeProduct)
+            up = design.userParameters
+            
+            # Get current bounding box for reverse % calculation
+            p_w = up.itemByName('widthIn')
+            p_h = up.itemByName('heightIn')
+            w = p_w.value if p_w else 17.0
+            h = p_h.value if p_h else 22.0
+
+            # Fetch the selected template by name (matches style_select items)
+            templates = [template_data_1.TEMPLATE_1, template_data_2.TEMPLATE_2]
+            current_template = next((t for t in templates if t["Name"] == sel_name), templates[0])
+            all_params = current_template.get("Parameters", [])
+
+            for key, label in drivers:
+                # 0. Sync Template Parameters (Locked & Value)
+                # Find the matching entry in the template's parameter list
+                t_param = next((p for p in all_params if p["Name"] == key), None)
+                t_en    = next((p for p in all_params if p["Name"] == f'en_{key}'), None)
+
+                # EARLY-BIND: Ensure the parameters exist in the model
+                p_en = up.itemByName(f'en_{key}')
+                if not p_en:
+                    try:
+                        init_en = float(t_en["Val"]) if t_en else (0.0 if 'Waist' in key else 1.0)
+                        up.add(f'en_{key}', adsk.core.ValueInput.createByReal(init_en), '', 'UI toggle state')
+                    except: pass
+                
+                p_val = up.itemByName(key)
+                if not p_val:
+                    try:
+                        # Use the expression string from the template if available
+                        expr = str(t_param["Val"]) if t_param else ("widthIn * 0.8" if 'Span' in key else "heightIn * 0.15")
+                        unit = t_param.get("Unit", "in") if t_param else "in"
+                        up.add(key, adsk.core.ValueInput.createByString(expr), unit, 'UI proportion driver')
+                    except: pass
+
+                # 1. State-Aware Checkbox (Lock)
+                p_en = up.itemByName(f'en_{key}')
+                init_en = p_en.value > 0.5 if p_en else True
+                skel_inputs.addBoolValueInput(f'en_{key}', f'Lock {label}', init_en, '', True)
+                
+                # 2. State-Aware Slider (Value)
+                p_val = up.itemByName(key) # The parameter name is e.g. 'ShoulderSpan'
+                init_val = 50.0 
+                if p_val:
+                    # Reverse calculate the percentage from the real cm value
+                    total = w if 'Span' in key else h
+                    if total > 0: init_val = (p_val.value / total) * 100.0
+                
+                skel_inputs.addFloatSliderCommandInput(f'val_{key}', 'Value (%)', '', 0.0, 100.0, False).valueOne = init_val
+
+            on_input_changed = CommandInputChangedHandler()
+            cmd.inputChanged.add(on_input_changed)
+            handlers.append(on_input_changed)
 
             on_execute = CommandExecuteHandler(self.action_func)
             cmd.execute.add(on_execute)
@@ -164,38 +236,72 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             try: diag_logger.log_error(f"CommandCreated CRASH:\n{traceback.format_exc()}")
             except: pass
 
+class CommandInputChangedHandler(adsk.core.InputChangedEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
+        try:
+            ev = adsk.core.InputChangedEventArgs.cast(args)
+            inputs = ev.firingEvent.sender.commandInputs
+            en_ids = ['en_ShoulderSpan', 'en_WaistSpan', 'en_HipSpan', 'en_TopGap', 'en_BottomGap']
+
+            # 3. LOCK COUNT & STATUS (Universal 4-Lock Guard)
+            active_locks = [bid for bid in en_ids if inputs.itemById(bid) and inputs.itemById(bid).value]
+            lcnt = len(active_locks)
+
+            # Gray out unchecked boxes if we hit the limit (Standard 4-Lock Guard)
+            for bid in en_ids:
+                box = inputs.itemById(bid)
+                if box and box.isEnabled:
+                    box.isEnabled = (lcnt < 4 or box.value)
+
+            st = inputs.itemById('skel_status')
+            if st:
+                color = "green" if lcnt <= 4 else "red"
+                status = "STABLE" if lcnt <= 4 else "OVER-CONSTRAINED"
+                st.formattedText = f"<b>{lcnt}/4 Locked | <font color='{color}'>{status}</font></b>"
+            ev.firingEvent.sender.isOKButtonEnabled = (lcnt <= 4)
+        except: pass
+
 class CommandExecuteHandler(adsk.core.CommandEventHandler):
     def __init__(self, action_func):
         super().__init__()
         self.action_func = action_func
     def notify(self, args):
         try:
-            event_args = adsk.core.CommandEventArgs.cast(args)
-            cmd = event_args.command
-            inputs = cmd.commandInputs
-
-            sel_style = inputs.itemById('style_select').selectedItem
-            joint_prefix = "joint"
-
-            # Read arc radius values (in cm — Fusion internal units)
-            radii = {}
-            for rid in ['rad_shoulder', 'rad_waist', 'rad_hip']:
-                val_input = inputs.itemById(rid)
-                if val_input:
-                    radii[rid] = val_input.value  # value is in cm (internal)
-
-            # Create/update user parameters for the radii
+            ev = adsk.core.CommandEventArgs.cast(args)
+            inputs = ev.command.commandInputs
             design = adsk.fusion.Design.cast(adsk.core.Application.get().activeProduct)
-            user_params = design.userParameters
-            for name, val_cm in radii.items():
-                existing = user_params.itemByName(name)
-                if existing:
-                    existing.value = val_cm
-                else:
-                    user_params.add(name, adsk.core.ValueInput.createByReal(val_cm), "cm", "")
+            up = design.userParameters
+            sel_style = inputs.itemById('style_select').selectedItem
+
+            keys = ['ShoulderSpan', 'WaistSpan', 'HipSpan', 'TopGap', 'BottomGap']
+            
+            # Fetch current bounding box totals
+            h = up.itemByName('heightIn').value if up.itemByName('heightIn') else 22.0
+            w = up.itemByName('widthIn').value if up.itemByName('widthIn') else 17.0
+
+            for k in keys:
+                en_box = inputs.itemById(f'en_{k}')
+                if en_box:
+                    en_val = 1.0 if en_box.value else 0.0
+                    p_en = up.itemByName(f'en_{k}')
+                    if p_en:
+                        p_en.value = en_val
+                        diag_logger.log(f"UI SYNC: {p_en.name} = {en_val}")
+
+                val_in = inputs.itemById(f'val_{k}')
+                if val_in:
+                    p_val = up.itemByName(k)
+                    if p_val:
+                        ui_pct = val_in.valueOne
+                        total = w if 'Span' in k else h
+                        real_val = (ui_pct / 100.0) * total
+                        p_val.value = real_val 
+                        diag_logger.log(f"UI SYNC: {p_val.name} = {real_val:.3f} cm ({ui_pct:.1f}%)")
 
             if sel_style:
-                self.action_func(sel_style.name, joint_prefix)
+                self.action_func(sel_style.name, "joint")
         except:
             try: diag_logger.log_error(f"CommandExecute CRASH:\n{traceback.format_exc()}")
             except: pass

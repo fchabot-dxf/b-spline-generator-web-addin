@@ -169,10 +169,35 @@ class FrameBuilder:
                         self.logger.log(f"CREATED PARAM: {name} = {val:.3f} cm")
                     else:
                         existing.value = val
-                        self.logger.log(f"UPDATED PARAM: {name} = {val:.3f} cm")
             except Exception as e:
                 self.logger.log_error(f"Error setting measured params: {e}")
                 raise
+
+        # 3. Template-Specific Parameter Initialization (DNA)
+        template = template_data_1.TEMPLATE_1
+        if "Template 2" in style_id: template = template_data_2.TEMPLATE_2
+        if "Template 3" in style_id: template = template_data_3.TEMPLATE_3
+
+        if template and "Parameters" in template:
+            self.logger.log(f"Initializing {len(template['Parameters'])} drivers for {style_id}")
+            for p_info in template["Parameters"]:
+                name = p_info["Name"]
+                val_expr = str(p_info["Val"])
+                unit = p_info.get("Unit", "cm")
+                
+                existing = self.user_params.itemByName(name)
+                if not existing:
+                    try:
+                        new_p = self.user_params.add(name, adsk.core.ValueInput.createByString(val_expr), unit, "Template Parameter")
+                        self.logger.log(f"REGISTERED PARAM: {name} = {val_expr} ({unit})")
+                    except Exception as e:
+                        self.logger.log(f"FAILED TO REGISTER {name}: {e}", "ERROR")
+                else:
+                    # Force update if already exists to ensure DNA sync
+                    # (But skip width/height which are measured live)
+                    if name not in ["widthIn", "heightIn"]:
+                        try: existing.expression = val_expr
+                        except: pass
     def _discover_aesthetic_core(self):
         self.logger.log("Discovering aesthetic core body")
         existing_occ = self.root.occurrences.itemByName("AESTHETIC_CORE")

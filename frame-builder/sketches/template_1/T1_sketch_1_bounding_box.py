@@ -12,39 +12,32 @@ def get_sketch():
                 "Type": "Rectangle", 
                 "Center": [0, 0], 
                 "Size": ["widthIn", "heightIn"],
-                "LineIDs": ["rect_T", "rect_R", "rect_B", "rect_L"],
-                # Semantic endpoint IDs for each rectangle line (clockwise from top)
-                "LineEndpointIDs": {
-                    "rect_T": ["rect_T:S", "rect_T:E"],
-                    "rect_R": ["rect_R:S", "rect_R:E"],
-                    "rect_B": ["rect_B:S", "rect_B:E"],
-                    "rect_L": ["rect_L:S", "rect_L:E"]
-                }
+                "LineIDs": ["BB_top", "BB_right", "BB_bottom", "BB_left"]
             }
         ],
         "Constraints": [
             {"Type": "Coincident", "Targets": ["main_bounding_rectangle:C", "ORIGIN"]},
-            {"Type": "Horizontal", "Targets": ["rect_T"]},
-            {"Type": "Horizontal", "Targets": ["rect_B"]},
-            {"Type": "Vertical", "Targets": ["rect_L"]},
-            {"Type": "Vertical", "Targets": ["rect_R"]}
+            {"Type": "Horizontal", "Targets": ["BB_top"]},
+            {"Type": "Horizontal", "Targets": ["BB_bottom"]},
+            {"Type": "Vertical", "Targets": ["BB_left"]},
+            {"Type": "Vertical", "Targets": ["BB_right"]}
         ],
         "Dimensions": [
-            {"Target": "rect_T", "Expression": "widthIn", "Name": "dim_width"},
-            {"Target": "rect_R", "Expression": "heightIn", "Name": "dim_height"}
+            {"Target": "BB_top", "Expression": "widthIn", "Name": "dim_width"},
+            {"Target": "BB_right", "Expression": "heightIn", "Name": "dim_height"}
         ],
         "Steps": [
             {
                 "Type": "Offset",
-                "SourceID": ["rect_T", "rect_R", "rect_B", "rect_L"],
+                "SourceID": ["BB_top", "BB_right", "BB_bottom", "BB_left"],
                 "DistanceExpr": "boundingboxoffset",
-                "TargetIDs": ["off_T", "off_R", "off_B", "off_L"],
+                "TargetIDs": ["offset_BB_top", "offset_BB_right", "offset_BB_bottom", "offset_BB_left"],
                 "Direction": [0.1, 0.1, 0],
                 "CornerIDs": {
-                    "TL": "off_corner_TL",
-                    "TR": "off_corner_TR",
-                    "BL": "off_corner_BL",
-                    "BR": "off_corner_BR"
+                    "TL": "BB_corner_TL",
+                    "TR": "BB_corner_TR",
+                    "BL": "BB_corner_BL",
+                    "BR": "BB_corner_BR"
                 }
             }
         ]
