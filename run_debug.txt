@@ -1,0 +1,8 @@
+[2026-04-07 08:02:36] run() called
+[2026-04-07 08:02:36] _log SESSION STARTED ok
+[2026-04-07 08:02:36] Fusion version: 2701.1.27
+[2026-04-07 08:02:36] run() complete OK
+[2026-04-07 08:06:55] run() called
+[2026-04-07 08:06:55] _log SESSION STARTED ok
+[2026-04-07 08:06:55] Fusion version: 2701.1.27
+[2026-04-07 08:06:55] run() complete OK

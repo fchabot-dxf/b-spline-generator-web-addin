@@ -117,8 +117,15 @@ export function select(editor, el) {
 
         if (el.type === 'text') {
             const f = el.font();
-            editor._fontFamily = f.family;
-            editor._fontSize = f.size;
+            editor._fontFamily = f.family || editor._fontFamily;
+            // font size comes back as a string from SVG.js; force it to a number
+            const parsedSize = parseFloat(f.size);
+            if (!isNaN(parsedSize) && parsedSize > 0) editor._fontSize = parsedSize;
+            // Sync the toolbar inputs so the displayed values match the selected element
+            const ffEl = document.getElementById('editorFontFamily');
+            const fsEl = document.getElementById('editorFontSize');
+            if (ffEl) ffEl.value = editor._fontFamily;
+            if (fsEl) fsEl.value = editor._fontSize;
         } else {
             editor._strokeWidth = parseFloat(el.attr('stroke-width')) || editor._strokeWidth;
         }

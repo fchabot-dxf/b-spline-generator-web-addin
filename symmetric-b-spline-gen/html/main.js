@@ -26,7 +26,7 @@ import {
     updatePreviewSculptMode, sculptClear 
 } from './sculpt-interaction.js';
 import { 
-    fusLog, pollMode, startFusionPolling, sendFusionPreview, sendFusionPayloadChunked, sendFusionMeshPreview 
+    fusLog, pollMode, startFusionPolling, stopFusionPolling, sendFusionPreview, sendFusionPayloadChunked, sendFusionMeshPreview 
 } from './fusion-bridge.js';
 
 import { TerrainPreview } from './preview.js';
@@ -99,14 +99,16 @@ function applyParam(key, value) {
 
     if (key === 'stampProfile') {
         const vBitExtra = document.getElementById('vBitAngleContainer');
-        if (vBitExtra) vBitExtra.style.display = (value === 'vbit') ? 'block' : 'none';
+        if (vBitExtra) vBitExtra.style.display = (value === 'vbit' || value === 'adaptive') ? 'block' : 'none';
     }
 
-    // Params that are baked into the rasterized mask — changing them requires a full re-rasterize
+    // Parameters that require a full SVG re-rasterize of the stamp mask.
+    // NOTE: stampDepth is intentionally excluded — the mask is now normalized 0..1
+    // and depth is applied at render time, so depth changes are instant.
     const stampMaskParams = [
-        'stampDepth', 'stampBlur', 'stampSmoothingRadius',
+        'stampBlur', 'stampSmoothingRadius',
         'stampEdgeFilletRadius', 'stampFilletPower',
-        'stampProfile', 'stampVBitAngle', 'stampTextureSuppression'
+        'stampProfile', 'stampVBitAngle'
     ];
 
     const delay = immediateRebuildParams.includes(key) ? 0 : 200;
@@ -199,6 +201,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.body.classList.add('fusion-mode');
                     const dlBtn = document.getElementById('btnDownloadAddin');
                     if (dlBtn) dlBtn.style.display = 'none';
+                    // On every Fusion-mode load (including palette hide/re-show HTML reloads),
+                    // reset the Apply button to 'OK' so it never shows the default text.
+                    const applyBtn = document.getElementById('btnFusionApply');
+                    if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'OK'; }
                     initApp();
                     initSvgEditor();
                 },
@@ -209,6 +215,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             );
         });
+    });
+
+    // Bridge callbacks from Python (onFusionNotify in index.html).
+    // Without this, stale polling can continue after first export and re-hide the palette.
+    window.addEventListener('fusionHandshake', (ev) => {
+        const action = ev?.detail?.action;
+        if (!action) return;
+
+        if (action === 'import_ready') {
+            stopFusionPolling();
+            const btn = document.getElementById('btnFusionApply');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'OK';
+            }
+            return;
+        }
+
+        if (action === 'reset_ui') {
+            stopFusionPolling();
+            const btn = document.getElementById('btnFusionApply');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'OK';
+            }
+            return;
+        }
+
+        if (action === 'pong') {
+            return;
+        }
     });
 });
 
@@ -379,7 +416,7 @@ function bindControls() {
     if (stampProfile) {
         const updateStampUI = () => {
             const container = document.getElementById('vBitAngleContainer');
-            if (container) container.style.display = (stampProfile.value === 'vbit') ? 'block' : 'none';
+            if (container) container.style.display = (stampProfile.value === 'vbit' || stampProfile.value === 'adaptive') ? 'block' : 'none';
         };
         stampProfile.addEventListener('change', () => {
             updateStampUI();
@@ -469,7 +506,7 @@ function bindControls() {
                 // Toggle V-Bit Angle visibility based on the newly selected layer's profile
                 const vBitAngleContainer = document.getElementById('vBitAngleContainer');
                 if (vBitAngleContainer) {
-                    vBitAngleContainer.style.display = layer.profile === 'vbit' ? 'block' : 'none';
+                    vBitAngleContainer.style.display = (layer.profile === 'vbit' || layer.profile === 'adaptive') ? 'block' : 'none';
                 }
 
                 const fileNameSpan = document.getElementById('stampFileName');
@@ -763,6 +800,7 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
     if (btn && !isAppend) {
         btn.disabled = true;
         btn.textContent = isFusionMode ? 'Baking...' : 'Generating...';
+        if (isFusionMode) stopFusionPolling();
     }
 
     // If options not provided (e.g. direct call from Wizard), pull from Wizard checkboxes

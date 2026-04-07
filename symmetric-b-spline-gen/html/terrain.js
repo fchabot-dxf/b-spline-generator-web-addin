@@ -149,25 +149,15 @@ export function generateHeightmap(params, stampParams = null) {
 }
 
 function applyVectorDrape(heights, mask, depth, profile = 'vbit') {
-    // Safety guard: if the mask doesn't match the current heightmap resolution, 
+    // Safety guard: if the mask doesn't match the current heightmap resolution,
     // skip stamping to avoid NaN corruption until the mask is refreshed.
     if (!mask || mask.length !== heights.length) return;
 
+    // mask[k] is normalized 0..1; the actual signed depth is applied here
+    // at render time, so depth slider changes are instant (no re-rasterize needed).
     for (let i = 0; i < heights.length; i++) {
-        let m = mask[i];
-        if (m <= 1e-6) continue;
-
-        // Apply profile transfer function for the tool's cross-section
-        if (profile === 'ballnose') {
-            // Circular profile (quadrant of a circle)
-            // m=1 (center) -> 1, m=0 (edge) -> 0, rounded in between
-            m = Math.sqrt(1.0 - Math.pow(1.0 - m, 2.0));
-        } else if (profile === 'flat') {
-            // Hard threshold for vertical walls and a perfectly flat floor
-            m = m > 0.1 ? 1.0 : 0.0;
-        }
-        // 'vbit' is the default linear falloff (m = m)
-
+        const m = mask[i];
+        if (m < 1e-6) continue;
         heights[i] += m * depth;
     }
 }

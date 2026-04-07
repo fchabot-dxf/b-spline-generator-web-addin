@@ -19,8 +19,30 @@ function sampleSDF(sdf, w, h, x, y) {
 const stampCanvas = document.createElement('canvas');
 const stampCtx = stampCanvas.getContext('2d', { willReadFrequently: true });
 
-// Lazy-load canvg v3 (ESM). Cached after first successful load.
-// v3 API: Canvg.fromString(ctx, svgString, options) → instance → .render()
+// ─── Native SVG renderer (primary) ──────────────────────────────────────────
+// Renders the SVG string via a Blob URL → <img> → canvas drawImage.
+// This uses the browser's own SVG engine so fonts, styles, and text are
+// rendered exactly as they appear in the editor — no canvg font fallback issues.
+function _renderSvgNative(ctx, svgString, w, h) {
+    return new Promise((resolve, reject) => {
+        const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        const img  = new Image();
+        img.onload = () => {
+            ctx.clearRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            resolve(true);
+        };
+        img.onerror = (e) => {
+            URL.revokeObjectURL(url);
+            reject(e);
+        };
+        img.src = url;
+    });
+}
+
+// ─── canvg v3 (fallback for environments that block blob URLs) ───────────────
 let _CanvgClass = null;
 async function _loadCanvg() {
     if (_CanvgClass) return _CanvgClass;
@@ -117,11 +139,25 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
         let processedSvg = svgText.replace(/<style[\s\S]*?<\/style>/gi, '');
         processedSvg = processedSvg.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
         processedSvg = processedSvg.replace(/(<text[^>]*?)font-family=(["'])([^"']*?)\2/gi, (match, pre, quote, fams) => {
-            const genericFamilies = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"];
-            let found = genericFamilies.find(f => fams.includes(f));
-            return pre + 'font-family=' + quote + (found || 'sans-serif') + quote;
+            // Keep any font that the browser recognises — local self-hosted fonts first,
+            // then CSS generic families. Unknown/missing fonts fall back to Arial.
+            const knownFonts = [
+                // Sans-serif
+                "Arial", "Tahoma", "Verdana", "Bahnschrift", "Impact",
+                // Serif
+                "Georgia", "Times New Roman",
+                // Monospace
+                "Courier New", "Cascadia Code", "Cascadia Mono",
+                // Symbol / icon fonts
+                "Marlett", "Symbol", "Webdings", "Wingdings",
+                "Segoe UI Symbol", "Segoe MDL2 Assets", "Segoe Fluent Icons", "Segoe UI Emoji",
+                // CSS generic families (fallback)
+                "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"
+            ];
+            const found = knownFonts.find(f => fams.toLowerCase().includes(f.toLowerCase()));
+            return pre + 'font-family=' + quote + (found || 'Arial') + quote;
         });
-        processedSvg = processedSvg.replace(/(<text(?![^>]*font-family)[^>]*?)(>)/gi, '$1 font-family="sans-serif"$3');
+        processedSvg = processedSvg.replace(/(<text(?![^>]*font-family)[^>]*?)(>)/gi, '$1 font-family="Arial"$3');
 
         const bufferW = nx, bufferH = nz;
         stampCanvas.width = bufferW; 
@@ -133,25 +169,44 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
             .replace(/preserveAspectRatio="[^"]*"/g, '')
             .replace(/<svg/, '<svg preserveAspectRatio="none"');
 
-        // Load canvg v3 (dynamic import — no global dependency)
+        // ── Step 1: try native browser SVG rendering (correct fonts, no canvg quirks) ──
+        stampCtx.clearRect(0, 0, bufferW, bufferH);
+        if (blurIn > 0) stampCtx.filter = `blur(${blurIn}px)`;
+        else stampCtx.filter = 'none';
+
+        let nativeOk = false;
+        try {
+            await _renderSvgNative(stampCtx, safeSvgText, bufferW, bufferH);
+            nativeOk = true;
+            console.log('[STAMP DEBUG] Native SVG render succeeded.');
+        } catch (nativeErr) {
+            console.warn('[SVG DEBUG] Native render failed, falling back to canvg:', nativeErr);
+        }
+
+        if (nativeOk) {
+            const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
+            console.log('[STAMP DEBUG] Rasterization complete (native). Mask generated.');
+            finishRaster(imageData);
+            return;
+        }
+
+        // ── Step 2: canvg v3 fallback ─────────────────────────────────────────────
         const Canvg = await _loadCanvg();
         if (Canvg) {
             stampCtx.clearRect(0, 0, bufferW, bufferH);
-            stampCtx.filter = blurIn > 0 ? `blur(${blurIn}px)` : 'none';
             try {
-                // v3 API: fromString takes the 2D context (not the canvas element), then .render()
                 const instance = await Canvg.fromString(stampCtx, safeSvgText, { ignoreAnimation: true, ignoreMouse: true });
                 await instance.render();
                 const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
-                console.log('[STAMP DEBUG] Rasterization complete. Mask generated.');
+                console.log('[STAMP DEBUG] Rasterization complete (canvg fallback). Mask generated.');
                 finishRaster(imageData);
             } catch (err) {
-                console.error('[SVG DEBUG] rasterizeSvg: Error rendering with canvg v3:', err);
-                resolve(new Float32Array(nx * nz)); // Resolve safely on fail
+                console.error('[SVG DEBUG] rasterizeSvg: canvg render also failed:', err);
+                resolve(new Float32Array(nx * nz));
             }
         } else {
-            console.error('[SVG DEBUG] rasterizeSvg: canvg v3 not available — stamp mask will be empty');
-            resolve(new Float32Array(nx * nz)); // Resolve safely on fail
+            console.error('[SVG DEBUG] rasterizeSvg: no renderer available — stamp mask will be empty');
+            resolve(new Float32Array(nx * nz));
         }
 
         function finishRaster(imageData) {
@@ -187,6 +242,18 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
                             Z_p = distIn >= R ? R : Math.sqrt(Math.max(0, R*R - Math.pow(R - distIn, 2)));
                             Z_p = Math.min(Z_p, maxDepth);
                         }
+                    } else if (stampProfile === 'adaptive') {
+                        // Adaptive: Flat at full depth inside the boundary,
+                        // tight 75° tapered ramp outside the boundary.
+                        // Inside (distIn >= 0): full maxDepth, follows terrain.
+                        // Outside (distIn < 0): steep ramp to zero.
+                        // 75° taper slope ≈ 1.303 → ramp width = maxDepth/1.303
+                        const adaptSlope = 1.3032;  // 1/tan(75°/2), fixed 75° taper
+                        if (distIn >= 0) {
+                            Z_p = maxDepth;
+                        } else {
+                            Z_p = Math.max(0, maxDepth + distIn * adaptSlope);
+                        }
                     } else {
                         // Fallback
                         Z_p = distIn > 0 ? maxDepth : 0;
@@ -217,12 +284,17 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
                     // Calculate final depth natively (No more softAlpha clipping!)
                     let Z_final = Z_base * filletAlpha;
             
-                    // Sentinel to trigger surface smoothing under the toolpath
-                    const isStamped = (distIn > -0.05) || (filletRadiusIn > 0 && distIn > -filletRadiusIn * 2.0);
-                    if (isStamped && Z_final < 1e-7) Z_final = 1e-7;
+                    // Normalize to 0..1 so the mask is depth-independent.
+                    // The actual depth (and its sign) is applied at render time in engine.js
+                    // and terrain.js, so changing the depth slider never requires a re-rasterize.
+                    const Z_norm = maxDepth > 0 ? Z_final / maxDepth : 0;
 
-                    // Ensure the final direction matches the requested depth sign
-                    alphaMask[j * nx + i] = stampDepth < 0 ? -Z_final : Z_final;
+                    // Sentinel (small positive value) marks pixels inside the stamp footprint
+                    // so terrain suppression can be applied there even when Z_norm rounds to zero.
+                    // Adaptive profile extends outside the boundary by maxDepth/1.3032 (75° taper).
+                    const adaptiveRamp = (stampProfile === 'adaptive') ? maxDepth / 1.3032 : 0;
+                    const isStamped = (distIn > -Math.max(0.05, adaptiveRamp)) || (filletRadiusIn > 0 && distIn > -filletRadiusIn * 2.0);
+                    alphaMask[j * nx + i] = (isStamped && Z_norm < 1e-5) ? 1e-5 : Z_norm;
                 }
             }
             

@@ -2,9 +2,24 @@
 # Hybrid palette + native canvas terrain add-in.
 # Palette (HTML/JS) handles the UI; Python handles canvas preview and STEP import.
 
+# Probe: write next to __file__ (addin folder — always writable by Fusion)
+try:
+    _p = __file__[:__file__.rfind('\\')] + '\\probe.txt'
+    open(_p, 'a').write('TOP\n')
+except: pass
+
 import adsk.core, adsk.fusion, adsk.cam, traceback
+
+try:
+    open(_p, 'a').write('ADSK_OK\n')
+except: pass
+
 import os, tempfile, json, re
 from datetime import datetime
+
+try:
+    open(_p, 'a').write('IMPORTS_OK\n')
+except: pass
 
 
 def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0):
@@ -82,10 +97,36 @@ if app:
 # ── Log file ──────────────────────────────────────────────────────────────────
 
 def get_log_path():
-    """Returns the path to the log file in the workspace root."""
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'symmetric_b_spline_gen_log.txt'))
+    """
+    Returns the log file path, preferring the developer source folder.
+
+    The deploy script writes workspace_link.json next to this .py file with the
+    absolute path to the source workspace root.  When that file is present the
+    log is written there so it stays in the dev tree for easy inspection.
+    Falls back to the directory next to this .py file if the link is missing.
+    """
+    addin_dir = os.path.dirname(os.path.realpath(__file__))
+    link_file  = os.path.join(addin_dir, 'workspace_link.json')
+    try:
+        if os.path.isfile(link_file):
+            with open(link_file, 'r', encoding='utf-8') as f:
+                link = json.load(f)
+            workspace_root = link.get('workspace_root', '').replace('/', os.sep)
+            if workspace_root and os.path.isdir(workspace_root):
+                return os.path.join(workspace_root, 'symmetric_b_spline_gen_log.txt')
+    except Exception:
+        pass
+    # Fallback: log next to the deployed .py file
+    return os.path.join(addin_dir, 'symmetric_b_spline_gen_log.txt')
 
 LOG_FILE = get_log_path()
+
+# ── Module-level import probe (remove once crash is diagnosed) ────────────────
+try:
+    with open(r'C:\Users\danse\APPS\b-spline-generator-web-addin\import_test.txt', 'a') as _f:
+        _f.write('module imported ok\n')
+except Exception as _e:
+    pass  # can't do much here; will be visible in Fusion log if it raises
 
 import datetime
 def _log(msg):
@@ -254,6 +295,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         # Signal JS and then hide
                         pal.sendInfoToHTML('import_ready', '{}')
                         pal.isVisible = False  # CORRECT API for closing/hiding palette
+                    # One-shot completion signal: prevent repeated auto-hide loops
+                    # if old polling intervals are still alive in HTML.
+                    importing_done = False
                 return
 
             if action == 'ping':
@@ -502,11 +546,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview and not is_append:
                 _remove_last_import()
                 current_import_group = root_comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
-                comp = current_import_group.component
-                comp.name = "B-Spline Set"
-                # Universal Attribute Tagging for add-in discovery
-                try: comp.attributes.add('FrameBuilder', 'ComponentType', 'AestheticCore')
-                except: pass
+                current_import_group.component.name = "B-Spline Set"
 
             primary_imported_occurrence = None
 
@@ -726,30 +766,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     _log(f'SVG Stamp Import/Project failed: {e}')
 
             # ── Finalise ─────────────────────────────────────────────────────────
-            # Assign a default 'Paint' appearance if none exists (Surgical Fix)
-            # This ensures there is a restorable 'Color appearance' for the Frame Builder.
-            try:
-                target_occ = primary_imported_occurrence or (last_imported_occurrences[0] if last_imported_occurrences else None)
-                if target_occ:
-                    # Look for White Paint (A safe neutral standard)
-                    white_paint = des.appearances.itemByName("Paint - Enamel Glossy (White)")
-                    if not white_paint:
-                        # Library Search
-                        for lib in app.materialLibraries:
-                            try:
-                                lib_app = lib.appearances.itemByName("Paint - Enamel Glossy (White)")
-                                if lib_app:
-                                    white_paint = des.appearances.addByCopy(lib_app, "Paint - Enamel Glossy (White)")
-                                    break
-                            except: continue
-                    
-                    if white_paint:
-                        for body in target_occ.component.bRepBodies:
-                            body.appearance = white_paint
-                        _log(f"      [APPEARANCE] Applied '{white_paint.name}' to core bodies.")
-            except Exception as e_app:
-                _log(f"      [APPEARANCE] Warning: Could not assign default color: {e_app}")
-
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
@@ -890,6 +906,7 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
 
     def notify(self, args):
         try:
+            global importing_done, chunk_buffer
             palettes = ui.palettes
             palette  = palettes.itemById(PALETTE_ID)
             if not palette:
@@ -912,6 +929,10 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
                 _log('Palette created/wired (HTML + Closed events)')
             else:
                 _log('Palette already exists — making visible and resetting UI state')
+                # Reset completion/payload state when user reopens the palette so
+                # stale polling from a prior export cannot immediately re-close it.
+                importing_done = False
+                chunk_buffer = []
                 palette.isVisible = True
                 palette.sendInfoToHTML('reset_ui', '{}')
         except Exception:
@@ -954,76 +975,130 @@ class RefreshCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 
 # ── run ───────────────────────────────────────────────────────────────────────
+def _direct_write(msg):
+    """Emergency fallback logger — tries two hardcoded paths so one will always land."""
+    try:
+        import datetime as _dt
+        stamp = _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        line  = f'[{stamp}] {msg}\n'
+        # 1. Source workspace (readable by Desktop Commander)
+        try:
+            with open(r'C:\Users\danse\APPS\b-spline-generator-web-addin\run_debug.txt', 'a', encoding='utf-8') as f:
+                f.write(line)
+        except Exception:
+            pass
+        # 2. Windows Temp (always writable)
+        try:
+            import tempfile as _tf
+            with open(os.path.join(_tf.gettempdir(), 'bspline_run_debug.txt'), 'a', encoding='utf-8') as f:
+                f.write(line)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def run(context):
+    try:  # raw probe — no helper functions, no variables
+        with open(r'C:\Users\danse\APPS\b-spline-generator-web-addin\run_test.txt', 'a') as _f:
+            _f.write('run() called\n')
+    except Exception:
+        pass
+    _direct_write('run() called')
     try:
         _log("--- SESSION STARTED ---")
+        _direct_write('_log SESSION STARTED ok')
         global ui
         _log('--- run() start ---')
         _log(f'Fusion version: {app.version}')
+        _direct_write(f'Fusion version: {app.version}')
 
         cmd_defs = ui.commandDefinitions
-        
+        _log('cmd_defs obtained')
+
         # --- A. Main Palette Command ---
         cmd_def  = cmd_defs.itemById(COMMAND_ID)
-        if cmd_def: cmd_def.deleteMe()
+        if cmd_def:
+            _log(f'Deleting existing cmd_def: {COMMAND_ID}')
+            cmd_def.deleteMe()
 
         res_folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources')
+        _log(f'res_folder: {res_folder}  exists={os.path.isdir(res_folder)}')
         cmd_def = cmd_defs.addButtonDefinition(COMMAND_ID, COMMAND_NAME, COMMAND_TOOLTIP, res_folder)
+        _log('Main cmd_def created')
         onCommandCreated = CommandCreatedHandler()
         cmd_def.commandCreated.add(onCommandCreated)
         handlers.append(onCommandCreated)
+        _log('CommandCreatedHandler wired')
 
         # --- B. Hard Refresh Command ---
         ref_def = cmd_defs.itemById(REFRESH_COMMAND_ID)
-        if ref_def: ref_def.deleteMe()
+        if ref_def:
+            _log('Deleting existing ref_def')
+            ref_def.deleteMe()
 
         ref_folder = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'resources', 'RefreshCommand')
+        _log(f'ref_folder: {ref_folder}  exists={os.path.isdir(ref_folder)}')
         ref_def = cmd_defs.addButtonDefinition(REFRESH_COMMAND_ID, REFRESH_COMMAND_NAME, REFRESH_COMMAND_TOOLTIP, ref_folder)
+        _log('Refresh cmd_def created')
         onRefreshCreated = RefreshCommandCreatedHandler()
         ref_def.commandCreated.add(onRefreshCreated)
         handlers.append(onRefreshCreated)
+        _log('RefreshCommandCreatedHandler wired')
 
         # Find workspace → tab → panel (three-level fallback)
         ws = ui.workspaces.itemById('FusionSolidEnvironment')
+        _log(f'FusionSolidEnvironment ws: {ws}')
         if not ws: ws = ui.workspaces.itemById('SolidEnvironment')
         if not ws: ws = ui.activeWorkspace
+        _log(f'workspace found: {ws is not None} id={getattr(ws, "id", "n/a")}')
 
         if ws:
             tab = ws.toolbarTabs.itemById('SolidTab')
+            _log(f'SolidTab: {tab}')
             if not tab:
                 for t in ws.toolbarTabs:
+                    _log(f'  scanning tab: id={t.id} name={t.name}')
                     if 'Solid' in t.id or 'Solid' in t.name:
                         tab = t; break
 
+            _log(f'tab resolved: {tab is not None}')
             if tab:
-                panel = None
                 panel_id = 'SymmetricBSplinePanel'
                 panel = tab.toolbarPanels.itemById(panel_id)
+                _log(f'existing panel: {panel is not None}')
                 if not panel:
                     panel = tab.toolbarPanels.add(panel_id, 'B-Spline', '', False)
-                
+                    _log('panel created')
+
                 if panel:
-                    # Add Main Command
                     cntrl = panel.controls.itemById(COMMAND_ID)
                     if cntrl: cntrl.deleteMe()
                     panel.controls.addCommand(cmd_def)
-                    
-                    # Add Refresh Command
+                    _log('Main button added to panel')
+
                     rcntrl = panel.controls.itemById(REFRESH_COMMAND_ID)
                     if rcntrl: rcntrl.deleteMe()
                     panel.controls.addCommand(ref_def)
+                    _log('Refresh button added to panel')
+                    _log('--- run() complete — toolbar button should be visible ---')
+                    _direct_write('run() complete OK')
                 else:
                     _log('ERROR: Could not create/find panel')
+                    _direct_write('ERROR: panel is None')
             else:
                 _log('ERROR: Solid tab not found')
+                _direct_write('ERROR: tab not found')
                 if ui: ui.messageBox('Could not find Solid tab in Design workspace.')
         else:
             _log('ERROR: Design/Solid workspace not found')
+            _direct_write('ERROR: workspace not found')
             if ui: ui.messageBox('Could not find Design/Solid workspace.')
 
     except Exception:
         tb = traceback.format_exc()
         _log(f'run() EXCEPTION:\n{tb}')
+        _direct_write(f'run() EXCEPTION: {tb}')
         if ui:
             ui.messageBox('Run Failed:\n{}'.format(tb))
 
@@ -1075,3 +1150,4 @@ def stop(context):
         _log(f'stop() EXCEPTION:\n{tb}')
         if ui:
             ui.messageBox('Stop Failed:\n{}'.format(tb))
+   

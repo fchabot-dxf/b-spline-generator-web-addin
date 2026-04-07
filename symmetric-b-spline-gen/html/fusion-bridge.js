@@ -80,10 +80,11 @@ export function startFusionPolling(btnApply) {
     pollInterval = setInterval(() => {
         _pollTicks++;
         if (_pollTicks >= timeoutTicks) {
-            fusLog(`Poll timeout (${timeoutTicks * 2}s): bridge never confirmed. Forcing completion.`);
+            fusLog(`Poll timeout (${timeoutTicks * 2}s): bridge never confirmed. Stopping poll — palette left open.`);
             clearInterval(pollInterval); pollInterval = null;
-            try { adsk.fusionSendData('ok', '{}'); } catch (e) { console.error(e); }
-            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'OK'; }
+            // Do NOT send 'ok' here — that would hide the palette unexpectedly.
+            // Just re-enable the button so the user knows the wait is over.
+            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'Apply to Fusion'; }
             return;
         }
 

@@ -148,17 +148,19 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                 const smoothedTerrain = suppressStrength > 0
                     ? getSmoothedHeights(cleanHeights, nx, nz, blurRadius)
                     : null;
+                // mask[k] is normalized 0..1; apply signed depth here so depth
+                // changes never need a full re-rasterize.
+                const layerDepth = layer.depth ?? P.stampDepth ?? 0;
                 for (let k = 0; k < nx * nz; k++) {
-                    const depthInches = layer.mask[k];
-                    const absDepth = Math.abs(depthInches);
-                    if (absDepth > 1e-8) {
-                        // Suppress terrain texture beneath the stamp footprint
-                        if (suppressStrength > 0) {
-                            stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
-                                              + (smoothedTerrain[k] * suppressStrength);
-                        }
-                        stampedHeights[k] += depthInches;
+                    const normVal = layer.mask[k]; // 0..1 sentinel or real value
+                    if (normVal < 1e-6) continue;
+                    const depthInches = normVal * layerDepth;
+                    // Suppress terrain texture beneath the stamp footprint
+                    if (suppressStrength > 0) {
+                        stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
+                                          + (smoothedTerrain[k] * suppressStrength);
                     }
+                    stampedHeights[k] += depthInches;
                 }
             }
         });

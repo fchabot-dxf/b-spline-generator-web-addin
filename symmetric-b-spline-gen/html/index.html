@@ -12,6 +12,35 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
   <style>
+    /* ── Self-hosted fonts — no network needed ── */
+    @font-face { font-family: 'Arial';              font-weight: 400; src: url('fonts/arial.ttf'); }
+    @font-face { font-family: 'Arial';              font-weight: 700; src: url('fonts/arial-bold.ttf'); }
+    @font-face { font-family: 'Tahoma';             font-weight: 400; src: url('fonts/tahoma.ttf'); }
+    @font-face { font-family: 'Tahoma';             font-weight: 700; src: url('fonts/tahoma-bold.ttf'); }
+    @font-face { font-family: 'Verdana';            font-weight: 400; src: url('fonts/verdana.ttf'); }
+    @font-face { font-family: 'Verdana';            font-weight: 700; src: url('fonts/verdana-bold.ttf'); }
+    @font-face { font-family: 'Bahnschrift';        font-weight: 400; src: url('fonts/bahnschrift.ttf'); }
+    @font-face { font-family: 'Impact';             font-weight: 400; src: url('fonts/impact.ttf'); }
+    @font-face { font-family: 'Georgia';            font-weight: 400; src: url('fonts/georgia.ttf'); }
+    @font-face { font-family: 'Georgia';            font-weight: 700; src: url('fonts/georgia-bold.ttf'); }
+    @font-face { font-family: 'Times New Roman';    font-weight: 400; src: url('fonts/times.ttf'); }
+    @font-face { font-family: 'Times New Roman';    font-weight: 700; src: url('fonts/times-bold.ttf'); }
+    @font-face { font-family: 'Courier New';        font-weight: 400; src: url('fonts/courier.ttf'); }
+    @font-face { font-family: 'Courier New';        font-weight: 700; src: url('fonts/courier-bold.ttf'); }
+    @font-face { font-family: 'Cascadia Code';      font-weight: 400; src: url('fonts/CascadiaCode-Regular.ttf'); }
+    @font-face { font-family: 'Cascadia Code';      font-weight: 700; src: url('fonts/CascadiaCode-Bold.ttf'); }
+    @font-face { font-family: 'Cascadia Mono';      font-weight: 400; src: url('fonts/CascadiaMono-Regular.ttf'); }
+    @font-face { font-family: 'Cascadia Mono';      font-weight: 700; src: url('fonts/CascadiaMono-Bold.ttf'); }
+    @font-face { font-family: 'Marlett';            font-weight: 400; src: url('fonts/marlett.ttf'); }
+    @font-face { font-family: 'Segoe Fluent Icons'; font-weight: 400; src: url('fonts/segoe-fluent-icons.ttf'); }
+    @font-face { font-family: 'Segoe MDL2 Assets';  font-weight: 400; src: url('fonts/segoe-mdl2.ttf'); }
+    @font-face { font-family: 'Segoe UI Emoji';     font-weight: 400; src: url('fonts/segoe-emoji.ttf'); }
+    @font-face { font-family: 'Segoe UI Symbol';    font-weight: 400; src: url('fonts/segoe-symbols.ttf'); }
+    @font-face { font-family: 'Symbol';             font-weight: 400; src: url('fonts/symbol.ttf'); }
+    @font-face { font-family: 'Webdings';           font-weight: 400; src: url('fonts/webdings.ttf'); }
+    @font-face { font-family: 'Wingdings';          font-weight: 400; src: url('fonts/wingdings.ttf'); }
+  </style>
+  <style>
     *,
     *::before,
     *::after {
@@ -1135,6 +1164,7 @@
         </label>
         <label><span>Tool Profile</span><select id="stampProfile">
             <option value="vbit" selected>V-Bit (Linear)</option>
+            <option value="adaptive">Adaptive (Fine Detail)</option>
             <option value="ballnose">Ballnose (Round)</option>
             <option value="flat">Flat Endmill (Hard)</option>
           </select></label>
@@ -1449,15 +1479,38 @@
             <input type="number" id="editorStrokeWidth" value="0.5" step="0.1">
           </div>
           <div id="editorFontGroup" style="display:flex; align-items:center; gap:8px;">
-            <select id="editorFontFamily" style="width:120px;">
-              <option value="system-ui" selected>System UI</option>
-              <option value="sans-serif">Sans Serif</option>
-              <option value="serif">Serif</option>
-              <option value="monospace">Monospace</option>
-              <option value="cursive">Cursive</option>
-              <option value="fantasy">Fantasy</option>
+            <select id="editorFontFamily" style="width:160px;">
+              <optgroup label="── Sans Serif ──">
+                <option value="Arial" selected>Arial</option>
+                <option value="Tahoma">Tahoma</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Bahnschrift">Bahnschrift</option>
+                <option value="Impact">Impact</option>
+              </optgroup>
+              <optgroup label="── Serif ──">
+                <option value="Georgia">Georgia</option>
+                <option value="Times New Roman">Times New Roman</option>
+              </optgroup>
+              <optgroup label="── Monospace ──">
+                <option value="Courier New">Courier New</option>
+                <option value="Cascadia Code">Cascadia Code</option>
+                <option value="Cascadia Mono">Cascadia Mono</option>
+              </optgroup>
+              <optgroup label="── Symbols ──">
+                <option value="Marlett">Marlett</option>
+                <option value="Symbol">Symbol</option>
+                <option value="Webdings">Webdings</option>
+                <option value="Wingdings">Wingdings</option>
+                <option value="Segoe UI Symbol">Segoe UI Symbol</option>
+                <option value="Segoe MDL2 Assets">Segoe MDL2 Assets</option>
+                <option value="Segoe Fluent Icons">Segoe Fluent Icons</option>
+                <option value="Segoe UI Emoji">Segoe UI Emoji</option>
+              </optgroup>
             </select>
-            <input type="number" id="editorFontSize" value="3.0" step="0.05" min="0.05" max="5" style="width:55px;">
+            <span style="font-size:11px; opacity:0.7; white-space:nowrap;">Size</span>
+            <button id="editorFontSizeMinus" style="width:22px;height:22px;padding:0;font-size:14px;line-height:1;border:1px solid #ccc;border-radius:3px;cursor:pointer;">−</button>
+            <input type="number" id="editorFontSize" value="3.0" step="0.2" min="0.2" max="20" style="width:52px;text-align:center;">
+            <button id="editorFontSizePlus" style="width:22px;height:22px;padding:0;font-size:14px;line-height:1;border:1px solid #ccc;border-radius:3px;cursor:pointer;">+</button>
           </div>
           <!-- v14: Unified Simplification Slider -->
           <div id="editorSimplifyGroup"
@@ -1561,8 +1614,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
-<script type="module" src="./editor.js?v=20260329_v18"></script>
-<script type="module" src="./main.js?v=20260329_v18"></script>
+<script type="module" src="./editor.js?v=20260407_v20"></script>
+<script type="module" src="./main.js?v=20260407_v20"></script>
 
 </body>
 

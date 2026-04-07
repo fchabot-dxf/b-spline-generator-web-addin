@@ -1,0 +1,47 @@
+# B-Spline Generator & Frame Builder (Fusion 360 Add-in)
+
+A professional suite of Fusion 360 add-ins for procedural surface generation, interactive B-Spline sculpting, and automated frame construction.
+
+## 🚀 Overview
+
+This repository contains a unified dashboard and engine for advanced 3D modeling workflows in Autodesk Fusion 360. It bridges high-performance web-based interfaces with Fusion 360's parametric engine to allow for real-time sculpting and procedural geometry generation.
+
+### Key Components:
+- **`symmetric-b-spline-gen`**: Web-based interactive editor for generating symmetric surfaces and B-Spline curves.
+- **`frame-builder`**: Automated parametric frame synthesis from skeletal geometry.
+- **`frame-inspector`**: Diagnostic and visualization tools for inspecting complex miter joints and span parameters.
+
+---
+
+## ✨ Features
+
+- **Interactive Sculpting**: Real-time 2D-to-3D preview for B-Spline curve manipulation.
+- **Symmetric Generation**: Automated mirroring and manifold closure for complex hulls and surfaces.
+- **Modular Parametric Engine**: Decoupled geometry resolver for stable, non-destructive modeling.
+- **Fusion 360 Integration**: Seamless Python-to-JavaScript bridge for direct canvas manipulation.
+- **Export Formats**: Support for DXF, STEP, and SVG export.
+
+---
+
+## 🛠️ Installation
+
+1. Clone this repository into your Fusion 360 Add-ins folder:
+   - **Windows**: `%AppData%\Autodesk\Autodesk Fusion 360\API\AddIns`
+   - **macOS**: `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns`
+2. Run Fusion 360.
+3. Open the **Scripts and Add-ins** dialog (`Alt+S`).
+4. Select `frame-builder` (or other components) and click **Run**.
+
+---
+
+## 🏗️ Tech Stack
+
+- **Frontend**: Vanilla JavaScript (ES Modules), HTML5, CSS3.
+- **Backend**: Python (Fusion 360 API).
+- **Libraries**: `opentype.js`, `clipper-lib`.
+- **Packaging**: Node.js / npm for dependency management.
+
+---
+
+## 📄 License
+MIT
