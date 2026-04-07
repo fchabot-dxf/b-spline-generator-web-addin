@@ -117,7 +117,9 @@ def run(context):
                     for cmd_info in commands:
                         cid = cmd_info['id']
                         if not frame_panel.controls.itemById(cid):
-                            frame_panel.controls.addCommand(ui.commandDefinitions.itemById(cid))
+                            ctrl = frame_panel.controls.addCommand(ui.commandDefinitions.itemById(cid))
+                            ctrl.isPromoted = True
+                            ctrl.isPromotedByDefault = True
 
                     # 2. No inspector extension in this mode
                     # (keep only the frame builder UI commands)
