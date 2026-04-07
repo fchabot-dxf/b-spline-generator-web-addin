@@ -3,19 +3,33 @@
  * Includes restored drawing lifecycle for Freehand, Line, Rect, and Circle.
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-geometry.js';
-import { startTextAt } from './editor-text.js';
+import { startTextAt, beginTextEdit } from './editor-text.js';
 
 
 export function initInteraction(editor) {
     const el = editor._draw.node;
-    
+
     el.addEventListener('mousedown', e => handleStart(editor, e));
     window.addEventListener('mousemove', e => handleMove(editor, e));
     window.addEventListener('mouseup', e => handleEnd(editor, e));
+    // Double-click on a text element opens it for editing (any mode)
+    el.addEventListener('dblclick', e => handleDblClick(editor, e));
 
     el.addEventListener('touchstart', e => handleStart(editor, e), { passive: false });
     window.addEventListener('touchmove', e => handleMove(editor, e), { passive: false });
     window.addEventListener('touchend', e => handleEnd(editor, e));
+}
+
+function handleDblClick(editor, e) {
+    const pt = editor._getMousePoint(e);
+    const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+    if (hit && hit.type === 'text') {
+        e.preventDefault();
+        e.stopPropagation();
+        // Switch to text mode automatically so the user can start typing
+        if (editor._currentMode !== 'text') editor.setMode('text');
+        beginTextEdit(editor, hit);
+    }
 }
 
 function handleStart(editor, e) {
@@ -37,12 +51,23 @@ function handleStart(editor, e) {
 
     const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
     if (hit) {
+        // In text mode, clicking an existing text element opens it for editing
+        if (editor._currentMode === 'text' && hit.type === 'text') {
+            beginTextEdit(editor, hit);
+            return;
+        }
+        // In text mode, ignore non-text elements — place new text instead
+        if (editor._currentMode === 'text') {
+            editor._deselect();
+            startTextAt(editor, pt);
+            return;
+        }
         editor._isDragging = true;
         editor._lastDragPt = pt;
         if (editor._selectedElement !== hit) editor._select(hit);
     } else {
         editor._deselect();
-        
+
         // Start drawing if in a drawing mode
         const drawModes = ['draw', 'line', 'rect', 'circle'];
         if (drawModes.includes(editor._currentMode)) {

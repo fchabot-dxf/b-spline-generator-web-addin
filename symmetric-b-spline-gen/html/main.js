@@ -99,14 +99,16 @@ function applyParam(key, value) {
 
     if (key === 'stampProfile') {
         const vBitExtra = document.getElementById('vBitAngleContainer');
-        if (vBitExtra) vBitExtra.style.display = (value === 'vbit') ? 'block' : 'none';
+        if (vBitExtra) vBitExtra.style.display = (value === 'vbit' || value === 'adaptive') ? 'block' : 'none';
     }
 
-    // Params that are baked into the rasterized mask — changing them requires a full re-rasterize
+    // Parameters that require a full SVG re-rasterize of the stamp mask.
+    // NOTE: stampDepth is intentionally excluded — the mask is now normalized 0..1
+    // and depth is applied at render time, so depth changes are instant.
     const stampMaskParams = [
-        'stampDepth', 'stampBlur', 'stampSmoothingRadius',
+        'stampBlur', 'stampSmoothingRadius',
         'stampEdgeFilletRadius', 'stampFilletPower',
-        'stampProfile', 'stampVBitAngle', 'stampTextureSuppression'
+        'stampProfile', 'stampVBitAngle'
     ];
 
     const delay = immediateRebuildParams.includes(key) ? 0 : 200;
@@ -414,7 +416,7 @@ function bindControls() {
     if (stampProfile) {
         const updateStampUI = () => {
             const container = document.getElementById('vBitAngleContainer');
-            if (container) container.style.display = (stampProfile.value === 'vbit') ? 'block' : 'none';
+            if (container) container.style.display = (stampProfile.value === 'vbit' || stampProfile.value === 'adaptive') ? 'block' : 'none';
         };
         stampProfile.addEventListener('change', () => {
             updateStampUI();
@@ -504,7 +506,7 @@ function bindControls() {
                 // Toggle V-Bit Angle visibility based on the newly selected layer's profile
                 const vBitAngleContainer = document.getElementById('vBitAngleContainer');
                 if (vBitAngleContainer) {
-                    vBitAngleContainer.style.display = layer.profile === 'vbit' ? 'block' : 'none';
+                    vBitAngleContainer.style.display = (layer.profile === 'vbit' || layer.profile === 'adaptive') ? 'block' : 'none';
                 }
 
                 const fileNameSpan = document.getElementById('stampFileName');

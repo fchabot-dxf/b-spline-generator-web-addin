@@ -22,7 +22,7 @@ export class VectorEditor {
         this._currentMode = 'draw';
         this._strokeWidth = 0.5;
         this._strokeColor = '#000000';
-        this._fontFamily = "system-ui";
+        this._fontFamily = "Arial";
         this._fontSize = 3.0;
 
         this._selectedElement = null;
@@ -106,6 +106,33 @@ export class VectorEditor {
                 this.setStrokeWidth(parseFloat(strokeNum.value));
             });
         }
+
+        // Font family & size controls
+        const fontFamilyEl = document.getElementById('editorFontFamily');
+        if (fontFamilyEl) {
+            fontFamilyEl.addEventListener('change', () => {
+                this.setFontFamily(fontFamilyEl.value);
+            });
+        }
+        const fontSizeEl = document.getElementById('editorFontSize');
+        if (fontSizeEl) {
+            fontSizeEl.addEventListener('input', () => {
+                const s = parseFloat(fontSizeEl.value);
+                if (!isNaN(s) && s > 0) this.setFontSize(s);
+            });
+        }
+        // Font size stepper buttons (±0.2)
+        const fsMinus = document.getElementById('editorFontSizeMinus');
+        const fsPlus  = document.getElementById('editorFontSizePlus');
+        const stepFontSize = (delta) => {
+            if (!fontSizeEl) return;
+            const cur = parseFloat(fontSizeEl.value) || this._fontSize;
+            const next = Math.max(0.2, Math.round((cur + delta) * 10) / 10);
+            fontSizeEl.value = next;
+            this.setFontSize(next);
+        };
+        fsMinus?.addEventListener('click', () => stepFontSize(-0.2));
+        fsPlus?.addEventListener('click',  () => stepFontSize(+0.2));
     }
 
     expandAction() {
