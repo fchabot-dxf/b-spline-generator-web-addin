@@ -123,7 +123,13 @@ export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
 
 export function setStampLayerSvg(idx, svg) { 
-    if (P.stampLayers[idx]) P.stampLayers[idx].svg = svg; 
+    if (P.stampLayers[idx]) {
+        P.stampLayers[idx].svg = svg;
+        // Automatically enable the layer when an SVG is assigned (not null)
+        if (svg) {
+            P.stampLayers[idx].enabled = true;
+        }
+    }
 }
 export function setStampLayerMask(idx, mask) {
     if (P.stampLayers[idx]) {
