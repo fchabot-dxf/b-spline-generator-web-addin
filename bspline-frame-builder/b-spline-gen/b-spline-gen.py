@@ -948,20 +948,19 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 
 # ── run ───────────────────────────────────────────────────────────────────────
-def _direct_write(msg):
-    pass
+
 
 
 def run(context):
     # run probe: removed diagnostic
-    _direct_write('run() called')
+    # run probe: removed
     try:
         _log("--- SESSION STARTED ---")
-        _direct_write('_log SESSION STARTED ok')
+        # _direct_write removed
         global ui
         _log('--- run() start ---')
         _log(f'Fusion version: {app.version}')
-        _direct_write(f'Fusion version: {app.version}')
+        # _direct_write removed
 
         cmd_defs = ui.commandDefinitions
         _log('cmd_defs obtained')
@@ -1014,23 +1013,23 @@ def run(context):
                     _log('Main button added to panel')
 
                     _log('--- run() complete — toolbar button should be visible ---')
-                    _direct_write('run() complete OK')
+                    # _direct_write removed
                 else:
                     _log('ERROR: Could not create/find panel')
-                    _direct_write('ERROR: panel is None')
+                    # _direct_write removed
             else:
                 _log('ERROR: Solid tab not found')
-                _direct_write('ERROR: tab not found')
+                # _direct_write removed
                 if ui: ui.messageBox('Could not find Solid tab in Design workspace.')
         else:
             _log('ERROR: Design/Solid workspace not found')
-            _direct_write('ERROR: workspace not found')
+            # _direct_write removed
             if ui: ui.messageBox('Could not find Design/Solid workspace.')
 
     except Exception:
         tb = traceback.format_exc()
         _log(f'run() EXCEPTION:\n{tb}')
-        _direct_write(f'run() EXCEPTION: {tb}')
+        # _direct_write removed
         if ui:
             ui.messageBox('Run Failed:\n{}'.format(tb))
 

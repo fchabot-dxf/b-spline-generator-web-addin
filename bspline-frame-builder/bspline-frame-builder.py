@@ -14,16 +14,7 @@ import os, sys, importlib.util
 # Disable bytecode generation to keep the add-in folder clean of __pycache__ and .pyc
 sys.dont_write_bytecode = True
 
-def _direct_write(msg):
-    try:
-        import tempfile
-        log_path = os.path.join(tempfile.gettempdir(), 'bspline_startup_probe.txt')
-        import datetime
-        stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        with open(log_path, 'a') as f:
-            f.write(f"[{stamp}] {msg}\n")
-    except:
-        pass
+# ... (diagnostics removed)
 
 handlers = []
 
@@ -31,12 +22,8 @@ handlers = []
 try:
     # Use simpler path discovery for better cross-machine reliability
     addin_root = os.path.dirname(__file__)
-    try: _direct_write(f"addin_root: {addin_root}")
-    except: pass
 except Exception as _path_e:
     addin_root = "."
-    try: _direct_write(f"addin_root fallback used: {_path_e}")
-    except: pass
 
 try:
     # Setup Logger early to capture startup errors
@@ -106,9 +93,7 @@ try:
 
         # 2. LOAD BUILDERS
         _fbs = _load_submodule('sketch_builder_ui', 'frame-builder/sketch-builder', 'sketch_builder.py')
-        _direct_write("sketch_builder loaded")
         _fbo = _load_submodule('solid_builder_ui',  'frame-builder/solid-builder',  'solid_builder.py')
-        _direct_write("solid_builder loaded")
         
         # 3. DIRECT INJECTION: Force the builders to use our fresh engine object
         _fbs.frame_engine = _engine
@@ -116,7 +101,6 @@ try:
 
         # 4. LOAD B-SPLINE
         _bs = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
-        _direct_write("b-spline-gen loaded")
     except Exception as _inner_e:
         if 'diag_logger' in locals():
             diag_logger.log_error(f"INNER HUB LOAD ERROR: {_inner_e}\n{traceback.format_exc()}")
@@ -170,7 +154,6 @@ PANEL_ID = 'bsplinePanel'
 
 
 def run(context):
-    _direct_write("run() called")
     ui = None
     try:
         app = adsk.core.Application.get()
