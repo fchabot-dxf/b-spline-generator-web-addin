@@ -3,35 +3,40 @@ Solid Coordinator — The orchestrator for frame synthesis.
 Coordinates document discovery, geometry extrusion, and appearance finishing.
 """
 import adsk.core, adsk.fusion, traceback, os, importlib, re, time
-from .appearance_manager import AppearanceManager, APPEARANCE_PRESETS
-from .extrusion_engine import ExtrusionEngine
+from fb_engine.appearance_manager import AppearanceManager, APPEARANCE_PRESETS
+from fb_engine.extrusion_engine import ExtrusionEngine
 
 # --- VERSION STAMP (Diagnostic) ---
 FB_VERSION = "4.07.B"
 
 try:
-    from utils import logger as _logger_mod
+    from fb_utils import logger as _logger_mod
     importlib.reload(_logger_mod)
 except Exception:
     _logger_mod = None
 
-def build_solid_logic(comp_name=None, to_face=None,
+def build_solid_logic_v3(comp_name=None, to_face=None,
                       start_offset_expr="0 in",
-                      appearance_name=None):
+                      appearance_name=None,
+                      external_logger=None):
     """
-    Public entry point for the frame synthesis operation.
+    Public entry point (v3) for the frame synthesis operation.
     """
-    coordinator = SolidCoordinator(to_face, start_offset_expr, appearance_name)
+    coordinator = SolidCoordinator(to_face, start_offset_expr, appearance_name, external_logger)
+    coordinator.log.log(f"--- SOLID V3 ENTRY POINT TRIGGERED (FB_VERSION: {FB_VERSION}) ---")
     coordinator.run(comp_name)
 
 class SolidCoordinator:
-    def __init__(self, to_face=None, start_offset_expr="0 in", appearance_name=None):
+    def __init__(self, to_face=None, start_offset_expr="0 in", appearance_name=None, external_logger=None):
         self.app = adsk.core.Application.get()
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
         self.root = self.design.rootComponent if self.design else None
         
-        addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        self.log = (_logger_mod.DebugLogger(addin_root) if _logger_mod else _NullLogger())
+        if external_logger:
+            self.log = external_logger
+        else:
+            addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            self.log = (_logger_mod.DebugLogger(addin_root) if _logger_mod else _NullLogger())
         
         self.to_face = to_face
         self.start_offset_expr = start_offset_expr

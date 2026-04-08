@@ -1,4 +1,4 @@
-# symmetric-b-spline-gen.py
+# b-spline-gen.py
 # Hybrid palette + native canvas terrain add-in.
 # Palette (HTML/JS) handles the UI; Python handles canvas preview and STEP import.
 
@@ -113,11 +113,11 @@ def get_log_path():
                 link = json.load(f)
             workspace_root = link.get('workspace_root', '').replace('/', os.sep)
             if workspace_root and os.path.isdir(workspace_root):
-                return os.path.join(workspace_root, 'symmetric_b_spline_gen_log.txt')
+                return os.path.join(workspace_root, 'b_spline_gen_log.txt')
     except Exception:
         pass
     # Fallback: log next to the deployed .py file
-    return os.path.join(addin_dir, 'symmetric_b_spline_gen_log.txt')
+    return os.path.join(addin_dir, 'b_spline_gen_log.txt')
 
 LOG_FILE = get_log_path()
 

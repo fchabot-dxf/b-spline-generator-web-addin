@@ -1,11 +1,11 @@
 import importlib
-from . import T1_sketch_1_bounding_box, T1_sketch_2_shape_outline
+import T1_sketch_1_bounding_box, T1_sketch_2_shape_outline
 
 importlib.reload(T1_sketch_1_bounding_box)
 importlib.reload(T1_sketch_2_shape_outline)
 
-from .T1_sketch_1_bounding_box import get_sketch as get_sketch_1
-from .T1_sketch_2_shape_outline import get_sketch as get_sketch_2
+from T1_sketch_1_bounding_box import get_sketch as get_sketch_1
+from T1_sketch_2_shape_outline import get_sketch as get_sketch_2
 
 def get_template_logic():
     """

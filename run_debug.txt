@@ -13,3 +13,7 @@ RuntimeError: 3 : the relative resourceFolder path not found
 [2026-04-07 21:41:13] _log SESSION STARTED ok
 [2026-04-07 21:41:13] Fusion version: 2701.1.27
 [2026-04-07 21:41:13] run() complete OK
+[2026-04-08 05:52:54] run() called
+[2026-04-08 05:52:54] _log SESSION STARTED ok
+[2026-04-08 05:52:54] Fusion version: 2701.1.27
+[2026-04-08 05:52:54] run() complete OK

@@ -16,10 +16,7 @@ def get_sketch():
             }
         ],
         "Constraints": [
-            {"Type": "Horizontal", "Targets": ["BB_top"]},
-            {"Type": "Horizontal", "Targets": ["BB_bottom"]},
-            {"Type": "Vertical",   "Targets": ["BB_left"]},
-            {"Type": "Vertical",   "Targets": ["BB_right"]},
+            # Rectangle logic now handles H/V alignment via manual line loop.
             # Center Point is mapped to ORIGIN inside the engine's Rectangle logic
             {"Type": "Coincident", "Targets": ["BB_RECT:C", "ORIGIN"]}
         ],

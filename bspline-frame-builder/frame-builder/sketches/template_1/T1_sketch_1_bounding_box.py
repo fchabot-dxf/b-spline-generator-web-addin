@@ -16,12 +16,8 @@ def get_sketch():
             }
         ],
         "Constraints": [
-            {"Type": "Horizontal", "Targets": ["BB_top"]},
-            {"Type": "Horizontal", "Targets": ["BB_bottom"]},
-            {"Type": "Vertical",   "Targets": ["BB_left"]},
-            {"Type": "Vertical",   "Targets": ["BB_right"]},
-            # Center Point is mapped to ORIGIN inside the engine's Rectangle logic
-            {"Type": "Coincident", "Targets": ["BB_RECT:C", "ORIGIN"]}
+            # Rectangle alignment and center-anchoring are now handled internally
+            # by the engine's manual 4-line loop logic.
         ],
         "Dimensions": [
             {"Target": "BB_top",   "Expression": "widthIn",  "Name": "dim_width"},

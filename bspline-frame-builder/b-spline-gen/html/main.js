@@ -319,7 +319,7 @@ function bindHeaderAndSettings() {
     const btnDownloadAddin = document.getElementById('btnDownloadAddin');
     if (btnDownloadAddin) {
         btnDownloadAddin.addEventListener('click', () => {
-            window.location.href = './symmetric-b-spline-gen.zip';
+            window.location.href = './b-spline-gen.zip';
         });
     }
 

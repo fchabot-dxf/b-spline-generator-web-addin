@@ -9,8 +9,8 @@ Shared state lives in BuildContext (build_context.py).
 import adsk.core, adsk.fusion, traceback
 import importlib
 
-# Sub-module imports (with hot-reload for Fusion 360 dev workflow)
-from . import build_context, geometry, constraints, dimensions, projections, offsets, miters
+# Sub-module imports (Absolute naming for manual loading stability)
+from fb_engine import build_context, geometry, constraints, dimensions, projections, offsets, miters
 importlib.reload(build_context)
 importlib.reload(geometry)
 importlib.reload(constraints)
@@ -19,13 +19,13 @@ importlib.reload(projections)
 importlib.reload(offsets)
 importlib.reload(miters)
 
-from .build_context import BuildContext
-from .geometry import geom_step
-from .constraints import constraint_step
-from .dimensions import dimension_step
-from .projections import project_step
-from .offsets import offset_step, step_step
-from .miters import miter_step
+from fb_engine.build_context import BuildContext
+from fb_engine.geometry import geom_step
+from fb_engine.constraints import constraint_step
+from fb_engine.dimensions import dimension_step
+from fb_engine.projections import project_step
+from fb_engine.offsets import offset_step, step_step
+from fb_engine.miters import miter_step
 
 
 class ParametricSketchBuilder:
@@ -120,16 +120,7 @@ class ParametricSketchBuilder:
         sketch.isComputeDeferred = False  # force solve
 
         # === PHASE 2: SNAP-TO-SEED (soft dimensions) ===
-        for dim in (phases["dims"] + phases["vdims"]):
-            en_param = dim.get("EnabledParam")
-            if en_param:
-                try:
-                    p = ctx.design.allParameters.itemByName(en_param)
-                    if p and p.value <= 1e-5:
-                        continue
-                except Exception:
-                    pass
-            dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=True)
+        self._run_snap_seed_phase(ctx, sketch, sketch_name, phases, "INITIAL")
 
         # === PHASE 3: PRE-CONSTRAINTS / PRE-DIMENSIONS ===
         sketch.isComputeDeferred = True
@@ -146,6 +137,10 @@ class ParametricSketchBuilder:
         for rel in phases["constrs"]:
             constraint_step(ctx, sketch, sketch_name, rel)
         sketch.isComputeDeferred = False
+
+        # === PHASE 4.5: SNAP-TO-SEED RECOVERY (Mid-Build Snap) ===
+        # Re-run soft dimensions to settle Main Geometry before Post-Constraints
+        self._run_snap_seed_phase(ctx, sketch, sketch_name, phases, "RECOVERY")
 
         # === PHASE 5: POST-GEOMETRY / POST-CONSTRAINTS ===
         sketch.isComputeDeferred = True
@@ -198,6 +193,24 @@ class ParametricSketchBuilder:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _run_snap_seed_phase(self, ctx, sketch, sketch_name, phases, note="SEED"):
+        """Run the snap-to-seed (soft dimension) logic for a sketch."""
+        dims = phases.get("dims", []) + phases.get("vdims", [])
+        if not dims:
+            return
+
+        ctx.logger.log(f"--- SNAP-TO-SEED ({note}) in {sketch_name} ---")
+        for dim in dims:
+            en_param = dim.get("EnabledParam")
+            if en_param:
+                try:
+                    p = ctx.design.allParameters.itemByName(en_param)
+                    if p and p.value <= 1e-5:
+                        continue
+                except Exception:
+                    pass
+            dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=True)
+
     def _project_y_axis(self, sketch, sketch_name):
         """Project the vertical construction axis into the sketch."""
         try:

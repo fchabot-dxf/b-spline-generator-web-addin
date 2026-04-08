@@ -43,7 +43,7 @@ Generates AP214 STEP files directly in the browser.
 
 ### Logs
 - **Python/Backend**: All Python activity and bridge communications are logged to:
-  `C:\Users\<User>\APPS\b-spline-generator-web-addin\symmetric_b_spline_gen_log.txt`
+  `C:\Users\<User>\APPS\b-spline-generator-web-addin\b_spline_gen_log.txt`
 - **JavaScript/Frontend**: Diagnostic messages from JS are tunneled to the Python log via the `fusLog()` function.
 
 ### Common Issues

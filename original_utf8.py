@@ -1,6 +1,6 @@
-def get_sketch(geometry=None):
+﻿def get_sketch(geometry=None):
     """
-    Logic for Sketch 2 (Template 3): Shape Outline.
+    Logic for Sketch 2 (Template 1): Shape Outline.
     Standardized clone of T3 ΓÇö same variables, same IDs, same phased build pattern.
     Ready for independent customization.
     """
@@ -64,15 +64,12 @@ def get_sketch(geometry=None):
             {'Type': 'Horizontal', 'Targets': ['skel_waist_pin_L']},
             {'Type': 'Horizontal', 'Targets': ['skel_hip_pin_R']},
             {'Type': 'Horizontal', 'Targets': ['skel_hip_pin_L']},
-            # SKELETAL FUSION: Merge pairs through a shared point before locking to vertical axis
-            {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S']},
-            {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S',    'skel_waist_pin_L:S']},
-            {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S',      'skel_hip_pin_L:S']},
-            
-            # VERTICAL PIN: Lock the shared hubs to the centerline
             {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'Y_AXIS']},
+            {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_L:S', 'Y_AXIS']},
             {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S',    'Y_AXIS']},
+            {'Type': 'Coincident', 'Targets': ['skel_waist_pin_L:S',    'Y_AXIS']},
             {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S',      'Y_AXIS']},
+            {'Type': 'Coincident', 'Targets': ['skel_hip_pin_L:S',      'Y_AXIS']},
             {'Type': 'Equal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L']},
             {'Type': 'Equal', 'Targets': ['skel_waist_pin_R',    'skel_waist_pin_L']},
             {'Type': 'Equal', 'Targets': ['skel_hip_pin_R',      'skel_hip_pin_L']},

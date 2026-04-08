@@ -1,1 +1,1 @@
-from .template_data_1 import TEMPLATE_1
+from template_data_1 import TEMPLATE_1

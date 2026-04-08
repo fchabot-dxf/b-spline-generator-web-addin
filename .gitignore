@@ -53,6 +53,5 @@ frame-builder - Copy/
 tmp_*
 test/
 comparative-audit/
-fusion-io/
-tools/
+
 ~AppDataRoaming/

@@ -1,17 +1,17 @@
 import importlib
-from . import T3_sketch_1_bounding_box, T3_sketch_2_shape_outline
+import T3_sketch_1_bounding_box, T3_sketch_2_shape_outline
 
 importlib.reload(T3_sketch_1_bounding_box)
 importlib.reload(T3_sketch_2_shape_outline)
 
-from .T3_sketch_1_bounding_box import get_sketch as get_sketch_1
-from .T3_sketch_2_shape_outline import get_sketch as get_sketch_2
+from T3_sketch_1_bounding_box import get_sketch as get_sketch_1
+from T3_sketch_2_shape_outline import get_sketch as get_sketch_2
 
 def get_template_logic():
     """
     Returns the parametric logic for Template 3 (Cloned from Template 2).
     """
-    from engine.template_factory import get_skeleton, assemble_12nd_order
+    from fb_engine.template_factory import get_skeleton, assemble_12nd_order
     
     # Initialize Skeleton & Curve Logic
     skel = get_skeleton()

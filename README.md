@@ -7,7 +7,7 @@ A professional suite of Fusion 360 add-ins for procedural surface generation, in
 This repository contains a unified dashboard and engine for advanced 3D modeling workflows in Autodesk Fusion 360. It bridges high-performance web-based interfaces with Fusion 360's parametric engine to allow for real-time sculpting and procedural geometry generation.
 
 ### Key Components:
-- **`symmetric-b-spline-gen`**: Web-based interactive editor for generating symmetric surfaces and B-Spline curves.
+- **`b-spline-gen`**: Web-based interactive editor for generating symmetric surfaces and B-Spline curves.
 - **`frame-builder`**: Automated parametric frame synthesis from skeletal geometry.
 - **`frame-inspector`**: Diagnostic and visualization tools for inspecting complex miter joints and span parameters.
 

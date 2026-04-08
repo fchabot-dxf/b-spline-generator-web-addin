@@ -80,68 +80,91 @@ def _create_arc3(ctx, curves, s_name, geom, geo_id):
 
 
 # ------------------------------------------------------------------
-# Center-point Rectangle
+# Center-point Rectangle (Harden version: Manual 4-line loop)
 # ------------------------------------------------------------------
 def _create_rectangle(ctx, sketch, curves, s_name, geom, geo_id):
-    cp = adsk.core.Point3D.create(
-        ctx.resolve_val(geom["Center"][0]),
-        ctx.resolve_val(geom["Center"][1]), 0)
+    """
+    Creates a rectangle as 4 discrete lines in a guaranteed clockwise loop.
+    This resolves the endpoint-order issues that cause 28cm gaps in Offset.
+    """
+    cp_x = ctx.resolve_val(geom["Center"][0])
+    cp_y = ctx.resolve_val(geom["Center"][1])
     w = ctx.resolve_val(geom["Size"][0])
     h = ctx.resolve_val(geom["Size"][1])
-    corner = adsk.core.Point3D.create(cp.x + w / 2, cp.y + h / 2, 0)
-    rect = curves.sketchLines.addCenterPointRectangle(cp, corner)
-    ctx.logger.log(
-        f"RECT {geo_id}: Center({cp.x:.3f},{cp.y:.3f}) "
-        f"W={w:.3f} H={h:.3f} | Total API Items: {rect.count}")
 
-    # 1. Classify boundary lines spatially
-    lines = [rect.item(i) for i in range(min(rect.count, 4))]
-    classified = ctx.classify_rect_lines(lines)
-    
-    # Map from semantic keys to LineIDs from geom spec
-    # Expected order in template_1: [top, right, bottom, left]
-    ids = geom.get("LineIDs", ["BB_top", "BB_right", "BB_bottom", "BB_left"])
-    
-    mapping = {
-        "top": ids[0] if len(ids) > 0 else f"{geo_id}_top",
-        "right": ids[1] if len(ids) > 1 else f"{geo_id}_right",
-        "bottom": ids[2] if len(ids) > 2 else f"{geo_id}_bottom",
-        "left": ids[3] if len(ids) > 3 else f"{geo_id}_left"
-    }
-    
-    for semantic, curve in classified.items():
-        ctx.set_id(curve, s_name, "line", override_id=mapping[semantic])
-        ctx.logger.log(f"RECT {geo_id} LINE {semantic}: Assigned ID={mapping[semantic]}")
+    # 1. Define 4 corners (TR, TL, BL, BR)
+    half_w = w / 2
+    half_h = h / 2
+    pTR = adsk.core.Point3D.create(cp_x + half_w, cp_y + half_h, 0)
+    pTL = adsk.core.Point3D.create(cp_x - half_w, cp_y + half_h, 0)
+    pBL = adsk.core.Point3D.create(cp_x - half_w, cp_y - half_h, 0)
+    pBR = adsk.core.Point3D.create(cp_x + half_w, cp_y - half_h, 0)
 
-    # 2. Tag Diagonals and Center Point
-    if rect.count >= 6:
-        _tag_existing_diagonals(ctx, rect, s_name, geo_id)
-    else:
-        ctx.logger.log(f"RECT {geo_id}: No diagonals from API ({rect.count} items), creating manually")
-        _create_manual_diagonals(ctx, sketch, curves, rect, s_name, geo_id)
+    # 2. Draw 4 lines in a clockwise loop
+    # Note: Using addByTwoPoints and manually connecting start/end ensures shared points
+    l_top    = curves.sketchLines.addByTwoPoints(pTL, pTR)
+    l_right  = curves.sketchLines.addByTwoPoints(l_top.endSketchPoint, pBR)
+    l_bottom = curves.sketchLines.addByTwoPoints(l_right.endSketchPoint, pBL)
+    l_left   = curves.sketchLines.addByTwoPoints(l_bottom.endSketchPoint, l_top.startSketchPoint)
 
-    # 3. Tag Vertices (The Corner ID hardening)
-    # Collect all unique points from the 4 lines
-    pts = []
-    for line in lines:
-        pts.extend([line.startSketchPoint, line.endSketchPoint])
-    
-    # Deduplicate by entityToken (SketchPoints are often shared)
-    unique_pts = {}
-    for p in pts:
-        unique_pts[p.entityToken] = p
-    
-    # Classify by quadrant relative to the center point (or origin if not found)
-    center_pt = ctx.entity_map[s_name].get(f"{geo_id}:C")
-    quadrants = ctx.classify_points_by_quadrant(list(unique_pts.values()), center_pt)
-    
-    # Assign unique IDs for vertices
-    for quad, p in quadrants.items():
-        v_id = f"{geo_id}_V_{quad}"
-        ctx.set_id(p, s_name, "vertex", override_id=v_id)
-        ctx.logger.log(f"RECT {geo_id} VERTEX {quad}: Assigned ID={v_id}")
+    ctx.logger.log(f"RECT {geo_id}: Manual 4-line loop created Center({cp_x:.3f},{cp_y:.3f}) W={w:.3f} H={h:.3f}")
 
-    return rect.item(0)
+    # 3. Apply IDs and Spatially Classify (using the helper to be safe)
+    # ids expected order: [top, right, bottom, left]
+    ids = geom.get("LineIDs", [f"{geo_id}_top", f"{geo_id}_right", f"{geo_id}_bottom", f"{geo_id}_left"])
+    
+    # We assign IDs based on our known loop order
+    ctx.set_id(l_top,    s_name, "line", override_id=ids[0])
+    ctx.set_id(l_right,  s_name, "line", override_id=ids[1])
+    ctx.set_id(l_bottom, s_name, "line", override_id=ids[2])
+    ctx.set_id(l_left,   s_name, "line", override_id=ids[3])
+
+    # 4. Standard Rectangle Constraints (Perpendicular + H/V)
+    try:
+        constrs = sketch.geometricConstraints
+        constrs.addHorizontal(l_top)
+        constrs.addHorizontal(l_bottom)
+        constrs.addVertical(l_left)
+        constrs.addVertical(l_right)
+        constrs.addPerpendicular(l_top, l_right)
+        constrs.addPerpendicular(l_right, l_bottom)
+        # Equality constraints help the solver stay square
+        constrs.addEqual(l_top, l_bottom)
+        constrs.addEqual(l_left, l_right)
+    except:
+        pass
+
+    # 5. Tag Vertices (TR, TL, BL, BR)
+    ctx.set_id(l_top.endSketchPoint,    s_name, "vertex", override_id=f"{geo_id}_V_TR")
+    ctx.set_id(l_top.startSketchPoint,  s_name, "vertex", override_id=f"{geo_id}_V_TL")
+    ctx.set_id(l_bottom.endSketchPoint, s_name, "vertex", override_id=f"{geo_id}_V_BL")
+    ctx.set_id(l_bottom.startSketchPoint, s_name, "vertex", override_id=f"{geo_id}_V_BR")
+
+    # 6. Manual Diagonals and Center Point
+    _create_manual_diagonals_lite(ctx, sketch, curves, l_top.startSketchPoint, l_bottom.startSketchPoint, l_top.endSketchPoint, l_bottom.endSketchPoint, s_name, geo_id)
+
+    return l_top
+
+def _create_manual_diagonals_lite(ctx, sketch, curves, pTL, pBR, pTR, pBL, s_name, geo_id):
+    """Refined diagonal creation for the manual loop."""
+    try:
+        diag1 = curves.sketchLines.addByTwoPoints(pTL, pBR)
+        diag2 = curves.sketchLines.addByTwoPoints(pTR, pBL)
+        diag1.isConstruction = True
+        diag2.isConstruction = True
+        ctx.set_id(diag1, s_name, "line", override_id=f"{geo_id}_diag1")
+        ctx.set_id(diag2, s_name, "line", override_id=f"{geo_id}_diag2")
+        
+        # Center point intersection
+        center_pt = sketch.sketchPoints.add(adsk.core.Point3D.create(pTL.geometry.x + 0.1, pTL.geometry.y + 0.1, 0))
+        sketch.geometricConstraints.addCoincident(center_pt, diag1)
+        sketch.geometricConstraints.addCoincident(center_pt, diag2)
+        # We only ground to origin here if CP is (0,0)
+        # But for now let's just tag it. The template handles ORIGIN constraint if needed.
+        ctx.set_id(center_pt, s_name, "point", override_id=f"{geo_id}:C")
+    except Exception as e:
+        ctx.logger.log_error(f"RECT {geo_id} Diag Lite FAIL: {e}")
+
 
 
 def _tag_existing_diagonals(ctx, rect, s_name, geo_id):

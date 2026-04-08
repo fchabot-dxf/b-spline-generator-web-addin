@@ -5,12 +5,9 @@ import time
 
 # Modular logic import
 try:
-    from . import parametric_engine, template_factory
-    from utils import logger
-    from sketches.template_1 import template_data_1
-    from sketches.template_2 import template_data_2
-    from sketches.template_3 import template_data_3
-    from sketches.template_4 import template_data_4
+    from fb_engine import parametric_engine, template_factory
+    from fb_utils import logger
+    import template_data_1, template_data_2, template_data_3, template_data_4
     importlib.reload(parametric_engine)
     importlib.reload(template_data_1)
     importlib.reload(template_data_2)
@@ -20,7 +17,7 @@ try:
 except Exception as e:
     # Attempt to log error if logger exists, otherwise use basic print
     try:
-        from utils import logger
+        from fb_utils import logger
         addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
         _l = logger.DebugLogger(addin_root)
         _l.log(f"CRITICAL: frame_engine failed imports: {e}", "ERROR")
@@ -32,25 +29,38 @@ except Exception as e:
 
 
 
-def build_sketch_logic(style_id="Template 1", joint_prefix="joint"):
-    """Entry point for the 'Generate Sketch' command."""
-    builder = FrameBuilder()
+def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
+    """Entry point version 3 (Signature Immune)."""
+    external_logger = kwargs.get('external_logger', None)
+    if not external_logger and len(args) > 0:
+        external_logger = args[0]
+        
+    builder = FrameBuilder(external_logger)
     builder.run_sketch_only(style_id, joint_prefix)
 
-def build_frame_logic(style_id="Template 1", joint_prefix="joint"):
-    """Entry point for the 'Create Frame' command."""
-    builder = FrameBuilder()
+def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
+    """Entry point with signature safety net."""
+    external_logger = kwargs.get('external_logger', None)
+    if not external_logger and len(args) > 0:
+        external_logger = args[0]
+        
+    builder = FrameBuilder(external_logger)
     builder.run_full_synthesis(style_id, joint_prefix)
 
 class FrameBuilder:
-    def __init__(self):
+    def __init__(self, external_logger=None):
         self.app = adsk.core.Application.get()
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
         self.root = self.design.rootComponent if self.design else None
         self.user_params = self.design.userParameters if self.design else None
         self.params_dna = {}
-        addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        self.logger = logger.DebugLogger(addin_root)
+        
+        if external_logger:
+            self.logger = external_logger
+        else:
+            addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+            self.logger = logger.DebugLogger(addin_root)
+            
         self.logger.log("FrameBuilder initialized")
         self.logger.log(f"Design loaded: {'yes' if self.design else 'no'}")
         self.logger.log(f"Root component exists: {'yes' if self.root else 'no'}")
@@ -191,7 +201,6 @@ class FrameBuilder:
         if "Template 2" in style_id: template = template_data_2.TEMPLATE_2
         if "Template 3" in style_id: template = template_data_3.TEMPLATE_3
         if "Template 4" in style_id: template = template_data_4.TEMPLATE_4
-
         if template and "Parameters" in template:
             self.logger.log(f"Initializing {len(template['Parameters'])} drivers for {style_id}")
             for p_info in template["Parameters"]:
@@ -207,11 +216,9 @@ class FrameBuilder:
                     except Exception as e:
                         self.logger.log(f"FAILED TO REGISTER {name}: {e}", "ERROR")
                 else:
-                    # Force update if already exists to ensure DNA sync
-                    # (But skip width/height which are measured live)
-                    if name not in ["widthIn", "heightIn"]:
-                        try: existing.expression = val_expr
-                        except: pass
+                    # DNA SYNC: We skip overwriting if the parameter already exists.
+                    # This allows the UI to drive the value without being stomped by the template default.
+                    self.logger.log(f"PRESERVED UI PARAM: {name} (Template default {val_expr} skipped)")
     def _discover_aesthetic_core(self):
         self.logger.log("Discovering aesthetic core body")
         

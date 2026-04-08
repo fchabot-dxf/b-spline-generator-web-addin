@@ -5,23 +5,23 @@ Expert guidance for the Symmetric B-Spline Generator add-in. Use when modifying 
 
 ## Repository Overview
 - Procedural terrain/solid generation add-in for Fusion 360.
-- Web palette at `symmetric-b-spline-gen/html` (JS/HTML) communicating with Python backend at `symmetric-b-spline-gen/symmetric-b-spline-gen.py`.
+- Web palette at `b-spline-gen/html` (JS/HTML) communicating with Python backend at `b-spline-gen/b-spline-gen.py`.
 - Chunked STEP generation and bridge polling loop for reliable imports.
 - Fusion command registered as `fusionHybridCommand` and integrated in Solid workspace toolbar panel.
 
-- `symmetric-b-spline-gen/html/index.html` and `main.js`: UI, palette event loop, control inputs, and reset/visibility logic.
-- `symmetric-b-spline-gen/html/editor.js`: SVG editor state, zoom/pan transform enforcement, and stamp clear sync.
+- `b-spline-gen/html/index.html` and `main.js`: UI, palette event loop, control inputs, and reset/visibility logic.
+- `b-spline-gen/html/editor.js`: SVG editor state, zoom/pan transform enforcement, and stamp clear sync.
 - **Physical CAD Parity**: The Vector Editor uses a **1:1 physical inch coordinate system** (via `viewBox="0 0 W H"`) to ensure absolute parity with Fusion 360's `ImportManager`. The Python backend applies a direct `2.54` scale factor to convert these inch-native coordinates into machine-standard centimeters.
 - **Orientation Control**: Camera orientation is handled exclusively by the 3D **ViewCube** widget in the top-right corner. All redundant minimap UI has been removed for a cleaner workspace.
 - `stepWriter.js`: AP214 STEP exporter with chunked payload logic and isSolid/isPreview modes.
 - **Terrain Stamping Refinements**: High-fidelity SVG stamping with **G1-continuous Fillet** and **Tapered Suppression Masking** for seamless mountain-to-feature transitions.
 - **Actual Height Display**: Real-time "Actual Peak (Z)" calculation in the preview overlay ensure model/stock parity.
-- `symmetric-b-spline-gen/symmetric-b-spline-gen.py`: Fusion 360 palette handler, chunked STEP reassembly, importToTarget/preview mesh, cleanup, and command lifecycle.
-- `symmetric-b-spline-gen/symmetric-b-spline-gen.manifest`: Add-in metadata, version, OS support, and edit mode.
+- `b-spline-gen/b-spline-gen.py`: Fusion 360 palette handler, chunked STEP reassembly, importToTarget/preview mesh, cleanup, and command lifecycle.
+- `b-spline-gen/b-spline-gen.manifest`: Add-in metadata, version, OS support, and edit mode.
 
 ## Runtime Behavior
-- Python side uses hardcoded `LOG_FILE` in `symmetric-b-spline-gen.py`; recommended to replace with a dynamic workspace-aware path (via `workspace_link.json`) to avoid user path dependency.
-- Palette messaging in `symmetric-b-spline-gen.py`:
+- Python side uses hardcoded `LOG_FILE` in `b-spline-gen.py`; recommended to replace with a dynamic workspace-aware path (via `workspace_link.json`) to avoid user path dependency.
+- Palette messaging in `b-spline-gen.py`:
   - `check_import_status` polling to close palette after import.
   - `generate_start`/`generate_chunk`/`generate_finish` chunked receive.
   - `preview_mesh` draws CustomGraphics mesh in Fusion canvas; normals are computed from vertices/indices and passed in to enable reflection-based material shading.
@@ -40,7 +40,7 @@ Expert guidance for the Symmetric B-Spline Generator add-in. Use when modifying 
   3. For local Fusion dev, script attempts to refresh in `%APPDATA%/Autodesk Fusion 360/API/AddIns/b-spline-generator-web-addin`.
 
 ## Logging and Debug
-- Primary log file: `symmetric_b_spline_gen_log.txt` in repository root.
+- Primary log file: `b_spline_gen_log.txt` in repository root.
 - JS logs are tunneled to Python via palette `log` events.
 - Error conditions explicitly handled:
   - empty `stepText` with user message and import_done signal safety
@@ -54,12 +54,12 @@ Expert guidance for the Symmetric B-Spline Generator add-in. Use when modifying 
 - [ ] Verify 8 noise modes exist in `index.html` dropdown.
 - [ ] Check `stepWriter.js` doesn’t prematurely abort surface-only offsets.
 - [ ] Confirm no 2.54 unit mismatch (STEP output should use inches if header says inch).
-- [ ] Confirm multi-body import renaming in `symmetric-b-spline-gen.py` (added for each new occurrence).
+- [ ] Confirm multi-body import renaming in `b-spline-gen.py` (added for each new occurrence).
 
 ## Recommended Agent Guidance
 - Map user issues to code areas:
-  - `UI/JS` → `symmetric-b-spline-gen/html/` and `stepWriter.js`
-  - `Python bridge import` → `symmetric-b-spline-gen/symmetric-b-spline-gen.py`
+  - `UI/JS` → `b-spline-gen/html/` and `stepWriter.js`
+  - `Python bridge import` → `b-spline-gen/b-spline-gen.py`
   - `deployment` → `tools/deploy_cloudflare.py`
   - `logging` → `dev-log.md` + `LOG_FILE` path and `workspace_link.json`
 - **Debugging Philosophy**: When troubleshooting complex issues (like coordinate sync or bridge stalls), always provide **fixes and new debugging logs simultaneously**.

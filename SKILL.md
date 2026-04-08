@@ -26,8 +26,12 @@ To access expert knowledge for specific components, use the following skill file
 - Handshake files (`project_path.json`) link deployed add-ins back to this source repository.
 
 ## Repository Layout
-- `symmetric-b-spline-gen/`: Generator using HTML/JS palette and chunked STEP import.
-- `frame-builder/`: Native Python add-in for parametric synthesis.
-- `frame-inspector/`: UI extensions for inspecting frame metadata.
-- `fusion-io/`: Design DNA bridge (importer and exporter).
+- `b-spline-gen/`: Generator using HTML/JS palette and chunked STEP import.
+- `bspline-frame-builder/`: The unified "One-Click" Hub add-in.
+    - `frame-builder/`: Core parametric builder components.
+        - `sketch-builder/`: Specialized Sketch UI logic and resources.
+        - `solid-builder/`: Specialized Solid UI logic and resources.
+        - `engine/`, `sketches/`, `utils/`, `data/`: Shared Parametric Engine core.
+- `TOOLS/frame-inspector/`: UI extensions for inspecting frame metadata.
+- `TOOLS/fusion-exporter/`: Design DNA bridge (importer and exporter).
 - `tools/`: Deployment and maintenance scripts.
