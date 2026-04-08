@@ -14,94 +14,107 @@ import os, sys, importlib.util
 # Disable bytecode generation to keep the add-in folder clean of __pycache__ and .pyc
 sys.dont_write_bytecode = True
 
-
-
 handlers = []
 
-# ── Sub-module loader ─────────────────────────────────────────────────────────
-addin_root = os.path.dirname(os.path.realpath(__file__))
-
-# Setup Logger early to capture startup errors
-_utils_path = os.path.join(addin_root, 'frame-builder', 'fb_utils')
-if _utils_path not in sys.path:
-    sys.path.insert(0, _utils_path)
-from logger import DebugLogger
-diag_logger = DebugLogger(os.path.join(addin_root, 'frame-builder'))
-
-def _load_submodule(safe_name, subdir, filename):
-    """
-    Load a .py file from a hyphenated sub-directory.
-    Forces a fresh execution by clearing the module cache.
-    """
-    subdir_path = os.path.join(addin_root, subdir)
-    if subdir_path not in sys.path:
-        sys.path.insert(0, subdir_path)
-    
-    # FORCE RELOAD: Remove from sys.modules if already there
-    if safe_name in sys.modules:
-        del sys.modules[safe_name]
-
-    filepath = os.path.join(subdir_path, filename)
-    spec   = importlib.util.spec_from_file_location(safe_name, filepath)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[safe_name] = module # official registration
-    spec.loader.exec_module(module)
-    return module
-
-
-# frame-builder specialized components
-def _force_wipe(names):
-    for name in names:
-        try:
-            if name in sys.modules:
-                del sys.modules[name]
-        except: pass
-        # Also wipe any sub-packages to be safe
-        try:
-            for key in list(sys.modules.keys()):
-                if key.startswith(name + "."):
-                    del sys.modules[key]
-        except: pass
-
-_force_wipe(['sketch_builder_ui', 'solid_builder_ui', 'fb_engine.frame_engine', 'fb_engine'])
+# --- GLOBAL STARTUP TRAP ---
+try:
+    # Use simpler path discovery for better cross-machine reliability
+    addin_root = os.path.dirname(__file__)
+except Exception as _path_e:
+    addin_root = "."
 
 try:
-    # 1. LOAD ENGINE FIRST
-    _fb_root = os.path.join(addin_root, 'frame-builder')
-    _sk_root = os.path.join(addin_root, 'frame-builder', 'sketches')
-    
-    # Add frame-builder root and all 4 template data directories to sys.path
-    _search_paths = [_fb_root]
-    for i in range(1, 5):
-        _search_paths.append(os.path.join(_sk_root, f'template_{i}'))
+    # Setup Logger early to capture startup errors
+    _utils_path = os.path.join(addin_root, 'frame-builder', 'fb_utils')
+    if _utils_path not in sys.path:
+        sys.path.insert(0, _utils_path)
+
+    from logger import DebugLogger
+    diag_logger = DebugLogger(os.path.join(addin_root, 'frame-builder'))
+
+    def _load_submodule(safe_name, subdir, filename):
+        """
+        Load a .py file from a hyphenated sub-directory.
+        Forces a fresh execution by clearing the module cache.
+        """
+        subdir_path = os.path.join(addin_root, subdir)
+        if subdir_path not in sys.path:
+            sys.path.insert(0, subdir_path)
         
-    for d in _search_paths:
-        if d not in sys.path:
-            sys.path.insert(0, d)
+        # FORCE RELOAD: Remove from sys.modules if already there
+        if safe_name in sys.modules:
+            del sys.modules[safe_name]
 
-    _engine_path = os.path.join(_fb_root, 'fb_engine', 'frame_engine.py')
-    _eng_spec = importlib.util.spec_from_file_location('frame_engine_core', _engine_path)
-    _engine = importlib.util.module_from_spec(_eng_spec)
-    sys.modules['frame_engine_core'] = _engine
-    _eng_spec.loader.exec_module(_engine)
+        filepath = os.path.join(subdir_path, filename)
+        spec   = importlib.util.spec_from_file_location(safe_name, filepath)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[safe_name] = module # official registration
+        spec.loader.exec_module(module)
+        return module
 
-    # 2. LOAD BUILDERS
-    _fbs = _load_submodule('sketch_builder_ui', 'frame-builder/sketch-builder', 'sketch_builder.py')
-    _fbo = _load_submodule('solid_builder_ui',  'frame-builder/solid-builder',  'solid_builder.py')
-    
-    # 3. DIRECT INJECTION: Force the builders to use our fresh engine object
-    _fbs.frame_engine = _engine
-    _fbo.frame_engine = _engine
 
-    # 4. LOAD B-SPLINE
-    _bs = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
-except Exception as e:
-    _fbs = _fbo = _bs = None
+    # frame-builder specialized components
+    def _force_wipe(names):
+        for name in names:
+            try:
+                if name in sys.modules:
+                    del sys.modules[name]
+            except: pass
+            # Also wipe any sub-packages to be safe
+            try:
+                for key in list(sys.modules.keys()):
+                    if key.startswith(name + "."):
+                        del sys.modules[key]
+            except: pass
+
+    _force_wipe(['sketch_builder_ui', 'solid_builder_ui', 'fb_engine.frame_engine', 'fb_engine'])
+
+    try:
+        # 1. LOAD ENGINE FIRST
+        _fb_root = os.path.join(addin_root, 'frame-builder')
+        _sk_root = os.path.join(addin_root, 'frame-builder', 'sketches')
+        
+        # Add frame-builder root and all 4 template data directories to sys.path
+        _search_paths = [_fb_root]
+        for i in range(1, 5):
+            _search_paths.append(os.path.join(_sk_root, f'template_{i}'))
+            
+        for d in _search_paths:
+            if d not in sys.path:
+                sys.path.insert(0, d)
+
+        _engine_path = os.path.join(_fb_root, 'fb_engine', 'frame_engine.py')
+        _eng_spec = importlib.util.spec_from_file_location('frame_engine_core', _engine_path)
+        _engine = importlib.util.module_from_spec(_eng_spec)
+        sys.modules['frame_engine_core'] = _engine
+        _eng_spec.loader.exec_module(_engine)
+
+        # 2. LOAD BUILDERS
+        _fbs = _load_submodule('sketch_builder_ui', 'frame-builder/sketch-builder', 'sketch_builder.py')
+        _fbo = _load_submodule('solid_builder_ui',  'frame-builder/solid-builder',  'solid_builder.py')
+        
+        # 3. DIRECT INJECTION: Force the builders to use our fresh engine object
+        _fbs.frame_engine = _engine
+        _fbo.frame_engine = _engine
+
+        # 4. LOAD B-SPLINE
+        _bs = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
+    except Exception as _inner_e:
+        if 'diag_logger' in locals():
+            diag_logger.log_error(f"INNER HUB LOAD ERROR: {_inner_e}\n{traceback.format_exc()}")
+        raise _inner_e
+
+except Exception as _global_e:
+    # Critical failure during bootstrap
     if 'diag_logger' in locals():
-        diag_logger.log_error(f"HUB LOAD ERROR: {e}")
+        diag_logger.log_error(f"GLOBAL CRITICAL CRASH: {_global_e}\n{traceback.format_exc()}")
     else:
-        print(f"HUB CRITICAL (No Logger): {e}")
-        traceback.print_exc()
+        # Fallback to message box if logger failed to even initialize
+        try:
+            adsk.core.Application.get().userInterface.messageBox(
+                f"Add-In Critical Startup Error:\n{_global_e}\n\n{traceback.format_exc()}")
+        except:
+            pass
 
 # ── Resource paths ────────────────────────────────────────────────────────────
 _fb_res_sk = os.path.join(addin_root, 'frame-builder', 'sketch-builder', 'ressources')
@@ -143,9 +156,6 @@ def run(context):
     try:
         app = adsk.core.Application.get()
         ui  = app.userInterface
-        
-        # DEBUG: Confirm startup
-        # ui.messageBox("Add-In Initializing...")
         
         if not _fbs or not _fbo or not _bs:
             ui.messageBox("Add-In Error: Sub-modules failed to load. Check logs.")
@@ -220,7 +230,7 @@ def stop(context):
                         tab = t
                         break
             if tab:
-                panel = tab.toolbarPanels.itemById(PANEL_ID)   # ← was 'BSplineFramePanel' (bug fixed)
+                panel = tab.toolbarPanels.itemById(PANEL_ID) 
                 if panel:
                     for _ in range(50):
                         if panel.controls.count == 0:

@@ -199,7 +199,7 @@ def deploy_local():
 
     if all_ok:
         print("\n  Local deploy successful.")
-        print("  Next: Shift+S in Fusion 360 → Add-ins → Stop then Run.")
+        print("  Next: Shift+S in Fusion 360 -> Add-ins -> Stop then Run.")
     else:
         print("\n  ERROR: one or more files did not copy correctly.")
         sys.exit(1)
