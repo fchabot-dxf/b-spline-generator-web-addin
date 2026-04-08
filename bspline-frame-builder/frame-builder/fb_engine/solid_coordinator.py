@@ -10,7 +10,7 @@ from fb_engine.extrusion_engine import ExtrusionEngine
 FB_VERSION = "4.07.B"
 
 try:
-    from fb_utils import logger as _logger_mod
+    from fb_utils import fb_logger as _logger_mod
     importlib.reload(_logger_mod)
 except Exception:
     _logger_mod = None

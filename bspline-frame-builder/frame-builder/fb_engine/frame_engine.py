@@ -6,7 +6,7 @@ import time
 # Modular logic import
 try:
     from fb_engine import parametric_engine, template_factory
-    from fb_utils import logger
+    from fb_utils import fb_logger as logger
     import template_data_1, template_data_2, template_data_3, template_data_4
     importlib.reload(parametric_engine)
     importlib.reload(template_data_1)
@@ -17,7 +17,7 @@ try:
 except Exception as e:
     # Attempt to log error if logger exists, otherwise use basic print
     try:
-        from fb_utils import logger
+        from fb_utils import fb_logger as logger
         addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
         _l = logger.DebugLogger(addin_root)
         _l.log(f"CRITICAL: frame_engine failed imports: {e}", "ERROR")

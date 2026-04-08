@@ -2,24 +2,16 @@
 # Hybrid palette + native canvas terrain add-in.
 # Palette (HTML/JS) handles the UI; Python handles canvas preview and STEP import.
 
-# Probe: write next to __file__ (addin folder — always writable by Fusion)
-try:
-    _p = __file__[:__file__.rfind('\\')] + '\\probe.txt'
-    open(_p, 'a').write('TOP\n')
-except: pass
+# Probe: removed diagnostic
 
 import adsk.core, adsk.fusion, adsk.cam, traceback
 
-try:
-    open(_p, 'a').write('ADSK_OK\n')
-except: pass
+# adsk check: removed diagnostic
 
 import os, tempfile, json, re
 from datetime import datetime
 
-try:
-    open(_p, 'a').write('IMPORTS_OK\n')
-except: pass
+# imports check: removed diagnostic
 
 
 def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0):
@@ -121,12 +113,7 @@ def get_log_path():
 
 LOG_FILE = get_log_path()
 
-# ── Module-level import probe (remove once crash is diagnosed) ────────────────
-try:
-    with open(r'C:\Users\danse\APPS\b-spline-generator-web-addin\import_test.txt', 'a') as _f:
-        _f.write('module imported ok\n')
-except Exception as _e:
-    pass  # can't do much here; will be visible in Fusion log if it raises
+# ── Module-level import probe (removed) ──────────────────────────────────
 
 import datetime
 def _log(msg):
@@ -962,34 +949,11 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 # ── run ───────────────────────────────────────────────────────────────────────
 def _direct_write(msg):
-    """Emergency fallback logger — tries two hardcoded paths so one will always land."""
-    try:
-        import datetime as _dt
-        stamp = _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        line  = f'[{stamp}] {msg}\n'
-        # 1. Source workspace (readable by Desktop Commander)
-        try:
-            with open(r'C:\Users\danse\APPS\b-spline-generator-web-addin\run_debug.txt', 'a', encoding='utf-8') as f:
-                f.write(line)
-        except Exception:
-            pass
-        # 2. Windows Temp (always writable)
-        try:
-            import tempfile as _tf
-            with open(os.path.join(_tf.gettempdir(), 'bspline_run_debug.txt'), 'a', encoding='utf-8') as f:
-                f.write(line)
-        except Exception:
-            pass
-    except Exception:
-        pass
+    pass
 
 
 def run(context):
-    try:  # raw probe — no helper functions, no variables
-        with open(r'C:\Users\danse\APPS\b-spline-generator-web-addin\run_test.txt', 'a') as _f:
-            _f.write('run() called\n')
-    except Exception:
-        pass
+    # run probe: removed diagnostic
     _direct_write('run() called')
     try:
         _log("--- SESSION STARTED ---")

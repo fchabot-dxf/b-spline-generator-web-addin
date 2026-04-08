@@ -9,7 +9,7 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 try:
-    from fb_utils import logger
+    from fb_utils import fb_logger as logger
     importlib.reload(logger)
     diag_logger = logger.DebugLogger(parent_dir)
     diag_logger.log("SKETCH BUILDER: Module Loaded & Logger Active")

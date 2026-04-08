@@ -14,14 +14,29 @@ import os, sys, importlib.util
 # Disable bytecode generation to keep the add-in folder clean of __pycache__ and .pyc
 sys.dont_write_bytecode = True
 
+def _direct_write(msg):
+    try:
+        import tempfile
+        log_path = os.path.join(tempfile.gettempdir(), 'bspline_startup_probe.txt')
+        import datetime
+        stamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(log_path, 'a') as f:
+            f.write(f"[{stamp}] {msg}\n")
+    except:
+        pass
+
 handlers = []
 
 # --- GLOBAL STARTUP TRAP ---
 try:
     # Use simpler path discovery for better cross-machine reliability
     addin_root = os.path.dirname(__file__)
+    try: _direct_write(f"addin_root: {addin_root}")
+    except: pass
 except Exception as _path_e:
     addin_root = "."
+    try: _direct_write(f"addin_root fallback used: {_path_e}")
+    except: pass
 
 try:
     # Setup Logger early to capture startup errors
@@ -29,7 +44,7 @@ try:
     if _utils_path not in sys.path:
         sys.path.insert(0, _utils_path)
 
-    from logger import DebugLogger
+    from fb_logger import DebugLogger
     diag_logger = DebugLogger(os.path.join(addin_root, 'frame-builder'))
 
     def _load_submodule(safe_name, subdir, filename):
@@ -91,7 +106,9 @@ try:
 
         # 2. LOAD BUILDERS
         _fbs = _load_submodule('sketch_builder_ui', 'frame-builder/sketch-builder', 'sketch_builder.py')
+        _direct_write("sketch_builder loaded")
         _fbo = _load_submodule('solid_builder_ui',  'frame-builder/solid-builder',  'solid_builder.py')
+        _direct_write("solid_builder loaded")
         
         # 3. DIRECT INJECTION: Force the builders to use our fresh engine object
         _fbs.frame_engine = _engine
@@ -99,6 +116,7 @@ try:
 
         # 4. LOAD B-SPLINE
         _bs = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
+        _direct_write("b-spline-gen loaded")
     except Exception as _inner_e:
         if 'diag_logger' in locals():
             diag_logger.log_error(f"INNER HUB LOAD ERROR: {_inner_e}\n{traceback.format_exc()}")
@@ -152,13 +170,15 @@ PANEL_ID = 'bsplinePanel'
 
 
 def run(context):
+    _direct_write("run() called")
     ui = None
     try:
         app = adsk.core.Application.get()
         ui  = app.userInterface
         
         if not _fbs or not _fbo or not _bs:
-            ui.messageBox("Add-In Error: Sub-modules failed to load. Check logs.")
+            if 'diag_logger' in locals():
+                diag_logger.log_error("Add-In Error: Sub-modules failed to load.")
             return
 
         cmd_defs = ui.commandDefinitions
@@ -207,7 +227,8 @@ def run(context):
 
     except:
         if ui:
-            ui.messageBox('Add-In Start Failed:\n{}'.format(traceback.format_exc()))
+            # Only show start failure if it's really critical
+            pass
 
 
 def stop(context):
