@@ -1,0 +1,14 @@
+{
+	"autodeskProduct": "Fusion360",
+	"type": "addin",
+	"id": "47b7a8eb-8422-4a0b-93e1-d85c14e1f8e1",
+	"author": "User",
+	"description": {
+		"": "Fusion Exporter: Audit and export Fusion 360 Design Data to DNA JSON. Import functionality removed."
+	},
+	"version": "1.0.1",
+	"runOnStartup": false,
+	"supportedOS": "windows|mac",
+	"editEnabled": true,
+	"entry": "fusion-exporter.py"
+}
