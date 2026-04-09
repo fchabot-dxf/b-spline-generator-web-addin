@@ -8,16 +8,25 @@
  * This eliminates race conditions between the two writers.
  */
 
+
+import { COORD_SYSTEM } from './coords.js';
+
 /** Helper: rebuild the two-tspan structure inside a <text> element. */
 function _buildTspans(textEl, textContent, x, y) {
     const node = textEl.node;
     // Clear any existing content (SVG.js plain() leftovers)
     while (node.firstChild) node.removeChild(node.firstChild);
 
+    // Convert to physical coordinates for storage/export
+    const phys = COORD_SYSTEM.toPhysical(x, y);
+    if (window && window.console) {
+        console.log(`[COORD_STD] _buildTspans: UI (${x},${y}) -> Physical (${phys.x},${phys.y})`);
+    }
+
     // tspan[0]: user text
     const tText = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-    tText.setAttribute('x', x);
-    tText.setAttribute('y', y);
+    tText.setAttribute('x', phys.x);
+    tText.setAttribute('y', phys.y);
     tText.textContent = textContent;
 
     // tspan[1]: cursor
@@ -37,7 +46,12 @@ export function startTextAt(editor, pt) {
         .attr('data-layer', document.getElementById('editorLayerSelect')?.value || "0")
         .css({ cursor: 'text', 'user-select': 'none' });
 
-    editor._editingTextEl.attr({ x: pt.x, y: pt.y });
+    // Convert to physical coordinates for storage/export
+    const phys = COORD_SYSTEM.toPhysical(pt.x, pt.y);
+    if (window && window.console) {
+        console.log(`[COORD_STD] startTextAt: UI (${pt.x},${pt.y}) -> Physical (${phys.x},${phys.y})`);
+    }
+    editor._editingTextEl.attr({ x: phys.x, y: phys.y });
     editor._currentText = '';
     _buildTspans(editor._editingTextEl, '', pt.x, pt.y);
     initTextSession(editor);
@@ -50,9 +64,14 @@ export function beginTextEdit(editor, el) {
     editor._currentText = el.text().replace(/\|$/, '');
     editor._editingTextEl.css({ cursor: 'text' });
 
-    const x = el.attr('x') || 0;
-    const y = el.attr('y') || 0;
-    _buildTspans(editor._editingTextEl, editor._currentText, x, y);
+    // Convert from physical to UI coordinates for editing
+    const physX = el.attr('x') || 0;
+    const physY = el.attr('y') || 0;
+    const ui = COORD_SYSTEM.toUI(physX, physY);
+    if (window && window.console) {
+        console.log(`[COORD_STD] beginTextEdit: Physical (${physX},${physY}) -> UI (${ui.x},${ui.y})`);
+    }
+    _buildTspans(editor._editingTextEl, editor._currentText, ui.x, ui.y);
     initTextSession(editor);
 }
 

@@ -1,7 +1,17 @@
+
 /**
  * editor-geometry.js - path fitting, simplification, and stroke expansion for VectorEditor.
  * Includes Philip J. Schneider's Least-Squares Curve Fitting and RDP algorithm.
  */
+
+/**
+ * editor-geometry.js - path fitting, simplification, and stroke expansion for VectorEditor.
+ * Includes Philip J. Schneider's Least-Squares Curve Fitting and RDP algorithm.
+ */
+if (window && window.console) {
+    console.log('[COORD_STD] editor-geometry.js loaded!');
+}
+import { COORD_SYSTEM } from './coords.js';
 
 // --- INTERNAL GEOM UTILS ---
 function _add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
@@ -26,6 +36,15 @@ export function getDynamicTolerance(editor, px = 5) {
 
 export function fitCurve(editor, points, error) {
     if (points.length < 2) return "";
+    // Log before converting points for export
+    if (window && window.console) {
+        console.log(`[COORD_STD] fitCurve: Converting ${points.length} points for export`);
+        points.forEach((p, i) => {
+            const orig = { x: p[0], y: p[1] };
+            const phys = COORD_SYSTEM.toPhysical(orig.x, orig.y);
+            console.log(`[COORD_STD] fitCurve: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
+        });
+    }
     const pts = points.map(p => ({ x: p[0], y: p[1] }));
     const tan1 = _normalize(_sub(pts[1], pts[0]));
     const lastIdx = pts.length - 1;
@@ -147,6 +166,13 @@ export function getPointLineDist(pt, a, b) {
 
 export function getHybridBezierPath(points, isClosed = false, cornerAngleThreshold = 95) {
     if (points.length < 2) return "";
+    if (window && window.console) {
+        points.forEach((p, i) => {
+            const orig = { x: p[0], y: p[1] };
+            const phys = COORD_SYSTEM.toPhysical(orig.x, orig.y);
+            console.log(`[COORD_STD] getHybridBezierPath: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
+        });
+    }
     if (points.length === 2) return `M ${points[0][0].toFixed(3)},${points[0][1].toFixed(3)} L ${points[1][0].toFixed(3)},${points[1][1].toFixed(3)}`;
     const getPt = (idx) => points[(idx + points.length) % points.length];
     const getAngle = (idx) => {

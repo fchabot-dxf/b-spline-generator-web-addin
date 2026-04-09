@@ -267,8 +267,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             action   = htmlArgs.action
             data_preview = (htmlArgs.data[:50] + '...') if htmlArgs.data and len(htmlArgs.data) > 50 else htmlArgs.data
             
+
             # v37: EXTREME SILENCE. Silencing these high-frequency actions 
             # at the source to prevent any possible file write during polling.
+            # Now, allow 'log' action to write to log file from JS
+            if action == 'log':
+                try:
+                    data = json.loads(htmlArgs.data)
+                    msg = data.get('msg', '')
+                    _log(f'[JS LOG] {msg}')
+                except Exception as e:
+                    _log(f'[JS LOG ERROR] Failed to log message: {e}')
+                return
             if action not in ['check_import_status', 'ping', 'preview_mesh', 'log']:
                 _log(f'Action: "{action}" | Data: {data_preview}')
 
