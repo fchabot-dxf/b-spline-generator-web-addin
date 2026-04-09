@@ -33,6 +33,27 @@ export const COORD_SYSTEM = {
         return boundary;
     },
 
+    // Produce indices for all quad faces in an nx × nz grid.
+    // If invert is true, reverse the triangle winding for opposite-facing faces.
+    gridQuadFaceIndices: (nx, nz, offset = 0, invert = false) => {
+        const indices = [];
+        if (nx <= 1 || nz <= 1) return indices;
+        for (let j = 0; j < nz - 1; j++) {
+            for (let i = 0; i < nx - 1; i++) {
+                const a = offset + j * nx + i;
+                const b = a + 1;
+                const c = offset + (j + 1) * nx + i;
+                const d = c + 1;
+                if (!invert) {
+                    indices.push(a, b, c, c, b, d);
+                } else {
+                    indices.push(a, c, b, b, c, d);
+                }
+            }
+        }
+        return indices;
+    },
+
     // Convert UI (SVG) to Physical (CNC/Fusion)
     toPhysical: (x, y) => {
         const result = {

@@ -846,23 +846,11 @@ export class TerrainPreview {
     }
 
     // 3. Indices
-    const indices = [];
+    let indices = COORD_SYSTEM.gridQuadFaceIndices(nx, nz, 0, false);
     const N = count;
     
-    // Top faces (CCW) - Corrected to point UP (+Z)
-    for (let j = 0; j < nz - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i, b = a + 1, c = (j + 1) * nx + i, d = c + 1;
-        indices.push(a, b, c, c, b, d);
-      }
-    }
     // Bottom faces (CW) - Corrected to point DOWN (-Z)
-    for (let j = 0; j < nz - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = N + j * nx + i, b = a + 1, c = N + (j + 1) * nx + i, d = c + 1;
-        indices.push(a, c, b, b, c, d);
-      }
-    }
+    indices = indices.concat(COORD_SYSTEM.gridQuadFaceIndices(nx, nz, N, true));
     // Side Walls constructed from the duplicated side-vertex pools
     for (let i = 0; i < B; i++) {
       const next = (i + 1) % B;

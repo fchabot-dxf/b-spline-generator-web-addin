@@ -46,4 +46,13 @@ gridTests.forEach(([nx, nz]) => {
   console.log(`gridBoundaryIndices(${nx},${nz}) -> [${indices.join(', ')}]`);
 });
 
+const quadTests = [
+  [3, 3, 0, false],
+  [3, 3, 9, true]
+];
+quadTests.forEach(([nx, nz, offset, invert]) => {
+  const faces = COORD_SYSTEM.gridQuadFaceIndices(nx, nz, offset, invert);
+  console.log(`gridQuadFaceIndices(${nx},${nz},${offset},${invert}) -> [${faces.slice(0, 12).join(', ')}${faces.length > 12 ? ', ...' : ''}] (${faces.length} indices)`);
+});
+
 console.log('coords.test.mjs completed successfully');
