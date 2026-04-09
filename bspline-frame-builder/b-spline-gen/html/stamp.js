@@ -5,6 +5,8 @@ function powerStep(edge0, edge1, x, p = 2.2) {
     return 1.0 - Math.pow(1.0 - Math.pow(t, p), p); 
 }
 
+import { COORD_SYSTEM } from './coords.js';
+
 // 2. HELPER: Bilinear sampling to remove the "clunky" pixelated look
 function sampleSDF(sdf, w, h, x, y) {
     const x0 = Math.floor(x), y0 = Math.floor(y);
@@ -221,7 +223,7 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
 
             for (let j = 0; j < nz; j++) {
                 // Flip Y: j=0 is -Y (bottom in 3D) but top in canvas, so invert
-                const fy = ((nz - 1 - j) / (nz - 1)) * (bufferH - 1);
+                const fy = COORD_SYSTEM.gridRowToRasterY(j, nz, bufferH);
                 
                 for (let i = 0; i < nx; i++) {
                     const fx = (i / (nx - 1)) * (bufferW - 1);

@@ -12,6 +12,7 @@
 
 import { clampedKnots, evalBSplineSurface } from './bspline-math.js';
 import { P } from './state.js';
+import { COORD_SYSTEM } from './coords.js';
 
 export class TerrainPreview {
   /** @param {HTMLCanvasElement} canvas */
@@ -641,8 +642,7 @@ export class TerrainPreview {
     for (let py = 0; py < h; py++) {
       // Unified Top-is-Top: canvas py=0 is at the Back (j=nz-1),
       // Canvas Bottom (py=h) is at the Front (j=0).
-      const fy = (py / h) * nz;
-      const iy = Math.min(Math.floor(nz - 1 - fy), nz - 1);
+      const iy = COORD_SYSTEM.rasterYToGridRow(py, nz, h);
       
       for (let px = 0; px < w; px++) {
         const fx = px / w * nx;
@@ -753,11 +753,7 @@ export class TerrainPreview {
     const geometry = new THREE.BufferGeometry();
     
     // 1. Boundary identification for side walls
-    const boundaryIndices = [];
-    for (let i = 0; i < nx - 1; i++) boundaryIndices.push(i); // front
-    for (let j = 0; j < nz - 1; j++) boundaryIndices.push(j * nx + (nx - 1)); // right
-    for (let i = nx - 1; i > 0; i--)  boundaryIndices.push((nz - 1) * nx + i); // back
-    for (let j = nz - 1; j > 0; j--)  boundaryIndices.push(j * nx); // left
+    const boundaryIndices = COORD_SYSTEM.gridBoundaryIndices(nx, nz);
     const B = boundaryIndices.length;
 
     // 2. Vertices: [Top (N), Bottom (N), SideTop (B), SideBot (B)]

@@ -17,6 +17,7 @@ import {
 } from './thicken.js';
 import { checkPreBounds, countPostIntersections, resampleDelta } from './sculpt.js';
 import { fusLog, sendFusionMeshPreview } from './fusion-bridge.js';
+import { COORD_SYSTEM } from './coords.js';
 
 
 let rebuildTimer = null;
@@ -390,10 +391,9 @@ export function updateEditorTopView(heights, nx, nz) {
     const shadingIntensity = 0.85;
 
     for (let py = 0; py < displaySize; py++) {
-        // Correct Y Flip: model j=0 (Front) is at the bottom of the canvas, 
+        // Correct Y Flip: model j=0 (Front) is at the bottom of the canvas,
         // canvas py=0 (Top) is at the back of the model (j=nz-1).
-        const fy  = (py / displaySize) * nz;
-        const iy  = Math.min(Math.floor(nz - 1 - fy), nz - 1);
+        const iy  = COORD_SYSTEM.rasterYToGridRow(py, nz, displaySize);
 
         for (let px = 0; px < displaySize; px++) {
             const fx = px / displaySize * nx;
