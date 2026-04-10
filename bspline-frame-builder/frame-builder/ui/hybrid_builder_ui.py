@@ -11,6 +11,8 @@ if parent_dir not in sys.path:
 frame_engine = None
 from fb_engine import solid_coordinator
 
+_active_handler = None
+
 # Standard Logger setup
 try:
     from fb_utils import fb_logger as logger
@@ -23,6 +25,9 @@ PALETTE_NAME = 'Hybrid Frame Builder'
 PALETTE_HTML = 'html/index.html'
 
 handlers = []
+
+if diag_logger:
+    diag_logger.log("HYBRID UI MODULE: Loaded & Active (Nuclear Trace On)")
 
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def __init__(self):
@@ -46,14 +51,18 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 
                 pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 340, 600)
                 pal.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
+                pal.isVisible = True
             else:
                 if diag_logger: diag_logger.log("PALETTE ALREADY EXISTS - MAKING VISIBLE")
                 pal.isVisible = True
 
             # Add the event handler to the palette
-            on_html_event = PaletteHTMLEventHandler()
-            pal.incomingFromHTML.add(on_html_event)
-            handlers.append(on_html_event)
+            global _active_handler
+            _active_handler = PaletteHTMLEventHandler()
+            pal.incomingFromHTML.add(_active_handler)
+            handlers.append(_active_handler)
+            
+            if diag_logger: diag_logger.log(f"EVENT HANDLER ATTACHED (Global Anchor): {_active_handler}")
 
         except:
             if diag_logger: diag_logger.log_error(f"HybridCommandCreated CRASH:\n{traceback.format_exc()}")
@@ -63,24 +72,34 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         super().__init__()
         self.selected_face = None
         self.style_id = "Template 1"
+        if diag_logger:
+            diag_logger.log(f"HTMLEventHandler INSTANCE CREATED: {self}")
 
     def notify(self, args):
+        if diag_logger:
+            diag_logger.log(">>> HTMLEventHandler.notify() ENTERED")
         try:
             html_args = adsk.core.HTMLEventArgs.cast(args)
             action = html_args.action
             data = json.loads(html_args.data) if html_args.data else {}
+
+            if diag_logger:
+                diag_logger.log(f">>> UI EVENT: {action} | DATA: {json.dumps(data)}")
 
             app = adsk.core.Application.get()
             ui = app.userInterface
             design = adsk.fusion.Design.cast(app.activeProduct)
 
             if action == 'update_param':
-                self._update_fusion_param(design, data['name'], data['value'])
+                # FIX: UI sends 'id', not 'name'
+                p_id = data.get('id') or data.get('name')
+                self._update_fusion_param(design, p_id, data['value'])
             
             elif action == 'update_lock':
-                # Locks are stored as en_{ParamName} (0.0 or 1.0)
-                lock_name = f"en_{data['name']}"
-                lock_val = 1.0 if data['locked'] else 0.0
+                # FIX: UI sends 'id', not 'name'
+                p_id = data.get('id') or data.get('name')
+                lock_name = f"en_{p_id}"
+                lock_val = 1.0 if data.get('locked', False) else 0.0
                 self._update_fusion_param(design, lock_name, lock_val)
 
             elif action == 'change_template':
@@ -92,16 +111,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             elif action == 'run_build':
                 build_type = data.get('type')
+                if diag_logger: diag_logger.log(f"RUN_BUILD TYPE: {build_type}")
                 if build_type == 'sketch':
                     self._run_sketch_build(data)
                 elif build_type == 'solid':
                     self._run_solid_build(data)
 
-        except:
+        except Exception as e:
             if diag_logger: diag_logger.log_error(f"PaletteHTMLEvent ERROR:\n{traceback.format_exc()}")
 
     def _update_fusion_param(self, design, name, value):
         try:
+            if diag_logger:
+                diag_logger.log(f"PARAM SYNC: {name} = {value}")
             params = design.userParameters
             p = params.itemByName(name)
             if p:
@@ -138,31 +160,76 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if pal: pal.sendInfoToHTML('selection_result', json.dumps({'success': False}))
         except: pass
 
-    def _run_sketch_build(self, data):
+    def _start_undo_transaction(self, name):
         try:
+            app = adsk.core.Application.get()
+            if app and hasattr(app, 'startTransaction'):
+                return app.startTransaction(name)
+        except:
+            pass
+        return None
+
+    def _commit_undo_transaction(self, transaction):
+        try:
+            if not transaction:
+                return
+            if hasattr(transaction, 'commit'):
+                transaction.commit()
+            elif hasattr(transaction, 'end'):
+                transaction.end()
+        except:
+            pass
+
+    def _abort_undo_transaction(self, transaction):
+        try:
+            if not transaction:
+                return
+            if hasattr(transaction, 'abort'):
+                transaction.abort()
+            elif hasattr(transaction, 'rollback'):
+                transaction.rollback()
+        except:
+            pass
+
+    def _run_sketch_build(self, data):
+        transaction = self._start_undo_transaction('Build Skeleton')
+        try:
+            if diag_logger: diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
+            
             # Trigger the engine
             if frame_engine:
-                # We need the style_id from the palette
-                # Note: Currently style_id is pushed via 'change_template' or we can store it.
-                # For simplicity, we assume the user parameters are already synced.
-                style_id = "Template 1" # Fallback
-                # Check for cached style? Or just use what's in the design?
-                # Actually, build_sketch_logic_v3 takes style_id.
+                # Use the style_id stored in the handler (synced from UI)
+                style_id = self.style_id
+                if diag_logger: diag_logger.log(f"Calling engine with style_id: {style_id}")
+                
                 frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger)
+                self._commit_undo_transaction(transaction)
                 self._notify_status("Sketch Build Complete")
-        except: pass
+            else:
+                if diag_logger: diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED (None)")
+                ui = adsk.core.Application.get().userInterface
+                ui.messageBox("Internal Error: Frame Engine not loaded.")
+                self._abort_undo_transaction(transaction)
+
+        except Exception as e:
+            if diag_logger: diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
+            self._abort_undo_transaction(transaction)
+            ui = adsk.core.Application.get().userInterface
+            ui.messageBox(f"Sketch Build Failed:\n{e}")
 
     def _run_solid_build(self, data):
+        transaction = self._start_undo_transaction('Build Solid Frame')
         try:
+            if diag_logger: diag_logger.log("RUN SOLID BUILD triggered")
+
             if not self.selected_face:
+                if diag_logger: diag_logger.log("Solid build aborted: No face selected")
                 ui = adsk.core.Application.get().userInterface
                 ui.messageBox("Please select a target face first.")
+                self._abort_undo_transaction(transaction)
                 return
 
-            # Note: We need start_offset and appearance from the palette.
-            # In index.html, runBuild('solid') sends the type but not the values.
-            # In a real app, I'd gather them or have them synced.
-            # I'll update the JS to send them.
+            if diag_logger: diag_logger.log(f"Calling solid coordinator with face: {self.selected_face.tempId}")
             
             solid_coordinator.build_solid_logic_v3(
                 to_face = self.selected_face,
@@ -170,8 +237,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 appearance_name = data.get('appearance', 'Polished Chrome'),
                 external_logger = diag_logger
             )
+            self._commit_undo_transaction(transaction)
             self._notify_status("Solid Build Complete")
-        except: pass
+        except Exception as e:
+            if diag_logger: diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
+            self._abort_undo_transaction(transaction)
+            ui = adsk.core.Application.get().userInterface
+            ui.messageBox(f"Solid Build Failed:\n{e}")
 
     def _notify_status(self, msg):
         try:

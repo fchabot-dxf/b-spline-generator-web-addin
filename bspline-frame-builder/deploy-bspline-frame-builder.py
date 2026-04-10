@@ -54,8 +54,8 @@ ZIP_OUT  = SRC_DIR / f"{ADDIN_NAME}.zip"
 VERIFY_FILES = [
     "bspline-frame-builder.py",
     "bspline-frame-builder.manifest",
-    "frame-builder/sketch-builder/sketch_builder.py",
-    "frame-builder/solid-builder/solid_builder.py",
+    "frame-builder/ui/hybrid_builder_ui.py",
+    "frame-builder/ui/html/index.html",
     "b-spline-gen/b-spline-gen.py",
     "b-spline-gen/html/index.html",
 ]

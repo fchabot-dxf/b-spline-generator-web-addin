@@ -113,14 +113,8 @@ function handleMove(editor, e) {
     } else if (editor._selectedElement) {
         const dx = pt.x - editor._lastDragPt.x;
         const dy = pt.y - editor._lastDragPt.y;
-        
-        // v45: Switching from .translate() to .dmove()
-        // .dmove() updates actual attributes (x, y, d, points) instead of just the matrix.
-        // This ensures movement survives the "re-open" which wipes transforms.
-        editor._selectedElement.dmove(dx, dy);
-        
+        editor._selectedElement.translate(dx, dy);
         editor._updateHandles();
-
         editor._updateSelectionHighlight();
         editor._lastDragPt = pt;
         if (editor._onChange) editor._onChange();

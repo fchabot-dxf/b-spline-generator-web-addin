@@ -420,11 +420,34 @@
         }
 
         function notifyFusion(action, data) {
-            // Native Fusion 360 bridge
-            if (typeof adsk !== 'undefined' && adsk.fusion) {
-                adsk.fusion.postMessage(action, JSON.stringify(data));
+            const statusEl = document.getElementById('system-status');
+            const hasPostMessage = (typeof adsk !== 'undefined' && adsk.fusion && typeof adsk.fusion.postMessage === 'function');
+            const hasFusionSendData = (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function');
+
+            if (hasPostMessage) {
+                try {
+                    adsk.fusion.postMessage(action, JSON.stringify(data));
+                    statusEl.parentElement.style.background = 'rgba(0,0,0,0.2)'; // Normal
+                } catch (e) {
+                    statusEl.innerText = 'BRIDGE ERROR';
+                    statusEl.parentElement.style.background = 'var(--bad)';
+                }
+            } else if (hasFusionSendData) {
+                try {
+                    adsk.fusionSendData(action, JSON.stringify(data)).then(() => {
+                        statusEl.parentElement.style.background = 'rgba(0,0,0,0.2)';
+                    }).catch(() => {
+                        statusEl.innerText = 'BRIDGE ERROR';
+                        statusEl.parentElement.style.background = 'var(--bad)';
+                    });
+                } catch (e) {
+                    statusEl.innerText = 'BRIDGE ERROR';
+                    statusEl.parentElement.style.background = 'var(--bad)';
+                }
             } else {
-                console.log('[DEBUG] PostMessage:', action, data);
+                console.warn('[BRIDGE] Fusion 360 bridge missing');
+                statusEl.innerText = 'BRIDGE MISSING';
+                statusEl.parentElement.style.background = 'var(--bad)';
             }
         }
 

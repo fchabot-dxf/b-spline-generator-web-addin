@@ -2,10 +2,9 @@
 #
 # Wiring map:
 #   bsplineCommand      → b-spline-gen  CommandCreatedHandler  (palette / HTML UI)
-#   sketchBuilderCommand → frame-builder           CommandCreatedHandler  (sketch dialog)
-#   solidBuilderCommand  → frame-builder           SolidCommandCreatedHandler (solid dialog)
+#   hybridBuilderCommand → frame-builder ui/hybrid_builder_ui.py (Unified Palette)
 #
-# Python cannot import hyphenated module names with 'import', so both sub-modules
+# Python cannot import hyphenated module names with 'import', so sub-modules
 # are loaded via importlib.util.spec_from_file_location with safe alias names.
 
 import adsk.core, adsk.fusion, adsk.cam, traceback
@@ -17,6 +16,8 @@ sys.dont_write_bytecode = True
 # ... (diagnostics removed)
 
 handlers = []
+_bs = None
+_fbh = None
 
 # --- GLOBAL STARTUP TRAP ---
 try:
@@ -91,19 +92,11 @@ try:
         sys.modules['frame_engine_core'] = _engine
         _eng_spec.loader.exec_module(_engine)
 
-        # 2. LOAD BUILDERS
-        _fbs = _load_submodule('sketch_builder_ui', 'frame-builder/sketch-builder', 'sketch_builder.py')
-        _fbo = _load_submodule('solid_builder_ui',  'frame-builder/solid-builder',  'solid_builder.py')
+        # 2. LOAD B-SPLINE & UNIFIED HYBRID BUILDER
+        _bs  = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
+        _fbh = _load_submodule('hybrid_builder_ui', 'frame-builder/ui', 'hybrid_builder_ui.py')
         
         # 3. DIRECT INJECTION: Force the builders to use our fresh engine object
-        _fbs.frame_engine = _engine
-        _fbo.frame_engine = _engine
-
-        # 4. LOAD B-SPLINE & HYBRID
-        _bs  = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
-        _fbh = _load_submodule('hybrid_builder_ui', 'frame-builder/hybrid-builder', 'hybrid_builder_ui.py')
-        
-        # 5. INJECTION
         _fbh.frame_engine = _engine
     except Exception as _inner_e:
         if 'diag_logger' in locals():
@@ -123,8 +116,8 @@ except Exception as _global_e:
             pass
 
 # ── Resource paths ────────────────────────────────────────────────────────────
-_fb_res_sk = os.path.join(addin_root, 'frame-builder', 'sketch-builder', 'ressources')
-_fb_res_so = os.path.join(addin_root, 'frame-builder', 'solid-builder',  'ressources')
+_fb_res_sk = os.path.join(addin_root, 'frame-builder', 'resources', 'SketchCommand')
+_fb_res_so = os.path.join(addin_root, 'frame-builder', 'resources', 'SolidCommand')
 _bs_res = os.path.join(addin_root, 'b-spline-gen', 'resources')
 
 # ── Command table ─────────────────────────────────────────────────────────────
@@ -142,7 +135,7 @@ COMMANDS = [
         'id':              'hybridBuilderCommand',
         'name':            'Frame Builder',
         'tooltip':         'Unified Hybrid Frame Builder (Sketch + Solid)',
-        'res_path':        os.path.join(_fb_res_so, 'SolidCommand'),
+        'res_path':        _fb_res_so,
         'handler_factory': lambda: _fbh.CommandCreatedHandler()
     }
 ]
@@ -156,10 +149,16 @@ def run(context):
         app = adsk.core.Application.get()
         ui  = app.userInterface
         
-        if not _fbs or not _fbo or not _bs:
+        if not _bs or not _fbh:
             if 'diag_logger' in locals():
-                diag_logger.log_error("Add-In Error: Sub-modules failed to load.")
+                diag_logger.log_error(f"Add-In Error: Sub-modules failed to load (BS: {bool(_bs)}, FBH: {bool(_fbh)})")
             return
+
+        # FORCE REFRESH: Kill existing palettes to ensure fresh bridge injection
+        try:
+            old_pal = ui.palettes.itemById(_fbh.PALETTE_ID)
+            if old_pal: old_pal.deleteMe()
+        except: pass
 
         cmd_defs = ui.commandDefinitions
 
