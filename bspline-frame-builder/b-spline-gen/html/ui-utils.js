@@ -93,9 +93,9 @@ export function resizeApp(preview) {
 
         if (preview.camera) {
             if (window.innerWidth <= 700) {
-                preview.camera.zoom = 1.35;
+                preview.camera.zoom = 1.8;
             } else {
-                preview.camera.zoom = 1.0;
+                preview.camera.zoom = 1.25;
             }
             preview.camera.updateProjectionMatrix();
         }

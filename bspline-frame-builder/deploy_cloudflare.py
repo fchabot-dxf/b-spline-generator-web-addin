@@ -38,11 +38,11 @@ def clean_dir(path):
 
 from dotenv import load_dotenv
 from pathlib import Path
-# Always load .env from project root
-env_path = Path(__file__).parent.parent.parent / '.env'
+# Always load .env from the workspace root
+env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 if os.path.exists(env_path):
-    with open(env_path) as f:
+    with open(env_path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
@@ -55,7 +55,8 @@ for var in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
         print(f"Error: {var} is not set. Add it to .env or set it as an environment variable.")
         exit(1)
 
-PROJECT_NAME = os.environ.get("CLOUDFLARE_PROJECT", "b-spline-gen")
+# Always deploy to the known Pages project and avoid prompting for a stale project name.
+PROJECT_NAME = "symmetric-b-spline-gen"
 
 # prefer looking in PATH (wrangler or wrangler.cmd on Windows)
 WRANGLER_CMD = shutil.which("wrangler") or shutil.which("wrangler.cmd")

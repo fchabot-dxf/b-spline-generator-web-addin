@@ -89,7 +89,7 @@ export function startFusionPolling(btnApply) {
             clearInterval(pollInterval); pollInterval = null;
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
-            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'Apply to Fusion'; }
+            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'OK'; }
             return;
         }
 

@@ -380,11 +380,11 @@ export class TerrainPreview {
       const safeH = Math.max(0.1, H || 10);
 
       // Fitting logic: Ensure r is large enough to fit both width and height
-      const rV = safeH / 0.8;
-      const rH = safeW / (0.8 * aspect);
-      const rIdeal = Math.max(rV, rH, Math.sqrt(safeW*safeW + safeH*safeH) * 1.5);
+      const rV = safeH / 0.9;
+      const rH = safeW / (0.9 * aspect);
+      const rIdeal = Math.max(rV, rH, Math.sqrt(safeW*safeW + safeH*safeH) * 1.25);
       
-      this._targetOrb.r = rIdeal * 1.25; // add some padding
+      this._targetOrb.r = rIdeal * 1.05; // much tighter fit
       this._targetOrb.target.set(0, 0, midZ);
       
       // If first run, snap immediately (no lerp)
@@ -1452,7 +1452,7 @@ export class TerrainPreview {
     if (w <= 0 || h <= 0) return;
 
     const aspect = w / h;
-    const size   = Math.max(0.1, this._orb.r * 0.45); 
+    const size   = Math.max(0.1, this._orb.r * 0.35); 
     this._camera.left   = -size * aspect;
     this._camera.right  =  size * aspect;
     this._camera.top    =  size;

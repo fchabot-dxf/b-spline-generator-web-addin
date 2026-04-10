@@ -6,6 +6,19 @@ export const COORD_SYSTEM = {
     units: 'mm',
     pixelsPerUnit: 10, // 10 pixels = 1 mm
 
+    log: (msg) => {
+        if (typeof window !== 'undefined' && window.console) {
+            console.log(msg);
+        }
+        try {
+            if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
+                adsk.fusionSendData('log', JSON.stringify({ msg }));
+            }
+        } catch (_) {
+            // Ignore logging failures in non-Fusion contexts.
+        }
+    },
+
     // Convert a 2D grid row into a raster Y coordinate, preserving the same
     // front/back orientation used by the editor and mask generation.
     gridRowToRasterY: (row, rows, rasterHeight) => {
@@ -60,9 +73,7 @@ export const COORD_SYSTEM = {
             x: x / 10,
             y: (600 - y) / 10 // The "Single Flip"
         };
-        if (window && window.console) {
-            console.log(`[COORD_STD] toPhysical: UI (${x},${y}) -> Physical (${result.x},${result.y})`);
-        }
+        COORD_SYSTEM.log(`[COORD_STD] toPhysical: UI (${x},${y}) -> Physical (${result.x},${result.y})`);
         return result;
     },
 
@@ -72,9 +83,7 @@ export const COORD_SYSTEM = {
             x: x * 10,
             y: 600 - (y * 10)
         };
-        if (window && window.console) {
-            console.log(`[COORD_STD] toUI: Physical (${x},${y}) -> UI (${result.x},${result.y})`);
-        }
+        COORD_SYSTEM.log(`[COORD_STD] toUI: Physical (${x},${y}) -> UI (${result.x},${result.y})`);
         return result;
     }
 };

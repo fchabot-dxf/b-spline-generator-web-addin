@@ -171,6 +171,12 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
             .replace(/preserveAspectRatio="[^"]*"/g, '')
             .replace(/<svg/, '<svg preserveAspectRatio="none"');
 
+        if (window && window.console) {
+            console.log('[STAMP DEBUG] rasterizeSvg: bufferW=', bufferW, 'bufferH=', bufferH);
+            const viewBoxMatch = safeSvgText.match(/viewBox="([^"]+)"/i);
+            console.log('[STAMP DEBUG] rasterizeSvg: safeSvgText viewBox=', viewBoxMatch ? viewBoxMatch[1] : 'none');
+        }
+
         // ── Step 1: try native browser SVG rendering (correct fonts, no canvg quirks) ──
         stampCtx.clearRect(0, 0, bufferW, bufferH);
         if (blurIn > 0) stampCtx.filter = `blur(${blurIn}px)`;
@@ -224,6 +230,9 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
             for (let j = 0; j < nz; j++) {
                 // Flip Y: j=0 is -Y (bottom in 3D) but top in canvas, so invert
                 const fy = COORD_SYSTEM.gridRowToRasterY(j, nz, bufferH);
+                if (window && window.console && (j === 0 || j === nz - 1)) {
+                    console.log(`[STAMP DEBUG] gridRowToRasterY: j=${j}/${nz-1} -> fy=${fy}`);
+                }
                 
                 for (let i = 0; i < nx; i++) {
                     const fx = (i / (nx - 1)) * (bufferW - 1);

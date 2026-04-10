@@ -201,6 +201,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.body.classList.add('fusion-mode');
                     const dlBtn = document.getElementById('btnDownloadAddin');
                     if (dlBtn) dlBtn.style.display = 'none';
+                    const headerBtn = document.getElementById('btnDownload');
+                    if (headerBtn) headerBtn.textContent = 'Send to Fusion';
                     // On every Fusion-mode load (including palette hide/re-show HTML reloads),
                     // reset the Apply button to 'OK' so it never shows the default text.
                     const applyBtn = document.getElementById('btnFusionApply');
@@ -210,6 +212,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 async () => {
                     fusLog('Web/Browser Mode Detected');
+                    const headerBtn = document.getElementById('btnDownload');
+                    if (headerBtn) headerBtn.textContent = 'STEP';
                     initApp();
                     initSvgEditor();
                 }
@@ -314,7 +318,13 @@ function initSvgEditor() {
 
 function bindHeaderAndSettings() {
     const btnDownload = document.getElementById('btnDownload'); // STEP
-    if (btnDownload) btnDownload.addEventListener('click', onGenerate);
+    if (btnDownload) btnDownload.addEventListener('click', () => {
+        if (isFusionMode) {
+            onFusionApply();
+        } else {
+            onGenerate();
+        }
+    });
 
     const btnDownloadAddin = document.getElementById('btnDownloadAddin');
     if (btnDownloadAddin) {
@@ -545,7 +555,7 @@ function bindControls() {
     if (btnWizardCancel) btnWizardCancel.addEventListener('click', closeWizard);
     
     const btnWizardExport = document.getElementById('btnWizardExport');
-    if (btnWizardExport) btnWizardExport.addEventListener('click', executeExport);
+    if (btnWizardExport) btnWizardExport.addEventListener('click', () => executeExport());
 
     // 13. Fusion 360 Action Bar
     const btnFusionApply = document.getElementById('btnFusionApply');
@@ -680,7 +690,7 @@ function bindPresets() {
 
 // --- EXPORT FLOW ---
 function onGenerate() {
-    const modal = document.getElementById('exportModal');
+    const modal = document.getElementById('exportWizardModal');
     if (!modal) return;
     modal.style.display = 'flex';
 
@@ -710,13 +720,12 @@ function onGenerate() {
     if (svgCb) {
         const hasAnySvg = P.stampLayers?.some(l => l.svg && l.enabled);
         svgCb.disabled = !hasAnySvg;
-        svgCb.checked = !!hasAnySvg;
-        document.getElementById('wizOptIncludeSVG')?.classList.toggle('disabled', !hasAnySvg);
+        if (!hasAnySvg) svgCb.checked = false;
     }
 }
 
 function closeWizard() {
-    const modal = document.getElementById('exportModal');
+    const modal = document.getElementById('exportWizardModal');
     if (modal) modal.style.display = 'none';
 }
 
@@ -749,6 +758,9 @@ function onFusionApply() {
         }
     }
 
+    const includeSVG = hasStamp && !!document.getElementById('includeSVG')?.checked;
+    console.log('[SVG DEBUG] onFusionApply hasStamp=', hasStamp, 'includeSVG checkbox=', !!document.getElementById('includeSVG')?.checked, 'resolved includeSVG=', includeSVG);
+
     if (isFusionMode) {
         (async () => {
             const btn = document.getElementById('btnFusionApply');
@@ -767,7 +779,7 @@ function onFusionApply() {
                 const isAppend = i > 0;
                 const options = { 
                     ...batch, 
-                    includeSVG: (i === batches.length - 1) && hasStamp,
+                    includeSVG: (i === batches.length - 1) && includeSVG,
                     isVisible: (i === visibleBatchIndex)
                 };
                 
@@ -777,7 +789,7 @@ function onFusionApply() {
             }
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = 'Apply to Fusion 360 ✨';
+                btn.textContent = 'OK';
             }
         })();
     } else {
@@ -786,9 +798,43 @@ function onFusionApply() {
             stamped: hasThicken && hasStamp,
             stampedSurf: hasStamp,
             cleanSurf: true,
-            includeSVG: hasStamp
+            includeSVG: includeSVG
         };
         executeExport(options);
+    }
+}
+
+function normalizeSvgForCarving(svgText) {
+    if (!svgText) return svgText;
+    try {
+        const viewBoxMatch = svgText.match(/viewBox="([^"]+)"/i);
+        let height = null;
+        let viewBox = null;
+        if (viewBoxMatch) {
+            viewBox = viewBoxMatch[1];
+            const parts = viewBox.trim().split(/\s+/).map(v => parseFloat(v));
+            if (parts.length === 4 && !Number.isNaN(parts[3])) {
+                height = parts[3];
+            }
+        }
+        if ((height === null || height <= 0) && svgText.match(/\bheight="([\d.]+)"/i)) {
+            height = parseFloat(svgText.match(/\bheight="([\d.]+)"/i)[1]);
+        }
+        console.log('[SVG DEBUG] normalizeSvgForCarving viewBox=', viewBox, 'height=', height, 'hasTransform=', /transform="translate\(0 [^\)]+\) scale\(1 -1\)"/.test(svgText));
+        if (!height || height <= 0) return svgText;
+
+        const flipTransform = `translate(0 ${height}) scale(1 -1)`;
+        if (svgText.includes(flipTransform)) {
+            console.log('[SVG DEBUG] normalizeSvgForCarving already flipped; returning original');
+            return svgText;
+        }
+
+        const transformed = svgText.replace(/<svg([^>]*)>/i, `<svg$1><g transform="${flipTransform}">`).replace(/<\/svg>/i, '</g></svg>');
+        console.log('[SVG DEBUG] normalizeSvgForCarving applied flip transform');
+        return transformed;
+    } catch (e) {
+        console.warn('normalizeSvgForCarving failed:', e);
+        return svgText;
     }
 }
 
@@ -814,6 +860,15 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
         };
     }
 
+    console.log('[EXPORT DEBUG] options read:', options);
+    console.log('[EXPORT DEBUG] wizard toggles:', {
+        clean: document.getElementById('wizCleanSolid')?.checked,
+        stamped: document.getElementById('wizStampedSolid')?.checked,
+        cleanSurf: document.getElementById('wizCleanSurface')?.checked,
+        stampedSurf: document.getElementById('wizStampedSurface')?.checked,
+        includeSVG: document.getElementById('includeSVG')?.checked
+    });
+
     try {
         const heights = lastResult.heights;
         const offsetPts = lastResult.thickenData?.offsetPts;
@@ -829,9 +884,27 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
             options
         };
 
-        const stepText = generateThickenedStep(heights, offsetPts, shared, unstamped);
+        const stampCount = options.includeSVG ? P.stampLayers.filter(l => l.enabled && l.svg).length : 0;
+        const svgLayerSummary = options.includeSVG ? P.stampLayers.filter(l => l.enabled && l.svg).map((l, i) => ({ idx: i, len: (l.svg || '').length, hasViewBox: /viewBox=/.test(l.svg || '') })) : [];
+        console.log('[SVG DEBUG] executeExport orientation=', P.exportOrientation, 'options=', options, 'stampCount=', stampCount, 'svgLayerSummary=', svgLayerSummary);
+        if (typeof fusLog === 'function') {
+            fusLog(`[COORD_STD] executeExport orientation=${P.exportOrientation} options=${JSON.stringify(options)} stampCount=${stampCount} svgSummary=${JSON.stringify(svgLayerSummary)}`);
+        }
+
+        const variants = [
+            { key: 'cleanSurf', label: 'cleanSurface', fileLabel: 'clean-surface', opts: { cleanSurf: true } },
+            { key: 'clean', label: 'cleanSolid', fileLabel: 'clean-solid', opts: { clean: true } },
+            { key: 'stampedSurf', label: 'stampedSurface', fileLabel: 'stamped-surface', opts: { stampedSurf: true } },
+            { key: 'stamped', label: 'stampedSolid', fileLabel: 'stamped-solid', opts: { stamped: true } }
+        ];
+
+        const selectedVariants = variants.filter(v => options[v.key]);
+        const layersToExport = options.includeSVG ? P.stampLayers.filter(l => l.enabled && l.svg) : [];
+        console.log('[EXPORT DEBUG] selectedVariants=', selectedVariants.map(v => v.label));
+        console.log('[EXPORT DEBUG] layersToExport=', layersToExport.length, layersToExport.map((l, i) => ({ index: i + 1, profile: l.profile, hasViewBox: /viewBox=/.test(l.svg || '') })));
 
         if (isFusionMode) {
+            const stepText = generateThickenedStep(heights, offsetPts, shared, unstamped);
             const payload = JSON.stringify({
                 params: { ...P },
                 stepText,
@@ -842,33 +915,64 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
                 isVisible: options.isVisible !== undefined ? options.isVisible : true,
                 stamp: {
                     enabled: options.includeSVG,
-                    layers: options.includeSVG ? P.stampLayers.filter(l => l.enabled && l.svg).map((l, i) => ({
+                    layers: options.includeSVG ? layersToExport.map((l, i) => ({
                         index: i + 1,
                         config: { profile: l.profile, depth: l.depth },
-                        svg: l.svg
+                        svg: normalizeSvgForCarving(l.svg)
                     })) : [],
                     dpi: 96
                 }
             });
+            if (typeof fusLog === 'function') {
+                fusLog(`[SVG DEBUG] sendFusionPayload payload stepLen=${stepText.length} stampEnabled=${options.includeSVG} stampLayers=${layersToExport.length}`);
+            }
             await sendFusionPayloadChunked(payload);
-            // In multi-batch mode, we don't start polling every time, 
-            // but for the final batch we could. 
-            // However, sendFusionPayloadChunked is async and waits for completion.
             if (!isAppend) startFusionPolling(btn);
         } else {
-            const layersToExport = options.includeSVG ? P.stampLayers.filter(l => l.enabled && l.svg) : [];
-            if (layersToExport.length > 0 && typeof JSZip !== 'undefined') {
-                const zip = new JSZip();
-                zip.file("model.step", stepText);
-                layersToExport.forEach((l, i) => {
-                    zip.file(`artwork_layer_${i+1}.svg`, l.svg);
-                });
-                const blob = await zip.generateAsync({ type: "blob" });
-                saveAs(blob, `B-Spline-${Date.now()}_sidecar.zip`);
+            const exportFiles = [];
+
+            if (selectedVariants.length > 0) {
+                for (const variant of selectedVariants) {
+                    const variantOptions = {
+                        ...shared,
+                        options: { ...variant.opts }
+                    };
+                    const variantText = generateThickenedStep(heights, offsetPts, variantOptions, unstamped);
+                    exportFiles.push({
+                        name: `B-Spline-${variant.fileLabel}.step`,
+                        blob: new Blob([variantText], { type: 'text/plain' })
+                    });
+                }
             } else {
-                const blob = new Blob([stepText], { type: 'text/plain' });
-                saveAs(blob, `B-Spline-${Date.now()}.step`);
+                const stepText = generateThickenedStep(heights, offsetPts, shared, unstamped);
+                exportFiles.push({
+                    name: `B-Spline-${Date.now()}.step`,
+                    blob: new Blob([stepText], { type: 'text/plain' })
+                });
             }
+
+            if (options.includeSVG && layersToExport.length > 0) {
+                layersToExport.forEach((l, i) => {
+                    exportFiles.push({
+                        name: `B-Spline-artwork-layer-${i+1}.svg`,
+                        blob: new Blob([normalizeSvgForCarving(l.svg)], { type: 'image/svg+xml' })
+                    });
+                });
+            }
+
+            console.log('[EXPORT DEBUG] exportFiles=', exportFiles.map(f => f.name));
+            console.log('[EXPORT DEBUG] falling back to saveAs/ZIP fallback, exportFiles length=', exportFiles.length);
+            if (exportFiles.length > 1 && typeof JSZip !== 'undefined') {
+                const zip = new JSZip();
+                exportFiles.forEach(file => zip.file(file.name, file.blob));
+                const blob = await zip.generateAsync({ type: 'blob' });
+                saveAs(blob, `B-Spline-${Date.now()}_export.zip`);
+            } else {
+                const file = exportFiles[0];
+                console.log('[EXPORT DEBUG] saving single file=', file.name);
+                saveAs(file.blob, file.name);
+            }
+
             if (btn) { btn.disabled = false; btn.textContent = 'Export STEP ✨'; }
             closeWizard();
         }
