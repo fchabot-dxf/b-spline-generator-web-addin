@@ -223,6 +223,22 @@ export function getHybridBezierPath(points, isClosed = false, cornerAngleThresho
     return path;
 }
 
+function _transformPoint(el, pt) {
+    if (!el || !el.node || !el.node.ownerSVGElement || typeof el.node.getCTM !== 'function') return pt;
+    try {
+        const svg = el.node.ownerSVGElement;
+        const svgPt = svg.createSVGPoint();
+        svgPt.x = pt.x;
+        svgPt.y = pt.y;
+        const matrix = el.node.getCTM();
+        if (!matrix) return pt;
+        const transformed = svgPt.matrixTransform(matrix);
+        return { x: transformed.x, y: transformed.y };
+    } catch (err) {
+        return pt;
+    }
+}
+
 export function getNodes(el) {
     const pts = [];
     if (el.type === 'line') {
@@ -248,7 +264,7 @@ export function getNodes(el) {
     } else if (el.type === 'circle' || el.type === 'ellipse') {
         pts.push({ x: el.attr('cx'), y: el.attr('cy') });
     }
-    return pts;
+    return pts.map(pt => _transformPoint(el, pt));
 }
 
 export function getNearbyElement(editor, pt, tol = 0.1) {
@@ -287,7 +303,7 @@ async function _loadCanvg() {
     }
 }
 
-export async function expandCurrent(editor) {
+export async function expandCurrent(editor, detail = 1.0, simplify = 15, accuracy = 1.0, commit = true) {
     if (!editor._selectedElement) return;
     const el = editor._selectedElement;
     
@@ -298,18 +314,22 @@ export async function expandCurrent(editor) {
     const wIn = bbox.w + pad * 2;
     const hIn = bbox.h + pad * 2;
     
+    const density = Math.max(0.5, Math.min(3.5, detail));
     const canvas = document.createElement('canvas');
-    // v41: Dynamic resolution based on physical size (Target 150 DPI)
-    const canvasW = Math.max(512, Math.min(2048, Math.round(wIn * 150)));
-    const canvasH = Math.max(512, Math.min(2048, Math.round(hIn * 150)));
+    // v41: Dynamic resolution based on physical size and user-detail control.
+    const canvasW = Math.max(256, Math.min(3072, Math.round(wIn * 260 * density)));
+    const canvasH = Math.max(256, Math.min(3072, Math.round(hIn * 260 * density)));
     canvas.width = canvasW;
     canvas.height = canvasH;
     const ctx = canvas.getContext('2d');
     
-    // Prepare isolated SVG for just this element
-    const rawSvg = el.attr('data-original-svg') || el.svg();
-    const svgStr = rawSvg.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
-    const canvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}" preserveAspectRatio="none" viewBox="${bbox.x - pad} ${bbox.y - pad} ${wIn} ${hIn}">${svgStr}</svg>`;
+    // Prepare isolated SVG for just this element.
+    // If the element has been moved via transform, preserve that transform when tracing.
+    const rawSvg = el.attr('data-original-text-svg') || el.attr('data-original-svg') || el.svg();
+    const transformAttr = el.attr('transform');
+    const svgContent = rawSvg.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+    const transformedContent = transformAttr ? `<g transform="${transformAttr}">${svgContent}</g>` : svgContent;
+    const canvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}" preserveAspectRatio="none" viewBox="${bbox.x - pad} ${bbox.y - pad} ${wIn} ${hIn}">${transformedContent}</svg>`;
     
     const Canvg = await _loadCanvg();
     if (!Canvg) {
@@ -322,90 +342,113 @@ export async function expandCurrent(editor) {
         await v.render();
         
         const img = ctx.getImageData(0, 0, canvasW, canvasH).data;
-        const pts = [];
         const threshold = 127;
-        
-        // Edge detector
-        for (let y = 1; y < canvasH - 1; y += 1) {
-            for (let x = 1; x < canvasW - 1; x += 1) {
-                const i = (y * canvasW + x) * 4 + 3;
-                if (img[i] > threshold) {
-                    const top = ((y-1) * canvasW + x) * 4 + 3;
-                    const bot = ((y+1) * canvasW + x) * 4 + 3;
-                    const left = (y * canvasW + x-1) * 4 + 3;
-                    const right = (y * canvasW + x+1) * 4 + 3;
-                    if (img[top] <= threshold || img[bot] <= threshold || img[left] <= threshold || img[right] <= threshold) {
-                        pts.push([
-                            (bbox.x - pad) + (x / canvasW) * wIn,
-                            (bbox.y - pad) + (y / canvasH) * hIn
-                        ]);
-                    }
-                }
+        const mask = new Uint8Array(canvasW * canvasH);
+        let hasPixel = false;
+
+        for (let y = 0; y < canvasH; y++) {
+            for (let x = 0; x < canvasW; x++) {
+                const alpha = img[(y * canvasW + x) * 4 + 3];
+                const idx = y * canvasW + x;
+                mask[idx] = alpha > threshold ? 1 : 0;
+                if (mask[idx]) hasPixel = true;
             }
         }
-        
-        if (pts.length < 3) {
-            console.warn("[EXPAND] No edges detected in trace.");
+
+        if (!hasPixel) {
+            console.warn("[EXPAND] No filled pixels detected in trace.");
             return;
         }
 
-        const subpaths = [];
-        let curr = pts.shift();
-        let prev = null;
-        let currentPath = [curr];
-        const pixelScaleX = wIn / canvasW;
-        const pixelScaleY = hIn / canvasH;
-        const maxDistSq = (pixelScaleX * pixelScaleX + pixelScaleY * pixelScaleY) * 16;
+        const segments = new Map();
+        const key = (x, y) => `${x},${y}`;
+        const addSegment = (ax, ay, bx, by) => {
+            const a = key(ax, ay);
+            const b = key(bx, by);
+            if (!segments.has(a)) segments.set(a, new Set());
+            if (!segments.has(b)) segments.set(b, new Set());
+            segments.get(a).add(b);
+            segments.get(b).add(a);
+        };
+        const isFilled = (x, y) => x >= 0 && x < canvasW && y >= 0 && y < canvasH && mask[y * canvasW + x];
 
-        while (pts.length > 0) {
-            let bestIdx = -1;
-            let bestScore = Infinity;
-            let bestDist = Infinity;
-            let bestDir = null;
-            const currentDir = prev ? _normalize({ x: curr[0] - prev[0], y: curr[1] - prev[1] }) : null;
-
-            for (let i = 0; i < pts.length; i++) {
-                const dx = pts[i][0] - curr[0];
-                const dy = pts[i][1] - curr[1];
-                const d = dx * dx + dy * dy;
-                let score = d;
-                if (currentDir && d > 0) {
-                    const nextDir = _normalize({ x: dx, y: dy });
-                    const turn = Math.max(0, 1 - _dot(currentDir, nextDir));
-                    score += turn * 30 * Math.sqrt(d + 1);
-                }
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestDist = d;
-                    bestIdx = i;
-                }
-            }
-            if (bestIdx === -1) bestIdx = 0;
-
-            const next = pts.splice(bestIdx, 1)[0];
-            prev = curr;
-            curr = next;
-            if (bestDist > maxDistSq) {
-                subpaths.push(currentPath);
-                currentPath = [curr];
-                prev = null;
-            } else {
-                currentPath.push(curr);
+        for (let y = 0; y < canvasH; y++) {
+            for (let x = 0; x < canvasW; x++) {
+                if (!isFilled(x, y)) continue;
+                if (!isFilled(x + 1, y)) addSegment(x + 1, y, x + 1, y + 1);
+                if (!isFilled(x, y + 1)) addSegment(x, y + 1, x + 1, y + 1);
+                if (!isFilled(x - 1, y)) addSegment(x, y, x, y + 1);
+                if (!isFilled(x, y - 1)) addSegment(x, y, x + 1, y);
             }
         }
-        if (currentPath.length > 2) subpaths.push(currentPath);
-        
-        let pathData = "";
-        const tol = getDynamicTolerance(editor, 2.0);
-        for (const sp of subpaths) {
-            if (sp.length < 3) continue;
-            const pruned = ramerDouglasPeucker(sp, tol);
-            let cData = fitCurve(editor, pruned, tol * 2.1);
-            const closeThreshold = tol * 2.5;
-            if (pruned.length > 2 && _distBetween(pruned[0], pruned[pruned.length - 1]) < closeThreshold) {
-                cData = cData.trim();
-                if (!cData.endsWith('Z')) cData += ' Z';
+
+        function removeEdge(a, b) {
+            const sa = segments.get(a);
+            const sb = segments.get(b);
+            if (sa) {
+                sa.delete(b);
+                if (sa.size === 0) segments.delete(a);
             }
+            if (sb) {
+                sb.delete(a);
+                if (sb.size === 0) segments.delete(b);
+            }
+        }
+
+        const loops = [];
+        while (segments.size > 0) {
+            const start = segments.keys().next().value;
+            const loop = [start];
+            let current = start;
+            let previous = null;
+            let safety = 0;
+
+            while (true) {
+                const neighbors = Array.from(segments.get(current) || []);
+                if (neighbors.length === 0 || safety++ > canvasW * canvasH * 4) break;
+                let next = neighbors[0];
+                if (previous && neighbors.length > 1 && neighbors.includes(previous)) {
+                    next = neighbors.find(n => n !== previous);
+                }
+                removeEdge(current, next);
+                previous = current;
+                current = next;
+                if (current === start) break;
+                loop.push(current);
+            }
+            if (loop.length > 2) {
+                const coords = loop.map(pt => {
+                    const [gx, gy] = pt.split(',').map(Number);
+                    return [
+                        (bbox.x - pad) + (gx / canvasW) * wIn,
+                        (bbox.y - pad) + (gy / canvasH) * hIn
+                    ];
+                });
+                loops.push(coords);
+            }
+        }
+
+        if (loops.length === 0) {
+            console.warn("[EXPAND] No contour loops extracted from trace.");
+            return;
+        }
+
+        let pathData = "";
+        const tol = getDynamicTolerance(editor, 1.0);
+        const simplifyLevel = Math.max(1, Math.min(500, simplify));
+        const simplifyFactor = Math.sqrt(simplifyLevel / 15);
+        const accuracyFactor = Math.max(0.5, Math.min(2.0, accuracy));
+        const simpTol = Math.max(0.05, tol * 0.5 / density * simplifyFactor / accuracyFactor);
+        const cornerAngle = Math.max(20, 95 / density / accuracyFactor);
+        for (const loop of loops) {
+            if (loop.length < 3) continue;
+            const pruned = ramerDouglasPeucker(loop, simpTol);
+            let cData = getHybridBezierPath(pruned, true, cornerAngle);
+            if (!cData) {
+                cData = fitCurve(editor, pruned, Math.max(0.1, tol * 2.0 / density * simplifyFactor / accuracyFactor));
+            }
+            cData = cData.trim();
+            if (cData && !cData.endsWith('Z')) cData += ' Z';
             if (cData) pathData += cData + " ";
         }
         
@@ -417,16 +460,23 @@ export async function expandCurrent(editor) {
                 .attr('fill-rule', 'evenodd')
                 .attr('data-layer', layer);
             
-            // Preserve original text SVG for editor-only export and undo semantics.
-            if (el.type === 'text') {
+            // Preserve the original source so repeated re-expands use the true input.
+            if (el.attr('data-original-text-svg')) {
+                expanded.attr('data-original-text-svg', el.attr('data-original-text-svg'));
+            }
+            if (el.attr('data-original-svg')) {
+                expanded.attr('data-original-svg', el.attr('data-original-svg'));
+            }
+            if (el.type === 'text' && !expanded.attr('data-original-text-svg')) {
                 expanded.attr('data-original-text-svg', el.svg());
-            } else {
-                expanded.attr('data-original-svg', el.attr('data-original-svg') || el.svg());
+            }
+            if (!expanded.attr('data-original-svg') && !expanded.attr('data-original-text-svg')) {
+                expanded.attr('data-original-svg', el.svg());
             }
             
             el.remove();
             editor._select(expanded);
-            if (editor.pushState) editor.pushState();
+            if (commit && editor.pushState) editor.pushState();
         }
     } catch (err) {
         console.error("[EXPAND] Trace failure:", err);

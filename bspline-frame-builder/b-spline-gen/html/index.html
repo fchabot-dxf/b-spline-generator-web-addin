@@ -1169,8 +1169,8 @@
           <div class="tip">1.0 = Linear · 1.6 = Circular · 2.2 = Smooth · 4.0 = Tight</div>
         </label>
         <label><span>Blur</span>
-          <div class="slider-row"><input type="range" id="stampBlurSlider" min="0" max="20" step="1" value="3"><input
-              type="number" id="stampBlur" value="3"></div>
+          <div class="slider-row"><input type="range" id="stampBlurSlider" min="0" max="20" step="1" value="0"><input
+              type="number" id="stampBlur" value="0"></div>
         </label>
         <button id="btnStampClear" class="btn btn-secondary btn-xs" style="margin-top:4px;">🗑 Clear Stamp</button>
 
@@ -1482,6 +1482,20 @@
             <span style="font-size:11px; opacity:0.7; pointer-events:none; white-space:nowrap;">Contrast</span>
             <input type="range" id="editorContrastSlider" min="1" max="255" step="1" value="128"
               title="Adjust edge detection threshold" style="width:70px;">
+          </div>
+
+          <div id="editorExpandDetailGroup"
+            style="display:flex; align-items:center; gap:8px; padding-left:12px; border-left:1px solid #ddd; margin-left:12px;">
+            <span style="font-size:11px; opacity:0.7; pointer-events:none; white-space:nowrap;">Expand Detail</span>
+            <input type="range" id="editorExpandDetailSlider" min="0.5" max="3.5" step="0.1" value="1.0"
+              title="Higher detail preserves sharper corners" style="width:70px;">
+          </div>
+
+          <div id="editorExpandAccuracyGroup"
+            style="display:flex; align-items:center; gap:8px; padding-left:12px; border-left:1px solid #ddd; margin-left:12px;">
+            <span style="font-size:11px; opacity:0.7; pointer-events:none; white-space:nowrap;">Accuracy</span>
+            <input type="range" id="editorExpandAccuracySlider" min="0.5" max="2.0" step="0.1" value="1.0"
+              title="Higher accuracy preserves more outline detail" style="width:70px;">
           </div>
 
           <!-- v32: Layer Selector -->
