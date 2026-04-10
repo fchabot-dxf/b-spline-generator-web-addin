@@ -1,7 +1,7 @@
 const BSPLINE_THEME_KEY = 'bsplineSharedTheme';
 const BSPLINE_THEMES = [
-    { id: 'windows95', name: 'Windows 95' },
-    { id: 'fantasy', name: 'Fantasy' },
+    { id: 'windows31', name: 'Windows 3.1' },
+    { id: 'plain', name: 'Plain CSS' },
     { id: 'dark-metal', name: 'Dark Metal' },
     { id: 'neumorphism', name: 'Neumorphism' },
     { id: 'bauhaus', name: 'Bauhaus' }
@@ -10,7 +10,13 @@ const BSPLINE_THEMES = [
 let currentBsplineTheme = null;
 let storageWatchInterval = null;
 
+function normalizeThemeId(themeId) {
+    if (themeId === 'windows95') return 'windows31';
+    return themeId;
+}
+
 function applyBsplineTheme(themeId, persist = false) {
+    themeId = normalizeThemeId(themeId);
     if (!themeId) return;
 
     const body = document.body;
@@ -22,6 +28,17 @@ function applyBsplineTheme(themeId, persist = false) {
     themeSelects.forEach(select => {
         if (select) select.value = themeId;
     });
+
+    const themeItems = document.querySelectorAll('.theme-option');
+    themeItems.forEach(item => {
+        item.classList.toggle('active', item.dataset.theme === themeId);
+    });
+
+    const themeBtn = document.getElementById('theme-btn');
+    const themeMeta = BSPLINE_THEMES.find(theme => theme.id === themeId);
+    if (themeBtn && themeMeta) {
+        themeBtn.title = `Theme: ${themeMeta.name}`;
+    }
 
     if (persist) {
         try {
@@ -44,7 +61,25 @@ function getStoredBsplineTheme() {
 function initBsplineTheme(options = {}) {
     const settings = Object.assign({ watchStorage: false }, options);
     const themeSelects = Array.from(document.querySelectorAll('#theme-select, #theme-select-settings'));
-    const initialTheme = getStoredBsplineTheme() || 'dark-metal';
+    const themeBtn = document.getElementById('theme-btn');
+    const themeDropdown = document.getElementById('theme-dropdown');
+    const initialTheme = normalizeThemeId(getStoredBsplineTheme()) || 'dark-metal';
+
+    if (themeDropdown) {
+        themeDropdown.innerHTML = '';
+        BSPLINE_THEMES.forEach(theme => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'theme-option';
+            button.dataset.theme = theme.id;
+            button.textContent = theme.name;
+            button.addEventListener('click', () => {
+                applyBsplineTheme(theme.id, true);
+                themeDropdown.classList.add('hidden');
+            });
+            themeDropdown.appendChild(button);
+        });
+    }
 
     themeSelects.forEach(select => {
         BSPLINE_THEMES.forEach(theme => {
@@ -56,6 +91,17 @@ function initBsplineTheme(options = {}) {
         select.value = initialTheme;
         select.addEventListener('change', () => applyBsplineTheme(select.value, true));
     });
+
+    if (themeBtn && themeDropdown) {
+        themeBtn.addEventListener('click', event => {
+            event.stopPropagation();
+            themeDropdown.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', () => {
+            themeDropdown.classList.add('hidden');
+        });
+    }
 
     applyBsplineTheme(initialTheme, false);
 

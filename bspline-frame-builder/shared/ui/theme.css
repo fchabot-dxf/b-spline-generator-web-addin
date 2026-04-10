@@ -20,38 +20,221 @@
     --text-dim: #64748b;
 }
 
-body.theme-windows95 {
+body.theme-windows31 {
     --bg: #c0c0c0;
-    --surface: #dfdfdf;
-    --surface2: #e8e8e8;
+    --surface: #d4d0c8;
+    --surface2: #e0e0e0;
     --surface-hover: #f2f2f2;
     --border: #808080;
     --accent: #000080;
-    --accent2: #800000;
+    --accent2: #404040;
     --accent-glow: transparent;
     --text: #000000;
-    --text-muted: #3a3a3a;
+    --text-muted: #333333;
     --good: #008000;
     --warning: #804000;
-    --bad: #800000;
-    --r: 2px;
+    --bad: #cc0000;
+    --r: 0px;
+    font-family: Tahoma, 'MS Sans Serif', Arial, sans-serif;
 }
 
-body.theme-fantasy {
-    --bg: #1c1326;
-    --surface: #2a1e3b;
-    --surface2: #3c294f;
-    --surface-hover: #422f58;
-    --border: #6e4f9a;
-    --accent: #d87bfd;
-    --accent2: #f4b2ff;
-    --accent-glow: rgba(216, 123, 253, 0.35);
-    --text: #f5e8ff;
-    --text-muted: #c7b8dc;
-    --good: #55c2a7;
-    --warning: #f4b866;
-    --bad: #d4527a;
-    --r: 18px;
+body.theme-windows31 .tab-bar,
+body.theme-windows31 .settings-panel,
+body.theme-windows31 #status-bar,
+body.theme-windows31 .section-title,
+body.theme-windows31 .settings-header,
+body.theme-windows31 .settings-body {
+    background: #c0c0c0;
+    border: 2px ridge #ffffff;
+    color: #000000;
+    box-shadow: none;
+}
+
+body.theme-windows31 .tab-btn,
+body.theme-windows31 .primary-btn,
+body.theme-windows31 .btn,
+body.theme-windows31 .lock-btn,
+body.theme-windows31 input,
+body.theme-windows31 select,
+body.theme-windows31 textarea,
+body.theme-windows31 .section,
+body.theme-windows31 .panel {
+    background: #dfdfdf;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    box-shadow: none;
+    color: #000000;
+}
+
+body.theme-windows31 .btn-secondary,
+body.theme-windows31 .lock-btn,
+body.theme-windows31 .tab-btn {
+    background: #dfdfdf;
+    border: 2px solid #ffffff;
+    border-right-color: #404040;
+    border-bottom-color: #404040;
+}
+
+body.theme-windows31 .btn-primary {
+    background: #000080;
+    color: #ffffff;
+    border: 2px solid #404040;
+}
+
+body.theme-windows31 .tab-btn.active,
+body.theme-windows31 .primary-btn.active,
+body.theme-windows31 .btn.active {
+    background: #000080;
+    color: #ffffff;
+    border-top-color: #404040;
+    border-left-color: #404040;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+}
+
+body.theme-windows31 button:hover,
+body.theme-windows31 .primary-btn:hover,
+body.theme-windows31 .btn:hover,
+body.theme-windows31 .lock-btn:hover {
+    background: #e0e0e0;
+}
+
+body.theme-windows31 .tab-btn {
+    padding: 6px 12px;
+    margin-right: 6px;
+    border-radius: 0;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+body.theme-windows31 .settings-panel {
+    padding: 12px;
+}
+
+body.theme-windows31 .section-title,
+body.theme-windows31 .settings-header,
+body.theme-windows31 .settings-body {
+    background: #e8e8e8;
+    border: 2px solid #808080;
+    color: #000000;
+}
+
+body.theme-windows31 .settings-overlay {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+body.theme-windows31 textarea,
+body.theme-windows31 .editor-area,
+body.theme-windows31 .viz-container {
+    background: #000000 !important;
+    color: #ffffff !important;
+    border: 3px inset #dfdfdf !important;
+    box-shadow: none !important;
+}
+
+body.theme-windows31 textarea:focus,
+body.theme-windows31 input:focus,
+body.theme-windows31 select:focus {
+    outline: 1px dotted #000000;
+}
+
+body.theme-windows31 .face-status,
+body.theme-windows31 .row,
+body.theme-windows31 .slider-wrap,
+body.theme-windows31 .panel {
+    background: #dfdfdf;
+    border: 2px solid #808080;
+}
+
+body.theme-windows31 .theme-dropdown,
+body.theme-windows31 .theme-dropdown button {
+    font-family: Tahoma, Arial, sans-serif;
+}
+
+body.theme-windows31 .theme-dropdown button.active,
+body.theme-windows31 .theme-dropdown button:hover {
+    background: #e0e0e0;
+}
+
+body.theme-windows31 .btn-secondary,
+body.theme-windows31 .lock-btn {
+    color: #000000;
+}
+
+body.theme-plain {
+    --bg: #f3f3f3;
+    --surface: #ffffff;
+    --surface2: #e8e8e8;
+    --surface-hover: #f0f0f0;
+    --border: #d1d1d1;
+    --accent: #2563eb;
+    --accent2: #5a30e8;
+    --accent-glow: rgba(37, 99, 235, 0.2);
+    --text: #222222;
+    --text-muted: #555555;
+    --good: #208a4f;
+    --warning: #d97706;
+    --bad: #dc2626;
+    --r: 8px;
+}
+
+body.theme-plain .btn,
+body.theme-plain button,
+body.theme-plain input,
+body.theme-plain select,
+body.theme-plain textarea,
+body.theme-plain .primary-btn,
+body.theme-plain .lock-btn,
+body.theme-plain .panel,
+body.theme-plain .section,
+body.theme-plain .settings-panel,
+body.theme-plain .tab-bar,
+body.theme-plain #status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+body.theme-plain .tab-bar,
+body.theme-plain .settings-panel,
+body.theme-plain #status-bar {
+    background: var(--surface2);
+}
+
+body.theme-plain .tab-btn {
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--text);
+}
+
+body.theme-plain .tab-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+}
+
+body.theme-plain .primary-btn,
+body.theme-plain .btn,
+body.theme-plain .lock-btn {
+    background: var(--accent2);
+    border-color: var(--border);
+    color: #ffffff;
+}
+
+body.theme-plain .primary-btn:hover,
+body.theme-plain .btn:hover,
+body.theme-plain .lock-btn:hover {
+    background: var(--accent);
+}
+
+body.theme-plain .section-title,
+body.theme-plain .settings-header,
+body.theme-plain .settings-body {
+    background: var(--surface);
+    border: 1px solid var(--border);
 }
 
 body.theme-dark-metal {
@@ -291,6 +474,3 @@ body {
     color: var(--text);
 }
 
-body.theme-fantasy {
-    background: radial-gradient(circle at top left, rgba(255,255,255,0.06), transparent 35%), var(--bg);
-}

@@ -436,6 +436,56 @@
       font-size: 11px;
     }
 
+    #theme-control {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    #theme-btn {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-color: var(--border);
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    .theme-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 180px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12);
+      z-index: 1200;
+      overflow: hidden;
+    }
+
+    .theme-dropdown.hidden {
+      display: none;
+    }
+
+    .theme-dropdown button {
+      all: unset;
+      display: block;
+      width: 100%;
+      padding: 10px 12px;
+      color: var(--text);
+      cursor: pointer;
+      font: 13px/1.4 inherit;
+    }
+
+    .theme-dropdown button:hover,
+    .theme-dropdown button.active {
+      background: var(--surface2);
+    }
+
     #previewArea {
       grid-column: 3;
       grid-row: 2;
@@ -964,9 +1014,18 @@
         style="background:var(--good); font-weight: 700; height:32px; padding:0 15px; white-space:nowrap;">STEP</button>
       <button class="btn btn-secondary btn-xs" id="btnDownloadAddin"
         style="border-color:var(--accent); color:var(--accent); height:32px; padding:0 15px; white-space:nowrap;">Add-In</button>
-      <div style="display:flex; align-items:center; gap:6px; padding:0 6px; border:1px solid var(--border); border-radius:6px; background: var(--surface2);">
-        <label for="theme-select" style="font-size:12px; color:var(--text); white-space:nowrap;">Theme</label>
-        <select id="theme-select" style="height:28px; min-width:120px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:0 6px;"></select>
+      <div id="theme-control">
+        <button id="theme-btn" class="btn btn-secondary btn-xs" type="button" title="Select theme"
+          style="border-color:var(--border); color:var(--text);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 21h10" />
+            <path d="M7 17l5-5 3 3-5 5H7z" />
+            <path d="M12 12l7-7 2 2-7 7-2-2z" />
+            <path d="M17 7l-2-2" />
+          </svg>
+        </button>
+        <div id="theme-dropdown" class="theme-dropdown hidden"></div>
       </div>
       <button class="btn btn-secondary btn-xs" id="settings-btn" title="Open Settings"
         style="height:32px; width:32px; padding:0; display:flex; align-items:center; justify-content:center; border-color:var(--accent); color:var(--accent);">
