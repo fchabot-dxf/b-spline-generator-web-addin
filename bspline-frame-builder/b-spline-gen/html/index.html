@@ -40,6 +40,7 @@
     @font-face { font-family: 'Webdings';           font-weight: 400; src: url('fonts/webdings.ttf'); }
     @font-face { font-family: 'Wingdings';          font-weight: 400; src: url('fonts/wingdings.ttf'); }
   </style>
+  <link rel="stylesheet" href="../../shared/ui/theme.css">
   <style>
     *,
     *::before,
@@ -963,6 +964,10 @@
         style="background:var(--good); font-weight: 700; height:32px; padding:0 15px; white-space:nowrap;">STEP</button>
       <button class="btn btn-secondary btn-xs" id="btnDownloadAddin"
         style="border-color:var(--accent); color:var(--accent); height:32px; padding:0 15px; white-space:nowrap;">Add-In</button>
+      <div style="display:flex; align-items:center; gap:6px; padding:0 6px; border:1px solid var(--border); border-radius:6px; background: var(--surface2);">
+        <label for="theme-select" style="font-size:12px; color:var(--text); white-space:nowrap;">Theme</label>
+        <select id="theme-select" style="height:28px; min-width:120px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:0 6px;"></select>
+      </div>
       <button class="btn btn-secondary btn-xs" id="settings-btn" title="Open Settings"
         style="height:32px; width:32px; padding:0; display:flex; align-items:center; justify-content:center; border-color:var(--accent); color:var(--accent);">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1549,6 +1554,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
 <script type="module" src="./editor.js?v=20260409_v21"></script>
+<script src="../../shared/ui/theme.js"></script>
 <script type="module" src="./main.js?v=20260409_v21"></script>
 
 </body>

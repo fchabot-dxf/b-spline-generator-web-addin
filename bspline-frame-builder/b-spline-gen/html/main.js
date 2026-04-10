@@ -190,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bindControls();
     bindPresets();
     bindHeaderAndSettings();
+    if (window.initBsplineTheme) window.initBsplineTheme();
 
     // 4. Fusion 360 Detection
     // REWIRE 2: Double requestAnimationFrame to yield to browser paint

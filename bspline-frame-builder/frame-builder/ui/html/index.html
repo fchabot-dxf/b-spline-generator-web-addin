@@ -214,12 +214,26 @@
         }
 
     </style>
+    <link rel="stylesheet" href="../../shared/ui/theme.css">
 </head>
 <body>
     <div class="tab-bar">
         <button class="tab-btn active" id="tab-form" onclick="switchTab('form')">FORM</button>
         <button class="tab-btn" id="tab-solidify" onclick="switchTab('solidify')">SOLIDIFY</button>
     </div>
+
+    <div id="settings-panel" class="settings-panel">
+        <div class="settings-header">
+            <span>Settings</span>
+            <button id="close-settings-btn" class="lock-btn" type="button">✕</button>
+        </div>
+        <div class="settings-body">
+                <div class="row">
+                <label>Theme preview is applied instantly.</label>
+            </div>
+        </div>
+    </div>
+    <div id="settings-overlay" class="settings-overlay"></div>
 
     <div class="main-content">
         <!-- FORM TAB -->
@@ -355,6 +369,7 @@
     </div>
 
     <!-- UI Logic Script -->
+    <script src="../../shared/ui/theme.js"></script>
     <script>
         function switchTab(tabId) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -450,6 +465,8 @@
                 statusEl.parentElement.style.background = 'var(--bad)';
             }
         }
+
+        initBsplineTheme({ watchStorage: true });
 
         // Catch messages from Python
         window.fusionJavaScriptHandler = {
