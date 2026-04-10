@@ -15,7 +15,7 @@ class ExtrusionEngine:
         Extrude every closed frame-bar profile in the shape-outline sketch.
         """
         total_profiles = sketch.profiles.count
-        self.log.log(f"EXTRUDER: processing {total_profiles} profiles in '{sketch.name}'")
+        self.log.log(f"EXTRUDER: component='{comp.name}' sketch='{sketch.name}' processing {total_profiles} profiles")
 
         if total_profiles == 0:
             return []
@@ -55,7 +55,7 @@ class ExtrusionEngine:
         to_process.sort(key=lambda x: 1 if x[1] == "SURROUND" else 0)
 
         for prof, ctype, i in to_process:
-            self.log.log(f"  PROFILE {i}: type={ctype}")
+            self.log.log(f"  PROFILE {i}: type={ctype} area={prof.area if hasattr(prof, 'area') else 'n/a'}")
             try:
                 op = adsk.fusion.FeatureOperations.NewBodyFeatureOperation
                 if ctype == "SURROUND":
@@ -85,6 +85,7 @@ class ExtrusionEngine:
                     ext_in.setOneSideExtent(all_def, positive_dir, zero_taper)
 
                 feat = extrudes.add(ext_in)
+                self.log.log(f"    EXTRUDE RESULT: profile={i} type={ctype} bodies={feat.bodies.count} faces={feat.faces.count}")
 
                 # --- POST-OP NAMING & CLEANUP ---
                 if ctype == "BAR":

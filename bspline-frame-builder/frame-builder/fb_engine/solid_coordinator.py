@@ -54,6 +54,7 @@ class SolidCoordinator:
         start_time = time.time()
         try:
             self.log.session_start(f"SOLID COORDINATOR (v{FB_VERSION}): Synthesis Started")
+            self.log.log(f"SOLID BUILD: comp_name='{comp_name}'")
             
             # 1. DISCOVERY
             t_discovery = time.time()
@@ -66,6 +67,8 @@ class SolidCoordinator:
             if not sketch:
                 self.log.log(f"ABORT: No frame-outline sketch found in '{comp.name}'", "ERROR")
                 return
+
+            self.log.log(f"DISCOVERY: component='{comp.name}' sketch='{sketch.name}' prefix='{prefix}'")
             self.log.log(f"Discovery Phase: {time.time() - t_discovery:.2f}s")
 
             # 2. CAPTURE & SNAPSHOT
@@ -103,7 +106,7 @@ class SolidCoordinator:
             bodies = self.extrusion_engine.extrude_profiles(
                 comp, sketch, prefix, self.to_face, self.start_offset_expr, self.offset_expr
             )
-            self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s")
+            self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
 
             # 4. SURGICAL CLEANUP (Appearance Manager)
             t_finish = time.time()

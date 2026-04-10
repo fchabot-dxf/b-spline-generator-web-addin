@@ -24,7 +24,49 @@ PALETTE_ID = 'hybridFrameBuilderPalette'
 PALETTE_NAME = 'Hybrid Frame Builder'
 PALETTE_HTML = 'html/index.html'
 
+BUILD_SKETCH_CMD_ID = 'hybridBuildSketchCommand'
+BUILD_SOLID_CMD_ID = 'hybridBuildSolidCommand'
+_pending_build_request = None
+
 handlers = []
+
+
+def _create_hidden_build_command(cmd_defs, cmd_id, name):
+    try:
+        if cmd_defs.itemById(cmd_id):
+            return
+        cmd_def = cmd_defs.addButtonDefinition(cmd_id, name, '', '')
+        handler = HiddenBuildCommandCreatedHandler()
+        cmd_def.commandCreated.add(handler)
+        handlers.append(handler)
+    except:
+        pass
+
+
+def _ensure_hidden_build_commands(ui):
+    try:
+        cmd_defs = ui.commandDefinitions
+        _create_hidden_build_command(cmd_defs, BUILD_SKETCH_CMD_ID, 'Build Skeleton')
+        _create_hidden_build_command(cmd_defs, BUILD_SOLID_CMD_ID, 'Build Solid Frame')
+    except:
+        pass
+
+
+def _schedule_hidden_build(build_type, data, style_id="Template 1"):
+    global _pending_build_request
+    _pending_build_request = {'type': build_type, 'data': data, 'style_id': style_id}
+    try:
+        app = adsk.core.Application.get()
+        if not app:
+            return
+        ui = app.userInterface
+        cmd_id = BUILD_SKETCH_CMD_ID if build_type == 'sketch' else BUILD_SOLID_CMD_ID
+        cmd_def = ui.commandDefinitions.itemById(cmd_id)
+        if cmd_def:
+            cmd_def.execute()
+    except:
+        if diag_logger:
+            diag_logger.log_error(f"Hidden build dispatch failed:\n{traceback.format_exc()}")
 
 if diag_logger:
     diag_logger.log("HYBRID UI MODULE: Loaded & Active (Nuclear Trace On)")
@@ -55,6 +97,8 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             else:
                 if diag_logger: diag_logger.log("PALETTE ALREADY EXISTS - MAKING VISIBLE")
                 pal.isVisible = True
+
+            _ensure_hidden_build_commands(ui)
 
             # Add the event handler to the palette
             global _active_handler
@@ -192,58 +236,20 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             pass
 
     def _run_sketch_build(self, data):
-        transaction = self._start_undo_transaction('Build Skeleton')
-        try:
-            if diag_logger: diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
-            
-            # Trigger the engine
-            if frame_engine:
-                # Use the style_id stored in the handler (synced from UI)
-                style_id = self.style_id
-                if diag_logger: diag_logger.log(f"Calling engine with style_id: {style_id}")
-                
-                frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger)
-                self._commit_undo_transaction(transaction)
-                self._notify_status("Sketch Build Complete")
-            else:
-                if diag_logger: diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED (None)")
-                ui = adsk.core.Application.get().userInterface
-                ui.messageBox("Internal Error: Frame Engine not loaded.")
-                self._abort_undo_transaction(transaction)
-
-        except Exception as e:
-            if diag_logger: diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
-            self._abort_undo_transaction(transaction)
-            ui = adsk.core.Application.get().userInterface
-            ui.messageBox(f"Sketch Build Failed:\n{e}")
+        if diag_logger: diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
+        _schedule_hidden_build('sketch', data, self.style_id)
 
     def _run_solid_build(self, data):
-        transaction = self._start_undo_transaction('Build Solid Frame')
-        try:
-            if diag_logger: diag_logger.log("RUN SOLID BUILD triggered")
-
-            if not self.selected_face:
-                if diag_logger: diag_logger.log("Solid build aborted: No face selected")
-                ui = adsk.core.Application.get().userInterface
-                ui.messageBox("Please select a target face first.")
-                self._abort_undo_transaction(transaction)
-                return
-
-            if diag_logger: diag_logger.log(f"Calling solid coordinator with face: {self.selected_face.tempId}")
-            
-            solid_coordinator.build_solid_logic_v3(
-                to_face = self.selected_face,
-                start_offset_expr = data.get('offset', '-1 in'),
-                appearance_name = data.get('appearance', 'Polished Chrome'),
-                external_logger = diag_logger
-            )
-            self._commit_undo_transaction(transaction)
-            self._notify_status("Solid Build Complete")
-        except Exception as e:
-            if diag_logger: diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
-            self._abort_undo_transaction(transaction)
+        if not self.selected_face:
+            if diag_logger: diag_logger.log("Solid build aborted: No face selected")
             ui = adsk.core.Application.get().userInterface
-            ui.messageBox(f"Solid Build Failed:\n{e}")
+            ui.messageBox("Please select a target face first.")
+            return
+
+        if diag_logger: diag_logger.log(f"Scheduling solid build with face: {self.selected_face.tempId}")
+        request_data = dict(data)
+        request_data['to_face'] = self.selected_face
+        _schedule_hidden_build('solid', request_data, self.style_id)
 
     def _notify_status(self, msg):
         try:
@@ -251,3 +257,134 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if pal:
                 pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
         except: pass
+
+
+class HiddenBuildCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
+        try:
+            event_args = adsk.core.CommandCreatedEventArgs.cast(args)
+            cmd = event_args.command
+            self.on_execute = HiddenBuildCommandExecuteHandler()
+            cmd.execute.add(self.on_execute)
+            handlers.append(self.on_execute)
+        except:
+            if diag_logger:
+                diag_logger.log_error(f"HiddenBuildCommandCreated CRASH:\n{traceback.format_exc()}")
+
+
+class HiddenBuildCommandExecuteHandler(adsk.core.CommandEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
+        global _pending_build_request
+        try:
+            request = _pending_build_request
+            _pending_build_request = None
+            if not request:
+                return
+
+            req_type = request.get('type')
+            data = request.get('data', {})
+            style_id = request.get('style_id', 'Template 1')
+
+            if req_type == 'sketch':
+                _run_sketch_build_direct(data, style_id)
+            elif req_type == 'solid':
+                _run_solid_build_direct(data)
+        except Exception:
+            if diag_logger:
+                diag_logger.log_error(f"HiddenBuildCommandExecute CRASH:\n{traceback.format_exc()}")
+
+
+def _run_sketch_build_direct(data, style_id):
+    transaction = None
+    try:
+        if diag_logger: diag_logger.log(f"RUN SKETCH BUILD (hidden command) triggered. Style: {style_id}")
+        transaction = _start_undo_transaction('Build Skeleton')
+
+        if frame_engine:
+            if diag_logger: diag_logger.log(f"Calling engine with style_id: {style_id}")
+            frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger)
+            _commit_undo_transaction(transaction)
+            _notify_status("Sketch Build Complete")
+        else:
+            if diag_logger: diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED (None)")
+            ui = adsk.core.Application.get().userInterface
+            ui.messageBox("Internal Error: Frame Engine not loaded.")
+            _abort_undo_transaction(transaction)
+    except Exception as e:
+        if diag_logger: diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
+        _abort_undo_transaction(transaction)
+        ui = adsk.core.Application.get().userInterface
+        ui.messageBox(f"Sketch Build Failed:\n{e}")
+
+
+def _run_solid_build_direct(data):
+    transaction = None
+    try:
+        if diag_logger: diag_logger.log("RUN SOLID BUILD (hidden command) triggered")
+
+        transaction = _start_undo_transaction('Build Solid Frame')
+        if diag_logger: diag_logger.log(f"Calling solid coordinator for hybrid solid build")
+
+        solid_coordinator.build_solid_logic_v3(
+            to_face = data.get('to_face'),
+            start_offset_expr = data.get('offset', '-1 in'),
+            appearance_name = data.get('appearance', 'Polished Chrome'),
+            external_logger = diag_logger
+        )
+        _commit_undo_transaction(transaction)
+        _notify_status("Solid Build Complete")
+    except Exception as e:
+        if diag_logger: diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
+        _abort_undo_transaction(transaction)
+        ui = adsk.core.Application.get().userInterface
+        ui.messageBox(f"Solid Build Failed:\n{e}")
+
+
+def _start_undo_transaction(name):
+    try:
+        app = adsk.core.Application.get()
+        if app and hasattr(app, 'startTransaction'):
+            return app.startTransaction(name)
+        design = adsk.fusion.Design.cast(app.activeProduct) if app else None
+        if design and hasattr(design, 'startTransaction'):
+            return design.startTransaction(name)
+    except:
+        pass
+    return None
+
+
+def _commit_undo_transaction(transaction):
+    try:
+        if not transaction:
+            return
+        if hasattr(transaction, 'commit'):
+            transaction.commit()
+        elif hasattr(transaction, 'end'):
+            transaction.end()
+    except:
+        pass
+
+
+def _abort_undo_transaction(transaction):
+    try:
+        if not transaction:
+            return
+        if hasattr(transaction, 'abort'):
+            transaction.abort()
+        elif hasattr(transaction, 'rollback'):
+            transaction.rollback()
+    except:
+        pass
+
+
+def _notify_status(msg):
+    try:
+        pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
+        if pal:
+            pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
+    except:
+        pass
