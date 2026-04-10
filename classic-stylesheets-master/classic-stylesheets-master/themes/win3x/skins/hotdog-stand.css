@@ -1,0 +1,24 @@
+:root {
+  --desktop-bg: #FFFF00;
+
+  --workspace-bg: #FFFF00;
+
+  --window-bg: #FF0000;
+  --window-fg: #FFFFFF;
+
+  --window-frame: #FF0000;
+  --window-frame-active: #FF0000;
+
+  --menu-bg: #FFFFFF;
+  --menu-fg: #000000;
+
+  --title-bar-bg: #FF0000;
+  --title-bar-fg: #FFFFFF;
+
+  --title-bar-active-bg: #000000;
+  --title-bar-active-fg: #FFFFFF;
+
+  --selection-bg: #000000;
+  --selection-fg: #FFFFFF;
+  --selection-inverse: #FFFFFF;
+}

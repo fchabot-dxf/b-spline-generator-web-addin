@@ -650,9 +650,9 @@ export class TerrainPreview {
         const idx = iy * nx + ix;
         const z = heights[idx];
         
-        // 1. FIX: Use a neutral 'Mid-Gray' instead of a height gradient
-        // This prevents the "map" look where higher areas are simply whiter.
-        let baseCol = 160; 
+        // 1. Use a neutral white background for the top view image
+        // so it does not render a visible grey viewbox overlay.
+        let baseCol = 255;
 
         // --- 2. Relief Shading (Slope-based) ---
         // Simple Central Difference Gradient

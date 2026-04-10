@@ -1,28 +1,38 @@
 const BSPLINE_THEME_KEY = 'bsplineSharedTheme';
 const BSPLINE_THEMES = [
     { id: 'windows31', name: 'Windows 3.1' },
-    { id: 'plain', name: 'Plain CSS' },
-    { id: 'dark-metal', name: 'Dark Metal' },
-    { id: 'neumorphism', name: 'Neumorphism' },
-    { id: 'bauhaus', name: 'Bauhaus' }
+    { id: 'windows7', name: 'Windows 7' },
+    { id: 'nes', name: 'NES' }
 ];
 
 let currentBsplineTheme = null;
 let storageWatchInterval = null;
+let bsplineThemeInitialized = false;
+let bsplineThemeApplyCount = 0;
 
 function normalizeThemeId(themeId) {
     if (themeId === 'windows95') return 'windows31';
     return themeId;
 }
 
-function applyBsplineTheme(themeId, persist = false) {
+function applyBsplineTheme(themeId, persist = false, source = 'unknown') {
+    bsplineThemeApplyCount += 1;
     themeId = normalizeThemeId(themeId);
-    if (!themeId) return;
+    if (!themeId) {
+        console.warn('[Theme] applyBsplineTheme called with empty themeId, source=', source);
+        return;
+    }
+
+    console.info(`[Theme] Applying theme (#${bsplineThemeApplyCount}, source=${source}):`, themeId, 'persist=', persist);
+    if (bsplineThemeApplyCount > 1) {
+        console.debug('[Theme] applyBsplineTheme stack trace:', new Error().stack);
+    }
 
     const body = document.body;
     BSPLINE_THEMES.forEach(theme => body.classList.remove('theme-' + theme.id));
     body.classList.add('theme-' + themeId);
     currentBsplineTheme = themeId;
+    console.debug('[Theme] Body classes now:', body.className);
 
     const themeSelects = document.querySelectorAll('#theme-select, #theme-select-settings');
     themeSelects.forEach(select => {
@@ -47,6 +57,15 @@ function applyBsplineTheme(themeId, persist = false) {
             console.warn('[Theme] Failed to persist theme:', e);
         }
     }
+
+    console.info('[Theme] Applied theme finished:', {
+        appliedTheme: themeId,
+        bodyClass: document.body.className,
+        currentBsplineTheme,
+        persistedTheme: getStoredBsplineTheme(),
+        source: source,
+        persist: persist
+    });
 }
 
 function getStoredBsplineTheme() {
@@ -59,11 +78,20 @@ function getStoredBsplineTheme() {
 }
 
 function initBsplineTheme(options = {}) {
+    if (bsplineThemeInitialized) {
+        console.warn('[Theme] initBsplineTheme called again; ignoring duplicate initialization.');
+        return;
+    }
+    bsplineThemeInitialized = true;
+
     const settings = Object.assign({ watchStorage: false }, options);
     const themeSelects = Array.from(document.querySelectorAll('#theme-select, #theme-select-settings'));
     const themeBtn = document.getElementById('theme-btn');
     const themeDropdown = document.getElementById('theme-dropdown');
-    const initialTheme = normalizeThemeId(getStoredBsplineTheme()) || 'dark-metal';
+    const initialTheme = normalizeThemeId(getStoredBsplineTheme()) || 'windows7';
+
+    console.info('[Theme] Initializing theme system, watchStorage=', settings.watchStorage);
+    console.info('[Theme] Initial theme resolved to:', initialTheme);
 
     if (themeDropdown) {
         themeDropdown.innerHTML = '';
@@ -74,7 +102,7 @@ function initBsplineTheme(options = {}) {
             button.dataset.theme = theme.id;
             button.textContent = theme.name;
             button.addEventListener('click', () => {
-                applyBsplineTheme(theme.id, true);
+                applyBsplineTheme(theme.id, true, 'dropdown');
                 themeDropdown.classList.add('hidden');
             });
             themeDropdown.appendChild(button);
@@ -89,7 +117,7 @@ function initBsplineTheme(options = {}) {
             select.appendChild(option);
         });
         select.value = initialTheme;
-        select.addEventListener('change', () => applyBsplineTheme(select.value, true));
+        select.addEventListener('change', () => applyBsplineTheme(select.value, true, 'select'));
     });
 
     if (themeBtn && themeDropdown) {
@@ -103,13 +131,13 @@ function initBsplineTheme(options = {}) {
         });
     }
 
-    applyBsplineTheme(initialTheme, false);
+    applyBsplineTheme(initialTheme, false, 'init');
 
     if (settings.watchStorage) {
         window.addEventListener('storage', event => {
             if (event.key !== BSPLINE_THEME_KEY) return;
             if (event.newValue && event.newValue !== currentBsplineTheme) {
-                applyBsplineTheme(event.newValue, false);
+                applyBsplineTheme(event.newValue, false, 'storage');
             }
         });
 
@@ -119,7 +147,7 @@ function initBsplineTheme(options = {}) {
         storageWatchInterval = setInterval(() => {
             const storedTheme = getStoredBsplineTheme();
             if (storedTheme && storedTheme !== currentBsplineTheme) {
-                applyBsplineTheme(storedTheme, false);
+                applyBsplineTheme(storedTheme, false, 'storage-poll');
             }
         }, 500);
     }

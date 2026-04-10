@@ -1,0 +1,27 @@
+:root {
+  --desktop-bg: #C0C0C0;
+
+  --window-bg: #FFFFFF;
+  --window-fg: #000000;
+
+  --button-bg: #C0C0C0;
+  --button-fg: #000000;
+  --button-dark: #808080;
+  --button-light: #FFFFFF;
+
+  --border: #000000;
+  --disabled: #808080;
+
+  --window-frame: #FFFFFF;
+  --window-frame-active: #808080;
+
+  --title-bar-bg: #FFFFFF;
+  --title-bar-fg: #000000;
+
+  --title-bar-active-bg: #5780A8;
+  --title-bar-active-fg: #FFFFFF;
+
+  --selection-bg: #000000;
+  --selection-fg: #FFFFFF;
+  --selection-inverse: #FFFFFF;
+}

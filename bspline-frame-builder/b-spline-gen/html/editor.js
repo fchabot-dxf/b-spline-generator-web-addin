@@ -233,7 +233,7 @@ export class VectorEditor {
         this._mW = w; this._mH = h;
         this._draw.viewbox(0, 0, w, h);
         this._bgLayer.clear();
-        this._bgLayer.rect(w, h).fill('#e8e0d5').stroke({ width: 0.02, color: '#bbb' });
+        // Remove the grey viewbox background rectangle so the preview is not clipped by it.
         this.sync3DBackground();
     }
 

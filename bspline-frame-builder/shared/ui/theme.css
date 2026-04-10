@@ -159,9 +159,465 @@ body.theme-windows31 .theme-dropdown button:hover {
     background: #e0e0e0;
 }
 
+body.theme-windows31 button,
+body.theme-windows31 .btn,
+body.theme-windows31 .btn-secondary,
+body.theme-windows31 .btn-primary,
+body.theme-windows31 .lock-btn,
+body.theme-windows31 .tab-btn,
+body.theme-windows31 input,
+body.theme-windows31 select,
+body.theme-windows31 textarea {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+body.theme-windows31 button:active,
+body.theme-windows31 .btn:active,
+body.theme-windows31 .btn-primary:active,
+body.theme-windows31 .btn-secondary:active,
+body.theme-windows31 .lock-btn:active,
+body.theme-windows31 .tab-btn:active {
+    transform: translateY(1px);
+    background: #d9d9d9;
+    border-top-color: #404040;
+    border-left-color: #404040;
+    border-bottom-color: #ffffff;
+    border-right-color: #ffffff;
+}
+
+body.theme-windows31 header,
+body.theme-windows31 .settings-header,
+body.theme-windows31 .panel-header,
+body.theme-windows31 .modal-header {
+    background: #d4d0c8;
+    border-bottom: 2px ridge #ffffff;
+    color: #000000;
+}
+
 body.theme-windows31 .btn-secondary,
 body.theme-windows31 .lock-btn {
     color: #000000;
+}
+
+body.theme-windows7 {
+    --bg: #e7edf8;
+    --surface: #f3f7fc;
+    --surface2: #dfe9f6;
+    --surface-hover: #eef4fb;
+    --border: #9fb7d8;
+    --accent: #2b6cb0;
+    --accent2: #174a8c;
+    --accent-glow: rgba(66, 153, 225, 0.2);
+    --text: #1f2937;
+    --text-muted: #4b5563;
+    --good: #16a34a;
+    --warning: #f59e0b;
+    --bad: #dc2626;
+    --r: 4px;
+}
+
+body.theme-windows7,
+body.theme-windows7 body,
+body.theme-windows7 .app,
+body.theme-windows7 header,
+body.theme-windows7 .settings-panel,
+body.theme-windows7 .panel,
+body.theme-windows7 .section,
+body.theme-windows7 .tab-bar,
+body.theme-windows7 #status-bar {
+    background: #f3f7fc !important;
+    color: var(--text) !important;
+    border-color: #c4d4ec !important;
+}
+
+body.theme-windows7 header {
+    border-bottom: 1px solid #a6bdd8 !important;
+}
+
+body.theme-windows7 .logo {
+    color: var(--accent) !important;
+}
+
+body.theme-windows7 .tab-btn,
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .btn-primary,
+body.theme-windows7 .lock-btn,
+body.theme-windows7 button,
+body.theme-windows7 input,
+body.theme-windows7 select,
+body.theme-windows7 textarea {
+    background: #f3f7fc !important;
+    border: 1px solid #c4d4ec !important;
+}
+
+body.theme-windows7 .btn-primary {
+    background: linear-gradient(180deg, #5f93dd, #2b6cb0) !important;
+    color: #ffffff !important;
+    border: 1px solid #1a4f85 !important;
+}
+
+body.theme-windows7 .tab-btn.active,
+body.theme-windows7 .primary-btn.active,
+body.theme-windows7 .btn.active {
+    background: linear-gradient(180deg, #2b6cb0, #174a8c) !important;
+    color: #ffffff !important;
+    border-color: #0f3173 !important;
+}
+
+body.theme-windows7 textarea:focus,
+body.theme-windows7 input:focus,
+body.theme-windows7 select:focus {
+    outline: 1px solid #2b6cb0 !important;
+    outline-offset: 1px !important;
+}
+
+body.theme-windows7 .theme-dropdown,
+body.theme-windows7 .theme-dropdown button {
+    font-family: Tahoma, Arial, sans-serif;
+}
+
+body.theme-windows7 .theme-dropdown button.active,
+body.theme-windows7 .theme-dropdown button:hover {
+    background: #e8eff8 !important;
+}
+
+body.theme-windows7 button,
+body.theme-windows7 .btn,
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .btn-primary,
+body.theme-windows7 .lock-btn,
+body.theme-windows7 .tab-btn,
+body.theme-windows7 input,
+body.theme-windows7 select,
+body.theme-windows7 textarea {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+body.theme-windows7 button:active,
+body.theme-windows7 .btn:active,
+body.theme-windows7 .btn-primary:active,
+body.theme-windows7 .btn-secondary:active,
+body.theme-windows7 .lock-btn:active,
+body.theme-windows7 .tab-btn:active {
+    transform: translateY(1px);
+    background: #dde7f4 !important;
+    border-color: #9ab7d7 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+body.theme-windows7 header,
+body.theme-windows7 .settings-header,
+body.theme-windows7 .panel-header,
+body.theme-windows7 .modal-header {
+    background: linear-gradient(180deg, #eef4fb, #dfe7f2) !important;
+    border-bottom: 1px solid #a6bdd8 !important;
+    color: var(--text) !important;
+}
+
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .lock-btn {
+    color: var(--text) !important;
+}
+
+body.theme-windows7 .section-title,
+body.theme-windows7 .settings-header,
+body.theme-windows7 .settings-body {
+    background: #eef4fb !important;
+    border-color: #a6bdd8 !important;
+}
+
+body.theme-windows7 .face-status,
+body.theme-windows7 .row,
+body.theme-windows7 .slider-wrap,
+body.theme-windows7 .panel {
+    background: #f3f7fc !important;
+    border-color: #c4d4ec !important;
+}
+
+body.theme-windows7 .panel {
+    background: linear-gradient(180deg, #edf4fb, #dbe7f2);
+    border: 1px solid #a6bdd8;
+    color: var(--text);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+}
+
+body.theme-windows7 .tab-btn,
+body.theme-windows7 .primary-btn,
+body.theme-windows7 .btn,
+body.theme-windows7 .lock-btn,
+body.theme-windows7 input,
+body.theme-windows7 select,
+body.theme-windows7 textarea,
+body.theme-windows7 .section,
+body.theme-windows7 .panel {
+    background: #f3f7fc;
+    border: 1px solid #c4d4ec;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.95);
+    color: var(--text);
+    border-radius: 4px;
+}
+
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .lock-btn,
+body.theme-windows7 .tab-btn {
+    background: #f3f7fc;
+    border-color: #c4d4ec;
+    color: var(--text);
+}
+
+body.theme-windows7 .btn-primary {
+    background: linear-gradient(180deg, #5f93dd, #2b6cb0);
+    color: #ffffff;
+    border: 1px solid #1a4f85;
+}
+
+body.theme-windows7 .tab-btn.active,
+body.theme-windows7 .primary-btn.active,
+body.theme-windows7 .btn.active {
+    background: linear-gradient(180deg, #2b6cb0, #174a8c);
+    color: #ffffff;
+    border-color: #0f3173;
+}
+
+body.theme-windows7 button:hover,
+body.theme-windows7 .primary-btn:hover,
+body.theme-windows7 .btn:hover,
+body.theme-windows7 .lock-btn:hover {
+    background: #e8eff8;
+}
+
+body.theme-windows7 textarea,
+body.theme-windows7 .editor-area,
+body.theme-windows7 .viz-container {
+    background: #ffffff !important;
+    color: #1f2937 !important;
+    border: 1px inset #c4d4ec !important;
+    box-shadow: none !important;
+}
+
+body.theme-windows7 textarea:focus,
+body.theme-windows7 input:focus,
+body.theme-windows7 select:focus {
+    outline: 1px solid #2b6cb0;
+    outline-offset: 1px;
+}
+
+body.theme-windows7 .face-status,
+body.theme-windows7 .row,
+body.theme-windows7 .slider-wrap,
+body.theme-windows7 .panel {
+    background: #f3f7fc;
+    border: 1px solid #c4d4ec;
+}
+
+body.theme-windows7 .theme-dropdown,
+body.theme-windows7 .theme-dropdown button {
+    font-family: Tahoma, Arial, sans-serif;
+}
+
+body.theme-windows7 .theme-dropdown button.active,
+body.theme-windows7 .theme-dropdown button:hover {
+    background: #e8eff8;
+}
+
+body.theme-windows7 button,
+body.theme-windows7 .btn,
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .btn-primary,
+body.theme-windows7 .lock-btn,
+body.theme-windows7 .tab-btn,
+body.theme-windows7 input,
+body.theme-windows7 select,
+body.theme-windows7 textarea {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+body.theme-windows7 button:active,
+body.theme-windows7 .btn:active,
+body.theme-windows7 .btn-primary:active,
+body.theme-windows7 .btn-secondary:active,
+body.theme-windows7 .lock-btn:active,
+body.theme-windows7 .tab-btn:active {
+    transform: translateY(1px);
+    background: #dde7f4 !important;
+    border-color: #9ab7d7 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+}
+
+body.theme-windows7 header,
+body.theme-windows7 .settings-header,
+body.theme-windows7 .panel-header,
+body.theme-windows7 .modal-header {
+    background: linear-gradient(180deg, #eef4fb, #dfe7f2) !important;
+    border-bottom: 1px solid #a6bdd8 !important;
+    color: var(--text) !important;
+}
+
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .lock-btn {
+    color: var(--text) !important;
+}
+
+body.theme-windows7,
+body.theme-windows7 body {
+    background: linear-gradient(180deg, #edf4fb, #dbe7f2) !important;
+    color: var(--text) !important;
+}
+
+body.theme-windows7 .app,
+body.theme-windows7 header,
+body.theme-windows7 .settings-panel,
+body.theme-windows7 .panel,
+body.theme-windows7 .section,
+body.theme-windows7 .tab-bar,
+body.theme-windows7 #status-bar {
+    background: #f3f7fc !important;
+    border-color: #c4d4ec !important;
+}
+
+body.theme-windows7 header {
+    border-bottom: 1px solid #a6bdd8 !important;
+}
+
+body.theme-windows7 .logo {
+    color: var(--accent) !important;
+}
+
+body.theme-windows7 .tab-btn,
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .btn-primary,
+body.theme-windows7 .lock-btn {
+    box-shadow: none !important;
+}
+
+body.theme-windows7 .button,
+body.theme-windows7 button,
+body.theme-windows7 .btn,
+body.theme-windows7 .btn-secondary,
+body.theme-windows7 .btn-primary,
+body.theme-windows7 .lock-btn {
+    background: #f3f7fc !important;
+    border: 1px solid #c4d4ec !important;
+}
+
+body.theme-windows7 .btn-primary {
+    background: linear-gradient(180deg, #5f93dd, #2b6cb0) !important;
+    border: 1px solid #1a4f85 !important;
+}
+
+body.theme-windows7 select,
+body.theme-windows7 input,
+body.theme-windows7 textarea {
+    background: #ffffff !important;
+    border: 1px solid #c4d4ec !important;
+}
+
+body.theme-windows7 .stepper-btn,
+body.theme-windows7 .btn-xs {
+    background: #f3f7fc !important;
+}
+
+body.theme-nes {
+    --bg: #181818;
+    --surface: #2d2d2d;
+    --surface2: #1c1c1c;
+    --surface-hover: #3a3a3a;
+    --border: #7f7f7f;
+    --accent: #f6c200;
+    --accent2: #ff5d5d;
+    --accent-glow: rgba(246, 194, 0, 0.3);
+    --text: #f8f8f8;
+    --text-muted: #a0a0a0;
+    --good: #7adb6a;
+    --warning: #ffca28;
+    --bad: #ff6b6b;
+    --r: 4px;
+    font-family: 'Press Start 2P', 'Segoe UI', Arial, sans-serif;
+}
+
+body.theme-nes,
+body.theme-nes body,
+body.theme-nes .app,
+body.theme-nes header,
+body.theme-nes .settings-panel,
+body.theme-nes .panel,
+body.theme-nes .section,
+body.theme-nes .tab-bar,
+body.theme-nes #status-bar {
+    background: #181818;
+    color: var(--text);
+    border-color: #7f7f7f;
+}
+
+body.theme-nes header,
+body.theme-nes .settings-header,
+body.theme-nes .panel-header,
+body.theme-nes .modal-header,
+body.theme-nes .section-title {
+    background: #2d2d2d;
+    border-bottom: 2px solid #7f7f7f;
+    color: var(--text);
+}
+
+body.theme-nes button,
+body.theme-nes .btn,
+body.theme-nes .btn-secondary,
+body.theme-nes .btn-primary,
+body.theme-nes .lock-btn,
+body.theme-nes .tab-btn,
+body.theme-nes input,
+body.theme-nes select,
+body.theme-nes textarea {
+    background: #262626;
+    border: 2px solid #7f7f7f;
+    color: var(--text);
+    box-shadow: none;
+}
+
+body.theme-nes .btn-primary {
+    background: linear-gradient(180deg, #f6c200, #ff5d5d);
+    color: #181818;
+    border-color: #f6c200;
+}
+
+body.theme-nes .tab-btn.active,
+body.theme-nes .primary-btn.active,
+body.theme-nes .btn.active {
+    background: #ff5d5d;
+    color: #f8f8f8;
+    border-color: #ff5d5d;
+}
+
+body.theme-nes button:hover,
+body.theme-nes .btn:hover,
+body.theme-nes .btn-primary:hover,
+body.theme-nes .btn-secondary:hover,
+body.theme-nes .lock-btn:hover,
+body.theme-nes .tab-btn:hover {
+    background: #3a3a3a;
+}
+
+body.theme-nes button:active,
+body.theme-nes .btn:active,
+body.theme-nes .btn-primary:active,
+body.theme-nes .btn-secondary:active,
+body.theme-nes .lock-btn:active,
+body.theme-nes .tab-btn:active {
+    transform: translateY(1px);
+    background: #1b1b1b;
+    border-color: #a0a0a0;
+}
+
+body.theme-nes textarea:focus,
+body.theme-nes input:focus,
+body.theme-nes select:focus {
+    outline: 1px solid #f6c200;
+    outline-offset: 1px;
+}
+
+body.theme-nes .theme-dropdown button.active,
+body.theme-nes .theme-dropdown button:hover {
+    background: #3a3a3a;
 }
 
 body.theme-plain {
@@ -237,6 +693,42 @@ body.theme-plain .settings-body {
     border: 1px solid var(--border);
 }
 
+body.theme-plain button,
+body.theme-plain .btn,
+body.theme-plain .btn-secondary,
+body.theme-plain .btn-primary,
+body.theme-plain .lock-btn,
+body.theme-plain .tab-btn,
+body.theme-plain input,
+body.theme-plain select,
+body.theme-plain textarea,
+body.theme-plain header,
+body.theme-plain .settings-header,
+body.theme-plain .panel-header,
+body.theme-plain .modal-header {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+body.theme-plain button:active,
+body.theme-plain .btn:active,
+body.theme-plain .btn-primary:active,
+body.theme-plain .btn-secondary:active,
+body.theme-plain .lock-btn:active,
+body.theme-plain .tab-btn:active {
+    transform: translateY(1px);
+    background: #e8effc;
+    border-color: var(--accent);
+}
+
+body.theme-plain header,
+body.theme-plain .settings-header,
+body.theme-plain .panel-header,
+body.theme-plain .modal-header {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
 body.theme-dark-metal {
     --bg: #10131a;
     --surface: #181d25;
@@ -254,6 +746,43 @@ body.theme-dark-metal {
     --r: 10px;
 }
 
+body.theme-dark-metal button,
+body.theme-dark-metal .btn,
+body.theme-dark-metal .btn-secondary,
+body.theme-dark-metal .btn-primary,
+body.theme-dark-metal .lock-btn,
+body.theme-dark-metal .tab-btn,
+body.theme-dark-metal input,
+body.theme-dark-metal select,
+body.theme-dark-metal textarea,
+body.theme-dark-metal header,
+body.theme-dark-metal .settings-header,
+body.theme-dark-metal .panel-header,
+body.theme-dark-metal .modal-header {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+body.theme-dark-metal button:active,
+body.theme-dark-metal .btn:active,
+body.theme-dark-metal .btn-primary:active,
+body.theme-dark-metal .btn-secondary:active,
+body.theme-dark-metal .lock-btn:active,
+body.theme-dark-metal .tab-btn:active {
+    transform: translateY(1px);
+    background: #141924;
+    border-color: #2d3a4c;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+body.theme-dark-metal header,
+body.theme-dark-metal .settings-header,
+body.theme-dark-metal .panel-header,
+body.theme-dark-metal .modal-header {
+    background: #181d25;
+    border-bottom: 1px solid #2d3a4c;
+    color: var(--text);
+}
+
 body.theme-neumorphism {
     --bg: #e8ebe9;
     --surface: #f1f4f2;
@@ -269,6 +798,41 @@ body.theme-neumorphism {
     --warning: #f5a623;
     --bad: #d64545;
     --r: 24px;
+}
+
+body.theme-neumorphism button,
+body.theme-neumorphism .btn,
+body.theme-neumorphism .btn-secondary,
+body.theme-neumorphism .btn-primary,
+body.theme-neumorphism .lock-btn,
+body.theme-neumorphism .tab-btn,
+body.theme-neumorphism input,
+body.theme-neumorphism select,
+body.theme-neumorphism textarea,
+body.theme-neumorphism header,
+body.theme-neumorphism .settings-header,
+body.theme-neumorphism .panel-header,
+body.theme-neumorphism .modal-header {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+body.theme-neumorphism button:active,
+body.theme-neumorphism .btn:active,
+body.theme-neumorphism .btn-primary:active,
+body.theme-neumorphism .btn-secondary:active,
+body.theme-neumorphism .lock-btn:active,
+body.theme-neumorphism .tab-btn:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.08);
+}
+
+body.theme-neumorphism header,
+body.theme-neumorphism .settings-header,
+body.theme-neumorphism .panel-header,
+body.theme-neumorphism .modal-header {
+    background: #f1f4f2;
+    border-bottom: 1px solid #c7cec9;
+    color: var(--text);
 }
 
 body.theme-bauhaus {
@@ -345,6 +909,42 @@ body.theme-bauhaus .primary-btn:hover,
 body.theme-bauhaus .btn:hover,
 body.theme-bauhaus .lock-btn:hover {
     background: var(--accent);
+    color: #ffffff;
+}
+
+body.theme-bauhaus button,
+body.theme-bauhaus .btn,
+body.theme-bauhaus .btn-secondary,
+body.theme-bauhaus .btn-primary,
+body.theme-bauhaus .lock-btn,
+body.theme-bauhaus .tab-btn,
+body.theme-bauhaus input,
+body.theme-bauhaus select,
+body.theme-bauhaus textarea,
+body.theme-bauhaus header,
+body.theme-bauhaus .settings-header,
+body.theme-bauhaus .panel-header,
+body.theme-bauhaus .modal-header {
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+body.theme-bauhaus button:active,
+body.theme-bauhaus .btn:active,
+body.theme-bauhaus .btn-primary:active,
+body.theme-bauhaus .btn-secondary:active,
+body.theme-bauhaus .lock-btn:active,
+body.theme-bauhaus .tab-btn:active {
+    transform: translateY(1px);
+    background: #111111;
+    color: #ffffff;
+}
+
+body.theme-bauhaus header,
+body.theme-bauhaus .settings-header,
+body.theme-bauhaus .panel-header,
+body.theme-bauhaus .modal-header {
+    background: #111111;
+    border-bottom: 1px solid #ffffff;
     color: #ffffff;
 }
 

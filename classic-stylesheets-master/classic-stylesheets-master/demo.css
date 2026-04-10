@@ -1,0 +1,70 @@
+body {
+  font-family: system-ui;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body.use-preferred-font {
+  font-family: var(--preferred-font), system-ui;
+}
+
+#toolbar {
+  position: sticky;
+  width: 100%;
+  top: 0;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+#preferred-font {
+}
+
+#preferred-font::after {
+  content: '(' var(--preferred-font) ')';
+  display: inline;
+}
+
+main {
+  max-width: 1024px;
+}
+
+main > .window-body {
+  overflow: auto;
+}
+
+.example {
+  margin: var(--margin) 0;
+  padding-left: 16px;
+}
+
+details {
+  margin-top: 8px;
+}
+
+details > summary {
+  display: inline-block;
+  cursor: normal;
+  user-select: none;
+  margin-bottom: 4px;
+}
+
+@media screen and (min-width: 750px) {
+  section {
+    display: flex;
+    flex-direction: row;
+  }
+
+  section > *:first-child {
+    flex: 0 0 200px;
+  }
+
+  section > div {
+    flex-grow: 1;
+  }
+}
+
+a {
+  color: #00c;
+  text-decoration: underline;
+}
