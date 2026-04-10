@@ -490,10 +490,10 @@
       grid-row: 2;
       border-left: none;
       position: relative;
-      background: #ffffff;
+      background: transparent !important;
       overflow: hidden;
       padding: 0;
-      max-height: 75vh;
+      min-height: 0;
     }
 
     #previewCanvas {
@@ -504,6 +504,7 @@
       height: 100%;
       display: block;
       opacity: 0;
+      background: transparent !important;
     }
 
     #previewCanvas.ready {

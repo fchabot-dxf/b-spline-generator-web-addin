@@ -849,8 +849,9 @@ export class TerrainPreview {
     let indices = COORD_SYSTEM.gridQuadFaceIndices(nx, nz, 0, false);
     const N = count;
     
-    // Bottom faces (CW) - Corrected to point DOWN (-Z)
-    indices = indices.concat(COORD_SYSTEM.gridQuadFaceIndices(nx, nz, N, true));
+    // Bottom faces (CW) - Disabled for preview so the thickened solid does
+    // not render a flat grey cap beneath the terrain.
+    // indices = indices.concat(COORD_SYSTEM.gridQuadFaceIndices(nx, nz, N, true));
     // Side Walls constructed from the duplicated side-vertex pools
     for (let i = 0; i < B; i++) {
       const next = (i + 1) % B;
