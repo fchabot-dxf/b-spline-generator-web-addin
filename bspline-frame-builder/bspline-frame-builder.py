@@ -99,8 +99,12 @@ try:
         _fbs.frame_engine = _engine
         _fbo.frame_engine = _engine
 
-        # 4. LOAD B-SPLINE
-        _bs = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
+        # 4. LOAD B-SPLINE & HYBRID
+        _bs  = _load_submodule('bspline_ui', 'b-spline-gen', 'b-spline-gen.py')
+        _fbh = _load_submodule('hybrid_builder_ui', 'frame-builder/hybrid-builder', 'hybrid_builder_ui.py')
+        
+        # 5. INJECTION
+        _fbh.frame_engine = _engine
     except Exception as _inner_e:
         if 'diag_logger' in locals():
             diag_logger.log_error(f"INNER HUB LOAD ERROR: {_inner_e}\n{traceback.format_exc()}")
@@ -129,24 +133,17 @@ _bs_res = os.path.join(addin_root, 'b-spline-gen', 'resources')
 COMMANDS = [
     {
         'id':              'bsplineCommand',
-        'name':            'B-Spline',
-        'tooltip':         'Procedural B-Spline Surface & Solid Engine',
+        'name':            'SVG Editor',
+        'tooltip':         'Procedural B-Spline Surface & Solid Editor',
         'res_path':        _bs_res,
         'handler_factory': lambda: _bs.CommandCreatedHandler()
     },
     {
-        'id':              'sketchBuilderCommand',
-        'name':            'Sketch Builder',
-        'tooltip':         'Procedural Sketch Builder for Fusion 360',
+        'id':              'hybridBuilderCommand',
+        'name':            'Frame Builder',
+        'tooltip':         'Unified Hybrid Frame Builder (Sketch + Solid)',
         'res_path':        os.path.join(_fb_res_sk, 'SketchCommand'),
-        'handler_factory': lambda: _fbs.CommandCreatedHandler(_engine.build_sketch_logic_v3)
-    },
-    {
-        'id':              'solidBuilderCommand',
-        'name':            'Solid Builder',
-        'tooltip':         'Procedural Solid Builder for Fusion 360',
-        'res_path':        os.path.join(_fb_res_so, 'SolidCommand'),
-        'handler_factory': lambda: _fbo.SolidCommandCreatedHandler()
+        'handler_factory': lambda: _fbh.CommandCreatedHandler()
     }
 ]
 
@@ -257,13 +254,14 @@ def stop(context):
             except:
                 pass
 
-        # ── Close bspline palette if still open ───────────────────────────
+        # ── Close palettes if still open ───────────────────────────
         try:
-            pal = ui.palettes.itemById(_bs.PALETTE_ID)
-            if pal:
-                pal.deleteMe()
+            for pid in [_bs.PALETTE_ID, _fbh.PALETTE_ID]:
+                pal = ui.palettes.itemById(pid)
+                if pal: pal.deleteMe()
         except:
             pass
+
 
     except:
         pass

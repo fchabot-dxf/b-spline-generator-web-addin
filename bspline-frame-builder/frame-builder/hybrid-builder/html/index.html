@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Frame Builder</title>
+    <style>
+        :root {
+            --bg: #1a1a1e;
+            --surface: #252529;
+            --surface-hover: #2d2d32;
+            --border: #3a3a3e;
+            --accent: #007aff;
+            --accent-glow: rgba(0, 122, 255, 0.3);
+            --text: #e1e1e3;
+            --text-muted: #9a9a9e;
+            --good: #34c759;
+            --warning: #ff9500;
+            --bad: #ff3b30;
+            --gap: 12px;
+            --r: 8px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Tabs Navigation */
+        .tab-bar {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 1px solid var(--border);
+            padding: 4px;
+            gap: 4px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background: var(--surface);
+            color: var(--text);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.05);
+        }
+
+        /* Content Area */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: var(--gap);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Groups & Sections */
+        .section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 16px;
+            margin-bottom: var(--gap);
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Controls */
+        .row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            gap: 12px;
+        }
+
+        .row:last-child { margin-bottom: 0; }
+
+        label { color: var(--text-muted); flex: 1; }
+
+        select, input[type="text"], input[type="number"] {
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        button.primary-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--r);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+            margin-top: 8px;
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        button.primary-btn:hover { background: #0084ff; }
+        button.primary-btn:active { transform: scale(0.98); }
+
+        /* Sliders Custom Style */
+        .slider-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-name { font-size: 12px; font-weight: 500; }
+        .slider-val { font-family: monospace; color: var(--accent); }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            appearance: none;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* Lock Toggle */
+        .lock-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            cursor: pointer;
+        }
+
+        .lock-btn.locked {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        /* Status Bar */
+        #status-bar {
+            padding: 8px 12px;
+            font-size: 11px;
+            background: rgba(0,0,0,0.2);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .face-status {
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            font-style: italic;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="tab-bar">
+        <button class="tab-btn active" id="tab-form" onclick="switchTab('form')">FORM</button>
+        <button class="tab-btn" id="tab-solidify" onclick="switchTab('solidify')">SOLIDIFY</button>
+    </div>
+
+    <div class="main-content">
+        <!-- FORM TAB -->
+        <div id="content-form" class="tab-content active">
+            <div class="section">
+                <div class="section-title">Synthesis Strategy</div>
+                <div class="row">
+                    <label>Rule Set</label>
+                    <select id="template-select" style="width: 140px;" onchange="syncTemplate()">
+                        <option value="Template 1">Template 1 (Sport)</option>
+                        <option value="Template 2">Template 2 (Lifestyle)</option>
+                        <option value="Template 3">Template 3 (Shield)</option>
+                        <option value="Template 4">Template 4 (Concept)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">
+                    <span>Skeleton Spans</span>
+                    <span id="constraint-count" style="color: var(--good)">0/4 Locked</span>
+                </div>
+                
+                <!-- Shoulder -->
+                <div class="slider-wrap">
+                    <div class="slider-header">
+                        <span class="slider-name">Shoulder Width</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="slider-val" id="val-ShoulderSpan-label">50.0%</span>
+                            <button class="lock-btn" id="lock-ShoulderSpan" onclick="toggleLock('ShoulderSpan')">LOCK</button>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="val-ShoulderSpan" min="0" max="100" step="0.5" value="50" oninput="updateSlider('ShoulderSpan')">
+                    </div>
+                </div>
+
+                <!-- Waist -->
+                <div class="slider-wrap">
+                    <div class="slider-header">
+                        <span class="slider-name">Waist Width</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="slider-val" id="val-WaistSpan-label">50.0%</span>
+                            <button class="lock-btn" id="lock-WaistSpan" onclick="toggleLock('WaistSpan')">LOCK</button>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="val-WaistSpan" min="0" max="100" step="0.5" value="50" oninput="updateSlider('WaistSpan')">
+                    </div>
+                </div>
+
+                <!-- Hip -->
+                <div class="slider-wrap">
+                    <div class="slider-header">
+                        <span class="slider-name">Hip Width</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="slider-val" id="val-HipSpan-label">50.0%</span>
+                            <button class="lock-btn" id="lock-HipSpan" onclick="toggleLock('HipSpan')">LOCK</button>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="val-HipSpan" min="0" max="100" step="0.5" value="50" oninput="updateSlider('HipSpan')">
+                    </div>
+                </div>
+
+                <!-- Top Gap -->
+                <div class="slider-wrap">
+                    <div class="slider-header">
+                        <span class="slider-name">Top Aperture</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="slider-val" id="val-TopGap-label">15.0%</span>
+                            <button class="lock-btn" id="lock-TopGap" onclick="toggleLock('TopGap')">LOCK</button>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="val-TopGap" min="0" max="100" step="0.5" value="15" oninput="updateSlider('TopGap')">
+                    </div>
+                </div>
+
+                 <!-- Bottom Gap -->
+                 <div class="slider-wrap">
+                    <div class="slider-header">
+                        <span class="slider-name">Bottom Aperture</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="slider-val" id="val-BottomGap-label">15.0%</span>
+                            <button class="lock-btn" id="lock-BottomGap" onclick="toggleLock('BottomGap')">LOCK</button>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <input type="range" id="val-BottomGap" min="0" max="100" step="0.5" value="15" oninput="updateSlider('BottomGap')">
+                    </div>
+                </div>
+            </div>
+
+            <button class="primary-btn" id="btn-build-sketch" onclick="runBuild('sketch')">BUILD SKELETON</button>
+        </div>
+
+        <!-- SOLIDIFY TAB -->
+        <div id="content-solidify" class="tab-content">
+            <div class="section">
+                <div class="section-title">Surface Mapping</div>
+                <div class="row">
+                    <label>Target Face</label>
+                    <button class="lock-btn" id="btn-select-face" style="flex: 0; white-space: nowrap;" onclick="pickFace()">SELECT FACE</button>
+                </div>
+                <div class="face-status" id="label-face-selection">No face selected...</div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Extrusion Parameters</div>
+                <div class="row">
+                    <label>Start Offset</label>
+                    <input type="text" id="solid-offset" value="-1 in" style="width: 80px;">
+                </div>
+                <div class="row">
+                    <label>Appearance</label>
+                    <select id="solid-appearance" style="width: 140px;">
+                        <option value="Polished Chrome">Polished Chrome</option>
+                        <option value="Carbon Fiber">Carbon Fiber</option>
+                        <option value="Matte Black">Matte Black</option>
+                        <option value="Titanium">Titanium</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="primary-btn" id="btn-build-solid" onclick="runBuild('solid')">GENERATE SOLID</button>
+        </div>
+    </div>
+
+    <div id="status-bar">
+        <span id="system-status">System Ready</span>
+        <span id="version-label">v1.0.0 Unified</span>
+    </div>
+
+    <!-- UI Logic Script -->
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            document.getElementById('tab-' + tabId).classList.add('active');
+            document.getElementById('content-' + tabId).classList.add('active');
+        }
+
+        function updateSlider(id) {
+            const val = document.getElementById('val-' + id).value;
+            document.getElementById('val-' + id + '-label').innerText = parseFloat(val).toFixed(1) + '%';
+            
+            // Send real-time update to Fusion
+            notifyFusion('update_param', { name: id, value: val });
+        }
+
+        function toggleLock(id) {
+            const btn = document.getElementById('lock-' + id);
+            const isLocked = btn.classList.toggle('locked');
+            btn.innerText = isLocked ? 'LOCKED' : 'LOCK';
+            
+            updateConstraintStatus();
+            notifyFusion('update_lock', { name: id, locked: isLocked });
+        }
+
+        function updateConstraintStatus() {
+            const lockedCount = document.querySelectorAll('.lock-btn.locked').length;
+            const label = document.getElementById('constraint-count');
+            label.innerText = lockedCount + '/4 Locked';
+            
+            if (lockedCount > 4) {
+                label.style.color = 'var(--bad)';
+                document.getElementById('btn-build-sketch').disabled = true;
+                document.getElementById('btn-build-sketch').style.opacity = 0.5;
+            } else {
+                label.style.color = 'var(--good)';
+                document.getElementById('btn-build-sketch').disabled = false;
+                document.getElementById('btn-build-sketch').style.opacity = 1.0;
+            }
+        }
+
+        function syncTemplate() {
+            const tmpl = document.getElementById('template-select').value;
+            notifyFusion('change_template', { template: tmpl });
+        }
+
+        function pickFace() {
+            document.getElementById('label-face-selection').innerText = 'Waiting for selection in Fusion...';
+            notifyFusion('pick_face', {});
+        }
+
+        function runBuild(type) {
+            document.getElementById('system-status').innerText = 'Building ' + type + '...';
+            
+            let data = { type: type };
+            if (type === 'solid') {
+                data.offset = document.getElementById('solid-offset').value;
+                data.appearance = document.getElementById('solid-appearance').value;
+            }
+            
+            notifyFusion('run_build', data);
+        }
+
+        function notifyFusion(action, data) {
+            // Native Fusion 360 bridge
+            if (typeof adsk !== 'undefined' && adsk.fusion) {
+                adsk.fusion.postMessage(action, JSON.stringify(data));
+            } else {
+                console.log('[DEBUG] PostMessage:', action, data);
+            }
+        }
+
+        // Catch messages from Python
+        window.fusionJavaScriptHandler = {
+            handle: function(action, data) {
+                try {
+                    const payload = JSON.parse(data);
+                    if (action === 'selection_result') {
+                        document.getElementById('label-face-selection').innerText = payload.success ? payload.name : 'Selection cancelled';
+                    }
+                    if (action === 'status_update') {
+                        document.getElementById('system-status').innerText = payload.msg;
+                    }
+                } catch(e) {}
+            }
+        };
+    </script>
+</body>
+</html>
