@@ -142,7 +142,7 @@ COMMANDS = [
         'id':              'hybridBuilderCommand',
         'name':            'Frame Builder',
         'tooltip':         'Unified Hybrid Frame Builder (Sketch + Solid)',
-        'res_path':        os.path.join(_fb_res_sk, 'SketchCommand'),
+        'res_path':        os.path.join(_fb_res_so, 'SolidCommand'),
         'handler_factory': lambda: _fbh.CommandCreatedHandler()
     }
 ]
