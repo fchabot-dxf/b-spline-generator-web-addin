@@ -54,9 +54,6 @@ body.theme-windows31 .tab-btn,
 body.theme-windows31 .primary-btn,
 body.theme-windows31 .btn,
 body.theme-windows31 .lock-btn,
-body.theme-windows31 input,
-body.theme-windows31 select,
-body.theme-windows31 textarea,
 body.theme-windows31 .section,
 body.theme-windows31 .panel {
     background: #dfdfdf;
@@ -66,6 +63,14 @@ body.theme-windows31 .panel {
     border-bottom: 2px solid #404040;
     box-shadow: none;
     color: #000000;
+}
+
+body.theme-windows31 input,
+body.theme-windows31 select,
+body.theme-windows31 textarea {
+    background: #e0e0e0;
+    color: #000000;
+    border: 2px inset #ffffff;
 }
 
 body.theme-windows31 .btn-secondary,
@@ -149,6 +154,81 @@ body.theme-windows31 .panel {
     border: 2px solid #808080;
 }
 
+body.theme-windows31 header,
+body.theme-windows31 .app header {
+    background: #c0c0c0;
+    border-bottom: 2px ridge #ffffff;
+    color: #000000;
+}
+
+body.theme-windows31 header .logo {
+    color: #000080;
+    font-weight: 700;
+}
+
+body.theme-windows31 header .btn,
+body.theme-windows31 header .btn-secondary,
+body.theme-windows31 header #theme-btn {
+    border-radius: 0;
+    background: #dfdfdf;
+    color: #000000;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    box-shadow: none;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 12px !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+}
+
+body.theme-windows31 header .btn-primary {
+    background: #000080;
+    color: #ffffff;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    box-shadow: none;
+}
+
+body.theme-windows31 header #btnDownload,
+body.theme-windows31 header #btnDownloadAddin {
+    min-width: 84px !important;
+    width: auto !important;
+    padding: 0 14px !important;
+}
+
+body.theme-windows31 header #theme-btn,
+body.theme-windows31 header #settings-btn {
+    width: 32px !important;
+    min-width: 32px !important;
+    padding: 0 !important;
+}
+
+body.theme-windows31 header .btn:hover,
+body.theme-windows31 header .btn-secondary:hover,
+body.theme-windows31 header #theme-btn:hover,
+body.theme-windows31 header .btn-primary:hover {
+    background: #e0e0e0;
+}
+
+body.theme-windows31 header .btn:active,
+body.theme-windows31 header .btn-secondary:active,
+body.theme-windows31 header #theme-btn:active,
+body.theme-windows31 header .btn-primary:active {
+    background: #d9d9d9;
+    border-top: 2px solid #404040;
+    border-left: 2px solid #404040;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+}
+
 body.theme-windows31 .theme-dropdown,
 body.theme-windows31 .theme-dropdown button {
     font-family: Tahoma, Arial, sans-serif;
@@ -157,6 +237,225 @@ body.theme-windows31 .theme-dropdown button {
 body.theme-windows31 .theme-dropdown button.active,
 body.theme-windows31 .theme-dropdown button:hover {
     background: #e0e0e0;
+}
+
+body.theme-windows31 .stepper-container {
+    gap: 4px;
+}
+
+body.theme-windows31 .stepper-btn {
+    min-width: 24px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    line-height: 22px;
+    font-size: 12px;
+}
+
+body.theme-windows31 .stepper-container input {
+    width: 46px;
+    height: 24px;
+    padding: 2px 4px;
+    font-size: 12px;
+}
+
+body.theme-windows31 .editor-toolbar-top {
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    background: #dfdfdf;
+    border-bottom: 2px solid #404040;
+    padding: 8px 12px;
+}
+
+body.theme-windows31 .editor-toolbar-top label {
+    color: #000000;
+    font-weight: 700;
+}
+
+body.theme-windows31 .editor-sidebar {
+    background: #dfdfdf;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    box-shadow: none;
+}
+
+body.theme-windows31 .tool-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 0;
+    background: #dfdfdf;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    color: #000000;
+}
+
+body.theme-windows31 .tool-btn:hover {
+    background: #e8e8e8;
+}
+
+body.theme-windows31 .tool-btn.active {
+    background: #000080;
+    color: #ffffff;
+    border-top-color: #404040;
+    border-left-color: #404040;
+    border-right-color: #ffffff;
+    border-bottom-color: #ffffff;
+}
+
+body.theme-windows31 .modal-window {
+    background: #d4d0c8;
+    border: 2px ridge #ffffff;
+}
+
+body.theme-windows31 .modal-header,
+body.theme-windows31 .modal-footer {
+    background: #e8e8e8;
+    border-color: #808080;
+}
+
+body.theme-windows31 .modal-header {
+    border-bottom: 2px solid #808080;
+}
+
+body.theme-windows31 .modal-footer {
+    border-top: 2px solid #808080;
+}
+
+body.theme-windows31 #editorCanvasContainer {
+    position: relative;
+    z-index: 1;
+    min-height: 0;
+}
+
+body.theme-windows31 #editorSVGContainer {
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+}
+
+body.theme-windows31 .app,
+body.theme-windows31 header,
+body.theme-windows31 aside,
+body.theme-windows31 .panel,
+body.theme-windows31 .panel-header,
+body.theme-windows31 .panel-body,
+body.theme-windows31 .badge,
+body.theme-windows31 .logo {
+    box-shadow: none !important;
+}
+
+body.theme-windows31 .app {
+    background: #c0c0c0;
+}
+
+body.theme-windows31 header {
+    background: #c0c0c0;
+    border-bottom: 2px ridge #ffffff;
+    color: #000000;
+}
+
+body.theme-windows31 aside {
+    background: #c0c0c0;
+    border-right: 2px solid #404040;
+}
+
+body.theme-windows31 .panel {
+    background: #dfdfdf;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+body.theme-windows31 .panel-header {
+    background: #e8e8e8;
+    color: #000000;
+    border-bottom: 2px solid #808080;
+    padding: 9px 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+body.theme-windows31 .panel-header::after {
+    color: #000000;
+}
+
+body.theme-windows31 .panel-body {
+    background: #dfdfdf;
+    padding: 12px;
+}
+
+body.theme-windows31 input,
+body.theme-windows31 select,
+body.theme-windows31 textarea {
+    background: #e0e0e0 !important;
+    color: #000000 !important;
+    border: 2px inset #ffffff !important;
+    box-shadow: none !important;
+}
+
+body.theme-windows31 .btn,
+body.theme-windows31 button {
+    background: #dfdfdf;
+    color: #000000;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+    border-radius: 0;
+    padding: 6px 10px;
+}
+
+body.theme-windows31 .btn-primary {
+    background: #000080;
+    color: #ffffff;
+    border: 2px solid #404040;
+}
+
+body.theme-windows31 .btn-secondary,
+body.theme-windows31 .btn-secondary.btn-xs,
+body.theme-windows31 #theme-btn {
+    background: #dfdfdf;
+    color: #000000;
+}
+
+body.theme-windows31 .btn-xs {
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+body.theme-windows31 #theme-btn {
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-right: 2px solid #404040;
+    border-bottom: 2px solid #404040;
+}
+
+body.theme-windows31 .theme-dropdown {
+    background: #dfdfdf;
+    border: 2px solid #808080;
+}
+
+body.theme-windows31 .theme-dropdown button {
+    color: #000000;
+}
+
+body.theme-windows31 .logo {
+    color: #000080;
+}
+
+body.theme-windows31 .badge {
+    background: #ffffff;
+    border: 2px solid #808080;
+    color: #000000;
 }
 
 body.theme-windows31 button,

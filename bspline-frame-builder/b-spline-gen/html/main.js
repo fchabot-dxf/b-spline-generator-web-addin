@@ -455,6 +455,54 @@ function bindControls() {
     };
     bindStepper('stampDepthMinus', 'stampDepthPlus', 'stampDepth', 0.05);
 
+    const attachNumberSteppers = () => {
+        const inputs = Array.from(document.querySelectorAll('input[type="number"]'));
+        inputs.forEach(input => {
+            if (!input.isConnected) return;
+            if (input.closest('.stepper-container')) return;
+            if (input.closest('label')?.classList.contains('no-stepper')) return;
+            const wrapper = document.createElement('div');
+            wrapper.className = 'stepper-container';
+
+            const minus = document.createElement('button');
+            minus.type = 'button';
+            minus.className = 'stepper-btn';
+            minus.textContent = '−';
+
+            const plus = document.createElement('button');
+            plus.type = 'button';
+            plus.className = 'stepper-btn';
+            plus.textContent = '+';
+
+            const step = Number(input.step) || 1;
+            const min = input.min !== '' ? Number(input.min) : -Infinity;
+            const max = input.max !== '' ? Number(input.max) : Infinity;
+
+            const clamp = (value) => {
+                if (!Number.isFinite(value)) return input.value;
+                return Math.min(max, Math.max(min, value));
+            };
+
+            const adjust = (delta) => {
+                const current = Number(input.value);
+                const next = Number.isFinite(current) ? current + delta : delta;
+                input.value = clamp(Number(next.toFixed(10)));
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            };
+
+            minus.addEventListener('click', () => adjust(-step));
+            plus.addEventListener('click', () => adjust(step));
+
+            input.parentNode.insertBefore(wrapper, input);
+            wrapper.appendChild(minus);
+            wrapper.appendChild(input);
+            wrapper.appendChild(plus);
+        });
+    };
+
+    attachNumberSteppers();
+
     // 7. Stamp File Handling
     const btnStampChoose = document.getElementById('btnStampChoose');
     const stampUpload = document.getElementById('stampUpload');

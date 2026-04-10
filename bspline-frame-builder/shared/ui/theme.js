@@ -15,6 +15,12 @@ function normalizeThemeId(themeId) {
     return themeId;
 }
 
+function toggleWin3xThemeSheet(enable) {
+    const win3xLink = document.getElementById('win3x-theme-link');
+    if (!win3xLink) return;
+    win3xLink.disabled = !enable;
+}
+
 function applyBsplineTheme(themeId, persist = false, source = 'unknown') {
     bsplineThemeApplyCount += 1;
     themeId = normalizeThemeId(themeId);
@@ -32,6 +38,7 @@ function applyBsplineTheme(themeId, persist = false, source = 'unknown') {
     BSPLINE_THEMES.forEach(theme => body.classList.remove('theme-' + theme.id));
     body.classList.add('theme-' + themeId);
     currentBsplineTheme = themeId;
+    toggleWin3xThemeSheet(themeId === 'windows31');
     console.debug('[Theme] Body classes now:', body.className);
 
     const themeSelects = document.querySelectorAll('#theme-select, #theme-select-settings');
@@ -120,15 +127,20 @@ function initBsplineTheme(options = {}) {
         select.addEventListener('change', () => applyBsplineTheme(select.value, true, 'select'));
     });
 
-    if (themeBtn && themeDropdown) {
+    if (themeBtn) {
         themeBtn.addEventListener('click', event => {
             event.stopPropagation();
-            themeDropdown.classList.toggle('hidden');
+            let currentIndex = BSPLINE_THEMES.findIndex(theme => theme.id === currentBsplineTheme);
+            if (currentIndex < 0) currentIndex = 0;
+            const nextIndex = (currentIndex + 1) % BSPLINE_THEMES.length;
+            const nextTheme = BSPLINE_THEMES[nextIndex];
+            if (nextTheme) applyBsplineTheme(nextTheme.id, true, 'button-cycle');
         });
+    }
 
-        document.addEventListener('click', () => {
-            themeDropdown.classList.add('hidden');
-        });
+    if (themeDropdown) {
+        themeDropdown.classList.add('hidden');
+        themeDropdown.style.display = 'none';
     }
 
     applyBsplineTheme(initialTheme, false, 'init');
