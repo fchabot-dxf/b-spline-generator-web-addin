@@ -467,6 +467,14 @@
             }
         }
 
+        try {
+            if (!localStorage.getItem('bsplineSharedTheme')) {
+                localStorage.setItem('bsplineSharedTheme', 'windows31');
+            }
+        } catch (e) {
+            console.warn('[Theme] Unable to access localStorage for default theme:', e);
+        }
+
         initBsplineTheme({ watchStorage: true });
 
         // Catch messages from Python
