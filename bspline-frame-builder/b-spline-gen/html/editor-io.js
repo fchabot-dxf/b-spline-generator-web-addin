@@ -110,7 +110,11 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     }
     const wPx = editor._mW * dpi;
     const hPx = editor._mH * dpi;
-    const textContent = textCopies.join('');
+    
+    // v49: Seal text copies in a proper <defs> block to ensure they never render.
+    const textContent = textCopies.length ? `<defs class="editor-metadata">${textCopies.join('')}</defs>` : '';
+
+    
     const styleBlock = fontCss.length ? `<defs><style type="text/css">${fontCss.join('\n')}</style></defs>` : '';
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${content}${textContent}</svg>`;
     editor.lastSvg = svgString;
@@ -125,6 +129,11 @@ export function open(editor, svgString, w, h) {
     try {
         const svgEl = new DOMParser().parseFromString(svgString, 'image/svg+xml').querySelector('svg');
         if (svgEl) {
+            // v47: Filter out metadata elements so they don't clutter the sketch layer
+            // v49: Filter out Defs-based metadata so it doesn't clutter the sketch layer
+            const metadata = svgEl.querySelector('.editor-metadata');
+            if (metadata) metadata.remove();
+
             editor._sketchLayer.svg(svgEl.innerHTML);
             editor._sketchLayer.children().forEach(ch => {
                 if (ch.hasClass('calib-anchor')) ch.remove();

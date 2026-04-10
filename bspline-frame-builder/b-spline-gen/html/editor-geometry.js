@@ -328,59 +328,107 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
     if (!editor._selectedElement) return;
     const el = editor._selectedElement;
     
-    // Step 1: Text Elements (Opentype.js Fast-Path)
-    if (el.type === 'text') {
-        const fontFamily = el.attr('font-family') || "Arial";
-        const fontSize = parseFloat(el.attr('font-size') || '3.0');
-        const contentNodes = el.node.childNodes;
-        let rawContent = "";
-        contentNodes.forEach(node => { if (node.nodeType === 3) rawContent += node.nodeValue; else if (node.nodeName === 'tspan') rawContent += node.textContent; });
-        if (!rawContent) rawContent = el.text() || "";
-        
-        const fontFile = FONT_MAP[fontFamily];
-        if (fontFile) {
-            try {
-                const opentype = await import('https://esm.sh/opentype.js');
-                const font = await opentype.load(`${window.location.origin}/fonts/${fontFile}`);
-                if (font) {
-                    const ascentUnits = font.tables.os2?.sTypoAscender || font.tables.hhea?.ascender || font.ascender;
-                    const scale = (1 / font.unitsPerEm) * fontSize;
-                    const ascender = ascentUnits * scale;
+        // Step 1: Text Elements (Opentype.js Fast-Path)
+        if (el.type === 'text') {
+            const rawFamily = el.attr('font-family') || "Arial";
+            const fontFamily = rawFamily.replace(/['"]/g, '').trim();
+            const fontSize = parseFloat(el.attr('font-size') || '3.0');
+            const contentNodes = el.node.childNodes;
+            let rawContent = "";
+            contentNodes.forEach(node => { 
+                if (node.nodeType === 3) rawContent += node.nodeValue; 
+                else if (node.nodeName === 'tspan') rawContent += node.textContent; 
+            });
+            if (!rawContent) rawContent = el.text() || "";
+            
+            const fontFile = FONT_MAP[fontFamily];
+            if (fontFile) {
+                try {
+                    console.log(`[EXPAND] Starting: "${fontFamily}"`);
+                    const opentypeMod = await import('https://esm.sh/opentype.js');
+                    const opentype = opentypeMod.default || opentypeMod;
                     
-                    const matrix = el.transform();
-                    const localX = el.x();
-                    const localBaselineY = el.y() + (el.attr('dominant-baseline') === 'hanging' ? ascender : 0);
-                    
-                    // Step 1.1: Generate raw path data in LOCAL space
-                    const pathData = font.getPath(rawContent, localX, localBaselineY, fontSize);
-                    let d = pathData.toPathData(2); 
+                    // Promise wrapper for opentype.load
+                    const font = await new Promise((resolve, reject) => {
+                        opentype.load(`./fonts/${fontFile}`, (err, f) => {
+                            if (err) reject(err); else resolve(f);
+                        });
+                    });
 
-                    const layer = el.attr('data-layer') || "0";
-                    const expanded = editor._sketchLayer.path(d)
-                        .fill('#000000')
-                        .stroke('none')
-                        .attr('fill-rule', 'evenodd')
-                        .attr('data-layer', layer);
+                    if (font) {
+                        // v53: Precise "Hanging" Baseline Alignment
+                        // Browsers typically use HHEA ascender or font.ascender for the 'hanging' baseline.
+                        // If it shifts UP, it means our shift-down value (ascender) is too small.
+                        const ascentUnits = font.tables.hhea?.ascender || font.ascender || font.tables.os2?.sTypoAscender || 0;
+                        const scaleFactor = (1 / font.unitsPerEm) * fontSize;
+                        const ascender = ascentUnits * scaleFactor;
 
-                    // Step 1.2: BAKE the full matrix into the path data and clear transform
-                    // This ensures the geometry survives the editor's "re-open" which wipes transforms.
-                    if (matrix) {
-                        const bakedD = expanded.array().transform(matrix).toString();
-                        expanded.plot(bakedD);
-                        expanded.attr('transform', null);
+                        
+                        // v48: PUA Mapping for Symbol fonts
+                        let processedContent = rawContent;
+                        const isSymbolic = ["Symbol", "Wingdings", "Webdings"].includes(fontFamily);
+                        if (isSymbolic) {
+                            processedContent = Array.from(rawContent).map(c => {
+                                const code = c.charCodeAt(0);
+                                return (code > 31 && code < 127) ? String.fromCharCode(0xF000 + code) : c;
+                            }).join('');
+                        }
+
+                        // v51: Hardened Alignment Matrix
+                        // We combine the transform matrix with the x/y attributes manually.
+                        const m = el.matrix().translate(el.x(), el.y());
+
+                        
+                        try {
+                            // Generate at (0, 0) locally (with baseline adjust)
+                            const pathObj = font.getPath(processedContent, 0, ascender, fontSize);
+                            let d = pathObj.toPathData(2); 
+
+                            const expanded = editor._sketchLayer.path(d)
+                                .fill('#000000')
+                                .stroke('none')
+                                .attr('fill-rule', 'evenodd')
+                                .attr('data-layer', el.attr('data-layer') || "0");
+
+                            // v52: UNBREAKABLE Manual Baking
+                            // We manually transform every point in the path segment list.
+                            // This bypasses the failing .transform() API entirely.
+                            const pArray = new SVG.PathArray(d);
+                            pArray.forEach(seg => {
+                                // Segments: [Type, x1, y1, x2, y2...] or [Type, x, y]
+                                for (let i = 1; i < seg.length; i += 2) {
+                                    if (typeof seg[i] === 'number' && typeof seg[i+1] === 'number') {
+                                        const pt = new SVG.Point(seg[i], seg[i+1]).transform(m);
+                                        seg[i] = pt.x;
+                                        seg[i+1] = pt.y;
+                                    }
+                                }
+                            });
+                            
+                            expanded.plot(pArray.toString());
+                            expanded.attr('transform', null);
+
+
+
+                            // Metadata backup for re-editing
+                            const textCopy = el.clone().removeClass('svg-selected').removeClass('svg-hover').svg();
+                            expanded.attr('data-original-text-svg', el.attr('data-original-text-svg') || textCopy);
+                            
+                            editor._select(expanded);
+                        } finally {
+                            // Ensure the original text is always removed
+                            el.remove();
+                        }
+                        if (commit && editor.pushState) editor.pushState();
+                        return; 
                     }
-
-                    expanded.attr('data-original-text-svg', el.attr('data-original-text-svg') || el.svg());
-                    el.remove();
-                    editor._select(expanded);
-                    if (commit && editor.pushState) editor.pushState();
-                    return; 
+                } catch (e) {
+                    console.error("[EXPAND] Opentype logic failed:", e);
                 }
-            } catch (e) {
-                console.warn("[EXPAND] Opentype.js failed. Falling back to trace.", e);
+            } else {
+                console.warn(`[EXPAND] No mapping for "${fontFamily}"`);
             }
         }
-    }
 
     // Step 2: Vector Shapes (Geometric Math Fast-Path)
     if (el.type === 'path' || el.type === 'polyline' || el.type === 'line') {
@@ -527,6 +575,9 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
         }
 
         let pathData = "";
+        const density = 1.0;
+        const accuracy = 1.0;
+        const simplify = 1.0;
         const tol = getDynamicTolerance(editor, 1.0);
         const simplifyLevel = Math.max(1, Math.min(500, simplify));
         const simplifyFactor = Math.sqrt(simplifyLevel / 15);
