@@ -3,7 +3,7 @@
  * Refactored into a modular ES6 architecture.
  */
 
-import { initIO, save, open, sync3DBackground, getPointerPos } from './editor-io.js';
+import { initIO, save, saveWithTextCopies, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { initText, beginTextEdit, commitText, cancelText, setFontFamily, setFontSize } from './editor-text.js';
 import { getDynamicTolerance, getNodes, fitCurve, getHybridBezierPath, expandCurrent, getNearbyElement } from './editor-geometry.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
@@ -77,6 +77,22 @@ export class VectorEditor {
         bind('toolDelete', () => this.deleteSelected());
         bind('toolExpand', () => this.expandAction());
         bind('editorUndo', () => this.undo());
+        bind('editorDownload', async () => {
+            const svgText = await this.saveWithTextCopies();
+            if (!svgText) return;
+            const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+            const name = `svg-editor-${Date.now()}.svg`;
+            if (typeof saveAs === 'function') {
+                saveAs(blob, name);
+            } else {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        });
         bind('editorClear', () => {
             if (confirm("Clear all?")) {
                 this._sketchLayer.clear();
@@ -144,6 +160,11 @@ export class VectorEditor {
     save(dpi = 96) { 
         this._commitText();
         return save(this, dpi); 
+    }
+
+    saveWithTextCopies(dpi = 96) {
+        this._commitText();
+        return saveWithTextCopies(this, dpi);
     }
     open(svgString, w, h) { return open(this, svgString, w, h); }
     sync3DBackground() { return sync3DBackground(this); }
