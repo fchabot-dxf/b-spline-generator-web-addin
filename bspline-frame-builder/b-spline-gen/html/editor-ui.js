@@ -26,6 +26,10 @@ export function setMode(editor, mode) {
         container.classList.remove('mode-select', 'mode-draw', 'mode-line', 'mode-text', 'mode-circle', 'mode-rect', 'mode-node');
         container.classList.add(`mode-${mode}`);
     }
+
+    // Restore handles refresh on mode switch
+    editor._updateHandles();
+    editor._updateSelectionHighlight();
 }
 
 export function updateToolbarVisibility(editor) {
@@ -78,6 +82,9 @@ export function updateSelectionHighlight(editor) {
         editor._selectionHighlight = null; 
     }
     if (!editor._selectedElement || !editor._draw || !editor._highlightLayer) return;
+
+    // Restore: Hide selection glow in Node Edit mode for clearer point selection
+    if (editor._currentMode === 'node') return;
 
     const el = editor._selectedElement;
     if (el.type === 'text') {

@@ -13,6 +13,27 @@ if (window && window.console) {
 }
 import { COORD_SYSTEM } from './coords.js';
 
+const FONT_MAP = {
+    "Arial": "arial.ttf",
+    "Tahoma": "tahoma.ttf",
+    "Verdana": "verdana.ttf",
+    "Bahnschrift": "bahnschrift.ttf",
+    "Impact": "impact.ttf",
+    "Georgia": "georgia.ttf",
+    "Times New Roman": "times.ttf",
+    "Courier New": "courier.ttf",
+    "Cascadia Code": "CascadiaCode-Regular.ttf",
+    "Cascadia Mono": "CascadiaMono-Regular.ttf",
+    "Marlett": "marlett.ttf",
+    "Symbol": "symbol.ttf",
+    "Webdings": "webdings.ttf",
+    "Wingdings": "wingdings.ttf",
+    "Segoe UI Symbol": "segoe-symbols.ttf",
+    "Segoe MDL2 Assets": "segoe-mdl2.ttf",
+    "Segoe Fluent Icons": "segoe-fluent-icons.ttf",
+    "Segoe UI Emoji": "segoe-emoji.ttf"
+};
+
 // --- INTERNAL GEOM UTILS ---
 function _add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
 function _sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
@@ -307,20 +328,92 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
     if (!editor._selectedElement) return;
     const el = editor._selectedElement;
     
-    // v40: Expansion Logic (Stroke-to-Fill conversion)
-    // Renders the element to a hidden canvas, traces alpha edges, and fits a path.
+    // Step 1: Text Elements (Opentype.js Fast-Path)
+    if (el.type === 'text') {
+        const fontFamily = el.attr('font-family') || "Arial";
+        const fontSize = parseFloat(el.attr('font-size') || '3.0');
+        const contentNodes = el.node.childNodes;
+        let rawContent = "";
+        contentNodes.forEach(node => { if (node.nodeType === 3) rawContent += node.nodeValue; else if (node.nodeName === 'tspan') rawContent += node.textContent; });
+        if (!rawContent) rawContent = el.text() || "";
+        
+        const fontFile = FONT_MAP[fontFamily];
+        if (fontFile) {
+            try {
+                const opentype = await import('https://esm.sh/opentype.js');
+                const font = await opentype.load(`${window.location.origin}/fonts/${fontFile}`);
+                if (font) {
+                    const ascentUnits = font.tables.os2?.sTypoAscender || font.tables.hhea?.ascender || font.ascender;
+                    const scale = (1 / font.unitsPerEm) * fontSize;
+                    const ascender = ascentUnits * scale;
+                    
+                    const matrix = el.transform();
+                    const localX = el.x();
+                    const localBaselineY = el.y() + (el.attr('dominant-baseline') === 'hanging' ? ascender : 0);
+                    
+                    // Step 1.1: Generate raw path data in LOCAL space
+                    const pathData = font.getPath(rawContent, localX, localBaselineY, fontSize);
+                    let d = pathData.toPathData(2); 
+
+                    const layer = el.attr('data-layer') || "0";
+                    const expanded = editor._sketchLayer.path(d)
+                        .fill('#000000')
+                        .stroke('none')
+                        .attr('fill-rule', 'evenodd')
+                        .attr('data-layer', layer);
+
+                    // Step 1.2: BAKE the full matrix into the path data and clear transform
+                    // This ensures the geometry survives the editor's "re-open" which wipes transforms.
+                    if (matrix) {
+                        const bakedD = expanded.array().transform(matrix).toString();
+                        expanded.plot(bakedD);
+                        expanded.attr('transform', null);
+                    }
+
+                    expanded.attr('data-original-text-svg', el.attr('data-original-text-svg') || el.svg());
+                    el.remove();
+                    editor._select(expanded);
+                    if (commit && editor.pushState) editor.pushState();
+                    return; 
+                }
+            } catch (e) {
+                console.warn("[EXPAND] Opentype.js failed. Falling back to trace.", e);
+            }
+        }
+    }
+
+    // Step 2: Vector Shapes (Geometric Math Fast-Path)
+    if (el.type === 'path' || el.type === 'polyline' || el.type === 'line') {
+        const sw = parseFloat(el.attr('stroke-width')) || 0.5;
+        const matrix = el.transform(); // Get current element transform
+        const geoD = expandGeometric(editor, el, sw, matrix);
+        if (geoD) {
+            const layer = el.attr('data-layer') || "0";
+            const expanded = editor._sketchLayer.path(geoD)
+                .fill('#000000')
+                .stroke('none')
+                .attr('fill-rule', 'evenodd')
+                .attr('data-layer', layer);
+            
+            // Clear transform as it's now baked into geoD
+            expanded.attr('transform', null);
+            expanded.attr('data-original-svg', el.svg());
+            el.remove();
+            editor._select(expanded);
+            if (commit && editor.pushState) editor.pushState();
+            return; 
+        }
+    }
+
+    // Step 3: Fallback Tracing (for complex elements/images)
     const bbox = el.bbox();
-    const pad = 0.5; // inch padding for the trace region
+    const pad = 0.5; 
     const wIn = bbox.w + pad * 2;
     const hIn = bbox.h + pad * 2;
-    
-    const density = Math.max(0.5, Math.min(3.5, detail));
     const canvas = document.createElement('canvas');
-    // v41: Dynamic resolution based on physical size and user-detail control.
-    const canvasW = Math.max(256, Math.min(3072, Math.round(wIn * 260 * density)));
-    const canvasH = Math.max(256, Math.min(3072, Math.round(hIn * 260 * density)));
-    canvas.width = canvasW;
-    canvas.height = canvasH;
+    const canvasW = Math.max(256, Math.min(3072, Math.round(wIn * 260)));
+    const canvasH = Math.max(256, Math.min(3072, Math.round(hIn * 260)));
+    canvas.width = canvasW; canvas.height = canvasH;
     const ctx = canvas.getContext('2d');
     
     // Prepare isolated SVG for just this element.
@@ -460,19 +553,9 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
                 .attr('fill-rule', 'evenodd')
                 .attr('data-layer', layer);
             
-            // Preserve the original source so repeated re-expands use the true input.
-            if (el.attr('data-original-text-svg')) {
-                expanded.attr('data-original-text-svg', el.attr('data-original-text-svg'));
-            }
-            if (el.attr('data-original-svg')) {
-                expanded.attr('data-original-svg', el.attr('data-original-svg'));
-            }
-            if (el.type === 'text' && !expanded.attr('data-original-text-svg')) {
-                expanded.attr('data-original-text-svg', el.svg());
-            }
-            if (!expanded.attr('data-original-svg') && !expanded.attr('data-original-text-svg')) {
-                expanded.attr('data-original-svg', el.svg());
-            }
+            if (el.attr('data-original-text-svg')) expanded.attr('data-original-text-svg', el.attr('data-original-text-svg'));
+            if (el.attr('data-original-svg')) expanded.attr('data-original-svg', el.attr('data-original-svg'));
+            if (!expanded.attr('data-original-svg') && !expanded.attr('data-original-text-svg')) expanded.attr('data-original-svg', el.svg());
             
             el.remove();
             editor._select(expanded);
@@ -481,4 +564,69 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
     } catch (err) {
         console.error("[EXPAND] Trace failure:", err);
     }
+}
+
+/**
+ * Advanced Vector Expansion: Geometric Offset (Smart Stroke-to-Fill)
+ * Offsets a path mathematically to create a perfect outline with round caps.
+ */
+function expandGeometric(editor, el, strokeWidth, matrix) {
+    const pathNode = el.node;
+    if (typeof pathNode.getTotalLength !== 'function') return null;
+    const length = pathNode.getTotalLength();
+    if (length <= 0) return null;
+    
+    // Sampling rate: high resolution (approx every 0.02 units)
+    const step = 0.02;
+    const numSamples = Math.max(2, Math.ceil(length / step));
+    
+    const pts = [];
+    for (let i = 0; i <= numSamples; i++) {
+        const t = (i / numSamples) * length;
+        let pt = pathNode.getPointAtLength(t);
+        
+        // BAKE transform into sampled points
+        if (matrix) {
+            const worldPt = new editor._draw.point(pt.x, pt.y).transform(matrix);
+            pt = { x: worldPt.x, y: worldPt.y };
+        }
+        pts.push(pt);
+    }
+    
+    const halfWidth = strokeWidth / 2;
+    const leftBank = [];
+    const rightBank = [];
+    for (let i = 0; i < pts.length; i++) {
+        let dx, dy;
+        if (i === 0) { dx = pts[1].x - pts[0].x; dy = pts[1].y - pts[0].y; }
+        else if (i === pts.length - 1) { dx = pts[i].x - pts[i-1].x; dy = pts[i].y - pts[i-1].y; }
+        else { dx = pts[i+1].x - pts[i-1].x; dy = pts[i+1].y - pts[i-1].y; }
+        const mag = Math.hypot(dx, dy) || 1;
+        const nx = -dy / mag; const ny = dx / mag;
+        leftBank.push({ x: pts[i].x + nx * halfWidth, y: pts[i].y + ny * halfWidth });
+        rightBank.push({ x: pts[i].x - nx * halfWidth, y: pts[i].y - ny * halfWidth });
+    }
+    
+    const startCap = [];
+    const startP = pts[0]; const startNext = pts[1];
+    const baseAngle = Math.atan2(startNext.y - startP.y, startNext.x - startP.x);
+    for (let a = Math.PI; a >= 0; a -= Math.PI / 8) {
+        const ang = baseAngle - Math.PI / 2 - a;
+        startCap.push({ x: startP.x + Math.cos(ang) * halfWidth, y: startP.y + Math.sin(ang) * halfWidth });
+    }
+    const endCap = [];
+    const endP = pts[pts.length - 1]; const endPrev = pts[pts.length - 2];
+    const endAngle = Math.atan2(endP.y - endPrev.y, endP.x - endPrev.x);
+    for (let a = 0; a <= Math.PI; a += Math.PI / 8) {
+        const ang = endAngle - Math.PI / 2 - a;
+        endCap.push({ x: endP.x + Math.cos(ang) * halfWidth, y: endP.y + Math.sin(ang) * halfWidth });
+    }
+    
+    let d = `M ${startCap[0].x.toFixed(3)} ${startCap[0].y.toFixed(3)}`;
+    for (let i = 1; i < startCap.length; i++) d += ` L ${startCap[i].x.toFixed(3)} ${startCap[i].y.toFixed(3)}`;
+    for (const p of leftBank) d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+    for (const p of endCap) d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+    for (let i = rightBank.length - 1; i >= 0; i--) d += ` L ${rightBank[i].x.toFixed(3)} ${rightBank[i].y.toFixed(3)}`;
+    d += " Z";
+    return d;
 }

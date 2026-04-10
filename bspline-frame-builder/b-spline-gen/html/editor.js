@@ -130,27 +130,7 @@ export class VectorEditor {
                 this.setStrokeWidth(parseFloat(strokeNum.value));
             });
         }
-        const detailSld = document.getElementById('editorExpandDetailSlider');
-        if (detailSld) {
-            detailSld.addEventListener('input', () => {
-                this._expandDetail = parseFloat(detailSld.value);
-                this._scheduleExpandRefresh();
-            });
-        }
-        const simplifySld = document.getElementById('editorSimplifySlider');
-        if (simplifySld) {
-            simplifySld.addEventListener('input', () => {
-                this._expandSimplify = parseFloat(simplifySld.value);
-                this._scheduleExpandRefresh();
-            });
-        }
-        const accuracySld = document.getElementById('editorExpandAccuracySlider');
-        if (accuracySld) {
-            accuracySld.addEventListener('input', () => {
-                this._expandAccuracy = parseFloat(accuracySld.value);
-                this._scheduleExpandRefresh();
-            });
-        }
+
 
         // Font family & size controls
         const fontFamilyEl = document.getElementById('editorFontFamily');
@@ -186,33 +166,7 @@ export class VectorEditor {
         if (this._onChange) this._onChange();
     }
 
-    _scheduleExpandRefresh() {
-        if (this._expandRefreshTimer) clearTimeout(this._expandRefreshTimer);
-        this._expandRefreshTimer = setTimeout(() => {
-            this._refreshExpandedSelection();
-        }, 100);
-    }
 
-    async _refreshExpandedSelection() {
-        if (this._isRefreshingExpand) {
-            this._pendingExpandRefresh = true;
-            return;
-        }
-        const el = this._selectedElement;
-        if (!el || el.type !== 'path') return;
-        if (!el.attr('data-original-svg') && !el.attr('data-original-text-svg')) return;
-
-        this._isRefreshingExpand = true;
-        try {
-            await expandCurrent(this, this._expandDetail, this._expandSimplify, this._expandAccuracy, false);
-        } finally {
-            this._isRefreshingExpand = false;
-            if (this._pendingExpandRefresh) {
-                this._pendingExpandRefresh = false;
-                await this._refreshExpandedSelection();
-            }
-        }
-    }
 
     save(dpi = 96) { 
         this._commitText();
