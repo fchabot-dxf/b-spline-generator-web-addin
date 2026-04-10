@@ -12,6 +12,7 @@
 
 import { clampedKnots, evalBSplineSurface } from './bspline-math.js';
 import { P } from './state.js';
+import { COORD_SYSTEM } from './coords.js';
 
 export class TerrainPreview {
   /** @param {HTMLCanvasElement} canvas */
@@ -379,11 +380,11 @@ export class TerrainPreview {
       const safeH = Math.max(0.1, H || 10);
 
       // Fitting logic: Ensure r is large enough to fit both width and height
-      const rV = safeH / 0.8;
-      const rH = safeW / (0.8 * aspect);
-      const rIdeal = Math.max(rV, rH, Math.sqrt(safeW*safeW + safeH*safeH) * 1.5);
+      const rV = safeH / 0.9;
+      const rH = safeW / (0.9 * aspect);
+      const rIdeal = Math.max(rV, rH, Math.sqrt(safeW*safeW + safeH*safeH) * 1.25);
       
-      this._targetOrb.r = rIdeal * 1.25; // add some padding
+      this._targetOrb.r = rIdeal * 1.05; // much tighter fit
       this._targetOrb.target.set(0, 0, midZ);
       
       // If first run, snap immediately (no lerp)
@@ -641,8 +642,7 @@ export class TerrainPreview {
     for (let py = 0; py < h; py++) {
       // Unified Top-is-Top: canvas py=0 is at the Back (j=nz-1),
       // Canvas Bottom (py=h) is at the Front (j=0).
-      const fy = (py / h) * nz;
-      const iy = Math.min(Math.floor(nz - 1 - fy), nz - 1);
+      const iy = COORD_SYSTEM.rasterYToGridRow(py, nz, h);
       
       for (let px = 0; px < w; px++) {
         const fx = px / w * nx;
@@ -753,11 +753,7 @@ export class TerrainPreview {
     const geometry = new THREE.BufferGeometry();
     
     // 1. Boundary identification for side walls
-    const boundaryIndices = [];
-    for (let i = 0; i < nx - 1; i++) boundaryIndices.push(i); // front
-    for (let j = 0; j < nz - 1; j++) boundaryIndices.push(j * nx + (nx - 1)); // right
-    for (let i = nx - 1; i > 0; i--)  boundaryIndices.push((nz - 1) * nx + i); // back
-    for (let j = nz - 1; j > 0; j--)  boundaryIndices.push(j * nx); // left
+    const boundaryIndices = COORD_SYSTEM.gridBoundaryIndices(nx, nz);
     const B = boundaryIndices.length;
 
     // 2. Vertices: [Top (N), Bottom (N), SideTop (B), SideBot (B)]
@@ -850,23 +846,11 @@ export class TerrainPreview {
     }
 
     // 3. Indices
-    const indices = [];
+    let indices = COORD_SYSTEM.gridQuadFaceIndices(nx, nz, 0, false);
     const N = count;
     
-    // Top faces (CCW) - Corrected to point UP (+Z)
-    for (let j = 0; j < nz - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i, b = a + 1, c = (j + 1) * nx + i, d = c + 1;
-        indices.push(a, b, c, c, b, d);
-      }
-    }
     // Bottom faces (CW) - Corrected to point DOWN (-Z)
-    for (let j = 0; j < nz - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = N + j * nx + i, b = a + 1, c = N + (j + 1) * nx + i, d = c + 1;
-        indices.push(a, c, b, b, c, d);
-      }
-    }
+    indices = indices.concat(COORD_SYSTEM.gridQuadFaceIndices(nx, nz, N, true));
     // Side Walls constructed from the duplicated side-vertex pools
     for (let i = 0; i < B; i++) {
       const next = (i + 1) % B;
@@ -1468,7 +1452,7 @@ export class TerrainPreview {
     if (w <= 0 || h <= 0) return;
 
     const aspect = w / h;
-    const size   = Math.max(0.1, this._orb.r * 0.45); 
+    const size   = Math.max(0.1, this._orb.r * 0.35); 
     this._camera.left   = -size * aspect;
     this._camera.right  =  size * aspect;
     this._camera.top    =  size;

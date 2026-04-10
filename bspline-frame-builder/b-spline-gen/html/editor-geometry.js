@@ -1,7 +1,17 @@
+
 /**
  * editor-geometry.js - path fitting, simplification, and stroke expansion for VectorEditor.
  * Includes Philip J. Schneider's Least-Squares Curve Fitting and RDP algorithm.
  */
+
+/**
+ * editor-geometry.js - path fitting, simplification, and stroke expansion for VectorEditor.
+ * Includes Philip J. Schneider's Least-Squares Curve Fitting and RDP algorithm.
+ */
+if (window && window.console) {
+    console.log('[COORD_STD] editor-geometry.js loaded!');
+}
+import { COORD_SYSTEM } from './coords.js';
 
 // --- INTERNAL GEOM UTILS ---
 function _add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }
@@ -26,6 +36,15 @@ export function getDynamicTolerance(editor, px = 5) {
 
 export function fitCurve(editor, points, error) {
     if (points.length < 2) return "";
+    // Log before converting points for export
+    if (window && window.console) {
+        console.log(`[COORD_STD] fitCurve: Converting ${points.length} points for export`);
+        points.forEach((p, i) => {
+            const orig = { x: p[0], y: p[1] };
+            const phys = COORD_SYSTEM.toPhysical(orig.x, orig.y);
+            console.log(`[COORD_STD] fitCurve: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
+        });
+    }
     const pts = points.map(p => ({ x: p[0], y: p[1] }));
     const tan1 = _normalize(_sub(pts[1], pts[0]));
     const lastIdx = pts.length - 1;
@@ -35,10 +54,23 @@ export function fitCurve(editor, points, error) {
     fitRecursive(pts, 0, lastIdx, tan1, tan2, error, segments);
     
     let d = `M ${pts[0].x.toFixed(3)},${pts[0].y.toFixed(3)}`;
+    const lineTolerance = Math.max(error * 0.25, 0.5);
     segments.forEach(seg => {
-        d += ` C ${seg[1].x.toFixed(3)},${seg[1].y.toFixed(3)} ${seg[2].x.toFixed(3)},${seg[2].y.toFixed(3)} ${seg[3].x.toFixed(3)},${seg[3].y.toFixed(3)}`;
+        if (isLinearSegment(seg, lineTolerance)) {
+            d += ` L ${seg[3].x.toFixed(3)},${seg[3].y.toFixed(3)}`;
+        } else {
+            d += ` C ${seg[1].x.toFixed(3)},${seg[1].y.toFixed(3)} ${seg[2].x.toFixed(3)},${seg[2].y.toFixed(3)} ${seg[3].x.toFixed(3)},${seg[3].y.toFixed(3)}`;
+        }
     });
     return d;
+}
+
+function isLinearSegment(seg, tolerance) {
+    if (!seg || seg.length !== 4) return false;
+    const a = seg[0], d = seg[3];
+    const len = _distBetween(a, d);
+    if (len < 1e-6) return true;
+    return getPointLineDist(seg[1], a, d) <= tolerance && getPointLineDist(seg[2], a, d) <= tolerance;
 }
 
 function fitRecursive(pts, first, last, tan1, tan2, error, segments) {
@@ -147,6 +179,13 @@ export function getPointLineDist(pt, a, b) {
 
 export function getHybridBezierPath(points, isClosed = false, cornerAngleThreshold = 95) {
     if (points.length < 2) return "";
+    if (window && window.console) {
+        points.forEach((p, i) => {
+            const orig = { x: p[0], y: p[1] };
+            const phys = COORD_SYSTEM.toPhysical(orig.x, orig.y);
+            console.log(`[COORD_STD] getHybridBezierPath: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
+        });
+    }
     if (points.length === 2) return `M ${points[0][0].toFixed(3)},${points[0][1].toFixed(3)} L ${points[1][0].toFixed(3)},${points[1][1].toFixed(3)}`;
     const getPt = (idx) => points[(idx + points.length) % points.length];
     const getAngle = (idx) => {
@@ -184,6 +223,22 @@ export function getHybridBezierPath(points, isClosed = false, cornerAngleThresho
     return path;
 }
 
+function _transformPoint(el, pt) {
+    if (!el || !el.node || !el.node.ownerSVGElement || typeof el.node.getCTM !== 'function') return pt;
+    try {
+        const svg = el.node.ownerSVGElement;
+        const svgPt = svg.createSVGPoint();
+        svgPt.x = pt.x;
+        svgPt.y = pt.y;
+        const matrix = el.node.getCTM();
+        if (!matrix) return pt;
+        const transformed = svgPt.matrixTransform(matrix);
+        return { x: transformed.x, y: transformed.y };
+    } catch (err) {
+        return pt;
+    }
+}
+
 export function getNodes(el) {
     const pts = [];
     if (el.type === 'line') {
@@ -209,7 +264,7 @@ export function getNodes(el) {
     } else if (el.type === 'circle' || el.type === 'ellipse') {
         pts.push({ x: el.attr('cx'), y: el.attr('cy') });
     }
-    return pts;
+    return pts.map(pt => _transformPoint(el, pt));
 }
 
 export function getNearbyElement(editor, pt, tol = 0.1) {
@@ -248,7 +303,7 @@ async function _loadCanvg() {
     }
 }
 
-export async function expandCurrent(editor) {
+export async function expandCurrent(editor, detail = 1.0, simplify = 15, accuracy = 1.0, commit = true) {
     if (!editor._selectedElement) return;
     const el = editor._selectedElement;
     
@@ -259,16 +314,22 @@ export async function expandCurrent(editor) {
     const wIn = bbox.w + pad * 2;
     const hIn = bbox.h + pad * 2;
     
+    const density = Math.max(0.5, Math.min(3.5, detail));
     const canvas = document.createElement('canvas');
-    // v41: Dynamic resolution based on physical size (Target 150 DPI)
-    const displaySize = Math.max(512, Math.min(2048, Math.round(wIn * 150)));
-    canvas.width = displaySize;
-    canvas.height = displaySize;
+    // v41: Dynamic resolution based on physical size and user-detail control.
+    const canvasW = Math.max(256, Math.min(3072, Math.round(wIn * 260 * density)));
+    const canvasH = Math.max(256, Math.min(3072, Math.round(hIn * 260 * density)));
+    canvas.width = canvasW;
+    canvas.height = canvasH;
     const ctx = canvas.getContext('2d');
     
-    // Prepare isolated SVG for just this element
-    const svgStr = el.attr('data-original-svg') || el.svg();
-    const canvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${displaySize}" height="${displaySize}" viewBox="${bbox.x - pad} ${bbox.y - pad} ${wIn} ${hIn}">${svgStr}</svg>`;
+    // Prepare isolated SVG for just this element.
+    // If the element has been moved via transform, preserve that transform when tracing.
+    const rawSvg = el.attr('data-original-text-svg') || el.attr('data-original-svg') || el.svg();
+    const transformAttr = el.attr('transform');
+    const svgContent = rawSvg.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+    const transformedContent = transformAttr ? `<g transform="${transformAttr}">${svgContent}</g>` : svgContent;
+    const canvgText = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}" preserveAspectRatio="none" viewBox="${bbox.x - pad} ${bbox.y - pad} ${wIn} ${hIn}">${transformedContent}</svg>`;
     
     const Canvg = await _loadCanvg();
     if (!Canvg) {
@@ -280,82 +341,142 @@ export async function expandCurrent(editor) {
         const v = await Canvg.fromString(ctx, canvgText);
         await v.render();
         
-        const img = ctx.getImageData(0, 0, displaySize, displaySize).data;
-        const pts = [];
+        const img = ctx.getImageData(0, 0, canvasW, canvasH).data;
         const threshold = 127;
-        
-        // Edge detector
-        for (let y = 1; y < displaySize - 1; y += 1) {
-            for (let x = 1; x < displaySize - 1; x += 1) {
-                const i = (y * displaySize + x) * 4 + 3;
-                if (img[i] > threshold) {
-                    const top = ((y-1)*displaySize + x)*4 + 3;
-                    const bot = ((y+1)*displaySize + x)*4 + 3;
-                    const left = (y*displaySize + x-1)*4 + 3;
-                    const right = (y*displaySize + x+1)*4 + 3;
-                    if (img[top] <= threshold || img[bot] <= threshold || img[left] <= threshold || img[right] <= threshold) {
-                        pts.push([
-                            (bbox.x - pad) + (x / displaySize) * wIn,
-                            (bbox.y - pad) + (y / displaySize) * hIn
-                        ]);
-                    }
-                }
+        const mask = new Uint8Array(canvasW * canvasH);
+        let hasPixel = false;
+
+        for (let y = 0; y < canvasH; y++) {
+            for (let x = 0; x < canvasW; x++) {
+                const alpha = img[(y * canvasW + x) * 4 + 3];
+                const idx = y * canvasW + x;
+                mask[idx] = alpha > threshold ? 1 : 0;
+                if (mask[idx]) hasPixel = true;
             }
         }
-        
-        if (pts.length < 3) {
-            console.warn("[EXPAND] No edges detected in trace.");
+
+        if (!hasPixel) {
+            console.warn("[EXPAND] No filled pixels detected in trace.");
             return;
         }
 
-        const subpaths = [];
-        let curr = pts.shift();
-        let currentPath = [curr];
-        const pixelScaleX = wIn / displaySize;
-        const pixelScaleY = hIn / displaySize;
-        const maxDistSq = (pixelScaleX * pixelScaleX + pixelScaleY * pixelScaleY) * 16; 
+        const segments = new Map();
+        const key = (x, y) => `${x},${y}`;
+        const addSegment = (ax, ay, bx, by) => {
+            const a = key(ax, ay);
+            const b = key(bx, by);
+            if (!segments.has(a)) segments.set(a, new Set());
+            if (!segments.has(b)) segments.set(b, new Set());
+            segments.get(a).add(b);
+            segments.get(b).add(a);
+        };
+        const isFilled = (x, y) => x >= 0 && x < canvasW && y >= 0 && y < canvasH && mask[y * canvasW + x];
 
-        while (pts.length > 0) {
-            let bestIdx = -1;
-            let bestDist = Infinity;
-            for (let i = 0; i < Math.min(pts.length, 1000); i++) {
-                const d = (pts[i][0] - curr[0])**2 + (pts[i][1] - curr[1])**2;
-                if (d < bestDist) { bestDist = d; bestIdx = i; }
-            }
-            if (bestIdx === -1) bestIdx = 0;
-            
-            curr = pts.splice(bestIdx, 1)[0];
-            if (bestDist > maxDistSq) {
-                subpaths.push(currentPath);
-                currentPath = [curr];
-            } else {
-                currentPath.push(curr);
+        for (let y = 0; y < canvasH; y++) {
+            for (let x = 0; x < canvasW; x++) {
+                if (!isFilled(x, y)) continue;
+                if (!isFilled(x + 1, y)) addSegment(x + 1, y, x + 1, y + 1);
+                if (!isFilled(x, y + 1)) addSegment(x, y + 1, x + 1, y + 1);
+                if (!isFilled(x - 1, y)) addSegment(x, y, x, y + 1);
+                if (!isFilled(x, y - 1)) addSegment(x, y, x + 1, y);
             }
         }
-        if (currentPath.length > 2) subpaths.push(currentPath);
-        
+
+        function removeEdge(a, b) {
+            const sa = segments.get(a);
+            const sb = segments.get(b);
+            if (sa) {
+                sa.delete(b);
+                if (sa.size === 0) segments.delete(a);
+            }
+            if (sb) {
+                sb.delete(a);
+                if (sb.size === 0) segments.delete(b);
+            }
+        }
+
+        const loops = [];
+        while (segments.size > 0) {
+            const start = segments.keys().next().value;
+            const loop = [start];
+            let current = start;
+            let previous = null;
+            let safety = 0;
+
+            while (true) {
+                const neighbors = Array.from(segments.get(current) || []);
+                if (neighbors.length === 0 || safety++ > canvasW * canvasH * 4) break;
+                let next = neighbors[0];
+                if (previous && neighbors.length > 1 && neighbors.includes(previous)) {
+                    next = neighbors.find(n => n !== previous);
+                }
+                removeEdge(current, next);
+                previous = current;
+                current = next;
+                if (current === start) break;
+                loop.push(current);
+            }
+            if (loop.length > 2) {
+                const coords = loop.map(pt => {
+                    const [gx, gy] = pt.split(',').map(Number);
+                    return [
+                        (bbox.x - pad) + (gx / canvasW) * wIn,
+                        (bbox.y - pad) + (gy / canvasH) * hIn
+                    ];
+                });
+                loops.push(coords);
+            }
+        }
+
+        if (loops.length === 0) {
+            console.warn("[EXPAND] No contour loops extracted from trace.");
+            return;
+        }
+
         let pathData = "";
-        const tol = getDynamicTolerance(editor, 2.0);
-        for (const sp of subpaths) {
-            if (sp.length < 3) continue;
-            const pruned = ramerDouglasPeucker(sp, tol);
-            const cData = fitCurve(editor, pruned, tol * 2.1);
+        const tol = getDynamicTolerance(editor, 1.0);
+        const simplifyLevel = Math.max(1, Math.min(500, simplify));
+        const simplifyFactor = Math.sqrt(simplifyLevel / 15);
+        const accuracyFactor = Math.max(0.5, Math.min(2.0, accuracy));
+        const simpTol = Math.max(0.05, tol * 0.5 / density * simplifyFactor / accuracyFactor);
+        const cornerAngle = Math.max(20, 95 / density / accuracyFactor);
+        for (const loop of loops) {
+            if (loop.length < 3) continue;
+            const pruned = ramerDouglasPeucker(loop, simpTol);
+            let cData = getHybridBezierPath(pruned, true, cornerAngle);
+            if (!cData) {
+                cData = fitCurve(editor, pruned, Math.max(0.1, tol * 2.0 / density * simplifyFactor / accuracyFactor));
+            }
+            cData = cData.trim();
+            if (cData && !cData.endsWith('Z')) cData += ' Z';
             if (cData) pathData += cData + " ";
         }
         
         if (pathData) {
             const layer = el.attr('data-layer') || "0";
             const expanded = editor._sketchLayer.path(pathData)
-                .fill(editor._strokeColor)
+                .fill('#000000')
                 .stroke('none')
+                .attr('fill-rule', 'evenodd')
                 .attr('data-layer', layer);
             
-            // Link to original data for future refinement if possible
-            expanded.attr('data-original-svg', el.attr('data-original-svg') || el.svg());
+            // Preserve the original source so repeated re-expands use the true input.
+            if (el.attr('data-original-text-svg')) {
+                expanded.attr('data-original-text-svg', el.attr('data-original-text-svg'));
+            }
+            if (el.attr('data-original-svg')) {
+                expanded.attr('data-original-svg', el.attr('data-original-svg'));
+            }
+            if (el.type === 'text' && !expanded.attr('data-original-text-svg')) {
+                expanded.attr('data-original-text-svg', el.svg());
+            }
+            if (!expanded.attr('data-original-svg') && !expanded.attr('data-original-text-svg')) {
+                expanded.attr('data-original-svg', el.svg());
+            }
             
             el.remove();
             editor._select(expanded);
-            if (editor.pushState) editor.pushState();
+            if (commit && editor.pushState) editor.pushState();
         }
     } catch (err) {
         console.error("[EXPAND] Trace failure:", err);

@@ -46,7 +46,7 @@ export function updateToolbarVisibility(editor) {
 
     const expandBtn = document.getElementById('toolExpand');
     if (expandBtn) {
-        const isExpandable = el && el.type !== 'text' && el.type !== 'image';
+        const isExpandable = el && el.type !== 'image';
         expandBtn.classList.toggle('hidden', !isExpandable);
     }
 }

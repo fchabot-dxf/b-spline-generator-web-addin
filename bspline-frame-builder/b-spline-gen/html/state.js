@@ -1,3 +1,4 @@
+import { COORD_SYSTEM } from './coords.js';
 /**
  * state.js — Application state and persistence logic.
  */
@@ -9,7 +10,7 @@ export const DEFAULT = {
     stampDepth: -1.0,
     stampProfile: 'vbit',
     stampVBitAngle: 90,
-    stampBlur: 3,
+    stampBlur: 0,
     stampTextureSuppression: 0.15,
     widthIn: 7,
     heightIn: 9,
@@ -60,8 +61,8 @@ export const DEFAULT = {
     edgeMarginIn: 0,
     // Vector Stamping (Multi-Layer Support)
     stampLayers: [
-        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: -1.0, profile: 'vbit', angle: 90, blur: 3, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2 },
-        { id: 'layer1', name: 'Layer 2', svg: null, mask: null, depth: -0.5, profile: 'ballnose', angle: 90, blur: 1, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2 },
+        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: -1.0, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2 },
+        { id: 'layer1', name: 'Layer 2', svg: null, mask: null, depth: -0.5, profile: 'ballnose', angle: 90, blur: 0, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2 },
         { id: 'layer2', name: 'Layer 3', svg: null, mask: null, depth: 0.75, profile: 'flat', angle: 90, blur: 0, enabled: false, smoothing: 5, suppression: 0.05, edgeFilletRadius: 0, filletPower: 2.2 }
     ],
     activeLayerIdx: 0,
@@ -147,13 +148,37 @@ export function setExtraThickenThinMask(val) {
 
 export function saveLastSession() {
     try {
+        // Convert all geometry points in P to physical units if present
+        const P_physical = { ...P };
+        if (P_physical.points && Array.isArray(P_physical.points)) {
+            P_physical.points = P_physical.points.map(pt => {
+                const phys = COORD_SYSTEM.toPhysical(pt[0], pt[1]);
+                if (window && window.console) {
+                    console.log(`[COORD_STD] saveLastSession: UI (${pt[0]},${pt[1]}) -> Physical (${phys.x},${phys.y})`);
+                }
+                return [phys.x, phys.y];
+            });
+        }
         const session = {
-            P: { ...P },
+            P: P_physical,
             preDelta: preDelta ? Array.from(preDelta) : null,
             postDelta: postDelta ? Array.from(postDelta) : null,
             extraThickenThinMask: extraThickenThinMask ? Array.from(extraThickenThinMask) : null,
         };
+        // Log session JSON for audit
+        console.log('[COORD_STD] saveLastSession: Saving session JSON:', JSON.stringify(session, null, 2));
         localStorage.setItem('splineGenLastSession', JSON.stringify(session));
+        // Automatically send session JSON to Fusion log file if running inside Fusion
+        if (window.adsk && typeof adsk.fusionSendData === 'function') {
+            try {
+                adsk.fusionSendData('log', JSON.stringify({ msg: JSON.stringify(session) }));
+            } catch (err) {
+                if (window.console) console.warn('Fusion log send failed:', err);
+            }
+        }
+        if (window && window.console) {
+            console.log('[COORD_STD] Saved session JSON:', session);
+        }
     } catch (e) {
         console.warn('saveLastSession failed:', e);
     }
@@ -168,7 +193,17 @@ export function loadLastSession() {
 
         Object.keys(sess.P).forEach(k => {
             if (k in P && k !== 'showMesh') {
-                const val = sess.P[k];
+                let val = sess.P[k];
+                // Convert points from physical to UI units if present
+                if (k === 'points' && Array.isArray(val)) {
+                    val = val.map(pt => {
+                        const ui = COORD_SYSTEM.toUI(pt[0], pt[1]);
+                        if (window && window.console) {
+                            console.log(`[COORD_STD] loadLastSession: Physical (${pt[0]},${pt[1]}) -> UI (${ui.x},${ui.y})`);
+                        }
+                        return [ui.x, ui.y];
+                    });
+                }
                 if (typeof val === 'number' && isNaN(val)) return;
                 if (val === null || val === undefined) return;
                 P[k] = val;

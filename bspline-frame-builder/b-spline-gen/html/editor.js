@@ -3,7 +3,7 @@
  * Refactored into a modular ES6 architecture.
  */
 
-import { initIO, save, open, sync3DBackground, getPointerPos } from './editor-io.js';
+import { initIO, save, saveWithTextCopies, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { initText, beginTextEdit, commitText, cancelText, setFontFamily, setFontSize } from './editor-text.js';
 import { getDynamicTolerance, getNodes, fitCurve, getHybridBezierPath, expandCurrent, getNearbyElement } from './editor-geometry.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
@@ -24,6 +24,12 @@ export class VectorEditor {
         this._strokeColor = '#000000';
         this._fontFamily = "Arial";
         this._fontSize = 3.0;
+        this._expandDetail = 1.0;
+        this._expandSimplify = 15;
+        this._expandAccuracy = 1.0;
+        this._isRefreshingExpand = false;
+        this._pendingExpandRefresh = false;
+        this._expandRefreshTimer = null;
 
         this._selectedElement = null;
         this._hoveredElement = null;
@@ -77,6 +83,24 @@ export class VectorEditor {
         bind('toolDelete', () => this.deleteSelected());
         bind('toolExpand', () => this.expandAction());
         bind('editorUndo', () => this.undo());
+        bind('editorDownload', async () => {
+            const svgText = await this.saveWithTextCopies();
+            if (!svgText) return;
+            const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+            const now = new Date();
+            const timestamp = now.toISOString().replace(/[:T]/g, '-').replace(/\.\d+Z$/, '');
+            const name = `svg-editor-${timestamp}.svg`;
+            if (typeof saveAs === 'function') {
+                saveAs(blob, name);
+            } else {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        });
         bind('editorClear', () => {
             if (confirm("Clear all?")) {
                 this._sketchLayer.clear();
@@ -104,6 +128,27 @@ export class VectorEditor {
             strokeNum.addEventListener('input', () => {
                 strokeSld.value = strokeNum.value;
                 this.setStrokeWidth(parseFloat(strokeNum.value));
+            });
+        }
+        const detailSld = document.getElementById('editorExpandDetailSlider');
+        if (detailSld) {
+            detailSld.addEventListener('input', () => {
+                this._expandDetail = parseFloat(detailSld.value);
+                this._scheduleExpandRefresh();
+            });
+        }
+        const simplifySld = document.getElementById('editorSimplifySlider');
+        if (simplifySld) {
+            simplifySld.addEventListener('input', () => {
+                this._expandSimplify = parseFloat(simplifySld.value);
+                this._scheduleExpandRefresh();
+            });
+        }
+        const accuracySld = document.getElementById('editorExpandAccuracySlider');
+        if (accuracySld) {
+            accuracySld.addEventListener('input', () => {
+                this._expandAccuracy = parseFloat(accuracySld.value);
+                this._scheduleExpandRefresh();
             });
         }
 
@@ -135,15 +180,48 @@ export class VectorEditor {
         fsPlus?.addEventListener('click',  () => stepFontSize(+0.2));
     }
 
-    expandAction() {
+    async expandAction() {
         this._commitText();
-        expandCurrent(this);
+        await expandCurrent(this, this._expandDetail, this._expandSimplify, this._expandAccuracy, true);
         if (this._onChange) this._onChange();
+    }
+
+    _scheduleExpandRefresh() {
+        if (this._expandRefreshTimer) clearTimeout(this._expandRefreshTimer);
+        this._expandRefreshTimer = setTimeout(() => {
+            this._refreshExpandedSelection();
+        }, 100);
+    }
+
+    async _refreshExpandedSelection() {
+        if (this._isRefreshingExpand) {
+            this._pendingExpandRefresh = true;
+            return;
+        }
+        const el = this._selectedElement;
+        if (!el || el.type !== 'path') return;
+        if (!el.attr('data-original-svg') && !el.attr('data-original-text-svg')) return;
+
+        this._isRefreshingExpand = true;
+        try {
+            await expandCurrent(this, this._expandDetail, this._expandSimplify, this._expandAccuracy, false);
+        } finally {
+            this._isRefreshingExpand = false;
+            if (this._pendingExpandRefresh) {
+                this._pendingExpandRefresh = false;
+                await this._refreshExpandedSelection();
+            }
+        }
     }
 
     save(dpi = 96) { 
         this._commitText();
         return save(this, dpi); 
+    }
+
+    saveWithTextCopies(dpi = 96) {
+        this._commitText();
+        return saveWithTextCopies(this, dpi);
     }
     open(svgString, w, h) { return open(this, svgString, w, h); }
     sync3DBackground() { return sync3DBackground(this); }

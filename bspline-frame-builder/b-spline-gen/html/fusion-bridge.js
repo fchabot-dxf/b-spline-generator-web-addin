@@ -1,8 +1,10 @@
+
 /**
  * fusion-bridge.js — Handles communication with the Fusion 360 Python backend.
  */
 
 import { P, isFusionMode, setIsFusionMode } from './state.js';
+import { COORD_SYSTEM } from './coords.js';
 
 let pollInterval = null;
 
@@ -21,6 +23,8 @@ export function sendFusionMeshPreview(preview) {
     const data = preview.getMeshData(P.exportOrientation);
     if (!data) return;
 
+    fusLog('[COORD_STD] sendFusionMeshPreview: sending mesh data to Fusion');
+
     const liveSync = document.getElementById('liveSync');
     if (liveSync && !liveSync.checked) return;
 
@@ -38,6 +42,7 @@ export function sendFusionPreview(preview) {
     if (!isFusionMode || !preview) return;
     const data = preview.getMeshData(P.exportOrientation);
     if (!data) return;
+    fusLog('[COORD_STD] sendFusionPreview: sending high-fidelity preview to Fusion');
     try {
         adsk.fusionSendData('preview', JSON.stringify(data));
     } catch (e) {
@@ -52,19 +57,19 @@ export async function sendFusionPayloadChunked(payloadString) {
     const CHUNK_SIZE = 256 * 1024;
     const totalChunks = Math.ceil(payloadString.length / CHUNK_SIZE);
 
-    fusLog(`Starting chunked send: ${payloadString.length} chars, ${totalChunks} chunks`);
+    fusLog(`[COORD_STD] sendFusionPayloadChunked: starting chunked send (${payloadString.length} chars, ${totalChunks} chunks)`);
     try {
         adsk.fusionSendData('generate_start', JSON.stringify({ totalChunks }));
         for (let i = 0; i < totalChunks; i++) {
             const chunk = payloadString.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
             const progress = Math.round(((i + 1) / totalChunks) * 100);
-            fusLog(`Sending chunk ${i + 1}/${totalChunks} (${progress}%)...`);
+            fusLog(`[COORD_STD] Sending chunk ${i + 1}/${totalChunks} (${progress}%)...`);
             adsk.fusionSendData('generate_chunk', JSON.stringify({ index: i, data: chunk }));
         }
         adsk.fusionSendData('generate_finish', '{}');
-        fusLog('Chunked send finished. Handoff to Python for import.');
+        fusLog('[COORD_STD] Chunked send finished. Handoff to Python for import.');
     } catch (e) {
-        fusLog(`Chunked send FAILED: ${e.message}`);
+        fusLog(`[COORD_STD] sendFusionPayloadChunked FAILED: ${e.message}`);
         throw e;
     }
 }
@@ -84,7 +89,7 @@ export function startFusionPolling(btnApply) {
             clearInterval(pollInterval); pollInterval = null;
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
-            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'Apply to Fusion'; }
+            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'OK'; }
             return;
         }
 

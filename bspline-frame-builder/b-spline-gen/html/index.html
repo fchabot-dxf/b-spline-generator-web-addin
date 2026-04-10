@@ -230,7 +230,7 @@
     /* Update the main app grid to use 3 columns on desktop */
     .app {
       --sidebar-width: 320px;
-      --preview-height: 55vh;
+      --preview-height: 50vh;
       display: grid;
       grid-template-columns: var(--sidebar-width) 8px 1fr;
       /* 8px for the resizer */
@@ -442,6 +442,8 @@
       position: relative;
       background: #ffffff;
       overflow: hidden;
+      padding: 0;
+      max-height: 75vh;
     }
 
     #previewCanvas {
@@ -483,24 +485,6 @@
       #bottomStatusBar {
         grid-row: 6;
       }
-    }
-
-    #fusionActionBar {
-      grid-column: 1 / -1;
-      grid-row: 3;
-      display: none;
-      flex-direction: row;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 18px;
-      background: #f0f0f0;
-      border-top: 1px solid var(--border);
-      z-index: 100;
-    }
-
-    body.fusion-mode #fusionActionBar {
-      display: flex !important;
     }
 
     .tip {
@@ -553,6 +537,7 @@
 
     @media (max-width: 700px) {
       .app {
+        --preview-height: 36vh;
         grid-template-columns: 1fr;
         /* Rows: Header | Preview | Resizer | Settings | Footer | Status Bar */
         grid-template-rows: auto var(--preview-height) 12px 1fr auto auto;
@@ -804,27 +789,6 @@
       opacity: 0.3;
       pointer-events: none;
       filter: grayscale(1);
-    }
-
-    /* SVG Artwork positioning */
-    #wizOptIncludeSVG {
-      grid-column: 1;
-      grid-row: 3;
-      padding: 8px;
-      flex-direction: row;
-      text-align: left;
-    }
-
-    #wizOptIncludeSVG .wizard-icon {
-      width: 28px;
-      height: 28px;
-      font-size: 1rem;
-      margin-top: 0;
-    }
-
-    #wizOptIncludeSVG input {
-      top: 50%;
-      transform: translateY(-50%);
     }
 
     /* SVG Editor Tool Cursors */
@@ -1205,8 +1169,8 @@
           <div class="tip">1.0 = Linear · 1.6 = Circular · 2.2 = Smooth · 4.0 = Tight</div>
         </label>
         <label><span>Blur</span>
-          <div class="slider-row"><input type="range" id="stampBlurSlider" min="0" max="20" step="1" value="3"><input
-              type="number" id="stampBlur" value="3"></div>
+          <div class="slider-row"><input type="range" id="stampBlurSlider" min="0" max="20" step="1" value="0"><input
+              type="number" id="stampBlur" value="0"></div>
         </label>
         <button id="btnStampClear" class="btn btn-secondary btn-xs" style="margin-top:4px;">🗑 Clear Stamp</button>
 
@@ -1307,10 +1271,8 @@
     <div class="panel panel-export">
       <div class="panel-header collapsed" onclick="togglePanel(this)">📤 Export Settings</div>
       <div class="panel-body hidden">
-        <label><span>Orientation</span><select id="exportOrientation">
-            <option value="z-up" selected>Z-Up (Horizontal)</option>
-            <option value="y-up">Y-Up (Vertical)</option>
-        </select></label>
+        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="includeSVG" checked><span>Include SVG sidecar</span></label>
+        <p style="margin: 8px 0 0 0; font-size: 0.85em; color: var(--text-muted);">Toggle SVG export independently of STEP output.</p>
       </div>
     </div>
 
@@ -1346,16 +1308,6 @@
     </div>
   </div>
 
-  <div id="fusionActionBar">
-    <div class="bar-btns">
-      <button id="btnFusionCancel">Cancel</button>
-      <button id="btnFusionApply">OK</button>
-    </div>
-  </div>
-
-  <div id="bottomStatusBar" class="statusBarRow"
-    style="grid-column: 1 / -1; height: 22px; background: rgba(255,255,255,0.96); color: #222; font-size: 13px; font-family: 'Segoe UI',sans-serif; border-top: 1px solid #ddd; z-index: 3000; display: flex; align-items: center; padding-left: 18px; pointer-events: none;">
-  </div>
 </div>
 
 <!-- Modals -->
@@ -1532,6 +1484,20 @@
               title="Adjust edge detection threshold" style="width:70px;">
           </div>
 
+          <div id="editorExpandDetailGroup"
+            style="display:flex; align-items:center; gap:8px; padding-left:12px; border-left:1px solid #ddd; margin-left:12px;">
+            <span style="font-size:11px; opacity:0.7; pointer-events:none; white-space:nowrap;">Expand Detail</span>
+            <input type="range" id="editorExpandDetailSlider" min="0.5" max="3.5" step="0.1" value="1.0"
+              title="Higher detail preserves sharper corners" style="width:70px;">
+          </div>
+
+          <div id="editorExpandAccuracyGroup"
+            style="display:flex; align-items:center; gap:8px; padding-left:12px; border-left:1px solid #ddd; margin-left:12px;">
+            <span style="font-size:11px; opacity:0.7; pointer-events:none; white-space:nowrap;">Accuracy</span>
+            <input type="range" id="editorExpandAccuracySlider" min="0.5" max="2.0" step="0.1" value="1.0"
+              title="Higher accuracy preserves more outline detail" style="width:70px;">
+          </div>
+
           <!-- v32: Layer Selector -->
           <div id="editorLayerGroup"
             style="display:flex; align-items:center; gap:8px; padding-left:12px; border-left:1px solid #ddd; margin-left:12px;">
@@ -1586,11 +1552,6 @@
         <div class="wizard-info"><span class="title">Stamped Solid</span><span class="desc">Thickened body with
             stamp</span></div>
       </label>
-      <label class="wizard-option" id="wizOptIncludeSVG">
-        <input type="checkbox" id="includeSVG" checked>
-        <div class="wizard-icon">🎨</div>
-        <div class="wizard-info"><span class="title">Include SVG</span><span class="desc">1:1 vector layer</span></div>
-      </label>
     </div>
     <div class="modal-footer"><button id="btnWizardCancel" class="btn btn-secondary">Cancel</button><button
         id="btnWizardExport" class="btn btn-primary">Export STEP ✨</button></div>
@@ -1614,8 +1575,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
-<script type="module" src="./editor.js?v=20260407_v20"></script>
-<script type="module" src="./main.js?v=20260407_v20"></script>
+<script type="module" src="./editor.js?v=20260409_v21"></script>
+<script type="module" src="./main.js?v=20260409_v21"></script>
 
 </body>
 

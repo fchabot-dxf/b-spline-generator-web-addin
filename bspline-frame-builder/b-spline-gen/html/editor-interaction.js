@@ -258,6 +258,7 @@ export function updateHandles(editor) {
     if (!editor._handleLayer) return;
     editor._handleLayer.clear();
     if (!editor._selectedElement) return;
+    if (editor._currentMode !== 'node') return;
 
     const nodes = editor._getNodes(editor._selectedElement);
     const r = editor._getDynamicTolerance(5); 

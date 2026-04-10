@@ -8,11 +8,18 @@
  * This eliminates race conditions between the two writers.
  */
 
+
+import { COORD_SYSTEM } from './coords.js';
+
 /** Helper: rebuild the two-tspan structure inside a <text> element. */
 function _buildTspans(textEl, textContent, x, y) {
     const node = textEl.node;
     // Clear any existing content (SVG.js plain() leftovers)
     while (node.firstChild) node.removeChild(node.firstChild);
+
+    if (window && window.console) {
+        console.log(`[COORD_STD] _buildTspans: placing UI text at (${x},${y})`);
+    }
 
     // tspan[0]: user text
     const tText = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
@@ -34,7 +41,10 @@ export function startTextAt(editor, pt) {
     editor._editingTextEl = editor._sketchLayer.text('')
         .font({ family: editor._fontFamily, size: editor._fontSize, anchor: 'start' })
         .fill(editor._strokeColor)
-        .attr('data-layer', document.getElementById('editorLayerSelect')?.value || "0")
+        .attr({
+            'data-layer': document.getElementById('editorLayerSelect')?.value || "0",
+            'dominant-baseline': 'hanging'
+        })
         .css({ cursor: 'text', 'user-select': 'none' });
 
     editor._editingTextEl.attr({ x: pt.x, y: pt.y });
@@ -50,8 +60,11 @@ export function beginTextEdit(editor, el) {
     editor._currentText = el.text().replace(/\|$/, '');
     editor._editingTextEl.css({ cursor: 'text' });
 
-    const x = el.attr('x') || 0;
-    const y = el.attr('y') || 0;
+    const x = Number(el.attr('x') || 0);
+    const y = Number(el.attr('y') || 0);
+    if (window && window.console) {
+        console.log(`[COORD_STD] beginTextEdit: editing text at UI (${x},${y})`);
+    }
     _buildTspans(editor._editingTextEl, editor._currentText, x, y);
     initTextSession(editor);
 }
