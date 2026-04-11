@@ -1,4 +1,4 @@
-def get_sketch():
+def get_sketch(ui_data=None):
     """
     Logic for Sketch 1 (Template 1): Bounding Box.
     Defines the outer limits and creates the inner boundary via Offset.

@@ -145,6 +145,7 @@ class ParametricSketchBuilder:
             constraint_step(ctx, sketch, sketch_name, rel)
         for dim in phases["pre_dims"]:
             dimension_step(ctx, sketch, sketch_name, dim)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 3 POST-SOLVE (PRE-CONSTRS)")
         sketch.isComputeDeferred = False
 
         # === PHASE 4: MAIN GEOMETRY / CONSTRAINTS ===
@@ -153,9 +154,9 @@ class ParametricSketchBuilder:
             geom_step(ctx, sketch, sketch_name, g)
         for rel in phases["constrs"]:
             constraint_step(ctx, sketch, sketch_name, rel)
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 PRE-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 PRE-SOLVE (MAIN GEOM)")
         sketch.isComputeDeferred = False
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 POST-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 POST-SOLVE (MAIN GEOM)")
         self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 (GEOMETRY)")
 
         # === PHASE 4.5: SNAP-TO-SEED RECOVERY (Mid-Build Snap) ===
@@ -272,12 +273,12 @@ class ParametricSketchBuilder:
                         break
                 
                 try:
-                    start = arc.startPoint.geometry
-                    end = arc.endPoint.geometry
-                    center = arc.centerPoint.geometry
-                    # Sample at parameter 0.5 to get the bulge point (Mid)
-                    mid_res = arc.geometry.sample(0.5)
-                    mid = mid_res[0] if mid_res and mid_res[0] else None
+                    start = arc.startSketchPoint.geometry
+                    end = arc.endSketchPoint.geometry
+                    center = arc.centerSketchPoint.geometry
+                    # Get Midpoint by evaluating at parameter 0.5 via evaluator
+                    res = arc.geometry.evaluator.getPointAtParameter(0.5)
+                    mid = res[1] if res else None
                     
                     log_msg = (f"  [{arc_id}] S({start.x:.3f}, {start.y:.3f}) | "
                                f"M({mid.x:.3f}, {mid.y:.3f} if mid else '??') | "

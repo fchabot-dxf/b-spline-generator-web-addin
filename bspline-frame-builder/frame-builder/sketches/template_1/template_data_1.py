@@ -7,10 +7,11 @@ importlib.reload(T1_sketch_2_shape_outline)
 from T1_sketch_1_bounding_box import get_sketch as get_sketch_1
 from T1_sketch_2_shape_outline import get_sketch as get_sketch_2
 
-def get_template_logic():
+def get_template_logic(ui_data=None):
     """
     Returns the parametric logic for Template 1.
-    Standardized to Metric (cm) to prevent unit-flip explosions (71cm flat-arcs).
+    Standardized to Metric (cm) to prevent unit-flip explosions.
+    Supports dynamic pinning via ui_data injection.
     """
     return {
         "Name": "Template 1",
@@ -44,9 +45,7 @@ def get_template_logic():
             {"Name": "en_BottomGap",      "Val": 0.0, "Unit": ""}
         ],
         "Sketches": [
-            get_sketch_1(),
-            get_sketch_2(),
+            get_sketch_1(ui_data),
+            get_sketch_2(ui_data),
         ]
     }
-
-TEMPLATE_1 = get_template_logic()

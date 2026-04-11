@@ -42,6 +42,10 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
         src = None
         if "Source" in dim:
             src = g_map.get(dim["Source"])
+        elif "Targets" in dim and len(dim["Targets"]) >= 2:
+            src = g_map.get(dim["Targets"][0])
+            dim_target = dim["Targets"][1] # Secondary target
+            tgt = g_map.get(dim_target)
 
         text_pt = _compute_text_point(ctx, dim, tgt, src)
         d = _create_dimension(ctx, sketch, s_name, dim, tgt, text_pt)
@@ -100,9 +104,13 @@ def _create_dimension(ctx, sketch, s_name, dim, tgt, text_pt):
         return sketch.sketchDimensions.addDiameterDimension(tgt, text_pt)
 
     # Explicit source-to-target distance
-    if "Source" in dim:
-        src = ctx.entity_map[s_name].get(dim["Source"])
-        if src:
+    if "Source" in dim or ("Targets" in dim and len(dim["Targets"]) >= 2):
+        src_id = dim.get("Source") or dim["Targets"][0]
+        tgt_id = dim.get("Target") or dim["Targets"][1]
+        src = ctx.entity_map[s_name].get(src_id)
+        tgt = ctx.entity_map[s_name].get(tgt_id)
+        
+        if src and tgt:
             orient = (
                 adsk.fusion.DimensionOrientations.VerticalDimensionOrientation
                 if dim.get("Orientation") == "Vertical"

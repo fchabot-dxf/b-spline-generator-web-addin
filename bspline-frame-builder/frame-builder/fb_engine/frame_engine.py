@@ -37,9 +37,15 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
         
     builder = FrameBuilder(external_logger)
     data_dict = kwargs.get('data', {})
-    ui_data = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
+    # Unify session state (ui_state) and button snapshot (ui_data)
+    ui_state = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
+    ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
+    
+    # Merge snapshot into state (freshness priority)
+    ui_data = {**ui_state, **ui_snapshot}
+    
     if external_logger:
-        external_logger.log(f"UI STATE INJECTED: {ui_data}")
+        external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars")
     builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data)
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -49,7 +55,16 @@ def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwar
         external_logger = args[0]
         
     builder = FrameBuilder(external_logger)
-    builder.run_full_synthesis(style_id, joint_prefix)
+    data_dict = kwargs.get('data', {})
+    ui_state = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
+    ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
+    ui_data = {**ui_state, **ui_snapshot}
+    
+    builder.run_full_synthesis(style_id, joint_prefix, ui_data=ui_data)
+    ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
+    ui_data = {**ui_state, **ui_snapshot}
+    
+    builder.run_full_synthesis(style_id, joint_prefix, ui_data=ui_data)
 
 class FrameBuilder:
     def __init__(self, external_logger=None):
@@ -114,10 +129,14 @@ class FrameBuilder:
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
             # Selection Logic: Resolve Template Data and Prefix
-            template, prefix = template_data_1.TEMPLATE_1, "T1"
-            if "Template 2" in style_id: template, prefix = template_data_2.TEMPLATE_2, "T2"
-            if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
-            if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
+            template = template_data_1.get_template_logic(ui_data)
+            prefix = "T1"
+            if "Template 2" in style_id: 
+                template, prefix = template_data_2.TEMPLATE_2, "T2" # T2-4 not yet dynamic
+            if "Template 3" in style_id: 
+                template, prefix = template_data_3.TEMPLATE_3, "T3"
+            if "Template 4" in style_id: 
+                template, prefix = template_data_4.TEMPLATE_4, "T4"
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
@@ -141,10 +160,14 @@ class FrameBuilder:
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
-            template, prefix = template_data_1.TEMPLATE_1, "T1"
-            if "Template 2" in style_id: template, prefix = template_data_2.TEMPLATE_2, "T2"
-            if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
-            if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
+            template = template_data_1.get_template_logic(ui_data)
+            prefix = "T1"
+            if "Template 2" in style_id: 
+                template, prefix = template_data_2.TEMPLATE_2, "T2" 
+            if "Template 3" in style_id: 
+                template, prefix = template_data_3.TEMPLATE_3, "T3"
+            if "Template 4" in style_id: 
+                template, prefix = template_data_4.TEMPLATE_4, "T4"
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
@@ -236,7 +259,12 @@ class FrameBuilder:
                     except Exception as e:
                         self.logger.log(f"FAILED TO REGISTER {name}: {e}", "ERROR")
                 else:
-                    self.logger.log(f"PRESERVED: {name} (UI active)")
+                    # UPDATE EXISTING: UI should win during a build cycle
+                    try:
+                        existing.expression = str(val_expr)
+                        self.logger.log(f"UPDATED: {name} -> {val_expr} (via DNA sync)")
+                    except Exception as e:
+                        self.logger.log(f"FAILED TO UPDATE {name}: {e}", "ERROR")
 
     def _discover_aesthetic_core(self):
         self.logger.log("Discovering aesthetic core body")

@@ -470,7 +470,19 @@
         function runBuild(type) {
             document.getElementById('system-status').innerText = 'Building ' + type + '...';
             
-            let data = { type: type };
+            // Collect full UI state for the build
+            const ui_data = {};
+            const sliderIds = ['ShoulderSpan', 'WaistSpan', 'HipSpan', 'TopGap', 'BottomGap', 'WaistOffset'];
+            sliderIds.forEach(id => {
+                const el = document.getElementById('val-' + id);
+                if (el) ui_data[id] = el.value;
+            });
+
+            let data = { 
+                type: type,
+                ui_data: ui_data 
+            };
+            
             if (type === 'solid') {
                 data.offset = document.getElementById('solid-offset').value;
                 data.appearance = document.getElementById('solid-appearance').value;

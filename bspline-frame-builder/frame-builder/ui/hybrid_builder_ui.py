@@ -225,13 +225,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     eff_w = w - (2 * offset)
                     eff_h = h - (2 * offset)
                     
-                    if 'Span' in name:
-                        total = eff_w
-                    else:
-                        # Gaps (TopGap, BottomGap) are from center to edge (half-height)
-                        total = eff_h / 2.0
-                        
-                    p.value = (float(value) / 100.0) * total
+                    # p.value = (float(value) / 100.0) * total
+                    # REMOVED STATIC INJECTION: Let ValueResolver handle formulas during build.
         except Exception as e:
             if diag_logger: diag_logger.log(f"PARAM SYNC ERROR: {e}")
 
