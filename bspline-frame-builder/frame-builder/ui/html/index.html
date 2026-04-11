@@ -88,7 +88,8 @@
       <header>
         <span class="logo">Hybrid Frame Builder</span>
         <div style="flex:1;"></div>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div style="display:flex; gap:12px; align-items:center;">
+          <button class="btn btn-primary btn-xs" id="header-action-btn" onclick="runBuild('sketch')" style="min-width: 120px; box-shadow: 0 4px 10px rgba(37,99,235,0.25);">BUILD SKETCH</button>
           <button class="btn btn-secondary btn-xs" id="settings-btn" title="Settings"
             style="height:32px; width:32px; padding:0; display:flex; align-items:center; justify-content:center; border-color:var(--accent); color:var(--accent);">⚙</button>
         </div>
@@ -208,9 +209,6 @@
               </div>
             </div>
 
-            <div class="row">
-              <button class="btn btn-primary btn-xs" id="btn-build-sketch" onclick="runBuild('sketch')">BUILD SKETCH</button>
-            </div>
           </div>
 
           <!-- EXTRUDE TAB -->
@@ -246,9 +244,6 @@
               </div>
             </div>
 
-            <div class="row">
-              <button class="btn btn-primary btn-xs" id="btn-build-solid" onclick="runBuild('solid')">GENERATE EXTRUDE</button>
-            </div>
           </div>
         </div>
       </aside>
@@ -300,6 +295,21 @@
             
             document.getElementById('tab-' + tabId).classList.add('active');
             document.getElementById('content-' + tabId).classList.add('active');
+
+            // Contextual Header Button Update
+            const actionBtn = document.getElementById('header-action-btn');
+            if (actionBtn) {
+                if (tabId === 'form') {
+                    actionBtn.innerText = 'BUILD SKETCH';
+                    actionBtn.onclick = () => runBuild('sketch');
+                    updateConstraintStatus(); // Restore disabled state if needed
+                } else {
+                    actionBtn.innerText = 'GENERATE EXTRUDE 😊';
+                    actionBtn.onclick = () => runBuild('solid');
+                    actionBtn.disabled = false;
+                    actionBtn.style.opacity = 1.0;
+                }
+            }
         }
 
         function updateSlider(id) {
@@ -327,14 +337,19 @@
             const label = document.getElementById('constraint-count');
             label.innerText = lockedCount + '/4 Locked';
             
+            const actionBtn = document.getElementById('header-action-btn');
             if (lockedCount > 4) {
                 label.style.color = 'var(--bad)';
-                document.getElementById('btn-build-sketch').disabled = true;
-                document.getElementById('btn-build-sketch').style.opacity = 0.5;
+                if (actionBtn) {
+                    actionBtn.disabled = true;
+                    actionBtn.style.opacity = 0.5;
+                }
             } else {
                 label.style.color = 'var(--good)';
-                document.getElementById('btn-build-sketch').disabled = false;
-                document.getElementById('btn-build-sketch').style.opacity = 1.0;
+                if (actionBtn) {
+                    actionBtn.disabled = false;
+                    actionBtn.style.opacity = 1.0;
+                }
             }
         }
 

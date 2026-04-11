@@ -192,6 +192,10 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     self._run_sketch_build(data)
                 elif build_type == 'solid':
                     self._run_solid_build(data)
+                    # Auto-close palette on solid generation
+                    pal = ui.palettes.itemById(PALETTE_ID)
+                    if pal:
+                        pal.isVisible = False
 
         except Exception as e:
             if diag_logger: diag_logger.log_error(f"PaletteHTMLEvent ERROR:\n{traceback.format_exc()}")
@@ -271,7 +275,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     diag_logger.log(f"FACE SELECTED: {self.selected_face.tempId} on body {self.selected_face.body.name}")
                 payload = {
                     'success': True,
-                    'name': f"Selected: {self.selected_face.body.name} (Face {self.selected_face.tempId})",
+                    'name': f"1 Face Selected: {self.selected_face.body.name}",
                     'body_name': self.selected_face.body.name,
                     'face_id': self.selected_face.tempId,
                     'count': 1
