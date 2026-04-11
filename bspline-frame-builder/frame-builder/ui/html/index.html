@@ -134,7 +134,7 @@
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-ShoulderSpan" min="0" max="100" step="0.5" value="50" oninput="updateSlider('ShoulderSpan')">
+                    <input type="range" id="val-ShoulderSpan" min="0" max="150" step="0.5" value="80" oninput="updateSlider('ShoulderSpan')">
                   </div>
                 </div>
 
@@ -150,7 +150,7 @@
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-WaistSpan" min="0" max="100" step="0.5" value="50" oninput="updateSlider('WaistSpan')">
+                    <input type="range" id="val-WaistSpan" min="0" max="150" step="0.5" value="95" oninput="updateSlider('WaistSpan')">
                   </div>
                 </div>
 
@@ -166,7 +166,7 @@
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-HipSpan" min="0" max="100" step="0.5" value="50" oninput="updateSlider('HipSpan')">
+                    <input type="range" id="val-HipSpan" min="0" max="150" step="0.5" value="80" oninput="updateSlider('HipSpan')">
                   </div>
                 </div>
               </div>
@@ -322,25 +322,35 @@
 
         function toggleLock(id, isLocked) {
             const input = document.getElementById('lock-' + id);
+            const currentChecked = document.querySelectorAll('.lock-toggle input:checked').length;
+            
+            // If we're trying to lock and already at 3, prevent it
             if (typeof isLocked === 'undefined') {
                 isLocked = input.checked;
+            }
+
+            if (isLocked && currentChecked > 3) {
+                input.checked = false;
+                document.getElementById('system-status').innerText = 'Max 3 locks allowed!';
+                return;
             } else {
                 input.checked = isLocked;
             }
 
             updateConstraintStatus();
-            notifyFusion('update_lock', { name: id, locked: isLocked });
+            notifyFusion('update_lock', { name: id, locked: input.checked });
         }
 
         function updateConstraintStatus() {
             const lockedCount = document.querySelectorAll('.lock-toggle input:checked').length;
             const label = document.getElementById('constraint-count');
-            label.innerText = lockedCount + '/4 Locked';
+            label.innerText = lockedCount + '/3 Locked';
             
             const actionBtn = document.getElementById('header-action-btn');
-            if (lockedCount > 4) {
+            if (lockedCount > 3) {
                 label.style.color = 'var(--bad)';
-                if (actionBtn) {
+                // This shouldn't happen with the new toggleLock logic, but safe-guard
+                if (actionBtn && document.querySelector('.tab-btn.active').dataset.tab === 'form') {
                     actionBtn.disabled = true;
                     actionBtn.style.opacity = 0.5;
                 }
@@ -458,6 +468,21 @@
             }
         }
 
+        // Initialization: Enforce 3-lock limit on open
+        window.addEventListener('DOMContentLoaded', () => {
+            const locks = document.querySelectorAll('.lock-toggle input');
+            let checkedCount = 0;
+            locks.forEach(lock => {
+                if (lock.checked) {
+                    if (checkedCount >= 3) {
+                        lock.checked = false; // Prune surplus defaults
+                    } else {
+                        checkedCount++;
+                    }
+                }
+            });
+            updateConstraintStatus();
+        });
     </script>
 </body>
 </html>
