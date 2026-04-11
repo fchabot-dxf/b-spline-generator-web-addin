@@ -223,6 +223,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         try:
             if not pal:
                 return False
+            
+            # Reverting to sendInfoToHTML as executeJavaScript was missing on this environment.
+            # We fix the previous 'Script error. at :0' by simplifying the receiving end in index.html.
             pal.sendInfoToHTML(action, json.dumps(payload))
             return True
         except Exception as e:

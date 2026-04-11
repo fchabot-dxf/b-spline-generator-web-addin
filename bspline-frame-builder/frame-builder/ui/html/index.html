@@ -68,18 +68,6 @@
         color: var(--good);
       }
 
-      .fusion-log {
-        margin: 8px 0 0 0;
-        padding: 0.45rem 0.6rem;
-        border-radius: 0.45rem;
-        background: rgba(255,255,255,0.05);
-        color: var(--text);
-        font-size: 0.8rem;
-        line-height: 1.2rem;
-        min-height: 1.4rem;
-        white-space: pre-wrap;
-        overflow-wrap: break-word;
-      }
     </style>
 </head>
 <body>
@@ -269,87 +257,42 @@
       <span id="system-status">System Ready</span>
       <span id="version-label">v1.0.0 Unified</span>
   </div>
-  <div id="fusion-log" class="fusion-log">Fusion event log will appear here.</div>
 </div>
 
     <!-- UI Logic Script -->
     <script>
-        // Diagnostic Message Counter
-        window._fusionMsgCount = 0;
-
-        // Global Error Tracker
+        // Global Error Tracker - Discretely logged to console
         window.addEventListener('error', function(event) {
-            const logEl = document.getElementById('fusion-log');
-            if (logEl) {
-                logEl.innerHTML = `<span style="color:var(--bad)">[JS ERROR] ${event.message} at ${event.filename}:${event.lineno}</span>\n` + logEl.innerText;
-            }
+            console.error('[JS ERR]', event.message, 'at', event.filename, ':', event.lineno);
         });
 
-        /**
-         * UNIVERSAL BRIDGE HANDLER
-         * Supports (action, data) and single-object (args) signatures.
-         */
-        window.fusionJavaScriptHandler = function(action, data) {
-            window._fusionMsgCount++;
-            const logEl = document.getElementById('fusion-log');
-            const statusEl = document.getElementById('system-status');
-            
-            // Normalize arguments
-            let finalAction = action;
-            let finalData = data;
-
-            // Handle single-object signature: some Fusion versions pass a single object
-            if (typeof action === 'object' && action !== null && !data) {
-                finalAction = action.action || action.type;
-                finalData = action.data || action.payload;
-            }
-
-            if (logEl) {
-                logEl.innerText = `[#${window._fusionMsgCount}] Action: ${finalAction} | Type: ${typeof finalData}`;
-            }
-
-            try {
-                const payload = typeof finalData === 'string' ? JSON.parse(finalData) : finalData;
-                console.debug('[Fusion JS] received', finalAction, payload);
+        window.fusionJavaScriptHandler = {
+            handle: function(action, data) {
+                const statusEl = document.getElementById('system-status');
                 
-                if (statusEl) {
-                    statusEl.innerText = `[Fusion] ${finalAction}`;
-                }
+                try {
+                    if (!data) return "ERROR_NO_DATA";
+                    const payload = typeof data === 'string' ? JSON.parse(data) : data;
+                    
+                    if (statusEl) statusEl.innerText = `[Fusion] ${action}`;
 
-                if (finalAction === 'selection_result') {
-                    const messageText = payload.name || payload.body_name || 'Face selected';
-                    if (payload.success) {
-                        setFaceSelectionState('selected', messageText, payload.count || 1);
-                        if (statusEl) statusEl.innerText = messageText;
-                    } else {
-                        setFaceSelectionState('none');
-                        if (statusEl) statusEl.innerText = payload.msg || 'Face selection cancelled';
+                    if (action === 'selection_result') {
+                        if (payload.success) {
+                            setFaceSelectionState('selected', payload.name, payload.count || 1);
+                        } else {
+                            setFaceSelectionState('none');
+                        }
+                    } else if (action === 'status_update') {
+                        if (payload.msg && statusEl) statusEl.innerText = payload.msg;
                     }
-                    return;
+                } catch(e) {
+                    console.error('[Handler Error]', e.message);
+                    return "ERROR_" + e.message;
                 }
 
-                if (finalAction === 'ping') {
-                    notifyFusion('pong', { msg: 'PONG from UI', count: window._fusionMsgCount });
-                    return;
-                }
-
-                if (finalAction === 'status_update') {
-                    if (payload && payload.msg) {
-                        if (statusEl) statusEl.innerText = payload.msg;
-                    }
-                    return;
-                }
-            } catch(e) {
-                if (logEl) {
-                    logEl.innerText = `[Handler Error] ${e.message}\nAction: ${finalAction}`;
-                }
+                return "OK";
             }
         };
-
-        // Aliases for different Fusion bridge versions
-        window.onNotify = window.fusionJavaScriptHandler;
-        window.onFusionNotify = window.fusionJavaScriptHandler;
-        window.adsk_fusionJavaScriptHandler = window.fusionJavaScriptHandler;
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
