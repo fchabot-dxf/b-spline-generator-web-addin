@@ -109,7 +109,7 @@ class FrameBuilder:
             self._ensure_document()
             target_body = self._discover_aesthetic_core()
             self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
-            self._create_skeletal_parameters(target_body, style_id)
+            self._create_skeletal_parameters(target_body, style_id, ui_data)
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
@@ -137,7 +137,7 @@ class FrameBuilder:
             self._ensure_document()
             target_body = self._discover_aesthetic_core()
             self.logger.log(f"target_body found: {'yes' if target_body else 'no'}")
-            self._create_skeletal_parameters(target_body, style_id)
+            self._create_skeletal_parameters(target_body, style_id, ui_data)
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
@@ -186,7 +186,7 @@ class FrameBuilder:
         
         return comp
 
-    def _create_skeletal_parameters(self, target_body=None, style_id="Template 1"):
+    def _create_skeletal_parameters(self, target_body=None, style_id="Template 1", ui_data=None):
         """Centralized parameter initialization via FBValueResolver."""
         if not self.resolver:
             self.logger.log("Skeletal parameter abort: No resolver", "ERROR")
@@ -226,7 +226,7 @@ class FrameBuilder:
             self.logger.log(f"Resolving {len(template['Parameters'])} drivers for {style_id}")
             for p_info in template["Parameters"]:
                 name = p_info["Name"]
-                val_expr, unit = self.resolver.resolve_dna_parameter(p_info)
+                val_expr, unit = self.resolver.resolve_dna_parameter(p_info, ui_data)
                 
                 existing = self.user_params.itemByName(name)
                 if not existing:

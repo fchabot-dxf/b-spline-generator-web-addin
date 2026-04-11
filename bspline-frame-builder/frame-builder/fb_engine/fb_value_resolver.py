@@ -25,12 +25,19 @@ class FBValueResolver:
         """
         Resolves a Template parameter spec into a Fusion-safe (expression, unit).
         Handles metric enforcement and cross-unit evaluation.
+        Prioritizes UI overrides from active_vars.
         """
         name = p_info.get("Name", "?")
         raw_val = p_info.get("Val", 0)
         target_unit = p_info.get("Unit", "cm")
 
-        # 1. Evaluate expression to check for unit-drift
+        # 1. UI Override Priority
+        if active_vars and name in active_vars:
+            raw_val = active_vars[name]
+            if self.logger:
+                self.logger.log(f"[RESOLVER] UI Override: {name} = {raw_val}")
+
+        # 2. Evaluate expression to check for unit-drift
         expr_str = str(raw_val)
         try:
             # Check if Fusion sees a different unit than intended (e.g. Inch explosion)
