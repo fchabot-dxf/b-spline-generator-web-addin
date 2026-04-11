@@ -26,7 +26,7 @@ class BuildContext:
     feature_count: int                      — monotonic counter for unique IDs
     """
 
-    def __init__(self, target, design, logger, prefix="T1", ui_data=None):
+    def __init__(self, target, design, logger, prefix="T1", ui_data=None, resolver=None):
         self.app = adsk.core.Application.get()
         self.ui = self.app.userInterface
         self.target = target

@@ -119,7 +119,7 @@ class FrameBuilder:
             if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
             if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
 
-            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data)
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
         except:
             self.logger.log_error("CRASH in run_sketch_only")
@@ -129,7 +129,7 @@ class FrameBuilder:
             elapsed = time.time() - start_time
             self.logger.log(f"run_sketch_only completed in {elapsed:.2f} seconds")
 
-    def run_full_synthesis(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint"):
+    def run_full_synthesis(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"FULL SYNTHESIS: {style_id}")
@@ -146,7 +146,7 @@ class FrameBuilder:
             if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
             if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
 
-            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data)
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
             
             sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame")
