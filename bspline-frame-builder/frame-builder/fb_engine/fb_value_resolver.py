@@ -25,17 +25,34 @@ class FBValueResolver:
         """
         Resolves a Template parameter spec into a Fusion-safe (expression, unit).
         Handles metric enforcement and cross-unit evaluation.
-        Prioritizes UI overrides from active_vars.
+        Prioritizes UI overrides and converts Factor inputs to Parametric Expressions.
         """
         name = p_info.get("Name", "?")
         raw_val = p_info.get("Val", 0)
         target_unit = p_info.get("Unit", "cm")
 
-        # 1. UI Override Priority
+        # 1. UI Override Priority & Parametric Scaling
         if active_vars and name in active_vars:
-            raw_val = active_vars[name]
-            if self.logger:
-                self.logger.log(f"[RESOLVER] UI Override: {name} = {raw_val}")
+            ui_val = float(active_vars[name])
+            
+            # Width-based Drivers (Percentages of widthIn)
+            if name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
+                raw_val = f"widthIn * ({ui_val}/100.0)"
+                if self.logger: self.logger.log(f"[RESOLVER] Scale WIDTH: {name} = {raw_val}")
+            
+            # Height-based Drivers (Percentages of heightIn)
+            elif name in ['TopGap', 'BottomGap']:
+                raw_val = f"heightIn * ({ui_val}/100.0)"
+                if self.logger: self.logger.log(f"[RESOLVER] Scale HEIGHT: {name} = {raw_val}")
+
+            # Special Case: Waist Offset (100% = heightIn / 2)
+            elif name == 'WaistOffset':
+                raw_val = f"(heightIn / 2.0) * ({ui_val}/100.0)"
+                if self.logger: self.logger.log(f"[RESOLVER] Scale OFFSET: {name} = {raw_val}")
+            
+            else:
+                raw_val = ui_val
+                if self.logger: self.logger.log(f"[RESOLVER] UI Override (Absolute): {name} = {raw_val}")
 
         # 2. Evaluate expression to check for unit-drift
         expr_str = str(raw_val)
