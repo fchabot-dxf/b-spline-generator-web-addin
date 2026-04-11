@@ -64,6 +64,15 @@ class FrameBuilder:
         else:
             addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
             self.logger = logger.DebugLogger(addin_root)
+
+        # Dedicated Value Resolver for Unit-Safe Geometry
+        try:
+            from fb_engine import fb_value_resolver
+            self.resolver = fb_value_resolver.FBValueResolver(self.design, self.logger)
+            self.logger.log("FBValueResolver initialized and ready")
+        except Exception as e:
+            self.logger.log(f"CRITICAL: Failed to load FBValueResolver: {e}", "ERROR")
+            self.resolver = None
             
         self.logger.log("FrameBuilder initialized")
         self.logger.log(f"Design loaded: {'yes' if self.design else 'no'}")
@@ -78,7 +87,11 @@ class FrameBuilder:
             self.design = adsk.fusion.Design.cast(self.app.activeProduct)
             self.root = self.design.rootComponent
             self.user_params = self.design.userParameters
-            self.logger.log("New design created, re-pointed root and user_params")
+            
+            # Re-point Resolver to the new design
+            from fb_engine import fb_value_resolver
+            self.resolver = fb_value_resolver.FBValueResolver(self.design, self.logger)
+            self.logger.log("New design created, re-pointed root and resolver")
 
     def _restore_root_active_component(self):
         try:
@@ -110,7 +123,7 @@ class FrameBuilder:
             builder.build_template(template)
         except:
             self.logger.log_error("CRASH in run_sketch_only")
-            traceback.print_exc()
+            self.logger.log_error(traceback.format_exc())
         finally:
             self._restore_root_active_component()
             elapsed = time.time() - start_time
@@ -144,7 +157,7 @@ class FrameBuilder:
                 self._create_assembly_joints(target_body, frame_comp, joint_prefix)
         except:
             self.logger.log_error("CRASH in run_full_synthesis")
-            traceback.print_exc()
+            self.logger.log_error(traceback.format_exc())
         finally:
             self._restore_root_active_component()
             elapsed = time.time() - start_time
