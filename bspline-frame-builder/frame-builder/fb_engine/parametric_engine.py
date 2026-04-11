@@ -203,6 +203,9 @@ class ParametricSketchBuilder:
         sketch.isComputeDeferred = True
         for off in phases["offs"]:
             offset_step(ctx, sketch, sketch_name, off)
+        for step in phases["steps"]:
+            from fb_engine import offsets
+            offsets.step_step(ctx, sketch, sketch_name, step)
         self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 PRE-SOLVE")
         sketch.isComputeDeferred = False
         self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 POST-SOLVE")
