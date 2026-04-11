@@ -33,6 +33,53 @@
       #bottomStatusBar {
         display: none !important;
       }
+
+      .face-status {
+        padding: 0.45rem 0.6rem;
+        border-radius: 0.45rem;
+        background: rgba(255,255,255,0.08);
+        color: var(--text);
+        font-size: 0.9rem;
+        min-height: 2.05rem;
+        display: flex;
+        align-items: center;
+      }
+
+      .face-status.selected {
+        background: rgba(0, 160, 100, 0.16);
+        color: var(--good);
+        font-weight: 600;
+      }
+
+      #btn-select-face.selecting,
+      #btn-select-face.selected {
+        border-color: var(--good);
+      }
+
+      #btn-select-face.selecting {
+        background: rgba(37, 99, 235, 0.12);
+        color: var(--primary);
+        box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
+        transform: translateY(1px);
+      }
+
+      #btn-select-face.selected {
+        background: rgba(0, 160, 100, 0.12);
+        color: var(--good);
+      }
+
+      .fusion-log {
+        margin: 8px 0 0 0;
+        padding: 0.45rem 0.6rem;
+        border-radius: 0.45rem;
+        background: rgba(255,255,255,0.05);
+        color: var(--text);
+        font-size: 0.8rem;
+        line-height: 1.2rem;
+        min-height: 1.4rem;
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+      }
     </style>
 </head>
 <body>
@@ -201,10 +248,11 @@
                 <div class="row">
                   <label>Appearance</label>
                   <select id="solid-appearance" style="width: 140px;">
-                    <option value="Polished Chrome">Polished Chrome</option>
-                    <option value="Carbon Fiber">Carbon Fiber</option>
-                    <option value="Matte Black">Matte Black</option>
-                    <option value="Titanium">Titanium</option>
+                    <option value="3D Ash - Unfinished">3D Ash - Unfinished</option>
+                    <option value="3D Mahogany - Unfinished">3D Mahogany - Unfinished</option>
+                    <option value="3D Pine - Unfinished">3D Pine - Unfinished</option>
+                    <option value="3D Cherry - Unfinished">3D Cherry - Unfinished</option>
+                    <option value="3D Maple - Unfinished">3D Maple - Unfinished</option>
                   </select>
                 </div>
               </div>
@@ -221,11 +269,88 @@
       <span id="system-status">System Ready</span>
       <span id="version-label">v1.0.0 Unified</span>
   </div>
+  <div id="fusion-log" class="fusion-log">Fusion event log will appear here.</div>
 </div>
 
     <!-- UI Logic Script -->
-    <script src="../../../b-spline-gen/html/themes/theme.js"></script>
     <script>
+        // Diagnostic Message Counter
+        window._fusionMsgCount = 0;
+
+        // Global Error Tracker
+        window.addEventListener('error', function(event) {
+            const logEl = document.getElementById('fusion-log');
+            if (logEl) {
+                logEl.innerHTML = `<span style="color:var(--bad)">[JS ERROR] ${event.message} at ${event.filename}:${event.lineno}</span>\n` + logEl.innerText;
+            }
+        });
+
+        /**
+         * UNIVERSAL BRIDGE HANDLER
+         * Supports (action, data) and single-object (args) signatures.
+         */
+        window.fusionJavaScriptHandler = function(action, data) {
+            window._fusionMsgCount++;
+            const logEl = document.getElementById('fusion-log');
+            const statusEl = document.getElementById('system-status');
+            
+            // Normalize arguments
+            let finalAction = action;
+            let finalData = data;
+
+            // Handle single-object signature: some Fusion versions pass a single object
+            if (typeof action === 'object' && action !== null && !data) {
+                finalAction = action.action || action.type;
+                finalData = action.data || action.payload;
+            }
+
+            if (logEl) {
+                logEl.innerText = `[#${window._fusionMsgCount}] Action: ${finalAction} | Type: ${typeof finalData}`;
+            }
+
+            try {
+                const payload = typeof finalData === 'string' ? JSON.parse(finalData) : finalData;
+                console.debug('[Fusion JS] received', finalAction, payload);
+                
+                if (statusEl) {
+                    statusEl.innerText = `[Fusion] ${finalAction}`;
+                }
+
+                if (finalAction === 'selection_result') {
+                    const messageText = payload.name || payload.body_name || 'Face selected';
+                    if (payload.success) {
+                        setFaceSelectionState('selected', messageText, payload.count || 1);
+                        if (statusEl) statusEl.innerText = messageText;
+                    } else {
+                        setFaceSelectionState('none');
+                        if (statusEl) statusEl.innerText = payload.msg || 'Face selection cancelled';
+                    }
+                    return;
+                }
+
+                if (finalAction === 'ping') {
+                    notifyFusion('pong', { msg: 'PONG from UI', count: window._fusionMsgCount });
+                    return;
+                }
+
+                if (finalAction === 'status_update') {
+                    if (payload && payload.msg) {
+                        if (statusEl) statusEl.innerText = payload.msg;
+                    }
+                    return;
+                }
+            } catch(e) {
+                if (logEl) {
+                    logEl.innerText = `[Handler Error] ${e.message}\nAction: ${finalAction}`;
+                }
+            }
+        };
+
+        // Aliases for different Fusion bridge versions
+        window.onNotify = window.fusionJavaScriptHandler;
+        window.onFusionNotify = window.fusionJavaScriptHandler;
+        window.adsk_fusionJavaScriptHandler = window.fusionJavaScriptHandler;
+
         function switchTab(tabId) {
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -286,8 +411,44 @@
         }
 
         function pickFace() {
-            document.getElementById('label-face-selection').innerText = 'Waiting for selection in Fusion...';
+            setFaceSelectionState('waiting');
             notifyFusion('pick_face', {});
+        }
+
+        // Settings Panel Toggle Logic
+        document.getElementById('settings-btn')?.addEventListener('click', () => {
+            document.getElementById('settings-panel')?.classList.toggle('hidden');
+            document.getElementById('settings-overlay')?.classList.toggle('hidden');
+        });
+        document.getElementById('close-settings-btn')?.addEventListener('click', () => {
+            document.getElementById('settings-panel')?.classList.add('hidden');
+            document.getElementById('settings-overlay')?.classList.add('hidden');
+        });
+        document.getElementById('settings-overlay')?.addEventListener('click', () => {
+            document.getElementById('settings-panel')?.classList.add('hidden');
+            document.getElementById('settings-overlay')?.classList.add('hidden');
+        });
+
+        function setFaceSelectionState(state, name, count) {
+            const label = document.getElementById('label-face-selection');
+            const btn = document.getElementById('btn-select-face');
+            btn.classList.remove('selecting', 'selected');
+            label.classList.remove('selected');
+
+            if (state === 'waiting') {
+                label.innerText = 'Waiting for selection in Fusion...';
+                btn.classList.add('selecting');
+                btn.innerText = 'SELECTING...';
+            } else if (state === 'selected') {
+                const faceText = name || 'Face selected';
+                label.innerText = count > 1 ? `${faceText} (${count} faces)` : faceText;
+                label.classList.add('selected');
+                btn.classList.add('selected');
+                btn.innerText = 'SELECT FACE';
+            } else {
+                label.innerText = 'No face selected...';
+                btn.innerText = 'SELECT FACE';
+            }
         }
 
         function runBuild(type) {
@@ -304,60 +465,41 @@
 
         function notifyFusion(action, data) {
             const statusEl = document.getElementById('system-status');
+            const logEl = document.getElementById('fusion-log');
+            const payloadText = JSON.stringify(data);
+            if (logEl) {
+                logEl.innerText = `[UI] sending ${action} -> ${payloadText}`;
+            }
             const hasPostMessage = (typeof adsk !== 'undefined' && adsk.fusion && typeof adsk.fusion.postMessage === 'function');
             const hasFusionSendData = (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function');
 
             if (hasPostMessage) {
                 try {
                     adsk.fusion.postMessage(action, JSON.stringify(data));
-                    statusEl.parentElement.style.background = 'rgba(0,0,0,0.2)'; // Normal
+                    if (statusEl) statusEl.parentElement.style.background = 'rgba(0,0,0,0.2)'; // Normal
                 } catch (e) {
-                    statusEl.innerText = 'BRIDGE ERROR';
-                    statusEl.parentElement.style.background = 'var(--bad)';
+                    if (statusEl) statusEl.innerText = 'BRIDGE ERROR';
+                    if (statusEl) statusEl.parentElement.style.background = 'var(--bad)';
                 }
             } else if (hasFusionSendData) {
                 try {
                     adsk.fusionSendData(action, JSON.stringify(data)).then(() => {
-                        statusEl.parentElement.style.background = 'rgba(0,0,0,0.2)';
+                        if (statusEl) statusEl.parentElement.style.background = 'rgba(0,0,0,0.2)';
                     }).catch(() => {
-                        statusEl.innerText = 'BRIDGE ERROR';
-                        statusEl.parentElement.style.background = 'var(--bad)';
+                        if (statusEl) statusEl.innerText = 'BRIDGE ERROR';
+                        if (statusEl) statusEl.parentElement.style.background = 'var(--bad)';
                     });
                 } catch (e) {
-                    statusEl.innerText = 'BRIDGE ERROR';
-                    statusEl.parentElement.style.background = 'var(--bad)';
+                    if (statusEl) statusEl.innerText = 'BRIDGE ERROR';
+                    if (statusEl) statusEl.parentElement.style.background = 'var(--bad)';
                 }
             } else {
                 console.warn('[BRIDGE] Fusion 360 bridge missing');
-                statusEl.innerText = 'BRIDGE MISSING';
-                statusEl.parentElement.style.background = 'var(--bad)';
+                if (statusEl) statusEl.innerText = 'BRIDGE MISSING';
+                if (statusEl) statusEl.parentElement.style.background = 'var(--bad)';
             }
         }
 
-        try {
-            if (!localStorage.getItem('bsplineSharedTheme')) {
-                localStorage.setItem('bsplineSharedTheme', 'windows31');
-            }
-        } catch (e) {
-            console.warn('[Theme] Unable to access localStorage for default theme:', e);
-        }
-
-        initBsplineTheme({ watchStorage: true });
-
-        // Catch messages from Python
-        window.fusionJavaScriptHandler = {
-            handle: function(action, data) {
-                try {
-                    const payload = JSON.parse(data);
-                    if (action === 'selection_result') {
-                        document.getElementById('label-face-selection').innerText = payload.success ? payload.name : 'Selection cancelled';
-                    }
-                    if (action === 'status_update') {
-                        document.getElementById('system-status').innerText = payload.msg;
-                    }
-                } catch(e) {}
-            }
-        };
     </script>
 </body>
 </html>

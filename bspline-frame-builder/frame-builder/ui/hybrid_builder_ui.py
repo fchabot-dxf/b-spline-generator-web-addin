@@ -92,6 +92,16 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             app = adsk.core.Application.get()
             ui = app.userInterface
             pal = ui.palettes.itemById(PALETTE_ID)
+            # Force palette recreation to avoid stale cached HTML from previous deployments
+            if pal:
+                try:
+                    if diag_logger: diag_logger.log("PALETTE EXISTS - RECREATING TO REFRESH HTML")
+                    pal.deleteMe()
+                    pal = None
+                except Exception as e:
+                    if diag_logger: diag_logger.log(f"PALETTE REFRESH FAILED: {e}", "WARNING")
+                    pal = ui.palettes.itemById(PALETTE_ID)
+
             if not pal:
                 # Normalize path for Windows: use forward slashes for URLs
                 html_path = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
@@ -109,8 +119,21 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
             _ensure_hidden_build_commands(ui)
 
-            # Add the event handler to the palette
+            # --- FIX: Command Lifecycle ---
+            # Ensure the launching command terminates immediately so it doesn't block the UI
+            cmd = event_args.command
+            cmd.isAutoTerminate = True
+
+            # --- FIX: Handler Duplication ---
+            # Add the event handler to the palette, replacing any existing one
             global _active_handler
+            if _active_handler:
+                try:
+                    pal.incomingFromHTML.remove(_active_handler)
+                    if diag_logger: diag_logger.log("REMOVED OLD PALETTE HANDLER")
+                except:
+                    pass
+
             _active_handler = PaletteHTMLEventHandler()
             pal.incomingFromHTML.add(_active_handler)
             handlers.append(_active_handler)
@@ -196,22 +219,77 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     p.value = (float(value) / 100.0) * total
         except: pass
 
-    def _handle_face_selection(self, ui):
+    def _send_palette_message(self, pal, action, payload):
         try:
-            # Native Fusion selection blocks the UI, which is fine here
-            sel = ui.selectEntity('Select a face for extrusion', 'Faces')
+            if not pal:
+                return False
+            pal.sendInfoToHTML(action, json.dumps(payload))
+            return True
+        except Exception as e:
+            if diag_logger:
+                diag_logger.log_error(f"Palette sendInfoToHTML failed ({action}): {e}")
+            return False
+
+    def _handle_face_selection(self, ui):
+        pal = ui.palettes.itemById(PALETTE_ID)
+        try:
+            if diag_logger: diag_logger.log("FACE SELECTION TRIGGERED: Entering selectEntity mode...")
+            self._send_palette_message(pal, 'status_update', {'msg': 'Awaiting face selection in Fusion...'})
+
+            # Clear any existing active selections before prompting.
+            try:
+                if hasattr(ui, 'activeSelections') and ui.activeSelections.count > 0:
+                    ui.activeSelections.clear()
+                    if diag_logger: diag_logger.log("Cleared existing active selections before face pick.")
+            except Exception as sel_clear_exc:
+                if diag_logger: diag_logger.log_error(f"Face selection clear warning: {sel_clear_exc}")
+
+            sel = None
+            try:
+                sel = ui.selectEntity('Select a face for extrusion', 'Faces')
+            except Exception as e1:
+                if diag_logger: diag_logger.log_error(f"Face selection first attempt failed: {e1}")
+                try:
+                    if hasattr(ui, 'activeSelections') and ui.activeSelections.count > 0:
+                        ui.activeSelections.clear()
+                        if diag_logger: diag_logger.log("Cleared active selections before retry.")
+                except Exception as sel_clear_exc:
+                    if diag_logger: diag_logger.log_error(f"Face selection second-clear warning: {sel_clear_exc}")
+                try:
+                    sel = ui.selectEntity('Select a face for extrusion', 'Faces')
+                except Exception as e2:
+                    if diag_logger: diag_logger.log_error(f"Face selection retry failed: {e2}")
+                    self._send_palette_message(pal, 'status_update', {'msg': f'Selection attempt failed: {str(e2)}'})
+                    raise
+
             if sel:
                 self.selected_face = adsk.fusion.BRepFace.cast(sel.entity)
-                pal = ui.palettes.itemById(PALETTE_ID)
-                if pal:
-                    pal.sendInfoToHTML('selection_result', json.dumps({
-                        'success': True, 
-                        'name': f"Selected: {self.selected_face.body.name} (Face {self.selected_face.tempId})"
-                    }))
+                if diag_logger:
+                    diag_logger.log(f"FACE SELECTED: {self.selected_face.tempId} on body {self.selected_face.body.name}")
+                payload = {
+                    'success': True,
+                    'name': f"Selected: {self.selected_face.body.name} (Face {self.selected_face.tempId})",
+                    'body_name': self.selected_face.body.name,
+                    'face_id': self.selected_face.tempId,
+                    'count': 1
+                }
+                self._send_palette_message(pal, 'status_update', {'msg': 'Face selected successfully.'})
+                self._send_palette_message(pal, 'selection_result', payload)
+                self._send_palette_message(pal, 'debug', {'msg': f"Face selection payload sent: {payload}"})
+                if diag_logger: diag_logger.log(f"FACE SELECTION MESSAGE SENT: {payload}")
             else:
-                pal = ui.palettes.itemById(PALETTE_ID)
-                if pal: pal.sendInfoToHTML('selection_result', json.dumps({'success': False}))
-        except: pass
+                if diag_logger: diag_logger.log("FACE SELECTION CANCELLED by user or failed.")
+                self._send_palette_message(pal, 'status_update', {'msg': 'Face selection cancelled.'})
+                self._send_palette_message(pal, 'selection_result', {'success': False})
+        except Exception as e:
+            if diag_logger:
+                diag_logger.log_error(f"Face selection CRITICAL ERROR:\n{traceback.format_exc()}")
+            self._send_palette_message(pal, 'status_update', {'msg': f'Selection Error: {str(e)}'})
+            self._send_palette_message(pal, 'selection_result', {'success': False})
+            try:
+                ui.messageBox(f"Selection Error: {str(e)}")
+            except:
+                pass
 
     def _start_undo_transaction(self, name):
         try:

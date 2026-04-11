@@ -35,7 +35,7 @@ function _buildTspans(textEl, textContent, x, y) {
     node.appendChild(tCursor);
 }
 
-export function startTextAt(editor, pt) {
+export function startTextAt(editor, pt, pointerEvent) {
     // Commit any active text session before starting a new one
     if (editor._editingTextEl) commitText(editor);
     editor._editingTextEl = editor._sketchLayer.text('')
@@ -50,7 +50,16 @@ export function startTextAt(editor, pt) {
     editor._editingTextEl.attr({ x: pt.x, y: pt.y });
     editor._currentText = '';
     _buildTspans(editor._editingTextEl, '', pt.x, pt.y);
-    initTextSession(editor);
+    // pointerEvent: {clientX, clientY} for mobile input placement
+    let pointer = undefined;
+    if (pointerEvent) {
+        if (pointerEvent.touches && pointerEvent.touches.length > 0) {
+            pointer = { x: pointerEvent.touches[0].clientX, y: pointerEvent.touches[0].clientY };
+        } else if (typeof pointerEvent.clientX === 'number' && typeof pointerEvent.clientY === 'number') {
+            pointer = { x: pointerEvent.clientX, y: pointerEvent.clientY };
+        }
+    }
+    initTextSession(editor, pointer);
 }
 
 export function beginTextEdit(editor, el) {
@@ -69,7 +78,7 @@ export function beginTextEdit(editor, el) {
     initTextSession(editor);
 }
 
-export function initTextSession(editor) {
+export function initTextSession(editor, pointer) {
     if (!editor._editingTextEl) return;
 
     // Clean up any stale session first (guards against double-init)
@@ -78,8 +87,27 @@ export function initTextSession(editor) {
     const input = document.getElementById('editorHiddenInput');
     if (input) {
         input.value = editor._currentText;
-        input.focus();
 
+        // --- Mobile keyboard support: move and show input under finger ---
+        if (pointer && typeof pointer.x === 'number' && typeof pointer.y === 'number') {
+            // Place input at tap/click location, make it visible and large enough for mobile
+            input.style.left = (pointer.x - 20) + 'px';
+            input.style.top = (pointer.y - 20) + 'px';
+            input.style.width = '40px';
+            input.style.height = '40px';
+            input.style.opacity = '0.01'; // nearly invisible but focusable
+            input.style.pointerEvents = 'auto';
+        } else {
+            // Fallback: keep it hidden but focusable
+            input.style.left = '-10000px';
+            input.style.top = '0';
+            input.style.width = '1px';
+            input.style.height = '1px';
+            input.style.opacity = '0';
+            input.style.pointerEvents = 'none';
+        }
+
+        input.focus();
         // Move cursor to end
         const len = input.value.length;
         input.setSelectionRange(len, len);
@@ -161,6 +189,13 @@ function _teardownTextListeners(editor) {
     if (input) {
         if (editor._textInputHandler) input.removeEventListener('input', editor._textInputHandler);
         if (editor._textKeyHandler) input.removeEventListener('keydown', editor._textKeyHandler);
+        // Restore hidden style
+        input.style.left = '-10000px';
+        input.style.top = '0';
+        input.style.width = '1px';
+        input.style.height = '1px';
+        input.style.opacity = '0';
+        input.style.pointerEvents = 'none';
     }
     if (editor._refocusHandler) document.removeEventListener('mousedown', editor._refocusHandler);
 }

@@ -1,5 +1,5 @@
 """
-deploy-bspline-frame-builder.py
+DEPLOY_bspline-frame-builder.py
 ================================
 Deploys the unified bspline-frame-builder add-in (all 3 commands) in two steps:
 
@@ -9,12 +9,12 @@ Deploys the unified bspline-frame-builder add-in (all 3 commands) in two steps:
   2. ZIP BUNDLE    — creates  bspline-frame-builder.zip  next to this script,
                      suitable for distributing to other users.
 
-The b-spline-gen Cloudflare deploy (deploy_cloudflare.py) is NOT
+The b-spline-gen Cloudflare deploy (DEPLOY_cloudflare.py) is NOT
 touched by this script — it continues to handle the HTML/JS web publish
 and its own standalone ZIP independently.
 
 Usage:
-    python deploy-bspline-frame-builder.py
+    python DEPLOY_bspline-frame-builder.py
 """
 
 import os
@@ -71,10 +71,10 @@ SKIP_NAMES = {
 SKIP_SUFFIXES = {".log", ".old", ".pyc", ".pyo"}
 # Dev-only scripts that shouldn't ship to end-users
 SKIP_FILES_EXACT = {
-    "deploy-bspline-frame-builder.py",   # this script itself
+    "DEPLOY_bspline-frame-builder.py",   # this script itself
     "deploy-frame-builder.py",
     "deploy_bspline_addin.py",
-    "deploy_cloudflare.py",
+    "DEPLOY_cloudflare.py",
     "workspace_link.json",
     "project_path.json",
     "b_spline_log_path.json",

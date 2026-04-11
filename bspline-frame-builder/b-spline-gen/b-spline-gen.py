@@ -536,9 +536,10 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     # Keep solid color effect fallback if material API not available.
                     pass
 
-            # ── ok — keep geometry, close palette ────────────────────────────
+            # ── ok — keep geometry, clear preview, close palette ──────────────
             elif action == 'ok':
-                _log('ok: forgetting occurrence refs, hiding palette')
+                _log('ok: clearing preview graphics, keeping imported geometry, hiding palette')
+                _clear_custom_graphics()
                 last_imported_occurrences = []
                 palette = ui.palettes.itemById(PALETTE_ID)
                 if palette:

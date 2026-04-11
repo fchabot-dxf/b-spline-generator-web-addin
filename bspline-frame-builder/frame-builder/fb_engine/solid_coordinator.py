@@ -181,14 +181,12 @@ class SolidCoordinator:
             self.log.log(f"  SCAVENGE HIT: Using frame-like component '{best_comp.name}'")
             return best_comp
 
-        # --- 3. Ultimate Fallback: Active Component ---
-        # If we can't find anything named 'frame', just use wherever the user is working.
-        active_comp = self.design.activeComponent
-        if active_comp:
-            self.log.log(f"  DISCOVERY FALLBACK: Using Active Component '{active_comp.name}'")
-            return active_comp
-            
-        return self.root
+        # --- 3. Ultimate Fallback: Root Component ---
+        # If we can't find anything named 'frame', use the document root.
+        if self.root:
+            self.log.log(f"  DISCOVERY FALLBACK: Using Root Component '{self.root.name}'")
+            return self.root
+        return None
 
     def _find_sketch(self, target_comp):
         """

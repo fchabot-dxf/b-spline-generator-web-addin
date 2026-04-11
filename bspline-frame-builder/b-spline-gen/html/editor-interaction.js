@@ -59,7 +59,7 @@ function handleStart(editor, e) {
         // In text mode, ignore non-text elements — place new text instead
         if (editor._currentMode === 'text') {
             editor._deselect();
-            startTextAt(editor, pt);
+            startTextAt(editor, pt, e);
             return;
         }
         editor._isDragging = true;
@@ -73,7 +73,7 @@ function handleStart(editor, e) {
         if (drawModes.includes(editor._currentMode)) {
             startDrawing(editor, pt);
         } else if (editor._currentMode === 'text') {
-            startTextAt(editor, pt);
+            startTextAt(editor, pt, e);
         } else {
             // Standard selection drag logic
             editor._isDragging = true;

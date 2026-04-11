@@ -76,6 +76,14 @@ class FrameBuilder:
             self.user_params = self.design.userParameters
             self.logger.log("New design created, re-pointed root and user_params")
 
+    def _restore_root_active_component(self):
+        try:
+            if self.design and self.root and getattr(self.design, 'activeComponent', None) != self.root:
+                self.design.activeComponent = self.root
+                self.logger.log("Restored root active component")
+        except Exception as e:
+            self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
+
     def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint"):
         start_time = time.time()
         try:
@@ -100,6 +108,7 @@ class FrameBuilder:
             self.logger.log_error("CRASH in run_sketch_only")
             traceback.print_exc()
         finally:
+            self._restore_root_active_component()
             elapsed = time.time() - start_time
             self.logger.log(f"run_sketch_only completed in {elapsed:.2f} seconds")
 
@@ -133,6 +142,7 @@ class FrameBuilder:
             self.logger.log_error("CRASH in run_full_synthesis")
             traceback.print_exc()
         finally:
+            self._restore_root_active_component()
             elapsed = time.time() - start_time
             self.logger.log(f"run_full_synthesis completed in {elapsed:.2f} seconds")
 
@@ -151,9 +161,11 @@ class FrameBuilder:
         comp = occ.component
         comp.name = name
         
-        # Tag the component for robust discovery by other add-ins (e.g. Solid Builder)
-        try: comp.attributes.add('FrameBuilder', 'ComponentType', 'Frame')
-        except: pass
+        # Keep the active component on root; do not activate the new frame component.
+        try:
+            comp.attributes.add('FrameBuilder', 'ComponentType', 'Frame')
+        except:
+            pass
         
         return comp
 

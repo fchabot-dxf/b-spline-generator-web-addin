@@ -1,3 +1,7 @@
+import os
+workspace_dir = os.path.dirname(__file__) or "."
+source_dir    = os.path.join(workspace_dir, "b-spline-gen", "html")
+# ...existing code...
 import subprocess
 import sys
 import os
@@ -104,12 +108,18 @@ clean_dir(os.path.join(workspace_dir, "deploy_dist"))
 print(f"Preparing unique deployment folder: {deploy_dist}")
 os.makedirs(deploy_dist, exist_ok=True)
 
-# Only copy web-related files (HTML, JS, CSS, and common image formats)
-# This excludes .py, .manifest, and the 'resources' folder.
+
+# Copy all web-related files (HTML, JS, CSS, images, etc.)
 web_extensions = ('.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico', '.json')
 for filename in os.listdir(source_dir):
     if filename.lower().endswith(web_extensions):
         shutil.copy2(os.path.join(source_dir, filename), deploy_dist)
+
+# Ensure the entire themes/ folder is copied
+themes_src = os.path.join(source_dir, 'themes')
+themes_dst = os.path.join(deploy_dist, 'themes')
+if os.path.exists(themes_src):
+    shutil.copytree(themes_src, themes_dst, dirs_exist_ok=True)
 
 
 # 2. Bundle the clean bspline-frame-builder add-in ZIP (Distribution Version)
@@ -134,36 +144,8 @@ with zipfile.ZipFile(zip_target, 'w', zipfile.ZIP_DEFLATED) as zf:
             rel_path = os.path.relpath(abs_path, workspace_dir)
             zf.write(abs_path, rel_path)
 
+
 print(f"  Clean ZIP created: {os.path.basename(zip_target)}")
-
-
-# 3. Refresh local Fusion 360 Add-In (Developer Convenience)
-if sys.platform == "win32":
-    fusion_addin_dest = os.path.join(os.environ.get('APPDATA', ''), 'Autodesk', 'Autodesk Fusion 360', 'API', 'AddIns', 'b-spline-generator-web-addin')
-elif sys.platform == "darwin":
-    fusion_addin_dest = os.path.expanduser('~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/b-spline-generator-web-addin')
-else:
-    fusion_addin_dest = None
-
-if fusion_addin_dest and os.path.exists(os.path.dirname(fusion_addin_dest)):
-    print(f"Refreshing local Fusion 360 add-in at {fusion_addin_dest}...")
-    try:
-        clean_dir(fusion_addin_dest)
-
-        # Use a repo-relative path for the add-in source; this avoids the old invalid hardcoded path.
-        # Adjust this to the actual add-in folder in your repo if needed.
-        source_addin_dir = os.path.normpath(os.path.join(workspace_dir, "..", "b-spline-gen"))
-        if not os.path.exists(source_addin_dir):
-            source_addin_dir = os.path.normpath(os.path.join(workspace_dir, "..", "b-spline-generator-web-addin"))
-
-        shutil.copytree(source_addin_dir, fusion_addin_dest)
-        print("Local add-in refreshed.")
-    except Exception as e:
-        print(f"Warning: Could not refresh local add-in: {e}")
-elif fusion_addin_dest:
-    print(f"Fusion 360 Add-Ins directory not found at {os.path.dirname(fusion_addin_dest)}. Skipping local refresh.")
-else:
-    print(f"Unsupported OS ({sys.platform}) for local Fusion 360 refresh.")
 
 print(f"Deploying clean folder to Cloudflare Pages ({PROJECT_NAME})...")
 

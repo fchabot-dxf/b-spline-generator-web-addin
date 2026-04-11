@@ -11,7 +11,7 @@ if parent_dir not in sys.path:
 try:
     from fb_utils import fb_logger as logger
     importlib.reload(logger)
-    diag_logger = logger.DebugLogger(parent_dir)
+    diag_logger = logger.DebugLogger(parent_dir, category='sketch')
     diag_logger.log("SKETCH BUILDER: Module Loaded & Logger Active")
 except Exception:
     pass

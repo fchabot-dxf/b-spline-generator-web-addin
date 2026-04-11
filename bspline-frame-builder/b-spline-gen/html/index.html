@@ -11,962 +11,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
-  <style>
-    /* ── Self-hosted fonts — no network needed ── */
-    @font-face { font-family: 'Arial';              font-weight: 400; src: url('fonts/arial.ttf'); }
-    @font-face { font-family: 'Arial';              font-weight: 700; src: url('fonts/arial-bold.ttf'); }
-    @font-face { font-family: 'Tahoma';             font-weight: 400; src: url('fonts/tahoma.ttf'); }
-    @font-face { font-family: 'Tahoma';             font-weight: 700; src: url('fonts/tahoma-bold.ttf'); }
-    @font-face { font-family: 'Verdana';            font-weight: 400; src: url('fonts/verdana.ttf'); }
-    @font-face { font-family: 'Verdana';            font-weight: 700; src: url('fonts/verdana-bold.ttf'); }
-    @font-face { font-family: 'Bahnschrift';        font-weight: 400; src: url('fonts/bahnschrift.ttf'); }
-    @font-face { font-family: 'Impact';             font-weight: 400; src: url('fonts/impact.ttf'); }
-    @font-face { font-family: 'Georgia';            font-weight: 400; src: url('fonts/georgia.ttf'); }
-    @font-face { font-family: 'Georgia';            font-weight: 700; src: url('fonts/georgia-bold.ttf'); }
-    @font-face { font-family: 'Times New Roman';    font-weight: 400; src: url('fonts/times.ttf'); }
-    @font-face { font-family: 'Times New Roman';    font-weight: 700; src: url('fonts/times-bold.ttf'); }
-    @font-face { font-family: 'Courier New';        font-weight: 400; src: url('fonts/courier.ttf'); }
-    @font-face { font-family: 'Courier New';        font-weight: 700; src: url('fonts/courier-bold.ttf'); }
-    @font-face { font-family: 'Cascadia Code';      font-weight: 400; src: url('fonts/CascadiaCode-Regular.ttf'); }
-    @font-face { font-family: 'Cascadia Code';      font-weight: 700; src: url('fonts/CascadiaCode-Bold.ttf'); }
-    @font-face { font-family: 'Cascadia Mono';      font-weight: 400; src: url('fonts/CascadiaMono-Regular.ttf'); }
-    @font-face { font-family: 'Cascadia Mono';      font-weight: 700; src: url('fonts/CascadiaMono-Bold.ttf'); }
-    @font-face { font-family: 'Marlett';            font-weight: 400; src: url('fonts/marlett.ttf'); }
-    @font-face { font-family: 'Segoe Fluent Icons'; font-weight: 400; src: url('fonts/segoe-fluent-icons.ttf'); }
-    @font-face { font-family: 'Segoe MDL2 Assets';  font-weight: 400; src: url('fonts/segoe-mdl2.ttf'); }
-    @font-face { font-family: 'Segoe UI Emoji';     font-weight: 400; src: url('fonts/segoe-emoji.ttf'); }
-    @font-face { font-family: 'Segoe UI Symbol';    font-weight: 400; src: url('fonts/segoe-symbols.ttf'); }
-    @font-face { font-family: 'Symbol';             font-weight: 400; src: url('fonts/symbol.ttf'); }
-    @font-face { font-family: 'Webdings';           font-weight: 400; src: url('fonts/webdings.ttf'); }
-    @font-face { font-family: 'Wingdings';          font-weight: 400; src: url('fonts/wingdings.ttf'); }
-  </style>
-  <style>
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+  <link rel="stylesheet" href="shared-style.css">
 
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      touch-action: none;
-      /* Prevent browser handling of touch gestures */
-      -webkit-overflow-scrolling: touch;
-    }
-
-    :root {
-      --bg: #f3f3f3;
-      --surface: #ffffff;
-      --surface2: #e8e8e8;
-      --border: #d1d1d1;
-      --accent: #0066cc;
-      --accent2: #5a30e8;
-      --text: #222222;
-      --muted: #555555;
-      --good: #208a4f;
-      --gap: 12px;
-      --r: 8px;
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --surface-mid: #f8fafc;
-      --text-dim: #64748b;
-    }
-
-
-
-    /* Settings Panel */
-    .settings-panel {
-      position: fixed;
-      top: 0;
-      right: -320px;
-      width: 320px;
-      height: 100vh;
-      background: var(--surface);
-      box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
-      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-      z-index: 2002;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .settings-panel:not(.hidden) {
-      right: 0;
-    }
-
-    .settings-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--surface-mid);
-    }
-
-    .settings-header h3 {
-      margin: 0;
-      font-size: 16px;
-    }
-
-    .settings-body {
-      padding: 20px;
-      flex: 1;
-      overflow-y: auto;
-    }
-
-    .setting-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-
-    .setting-row label {
-      font-size: 13px;
-      color: var(--text);
-      font-weight: 500;
-    }
-
-    .setting-row input {
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      width: 60px;
-      text-align: right;
-    }
-
-    .settings-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.3);
-      backdrop-filter: blur(2px);
-      z-index: 2001;
-      opacity: 1;
-      transition: opacity 0.3s ease;
-    }
-
-    .settings-overlay.hidden {
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .hidden {
-      display: none !important;
-    }
-
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: var(--bg);
-      color: var(--text);
-      font: 13px/1.5 'Segoe UI', sans-serif;
-    }
-
-    /* Stepper UI for Plunge Depth */
-    .stepper-container {
-      display: flex;
-      align-items: center;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      overflow: hidden;
-      height: 28px;
-    }
-
-    .stepper-container input {
-      border: none !important;
-      min-width: 50px !important;
-      flex: 1;
-      text-align: center;
-      background: transparent !important;
-      padding: 0 6px !important;
-      margin: 0 !important;
-      font-weight: 600;
-      -moz-appearance: textfield;
-      appearance: none;
-    }
-
-    .stepper-container input::-webkit-outer-spin-button,
-    .stepper-container input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-
-    .stepper-btn {
-      background: var(--surface);
-      border: none;
-      width: 24px;
-      height: 100%;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--accent);
-      transition: background 0.2s;
-    }
-
-    .stepper-btn:hover {
-      background: #e0e0e0;
-    }
-
-    .stepper-btn:active {
-      background: #d0d0d0;
-    }
-
-    /* Update the main app grid to use 3 columns on desktop */
-    .app {
-      --sidebar-width: 320px;
-      --preview-height: 50vh;
-      display: grid;
-      grid-template-columns: var(--sidebar-width) 8px 1fr;
-      /* 8px for the resizer */
-      grid-template-rows: auto 1fr auto auto;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-
-    /* Base positions for Desktop */
-    header {
-      grid-column: 1 / -1;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 10px 18px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .logo {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--accent);
-      letter-spacing: 0.04em;
-    }
-
-    .badge {
-      font-size: 10px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      padding: 2px 7px;
-      border-radius: 99px;
-      color: var(--muted);
-    }
-
-    aside {
-      grid-column: 1;
-      grid-row: 2;
-      border-right: none;
-      background: var(--surface);
-      overflow-y: auto;
-      padding: 14px 14px 60px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: var(--gap);
-      min-height: 0;
-    }
-
-    .panel {
-      background: rgba(255, 255, 255, 0.7);
-      border-left: 3px solid #ccc;
-      border-radius: var(--r);
-      overflow: hidden;
-      flex-shrink: 0;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-
-    .panel-header {
-      padding: 9px 12px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #111;
-      background: rgba(0, 0, 0, .05);
-      cursor: pointer;
-      user-select: none;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .panel-header::after {
-      content: '▾';
-      margin-left: auto;
-    }
-
-    .panel-header.collapsed::after {
-      content: '▸';
-    }
-
-    .panel-body {
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .panel-body.hidden {
-      display: none;
-    }
-
-    .panel-stock {
-      border-left-color: #64748b;
-    }
-
-    .panel-terrain {
-      border-left-color: #0066cc;
-    }
-
-    .panel-smooth {
-      border-left-color: #8b5cf6;
-    }
-
-    .panel-sculpt-t {
-      border-left-color: #059669;
-    }
-
-    .panel-thicken {
-      border-left-color: #d97706;
-    }
-
-    .panel-sculpt-b {
-      border-left-color: #dc2626;
-    }
-
-    .panel-stamp {
-      border-left-color: #20c997;
-    }
-
-    .panel-resolution {
-      border-left-color: #65a30d;
-    }
-
-    .panel-preset {
-      border-left-color: #0e7490;
-    }
-
-    label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    label span {
-      color: var(--text);
-      font-weight: 500;
-    }
-
-    input[type=number],
-    input[type=text],
-    select {
-      width: 100%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      padding: 5px 8px;
-      color: var(--text);
-      font: inherit;
-    }
-
-    .row2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .slider-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .slider-row input[type=range] {
-      flex: 1;
-      accent-color: var(--accent);
-    }
-
-    .slider-row input[type=number] {
-      width: 62px;
-      flex-shrink: 0;
-    }
-
-    .btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      border: none;
-      border-radius: 6px;
-      padding: 9px 14px;
-      font: 600 13px/1 inherit;
-      cursor: pointer;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
-    }
-
-    #btnDownload {
-      background: linear-gradient(180deg, #1d4ed8, #2563eb) !important;
-      color: #ffffff !important;
-      border-color: #1e40af !important;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
-      font-weight: 700;
-      min-width: 84px !important;
-      padding: 0 14px !important;
-    }
-
-    #btnDownloadAddin {
-      min-width: 84px !important;
-      padding: 0 14px !important;
-    }
-
-    #theme-btn,
-    #settings-btn {
-      width: 32px !important;
-      min-width: 32px !important;
-      padding: 0 !important;
-    }
-
-    #btnDownload:hover {
-      background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
-    }
-
-    .btn-secondary {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-    }
-
-    .btn-xs {
-      padding: 5px 10px;
-      font-size: 11px;
-    }
-
-    #theme-control {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-    }
-
-    #theme-btn {
-      width: 32px;
-      height: 32px;
-      padding: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-color: var(--border);
-      color: var(--text);
-      background: var(--surface2);
-    }
-
-    .theme-dropdown {
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      min-width: 180px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12);
-      z-index: 1200;
-      overflow: hidden;
-    }
-
-    .theme-dropdown.hidden {
-      display: none;
-    }
-
-    .theme-dropdown button {
-      all: unset;
-      display: block;
-      width: 100%;
-      padding: 10px 12px;
-      color: var(--text);
-      cursor: pointer;
-      font: 13px/1.4 inherit;
-    }
-
-    .theme-dropdown button:hover,
-    .theme-dropdown button.active {
-      background: var(--surface2);
-    }
-
-    #previewArea {
-      grid-column: 3;
-      grid-row: 2;
-      border-left: none;
-      position: relative;
-      background: transparent !important;
-      overflow: hidden;
-      padding: 0;
-      min-height: 0;
-    }
-
-    #previewCanvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-      opacity: 0;
-      background: transparent !important;
-    }
-
-    #previewCanvas.ready {
-      animation: canvasFadeIn 2s ease-out both;
-    }
-
-    @keyframes canvasFadeIn {
-      to { opacity: 1; }
-    }
-
-    .preview-hint {
-      position: absolute;
-      bottom: 12px;
-      right: 14px;
-      font-size: 11px;
-      color: var(--muted);
-      pointer-events: none;
-      background: rgba(255, 255, 255, .8);
-      padding: 3px 8px;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-    }
-
-    #bottomStatusBar {
-      grid-row: 4;
-    }
-
-    @media (max-width: 700px) {
-      #bottomStatusBar {
-        grid-row: 6;
-      }
-    }
-
-    .tip {
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.4;
-      background: rgba(0, 102, 204, .01);
-      border-left: 2px solid var(--accent);
-      padding: 6px 10px;
-    }
-
-    /* The Resizer Element Styling */
-    #resizer {
-      grid-column: 2;
-      grid-row: 2;
-      background: var(--surface2);
-      border-left: 1px solid var(--border);
-      border-right: 1px solid var(--border);
-      cursor: col-resize;
-      touch-action: none;
-      /* Prevent scroll on mobile drag */
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 50;
-      transition: background 0.1s;
-    }
-
-    #resizer:hover,
-    #resizer:active {
-      background: #d4d4d4;
-    }
-
-    /* Little grip lines */
-    #resizer::after {
-      content: '';
-      display: block;
-      width: 2px;
-      height: 24px;
-      background: #a0a0a0;
-      border-radius: 2px;
-    }
-
-    /* Mobile & Tablet Overrides */
-    @media (max-width: 900px) {
-      .app {
-        --sidebar-width: 280px;
-      }
-    }
-
-    @media (max-width: 700px) {
-      .app {
-        --preview-height: 36vh;
-        grid-template-columns: 1fr;
-        /* Rows: Header | Preview | Resizer | Settings | Footer | Status Bar */
-        grid-template-rows: auto var(--preview-height) 12px 1fr auto auto;
-      }
-
-      #previewArea {
-        grid-column: 1;
-        grid-row: 2;
-        border-bottom: none;
-      }
-
-      #resizer {
-        grid-column: 1;
-        grid-row: 3;
-        cursor: row-resize;
-        border-left: none;
-        border-right: none;
-        border-top: 1px solid var(--border);
-        border-bottom: 1px solid var(--border);
-      }
-
-      #resizer::after {
-        width: 32px;
-        height: 2px;
-      }
-
-      /* Horizontal grip */
-
-      aside {
-        grid-column: 1;
-        grid-row: 4;
-        border-bottom: none;
-      }
-
-      #fusionActionBar {
-        grid-row: 5;
-      }
-    }
-
-    /* =========================================
-       Base Modal System (Phase 4)
-       ========================================= */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(2px);
-      z-index: 9999;
-      display: none;
-      /* Controlled by JS / Inline style */
-      align-items: center;
-      justify-content: center;
-    }
-
-    .modal-window {
-      background: var(--surface);
-      border-radius: 8px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-      display: flex;
-      flex-direction: column;
-      max-width: 95vw;
-      max-height: 95vh;
-      overflow: hidden;
-    }
-
-    .modal-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--surface-mid);
-    }
-
-    .modal-header h3 {
-      margin: 0;
-      font-size: 16px;
-    }
-
-    .modal-footer {
-      padding: 16px 20px;
-      border-top: 1px solid var(--border);
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-      background: var(--surface-mid);
-    }
-
-    /* =========================================
-       SVG Editor Strict Mobile Overrides
-       ========================================= */
-    #svgEditorModal {
-      align-items: flex-start !important;
-    }
-
-    #svgEditorModal .modal-window {
-      width: 100vw;
-      max-width: 100vw;
-      height: 100%;
-      max-height: 100%;
-      border-radius: 0;
-      margin: 0;
-    }
-
-    #svgEditorModal .modal-window>div:nth-child(2),
-    #editorCanvasContainer {
-      flex: 1;
-      display: flex;
-      min-height: 0 !important;
-      overflow: hidden;
-    }
-
-    #editorHiddenInput {
-      position: fixed !important;
-      top: 0 !important;
-      left: 0 !important;
-    }
-
-    /* =========================================
-       SVG Editor Mobile Layout Fixes
-       ========================================= */
-    @media (max-width: 700px) {
-      #svgEditorHeader {
-        flex-direction: column;
-        align-items: flex-start !important;
-        padding: 12px 10px;
-        gap: 12px;
-      }
-
-      #svgEditorHeader h3 {
-        margin: 0;
-      }
-
-      #svgEditorHeader>div {
-        width: 100%;
-        margin-left: 0 !important;
-        justify-content: space-between;
-        overflow-x: auto;
-        padding-bottom: 4px;
-      }
-
-      .editor-toolbar-top {
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 8px;
-        height: auto;
-      }
-
-      #editorStrokeGroup,
-      #editorFontGroup {
-        width: 100%;
-        justify-content: space-between;
-      }
-
-      #editorStrokeWidthSlider {
-        flex: 1;
-        margin-right: 12px;
-      }
-
-      .editor-sidebar {
-        width: 44px;
-        padding: 8px 4px;
-      }
-
-      .tool-btn {
-        width: 32px;
-        height: 32px;
-      }
-    }
-
-    /* Wizard Enhancements */
-    #exportWizardModal .modal-window {
-      width: 420px;
-      max-height: 90vh;
-    }
-
-    .wizard-body {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      padding: 16px;
-      overflow-y: auto;
-    }
-
-    .wizard-option {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 8px;
-      padding: 12px 10px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--surface2);
-      cursor: pointer;
-      transition: 0.2s;
-      position: relative;
-    }
-
-    .wizard-option:hover {
-      background: var(--surface);
-      border-color: var(--accent);
-    }
-
-    .wizard-option input {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 18px;
-      height: 18px;
-      cursor: pointer;
-      margin: 0;
-    }
-
-    .wizard-icon {
-      font-size: 1.4rem;
-      width: 44px;
-      height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--surface);
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      margin-top: 4px;
-    }
-
-    .wizard-info {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .wizard-info .title {
-      font-weight: 600;
-      font-size: 0.85rem;
-      color: var(--text);
-    }
-
-    .wizard-info .desc {
-      display: none;
-    }
-
-    /* Simplified: remove desc text */
-    .wizard-option.disabled {
-      opacity: 0.3;
-      pointer-events: none;
-      filter: grayscale(1);
-    }
-
-    /* SVG Editor Tool Cursors */
-    #editorSVGContainer.mode-draw,
-    #editorSVGContainer.mode-line,
-    #editorSVGContainer.mode-circle,
-    #editorSVGContainer.mode-rect {
-      cursor: crosshair;
-    }
-
-    #editorSVGContainer.mode-text {
-      cursor: text;
-    }
-
-    #editorSVGContainer.mode-select {
-      cursor: default;
-    }
-
-    /* Only show pointer cursor in Select mode or when hovering text in Text mode */
-    #editorSVGContainer.mode-select #sketch-layer * {
-      cursor: pointer;
-    }
-
-    #editorSVGContainer.mode-text #sketch-layer text {
-      cursor: pointer;
-    }
-
-    /* Hover & Selected Highlights */
-    #sketch-layer *.svg-hover:not(text) {
-      stroke: #00ccff !important;
-      stroke-width: 0.01;
-      /* Minimal fallback, dynamic halo handles the 5px offset */
-      opacity: 0.8;
-    }
-
-    #editorSVGContainer.mode-select .svg-selected,
-    #editorSVGContainer.mode-select #sketch-layer *.svg-selected:hover {
-      /* Stroke is now handled by the dynamic halo in editor.js */
-      filter: drop-shadow(0 0 0.05 rgba(0, 102, 204, 0.3)) !important;
-      paint-order: stroke fill markers;
-    }
-
-    /* Modern SVG Editor Toolbar */
-    .editor-sidebar {
-      width: 52px;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      padding: 12px 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .tool-btn {
-      width: 36px;
-      height: 36px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 6px;
-      border: 1px solid transparent;
-      background: transparent;
-      color: var(--text-dim);
-      cursor: pointer;
-      transition: 0.2s;
-    }
-
-    .tool-btn:hover {
-      background: var(--surface2);
-      color: var(--text);
-    }
-
-    .tool-btn.active {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-
-    .tool-btn svg {
-      width: 18px;
-      height: 18px;
-    }
-
-    .editor-toolbar-top {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 8px 16px;
-      display: flex;
-      align-items: center;
-      gap: 20px;
-    }
-
-    .editor-toolbar-top label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      font-weight: 600;
-    }
-  </style>
   <link rel="stylesheet" href="themes/win3x-theme.css" id="win3x-theme-link" disabled>
   <link rel="stylesheet" href="themes/theme.css">
 </head>
@@ -984,20 +30,20 @@
     </div>
 
     <!-- Thicken Settings -->
-    <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+    <div class="panel-divider">
       <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--text);">Thicken Analysis</h4>
       <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 8px;">
         <label for="thickenYellowOffsetSlider" style="font-size: 13px;">Yellow Warning Threshold (")</label>
-        <div class="slider-row" style="width: 100%; display: flex; gap: 8px; align-items: center;">
+        <div class="slider-row">
           <input type="range" id="thickenYellowOffsetSlider" min="0.001" max="0.1" step="0.001" value="0.01" style="flex: 1;">
-          <input type="number" id="thickenYellowOffset" min="0.001" max="0.1" step="0.001" value="0.01" style="width: 60px;">
+          <input type="number" id="thickenYellowOffset" min="0.001" max="0.1" step="0.001" value="0.01" class="input-xs">
         </div>
         <div class="tip" style="font-size: 10px; color: var(--muted);">Offset below target to trigger Yellow warning</div>
       </div>
     </div>
 
     <!-- Debug Section -->
-    <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
+    <div class="panel-spaced">
       <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--text);">Debug</h4>
       <div class="setting-row">
         <label for="debug-rect-toggle" style="flex:1;">Draw Centered 3x3 Rect SVG</label>
@@ -1005,7 +51,7 @@
       </div>
     </div>
 
-    <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
+    <div class="panel-spaced">
       <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--text);">Keyboard Shortcuts</h4>
       <div
         style="display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 12px; color: var(--muted); align-items: center;">
@@ -1038,26 +84,14 @@
 
     <div style="flex:1;"></div>
 
-    <div style="display:flex; gap:8px; align-items:center;">
+    <div class="flex-row">
       <button class="btn btn-primary btn-xs" id="btnDownload"
         style="background:var(--good); font-weight: 700; height:32px; padding:0 15px; white-space:nowrap;">STEP</button>
       <button class="btn btn-secondary btn-xs" id="btnDownloadAddin"
         style="border-color:var(--accent); color:var(--accent); height:32px; padding:0 15px; white-space:nowrap;">Add-In</button>
-      <div id="theme-control">
-        <button id="theme-btn" class="btn btn-secondary btn-xs" type="button" title="Select theme"
-          style="border-color:var(--border); color:var(--text);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <path d="M7 21h10" />
-            <path d="M7 17l5-5 3 3-5 5H7z" />
-            <path d="M12 12l7-7 2 2-7 7-2-2z" />
-            <path d="M17 7l-2-2" />
-          </svg>
-        </button>
-        <div id="theme-dropdown" class="theme-dropdown hidden"></div>
-      </div>
-      <button class="btn btn-secondary btn-xs" id="settings-btn" title="Open Settings"
-        style="height:32px; width:32px; padding:0; display:flex; align-items:center; justify-content:center; border-color:var(--accent); color:var(--accent);">
+        <!-- Theme button removed -->
+      <button class="btn btn-secondary btn-xs btn-icon" id="settings-btn" title="Open Settings"
+        style="border-color:var(--accent); color:var(--accent);">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"></circle>
@@ -1075,7 +109,7 @@
       <button class="btn btn-secondary" id="btnRandomSeed"
         style="width:100%; height:32px; border-color: var(--accent); color: var(--accent);">🎲 Generate New
         Seed</button>
-      <div style="display:flex; gap:4px; margin-top:4px;">
+      <div class="flex-row mt-4">
         <button class="btn btn-secondary btn-xs" id="btnGlobalUndo" style="flex:1; height:28px;" disabled>↩
           Undo</button>
         <button class="btn btn-secondary btn-xs" id="btnGlobalRedo" style="flex:1; height:28px;" disabled>↪
@@ -1155,7 +189,7 @@
           <div class="slider-row"><input type="range" id="detailStrengthSlider" min="0" max="1" step="0.01"
               value="0.25"><input type="number" id="detailStrength" value="0.25"></div>
         </label>
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox"
+        <label class="label-inline"><input type="checkbox"
             id="detailDensityRespectSymmetry" checked><span>Detail Respects Symmetry</span></label>
         <label><span>Symmetry</span><select id="symmetry">
             <option value="none">None</option>
@@ -1177,7 +211,7 @@
           <div class="slider-row"><input type="range" id="smoothRadiusSlider" min="0.1" max="20" step="0.1"
               value="1.2"><input type="number" id="smoothRadius" value="1.2"></div>
         </label>
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="smoothRespectSymmetry"
+        <label class="label-inline"><input type="checkbox" id="smoothRespectSymmetry"
             checked><span>Smooth Respects Symmetry</span></label>
       </div>
     </div>
@@ -1187,7 +221,7 @@
       <div class="panel-header collapsed" onclick="togglePanel(this)">✍️ Vector Stamping</div>
       <div class="panel-body hidden">
         <!-- v32: Layered Stamping Selector -->
-        <label style="border-bottom:1px solid #ddd; padding-bottom:8px; margin-bottom:8px;">
+        <label class="label-divider">
           <span style="font-weight:600; color:var(--accent);">Config Stencil Layer</span>
           <select id="stampActiveLayer">
             <option value="0" selected>Layer 1</option>
@@ -1198,7 +232,7 @@
 
 
         <label><span>SVG Upload</span>
-          <div style="display:flex;gap:8px;align-items:center;"><input type="file" id="stampUpload"
+          <div class="flex-row"><input type="file" id="stampUpload"
               style="display:none;"><button class="btn btn-secondary btn-xs" id="btnStampChoose">Choose
               File</button><span id="stampFileName"
               style="font-size:12px;color:#444;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;display:inline-block;">No
@@ -1284,7 +318,7 @@
         <label><span>Brush Strength</span>
           <div class="slider-row"><input type="range" id="sculptTopStrengthSlider" min="0.001" max="0.1" step="0.001" value="0.008"><input type="number" id="sculptTopStrength" value="0.008"></div>
         </label>
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="sculptTopRespectSymmetry" checked><span>Respect Symmetry</span></label>
+        <label class="label-inline"><input type="checkbox" id="sculptTopRespectSymmetry" checked><span>Respect Symmetry</span></label>
         <div style="display:flex;gap:4px;"><button class="btn btn-secondary btn-xs" id="btnSculptTopUndo" style="flex:1;">Undo</button><button class="btn btn-secondary btn-xs" id="btnSculptTopRedo" style="flex:1;">Redo</button><button class="btn btn-secondary btn-xs" id="btnSculptTopClear" style="flex:1;">Clear</button></div>
       </div>
     </div>
@@ -1293,10 +327,10 @@
     <div class="panel panel-thicken">
       <div class="panel-header collapsed" onclick="togglePanel(this)">🧱 Thicken</div>
       <div class="panel-body hidden">
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox"
+        <label class="label-inline"><input type="checkbox"
             id="thickenEnabled" checked><span>Enable Thicken</span></label>
         <div id="thickenOptions" style="display:flex;flex-direction:column;gap:8px;">
-          <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox"
+          <label class="label-inline"><input type="checkbox"
             id="thickenWireframe"><span>See Wireframe</span></label>
           <label><span>Thickness (")</span>
             <div class="slider-row"><input type="range" id="thicknessSlider" min="0" max="1.5" step="0.01"
@@ -1311,9 +345,9 @@
               <option value="strict">Strict (Precise)</option>
               <option value="naive">Naive (Fast)</option>
             </select></label>
-          <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="showLeaders"
+          <label class="label-inline"><input type="checkbox" id="showLeaders"
               checked><span>Show Analysis Leaders</span></label>
-          <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox"
+          <label class="label-inline"><input type="checkbox"
               id="includeUnstampedSolid"><span>Include Unstamped Solid</span></label>
 
           <label><span>Extra Thickness (Thin Parts) (")</span>
@@ -1345,7 +379,7 @@
         <label><span>Brush Strength</span>
           <div class="slider-row"><input type="range" id="sculptBotStrengthSlider" min="0.001" max="0.1" step="0.001" value="0.008"><input type="number" id="sculptBotStrength" value="0.008"></div>
         </label>
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="sculptBotRespectSymmetry" checked><span>Respect Symmetry</span></label>
+        <label class="label-inline"><input type="checkbox" id="sculptBotRespectSymmetry" checked><span>Respect Symmetry</span></label>
         <div style="display:flex;gap:4px;"><button class="btn btn-secondary btn-xs" id="btnSculptBotUndo" style="flex:1;">Undo</button><button class="btn btn-secondary btn-xs" id="btnSculptBotRedo" style="flex:1;">Redo</button><button class="btn btn-secondary btn-xs" id="btnSculptBotClear" style="flex:1;">Clear</button></div>
       </div>
     </div>
@@ -1354,9 +388,9 @@
     <div class="panel panel-view">
       <div class="panel-header collapsed" onclick="togglePanel(this)">👁 View</div>
       <div class="panel-body hidden">
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="showMesh"><span>Show
+        <label class="label-inline"><input type="checkbox" id="showMesh"><span>Show
             Wireframe</span></label>
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="flatShading"><span>Flat Shading</span></label>
+        <label class="label-inline"><input type="checkbox" id="flatShading"><span>Flat Shading</span></label>
       </div>
     </div>
 
@@ -1364,7 +398,7 @@
     <div class="panel panel-export">
       <div class="panel-header collapsed" onclick="togglePanel(this)">📤 Export Settings</div>
       <div class="panel-body hidden">
-        <label style="flex-direction:row;align-items:center;gap:8px;"><input type="checkbox" id="includeSVG" checked><span>Include SVG sidecar</span></label>
+        <label class="label-inline"><input type="checkbox" id="includeSVG" checked><span>Include SVG sidecar</span></label>
         <p style="margin: 8px 0 0 0; font-size: 0.85em; color: var(--text-muted);">Toggle SVG export independently of STEP output.</p>
       </div>
     </div>
@@ -1546,10 +580,6 @@
                 <option value="Symbol">Symbol</option>
                 <option value="Webdings">Webdings</option>
                 <option value="Wingdings">Wingdings</option>
-                <option value="Segoe UI Symbol">Segoe UI Symbol</option>
-                <option value="Segoe MDL2 Assets">Segoe MDL2 Assets</option>
-                <option value="Segoe Fluent Icons">Segoe Fluent Icons</option>
-                <option value="Segoe UI Emoji">Segoe UI Emoji</option>
               </optgroup>
             </select>
             <span style="font-size:11px; opacity:0.7; white-space:nowrap;">Size</span>
@@ -1580,9 +610,9 @@
         <div id="editorCanvasContainer"
           style="flex:1; background:#efefef; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;">
           <div id="editorSVGContainer" style="width:100%; height:100%;"></div>
-          <!-- Hidden input for robust text capture (Emoji/IME/Mobile). Offset far left to stay focusable but invisible. -->
+          <!-- Hidden input for robust text capture (Emoji/IME/Mobile). Style is managed by JS for mobile support. -->
           <input type="text" id="editorHiddenInput"
-            style="position:absolute; left:-10000px; top:0; width:1px; height:1px; opacity:0; border:none; padding:0;">
+            style="position:absolute; left:-10000px; top:0; width:1px; height:1px; opacity:0; border:none; padding:0; z-index:9999;">
         </div>
       </div>
     </div>
