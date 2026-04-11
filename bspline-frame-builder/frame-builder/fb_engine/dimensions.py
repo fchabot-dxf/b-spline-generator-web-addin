@@ -23,8 +23,8 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
     dim_name = dim.get("Name", "?")
     dim_target = dim.get("Target", "?")
 
-    # 0. Check UI toggle (EnabledParam)
-    if _is_disabled(ctx, dim):
+    # 0. Check UI toggle (EnabledParam) - Bypass if this is a temporary snap-seed
+    if not is_snap_only and _is_disabled(ctx, dim):
         ctx.logger.log(f"DIM SKIPPED: {dim_name} ('{dim.get('EnabledParam')}' is OFF)")
         return
 

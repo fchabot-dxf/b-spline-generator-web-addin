@@ -201,14 +201,9 @@ class ParametricSketchBuilder:
 
         ctx.logger.log(f"--- SNAP-TO-SEED ({note}) in {sketch_name} ---")
         for dim in dims:
-            en_param = dim.get("EnabledParam")
-            if en_param:
-                try:
-                    p = ctx.design.allParameters.itemByName(en_param)
-                    if p and p.value <= 1e-5:
-                        continue
-                except Exception:
-                    pass
+            # SOFT DRIVE: We ignore the EnabledParam during the Snap phase.
+            # This allows unlocked sliders to still move the geometry 
+            # before the permanent dimension state is determined.
             dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=True)
 
     def _project_y_axis(self, sketch, sketch_name):
