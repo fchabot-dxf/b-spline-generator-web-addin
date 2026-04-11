@@ -38,18 +38,25 @@ class ParametricSketchBuilder:
     builder.build_template(template_dict)
     """
 
-    def __init__(self, target, design, logger, prefix="T1", ui_data=None):
-        self.ctx = BuildContext(target, design, logger, prefix=prefix, ui_data=ui_data)
+    def __init__(self, comp, design, logger, prefix="T1", ui_data=None, resolver=None):
+        self.comp = comp
+        self.design = design
+        self.logger = logger
+        self.prefix = prefix
+        self.ui_data = ui_data or {}
+        self.resolver = resolver
+        
+        # Shared state context with unit-safe resolver
+        self.ctx = BuildContext(comp, design, logger, prefix=prefix, ui_data=ui_data, resolver=resolver)
+        self.logger.log(f"ParametricSketchBuilder initialized for {prefix}")
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
     def build_template(self, template):
-        """Build all sketches defined in a template dict."""
+        """Constructs all sketches defined in the template."""
         ctx = self.ctx
         ctx.logger.log(f"Building Template: {template.get('Name', 'Unnamed')}")
-
-        # 1. Sync template parameters (protect measured values)
         # Use ui_data shadow state if available to override template defaults
         ui_state = ctx.active_vars if hasattr(ctx, 'active_vars') else {}
         

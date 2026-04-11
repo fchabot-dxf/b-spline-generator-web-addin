@@ -174,67 +174,57 @@ class FrameBuilder:
         return comp
 
     def _create_skeletal_parameters(self, target_body=None, style_id="Template 1"):
-        # 1. Base Requirements
-        requirements = {
-            'Skel_Frame_Offset': -1.905,
-            'Skel_Slot_Tolerance': 0.635,
-            'boundingboxoffset': 0.635,
-            'Skel_Frame_Taper': 0.0,
-            'Skel_Frame_Thickness': 2.54
-        }
+        """Centralized parameter initialization via FBValueResolver."""
+        if not self.resolver:
+            self.logger.log("Skeletal parameter abort: No resolver", "ERROR")
+            return
+
+        # 1. Base Requirements (Frame Architecture)
+        requirements = self.resolver.get_base_frame_requirements()
         for name, val in requirements.items():
             existing = self.user_params.itemByName(name)
             if not existing:
-                unit = 'deg' if 'Taper' in name else 'cm'
-                self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Frame Builder Parameter')
+                unit = self.resolver.determine_unit(name)
+                self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Frame Builder Requirement')
             else:
                 existing.value = val
 
         # 2. Dynamic Model Measurement (Scale Stabilization)
         if target_body:
             bbox = target_body.boundingBox
-            # Corrected: Use Z-axis for height since we build on XZ plane
             w = abs(bbox.maxPoint.x - bbox.minPoint.x)
             h = abs(bbox.maxPoint.z - bbox.minPoint.z)
             
-            self.logger.log(f"MEASURED CORE (XZ): Width={w:.3f} cm, Height={h:.3f} cm")
-            
-            try:
-                for name, val in [("widthIn", w), ("heightIn", h)]:
-                    existing = self.user_params.itemByName(name)
-                    if not existing:
-                        # Injects exact database centimeters
-                        self.user_params.add(name, adsk.core.ValueInput.createByReal(val), 'cm', 'Auto-Measured Body Span')
-                        self.logger.log(f"CREATED PARAM: {name} = {val:.3f} cm")
-                    else:
-                        existing.value = val
-            except Exception as e:
-                self.logger.log_error(f"Error setting measured params: {e}")
-                raise
+            for name, raw_val in [("widthIn", w), ("heightIn", h)]:
+                val, unit = self.resolver.normalize_measurement(name, raw_val)
+                existing = self.user_params.itemByName(name)
+                if not existing:
+                    self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Auto-Measured Body Span')
+                else:
+                    existing.value = val
 
-        # 3. Template-Specific Parameter Initialization (DNA)
+        # 3. Template-Specific Parameter Initialization (DNA Sync)
         template = template_data_1.TEMPLATE_1
         if "Template 2" in style_id: template = template_data_2.TEMPLATE_2
         if "Template 3" in style_id: template = template_data_3.TEMPLATE_3
         if "Template 4" in style_id: template = template_data_4.TEMPLATE_4
+        
         if template and "Parameters" in template:
-            self.logger.log(f"Initializing {len(template['Parameters'])} drivers for {style_id}")
+            self.logger.log(f"Resolving {len(template['Parameters'])} drivers for {style_id}")
             for p_info in template["Parameters"]:
                 name = p_info["Name"]
-                val_expr = str(p_info["Val"])
-                unit = p_info.get("Unit", "cm")
+                val_expr, unit = self.resolver.resolve_dna_parameter(p_info)
                 
                 existing = self.user_params.itemByName(name)
                 if not existing:
                     try:
-                        new_p = self.user_params.add(name, adsk.core.ValueInput.createByString(val_expr), unit, "Template Parameter")
-                        self.logger.log(f"REGISTERED PARAM: {name} = {val_expr} ({unit})")
+                        self.user_params.add(name, adsk.core.ValueInput.createByString(val_expr), unit, "Template Parameter")
+                        self.logger.log(f"REGISTERED: {name} = {val_expr} ({unit})")
                     except Exception as e:
                         self.logger.log(f"FAILED TO REGISTER {name}: {e}", "ERROR")
                 else:
-                    # DNA SYNC: We skip overwriting if the parameter already exists.
-                    # This allows the UI to drive the value without being stomped by the template default.
-                    self.logger.log(f"PRESERVED UI PARAM: {name} (Template default {val_expr} skipped)")
+                    self.logger.log(f"PRESERVED: {name} (UI active)")
+
     def _discover_aesthetic_core(self):
         self.logger.log("Discovering aesthetic core body")
         

@@ -227,22 +227,13 @@ class BuildContext:
         try:
             param = self.user_params.itemByName(name)
 
-            # UNIT GUARD: Validate expression against target units
-            try:
-                # Force evaluate to see if Fusion sees the units differently
-                resolved_cm = self.design.unitsManager.evaluateExpression(str(val), "cm")
-                target_is_cm = (unit == "cm")
-                
-                # If target is cm but Fusion evaluates this as 'in' context, we might need to protect it
-                if target_is_cm:
-                    # Log the unit guard trace
-                    self.logger.log(f"[UNIT GUARD] '{name}' evaluates to {resolved_cm} cm")
-            except Exception as e:
-                self.logger.log(f"[UNIT GUARD WARNING] Couldn't pre-evaluate {name}: {e}")
+            # UNIT GUARD: Handled by Dedicated Resolver
+            if self.resolver:
+                self.resolver.validate_unit_consistency(name, val, unit)
 
             val_input = adsk.core.ValueInput.createByString(str(val))
             if param:
-                # If the unit of the existing param doesn't match the template, we might have an issue
+                # Basic unit alert if drift is detected in the model
                 if param.unit != unit and unit != "":
                      self.logger.log(f"[UNIT ALERT] {name} unit mismatch (Model:{param.unit} vs DNA:{unit})", "WARNING")
 
