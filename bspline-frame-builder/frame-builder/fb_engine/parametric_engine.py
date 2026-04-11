@@ -186,7 +186,7 @@ class ParametricSketchBuilder:
         for dim in phases["dims"]:
             dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=False)
         for vdim in phases["vdims"]:
-            dimension_step(ctx, sketch, sketch_name, vdim, is_snap_only=False)
+            dimension_step(ctx, sketch, sketch_name, vdim, is_snap_only=True)
         self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 PRE-SOLVE")
         sketch.isComputeDeferred = False
         self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 POST-SOLVE")

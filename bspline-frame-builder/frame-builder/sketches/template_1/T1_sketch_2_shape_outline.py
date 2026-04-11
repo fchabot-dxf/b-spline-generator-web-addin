@@ -112,9 +112,9 @@ def get_sketch(geometry=None):
         ],
 
         'PostGeometry': [
-            # Waist arc seeds: Micro-jitter (0.001cm) for perfect parametric snapping
-            {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [['ShoulderSpan/2 + 0.001', shldr_y], ['WaistSpan/2 + 0.001', waist_y], ['HipSpan/2 + 0.001', hip_y]], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C'},
-            {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [['-(HipSpan/2 + 0.001)', hip_y], ['-(WaistSpan/2 + 0.001)', waist_y], ['-(ShoulderSpan/2 + 0.001)', shldr_y]], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C'},
+            # Waist arc seeds: Proportional bulge (0.5cm) to force non-degenerate curvature
+            {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [['ShoulderSpan/2 + 0.001', shldr_y], ['WaistSpan/2 + 0.5', waist_y], ['HipSpan/2 + 0.001', hip_y]], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C'},
+            {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [['-(HipSpan/2 + 0.001)', hip_y], ['-(WaistSpan/2 + 0.5)', waist_y], ['-(ShoulderSpan/2 + 0.001)', shldr_y]], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C'},
         ],
 
         'PostConstraints': [
