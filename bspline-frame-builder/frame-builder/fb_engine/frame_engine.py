@@ -29,6 +29,12 @@ except Exception as e:
 
 
 
+def get_template_spec(style_id="Template 1"):
+    """Module-level wrapper so the UI can call frame_engine.get_template_spec() directly."""
+    importlib.reload(template_data_1)
+    return template_data_1.get_template_logic()
+
+
 def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
     """Entry point version 3 (Signature Immune)."""
     external_logger = kwargs.get('external_logger', None)
@@ -40,30 +46,27 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     # Unify session state (ui_state) and button snapshot (ui_data)
     ui_state = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
     ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
-    
+
     # Merge snapshot into state (freshness priority)
     ui_data = {**ui_state, **ui_snapshot}
-    
+    max_phase = data_dict.get('max_phase', None) if isinstance(data_dict, dict) else None
+
     if external_logger:
-        external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars")
-    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data)
+        external_logger.log(f"UI STATE UNIFIED: {len(ui_data)} vars, max_phase={max_phase}")
+    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data, max_phase=max_phase)
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
     """Entry point with signature safety net."""
     external_logger = kwargs.get('external_logger', None)
     if not external_logger and len(args) > 0:
         external_logger = args[0]
-        
+
     builder = FrameBuilder(external_logger)
     data_dict = kwargs.get('data', {})
     ui_state = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
     ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
     ui_data = {**ui_state, **ui_snapshot}
-    
-    builder.run_full_synthesis(style_id, joint_prefix, ui_data=ui_data)
-    ui_snapshot = data_dict.get('ui_data', {}) if isinstance(data_dict, dict) else {}
-    ui_data = {**ui_state, **ui_snapshot}
-    
+
     builder.run_full_synthesis(style_id, joint_prefix, ui_data=ui_data)
 
 class FrameBuilder:
@@ -94,6 +97,20 @@ class FrameBuilder:
         self.logger.log(f"Root component exists: {'yes' if self.root else 'no'}")
         self.logger.log(f"User params: {'yes' if self.user_params else 'no'}")
 
+    def get_template_spec(self, style_id="Template 1"):
+        """Fetches the raw template DNA for schema-driven UI rendering."""
+        # Use existing template loaders
+        from sketches.template_1 import template_data_1
+        from sketches.template_2 import template_data_2
+        from sketches.template_3 import template_data_3
+        from sketches.template_4 import template_data_4
+        
+        if "Template 1" in style_id: return template_data_1.get_template_logic()
+        if "Template 2" in style_id: return template_data_2.TEMPLATE_2
+        if "Template 3" in style_id: return template_data_3.TEMPLATE_3
+        if "Template 4" in style_id: return template_data_4.TEMPLATE_4
+        return template_data_1.get_template_logic()
+
     def _ensure_document(self):
         self.logger.log("Ensuring document is active")
         if not self.design:
@@ -116,7 +133,7 @@ class FrameBuilder:
         except Exception as e:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
-    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None):
+    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None, max_phase=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -138,7 +155,7 @@ class FrameBuilder:
             if "Template 4" in style_id: 
                 template, prefix = template_data_4.TEMPLATE_4, "T4"
 
-            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)
         except:
             self.logger.log_error("CRASH in run_sketch_only")
@@ -225,32 +242,23 @@ class FrameBuilder:
             else:
                 existing.value = val
 
-        # 2. Dynamic Model Measurement (Scale Stabilization)
-        if target_body:
-            bbox = target_body.boundingBox
-            w = abs(bbox.maxPoint.x - bbox.minPoint.x)
-            h = abs(bbox.maxPoint.z - bbox.minPoint.z)
-            
-            for name, raw_val in [("widthIn", w), ("heightIn", h)]:
-                val, unit = self.resolver.normalize_measurement(name, raw_val)
-                existing = self.user_params.itemByName(name)
-                if not existing:
-                    self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Auto-Measured Body Span')
-                else:
-                    existing.value = val
+        # 2. Template-Specific Parameter Initialization (DNA Sync)
+        # NOTE: ReadOnly parameters (e.g. widthIn, heightIn) are owned by the bspline add-in
+        # and must never be written here — they are only referenced as Fusion expressions.
+        template = template_data_1.get_template_logic(ui_data)
 
-        # 3. Template-Specific Parameter Initialization (DNA Sync)
-        template = template_data_1.TEMPLATE_1
-        if "Template 2" in style_id: template = template_data_2.TEMPLATE_2
-        if "Template 3" in style_id: template = template_data_3.TEMPLATE_3
-        if "Template 4" in style_id: template = template_data_4.TEMPLATE_4
-        
         if template and "Parameters" in template:
             self.logger.log(f"Resolving {len(template['Parameters'])} drivers for {style_id}")
             for p_info in template["Parameters"]:
                 name = p_info["Name"]
+
+                # Skip read-only params — owned by another add-in (e.g. bspline)
+                if p_info.get("ReadOnly"):
+                    self.logger.log(f"SKIP (ReadOnly): {name}")
+                    continue
+
                 val_expr, unit = self.resolver.resolve_dna_parameter(p_info, ui_data)
-                
+
                 existing = self.user_params.itemByName(name)
                 if not existing:
                     try:

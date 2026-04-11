@@ -10,14 +10,14 @@ def get_sketch(ui_data=None):
             {
                 "ID": "BB_RECT",
                 "Type": "Rectangle",
-                "Center": [0, 0],
+                "Center": [0.001, 0.001],
                 "Size": ["widthIn", "heightIn"],
                 "LineIDs": ["BB_top", "BB_right", "BB_bottom", "BB_left"]
             }
         ],
         "Constraints": [
-            # Rectangle alignment and center-anchoring are now handled internally
-            # by the engine's manual 4-line loop logic.
+            # Explicit origin lock: center point seeded at 0.001 offset, snapped to ORIGIN.
+            {"Type": "Coincident", "Targets": ["BB_RECT:C", "ORIGIN"]}
         ],
         "Dimensions": [
             {"Target": "BB_top",   "Expression": "widthIn",  "Name": "dim_width"},

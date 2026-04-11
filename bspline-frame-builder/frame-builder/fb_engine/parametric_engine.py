@@ -38,17 +38,18 @@ class ParametricSketchBuilder:
     builder.build_template(template_dict)
     """
 
-    def __init__(self, comp, design, logger, prefix="T1", ui_data=None, resolver=None):
+    def __init__(self, comp, design, logger, prefix="T1", ui_data=None, resolver=None, max_phase=None):
         self.comp = comp
         self.design = design
         self.logger = logger
         self.prefix = prefix
         self.ui_data = ui_data or {}
         self.resolver = resolver
-        
+        self.max_phase = int(max_phase) if max_phase is not None else None
+
         # Shared state context with unit-safe resolver
         self.ctx = BuildContext(comp, design, logger, prefix=prefix, ui_data=ui_data, resolver=resolver)
-        self.logger.log(f"ParametricSketchBuilder initialized for {prefix}")
+        self.logger.log(f"ParametricSketchBuilder initialized for {prefix}, max_phase={self.max_phase}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -119,15 +120,88 @@ class ParametricSketchBuilder:
         self._project_y_axis(sketch, sketch_name)
 
         # Extract all phase categories from the spec
+        if "Blocks" in sketch_spec:
+            self._build_blocks(sketch, sketch_name, sketch_spec["Blocks"])
+        else:
+            self._build_legacy_phases(sketch, sketch_name, sketch_spec)
+
+        ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] ---")
+
+    def _build_blocks(self, sketch, sketch_name, blocks):
+        """Builds a sketch using the new sequential BuildingBlock pattern."""
+        self.ctx.logger.log(f"Using Procedural BLOCK-BASED synthesis in {sketch_name}")
+
+        for i, block in enumerate(blocks):
+            if self.max_phase is not None and i >= self.max_phase:
+                self.ctx.logger.log(f"  > PHASE CUTOFF at block {i} (max_phase={self.max_phase})")
+                break
+            b_name = block.get("Name", "Unnamed Block")
+            self.ctx.logger.log(f"  > START BLOCK: {b_name}")
+            
+            # 1. Projections (Live)
+            sketch.isComputeDeferred = False
+            for proj in block.get("Projections", []):
+                project_step(self.ctx, sketch, sketch_name, proj)
+            
+            # 2. Sequence (Deferred with Pulse)
+            sketch.isComputeDeferred = True
+            
+            # Process Geometry/Constraints/Dimensions mix
+            seq = block.get("BuildSequence", [])
+            self._process_sequence(sketch, sketch_name, seq)
+            
+            # Fallback bucket support within the block
+            for g in block.get("Geometry", []): geom_step(self.ctx, sketch, sketch_name, g)
+            for c in block.get("Constraints", []): constraint_step(self.ctx, sketch, sketch_name, c)
+            for d in block.get("Dimensions", []): dimension_step(self.ctx, sketch, sketch_name, d)
+
+            # Volatile (snap-seed) dimensions — applied then deleted to nudge the solver
+            for vd in block.get("VolatileDimensions", []):
+                dimension_step(self.ctx, sketch, sketch_name, vd, is_snap_only=True)
+
+            # Pulse the solver
+            self.ctx.logger.log(f"  > PULSE SOLVE: {b_name}")
+            sketch.isComputeDeferred = False
+            self._log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE")
+
+            # Offset Steps (runs after pulse so geometry is settled)
+            for step in block.get("Steps", []):
+                step_step(self.ctx, sketch, sketch_name, step)
+
+            # Miters (runs last — depends on offset corners existing)
+            miters_list = block.get("Miters", [])
+            if miters_list:
+                self.ctx.logger.log(f"  > MITERS: {len(miters_list)} cuts in block {b_name}")
+                for m in miters_list:
+                    miter_step(self.ctx, sketch, sketch_name, m)
+
+    def _process_sequence(self, sketch, sketch_name, sequence):
+        """Order-aware dispatcher for Procedural Sketching."""
+        geom_types = ["Line", "Arc3Point", "ArcCenterPoint", "Circle", "Rectangle", "RectangleCenter", "Slot"]
+        constr_types = ["Coincident", "Tangent", "Horizontal", "Vertical", "Parallel", "Perpendicular", "Equal", "Concentric", "Midpoint", "PointOnCurve"]
+        dim_types = ["HorizontalDistance", "VerticalDistance", "Radius", "Diameter", "ParallelDistance", "AngularDistance"]
+
+        for step in sequence:
+            t = step.get("Type")
+            if t in geom_types:
+                geom_step(self.ctx, sketch, sketch_name, step)
+            elif t in constr_types:
+                constraint_step(self.ctx, sketch, sketch_name, step)
+            elif t in dim_types:
+                dimension_step(self.ctx, sketch, sketch_name, step)
+            elif t == "Offset":
+                offset_step(self.ctx, sketch, sketch_name, step)
+            elif t == "Step":
+                step_step(self.ctx, sketch, sketch_name, step)
+
+    def _build_legacy_phases(self, sketch, sketch_name, sketch_spec):
+        """The original 8-phase bucket-based loop."""
+        ctx = self.ctx
         phases = _extract_phases(sketch_spec)
 
         # === PHASE 0: PROJECTIONS (live compute) ===
         sketch.isComputeDeferred = False
-        for proj in phases["bbox_projs"]:
-            project_step(ctx, sketch, sketch_name, proj)
-        for proj in phases["skel_projs"]:
-            project_step(ctx, sketch, sketch_name, proj)
-        for proj in phases["projs"]:
+        for proj in (phases["bbox_projs"] + phases["skel_projs"] + phases["projs"]):
             project_step(ctx, sketch, sketch_name, proj)
 
         # === PHASE 1: PRE-GEOMETRY ===

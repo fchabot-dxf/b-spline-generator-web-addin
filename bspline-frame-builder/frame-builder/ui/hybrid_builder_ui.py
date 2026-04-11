@@ -24,9 +24,11 @@ PALETTE_ID = 'hybridFrameBuilderPalette'
 PALETTE_NAME = 'Hybrid Frame Builder'
 PALETTE_HTML = 'html/index.html'
 
-BUILD_SKETCH_CMD_ID = 'hybridBuildSketchCommand'
-BUILD_SOLID_CMD_ID = 'hybridBuildSolidCommand'
+BUILD_SKETCH_CMD_ID  = 'hybridBuildSketchCommand'
+BUILD_SOLID_CMD_ID   = 'hybridBuildSolidCommand'
+SCHEMA_PUSH_CMD_ID   = 'hybridSchemaPushCommand'
 _pending_build_request = None
+_pending_schema_style  = None
 
 handlers = []
 
@@ -36,7 +38,11 @@ def _create_hidden_build_command(cmd_defs, cmd_id, name):
         if cmd_defs.itemById(cmd_id):
             return
         cmd_def = cmd_defs.addButtonDefinition(cmd_id, name, '', '')
-        handler = HiddenBuildCommandCreatedHandler()
+        # Schema-push command gets its own lightweight handler
+        if cmd_id == SCHEMA_PUSH_CMD_ID:
+            handler = HiddenSchemaPushCommandCreatedHandler()
+        else:
+            handler = HiddenBuildCommandCreatedHandler()
         cmd_def.commandCreated.add(handler)
         handlers.append(handler)
     except:
@@ -48,7 +54,8 @@ def _ensure_hidden_build_commands(ui):
         cmd_defs = ui.commandDefinitions
         for cmd_id, cmd_name in (
             (BUILD_SKETCH_CMD_ID, 'Build Skeleton'),
-            (BUILD_SOLID_CMD_ID, 'Build Solid Frame')
+            (BUILD_SOLID_CMD_ID,  'Build Solid Frame'),
+            (SCHEMA_PUSH_CMD_ID,  'Push Schema'),
         ):
             existing = cmd_defs.itemById(cmd_id)
             if existing:
@@ -64,18 +71,88 @@ def _ensure_hidden_build_commands(ui):
 def _schedule_hidden_build(build_type, data, style_id="Template 1"):
     global _pending_build_request
     _pending_build_request = {'type': build_type, 'data': data, 'style_id': style_id}
+    if diag_logger: diag_logger.log(f"DISPATCH: queued '{build_type}' build for style '{style_id}'")
     try:
         app = adsk.core.Application.get()
         if not app:
+            if diag_logger: diag_logger.log_error("DISPATCH ABORT: no app")
             return
         ui = app.userInterface
         cmd_id = BUILD_SKETCH_CMD_ID if build_type == 'sketch' else BUILD_SOLID_CMD_ID
         cmd_def = ui.commandDefinitions.itemById(cmd_id)
         if cmd_def:
+            if diag_logger: diag_logger.log(f"DISPATCH: firing hidden command '{cmd_id}'")
             cmd_def.execute()
+        else:
+            if diag_logger: diag_logger.log_error(f"DISPATCH ABORT: cmd_def '{cmd_id}' not found — hidden commands not registered?")
     except:
         if diag_logger:
             diag_logger.log_error(f"Hidden build dispatch failed:\n{traceback.format_exc()}")
+
+def _schedule_schema_push(style_id="Template 1"):
+    """Defer a schema push to a fresh Fusion event (outside the HTML event handler)."""
+    global _pending_schema_style
+    _pending_schema_style = style_id
+    if diag_logger: diag_logger.log(f"SCHEMA PUSH: scheduled for style '{style_id}'")
+    try:
+        app = adsk.core.Application.get()
+        if not app:
+            return
+        cmd_def = app.userInterface.commandDefinitions.itemById(SCHEMA_PUSH_CMD_ID)
+        if cmd_def:
+            cmd_def.execute()
+        else:
+            if diag_logger: diag_logger.log_error("SCHEMA PUSH: SCHEMA_PUSH_CMD_ID not registered")
+    except:
+        if diag_logger: diag_logger.log_error(f"_schedule_schema_push failed:\n{traceback.format_exc()}")
+
+
+def _push_schema_direct(style_id="Template 1"):
+    """Build the schema from the template spec, hydrate ReadOnly params with live
+    Fusion values, and send render_schema to the palette."""
+    try:
+        if not frame_engine:
+            if diag_logger: diag_logger.log("SCHEMA PUSH: frame_engine not ready", "WARNING")
+            return
+
+        template_spec = frame_engine.get_template_spec(style_id)
+        if not template_spec or "Parameters" not in template_spec:
+            if diag_logger: diag_logger.log("SCHEMA PUSH: spec has no Parameters", "WARNING")
+            return
+
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct) if app else None
+        user_params = design.userParameters if design else None
+
+        params_out = []
+        for p in template_spec["Parameters"]:
+            p_live = dict(p)
+            # ReadOnly params are owned by another add-in — read the live Fusion value.
+            # fp.value is always in cm (Fusion internal); convert to the declared display unit.
+            if p.get("ReadOnly") and user_params:
+                fp = user_params.itemByName(p['Name'])
+                if fp:
+                    target_unit = p.get('Unit', 'cm')
+                    p_live['Val'] = round(fp.value / 2.54, 4) if target_unit == 'in' else round(fp.value, 4)
+                    if diag_logger: diag_logger.log(f"SCHEMA HYDRATE: {p['Name']} = {p_live['Val']} {target_unit}")
+            params_out.append(p_live)
+
+        # Count phases dynamically from the template's block-based sketches
+        phase_count = 0
+        for sketch in template_spec.get("Sketches", []):
+            blocks = sketch.get("Blocks", [])
+            if blocks:
+                phase_count = max(phase_count, len(blocks))
+
+        pal = app.userInterface.palettes.itemById(PALETTE_ID) if app else None
+        if pal:
+            pal.sendInfoToHTML('render_schema', json.dumps({'template': style_id, 'parameters': params_out, 'phase_count': phase_count}))
+            if diag_logger: diag_logger.log(f"SCHEMA PUSH: sent {len(params_out)} params, {phase_count} phases for '{style_id}'")
+        else:
+            if diag_logger: diag_logger.log("SCHEMA PUSH: palette not found", "WARNING")
+    except Exception:
+        if diag_logger: diag_logger.log_error(f"_push_schema_direct FAILED:\n{traceback.format_exc()}")
+
 
 if diag_logger:
     diag_logger.log("HYBRID UI MODULE: Loaded & Active (Nuclear Trace On)")
@@ -88,80 +165,45 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             event_args = adsk.core.CommandCreatedEventArgs.cast(args)
             cmd = event_args.command
             
-            # Create the palette
-            app = adsk.core.Application.get()
-            ui = app.userInterface
-            pal = ui.palettes.itemById(PALETTE_ID)
-            # Force palette recreation to avoid stale cached HTML from previous deployments
-            if pal:
-                try:
-                    if diag_logger: diag_logger.log("PALETTE EXISTS - RECREATING TO REFRESH HTML")
-                    pal.deleteMe()
-                    pal = None
-                except Exception as e:
-                    if diag_logger: diag_logger.log(f"PALETTE REFRESH FAILED: {e}", "WARNING")
-                    pal = ui.palettes.itemById(PALETTE_ID)
-
-            if not pal:
-                # Normalize path for Windows: use forward slashes for URLs
-                html_path = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
-                
-                if diag_logger:
-                    diag_logger.log(f"LAUNCHING PALETTE: {PALETTE_NAME}")
-                    diag_logger.log(f"HTML PATH: {html_path}")
-                
-                pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 340, 600)
-                pal.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
-                pal.isVisible = True
-            else:
-                if diag_logger: diag_logger.log("PALETTE ALREADY EXISTS - MAKING VISIBLE")
-                pal.isVisible = True
-
-            _ensure_hidden_build_commands(ui)
-
-            # --- FIX: Command Lifecycle ---
-            # Ensure the launching command terminates immediately so it doesn't block the UI
-            cmd = event_args.command
-            cmd.isAutoTerminate = True
-
-            # --- FIX: Handler Duplication ---
-            # Add the event handler to the palette, replacing any existing one
-            global _active_handler
-            if _active_handler:
-                try:
-                    pal.incomingFromHTML.remove(_active_handler)
-                    if diag_logger: diag_logger.log("REMOVED OLD PALETTE HANDLER")
-                except:
-                    pass
-
-            _active_handler = PaletteHTMLEventHandler()
-            pal.incomingFromHTML.add(_active_handler)
-            handlers.append(_active_handler)
-            
-            if diag_logger: diag_logger.log(f"EVENT HANDLER ATTACHED (Global Anchor): {_active_handler}")
+            # Create/Show the palette via the central runner
+            global frame_engine
+            run_palette(frame_engine, diag_logger=diag_logger)
+        except Exception as e:
+            if diag_logger:
+                diag_logger.log_error(f"CommandCreatedHandler CRASH:\n{traceback.format_exc()}")
+            adsk.core.Application.get().userInterface.messageBox(f"Palette Launch Failed:\n{e}")
 
         except:
             if diag_logger: diag_logger.log_error(f"HybridCommandCreated CRASH:\n{traceback.format_exc()}")
 
 class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
-    def __init__(self):
+    def __init__(self, diag_logger=None):
         super().__init__()
+        self.diag_logger = diag_logger
         self.selected_face = None
         self.style_id = "Template 1"
         self.active_vars = {} # Shadow state for UI variables (locks and values)
-        if diag_logger:
-            diag_logger.log(f"HTMLEventHandler INSTANCE CREATED: {self}")
+        if self.diag_logger:
+            self.diag_logger.log(f"HTMLEventHandler INSTANCE CREATED: {self}")
 
     def notify(self, args):
-        if diag_logger:
-            diag_logger.log(">>> HTMLEventHandler.notify() ENTERED")
         try:
-            html_args = adsk.core.HTMLEventArgs.cast(args)
-            action = html_args.action
-            data = json.loads(html_args.data) if html_args.data else {}
+            event_args = adsk.core.HTMLEventArgs.cast(args)
+            if not event_args: return
 
-            if diag_logger:
-                diag_logger.log(f">>> UI EVENT: {action} | DATA: {json.dumps(data)}")
+            action = event_args.action
+            data_str = event_args.data
+            
+            # NUCLEAR TRACE: Log EVERY raw event immediately
+            if self.diag_logger:
+                self.diag_logger.log(f">>> UI EVENT: {action} | DATA: {data_str[:100]}...")
+
+            try:
+                data = json.loads(data_str)
+            except:
+                data = {}
+                if self.diag_logger: 
+                    self.diag_logger.log(f"WARNING: JSON parse failed for {action}", "WARNING")
 
             app = adsk.core.Application.get()
             ui = app.userInterface
@@ -183,14 +225,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             elif action == 'change_template':
                 self.style_id = data.get('template', "Template 1")
-                if diag_logger: diag_logger.log(f"STYLE SYNC: {self.style_id}")
+                if self.diag_logger: self.diag_logger.log(f"STYLE SYNC: {self.style_id} — scheduling deferred schema push")
+                # Defer the sendInfoToHTML call to a fresh Fusion event so we are
+                # not calling back into the webview from inside this HTML event handler.
+                _schedule_schema_push(self.style_id)
 
             elif action == 'pick_face':
                 self._handle_face_selection(ui)
 
             elif action == 'run_build':
                 build_type = data.get('type')
-                if diag_logger: diag_logger.log(f"RUN_BUILD TYPE: {build_type}")
+                if self.diag_logger: self.diag_logger.log(f"RUN_BUILD TYPE: {build_type}")
                 if build_type == 'sketch':
                     self._run_sketch_build(data)
                 elif build_type == 'solid':
@@ -200,13 +245,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     if pal:
                         pal.isVisible = False
 
+            elif action == 'ping':
+                self._send_palette_message(ui.palettes.itemById(PALETTE_ID), 'response', {'data': 'PONG'})
+                if self.diag_logger: self.diag_logger.log("BRIDGE HEARTBEAT: PING -> PONG")
+
         except Exception as e:
-            if diag_logger: diag_logger.log_error(f"PaletteHTMLEvent ERROR:\n{traceback.format_exc()}")
+            if self.diag_logger: self.diag_logger.log_error(f"PaletteHTMLEvent ERROR:\n{traceback.format_exc()}")
 
     def _update_fusion_param(self, design, name, value):
         try:
-            if diag_logger:
-                diag_logger.log(f"PARAM SYNC: {name} = {value}")
+            if self.diag_logger:
+                self.diag_logger.log(f"PARAM SYNC: {name} = {value}")
             params = design.userParameters
             p = params.itemByName(name)
             if p:
@@ -228,7 +277,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     # p.value = (float(value) / 100.0) * total
                     # REMOVED STATIC INJECTION: Let ValueResolver handle formulas during build.
         except Exception as e:
-            if diag_logger: diag_logger.log(f"PARAM SYNC ERROR: {e}")
+            if self.diag_logger: self.diag_logger.log(f"PARAM SYNC ERROR: {e}")
 
     def _send_palette_message(self, pal, action, payload):
         try:
@@ -240,46 +289,46 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             pal.sendInfoToHTML(action, json.dumps(payload))
             return True
         except Exception as e:
-            if diag_logger:
-                diag_logger.log_error(f"Palette sendInfoToHTML failed ({action}): {e}")
+            if self.diag_logger:
+                self.diag_logger.log_error(f"Palette sendInfoToHTML failed ({action}): {e}")
             return False
 
     def _handle_face_selection(self, ui):
         pal = ui.palettes.itemById(PALETTE_ID)
         try:
-            if diag_logger: diag_logger.log("FACE SELECTION TRIGGERED: Entering selectEntity mode...")
+            if self.diag_logger: self.diag_logger.log("FACE SELECTION TRIGGERED: Entering selectEntity mode...")
             self._send_palette_message(pal, 'status_update', {'msg': 'Awaiting face selection in Fusion...'})
 
             # Clear any existing active selections before prompting.
             try:
                 if hasattr(ui, 'activeSelections') and ui.activeSelections.count > 0:
                     ui.activeSelections.clear()
-                    if diag_logger: diag_logger.log("Cleared existing active selections before face pick.")
+                    if self.diag_logger: self.diag_logger.log("Cleared existing active selections before face pick.")
             except Exception as sel_clear_exc:
-                if diag_logger: diag_logger.log_error(f"Face selection clear warning: {sel_clear_exc}")
+                if self.diag_logger: self.diag_logger.log_error(f"Face selection clear warning: {sel_clear_exc}")
 
             sel = None
             try:
                 sel = ui.selectEntity('Select a face for extrusion', 'Faces')
             except Exception as e1:
-                if diag_logger: diag_logger.log_error(f"Face selection first attempt failed: {e1}")
+                if self.diag_logger: self.diag_logger.log_error(f"Face selection first attempt failed: {e1}")
                 try:
                     if hasattr(ui, 'activeSelections') and ui.activeSelections.count > 0:
                         ui.activeSelections.clear()
-                        if diag_logger: diag_logger.log("Cleared active selections before retry.")
+                        if self.diag_logger: self.diag_logger.log("Cleared active selections before retry.")
                 except Exception as sel_clear_exc:
-                    if diag_logger: diag_logger.log_error(f"Face selection second-clear warning: {sel_clear_exc}")
+                    if self.diag_logger: self.diag_logger.log_error(f"Face selection second-clear warning: {sel_clear_exc}")
                 try:
                     sel = ui.selectEntity('Select a face for extrusion', 'Faces')
                 except Exception as e2:
-                    if diag_logger: diag_logger.log_error(f"Face selection retry failed: {e2}")
+                    if self.diag_logger: self.diag_logger.log_error(f"Face selection retry failed: {e2}")
                     self._send_palette_message(pal, 'status_update', {'msg': f'Selection attempt failed: {str(e2)}'})
                     raise
 
             if sel:
                 self.selected_face = adsk.fusion.BRepFace.cast(sel.entity)
-                if diag_logger:
-                    diag_logger.log(f"FACE SELECTED: {self.selected_face.tempId} on body {self.selected_face.body.name}")
+                if self.diag_logger:
+                    self.diag_logger.log(f"FACE SELECTED: {self.selected_face.tempId} on body {self.selected_face.body.name}")
                 payload = {
                     'success': True,
                     'name': f"1 Face Selected: {self.selected_face.body.name}",
@@ -290,14 +339,14 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 self._send_palette_message(pal, 'status_update', {'msg': 'Face selected successfully.'})
                 self._send_palette_message(pal, 'selection_result', payload)
                 self._send_palette_message(pal, 'debug', {'msg': f"Face selection payload sent: {payload}"})
-                if diag_logger: diag_logger.log(f"FACE SELECTION MESSAGE SENT: {payload}")
+                if self.diag_logger: self.diag_logger.log(f"FACE SELECTION MESSAGE SENT: {payload}")
             else:
-                if diag_logger: diag_logger.log("FACE SELECTION CANCELLED by user or failed.")
+                if self.diag_logger: self.diag_logger.log("FACE SELECTION CANCELLED by user or failed.")
                 self._send_palette_message(pal, 'status_update', {'msg': 'Face selection cancelled.'})
                 self._send_palette_message(pal, 'selection_result', {'success': False})
         except Exception as e:
-            if diag_logger:
-                diag_logger.log_error(f"Face selection CRITICAL ERROR:\n{traceback.format_exc()}")
+            if self.diag_logger:
+                self.diag_logger.log_error(f"Face selection CRITICAL ERROR:\n{traceback.format_exc()}")
             self._send_palette_message(pal, 'status_update', {'msg': f'Selection Error: {str(e)}'})
             self._send_palette_message(pal, 'selection_result', {'success': False})
             try:
@@ -337,7 +386,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             pass
 
     def _run_sketch_build(self, data):
-        if diag_logger: diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
+        if self.diag_logger: self.diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
         # Inject the latest shadow state into the build request
         request_data = dict(data)
         request_data['ui_state'] = self.active_vars
@@ -345,12 +394,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
     def _run_solid_build(self, data):
         if not self.selected_face:
-            if diag_logger: diag_logger.log("Solid build aborted: No face selected")
+            if self.diag_logger: self.diag_logger.log("Solid build aborted: No face selected")
             ui = adsk.core.Application.get().userInterface
             ui.messageBox("Please select a target face first.")
             return
 
-        if diag_logger: diag_logger.log(f"Scheduling solid build with face: {self.selected_face.tempId}")
+        if self.diag_logger: self.diag_logger.log(f"Scheduling solid build with face: {self.selected_face.tempId}")
         request_data = dict(data)
         request_data['to_face'] = self.selected_face
         _schedule_hidden_build('solid', request_data, self.style_id)
@@ -383,23 +432,52 @@ class HiddenBuildCommandExecuteHandler(adsk.core.CommandEventHandler):
         super().__init__()
     def notify(self, args):
         global _pending_build_request
+        if diag_logger: diag_logger.log("HIDDEN CMD EXECUTE: handler fired")
         try:
             request = _pending_build_request
             _pending_build_request = None
             if not request:
+                if diag_logger: diag_logger.log_error("HIDDEN CMD EXECUTE: no pending request found")
                 return
 
             req_type = request.get('type')
-            data = request.get('data', {})
             style_id = request.get('style_id', 'Template 1')
+            if diag_logger: diag_logger.log(f"HIDDEN CMD EXECUTE: type='{req_type}' style='{style_id}'")
 
+            data = request.get('data', {})
             if req_type == 'sketch':
                 _run_sketch_build_direct(data, style_id)
             elif req_type == 'solid':
                 _run_solid_build_direct(data)
+            else:
+                if diag_logger: diag_logger.log_error(f"HIDDEN CMD EXECUTE: unknown type '{req_type}'")
         except Exception:
             if diag_logger:
                 diag_logger.log_error(f"HiddenBuildCommandExecute CRASH:\n{traceback.format_exc()}")
+
+
+class HiddenSchemaPushCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
+        try:
+            cmd = adsk.core.CommandCreatedEventArgs.cast(args).command
+            h = HiddenSchemaPushExecuteHandler()
+            cmd.execute.add(h)
+            handlers.append(h)
+        except:
+            if diag_logger: diag_logger.log_error(f"SchemaPushCreated CRASH:\n{traceback.format_exc()}")
+
+
+class HiddenSchemaPushExecuteHandler(adsk.core.CommandEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
+        global _pending_schema_style
+        style = _pending_schema_style or "Template 1"
+        _pending_schema_style = None
+        if diag_logger: diag_logger.log(f"SCHEMA PUSH EXECUTE: style='{style}'")
+        _push_schema_direct(style)
 
 
 def _run_sketch_build_direct(data, style_id):
@@ -492,3 +570,57 @@ def _notify_status(msg):
             pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
     except:
         pass
+def run_palette(engine_instance, diag_logger=None):
+    """
+    Central runner to launch the palette and maintain the bridge reference.
+    """
+    global frame_engine, _active_handler
+    frame_engine = engine_instance
+    if diag_logger:
+        diag_logger.log(f"run_palette: engine injected = {frame_engine is not None} | type = {type(frame_engine).__name__}")
+
+    try:
+        app = adsk.core.Application.get()
+        ui = app.userInterface
+        
+        # 1. CLEANUP: Ensure any old palette is totally gone
+        existing = ui.palettes.itemById(PALETTE_ID)
+        if existing:
+            existing.deleteMe()
+
+        # 2. CREATE: New palette instance
+        html_path = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
+        pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 340, 700)
+        pal.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
+        pal.setMinimumSize(320, 500)
+
+        # 3. RE-ATTACH BRIDGE: Ensure global handler reference
+        _active_handler = PaletteHTMLEventHandler(diag_logger=diag_logger)
+        pal.incomingFromHTML.add(_active_handler)
+        
+        # NUCLEAR ANCHOR: Tie the handler to the palette itself to prevent garbage collection
+        # Fusion 360 sometimes drops the reference if it's only in a global list.
+        pal.handler_anchor = _active_handler
+        
+        handlers.append(_active_handler) # Secondary survival list
+
+        if diag_logger:
+            diag_logger.log(f"LAUNCHED PALETTE: {PALETTE_NAME} (Bridge Attached)")
+            diag_logger.log(f"HANDLER REF: {_active_handler}")
+
+        # 4. SHOW
+        pal.isVisible = True
+        
+        # 5. SYNC: Ensure hidden build commands are fresh (includes SCHEMA_PUSH_CMD_ID)
+        _ensure_hidden_build_commands(ui)
+
+        # 6. INITIAL SCHEMA PUSH via deferred hidden command
+        # sendInfoToHTML cannot be called here (page not loaded yet), so we schedule
+        # a schema push that fires in a fresh Fusion event once the commands are ready.
+        _schedule_schema_push("Template 1")
+        if diag_logger: diag_logger.log("INITIAL SCHEMA PUSH scheduled.")
+
+    except Exception as e:
+        if diag_logger:
+            diag_logger.log_error(f"FAILURE IN run_palette: {e}\n{traceback.format_exc()}")
+        raise e

@@ -1,4 +1,12 @@
 import importlib
+import sys, os
+
+# Ensure this package's directory is on sys.path so flat sibling imports resolve
+# regardless of whether this module is loaded as a package or directly.
+_here = os.path.dirname(os.path.realpath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+
 import T1_sketch_1_bounding_box, T1_sketch_2_shape_outline
 
 importlib.reload(T1_sketch_1_bounding_box)
@@ -17,32 +25,31 @@ def get_template_logic(ui_data=None):
         "Name": "Template 1",
         "Description": "Standardized Arc Series - Metric Unified",
         "Parameters": [
-            # Note: widthIn and heightIn are read from existing model parameters in inches.
-            # We reference them here with cm defaults for fallback/initialization.
-            {"Name": "widthIn",           "Val": 14.0,  "Unit": "cm"},
-            {"Name": "heightIn",          "Val": 5.0,   "Unit": "cm"},
-            {"Name": "boundingboxoffset", "Val": 0.635, "Unit": "cm"},
-            {"Name": "Skel_Frame_Offset", "Val": -1.905, "Unit": "cm"},
+            {"Name": "widthIn",           "Label": "Width (Model)", "Category": "Frame Spec", "Val": 14.0,  "Unit": "cm", "ReadOnly": True},
+            {"Name": "heightIn",          "Label": "Height (Model)", "Category": "Frame Spec", "Val": 5.0,   "Unit": "cm", "ReadOnly": True},
+            {"Name": "boundingboxoffset", "Label": "BBox Border",   "Category": "Frame Spec", "Val": 0.635, "Unit": "cm"},
+            {"Name": "Skel_Frame_Offset", "Label": "Wall Thickness", "Category": "Frame Spec", "Val": -1.905, "Unit": "cm"},
 
-            # Sub-parameters (Aligned to cm)
-            {"Name": "ShoulderSpan",      "Val": "widthIn * 0.8",   "Unit": "cm"},
-            {"Name": "WaistSpan",         "Val": "widthIn * 0.7",   "Unit": "cm"},
-            {"Name": "HipSpan",           "Val": "widthIn * 0.8",   "Unit": "cm"},
-            {"Name": "TopGap",            "Val": "heightIn * 0.15", "Unit": "cm"},
-            {"Name": "BottomGap",         "Val": "heightIn * 0.15", "Unit": "cm"},
-            {"Name": "WaistOffset",       "Val": 0.0,               "Unit": "cm"},
+            # Anatomy Block
+            # Val = numeric multiplier; Fusion param = widthIn * Val or heightIn * Val
+            {"Name": "ShoulderSpan",      "Label": "Shoulder Width", "Category": "Anatomy", "Val": 0.8,  "Min": 0.3, "Max": 1.0, "Unit": "cm"},
+            {"Name": "WaistSpan",         "Label": "Waist Width",    "Category": "Anatomy", "Val": 0.7,  "Min": 0.3, "Max": 1.0, "Unit": "cm"},
+            {"Name": "HipSpan",           "Label": "Hip Width",      "Category": "Anatomy", "Val": 0.8,  "Min": 0.3, "Max": 1.0, "Unit": "cm"},
+            {"Name": "TopGap",            "Label": "Top Height",     "Category": "Anatomy", "Val": 0.15, "Min": 0.05, "Max": 0.5, "Unit": "cm"},
+            {"Name": "BottomGap",         "Label": "Bottom Height",  "Category": "Anatomy", "Val": 0.15, "Min": 0.05, "Max": 0.5, "Unit": "cm"},
+            {"Name": "WaistOffset",       "Label": "Waist Offset",   "Category": "Anatomy", "Val": 0.0,  "Min": -0.3, "Max": 0.3, "Unit": "cm"},
 
-            # Dynamic Aesthetic Radii (Used as SOFT SNAPS)
-            {"Name": "ShoulderRadius",    "Val": 2.5,  "Unit": "cm"},
-            {"Name": "WaistRadius",       "Val": 2.8,  "Unit": "cm"},
-            {"Name": "HipRadius",         "Val": 2.5,  "Unit": "cm"},
+            # Silhouette Block
+            {"Name": "ShoulderRadius",    "Label": "Shoulder Radius", "Category": "Silhouette", "Val": 2.5, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
+            {"Name": "WaistRadius",       "Label": "Waist Radius",    "Category": "Silhouette", "Val": 2.8, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
+            {"Name": "HipRadius",         "Label": "Hip Radius",      "Category": "Silhouette", "Val": 2.5, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
 
-            # UI Toggles
-            {"Name": "en_ShoulderSpan",   "Val": 1.0, "Unit": ""},
-            {"Name": "en_WaistSpan",      "Val": 1.0, "Unit": ""},
-            {"Name": "en_HipSpan",        "Val": 1.0, "Unit": ""},
-            {"Name": "en_TopGap",         "Val": 0.0, "Unit": ""},
-            {"Name": "en_BottomGap",      "Val": 0.0, "Unit": ""}
+            # UI Toggles — 0.0 = unlocked (slider active), 1.0 = locked (slider disabled)
+            {"Name": "en_ShoulderSpan",   "Label": "en_ShoulderSpan", "Category": "Anatomy", "Val": 0.0, "Unit": ""},
+            {"Name": "en_WaistSpan",      "Label": "en_WaistSpan",    "Category": "Anatomy", "Val": 0.0, "Unit": ""},
+            {"Name": "en_HipSpan",        "Label": "en_HipSpan",      "Category": "Anatomy", "Val": 0.0, "Unit": ""},
+            {"Name": "en_TopGap",         "Label": "en_TopGap",       "Category": "Anatomy", "Val": 0.0, "Unit": ""},
+            {"Name": "en_BottomGap",      "Label": "en_BottomGap",    "Category": "Anatomy", "Val": 0.0, "Unit": ""}
         ],
         "Sketches": [
             get_sketch_1(ui_data),
