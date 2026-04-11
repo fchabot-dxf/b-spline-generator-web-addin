@@ -41,8 +41,10 @@ def miter_step(ctx, sketch, s_name, m):
         dx, dy = tx - sx, ty - sy
         dist = math.sqrt(dx * dx + dy * dy)
 
-        if dist <= 0:
-            ctx.logger.log(f"MITER SKIP: {src_id} -> {tgt_id} (zero distance)", "WARNING")
+        ctx.logger.log(f"MITER TRACE: {src_id}({sx:.3f}, {sy:.3f}) -> {tgt_id}({tx:.3f}, {ty:.3f}) Dist={dist:.3f} cm", "DEBUG")
+
+        if dist <= 0.001:
+            ctx.logger.log(f"MITER SKIP: {src_id} -> {tgt_id} (distance too small: {dist:.5f})", "WARNING")
             return
 
         # Jitter seed: draw slightly inward from both endpoints

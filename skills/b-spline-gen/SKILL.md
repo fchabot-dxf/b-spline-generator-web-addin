@@ -32,10 +32,10 @@ Expert guidance for the Symmetric B-Spline Generator add-in. Use when modifying 
   - **Orientation-Aware Projection**: Standardized on a **Orientation-Aware Face Selection** system. The add-in dynamically identifies the terrain's "top surface" by searching for the maximum coordinate on the active orientation axis (Y for `y-up`, Z for `z-up`), ensuring artwork projects correctly regardless of model setup.
 
 ## Deployment
-- `tools/deploy_cloudflare.py` expects `.env` with `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, optional `CLOUDFLARE_PROJECT`.
+- `tools/DEPLOY_cloudflare.py` expects `.env` with `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, optional `CLOUDFLARE_PROJECT`.
 - Requires `wrangler` CLI (npm package). If missing, prompts `npm install -g wrangler`.
 - Deploy steps:
-  1. `python tools/deploy_cloudflare.py`
+  1. `python tools/DEPLOY_cloudflare.py`
   2. Ensure asset copy path and deployment output in `tools/deploy_dist`.
   3. For local Fusion dev, script attempts to refresh in `%APPDATA%/Autodesk Fusion 360/API/AddIns/b-spline-generator-web-addin`.
 
@@ -60,7 +60,7 @@ Expert guidance for the Symmetric B-Spline Generator add-in. Use when modifying 
 - Map user issues to code areas:
   - `UI/JS` → `b-spline-gen/html/` and `stepWriter.js`
   - `Python bridge import` → `b-spline-gen/b-spline-gen.py`
-  - `deployment` → `tools/deploy_cloudflare.py`
+  - `deployment` → `tools/DEPLOY_cloudflare.py`
   - `logging` → `dev-log.md` + `LOG_FILE` path and `workspace_link.json`
 - **Debugging Philosophy**: When troubleshooting complex issues (like coordinate sync or bridge stalls), always provide **fixes and new debugging logs simultaneously**.
 

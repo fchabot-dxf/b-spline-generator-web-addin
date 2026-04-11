@@ -120,21 +120,21 @@
             </div>
 
             <div class="panel panel-spans">
-              <div class="panel-header">Skeleton Spans <span id="constraint-count" style="margin-left:auto;color:var(--good);font-weight:600;">0/4 Locked</span></div>
+              <div class="panel-header">Skeleton Spans <span id="constraint-count" style="margin-left:auto;color:var(--good);font-weight:600;">3/3 Locked</span></div>
               <div class="panel-body">
                 <div class="slider-wrap">
                   <div class="slider-header">
                     <span class="slider-name">Shoulder Width</span>
                     <div class="flex-row">
-                      <span class="slider-val" id="val-ShoulderSpan-label">50.0%</span>
+                      <span class="slider-val" id="val-ShoulderSpan-label">80.0%</span>
                       <label class="lock-toggle">
-                        <input type="checkbox" id="lock-ShoulderSpan" onchange="toggleLock('ShoulderSpan', this.checked)">
+                        <input type="checkbox" id="lock-ShoulderSpan" onchange="toggleLock('ShoulderSpan', this.checked)" checked>
                         LOCK
                       </label>
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-ShoulderSpan" min="0" max="150" step="0.5" value="80" oninput="updateSlider('ShoulderSpan')">
+                    <input type="range" id="val-ShoulderSpan" min="0" max="150" step="0.5" value="80" oninput="updateLabel('ShoulderSpan')" onchange="updateFusion('ShoulderSpan')">
                   </div>
                 </div>
 
@@ -142,15 +142,15 @@
                   <div class="slider-header">
                     <span class="slider-name">Waist Width</span>
                     <div class="flex-row">
-                      <span class="slider-val" id="val-WaistSpan-label">50.0%</span>
+                      <span class="slider-val" id="val-WaistSpan-label">95.0%</span>
                       <label class="lock-toggle">
-                        <input type="checkbox" id="lock-WaistSpan" onchange="toggleLock('WaistSpan', this.checked)">
+                        <input type="checkbox" id="lock-WaistSpan" onchange="toggleLock('WaistSpan', this.checked)" checked>
                         LOCK
                       </label>
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-WaistSpan" min="0" max="150" step="0.5" value="95" oninput="updateSlider('WaistSpan')">
+                    <input type="range" id="val-WaistSpan" min="0" max="150" step="0.5" value="95" oninput="updateLabel('WaistSpan')" onchange="updateFusion('WaistSpan')">
                   </div>
                 </div>
 
@@ -158,22 +158,22 @@
                   <div class="slider-header">
                     <span class="slider-name">Hip Width</span>
                     <div class="flex-row">
-                      <span class="slider-val" id="val-HipSpan-label">50.0%</span>
+                      <span class="slider-val" id="val-HipSpan-label">80.0%</span>
                       <label class="lock-toggle">
-                        <input type="checkbox" id="lock-HipSpan" onchange="toggleLock('HipSpan', this.checked)">
+                        <input type="checkbox" id="lock-HipSpan" onchange="toggleLock('HipSpan', this.checked)" checked>
                         LOCK
                       </label>
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-HipSpan" min="0" max="150" step="0.5" value="80" oninput="updateSlider('HipSpan')">
+                    <input type="range" id="val-HipSpan" min="0" max="150" step="0.5" value="80" oninput="updateLabel('HipSpan')" onchange="updateFusion('HipSpan')">
                   </div>
                 </div>
               </div>
             </div>
 
             <div class="panel panel-heights">
-              <div class="panel-header">Heights</div>
+              <div class="panel-header">Vertical Layout</div>
               <div class="panel-body">
                 <div class="slider-wrap">
                   <div class="slider-header">
@@ -187,7 +187,19 @@
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-TopGap" min="0" max="100" step="0.5" value="15" oninput="updateSlider('TopGap')">
+                    <input type="range" id="val-TopGap" min="0" max="100" step="0.5" value="15" oninput="updateLabel('TopGap')" onchange="updateFusion('TopGap')">
+                  </div>
+                </div>
+
+                <div class="slider-wrap">
+                  <div class="slider-header">
+                    <span class="slider-name">Waist Offset</span>
+                    <div class="flex-row">
+                      <span class="slider-val" id="val-WaistOffset-label">0.0</span>
+                    </div>
+                  </div>
+                  <div class="slider-container">
+                    <input type="range" id="val-WaistOffset" min="-100" max="100" step="0.5" value="0" oninput="updateLabel('WaistOffset')" onchange="updateFusion('WaistOffset')">
                   </div>
                 </div>
 
@@ -203,7 +215,7 @@
                     </div>
                   </div>
                   <div class="slider-container">
-                    <input type="range" id="val-BottomGap" min="0" max="100" step="0.5" value="15" oninput="updateSlider('BottomGap')">
+                    <input type="range" id="val-BottomGap" min="0" max="100" step="0.5" value="15" oninput="updateLabel('BottomGap')" onchange="updateFusion('BottomGap')">
                   </div>
                 </div>
               </div>
@@ -312,33 +324,78 @@
             }
         }
 
-        function updateSlider(id) {
+        function updateLabel(id) {
             const val = document.getElementById('val-' + id).value;
             document.getElementById('val-' + id + '-label').innerText = parseFloat(val).toFixed(1) + '%';
-            
-            // Send real-time update to Fusion
+        }
+
+        function updateFusion(id) {
+            const val = document.getElementById('val-' + id).value;
             notifyFusion('update_param', { name: id, value: val });
         }
 
         function toggleLock(id, isLocked) {
-            const input = document.getElementById('lock-' + id);
-            const currentChecked = document.querySelectorAll('.lock-toggle input:checked').length;
-            
-            // If we're trying to lock and already at 3, prevent it
-            if (typeof isLocked === 'undefined') {
-                isLocked = input.checked;
+            const getLock = (name) => document.getElementById('lock-' + name);
+            const input = getLock(id);
+
+            if (isLocked) {
+                // Rule 1: Waist excludes ALL heights
+                if (id === 'WaistSpan') {
+                    ['TopGap', 'BottomGap'].forEach(name => {
+                        const l = getLock(name);
+                        if (l.checked) {
+                            l.checked = false;
+                            notifyFusion('update_lock', { name: name, locked: false });
+                            console.log('Mutual Exclusion: Locked Waist, released', name);
+                        }
+                    });
+                }
+                
+                // Rule 2: Shoulder / Top Height conflict
+                if (id === 'ShoulderSpan' && getLock('TopGap').checked) {
+                    getLock('TopGap').checked = false;
+                    notifyFusion('update_lock', { name: 'TopGap', locked: false });
+                }
+                if (id === 'TopGap') {
+                    ['ShoulderSpan', 'WaistSpan'].forEach(name => {
+                        const l = getLock(name);
+                        if (l.checked) {
+                            l.checked = false;
+                            notifyFusion('update_lock', { name: name, locked: false });
+                        }
+                    });
+                }
+
+                // Rule 3: Hip / Bottom Height conflict
+                if (id === 'HipSpan' && getLock('BottomGap').checked) {
+                    getLock('BottomGap').checked = false;
+                    notifyFusion('update_lock', { name: 'BottomGap', locked: false });
+                }
+                if (id === 'BottomGap') {
+                    ['HipSpan', 'WaistSpan'].forEach(name => {
+                        const l = getLock(name);
+                        if (l.checked) {
+                            l.checked = false;
+                            notifyFusion('update_lock', { name: name, locked: false });
+                        }
+                    });
+                }
+
+                // Global MAX 3 logic (FIFO) - only if we are still over limit
+                const activeLocks = Array.from(document.querySelectorAll('.lock-toggle input:checked'))
+                    .filter(i => i.id !== 'lock-' + id);
+                
+                if (activeLocks.length >= 3) {
+                    const oldest = activeLocks[0];
+                    oldest.checked = false;
+                    const oldestId = oldest.id.replace('lock-', '');
+                    notifyFusion('update_lock', { name: oldestId, locked: false });
+                }
             }
 
-            if (isLocked && currentChecked > 3) {
-                input.checked = false;
-                document.getElementById('system-status').innerText = 'Max 3 locks allowed!';
-                return;
-            } else {
-                input.checked = isLocked;
-            }
-
+            input.checked = isLocked;
             updateConstraintStatus();
-            notifyFusion('update_lock', { name: id, locked: input.checked });
+            notifyFusion('update_lock', { name: id, locked: isLocked });
         }
 
         function updateConstraintStatus() {
@@ -347,19 +404,10 @@
             label.innerText = lockedCount + '/3 Locked';
             
             const actionBtn = document.getElementById('header-action-btn');
-            if (lockedCount > 3) {
-                label.style.color = 'var(--bad)';
-                // This shouldn't happen with the new toggleLock logic, but safe-guard
-                if (actionBtn && document.querySelector('.tab-btn.active').dataset.tab === 'form') {
-                    actionBtn.disabled = true;
-                    actionBtn.style.opacity = 0.5;
-                }
-            } else {
-                label.style.color = 'var(--good)';
-                if (actionBtn) {
-                    actionBtn.disabled = false;
-                    actionBtn.style.opacity = 1.0;
-                }
+            label.style.color = lockedCount === 3 ? 'var(--good)' : 'var(--accent)';
+            if (actionBtn) {
+                actionBtn.disabled = lockedCount > 3;
+                actionBtn.style.opacity = lockedCount > 3 ? 0.5 : 1.0;
             }
         }
 

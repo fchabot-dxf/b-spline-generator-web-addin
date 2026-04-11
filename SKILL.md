@@ -17,7 +17,7 @@ To access expert knowledge for specific components, use the following skill file
 ## Shared Infrastructure
 
 ### Deployment
-- **Web Assets**: `tools/deploy_cloudflare.py` handles building and pushing the B-Spline web palette to Cloudflare Pages.
+- **Web Assets**: `tools/DEPLOY_cloudflare.py` handles building and pushing the B-Spline web palette to Cloudflare Pages.
 - **Local Add-ins**: Each component has a `deploy-*.py` script to refresh local Fusion 360 add-in folders.
 
 ### Logging Standards

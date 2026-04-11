@@ -65,11 +65,21 @@ def _is_disabled(ctx, dim):
     if not en_param:
         return False
     try:
+        # Check SHADOW STATE (UI active_vars) first
+        if en_param in ctx.active_vars:
+            val = float(ctx.active_vars[en_param])
+            if val <= 1e-5:
+                return True
+            else:
+                ctx.logger.log(f"DIM DRIVING: {dim.get('Name', '?')} ('{en_param}' is ON via Shadow State val={val})")
+                return False
+
+        # Fallback to Fusion User Parameters
         p = ctx.design.userParameters.itemByName(en_param)
         if p and p.value <= 1e-5:
             return True
         if p:
-            ctx.logger.log(f"DIM DRIVING: {dim.get('Name', '?')} ('{en_param}' is ON)")
+            ctx.logger.log(f"DIM DRIVING: {dim.get('Name', '?')} ('{en_param}' is ON via Fusion Param)")
     except Exception:
         pass
     return False

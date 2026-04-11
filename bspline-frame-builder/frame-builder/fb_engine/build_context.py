@@ -26,7 +26,7 @@ class BuildContext:
     feature_count: int                      — monotonic counter for unique IDs
     """
 
-    def __init__(self, target, design, logger, prefix="T1"):
+    def __init__(self, target, design, logger, prefix="T1", ui_data=None):
         self.app = adsk.core.Application.get()
         self.ui = self.app.userInterface
         self.target = target
@@ -37,6 +37,7 @@ class BuildContext:
         self.sketches = {}
         self.entity_map = {}
         self.feature_count = 1
+        self.active_vars = ui_data if ui_data else {}
 
     # ------------------------------------------------------------------
     # Expression resolver
@@ -52,6 +53,11 @@ class BuildContext:
                 return float(val)
             except ValueError:
                 try:
+                    # Check SHADOW STATE (UI active_vars) first for direct matches
+                    if val in self.active_vars:
+                        # Convert UI value (usually 0.0 to 100.0 or toggle bits) to float
+                        return float(self.active_vars[val])
+
                     resolved = self.design.unitsManager.evaluateExpression(val, "cm")
                     self.logger.log(f"RESOLVED: {val} -> {resolved:.3f} cm")
                     return resolved

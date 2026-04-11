@@ -27,13 +27,20 @@ def get_template_logic():
             {"Name": "HipSpan",           "Val": "widthIn * 0.8",  "Unit": "in"},
             {"Name": "TopGap",            "Val": "heightIn * 0.15", "Unit": "in"},
             {"Name": "BottomGap",         "Val": "heightIn * 0.15", "Unit": "in"},
+            {"Name": "WaistOffset",       "Val": 0.0,   "Unit": "cm"},
 
-            # UI Toggles
+            # Dynamic Aesthetic Radii (Used as Soft Seeds)
+            {"Name": "ShoulderRadius",    "Val": "abs(widthIn/2 - ShoulderSpan/2) * 1.5", "Unit": "cm"},
+            {"Name": "WaistRadius",       "Val": "widthIn * 4", "Unit": "cm"},
+            {"Name": "HipRadius",         "Val": "abs(widthIn/2 - HipSpan/2) * 1.5", "Unit": "cm"},
+
+            # UI Toggles - Stable 4-lock starting state
             {"Name": "en_ShoulderSpan",   "Val": 1.0, "Unit": ""},
-            {"Name": "en_WaistSpan",      "Val": 0.0, "Unit": ""},  # OFF by default
+            {"Name": "en_WaistSpan",      "Val": 1.0, "Unit": ""},
             {"Name": "en_HipSpan",        "Val": 1.0, "Unit": ""},
-            {"Name": "en_TopGap",         "Val": 1.0, "Unit": ""},
-            {"Name": "en_BottomGap",      "Val": 1.0, "Unit": ""}
+            {"Name": "en_WaistOffset",    "Val": 1.0, "Unit": ""},
+            {"Name": "en_TopGap",         "Val": 0.0, "Unit": ""},
+            {"Name": "en_BottomGap",      "Val": 0.0, "Unit": ""}
         ],
         "Sketches": [
             get_sketch_1(),

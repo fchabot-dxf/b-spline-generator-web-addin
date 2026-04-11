@@ -36,7 +36,11 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
         external_logger = args[0]
         
     builder = FrameBuilder(external_logger)
-    builder.run_sketch_only(style_id, joint_prefix)
+    data_dict = kwargs.get('data', {})
+    ui_data = data_dict.get('ui_state', {}) if isinstance(data_dict, dict) else {}
+    if external_logger:
+        external_logger.log(f"UI STATE INJECTED: {ui_data}")
+    builder.run_sketch_only(style_id, joint_prefix, ui_data=ui_data)
 
 def build_frame_logic(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
     """Entry point with signature safety net."""
@@ -84,7 +88,7 @@ class FrameBuilder:
         except Exception as e:
             self.logger.log(f"Warning: could not restore root active component: {e}", "WARNING")
 
-    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint"):
+    def run_sketch_only(self, style_id="Signature (Template 1)", joint_prefix="FrameJoint", ui_data=None):
         start_time = time.time()
         try:
             self.logger.session_start(f"SKETCH ONLY: {style_id}")
@@ -102,7 +106,7 @@ class FrameBuilder:
             if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
             if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
 
-            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix)
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data)
             builder.build_template(template)
         except:
             self.logger.log_error("CRASH in run_sketch_only")
@@ -129,7 +133,7 @@ class FrameBuilder:
             if "Template 3" in style_id: template, prefix = template_data_3.TEMPLATE_3, "T3"
             if "Template 4" in style_id: template, prefix = template_data_4.TEMPLATE_4, "T4"
 
-            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix)
+            builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data)
             builder.build_template(template)
             
             sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame")

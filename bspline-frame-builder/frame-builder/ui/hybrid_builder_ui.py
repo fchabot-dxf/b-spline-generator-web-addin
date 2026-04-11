@@ -148,6 +148,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         super().__init__()
         self.selected_face = None
         self.style_id = "Template 1"
+        self.active_vars = {} # Shadow state for UI variables (locks and values)
         if diag_logger:
             diag_logger.log(f"HTMLEventHandler INSTANCE CREATED: {self}")
 
@@ -167,15 +168,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             design = adsk.fusion.Design.cast(app.activeProduct)
 
             if action == 'update_param':
-                # FIX: UI sends 'id', not 'name'
                 p_id = data.get('id') or data.get('name')
-                self._update_fusion_param(design, p_id, data['value'])
+                val = data.get('value')
+                self.active_vars[p_id] = val
+                self._update_fusion_param(design, p_id, val)
             
             elif action == 'update_lock':
-                # FIX: UI sends 'id', not 'name'
                 p_id = data.get('id') or data.get('name')
+                is_locked = data.get('locked', False)
                 lock_name = f"en_{p_id}"
-                lock_val = 1.0 if data.get('locked', False) else 0.0
+                lock_val = 1.0 if is_locked else 0.0
+                self.active_vars[lock_name] = lock_val
                 self._update_fusion_param(design, lock_name, lock_val)
 
             elif action == 'change_template':
@@ -213,15 +216,24 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if name.startswith('en_'):
                     p.value = float(value)
                 else:
-                    # Logic match from sketch_builder.py:
-                    # total = w if 'Span' in k else h
-                    # real_val = (ui_pct / 100.0) * total
-                    # p_val.value = real_val
-                    w = params.itemByName('widthIn').value if params.itemByName('widthIn') else 17.0
-                    h = params.itemByName('heightIn').value if params.itemByName('heightIn') else 22.0
-                    total = w if 'Span' in name else h
+                    # Scale by effective dimensions (accounting for aesthetic offset)
+                    w = params.itemByName('widthIn').value if params.itemByName('widthIn') else 17.78
+                    h = params.itemByName('heightIn').value if params.itemByName('heightIn') else 22.86
+                    offset = params.itemByName('boundingboxoffset').value if params.itemByName('boundingboxoffset') else 0.635
+                    
+                    # effective = total - (2 * offset)
+                    eff_w = w - (2 * offset)
+                    eff_h = h - (2 * offset)
+                    
+                    if 'Span' in name:
+                        total = eff_w
+                    else:
+                        # Gaps (TopGap, BottomGap) are from center to edge (half-height)
+                        total = eff_h / 2.0
+                        
                     p.value = (float(value) / 100.0) * total
-        except: pass
+        except Exception as e:
+            if diag_logger: diag_logger.log(f"PARAM SYNC ERROR: {e}")
 
     def _send_palette_message(self, pal, action, payload):
         try:
@@ -331,7 +343,10 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
     def _run_sketch_build(self, data):
         if diag_logger: diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
-        _schedule_hidden_build('sketch', data, self.style_id)
+        # Inject the latest shadow state into the build request
+        request_data = dict(data)
+        request_data['ui_state'] = self.active_vars
+        _schedule_hidden_build('sketch', request_data, self.style_id)
 
     def _run_solid_build(self, data):
         if not self.selected_face:
@@ -400,7 +415,7 @@ def _run_sketch_build_direct(data, style_id):
 
         if frame_engine:
             if diag_logger: diag_logger.log(f"Calling engine with style_id: {style_id}")
-            frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger)
+            frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger, data=data)
             _commit_undo_transaction(transaction)
             _notify_status("Sketch Build Complete")
         else:

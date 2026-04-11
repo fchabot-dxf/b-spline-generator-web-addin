@@ -38,8 +38,8 @@ class ParametricSketchBuilder:
     builder.build_template(template_dict)
     """
 
-    def __init__(self, target, design, logger, prefix="T1"):
-        self.ctx = BuildContext(target, design, logger, prefix=prefix)
+    def __init__(self, target, design, logger, prefix="T1", ui_data=None):
+        self.ctx = BuildContext(target, design, logger, prefix=prefix, ui_data=ui_data)
 
     # ------------------------------------------------------------------
     # Public API
@@ -50,9 +50,12 @@ class ParametricSketchBuilder:
         ctx.logger.log(f"Building Template: {template.get('Name', 'Unnamed')}")
 
         # 1. Sync template parameters (protect measured values)
+        # Use ui_data shadow state if available to override template defaults
+        ui_state = ctx.active_vars if hasattr(ctx, 'active_vars') else {}
+        
         for p in template.get("Parameters", []):
             name = p["Name"]
-            v = p.get("Val", p.get("Value", 0))
+            v = ui_state.get(name, p.get("Val", p.get("Value", 0)))
             unit = p["Unit"]
             existing = ctx.user_params.itemByName(name)
             if not existing:
@@ -91,6 +94,13 @@ class ParametricSketchBuilder:
         ctx = self.ctx
         sketch_name = f"{ctx.prefix}_{sketch_spec['Name']}"
         ctx.logger.log(f"--- START BUILD [{sketch_name}] ---")
+
+        # --- UNCONDITIONAL WAIST TRACE ---
+        try:
+            off_val = ctx.user_params.itemByName('WaistOffset').value if ctx.user_params.itemByName('WaistOffset') else 0.0
+            ctx.logger.log(f"[WAIST TRACE] Resolved WaistOffset: {off_val:.3f} {'(ORIGIN SNAPPED)' if off_val == 0 else '(DIMENSION OFFSET)'}")
+        except:
+            pass
 
         # Create the sketch on the XZ construction plane
         sketch = ctx.target.sketches.add(ctx.target.xZConstructionPlane)
@@ -136,7 +146,10 @@ class ParametricSketchBuilder:
             geom_step(ctx, sketch, sketch_name, g)
         for rel in phases["constrs"]:
             constraint_step(ctx, sketch, sketch_name, rel)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 PRE-SOLVE")
         sketch.isComputeDeferred = False
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 POST-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 (GEOMETRY)")
 
         # === PHASE 4.5: SNAP-TO-SEED RECOVERY (Mid-Build Snap) ===
         # Re-run soft dimensions to settle Main Geometry before Post-Constraints
@@ -153,7 +166,9 @@ class ParametricSketchBuilder:
                 constraint_step(ctx, sketch, sketch_name, rel)
 
         # Pulse: settle anchors before tangency
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.1 PRE-PULSE")
         sketch.isComputeDeferred = False
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.1 POST-PULSE")
         sketch.isComputeDeferred = True
         ctx.logger.log(f"PHASE PULSE: Anchors settled before tangency")
 
@@ -161,7 +176,10 @@ class ParametricSketchBuilder:
         for rel in phases["post_constrs"]:
             if rel.get("Type") != "Coincident":
                 constraint_step(ctx, sketch, sketch_name, rel)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.2 PRE-SOLVE")
         sketch.isComputeDeferred = False
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.2 POST-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5 (CONSTRAINTS/WELDS)")
 
         # === PHASE 6: FINAL DIMENSIONS ===
         sketch.isComputeDeferred = True
@@ -169,24 +187,27 @@ class ParametricSketchBuilder:
             dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=False)
         for vdim in phases["vdims"]:
             dimension_step(ctx, sketch, sketch_name, vdim, is_snap_only=False)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 PRE-SOLVE")
         sketch.isComputeDeferred = False
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 POST-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 (FINAL DIMENSIONS)")
 
         # === PHASE 7: OFFSETS / STEPS ===
         sketch.isComputeDeferred = True
         for off in phases["offs"]:
             offset_step(ctx, sketch, sketch_name, off)
-        for step in phases["steps"]:
-            step_step(ctx, sketch, sketch_name, step)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 PRE-SOLVE")
         sketch.isComputeDeferred = False
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 POST-SOLVE")
 
         # === PHASE 8: MITERS ===
         miters_list = phases["miters"]
         ctx.logger.log(f"MITER PHASE: Found {len(miters_list)} definitions in {sketch_name}")
         if miters_list:
             sketch.isComputeDeferred = True
-            for m in miters_list:
-                miter_step(ctx, sketch, sketch_name, m)
+            self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 8 PRE-SOLVE")
             sketch.isComputeDeferred = False
+            self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 8 POST-SOLVE")
 
         ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] ---")
 
@@ -217,6 +238,47 @@ class ParametricSketchBuilder:
         except Exception as e:
             self.ctx.logger.log(f"Y_AXIS projection skipped: {e}", "WARNING")
 
+
+# ------------------------------------------------------------------
+# Phase extraction helper (keeps build_sketch readable)
+# ------------------------------------------------------------------
+    def _log_arc_audit(self, ctx, sketch, sketch_name, phase_label):
+        """Diagnostic helper to log coordinates of all arcs in the sketch."""
+        ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {sketch_name} ---")
+        
+    def _log_arc_audit(self, ctx, sketch, sketch_name, phase_label):
+        """Diagnostic helper to log coordinates of all arcs in the sketch."""
+        ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {sketch_name} ---")
+        
+        ent_map = ctx.entity_map.get(sketch_name, {})
+
+        try:
+            for arc in sketch.sketchCurves.sketchArcs:
+                # Find the human-readable ID by searching the entity map
+                arc_id = "unknown_arc"
+                for eid, eobj in ent_map.items():
+                    if eobj == arc:
+                        arc_id = eid
+                        break
+                
+                try:
+                    start = arc.startPoint.geometry
+                    end = arc.endPoint.geometry
+                    center = arc.centerPoint.geometry
+                    # Sample at parameter 0.5 to get the bulge point (Mid)
+                    mid_res = arc.geometry.sample(0.5)
+                    mid = mid_res[0] if mid_res and mid_res[0] else None
+                    
+                    log_msg = (f"  [{arc_id}] S({start.x:.3f}, {start.y:.3f}) | "
+                               f"M({mid.x:.3f}, {mid.y:.3f} if mid else '??') | "
+                               f"E({end.x:.3f}, {end.y:.3f}) | "
+                               f"C({center.x:.3f}, {center.y:.3f})")
+                    ctx.logger.log(log_msg)
+                except Exception as arc_e:
+                    ctx.logger.log(f"  [{arc_id}] Coordinate extraction failed: {arc_e}", "DEBUG")
+                    
+        except Exception as e:
+            ctx.logger.log(f"ARC AUDIT FATAL FAIL: {e}", "WARNING")
 
 # ------------------------------------------------------------------
 # Phase extraction helper (keeps build_sketch readable)
