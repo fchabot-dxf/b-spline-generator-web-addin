@@ -46,8 +46,17 @@ def _create_hidden_build_command(cmd_defs, cmd_id, name):
 def _ensure_hidden_build_commands(ui):
     try:
         cmd_defs = ui.commandDefinitions
-        _create_hidden_build_command(cmd_defs, BUILD_SKETCH_CMD_ID, 'Build Skeleton')
-        _create_hidden_build_command(cmd_defs, BUILD_SOLID_CMD_ID, 'Build Solid Frame')
+        for cmd_id, cmd_name in (
+            (BUILD_SKETCH_CMD_ID, 'Build Skeleton'),
+            (BUILD_SOLID_CMD_ID, 'Build Solid Frame')
+        ):
+            existing = cmd_defs.itemById(cmd_id)
+            if existing:
+                try:
+                    existing.deleteMe()
+                except:
+                    pass
+            _create_hidden_build_command(cmd_defs, cmd_id, cmd_name)
     except:
         pass
 
