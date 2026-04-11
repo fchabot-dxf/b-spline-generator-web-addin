@@ -265,17 +265,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if name.startswith('en_'):
                     p.value = float(value)
                 else:
-                    # Scale by effective dimensions (accounting for aesthetic offset)
-                    w = params.itemByName('widthIn').value if params.itemByName('widthIn') else 17.78
-                    h = params.itemByName('heightIn').value if params.itemByName('heightIn') else 22.86
-                    offset = params.itemByName('boundingboxoffset').value if params.itemByName('boundingboxoffset') else 0.635
-                    
-                    # effective = total - (2 * offset)
-                    eff_w = w - (2 * offset)
-                    eff_h = h - (2 * offset)
-                    
-                    # p.value = (float(value) / 100.0) * total
-                    # REMOVED STATIC INJECTION: Let ValueResolver handle formulas during build.
+                    # Override any existing expression and set the raw cm value directly.
+                    # The slider Min/Max in template_data_1.py are in cm so value is already in cm.
+                    p.expression = str(float(value))
         except Exception as e:
             if self.diag_logger: self.diag_logger.log(f"PARAM SYNC ERROR: {e}")
 

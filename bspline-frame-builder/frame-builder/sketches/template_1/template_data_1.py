@@ -30,14 +30,14 @@ def get_template_logic(ui_data=None):
             {"Name": "boundingboxoffset", "Label": "BBox Border",   "Category": "Frame Spec", "Val": 0.635, "Unit": "cm"},
             {"Name": "Skel_Frame_Offset", "Label": "Wall Thickness", "Category": "Frame Spec", "Val": -1.905, "Unit": "cm"},
 
-            # Anatomy Block
-            # Val = numeric multiplier; Fusion param = widthIn * Val or heightIn * Val
-            {"Name": "ShoulderSpan",      "Label": "Shoulder Width", "Category": "Anatomy", "Val": 0.8,  "Min": 0.3, "Max": 1.0, "Unit": "cm"},
-            {"Name": "WaistSpan",         "Label": "Waist Width",    "Category": "Anatomy", "Val": 0.7,  "Min": 0.3, "Max": 1.0, "Unit": "cm"},
-            {"Name": "HipSpan",           "Label": "Hip Width",      "Category": "Anatomy", "Val": 0.8,  "Min": 0.3, "Max": 1.0, "Unit": "cm"},
-            {"Name": "TopGap",            "Label": "Top Height",     "Category": "Anatomy", "Val": 0.15, "Min": 0.05, "Max": 0.5, "Unit": "cm"},
-            {"Name": "BottomGap",         "Label": "Bottom Height",  "Category": "Anatomy", "Val": 0.15, "Min": 0.05, "Max": 0.5, "Unit": "cm"},
-            {"Name": "WaistOffset",       "Label": "Waist Offset",   "Category": "Anatomy", "Val": 0.0,  "Min": -0.3, "Max": 0.3, "Unit": "cm"},
+            # Anatomy Block — Val and Min/Max are in cm (Fusion internal unit)
+            # widthIn=7in=17.78cm  heightIn=9in=22.86cm for reference
+            {"Name": "ShoulderSpan",      "Label": "Shoulder Width", "Category": "Anatomy", "Val": 14.22, "Min": 5.0,  "Max": 17.5, "Unit": "cm"},
+            {"Name": "WaistSpan",         "Label": "Waist Width",    "Category": "Anatomy", "Val": 12.45, "Min": 4.0,  "Max": 17.5, "Unit": "cm"},
+            {"Name": "HipSpan",           "Label": "Hip Width",      "Category": "Anatomy", "Val": 14.22, "Min": 5.0,  "Max": 17.5, "Unit": "cm"},
+            {"Name": "TopGap",            "Label": "Top Height",     "Category": "Anatomy", "Val": 3.43,  "Min": 1.0,  "Max": 10.0, "Unit": "cm"},
+            {"Name": "BottomGap",         "Label": "Bottom Height",  "Category": "Anatomy", "Val": 3.43,  "Min": 1.0,  "Max": 10.0, "Unit": "cm"},
+            {"Name": "WaistOffset",       "Label": "Waist Offset",   "Category": "Anatomy", "Val": 0.0,   "Min": -5.0, "Max": 5.0,  "Unit": "cm"},
 
             # Silhouette Block
             {"Name": "ShoulderRadius",    "Label": "Shoulder Radius", "Category": "Silhouette", "Val": 2.5, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
