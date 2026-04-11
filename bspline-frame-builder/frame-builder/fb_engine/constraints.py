@@ -30,9 +30,11 @@ def constraint_step(ctx, sketch, s_name, rel):
         elif ctype == "Collinear" and len(targets) == 2:
             gc.addCollinear(targets[0], targets[1])
         elif ctype == "Horizontal" and len(targets) >= 1:
-            gc.addHorizontal(targets[0])
+            for t in targets:
+                gc.addHorizontal(t)
         elif ctype == "Vertical" and len(targets) >= 1:
-            gc.addVertical(targets[0])
+            for t in targets:
+                gc.addVertical(t)
         elif ctype == "Tangent" and len(targets) == 2:
             gc.addTangent(targets[0], targets[1])
         elif ctype == "Parallel" and len(targets) == 2:

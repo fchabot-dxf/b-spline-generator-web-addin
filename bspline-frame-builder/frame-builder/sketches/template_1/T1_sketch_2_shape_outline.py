@@ -58,6 +58,12 @@ def get_sketch(geometry=None):
 
         'PreConstraints': [
             # Anchor hubs to centerline
+            # SKELETAL FUSION: Merge pairs through a shared point before locking to vertical axis
+            {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S']},
+            {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S',    'skel_waist_pin_L:S']},
+            {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S',      'skel_hip_pin_L:S']},
+            
+            # VERTICAL PIN: Lock the shared hubs to the centerline
             {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'Y_AXIS']},
             {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S',    'Y_AXIS']},
             {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S',      'Y_AXIS']},
@@ -67,7 +73,7 @@ def get_sketch(geometry=None):
             if geometry is not None and geometry.get('WaistOffset', 0) != 0
             else {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'ORIGIN']},
 
-            # Parallel locks
+            # HORIZONTAL & EQUAL LOCKS: Pin behavior and symmetry
             {'Type': 'Horizontal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L', 'skel_waist_pin_R', 'skel_waist_pin_L', 'skel_hip_pin_R', 'skel_hip_pin_L']},
             {'Type': 'Equal',      'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L']},
             {'Type': 'Equal',      'Targets': ['skel_waist_pin_R',    'skel_waist_pin_L']},
