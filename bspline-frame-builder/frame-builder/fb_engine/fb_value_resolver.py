@@ -54,19 +54,7 @@ class FBValueResolver:
                 raw_val = ui_val
                 if self.logger: self.logger.log(f"[RESOLVER] UI Override (Absolute): {name} = {raw_val}")
 
-        # 2. Evaluate expression to check for unit-drift
-        expr_str = str(raw_val)
-        try:
-            # Check if Fusion sees a different unit than intended (e.g. Inch explosion)
-            if target_unit == "cm":
-                resolved_cm = self.units_manager.evaluateExpression(expr_str, "cm")
-                if self.logger:
-                    self.logger.log(f"[RESOLVER] {name} resolves to {resolved_cm:.3f} cm")
-        except Exception as e:
-            if self.logger:
-                self.logger.log(f"[RESOLVER WARNING] Evaluation failed for {name}: {e}")
-
-        return expr_str, target_unit
+        return str(raw_val), target_unit
 
     def validate_unit_consistency(self, name, expression, target_unit):
         """
@@ -90,11 +78,3 @@ class FBValueResolver:
             return 'deg'
         return 'cm'
 
-    def normalize_measurement(self, name, raw_cm_val):
-        """
-        Standardizes raw database measurements (cm) for parameter injection.
-        Ensures that 'widthIn' and 'heightIn' are clearly identified in logs.
-        """
-        if self.logger:
-            self.logger.log(f"[RESOLVER] Normalized {name}: {raw_cm_val:.3f} cm")
-        return raw_cm_val, "cm"

@@ -44,11 +44,11 @@ def get_block(ui_data=None):
          'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E'},
         {'Type': 'Radius', 'Target': 'arc_shoulder_R', 'Expression': 'heightIn/7', 'Name': 'dim_seed_rad_shoulder_R'},
 
-        # arc_waist_R: hip junction (lower) → shoulder junction (upper), bows outward
+        # arc_waist_R: shoulder junction (upper) → hip junction (lower), bows outward
         {'ID': 'arc_waist_R', 'Type': 'Arc3Point',
-         'Points': [['heightIn * 0.28',  '-heightIn * 0.13'],  # :S hip junction
+         'Points': [['heightIn * 0.27',  'heightIn * 0.10'],   # :S shoulder junction
                     ['heightIn * 0.5',   '0'],                  # mid, bows far outward
-                    ['heightIn * 0.27',  'heightIn * 0.10']],  # :E shoulder junction
+                    ['heightIn * 0.28',  '-heightIn * 0.13']], # :E hip junction
          'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E'},
         {'Type': 'Radius', 'Target': 'arc_waist_R',    'Expression': 'heightIn/7', 'Name': 'dim_seed_rad_waist_R'},
 
@@ -69,11 +69,11 @@ def get_block(ui_data=None):
          'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E'},
         {'Type': 'Radius', 'Target': 'arc_hip_L',      'Expression': 'heightIn/7', 'Name': 'dim_seed_rad_hip_L'},
 
-        # arc_waist_L: shoulder junction (upper) → hip junction (lower), bows outward
+        # arc_waist_L: hip junction (lower) → shoulder junction (upper), bows outward
         {'ID': 'arc_waist_L', 'Type': 'Arc3Point',
-         'Points': [['-heightIn * 0.27', 'heightIn * 0.10'],   # :S shoulder junction
+         'Points': [['-heightIn * 0.28', '-heightIn * 0.13'],  # :S hip junction
                     ['-heightIn * 0.5',  '0'],                  # mid, bows far outward
-                    ['-heightIn * 0.28', '-heightIn * 0.13']], # :E hip junction
+                    ['-heightIn * 0.27', 'heightIn * 0.10']],  # :E shoulder junction
          'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E'},
         {'Type': 'Radius', 'Target': 'arc_waist_L',    'Expression': 'heightIn/7', 'Name': 'dim_seed_rad_waist_L'},
 

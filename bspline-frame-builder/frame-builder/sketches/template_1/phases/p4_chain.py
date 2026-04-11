@@ -6,16 +6,12 @@ def get_block(ui_data=None):
     Isolated as its own phase for incremental inspection.
     """
     seq = [
-        # RIGHT side junctions (waist :S/E are flipped vs shoulder/hip)
-        # shoulder_R:E (shoulder junction) meets waist_R:E (shoulder junction)
-        {'Type': 'Coincident', 'Targets': ['arc_shoulder_R:E', 'arc_waist_R:E']},
-        # waist_R:S (hip junction) meets hip_R:S (hip junction)
-        {'Type': 'Coincident', 'Targets': ['arc_waist_R:S',    'arc_hip_R:S']},
-        # LEFT side junctions
-        # hip_L:E (hip junction) meets waist_L:E (hip junction)
-        {'Type': 'Coincident', 'Targets': ['arc_hip_L:E',      'arc_waist_L:E']},
-        # waist_L:S (shoulder junction) meets shoulder_L:S (shoulder junction)
-        {'Type': 'Coincident', 'Targets': ['arc_waist_L:S',    'arc_shoulder_L:S']},
+        # RIGHT side: shoulder top → waist → hip bottom (head-to-tail E→S)
+        {'Type': 'Coincident', 'Targets': ['arc_shoulder_R:E', 'arc_waist_R:S']},
+        {'Type': 'Coincident', 'Targets': ['arc_waist_R:E',    'arc_hip_R:S']},
+        # LEFT side: hip bottom → waist → shoulder top (head-to-tail E→S)
+        {'Type': 'Coincident', 'Targets': ['arc_hip_L:E',      'arc_waist_L:S']},
+        {'Type': 'Coincident', 'Targets': ['arc_waist_L:E',    'arc_shoulder_L:S']},
     ]
 
     return {"Name": "ArcChain", "BuildSequence": seq}

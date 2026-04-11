@@ -337,13 +337,19 @@
       gap: 6px;
     }
 
-    .panel-header::after {
-      content: '▾';
-      margin-left: auto;
+    .panel-header::before {
+      content: '▼';
+      font-size: 14px; /* Scaled up as requested */
+      transition: transform 0.2s;
+      width: 16px;
+      display: inline-block;
+      text-align: center;
+      opacity: 0.6;
     }
 
-    .panel-header.collapsed::after {
-      content: '▸';
+    .panel.collapsed .panel-header::before,
+    .panel-header.collapsed::before {
+      transform: rotate(-90deg);
     }
 
     .panel-body {
@@ -353,7 +359,7 @@
       gap: 10px;
     }
 
-    .panel-body.hidden {
+    .panel.collapsed .panel-body {
       display: none;
     }
 

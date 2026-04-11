@@ -174,6 +174,12 @@ def deploy_local():
     print("  Copying files...")
     try:
         shutil.copytree(SRC_DIR, DEST_DIR, ignore=ignore_for_copy)
+        # CONSOLIDATION: Copy shared-style.css into the frame-builder UI folder
+        style_src = SRC_DIR / "b-spline-gen" / "html" / "shared-style.css"
+        style_dest = DEST_DIR / "frame-builder" / "ui" / "html" / "shared-style.css"
+        if style_src.exists():
+            shutil.copy2(style_src, style_dest)
+            print("  Consolidated shared-style.css to UI folder.")
     except Exception as e:
         print(f"  ERROR: copytree failed: {e}")
         sys.exit(1)
