@@ -25,7 +25,7 @@ def get_template_logic():
 
             # Sub-parameters (Aligned to cm)
             {"Name": "ShoulderSpan",      "Val": "widthIn * 0.8",   "Unit": "cm"},
-            {"Name": "WaistSpan",         "Val": "widthIn * 0.95",  "Unit": "cm"},
+            {"Name": "WaistSpan",         "Val": "widthIn * 0.7",   "Unit": "cm"},
             {"Name": "HipSpan",           "Val": "widthIn * 0.8",   "Unit": "cm"},
             {"Name": "TopGap",            "Val": "heightIn * 0.15", "Unit": "cm"},
             {"Name": "BottomGap",         "Val": "heightIn * 0.15", "Unit": "cm"},

@@ -91,11 +91,11 @@ def get_sketch(geometry=None):
         ],
 
         'Geometry': [
-            # Seed points: Proportional Bulge-Offset logic
-            {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point', 'Points': [['ShoulderSpan/2 + 0.001', shldr_y], [f'({outer_x} + ShoulderSpan/2)/2', f'({shldr_y}) + 0.2'], [outer_x, f'({shldr_y}) + 0.001']], 'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E', 'CenterID': 'arc_shoulder_R:C'},
-            {'ID': 'arc_hip_R',      'Type': 'Arc3Point', 'Points': [[outer_x, f'({hip_y}) - 0.001'], [f'({outer_x} + HipSpan/2)/2', f'({hip_y}) - 0.2'], ['HipSpan/2 + 0.001', hip_y]], 'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E', 'CenterID': 'arc_hip_R:C'},
-            {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point', 'Points': [[f'-({outer_x})', f'({shldr_y}) + 0.001'], [f'-({outer_x} + ShoulderSpan/2)/2', f'({shldr_y}) + 0.2'], ['-(ShoulderSpan/2 + 0.001)', shldr_y]], 'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E', 'CenterID': 'arc_shoulder_L:C'},
-            {'ID': 'arc_hip_L',      'Type': 'Arc3Point', 'Points': [['-(HipSpan/2 + 0.001)', hip_y], [f'-({outer_x} + HipSpan/2)/2', f'({hip_y}) - 0.2'], [f'-({outer_x})', f'({hip_y}) - 0.001']], 'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C'},
+            # Seed points: Proportional Mid-Point logic (stays inside boundary)
+            {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point', 'Points': [['ShoulderSpan/2', shldr_y], [f'({outer_x} + ShoulderSpan/2)/2', f'({shldr_y} + {top_y})/2'], [outer_x, f'({shldr_y}) + 0.001']], 'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E', 'CenterID': 'arc_shoulder_R:C'},
+            {'ID': 'arc_hip_R',      'Type': 'Arc3Point', 'Points': [[outer_x, f'({hip_y}) - 0.001'], [f'({outer_x} + HipSpan/2)/2', f'({hip_y} + {bot_y})/2'], ['HipSpan/2', hip_y]], 'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E', 'CenterID': 'arc_hip_R:C'},
+            {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point', 'Points': [[f'-({outer_x})', f'({shldr_y}) + 0.001'], [f'-({outer_x} + ShoulderSpan/2)/2', f'({shldr_y} + {top_y})/2'], ['-(ShoulderSpan/2)', shldr_y]], 'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E', 'CenterID': 'arc_shoulder_L:C'},
+            {'ID': 'arc_hip_L',      'Type': 'Arc3Point', 'Points': [['-(HipSpan/2)', hip_y], [f'-({outer_x} + HipSpan/2)/2', f'({hip_y} + {bot_y})/2'], [f'-({outer_x})', f'({hip_y}) - 0.001']], 'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C'},
         ],
 
         'Constraints': [
@@ -112,9 +112,9 @@ def get_sketch(geometry=None):
         ],
 
         'PostGeometry': [
-            # Waist arc seeds: Proportional bulge (0.5cm) to force non-degenerate curvature
-            {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [['ShoulderSpan/2 + 0.001', shldr_y], ['WaistSpan/2 + 0.5', waist_y], ['HipSpan/2 + 0.001', hip_y]], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C'},
-            {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [['-(HipSpan/2 + 0.001)', hip_y], ['-(WaistSpan/2 + 0.5)', waist_y], ['-(ShoulderSpan/2 + 0.001)', shldr_y]], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C'},
+            # Waist arc seeds: Proportional bulge (safe distance from outer_x)
+            {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'Points': [['ShoulderSpan/2 + 0.001', shldr_y], [f'WaistSpan/2 + ({outer_x} - WaistSpan/2)*0.3', waist_y], ['HipSpan/2 + 0.001', hip_y]], 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C'},
+            {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'Points': [['-(HipSpan/2 + 0.001)', hip_y], [f'-(WaistSpan/2 + ({outer_x} - WaistSpan/2)*0.3)', waist_y], ['-(ShoulderSpan/2 + 0.001)', shldr_y]], 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C'},
         ],
 
         'PostConstraints': [
