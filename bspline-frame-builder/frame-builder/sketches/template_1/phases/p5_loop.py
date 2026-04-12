@@ -18,12 +18,20 @@ def get_block(ui_data=None):
         # All horns: :S seeded near projected corner (snapped below via Coincident),
         #            :E seeded as a fraction of heightIn toward the center axis.
         # horn_TR and horn_BL were already correct; horn_BR and horn_TL are swapped vs old code.
-        {'ID': 'horn_TR', 'Type': 'Line', 'Points': [[outer_x,          f'({top_y}) - 0.001'],  [outer_x,          'heightIn * 0.183']],  'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
-        {'ID': 'horn_BR', 'Type': 'Line', 'Points': [[outer_x,          f'({bot_y}) + 0.001'],  [outer_x,          '-heightIn * 0.183']], 'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
-        {'ID': 'horn_TL', 'Type': 'Line', 'Points': [[f'-({outer_x})',  f'({top_y}) - 0.001'],  [f'-({outer_x})',  'heightIn * 0.183']],  'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
-        {'ID': 'horn_BL', 'Type': 'Line', 'Points': [[f'-({outer_x})',  f'({bot_y}) + 0.001'],  [f'-({outer_x})',  '-heightIn * 0.183']], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
+        {'ID': 'horn_TR', 'Type': 'Line', 'Points': [[f'({outer_x}) - 0.001', f'({top_y}) - 0.001'],  [outer_x, 'heightIn * 0.183']],  'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
+        {'ID': 'horn_BR', 'Type': 'Line', 'Points': [[f'({outer_x}) - 0.001', f'({bot_y}) + 0.001'],  [outer_x, '-heightIn * 0.183']], 'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
+        {'ID': 'horn_TL', 'Type': 'Line', 'Points': [[f'-({outer_x}) + 0.001', f'({top_y}) - 0.001'], [f'-({outer_x})', 'heightIn * 0.183']],  'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
+        {'ID': 'horn_BL', 'Type': 'Line', 'Points': [[f'-({outer_x}) + 0.001', f'({bot_y}) + 0.001'], [f'-({outer_x})', '-heightIn * 0.183']], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
+        
         {'Type': 'Vertical',   'Targets': ['horn_TR', 'horn_BR', 'horn_TL', 'horn_BL']},
-        # Explicit corner lock: snap each horn start to its projected offset corner
+
+        # Explicit Corner Welding — Connect segments to each other first
+        {'Type': 'Coincident', 'Targets': ['horn_TL:S', 'top_edge:S']},
+        {'Type': 'Coincident', 'Targets': ['horn_TR:S', 'top_edge:E']},
+        {'Type': 'Coincident', 'Targets': ['horn_BR:S', 'bottom_edge:S']},
+        {'Type': 'Coincident', 'Targets': ['horn_BL:S', 'bottom_edge:E']},
+
+        # Phase 3 Lock — snap each corner joint to its projected offset corner from Sketch 1
         {'Type': 'Coincident', 'Targets': ['horn_TR:S', 'proj_off_corner_TR']},
         {'Type': 'Coincident', 'Targets': ['horn_BR:S', 'proj_off_corner_BR']},
         {'Type': 'Coincident', 'Targets': ['horn_TL:S', 'proj_off_corner_TL']},
