@@ -399,6 +399,64 @@
       border-left-color: #0e7490;
     }
 
+    /* Sub-panel — nested inside a sketch panel, category grouping */
+    .panel-sub {
+      background: rgba(0, 0, 0, 0.02);
+      border-left: 2px solid rgba(0, 0, 0, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .panel-sub .panel-header {
+      font-size: 10px;
+      padding: 5px 10px;
+      background: rgba(0, 0, 0, 0.03);
+      letter-spacing: 0.08em;
+    }
+
+    .panel-sub .panel-header::before {
+      font-size: 11px;
+    }
+
+    .panel-sub.collapsed .panel-header::before {
+      transform: rotate(-90deg);
+    }
+
+    .panel-sub.collapsed .panel-body {
+      display: none;
+    }
+
+    /* ck_ constraint toggle row — checkbox replaces slider */
+    .ck-toggle-wrap .slider-header {
+      padding-bottom: 0;
+    }
+
+    /* ck_ constraint toggles — separate class so they don't pollute the lock counter */
+    .ck-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .ck-toggle input[type=checkbox] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--good);
+    }
+
+    .ck-toggle.ck-on {
+      color: var(--good);
+    }
+
+    .ck-toggle.ck-off {
+      color: var(--text-dim);
+    }
+
     label {
       display: flex;
       flex-direction: column;

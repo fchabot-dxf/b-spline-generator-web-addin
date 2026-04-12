@@ -1,8 +1,8 @@
 def get_block(ui_data=None):
     """
-    Phase 8b: Enclosure Welds (Stitching).
+    Phase 16: Enclosure Welds (Stitching).
     Welds the projected silhouette curves together in Sketch 3.
-    This creates the closed loop required for the parametric Offset (addOffset2) to succeed.
+    This creates the closed loop required for the parametric Offset to succeed.
     """
     seq = [
         # Loop stitching: Connect each projected curve's End to the next one's Start
@@ -17,13 +17,7 @@ def get_block(ui_data=None):
         {'Type': 'Coincident', 'Targets': ['proj_arc_hip_L:E',          'proj_arc_waist_L:S']},
         {'Type': 'Coincident', 'Targets': ['proj_arc_waist_L:E',        'proj_arc_shoulder_L:S']},
         {'Type': 'Coincident', 'Targets': ['proj_arc_shoulder_L:E',     'proj_horn_TL:S']},
-        {'Type': 'Coincident', 'Targets': ['proj_horn_TL:E',            'proj_top_edge:S']},
+        {'Type': 'Coincident', 'Targets': ['proj_horn_TL:E',            'proj_top_edge:S']}, # Closing the master loop
     ]
 
-
-
-    return {
-        "PhaseID": "p15_encl_welds",
-        "Name": "Enclosure Welds",
-        "BuildSequence": seq
-    }
+    return {"Name": "Enclosure Welds", "PhaseID": "p16_encl_welds", "BuildSequence": seq}

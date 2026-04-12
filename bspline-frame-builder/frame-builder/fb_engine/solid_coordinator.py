@@ -190,36 +190,64 @@ class SolidCoordinator:
 
     def _find_sketch(self, target_comp):
         """
-        Deep-Search for the shape-outline sketch.
-        1. Search in the target component first.
-        2. Fallback: Recursive search through the entire design assembly.
+        Deep-Search for the solid synthesis sketch with Category Priority.
+        1. FRAME ENCLOSURE (Phase 3)
+        2. FRAME SKETCH (General)
+        3. SHAPE OUTLINE (Phase 2 Fallback)
         """
-        target_suffix = "_2_shape-outline"
+        target_patterns = [
+            ("FRAME ENCLOSURE", [
+                "_3_frame-enclosure", "_3_frame_enclosure", "_3_frame enclosure",
+                "3_frame-enclosure", "3_frame_enclosure", "3_frame enclosure",
+                "_frame-enclosure", "_frame_enclosure", "frame-enclosure", "frame_enclosure", "frame enclosure"
+            ]),
+            ("FRAME SKETCH", [
+                "_3_frame", "_frame", "frame"
+            ]),
+            ("SHAPE OUTLINE", [
+                "_2_shape-outline", "_2_shape_outline", "_2_shape outline",
+                "2_shape-outline", "2_shape_outline", "2_shape outline",
+                "shape-outline", "shape_outline", "shape outline"
+            ])
+        ]
         
-        # Helper to check a component
-        def _check(comp):
-            for i in range(comp.sketches.count):
-                sk = comp.sketches.item(i)
-                if target_suffix in sk.name:
-                    prefix = sk.name.split("_")[0]
-                    return sk, prefix
-            return None, None
-
-        # 1. Targeted check
+        # 1. Targeted check in target_comp (ordered by category priority)
         if target_comp:
-            sk, pref = _check(target_comp)
-            if sk: return sk, pref
+            self.log.log(f"  DISCOVERY: Searching project sketches in '{target_comp.name}'...")
+            
+            # Diagnostic: Log ALL available candidates first
+            for i in range(target_comp.sketches.count):
+                sk = target_comp.sketches.item(i)
+                self.log.log(f"    SKETCH CANDIDATE: component='{target_comp.name}' sketch='{sk.name}'")
 
-        # 2. Deep Scavenge (Failsafe)
-        self.log.log("  SKETCH: Targeted search failed. Deep-scanning assembly...")
+            # Priority Search Loop: Category FIRST
+            for category, patterns in target_patterns:
+                for i in range(target_comp.sketches.count):
+                    sk = target_comp.sketches.item(i)
+                    sk_name = (sk.name or '').lower()
+                    for pattern in patterns:
+                        if pattern in sk_name:
+                            self.log.log(f"  SKETCH HIT: component='{target_comp.name}' sketch='{sk_name}' category='{category}' pattern='{pattern}'")
+                            prefix = sk_name.split("_")[0]
+                            return sk, prefix
+
+        # 2. Deep Scavenge (Failsafe for entire assembly, also by category priority)
+        self.log.log("  SKETCH: Targeted search failed. Deep-scanning assembly by priority...")
         all_comps = self.design.allComponents
-        for comp in all_comps:
-            sk, pref = _check(comp)
-            if sk:
-                self.log.log(f"  SKETCH HIT: Found sketch '{sk.name}' in component '{comp.name}'")
-                return sk, pref
+        
+        for category, patterns in target_patterns:
+            for comp in all_comps:
+                for i in range(comp.sketches.count):
+                    sk = comp.sketches.item(i)
+                    sk_name = (sk.name or '').lower()
+                    for pattern in patterns:
+                        if pattern in sk_name:
+                            self.log.log(f"  SKETCH HIT (Deep): Found '{sk_name}' in '{comp.name}' [{category}]")
+                            prefix = sk_name.split("_")[0]
+                            return sk, prefix
 
         return None, "T1"
+
 
 class _NullLogger:
     def log(self, *a, **kw): pass

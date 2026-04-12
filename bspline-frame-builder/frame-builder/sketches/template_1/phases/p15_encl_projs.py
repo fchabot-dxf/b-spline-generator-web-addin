@@ -1,10 +1,10 @@
 def get_block(ui_data=None):
     """
-    Phase 8: Enclosure Projections.
-    Grabs the silhouette loop and horn tips from Sketch 2 to use as the offset source.
+    Phase 15: Enclosure Projections.
+    Projects the silhouette and anchor points into the enclosure sketch.
     """
     return {
-        "PhaseID": "p14_encl_projs",
+        "PhaseID": "p15_encl_projs",
         "Name": "Enclosure Projections",
         "Projections": [
             # The Main Loop (Used for Offset)

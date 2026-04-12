@@ -31,22 +31,28 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
     g_map = ctx.entity_map[s_name]
 
     try:
-        tgt = g_map.get(dim_target)
+        # Determine source (src) and target (tgt) based on spec
+        src = None
+        tgt = None
+        
+        if "Source" in dim:
+            src = g_map.get(dim["Source"])
+            tgt = g_map.get(dim_target)
+        elif "Targets" in dim and len(dim["Targets"]) >= 2:
+            src_id = dim["Targets"][0]
+            tgt_id = dim["Targets"][1]
+            src = g_map.get(src_id)
+            tgt = g_map.get(tgt_id)
+            dim_target = tgt_id # Update log name to the second target point
+        else:
+            tgt = g_map.get(dim_target)
+
+        # VALIDATION: Check if we have enough geometry to proceed
         if not tgt:
             ctx.logger.log(f"DIM MISS: Target '{dim_target}' not found in {s_name}", "WARNING")
             return
 
         expr = dim.get("Expression") or dim.get("Name") or dim.get("Value")
-        
-        # Determine source if it exists (for distance dimensions)
-        src = None
-        if "Source" in dim:
-            src = g_map.get(dim["Source"])
-        elif "Targets" in dim and len(dim["Targets"]) >= 2:
-            src = g_map.get(dim["Targets"][0])
-            dim_target = dim["Targets"][1] # Secondary target
-            tgt = g_map.get(dim_target)
-
         text_pt = _compute_text_point(ctx, dim, tgt, src)
         d = _create_dimension(ctx, sketch, s_name, dim, tgt, text_pt)
 

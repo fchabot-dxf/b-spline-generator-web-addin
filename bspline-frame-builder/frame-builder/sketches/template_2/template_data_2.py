@@ -28,11 +28,11 @@ def get_template_logic():
             {"Name": "frame_thickness",     "Val": "-0.75 in", "Unit": "in"},
             
             # Sub-parameters (Standardized DNA)
-            {"Name": "ShoulderSpan",      "Val": "widthIn * 0.8",  "Unit": "in"},
-            {"Name": "WaistSpan",         "Val": "widthIn * 0.95",  "Unit": "in"},
-            {"Name": "HipSpan",           "Val": "widthIn * 0.8",  "Unit": "in"},
-            {"Name": "TopGap",            "Val": "heightIn * 0.15", "Unit": "in"},
-            {"Name": "BottomGap",         "Val": "heightIn * 0.15", "Unit": "in"},
+            {"Name": "ShoulderSpan",      "Val": 0.8,  "Unit": "", "DisplayUnit": "x"},
+            {"Name": "WaistSpan",         "Val": 0.95, "Unit": "", "DisplayUnit": "x"},
+            {"Name": "HipSpan",           "Val": 0.8,  "Unit": "", "DisplayUnit": "x"},
+            {"Name": "TopGap",            "Val": 0.15, "Unit": "", "DisplayUnit": "%"},
+            {"Name": "BottomGap",         "Val": 0.15, "Unit": "", "DisplayUnit": "%"},
 
             # UI Toggles
             {"Name": "en_ShoulderSpan",   "Val": 1.0, "Unit": ""},

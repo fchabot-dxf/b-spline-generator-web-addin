@@ -141,32 +141,20 @@
       <div class="main-content">
         <!-- SKETCH TAB -->
         <div id="content-form" class="tab-content active">
-          <div class="panel panel-form">
-            <div class="panel-header">Synthesis Strategy</div>
-            <div class="panel-body">
-              <div class="row">
-                <label>Rule Set</label>
-                <select id="template-select" style="width: 140px;" onchange="syncTemplate()">
-                  <option value="Template 1">Template 1</option>
-                  <option value="Template 2">Template 2</option>
-                  <option value="Template 3">Template 3</option>
-                  <option value="Template 4">Template 4</option>
-                </select>
-              </div>
-            </div>
+          <div class="row" style="padding: 0 0 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 4px;">
+            <span id="constraint-count" style="font-size:0.75rem; font-weight:600; color:var(--accent);">0/3 Locked</span>
+            <label style="flex-direction:row; align-items:center; gap:8px; color:var(--text-dim);">Rule Set</label>
+            <select id="template-select" style="width: 140px;" onchange="syncTemplate()">
+              <option value="Template 1">Template 1</option>
+              <option value="Template 2">Template 2</option>
+              <option value="Template 3">Template 3</option>
+              <option value="Template 4">Template 4</option>
+            </select>
           </div>
 
-          <div id="synthesis-layout-group" style="display: flex; flex-direction: column; gap: 24px;">
-            <div class="panel-header" id="dynamic-parameters-header" style="cursor: default;">
-              Synthesis Layout
-              <span id="constraint-count"
-                style="margin-left:auto;color:var(--good);font-weight:600;font-size:0.75rem;">0/3 Locked</span>
-            </div>
-
-            <div id="dynamic-parameters" style="display: flex; flex-direction: column; gap: 24px;">
-              <div style="padding: 20px; text-align: center; color: var(--text-dim); font-style: italic;">
-                Loading template DNA...
-              </div>
+          <div id="dynamic-parameters" style="display: flex; flex-direction: column; gap: 24px;">
+            <div style="padding: 20px; text-align: center; color: var(--text-dim); font-style: italic;">
+              Loading template DNA...
             </div>
           </div>
         </div>
@@ -255,30 +243,61 @@
       }
     }
 
+    function formatParamValue(val, unit, name, displayUnit) {
+      const num = parseFloat(val);
+      if (isNaN(num)) return val; // Return string expressions as-is
+
+      const effectiveUnit = displayUnit || unit;
+      if (effectiveUnit === 'multiplier' || effectiveUnit === 'x') {
+        return num.toFixed(2) + 'x';
+      }
+      if (effectiveUnit === 'percent' || effectiveUnit === '%') {
+        return (num * 100).toFixed(0) + '%';
+      }
+      if (effectiveUnit === 'in') {
+        return num.toFixed(2) + ' in';
+      }
+      if (!effectiveUnit) {
+        return num.toString();
+      }
+
+      const precision = Math.abs(num) < 1 ? 2 : (Math.abs(num) < 10 ? 1 : 0);
+      return num.toFixed(precision) + ' cm';
+    }
+
+    function getSliderStep(p) {
+      const effectiveUnit = p.DisplayUnit || p.Unit;
+      const useFactorStep = (effectiveUnit === 'multiplier' || effectiveUnit === 'x' || effectiveUnit === 'percent' || effectiveUnit === '%');
+      if (useFactorStep) return 0.01;
+
+      const minVal = parseFloat(p.Min ?? 0);
+      const maxVal = parseFloat(p.Max ?? 1);
+      const range = Math.abs(maxVal - minVal);
+      if (!isFinite(range) || range <= 0) return 0.001;
+      if (range <= 0.1) return 0.001;
+      if (range <= 1) return 0.01;
+      if (range <= 5) return 0.02;
+      if (range <= 10) return 0.05;
+      return Math.max(0.1, (range / 100).toFixed(3));
+    }
+
     function updateLabel(id) {
       const el = document.getElementById('val-' + id);
       if (!el) return;
-      const val = el.value;
+      
       const param = currentParameters.find(p => p.Name === id);
-      const unit = param ? param.Unit : '%';
-
+      const unit = param ? param.Unit : 'cm';
       const labelEl = document.getElementById('val-' + id + '-label');
-      const factorParams = ['ShoulderSpan', 'WaistSpan', 'HipSpan', 'TopGap', 'BottomGap', 'WaistOffset'];
+      
       if (labelEl) {
-        if (unit === 'cm' && !factorParams.includes(id)) {
-          labelEl.innerText = parseFloat(val).toFixed(1) + ' cm';
-        } else if (unit === 'x' || factorParams.includes(id)) {
-          labelEl.innerText = parseFloat(val).toFixed(2) + 'x';
-        } else {
-          labelEl.innerText = parseFloat(val).toFixed(1) + '%';
-        }
+        labelEl.innerText = formatParamValue(el.value, unit, id, param ? param.DisplayUnit : undefined);
       }
     }
 
     function updateFusion(id) {
       const el = document.getElementById('val-' + id);
       if (!el) return;
-      const val = el.value;
+      const val = (el.type === 'checkbox') ? (el.checked ? 1.0 : 0.0) : el.value;
       notifyFusion('update_param', { name: id, value: val });
     }
 
@@ -449,99 +468,196 @@
           return;
         }
 
-        const params = data.parameters;
-        if (!params || !Array.isArray(params)) {
-          console.error('[SCHEMA] params is missing or not an array:', params);
-          if (logEl) logEl.innerText = '[ERR] render_schema: params missing';
+        // Support new sketch-level format { sketches: [{name, label, parameters}] }
+        // with legacy fallback to flat { parameters: [...] }
+        const sketches = data.sketches;
+        const hasSketchLayout = sketches && Array.isArray(sketches) && sketches.length > 0;
+
+        let allParams = [];
+        if (hasSketchLayout) {
+          sketches.forEach(s => { allParams = allParams.concat(s.parameters || []); });
+        } else {
+          allParams = data.parameters || [];
+        }
+
+        if (!allParams.length) {
+          console.error('[SCHEMA] No params found in schema');
+          if (logEl) logEl.innerText = '[ERR] render_schema: no params found';
           return;
         }
 
-        console.log('[SCHEMA] Rendering', params.length, 'params');
-        if (logEl) logEl.innerText = `[SCHEMA] Rendering ${params.length} params...`;
-        if (statusEl) statusEl.innerText = `Schema loaded: ${params.length} params`;
+        console.log('[SCHEMA] Rendering', allParams.length, 'total params,',
+          hasSketchLayout ? sketches.length + ' sketches' : 'flat layout');
+        if (logEl) logEl.innerText = `[SCHEMA] Rendering ${allParams.length} params...`;
+        if (statusEl) statusEl.innerText = `Schema loaded: ${allParams.length} params`;
 
-        currentParameters = params;
+        currentParameters = allParams;
 
         // Update phase stepper max from schema
         if (data.phase_count && data.phase_count > 0) {
           _phaseMax     = data.phase_count;
-          _phaseCurrent = _phaseMax; // Default to the last phase
+          _phaseCurrent = _phaseMax;
           _updatePhaseDisplay();
         }
 
         container.innerHTML = '';
 
-        // Group by Category
-        const groups = {};
-        params.forEach(p => {
-          const cat = p.Category || 'Miscellaneous';
-          if (!groups[cat]) groups[cat] = [];
-          groups[cat].push(p);
-        });
+        // Rendering rules (evaluated in order, against a given param list):
+        //   1. Has matching en_ sibling  → render with LOCK toggle (solver seed)
+        //   2. ReadOnly === true         → render as read-only display
+        //   3. Expose === true           → render as plain slider (or ck_ checkbox)
+        //   4. None of the above        → internal param, hidden
+        function _shouldRender(p, paramList) {
+          if (p.Name.startsWith('en_')) return false;
+          if (paramList.find(t => t.Name === 'en_' + p.Name)) return true; // rule 1
+          if (p.ReadOnly) return true;                                       // rule 2
+          if (p.Expose)   return true;                                       // rule 3
+          return false;                                                      // rule 4
+        }
 
-        console.log('[SCHEMA] Categories:', Object.keys(groups));
+        // Render a single parameter into a body element
+        function _renderParam(p, paramList, body) {
+          const toggle = paramList.find(t => t.Name === 'en_' + p.Name);
+          const isLocked = toggle ? (parseFloat(toggle.Val) > 0.5) : false;
+          const label = p.Label || p.Name;
 
-        // Render Groups
-        Object.keys(groups).forEach(cat => {
-          const groupPanel = document.createElement('div');
-          groupPanel.className = 'panel';
-          groupPanel.innerHTML = `
-            <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
-              ${cat}
-            </div>
-            <div class="panel-body" id="group-${cat.replace(/\s+/g, '-')}"></div>
-          `;
-          container.appendChild(groupPanel);
-          const body = groupPanel.querySelector('.panel-body');
-
-          groups[cat].forEach(p => {
-            if (p.Name.startsWith('en_')) return; // Skip toggles from list
-
+          // ck_ params render as a checkbox toggle, not a slider
+          if (p.Name.startsWith('ck_')) {
+            const isChecked = parseFloat(p.Val ?? 1.0) > 0.5;
+            const ckClass = isChecked ? 'ck-on' : 'ck-off';
             const wrap = document.createElement('div');
-            wrap.className = 'slider-wrap' + (p.ReadOnly ? ' readonly' : '');
-
-            const toggle = params.find(t => t.Name === 'en_' + p.Name);
-            const isLocked = toggle ? (parseFloat(toggle.Val) > 0.5) : false;
-
-            const label = p.Label || p.Name;
-            let val = p.Val;
-            const unit = p.Unit || '';
-
-            // Handle expressions or non-numeric strings
-            let displayVal = val;
-            let sliderVal = parseFloat(val);
-            if (isNaN(sliderVal)) sliderVal = 50; // Fallback for expressions
-
+            wrap.className = 'slider-wrap ck-toggle-wrap';
             wrap.innerHTML = `
               <div class="slider-header">
                 <span class="slider-name">${label}</span>
-                <div class="flex-row">
-                  <span class="slider-val" id="val-${p.Name}-label">${displayVal}${unit ? ' ' + unit : ''}</span>
-                  ${toggle && !p.ReadOnly ? `
-                  <label class="lock-toggle">
-                    <input type="checkbox" id="lock-${p.Name}" onchange="toggleLock('${p.Name}', this.checked)" ${isLocked ? 'checked' : ''}>
-                    LOCK
-                  </label>
-                  ` : ''}
-                </div>
+                <label class="ck-toggle ${ckClass}" id="ck-label-${p.Name}">
+                  <input type="checkbox" id="val-${p.Name}"
+                         onchange="updateFusion('${p.Name}'); _updateCkLabel('${p.Name}', this.checked)"
+                         ${isChecked ? 'checked' : ''}>
+                  <span>${isChecked ? 'ON' : 'OFF'}</span>
+                </label>
               </div>
-              ${!p.ReadOnly ? `
-              <div class="slider-container">
-                <input type="range" id="val-${p.Name}"
-                       min="${p.Min ?? 0}" max="${p.Max ?? 1}" 
-                       step="${(p.Unit === 'x' || ['ShoulderSpan','WaistSpan','HipSpan','TopGap','BottomGap','WaistOffset'].includes(p.Name)) ? '0.01' : '0.5'}"
-                       value="${sliderVal}"
-                       oninput="updateLabel('${p.Name}')"
-                       onchange="updateFusion('${p.Name}')"
-                       ${isLocked ? 'disabled' : ''}>
-              </div>
-              ` : ''}
             `;
             body.appendChild(wrap);
-          });
-        });
+            return;
+          }
 
-        if (logEl) logEl.innerText = `[SCHEMA] Done — ${params.length} params in ${Object.keys(groups).length} groups`;
+          // Standard slider or read-only display
+          const wrap = document.createElement('div');
+          wrap.className = 'slider-wrap' + (p.ReadOnly ? ' readonly' : '');
+
+          const displayLabel = formatParamValue(p.Val, p.Unit, p.Name, p.DisplayUnit);
+          let sliderVal = parseFloat(p.Val);
+          if (isNaN(sliderVal)) sliderVal = 50;
+
+          const sliderStep = getSliderStep(p);
+
+          wrap.innerHTML = `
+            <div class="slider-header">
+              <span class="slider-name">${label}</span>
+              <div class="flex-row">
+                <span class="slider-val" id="val-${p.Name}-label">${displayLabel}</span>
+                ${toggle && !p.ReadOnly ? `
+                <label class="lock-toggle">
+                  <input type="checkbox" id="lock-${p.Name}"
+                         onchange="toggleLock('${p.Name}', this.checked)"
+                         ${isLocked ? 'checked' : ''}>
+                  LOCK
+                </label>
+                ` : ''}
+              </div>
+            </div>
+            ${!p.ReadOnly ? `
+            <div class="slider-container">
+              <input type="range" id="val-${p.Name}"
+                     min="${p.Min ?? 0}" max="${p.Max ?? 1}"
+                     step="${sliderStep}"
+                     value="${sliderVal}"
+                     oninput="updateLabel('${p.Name}')"
+                     onchange="updateFusion('${p.Name}')">
+            </div>
+            ` : ''}
+          `;
+          body.appendChild(wrap);
+        }
+
+        if (hasSketchLayout) {
+          // New layout: sketch outer panels → category sub-panels → params
+          sketches.forEach(sketch => {
+            const sketchParams = (sketch.parameters || []);
+            const visibleParams = sketchParams.filter(p => _shouldRender(p, sketchParams));
+            if (!visibleParams.length) return;
+
+            // Group visible params by Category
+            const cats = {};
+            visibleParams.forEach(p => {
+              const cat = p.Category || 'Miscellaneous';
+              if (!cats[cat]) cats[cat] = [];
+              cats[cat].push(p);
+            });
+
+            // Outer sketch panel
+            const sketchPanel = document.createElement('div');
+            const sketchLabel = sketch.label || sketch.name || 'Sketch';
+            const shouldCollapse = sketchLabel === 'Bounding Box';
+            sketchPanel.className = 'panel' + (shouldCollapse ? ' collapsed' : '');
+            const sketchBodyId = 'sketch-' + (sketch.name || '').replace(/\s+/g, '-');
+            sketchPanel.innerHTML = `
+              <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                ${sketchLabel}
+              </div>
+              <div class="panel-body" id="${sketchBodyId}" style="gap:8px;"></div>
+            `;
+            container.appendChild(sketchPanel);
+            const sketchBody = sketchPanel.querySelector('.panel-body');
+
+            // Inner category sub-panels
+            Object.keys(cats).forEach(cat => {
+              const catId = sketchBodyId + '-' + cat.replace(/\s+/g, '-');
+              const subPanel = document.createElement('div');
+              subPanel.className = 'panel-sub';
+              subPanel.innerHTML = `
+                <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                  ${cat}
+                </div>
+                <div class="panel-body" id="${catId}"></div>
+              `;
+              sketchBody.appendChild(subPanel);
+              const catBody = subPanel.querySelector('.panel-body');
+              cats[cat].forEach(p => _renderParam(p, sketchParams, catBody));
+            });
+          });
+
+          console.log('[SCHEMA] Rendered', sketches.length, 'sketch panels');
+
+        } else {
+          // Legacy flat layout: group by Category, single-level panels
+          const groups = {};
+          allParams.forEach(p => {
+            if (!_shouldRender(p, allParams)) return;
+            const cat = p.Category || 'Miscellaneous';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(p);
+          });
+
+          console.log('[SCHEMA] Legacy categories:', Object.keys(groups));
+
+          Object.keys(groups).forEach(cat => {
+            const groupPanel = document.createElement('div');
+            groupPanel.className = 'panel';
+            groupPanel.innerHTML = `
+              <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                ${cat}
+              </div>
+              <div class="panel-body" id="group-${cat.replace(/\s+/g, '-')}"></div>
+            `;
+            container.appendChild(groupPanel);
+            const body = groupPanel.querySelector('.panel-body');
+            groups[cat].forEach(p => _renderParam(p, allParams, body));
+          });
+        }
+
+        if (logEl) logEl.innerText = `[SCHEMA] Done — ${allParams.length} params`;
         updateConstraintStatus();
 
       } catch(e) {
@@ -551,13 +667,22 @@
       }
     }
 
+    // Update ck_ toggle label and colour class after user interaction
+    function _updateCkLabel(name, isChecked) {
+      const lbl = document.getElementById('ck-label-' + name);
+      if (!lbl) return;
+      lbl.className = 'ck-toggle ' + (isChecked ? 'ck-on' : 'ck-off');
+      const span = lbl.querySelector('span');
+      if (span) span.textContent = isChecked ? 'ON' : 'OFF';
+    }
+
     function runBuild(type) {
       document.getElementById('system-status').innerText = 'Building ' + type + '...';
 
       const ui_data = {};
       currentParameters.forEach(p => {
         const el = document.getElementById('val-' + p.Name);
-        if (el) ui_data[p.Name] = el.value;
+        if (el) ui_data[p.Name] = (el.type === 'checkbox') ? (el.checked ? 1.0 : 0.0) : el.value;
         const lock = document.getElementById('lock-' + p.Name);
         if (lock) ui_data['en_' + p.Name] = lock.checked ? 1.0 : 0.0;
       });
@@ -600,17 +725,20 @@
       }
 
       if (action === 'render_schema') {
-        console.log('[BRIDGE] → calling renderSchema, param count:', (data.parameters || []).length);
+        const _pCount = data.sketches
+          ? data.sketches.reduce((n, s) => n + (s.parameters || []).length, 0)
+          : (data.parameters || []).length;
+        console.log('[BRIDGE] → calling renderSchema, param count:', _pCount,
+          data.sketches ? '(' + data.sketches.length + ' sketches)' : '(flat)');
         renderSchema(data);
       } else if (action === 'status_update') {
         const statusEl = document.getElementById('system-status');
         if (statusEl) statusEl.innerText = data.msg || '';
         if ((data.msg || '').includes('Ready') || (data.msg || '').includes('Complete')) {
           const statusLight = document.getElementById('bridge-status');
-          if (statusLight) {
-            statusLight.style.background = 'var(--good)';
-            statusLight.innerText = 'BRIDGE LIVE';
-          }
+          const statusLabel = document.getElementById('bridge-label');
+          if (statusLight) statusLight.style.background = 'var(--good)';
+          if (statusLabel) statusLabel.innerText = 'BRIDGE LIVE';
         }
       } else if (action === 'selection_result') {
         if (data.success) {
@@ -712,10 +840,10 @@
         // adsk.fusion is NOT required — fusionSendData works standalone on some Fusion builds.
         const adskReady = bridgeCanSend();
         if (adskReady) {
-          if (statusLight) {
-            statusLight.style.background = 'var(--good)';
-            statusLight.innerText = 'BRIDGE LIVE';
-          }
+          if (statusLight) statusLight.style.background = 'var(--good)';
+          const statusLabel = document.getElementById('bridge-label');
+          if (statusLabel) statusLabel.innerText = 'BRIDGE LIVE';
+          
           if (statusEl) statusEl.innerText = 'Synchronizing with Engine...';
           console.log('[BRIDGE] Handshake successful — firing change_template');
           notifyFusion('change_template', { template: 'Template 1' });
@@ -727,13 +855,13 @@
 
       // Initial buffer for Fusion 360 to settle
       setTimeout(() => {
-        if (!tryHandshake()) {
-          console.log('[BRIDGE] Fusion missing or busy. Starting retry heartbeat...');
-          if (statusLight) {
-            statusLight.style.background = 'var(--bad)';
-            statusLight.innerText = 'CONNECTING...';
-          }
-          if (statusEl) statusEl.innerText = 'Waiting for Fusion 360...';
+          if (!tryHandshake()) {
+            console.log('[BRIDGE] Fusion missing or busy. Starting retry heartbeat...');
+            if (statusLight) statusLight.style.background = 'var(--bad)';
+            const statusLabel = document.getElementById('bridge-label');
+            if (statusLabel) statusLabel.innerText = 'CONNECTING...';
+            
+            if (statusEl) statusEl.innerText = 'Waiting for Fusion 360...';
 
           let retryCount = 0;
           const heartbeat = setInterval(() => {
@@ -748,33 +876,36 @@
     });
   </script>
 
+  <!-- Hidden element kept for internal bridge logging; not visible to user -->
+  <span id="fusion-log" style="display:none;">...</span>
+
   <footer id="bottomStatusBar"
-    style="position: fixed; bottom: 0; left: 0; width: 100%; height: 40px; padding: 0 15px; background: #111; border-top: 2px solid #0066cc; display: flex !important; align-items: center; gap: 10px; font-size: 0.75rem; color: #eee; z-index: 9999;">
+    style="position: fixed; bottom: 0; left: 0; width: 100%; height: 36px; padding: 0 12px; background: #111; border-top: 1px solid #1a3a5c; display: flex !important; align-items: center; gap: 10px; font-size: 0.7rem; color: #eee; z-index: 9999;">
     <div id="bridge-status"
-      style="width: 10px; height: 10px; border-radius: 50%; background: var(--bad); flex-shrink: 0;"></div>
-    <span id="system-status" style="white-space: nowrap; font-weight: bold; color: #0066cc;">Ready</span>
-    <span id="fusion-log"
-      style="flex: 1; opacity: 0.8; font-family: 'Cascadia Mono', monospace; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding: 0 10px;">...</span>
+      style="width: 8px; height: 8px; border-radius: 50%; background: var(--bad); flex-shrink: 0;"></div>
+    <span id="bridge-label" style="font-weight: 700; color: #ccc; white-space: nowrap; letter-spacing: 0.02em;">DISCONNECTED</span>
+    <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1); margin: 0 2px;"></div>
+    <span id="system-status" style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: #4a9eff;">Ready</span>
     <button id="copy-btn" onclick="copyLogs(event)"
-      style="padding: 4px 12px; background: #0066cc; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.7rem; height: 28px; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
-      COPY LOG
+      style="padding: 3px 10px; background: #1a3a5c; color: #aac8f0; border: 1px solid #2a5a8c; border-radius: 3px; cursor: pointer; font-size: 0.65rem; height: 22px; flex-shrink: 0; transition: all 0.2s;">
+      COPY
     </button>
   </footer>
 
   <script>
     function copyLogs(event) {
-      const log = document.getElementById('fusion-log').innerText;
+      const status = document.getElementById('system-status').innerText;
       const textArea = document.createElement("textarea");
-      textArea.value = log;
+      textArea.value = status;
       document.body.appendChild(textArea);
       textArea.select();
       try {
         document.execCommand('copy');
         const btn = event.currentTarget;
         const oldText = btn.innerText;
-        btn.innerText = 'COPIED!';
+        btn.innerText = 'OK!';
         btn.style.background = 'var(--good)';
-        setTimeout(() => { btn.innerText = oldText; btn.style.background = '#444'; }, 1000);
+        setTimeout(() => { btn.innerText = oldText; btn.style.background = '#1a3a5c'; }, 1000);
       } catch (err) {
         console.error('Copy failed', err);
       }

@@ -31,30 +31,55 @@ class FBValueResolver:
         raw_val = p_info.get("Val", 0)
         target_unit = p_info.get("Unit", "cm")
 
-        # 1. UI Override Priority & Parametric Scaling
+        # 1. UI Override Priority
         if active_vars and name in active_vars:
-            ui_val = float(active_vars[name])
-            
-            # Width-based Drivers (Multipliers of widthIn)
-            if name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
-                raw_val = f"(widthIn * {ui_val})"
-                if self.logger: self.logger.log(f"[RESOLVER] Scale WIDTH: {name} = {raw_val}")
-            
-            # Height-based Drivers (Multipliers of heightIn)
-            elif name in ['TopGap', 'BottomGap']:
-                raw_val = f"(heightIn * {ui_val})"
-                if self.logger: self.logger.log(f"[RESOLVER] Scale HEIGHT: {name} = {raw_val}")
-
-            # Special Case: Waist Offset (Multiplier of half-height)
-            elif name == 'WaistOffset':
-                raw_val = f"((heightIn / 2.0) * {ui_val})"
-                if self.logger: self.logger.log(f"[RESOLVER] Scale OFFSET: {name} = {raw_val}")
-            
-            else:
-                raw_val = ui_val
-                if self.logger: self.logger.log(f"[RESOLVER] UI Override (Absolute): {name} = {raw_val}")
+            raw_val = active_vars[name]
+        
+        # 2. Factor Wrapping (Unifies 'Val' defaults and 'active_vars' overrides)
+        raw_val = self.wrap_expression_if_factor(name, raw_val)
 
         return str(raw_val), target_unit
+
+    def wrap_expression_if_factor(self, name, value):
+        """
+        Wraps a numeric or string value in a widthIn/heightIn expression 
+        if the parameter name belongs to the scaled anatomy categories.
+        Now hardened against string inputs with unit suffixes.
+        """
+        original_value = value
+        try:
+            # 1. Clean input: remove units if present (e.g. '1.03 cm' -> '1.03')
+            val_str = str(value).lower().replace('cm', '').replace('in', '').replace('"', '').replace('mm', '').strip()
+            
+            # 2. Skip if already an expression
+            if 'widthin' in val_str or 'heightin' in val_str or '*' in val_str:
+                return value
+                
+            num_val = float(val_str)
+            
+            # 3. Categorized Wrapping (Case-Insensitive Match)
+            name_lower = name.lower()
+            
+            # Width-based Drivers (Multipliers of widthIn)
+            if name_lower in ['shoulderspan', 'waistspan', 'hipspan']:
+                result = f"(widthIn * {num_val})"
+            # Height-based Drivers (Multipliers of heightIn)
+            elif name_lower in ['topgap', 'bottomgap']:
+                result = f"(heightIn * {num_val})"
+            # Special Case: Waist Offset (Multiplier of half-height)
+            elif name_lower == 'waistoffset':
+                result = f"((heightIn / 2.0) * {num_val})"
+            else:
+                result = value
+                
+            if self.logger and result != original_value:
+                self.logger.log(f"[RESOLVER] Wrapped '{name}': '{original_value}' -> '{result}'")
+            return result
+        except Exception as e:
+            if self.logger:
+                self.logger.log(f"[RESOLVER WARNING] Skipping wrap for '{name}' ({value}): {e}")
+            
+        return value
 
     def validate_unit_consistency(self, name, expression, target_unit):
         """

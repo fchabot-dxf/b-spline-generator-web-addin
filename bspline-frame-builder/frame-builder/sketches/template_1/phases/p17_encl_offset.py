@@ -1,7 +1,7 @@
 def get_block(ui_data=None):
     """
-    Phase 9: Enclosure Offset.
-    Generates the inner frame loop by offsetting the projected silhouette.
+    Phase 17: Enclosure Offset.
+    Creates the jesmonite frame silhouette by offsetting the construction outline.
     """
     outline_ids = [
         'proj_top_edge', 'proj_horn_TR', 'proj_arc_shoulder_R', 'proj_arc_waist_R', 'proj_arc_hip_R', 'proj_horn_BR',
@@ -10,7 +10,7 @@ def get_block(ui_data=None):
     inner_ids = [f'inner_{eid}' for eid in outline_ids]
 
     return {
-        "PhaseID": "p16_encl_offset",
+        "PhaseID": "p17_encl_offset",
         "Name": "Enclosure Offset",
         "Steps": [
             {

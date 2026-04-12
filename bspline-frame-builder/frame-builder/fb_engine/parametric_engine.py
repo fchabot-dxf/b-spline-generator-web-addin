@@ -61,16 +61,17 @@ class ParametricSketchBuilder:
         # Use ui_data shadow state if available to override template defaults
         ui_state = ctx.active_vars if hasattr(ctx, 'active_vars') else {}
         
-        for p in template.get("Parameters", []):
-            name = p["Name"]
-            v = ui_state.get(name, p.get("Val", p.get("Value", 0)))
-            unit = p["Unit"]
-            existing = ctx.user_params.itemByName(name)
-            if not existing:
-                ctx.create_or_update_param(name, v, unit)
-            else:
-                ctx.logger.log(
-                    f"PRESERVING MODEL PARAM: {name} (Template default {v} skipped)")
+        # Collect params from sketch-level; fall back to top-level for legacy templates
+        all_params = []
+        for sketch in template.get("Sketches", []):
+            all_params.extend(sketch.get("Parameters", []))
+        # Fallback: top-level Parameters for legacy templates
+        if not all_params:
+            all_params = template.get("Parameters", [])
+
+        # 1. Parameter Sync (Centralized in frame_engine.py)
+        # We no longer handle parameter creation here to avoid overwriting 
+        # parametric expressions with raw numeric factors.
 
         # 2. Iterate through sketches with Global Phase Tracking
         remaining_phase = self.max_phase
@@ -164,11 +165,17 @@ class ParametricSketchBuilder:
                     except:
                         continue
                 
-                # Update expression to match UI value
+                # Update expression to match UI value.
+                # For scaled anatomy factors, preserve live width/height expressions.
                 if p:
                     try:
-                        p.expression = str(val)
-                    except:
+                        expr = str(val)
+                        if hasattr(self, 'resolver') and self.resolver:
+                            expr = self.resolver.wrap_expression_if_factor(name, val)
+                            if expr != str(val):
+                                ctx.logger.log(f"PARAM SYNC: Wrapped UI factor '{name}' => '{expr}'", "DEBUG")
+                        p.expression = str(expr)
+                    except Exception:
                         pass
                         
         except Exception as e:
@@ -210,21 +217,25 @@ class ParametricSketchBuilder:
             for vd in block.get("VolatileDimensions", []):
                 dimension_step(self.ctx, sketch, sketch_name, vd, is_snap_only=True)
 
-            # Pulse the solver
+            # Pulse the solver to settle geometry before offsets
             self.ctx.logger.log(f"  > PULSE SOLVE: {b_name}")
             sketch.isComputeDeferred = False
             self._log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE")
 
-            # Offset Steps (runs after pulse so geometry is settled)
+            # Offset Steps (runs in deferred mode for constraint stability)
+            sketch.isComputeDeferred = True
             for step in block.get("Steps", []):
                 step_step(self.ctx, sketch, sketch_name, step)
 
-            # Miters (runs last — depends on offset corners existing)
+            # Miters (depends on offset corners)
             miters_list = block.get("Miters", [])
             if miters_list:
                 self.ctx.logger.log(f"  > MITERS: {len(miters_list)} cuts in block {b_name}")
                 for m in miters_list:
                     miter_step(self.ctx, sketch, sketch_name, m)
+            
+            # Final solve flush for the block
+            sketch.isComputeDeferred = False
 
     def _process_sequence(self, sketch, sketch_name, sequence):
         """Order-aware dispatcher for Procedural Sketching."""

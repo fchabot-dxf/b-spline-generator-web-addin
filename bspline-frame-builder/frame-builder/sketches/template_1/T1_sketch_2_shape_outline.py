@@ -12,8 +12,7 @@ def get_sketch(ui_data=None):
     Sketch 2: Shape Outline.
     Phases 03-14 of the global construction sequence.
     """
-    for m in [p03_projs, p04_anatomy, p05_loop, p06_chain, p07_horns, p08_waist_pins, p09_tangency, p10_horn_tangency, p11_radius_removal, p12_welds, p13_symmetry, p14_drivers]:
-        importlib.reload(m)
+    # Internal reloads removed to stabilize Fusion 360 module specs.
 
     return {
         'Name': '2_shape-outline',

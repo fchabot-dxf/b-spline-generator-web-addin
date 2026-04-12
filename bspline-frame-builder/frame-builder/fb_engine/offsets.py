@@ -133,15 +133,15 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
         if offset_constraint and offset_constraint.isValid:
             # --- RENAMING LOGIC ---
             # addOffset2 creates an OffsetConstraint which OWNS the dimension.
-            # We must reach into the dimension's parameter and force the name.
+            # We must reach into the dimension's parameter and force the expression.
             try:
                 dim = offset_constraint.dimension
                 if dim and dim.parameter:
-                    old_name = dim.parameter.name
-                    dim.parameter.name = "frame_thickness"
-                    ctx.logger.log(f"OFFSET RENAME SUCCESS: {old_name} -> frame_thickness")
+                    # Link the expression to the parameter instead of the name.
+                    dim.parameter.expression = d_expr
+                    ctx.logger.log(f"OFFSET LINK SUCCESS: Dimension linked to '{d_expr}'")
             except Exception as name_e:
-                ctx.logger.log(f"OFFSET RENAME FAIL: Could not rename parameter: {name_e}", "WARNING")
+                ctx.logger.log(f"OFFSET LINK FAIL: Could not set expression: {name_e}", "WARNING")
 
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
             if hasattr(offset_constraint, 'offsetCurves'):
@@ -482,9 +482,9 @@ def _force_rename_offset_dim(sketch, p_name):
                 if curr_name != p_name:
                     try:
                         dim.parameter.name = p_name
-                        # No logger here to keep it lean, but it should work
+                        # Force the expression to link to the variable name (parametric)
+                        dim.parameter.expression = str(p_name)
                     except:
-                        # If name taken, we might append a suffix, but usually p_name is unique
                         pass
     except:
         pass

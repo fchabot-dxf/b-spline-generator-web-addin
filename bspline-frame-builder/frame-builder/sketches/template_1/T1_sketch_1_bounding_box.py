@@ -13,8 +13,8 @@ def get_sketch(ui_data=None):
       1 p01_bb_layout - Primary model boundary rectangle
       2 p02_bb_offset - Safety zone offset + corner tagging
     """
-    for m in [p01_bb_layout, p02_bb_offset]:
-        importlib.reload(m)
+    # Internal reloads removed to stabilize Fusion 360 module specs.
+    # Reloading is now managed at the template level.
 
     return {
         "Name": "1_bounding-box",

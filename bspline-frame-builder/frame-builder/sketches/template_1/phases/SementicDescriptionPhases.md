@@ -1,6 +1,6 @@
-# Template 1 — 16nd Step Linear Construction
+# Template 1 — 18-Step Linear Construction
 
-The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum stability and modularity. The build progresses through 16 global phases across three distinct Fusion 360 sketches.
+The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum stability and modularity. The build progresses through 18 global phases across three distinct Fusion 360 sketches.
 
 ---
 

@@ -33,15 +33,15 @@ def get_block(ui_data=None):
         # SHOULDER FOUNDATION
         {'ID': 'skel_shoulder_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.001, shldr_y], ['ShoulderSpan/2', shldr_y]], 'StartID': 'skel_shoulder_pin_R:S', 'EndID': 'skel_shoulder_pin_R:E'},
         {'ID': 'skel_shoulder_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[-0.001, shldr_y], ['-ShoulderSpan/2', shldr_y]], 'StartID': 'skel_shoulder_pin_L:S', 'EndID': 'skel_shoulder_pin_L:E'},
-        {'Type': 'Horizontal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L'], 'Name': 'shoulder_horiz'},
+        {'Type': 'Horizontal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L'], 'Name': 'shoulder_horiz', 'CK': 'ck_skel_shoulder_horiz'},
         # Symmetry handled in p13_symmetry
         {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'Y_AXIS'],             'Name': 'shoulder_y_lock'},
-        {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S'], 'Name': 'shoulder_merge'},
+        {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S'], 'Name': 'shoulder_merge', 'CK': 'ck_skel_shoulder_merge'},
 
         # WAIST FOUNDATION
         {'ID': 'skel_waist_pin_R',    'Type': 'Line', 'IsConstruction': True, 'Points': [[0.001, waist_y], ['WaistSpan/2', waist_y]], 'StartID': 'skel_waist_pin_R:S', 'EndID': 'skel_waist_pin_R:E'},
         {'ID': 'skel_waist_pin_L',    'Type': 'Line', 'IsConstruction': True, 'Points': [[-0.001, waist_y], ['-WaistSpan/2', waist_y]], 'StartID': 'skel_waist_pin_L:S', 'EndID': 'skel_waist_pin_L:E'},
-        {'Type': 'Horizontal', 'Targets': ['skel_waist_pin_R', 'skel_waist_pin_L'], 'Name': 'waist_horiz'},
+        {'Type': 'Horizontal', 'Targets': ['skel_waist_pin_R', 'skel_waist_pin_L'], 'Name': 'waist_horiz', 'CK': 'ck_skel_waist_horiz'},
         # Symmetry handled in p13_symmetry
         {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'Y_AXIS'],             'Name': 'waist_y_lock'},
         {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'skel_waist_pin_L:S'], 'Name': 'waist_merge'},
@@ -49,10 +49,10 @@ def get_block(ui_data=None):
         # HIP FOUNDATION
         {'ID': 'skel_hip_pin_R',      'Type': 'Line', 'IsConstruction': True, 'Points': [[0.001, hip_y], ['HipSpan/2', hip_y]], 'StartID': 'skel_hip_pin_R:S', 'EndID': 'skel_hip_pin_R:E'},
         {'ID': 'skel_hip_pin_L',      'Type': 'Line', 'IsConstruction': True, 'Points': [[-0.001, hip_y], ['-HipSpan/2', hip_y]], 'StartID': 'skel_hip_pin_L:S', 'EndID': 'skel_hip_pin_L:E'},
-        {'Type': 'Horizontal', 'Targets': ['skel_hip_pin_R', 'skel_hip_pin_L'], 'Name': 'hip_horiz'},
+        {'Type': 'Horizontal', 'Targets': ['skel_hip_pin_R', 'skel_hip_pin_L'], 'Name': 'hip_horiz', 'CK': 'ck_skel_hip_horiz'},
         # Symmetry handled in p13_symmetry
         {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'Y_AXIS'],             'Name': 'hip_y_lock'},
-        {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'skel_hip_pin_L:S'], 'Name': 'hip_merge'},
+        {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'skel_hip_pin_L:S'], 'Name': 'hip_merge', 'CK': 'ck_skel_hip_merge'},
     ]
 
     # VERTICAL LOCK: Gated Coincident vs Dimension

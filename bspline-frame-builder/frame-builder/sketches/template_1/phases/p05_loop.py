@@ -22,6 +22,7 @@ def get_block(ui_data=None):
 
         # 3. CORNER TOPOLOGY (Anchor edges to Ground, then Horns to Edges)
         {'Type': 'Coincident', 'Targets': ['top_edge:S',    'proj_off_corner_TL']},
+
         {'Type': 'Coincident', 'Targets': ['top_edge:E',    'proj_off_corner_TR']},
         {'Type': 'Coincident', 'Targets': ['bottom_edge:S', 'proj_off_corner_BR']},
         {'Type': 'Coincident', 'Targets': ['bottom_edge:E', 'proj_off_corner_BL']},

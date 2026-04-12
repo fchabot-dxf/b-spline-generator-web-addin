@@ -117,55 +117,97 @@ def _push_schema_direct(style_id="Template 1"):
             return
 
         template_spec = frame_engine.get_template_spec(style_id)
-        if not template_spec or "Parameters" not in template_spec:
-            if diag_logger: diag_logger.log("SCHEMA PUSH: spec has no Parameters", "WARNING")
+        if not template_spec:
+            if diag_logger: diag_logger.log("SCHEMA PUSH: no template spec returned", "WARNING")
             return
 
         app = adsk.core.Application.get()
         design = adsk.fusion.Design.cast(app.activeProduct) if app else None
         user_params = design.userParameters if design else None
 
-        params_out = []
-        for p in template_spec["Parameters"]:
-            p_live = dict(p)
-            # ReadOnly params are owned by another add-in — read the live Fusion value.
-            # fp.value is always in cm (Fusion internal); convert to the declared display unit.
-            if p.get("ReadOnly") and user_params:
-                fp = user_params.itemByName(p['Name'])
-                if fp:
-                    target_unit = p.get('Unit', 'cm')
-                    p_live['Val'] = round(fp.value / 2.54, 4) if target_unit == 'in' else round(fp.value, 4)
-                    if diag_logger: diag_logger.log(f"SCHEMA HYDRATE: {p['Name']} = {p_live['Val']} {target_unit}")
+        def _hydrate_params(raw_params):
+            """Hydrate a param list with live Fusion values and resolved Min/Max expressions.
+            Provides de-scaling for factor-based variables (ShoulderSpan -> 0.80)."""
+            out = []
             
-            # 2. Resolve Dynamic Expressions in Min/Max (e.g. "widthIn * 0.9")
-            # We use the design's unitsManager to evaluate these in the context of the model.
-            for key in ['Min', 'Max']:
-                if key in p_live and isinstance(p_live[key], str):
+            # Pre-fetch drivers for de-scaling factors
+            w_in = user_params.itemByName('widthIn').value if user_params and user_params.itemByName('widthIn') else 14.0
+            h_in = user_params.itemByName('heightIn').value if user_params and user_params.itemByName('heightIn') else 5.0
+
+            for p in raw_params:
+                p_live = dict(p)
+                p_name = p['Name']
+                
+                # Preferred: Get values from Fusion if they exist
+                if user_params:
+                    fp = user_params.itemByName(p_name)
+                    if fp:
+                        # 1. Start with raw physical value
+                        raw_val = fp.value
+                        
+                        # 2. De-scale Factors (Physical CM -> Multiplier Ratio)
+                        if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
+                            p_live['Val'] = round(raw_val / w_in, 4) if w_in != 0 else p.get('Val', 0)
+                        elif p_name in ['TopGap', 'BottomGap']:
+                            p_live['Val'] = round(raw_val / h_in, 4) if h_in != 0 else p.get('Val', 0)
+                        elif p_name == 'WaistOffset':
+                            p_live['Val'] = round(raw_val / (h_in / 2.0), 4) if h_in != 0 else p.get('Val', 0)
+                        else:
+                            # Standard absolute parameter
+                            target_unit = p.get('Unit', 'cm')
+                            p_live['Val'] = round(raw_val / 2.54, 4) if target_unit == 'in' else round(raw_val, 4)
+                        
+                        if diag_logger and p.get("ReadOnly"):
+                            diag_logger.log(f"SCHEMA HYDRATE: {p_name} = {p_live['Val']}")
+                
+                # If Val is still a string (from template default), evaluate it
+                if isinstance(p_live.get('Val'), str) and design:
                     try:
-                        expr = p_live[key]
-                        if design:
-                            eval_val = design.unitsManager.evaluateExpression(expr, p_live.get('Unit', 'cm'))
-                            p_live[key] = round(eval_val, 4)
-                            if diag_logger: diag_logger.log(f"SCHEMA RESOLVE: {p['Name']}.{key} '{expr}' -> {p_live[key]}")
-                    except Exception as e:
-                        if diag_logger: diag_logger.log(f"SCHEMA RESOLVE ERROR: {p['Name']}.{key} '{expr}' failed: {e}", "WARNING")
+                        eval_val = design.unitsManager.evaluateExpression(p_live['Val'], p.get('Unit', 'cm'))
+                        # If it's a factor, we still need to de-scale the evaluated result
+                        if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
+                            p_live['Val'] = round(eval_val / w_in, 4) if w_in != 0 else 0.8
+                        elif p_name in ['TopGap', 'BottomGap']:
+                            p_live['Val'] = round(eval_val / h_in, 4) if h_in != 0 else 0.15
+                        else:
+                            p_live['Val'] = round(eval_val, 4)
+                    except:
+                        pass
 
-            params_out.append(p_live)
+                # Resolve Min/Max expressions (e.g. "widthIn * 0.2")
+                for key in ['Min', 'Max']:
+                    if key in p_live and isinstance(p_live[key], str):
+                        try:
+                            expr = p_live[key]
+                            if design:
+                                eval_val = design.unitsManager.evaluateExpression(expr, p_live.get('Unit', 'cm'))
+                                p_live[key] = round(eval_val, 4)
+                        except Exception as e:
+                            if diag_logger: diag_logger.log(f"SCHEMA RESOLVE ERROR: {p_name}.{key} failed: {e}", "WARNING")
+                out.append(p_live)
+            return out
 
-        # Count total phases (Sum of all blocks across all sketches)
+        # Build per-sketch payload and count phases
+        sketches_out = []
         phase_count = 0
         for sketch in template_spec.get("Sketches", []):
             blocks = sketch.get("Blocks", [])
-            if blocks:
-                phase_count += len(blocks)
-            else:
-                # Monolithic sketches count as 1 phase
-                phase_count += 1
+            phase_count += len(blocks) if blocks else 1
+            sketches_out.append({
+                "name":       sketch.get("Name", ""),
+                "label":      sketch.get("Label", sketch.get("Name", "")),
+                "parameters": _hydrate_params(sketch.get("Parameters", []))
+            })
 
+        total_params = sum(len(s["parameters"]) for s in sketches_out)
         pal = app.userInterface.palettes.itemById(PALETTE_ID) if app else None
         if pal:
-            pal.sendInfoToHTML('render_schema', json.dumps({'template': style_id, 'parameters': params_out, 'phase_count': phase_count}))
-            if diag_logger: diag_logger.log(f"SCHEMA PUSH: sent {len(params_out)} params, {phase_count} phases for '{style_id}'")
+            pal.sendInfoToHTML('render_schema', json.dumps({
+                'template':   style_id,
+                'sketches':   sketches_out,
+                'phase_count': phase_count
+            }))
+            if diag_logger: diag_logger.log(f"SCHEMA PUSH: {total_params} params across {len(sketches_out)} sketches, {phase_count} phases for '{style_id}'")
         else:
             if diag_logger: diag_logger.log("SCHEMA PUSH: palette not found", "WARNING")
     except Exception:
@@ -292,28 +334,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     return
 
             if p:
-                # 1. UI Sync logic: turn raw slider values back into parametric expressions
-                # if they belong to the scaled anatomy categories.
-                expr = str(value)
+                from fb_engine import fb_value_resolver
+                importlib.reload(fb_value_resolver)
+                resolver = fb_value_resolver.FBValueResolver(design, self.diag_logger)
+                expr = resolver.wrap_expression_if_factor(name, value)
                 
-                # Width-based Multipliers
-                if name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
-                    expr = f"widthIn * {value}"
-                
-                # Height-based Multipliers
-                elif name in ['TopGap', 'BottomGap']:
-                    expr = f"(heightIn * {value})"
-                
-                # Offset Multipliers
-                elif name == 'WaistOffset':
-                    expr = f"((heightIn / 2.0) * {value})"
-                
-                # For toggles (en_...), use raw value
-                elif name.startswith('en_'):
+                # Special case: Toggles use raw values (safety cast)
+                if name.startswith('en_'):
                     expr = str(float(value))
 
                 # Apply to Fusion 360
-                p.expression = expr
+                p.expression = str(expr)
                 if self.diag_logger:
                     self.diag_logger.log(f"PARAM SYNC FINAL: {name} expression set to '{expr}'")
         except Exception as e:
@@ -520,27 +551,42 @@ class HiddenSchemaPushExecuteHandler(adsk.core.CommandEventHandler):
         _push_schema_direct(style)
 
 
+def _set_status(msg):
+    """Write a message to the Fusion status bar (bottom-left of the main window)."""
+    try:
+        app = adsk.core.Application.get()
+        if app:
+            app.userInterface.statusBarMessage = msg
+    except:
+        pass
+
+
 def _run_sketch_build_direct(data, style_id):
     transaction = None
     try:
         if diag_logger: diag_logger.log(f"RUN SKETCH BUILD (hidden command) triggered. Style: {style_id}")
+
+        max_phase = data.get('max_phase') if isinstance(data, dict) else None
+        phase_label = f" · up to phase {max_phase}" if max_phase is not None else ""
+        _set_status(f"Building {style_id}{phase_label}…")
+
         transaction = _start_undo_transaction('Build Skeleton')
 
         if frame_engine:
             if diag_logger: diag_logger.log(f"Calling engine with style_id: {style_id}")
             frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger, data=data)
             _commit_undo_transaction(transaction)
+            _set_status(f"{style_id} · sketch complete{phase_label}")
             _notify_status("Sketch Build Complete")
         else:
             if diag_logger: diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED (None)")
-            ui = adsk.core.Application.get().userInterface
-            ui.messageBox("Internal Error: Frame Engine not loaded.")
+            _set_status("Build error: frame engine not loaded — restart add-in")
             _abort_undo_transaction(transaction)
     except Exception as e:
+        short = str(e).split('\n')[0][:120]
+        _set_status(f"Build failed: {short} — see log")
         if diag_logger: diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
         _abort_undo_transaction(transaction)
-        ui = adsk.core.Application.get().userInterface
-        ui.messageBox(f"Sketch Build Failed:\n{e}")
 
 
 def _run_solid_build_direct(data):
@@ -548,8 +594,8 @@ def _run_solid_build_direct(data):
     try:
         if diag_logger: diag_logger.log("RUN SOLID BUILD (hidden command) triggered")
 
+        _set_status("Building solid frame…")
         transaction = _start_undo_transaction('Build Solid Frame')
-        if diag_logger: diag_logger.log(f"Calling solid coordinator for hybrid solid build")
 
         solid_coordinator.build_solid_logic_v3(
             to_face = data.get('to_face'),
@@ -558,12 +604,13 @@ def _run_solid_build_direct(data):
             external_logger = diag_logger
         )
         _commit_undo_transaction(transaction)
+        _set_status("Solid frame complete")
         _notify_status("Solid Build Complete")
     except Exception as e:
+        short = str(e).split('\n')[0][:120]
+        _set_status(f"Solid build failed: {short} — see log")
         if diag_logger: diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
         _abort_undo_transaction(transaction)
-        ui = adsk.core.Application.get().userInterface
-        ui.messageBox(f"Solid Build Failed:\n{e}")
 
 
 def _start_undo_transaction(name):

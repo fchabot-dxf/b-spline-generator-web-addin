@@ -17,6 +17,15 @@ def constraint_step(ctx, sketch, s_name, rel):
     s_name  : str — sketch name key in ctx.entity_map
     rel     : dict with keys "Type" and "Targets" (list of entity ID strings)
     """
+    # CK gate — if the constraint declares a ck_ key, check its value before proceeding.
+    # 1.0 (or missing) = apply constraint; 0.0 = skip (constraint disabled by template/user).
+    ck_name = rel.get("CK")
+    if ck_name:
+        ck_val = float(ctx.active_vars.get(ck_name, 1.0))
+        if ck_val < 0.5:
+            ctx.logger.log(f"CONSTRAINT GATED (CK={ck_name}=0): {rel.get('Type')} on {rel.get('Targets')}")
+            return
+
     targets = _resolve_targets(ctx, s_name, rel["Targets"])
     if not targets:
         return

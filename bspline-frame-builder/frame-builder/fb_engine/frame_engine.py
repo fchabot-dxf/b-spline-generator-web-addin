@@ -5,10 +5,11 @@ import time
 
 # Modular logic import
 try:
-    from fb_engine import parametric_engine, template_factory
+    from fb_engine import parametric_engine, template_factory, fb_value_resolver
     from fb_utils import fb_logger as logger
     import template_data_1, template_data_2, template_data_3, template_data_4
     importlib.reload(parametric_engine)
+    importlib.reload(fb_value_resolver)
     importlib.reload(template_data_1)
     importlib.reload(template_data_2)
     importlib.reload(template_data_3)
@@ -29,10 +30,28 @@ except Exception as e:
 
 
 
+# ── Template Registry ─────────────────────────────────────────────────────────
+# Maps style_id substring → (loader callable, sketch prefix).
+# Add new templates here — no other code changes required.
+_TEMPLATE_REGISTRY = {
+    "Template 1": {"loader": lambda ui_data=None: template_data_1.get_template_logic(ui_data), "prefix": "T1"},
+    "Template 2": {"loader": lambda ui_data=None: template_data_2.TEMPLATE_2,                  "prefix": "T2"},
+    "Template 3": {"loader": lambda ui_data=None: template_data_3.TEMPLATE_3,                  "prefix": "T3"},
+    "Template 4": {"loader": lambda ui_data=None: template_data_4.TEMPLATE_4,                  "prefix": "T4"},
+}
+
+def _resolve_template(style_id, ui_data=None):
+    """Return (template_spec, prefix) for the given style_id. Raises on unknown id."""
+    for key, entry in _TEMPLATE_REGISTRY.items():
+        if key in style_id:
+            return entry["loader"](ui_data), entry["prefix"]
+    raise ValueError(f"Unknown style_id: '{style_id}'. Registered: {list(_TEMPLATE_REGISTRY.keys())}")
+
+
 def get_template_spec(style_id="Template 1"):
     """Module-level wrapper so the UI can call frame_engine.get_template_spec() directly."""
-    importlib.reload(template_data_1)
-    return template_data_1.get_template_logic()
+    spec, _ = _resolve_template(style_id)
+    return spec
 
 
 def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **kwargs):
@@ -85,7 +104,7 @@ class FrameBuilder:
 
         # Dedicated Value Resolver for Unit-Safe Geometry
         try:
-            from fb_engine import fb_value_resolver
+            importlib.reload(fb_value_resolver)
             self.resolver = fb_value_resolver.FBValueResolver(self.design, self.logger)
             self.logger.log("FBValueResolver initialized and ready")
         except Exception as e:
@@ -145,15 +164,8 @@ class FrameBuilder:
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
-            # Selection Logic: Resolve Template Data and Prefix
-            template = template_data_1.get_template_logic(ui_data)
-            prefix = "T1"
-            if "Template 2" in style_id: 
-                template, prefix = template_data_2.TEMPLATE_2, "T2" # T2-4 not yet dynamic
-            if "Template 3" in style_id: 
-                template, prefix = template_data_3.TEMPLATE_3, "T3"
-            if "Template 4" in style_id: 
-                template, prefix = template_data_4.TEMPLATE_4, "T4"
+            # Resolve template and prefix from registry
+            template, prefix = _resolve_template(style_id, ui_data)
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver, max_phase=max_phase)
             builder.build_template(template)
@@ -177,19 +189,22 @@ class FrameBuilder:
             frame_comp = self._create_incremental_component()
             self.logger.log(f"created component: {frame_comp.name if frame_comp else 'none'}")
 
-            template = template_data_1.get_template_logic(ui_data)
-            prefix = "T1"
-            if "Template 2" in style_id: 
-                template, prefix = template_data_2.TEMPLATE_2, "T2" 
-            if "Template 3" in style_id: 
-                template, prefix = template_data_3.TEMPLATE_3, "T3"
-            if "Template 4" in style_id: 
-                template, prefix = template_data_4.TEMPLATE_4, "T4"
+            # Resolve template and prefix from registry
+            template, prefix = _resolve_template(style_id, ui_data)
 
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
             
-            sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame-enclosure")
+            sketch = None
+            for i in range(frame_comp.sketches.count):
+                sk = frame_comp.sketches.item(i)
+                sk_name = (sk.name or '').lower()
+                if 'frame' in sk_name and ('3_' in sk_name or 'enclos' in sk_name or 'frame' in sk_name):
+                    sketch = sk
+                    self.logger.log(f"run_full_synthesis: selected sketch '{sk_name}' for extrusion")
+                    break
+            if not sketch:
+                sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame-enclosure")
             if sketch:
                 self._extrude_jesmo_frame(sketch, target_body, frame_comp)
                 
@@ -245,34 +260,74 @@ class FrameBuilder:
         # 2. Template-Specific Parameter Initialization (DNA Sync)
         # NOTE: ReadOnly parameters (e.g. widthIn, heightIn) are owned by the bspline add-in
         # and must never be written here — they are only referenced as Fusion expressions.
-        template = template_data_1.get_template_logic(ui_data)
+        template, _ = _resolve_template(style_id, ui_data)
 
-        if template and "Parameters" in template:
-            self.logger.log(f"Resolving {len(template['Parameters'])} drivers for {style_id}")
-            for p_info in template["Parameters"]:
-                name = p_info["Name"]
+        # Collect all params from sketch-level declarations
+        all_params = []
+        for sketch in template.get("Sketches", []):
+            all_params.extend(sketch.get("Parameters", []))
 
-                # Skip read-only params — owned by another add-in (e.g. bspline)
+        if all_params:
+            self.logger.log(f"Resolving {len(all_params)} drivers for {style_id}")
+            
+            # --- PHASE 1: Create Master Parameters (ReadOnly) ---
+            # These are dependencies for the factors below.
+            for p_info in all_params:
                 if p_info.get("ReadOnly"):
-                    self.logger.log(f"SKIP (ReadOnly): {name}")
-                    continue
+                    name = p_info["Name"]
+                    existing = self.user_params.itemByName(name)
+                    if existing:
+                        continue
+                        
+                    default_val = float(p_info.get("Val", 0))
+                    unit = p_info.get("Unit", "cm")
+                    try:
+                        self.user_params.add(
+                            name, 
+                            adsk.core.ValueInput.createByReal(default_val), 
+                            unit, 
+                            "Template Master Parameter"
+                        )
+                        self.logger.log(f"MASTER (Created): {name} = {default_val} {unit}")
+                    except Exception as e:
+                        self.logger.log(f"FAILED to create Master {name}: {e}", "ERROR")
 
+            # --- PHASE 2: Create/Update Dependent Factors ---
+            for p_info in all_params:
+                if p_info.get("ReadOnly"):
+                    continue
+                    
+                name = p_info["Name"]
                 val_expr, unit = self.resolver.resolve_dna_parameter(p_info, ui_data)
+                
+                # AUDIT: Log exactly how this parameter was resolved for the birth pass
+                raw_dna = p_info.get("Val", "?")
+                raw_ui = ui_data.get(name, "NONE") if ui_data else "NO_UI"
+                self.logger.log(f"[BIRTH AUDIT] {name}: DNA='{raw_dna}' UI='{raw_ui}' -> RESULT='{val_expr}'")
 
                 existing = self.user_params.itemByName(name)
                 if not existing:
                     try:
-                        self.user_params.add(name, adsk.core.ValueInput.createByString(val_expr), unit, "Template Parameter")
-                        self.logger.log(f"REGISTERED: {name} = {val_expr} ({unit})")
+                        # TWO-STEP BIRTH: Create with 0.0, then set expression.
+                        # This avoids "missing dependency" errors during createByString.
+                        p = self.user_params.add(name, adsk.core.ValueInput.createByReal(0.0), unit, "Template Parameter")
+                        p.expression = str(val_expr)
+                        self.logger.log(f"DEPENDENT (Born): {name} = {val_expr} ({unit})")
                     except Exception as e:
-                        self.logger.log(f"FAILED TO REGISTER {name}: {e}", "ERROR")
+                        self.logger.log(f"DEPENDENT FAIL ({name}): {e}. Trying fallback...", "WARNING")
+                        try:
+                            # Try to evaluate the expression once and save the result
+                            eval_val = self.design.unitsManager.evaluateExpression(val_expr, unit)
+                            self.user_params.add(name, adsk.core.ValueInput.createByReal(eval_val), unit, "Template Parameter (Static Fallback)")
+                        except:
+                            self.logger.log(f"CRITICAL: Fallback failed for {name}", "ERROR")
                 else:
                     # UPDATE EXISTING: UI should win during a build cycle
                     try:
                         existing.expression = str(val_expr)
-                        self.logger.log(f"UPDATED: {name} -> {val_expr} (via DNA sync)")
+                        self.logger.log(f"DEPENDENT (Updated): {name} -> {val_expr}")
                     except Exception as e:
-                        self.logger.log(f"FAILED TO UPDATE {name}: {e}", "ERROR")
+                        self.logger.log(f"DEPENDENT UPDATE FAIL ({name}): {e}", "WARNING")
 
     def _discover_aesthetic_core(self):
         self.logger.log("Discovering aesthetic core body")

@@ -38,6 +38,7 @@ class BuildContext:
         self.entity_map = {}
         self.feature_count = 1
         self.active_vars = ui_data if ui_data else {}
+        self.resolver = resolver
 
     # ------------------------------------------------------------------
     # Expression resolver
@@ -228,7 +229,7 @@ class BuildContext:
             param = self.user_params.itemByName(name)
 
             # UNIT GUARD: Handled by Dedicated Resolver
-            if self.resolver:
+            if hasattr(self, 'resolver') and self.resolver:
                 self.resolver.validate_unit_consistency(name, val, unit)
 
             val_input = adsk.core.ValueInput.createByString(str(val))
