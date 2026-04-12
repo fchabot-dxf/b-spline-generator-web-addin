@@ -377,9 +377,14 @@ export function updateEditorTopView(heights, nx, nz) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const displaySize = 512;
-    canvas.width  = displaySize;
+    // Increase the top-view background resolution for a crisper SVG editor backdrop.
+    const baseSize = 512;
+    const deviceScale = Math.min(4, Math.max(1, Math.round(window.devicePixelRatio || 1)));
+    const displaySize = baseSize * deviceScale;
+    canvas.width = displaySize;
     canvas.height = displaySize;
+    canvas.style.width = `${baseSize}px`;
+    canvas.style.height = `${baseSize}px`;
 
     const imgData = ctx.createImageData(displaySize, displaySize);
     const data = imgData.data;

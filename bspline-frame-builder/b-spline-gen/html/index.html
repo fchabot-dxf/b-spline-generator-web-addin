@@ -572,16 +572,10 @@
                 <option value="Cascadia Code">Cascadia Code</option>
                 <option value="Cascadia Mono">Cascadia Mono</option>
               </optgroup>
-              <optgroup label="── Symbols ──">
-                <option value="Marlett">Marlett</option>
-                <option value="Symbol">Symbol</option>
-                <option value="Webdings">Webdings</option>
-                <option value="Wingdings">Wingdings</option>
-              </optgroup>
             </select>
             <span style="font-size:11px; opacity:0.7; white-space:nowrap;">Size</span>
             <button id="editorFontSizeMinus" style="width:22px;height:22px;padding:0;font-size:14px;line-height:1;border:1px solid #ccc;border-radius:3px;cursor:pointer;">−</button>
-            <input type="number" id="editorFontSize" value="3.0" step="0.2" min="0.2" max="20" style="width:52px;text-align:center;">
+            <input type="number" id="editorFontSize" class="no-stepper" value="3.0" step="0.2" min="0.2" max="20" style="width:52px;text-align:center;">
             <button id="editorFontSizePlus" style="width:22px;height:22px;padding:0;font-size:14px;line-height:1;border:1px solid #ccc;border-radius:3px;cursor:pointer;">+</button>
           </div>
           <!-- v14: Unified Simplification Slider -->
@@ -601,7 +595,7 @@
               <option value="2">Layer 3</option>
             </select>
           </div>
-
+          <button id="editorSymbolKeyboardToggle" class="btn btn-secondary btn-xs" style="font-size:12px; min-width:84px;">Symbols</button>
           <div style="flex:1;"></div>
         </div>
         <div id="editorCanvasContainer"
@@ -610,6 +604,28 @@
           <!-- Hidden input for robust text capture (Emoji/IME/Mobile). Style is managed by JS for mobile support. -->
           <input type="text" id="editorHiddenInput"
             style="position:absolute; left:-10000px; top:0; width:1px; height:1px; opacity:0; border:none; padding:0; z-index:9999;">
+          <div id="editorSymbolKeyboard" class="hidden"
+            style="position:absolute; top:72px; right:12px; width:auto; min-width:260px; max-width:420px; max-height:420px; background:rgba(255,255,255,0.96); border:1px solid rgba(0,0,0,0.16); border-radius:12px; box-shadow:0 18px 30px rgba(0,0,0,0.18); padding:10px; overflow:auto; z-index:60;">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span style="font-size:12px; opacity:0.8;">Symbol font</span>
+                <select id="editorSymbolFamily" style="min-width:150px; max-width:220px; font-size:12px;">
+                  <option value="Symbol">Symbol</option>
+                  <option value="Webdings">Webdings</option>
+                  <option value="Wingdings">Wingdings</option>
+                  <option value="Segoe UI Symbol">Segoe UI Symbol</option>
+                  <option value="Segoe MDL2 Assets">Segoe MDL2 Assets</option>
+                  <option value="Segoe Fluent Icons">Segoe Fluent Icons</option>
+                  <option value="Segoe UI Emoji">Segoe UI Emoji</option>
+                </select>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:12px; opacity:0.7;">Click a glyph</span>
+                <button id="editorSymbolKeyboardClose" class="btn btn-secondary btn-xs" style="font-size:12px; padding:4px 8px;">Close</button>
+              </div>
+            </div>
+            <div id="editorSymbolKeyboardGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(30px,1fr)); gap:4px;"></div>
+          </div>
         </div>
       </div>
     </div>

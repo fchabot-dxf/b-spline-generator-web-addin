@@ -464,6 +464,7 @@ function bindControls() {
         inputs.forEach(input => {
             if (!input.isConnected) return;
             if (input.closest('.stepper-container')) return;
+            if (input.classList.contains('no-stepper')) return;
             if (input.closest('label')?.classList.contains('no-stepper')) return;
             const wrapper = document.createElement('div');
             wrapper.className = 'stepper-container';

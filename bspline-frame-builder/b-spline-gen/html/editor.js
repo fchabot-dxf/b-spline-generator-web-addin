@@ -4,10 +4,78 @@
  */
 
 import { initIO, save, saveWithTextCopies, open, sync3DBackground, getPointerPos } from './editor-io.js';
-import { initText, beginTextEdit, commitText, cancelText, setFontFamily, setFontSize } from './editor-text.js';
+import { initText, beginTextEdit, commitText, cancelText, setFontFamily, setFontSize, insertSymbol } from './editor-text.js';
 import { getDynamicTolerance, getNodes, fitCurve, getHybridBezierPath, expandCurrent, getNearbyElement } from './editor-geometry.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
 import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select } from './editor-ui.js';
+
+const SYMBOL_FONTS = [
+    'Symbol',
+    'Webdings',
+    'Wingdings',
+    'Segoe UI Symbol',
+    'Segoe MDL2 Assets',
+    'Segoe Fluent Icons',
+    'Segoe UI Emoji'
+];
+
+const SYMBOL_FONT_RANGES = {
+    'Symbol': { start: 32, end: 255 },
+    'Webdings': { start: 32, end: 255 },
+    'Wingdings': { start: 32, end: 255 },
+    'Segoe UI Symbol': { start: 32, end: 255 },
+    'Segoe MDL2 Assets': { start: 0xE700, end: 0xE7FF },
+    'Segoe Fluent Icons': { start: 0xF700, end: 0xF7FF },
+    'Segoe UI Emoji': { start: 0x1F300, end: 0x1F35F }
+};
+
+function populateSymbolKeyboard(editor, family = 'Symbol') {
+    const grid = document.getElementById('editorSymbolKeyboardGrid');
+    const panel = document.getElementById('editorSymbolKeyboard');
+    if (!grid || !panel) return;
+    grid.innerHTML = '';
+
+    const fontFamily = family || 'Symbol';
+    const range = SYMBOL_FONT_RANGES[fontFamily] || { start: 32, end: 255 };
+    const start = range.start;
+    const end = range.end;
+    const count = Math.max(0, end - start + 1);
+    const columns = Math.min(16, Math.max(8, Math.ceil(Math.sqrt(count))));
+    grid.style.gridTemplateColumns = `repeat(${columns}, minmax(30px, 1fr))`;
+
+    const rowCount = Math.ceil(count / columns);
+    const height = Math.min(420, Math.max(180, rowCount * 36 + 90));
+    panel.style.height = `${height}px`;
+    panel.style.width = `${Math.min(420, Math.max(260, columns * 36 + 24))}px`;
+
+    for (let code = start; code <= end; code++) {
+        const char = String.fromCodePoint(code);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'symbol-key';
+        btn.textContent = char;
+        btn.style.all = 'unset';
+        btn.style.display = 'inline-flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.width = '100%';
+        btn.style.height = '34px';
+        btn.style.border = '1px solid rgba(0,0,0,0.1)';
+        btn.style.borderRadius = '4px';
+        btn.style.background = 'var(--surface2)';
+        btn.style.color = 'var(--text)';
+        btn.style.fontFamily = `'${fontFamily}', sans-serif`;
+        btn.style.cursor = 'pointer';
+        btn.addEventListener('click', () => {
+            if (editor._editingTextEl) {
+                insertSymbol(editor, char, fontFamily);
+            } else {
+                alert('Open a text object and start editing before inserting symbols.');
+            }
+        });
+        grid.appendChild(btn);
+    }
+}
 
 export class VectorEditor {
     constructor() {
@@ -158,6 +226,27 @@ export class VectorEditor {
         };
         fsMinus?.addEventListener('click', () => stepFontSize(-0.2));
         fsPlus?.addEventListener('click',  () => stepFontSize(+0.2));
+
+        const symbolToggle = document.getElementById('editorSymbolKeyboardToggle');
+        const symbolPanel = document.getElementById('editorSymbolKeyboard');
+        const symbolClose = document.getElementById('editorSymbolKeyboardClose');
+        const symbolFamily = document.getElementById('editorSymbolFamily');
+
+        if (symbolToggle && symbolPanel && symbolFamily) {
+            symbolToggle.addEventListener('click', () => {
+                const isOpen = !symbolPanel.classList.toggle('hidden');
+                if (isOpen) {
+                    populateSymbolKeyboard(this, symbolFamily.value || 'Symbol');
+                    symbolFamily.focus();
+                }
+            });
+        }
+        symbolClose?.addEventListener('click', () => symbolPanel?.classList.add('hidden'));
+        symbolFamily?.addEventListener('change', () => {
+            if (symbolPanel && !symbolPanel.classList.contains('hidden')) {
+                populateSymbolKeyboard(this, symbolFamily.value || 'Symbol');
+            }
+        });
     }
 
     async expandAction() {

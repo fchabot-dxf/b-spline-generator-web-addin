@@ -131,7 +131,9 @@ export function select(editor, el) {
             // Sync the toolbar inputs so the displayed values match the selected element
             const ffEl = document.getElementById('editorFontFamily');
             const fsEl = document.getElementById('editorFontSize');
-            if (ffEl) ffEl.value = editor._fontFamily;
+            if (ffEl && Array.from(ffEl.options).some(o => o.value === editor._fontFamily)) {
+                ffEl.value = editor._fontFamily;
+            }
             if (fsEl) fsEl.value = editor._fontSize;
         } else {
             editor._strokeWidth = parseFloat(el.attr('stroke-width')) || editor._strokeWidth;
