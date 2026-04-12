@@ -5,6 +5,47 @@ Each function takes a BuildContext, the active sketch, the sketch name key,
 and the geometry spec dict from the template data.
 """
 import adsk.core, adsk.fusion
+import random
+
+
+def nudge_point_to_target(ctx, point, target, radius=0.01):
+    """
+    Displaces a sketch point by a random amount within a specified radius
+    around a target coordinate. This 'jitters' the solver out of local minima.
+    
+    If the point is a derived point (like an Arc Center), it proxies the nudge
+    to the parent arc's start point.
+    """
+    try:
+        # 1. Determine the 'Real' point to move (Fusion doesn't allow moving Arc Centers directly)
+        p_to_move = point
+        is_center = False
+        
+        # Check if this point is an Arc Center
+        try:
+            if hasattr(point, 'parentSketchArcs') and point.parentSketchArcs.count > 0:
+                p_to_move = point.parentSketchArcs.item(0).startSketchPoint
+                is_center = True
+        except:
+            pass
+
+        # 2. Generate random offset
+        dx = radius * (0.5 - random.random()) * 2
+        dy = radius * (0.5 - random.random()) * 2
+        
+        # 3. Apply the nudge
+        # If it's a center point, we move the proxy point toward the center's target
+        # (This still jitters the solver effectively for the center weld)
+        current_geo = p_to_move.geometry
+        new_p = adsk.core.Point3D.create(current_geo.x + dx, current_geo.y + dy, 0)
+        p_to_move.geometry = new_p
+        
+        msg = f"  > JITTER NUDGE: Moved {'Arc Start Point' if is_center else 'Point'} to ({new_p.x:.4f}, {new_p.y:.4f})"
+        ctx.logger.log(msg)
+    except Exception as e:
+        ctx.logger.log(f"  > JITTER NUDGE FAILED: {e}", "WARNING")
+
+
 
 
 def geom_step(ctx, sketch, s_name, geom):

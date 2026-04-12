@@ -101,7 +101,7 @@ class ParametricSketchBuilder:
         Supports global 'limit' for phased synthesis.
         """
         ctx = self.ctx
-        sketch_name = sketch_spec["Name"]
+        sketch_name = f"{self.prefix}_{sketch_spec['Name']}"
         sketch_prefix = sketch_spec.get("Prefix", self.prefix)
         
         # 1. CLEANUP: Delete any previous instance of this sketch name in the target component
@@ -116,7 +116,10 @@ class ParametricSketchBuilder:
         sketch = ctx.target.sketches.add(ctx.target.xZConstructionPlane)
         sketch.name = sketch_name
         ctx.sketches[sketch_name] = sketch
-        ctx.entity_map[sketch_name] = {"ORIGIN": sketch.originPoint}
+        # Use the raw name for the entity map key to support internal lookups
+        ctx.entity_map[sketch_spec['Name']] = {"ORIGIN": sketch.originPoint}
+        # Also store with prefixed name for projection logic compatibility
+        ctx.entity_map[sketch_name] = ctx.entity_map[sketch_spec['Name']]
 
         # Project the vertical axis into the sketch
         self._project_y_axis(sketch, sketch_name)
@@ -143,7 +146,10 @@ class ParametricSketchBuilder:
                 self.ctx.logger.log(f"  > PHASE CUTOFF at block {i} (global limit={limit})")
                 break
             b_name = block.get("Name", "Unnamed Block")
+            p_id = block.get("PhaseID", "p??")
+            self.ctx.logger.phase_id = p_id
             self.ctx.logger.log(f"  > START BLOCK: {b_name}")
+
             
             # 1. Projections (Live)
             sketch.isComputeDeferred = False

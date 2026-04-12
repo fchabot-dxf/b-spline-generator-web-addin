@@ -4,6 +4,7 @@ def get_block(ui_data=None):
     Completes the corner miters connecting the silhouette horn tips to the offset corners.
     """
     return {
+        "PhaseID": "p17_encl_miters",
         "Name": "Enclosure Miters",
         "Miters": [
             {'Source': 'proj_anchor_TL', 'Target': 'inner_corner_TL', 'IsConstruction': False},

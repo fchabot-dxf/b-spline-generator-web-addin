@@ -561,8 +561,9 @@
       let data = {
         type: type,
         ui_data: ui_data,
-        max_phase: _phaseCurrent
+        max_phase: (_phaseCurrent >= _phaseMax) ? null : _phaseCurrent
       };
+
 
       if (type === 'solid') {
         data.offset = document.getElementById('solid-offset').value;

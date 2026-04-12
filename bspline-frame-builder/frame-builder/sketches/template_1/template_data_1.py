@@ -30,7 +30,8 @@ def get_template_logic(ui_data=None):
             {"Name": "widthIn",           "Label": "Width (Model)", "Category": "Frame Spec", "Val": 14.0,  "Unit": "cm", "ReadOnly": True},
             {"Name": "heightIn",          "Label": "Height (Model)", "Category": "Frame Spec", "Val": 5.0,   "Unit": "cm", "ReadOnly": True},
             {"Name": "boundingboxoffset", "Label": "BBox Border",   "Category": "Frame Spec", "Val": 0.635, "Unit": "cm"},
-            {"Name": "frame_thickness",     "Label": "Wall Thickness", "Category": "Frame Spec", "Val": -0.75, "Unit": "in"},
+            {"Name": "frame_thickness",     "Label": "Wall Thickness", "Category": "Frame Spec", "Val": 1.9, "Unit": "cm"},
+
 
             # Anatomy Block — Multiplier Factors (stored as cm for Fusion compatibility)
             # widthIn and heightIn are the base drivers.

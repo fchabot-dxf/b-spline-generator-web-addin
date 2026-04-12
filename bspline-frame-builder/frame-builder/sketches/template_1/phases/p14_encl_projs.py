@@ -4,6 +4,7 @@ def get_block(ui_data=None):
     Grabs the silhouette loop and horn tips from Sketch 2 to use as the offset source.
     """
     return {
+        "PhaseID": "p14_encl_projs",
         "Name": "Enclosure Projections",
         "Projections": [
             # The Main Loop (Used for Offset)

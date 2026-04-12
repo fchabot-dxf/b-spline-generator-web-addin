@@ -155,6 +155,13 @@ def _create_dimension(ctx, sketch, s_name, dim, tgt, text_pt):
 def _apply_expression(ctx, sketch, d, dim_name, dim_target, expr, tgt, is_snap_only):
     """Drive the dimension with the given expression, optionally deleting after seed."""
     try:
+        # Assign semantic name if provided (crucial for DeleteDimension lookups)
+        if dim_name and dim_name != "?" and d.parameter.name != dim_name:
+            try:
+                d.parameter.name = dim_name
+            except Exception as e:
+                ctx.logger.log(f"DIM NAME FAIL: {dim_name} (already exists?): {e}", "DEBUG")
+
         d.parameter.expression = str(expr)
         ctx.logger.log(f"DIM OK: {dim_name} on '{dim_target}' = {expr}")
 

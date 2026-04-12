@@ -10,6 +10,7 @@ def get_block(ui_data=None):
     inner_ids = [f'inner_{eid}' for eid in outline_ids]
 
     return {
+        "PhaseID": "p16_encl_offset",
         "Name": "Enclosure Offset",
         "Steps": [
             {

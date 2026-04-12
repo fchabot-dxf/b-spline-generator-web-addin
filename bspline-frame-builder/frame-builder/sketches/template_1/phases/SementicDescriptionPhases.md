@@ -21,7 +21,7 @@ The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum 
 ---
 
 ## Sketch 2 — Silhouette: Shape Outline
-*Relationship: Projects corners from Sketch 1 to anchor the parametric skeleton.*
+*Relationship: Builds the frame silhouette using an internal skeleton scaffold centered on the origin.*
 
 ### Step 3 — Projections (`p3_projs.py`)
 - **Action**: Grabs the four safe-zone corners from Sketch 1.
@@ -29,26 +29,29 @@ The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum 
 - **Source**: `1_bounding-box:BB_corner_XX`.
 
 ### Step 4 — Anatomy (`p4_anatomy.py`)
-- **Action**: Builds the hub-and-spoke skeleton scaffold.
-- **Key IDs**: `ShoulderHub_R`, `WaistHub_R`, `HipHub_R`.
-- **Relation**: Hub start/end points (`:S`, `:E`) are anchored to the Step 3 projections.
+- **Action**: Constructs the invisible horizontal skeleton scaffold (Hubs).
+- **Key IDs**: `skel_shoulder_pin_R/L`, `skel_waist_pin_R/L`, `skel_hip_pin_R/L`.
+- **Relation**: Start points (`:S`) are anchored to the **`Y_AXIS`** (Center Line). 
+- **Vertical Control**: Anchored to **`ORIGIN`** or driven by **`WaistOffset`** vertical distance.
+- **Drivers**: Defines the internal widths via `ShoulderSpan`, `WaistSpan`, and `HipSpan`.
 
 ### Step 5 — Silhouette Loop (`p5_loop.py`)
-- **Action**: Places the 12 arcs and lines that form the frame's outer edge.
-- **Key IDs**: `arc_shoulder_R`, `arc_waist_R`, `horn_TR`.
-- **Geometry**: Creates the initial 'seed' shapes with temporary dimensions.
+- **Action**: Places the 12 circular arcs and straight horn segments.
+- **Key IDs**: `arc_shoulder_R/L`, `arc_waist_R/L`, `horn_TR/TL`.
+- **Relation**: Snaps the 4 corner "horn starts" (`horn_XX:S`) to the **Step 3 Projections** (`proj_off_corner_XX`).
+- **Topology**: Seeds all junctions with a 0.001 "snap offset" to ensure reliable solver registration.
 
 ### Step 6 — Chain (`p6_chain.py`)
-- **Action**: Establishes the topological "daisy-chain" sequence.
-- **Relation**: Applies `Coincident` constraints between adjacent arcs (e.g., `arc_shoulder_R :E` → `arc_waist_R :S`).
+- **Action**: Establishes topological continuity across the silhouette.
+- **Relation**: Connects adjacent arcs (e.g., `arc_waist_R:S` → `arc_shoulder_R:S`) into a unified clockwise chain.
 
 ### Step 7 — Horn Welds (`p7_horns.py`)
 - **Action**: Attaches the straight horn segments to the shoulder/hip arcs.
-- **Relation**: Welds `horn_TR :S` to `arc_shoulder_R :E`.
+- **Relation**: Welds `horn_TR:E` (tip) to `arc_shoulder_R:E`.
 
 ### Step 8 — Waist Pins (`p8_waist_pins.py`)
 - **Action**: Centers the waist arcs against the skeleton for symmetry.
-- **Relation**: `Coincident` constraint from `arc_waist_R :C` (center) to `WaistHub_R :E`.
+- **Relation**: `Coincident` constraint from `arc_waist_R :C` (center) to the Step 4 skeleton hub `skel_waist_pin_R :E`.
 
 ### Step 9 — Tangency (`p9_tangency.py`)
 - **Action**: Smoothes the junctions between all circular arcs.
@@ -60,11 +63,11 @@ The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum 
 
 ### Step 11 — Radius Removal (`p11_radius_removal.py`)
 - **Action**: Deletes the Phase 5 seed dimensions to prepare for parameter injection.
-- **Logic**: Essential for preventing over-constraint when the actual sliders are applied.
+- **Logic**: Releases the "training wheels" so the solver can settle into the final parametric state.
 
 ### Step 12 — Skeleton Welds (`p12_welds.py`)
-- **Action**: Anchors all remaining arc centers to the skeleton endpoints.
-- **Relation**: Consumes hubs created in Step 4.
+- **Action**: Finalizes the topology by welding remaining arc centers to the skeleton endpoints.
+- **Relation**: Consumes shoulder/hip anatomy pins from Step 4.
 
 ### Step 13 — Parametric Drivers (`p13_drivers.py`)
 - **Action**: Injects the final UI slider values.

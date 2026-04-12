@@ -5,6 +5,7 @@ def get_block(ui_data=None):
     """
     return {
         "Name": "BB Layout",
+        "PhaseID": "p01_bb_layout",
         "Geometry": [
             {
                 "ID": "BB_RECT",

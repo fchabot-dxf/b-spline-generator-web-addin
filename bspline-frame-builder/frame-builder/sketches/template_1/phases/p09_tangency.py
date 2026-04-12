@@ -15,4 +15,8 @@ def get_block(ui_data=None):
         {'Type': 'Tangent', 'Targets': ['arc_waist_L',    'arc_shoulder_L']},
     ]
 
-    return {"Name": "ArcTangency", "BuildSequence": seq}
+    return {
+        "Name": "ArcTangency",
+        "PhaseID": "p09_tangency",
+        "BuildSequence": seq
+    }

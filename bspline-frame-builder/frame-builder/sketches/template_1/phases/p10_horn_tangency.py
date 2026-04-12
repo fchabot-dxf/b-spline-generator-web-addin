@@ -16,6 +16,7 @@ def get_block(ui_data=None):
     ]
 
     return {
+        "PhaseID": "p10_horn_tangency",
         "Name": "Horn Tangency",
         "BuildSequence": seq
     }

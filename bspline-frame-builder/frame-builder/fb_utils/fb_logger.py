@@ -9,6 +9,7 @@ class DebugLogger:
         self.category = self._normalize_category(category)
         self.enabled = os.getenv('FB_DEBUG_LOG', '1').strip().lower() in ('1', 'true', 'yes', 'on')
         self.log_paths = []
+        self.phase_id = None  # NEW: Tracks current construction phase (e.g., p4_anatomy)
 
         if not self.enabled:
             return
@@ -35,14 +36,20 @@ class DebugLogger:
                             src_log = os.path.join(full_source_dir, self._log_name())
                             if src_log not in self.log_paths:
                                 self.log_paths.append(src_log)
-                                self.log(f"HANDSHAKE SUCCESS: Dual Logging active at {src_log}")
                                 break # Found it
         except:
             pass
 
+        # Perform initial cap to clean up old bloat
+        for path in self.log_paths:
+            self._cap_log_file(path)
+            
+        self.log(f"LOGGER INITIALIZED. ACTIVE PATHS: {len(self.log_paths)}")
+
     def log(self, message, level="INFO"):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"[{timestamp}] [{level}] {message}\n"
+        phase_prefix = f" [{self.phase_id}]" if self.phase_id else ""
+        entry = f"[{timestamp}] [{level}]{phase_prefix} {message}\n"
         
         for path in self.log_paths:
             try:
@@ -52,13 +59,14 @@ class DebugLogger:
                     f.flush()
                     try:
                         os.fsync(f.fileno())
-                    except: pass # some filesystems don't support fsync
-                self._cap_log_file(path)
+                    except: pass
             except:
-                pass # Fail silently on one stream to preserve the other
+                pass
 
-    def _cap_log_file(self, path, max_lines=1000):
+    def _cap_log_file(self, path, max_lines=5000):
         try:
+            if not os.path.exists(path):
+                return
             with open(path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             if len(lines) > max_lines:
@@ -68,13 +76,17 @@ class DebugLogger:
             pass
 
     def log_error(self, message):
-        # We don't call traceback here because typically the caller passes it
         self.log(f"ERROR: {message}", "ERROR")
 
     def session_start(self, title):
+        # Cap logs on session start to keep files lean without constant I/O overhead
+        for path in self.log_paths:
+            self._cap_log_file(path)
+
         self.log("\n" + "="*50)
         self.log(f"STARTING SESSION: {title}")
         self.log("="*50 + "\n")
+
 
     def _normalize_category(self, category):
         if not category:

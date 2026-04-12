@@ -7,11 +7,11 @@ def get_block(ui_data=None):
     """
     seq = [
         # ARC-TO-SKELETON WELDS: shoulder and hip arc centers → anatomy hub endpoints
-        {'Type': 'Coincident', 'Targets': ['arc_shoulder_R:C', 'skel_shoulder_pin_R:E']},
-        {'Type': 'Coincident', 'Targets': ['arc_shoulder_L:C', 'skel_shoulder_pin_L:E']},
-        {'Type': 'Coincident', 'Targets': ['arc_hip_R:C',      'skel_hip_pin_R:E']},
-        {'Type': 'Coincident', 'Targets': ['arc_hip_L:C',      'skel_hip_pin_L:E']},
+        {'Type': 'Coincident', 'Targets': ['arc_shoulder_R:C', 'skel_shoulder_pin_R:E'], 'Name': 'shoulder_center_pin_R', 'AllowNudge': True},
+        {'Type': 'Coincident', 'Targets': ['arc_shoulder_L:C', 'skel_shoulder_pin_L:E'], 'Name': 'shoulder_center_pin_L', 'AllowNudge': True},
+        {'Type': 'Coincident', 'Targets': ['arc_hip_R:C',      'skel_hip_pin_R:E'],      'Name': 'hip_center_pin_R', 'AllowNudge': True},
+        {'Type': 'Coincident', 'Targets': ['arc_hip_L:C',      'skel_hip_pin_L:E'],      'Name': 'hip_center_pin_L', 'AllowNudge': True},
 
     ]
 
-    return {"Name": "Welds", "BuildSequence": seq}
+    return {"Name": "Welds", "PhaseID": "p12_welds", "BuildSequence": seq}

@@ -23,11 +23,32 @@ def constraint_step(ctx, sketch, s_name, rel):
 
     gc = sketch.geometricConstraints
     ctype = rel["Type"]
+    allow_nudge = rel.get("AllowNudge", False)
 
     try:
         if ctype == "Coincident" and len(targets) == 2:
-            gc.addCoincident(targets[0], targets[1])
+            try:
+                gc.addCoincident(targets[0], targets[1])
+            except Exception as e:
+                if allow_nudge:
+                    ctx.logger.log(f"Weld candidate failed ({rel['Targets']}). Attempting Jitter-Retry...", "WARNING")
+                    # Force a geometric nudge to 'shake' the solver
+                    # We assume targets[0] is the point we want to move toward targets[1]
+                    from fb_engine import geometry
+                    p_to_move = targets[0] if hasattr(targets[0], 'geometry') else targets[1]
+                    target_ent = targets[1] if p_to_move == targets[0] else targets[0]
+                    
+                    if hasattr(p_to_move, 'geometry') and hasattr(target_ent, 'geometry'):
+                        geometry.nudge_point_to_target(ctx, p_to_move, target_ent.geometry, radius=0.01)
+                        # Second attempt
+                        gc.addCoincident(targets[0], targets[1])
+                        ctx.logger.log(f"CONSTRAINT RECOVERED via Jitter: {ctype} on {rel['Targets']}")
+                    else:
+                        raise e
+                else:
+                    raise e
         elif ctype == "Collinear" and len(targets) == 2:
+
             gc.addCollinear(targets[0], targets[1])
         elif ctype == "Horizontal" and len(targets) >= 1:
             for t in targets:

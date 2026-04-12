@@ -1,6 +1,6 @@
 def get_block(ui_data=None):
     """
-    Phase 2: Anatomy Foundation.
+    Step 4: Anatomy Foundation.
     Procedural Pinning and Origin Locking.
     """
     # 1. Seed Y positions — heightIn fractions place each zone in the correct quadrant
@@ -33,37 +33,38 @@ def get_block(ui_data=None):
         # SHOULDER FOUNDATION
         {'ID': 'skel_shoulder_pin_R', 'Type': 'Line', 'IsConstruction': True, 'Points': [[0.001, shldr_y], ['ShoulderSpan/2', shldr_y]], 'StartID': 'skel_shoulder_pin_R:S', 'EndID': 'skel_shoulder_pin_R:E'},
         {'ID': 'skel_shoulder_pin_L', 'Type': 'Line', 'IsConstruction': True, 'Points': [[-0.001, shldr_y], ['-ShoulderSpan/2', shldr_y]], 'StartID': 'skel_shoulder_pin_L:S', 'EndID': 'skel_shoulder_pin_L:E'},
-        {'Type': 'Horizontal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L']},
-        {'Type': 'Equal',      'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L']},
-        {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'Y_AXIS']},
-        {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S']},
+        {'Type': 'Horizontal', 'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L'], 'Name': 'shoulder_horiz'},
+        {'Type': 'Equal',      'Targets': ['skel_shoulder_pin_R', 'skel_shoulder_pin_L'], 'Name': 'shoulder_equal'},
+        {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'Y_AXIS'],             'Name': 'shoulder_y_lock'},
+        {'Type': 'Coincident', 'Targets': ['skel_shoulder_pin_R:S', 'skel_shoulder_pin_L:S'], 'Name': 'shoulder_merge'},
 
         # WAIST FOUNDATION
         {'ID': 'skel_waist_pin_R',    'Type': 'Line', 'IsConstruction': True, 'Points': [[0.001, waist_y], ['WaistSpan/2', waist_y]], 'StartID': 'skel_waist_pin_R:S', 'EndID': 'skel_waist_pin_R:E'},
         {'ID': 'skel_waist_pin_L',    'Type': 'Line', 'IsConstruction': True, 'Points': [[-0.001, waist_y], ['-WaistSpan/2', waist_y]], 'StartID': 'skel_waist_pin_L:S', 'EndID': 'skel_waist_pin_L:E'},
-        {'Type': 'Horizontal', 'Targets': ['skel_waist_pin_R', 'skel_waist_pin_L']},
-        {'Type': 'Equal',      'Targets': ['skel_waist_pin_R', 'skel_waist_pin_L']},
-        {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'Y_AXIS']},
-        {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'skel_waist_pin_L:S']},
+        {'Type': 'Horizontal', 'Targets': ['skel_waist_pin_R', 'skel_waist_pin_L'], 'Name': 'waist_horiz'},
+        {'Type': 'Equal',      'Targets': ['skel_waist_pin_R', 'skel_waist_pin_L'], 'Name': 'waist_equal'},
+        {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'Y_AXIS'],             'Name': 'waist_y_lock'},
+        {'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'skel_waist_pin_L:S'], 'Name': 'waist_merge'},
 
         # HIP FOUNDATION
         {'ID': 'skel_hip_pin_R',      'Type': 'Line', 'IsConstruction': True, 'Points': [[0.001, hip_y], ['HipSpan/2', hip_y]], 'StartID': 'skel_hip_pin_R:S', 'EndID': 'skel_hip_pin_R:E'},
         {'ID': 'skel_hip_pin_L',      'Type': 'Line', 'IsConstruction': True, 'Points': [[-0.001, hip_y], ['-HipSpan/2', hip_y]], 'StartID': 'skel_hip_pin_L:S', 'EndID': 'skel_hip_pin_L:E'},
-        {'Type': 'Horizontal', 'Targets': ['skel_hip_pin_R', 'skel_hip_pin_L']},
-        {'Type': 'Equal',      'Targets': ['skel_hip_pin_R', 'skel_hip_pin_L']},
-        {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'Y_AXIS']},
-        {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'skel_hip_pin_L:S']},
+        {'Type': 'Horizontal', 'Targets': ['skel_hip_pin_R', 'skel_hip_pin_L'], 'Name': 'hip_horiz'},
+        {'Type': 'Equal',      'Targets': ['skel_hip_pin_R', 'skel_hip_pin_L'], 'Name': 'hip_equal'},
+        {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'Y_AXIS'],             'Name': 'hip_y_lock'},
+        {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'skel_hip_pin_L:S'], 'Name': 'hip_merge'},
     ]
 
     # VERTICAL LOCK: Gated Coincident vs Dimension
     # We use a Coincident constraint for the zero-state to prevent solver crashes
     # and only switch to a VerticalDistance when an actual offset is requested.
     if is_pinned:
-        seq.append({'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'ORIGIN']})
+        seq.append({'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'ORIGIN'], 'Name': 'waist_origin_lock', 'AllowNudge': True})
     else:
         seq.append({'Type': 'VerticalDistance', 'Targets': ['skel_waist_pin_R:S', 'ORIGIN'], 'Expression': 'WaistOffset', 'Name': 'dim_waist_offset'})
 
     return {
+        "PhaseID": "p04_anatomy",
         "Name": "Anatomy",
         "BuildSequence": seq
     }

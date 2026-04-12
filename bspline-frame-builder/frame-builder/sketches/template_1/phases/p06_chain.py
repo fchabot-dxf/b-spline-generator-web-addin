@@ -14,4 +14,4 @@ def get_block(ui_data=None):
         {'Type': 'Coincident', 'Targets': ['arc_waist_L:E', 'arc_shoulder_L:E']},
     ]
 
-    return {"Name": "ArcChain", "BuildSequence": seq}
+    return {"Name": "ArcChain", "PhaseID": "p06_chain", "BuildSequence": seq}

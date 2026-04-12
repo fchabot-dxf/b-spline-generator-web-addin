@@ -4,6 +4,7 @@ def get_block(ui_data=None):
     Grabs the reference corners from the layout sketch.
     """
     return {
+        "PhaseID": "p03_projs",
         "Name": "Projections",
         "Projections": [
             {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_TL', 'TargetID': 'proj_off_corner_TL'},

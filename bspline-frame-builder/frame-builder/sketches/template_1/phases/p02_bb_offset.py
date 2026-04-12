@@ -5,6 +5,7 @@ def get_block(ui_data=None):
     Tags the four corners as reference anchors for Sketch 2.
     """
     return {
+        "PhaseID": "p02_bb_offset",
         "Name": "Safe Zone Offset",
         "Steps": [
             {

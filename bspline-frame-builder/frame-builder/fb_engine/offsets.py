@@ -44,8 +44,14 @@ def offset_step(ctx, sketch, s_name, off):
         if offset_result and offset_result.count > 0:
             ctx.logger.log(f"OFFSET SUCCESS: Generated {offset_result.count} curves")
             _tag_offset_results(ctx, s_name, off, offset_result)
+            
+            # --- Global Naming Sweep (Safety Net) ---
+            # Even if addOffset2 failed or returned a generic name, we sweep and fix it.
+            # We pass d_expr to ensure we name it exactly what the template requested.
+            _ensure_parameter_naming(ctx, sketch, d_expr)
         else:
             ctx.logger.log(f"OFFSET EMPTY: No curves returned for {s_name}", "WARNING")
+
 
     except Exception:
         ctx.logger.log_error(f"OFFSET CRASH in {s_name}")
@@ -119,19 +125,23 @@ def _try_parametric_offset(ctx, sketch, coll, d_expr, s_name):
         offset_constraint = sketch.geometricConstraints.addOffset2(offset_input)
 
         if offset_constraint and offset_constraint.isValid:
-            # addOffset2 returns a constraint, not curves directly.
-            # The offset curves are children of the constraint.
-            # Collect offset entities from the sketch (newly added curves).
+            # --- RENAMING LOGIC ---
+            # addOffset2 creates an OffsetConstraint which OWNS the dimension.
+            # We must reach into the dimension's parameter and force the name.
+            try:
+                dim = offset_constraint.dimension
+                if dim and dim.parameter:
+                    old_name = dim.parameter.name
+                    dim.parameter.name = "frame_thickness"
+                    ctx.logger.log(f"OFFSET RENAME SUCCESS: {old_name} -> frame_thickness")
+            except Exception as name_e:
+                ctx.logger.log(f"OFFSET RENAME FAIL: Could not rename parameter: {name_e}", "WARNING")
+
             ctx.logger.log(f"OFFSET PARAMETRIC OK: addOffset2 succeeded for {s_name}")
-            # Return the offset constraint's curves if accessible
             if hasattr(offset_constraint, 'offsetCurves'):
                 return offset_constraint.offsetCurves
-            # Fallback: we can't easily get the curves from the constraint,
-            # but the constraint itself succeeded — the geometry is in the sketch.
-            ctx.logger.log(
-                f"OFFSET NOTE: Constraint created but curve extraction not available. "
-                f"Sketch entities were created.", "DEBUG")
             return None
+
     except Exception as e:
         ctx.logger.log(
             f"OFFSET PARAMETRIC FAIL: addOffset2 not available or failed for {s_name}: {e}",
@@ -158,6 +168,10 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
     try:
         result = sketch.offset(coll, dir_pt, abs(d_val))
         if result and result.count > 0:
+            # --- FORCED NAMING FIX ---
+            # Standard offsets create generic 'dX' dimensions. We force-rename them 
+            # to our parameter name (d_expr) if it's a string identifier.
+            _force_rename_offset_dim(sketch, d_expr)
             return result
     except Exception as e:
         ctx.logger.log(f"OFFSET ATTEMPT 1 FAIL: {e}", "WARNING")
@@ -167,9 +181,11 @@ def _try_sketch_offset(ctx, sketch, coll, d_expr, s_name):
         ctx.logger.log(f"OFFSET RETRY: flipping distance sign for {s_name}", "WARNING")
         result = sketch.offset(coll, dir_pt, -d_val)
         if result and result.count > 0:
+            _force_rename_offset_dim(sketch, d_expr)
             return result
     except Exception as e:
         ctx.logger.log(f"OFFSET ATTEMPT 2 FAIL: {e}", "WARNING")
+
 
     # Attempt 3: use origin as direction point (most reliable for centered shapes)
     try:
@@ -359,3 +375,61 @@ def _audit_loop_integrity(ctx, coll, s_name):
                     f"in {s_name}!", "WARNING")
         except:
             pass
+
+
+def _force_rename_offset_dim(sketch, p_name):
+    """
+    Aggressively scans for the most recent dimension in the sketch and renames 
+    its parameter to p_name. This ensures 'frame_thickness' appears correctly 
+    in the Fusion UI even when the parametric solver fallback is used.
+    """
+    if not isinstance(p_name, str) or p_name.replace('.','',1).isdigit():
+        return
+        
+    try:
+        dims = sketch.sketchDimensions
+        if dims.count > 0:
+            # We target the actual latest dimension created by the offset call
+            dim = dims.item(dims.count - 1)
+            if hasattr(dim, 'parameter'):
+                curr_name = dim.parameter.name
+                if curr_name != p_name:
+                    try:
+                        dim.parameter.name = p_name
+                        # No logger here to keep it lean, but it should work
+                    except:
+                        # If name taken, we might append a suffix, but usually p_name is unique
+                        pass
+    except:
+        pass
+
+
+def _ensure_parameter_naming(ctx, sketch, target_name):
+    """
+    Sweeps through all dimensions in the sketch looking for anything 
+    named d### (Fusion generic) and renames it to the intended target_name.
+    """
+    # If the target name is an expression or doesn't look like a simple ID, skip naming.
+    # We only want to rename if we have a clean target parameter string.
+    if not isinstance(target_name, str) or any(c in target_name for c in "+-*/() "):
+        return
+
+    try:
+        for dim in sketch.sketchDimensions:
+            param = getattr(dim, "parameter", None)
+            if not param:
+                continue
+                
+            old_name = param.name
+            # Strict check: 'd' followed only by digits
+            if old_name.startswith("d") and old_name[1:].isdigit():
+                try:
+                    param.name = target_name
+                    ctx.logger.log(f"SWEEP RENAME SUCCESS: {old_name} -> {target_name}")
+                    # We usually only have one offset per block, so we can stop or continue.
+                    # We'll continue in case of complex offsets.
+                except Exception as e:
+                    ctx.logger.log(f"SWEEP RENAME FAIL on {old_name}: {e}", "DEBUG")
+    except:
+        pass
+
