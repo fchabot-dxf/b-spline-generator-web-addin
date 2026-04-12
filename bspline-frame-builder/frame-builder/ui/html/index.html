@@ -45,15 +45,28 @@
       align-items: center;
     }
 
+    .face-status.waiting {
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
     .face-status.selected {
       background: rgba(0, 160, 100, 0.16);
       color: var(--good);
       font-weight: 600;
     }
 
-    #btn-select-face.selecting,
+    #btn-select-face.selecting {
+      border-color: var(--good);
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text-dim);
+    }
+
     #btn-select-face.selected {
       border-color: var(--good);
+      background: rgba(0, 160, 100, 0.16);
+      color: var(--good);
     }
 
     .tab-content {
@@ -416,10 +429,11 @@
       const label = document.getElementById('label-face-selection');
       const btn = document.getElementById('btn-select-face');
       btn.classList.remove('selecting', 'selected');
-      label.classList.remove('selected');
+      label.classList.remove('waiting', 'selected');
 
       if (state === 'waiting') {
         label.innerText = 'Waiting for selection in Fusion...';
+        label.classList.add('waiting');
         btn.classList.add('selecting');
         btn.innerText = 'SELECTING...';
       } else if (state === 'selected') {

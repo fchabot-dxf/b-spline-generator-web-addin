@@ -258,7 +258,11 @@ async function initApp() {
     // REWIRE 3: Lock engine during session load
     isInitializing = true;
     loadLastSession();
-    // 6. Batch Sync UI
+    // 6. Randomize just the startup seed so fresh opens look different.
+    if (!isNaN(P.seed)) {
+        P.seed = Math.floor(Math.random() * 99999);
+    }
+    // 7. Batch Sync UI
     Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
     updateSpacingLabels(P.widthIn, P.heightIn);
     
