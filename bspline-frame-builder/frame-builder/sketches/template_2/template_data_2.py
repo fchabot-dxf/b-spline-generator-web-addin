@@ -26,7 +26,6 @@ def get_template_logic():
             {"Name": "heightIn",          "Val": 9.0,   "Unit": "in"},
             {"Name": "boundingboxoffset", "Val": "0.25 in",  "Unit": "in"},
             {"Name": "frame_thickness",     "Val": "-0.75 in", "Unit": "in"},
-            {"Name": "frame_depth",         "Val": "1.0 in",   "Unit": "in", "Category": "Solid Spec"},
             
             # Sub-parameters (Standardized DNA)
             {"Name": "ShoulderSpan",      "Val": "widthIn * 0.8",  "Unit": "in"},
