@@ -31,6 +31,7 @@ _pending_build_request = None
 _pending_schema_style  = None
 
 handlers = []
+_doc_activated_handler = None  # Holds DocumentActivated subscription to prevent GC
 
 
 def _create_hidden_build_command(cmd_defs, cmd_id, name):
@@ -225,6 +226,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             elif action == 'change_template':
                 self.style_id = data.get('template', "Template 1")
+                # Keep the doc-activated handler's style reference in sync
+                if hasattr(self, '_style_id_ref'):
+                    self._style_id_ref[0] = self.style_id
                 if self.diag_logger: self.diag_logger.log(f"STYLE SYNC: {self.style_id} — scheduling deferred schema push")
                 # Defer the sendInfoToHTML call to a fresh Fusion event so we are
                 # not calling back into the webview from inside this HTML event handler.
@@ -562,6 +566,31 @@ def _notify_status(msg):
             pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
     except:
         pass
+class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
+    """Re-pushes the palette schema whenever the user switches active documents.
+    This keeps the palette sliders in sync with the parameters of the current file."""
+    def __init__(self, style_id_ref, diag_logger=None):
+        super().__init__()
+        self._style_id_ref = style_id_ref  # mutable list so we always get the current style
+        self.diag_logger = diag_logger
+
+    def notify(self, args):
+        try:
+            # Only refresh if the palette is actually open
+            app = adsk.core.Application.get()
+            if not app:
+                return
+            pal = app.userInterface.palettes.itemById(PALETTE_ID)
+            if pal and pal.isVisible:
+                style = self._style_id_ref[0] if self._style_id_ref else "Template 1"
+                if self.diag_logger:
+                    self.diag_logger.log(f"DOC ACTIVATED: refreshing palette for style '{style}'")
+                _schedule_schema_push(style)
+        except Exception:
+            if self.diag_logger:
+                self.diag_logger.log_error(f"DocumentActivatedHandler CRASH:\n{traceback.format_exc()}")
+
+
 def run_palette(engine_instance, diag_logger=None):
     """
     Central runner to launch the palette and maintain the bridge reference.
@@ -589,12 +618,32 @@ def run_palette(engine_instance, diag_logger=None):
         # 3. RE-ATTACH BRIDGE: Ensure global handler reference
         _active_handler = PaletteHTMLEventHandler(diag_logger=diag_logger)
         pal.incomingFromHTML.add(_active_handler)
-        
+
         # NUCLEAR ANCHOR: Tie the handler to the palette itself to prevent garbage collection
         # Fusion 360 sometimes drops the reference if it's only in a global list.
         pal.handler_anchor = _active_handler
-        
-        handlers.append(_active_handler) # Secondary survival list
+
+        handlers.append(_active_handler)  # Secondary survival list
+
+        # 3b. DOCUMENT SWITCH REFRESH: subscribe to documentActivated so the palette
+        # re-reads parameter values whenever the user switches between open files.
+        global _doc_activated_handler
+        # Unsubscribe any previous instance first
+        try:
+            if _doc_activated_handler:
+                app.documentActivated.remove(_doc_activated_handler)
+        except Exception:
+            pass
+        # _active_handler.style_id is a plain string; wrap in a list so the doc handler
+        # always sees the current value without needing a direct reference to _active_handler.
+        _style_id_ref = [_active_handler.style_id]
+        # Patch set_style so the ref list stays in sync when template changes
+        _orig_style = _active_handler.__class__.notify
+        _active_handler._style_id_ref = _style_id_ref  # expose ref on the handler
+
+        _doc_activated_handler = DocumentActivatedHandler(_style_id_ref, diag_logger=diag_logger)
+        app.documentActivated.add(_doc_activated_handler)
+        handlers.append(_doc_activated_handler)
 
         if diag_logger:
             diag_logger.log(f"LAUNCHED PALETTE: {PALETTE_NAME} (Bridge Attached)")

@@ -16,13 +16,6 @@ def get_block(ui_data=None):
         {'Type': 'Coincident', 'Targets': ['arc_waist_R:C', 'skel_waist_pin_R:E']},
         {'Type': 'Coincident', 'Targets': ['arc_waist_L:C', 'skel_waist_pin_L:E']},
 
-        # TIP WELDS: horn :E endpoints → arc endpoints at the horn-tip level
-        # TR/BL horns connect to arc :S (those arcs start at the horn tip)
-        # BR/TL horns connect to arc :E (those arcs end at the horn tip)
-        {'Type': 'Coincident', 'Targets': ['horn_TR:E', 'arc_shoulder_R:S']},
-        {'Type': 'Coincident', 'Targets': ['horn_BR:E', 'arc_hip_R:E']},
-        {'Type': 'Coincident', 'Targets': ['horn_TL:E', 'arc_shoulder_L:E']},
-        {'Type': 'Coincident', 'Targets': ['horn_BL:E', 'arc_hip_L:S']},
     ]
 
     return {"Name": "Welds", "BuildSequence": seq}

@@ -18,10 +18,10 @@ def get_block(ui_data=None):
         # All horns: :S seeded near projected corner (snapped below via Coincident),
         #            :E seeded as a fraction of heightIn toward the center axis.
         # horn_TR and horn_BL were already correct; horn_BR and horn_TL are swapped vs old code.
-        {'ID': 'horn_TR', 'Type': 'Line', 'Points': [[outer_x,          f'({top_y}) - 0.001'],  [outer_x,          'heightIn * 0.25']],  'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
-        {'ID': 'horn_BR', 'Type': 'Line', 'Points': [[outer_x,          f'({bot_y}) + 0.001'],  [outer_x,          '-heightIn * 0.25']], 'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
-        {'ID': 'horn_TL', 'Type': 'Line', 'Points': [[f'-({outer_x})',  f'({top_y}) - 0.001'],  [f'-({outer_x})',  'heightIn * 0.25']],  'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
-        {'ID': 'horn_BL', 'Type': 'Line', 'Points': [[f'-({outer_x})',  f'({bot_y}) + 0.001'],  [f'-({outer_x})',  '-heightIn * 0.25']], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
+        {'ID': 'horn_TR', 'Type': 'Line', 'Points': [[outer_x,          f'({top_y}) - 0.001'],  [outer_x,          'heightIn * 0.183']],  'StartID': 'horn_TR:S', 'EndID': 'horn_TR:E'},
+        {'ID': 'horn_BR', 'Type': 'Line', 'Points': [[outer_x,          f'({bot_y}) + 0.001'],  [outer_x,          '-heightIn * 0.183']], 'StartID': 'horn_BR:S', 'EndID': 'horn_BR:E'},
+        {'ID': 'horn_TL', 'Type': 'Line', 'Points': [[f'-({outer_x})',  f'({top_y}) - 0.001'],  [f'-({outer_x})',  'heightIn * 0.183']],  'StartID': 'horn_TL:S', 'EndID': 'horn_TL:E'},
+        {'ID': 'horn_BL', 'Type': 'Line', 'Points': [[f'-({outer_x})',  f'({bot_y}) + 0.001'],  [f'-({outer_x})',  '-heightIn * 0.183']], 'StartID': 'horn_BL:S', 'EndID': 'horn_BL:E'},
         {'Type': 'Vertical',   'Targets': ['horn_TR', 'horn_BR', 'horn_TL', 'horn_BL']},
         # Explicit corner lock: snap each horn start to its projected offset corner
         {'Type': 'Coincident', 'Targets': ['horn_TR:S', 'proj_off_corner_TR']},
@@ -38,53 +38,56 @@ def get_block(ui_data=None):
         # RIGHT side — flows top to bottom
         # arc_shoulder_R: horn tip (upper) → shoulder junction (lower)
         {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point',
-         'Points': [['heightIn * 0.39',  'heightIn * 0.23'],   # :S near horn_TR:E
-                    ['heightIn * 0.35',  'heightIn * 0.17'],   # mid, bows outward/up
-                    ['heightIn * 0.30',  'heightIn * 0.13']],  # :E shoulder junction
+         'Points': [['heightIn * 0.274', 'heightIn * 0.093'],  # :S shoulder junction
+                    ['heightIn * 0.338', 'heightIn * 0.119'],  # mid, bows outward/up
+                    ['heightIn * 0.364', 'heightIn * 0.183']], # :E near horn_TR:E
          'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_shoulder_R', 'Expression': 'heightIn/9', 'Name': 'dim_seed_rad_shoulder_R'},
+        {'Type': 'Radius', 'Target': 'arc_shoulder_R', 'Expression': 'heightIn/11', 'Name': 'dim_seed_rad_shoulder_R'},
+
 
         # arc_waist_R: shoulder junction (upper) → hip junction (lower), bows INWARD
-        # mid X < endpoint X (0.27–0.28) so arc concaves outward; center lands closer to X=0
+        # Derived from arc_waist_L live data: S/E share X=0.266, center at (0.266, 0)
+        # Inward mid = center shifted toward X=0 by radius → 0.266 - 0.091 = 0.175
         {'ID': 'arc_waist_R', 'Type': 'Arc3Point',
-         'Points': [['heightIn * 0.27',  'heightIn * 0.10'],   # :S shoulder junction
-                    ['heightIn * 0.15',  '0'],                  # mid, INWARD bow
-                    ['heightIn * 0.28',  '-heightIn * 0.13']], # :E hip junction
+         'Points': [['heightIn * 0.266', 'heightIn * 0.092'],  # :S shoulder junction
+                    ['heightIn * 0.175', '0'],                  # mid, INWARD bow
+                    ['heightIn * 0.266', '-heightIn * 0.090']], # :E hip junction
          'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_waist_R',    'Expression': 'heightIn/9', 'Name': 'dim_seed_rad_waist_R'},
+        {'Type': 'Radius', 'Target': 'arc_waist_R',    'Expression': 'heightIn/11', 'Name': 'dim_seed_rad_waist_R'},
 
-        # arc_hip_R: hip junction (upper) → horn tip (lower)
+        # arc_hip_R: hip junction → horn tip (lower), mirror of shoulder_R with Y negated
         {'ID': 'arc_hip_R', 'Type': 'Arc3Point',
-         'Points': [['heightIn * 0.32',  '-heightIn * 0.15'],  # :S hip junction
-                    ['heightIn * 0.38',  '-heightIn * 0.21'],  # mid
-                    ['heightIn * 0.40',  '-heightIn * 0.30']], # :E near horn_BR:E
+         'Points': [['heightIn * 0.274', '-heightIn * 0.093'],  # :S hip junction
+                    ['heightIn * 0.338', '-heightIn * 0.119'],  # mid, bows outward/down
+                    ['heightIn * 0.364', '-heightIn * 0.183']], # :E near horn_BR:E
          'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E'},
-        {'Type': 'Radius', 'Target': 'arc_hip_R',      'Expression': 'heightIn/9', 'Name': 'dim_seed_rad_hip_R'},
+        {'Type': 'Radius', 'Target': 'arc_hip_R',      'Expression': 'heightIn/11', 'Name': 'dim_seed_rad_hip_R'},
 
         # LEFT side — flows bottom to top (mirror: negate X)
-        # arc_hip_L: horn tip (lower) → hip junction (upper)
+        # arc_hip_L: horn tip (lower) → hip junction, mirror of hip_R
         {'ID': 'arc_hip_L', 'Type': 'Arc3Point',
-         'Points': [['-heightIn * 0.40', '-heightIn * 0.30'],  # :S near horn_BL:E
-                    ['-heightIn * 0.38', '-heightIn * 0.21'],  # mid
-                    ['-heightIn * 0.32', '-heightIn * 0.15']], # :E hip junction
+         'Points': [['-heightIn * 0.364', '-heightIn * 0.183'],  # :S near horn_BL:E
+                    ['-heightIn * 0.338', '-heightIn * 0.119'],  # mid
+                    ['-heightIn * 0.274', '-heightIn * 0.093']], # :E hip junction
          'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_hip_L',      'Expression': 'heightIn/9', 'Name': 'dim_seed_rad_hip_L'},
+        {'Type': 'Radius', 'Target': 'arc_hip_L',      'Expression': 'heightIn/11', 'Name': 'dim_seed_rad_hip_L'},
 
         # arc_waist_L: hip junction (lower) → shoulder junction (upper), bows INWARD
+        # Derived from live Fusion data: S/E at X=-0.266, center at (-0.266, 0)
         {'ID': 'arc_waist_L', 'Type': 'Arc3Point',
-         'Points': [['-heightIn * 0.28', '-heightIn * 0.13'],  # :S hip junction
-                    ['-heightIn * 0.15', '0'],                  # mid, INWARD bow
-                    ['-heightIn * 0.27', 'heightIn * 0.10']],  # :E shoulder junction
+         'Points': [['-heightIn * 0.266', '-heightIn * 0.090'],  # :S hip junction
+                    ['-heightIn * 0.175', '0'],                   # mid, INWARD bow
+                    ['-heightIn * 0.266', 'heightIn * 0.092']],  # :E shoulder junction
          'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_waist_L',    'Expression': 'heightIn/9', 'Name': 'dim_seed_rad_waist_L'},
+        {'Type': 'Radius', 'Target': 'arc_waist_L',    'Expression': 'heightIn/11', 'Name': 'dim_seed_rad_waist_L'},
 
-        # arc_shoulder_L: shoulder junction (lower) → horn tip (upper)
+        # arc_shoulder_L: shoulder junction → horn tip (upper), from live Fusion data
         {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point',
-         'Points': [['-heightIn * 0.30', 'heightIn * 0.13'],   # :S shoulder junction
-                    ['-heightIn * 0.35', 'heightIn * 0.17'],   # mid
-                    ['-heightIn * 0.39', 'heightIn * 0.23']],  # :E near horn_TL:E
+         'Points': [['-heightIn * 0.364', 'heightIn * 0.183'],  # :S near horn_TL:E
+                    ['-heightIn * 0.338', 'heightIn * 0.119'],  # mid, bows outward/up
+                    ['-heightIn * 0.274', 'heightIn * 0.093']], # :E shoulder junction
          'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E'},
-        {'Type': 'Radius', 'Target': 'arc_shoulder_L', 'Expression': 'heightIn/9', 'Name': 'dim_seed_rad_shoulder_L'},
+        {'Type': 'Radius', 'Target': 'arc_shoulder_L', 'Expression': 'heightIn/11', 'Name': 'dim_seed_rad_shoulder_L'},
 
         # EDGE CORNER CHAIN — pin top/bottom edges to projected offset corners
         {'Type': 'Coincident', 'Targets': ['top_edge:S',    'proj_off_corner_TL']},
