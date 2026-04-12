@@ -5,67 +5,92 @@ The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum 
 ---
 
 ## Sketch 1 — Foundations: Bounding Box
-Defines the safe working area and model limits.
+*Relationship: Defines the "Master Envelope" that all subsequent geometry projects from.*
 
 ### Step 1 — BB Layout (`p1_bb_layout.py`)
-Creates the primary centerpoint rectangle anchored to the origin. Driven by `widthIn` and `heightIn`.
+- **Action**: Creates the primary model rectangle centered on the origin.
+- **Key IDs**: `BB_RECT`, `BB_top`, `BB_right`.
+- **Drivers**: `widthIn`, `heightIn`.
 
 ### Step 2 — Safe Zone Offset (`p2_bb_offset.py`)
-Applies the `boundingboxoffset` to create the inner boundary and registers the four corner reference IDs used by Sketch 2.
+- **Action**: Offsets the Step 1 rectangle to create a internal safety boundary.
+- **Key IDs**: `BB_corner_TL`, `BB_corner_TR`, `BB_corner_BL`, `BB_corner_BR`.
+- **Relation**: Consumes `BB_top/right/bottom/left` from Step 1.
+- **Driver**: `boundingboxoffset`.
 
 ---
 
 ## Sketch 2 — Silhouette: Shape Outline
-Constructs the parametric frame silhouette loop.
+*Relationship: Projects corners from Sketch 1 to anchor the parametric skeleton.*
 
 ### Step 3 — Projections (`p3_projs.py`)
-Projects the reference corners from Sketch 1 into the current silhouette sketch.
+- **Action**: Grabs the four safe-zone corners from Sketch 1.
+- **Key IDs**: `proj_off_corner_TL` (and TR, BL, BR).
+- **Source**: `1_bounding-box:BB_corner_XX`.
 
 ### Step 4 — Anatomy (`p4_anatomy.py`)
-Builds the invisible parametric skeleton scaffold (Hubs).
+- **Action**: Builds the hub-and-spoke skeleton scaffold.
+- **Key IDs**: `ShoulderHub_R`, `WaistHub_R`, `HipHub_R`.
+- **Relation**: Hub start/end points (`:S`, `:E`) are anchored to the Step 3 projections.
 
 ### Step 5 — Silhouette Loop (`p5_loop.py`)
-Places the 12 geometric arc/line seeds and applies initial "Safety Radii."
+- **Action**: Places the 12 arcs and lines that form the frame's outer edge.
+- **Key IDs**: `arc_shoulder_R`, `arc_waist_R`, `horn_TR`.
+- **Geometry**: Creates the initial 'seed' shapes with temporary dimensions.
 
 ### Step 6 — Chain (`p6_chain.py`)
-Creates the arc-to-arc connectivity across the Shoulder, Waist, and Hip junctions.
+- **Action**: Establishes the topological "daisy-chain" sequence.
+- **Relation**: Applies `Coincident` constraints between adjacent arcs (e.g., `arc_shoulder_R :E` → `arc_waist_R :S`).
 
 ### Step 7 — Horn Welds (`p7_horns.py`)
-Welds the shoulder/hip arc endpoints to the parametric horn segments.
+- **Action**: Attaches the straight horn segments to the shoulder/hip arcs.
+- **Relation**: Welds `horn_TR :S` to `arc_shoulder_R :E`.
 
-### Step 8 — Waist Hub Pins (`p8_waist_pins.py`)
-Pins the waist hub center points to the skeleton to maintain structural symmetry.
+### Step 8 — Waist Pins (`p8_waist_pins.py`)
+- **Action**: Centers the waist arcs against the skeleton for symmetry.
+- **Relation**: `Coincident` constraint from `arc_waist_R :C` (center) to `WaistHub_R :E`.
 
 ### Step 9 — Tangency (`p9_tangency.py`)
-Applies G1 Tangent constraints across all arc-to-arc junctions.
+- **Action**: Smoothes the junctions between all circular arcs.
+- **Constraint**: `Tangent` across all segment pairs in the loop.
 
 ### Step 10 — Horn Tangency (`p10_horn_tangency.py`)
-Applies G1 Tangent constraints between the arcs and the straight horn segments.
+- **Action**: Ensures the straight horns transition smoothly into the curved shoulders/hips.
+- **Constraint**: `Tangent` between `horn_XX` and its neighboring `arc_XX`.
 
 ### Step 11 — Radius Removal (`p11_radius_removal.py`)
-Deletes the temporary seed dimensions from Step 5 to allow parametric driving.
+- **Action**: Deletes the Phase 5 seed dimensions to prepare for parameter injection.
+- **Logic**: Essential for preventing over-constraint when the actual sliders are applied.
 
 ### Step 12 — Skeleton Welds (`p12_welds.py`)
-Finalizes the topology by welding arc centers to the skeleton endpoints.
+- **Action**: Anchors all remaining arc centers to the skeleton endpoints.
+- **Relation**: Consumes hubs created in Step 4.
 
 ### Step 13 — Parametric Drivers (`p13_drivers.py`)
-Applies the actual UI slider values (Shoulder Radius, Waist Span, etc.) using Volatile Dimension logic.
+- **Action**: Injects the final UI slider values.
+- **Drivers**: `ShoulderRadius`, `WaistSpan`, `ShoulderSpan`, etc.
+- **Logic**: Uses "Volatile Dimension" logic to avoid solver locking.
 
 ---
 
 ## Sketch 3 — Enclosure: Frame Wall
-Generates the mitered frame profile for solid synthesis.
+*Relationship: Projects the finalized Sketch 2 silhouette to generate the solid profile.*
 
 ### Step 14 — Enclosure Projections (`p14_encl_projs.py`)
-Projects the finalized silhouette loop and anchor points from Sketch 2.
+- **Action**: Imports the finalized silhouette loop from Sketch 2.
+- **Source**: `2_shape-outline:top_edge`, `horn_TR`, etc.
+- **Anchors**: Also projects internal miter anchors (`proj_anchor_TL`).
 
 ### Step 15 — Enclosure Offset (`p15_encl_offset.py`)
-Applies the `frame_thickness` to create the inner-wall loop.
+- **Action**: Generates the structural thickness of the frame.
+- **Key IDs**: `inner_corner_TL`, `inner_corner_TR`, etc.
+- **Driver**: `frame_thickness`.
 
 ### Step 16 — Enclosure Miters (`p16_encl_miters.py`)
-Completes the corner miters connecting the silhouette horn tips to the offset corners.
+- **Action**: Bridges the outer silhouette and inner enclosure.
+- **Relation**: Connects `proj_anchor_TR` (Silhouette) to `inner_corner_TR` (Offset).
 
 ---
 
-### **Extrusion Notice**
-After Step 16, the engine targets the profile in **Sketch 3** for the solid extrusion operation (`frame_depth`).
+### **Synthesis Sequence**
+After Step 16, the engine locates the closed profile in **Sketch 3** and performs the solid extrusion (`frame_depth`) into the final 3D part.
