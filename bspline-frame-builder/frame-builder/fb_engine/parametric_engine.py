@@ -78,8 +78,8 @@ class ParametricSketchBuilder:
             try:
                 ctx.logger.log(f"--- Creating Sketch: {sketch_spec['Name']} (Remaining global phases: {remaining_phase}) ---")
                 
-                # Build the sketch, passing the current global cap
-                built_count = self.build_sketch(sketch_spec, limit=remaining_phase)
+                # Build the sketch, passing the current global cap and UI state
+                built_count = self.build_sketch(sketch_spec, limit=remaining_phase, ui_data=ctx.active_vars)
                 
                 # Decrement the global cap by the number of steps definitely 'consumed' by this sketch
                 if remaining_phase is not None:
@@ -95,7 +95,7 @@ class ParametricSketchBuilder:
 
         ctx.logger.log("SYNTHESIS COMPLETE")
 
-    def build_sketch(self, sketch_spec, limit=None):
+    def build_sketch(self, sketch_spec, limit=None, ui_data=None):
         """
         Execute the 8-phase build loop for a single sketch.
         Supports global 'limit' for phased synthesis.
@@ -104,6 +104,9 @@ class ParametricSketchBuilder:
         sketch_name = f"{self.prefix}_{sketch_spec['Name']}"
         sketch_prefix = sketch_spec.get("Prefix", self.prefix)
         
+        # 0. Sync UI parameters to Fusion UserParameters before building
+        self._sync_user_parameters(ctx, ui_data)
+
         # 1. CLEANUP: Delete any previous instance of this sketch name in the target component
         try:
             old_sketch = ctx.target.sketches.itemByName(sketch_name)
@@ -135,6 +138,41 @@ class ParametricSketchBuilder:
 
         ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] (Final count: {built_count}) ---")
         return built_count
+
+    def _sync_user_parameters(self, ctx, ui_data):
+        """
+        Ensures all variables in the UI state are registered as official 
+        Fusion 360 UserParameters. This allows parametric solvers to 
+        recognize names like 'frame_thickness' during construction.
+        """
+        if not ui_data:
+            return
+            
+        try:
+            design = ctx.design
+            params = design.userParameters
+            
+            for name, val in ui_data.items():
+                p = params.itemByName(name)
+                
+                # Create if missing
+                if not p:
+                    try:
+                        unit = '' if name.startswith('en_') or name.startswith('is_') else 'cm'
+                        p = params.add(name, adsk.core.ValueInput.createByReal(0.0), unit, "Hybrid UI Pre-Sync")
+                        ctx.logger.log(f"PARAM SYNC: Created missing parameter '{name}'", "DEBUG")
+                    except:
+                        continue
+                
+                # Update expression to match UI value
+                if p:
+                    try:
+                        p.expression = str(val)
+                    except:
+                        pass
+                        
+        except Exception as e:
+            ctx.logger.log(f"PARAM SYNC ERROR: {e}", "WARNING")
 
     def _build_blocks(self, sketch, sketch_name, blocks, limit=None):
         """Builds a sketch using the new sequential BuildingBlock pattern."""
@@ -206,6 +244,10 @@ class ParametricSketchBuilder:
                 dimensions.delete_dimension_by_name(self.ctx, sketch, step.get("Name"))
             elif t == "Offset":
                 offset_step(self.ctx, sketch, sketch_name, step)
+            elif t == "Pulse":
+                self.ctx.logger.log("  > INTERMEDIATE PULSE SOLVE (Manual)")
+                sketch.isComputeDeferred = False
+                sketch.isComputeDeferred = True
             elif t == "Step":
                 step_step(self.ctx, sketch, sketch_name, step)
 
@@ -346,11 +388,16 @@ class ParametricSketchBuilder:
         """Diagnostic helper to log coordinates of all arcs in the sketch."""
         ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {sketch_name} ---")
         
-    def _log_arc_audit(self, ctx, sketch, sketch_name, phase_label):
-        """Diagnostic helper to log coordinates of all arcs in the sketch."""
-        ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {sketch_name} ---")
-        
         ent_map = ctx.entity_map.get(sketch_name, {})
+
+        def _p2s(pt):
+            """Safe point to string."""
+            if not pt: return "?,?"
+            try:
+                geom = pt.geometry
+                return f"{geom.x:.3f}, {geom.y:.3f}"
+            except:
+                return "ERR"
 
         try:
             for arc in sketch.sketchCurves.sketchArcs:
@@ -361,21 +408,22 @@ class ParametricSketchBuilder:
                         arc_id = eid
                         break
                 
+                # 1. Basic points (Start, End, Center)
+                s_str = _p2s(arc.startSketchPoint)
+                e_str = _p2s(arc.endSketchPoint)
+                c_str = _p2s(arc.centerSketchPoint)
+
+                # 2. Midpoint (Isolate evaluator for safety)
+                m_str = "?,?"
                 try:
-                    start = arc.startSketchPoint.geometry
-                    end = arc.endSketchPoint.geometry
-                    center = arc.centerSketchPoint.geometry
-                    # Get Midpoint by evaluating at parameter 0.5 via evaluator
                     res = arc.geometry.evaluator.getPointAtParameter(0.5)
-                    mid = res[1] if res else None
-                    
-                    log_msg = (f"  [{arc_id}] S({start.x:.3f}, {start.y:.3f}) | "
-                               f"M({mid.x:.3f}, {mid.y:.3f} if mid else '??') | "
-                               f"E({end.x:.3f}, {end.y:.3f}) | "
-                               f"C({center.x:.3f}, {center.y:.3f})")
-                    ctx.logger.log(log_msg)
-                except Exception as arc_e:
-                    ctx.logger.log(f"  [{arc_id}] Coordinate extraction failed: {arc_e}", "DEBUG")
+                    if res and res[1]:
+                        m_str = f"{res[1].x:.3f}, {res[1].y:.3f}"
+                except:
+                    m_str = "eval_fail"
+                
+                log_msg = f"  [{arc_id}] S({s_str}) | M({m_str}) | E({e_str}) | C({c_str})"
+                ctx.logger.log(log_msg)
                     
         except Exception as e:
             ctx.logger.log(f"ARC AUDIT FATAL FAIL: {e}", "WARNING")

@@ -430,6 +430,10 @@
     function adjustPhase(delta) {
       _phaseCurrent = Math.min(_phaseMax, Math.max(1, _phaseCurrent + delta));
       _updatePhaseDisplay();
+      
+      // AUTO-REBUILD: Trigger a fresh sketch build up to this phase index
+      console.log('[PHASE] Stepping to Phase', _phaseCurrent);
+      runBuild('sketch');
     }
 
     function renderSchema(data) {

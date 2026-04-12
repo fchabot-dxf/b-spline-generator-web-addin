@@ -27,11 +27,17 @@ def offset_step(ctx, sketch, s_name, off):
         ctx.logger.log(f"OFFSET SKIP: No source curves collected for {s_name}", "WARNING")
         return
 
+    # --- NEW: Direction-Agnostic Chain Sorting ---
+    # We sort the collection into a continuous S->E chain before auditing or offsetting.
+    sorted_coll = _reorder_to_chain(ctx, coll, s_name)
+    coll = sorted_coll if sorted_coll else coll
+
     try:
         d_expr = off.get("DistanceExpr", "0")
 
-        # --- Audit the loop before attempting offset ---
+        # --- Audit the loop (now supporting flipped connections) ---
         _audit_loop_integrity(ctx, coll, s_name)
+
 
         # --- Primary: addOffset2 (parametric) ---
         offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name)
@@ -350,31 +356,111 @@ def _tag_by_proximity(ctx, s_name, off, offset_curves, t_ids):
 # Loop integrity audit
 # ------------------------------------------------------------------
 def _audit_loop_integrity(ctx, coll, s_name):
-    """Trace endpoints between consecutive curves to find gaps."""
+    """Trace endpoints between consecutive curves to find gaps, allowing for flipped directions."""
     if not coll or coll.count < 2:
         return
     ctx.logger.log(f"LOOP AUDIT: Tracing {coll.count} segments for {s_name}", "DEBUG")
+    
     for i in range(coll.count):
         c1 = coll.item(i)
         next_idx = (i + 1) % coll.count
         c2 = coll.item(next_idx)
 
-        # Handle different curve types if necessary, but SketchCurve usually has points
         try:
-            p1e = c1.endSketchPoint.geometry
-            p2s = c2.startSketchPoint.geometry
-            dist = p1e.distanceTo(p2s)
+            # Get all 4 endpoint combinations
+            p1s, p1e = c1.startSketchPoint.geometry, c1.endSketchPoint.geometry
+            p2s, p2e = c2.startSketchPoint.geometry, c2.endSketchPoint.geometry
+            
+            # Distances between all possible connection points
+            dists = {
+                "E-S": p1e.distanceTo(p2s),
+                "E-E": p1e.distanceTo(p2e),
+                "S-S": p1s.distanceTo(p2s),
+                "S-E": p1s.distanceTo(p2e)
+            }
+            
+            # Find minimum distance
+            min_type = min(dists, key=dists.get)
+            min_dist = dists[min_type]
 
-            ctx.logger.log(
-                f"  SEG {i}: E({p1e.x:.4f}, {p1e.y:.4f}) -> "
-                f"SEG {next_idx}: S({p2s.x:.4f}, {p2s.y:.4f}) Dist={dist:.4f} cm",
-                "DEBUG")
-            if dist > 0.001:
+            ctx.logger.log(f"  SEG {i} -> {next_idx}: MinDist={min_dist:.4f} cm via {min_type}", "DEBUG")
+            
+            if min_dist > 0.001:
                 ctx.logger.log(
-                    f"  GAP DETECTED: {dist:.4f} cm between segments {i} and {next_idx} "
-                    f"in {s_name}!", "WARNING")
+                    f"  GAP DETECTED: {min_dist:.4f} cm between segments {i} and {next_idx} "
+                    f"({min_type}) in {s_name}!", "WARNING")
+            elif min_type != "E-S":
+                ctx.logger.log(f"  CONNECTION OK: Flipped junction ({min_type}) at seg {i}", "DEBUG")
         except:
             pass
+
+def _reorder_to_chain(ctx, coll, s_name):
+    """
+    Greedy algorithm to reorder curves into a continuous topological chain.
+    Returns a new ObjectCollection or None on failure.
+    """
+    if not coll or coll.count < 2:
+        return coll
+        
+    try:
+        remaining = [coll.item(i) for i in range(coll.count)]
+        sorted_items = []
+        
+        # Start with the first item (e.g. top_edge)
+        current = remaining.pop(0)
+        sorted_items.append(current)
+        
+        # We track the 'active' point we're trying to match.
+        # We start at the END of segment 0.
+        active_pt = current.endSketchPoint.geometry
+        
+        ctx.logger.log(f"CHAIN SORTER: Starting walk from {sorted_items[0].entityToken[:8]}... endPoint", "DEBUG")
+        
+        while remaining:
+            best_idx = -1
+            match_type = None
+            min_dist = 999.0
+            
+            for idx, next_c in enumerate(remaining):
+                ns = next_c.startSketchPoint.geometry
+                ne = next_c.endSketchPoint.geometry
+                d_to_s = active_pt.distanceTo(ns)
+                d_to_e = active_pt.distanceTo(ne)
+                
+                if d_to_s < min_dist:
+                    min_dist = d_to_s
+                    best_idx = idx
+                    match_type = "S"
+                if d_to_e < min_dist:
+                    min_dist = d_to_e
+                    best_idx = idx
+                    match_type = "E"
+            
+            # Use a slightly more generous tolerance for projected geometry (up to 1mm)
+            if min_dist < 0.1:
+                next_item = remaining.pop(best_idx)
+                sorted_items.append(next_item)
+                # If we matched the Start, the new active exit point is the End
+                active_pt = next_item.endSketchPoint.geometry if match_type == "S" else next_item.startSketchPoint.geometry
+                ctx.logger.log(f"  > Linked seg {len(sorted_items)-1} via {match_type} (dist={min_dist:.4f})", "DEBUG")
+            else:
+                # Loop is fractured or we reached an island
+                ctx.logger.log(f"CHAIN SORTER: BREAK - No neighbor within 1mm for active_pt at seg {len(sorted_items)-1}", "WARNING")
+                break
+        
+        # Create new collection
+        new_coll = adsk.core.ObjectCollection.create()
+        for item in sorted_items:
+            new_coll.add(item)
+        
+        if new_coll.count == coll.count:
+            ctx.logger.log(f"CHAIN SORTER: Successfully reordered all {new_coll.count} segments for {s_name}", "DEBUG")
+        return new_coll
+        
+    except Exception as e:
+        ctx.logger.log(f"CHAIN SORTER CRASH: {e}", "ERROR")
+        return None
+
 
 
 def _force_rename_offset_dim(sketch, p_name):

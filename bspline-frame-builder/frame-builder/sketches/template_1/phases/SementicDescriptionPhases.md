@@ -66,10 +66,14 @@ The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum 
 - **Logic**: Releases the "training wheels" so the solver can settle into the final parametric state.
 
 ### Step 12 — Skeleton Welds (`p12_welds.py`)
-- **Action**: Finalizes the topology by welding remaining arc centers to the skeleton endpoints.
-- **Relation**: Consumes shoulder/hip anatomy pins from Step 4.
+- **Action**: Fixes the ends of the arcs to the skeletal pins in Vertical Pairs.
+- **Relation**: Bottom half (Hips), then Top half (Shoulders), with an intermediate Pulse.
 
-### Step 13 — Parametric Drivers (`p13_drivers.py`)
+### Step 13 — Symmetry (`p13_symmetry.py`)
+- **Action**: Finalizes the anatomy by forcing Left and Right hubs into equality.
+- **Logic**: Independent build settling followed by a final symmetric "Snap."
+
+### Step 14 — Parametric Drivers (`p14_drivers.py`)
 - **Action**: Injects the final UI slider values.
 - **Drivers**: `ShoulderRadius`, `WaistSpan`, `ShoulderSpan`, etc.
 - **Logic**: Uses "Volatile Dimension" logic to avoid solver locking.
@@ -79,17 +83,20 @@ The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum 
 ## Sketch 3 — Enclosure: Frame Wall
 *Relationship: Projects the finalized Sketch 2 silhouette to generate the solid profile.*
 
-### Step 14 — Enclosure Projections (`p14_encl_projs.py`)
+### Step 15 — Enclosure Projections (`p15_encl_projs.py`)
 - **Action**: Imports the finalized silhouette loop from Sketch 2.
 - **Source**: `2_shape-outline:top_edge`, `horn_TR`, etc.
 - **Anchors**: Also projects internal miter anchors (`proj_anchor_TL`).
 
-### Step 15 — Enclosure Offset (`p15_encl_offset.py`)
+### Step 16 — Enclosure Welds (`p16_encl_welds.py`)
+- **Action**: Stabilizes the projected loop for the offset operation.
+
+### Step 17 — Enclosure Offset (`p17_encl_offset.py`)
 - **Action**: Generates the structural thickness of the frame.
 - **Key IDs**: `inner_corner_TL`, `inner_corner_TR`, etc.
 - **Driver**: `frame_thickness`.
 
-### Step 16 — Enclosure Miters (`p16_encl_miters.py`)
+### Step 18 — Enclosure Miters (`p18_encl_miters.py`)
 - **Action**: Bridges the outer silhouette and inner enclosure.
 - **Relation**: Connects `proj_anchor_TR` (Silhouette) to `inner_corner_TR` (Offset).
 
