@@ -1,40 +1,27 @@
+import importlib
+try:
+    from phases import p0a_bb_rect, p0b_bb_offset
+except ImportError:
+    import sys, os
+    sys.path.append(os.path.dirname(__file__))
+    from phases import p0a_bb_rect, p0b_bb_offset
+
 def get_sketch(ui_data=None):
     """
-    Logic for Sketch 1 (Template 1): Bounding Box.
-    Defines the outer limits and creates the inner boundary via Offset.
-    Utilizes a center-point rectangle anchored to the origin.
+    Sketch 1: Bounding Box.
+    Modular refactor into phased building blocks.
+    
+    Phases:
+      0a p0a_bb_rect   - Primary model boundary rectangle
+      0b p0b_bb_offset - Safety zone offset + corner tagging
     """
+    for m in [p0a_bb_rect, p0b_bb_offset]:
+        importlib.reload(m)
+
     return {
         "Name": "1_bounding-box",
-        "Geometry": [
-            {
-                "ID": "BB_RECT",
-                "Type": "Rectangle",
-                "Center": [0.001, 0.001],
-                "Size": ["widthIn", "heightIn"],
-                "LineIDs": ["BB_top", "BB_right", "BB_bottom", "BB_left"]
-            }
-        ],
-        "Constraints": [
-            # Explicit origin lock: center point seeded at 0.001 offset, snapped to ORIGIN.
-            {"Type": "Coincident", "Targets": ["BB_RECT:C", "ORIGIN"]}
-        ],
-        "Dimensions": [
-            {"Target": "BB_top",   "Expression": "widthIn",  "Name": "dim_width"},
-            {"Target": "BB_right", "Expression": "heightIn", "Name": "dim_height"}
-        ],
-        "Steps": [
-            {
-                "Type": "Offset",
-                "SourceID": ["BB_top", "BB_right", "BB_bottom", "BB_left"],
-                "DistanceExpr": "boundingboxoffset",
-                "TargetIDs": ["offset_BB_top", "offset_BB_right", "offset_BB_bottom", "offset_BB_left"],
-                "CornerIDs": {
-                    "TL": "BB_corner_TL",
-                    "TR": "BB_corner_TR",
-                    "BL": "BB_corner_BL",
-                    "BR": "BB_corner_BR"
-                }
-            }
+        "Blocks": [
+            p0a_bb_rect.get_block(ui_data),
+            p0b_bb_offset.get_block(ui_data)
         ]
     }

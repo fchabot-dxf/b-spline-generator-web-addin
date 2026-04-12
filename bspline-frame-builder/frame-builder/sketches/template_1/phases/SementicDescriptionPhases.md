@@ -1,73 +1,71 @@
-# Sketch 2 — Shape Outline: Phase Structure
+# Template 1 — 16-Step Modular Architecture
 
-Twelve phases build the parametric silhouette loop in strict dependency order.
-Each phase is independently steppable from the UI via the phase stepper (max_phase).
-
----
-
-## Phase 1 — Projections (`p1_projs.py`)
-
-Projects the four offset corners (TL, TR, BL, BR) from the `1_bounding-box` sketch.
+The Frame Builder Template 1 uses a **Multi-Sketch Sequence** to ensure maximum stability and modularity. The build progresses through 16 global phases across three distinct Fusion 360 sketches.
 
 ---
 
-## Phase 2 — Anatomy (`p2_anatomy.py`)
+## Sketch 1 — Foundations: Bounding Box
+Defines the safe working area and model limits.
 
-Builds the invisible parametric skeleton scaffold.
+### Step 1 — BB Layout (`p0a_bb_rect.py`)
+Creates the primary centerpoint rectangle anchored to the origin. Driven by `widthIn` and `heightIn`.
 
----
-
-## Phase 3 — Silhouette (`p3_loop.py`)
-
-Places all 12 silhouette segments as geometric seeds. 
-Applies **Seed Radii** (`dim_seed_rad_...`) at `heightIn/11`.
+### Step 2 — Safe Zone Offset (`p0b_bb_offset.py`)
+Applies the `boundingboxoffset` to create the inner boundary and registers the four corner reference IDs used by Sketch 2.
 
 ---
 
-## Phase 4 — Phase 4c: Topology Closure
+## Sketch 2 — Silhouette: Shape Outline
+Constructs the parametric frame silhouette loop.
 
-Closes the loop, connects horns, and pins the waist hub.
+### Step 3 — Projections (`p1_projs.py`)
+Projects the reference corners from Sketch 1 into the current silhouette sketch.
 
----
+### Step 4 — Anatomy (`p2_anatomy.py`)
+Builds the invisible parametric skeleton scaffold (Hubs).
 
-## Phase 5 — Phase 5b: Smoothness
+### Step 5 — Silhouette Loop (`p3_loop.py`)
+Places the 12 geometric arc/line seeds and applies initial "Safety Radii."
 
-Applies Tangent constraints across all junctions.
+### Step 6 — Chain (`p4_chain.py`)
+Creates the arc-to-arc connectivity across the Shoulder, Waist, and Hip junctions.
 
----
+### Step 7 — Horns (`p4b_horns.py`)
+Welds the shoulder/hip arc endpoints to the parametric horn segments.
 
-## Phase 5c — Radius Removal (`p5c_radius_removal.py`)
+### Step 8 — Waist Pins (`p4c_waist_pins.py`)
+Pins the waist hub center points to the skeleton to maintain structural symmetry.
 
-Surgically deletes the six seed radius dimensions added in Phase 3.
+### Step 9 — Tangency (`p5_tangency.py`)
+Applies G1 Tangent constraints across all arc-to-arc junctions.
 
----
+### Step 10 — Horn Tangency (`p5b_horn_tangency.py`)
+Applies G1 Tangent constraints between the arcs and the straight horn segments.
 
-## Phase 6 — Skeleton Welds (`p6_welds.py`)
+### Step 11 — Radius Removal (`p5c_radius_removal.py`)
+Surgically deletes the temporary seed dimensions from Step 5 to allow parametric driving.
 
-Anchors arc centers (`:C`) to the parametric skeleton hub endpoints (`:E`).
+### Step 12 — Skeleton Welds (`p6_welds.py`)
+Finalizes the topology by welding arc centers to the skeleton endpoints.
 
----
-
-## Phase 7 — Parametric Drivers (`p7_drivers.py`)
-
-Finalizes the sizing of the anatomy and arcs.
-Re-applies the actual UI sliders (ShoulderRadius, WaistSpan, etc.) ONLY if their corresponding UI "Lock" is checked.
-Arcs use **Volatile Radius** logic to nudge and release.
-
----
-
-## Phase 7b — Enclosure Expansion (`p7b_expansion.py`)
-
-The final geometric growth and corner completion.
-
-**Offset Synthesis**: Generates the internal frame line loop (`frame_thickness`) based on the settled Phase 7 geometry.
-
-**Miter Completion**: Correctly identifies the four outer corners (`horn_...:S`) and connects them to the offset inner corners using the accurate Template 2 logic.
+### Step 13 — Parametric Drivers (`p7_drivers.py`)
+Applies the actual UI slider values (Shoulder Radius, Waist Span, etc.) using Volatile Dimension logic.
 
 ---
 
-After Phase 7b, the sketch is a fully closed, manifold silhouette with a consistent wall thickness.
+## Sketch 3 — Enclosure: Frame Wall
+Generates the mitered frame profile for solid synthesis.
 
+### Step 14 — Enclosure Projections (`p8_encl_projs.py`)
+Projects the finalized silhouette loop and anchor points from Sketch 2.
 
+### Step 15 — Enclosure Offset (`p9_encl_offset.py`)
+Applies the `frame_thickness` (e.g., -0.75in) to create the inner-wall loop.
 
+### Step 16 — Enclosure Miters (`p10_encl_miters.py`)
+Completes the corner miters connecting the silhouette horn tips to the offset corners.
 
+---
+
+### **Extrusion Notice**
+After Step 16, the engine targets the profile in **Sketch 3** for the solid extrusion operation (`frame_depth`).

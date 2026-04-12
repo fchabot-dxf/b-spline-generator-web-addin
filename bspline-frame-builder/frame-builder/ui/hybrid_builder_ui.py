@@ -152,12 +152,15 @@ def _push_schema_direct(style_id="Template 1"):
 
             params_out.append(p_live)
 
-        # Count phases dynamically from the template's block-based sketches
+        # Count total phases (Sum of all blocks across all sketches)
         phase_count = 0
         for sketch in template_spec.get("Sketches", []):
             blocks = sketch.get("Blocks", [])
             if blocks:
-                phase_count = max(phase_count, len(blocks))
+                phase_count += len(blocks)
+            else:
+                # Monolithic sketches count as 1 phase
+                phase_count += 1
 
         pal = app.userInterface.palettes.itemById(PALETTE_ID) if app else None
         if pal:

@@ -7,13 +7,15 @@ _here = os.path.dirname(os.path.realpath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 
-import T1_sketch_1_bounding_box, T1_sketch_2_shape_outline
+import T1_sketch_1_bounding_box, T1_sketch_2_shape_outline, T1_sketch_3_frame_enclosure
 
 importlib.reload(T1_sketch_1_bounding_box)
 importlib.reload(T1_sketch_2_shape_outline)
+importlib.reload(T1_sketch_3_frame_enclosure)
 
 from T1_sketch_1_bounding_box import get_sketch as get_sketch_1
 from T1_sketch_2_shape_outline import get_sketch as get_sketch_2
+from T1_sketch_3_frame_enclosure import get_sketch as get_sketch_3
 
 def get_template_logic(ui_data=None):
     """
@@ -59,5 +61,6 @@ def get_template_logic(ui_data=None):
         "Sketches": [
             get_sketch_1(ui_data),
             get_sketch_2(ui_data),
+            get_sketch_3(ui_data),
         ]
     }

@@ -189,7 +189,7 @@ class FrameBuilder:
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
             
-            sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame")
+            sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame-enclosure")
             if sketch:
                 self._extrude_jesmo_frame(sketch, target_body, frame_comp)
                 

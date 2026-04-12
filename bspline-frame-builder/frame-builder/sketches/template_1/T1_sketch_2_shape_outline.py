@@ -1,11 +1,10 @@
-import importlib
 try:
-    from phases import p1_projs, p2_anatomy, p3_loop, p4_chain, p4b_horns, p4c_waist_pins, p5_tangency, p5b_horn_tangency, p5c_radius_removal, p6_welds, p7_drivers, p7b_expansion
+    from phases import p1_projs, p2_anatomy, p3_loop, p4_chain, p4b_horns, p4c_waist_pins, p5_tangency, p5b_horn_tangency, p5c_radius_removal, p6_welds, p7_drivers
 except ImportError:
     # Fallback for different execution contexts
     import sys, os
     sys.path.append(os.path.dirname(__file__))
-    from phases import p1_projs, p2_anatomy, p3_loop, p4_chain, p4b_horns, p4c_waist_pins, p5_tangency, p5b_horn_tangency, p5c_radius_removal, p6_welds, p7_drivers, p7b_expansion
+    from phases import p1_projs, p2_anatomy, p3_loop, p4_chain, p4b_horns, p4c_waist_pins, p5_tangency, p5b_horn_tangency, p5c_radius_removal, p6_welds, p7_drivers
 
 def get_sketch(ui_data=None):
     """
@@ -24,10 +23,9 @@ def get_sketch(ui_data=None):
       5c p5c_rad_rem_     – surgically remove Phase 3 radius seeds
       6  p6_welds         – skeleton center welds (remaining arcs :C → anatomy pins)
       7  p7_drivers       – final parametric anatomy/radii (gated)
-      7b p7b_expansion    – offset loop + mitered enclosure
     """
     # Force reload of all phase modules during development
-    for m in [p1_projs, p2_anatomy, p3_loop, p4_chain, p4b_horns, p4c_waist_pins, p5_tangency, p5b_horn_tangency, p5c_radius_removal, p6_welds, p7_drivers, p7b_expansion]:
+    for m in [p1_projs, p2_anatomy, p3_loop, p4_chain, p4b_horns, p4c_waist_pins, p5_tangency, p5b_horn_tangency, p5c_radius_removal, p6_welds, p7_drivers]:
         importlib.reload(m)
 
     return {
@@ -44,6 +42,5 @@ def get_sketch(ui_data=None):
             p5c_radius_removal.get_block(ui_data),
             p6_welds.get_block(ui_data),
             p7_drivers.get_block(ui_data),
-            p7b_expansion.get_block(ui_data),
         ]
     }

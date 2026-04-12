@@ -72,41 +72,43 @@ class ParametricSketchBuilder:
                 ctx.logger.log(
                     f"PRESERVING MODEL PARAM: {name} (Template default {v} skipped)")
 
-        # 2. Iterate through sketches
+        # 2. Iterate through sketches with Global Phase Tracking
+        remaining_phase = self.max_phase
         for sketch_spec in template.get("Sketches", []):
             try:
-                ctx.logger.log(f"--- Creating Sketch: {sketch_spec['Name']} ---")
-                self.build_sketch(sketch_spec)
+                ctx.logger.log(f"--- Creating Sketch: {sketch_spec['Name']} (Remaining global phases: {remaining_phase}) ---")
+                
+                # Build the sketch, passing the current global cap
+                built_count = self.build_sketch(sketch_spec, limit=remaining_phase)
+                
+                # Decrement the global cap by the number of steps definitely 'consumed' by this sketch
+                if remaining_phase is not None:
+                    # If sketch has blocks, subtract the total block count to get the next sketch's start phase
+                    # If it's legacy (monolithic), it counts as 1 phase.
+                    sketch_steps = len(sketch_spec.get("Blocks", [])) if "Blocks" in sketch_spec else 1
+                    remaining_phase -= sketch_steps
+                    if remaining_phase < 0: remaining_phase = 0
+
             except Exception:
                 ctx.logger.log_error(
                     f"CRASH in Sketch {sketch_spec['Name']}:\n{traceback.format_exc()}")
 
         ctx.logger.log("SYNTHESIS COMPLETE")
 
-    def build_sketch(self, sketch_spec):
+    def build_sketch(self, sketch_spec, limit=None):
         """
         Execute the 8-phase build loop for a single sketch.
-
-        Phases
-        ------
-        0. Projections (live — compute not deferred)
-        1. Pre-Geometry
-        2. Snap-to-Seed (soft dimensions)
-        3. Pre-Constraints / Pre-Dimensions
-        4. Main Geometry / Constraints
-        5. Post-Geometry / Post-Constraints (with anchor pulse)
-        6. Final Dimensions
-        7. Offsets / Steps
-        8. Miters
+        Supports global 'limit' for phased synthesis.
         """
         ctx = self.ctx
-        sketch_name = f"{ctx.prefix}_{sketch_spec['Name']}"
-        ctx.logger.log(f"--- START BUILD [{sketch_name}] ---")
-
-        # --- UNCONDITIONAL WAIST TRACE ---
+        sketch_name = sketch_spec["Name"]
+        sketch_prefix = sketch_spec.get("Prefix", self.prefix)
+        
+        # 1. CLEANUP: Delete any previous instance of this sketch name in the target component
         try:
-            off_val = ctx.user_params.itemByName('WaistOffset').value if ctx.user_params.itemByName('WaistOffset') else 0.0
-            ctx.logger.log(f"[WAIST TRACE] Resolved WaistOffset: {off_val:.3f} {'(ORIGIN SNAPPED)' if off_val == 0 else '(DIMENSION OFFSET)'}")
+            old_sketch = ctx.target.sketches.itemByName(sketch_name)
+            if old_sketch:
+                old_sketch.deleteMe()
         except:
             pass
 
@@ -120,20 +122,25 @@ class ParametricSketchBuilder:
         self._project_y_axis(sketch, sketch_name)
 
         # Extract all phase categories from the spec
+        built_count = 0
         if "Blocks" in sketch_spec:
-            self._build_blocks(sketch, sketch_name, sketch_spec["Blocks"])
+            built_count = self._build_blocks(sketch, sketch_name, sketch_spec["Blocks"], limit=limit)
         else:
+            # Legacy sketches (monolithic) always count as 1 phase
             self._build_legacy_phases(sketch, sketch_name, sketch_spec)
+            built_count = 1
 
-        ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] ---")
+        ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] (Final count: {built_count}) ---")
+        return built_count
 
-    def _build_blocks(self, sketch, sketch_name, blocks):
+    def _build_blocks(self, sketch, sketch_name, blocks, limit=None):
         """Builds a sketch using the new sequential BuildingBlock pattern."""
-        self.ctx.logger.log(f"Using Procedural BLOCK-BASED synthesis in {sketch_name}")
+        self.ctx.logger.log(f"Using Procedural BLOCK-BASED synthesis in {sketch_name} (Global limit: {limit})")
+        built_count = 0
 
         for i, block in enumerate(blocks):
-            if self.max_phase is not None and i >= self.max_phase:
-                self.ctx.logger.log(f"  > PHASE CUTOFF at block {i} (max_phase={self.max_phase})")
+            if limit is not None and i >= limit:
+                self.ctx.logger.log(f"  > PHASE CUTOFF at block {i} (global limit={limit})")
                 break
             b_name = block.get("Name", "Unnamed Block")
             self.ctx.logger.log(f"  > START BLOCK: {b_name}")
