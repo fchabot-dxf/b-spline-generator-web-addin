@@ -189,6 +189,8 @@ class ParametricSketchBuilder:
                 constraint_step(self.ctx, sketch, sketch_name, step)
             elif t in dim_types:
                 dimension_step(self.ctx, sketch, sketch_name, step)
+            elif t == "DeleteDimension":
+                dimensions.delete_dimension_by_name(self.ctx, sketch, step.get("Name"))
             elif t == "Offset":
                 offset_step(self.ctx, sketch, sketch_name, step)
             elif t == "Step":

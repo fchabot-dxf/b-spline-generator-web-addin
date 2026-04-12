@@ -136,6 +136,20 @@ def _push_schema_direct(style_id="Template 1"):
                     target_unit = p.get('Unit', 'cm')
                     p_live['Val'] = round(fp.value / 2.54, 4) if target_unit == 'in' else round(fp.value, 4)
                     if diag_logger: diag_logger.log(f"SCHEMA HYDRATE: {p['Name']} = {p_live['Val']} {target_unit}")
+            
+            # 2. Resolve Dynamic Expressions in Min/Max (e.g. "widthIn * 0.9")
+            # We use the design's unitsManager to evaluate these in the context of the model.
+            for key in ['Min', 'Max']:
+                if key in p_live and isinstance(p_live[key], str):
+                    try:
+                        expr = p_live[key]
+                        if design:
+                            eval_val = design.unitsManager.evaluateExpression(expr, p_live.get('Unit', 'cm'))
+                            p_live[key] = round(eval_val, 4)
+                            if diag_logger: diag_logger.log(f"SCHEMA RESOLVE: {p['Name']}.{key} '{expr}' -> {p_live[key]}")
+                    except Exception as e:
+                        if diag_logger: diag_logger.log(f"SCHEMA RESOLVE ERROR: {p['Name']}.{key} '{expr}' failed: {e}", "WARNING")
+
             params_out.append(p_live)
 
         # Count phases dynamically from the template's block-based sketches
@@ -262,16 +276,43 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 self.diag_logger.log(f"PARAM SYNC: {name} = {value}")
             params = design.userParameters
             p = params.itemByName(name)
+            
+            # Auto-create if missing (e.g. after a rename)
+            if not p:
+                if self.diag_logger: self.diag_logger.log(f"PARAM SYNC: Creating missing parameter '{name}'")
+                try:
+                    # Default to 'cm' for geometry, '' for toggles
+                    unit = '' if name.startswith('en_') else 'cm'
+                    p = params.add(name, adsk.core.ValueInput.createByReal(0.0), unit, "Hybrid UI Sync")
+                except Exception as ex:
+                    if self.diag_logger: self.diag_logger.log(f"PARAM SYNC: Failed to create '{name}': {ex}", "ERROR")
+                    return
+
             if p:
-                # If it's a percentage slider (0-100), we need to scale it by the measured bounding box
-                # which is handled by the Frame Engine logic normally, but here we just push the value.
-                # However, for 'en_' params, it's a direct toggle.
-                if name.startswith('en_'):
-                    p.value = float(value)
-                else:
-                    # Override any existing expression and set the raw cm value directly.
-                    # The slider Min/Max in template_data_1.py are in cm so value is already in cm.
-                    p.expression = str(float(value))
+                # 1. UI Sync logic: turn raw slider values back into parametric expressions
+                # if they belong to the scaled anatomy categories.
+                expr = str(value)
+                
+                # Width-based Multipliers
+                if name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
+                    expr = f"widthIn * {value}"
+                
+                # Height-based Multipliers
+                elif name in ['TopGap', 'BottomGap']:
+                    expr = f"(heightIn * {value})"
+                
+                # Offset Multipliers
+                elif name == 'WaistOffset':
+                    expr = f"((heightIn / 2.0) * {value})"
+                
+                # For toggles (en_...), use raw value
+                elif name.startswith('en_'):
+                    expr = str(float(value))
+
+                # Apply to Fusion 360
+                p.expression = expr
+                if self.diag_logger:
+                    self.diag_logger.log(f"PARAM SYNC FINAL: {name} expression set to '{expr}'")
         except Exception as e:
             if self.diag_logger: self.diag_logger.log(f"PARAM SYNC ERROR: {e}")
 

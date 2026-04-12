@@ -9,8 +9,8 @@ def get_block(ui_data=None):
     seq = [
         {'Type': 'Coincident', 'Targets': ['horn_TR:E', 'arc_shoulder_R:E']},
         {'Type': 'Coincident', 'Targets': ['horn_BR:E', 'arc_hip_R:S']},
-        {'Type': 'Coincident', 'Targets': ['horn_TL:E', 'arc_shoulder_L:E']},
-        {'Type': 'Coincident', 'Targets': ['horn_BL:E', 'arc_hip_L:S']},
+        {'Type': 'Coincident', 'Targets': ['horn_TL:E', 'arc_shoulder_L:S']},
+        {'Type': 'Coincident', 'Targets': ['horn_BL:E', 'arc_hip_L:E']},
     ]
 
     return {"Name": "HornTips", "BuildSequence": seq}

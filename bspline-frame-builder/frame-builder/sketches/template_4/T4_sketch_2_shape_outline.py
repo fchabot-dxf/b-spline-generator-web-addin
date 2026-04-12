@@ -147,7 +147,7 @@ def get_sketch(geometry=None):
             {
                 'Type':         'Offset',
                 'SourceID':     outline_ids,
-                'DistanceExpr': 'Skel_Frame_Offset',
+                'DistanceExpr': 'frame_thickness',
                 'TargetIDs':    inner_ids,
                 'CornerIDs':    {
                     'TL': 'inner_corner_TL',

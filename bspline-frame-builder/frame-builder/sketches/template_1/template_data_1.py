@@ -28,17 +28,18 @@ def get_template_logic(ui_data=None):
             {"Name": "widthIn",           "Label": "Width (Model)", "Category": "Frame Spec", "Val": 14.0,  "Unit": "cm", "ReadOnly": True},
             {"Name": "heightIn",          "Label": "Height (Model)", "Category": "Frame Spec", "Val": 5.0,   "Unit": "cm", "ReadOnly": True},
             {"Name": "boundingboxoffset", "Label": "BBox Border",   "Category": "Frame Spec", "Val": 0.635, "Unit": "cm"},
-            {"Name": "Skel_Frame_Offset", "Label": "Wall Thickness", "Category": "Frame Spec", "Val": -1.905, "Unit": "cm"},
+            {"Name": "frame_thickness",     "Label": "Wall Thickness", "Category": "Frame Spec", "Val": -1.905, "Unit": "cm"},
+            {"Name": "frame_depth",         "Label": "Frame Depth",    "Category": "Frame Spec", "Val": 2.54,  "Unit": "cm"},
 
-            # Anatomy Block — Val and Min/Max are in cm (Fusion internal unit)
-            # widthIn=7in=17.78cm  heightIn=9in=22.86cm for reference
-            {"Name": "ShoulderSpan",      "Label": "Shoulder Width", "Category": "Anatomy", "Val": 14.22, "Min": 5.0,  "Max": 17.5, "Unit": "cm"},
-            {"Name": "WaistSpan",         "Label": "Waist Width",    "Category": "Anatomy", "Val": 12.45, "Min": 4.0,  "Max": 17.5, "Unit": "cm"},
-            {"Name": "HipSpan",           "Label": "Hip Width",      "Category": "Anatomy", "Val": 14.22, "Min": 5.0,  "Max": 17.5, "Unit": "cm"},
-            {"Name": "TopGap",            "Label": "Top Height",     "Category": "Anatomy", "Val": 3.43,  "Min": 1.0,  "Max": 10.0, "Unit": "cm"},
-            {"Name": "BottomGap",         "Label": "Bottom Height",  "Category": "Anatomy", "Val": 3.43,  "Min": 1.0,  "Max": 10.0, "Unit": "cm"},
-            {"Name": "WaistOffset",       "Label": "Waist Offset",   "Category": "Anatomy", "Val": 0.0,   "Min": -5.0, "Max": 5.0,  "Unit": "cm"},
-
+            # Anatomy Block — Multiplier Factors (stored as cm for Fusion compatibility)
+            # widthIn and heightIn are the base drivers.
+            {"Name": "ShoulderSpan",      "Label": "Shoulder Factor", "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,   "Unit": "cm"},
+            {"Name": "WaistSpan",         "Label": "Waist Factor",    "Category": "Anatomy", "Val": 0.70, "Min": 0.2,  "Max": 1.25,  "Unit": "cm"},
+            {"Name": "HipSpan",           "Label": "Hip Factor",      "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,   "Unit": "cm"},
+            {"Name": "TopGap",            "Label": "Top Height %",    "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,   "Unit": "cm"},
+            {"Name": "BottomGap",         "Label": "Bottom Height %", "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,   "Unit": "cm"},
+            {"Name": "WaistOffset",       "Label": "Waist Shift",     "Category": "Anatomy", "Val": 0.0,  "Min": -1.0, "Max": 1.0,   "Unit": "cm"},
+ 
             # Silhouette Block
             {"Name": "ShoulderRadius",    "Label": "Shoulder Radius", "Category": "Silhouette", "Val": 2.5, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
             {"Name": "WaistRadius",       "Label": "Waist Radius",    "Category": "Silhouette", "Val": 2.8, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
@@ -49,7 +50,12 @@ def get_template_logic(ui_data=None):
             {"Name": "en_WaistSpan",      "Label": "en_WaistSpan",    "Category": "Anatomy", "Val": 0.0, "Unit": ""},
             {"Name": "en_HipSpan",        "Label": "en_HipSpan",      "Category": "Anatomy", "Val": 0.0, "Unit": ""},
             {"Name": "en_TopGap",         "Label": "en_TopGap",       "Category": "Anatomy", "Val": 0.0, "Unit": ""},
-            {"Name": "en_BottomGap",      "Label": "en_BottomGap",    "Category": "Anatomy", "Val": 0.0, "Unit": ""}
+            {"Name": "en_BottomGap",      "Label": "en_BottomGap",    "Category": "Anatomy", "Val": 0.0, "Unit": ""},
+
+            # Silhouette Toggles
+            {"Name": "en_ShoulderRadius", "Label": "en_ShoulderRadius", "Category": "Silhouette", "Val": 0.0, "Unit": ""},
+            {"Name": "en_WaistRadius",    "Label": "en_WaistRadius",    "Category": "Silhouette", "Val": 0.0, "Unit": ""},
+            {"Name": "en_HipRadius",      "Label": "en_HipRadius",      "Category": "Silhouette", "Val": 0.0, "Unit": ""}
         ],
         "Sketches": [
             get_sketch_1(ui_data),

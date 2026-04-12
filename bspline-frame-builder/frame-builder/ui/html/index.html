@@ -263,8 +263,15 @@
       const unit = param ? param.Unit : '%';
 
       const labelEl = document.getElementById('val-' + id + '-label');
+      const factorParams = ['ShoulderSpan', 'WaistSpan', 'HipSpan', 'TopGap', 'BottomGap', 'WaistOffset'];
       if (labelEl) {
-        labelEl.innerText = parseFloat(val).toFixed(1) + (unit === 'cm' ? ' cm' : '%');
+        if (unit === 'cm' && !factorParams.includes(id)) {
+          labelEl.innerText = parseFloat(val).toFixed(1) + ' cm';
+        } else if (unit === 'x' || factorParams.includes(id)) {
+          labelEl.innerText = parseFloat(val).toFixed(2) + 'x';
+        } else {
+          labelEl.innerText = parseFloat(val).toFixed(1) + '%';
+        }
       }
     }
 
@@ -454,7 +461,7 @@
         // Update phase stepper max from schema
         if (data.phase_count && data.phase_count > 0) {
           _phaseMax     = data.phase_count;
-          _phaseCurrent = Math.min(_phaseCurrent, _phaseMax);
+          _phaseCurrent = _phaseMax; // Default to the last phase
           _updatePhaseDisplay();
         }
 
@@ -517,7 +524,8 @@
               ${!p.ReadOnly ? `
               <div class="slider-container">
                 <input type="range" id="val-${p.Name}"
-                       min="${p.Min || -100}" max="${p.Max || 150}" step="0.5"
+                       min="${p.Min ?? 0}" max="${p.Max ?? 1}" 
+                       step="${(p.Unit === 'x' || ['ShoulderSpan','WaistSpan','HipSpan','TopGap','BottomGap','WaistOffset'].includes(p.Name)) ? '0.01' : '0.5'}"
                        value="${sliderVal}"
                        oninput="updateLabel('${p.Name}')"
                        onchange="updateFusion('${p.Name}')"

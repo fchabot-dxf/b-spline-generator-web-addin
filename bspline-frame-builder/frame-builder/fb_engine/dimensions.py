@@ -23,8 +23,8 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
     dim_name = dim.get("Name", "?")
     dim_target = dim.get("Target", "?")
 
-    # 0. Check UI toggle (EnabledParam) - Bypass if this is a temporary snap-seed
-    if not is_snap_only and _is_disabled(ctx, dim):
+    # 0. Check UI toggle (EnabledParam)
+    if _is_disabled(ctx, dim):
         ctx.logger.log(f"DIM SKIPPED: {dim_name} ('{dim.get('EnabledParam')}' is OFF)")
         return
 
@@ -58,6 +58,31 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
     except Exception as e:
         ctx.logger.log(f"DIM CRASH: {dim_name} on '{dim_target}': {e}", "ERROR")
         _log_constraint_diagnostics(ctx, sketch, s_name, dim_target)
+
+
+def delete_dimension_by_name(ctx, sketch, name):
+    """
+    Find and delete a dimension in the sketch by its persistent parameter name.
+    """
+    if not name:
+        return
+    
+    try:
+        # We must iterate all dimensions because 'itemByName' works on Parameters, 
+        # but here we need to find the SketchDimension object to call deleteMe().
+        found = False
+        for d in sketch.sketchDimensions:
+            if d.parameter and d.parameter.name == name:
+                d.deleteMe()
+                ctx.logger.log(f"DIM DELETED: {name}")
+                found = True
+                break # unique name
+        
+        if not found:
+             ctx.logger.log(f"DIM DELETE MISS: No dimension named '{name}' found in {sketch.name}", "DEBUG")
+             
+    except Exception as e:
+        ctx.logger.log(f"DIM DELETE ERROR: Failed to delete '{name}': {e}", "WARNING")
 
 
 # ------------------------------------------------------------------

@@ -6,18 +6,27 @@ def get_block(ui_data=None):
     # 1. Seed Y positions — heightIn fractions place each zone in the correct quadrant
     #    independent of anatomy parameter resolution at seed time.
     #    Actual Y positions are locked by dimensions in Phase 7 (Polish).
-    shldr_y = "heightIn * 0.15"    # upper quadrant
-    hip_y   = "-heightIn * 0.15"   # lower quadrant
-    waist_y = "WaistOffset"        # centre — locked to ORIGIN or dim below
-
+    
     # 2. Dynamic Pining Logic
-    is_pinned = False
+    is_pinned = True
     try:
+        # Check ui_data snapshot first
         w_off = ui_data.get("WaistOffset", 0) if ui_data else 0
-        if float(w_off) <= 1e-4:
-            is_pinned = True
+        # If the multiplier is non-zero, we are NOT pinned
+        if abs(float(w_off)) > 1e-4:
+            is_pinned = False
     except:
         pass
+
+    # SEEDING: If pinned, we use a tiny offset (0.001) to avoid auto-coincidence
+    # before we apply our explicit constraint.
+    waist_y_seed = "WaistOffset"
+    if is_pinned:
+        waist_y_seed = 0.001
+    
+    shldr_y = f"({waist_y_seed} + TopGap)"    
+    hip_y   = f"({waist_y_seed} - BottomGap)"   
+    waist_y = waist_y_seed
 
     # 3. Procedural Sequence: Build and Lock in one pass
     seq = [
@@ -46,7 +55,9 @@ def get_block(ui_data=None):
         {'Type': 'Coincident', 'Targets': ['skel_hip_pin_R:S', 'skel_hip_pin_L:S']},
     ]
 
-    # VERTICAL LOCK: The Pinning Logic
+    # VERTICAL LOCK: Gated Coincident vs Dimension
+    # We use a Coincident constraint for the zero-state to prevent solver crashes
+    # and only switch to a VerticalDistance when an actual offset is requested.
     if is_pinned:
         seq.append({'Type': 'Coincident', 'Targets': ['skel_waist_pin_R:S', 'ORIGIN']})
     else:

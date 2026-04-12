@@ -14,11 +14,11 @@ class FBValueResolver:
     def get_base_frame_requirements(self):
         """Returns the standardized metric defaults for every frame."""
         return {
-            'Skel_Frame_Offset':    -1.905, # -0.75 in
+            'frame_thickness':      -1.905, # -0.75 in (XY Inset)
+            'frame_depth':           2.54,   #  1.00 in (Z Height)
             'Skel_Slot_Tolerance':   0.635, #  0.25 in
             'boundingboxoffset':     0.635, #  0.25 in
             'Skel_Frame_Taper':      0.0,
-            'Skel_Frame_Thickness':  2.54   #  1.00 in
         }
 
     def resolve_dna_parameter(self, p_info, active_vars=None):
@@ -35,19 +35,19 @@ class FBValueResolver:
         if active_vars and name in active_vars:
             ui_val = float(active_vars[name])
             
-            # Width-based Drivers (Percentages of widthIn)
+            # Width-based Drivers (Multipliers of widthIn)
             if name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
-                raw_val = f"widthIn * ({ui_val}/100.0)"
+                raw_val = f"(widthIn * {ui_val})"
                 if self.logger: self.logger.log(f"[RESOLVER] Scale WIDTH: {name} = {raw_val}")
             
-            # Height-based Drivers (Percentages of heightIn)
+            # Height-based Drivers (Multipliers of heightIn)
             elif name in ['TopGap', 'BottomGap']:
-                raw_val = f"heightIn * ({ui_val}/100.0)"
+                raw_val = f"(heightIn * {ui_val})"
                 if self.logger: self.logger.log(f"[RESOLVER] Scale HEIGHT: {name} = {raw_val}")
 
-            # Special Case: Waist Offset (100% = heightIn / 2)
+            # Special Case: Waist Offset (Multiplier of half-height)
             elif name == 'WaistOffset':
-                raw_val = f"(heightIn / 2.0) * ({ui_val}/100.0)"
+                raw_val = f"((heightIn / 2.0) * {ui_val})"
                 if self.logger: self.logger.log(f"[RESOLVER] Scale OFFSET: {name} = {raw_val}")
             
             else:

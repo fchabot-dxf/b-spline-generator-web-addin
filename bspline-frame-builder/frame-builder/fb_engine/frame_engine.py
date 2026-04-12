@@ -322,7 +322,7 @@ class FrameBuilder:
         self.logger.log("Starting extrusion of frame sketch")
         feats = target_comp.features
         extrudes = feats.extrudeFeatures
-        thickness_val = self.design.userParameters.itemByName('Skel_Frame_Thickness').name
+        thickness_val = self.design.userParameters.itemByName('frame_depth').name
         taper_val = self.design.userParameters.itemByName('Skel_Frame_Taper').name
 
         self.logger.log(f"Extrusion parameters: thickness={thickness_val}, taper={taper_val}")

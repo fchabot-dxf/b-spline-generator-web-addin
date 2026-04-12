@@ -9,9 +9,9 @@ def get_block(ui_data=None):
         # RIGHT side: waist:S meets shoulder:S, waist:E meets hip:E
         {'Type': 'Coincident', 'Targets': ['arc_waist_R:S', 'arc_shoulder_R:S']},
         {'Type': 'Coincident', 'Targets': ['arc_waist_R:E', 'arc_hip_R:E']},
-        # LEFT side: waist:S meets shoulder:S, waist:E meets hip:E
-        {'Type': 'Coincident', 'Targets': ['arc_waist_L:S', 'arc_shoulder_L:S']},
-        {'Type': 'Coincident', 'Targets': ['arc_waist_L:E', 'arc_hip_L:E']},
+        # LEFT side: waist:S meets hip:S, waist:E meets shoulder:E
+        {'Type': 'Coincident', 'Targets': ['arc_waist_L:S', 'arc_hip_L:S']},
+        {'Type': 'Coincident', 'Targets': ['arc_waist_L:E', 'arc_shoulder_L:E']},
     ]
 
     return {"Name": "ArcChain", "BuildSequence": seq}

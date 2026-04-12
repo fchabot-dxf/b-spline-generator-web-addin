@@ -1,142 +1,73 @@
 # Sketch 2 — Shape Outline: Phase Structure
 
-Seven phases build the parametric silhouette loop in strict dependency order.
+Twelve phases build the parametric silhouette loop in strict dependency order.
 Each phase is independently steppable from the UI via the phase stepper (max_phase).
 
 ---
 
 ## Phase 1 — Projections (`p1_projs.py`)
 
-Projects the four offset corners (TL, TR, BL, BR) from the `1_bounding-box` sketch
-into the shape-outline sketch, producing reference point IDs:
-`proj_off_corner_TL`, `proj_off_corner_TR`, `proj_off_corner_BL`, `proj_off_corner_BR`.
-
-These become the fixed anchor points that edges and horn starts snap to.
-Nothing is drawn yet — purely reference geometry import.
+Projects the four offset corners (TL, TR, BL, BR) from the `1_bounding-box` sketch.
 
 ---
 
 ## Phase 2 — Anatomy (`p2_anatomy.py`)
 
 Builds the invisible parametric skeleton scaffold.
-Six construction lines — two per anatomical zone (shoulder, waist, hip), one right and one left.
-Each line's far end (`:E`) becomes the hub the arc centers weld to in Phase 6.
-
-- Left/right pairs are made **Horizontal** and **Equal** in length.
-- Both `:S` starts are pinned to the Y-axis via Coincident with `Y_AXIS`.
-- R and L starts are made Coincident with each other, sharing one origin on the axis.
-
-Seed Y positions use `heightIn` fractions so zones land in the correct quadrant
-before parameter dimensions are applied:
-- Shoulder: `heightIn * 0.15` (upper quadrant)
-- Hip: `-heightIn * 0.15` (lower quadrant)
-- Waist: `WaistOffset` (centre, with special vertical lock)
 
 ---
 
 ## Phase 3 — Silhouette (`p3_loop.py`)
 
-Places all 12 silhouette segments as geometric seeds and applies their
-immediate positional locks. No arc-to-arc connections here — those are Phase 4.
-
-**Edges** — top and bottom straight lines seeded near the bounding-box walls.
-Ends snapped to projected offset corners via Coincident:
-`top_edge:S → proj_off_corner_TL`, `top_edge:E → proj_off_corner_TR`,
-`bottom_edge:S → proj_off_corner_BR`, `bottom_edge:E → proj_off_corner_BL`.
-
-**Horns** — four vertical lines.
-- `:S` seeded at the projected corner (`top_y - 0.001` / `bot_y + 0.001`) and locked to it via Coincident.
-- `:E` seeded at `±heightIn * 0.183` toward the centre axis.
-- Vertical constraint applied to all four after placement.
-Corner locks: `horn_TR:S → proj_off_corner_TR`, `horn_BR:S → proj_off_corner_BR`,
-`horn_TL:S → proj_off_corner_TL`, `horn_BL:S → proj_off_corner_BL`.
-
-**Arcs** — six arcs seeded using `heightIn`-fraction coordinates derived from the
-reference frame `heightIn = 9 in (22.86 cm)`, `widthIn = 7 in (17.78 cm)`.
-All X/Y positions expressed as `heightIn * k` so seeds scale with the parameter.
-
-Seed topology (confirmed from live Fusion positions):
-
-| Arc | `:S` | `:E` | Mid bow |
-|---|---|---|---|
-| `arc_shoulder_R` | Inner junction (≈ `heightIn*0.27, heightIn*0.10`) | Horn tip — upper right | Outward/upward |
-| `arc_waist_R` | Shoulder junction (same as `arc_shoulder_R:S`) | Hip junction | **Inward** (`heightIn*0.15`) |
-| `arc_hip_R` | Horn tip — lower right | Inner junction (≈ `heightIn*0.32, -heightIn*0.15`) | Outward/downward |
-| `arc_shoulder_L` | Inner junction (mirrored) | Horn tip — upper left | Outward/upward |
-| `arc_waist_L` | Hip junction (mirrored) | Shoulder junction | **Inward** (`-heightIn*0.15`) |
-| `arc_hip_L` | Horn tip — lower left | Inner junction (mirrored) | Outward/downward |
-
-A **Radius dimension of `heightIn/9`** is applied immediately after each arc
-to lock initial curvature before chain and weld constraints are applied:
-`dim_seed_rad_shoulder_R/L`, `dim_seed_rad_waist_R/L`, `dim_seed_rad_hip_R/L`.
+Places all 12 silhouette segments as geometric seeds. 
+Applies **Seed Radii** (`dim_seed_rad_...`) at `heightIn/11`.
 
 ---
 
-## Phase 4 — Arc Chain (`p4_chain.py`)
+## Phase 4 — Phase 4c: Topology Closure
 
-Connects the waist arc to its adjacent shoulder and hip arcs via Coincident.
-The waist arc shares its `:S` with the shoulder `:S` (the inner junction),
-and its `:E` with the hip `:E` (the other inner junction).
-Both sides use the same `:S`/`:E` pairing — fully symmetric.
-
-```
-arc_waist_R:S ↔ arc_shoulder_R:S      arc_waist_R:E ↔ arc_hip_R:E
-arc_waist_L:S ↔ arc_shoulder_L:S      arc_waist_L:E ↔ arc_hip_L:E
-```
-
-After this phase each side forms a continuous 3-arc chain
-(shoulder — waist — hip) anchored at both inner junctions.
+Closes the loop, connects horns, and pins the waist hub.
 
 ---
 
-## Phase 4b — Horn Tips (`p4b_horns.py`)
+## Phase 5 — Phase 5b: Smoothness
 
-Connects each horn `:E` to the **free end** of its adjacent shoulder or hip arc —
-the end not already consumed by the waist chain in Phase 4.
-
-Since Phase 4 takes `shoulder:S` and `hip:E` as chain junctions,
-the free (horn-side) ends are `shoulder:E` and `hip:S`:
-
-```
-horn_TR:E ↔ arc_shoulder_R:E      horn_BR:E ↔ arc_hip_R:S
-horn_TL:E ↔ arc_shoulder_L:E      horn_BL:E ↔ arc_hip_L:S
-```
-
-After this phase the full silhouette loop is geometrically closed.
+Applies Tangent constraints across all junctions.
 
 ---
 
-## Phase 5 — Tangency (`p5_tangency.py`)
+## Phase 5c — Radius Removal (`p5c_radius_removal.py`)
 
-Applies Tangent constraints to each adjacent arc pair in the chain,
-enforcing G1 continuity across all six arc junctions:
-
-```
-arc_shoulder_R ↔ arc_waist_R      arc_waist_R ↔ arc_hip_R
-arc_hip_L ↔ arc_waist_L           arc_waist_L ↔ arc_shoulder_L
-```
+Surgically deletes the six seed radius dimensions added in Phase 3.
 
 ---
 
 ## Phase 6 — Skeleton Welds (`p6_welds.py`)
 
-Anchors the arc chain to the parametric skeleton by pinning each arc **center point** (`:C`)
-to the matching anatomy hub exterior endpoint (`:E`).
-This drives arc position from the anatomy parameters (ShoulderSpan, WaistSpan, HipSpan)
-while leaving radius free to solve.
+Anchors arc centers (`:C`) to the parametric skeleton hub endpoints (`:E`).
 
-**Shoulder welds:**
-`arc_shoulder_R:C → skel_shoulder_pin_R:E`
-`arc_shoulder_L:C → skel_shoulder_pin_L:E`
+---
 
-**Hip welds:**
-`arc_hip_R:C → skel_hip_pin_R:E`
-`arc_hip_L:C → skel_hip_pin_L:E`
+## Phase 7 — Parametric Drivers (`p7_drivers.py`)
 
-**Waist welds** — center lands closer to X=0 than shoulder/hip centers
-because the waist arc bows inward:
-`arc_waist_R:C → skel_waist_pin_R:E`
-`arc_waist_L:C → skel_waist_pin_L:E`
+Finalizes the sizing of the anatomy and arcs.
+Re-applies the actual UI sliders (ShoulderRadius, WaistSpan, etc.) ONLY if their corresponding UI "Lock" is checked.
+Arcs use **Volatile Radius** logic to nudge and release.
 
-After this phase the loop is fully closed, continuously tangent, and
-parametrically driven by the anatomy skeleton.
+---
+
+## Phase 7b — Enclosure Expansion (`p7b_expansion.py`)
+
+The final geometric growth and corner completion.
+
+**Offset Synthesis**: Generates the internal frame line loop (`frame_thickness`) based on the settled Phase 7 geometry.
+
+**Miter Completion**: Correctly identifies the four outer corners (`horn_...:S`) and connects them to the offset inner corners using the accurate Template 2 logic.
+
+---
+
+After Phase 7b, the sketch is a fully closed, manifold silhouette with a consistent wall thickness.
+
+
+
+

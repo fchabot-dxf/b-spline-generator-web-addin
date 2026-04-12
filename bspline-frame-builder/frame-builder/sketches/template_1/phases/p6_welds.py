@@ -12,10 +12,6 @@ def get_block(ui_data=None):
         {'Type': 'Coincident', 'Targets': ['arc_hip_R:C',      'skel_hip_pin_R:E']},
         {'Type': 'Coincident', 'Targets': ['arc_hip_L:C',      'skel_hip_pin_L:E']},
 
-        # WAIST-TO-SKELETON WELDS: waist arc centers → waist hub endpoints
-        {'Type': 'Coincident', 'Targets': ['arc_waist_R:C', 'skel_waist_pin_R:E']},
-        {'Type': 'Coincident', 'Targets': ['arc_waist_L:C', 'skel_waist_pin_L:E']},
-
     ]
 
     return {"Name": "Welds", "BuildSequence": seq}
