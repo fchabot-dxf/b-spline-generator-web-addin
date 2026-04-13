@@ -14,7 +14,7 @@ from datetime import datetime
 # imports check: removed diagnostic
 
 
-def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0, orientation='z-up'):
+def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0):
     """
     Pre-scale, pre-flip Y, and pre-center SVG coordinates for Fusion 360 import.
 
@@ -31,32 +31,19 @@ def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0, orientation='z-u
       x  in [-w_cm/2,  w_cm/2]   e.g. [-8.89,  +8.89] cm for a 7-inch wide board
       y  in [-h_cm/2,  h_cm/2]   e.g. [-11.43, +11.43] cm for a 9-inch tall board
     """
-    _log(f'[SVG DEBUG] _prescale_svg start scale={scale} width_in={width_in} height_in={height_in} svg_len={len(svg_text) if svg_text else 0}')
-    first50 = svg_text[:200].replace('\n', ' ')
-    _log(f'[SVG DEBUG] _prescale_svg before sample: {first50}')
+    w_px   = width_in  * scale   # e.g. 7  * 96 = 672
+    h_px   = height_in * scale   # e.g. 9  * 96 = 864
+    half_w = w_px / 2            # 336
+    half_h = h_px / 2            # 432
 
-    w_px = width_in * scale
-    h_px = height_in * scale
-    half_w = w_px / 2.0
-    half_h = h_px / 2.0
-
-    # If the SVG was pre-flipped for browser export, strip that wrapper
-    # so Fusion's own bake transform does not double-flip the artwork.
-    flip_wrapper_re = re.compile(r'<g\s+transform="translate\(0\s+[-+]?[\d.]+\)\s+scale\(1\s+-1\)"\s*>(.*?)</g>', re.S)
-    if flip_wrapper_re.search(svg_text):
-        _log('[SVG DEBUG] _prescale_svg detected browser flip wrapper; stripping it before processing')
-        svg_text = flip_wrapper_re.sub(r'\1', svg_text, count=1)
-
-    def mirror_y(y_px):
-        # Convert SVG downward Y to Fusion upward Y, with centering.
-        if orientation == 'y-up':
-            return y_px - half_h
-        return (h_px - y_px) - half_h
+    def transform_coord(x_str, y_str):
+        new_x = float(x_str) * scale - half_w   # scale + center X
+        # FLIP + Shift: cad_y = (half_h - svg_y * scale) - 0.5 * scale (to fix drift)
+        new_y = (half_h - float(y_str) * scale) - (0.5 * scale)
+        return f'{new_x:.4f},{new_y:.4f}'
 
     def scale_pair(m):
-        x = float(m.group(1)) * scale - half_w
-        y = mirror_y(float(m.group(2)) * scale)
-        return f'{x:.4f},{y:.4f}'
+        return transform_coord(m.group(1), m.group(2))
 
     # 1. Transform positional attributes x, y, cx, cy (Bake centering + scaling)
     def scale_x_attr(m):
@@ -64,21 +51,14 @@ def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0, orientation='z-u
     svg_text = re.sub(r'\b(x|cx)="([^"]+)"', scale_x_attr, svg_text)
 
     def scale_y_attr(m):
-        # Mirror on the red/X axis by flipping the centered Y coordinate.
-        val = mirror_y(float(m.group(2)) * scale)
+        # FLIP Y + Shift: cad_y = (half_h - svg_y * scale) - 0.5 * scale (to fix drift)
+        val = (half_h - float(m.group(2)) * scale) - (0.5 * scale)
         return f'{m.group(1)}="{val:.4f}"'
     svg_text = re.sub(r'\b(y|cy)="([^"]+)"', scale_y_attr, svg_text)
 
-    # 2. Transform scale-only attributes (r, rx, ry, font-size).
-    # width/height should remain as pixel dimensions to avoid double-scaling.
+    # 2. Transform scale-only attributes (width, height, r, rx, ry, font-size)
     def scale_only_attr(m):
-        name = m.group(1)
-        value = float(m.group(2))
-        if name == 'width':
-            return f'width="{w_px:.4f}"'
-        if name == 'height':
-            return f'height="{h_px:.4f}"'
-        return f'{name}="{value * scale:.4f}"'
+        return f'{m.group(1)}="{float(m.group(2)) * scale:.4f}"'
     svg_text = re.sub(r'\b(width|height|r|rx|ry|font-size)="([^"]+)"', scale_only_attr, svg_text)
 
     # 3. Transform polyline/polygon points="x1,y1 x2,y2 ..."
@@ -87,80 +67,8 @@ def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0, orientation='z-u
     svg_text = re.sub(r'points="([^"]+)"', scale_pts, svg_text)
 
     # 4. Transform path d="M x,y L x,y C x1,y1 x2,y2 x,y ..."
-    def transform_path_d(path_data):
-        token_re = re.compile(r'([MmZzLlHhVvCcSsQqTtAa])|([-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?)')
-        tokens = []
-        for cmd, num in token_re.findall(path_data):
-            if cmd:
-                tokens.append(cmd)
-            elif num:
-                tokens.append(num)
-
-        param_counts = {
-            'M': 2, 'L': 2, 'T': 2, 'H': 1, 'V': 1,
-            'C': 6, 'S': 4, 'Q': 4, 'A': 7, 'Z': 0
-        }
-
-        def transform_num(val, is_x, is_y, absolute):
-            f = float(val)
-            if is_x:
-                return f'{f * scale - half_w:.4f}' if absolute else f'{f * scale:.4f}'
-            if is_y:
-                return f'{mirror_y(f * scale):.4f}' if absolute else f'{(-f * scale):.4f}'
-            return f'{f:.4f}'
-        output = []
-        i = 0
-        current_cmd = None
-        while i < len(tokens):
-            token = tokens[i]
-            if token in param_counts:
-                current_cmd = token
-                output.append(token)
-                i += 1
-                continue
-
-            if current_cmd is None:
-                break
-
-            cmd = current_cmd
-            upper = cmd.upper()
-            absolute = cmd == upper
-            count = param_counts.get(upper, 0)
-            if count == 0:
-                continue
-
-            while i < len(tokens) and tokens[i] not in param_counts:
-                group = tokens[i:i+count]
-                if len(group) < count:
-                    break
-                transformed = []
-                if upper == 'A':
-                    for pi, val in enumerate(group):
-                        if pi in (0, 1):
-                            transformed.append(transform_num(val, True, False, absolute))
-                        elif pi in (2, 3, 4):
-                            transformed.append(f'{float(val):.4f}')
-                        elif pi == 5:
-                            transformed.append(transform_num(val, True, False, absolute))
-                        elif pi == 6:
-                            transformed.append(transform_num(val, False, True, absolute))
-                else:
-                    for pi, val in enumerate(group):
-                        if upper == 'H':
-                            transformed.append(transform_num(val, True, False, absolute))
-                        elif upper == 'V':
-                            transformed.append(transform_num(val, False, True, absolute))
-                        else:
-                            is_x = (pi % 2) == 0
-                            is_y = not is_x
-                            transformed.append(transform_num(val, is_x, is_y, absolute))
-                output.extend(transformed)
-                i += count
-
-        return ' '.join(output)
-
     def scale_d(m):
-        return 'd="' + transform_path_d(m.group(1)) + '"'
+        return 'd="' + re.sub(r'([-\d.]+),([-\d.]+)', scale_pair, m.group(1)) + '"'
     svg_text = re.sub(r'\bd="([^"]+)"', scale_d, svg_text)
 
     # 5. Update viewBox to centered pixel coordinate space
@@ -170,9 +78,6 @@ def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0, orientation='z-u
         svg_text
     )
 
-    first50_after = svg_text[:200].replace('\n', ' ')
-    _log(f'[SVG DEBUG] _prescale_svg after sample: {first50_after}')
-    _log(f'[SVG DEBUG] _prescale_svg completed transformed length={len(svg_text)}')
     return svg_text
 
 handlers = []
@@ -536,10 +441,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     # Keep solid color effect fallback if material API not available.
                     pass
 
-            # ── ok — keep geometry, clear preview, close palette ──────────────
+            # ── ok — keep geometry, close palette ────────────────────────────
             elif action == 'ok':
-                _log('ok: clearing preview graphics, keeping imported geometry, hiding palette')
-                _clear_custom_graphics()
+                _log('ok: forgetting occurrence refs, hiding palette')
                 last_imported_occurrences = []
                 palette = ui.palettes.itemById(PALETTE_ID)
                 if palette:
@@ -630,7 +534,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             stamp_data    = data.get('stamp')
             params        = data.get('params', {})
             orientation   = params.get('exportOrientation', 'z-up')
-            _log(f'Payload orientation={orientation}, isAppend={data.get("isAppend", False)}, isVisible={data.get("isVisible", True)}')
 
             # ── Remove previous import ───────────────────────────────────────────
             is_append = data.get('isAppend', False)
@@ -935,15 +838,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             height_in = float(params.get('heightIn', board['heightIn'])) if params else board['heightIn']
 
             # 1. Coordinate Transform (Pre-scale to pixels)
-            _log(f'[STAMP] Importing SVG layer {sketch_name} with orientation={orientation}, sketch_plane={"xZ" if orientation=="y-up" else "xY"}, target={sketch_target.name if sketch_target else "None"}')
-            _log(f'[STAMP] Pre-scaling SVG for {sketch_name} (dpi={dpi}, width_in={width_in}, height_in={height_in})')
-            svg_text = _prescale_svg(svg_text, int(dpi), width_in, height_in, orientation)
+            svg_text = _prescale_svg(svg_text, int(dpi), width_in, height_in)
 
             # 2. Write to temp file
             with tempfile.NamedTemporaryFile(mode='w', suffix='.svg', delete=False, encoding='utf-8') as tmp:
                 tmp.write(svg_text)
                 tmp_path = tmp.name
-            _log(f'[STAMP] Wrote pre-scaled SVG temp file: {tmp_path}')
 
             # 3. Setup Plane
             if orientation == 'y-up':
@@ -974,7 +874,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             svg_options = import_mgr.createSVGImportOptions(tmp_path)
             svg_options.scale = 1.0
             import_mgr.importToTarget(svg_options, sketch)
-            _log(f'[STAMP] SVG import complete for {sketch_name}')
 
 
             # 6. Preserving Calibration Boundary Lines (User likes them for alignment)
