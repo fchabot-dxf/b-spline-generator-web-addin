@@ -1,0 +1,330 @@
+/* Editor-specific mobile/tablet overrides */
+
+@media (max-width: 720px) {
+  #svgEditorModal .modal-window>div:nth-child(2) {
+    flex-direction: column;
+  }
+
+  #editorCanvasContainer {
+    padding-inline: var(--mobile-dynamic-padding, 0px);
+    transition: padding 0.05s linear;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #editorSVGContainer {
+    width: auto !important;
+    max-width: 100%;
+    margin: 0 auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    min-width: 0 !important;
+  }
+
+  .editor-symbol-keyboard {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin-inline: calc(var(--mobile-dynamic-padding, 0px) * -1);
+    flex-shrink: 0;
+    box-shadow: none;
+    border-top: 1px solid var(--border);
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    touch-action: none;
+    z-index: 100;
+  }
+
+  .editor-sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 8px 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+
+  .editor-sidebar .tool-btn {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    padding: 6px;
+  }
+
+  .editor-toolbar-top {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .editor-properties-panel {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+  }
+
+  .editor-properties-pane,
+  .property-row {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .property-select,
+  .property-number {
+    min-width: 90px;
+    height: 30px;
+  }
+
+  .property-row {
+    flex-wrap: wrap;
+  }
+
+  .editor-symbol-keyboard-header {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .editor-symbol-keyboard-actions {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  #svgEditorHeader {
+    flex-direction: row;
+    align-items: center !important;
+    justify-content: space-between;
+    padding: 12px 10px;
+    gap: 12px;
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  #svgEditorHeader h3 {
+    margin: 0;
+  }
+
+  #svgEditorHeader>div {
+    width: auto;
+    margin-left: 0 !important;
+    justify-content: space-between;
+    min-width: 0;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+  }
+
+  .editor-toolbar-top {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 10px 10px 10px 8px;
+    height: auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  .editor-toolbar-top > * {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    min-width: 0;
+  }
+
+  /* Prevent the layout spacer from forcing a second row on mobile */
+  .editor-toolbar-top > div[style*="flex:1"] {
+    flex: 0 0 auto !important;
+    width: auto !important;
+  }
+
+  #svgEditorHeader > div:last-child {
+    gap: 4px;
+  }
+
+  #svgEditorHeader > div:last-child > button {
+    min-width: 0 !important;
+    width: auto !important;
+    padding: 4px 8px !important;
+    height: 30px !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+  }
+
+  #svgEditorHeader > div:last-child > button.btn-primary.btn-xs {
+    padding: 4px 10px !important;
+  }
+
+  #svgEditorHeader > div:last-child > button,
+  #svgEditorHeader > div:last-child > button.btn-secondary,
+  #svgEditorHeader > div:last-child > button.btn-primary {
+    flex: 0 0 auto !important;
+  }
+
+  .editor-properties-panel {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .editor-properties-pane {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  .editor-properties-pane.active {
+    display: flex;
+  }
+
+  .property-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .property-label {
+    font-size: 11px;
+    opacity: 0.75;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .property-select,
+  .property-number,
+  .property-range {
+    font: 13px/1.4 Arial, sans-serif;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .property-select {
+    min-width: 120px;
+    height: 32px;
+    padding: 0 10px;
+  }
+
+  .property-number {
+    width: 50px;
+    min-width: 50px;
+    height: 32px;
+    padding: 0 8px;
+    text-align: center;
+  }
+
+  .property-range {
+    min-width: 140px;
+    max-width: 220px;
+    height: 24px;
+  }
+
+  .stepper-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .stepper-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.16s ease, border-color 0.16s ease;
+  }
+
+  .stepper-btn:hover {
+    background: var(--surface);
+    border-color: rgba(0,0,0,0.12);
+  }
+
+  .editor-action-btn {
+    height: 32px;
+    min-width: 84px;
+  }
+
+  .editor-layer-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 12px;
+    border-left: 1px solid var(--border);
+    margin-left: 12px;
+    white-space: nowrap;
+  }
+
+  .property-note {
+    font-size: 12px;
+    opacity: 0.75;
+  }
+
+  #editorStrokeGroup,
+  #editorFontGroup {
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  #editorStrokeWidthSlider {
+    flex: 1;
+    margin-right: 12px;
+  }
+
+  .editor-sidebar {
+    width: 56px;
+    min-width: 56px;
+    padding: 10px 6px;
+  }
+
+  .tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    width: 40px;
+    height: 40px;
+    padding: 6px;
+    border-radius: 10px;
+  }
+}

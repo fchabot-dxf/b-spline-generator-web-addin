@@ -378,9 +378,10 @@ export function updateEditorTopView(heights, nx, nz) {
     if (!ctx) return;
 
     // Increase the top-view background resolution for a crisper SVG editor backdrop.
+    // Use an exact 2x internal pixel ratio while preserving the canvas's on-screen CSS size.
     const baseSize = 512;
-    const deviceScale = Math.min(4, Math.max(1, Math.round(window.devicePixelRatio || 1)));
-    const displaySize = baseSize * deviceScale;
+    const scale = 2;
+    const displaySize = baseSize * scale;
     canvas.width = displaySize;
     canvas.height = displaySize;
     canvas.style.width = `${baseSize}px`;

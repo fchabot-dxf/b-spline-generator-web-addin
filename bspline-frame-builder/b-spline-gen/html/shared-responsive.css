@@ -1,0 +1,53 @@
+/* App-wide responsive overrides for layout and mobile breakpoints */
+
+@media (max-width: 900px) {
+  .app {
+    --sidebar-width: 280px;
+  }
+}
+
+@media (max-width: 700px) {
+  .app {
+    --preview-height: 36vh;
+    grid-template-columns: 1fr;
+    /* Rows: Header | Preview | Resizer | Settings | Footer | Status Bar */
+    grid-template-rows: auto var(--preview-height) 12px 1fr auto auto;
+  }
+
+  #previewArea {
+    grid-column: 1;
+    grid-row: 2;
+    border-bottom: none;
+  }
+
+  #resizer {
+    grid-column: 1;
+    grid-row: 3;
+    cursor: row-resize;
+    border-left: none;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #resizer::after {
+    width: 32px;
+    height: 2px;
+  }
+
+  aside {
+    grid-column: 1;
+    grid-row: 4;
+    border-bottom: none;
+  }
+
+  #fusionActionBar {
+    grid-row: 5;
+  }
+}
+
+@media (max-width: 700px) {
+  #bottomStatusBar {
+    grid-row: 6;
+  }
+}

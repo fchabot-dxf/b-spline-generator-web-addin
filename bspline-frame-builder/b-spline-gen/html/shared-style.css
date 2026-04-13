@@ -224,6 +224,8 @@
       grid-template-rows: auto 1fr auto auto;
       width: 100%;
       height: 100%;
+      min-width: 0;
+      min-height: 0;
       overflow: hidden;
     }
 
@@ -756,12 +758,17 @@
       overflow: hidden;
       padding: 0;
       min-height: 0;
+      min-width: 0;
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+      width: 100%;
+      height: 100%;
     }
 
     #previewCanvas {
       position: absolute;
-      top: 0;
-      left: 0;
+      inset: 0;
       width: 100%;
       height: 100%;
       display: block;
@@ -792,12 +799,6 @@
 
     #bottomStatusBar {
       grid-row: 4;
-    }
-
-    @media (max-width: 700px) {
-      #bottomStatusBar {
-        grid-row: 6;
-      }
     }
 
     .tip {
@@ -841,55 +842,6 @@
       border-radius: 2px;
     }
 
-    /* Mobile & Tablet Overrides */
-    @media (max-width: 900px) {
-      .app {
-        --sidebar-width: 280px;
-      }
-    }
-
-    @media (max-width: 700px) {
-      .app {
-        --preview-height: 36vh;
-        grid-template-columns: 1fr;
-        /* Rows: Header | Preview | Resizer | Settings | Footer | Status Bar */
-        grid-template-rows: auto var(--preview-height) 12px 1fr auto auto;
-      }
-
-      #previewArea {
-        grid-column: 1;
-        grid-row: 2;
-        border-bottom: none;
-      }
-
-      #resizer {
-        grid-column: 1;
-        grid-row: 3;
-        cursor: row-resize;
-        border-left: none;
-        border-right: none;
-        border-top: 1px solid var(--border);
-        border-bottom: 1px solid var(--border);
-      }
-
-      #resizer::after {
-        width: 32px;
-        height: 2px;
-      }
-
-      /* Horizontal grip */
-
-      aside {
-        grid-column: 1;
-        grid-row: 4;
-        border-bottom: none;
-      }
-
-      #fusionActionBar {
-        grid-row: 5;
-      }
-    }
-
     /* =========================================
        Base Modal System (Phase 4)
        ========================================= */
@@ -926,6 +878,26 @@
       justify-content: space-between;
       align-items: center;
       background: var(--surface-mid);
+    }
+
+    /* Shared editor keyboard drag handle */
+    .editor-symbol-keyboard-grip {
+      width: 34px;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.18);
+      cursor: ns-resize;
+      flex: 0 0 auto;
+      margin-bottom: 2px;
+      transition: background 0.16s ease;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .editor-symbol-keyboard.grabbing .editor-symbol-keyboard-grip {
+      background: rgba(0,0,0,0.28);
     }
 
     .modal-header h3 {

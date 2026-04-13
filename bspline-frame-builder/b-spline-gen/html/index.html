@@ -12,7 +12,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
   <link rel="stylesheet" href="shared-style.css">
+  <link rel="stylesheet" href="shared-responsive.css">
   <link rel="stylesheet" href="editor/editor.css">
+  <link rel="stylesheet" href="editor/editor-mobile.css">
 </head>
 
 
@@ -438,10 +440,17 @@
 <!-- Modals -->
 <div id="svgEditorModal" class="modal-overlay" style="display: none;">
   <div class="modal-window">
-    <div class="modal-header" id="svgEditorHeader" style="display:flex; align-items:center;">
+    <div class="modal-header" id="svgEditorHeader" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select id="editorLayerSelect" class="property-select" style="width:50px !important; min-width:50px !important; max-width:100px !important; flex:0 1 auto; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+          <option value="0" selected>1</option>
+          <option value="1">2</option>
+          <option value="2">3</option>
+        </select>
+      </div>
       <div style="display:flex; gap:8px; margin-left:auto;"><button id="editorClear"
           class="btn btn-secondary btn-xs">Clear</button><button id="editorDownload"
-          class="btn btn-secondary btn-xs">Download SVG</button><button id="editorCancel"
+          class="btn btn-secondary btn-xs">Download</button><button id="editorCancel"
           class="btn btn-secondary btn-xs">Cancel</button><button id="editorApply"
           class="btn btn-primary btn-xs">Apply</button></div>
     </div>
@@ -553,7 +562,7 @@
           <div class="editor-properties-panel">
             <div id="editorShapePanel" class="editor-properties-pane active">
               <div id="editorStrokeGroup" class="property-row">
-                <label class="property-label" for="editorStrokeWidth">Stroke width</label>
+                <label class="property-label" for="editorStrokeWidth">stroke</label>
                 <div class="stepper-container">
                   <button type="button" id="editorStrokeWidthMinus" class="stepper-btn">−</button>
                   <input type="number" id="editorStrokeWidth" class="property-number no-stepper" value="0.5" step="0.1" min="0" max="5">
@@ -564,7 +573,7 @@
             <div id="editorTextPanel" class="editor-properties-pane">
               <div id="editorFontGroup" class="property-row">
                 <label class="property-label" for="editorFontFamily">Font</label>
-                <select id="editorFontFamily" class="property-select" style="width:160px;">
+                <select id="editorFontFamily" class="property-select" style="width:80px; min-width:0;">
                   <optgroup label="── Sans Serif ──">
                     <option value="Arial" selected>Arial</option>
                     <option value="Tahoma">Tahoma</option>
@@ -600,20 +609,11 @@
               <span class="property-note">Select a tool or object to see properties.</span>
             </div>
           </div>
-          <!-- v32: Layer Selector -->
-          <div id="editorLayerGroup" class="editor-layer-group">
-            <span class="property-label">Layer</span>
-            <select id="editorLayerSelect" class="property-select">
-              <option value="0" selected>Layer 1</option>
-              <option value="1">Layer 2</option>
-              <option value="2">Layer 3</option>
-            </select>
-          </div>
           <div style="flex:1;"></div>
         </div>
         <div id="editorCanvasContainer"
           style="flex:1; background:#efefef; position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start;">
-          <div id="editorSVGContainer" style="width:100%; height:auto;"></div>
+          <div id="editorSVGContainer" style="width:auto; height:auto;"></div>
           <!-- Hidden input for robust text capture (Emoji/IME/Mobile). Style is managed by JS for mobile support. -->
           <input type="text" id="editorHiddenInput"
             style="position:absolute; left:-10000px; top:0; width:1px; height:1px; opacity:0; border:none; padding:0; z-index:9999;">

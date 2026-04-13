@@ -122,11 +122,23 @@ print(f"Preparing unique deployment folder: {deploy_dist}")
 os.makedirs(deploy_dist, exist_ok=True)
 
 
-# Copy all web-related files (HTML, JS, CSS, images, etc.)
-web_extensions = ('.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico', '.json')
-for filename in os.listdir(source_dir):
-    if filename.lower().endswith(web_extensions):
-        shutil.copy2(os.path.join(source_dir, filename), deploy_dist)
+# Copy all web-related files recursively from source_dir.
+# This ensures nested folders like core/ are deployed, not just top-level files.
+web_extensions = (
+    '.html', '.js', '.mjs', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico',
+    '.json', '.webp', '.woff', '.woff2', '.ttf'
+)
+for root, dirs, files in os.walk(source_dir):
+    # Skip hidden and irrelevant directories
+    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('.git', '__pycache__', 'node_modules')]
+    rel_dir = os.path.relpath(root, source_dir)
+    dest_dir = deploy_dist if rel_dir == '.' else os.path.join(deploy_dist, rel_dir)
+    os.makedirs(dest_dir, exist_ok=True)
+    for filename in files:
+        if filename.lower().endswith(web_extensions):
+            src_path = os.path.join(root, filename)
+            dst_path = os.path.join(dest_dir, filename)
+            shutil.copy2(src_path, dst_path)
 
 # Ensure the entire themes/ folder is copied
 themes_src = os.path.join(source_dir, 'themes')

@@ -38,12 +38,14 @@ export function initTextProperties(editor) {
 
   const updateKeyboardPadding = () => {
     if (!canvasContainer || !symbolPanel) return;
-    const isOpen = !symbolPanel.classList.contains('hidden');
-    if (isOpen) {
-      const height = symbolPanel.getBoundingClientRect().height;
-      canvasContainer.style.paddingBottom = `${height}px`;
-    } else {
-      canvasContainer.style.paddingBottom = '';
+    if (window.innerWidth > 720) {
+      const isOpen = !symbolPanel.classList.contains('hidden');
+      if (isOpen) {
+        const height = symbolPanel.getBoundingClientRect().height;
+        canvasContainer.style.paddingBottom = `${height}px`;
+      } else {
+        canvasContainer.style.paddingBottom = '';
+      }
     }
   };
 
@@ -72,39 +74,80 @@ export function initTextProperties(editor) {
     }
   });
 
+  window.addEventListener('resize', updateKeyboardPadding);
+
   const keyboardGrip = query('.editor-symbol-keyboard-grip');
   if (keyboardGrip && symbolPanel) {
     let dragStartY = null;
     let startHeight = 0;
     const minHeight = 120;
-    const maxHeight = 420;
+    const getMaxHeight = () => Math.min(window.innerHeight - 120, Math.round(window.innerHeight * 0.85));
     const setKeyboardHeight = (height) => {
+      const maxHeight = getMaxHeight();
       const clamped = Math.min(maxHeight, Math.max(minHeight, height));
-      symbolPanel.style.setProperty('--keyboard-max-height', `${clamped}px`);
+
+      requestAnimationFrame(() => {
+        symbolPanel.style.setProperty('--keyboard-max-height', `${clamped}px`);
+        symbolPanel.style.height = `${clamped}px`;
+
+        if (canvasContainer) {
+          if (window.innerWidth <= 720) {
+            const ratio = (clamped - minHeight) / (maxHeight - minHeight);
+            const sidePadding = ratio * 60;
+            canvasContainer.style.setProperty('--mobile-dynamic-padding', `${sidePadding}px`);
+          } else {
+            canvasContainer.style.paddingBottom = `${clamped}px`;
+          }
+        }
+      });
     };
     const onPointerMove = (event) => {
       if (dragStartY === null) return;
       const delta = event.clientY - dragStartY;
       setKeyboardHeight(startHeight - delta);
-      updateKeyboardPadding();
+      event.preventDefault();
     };
-    const onPointerUp = () => {
+    const onTouchMove = (event) => {
+      if (dragStartY === null) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const delta = touch.clientY - dragStartY;
+      setKeyboardHeight(startHeight - delta);
+      event.preventDefault();
+    };
+    const stopDrag = () => {
       dragStartY = null;
       symbolPanel.classList.remove('grabbing');
       document.removeEventListener('pointermove', onPointerMove);
-      document.removeEventListener('pointerup', onPointerUp);
+      document.removeEventListener('pointerup', stopDrag);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', stopDrag);
+    };
+
+    const startDrag = (clientY, event) => {
+      if (symbolPanel.classList.contains('hidden')) return;
+      dragStartY = clientY;
+      startHeight = symbolPanel.getBoundingClientRect().height;
+      symbolPanel.classList.add('grabbing');
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', stopDrag);
+      document.addEventListener('touchmove', onTouchMove, { passive: false });
+      document.addEventListener('touchend', stopDrag);
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
     };
 
     keyboardGrip.addEventListener('pointerdown', (event) => {
       if (symbolPanel.classList.contains('hidden')) return;
-      dragStartY = event.clientY;
-      startHeight = symbolPanel.getBoundingClientRect().height;
-      symbolPanel.classList.add('grabbing');
       keyboardGrip.setPointerCapture(event.pointerId);
-      document.addEventListener('pointermove', onPointerMove);
-      document.addEventListener('pointerup', onPointerUp);
-      event.preventDefault();
+      startDrag(event.clientY, event);
     });
+
+    keyboardGrip.addEventListener('touchstart', (event) => {
+      if (symbolPanel.classList.contains('hidden')) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      startDrag(touch.clientY, event);
+    }, { passive: false });
   }
 }
 
@@ -125,9 +168,12 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
   }[family] || { start: 32, end: 255 };
 
   const count = Math.max(0, range.end - range.start + 1);
+  const defaultHeight = window.innerWidth <= 720 ? '40vh' : '50vh';
+  const maxHeight = window.innerWidth <= 720 ? '80vh' : '80vh';
   panel.style.width = '';
-  panel.style.height = '';
-  panel.style.maxHeight = window.innerWidth <= 720 ? '55vh' : '40vh';
+  panel.style.height = defaultHeight;
+  panel.style.removeProperty('max-height');
+  panel.style.setProperty('--keyboard-max-height', maxHeight);
 
   for (let code = range.start; code <= range.end; code++) {
     const char = String.fromCodePoint(code);
@@ -135,18 +181,7 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
     btn.type = 'button';
     btn.className = 'symbol-key';
     btn.textContent = char;
-    btn.style.all = 'unset';
-    btn.style.display = 'inline-flex';
-    btn.style.alignItems = 'center';
-    btn.style.justifyContent = 'center';
-    btn.style.width = '100%';
-    btn.style.height = '34px';
-    btn.style.border = '1px solid rgba(0,0,0,0.1)';
-    btn.style.borderRadius = '4px';
-    btn.style.background = 'var(--surface2)';
-    btn.style.color = 'var(--text)';
     btn.style.fontFamily = `'${family}', sans-serif`;
-    btn.style.cursor = 'pointer';
     btn.addEventListener('click', () => {
       if (editor._editingTextEl) {
         insertSymbol(editor, char, family);
@@ -155,5 +190,15 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
       }
     });
     grid.appendChild(btn);
+  }
+
+  // Add invisible placeholder buttons at the bottom to reserve safe space under mobile browser UI.
+  for (let i = 0; i < 8; i++) {
+    const placeholder = document.createElement('button');
+    placeholder.type = 'button';
+    placeholder.className = 'symbol-key symbol-key-placeholder';
+    placeholder.setAttribute('aria-hidden', 'true');
+    placeholder.tabIndex = -1;
+    grid.appendChild(placeholder);
   }
 }
