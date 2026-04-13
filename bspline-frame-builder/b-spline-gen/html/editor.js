@@ -240,21 +240,66 @@ export class VectorEditor {
         const symbolPanel = document.getElementById('editorSymbolKeyboard');
         const symbolClose = document.getElementById('editorSymbolKeyboardClose');
         const symbolFamily = document.getElementById('editorSymbolFamily');
+        const canvasContainer = document.getElementById('editorCanvasContainer');
 
         if (symbolToggle && symbolPanel && symbolFamily) {
             symbolToggle.addEventListener('click', () => {
                 const isOpen = !symbolPanel.classList.toggle('hidden');
+                canvasContainer?.classList.toggle('keyboard-open', isOpen);
                 if (isOpen) {
                     populateSymbolKeyboard(this, symbolFamily.value || 'Symbol');
                     symbolFamily.focus();
                 }
             });
         }
-        symbolClose?.addEventListener('click', () => symbolPanel?.classList.add('hidden'));
+        symbolClose?.addEventListener('click', () => {
+            if (symbolPanel) symbolPanel.classList.add('hidden');
+            canvasContainer?.classList.remove('keyboard-open');
+        });
         symbolFamily?.addEventListener('change', () => {
             if (symbolPanel && !symbolPanel.classList.contains('hidden')) {
                 populateSymbolKeyboard(this, symbolFamily.value || 'Symbol');
             }
+        });
+
+        const keyboardGrip = document.querySelector('.editor-symbol-keyboard-grip');
+        if (keyboardGrip && symbolPanel) {
+            let dragStartY = null;
+            let startHeight = 0;
+            const minHeight = 120;
+            const maxHeight = 420;
+            const setKeyboardHeight = (height) => {
+                const clamped = Math.min(maxHeight, Math.max(minHeight, height));
+                symbolPanel.style.setProperty('--keyboard-max-height', `${clamped}px`);
+            };
+            const onPointerMove = (event) => {
+                if (dragStartY === null) return;
+                const delta = event.clientY - dragStartY;
+                setKeyboardHeight(startHeight - delta);
+            };
+            const onPointerUp = () => {
+                dragStartY = null;
+                symbolPanel.classList.remove('grabbing');
+                document.removeEventListener('pointermove', onPointerMove);
+                document.removeEventListener('pointerup', onPointerUp);
+            };
+            keyboardGrip.addEventListener('pointerdown', (event) => {
+                if (symbolPanel.classList.contains('hidden')) return;
+                dragStartY = event.clientY;
+                startHeight = symbolPanel.getBoundingClientRect().height;
+                symbolPanel.classList.add('grabbing');
+                keyboardGrip.setPointerCapture(event.pointerId);
+                document.addEventListener('pointermove', onPointerMove);
+                document.addEventListener('pointerup', onPointerUp);
+                event.preventDefault();
+            });
+        }
+
+        const sidebarToggle = document.getElementById('editorSidebarToggle');
+        const sidebar = document.querySelector('.editor-sidebar');
+        sidebarToggle?.addEventListener('click', () => {
+            if (!sidebar) return;
+            sidebar.classList.toggle('collapsed');
         });
     }
 

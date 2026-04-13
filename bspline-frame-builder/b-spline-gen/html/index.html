@@ -438,7 +438,6 @@
 <div id="svgEditorModal" class="modal-overlay" style="display: none;">
   <div class="modal-window">
     <div class="modal-header" id="svgEditorHeader" style="display:flex; align-items:center;">
-      <h3>SVG Editor</h3>
       <div style="display:flex; gap:8px; margin-left:auto;"><button id="editorClear"
           class="btn btn-secondary btn-xs">Clear</button><button id="editorDownload"
           class="btn btn-secondary btn-xs">Download SVG</button><button id="editorCancel"
@@ -606,8 +605,8 @@
             style="position:absolute; left:-10000px; top:0; width:1px; height:1px; opacity:0; border:none; padding:0; z-index:9999;">
           <div id="editorSymbolKeyboard" class="editor-symbol-keyboard hidden">
             <div class="editor-symbol-keyboard-header">
+              <div class="editor-symbol-keyboard-grip" title="Drag to resize keyboard"></div>
               <div class="editor-symbol-keyboard-label-row">
-                <span class="editor-symbol-keyboard-label">Symbol font</span>
                 <select id="editorSymbolFamily" class="editor-symbol-family-select">
                   <option value="Symbol">Symbol</option>
                   <option value="Webdings">Webdings</option>

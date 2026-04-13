@@ -42,10 +42,20 @@ export function updateToolbarVisibility(editor) {
         const isShapeSelected = el && el.type !== 'text';
         strokeGroup.classList.toggle('hidden', !(isDrawingShape || isShapeSelected));
     }
+    const isTextMode = editor._currentMode === 'text';
+    const isTextSelected = el && el.type === 'text';
+
     if (fontGroup) {
-        const isTextMode = editor._currentMode === 'text';
-        const isTextSelected = el && el.type === 'text';
         fontGroup.classList.toggle('hidden', !(isTextMode || isTextSelected));
+    }
+
+    const symbolBtn = document.getElementById('editorSymbolKeyboardToggle');
+    if (symbolBtn) {
+        symbolBtn.classList.toggle('hidden', !isTextMode);
+    }
+    const symbolPanel = document.getElementById('editorSymbolKeyboard');
+    if (symbolPanel && !isTextMode) {
+        symbolPanel.classList.add('hidden');
     }
 
     const expandBtn = document.getElementById('toolExpand');
