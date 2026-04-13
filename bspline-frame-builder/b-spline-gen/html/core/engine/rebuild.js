@@ -64,8 +64,9 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
 
     let stampedHeights = new Float32Array(cleanHeights);
     if (P.stampLayers && Array.isArray(P.stampLayers)) {
-        P.stampLayers.forEach(layer => {
+        P.stampLayers.forEach((layer, layerIdx) => {
             if (layer && layer.svg && layer.mask && layer.mask.length === nx * nz) {
+                console.log(`[STAMP DEBUG] Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
                 const suppressStrength = (typeof layer.suppression === 'number') ? layer.suppression : 0;
                 const blurRadius = layer.smoothing || 0;
                 const smoothedTerrain = suppressStrength > 0
@@ -74,7 +75,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                 const layerDepth = layer.depth ?? P.stampDepth ?? 0;
                 for (let k = 0; k < nx * nz; k++) {
                     const normVal = layer.mask[k];
-                    if (normVal < 1e-6) return;
+                    if (normVal < 1e-6) continue;
                     const depthInches = normVal * layerDepth;
                     if (suppressStrength > 0) {
                         stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
