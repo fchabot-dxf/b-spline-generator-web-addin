@@ -11,7 +11,7 @@
 if (window && window.console) {
     console.log('[COORD_STD] editor-geometry.js loaded!');
 }
-import { COORD_SYSTEM } from './coords.js';
+import { COORD_SYSTEM } from '../core/coords.js';
 
 const FONT_MAP = {
     "Arial": "arial.ttf",
@@ -350,7 +350,7 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
                     
                     // Promise wrapper for opentype.load
                     const font = await new Promise((resolve, reject) => {
-                        opentype.load(`./fonts/${fontFile}`, (err, f) => {
+                        opentype.load(`../fonts/${fontFile}`, (err, f) => {
                             if (err) reject(err); else resolve(f);
                         });
                     });

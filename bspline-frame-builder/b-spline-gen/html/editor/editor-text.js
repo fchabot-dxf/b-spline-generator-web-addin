@@ -9,7 +9,7 @@
  */
 
 
-import { COORD_SYSTEM } from './coords.js';
+import { COORD_SYSTEM } from '../core/coords.js';
 
 /** Helper: rebuild the two-tspan structure inside a <text> element. */
 function _buildTspans(textEl, textContent, x, y) {

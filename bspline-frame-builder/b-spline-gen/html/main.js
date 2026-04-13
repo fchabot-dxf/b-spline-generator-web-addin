@@ -10,30 +10,30 @@ import {
     setPreDelta, setPostDelta,
     lastResult, 
     SLIDER_PAIRS, DEFAULT
-} from './state.js';
+} from './core/state.js';
 import { 
     bind, syncPair, syncUItoParam, updateSpacingLabels, 
     initResizer, resizeApp, setupMobileViewportHandling 
-} from './ui-utils.js';
+} from './core/ui-utils.js';
 import { 
     takeSnapshot, unifiedUndo, unifiedRedo, updateGlobalButtons, isEditorOpen 
-} from './history.js';
+} from './core/history.js';
 import { 
     rebuild, scheduleRebuild, updateEditorTopView 
-} from './engine.js';
+} from './core/engine.js';
 import { 
     onSculptStart, onSculptStroke, onSculptStrokeEnd, 
     updatePreviewSculptMode, sculptClear 
-} from './sculpt-interaction.js';
+} from './core/sculpt-interaction.js';
 import { 
     fusLog, pollMode, startFusionPolling, stopFusionPolling, sendFusionPreview, sendFusionPayloadChunked, sendFusionMeshPreview 
-} from './fusion-bridge.js';
+} from './core/fusion-bridge.js';
 
-import { TerrainPreview } from './preview.js';
-import { rasterizeSvg } from './stamp.js';
-import { generateStep, generateThickenedStep } from './stepWriter.js';
-import { resolveGrid } from './terrain.js';
-import { VectorEditor } from './editor.js';
+import { TerrainPreview } from './core/preview.js';
+import { rasterizeSvg } from './core/stamp.js';
+import { generateStep, generateThickenedStep } from './core/stepWriter.js';
+import { resolveGrid } from './core/terrain.js';
+import { VectorEditor } from './editor/index.js';
 
 // --- Global Instances ---
 let preview = null;
