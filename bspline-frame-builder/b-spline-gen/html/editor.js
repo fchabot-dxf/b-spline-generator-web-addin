@@ -40,13 +40,22 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
     const start = range.start;
     const end = range.end;
     const count = Math.max(0, end - start + 1);
-    const columns = Math.min(16, Math.max(8, Math.ceil(Math.sqrt(count))));
+    const isMobile = window.innerWidth <= 720;
+    const columns = isMobile
+        ? Math.min(6, Math.max(4, Math.ceil(Math.sqrt(count))))
+        : Math.min(16, Math.max(8, Math.ceil(Math.sqrt(count))));
     grid.style.gridTemplateColumns = `repeat(${columns}, minmax(30px, 1fr))`;
 
-    const rowCount = Math.ceil(count / columns);
-    const height = Math.min(420, Math.max(180, rowCount * 36 + 90));
-    panel.style.height = `${height}px`;
-    panel.style.width = `${Math.min(420, Math.max(260, columns * 36 + 24))}px`;
+    if (isMobile) {
+        panel.style.width = '';
+        panel.style.height = '';
+        panel.style.maxHeight = '55vh';
+    } else {
+        const rowCount = Math.ceil(count / columns);
+        const height = Math.min(420, Math.max(180, rowCount * 36 + 90));
+        panel.style.height = `${height}px`;
+        panel.style.width = `${Math.min(420, Math.max(260, columns * 36 + 24))}px`;
+    }
 
     for (let code = start; code <= end; code++) {
         const char = String.fromCodePoint(code);
