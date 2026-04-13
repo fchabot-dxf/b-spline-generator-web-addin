@@ -7,7 +7,7 @@ export const DEFAULT = {
     stampSmoothingRadius: 15, // px
     stampFilletPower: 2.2, // Default "In-Between" setting
     stampEdgeFilletRadius: 0, // inches
-    stampDepth: -1.0,
+    stampDepth: 0.8,
     stampProfile: 'vbit',
     stampVBitAngle: 90,
     stampBlur: 0,
@@ -61,7 +61,7 @@ export const DEFAULT = {
     edgeMarginIn: 0,
     // Vector Stamping (Multi-Layer Support)
     stampLayers: [
-        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: -1.0, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2 },
+        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: 0.8, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2 },
         { id: 'layer1', name: 'Layer 2', svg: null, mask: null, depth: -0.5, profile: 'ballnose', angle: 90, blur: 0, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2 },
         { id: 'layer2', name: 'Layer 3', svg: null, mask: null, depth: 0.75, profile: 'flat', angle: 90, blur: 0, enabled: false, smoothing: 5, suppression: 0.05, edgeFilletRadius: 0, filletPower: 2.2 }
     ],
