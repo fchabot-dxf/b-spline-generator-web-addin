@@ -14,6 +14,7 @@ import { checkPreBounds, countPostIntersections, resampleDelta } from '../sculpt
 import { fusLog, sendFusionMeshPreview } from '../fusion-bridge.js';
 import { COORD_SYSTEM } from '../coords.js';
 import { getSmoothedHeights } from './utils.js';
+import { scheduleRebuild } from './scheduler.js';
 
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 

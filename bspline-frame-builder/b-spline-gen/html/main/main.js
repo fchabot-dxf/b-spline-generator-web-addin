@@ -10,29 +10,29 @@ import {
     setPreDelta, setPostDelta,
     lastResult, 
     SLIDER_PAIRS, DEFAULT
-} from './core/state.js';
+} from '../core/state.js';
 import { 
     bind, syncPair, syncUItoParam, updateSpacingLabels, 
     initResizer, resizeApp, setupMobileViewportHandling 
-} from './core/ui-utils.js';
+} from '../core/ui-utils.js';
 import { 
     takeSnapshot, unifiedUndo, unifiedRedo, updateGlobalButtons, isEditorOpen 
-} from './core/history.js';
+} from '../core/history.js';
 import { 
     rebuild, scheduleRebuild, updateEditorTopView 
-} from './core/engine.js';
+} from '../core/engine.js';
 import { 
     onSculptStart, onSculptStroke, onSculptStrokeEnd, 
     updatePreviewSculptMode, sculptClear 
-} from './core/sculpt-interaction.js';
+} from '../core/sculpt-interaction.js';
 import { 
     fusLog, pollMode, startFusionPolling, stopFusionPolling, sendFusionPreview, sendFusionPayloadChunked, sendFusionMeshPreview 
-} from './core/fusion-bridge.js';
+} from '../core/fusion-bridge.js';
 
-import { TerrainPreview } from './core/preview.js';
-import { generateStep, generateThickenedStep } from './core/stepWriter.js';
-import { resolveGrid } from './core/terrain.js';
-import { VectorEditor } from './editor/index.js';
+import { TerrainPreview } from '../core/preview.js';
+import { generateStep, generateThickenedStep } from '../core/stepWriter.js';
+import { resolveGrid } from '../core/terrain.js';
+import { VectorEditor } from '../editor/index.js';
 import { AppState } from './app-state.js';
 import { applyParam, updateSculptToolButtons } from './param-manager.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
@@ -130,73 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
-
-async function initApp() {
-    // REWIRE 3: Lock engine during session load
-    AppState.isInitializing = true;
-    loadLastSession();
-    // 6. Randomize just the startup seed so fresh opens look different.
-    if (!isNaN(P.seed)) {
-        P.seed = Math.floor(Math.random() * 99999);
-    }
-    // 7. Batch Sync UI
-    Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
-    updateSpacingLabels(P.widthIn, P.heightIn);
-    
-    // Synchronize preview state with loaded P
-    if (preview) preview.setCurvesVisible(P.showMesh);
-    
-    AppState.isInitializing = false;
-    // 7. Initial Rebuild
-    let grid = lastResult ?? resolveGrid(P.widthIn, P.heightIn, P.spacing);
-    if (!grid.nx || grid.nx < 4 || !grid.nz || grid.nz < 4) {
-        grid = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-    }
-    const { nx, nz } = grid;
-    
-    if (P.stampLayers && P.stampLayers.some(l => l.svg)) {
-        await refreshAllStampMasks(nx, nz);
-    } else {
-        rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView);
-    }
-    
-    updateGlobalButtons();
-
-    // 8. Wire up Global Actions
-    wireGlobalEvents();
-}
-
-/**
- * Initializes the SVG Editor instance and its callbacks.
- */
-function initSvgEditor() {
-    if (!window.svgEditor) window.svgEditor = new VectorEditor();
-    
-    window.svgEditor.initEditor(
-        'editorSVGContainer',
-        'svgEditorTopView',
-        () => {
-            // v42: Real-time stamping sync (Debounced via scheduleRebuild)
-            const svg = window.svgEditor.save();
-            if (svg) {
-                setStampLayerSvg(P.activeLayerIdx, svg);
-                const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-                // Trigger an immediate mask refresh and 3D rebuild
-                refreshAllStampMasks(nx, nz);
-            }
-        },
-        (svg) => {
-            if (svg === 'push') return; // History push only
-            if (svg) {
-                setStampLayerSvg(P.activeLayerIdx, svg);
-                const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-                refreshAllStampMasks(nx, nz);
-            }
-            const modal = document.getElementById('svgEditorModal');
-            if (modal) modal.style.display = 'none';
-        }
-    );
-}
 
 const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
 

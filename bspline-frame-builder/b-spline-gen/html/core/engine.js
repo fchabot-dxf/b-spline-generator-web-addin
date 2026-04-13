@@ -1,1 +1,1 @@
-export * from './core/engine/index.js';
+export * from './engine/index.js';
