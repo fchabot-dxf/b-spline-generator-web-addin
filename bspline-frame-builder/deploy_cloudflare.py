@@ -1,17 +1,9 @@
-import os
-workspace_dir = os.path.dirname(__file__) or "."
-source_dir    = os.path.join(workspace_dir, "b-spline-gen", "html")
-# ...existing code...
 import subprocess
 import sys
 import os
 import shutil
 import time
 import stat
-import json
-import urllib.request
-import urllib.error
-import urllib.parse
 from datetime import datetime
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -64,7 +56,7 @@ for var in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
         exit(1)
 
 # Always deploy to the known Pages project and avoid prompting for a stale project name.
-PROJECT_NAME = "symmetric-b-spline-gen"
+PROJECT_NAME = os.getenv("CLOUDFLARE_PROJECT", "symmetric-b-spline-gen")
 
 # prefer looking in PATH (wrangler or wrangler.cmd on Windows)
 WRANGLER_CMD = shutil.which("wrangler") or shutil.which("wrangler.cmd")
@@ -93,21 +85,12 @@ except Exception:
     print("wrangler CLI could not be found. Install it with: npm install -g wrangler")
     exit(1)
 
-# GitHub release support is enabled automatically when credentials are available.
-# Use --no-release to skip the GitHub release step if needed.
-# If GITHUB_RELEASE_TAG is not set, the script will default to `latest`.
-ENABLE_GITHUB_RELEASE = "--no-release" not in sys.argv
-GITHUB_REPO = os.environ.get("GITHUB_REPO")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-GITHUB_RELEASE_TAG = os.environ.get("GITHUB_RELEASE_TAG")
-GITHUB_RELEASE_NAME = os.environ.get("GITHUB_RELEASE_NAME")
-GITHUB_RELEASE_BODY = os.environ.get("GITHUB_RELEASE_BODY", "")
 
 workspace_dir = os.path.dirname(__file__) or "."
 source_dir    = os.path.join(workspace_dir, "b-spline-gen", "html")
 
-# Create a unique deployment folder to bypass file locks on Google Drive/Windows
-timestamp     = datetime.now().strftime("%Y-%m-%d")
+# Create a unique, timestamped deployment folder to bypass file locks on Google Drive/Windows
+timestamp     = datetime.now().strftime("%Y%m%d_%H%M%S")
 deploy_dist   = os.path.normpath(os.path.join(workspace_dir, f"deploy_dist_{timestamp}"))
 
 # 0. Clean up previous deployment folders (if they are not locked)
@@ -121,48 +104,47 @@ clean_dir(os.path.join(workspace_dir, "deploy_dist"))
 print(f"Preparing unique deployment folder: {deploy_dist}")
 os.makedirs(deploy_dist, exist_ok=True)
 
-
-# Copy all web-related files recursively from source_dir.
-# This ensures nested folders like core/ are deployed, not just top-level files.
-web_extensions = (
-    '.html', '.js', '.mjs', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico',
-    '.json', '.webp', '.woff', '.woff2', '.ttf'
-)
+# Only copy web-related files (HTML, JS, CSS, and common image formats)
+# This excludes .py, .manifest, and the 'resources' folder.
+web_extensions = ('.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico', '.json')
 for root, dirs, files in os.walk(source_dir):
-    # Skip hidden and irrelevant directories
-    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('.git', '__pycache__', 'node_modules')]
-    rel_dir = os.path.relpath(root, source_dir)
-    dest_dir = deploy_dist if rel_dir == '.' else os.path.join(deploy_dist, rel_dir)
-    os.makedirs(dest_dir, exist_ok=True)
+    rel_root = os.path.relpath(root, source_dir)
+    dest_root = deploy_dist if rel_root == '.' else os.path.join(deploy_dist, rel_root)
+    os.makedirs(dest_root, exist_ok=True)
     for filename in files:
         if filename.lower().endswith(web_extensions):
-            src_path = os.path.join(root, filename)
-            dst_path = os.path.join(dest_dir, filename)
-            shutil.copy2(src_path, dst_path)
+            shutil.copy2(os.path.join(root, filename), os.path.join(dest_root, filename))
 
-# Ensure the entire themes/ folder is copied
-themes_src = os.path.join(source_dir, 'themes')
-themes_dst = os.path.join(deploy_dist, 'themes')
-if os.path.exists(themes_src):
-    shutil.copytree(themes_src, themes_dst, dirs_exist_ok=True)
+# Deploy-only copy of shared theme assets required by the published HTML.
+extra_web_assets = [
+    (os.path.join(workspace_dir, "shared", "ui", "theme.css"), os.path.join(deploy_dist, "theme.css")),
+    (os.path.join(workspace_dir, "shared", "ui", "win3x-theme.css"), os.path.join(deploy_dist, "win3x-theme.css")),
+]
+for src_path, dst_path in extra_web_assets:
+    if os.path.exists(src_path):
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        shutil.copy2(src_path, dst_path)
+        print(f"  Copied deploy-only asset: {src_path} -> {dst_path}")
+    else:
+        print(f"  Warning: missing deploy-only asset {src_path}")
 
-# Ensure the local fonts/ folder is copied for hosted deployments
-fonts_src = os.path.join(source_dir, 'fonts')
-fonts_dst = os.path.join(deploy_dist, 'fonts')
-if os.path.exists(fonts_src):
-    shutil.copytree(fonts_src, fonts_dst, dirs_exist_ok=True)
+# Rewrite the web deployment root HTML so theme links resolve from root.
+index_html_path = os.path.join(deploy_dist, "index.html")
+if os.path.exists(index_html_path):
+    with open(index_html_path, 'r', encoding='utf-8') as f:
+        index_html = f.read()
+    index_html = index_html.replace('href="../../shared/ui/win3x-theme.css"', 'href="win3x-theme.css"')
+    index_html = index_html.replace('href="../../shared/ui/theme.css"', 'href="theme.css"')
+    with open(index_html_path, 'w', encoding='utf-8') as f:
+        f.write(index_html)
+    print(f"  Rewrote theme stylesheet paths in {index_html_path}")
+else:
+    print(f"  Warning: index.html not found in deployment folder ({index_html_path})")
 
-# Ensure no ZIP artifact is accidentally included in the Pages publish folder
-for root, _, files in os.walk(deploy_dist):
-    for filename in files:
-        if filename.lower().endswith('.zip'):
-            zip_path = os.path.join(root, filename)
-            print(f"Removing stray ZIP from deploy folder: {zip_path}")
-            os.remove(zip_path)
 
 # 2. Bundle the clean bspline-frame-builder add-in ZIP (Distribution Version)
 print(f"Bundling clean distribution ZIP to {deploy_dist}...")
-zip_target = os.path.join(workspace_dir, f"bspline-frame-builder-{timestamp}.zip")
+zip_target = os.path.join(deploy_dist, "bspline-frame-builder.zip")
 
 def should_skip(name):
     skip_names = {".git", ".gitignore", "__pycache__", ".venv", "venv", "node_modules", ".wrangler", "desktop.ini"}
@@ -170,90 +152,6 @@ def should_skip(name):
     if name in skip_names or os.path.splitext(name)[1].lower() in skip_exts:
         return True
     return False
-
-
-def github_api_request(method, url, token, body=None, headers=None):
-    req_headers = {
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github+json',
-    }
-    if headers:
-        req_headers.update(headers)
-    data = None
-    if body is not None:
-        data = json.dumps(body).encode('utf-8')
-        req_headers['Content-Type'] = 'application/json'
-
-    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
-    try:
-        with urllib.request.urlopen(req) as resp:
-            if resp.status in (200, 201):
-                payload = resp.read()
-                return json.loads(payload.decode('utf-8')) if payload else {}
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f'GitHub API request failed: {exc.code} {exc.reason} {exc.read().decode("utf-8")}')
-
-
-def get_github_repo_from_remote(path):
-    try:
-        url = subprocess.check_output(['git', 'remote', 'get-url', 'origin'], cwd=path, text=True).strip()
-    except Exception:
-        return None
-    if url.endswith('.git'):
-        url = url[:-4]
-    if url.startswith('git@github.com:'):
-        url = url.replace('git@github.com:', 'https://github.com/')
-    if url.startswith('https://github.com/'):
-        return url.split('https://github.com/')[-1].strip('/')
-    return None
-
-
-def find_release_by_tag(repo, tag_name, token):
-    try:
-        return github_api_request('GET', f'https://api.github.com/repos/{repo}/releases/tags/{tag_name}', token)
-    except RuntimeError as exc:
-        if '404' in str(exc):
-            return None
-        raise
-
-
-def create_github_release(repo, tag_name, name, body, draft, prerelease, token):
-    payload = {
-        'tag_name': tag_name,
-        'name': name,
-        'body': body,
-        'draft': draft,
-        'prerelease': prerelease,
-    }
-    return github_api_request('POST', f'https://api.github.com/repos/{repo}/releases', token, payload)
-
-
-def delete_existing_asset(release, asset_name, token):
-    for asset in release.get('assets', []):
-        if asset.get('name') == asset_name:
-            github_api_request('DELETE', asset['url'], token)
-            return
-
-
-def upload_github_asset(release, asset_path, token):
-    upload_url = release['upload_url'].split('{')[0]
-    asset_name = os.path.basename(asset_path)
-    delete_existing_asset(release, asset_name, token)
-
-    with open(asset_path, 'rb') as asset_file:
-        data = asset_file.read()
-
-    url = f"{upload_url}?name={urllib.parse.quote(asset_name)}"
-    headers = {
-        'Content-Type': 'application/zip',
-        'Content-Length': str(len(data)),
-    }
-    req = urllib.request.Request(url, data=data, headers={**headers, 'Authorization': f'token {token}', 'Accept': 'application/vnd.github+json'}, method='POST')
-    try:
-        with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read().decode('utf-8'))
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f'GitHub asset upload failed: {exc.code} {exc.reason} {exc.read().decode("utf-8")}')
 
 import zipfile
 with zipfile.ZipFile(zip_target, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -266,8 +164,36 @@ with zipfile.ZipFile(zip_target, 'w', zipfile.ZIP_DEFLATED) as zf:
             rel_path = os.path.relpath(abs_path, workspace_dir)
             zf.write(abs_path, rel_path)
 
-
 print(f"  Clean ZIP created: {os.path.basename(zip_target)}")
+
+
+# 3. Refresh local Fusion 360 Add-In (Developer Convenience)
+if sys.platform == "win32":
+    fusion_addin_dest = os.path.join(os.environ.get('APPDATA', ''), 'Autodesk', 'Autodesk Fusion 360', 'API', 'AddIns', 'b-spline-generator-web-addin')
+elif sys.platform == "darwin":
+    fusion_addin_dest = os.path.expanduser('~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/b-spline-generator-web-addin')
+else:
+    fusion_addin_dest = None
+
+if fusion_addin_dest and os.path.exists(os.path.dirname(fusion_addin_dest)):
+    print(f"Refreshing local Fusion 360 add-in at {fusion_addin_dest}...")
+    try:
+        clean_dir(fusion_addin_dest)
+
+        # Use a repo-relative path for the add-in source; this avoids the old invalid hardcoded path.
+        # Adjust this to the actual add-in folder in your repo if needed.
+        source_addin_dir = os.path.normpath(os.path.join(workspace_dir, "..", "b-spline-gen"))
+        if not os.path.exists(source_addin_dir):
+            source_addin_dir = os.path.normpath(os.path.join(workspace_dir, "..", "b-spline-generator-web-addin"))
+
+        shutil.copytree(source_addin_dir, fusion_addin_dest)
+        print("Local add-in refreshed.")
+    except Exception as e:
+        print(f"Warning: Could not refresh local add-in: {e}")
+elif fusion_addin_dest:
+    print(f"Fusion 360 Add-Ins directory not found at {os.path.dirname(fusion_addin_dest)}. Skipping local refresh.")
+else:
+    print(f"Unsupported OS ({sys.platform}) for local Fusion 360 refresh.")
 
 print(f"Deploying clean folder to Cloudflare Pages ({PROJECT_NAME})...")
 
@@ -275,41 +201,12 @@ result = subprocess.run([
     WRANGLER_CMD, "pages", "deploy", deploy_dist, "--project-name", PROJECT_NAME
 ], cwd=workspace_dir)
 
+# 2. Cleanup
+clean_dir(deploy_dist)
+
 if result.returncode == 0:
     print("Deployment complete.")
-    if ENABLE_GITHUB_RELEASE:
-        if not GITHUB_REPO:
-            GITHUB_REPO = get_github_repo_from_remote(workspace_dir)
-        if not GITHUB_TOKEN or not GITHUB_REPO:
-            print("Skipping GitHub release because GITHUB_REPO or GITHUB_TOKEN/GH_TOKEN is missing.")
-        else:
-            if not GITHUB_RELEASE_TAG:
-                GITHUB_RELEASE_TAG = 'latest'
-            if not GITHUB_RELEASE_NAME:
-                if GITHUB_RELEASE_TAG == 'latest':
-                    GITHUB_RELEASE_NAME = 'Latest Release'
-                else:
-                    GITHUB_RELEASE_NAME = f"Release {GITHUB_RELEASE_TAG}"
-            print(f"Creating or updating GitHub release {GITHUB_REPO}@{GITHUB_RELEASE_TAG}...")
-            release = find_release_by_tag(GITHUB_REPO, GITHUB_RELEASE_TAG, GITHUB_TOKEN)
-            if release is None:
-                release = create_github_release(
-                    GITHUB_REPO,
-                    GITHUB_RELEASE_TAG,
-                    GITHUB_RELEASE_NAME,
-                    GITHUB_RELEASE_BODY,
-                    draft=False,
-                    prerelease=False,
-                    token=GITHUB_TOKEN
-                )
-                print(f"Created release: {release.get('html_url')}")
-            else:
-                print(f"Using existing release: {release.get('html_url')}")
-            upload_github_asset(release, zip_target, GITHUB_TOKEN)
-            print(f"Uploaded asset to GitHub release: {os.path.basename(zip_target)}")
-    clean_dir(deploy_dist)
     sys.exit(0)
 
 print(f"Deployment failed (exit code {result.returncode}).")
-clean_dir(deploy_dist)
 sys.exit(result.returncode)
