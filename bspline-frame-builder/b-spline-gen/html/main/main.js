@@ -30,145 +30,21 @@ import {
 } from './core/fusion-bridge.js';
 
 import { TerrainPreview } from './core/preview.js';
-import { rasterizeSvg } from './core/stamp.js';
 import { generateStep, generateThickenedStep } from './core/stepWriter.js';
 import { resolveGrid } from './core/terrain.js';
 import { VectorEditor } from './editor/index.js';
+import { AppState } from './app-state.js';
+import { applyParam, updateSculptToolButtons } from './param-manager.js';
+import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
+import { initApp, initSvgEditor } from './app-init.js';
+import { bindControls } from './ui-bindings.js';
+import { bindPresets } from './preset-manager.js';
+import { applySnapshot } from './snapshot-manager.js';
 
 // --- Global Instances ---
 let preview = null;
 window.svgEditor = null; // Exposed for editor.js logic
 
-// Track last grid resolution for applyParam
-let lastNx = null;
-let lastNz = null;
-
-// REWIRE 1: Flag to prevent redundant rebuilds during the massive localStorage restoration
-let isInitializing = false;
-
-function updateSculptToolButtons() {
-    const ids = ['btnToolTopDraw', 'btnToolTopSmooth', 'btnToolBotDraw', 'btnToolBotSmooth'];
-    ids.forEach(id => document.getElementById(id)?.classList.remove('active'));
-    if (!P.activeSculptLayer) return;
-
-    const layerName = P.activeSculptLayer.charAt(0).toUpperCase() + P.activeSculptLayer.slice(1);
-    const mode = P.activeSculptLayer === 'top' ? P.sculptTopMode : P.sculptBotMode;
-    const activeId = `btnTool${layerName}${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
-    document.getElementById(activeId)?.classList.add('active');
-}
-
-/**
- * The central parameter application sink.
- */
-function applyParam(key, value) {
-    console.log(`[DEBUG] applyParam called: key=${key}, value=${value}`);
-    updateP(key, value);
-    syncUItoParam(key, value);
-    
-    if (key === 'widthIn' || key === 'heightIn') {
-        updateSpacingLabels(P.widthIn, P.heightIn);
-    }
-    
-    if (key === 'activeSculptLayer' || key === 'sculptTopMode' || key === 'sculptBotMode') {
-        console.log(`[DEBUG] applyParam triggers updatePreviewSculptMode: key=${key}, value=${value}`);
-        updatePreviewSculptMode(preview, scheduleRebuild);
-        updateSculptToolButtons();
-    }
-    
-    if (key === 'showMesh') {
-        preview.setCurvesVisible(value);
-    }
-
-    if (key === 'thickenEnabled') {
-        const thickenCon = document.getElementById('thickenOptions');
-        if (thickenCon) thickenCon.style.display = value ? 'flex' : 'none';
-    }
-
-    if (key === 'thickenWireframe') {
-        // Trigger immediate rebuild so wireframe/shaded toggle takes effect.
-        scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
-    }
-
-    const immediateRebuildParams = [
-        'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType', 
-        'symmetry', 'carveZ', 'scale', 'macroScale', 'warpIntensity',
-        'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode',
-        'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
-        'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile'
-    ];
-
-    if (key === 'stampProfile') {
-        const vBitExtra = document.getElementById('vBitAngleContainer');
-        if (vBitExtra) vBitExtra.style.display = (value === 'vbit' || value === 'adaptive') ? 'block' : 'none';
-    }
-
-    // Parameters that require a full SVG re-rasterize of the stamp mask.
-    // NOTE: stampDepth is intentionally excluded — the mask is now normalized 0..1
-    // and depth is applied at render time, so depth changes are instant.
-    const stampMaskParams = [
-        'stampBlur', 'stampSmoothingRadius',
-        'stampEdgeFilletRadius', 'stampFilletPower',
-        'stampProfile', 'stampVBitAngle'
-    ];
-
-    const delay = immediateRebuildParams.includes(key) ? 0 : 200;
-    if (!isInitializing) {
-        const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-        if (nx !== lastNx || nz !== lastNz || stampMaskParams.includes(key)) {
-            // Resolution changed OR a stamp mask param changed: must re-rasterize first
-            refreshAllStampMasks(nx, nz);
-        } else {
-            scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), delay);
-        }
-        lastNx = nx;
-        lastNz = nz;
-    }
-}
-
-/**
- * Pure data update: Re-rasterizes all active SVG stamp layers.
- */
-async function updateStampMasks(nx, nz) {
-    if (!P.stampLayers) return;
-    const promises = P.stampLayers.map(async (layer, idx) => {
-        if (!layer.svg || !layer.enabled) return;
-        // rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, stampProfile, stampDepth, stampVBitAngle, edgeFilletRadius, filletPower)
-        const blurIn            = layer.blur             ?? 0;
-        const stampProfile      = layer.profile          ?? P.stampProfile;
-        const stampDepth        = layer.depth            ?? P.stampDepth;
-        const stampVBitAngle    = layer.angle            ?? P.stampVBitAngle;
-        const edgeFilletRadius  = layer.edgeFilletRadius ?? P.stampEdgeFilletRadius ?? 0;
-        const filletPower       = layer.filletPower      ?? P.stampFilletPower ?? 2.2;
-        const result = await rasterizeSvg(
-            layer.svg,
-            nx,
-            nz,
-            blurIn,
-            P.widthIn,
-            P.heightIn,
-            stampProfile,
-            stampDepth,
-            stampVBitAngle,
-            edgeFilletRadius,
-            filletPower
-        );
-        // result is a Float32Array depth mask — set it without touching the suppression scalar
-        setStampLayerMask(idx, result);
-    });
-    await Promise.all(promises);
-}
-
-/**
- * Re-rasterizes all active SVG stamp layers and triggers a 3D rebuild.
- */
-async function refreshAllStampMasks(nx, nz) {
-    try {
-        await updateStampMasks(nx, nz);
-        scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView));
-    } catch (e) {
-        console.error('Failed to refresh stamp masks:', e);
-    }
-}
 
 // --- BOOTSTRAP ---
 document.addEventListener('DOMContentLoaded', () => {
@@ -180,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Initialize 3D Preview
     const canvas = document.getElementById('previewCanvas');
     preview = new TerrainPreview(canvas);
+    AppState.preview = preview;
 
     // 2. UI Hookups & Resizing
     initResizer(preview);
@@ -187,8 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', () => resizeApp(preview));
     
     // 3. Bind ALL Controls (Sidebar, Header, Presets)
-    bindControls();
-    bindPresets();
+    bindControls(preview);
+    bindPresets(preview);
     bindHeaderAndSettings();
     if (window.initBsplineTheme) window.initBsplineTheme();
 
@@ -208,15 +85,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     // reset the Apply button to 'OK' so it never shows the default text.
                     const applyBtn = document.getElementById('btnFusionApply');
                     if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'OK'; }
-                    initApp();
-                    initSvgEditor();
+                    initApp(preview, () => wireGlobalEvents(preview));
+                    initSvgEditor(preview);
                 },
                 async () => {
                     fusLog('Web/Browser Mode Detected');
                     const headerBtn = document.getElementById('btnDownload');
                     if (headerBtn) headerBtn.textContent = 'STEP';
-                    initApp();
-                    initSvgEditor();
+                    initApp(preview, () => wireGlobalEvents(preview));
+                    initSvgEditor(preview);
                 }
             );
         });
@@ -256,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function initApp() {
     // REWIRE 3: Lock engine during session load
-    isInitializing = true;
+    AppState.isInitializing = true;
     loadLastSession();
     // 6. Randomize just the startup seed so fresh opens look different.
     if (!isNaN(P.seed)) {
@@ -269,7 +146,7 @@ async function initApp() {
     // Synchronize preview state with loaded P
     if (preview) preview.setCurvesVisible(P.showMesh);
     
-    isInitializing = false;
+    AppState.isInitializing = false;
     // 7. Initial Rebuild
     let grid = lastResult ?? resolveGrid(P.widthIn, P.heightIn, P.spacing);
     if (!grid.nx || grid.nx < 4 || !grid.nz || grid.nz < 4) {
@@ -362,289 +239,24 @@ function bindHeaderAndSettings() {
     }
 }
 
-function bindControls() {
-    // 1. Generic Bindings for all parameters in P
-    Object.keys(P).forEach(key => {
-        const el = document.getElementById(key);
-        if (!el) return;
-
-        let type = 'number';
-        if (el.tagName === 'SELECT') type = 'select';
-        if (el.type === 'checkbox') type = 'checkbox';
-        if (el.type === 'text') type = 'string';
-
-        bind(key, type, v => applyParam(key, v));
-    });
-
-    // 2. Synchronize Slider Pairs
-    Object.keys(SLIDER_PAIRS).forEach(key => {
-        syncPair(key, SLIDER_PAIRS[key]);
-    });
-
-    // 3. Special Case: Panel Visibility & Logic
-    const bindTogglePanel = (id, targetId) => {
-        const cb = document.getElementById(id);
-        const panel = document.getElementById(targetId);
-        if (cb && panel) {
-            cb.addEventListener('change', () => {
-                panel.style.display = cb.checked ? 'flex' : 'none';
-            });
-            panel.style.display = cb.checked ? 'flex' : 'none';
-        }
-    };
-
-    bindTogglePanel('thickenEnabled', 'thickenOptions');
-
-    // 4. Sculpt Tool Buttons
-    const updateSculptToolButtons = () => {
-        const ids = ['btnToolTopDraw', 'btnToolTopSmooth', 'btnToolBotDraw', 'btnToolBotSmooth'];
-        ids.forEach(id => document.getElementById(id)?.classList.remove('active'));
-        if (!P.activeSculptLayer) return;
-
-        const layerName = P.activeSculptLayer.charAt(0).toUpperCase() + P.activeSculptLayer.slice(1);
-        const mode = P.activeSculptLayer === 'top' ? P.sculptTopMode : P.sculptBotMode;
-        const activeId = `btnTool${layerName}${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
-        document.getElementById(activeId)?.classList.add('active');
-    };
-
-    const bindToolBtn = (btnId, layer, mode) => {
-        const btn = document.getElementById(btnId);
-        if (btn) {
-            btn.addEventListener('click', () => {
-                // Log button press for Draw and Smooth
-                console.log(`[DEBUG] Sculpt ${layer} ${mode} button pressed`);
-                // Activate this layer so updatePreviewSculptMode knows which surface to sculpt
-                applyParam('activeSculptLayer', layer);
-                applyParam(layer === 'top' ? 'sculptTopMode' : 'sculptBotMode', mode);
-                updateSculptToolButtons();
-            });
-        }
-    };
-
-    // Initialize sculpt tool button state at startup.
-    updateSculptToolButtons();
-    bindToolBtn('btnToolTopDraw', 'top', 'draw');
-    bindToolBtn('btnToolTopSmooth', 'top', 'smooth');
-    bindToolBtn('btnToolBotDraw', 'bot', 'draw');
-    bindToolBtn('btnToolBotSmooth', 'bot', 'smooth');
-
-    // 5. Special Case: Stamp Profile Display & Logic
-    const stampProfile = document.getElementById('stampProfile');
-    if (stampProfile) {
-        const updateStampUI = () => {
-            const container = document.getElementById('vBitAngleContainer');
-            if (container) container.style.display = (stampProfile.value === 'vbit' || stampProfile.value === 'adaptive') ? 'block' : 'none';
-        };
-        stampProfile.addEventListener('change', () => {
-            updateStampUI();
-            const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-            refreshAllStampMasks(nx, nz);
-        });
-        updateStampUI();
-    }
-
-    // 6. Stamp Depth Steppers
-    const bindStepper = (minusId, plusId, targetId, step) => {
-        const m = document.getElementById(minusId);
-        const p = document.getElementById(plusId);
-        const t = document.getElementById(targetId);
-        if (m && p && t) {
-            m.addEventListener('click', () => {
-                const val = parseFloat(t.value) - step;
-                applyParam(targetId, parseFloat(val.toFixed(3)));
-            });
-            p.addEventListener('click', () => {
-                const val = parseFloat(t.value) + step;
-                applyParam(targetId, parseFloat(val.toFixed(3)));
-            });
-        }
-    };
-    bindStepper('stampDepthMinus', 'stampDepthPlus', 'stampDepth', 0.05);
-
-    const attachNumberSteppers = () => {
-        const inputs = Array.from(document.querySelectorAll('input[type="number"]'));
-        inputs.forEach(input => {
-            if (!input.isConnected) return;
-            if (input.closest('.stepper-container')) return;
-            if (input.classList.contains('no-stepper')) return;
-            if (input.closest('label')?.classList.contains('no-stepper')) return;
-            const wrapper = document.createElement('div');
-            wrapper.className = 'stepper-container';
-
-            const minus = document.createElement('button');
-            minus.type = 'button';
-            minus.className = 'stepper-btn';
-            minus.textContent = '−';
-
-            const plus = document.createElement('button');
-            plus.type = 'button';
-            plus.className = 'stepper-btn';
-            plus.textContent = '+';
-
-            const step = Number(input.step) || 1;
-            const min = input.min !== '' ? Number(input.min) : -Infinity;
-            const max = input.max !== '' ? Number(input.max) : Infinity;
-
-            const clamp = (value) => {
-                if (!Number.isFinite(value)) return input.value;
-                return Math.min(max, Math.max(min, value));
-            };
-
-            const adjust = (delta) => {
-                const current = Number(input.value);
-                const next = Number.isFinite(current) ? current + delta : delta;
-                input.value = clamp(Number(next.toFixed(10)));
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            };
-
-            minus.addEventListener('click', () => adjust(-step));
-            plus.addEventListener('click', () => adjust(step));
-
-            input.parentNode.insertBefore(wrapper, input);
-            wrapper.appendChild(minus);
-            wrapper.appendChild(input);
-            wrapper.appendChild(plus);
-        });
-    };
-
-    attachNumberSteppers();
-
-    // 7. Stamp File Handling
-    const btnStampChoose = document.getElementById('btnStampChoose');
-    const stampUpload = document.getElementById('stampUpload');
-    if (btnStampChoose && stampUpload) {
-        btnStampChoose.addEventListener('click', () => stampUpload.click());
-        stampUpload.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            const fileNameSpan = document.getElementById('stampFileName');
-            if (fileNameSpan) fileNameSpan.textContent = file.name;
-            const text = await file.text();
-            setStampLayerSvg(P.activeLayerIdx, text);
-            const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-            refreshAllStampMasks(nx, nz);
-        });
-    }
-
-    const btnStampClear = document.getElementById('btnStampClear');
-    if (btnStampClear) {
-        btnStampClear.addEventListener('click', () => {
-            setStampLayerSvg(P.activeLayerIdx, null);
-            setStampLayerMask(P.activeLayerIdx, null);
-            const fileNameSpan = document.getElementById('stampFileName');
-            if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
-            scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
-        });
-    }
-
-    // 8. Vector Editor Open
-    const btnStampEdit = document.getElementById('btnStampEdit');
-    if (btnStampEdit) {
-        btnStampEdit.addEventListener('click', () => {
-            const modal = document.getElementById('svgEditorModal');
-            if (modal) {
-                modal.style.display = 'flex';
-                const currentLayer = P.stampLayers[P.activeLayerIdx];
-                if (window.svgEditor && currentLayer) window.svgEditor.open(currentLayer.svg, P.widthIn, P.heightIn);
-            }
-        });
-    }
-
-    // 9. Stamp Layer Selector
-    const stampActiveLayer = document.getElementById('stampActiveLayer');
-    if (stampActiveLayer) {
-        stampActiveLayer.addEventListener('change', () => {
-            const idx = parseInt(stampActiveLayer.value, 10);
-            updateP('activeLayerIdx', idx);
-            const layer = P.stampLayers[idx];
-            if (layer) {
-                // Sync ALL controls to the newly selected layer's values
-                syncUItoParam('stampDepth',               layer.depth);
-                syncUItoParam('stampProfile',             layer.profile);
-                syncUItoParam('stampVBitAngle',           layer.angle);
-                syncUItoParam('stampBlur',                layer.blur);
-                syncUItoParam('stampSmoothingRadius',     layer.smoothing);
-                syncUItoParam('stampTextureSuppression',  layer.suppression);
-                syncUItoParam('stampEdgeFilletRadius',    layer.edgeFilletRadius);
-                syncUItoParam('stampFilletPower',         layer.filletPower);
-                
-                // Toggle V-Bit Angle visibility based on the newly selected layer's profile
-                const vBitAngleContainer = document.getElementById('vBitAngleContainer');
-                if (vBitAngleContainer) {
-                    vBitAngleContainer.style.display = (layer.profile === 'vbit' || layer.profile === 'adaptive') ? 'block' : 'none';
-                }
-
-                const fileNameSpan = document.getElementById('stampFileName');
-                if (fileNameSpan) fileNameSpan.textContent = layer.svg ? 'Loaded' : 'No file chosen';
-
-                // If editor is open/exists, sync it
-                if (window.svgEditor) {
-                  window.svgEditor.open(layer.svg || "", P.widthIn, P.heightIn);
-                }
-            }
-        });
-    }
-
-    // 10. Auto Thicken Button
-    const btnAutoThickenThin = document.getElementById('btnAutoThickenThin');
-    if (btnAutoThickenThin) {
-        btnAutoThickenThin.addEventListener('click', () => {
-            fusLog('Auto Thicken Thin Parts triggered');
-            // This logic is usually deep in the engine; we trigger a rebuild with a flag or special param if needed
-            // For now, ensure the params are synced and trigger a full analysis rebuild
-            scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
-        });
-    }
-
-    // 11. Max Safe Thickness Button
-    const btnUseMaxSafe = document.getElementById('btnUseMaxSafe');
-    if (btnUseMaxSafe) {
-        btnUseMaxSafe.addEventListener('click', () => {
-            const maxSafe = lastResult?.thickenData?.maxSafe || 0;
-            if (maxSafe > 0) applyParam('thickness', parseFloat(maxSafe.toFixed(3)));
-        });
-    }
-
-    // 12. Wizard Listeners
-    const btnWizardCancel = document.getElementById('btnWizardCancel');
-    if (btnWizardCancel) btnWizardCancel.addEventListener('click', closeWizard);
-    
-    const btnWizardExport = document.getElementById('btnWizardExport');
-    if (btnWizardExport) btnWizardExport.addEventListener('click', () => executeExport());
-
-    // 13. Fusion 360 Action Bar
-    const btnFusionApply = document.getElementById('btnFusionApply');
-    const btnFusionCancel = document.getElementById('btnFusionCancel');
-    if (btnFusionApply) btnFusionApply.addEventListener('click', onFusionApply); 
-    if (btnFusionCancel) {
-        btnFusionCancel.addEventListener('click', () => {
-            try { 
-                if (typeof adsk !== 'undefined') adsk.fusionSendData('cancel', '{}'); 
-                else window.close(); 
-            } catch (e) { console.error('Fusion cancel failed:', e); }
-        });
-    }
-}
-
-function wireGlobalEvents() {
+function wireGlobalEvents(preview) {
     window.addEventListener('keydown', e => {
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'z') {
                 e.preventDefault();
-                unifiedUndo(snap => applySnapshot(snap));
+                unifiedUndo(snap => applySnapshot(snap, preview));
             }
             if (e.key === 'y' || (e.key === 'Z' && e.shiftKey)) {
                 e.preventDefault();
-                unifiedRedo(snap => applySnapshot(snap));
+                unifiedRedo(snap => applySnapshot(snap, preview));
             }
         }
     });
 
     const uBtn = document.getElementById('btnGlobalUndo');
     const rBtn = document.getElementById('btnGlobalRedo');
-    if (uBtn) uBtn.addEventListener('click', () => unifiedUndo(snap => applySnapshot(snap)));
-    if (rBtn) rBtn.addEventListener('click', () => unifiedRedo(snap => applySnapshot(snap)));
+    if (uBtn) uBtn.addEventListener('click', () => unifiedUndo(snap => applySnapshot(snap, preview)));
+    if (rBtn) rBtn.addEventListener('click', () => unifiedRedo(snap => applySnapshot(snap, preview)));
 
     const clearTop = document.getElementById('btnSculptTopClear');
     const clearBot = document.getElementById('btnSculptBotClear');
@@ -658,91 +270,23 @@ function wireGlobalEvents() {
     const undoTop = document.getElementById('btnSculptTopUndo');
     const undoBot = document.getElementById('btnSculptBotUndo');
     if (undoTop) undoTop.addEventListener('click', () => {
-        unifiedUndo(snap => applySnapshot(snap));
+        unifiedUndo(snap => applySnapshot(snap, preview));
     });
     if (undoBot) undoBot.addEventListener('click', () => {
-        unifiedUndo(snap => applySnapshot(snap));
+        unifiedUndo(snap => applySnapshot(snap, preview));
     });
 
     const redoTop = document.getElementById('btnSculptTopRedo');
     const redoBot = document.getElementById('btnSculptBotRedo');
     if (redoTop) redoTop.addEventListener('click', () => {
-        unifiedRedo(snap => applySnapshot(snap));
+        unifiedRedo(snap => applySnapshot(snap, preview));
     });
     if (redoBot) redoBot.addEventListener('click', () => {
-        unifiedRedo(snap => applySnapshot(snap));
+        unifiedRedo(snap => applySnapshot(snap, preview));
     });
-}
-
-function applySnapshot(snap) {
-    if (!snap) return;
-    isInitializing = true;
-    Object.keys(snap.P).forEach(k => {
-        P[k] = snap.P[k];
-        syncUItoParam(k, P[k]);
-    });
-    isInitializing = false;
-    if (snap.preDelta) setPreDelta(new Float32Array(snap.preDelta));
-    if (snap.postDelta) setPostDelta(new Float32Array(snap.postDelta));
-    // Legacy support: if snap had stampSvgText, push it into layer0
-    if (snap.stampSvgText !== undefined && P.stampLayers && P.stampLayers[0]) {
-        P.stampLayers[0].svg = snap.stampSvgText;
-    }
-    updateGlobalButtons();
-    scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
 }
 
 // --- PRESET MANAGER ---
-function bindPresets() {
-    const btnPresetSave = document.getElementById('btnPresetSave');
-    const btnPresetDelete = document.getElementById('btnPresetDelete');
-    const presetSelect = document.getElementById('presetSelect');
-    
-    const renderList = () => {
-        if (!presetSelect) return;
-        const store = JSON.parse(localStorage.getItem('splineGenPresets') || '{}');
-        const names = Object.keys(store).sort();
-        presetSelect.innerHTML = names.length 
-            ? names.map(n => `<option value="${n}">${n}</option>`).join('')
-            : '<option value="">— none saved —</option>';
-    };
-
-    btnPresetSave?.addEventListener('click', () => {
-        const nameInput = document.getElementById('presetName');
-        const name = (nameInput?.value || '').trim();
-        if (!name) return;
-        const store = JSON.parse(localStorage.getItem('splineGenPresets') || '{}');
-        store[name] = { 
-            P: { ...P }, 
-            preDelta: preDelta ? Array.from(preDelta) : null,
-            postDelta: postDelta ? Array.from(postDelta) : null
-        };
-        localStorage.setItem('splineGenPresets', JSON.stringify(store));
-        renderList();
-        if (presetSelect) presetSelect.value = name;
-    });
-
-    const btnPresetLoad = document.getElementById('btnPresetLoad');
-    btnPresetLoad?.addEventListener('click', () => {
-        const name = presetSelect?.value;
-        if (!name) return;
-        const store = JSON.parse(localStorage.getItem('splineGenPresets') || '{}');
-        const snap = store[name];
-        if (!snap) return;
-        applySnapshot(snap);
-    });
-
-    btnPresetDelete?.addEventListener('click', () => {
-        const name = presetSelect?.value;
-        if (!name) return;
-        const store = JSON.parse(localStorage.getItem('splineGenPresets') || '{}');
-        delete store[name];
-        localStorage.setItem('splineGenPresets', JSON.stringify(store));
-        renderList();
-    });
-
-    renderList();
-}
 
 // --- EXPORT FLOW ---
 function onGenerate() {
