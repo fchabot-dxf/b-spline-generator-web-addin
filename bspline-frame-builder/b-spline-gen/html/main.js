@@ -321,6 +321,8 @@ function initSvgEditor() {
     );
 }
 
+const ADDIN_RELEASE_URL = 'https://github.com/fchabot-dxf/b-spline-generator-web-addin/releases/download/latest/bspline-frame-builder.zip';
+
 function bindHeaderAndSettings() {
     const btnDownload = document.getElementById('btnDownload'); // STEP
     if (btnDownload) btnDownload.addEventListener('click', () => {
@@ -334,7 +336,7 @@ function bindHeaderAndSettings() {
     const btnDownloadAddin = document.getElementById('btnDownloadAddin');
     if (btnDownloadAddin) {
         btnDownloadAddin.addEventListener('click', () => {
-            window.location.href = './bspline-frame-builder.zip';
+            window.location.href = ADDIN_RELEASE_URL;
         });
     }
 

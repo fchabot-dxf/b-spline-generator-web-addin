@@ -117,12 +117,90 @@
 }
 
 @media (max-width: 720px) {
+  #svgEditorModal .modal-window>div:nth-child(2) {
+    flex-direction: column;
+  }
+
   #editorSVGContainer {
-    max-height: calc(100vh - 240px);
+    max-height: calc(100vh - 250px);
   }
 
   #editorCanvasContainer.keyboard-open #editorSVGContainer {
-    max-height: calc(100vh - 300px);
+    max-height: calc(100vh - 330px);
+  }
+
+  .editor-sidebar {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 8px 8px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+
+  .editor-sidebar .tool-btn {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    padding: 6px;
+  }
+
+  .editor-toolbar-top {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .editor-properties-panel {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
+  }
+
+  .editor-properties-pane,
+  .property-row {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .property-select,
+  .property-number {
+    min-width: 90px;
+    height: 30px;
+  }
+
+  .property-row {
+    flex-wrap: wrap;
+  }
+
+  .editor-symbol-keyboard {
+    max-height: 50vh;
+    min-height: 120px;
+  }
+
+  .editor-symbol-keyboard-grid {
+    max-height: calc(50vh - 90px);
+  }
+
+  .editor-symbol-keyboard-header {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .editor-symbol-keyboard-actions {
+    margin-left: auto;
   }
 }
 

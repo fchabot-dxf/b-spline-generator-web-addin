@@ -21,6 +21,10 @@
     @font-face { font-family: 'Symbol';             font-weight: 400; src: url('fonts/symbol.ttf'); }
     @font-face { font-family: 'Webdings';           font-weight: 400; src: url('fonts/webdings.ttf'); }
     @font-face { font-family: 'Wingdings';          font-weight: 400; src: url('fonts/wingdings.ttf'); }
+    @font-face { font-family: 'Segoe UI Symbol';    font-weight: 400; src: url('fonts/segoe-symbols.ttf'); }
+    @font-face { font-family: 'Segoe MDL2 Assets';  font-weight: 400; src: url('fonts/segoe-mdl2.ttf'); }
+    @font-face { font-family: 'Segoe Fluent Icons'; font-weight: 400; src: url('fonts/segoe-fluent-icons.ttf'); }
+    @font-face { font-family: 'Segoe UI Emoji';      font-weight: 400; src: url('fonts/segoe-emoji.ttf'); }
 
 *,
     *::before,
