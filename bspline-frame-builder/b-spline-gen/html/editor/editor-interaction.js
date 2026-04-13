@@ -4,6 +4,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-geometry.js';
 import { startTextAt, beginTextEdit } from './editor-text.js';
+import { getActiveLayer } from './layers.js';
 
 
 export function initInteraction(editor) {
@@ -167,7 +168,7 @@ function dragNode(editor, pt) {
 function startDrawing(editor, pt) {
     editor._isDrawing = true;
     editor._points = [[pt.x, pt.y]];
-    const layer = document.getElementById('editorLayerSelect')?.value || "0";
+    const layer = getActiveLayer(editor);
     
     if (editor._currentMode === 'draw') {
         editor._currentPath = editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)

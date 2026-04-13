@@ -1,6 +1,8 @@
 /**
  * editor-ui.js - Mode management, toolbar sync, and selection highlights for VectorEditor.
  */
+import { el as getEl, queryAll } from './dom.js';
+import { renderPropertiesPanel } from './properties-panels.js';
 
 export function setMode(editor, mode) {
     if (editor._editingTextEl) editor._commitText();
@@ -10,7 +12,7 @@ export function setMode(editor, mode) {
     updateToolbarVisibility(editor);
 
     // Update active class on buttons
-    const btns = document.querySelectorAll('.editor-sidebar .tool-btn');
+    const btns = queryAll('.editor-sidebar .tool-btn');
     btns.forEach(btn => {
         btn.classList.toggle('active', btn.id === `tool${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
         // Special case for Draw mode (toolDraw)
@@ -21,7 +23,7 @@ export function setMode(editor, mode) {
         if (mode === 'node' && btn.id === 'toolNode') btn.classList.add('active');
     });
 
-    const container = document.getElementById('editorSVGContainer');
+    const container = getEl('editorSVGContainer');
     if (container) {
         container.classList.remove('mode-select', 'mode-draw', 'mode-line', 'mode-text', 'mode-circle', 'mode-rect', 'mode-node');
         container.classList.add(`mode-${mode}`);
@@ -33,32 +35,17 @@ export function setMode(editor, mode) {
 }
 
 export function updateToolbarVisibility(editor) {
-    const strokeGroup = document.getElementById('editorStrokeGroup');
-    const fontGroup = document.getElementById('editorFontGroup');
+    renderPropertiesPanel(editor);
+
     const el = editor._selectedElement;
+    const isTextMode = editor._currentMode === 'text' || (el && el.type === 'text');
 
-    if (strokeGroup) {
-        const isDrawingShape = ['draw', 'line', 'rect', 'circle'].includes(editor._currentMode);
-        const isShapeSelected = el && el.type !== 'text';
-        strokeGroup.classList.toggle('hidden', !(isDrawingShape || isShapeSelected));
-    }
-    const isTextMode = editor._currentMode === 'text';
-    const isTextSelected = el && el.type === 'text';
-
-    if (fontGroup) {
-        fontGroup.classList.toggle('hidden', !(isTextMode || isTextSelected));
-    }
-
-    const symbolBtn = document.getElementById('editorSymbolKeyboardToggle');
-    if (symbolBtn) {
-        symbolBtn.classList.toggle('hidden', !isTextMode);
-    }
-    const symbolPanel = document.getElementById('editorSymbolKeyboard');
+    const symbolPanel = getEl('editorSymbolKeyboard');
     if (symbolPanel && !isTextMode) {
         symbolPanel.classList.add('hidden');
     }
 
-    const expandBtn = document.getElementById('toolExpand');
+    const expandBtn = getEl('toolExpand');
     if (expandBtn) {
         const isExpandable = el && el.type !== 'image';
         expandBtn.classList.toggle('hidden', !isExpandable);
@@ -66,10 +53,10 @@ export function updateToolbarVisibility(editor) {
 }
 
 export function updateNodeCountUI(editor, pathData) {
-    const el = document.getElementById('editorNodeCount');
-    if (!el) return;
+    const countEl = getEl('editorNodeCount');
+    if (!countEl) return;
     if (!pathData) {
-        el.textContent = 'Nodes: --';
+        countEl.textContent = 'Nodes: --';
         return;
     }
 
@@ -123,30 +110,30 @@ export function updateSelectionHighlight(editor) {
     }
 }
 
-export function select(editor, el) {
-    if (editor._selectedElement === el) return;
+export function select(editor, selectedEl) {
+    if (editor._selectedElement === selectedEl) return;
     editor._deselect();
-    editor._selectedElement = el;
+    editor._selectedElement = selectedEl;
 
-    if (el) {
-        const layerSel = document.getElementById('editorLayerSelect');
-        if (layerSel) layerSel.value = el.attr('data-layer') || "0";
+    if (selectedEl) {
+        const layerSel = getEl('editorLayerSelect');
+        if (layerSel) layerSel.value = selectedEl.attr('data-layer') || "0";
 
-        if (el.type === 'text') {
-            const f = el.font();
+        if (selectedEl.type === 'text') {
+            const f = selectedEl.font();
             editor._fontFamily = f.family || editor._fontFamily;
             // font size comes back as a string from SVG.js; force it to a number
             const parsedSize = parseFloat(f.size);
             if (!isNaN(parsedSize) && parsedSize > 0) editor._fontSize = parsedSize;
             // Sync the toolbar inputs so the displayed values match the selected element
-            const ffEl = document.getElementById('editorFontFamily');
-            const fsEl = document.getElementById('editorFontSize');
+            const ffEl = getEl('editorFontFamily');
+            const fsEl = getEl('editorFontSize');
             if (ffEl && Array.from(ffEl.options).some(o => o.value === editor._fontFamily)) {
                 ffEl.value = editor._fontFamily;
             }
             if (fsEl) fsEl.value = editor._fontSize;
         } else {
-            editor._strokeWidth = parseFloat(el.attr('stroke-width')) || editor._strokeWidth;
+            editor._strokeWidth = parseFloat(selectedEl.attr('stroke-width')) || editor._strokeWidth;
         }
     }
     
@@ -156,11 +143,11 @@ export function select(editor, el) {
     }
     if (editor._hoveredElement) editor._hoveredElement.removeClass('svg-hover');
     
-    el.addClass('svg-selected');
+    selectedEl.addClass('svg-selected');
     editor._updateHandles(); 
     editor._updateSelectionHighlight(); 
     updateToolbarVisibility(editor);
-    if (editor._onSelect) editor._onSelect(el);
+    if (editor._onSelect) editor._onSelect(selectedEl);
 }
 
 export function setHover(editor, el) {

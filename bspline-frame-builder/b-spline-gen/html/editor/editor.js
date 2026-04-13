@@ -9,7 +9,8 @@ import { getDynamicTolerance, getNodes, fitCurve, getHybridBezierPath, expandCur
 import { initInteraction, updateHandles } from './editor-interaction.js';
 import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
-
+import { initLayerControls, setActiveLayer } from './layers.js';
+import { createEditorCanvas } from './init.js';
 
 export class VectorEditor {
     constructor() {
@@ -39,12 +40,14 @@ export class VectorEditor {
         this._currentPath = null;
         this._points = [];
         this._undoStack = [];
+        this._redoStack = [];
         this._maxUndo = 30;
         
         this._dragNodeIndex = -1;
         this._hoverNodeIndex = -1;
         this._isClickMode = false;
         this._dragDist = 0;
+        this._activeLayer = '0';
     }
 
     initEditor(containerId, backgroundCanvasId, onChange, onCommit, onSelect) {
@@ -53,13 +56,12 @@ export class VectorEditor {
         this._onCommit = onCommit;
         this._onSelect = onSelect;
 
-        const container = document.getElementById(containerId);
-        if (container) container.innerHTML = "";
-        this._draw = window.SVG().addTo('#'+containerId).size('100%', '100%');
-        this._bgLayer = this._draw.group().id('bg-layer');
-        this._sketchLayer = this._draw.group().id('sketch-layer');
-        this._handleLayer = this._draw.group().id('handle-layer');
-        this._highlightLayer = this._draw.group().id('highlight-layer');
+        const canvas = createEditorCanvas(containerId);
+        this._draw = canvas.draw;
+        this._bgLayer = canvas.bgLayer;
+        this._sketchLayer = canvas.sketchLayer;
+        this._handleLayer = canvas.handleLayer;
+        this._highlightLayer = canvas.highlightLayer;
 
         initIO(this);
         initInteraction(this);
@@ -68,6 +70,7 @@ export class VectorEditor {
         this.setModelMetrics(this._mW, this._mH);
         this.setMode(this._currentMode);
         setupEditorToolbar(this);
+        initLayerControls(this);
     }
 
 
@@ -110,8 +113,11 @@ export class VectorEditor {
     setFontFamily(f) { return setFontFamily(this, f); }
     setFontSize(s) { return setFontSize(this, s); }
 
+    setActiveLayer(layerId) { return setActiveLayer(this, layerId); }
+
     pushState() {
         const state = this._sketchLayer.children().map(el => el.svg()).join('');
+        this._redoStack.length = 0;
         this._undoStack.push(state);
         if (this._undoStack.length > this._maxUndo) this._undoStack.shift();
         if (this._onCommit) this._onCommit('push');
@@ -119,10 +125,20 @@ export class VectorEditor {
 
     undo() {
         if (this._undoStack.length < 2) return;
-        this._undoStack.pop(); 
+        const current = this._undoStack.pop();
+        this._redoStack.push(current);
         const prev = this._undoStack[this._undoStack.length - 1];
         this._sketchLayer.clear();
         this._sketchLayer.svg(prev);
+        if (this._onChange) this._onChange();
+    }
+
+    redo() {
+        if (!this._redoStack.length) return;
+        const next = this._redoStack.pop();
+        this._undoStack.push(next);
+        this._sketchLayer.clear();
+        this._sketchLayer.svg(next);
         if (this._onChange) this._onChange();
     }
 

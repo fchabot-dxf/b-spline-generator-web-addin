@@ -288,12 +288,16 @@ export function getNodes(el) {
     return pts.map(pt => _transformPoint(el, pt));
 }
 
+import { isEditableByLayer } from './layers.js';
+
 export function getNearbyElement(editor, pt, tol = 0.1) {
     if (!editor._sketchLayer) return null;
     let bestEl = null;
     let bestDistSq = Infinity;
 
     editor._sketchLayer.children().toArray().forEach(el => {
+        if (!isEditableByLayer(editor, el)) return;
+
         const b = el.bbox();
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;
         const buffer = tol + (sw / 2);

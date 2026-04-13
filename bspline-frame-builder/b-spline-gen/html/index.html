@@ -550,57 +550,70 @@
       </div>
       <div style="flex:1; display:flex; flex-direction:column;">
         <div class="editor-toolbar-top">
-          <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
-            <input type="range" id="editorStrokeWidthSlider" min="0" max="5" step="0.1" value="0.5">
-            <input type="number" id="editorStrokeWidth" value="0.5" step="0.1">
+          <div class="editor-properties-panel">
+            <div id="editorShapePanel" class="editor-properties-pane active">
+              <div id="editorStrokeGroup" class="property-row">
+                <label class="property-label" for="editorStrokeWidth">Stroke width</label>
+                <div class="stepper-container">
+                  <button type="button" id="editorStrokeWidthMinus" class="stepper-btn">−</button>
+                  <input type="number" id="editorStrokeWidth" class="property-number no-stepper" value="0.5" step="0.1" min="0" max="5">
+                  <button type="button" id="editorStrokeWidthPlus" class="stepper-btn">+</button>
+                </div>
+              </div>
+            </div>
+            <div id="editorTextPanel" class="editor-properties-pane">
+              <div id="editorFontGroup" class="property-row">
+                <label class="property-label" for="editorFontFamily">Font</label>
+                <select id="editorFontFamily" class="property-select" style="width:160px;">
+                  <optgroup label="── Sans Serif ──">
+                    <option value="Arial" selected>Arial</option>
+                    <option value="Tahoma">Tahoma</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Bahnschrift">Bahnschrift</option>
+                    <option value="Impact">Impact</option>
+                  </optgroup>
+                  <optgroup label="── Serif ──">
+                    <option value="Georgia">Georgia</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                  </optgroup>
+                  <optgroup label="── Monospace ──">
+                    <option value="Courier New">Courier New</option>
+                    <option value="Cascadia Code">Cascadia Code</option>
+                    <option value="Cascadia Mono">Cascadia Mono</option>
+                  </optgroup>
+                </select>
+                <div class="stepper-container">
+                  <button id="editorFontSizeMinus" class="stepper-btn">−</button>
+                  <input type="number" id="editorFontSize" class="property-number no-stepper" value="3.0" step="0.2" min="0.2" max="20">
+                  <button id="editorFontSizePlus" class="stepper-btn">+</button>
+                </div>
+              </div>
+              <button id="editorSymbolKeyboardToggle" class="btn btn-secondary btn-xs editor-action-btn">Symbols</button>
+            </div>
+            <div id="editorSelectPanel" class="editor-properties-pane">
+              <div class="property-row">
+                <span id="editorNodeCount" class="property-note">Nodes: --</span>
+                <span class="property-note">Selection properties</span>
+              </div>
+            </div>
+            <div id="editorDefaultPanel" class="editor-properties-pane">
+              <span class="property-note">Select a tool or object to see properties.</span>
+            </div>
           </div>
-          <div id="editorFontGroup" style="display:flex; align-items:center; gap:8px;">
-            <select id="editorFontFamily" style="width:160px;">
-              <optgroup label="── Sans Serif ──">
-                <option value="Arial" selected>Arial</option>
-                <option value="Tahoma">Tahoma</option>
-                <option value="Verdana">Verdana</option>
-                <option value="Bahnschrift">Bahnschrift</option>
-                <option value="Impact">Impact</option>
-              </optgroup>
-              <optgroup label="── Serif ──">
-                <option value="Georgia">Georgia</option>
-                <option value="Times New Roman">Times New Roman</option>
-              </optgroup>
-              <optgroup label="── Monospace ──">
-                <option value="Courier New">Courier New</option>
-                <option value="Cascadia Code">Cascadia Code</option>
-                <option value="Cascadia Mono">Cascadia Mono</option>
-              </optgroup>
-            </select>
-            <span style="font-size:11px; opacity:0.7; white-space:nowrap;">Size</span>
-            <button id="editorFontSizeMinus" style="width:22px;height:22px;padding:0;font-size:14px;line-height:1;border:1px solid #ccc;border-radius:3px;cursor:pointer;">−</button>
-            <input type="number" id="editorFontSize" class="no-stepper" value="3.0" step="0.2" min="0.2" max="20" style="width:52px;text-align:center;">
-            <button id="editorFontSizePlus" style="width:22px;height:22px;padding:0;font-size:14px;line-height:1;border:1px solid #ccc;border-radius:3px;cursor:pointer;">+</button>
-          </div>
-          <!-- v14: Unified Simplification Slider -->
-          <!-- Simplified Sidebar: Tracing sliders removed -->
-
-
-          <!-- Traced Sliders Retired (Vector Math Used Instead) -->
-
-
           <!-- v32: Layer Selector -->
-          <div id="editorLayerGroup"
-            style="display:flex; align-items:center; gap:8px; padding-left:12px; border-left:1px solid #ddd; margin-left:12px;">
-            <span style="font-size:11px; opacity:0.7; pointer-events:none; white-space:nowrap;">Layer</span>
-            <select id="editorLayerSelect" style="font-size:11px; width:70px;">
+          <div id="editorLayerGroup" class="editor-layer-group">
+            <span class="property-label">Layer</span>
+            <select id="editorLayerSelect" class="property-select">
               <option value="0" selected>Layer 1</option>
               <option value="1">Layer 2</option>
               <option value="2">Layer 3</option>
             </select>
           </div>
-          <button id="editorSymbolKeyboardToggle" class="btn btn-secondary btn-xs" style="font-size:12px; min-width:84px;">Symbols</button>
           <div style="flex:1;"></div>
         </div>
         <div id="editorCanvasContainer"
-          style="flex:1; background:#efefef; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;">
-          <div id="editorSVGContainer" style="width:100%; height:100%;"></div>
+          style="flex:1; background:#efefef; position:relative; overflow:hidden; display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start;">
+          <div id="editorSVGContainer" style="width:100%; height:auto;"></div>
           <!-- Hidden input for robust text capture (Emoji/IME/Mobile). Style is managed by JS for mobile support. -->
           <input type="text" id="editorHiddenInput"
             style="position:absolute; left:-10000px; top:0; width:1px; height:1px; opacity:0; border:none; padding:0; z-index:9999;">

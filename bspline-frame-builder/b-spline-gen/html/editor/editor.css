@@ -35,7 +35,10 @@
   min-width: 0;
   max-height: 100%;
   display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
   overflow: hidden;
+  position: relative;
 }
 
 #editorSVGContainer {
@@ -43,21 +46,74 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  height: auto !important;
+  height: auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  max-height: calc(100vh - 220px);
+  max-height: none;
 }
 
 #editorCanvasContainer.keyboard-open #editorSVGContainer {
-  max-height: calc(100vh - 280px);
+  max-height: none;
 }
 
 .editor-sidebar {
-  min-width: 0;
-  min-height: 0;
+  width: 72px !important;
+  min-width: 72px !important;
+  max-width: 72px !important;
+  padding: 12px 8px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
   overflow-y: auto;
+}
+
+.editor-sidebar .tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 50px !important;
+  width: 50px !important;
+  height: 50px !important;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: rgba(255,255,255,0.85);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.editor-sidebar .tool-btn:hover {
+  background: rgba(255,255,255,1);
+  border-color: rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+}
+
+.editor-sidebar .tool-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: rgba(37,99,235,0.6);
+  box-shadow: 0 6px 16px rgba(37,99,235,0.16);
+}
+
+.editor-sidebar .tool-btn.active svg {
+  stroke: #fff;
+  fill: currentColor;
+}
+
+.inactive-layer {
+  opacity: 0.32 !important;
+  pointer-events: none;
+}
+
+.editor-sidebar .tool-btn svg {
+  width: 20px;
+  height: 20px;
 }
 
 @media (max-width: 720px) {
@@ -97,8 +153,8 @@
   right: 0;
   width: 100%;
   max-width: 100%;
-  max-height: min(var(--keyboard-max-height, 340px), 42vh);
-  min-height: 160px;
+  max-height: min(var(--keyboard-max-height, 280px), 34vh);
+  min-height: 140px;
   background: rgba(255,255,255,0.96);
   border: 1px solid rgba(0,0,0,0.16);
   border-radius: 12px 12px 0 0;
@@ -113,21 +169,32 @@
   --keyboard-max-height: 340px;
 }
 
-.editor-symbol-keyboard-grid {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(30px, 1fr));
-  gap: 6px;
-  overflow-y: auto;
-  max-height: calc(min(var(--keyboard-max-height, 340px), 42vh) - 92px);
-  padding-right: 2px;
+@media (min-width: 721px) {
+  .editor-symbol-keyboard {
+    max-height: min(var(--keyboard-max-height, 260px), 40vh);
+    min-height: 140px;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 -8px 20px rgba(0,0,0,0.08);
+    border-left: 1px solid rgba(0,0,0,0.16);
+    border-right: none;
+    border-bottom: none;
+    margin-top: 0;
+    padding: 12px;
+    flex: 0 0 auto;
+  }
+
+  #editorCanvasContainer.keyboard-open #editorSVGContainer {
+    max-height: none;
+  }
 }
 
-.editor-symbol-keyboard-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+.editor-symbol-keyboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+  grid-auto-rows: 38px;
   gap: 6px;
+  overflow-y: auto;
+  max-height: calc(min(var(--keyboard-max-height, 280px), 34vh) - 92px);
   padding-bottom: 2px;
 }
 
@@ -145,11 +212,20 @@
   background: rgba(0,0,0,0.28);
 }
 
+.editor-symbol-keyboard-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
 .editor-symbol-keyboard-label-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .editor-symbol-keyboard-note {
@@ -159,8 +235,9 @@
 }
 
 .editor-symbol-family-select {
-  min-width: 130px;
-  max-width: 180px;
+  min-width: 120px;
+  max-width: 220px;
+  width: 100%;
   font-size: 11px;
   padding: 3px 6px;
   border: 1px solid var(--border);
@@ -172,15 +249,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
-.editor-symbol-keyboard-grid {
-  display: grid;
-  grid-template-columns: repeat(8, minmax(30px, 1fr));
-  gap: 6px;
-  overflow-y: auto;
-  padding-right: 2px;
-}
 
 .symbol-key {
   all: unset;
@@ -208,11 +279,154 @@
   background: #e2e8f0;
 }
 
-@media (max-width: 720px) {
-  .editor-symbol-keyboard {
-    max-height: 42vh;
-    padding: 12px;
-    box-shadow: 0 -18px 30px rgba(0,0,0,0.25);
+.editor-toolbar-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 12px;
+  align-items: center;
+  min-height: 58px;
+}
+
+.editor-toolbar-top > * {
+  flex: 0 0 auto;
+}
+
+.editor-properties-panel {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: 680px;
+}
+
+.editor-properties-pane {
+  display: none;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.editor-properties-pane.active {
+  display: flex;
+}
+
+.property-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.property-label {
+  font-size: 11px;
+  opacity: 0.75;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.property-select,
+.property-number,
+.property-range {
+  font: 13px/1.4 Arial, sans-serif;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.property-select {
+  min-width: 120px;
+  height: 32px;
+  padding: 0 10px;
+}
+
+.property-number {
+  width: 62px;
+  min-width: 62px;
+  height: 32px;
+  padding: 0 10px;
+  text-align: center;
+}
+
+.property-range {
+  min-width: 140px;
+  max-width: 220px;
+  height: 24px;
+}
+
+.stepper-btn {
+  background: var(--surface);
+  border: none;
+  width: 24px;
+  height: 100%;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  transition: background 0.2s;
+}
+
+.stepper-btn:hover {
+  background: #e0e0e0;
+}
+
+.stepper-btn:active {
+  background: #d0d0d0;
+}
+
+.stepper-container input.property-number {
+  width: auto;
+  min-width: 50px;
+  height: 100%;
+  padding: 0 6px;
+  margin: 0;
+  background: transparent;
+  border: none;
+  font-weight: 600;
+  text-align: center;
+}
+
+.editor-action-btn {
+  height: 32px;
+  min-width: 84px;
+}
+
+.editor-layer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  margin-left: 12px;
+  white-space: nowrap;
+}
+
+.property-note {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+#editorStrokeGroup,
+#editorFontGroup {
+  width: auto;
+  justify-content: flex-start;
+}
+
+#editorStrokeWidthSlider {
+  flex: 1;
+  margin-right: 12px;
+}
+
   }
 
   .editor-symbol-keyboard-grid {
@@ -253,18 +467,134 @@
   }
 
   .editor-toolbar-top {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 8px;
-    padding: 8px;
+    padding: 10px 10px 10px 8px;
     height: auto;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
+    align-items: center;
   }
 
   .editor-toolbar-top > * {
     flex: 0 0 auto;
     scroll-snap-align: start;
+  }
+
+  .editor-properties-panel {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .editor-properties-pane {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .editor-properties-pane.active {
+    display: flex;
+  }
+
+  .property-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .property-label {
+    font-size: 11px;
+    opacity: 0.75;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .property-select,
+  .property-number,
+  .property-range {
+    font: 13px/1.4 Arial, sans-serif;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .property-select {
+    min-width: 120px;
+    height: 32px;
+    padding: 0 10px;
+  }
+
+  .property-number {
+    width: 50px;
+    min-width: 50px;
+    height: 32px;
+    padding: 0 8px;
+    text-align: center;
+  }
+
+  .property-range {
+    min-width: 140px;
+    max-width: 220px;
+    height: 24px;
+  }
+
+  .stepper-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .stepper-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.16s ease, border-color 0.16s ease;
+  }
+
+  .stepper-btn:hover {
+    background: var(--surface);
+    border-color: rgba(0,0,0,0.12);
+  }
+
+  .editor-action-btn {
+    height: 32px;
+    min-width: 84px;
+  }
+
+  .editor-layer-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 12px;
+    border-left: 1px solid var(--border);
+    margin-left: 12px;
+    white-space: nowrap;
+  }
+
+  .property-note {
+    font-size: 12px;
+    opacity: 0.75;
   }
 
   #editorStrokeGroup,
@@ -279,13 +609,20 @@
   }
 
   .editor-sidebar {
-    width: 44px;
-    padding: 8px 4px;
+    width: 56px;
+    min-width: 56px;
+    padding: 10px 6px;
   }
 
   .tool-btn {
-    width: 32px;
-    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    width: 40px;
+    height: 40px;
+    padding: 6px;
+    border-radius: 10px;
   }
 }
 
@@ -295,15 +632,18 @@
   }
 
   .editor-sidebar {
-    width: 100%;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
     height: auto;
-    padding: 8px 6px;
+    padding: 8px 8px;
     border-right: none;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
+    justify-content: flex-start;
     align-items: center;
     gap: 6px;
     overflow-x: auto;
@@ -311,6 +651,12 @@
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
+  }
+
+  .editor-sidebar > div {
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
   }
 
   .editor-sidebar .tool-btn {
