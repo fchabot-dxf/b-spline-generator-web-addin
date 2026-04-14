@@ -86,7 +86,7 @@
     
     <div class="btn-container">
         <button id="copy-btn" onclick="copyToClipboard()" title="Copy everything">Full Copy</button>
-        <button id="copy-short-btn" onclick="copyShort()" title="Copy Name & Coords only">Copy Name</button>
+        <button id="copy-short-btn" onclick="copyShort()" title="Copy name only">Copy Name</button>
     </div>
 
     <script>
@@ -176,24 +176,25 @@
 
         var currentData = null;
 
+        function normalizeEntityName(raw) {
+            if (!raw) return '';
+            var name = raw.split(' | ')[0].trim();
+            return name;
+        }
+
         function copyShort() {
             var btn = document.getElementById('copy-short-btn');
             if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
             
             var text = "";
             if (currentData.count > 1 && currentData.linked) {
-                // Batch Mode: Copy just the names for the whole list
                 var names = [];
                 for (var i = 0; i < currentData.linked.length; i++) {
-                    var str = currentData.linked[i];
-                    // Extract name before the ' | ' separator
-                    var name = str.split(' | ')[0];
-                    names.push(name);
+                    names.push(normalizeEntityName(currentData.linked[i]));
                 }
                 text = names.join('\n');
             } else {
-                // Single Mode
-                text = currentData.mainFeature || 'Entity';
+                text = normalizeEntityName(currentData.mainFeature || 'Entity');
             }
             performCopy(text, btn);
         }
@@ -242,15 +243,30 @@
         }
 
         function copyViaPython(text, btn, originalText) {
-            adsk.fusionSendData('copy', text).then(function(result) {
-                if (result === 'ok') {
-                    flashBtn(btn, 'Copied!', true, originalText);
+            try {
+                var result = adsk.fusionSendData('copy', text);
+                if (result && typeof result.then === 'function') {
+                    result.then(function(data) {
+                        if (data === 'ok') {
+                            flashBtn(btn, 'Copied!', true, originalText);
+                        } else {
+                            flashBtn(btn, 'Error', false, originalText);
+                        }
+                    }).catch(function() {
+                        flashBtn(btn, 'Error', false, originalText);
+                    });
+                } else if (typeof result === 'string') {
+                    if (result === 'ok') {
+                        flashBtn(btn, 'Copied!', true, originalText);
+                    } else {
+                        flashBtn(btn, 'Error', false, originalText);
+                    }
                 } else {
                     flashBtn(btn, 'Error', false, originalText);
                 }
-            }).catch(function() {
+            } catch(e) {
                 flashBtn(btn, 'Error', false, originalText);
-            });
+            }
         }
 
         dlog('JS ready. adsk=' + (typeof adsk));

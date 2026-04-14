@@ -241,7 +241,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         super().__init__()
         self.diag_logger = diag_logger
         self.selected_face = None
-        self.style_id = "Template 1"
+        self.style_id = "Template 1 - Hourglass"
         self.active_vars = {} # Shadow state for UI variables (locks and values)
         if self.diag_logger:
             self.diag_logger.log(f"HTMLEventHandler INSTANCE CREATED: {self}")
@@ -293,6 +293,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # not calling back into the webview from inside this HTML event handler.
                 _schedule_schema_push(self.style_id)
 
+            elif action in ('request_template_list', 'get_templates'):
+                self._send_template_list(ui.palettes.itemById(PALETTE_ID))
+
             elif action == 'pick_face':
                 self._handle_face_selection(ui)
 
@@ -314,6 +317,21 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
         except Exception as e:
             if self.diag_logger: self.diag_logger.log_error(f"PaletteHTMLEvent ERROR:\n{traceback.format_exc()}")
+
+    def _send_template_list(self, pal):
+        try:
+            if not pal or not frame_engine:
+                return False
+            templates = frame_engine.get_available_templates()
+            payload = {
+                'templates': templates,
+                'selected': self.style_id
+            }
+            return self._send_palette_message(pal, 'template_list', payload)
+        except Exception as e:
+            if self.diag_logger:
+                self.diag_logger.log_error(f"Template list send failed: {e}")
+            return False
 
     def _update_fusion_param(self, design, name, value):
         try:

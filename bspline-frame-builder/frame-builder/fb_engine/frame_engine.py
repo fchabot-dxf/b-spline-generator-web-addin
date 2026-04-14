@@ -1,51 +1,167 @@
 import adsk.core, adsk.fusion, adsk.cam, traceback
 import os, json
 import importlib
+import importlib.util
+import inspect
+import sys
 import time
 
 # Modular logic import
 try:
     from fb_engine import parametric_engine, template_factory, fb_value_resolver
-    from fb_utils import fb_logger as logger
-    import template_data_1, template_data_2, template_data_3, template_data_4
+    from fb_utils import fb_logger
+    logger = fb_logger.DebugLogger(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     importlib.reload(parametric_engine)
     importlib.reload(fb_value_resolver)
-    importlib.reload(template_data_1)
-    importlib.reload(template_data_2)
-    importlib.reload(template_data_3)
-    importlib.reload(template_data_4)
-    importlib.reload(logger)
 except Exception as e:
     # Attempt to log error if logger exists, otherwise use basic print
     try:
-        from fb_utils import fb_logger as logger
+        from fb_utils import fb_logger
         addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-        _l = logger.DebugLogger(addin_root)
-        _l.log(f"CRITICAL: frame_engine failed imports: {e}", "ERROR")
-        _l.log(traceback.format_exc(), "ERROR")
+        logger = fb_logger.DebugLogger(addin_root)
+        logger.log(f"CRITICAL: frame_engine failed imports: {e}", "ERROR")
+        logger.log(traceback.format_exc(), "ERROR")
     except:
-        pass
+        logger = None
     raise e
 
 
 
 
-# ── Template Registry ─────────────────────────────────────────────────────────
-# Maps style_id substring → (loader callable, sketch prefix).
-# Add new templates here — no other code changes required.
-_TEMPLATE_REGISTRY = {
-    "Template 1": {"loader": lambda ui_data=None: template_data_1.get_template_logic(ui_data), "prefix": "T1"},
-    "Template 2": {"loader": lambda ui_data=None: template_data_2.TEMPLATE_2,                  "prefix": "T2"},
-    "Template 3": {"loader": lambda ui_data=None: template_data_3.TEMPLATE_3,                  "prefix": "T3"},
-    "Template 4": {"loader": lambda ui_data=None: template_data_4.TEMPLATE_4,                  "prefix": "T4"},
-}
+_FRAME_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+_SKETCHES_ROOT = os.path.join(_FRAME_ROOT, 'sketches')
+_TEMPLATE_REGISTRY = None
+
+def _load_template_module(data_path, module_name):
+    module_dir = os.path.dirname(data_path)
+    old_sys_path = list(sys.path)
+    if module_dir not in sys.path:
+        sys.path.insert(0, module_dir)
+
+    removed_modules = {}
+    for key in list(sys.modules.keys()):
+        if key == 'phases' or key.startswith('phases.'):
+            removed_modules[key] = sys.modules.pop(key)
+
+    phases_module = None
+    phases_init = os.path.join(module_dir, 'phases', '__init__.py')
+    if os.path.isfile(phases_init):
+        try:
+            spec = importlib.util.spec_from_file_location('phases', phases_init)
+            phases_module = importlib.util.module_from_spec(spec)
+            sys.modules['phases'] = phases_module
+            spec.loader.exec_module(phases_module)
+        except Exception:
+            # If the local phases package cannot be initialized, allow the template import to fail later.
+            pass
+
+    try:
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+        spec = importlib.util.spec_from_file_location(module_name, data_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path[:] = old_sys_path
+        for key in list(sys.modules.keys()):
+            if key == 'phases' or key.startswith('phases.'):
+                sys.modules.pop(key, None)
+        for key, value in removed_modules.items():
+            sys.modules[key] = value
+
+
+def _discover_template_entries():
+    entries = []
+    if not os.path.isdir(_SKETCHES_ROOT):
+        return entries
+
+    for folder in sorted(os.listdir(_SKETCHES_ROOT)):
+        folder_path = os.path.join(_SKETCHES_ROOT, folder)
+        if not os.path.isdir(folder_path) or not folder.startswith('template_'):
+            continue
+
+        template_files = sorted([
+            f for f in os.listdir(folder_path)
+            if f.startswith('template_data_') and f.endswith('.py')
+        ])
+        if not template_files:
+            continue
+
+        data_file = template_files[0]
+        data_path = os.path.join(folder_path, data_file)
+        module_name = f"fb_template_{folder}_{data_file[:-3]}"
+        try:
+            module = _load_template_module(data_path, module_name)
+        except Exception as e:
+            if logger:
+                logger.log(f"Failed to load template module '{module_name}': {e}", "WARNING")
+            continue
+
+        loader = None
+        if hasattr(module, 'get_template_logic'):
+            def loader(ui_data=None, mod=module):
+                try:
+                    return mod.get_template_logic(ui_data)
+                except TypeError:
+                    return mod.get_template_logic()
+        else:
+            template_obj = None
+            for attr in dir(module):
+                if attr.startswith('TEMPLATE_'):
+                    template_obj = getattr(module, attr)
+                    break
+            if template_obj is not None:
+                loader = lambda ui_data=None, obj=template_obj: obj
+
+        if not loader:
+            continue
+
+        try:
+            spec = loader()
+        except Exception as e:
+            if logger:
+                logger.log(f"Failed to resolve template spec for '{folder}': {e}", "WARNING")
+            continue
+
+        if not isinstance(spec, dict) or not spec.get('Name'):
+            continue
+
+        style_name = spec['Name']
+        template_index = folder.split('_', 1)[1] if '_' in folder else folder
+        prefix = f"T{template_index}" if template_index.isdigit() else folder.upper()
+
+        entries.append({
+            'style_name': style_name,
+            'loader': loader,
+            'prefix': prefix,
+            'folder': folder,
+        })
+
+    return entries
+
+
+def _ensure_template_registry():
+    global _TEMPLATE_REGISTRY
+    if _TEMPLATE_REGISTRY is None:
+        _TEMPLATE_REGISTRY = _discover_template_entries()
+    return _TEMPLATE_REGISTRY
+
 
 def _resolve_template(style_id, ui_data=None):
     """Return (template_spec, prefix) for the given style_id. Raises on unknown id."""
-    for key, entry in _TEMPLATE_REGISTRY.items():
-        if key in style_id:
-            return entry["loader"](ui_data), entry["prefix"]
-    raise ValueError(f"Unknown style_id: '{style_id}'. Registered: {list(_TEMPLATE_REGISTRY.keys())}")
+    registry = _ensure_template_registry()
+    for entry in registry:
+        if entry['style_name'] == style_id or entry['style_name'] in style_id or style_id in entry['style_name']:
+            return entry['loader'](ui_data), entry['prefix']
+    raise ValueError(f"Unknown style_id: '{style_id}'. Registered: {[e['style_name'] for e in registry]}")
+
+
+def get_available_templates():
+    """Return the list of available templates for UI population."""
+    registry = _ensure_template_registry()
+    return [{"label": entry["style_name"], "value": entry["style_name"]}
+            for entry in registry]
 
 
 def get_template_spec(style_id="Template 1"):
@@ -118,17 +234,7 @@ class FrameBuilder:
 
     def get_template_spec(self, style_id="Template 1"):
         """Fetches the raw template DNA for schema-driven UI rendering."""
-        # Use existing template loaders
-        from sketches.template_1 import template_data_1
-        from sketches.template_2 import template_data_2
-        from sketches.template_3 import template_data_3
-        from sketches.template_4 import template_data_4
-        
-        if "Template 1" in style_id: return template_data_1.get_template_logic()
-        if "Template 2" in style_id: return template_data_2.TEMPLATE_2
-        if "Template 3" in style_id: return template_data_3.TEMPLATE_3
-        if "Template 4" in style_id: return template_data_4.TEMPLATE_4
-        return template_data_1.get_template_logic()
+        return get_template_spec(style_id)
 
     def _ensure_document(self):
         self.logger.log("Ensuring document is active")

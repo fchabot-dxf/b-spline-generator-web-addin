@@ -140,6 +140,10 @@ export function open(editor, svgString, w, h) {
                 ch.attr('transform', null);
                 ch.css('cursor', ch.type === 'text' ? 'text' : 'pointer');
             });
+
+            if (typeof editor.setActiveLayer === 'function') {
+                editor.setActiveLayer(editor._activeLayer || '0');
+            }
         }
     } catch (err) { console.error('[SVG EDITOR] Re-import failure:', err); }
 }

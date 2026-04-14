@@ -12,12 +12,10 @@ export function getActiveLayer(editor) {
 
 export function setActiveLayer(editor, layerId) {
   const normalized = layerId == null ? '0' : String(layerId);
-  if (editor._activeLayer === normalized) return normalized;
-  editor._activeLayer = normalized;
-
   const layerSel = el('editorLayerSelect');
   if (layerSel) layerSel.value = normalized;
 
+  editor._activeLayer = normalized;
   applyLayerState(editor);
   return normalized;
 }

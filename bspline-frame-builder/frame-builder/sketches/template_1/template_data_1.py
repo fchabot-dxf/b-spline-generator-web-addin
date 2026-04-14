@@ -44,12 +44,12 @@ def get_template_logic(ui_data=None):
     s2["Label"] = "Shape Outline"
     s2["Parameters"] = [
         # Anatomy — solver seeds, user-lockable
-        {"Name": "ShoulderSpan", "Label": "Shoulder Factor",  "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
-        {"Name": "WaistSpan",    "Label": "Waist Factor",     "Category": "Anatomy", "Val": 0.70, "Min": 0.2,  "Max": 1.25, "Unit": "", "DisplayUnit": "x"},
-        {"Name": "HipSpan",      "Label": "Hip Factor",       "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
+        {"Name": "ShoulderSpan", "Label": "Shoulder Width",  "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
+        {"Name": "WaistSpan",    "Label": "Waist Width",     "Category": "Anatomy", "Val": 0.95, "Min": 0.2,  "Max": 1.25, "Unit": "", "DisplayUnit": "x"},
+        {"Name": "HipSpan",      "Label": "Hip Width",       "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
         {"Name": "TopGap",       "Label": "Top Height %",     "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,  "Unit": "", "DisplayUnit": "%"},
         {"Name": "BottomGap",    "Label": "Bottom Height %",  "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,  "Unit": "", "DisplayUnit": "%"},
-        {"Name": "WaistOffset",  "Label": "Waist Shift",      "Category": "Anatomy", "Val": 0.0,  "Min": -1.0, "Max": 1.0,  "Unit": "cm", "Expose": True},
+        {"Name": "WaistOffset",  "Label": "Waist Offset",      "Category": "Anatomy", "Val": 0.0,  "Min": -1.0, "Max": 1.0,  "Unit": "cm", "Expose": True},
 
         # Silhouette — solver seeds, user-lockable
         {"Name": "ShoulderRadius", "Label": "Shoulder Radius", "Category": "Silhouette", "Val": 2.5, "Min": 0.5, "Max": 15.0, "Unit": "cm"},
@@ -97,7 +97,7 @@ def get_template_logic(ui_data=None):
     ]
 
     return {
-        "Name": "Template 1",
+        "Name": "Template 1 - Hourglass",
         "Description": "Standardized Arc Series - Metric Unified",
         "Sketches": [s1, s2, s3]
     }

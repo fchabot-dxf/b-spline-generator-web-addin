@@ -8,6 +8,7 @@ import adsk.core, adsk.fusion, traceback, os, json, datetime, subprocess, sys
 # GLOBAL STATE (PERSISTENT ACROSS RELOADS)
 # ---------------------------------------------------------------------------
 _handlers = []
+_html_handler = None
 _last_sel_ids = ""
 _latest_payload = ""
 
@@ -109,6 +110,36 @@ def get_fb_connections(ent):
     except: pass
     return linked
 
+
+def format_point(pt):
+    try:
+        return f"({round(pt.geometry.x,2)},{round(pt.geometry.y,2)})"
+    except:
+        return ''
+
+
+def get_fb_metadata(ent):
+    try:
+        if hasattr(ent, 'nativeObject') and ent.nativeObject: ent = ent.nativeObject
+        if not hasattr(ent, 'attributes'):
+            return ''
+
+        info = []
+        for name in ('StartID', 'EndID', 'CenterID'):
+            a = ent.attributes.itemByName('FrameBuilder', name)
+            if a and a.value:
+                info.append(f"{name}={a.value}")
+
+        if hasattr(ent, 'centerSketchPoint') and ent.centerSketchPoint:
+            center_coord = format_point(ent.centerSketchPoint)
+            if center_coord:
+                info.append(f"BulgeCenter={center_coord}")
+
+        return ' | '.join(info)
+    except:
+        return ''
+
+
 def entity_fingerprint(ent):
     try:
         if hasattr(ent, 'entityToken') and ent.entityToken: return ent.entityToken
@@ -123,6 +154,9 @@ def get_entity_coord(e):
         if hasattr(e, 'startSketchPoint') and hasattr(e, 'endSketchPoint'):
             sp = e.startSketchPoint.geometry
             ep = e.endSketchPoint.geometry
+            if hasattr(e, 'centerSketchPoint') and e.centerSketchPoint:
+                cp = e.centerSketchPoint.geometry
+                return f"({round(sp.x,2)}, {round(sp.y,2)}) -> ({round(cp.x,2)}, {round(cp.y,2)}) -> ({round(ep.x,2)}, {round(ep.y,2)})"
             return f"({round(sp.x,2)}, {round(sp.y,2)}) -> ({round(ep.x,2)}, {round(ep.y,2)})"
         if hasattr(e, 'geometry') and hasattr(e.geometry, 'startPoint'):
             g = e.geometry
@@ -167,6 +201,7 @@ def _push_selection_to_palette():
 
     if current_ids == _last_sel_ids and _last_sel_ids != "": return
     _last_sel_ids = current_ids
+    _log(f"[DEBUG_SELECTION] count={count} current_ids='{current_ids}'")
 
     # Build High-Density Payload
     p_data = {
@@ -196,43 +231,62 @@ def _push_selection_to_palette():
             p_data['coord'] = "(Batch View)"
             p_data['listLabel'] = 'Selection List'
             
-            # List every item with its name and points/coordinates
+            # List every item with its name, points/coordinates, and metadata
             for ent in entities:
                 if hasattr(ent, 'nativeObject') and ent.nativeObject: ent = ent.nativeObject
                 name = get_fb_name(ent)
                 coord = get_entity_coord(ent)
-                # Format: [Name] | (x,y) -> (x,y)
-                p_data['linked'].append(f"{name} | {coord}")
+                fb_meta_item = get_fb_metadata(ent)
+                entry = f"{name} | {coord}"
+                if fb_meta_item:
+                    entry += f" | {fb_meta_item}"
+                p_data['linked'].append(entry)
 
         bridge = get_fb_bridge(e)
         plan = get_fb_plan(e)
+        fb_meta = get_fb_metadata(e)
         p_data['meta'] = f"{e.objectType.split('::')[-1]} | Bridge: {bridge or 'N/A'} | Plan: {plan or 'N/A'}"
+        if fb_meta:
+            p_data['meta'] += f" | {fb_meta}"
 
     _latest_payload = json.dumps(p_data)
-    palette.sendInfoToHTML('update', _latest_payload)
+    _log(f"[DEBUG_PAYLOAD] len={len(_latest_payload)} payload={_latest_payload[:180]}")
+    try:
+        palette.sendInfoToHTML('update', _latest_payload)
+    except Exception as e:
+        _log(f"[ERROR] sendInfoToHTML failed: {e}")
 
 class _HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         html_args = adsk.core.HTMLEventArgs.cast(args)
         if html_args.action == 'poll':
+            _log(f"[DEBUG_POLL] action=poll return_len={len(_latest_payload)}")
             html_args.returnData = _latest_payload
         elif html_args.action == 'copy':
             try:
+                _log(f"[DEBUG_COPY] received copy request len={len(html_args.data) if html_args.data else 0}")
                 proc = subprocess.Popen(['clip'], stdin=subprocess.PIPE, shell=True)
                 proc.communicate(input=html_args.data.encode('utf-8'))
                 html_args.returnData = 'ok'
-            except: html_args.returnData = 'error'
+            except Exception as e:
+                _log(f"[ERROR_COPY] {e}")
+                html_args.returnData = 'error'
 
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
+        global _html_handler
         app = adsk.core.Application.get()
         ui = app.userInterface
         palette = ui.palettes.itemById(PALETTE_ID)
         if not palette:
             palette = ui.palettes.add(PALETTE_ID, 'Fusion Inspector', PALETTE_URL, True, True, True, 320, 600)
-            html_handler = _HTMLEventHandler()
-            palette.incomingFromHTML.add(html_handler)
-            _handlers.append(html_handler)
+        if not _html_handler:
+            _html_handler = _HTMLEventHandler()
+            try:
+                palette.incomingFromHTML.add(_html_handler)
+                _handlers.append(_html_handler)
+            except Exception as e:
+                _log(f"[ERROR] Failed to add HTML event handler: {e}")
         palette.isVisible = True
 
 # ---------------------------------------------------------------------------

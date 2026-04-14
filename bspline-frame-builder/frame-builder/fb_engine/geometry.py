@@ -5,6 +5,7 @@ Each function takes a BuildContext, the active sketch, the sketch name key,
 and the geometry spec dict from the template data.
 """
 import adsk.core, adsk.fusion
+import json
 import random
 
 
@@ -62,7 +63,7 @@ def geom_step(ctx, sketch, s_name, geom):
     if geo_type == "Line":
         entity = _create_line(ctx, curves, s_name, geom, geo_id)
     elif geo_type == "Arc3Point":
-        entity = _create_arc3(ctx, curves, s_name, geom, geo_id)
+        entity = _create_arc3(ctx, sketch, curves, s_name, geom, geo_id)
     elif geo_type in ("Rectangle", "RectangleCenter"):
         entity = _create_rectangle(ctx, sketch, curves, s_name, geom, geo_id)
 
@@ -104,17 +105,42 @@ def _create_line(ctx, curves, s_name, geom, geo_id):
 # ------------------------------------------------------------------
 # Arc (3-point)
 # ------------------------------------------------------------------
-def _create_arc3(ctx, curves, s_name, geom, geo_id):
+def _create_arc3(ctx, sketch, curves, s_name, geom, geo_id):
     pts = [
         adsk.core.Point3D.create(ctx.resolve_val(p[0]), ctx.resolve_val(p[1]), 0)
         for p in geom["Points"]
     ]
+
     entity = curves.sketchArcs.addByThreePoints(pts[0], pts[1], pts[2])
 
     ctx.set_id(entity, s_name, "arc", override_id=geo_id)
     ctx.set_id(entity.startSketchPoint, s_name, "point", override_id=f"{geo_id}:S")
     ctx.set_id(entity.endSketchPoint, s_name, "point", override_id=f"{geo_id}:E")
-    ctx.set_id(entity.centerSketchPoint, s_name, "point", override_id=f"{geo_id}:C")
+    center_id = geom.get("CenterID", f"{geo_id}:C")
+    ctx.set_id(entity.centerSketchPoint, s_name, "point", override_id=center_id)
+
+    # Persist semantic metadata for inspector and debug tooling.
+    try:
+        if hasattr(entity, 'attributes'):
+            for attr_name in ('StartID', 'EndID', 'CenterID'):
+                attr_value = geom.get(attr_name)
+                if attr_value is not None:
+                    existing = entity.attributes.itemByName('FrameBuilder', attr_name)
+                    if existing:
+                        existing.value = str(attr_value)
+                    else:
+                        entity.attributes.add('FrameBuilder', attr_name, str(attr_value))
+            bulge_value = geom.get('Bulge')
+            if bulge_value is not None:
+                bulge_text = json.dumps(bulge_value) if isinstance(bulge_value, (list, tuple)) else str(bulge_value)
+                existing = entity.attributes.itemByName('FrameBuilder', 'Bulge')
+                if existing:
+                    existing.value = bulge_text
+                else:
+                    entity.attributes.add('FrameBuilder', 'Bulge', bulge_text)
+    except Exception:
+        pass
+
     ctx.logger.log(f"ARC {geo_id}: P1({pts[0].x:.2f},{pts[0].y:.2f}) P2({pts[1].x:.2f},{pts[1].y:.2f})")
 
     return entity
