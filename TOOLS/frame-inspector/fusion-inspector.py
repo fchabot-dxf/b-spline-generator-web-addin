@@ -2,7 +2,7 @@
 Fusion Inspector — Standalone Module.
 Defines the palette and selection event handlers for Frame Builder metadata.
 """
-import adsk.core, adsk.fusion, traceback, os, json, datetime, subprocess, sys
+import adsk.core, adsk.fusion, traceback, os, json, datetime, subprocess, sys, math
 
 # ---------------------------------------------------------------------------
 # GLOBAL STATE (PERSISTENT ACROSS RELOADS)
@@ -17,6 +17,12 @@ CMD_ID = 'FusionInspector_Command'
 PANEL_ID = 'FusionInspector_Panel' 
 
 _current_dir = os.path.dirname(os.path.realpath(__file__))
+if _current_dir not in sys.path:
+    sys.path.insert(0, _current_dir)
+from expression_coords import get_design_params
+from entity_helpers import entity_fingerprint
+from payload_builder import build_payload
+
 PALETTE_URL = os.path.join(_current_dir, 'inspector_palette.html').replace('\\', '/')
 
 def get_log_path():
@@ -87,28 +93,18 @@ def get_fb_plan(ent):
     except: pass
     return ""
 
-def get_fb_connections(ent):
-    linked = []
+
+def _get_entity_key(ent):
     try:
-        if hasattr(ent, 'nativeObject') and ent.nativeObject: ent = ent.nativeObject
-        # 1. Constraints
-        if hasattr(ent, 'geometricConstraints'):
-            for gc in ent.geometricConstraints:
-                gn = gc.objectType.split('::')[-1].replace('GeometricConstraint', '')
-                if gn not in linked: linked.append(gn)
-        # 2. Neighbors
-        if hasattr(ent, 'startSketchPoint'):
-            for curve in ent.startSketchPoint.connectedEntities:
-                if curve != ent:
-                    name = get_fb_name(curve)
-                    if name and name not in linked: linked.append(name)
-        if hasattr(ent, 'endSketchPoint'):
-            for curve in ent.endSketchPoint.connectedEntities:
-                if curve != ent:
-                    name = get_fb_name(curve)
-                    if name and name not in linked: linked.append(name)
-    except: pass
-    return linked
+        if hasattr(ent, 'nativeObject') and ent.nativeObject:
+            ent = ent.nativeObject
+        if hasattr(ent, 'entityToken') and ent.entityToken:
+            return ('token', ent.entityToken)
+        if hasattr(ent, 'tempId'):
+            return ('tempId', ent.tempId)
+        return ('id', id(ent))
+    except:
+        return ('id', id(ent))
 
 
 def format_point(pt):
@@ -116,6 +112,47 @@ def format_point(pt):
         return f"({round(pt.geometry.x,2)},{round(pt.geometry.y,2)})"
     except:
         return ''
+
+
+def _get_arc_midpoint(ent):
+    try:
+        if not hasattr(ent, 'startSketchPoint') or not hasattr(ent, 'endSketchPoint'):
+            return None
+
+        sp = ent.startSketchPoint.geometry
+        ep = ent.endSketchPoint.geometry
+        cp = None
+        if hasattr(ent, 'centerSketchPoint') and ent.centerSketchPoint:
+            cp = ent.centerSketchPoint.geometry
+        elif hasattr(ent, 'geometry') and hasattr(ent.geometry, 'center'):
+            cp = ent.geometry.center
+        if not cp:
+            return None
+
+        dx1 = sp.x - cp.x
+        dy1 = sp.y - cp.y
+        dx2 = ep.x - cp.x
+        dy2 = ep.y - cp.y
+        r1 = math.hypot(dx1, dy1)
+        r2 = math.hypot(dx2, dy2)
+        if r1 == 0 or r2 == 0:
+            return None
+
+        angle1 = math.atan2(dy1, dx1)
+        angle2 = math.atan2(dy2, dx2)
+        cross = dx1 * dy2 - dy1 * dx2
+        delta = angle2 - angle1
+        if cross < 0 and delta > 0:
+            delta -= 2 * math.pi
+        elif cross > 0 and delta < 0:
+            delta += 2 * math.pi
+
+        mid_angle = angle1 + delta / 2.0
+        mid_x = cp.x + r1 * math.cos(mid_angle)
+        mid_y = cp.y + r1 * math.sin(mid_angle)
+        return (mid_x, mid_y)
+    except:
+        return None
 
 
 def get_fb_metadata(ent):
@@ -154,9 +191,17 @@ def get_entity_coord(e):
         if hasattr(e, 'startSketchPoint') and hasattr(e, 'endSketchPoint'):
             sp = e.startSketchPoint.geometry
             ep = e.endSketchPoint.geometry
+            cp = None
             if hasattr(e, 'centerSketchPoint') and e.centerSketchPoint:
                 cp = e.centerSketchPoint.geometry
-                return f"({round(sp.x,2)}, {round(sp.y,2)}) -> ({round(cp.x,2)}, {round(cp.y,2)}) -> ({round(ep.x,2)}, {round(ep.y,2)})"
+            elif hasattr(e, 'geometry') and hasattr(e.geometry, 'center'):
+                cp = e.geometry.center
+            if cp:
+                mid = _get_arc_midpoint(e)
+                coord_str = f"({round(sp.x,2)}, {round(sp.y,2)}) -> ({round(cp.x,2)}, {round(cp.y,2)}) -> ({round(ep.x,2)}, {round(ep.y,2)})"
+                if mid:
+                    coord_str += f" -> ({round(mid[0],2)}, {round(mid[1],2)})"
+                return coord_str
             return f"({round(sp.x,2)}, {round(sp.y,2)}) -> ({round(ep.x,2)}, {round(ep.y,2)})"
         if hasattr(e, 'geometry') and hasattr(e.geometry, 'startPoint'):
             g = e.geometry
@@ -201,56 +246,10 @@ def _push_selection_to_palette():
 
     if current_ids == _last_sel_ids and _last_sel_ids != "": return
     _last_sel_ids = current_ids
-    _log(f"[DEBUG_SELECTION] count={count} current_ids='{current_ids}'")
 
     # Build High-Density Payload
-    p_data = {
-        'count': count,
-        'mainFeature': 'Select geometry...',
-        'coord': '',
-        'linked': [],
-        'listLabel': 'Connections',
-        'meta': f"{count} Entities Selected",
-        'type': 'Other'
-    }
-
-    if entities:
-        e = entities[0]
-        if hasattr(e, 'nativeObject') and e.nativeObject: e = e.nativeObject
-        
-        # Single Selection Case
-        if count == 1:
-            p_data['mainFeature'] = get_fb_name(e)
-            p_data['coord'] = get_entity_coord(e)
-            p_data['linked'] = get_fb_connections(e)
-            p_data['listLabel'] = 'Details & Connections'
-        
-        # Batch Selection Case
-        else:
-            p_data['mainFeature'] = f"{count} Entities Selected"
-            p_data['coord'] = "(Batch View)"
-            p_data['listLabel'] = 'Selection List'
-            
-            # List every item with its name, points/coordinates, and metadata
-            for ent in entities:
-                if hasattr(ent, 'nativeObject') and ent.nativeObject: ent = ent.nativeObject
-                name = get_fb_name(ent)
-                coord = get_entity_coord(ent)
-                fb_meta_item = get_fb_metadata(ent)
-                entry = f"{name} | {coord}"
-                if fb_meta_item:
-                    entry += f" | {fb_meta_item}"
-                p_data['linked'].append(entry)
-
-        bridge = get_fb_bridge(e)
-        plan = get_fb_plan(e)
-        fb_meta = get_fb_metadata(e)
-        p_data['meta'] = f"{e.objectType.split('::')[-1]} | Bridge: {bridge or 'N/A'} | Plan: {plan or 'N/A'}"
-        if fb_meta:
-            p_data['meta'] += f" | {fb_meta}"
-
+    p_data = build_payload(entities)
     _latest_payload = json.dumps(p_data)
-    _log(f"[DEBUG_PAYLOAD] len={len(_latest_payload)} payload={_latest_payload[:180]}")
     try:
         palette.sendInfoToHTML('update', _latest_payload)
     except Exception as e:
@@ -260,7 +259,6 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         html_args = adsk.core.HTMLEventArgs.cast(args)
         if html_args.action == 'poll':
-            _log(f"[DEBUG_POLL] action=poll return_len={len(_latest_payload)}")
             html_args.returnData = _latest_payload
         elif html_args.action == 'copy':
             try:
@@ -299,14 +297,9 @@ def run(context):
         ui = app.userInterface
         
         # Log all available workspaces and their tabs for debugging
-        try:
-            ws_ids = [ws.id for ws in ui.workspaces]
-            _log(f"[DEBUG] Available workspaces: {ws_ids}")
-            for ws in ui.workspaces:
-                tab_ids = [tab.id for tab in ws.toolbarTabs]
-                _log(f"[DEBUG] Workspace '{ws.id}' tabs: {tab_ids}")
-        except Exception as e:
-            _log(f"[DEBUG] Error listing workspaces/tabs: {e}")
+        # Workspace enumeration is only used for diagnostics during development.
+        # Remove verbose startup debug logs in normal operation.
+        pass
 
         # 1. Command Definition
         cmd_def = ui.commandDefinitions.itemById(CMD_ID)

@@ -24,17 +24,7 @@
             text-align: center;
         }
         #debug {
-            background: #fff3cd;
-            border: 1px solid #ffc107;
-            padding: 4px 8px;
-            font-size: 0.7em;
-            color: #856404;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            font-family: 'Consolas', monospace;
-            word-break: break-all;
-            max-height: 80px;
-            overflow-y: auto;
+            display: none;
         }
         h2 {
             font-size: 1.1em;
@@ -80,13 +70,10 @@
         <div class="linked-label" id="list-label">Connections</div>
         <ul id="linked-list" class="linked-list"></ul>
     </div>
-    <div class="meta">
-        <span id="meta-text"></span>
-    </div>
     
     <div style="margin-top: 12px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <label style="font-size:0.9em; color:#444; display:flex; align-items:center; gap:6px;">
-            <input id="expr-toggle" type="checkbox"> Expression coords
+            <input id="expr-toggle" type="checkbox" checked> Expression coords
         </label>
         <div class="btn-container" style="flex:1; justify-content:flex-end; gap:4px;">
             <button type="button" id="copy-btn" title="Copy everything">Full Copy</button>
@@ -95,15 +82,11 @@
     </div>
 
     <script>
-        var dbg = document.getElementById('debug');
         var updateCount = 0;
         var pollCount = 0;
-        var debugLines = [];
 
         function dlog(msg) {
-            debugLines.push(msg);
-            if (debugLines.length > 8) debugLines.shift();
-            if (dbg) dbg.textContent = debugLines.join(' | ');
+            // Debug logging disabled for normal operation.
         }
 
         function reportError(message, source, lineno, colno, error) {
@@ -114,17 +97,27 @@
             return false;
         }
 
-        function renderLinkedList(data, useExpr) {
+        function renderItemList(data, useExpr) {
             var list = document.getElementById('linked-list');
             var root = document.getElementById('linked-root');
             if (!list) return;
             list.innerHTML = '';
-            var entries = useExpr && data.linked_expr && data.linked_expr.length > 0 ? data.linked_expr : data.linked;
-            if (entries && entries.length > 0) {
+            var items = data.items || [];
+            if (items && items.length > 0) {
                 if (root) root.style.display = 'block';
-                for (var i = 0; i < entries.length; i++) {
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i] || {};
+                    var detail = useExpr ? item.coordExpr || '' : item.coord || '';
+                    if (item.meta) {
+                        detail = detail ? detail + ' | ' + item.meta : item.meta;
+                    }
                     var li = document.createElement('li');
-                    li.textContent = entries[i];
+                    var strong = document.createElement('strong');
+                    strong.textContent = item.name || '';
+                    li.appendChild(strong);
+                    if (detail) {
+                        li.appendChild(document.createTextNode(' (' + detail + ')'));
+                    }
                     list.appendChild(li);
                 }
             } else {
@@ -141,16 +134,15 @@
                 dlog('APPLY start source=' + source + ' len=' + (dataStr ? dataStr.length : 0));
                 var d = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
                 currentData = d;
-                dlog('APPLY data main=' + (d.mainFeature || '<none>') + ' coord=' + (d.coord || '<none>') + ' coord_expr=' + (d.coord_expr || '<none>') + ' count=' + (d.count || 0));
+                dlog('APPLY data main=' + (d.mainFeature || '<none>') + ' count=' + (d.count || 0));
                 document.getElementById('main-feature').textContent = d.mainFeature || 'Entity';
                 currentData = d;
                 updateCoordDisplay();
 
                 var listLabel = document.getElementById('list-label');
-                if (listLabel) listLabel.textContent = d.listLabel || 'Connections';
+                if (listLabel) listLabel.textContent = d.listLabel || 'Selection';
                 var showExpr = document.getElementById('expr-toggle') && document.getElementById('expr-toggle').checked;
-                renderLinkedList(d, showExpr);
-                document.getElementById('meta-text').textContent = d.meta || '';
+                renderItemList(d, showExpr);
             } catch(e) {
                 dlog('PARSE ERR: ' + e.message);
             }
@@ -241,20 +233,9 @@
             }
             var exprToggle = document.getElementById('expr-toggle');
             var showExpr = exprToggle && exprToggle.checked;
-            var displayText = '';
-            if (showExpr) {
-                if (currentData.coord_expr) {
-                    displayText = currentData.coord_expr;
-                } else {
-                    displayText = currentData.coord || '';
-                    dlog('DISPLAY expr requested but coord_expr empty, falling back to coord');
-                }
-            } else {
-                displayText = currentData.coord || '';
-            }
-            coordEl.textContent = displayText;
-            renderLinkedList(currentData, showExpr);
-            dlog('DISPLAY coord=' + displayText + ' showExpr=' + showExpr + ' coord_expr=' + (currentData.coord_expr ? 'yes' : 'no'));
+            coordEl.textContent = '';
+            renderItemList(currentData, showExpr);
+            dlog('DISPLAY showExpr=' + showExpr + ' items=' + (currentData.items ? currentData.items.length : 0));
         }
 
         function copyShort() {
@@ -263,10 +244,10 @@
             if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
             
             var text = "";
-            if (currentData.count > 1 && currentData.linked) {
+            if (currentData.items && currentData.items.length > 0) {
                 var names = [];
-                for (var i = 0; i < currentData.linked.length; i++) {
-                    names.push(normalizeEntityName(currentData.linked[i]));
+                for (var i = 0; i < currentData.items.length; i++) {
+                    names.push(currentData.items[i].name || '');
                 }
                 text = names.join('\n');
             } else {
@@ -282,30 +263,23 @@
 
             // Build plain text
             var lines = [];
-            if (currentData.count > 1 && currentData.linked) {
-                // Batch Mode: Copy the full detailed list
-                lines.push(currentData.mainFeature);
+            if (currentData.items && currentData.items.length > 0) {
                 var exprToggle = document.getElementById('expr-toggle');
                 var showExpr = exprToggle && exprToggle.checked;
-                var entries = showExpr && currentData.linked_expr && currentData.linked_expr.length === currentData.linked.length ? currentData.linked_expr : currentData.linked;
-                for (var i = 0; i < entries.length; i++) lines.push(entries[i]);
+                for (var i = 0; i < currentData.items.length; i++) {
+                    var item = currentData.items[i];
+                    var line = item.name || '';
+                    var detail = showExpr ? item.coordExpr : item.coord;
+                    if (detail) {
+                        line += ' | ' + detail;
+                    }
+                    if (item.meta) {
+                        line += ' | ' + item.meta;
+                    }
+                    lines.push(line);
+                }
             } else {
-                // Single Mode
                 lines.push(currentData.mainFeature || '');
-                var exprToggle = document.getElementById('expr-toggle');
-                var showExpr = exprToggle && exprToggle.checked;
-                if (showExpr && currentData.coord_expr) {
-                    lines.push(currentData.coord_expr);
-                } else if (showExpr && !currentData.coord_expr && currentData.coord) {
-                    lines.push(currentData.coord);
-                    dlog('COPY_ALL: expr requested but coord_expr empty, using coord fallback');
-                } else if (currentData.coord) {
-                    lines.push(currentData.coord);
-                }
-                if (currentData.linked && currentData.linked.length > 0) {
-                    lines.push('Connections:');
-                    for (var j = 0; j < currentData.linked.length; j++) lines.push('  ' + currentData.linked[j]);
-                }
             }
             if (currentData.meta) lines.push(currentData.meta);
             var text = lines.join('\n');
