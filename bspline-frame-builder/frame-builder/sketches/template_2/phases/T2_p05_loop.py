@@ -50,15 +50,15 @@ def get_block(ui_data=None):
          'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C', 'Bulge': ['-widthIn * 0.88285714', '-heightIn * 0.29888889']},
         {'Type': 'Radius', 'Target': 'arc_hip_L',      'Expression': 'heightIn/11', 'Name': 'seed_rad_hip_L'},
 
-        {'ID': 'arc_waist_R', 'Type': 'Arc3Point',
+        {'ID': 'arc_shoulder_R', 'Type': 'Arc3Point',
          'Points': [['widthIn * 0.99285714', '-heightIn * 0.08444444'], ['widthIn * 1.16', 'heightIn * 0.10555556'], ['widthIn * 0.86428571', 'heightIn * 0.10555556']], 
-         'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C', 'Bulge': ['widthIn * 1.16', 'heightIn * 0.10555556']},
-        {'Type': 'Radius', 'Target': 'arc_waist_R',    'Expression': 'heightIn/11', 'Name': 'seed_rad_waist_R'},
+         'StartID': 'arc_shoulder_R:S', 'EndID': 'arc_shoulder_R:E', 'CenterID': 'arc_shoulder_R:C', 'Bulge': ['widthIn * 1.16', 'heightIn * 0.10555556']},
+        {'Type': 'Radius', 'Target': 'arc_shoulder_R',    'Expression': 'heightIn/11', 'Name': 'seed_rad_shoulder_R'},
 
-        {'ID': 'arc_waist_L', 'Type': 'Arc3Point',
+        {'ID': 'arc_shoulder_L', 'Type': 'Arc3Point',
          'Points': [['-widthIn * 0.99285714', '-heightIn * 0.08444444'], ['-widthIn * 1.16', 'heightIn * 0.10555556'], ['-widthIn * 0.86428571', 'heightIn * 0.10555556']], 
-         'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C', 'Bulge': ['-widthIn * 1.16', 'heightIn * 0.10555556']},
-        {'Type': 'Radius', 'Target': 'arc_waist_L',    'Expression': 'heightIn/11', 'Name': 'seed_rad_waist_L'},
+         'StartID': 'arc_shoulder_L:S', 'EndID': 'arc_shoulder_L:E', 'CenterID': 'arc_shoulder_L:C', 'Bulge': ['-widthIn * 1.16', 'heightIn * 0.10555556']},
+        {'Type': 'Radius', 'Target': 'arc_shoulder_L',    'Expression': 'heightIn/11', 'Name': 'seed_rad_shoulder_L'},
 
     ]
 
