@@ -35,3 +35,8 @@ Provides a visual list of "Who is connected to what":
 - [ ] **Selection Lag**: Check the `_last_sel_ids` guard in Python; it prevents redundant payload generation if the selection hasn't actually changed.
 - [ ] **Missing Attributes**: If 'FrameBuilder' attributes aren't appearing, ensure the Frame Builder add-in was used to create that specific geometry.
 - [ ] **Broken Links**: In Batch mode, verify the coordinate formatting `(x,y) -> (x,y)` isn't causing JSON parsing errors.
+
+### Commit/Push Note
+- For this repo on Windows, use `git add -A; git commit -m "<message>"` rather than `&&` in PowerShell.
+- `git push` is the standard publish step after a successful local commit.
+- If you need to avoid shell quoting problems, run git commands from the VS Code source control UI or the provided workspace tasks.

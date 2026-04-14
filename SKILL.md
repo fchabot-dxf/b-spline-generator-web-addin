@@ -25,6 +25,14 @@ To access expert knowledge for specific components, use the following skill file
 - Shared logic for logging is found in `frame-builder/utils/logger.py`.
 - Handshake files (`project_path.json`) link deployed add-ins back to this source repository.
 
+### Developer Workflow
+- Use the repository root for all git operations to ensure the correct project context.
+- On Windows PowerShell, separate commands with `;` rather than `&&`.
+- Working workflow that is known to work in this repo:
+  - `git add -A; git commit -m "<message>"`
+  - `git push`
+- When available, use the workspace VS Code tasks named `Stage Modified Files` and `Commit Changes` to avoid shell quoting issues.
+
 ## Repository Layout
 - `b-spline-gen/`: Generator using HTML/JS palette and chunked STEP import.
 - `bspline-frame-builder/`: The unified "One-Click" Hub add-in.
