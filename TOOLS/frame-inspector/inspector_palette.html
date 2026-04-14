@@ -84,9 +84,14 @@
         <span id="meta-text"></span>
     </div>
     
-    <div class="btn-container">
-        <button id="copy-btn" onclick="copyToClipboard()" title="Copy everything">Full Copy</button>
-        <button id="copy-short-btn" onclick="copyShort()" title="Copy name only">Copy Name</button>
+    <div style="margin-top: 12px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <label style="font-size:0.9em; color:#444; display:flex; align-items:center; gap:6px;">
+            <input id="expr-toggle" type="checkbox"> Expression coords
+        </label>
+        <div class="btn-container" style="flex:1; justify-content:flex-end; gap:4px;">
+            <button type="button" id="copy-btn" title="Copy everything">Full Copy</button>
+            <button type="button" id="copy-short-btn" title="Copy name only">Copy Name</button>
+        </div>
     </div>
 
     <script>
@@ -101,33 +106,50 @@
             if (dbg) dbg.textContent = debugLines.join(' | ');
         }
 
+        function reportError(message, source, lineno, colno, error) {
+            dlog('JS ERROR: ' + message + ' @' + source + ':' + lineno + ':' + colno);
+            if (error && error.stack) {
+                dlog('STACK: ' + error.stack.split('\n')[0]);
+            }
+            return false;
+        }
+
+        function renderLinkedList(data, useExpr) {
+            var list = document.getElementById('linked-list');
+            var root = document.getElementById('linked-root');
+            if (!list) return;
+            list.innerHTML = '';
+            var entries = useExpr && data.linked_expr && data.linked_expr.length > 0 ? data.linked_expr : data.linked;
+            if (entries && entries.length > 0) {
+                if (root) root.style.display = 'block';
+                for (var i = 0; i < entries.length; i++) {
+                    var li = document.createElement('li');
+                    li.textContent = entries[i];
+                    list.appendChild(li);
+                }
+            } else {
+                if (root) root.style.display = 'none';
+            }
+        }
+
         function applyData(dataStr, source) {
             updateCount++;
             document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + updateCount + ') [' + source + ']';
             document.getElementById('pulse-box').style.color = '#388E3C';
             document.getElementById('pulse-box').style.background = '#E8F5E9';
             try {
+                dlog('APPLY start source=' + source + ' len=' + (dataStr ? dataStr.length : 0));
                 var d = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
                 currentData = d;
+                dlog('APPLY data main=' + (d.mainFeature || '<none>') + ' coord=' + (d.coord || '<none>') + ' coord_expr=' + (d.coord_expr || '<none>') + ' count=' + (d.count || 0));
                 document.getElementById('main-feature').textContent = d.mainFeature || 'Entity';
-                document.getElementById('coord').textContent = d.coord || '';
-                
+                currentData = d;
+                updateCoordDisplay();
+
                 var listLabel = document.getElementById('list-label');
                 if (listLabel) listLabel.textContent = d.listLabel || 'Connections';
-
-                var list = document.getElementById('linked-list');
-                var root = document.getElementById('linked-root');
-                if (list) list.innerHTML = '';
-                if (d.linked && d.linked.length > 0) {
-                    if (root) root.style.display = 'block';
-                    for (var i = 0; i < d.linked.length; i++) {
-                        var li = document.createElement('li');
-                        li.textContent = d.linked[i];
-                        list.appendChild(li);
-                    }
-                } else {
-                    if (root) root.style.display = 'none';
-                }
+                var showExpr = document.getElementById('expr-toggle') && document.getElementById('expr-toggle').checked;
+                renderLinkedList(d, showExpr);
                 document.getElementById('meta-text').textContent = d.meta || '';
             } catch(e) {
                 dlog('PARSE ERR: ' + e.message);
@@ -136,41 +158,66 @@
 
         // Channel A: Python pushes via sendInfoToHTML
         window.fusionJavaScriptHandler = function(action, data) {
-            dlog('PUSH:' + action);
-            if (action === 'update' && data) applyData(data, 'PUSH');
+            dlog('PUSH start action=' + action + ' len=' + (data ? data.length : 0));
+            if (action === 'update' && data) {
+                applyData(data, 'PUSH');
+            } else {
+                dlog('PUSH ignored unknown action=' + action);
+            }
         };
+
+        // Pending copy job queued by button click, consumed by next poll tick.
+        // adsk.fusionSendData only delivers messages reliably from setInterval
+        // callbacks, NOT from DOM click handlers — so we piggyback onto the
+        // existing poll cycle instead of calling it directly from the click.
+        var _pendingCopy = null;  // { text, btn, original }
 
         // Channel B: JS polls Python via fusionSendData (returns Promise)
         function poll() {
             pollCount++;
+            if (typeof adsk === 'undefined') {
+                dlog('POLL deferred: adsk not ready');
+                return;
+            }
             try {
-                if (typeof adsk === 'undefined') {
-                    if (pollCount <= 3) dlog('POLL#' + pollCount + ' adsk not ready');
-                    return;
-                }
-                var result = adsk.fusionSendData('poll', 'ping');
+                // If a copy was queued by a button click, send it now via the
+                // reliable setInterval-driven message pump.
+                var job = _pendingCopy;
+                if (job) { _pendingCopy = null; }
 
-                // Result is a Promise — handle async
+                var action = job ? 'copy' : 'poll';
+                var data   = job ? job.text : 'ping';
+
+                dlog(job ? ('COPY via poll start len=' + data.length) : ('POLL start #' + pollCount));
+                var result = adsk.fusionSendData(action, data);
+
                 if (result && typeof result.then === 'function') {
-                    if (pollCount === 1) dlog('fusionSendData returns Promise!');
-                    result.then(function(data) {
-                        if (pollCount <= 5 || (pollCount % 50 === 0)) {
-                            dlog('POLL#' + pollCount + ' resolved=' + (typeof data) + ' len=' + (data ? data.length : 0));
-                        }
-                        if (data && data.length > 5) {
-                            applyData(data, 'POLL');
+                    result.then(function(resp) {
+                        if (job) {
+                            dlog('COPY result=' + resp);
+                            flashBtn(job.btn, resp === 'ok' ? 'Copied!' : 'Error',
+                                             resp === 'ok', job.original);
+                        } else {
+                            dlog('POLL result len=' + (resp ? resp.length : 0));
+                            if (resp && resp.length > 5) { applyData(resp, 'POLL'); }
                         }
                     }).catch(function(err) {
-                        if (pollCount <= 5) dlog('POLL reject: ' + err);
+                        var tag = job ? 'COPY' : 'POLL';
+                        dlog(tag + ' ERR: ' + (err && err.message ? err.message : err));
+                        if (job) { flashBtn(job.btn, 'Error', false, job.original); }
                     });
-                } else if (typeof result === 'string' && result.length > 5) {
-                    // Synchronous string return (older Fusion?)
-                    applyData(result, 'POLL');
                 } else {
-                    if (pollCount <= 3) dlog('POLL#' + pollCount + ' ret=' + (typeof result));
+                    // Synchronous path (older Fusion builds)
+                    if (job) {
+                        dlog('COPY sync result=' + result);
+                        flashBtn(job.btn, result === 'ok' ? 'Copied!' : 'Error',
+                                         result === 'ok', job.original);
+                    } else if (typeof result === 'string' && result.length > 5) {
+                        applyData(result, 'POLL');
+                    }
                 }
             } catch(e) {
-                if (pollCount <= 5) dlog('POLL err: ' + e.message);
+                dlog('POLL/COPY ERR: ' + (e && e.message ? e.message : e));
             }
         }
 
@@ -182,8 +229,37 @@
             return name;
         }
 
+        function updateCoordDisplay() {
+            if (!currentData) {
+                dlog('DISPLAY skipped: no currentData');
+                return;
+            }
+            var coordEl = document.getElementById('coord');
+            if (!coordEl) {
+                dlog('DISPLAY failed: coord element missing');
+                return;
+            }
+            var exprToggle = document.getElementById('expr-toggle');
+            var showExpr = exprToggle && exprToggle.checked;
+            var displayText = '';
+            if (showExpr) {
+                if (currentData.coord_expr) {
+                    displayText = currentData.coord_expr;
+                } else {
+                    displayText = currentData.coord || '';
+                    dlog('DISPLAY expr requested but coord_expr empty, falling back to coord');
+                }
+            } else {
+                displayText = currentData.coord || '';
+            }
+            coordEl.textContent = displayText;
+            renderLinkedList(currentData, showExpr);
+            dlog('DISPLAY coord=' + displayText + ' showExpr=' + showExpr + ' coord_expr=' + (currentData.coord_expr ? 'yes' : 'no'));
+        }
+
         function copyShort() {
             var btn = document.getElementById('copy-short-btn');
+            dlog('COPY_SHORT clicked');
             if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
             
             var text = "";
@@ -201,6 +277,7 @@
 
         function copyToClipboard() {
             var btn = document.getElementById('copy-btn');
+            dlog('COPY_ALL clicked');
             if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
 
             // Build plain text
@@ -208,11 +285,23 @@
             if (currentData.count > 1 && currentData.linked) {
                 // Batch Mode: Copy the full detailed list
                 lines.push(currentData.mainFeature);
-                for (var i = 0; i < currentData.linked.length; i++) lines.push(currentData.linked[i]);
+                var exprToggle = document.getElementById('expr-toggle');
+                var showExpr = exprToggle && exprToggle.checked;
+                var entries = showExpr && currentData.linked_expr && currentData.linked_expr.length === currentData.linked.length ? currentData.linked_expr : currentData.linked;
+                for (var i = 0; i < entries.length; i++) lines.push(entries[i]);
             } else {
                 // Single Mode
                 lines.push(currentData.mainFeature || '');
-                if (currentData.coord) lines.push(currentData.coord);
+                var exprToggle = document.getElementById('expr-toggle');
+                var showExpr = exprToggle && exprToggle.checked;
+                if (showExpr && currentData.coord_expr) {
+                    lines.push(currentData.coord_expr);
+                } else if (showExpr && !currentData.coord_expr && currentData.coord) {
+                    lines.push(currentData.coord);
+                    dlog('COPY_ALL: expr requested but coord_expr empty, using coord fallback');
+                } else if (currentData.coord) {
+                    lines.push(currentData.coord);
+                }
                 if (currentData.linked && currentData.linked.length > 0) {
                     lines.push('Connections:');
                     for (var j = 0; j < currentData.linked.length; j++) lines.push('  ' + currentData.linked[j]);
@@ -220,18 +309,35 @@
             }
             if (currentData.meta) lines.push(currentData.meta);
             var text = lines.join('\n');
-            
+            dlog('COPY_ALL text len=' + text.length + ' showExpr=' + (document.getElementById('expr-toggle') && document.getElementById('expr-toggle').checked));
             performCopy(text, btn);
         }
 
         function performCopy(text, btn) {
+            if (!text) { flashBtn(btn, 'Nothing', false); return; }
             var originalText = btn.textContent;
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text).then(function() {
-                    flashBtn(btn, 'Copied!', true, originalText);
-                }).catch(function() { copyViaPython(text, btn, originalText); });
+            dlog('PERFORM_COPY len=' + text.length + ' btn=' + (btn ? btn.id : '?'));
+
+            if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                // Queue for the next poll tick — adsk.fusionSendData only delivers
+                // reliably from setInterval, not from DOM click handlers.
+                _pendingCopy = { text: text, btn: btn, original: originalText };
+                flashBtn(btn, '...', true, originalText);  // instant click feedback
+                dlog('PERFORM_COPY queued for poll delivery');
             } else {
-                copyViaPython(text, btn, originalText);
+                // Outside Fusion (standalone HTML testing) — try execCommand
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px';
+                    document.body.appendChild(ta);
+                    ta.select(); ta.setSelectionRange(0, ta.value.length);
+                    var ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    flashBtn(btn, ok ? 'Copied!' : 'Error', ok, originalText);
+                } catch(e) {
+                    flashBtn(btn, 'Error', false, originalText);
+                }
             }
         }
 
@@ -242,48 +348,40 @@
             setTimeout(function(){ btn.textContent = old; btn.className = ''; }, 1500);
         }
 
-        function copyViaPython(text, btn, originalText) {
-            try {
-                var result = adsk.fusionSendData('copy', text);
-                if (result && typeof result.then === 'function') {
-                    result.then(function(data) {
-                        if (data === 'ok') {
-                            flashBtn(btn, 'Copied!', true, originalText);
-                        } else {
-                            flashBtn(btn, 'Error', false, originalText);
-                        }
-                    }).catch(function() {
-                        flashBtn(btn, 'Error', false, originalText);
-                    });
-                } else if (typeof result === 'string') {
-                    if (result === 'ok') {
-                        flashBtn(btn, 'Copied!', true, originalText);
-                    } else {
-                        flashBtn(btn, 'Error', false, originalText);
-                    }
-                } else {
-                    flashBtn(btn, 'Error', false, originalText);
-                }
-            } catch(e) {
-                flashBtn(btn, 'Error', false, originalText);
+        function attachUIEvents() {
+            var exprToggle = document.getElementById('expr-toggle');
+            if (exprToggle) exprToggle.addEventListener('change', updateCoordDisplay);
+            var copyBtn = document.getElementById('copy-btn');
+            if (copyBtn) copyBtn.addEventListener('click', copyToClipboard);
+            var copyShortBtn = document.getElementById('copy-short-btn');
+            if (copyShortBtn) copyShortBtn.addEventListener('click', copyShort);
+            dlog('DOM ready: events attached');
+        }
+
+        function init() {
+            attachUIEvents();
+            if (typeof adsk !== 'undefined') {
+                dlog('JS ready. adsk=' + (typeof adsk));
+                poll();
+            } else {
+                dlog('JS ready. adsk=undefined');
             }
         }
 
-        dlog('JS ready. adsk=' + (typeof adsk));
-        if (typeof adsk !== 'undefined') {
-            // Dump ALL properties of the adsk object
-            var keys = [];
-            for (var k in adsk) { keys.push(k + '=' + (typeof adsk[k])); }
-            dlog('adsk keys: ' + (keys.length > 0 ? keys.join(', ') : 'NONE'));
-            // Also check adsk.fusion if it exists
-            if (typeof adsk.fusion !== 'undefined') {
-                var fkeys = [];
-                for (var fk in adsk.fusion) { fkeys.push(fk + '=' + (typeof adsk.fusion[fk])); }
-                dlog('adsk.fusion keys: ' + (fkeys.length > 0 ? fkeys.join(', ') : 'NONE'));
-            }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
         }
+        setInterval(poll, 2000);
 
-        setInterval(poll, 300);
+        window.onerror = function(message, source, lineno, colno, error) {
+            reportError(message, source, lineno, colno, error);
+            return false;
+        };
+        window.onunhandledrejection = function(event) {
+            dlog('UnhandledPromiseRejection: ' + (event.reason && event.reason.message ? event.reason.message : event.reason));
+        };
     </script>
 </body>
 </html>
