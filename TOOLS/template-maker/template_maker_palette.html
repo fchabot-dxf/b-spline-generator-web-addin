@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Template Maker</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            margin: 0;
+            padding: 12px;
+            background: #f3f6fb;
+            color: #1c242f;
+        }
+        #pulse-box {
+            padding: 8px 10px;
+            border-radius: 6px;
+            background: #eef7ff;
+            border: 1px solid #c7ddf7;
+            color: #175a99;
+            font-size: 0.9em;
+            margin-bottom: 12px;
+        }
+        h1 {
+            font-size: 1.1em;
+            margin: 0 0 10px 0;
+            color: #0f4d82;
+        }
+        .summary {
+            margin-bottom: 12px;
+            font-size: 0.95em;
+            color: #32435b;
+        }
+        .settings-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .settings-row label {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.9em;
+            color: #34495e;
+            gap: 6px;
+        }
+        .settings-row input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccd7e4;
+            border-radius: 6px;
+            font-size: 0.95em;
+            background: #fff;
+            color: #1c242f;
+        }
+        textarea.file-text {
+            min-height: 120px;
+        }
+        .panel {
+            margin-bottom: 10px;
+            border: 1px solid #d1dce8;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .panel summary {
+            padding: 12px 14px;
+            font-weight: 700;
+            cursor: pointer;
+            background: #eff7ff;
+            border-bottom: 1px solid #d1dce8;
+            color: #0f4d82;
+            list-style: none;
+        }
+        .panel textarea {
+            width: 100%;
+            min-height: 140px;
+            border: none;
+            border-top: 1px solid #d1dce8;
+            padding: 12px 14px;
+            box-sizing: border-box;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.88em;
+            line-height: 1.4;
+            resize: vertical;
+            background: #fbfcff;
+            color: #101a24;
+        }
+        .panel-body {
+            padding: 10px 14px 14px 14px;
+            display: grid;
+            gap: 10px;
+        }
+        .variable-row {
+            display: grid;
+            grid-template-columns: auto 1fr 1fr;
+            gap: 8px;
+            align-items: center;
+        }
+        .variable-row label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            color: #34495e;
+        }
+        .variable-row input[type="text"] {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccd7e4;
+            border-radius: 6px;
+            font-size: 0.9em;
+            background: #fff;
+            color: #101a24;
+        }
+        .variable-row input.variable-name {
+            min-width: 100px;
+        }
+        .add-variable-btn {
+            border: 1px solid #0077c8;
+            background: #ffffff;
+            color: #0077c8;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            width: fit-content;
+        }
+        .add-variable-btn:hover {
+            background: #eef7ff;
+        }
+        .panel-actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 0 14px 10px 14px;
+        }
+        .log-area {
+            width: 100%;
+            min-height: 100px;
+            background: #f7fbff;
+            border: 1px solid #d1dce8;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.82em;
+            color: #172d46;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+        .variable-note {
+            color: #5f6f84;
+            font-size: 0.85em;
+            margin-top: -4px;
+        }
+        textarea#code-box {
+            width: 100%;
+            min-height: 200px;
+            border: 1px solid #ccd7e4;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.88em;
+            line-height: 1.4;
+            resize: vertical;
+            background: #ffffff;
+            color: #101a24;
+        }
+        .button-row {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+        button {
+            border: none;
+            border-radius: 6px;
+            padding: 10px 12px;
+            background: #0077c8;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.92em;
+            font-weight: 600;
+        }
+        button:hover { background: #005a9c; }
+        button:active { transform: translateY(1px); }
+        .secondary {
+            background: #5f6f84;
+        }
+        .secondary:hover {
+            background: #4d5d73;
+        }
+    </style>
+</head>
+<body>
+    <div id="pulse-box">Bridge: WAITING...</div>
+    <h1>Template Maker</h1>
+    <div class="summary" id="summary-text">Select sketch geometry to preview seed and constraint snippets.</div>
+    <div class="settings-row">
+        <label>File Name
+            <input id="file-name-input" type="text" placeholder="T2_p05_lines.py" value="T2_p05_lines.py">
+        </label>
+        <label>Template Number
+            <input id="template-number-input" type="text" placeholder="T2" value="T2">
+        </label>
+    </div>
+    <div class="panel">
+        <summary>File source / variable scan</summary>
+        <textarea id="file-text-input" class="file-text" placeholder="Paste the template file text here to scan for variables like widthspan, hipgap, etc."></textarea>
+    </div>
+    <div id="panels"></div>
+    <textarea id="code-box" readonly placeholder="Combined code preview will appear here..."></textarea>
+    <div class="button-row">
+        <button id="wrap-start-btn">Insert Header</button>
+        <button id="wrap-end-btn">Insert Footer</button>
+        <button id="clear-wrap-btn" class="secondary">Reset Preview</button>
+        <button id="copy-btn">Copy Code</button>
+    </div>
+
+    <script>
+        var currentPayload = null;
+
+        function dlog(msg) {
+            // Debug logger disabled in UI mode.
+        }
+
+        function buildHeaderText(fileName, templateNumber) {
+            fileName = fileName || 'template_phase.py';
+            templateNumber = templateNumber || 'T2';
+            return [
+                '# File: ' + fileName,
+                '# Template: ' + templateNumber,
+                '',
+                'from frame_builder.fb_engine import geometry, constraints, dimensions',
+                '',
+                "def build_sequence(ctx, sketch, plan='" + templateNumber + "'):",
+                '    # Auto-generated template builder code',
+                '    seeds = []',
+                '    constraints = []',
+                '    dims = []',
+                ''
+            ].join('\n');
+        }
+
+        function buildFooterText() {
+            return [
+                '    return {',
+                "        'seeds': seeds,",
+                "        'constraints': constraints,",
+                "        'dimensions': dims", 
+                '    }',
+                ''
+            ].join('\n');
+        }
+
+        function makeSection(title, content, index) {
+            var detail = document.createElement('details');
+            detail.className = 'panel';
+            detail.open = true;
+
+            var summary = document.createElement('summary');
+            summary.textContent = title;
+            detail.appendChild(summary);
+
+            var textarea = document.createElement('textarea');
+            textarea.className = 'section-text';
+            textarea.dataset.index = index;
+            textarea.value = content || '';
+            textarea.addEventListener('input', updateCombinedPreview);
+            detail.appendChild(textarea);
+            return detail;
+        }
+
+        var variableRowCounter = 0;
+
+        function parseFileVariables(text) {
+            if (!text) {
+                return [];
+            }
+
+            var exclude = new Set([
+                'Point', 'Seeds', 'Arc', 'Line', 'Constraints', 'geometry', 'constraints', 'dimensions', 'ctx', 'sketch', 'plan',
+                'widthIn', 'heightIn', 'True', 'False', 'cm', 'mm', 'in', 'math', 'return', 'def', 'from', 'import', 'if', 'else',
+                'for', 'while', 'try', 'except', 'with', 'class', 'pass', 'lambda', 'None', 'and', 'or', 'not', 'in', 'as'
+            ]);
+
+            var vars = {};
+
+            function addVariable(name, expr) {
+                if (!name || exclude.has(name) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+                    return;
+                }
+                if (!vars[name]) {
+                    vars[name] = { name: name, expression: expr || name, enabled: true, source: 'file' };
+                }
+            }
+
+            // JSON-style definitions: Name + Expression
+            var jsonExpr = /"Name"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"[^\n]*?"Expression"\s*:\s*"([^"]*)"/g;
+            var match;
+            while ((match = jsonExpr.exec(text))) {
+                addVariable(match[1], match[2].trim());
+            }
+
+            // JSON-style definitions: Name + Val
+            var jsonVal = /"Name"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"[^\n]*?"Val"\s*:\s*([-+]?[0-9]*\.?[0-9]+)/g;
+            while ((match = jsonVal.exec(text))) {
+                addVariable(match[1], match[2].trim());
+            }
+
+            // Python-style assignments
+            var assign = /(^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^\n#]+)/g;
+            while ((match = assign.exec(text))) {
+                var name = match[2];
+                var expr = match[3].trim();
+                if (expr) {
+                    addVariable(name, expr);
+                }
+            }
+
+            // Fall back to identifier scan when no definition exists
+            var tokenPattern = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
+            while ((match = tokenPattern.exec(text))) {
+                var token = match[1];
+                if (!vars[token] && !exclude.has(token)) {
+                    addVariable(token, token);
+                }
+            }
+
+            return Object.keys(vars).map(function(name) {
+                return vars[name];
+            });
+        }
+
+        function mergeFileVariables(payload) {
+            var fileText = document.getElementById('file-text-input').value || '';
+            var fileVars = parseFileVariables(fileText);
+            var merged = [];
+            var seen = new Set();
+
+            if (payload.variables && payload.variables.length) {
+                payload.variables.forEach(function(variable) {
+                    merged.push(variable);
+                    seen.add(variable.name);
+                });
+            }
+
+            fileVars.forEach(function(variable) {
+                if (!seen.has(variable.name)) {
+                    merged.push(variable);
+                    seen.add(variable.name);
+                }
+            });
+
+            return merged;
+        }
+
+        function makeVariableRow(variable, index) {
+            var row = document.createElement('div');
+            row.className = 'variable-row';
+            var rowIndex = index != null ? index : variableRowCounter++;
+
+            var label = document.createElement('label');
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = variable.enabled;
+            checkbox.dataset.index = rowIndex;
+            checkbox.addEventListener('change', updateCombinedPreview);
+            label.appendChild(checkbox);
+            var span = document.createElement('span');
+            span.textContent = 'Use';
+            label.appendChild(span);
+            row.appendChild(label);
+
+            var nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'variable-name';
+            nameInput.dataset.index = rowIndex;
+            nameInput.placeholder = 'name';
+            nameInput.value = variable.name || '';
+            nameInput.addEventListener('input', updateCombinedPreview);
+            row.appendChild(nameInput);
+
+            var exprInput = document.createElement('input');
+            exprInput.type = 'text';
+            exprInput.className = 'variable-expression';
+            exprInput.dataset.index = rowIndex;
+            exprInput.placeholder = 'expression';
+            exprInput.value = variable.expression || variable.name || '';
+            exprInput.addEventListener('input', updateCombinedPreview);
+            row.appendChild(exprInput);
+
+            return row;
+        }
+
+        function makeAddVariableButton(body) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'add-variable-btn';
+            btn.textContent = 'Add new variable';
+            btn.addEventListener('click', function() {
+                body.appendChild(makeVariableRow({ name: '', expression: '', enabled: true }, null));
+                updateCombinedPreview();
+            });
+            return btn;
+        }
+
+        function renderVariables(payload) {
+            var container = document.createElement('details');
+            container.className = 'panel';
+            container.open = true;
+            var summary = document.createElement('summary');
+            summary.textContent = 'Variables';
+            container.appendChild(summary);
+
+            var body = document.createElement('div');
+            body.className = 'panel-body';
+
+            var variables = mergeFileVariables(payload);
+            if (!variables || variables.length === 0) {
+                var note = document.createElement('div');
+                note.className = 'variable-note';
+                note.textContent = 'No detected variable expressions in the current selection or file.';
+                body.appendChild(note);
+            } else {
+                variables.forEach(function(variable, idx) {
+                    body.appendChild(makeVariableRow(variable, idx));
+                });
+            }
+
+            var actions = document.createElement('div');
+            actions.className = 'panel-actions';
+            actions.appendChild(makeAddVariableButton(body));
+            container.appendChild(body);
+            container.appendChild(actions);
+            return container;
+        }
+
+        function renderLogPanel(payload) {
+            var container = document.createElement('details');
+            container.className = 'panel';
+            container.open = true;
+
+            var summary = document.createElement('summary');
+            summary.textContent = 'Detection Log';
+            container.appendChild(summary);
+
+            var body = document.createElement('div');
+            body.className = 'panel-body';
+
+            var logArea = document.createElement('div');
+            logArea.className = 'log-area';
+            logArea.textContent = (payload.logs || []).join('\n');
+            body.appendChild(logArea);
+            container.appendChild(body);
+            return container;
+        }
+
+        function renderPanels(payload) {
+            var container = document.getElementById('panels');
+            container.innerHTML = '';
+            if (!payload) {
+                return;
+            }
+
+            var headerText = buildHeaderText(
+                document.getElementById('file-name-input').value,
+                document.getElementById('template-number-input').value
+            );
+            container.appendChild(makeSection('Header', headerText, 'header'));
+            container.appendChild(renderVariables(payload));
+            container.appendChild(renderLogPanel(payload));
+
+            if (payload.items && payload.items.length > 0) {
+                payload.items.forEach(function(item, idx) {
+                    var title = item.name || ('Item ' + (idx + 1));
+                    var content = item.hint || '';
+                    if (item.meta) {
+                        content += content ? '\n# ' + item.meta : '# ' + item.meta;
+                    }
+                    container.appendChild(makeSection(title, content, idx));
+                });
+            }
+
+            container.appendChild(makeSection('Footer', buildFooterText(), 'footer'));
+            updateCombinedPreview();
+        }
+
+        function getVariableRows() {
+            var rows = [];
+            var vars = document.querySelectorAll('.variable-row');
+            vars.forEach(function(row) {
+                var checkbox = row.querySelector('input[type="checkbox"]');
+                var nameInput = row.querySelector('.variable-name');
+                var exprInput = row.querySelector('.variable-expression');
+                if (checkbox && nameInput && exprInput) {
+                    rows.push({
+                        enabled: checkbox.checked,
+                        name: nameInput.value.trim(),
+                        expression: exprInput.value.trim()
+                    });
+                }
+            });
+            return rows;
+        }
+
+        function updateCombinedPreview() {
+            var sections = document.querySelectorAll('.section-text');
+            var lines = [];
+
+            // Header
+            if (sections.length > 0) {
+                lines.push(sections[0].value.trim());
+            }
+
+            var variables = getVariableRows();
+            var enabledVars = variables.filter(function(v) {
+                return v.enabled && v.name;
+            });
+            if (enabledVars.length > 0) {
+                lines.push('# Variables');
+                enabledVars.forEach(function(v) {
+                    if (v.expression && v.expression !== v.name) {
+                        lines.push('# ' + v.name + ' = ' + v.expression);
+                    } else {
+                        lines.push('# ' + v.name);
+                    }
+                });
+            }
+
+            // Sequence sections and footer
+            for (var i = 1; i < sections.length; i++) {
+                var value = sections[i].value.trim();
+                if (value) {
+                    lines.push(value);
+                }
+            }
+
+            document.getElementById('code-box').value = lines.filter(function(line) {
+                return line.length > 0;
+            }).join('\n\n');
+        }
+
+        function resetPreview() {
+            if (!currentPayload) {
+                return;
+            }
+            document.getElementById('file-name-input').value = 'T2_p05_lines.py';
+            document.getElementById('template-number-input').value = 'T2';
+            renderPanels(currentPayload);
+        }
+
+        function applyData(dataStr, source) {
+            var payload = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
+            currentPayload = payload;
+            document.getElementById('summary-text').textContent = payload.description || 'Select sketch geometry to preview seed and constraint snippets.';
+            document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + (payload.count || 0) + ' selected)';
+            document.getElementById('pulse-box').style.background = '#e8f5ff';
+            document.getElementById('pulse-box').style.color = '#0f4d82';
+            renderPanels(payload);
+        }
+
+        window.fusionJavaScriptHandler = function(action, data) {
+            if (action === 'update' && data) {
+                applyData(data, 'PUSH');
+            }
+        };
+
+        function poll() {
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                return;
+            }
+            var result = adsk.fusionSendData('poll', 'ping');
+            if (result && typeof result.then === 'function') {
+                result.then(function(resp) {
+                    if (resp && resp.length > 0) {
+                        applyData(resp, 'POLL');
+                    }
+                });
+            } else if (typeof result === 'string' && result.length > 0) {
+                applyData(result, 'POLL');
+            }
+        }
+
+        function copyCode() {
+            var btn = document.getElementById('copy-btn');
+            var text = document.getElementById('code-box').value;
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                adsk.fusionSendData('copy', text).then(function(resp) {
+                    flashBtn(btn, resp === 'ok' ? 'Copied!' : 'Error', resp === 'ok');
+                }).catch(function() {
+                    flashBtn(btn, 'Error', false);
+                });
+            } else {
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    flashBtn(btn, 'Copied!', true);
+                } catch (e) {
+                    flashBtn(btn, 'Error', false);
+                }
+            }
+        }
+
+        function insertHeader() {
+            var code = document.getElementById('code-box').value;
+            var header = buildHeaderText(
+                document.getElementById('file-name-input').value,
+                document.getElementById('template-number-input').value
+            );
+            document.getElementById('code-box').value = header + '\n' + code;
+        }
+
+        function insertFooter() {
+            var code = document.getElementById('code-box').value;
+            var footer = buildFooterText();
+            document.getElementById('code-box').value = code + '\n' + footer;
+        }
+
+        function flashBtn(btn, message, success) {
+            var original = btn.textContent;
+            btn.textContent = message;
+            btn.style.background = success ? '#388e3c' : '#c0392b';
+            setTimeout(function() {
+                btn.textContent = original;
+                btn.style.background = '';
+            }, 1400);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('copy-btn').addEventListener('click', copyCode);
+            document.getElementById('wrap-start-btn').addEventListener('click', insertHeader);
+            document.getElementById('wrap-end-btn').addEventListener('click', insertFooter);
+            document.getElementById('clear-wrap-btn').addEventListener('click', resetPreview);
+            document.getElementById('file-name-input').addEventListener('input', function() {
+                if (currentPayload) renderPanels(currentPayload);
+            });
+            document.getElementById('template-number-input').addEventListener('input', function() {
+                if (currentPayload) renderPanels(currentPayload);
+            });
+            document.getElementById('file-text-input').addEventListener('input', function() {
+                if (currentPayload) renderPanels(currentPayload);
+            });
+            setInterval(poll, 2200);
+        });
+    </script>
+</body>
+</html>
