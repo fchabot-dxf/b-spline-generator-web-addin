@@ -6,6 +6,7 @@ import adsk.core, adsk.fusion, traceback, os, json, subprocess, sys
 
 _handlers = []
 _html_handler = None
+_doc_activated_handler = None
 _last_sel_ids = ""
 _latest_payload = ""
 
@@ -20,6 +21,27 @@ from template_generator import build_template_payload
 
 PALETTE_URL = os.path.join(_current_dir, 'template_maker_palette.html').replace('\\', '/')
 RESOURCES_PATH = os.path.join(_current_dir, 'ressources')
+
+
+def _cleanup_cache_files(directory):
+    try:
+        if not directory or not os.path.isdir(directory):
+            return
+        for root, dirs, files in os.walk(directory, topdown=False):
+            for name in files:
+                if name.endswith('.pyc'):
+                    try:
+                        os.remove(os.path.join(root, name))
+                    except Exception:
+                        pass
+            for name in dirs:
+                if name == '__pycache__':
+                    try:
+                        shutil.rmtree(os.path.join(root, name))
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
 
 def get_log_path():
@@ -45,6 +67,14 @@ class _SelectionChangedHandler(adsk.core.ActiveSelectionEventHandler):
             _log(traceback.format_exc())
 
 
+class _DocumentActivatedHandler(adsk.core.DocumentEventHandler):
+    def notify(self, args):
+        try:
+            _push_selection_to_palette()
+        except Exception:
+            _log(traceback.format_exc())
+
+
 def _push_selection_to_palette():
     global _last_sel_ids, _latest_payload
     app = adsk.core.Application.get()
@@ -53,10 +83,18 @@ def _push_selection_to_palette():
     if not palette or not palette.isValid or not palette.isVisible:
         return
 
+    doc = app.activeDocument
+    doc_key = ''
+    try:
+        if doc:
+            doc_key = getattr(doc, 'fullFilename', None) or getattr(doc, 'name', None) or str(doc)
+    except Exception:
+        doc_key = ''
+
     sels = ui.activeSelections
     count = sels.count if sels else 0
     entities = []
-    current_ids = ''
+    current_ids = f'{doc_key}|'
 
     if count > 0:
         for i in range(count):
@@ -159,6 +197,16 @@ def run(context):
         sel_handler = _SelectionChangedHandler()
         ui.activeSelectionChanged.add(sel_handler)
         _handlers.append(sel_handler)
+
+        global _doc_activated_handler
+        try:
+            if _doc_activated_handler:
+                app.documentActivated.remove(_doc_activated_handler)
+        except Exception:
+            pass
+        _doc_activated_handler = _DocumentActivatedHandler()
+        app.documentActivated.add(_doc_activated_handler)
+        _handlers.append(_doc_activated_handler)
     except Exception:
         _log(traceback.format_exc())
 
@@ -184,8 +232,19 @@ def stop(context):
                         if panel.controls.count == 0:
                             panel.deleteMe()
 
+        global _doc_activated_handler
+        try:
+            if _doc_activated_handler:
+                app.documentActivated.remove(_doc_activated_handler)
+        except Exception:
+            pass
+        _doc_activated_handler = None
+
         cmd_def = ui.commandDefinitions.itemById(CMD_ID)
         if cmd_def:
             cmd_def.deleteMe()
+
+        # Remove runtime cache files left by Python execution
+        _cleanup_cache_files(_current_dir)
     except Exception:
         pass

@@ -5,6 +5,7 @@ Template Maker copy of Frame Inspector coordinate expression helpers.
 import math
 import re
 import adsk.core, adsk.fusion
+from entity_helpers import _get_arc_midpoint
 
 
 def _get_native(ent):
@@ -173,14 +174,25 @@ def get_design_params():
         if not design:
             return {}
         params = {}
-        for p in design.userParameters:
-            params[p.name] = {'expression': p.expression, 'value': p.value}
+        for p in design.allParameters:
+            try:
+                if hasattr(p, 'isUserParameter') and not p.isUserParameter:
+                    continue
+                name = getattr(p, 'name', None)
+                if not name:
+                    continue
+                params[name] = {
+                    'expression': str(getattr(p, 'expression', '') or ''),
+                    'value': getattr(p, 'value', None)
+                }
+            except Exception:
+                continue
         return params
     except Exception:
         return {}
 
 
-def _build_entity_coord_expr_string(ent):
+def _build_entity_coord_expr_string(ent, params=None):
     try:
         if not ent:
             return ''

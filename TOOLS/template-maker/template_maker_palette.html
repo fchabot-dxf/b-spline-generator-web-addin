@@ -202,10 +202,6 @@
             <input id="template-number-input" type="text" placeholder="T2" value="T2">
         </label>
     </div>
-    <div class="panel">
-        <summary>File source / variable scan</summary>
-        <textarea id="file-text-input" class="file-text" placeholder="Paste the template file text here to scan for variables like widthspan, hipgap, etc."></textarea>
-    </div>
     <div id="panels"></div>
     <textarea id="code-box" readonly placeholder="Combined code preview will appear here..."></textarea>
     <div class="button-row">
@@ -220,6 +216,44 @@
 
         function dlog(msg) {
             // Debug logger disabled in UI mode.
+        }
+
+        function mergeVariableRows(payload) {
+            var existing = getVariableRows();
+            var merged = [];
+            var seen = new Set();
+
+            (payload.variables || []).forEach(function(variable) {
+                var entry = {
+                    name: variable.name || '',
+                    expression: variable.expression || variable.name || '',
+                    enabled: variable.enabled !== false,
+                    source: variable.source || 'auto'
+                };
+                merged.push(entry);
+                if (entry.name) {
+                    seen.add(entry.name);
+                }
+            });
+
+            existing.forEach(function(variable) {
+                if (variable.name && seen.has(variable.name)) {
+                    var idx = merged.findIndex(function(item) { return item.name === variable.name; });
+                    if (idx !== -1) {
+                        merged[idx].expression = variable.expression;
+                        merged[idx].enabled = variable.enabled;
+                    }
+                } else {
+                    merged.push({
+                        name: variable.name || '',
+                        expression: variable.expression || '',
+                        enabled: variable.enabled,
+                        source: 'custom'
+                    });
+                }
+            });
+
+            return merged;
         }
 
         function buildHeaderText(fileName, templateNumber) {
@@ -251,14 +285,39 @@
             ].join('\n');
         }
 
+        function getPanelStateKey(title, index) {
+            return 'templateMakerPanelState:' + title + ':' + (index != null ? index : 'base');
+        }
+
+        function loadPanelState(key) {
+            try {
+                return localStorage.getItem(key) !== '0';
+            } catch (e) {
+                return true;
+            }
+        }
+
+        function savePanelState(key, isOpen) {
+            try {
+                localStorage.setItem(key, isOpen ? '1' : '0');
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
         function makeSection(title, content, index) {
             var detail = document.createElement('details');
             detail.className = 'panel';
-            detail.open = true;
+            var stateKey = getPanelStateKey(title, index);
+            detail.open = loadPanelState(stateKey);
 
             var summary = document.createElement('summary');
             summary.textContent = title;
             detail.appendChild(summary);
+
+            detail.addEventListener('toggle', function() {
+                savePanelState(stateKey, detail.open);
+            });
 
             var textarea = document.createElement('textarea');
             textarea.className = 'section-text';
@@ -271,87 +330,6 @@
 
         var variableRowCounter = 0;
 
-        function parseFileVariables(text) {
-            if (!text) {
-                return [];
-            }
-
-            var exclude = new Set([
-                'Point', 'Seeds', 'Arc', 'Line', 'Constraints', 'geometry', 'constraints', 'dimensions', 'ctx', 'sketch', 'plan',
-                'widthIn', 'heightIn', 'True', 'False', 'cm', 'mm', 'in', 'math', 'return', 'def', 'from', 'import', 'if', 'else',
-                'for', 'while', 'try', 'except', 'with', 'class', 'pass', 'lambda', 'None', 'and', 'or', 'not', 'in', 'as'
-            ]);
-
-            var vars = {};
-
-            function addVariable(name, expr) {
-                if (!name || exclude.has(name) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-                    return;
-                }
-                if (!vars[name]) {
-                    vars[name] = { name: name, expression: expr || name, enabled: true, source: 'file' };
-                }
-            }
-
-            // JSON-style definitions: Name + Expression
-            var jsonExpr = /"Name"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"[^\n]*?"Expression"\s*:\s*"([^"]*)"/g;
-            var match;
-            while ((match = jsonExpr.exec(text))) {
-                addVariable(match[1], match[2].trim());
-            }
-
-            // JSON-style definitions: Name + Val
-            var jsonVal = /"Name"\s*:\s*"([A-Za-z_][A-Za-z0-9_]*)"[^\n]*?"Val"\s*:\s*([-+]?[0-9]*\.?[0-9]+)/g;
-            while ((match = jsonVal.exec(text))) {
-                addVariable(match[1], match[2].trim());
-            }
-
-            // Python-style assignments
-            var assign = /(^|\n)\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^\n#]+)/g;
-            while ((match = assign.exec(text))) {
-                var name = match[2];
-                var expr = match[3].trim();
-                if (expr) {
-                    addVariable(name, expr);
-                }
-            }
-
-            // Fall back to identifier scan when no definition exists
-            var tokenPattern = /\b([A-Za-z_][A-Za-z0-9_]*)\b/g;
-            while ((match = tokenPattern.exec(text))) {
-                var token = match[1];
-                if (!vars[token] && !exclude.has(token)) {
-                    addVariable(token, token);
-                }
-            }
-
-            return Object.keys(vars).map(function(name) {
-                return vars[name];
-            });
-        }
-
-        function mergeFileVariables(payload) {
-            var fileText = document.getElementById('file-text-input').value || '';
-            var fileVars = parseFileVariables(fileText);
-            var merged = [];
-            var seen = new Set();
-
-            if (payload.variables && payload.variables.length) {
-                payload.variables.forEach(function(variable) {
-                    merged.push(variable);
-                    seen.add(variable.name);
-                });
-            }
-
-            fileVars.forEach(function(variable) {
-                if (!seen.has(variable.name)) {
-                    merged.push(variable);
-                    seen.add(variable.name);
-                }
-            });
-
-            return merged;
-        }
 
         function makeVariableRow(variable, index) {
             var row = document.createElement('div');
@@ -414,7 +392,7 @@
             var body = document.createElement('div');
             body.className = 'panel-body';
 
-            var variables = mergeFileVariables(payload);
+            var variables = payload.variables || [];
             if (!variables || variables.length === 0) {
                 var note = document.createElement('div');
                 note.className = 'variable-note';
@@ -434,26 +412,6 @@
             return container;
         }
 
-        function renderLogPanel(payload) {
-            var container = document.createElement('details');
-            container.className = 'panel';
-            container.open = true;
-
-            var summary = document.createElement('summary');
-            summary.textContent = 'Detection Log';
-            container.appendChild(summary);
-
-            var body = document.createElement('div');
-            body.className = 'panel-body';
-
-            var logArea = document.createElement('div');
-            logArea.className = 'log-area';
-            logArea.textContent = (payload.logs || []).join('\n');
-            body.appendChild(logArea);
-            container.appendChild(body);
-            return container;
-        }
-
         function renderPanels(payload) {
             var container = document.getElementById('panels');
             container.innerHTML = '';
@@ -467,12 +425,18 @@
             );
             container.appendChild(makeSection('Header', headerText, 'header'));
             container.appendChild(renderVariables(payload));
-            container.appendChild(renderLogPanel(payload));
 
             if (payload.items && payload.items.length > 0) {
                 payload.items.forEach(function(item, idx) {
                     var title = item.name || ('Item ' + (idx + 1));
-                    var content = item.hint || '';
+                    var content = '';
+                    if (item.coordExpr) {
+                        content += '# coordExpr: ' + item.coordExpr + '\n';
+                    }
+                    if (item.coord && item.coord !== item.coordExpr) {
+                        content += '# coord: ' + item.coord + '\n';
+                    }
+                    content += item.hint || '';
                     if (item.meta) {
                         content += content ? '\n# ' + item.meta : '# ' + item.meta;
                     }
@@ -526,6 +490,18 @@
                 });
             }
 
+            if (currentPayload && currentPayload.codePreview && currentPayload.codePreview.trim() && sections.length <= 2) {
+                var previewLines = currentPayload.codePreview.trim().split('\n').map(function(line) {
+                    return line.trim();
+                }).filter(function(line) {
+                    return line.length > 0;
+                });
+                if (previewLines.length > 0) {
+                    lines.push('# Selection Preview');
+                    lines = lines.concat(previewLines);
+                }
+            }
+
             // Sequence sections and footer
             for (var i = 1; i < sections.length; i++) {
                 var value = sections[i].value.trim();
@@ -550,6 +526,9 @@
 
         function applyData(dataStr, source) {
             var payload = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
+            if (currentPayload) {
+                payload.variables = mergeVariableRows(payload);
+            }
             currentPayload = payload;
             document.getElementById('summary-text').textContent = payload.description || 'Select sketch geometry to preview seed and constraint snippets.';
             document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + (payload.count || 0) + ' selected)';
@@ -642,9 +621,6 @@
                 if (currentPayload) renderPanels(currentPayload);
             });
             document.getElementById('template-number-input').addEventListener('input', function() {
-                if (currentPayload) renderPanels(currentPayload);
-            });
-            document.getElementById('file-text-input').addEventListener('input', function() {
                 if (currentPayload) renderPanels(currentPayload);
             });
             setInterval(poll, 2200);
