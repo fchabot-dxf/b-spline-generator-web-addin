@@ -66,6 +66,7 @@
     <div id="debug">JS init...</div>
     <div id="main-feature" class="main-feature">Select geometry...</div>
     <div id="coord" class="coord"></div>
+    <div id="meta-text" class="meta"></div>
     <div id="linked-root" style="display:none;">
         <div class="linked-label" id="list-label">Connections</div>
         <ul id="linked-list" class="linked-list"></ul>
@@ -73,7 +74,7 @@
     
     <div style="margin-top: 12px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <label style="font-size:0.9em; color:#444; display:flex; align-items:center; gap:6px;">
-            <input id="expr-toggle" type="checkbox" checked> Expression coords
+            <input id="expr-toggle" type="checkbox"> Expression coords
         </label>
         <div class="btn-container" style="flex:1; justify-content:flex-end; gap:4px;">
             <button type="button" id="copy-btn" title="Copy everything">Full Copy</button>
@@ -125,6 +126,32 @@
             }
         }
 
+        function reportError(message, source, lineno, colno, error) {
+            dlog('JS ERROR: ' + message + ' @' + source + ':' + lineno + ':' + colno);
+            if (error && error.stack) {
+                dlog('STACK: ' + error.stack.split('\n')[0]);
+            }
+            return false;
+        }
+
+        function renderLinkedList(data, useExpr) {
+            var list = document.getElementById('linked-list');
+            var root = document.getElementById('linked-root');
+            if (!list) return;
+            list.innerHTML = '';
+            var entries = useExpr && data.linked_expr && data.linked_expr.length > 0 ? data.linked_expr : data.linked;
+            if (entries && entries.length > 0) {
+                if (root) root.style.display = 'block';
+                for (var i = 0; i < entries.length; i++) {
+                    var li = document.createElement('li');
+                    li.textContent = entries[i];
+                    list.appendChild(li);
+                }
+            } else {
+                if (root) root.style.display = 'none';
+            }
+        }
+
         function applyData(dataStr, source) {
             updateCount++;
             document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + updateCount + ') [' + source + ']';
@@ -134,15 +161,16 @@
                 dlog('APPLY start source=' + source + ' len=' + (dataStr ? dataStr.length : 0));
                 var d = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
                 currentData = d;
-                dlog('APPLY data main=' + (d.mainFeature || '<none>') + ' count=' + (d.count || 0));
+                dlog('APPLY data main=' + (d.mainFeature || '<none>') + ' coord=' + (d.coord || '<none>') + ' coord_expr=' + (d.coord_expr || '<none>') + ' count=' + (d.count || 0));
                 document.getElementById('main-feature').textContent = d.mainFeature || 'Entity';
                 currentData = d;
                 updateCoordDisplay();
 
                 var listLabel = document.getElementById('list-label');
-                if (listLabel) listLabel.textContent = d.listLabel || 'Selection';
+                if (listLabel) listLabel.textContent = d.listLabel || 'Connections';
                 var showExpr = document.getElementById('expr-toggle') && document.getElementById('expr-toggle').checked;
-                renderItemList(d, showExpr);
+                renderLinkedList(d, showExpr);
+                document.getElementById('meta-text').textContent = d.meta || '';
             } catch(e) {
                 dlog('PARSE ERR: ' + e.message);
             }
@@ -233,9 +261,20 @@
             }
             var exprToggle = document.getElementById('expr-toggle');
             var showExpr = exprToggle && exprToggle.checked;
-            coordEl.textContent = '';
-            renderItemList(currentData, showExpr);
-            dlog('DISPLAY showExpr=' + showExpr + ' items=' + (currentData.items ? currentData.items.length : 0));
+            var displayText = '';
+            if (showExpr) {
+                if (currentData.coord_expr) {
+                    displayText = currentData.coord_expr;
+                } else {
+                    displayText = currentData.coord || '';
+                    dlog('DISPLAY expr requested but coord_expr empty, falling back to coord');
+                }
+            } else {
+                displayText = currentData.coord || '';
+            }
+            coordEl.textContent = displayText;
+            renderLinkedList(currentData, showExpr);
+            dlog('DISPLAY coord=' + displayText + ' showExpr=' + showExpr + ' coord_expr=' + (currentData.coord_expr ? 'yes' : 'no'));
         }
 
         function copyShort() {
@@ -263,25 +302,31 @@
 
             // Build plain text
             var lines = [];
-            if (currentData.items && currentData.items.length > 0) {
+            if (currentData.count > 1 && currentData.linked) {
+                // Batch Mode: Copy the full detailed list
+                lines.push(currentData.mainFeature);
                 var exprToggle = document.getElementById('expr-toggle');
                 var showExpr = exprToggle && exprToggle.checked;
-                for (var i = 0; i < currentData.items.length; i++) {
-                    var item = currentData.items[i];
-                    var line = item.name || '';
-                    var detail = showExpr ? item.coordExpr : item.coord;
-                    if (detail) {
-                        line += ' | ' + detail;
-                    }
-                    if (item.meta) {
-                        line += ' | ' + item.meta;
-                    }
-                    lines.push(line);
-                }
+                var entries = showExpr && currentData.linked_expr && currentData.linked_expr.length === currentData.linked.length ? currentData.linked_expr : currentData.linked;
+                for (var i = 0; i < entries.length; i++) lines.push(entries[i]);
             } else {
+                // Single Mode
                 lines.push(currentData.mainFeature || '');
+                var exprToggle = document.getElementById('expr-toggle');
+                var showExpr = exprToggle && exprToggle.checked;
+                if (showExpr && currentData.coord_expr) {
+                    lines.push(currentData.coord_expr);
+                } else if (showExpr && !currentData.coord_expr && currentData.coord) {
+                    lines.push(currentData.coord);
+                    dlog('COPY_ALL: expr requested but coord_expr empty, using coord fallback');
+                } else if (currentData.coord) {
+                    lines.push(currentData.coord);
+                }
+                if (currentData.linked && currentData.linked.length > 0) {
+                    lines.push('Connections:');
+                    for (var j = 0; j < currentData.linked.length; j++) lines.push('  ' + currentData.linked[j]);
+                }
             }
-            if (currentData.meta) lines.push(currentData.meta);
             var text = lines.join('\n');
             dlog('COPY_ALL text len=' + text.length + ' showExpr=' + (document.getElementById('expr-toggle') && document.getElementById('expr-toggle').checked));
             performCopy(text, btn);

@@ -6,9 +6,9 @@ def get_block(ui_data=None):
     transition to the top/bottom corners is perfectly smooth.
     """
     seq = [
-        # SHOULDER TO HORN
-        {'Type': 'Tangent', 'Targets': ['arc_shoulder_R', 'horn_TR']},
-        {'Type': 'Tangent', 'Targets': ['arc_shoulder_L', 'horn_TL']},
+        # WAIST TO HORN
+        {'Type': 'Tangent', 'Targets': ['arc_waist_R', 'horn_TR']},
+        {'Type': 'Tangent', 'Targets': ['arc_waist_L', 'horn_TL']},
 
         # HIP TO HORN
         {'Type': 'Tangent', 'Targets': ['arc_hip_R',      'horn_BR']},
@@ -16,7 +16,7 @@ def get_block(ui_data=None):
     ]
 
     return {
-        "PhaseID": "p10_horn_tangency",
+        "PhaseID": "p11_horn_tangency",
         "Name": "Horn Tangency",
         "BuildSequence": seq
     }

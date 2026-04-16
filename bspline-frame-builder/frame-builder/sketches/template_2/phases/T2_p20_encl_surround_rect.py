@@ -5,7 +5,7 @@ def get_block(ui_data=None):
     with a small center offset to avoid origin-snapping problems before grounding the center.
     """
     return {
-        "PhaseID": "p19_encl_surround_rect",
+        "PhaseID": "p20_encl_surround_rect",
         "Name": "Enclosure Surround Rectangle",
         "BuildSequence": [
             {

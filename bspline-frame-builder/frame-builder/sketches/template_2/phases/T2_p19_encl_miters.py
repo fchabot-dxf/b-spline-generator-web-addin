@@ -4,7 +4,7 @@ def get_block(ui_data=None):
     Closes the surround rectangle corners to complete the solid generation profiles.
     """
     return {
-        "PhaseID": "p18_encl_miters",
+        "PhaseID": "p19_encl_miters",
         "Name": "Enclosure Miters",
         "Miters": [
             {'Source': 'proj_anchor_TL', 'Target': 'inner_corner_TL', 'IsConstruction': False},

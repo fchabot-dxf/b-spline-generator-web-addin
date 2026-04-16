@@ -11,5 +11,6 @@ def get_block(ui_data=None):
             {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_TR', 'TargetID': 'proj_off_corner_TR'},
             {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_BL', 'TargetID': 'proj_off_corner_BL'},
             {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_BR', 'TargetID': 'proj_off_corner_BR'},
+            {'SourceSketch': '1_bounding-box', 'SourceID': 'offset_BB_top', 'TargetID': 'proj_off_BB_top'},
         ]
     }

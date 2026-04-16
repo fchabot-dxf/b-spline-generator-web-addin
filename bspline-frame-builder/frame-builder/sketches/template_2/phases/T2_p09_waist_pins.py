@@ -12,7 +12,7 @@ def get_block(ui_data=None):
     ]
 
     return {
-        "PhaseID": "p08_waist_pins",
+        "PhaseID": "p09_waist_pins",
         "Name": "Waist Pins",
         "BuildSequence": seq
     }

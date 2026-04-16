@@ -13,4 +13,4 @@ def get_block(ui_data=None):
         {'Type': 'Pulse'}
     ]
 
-    return {"Name": "Symmetry", "PhaseID": "p13_symmetry", "BuildSequence": seq}
+    return {"Name": "Symmetry", "PhaseID": "p14_symmetry", "BuildSequence": seq}

@@ -16,7 +16,7 @@ def get_block(ui_data=None):
     ]
 
     return {
-        "PhaseID": "p11_radius_removal",
+        "PhaseID": "p12_radius_removal",
         "Name": "Radius Removal",
         "BuildSequence": seq
     }

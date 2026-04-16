@@ -5,7 +5,7 @@ def get_block(ui_data=None):
     Radii use Volatile logic: nudge to slider value then release.
     """
     return {
-        "PhaseID": "p14_drivers",
+        "PhaseID": "p15_drivers",
         "Name": "Drivers",
         "Dimensions": [
             {'Name': 'WaistSpan',    'Type': 'HorizontalDistance', 'Targets': ['skel_neck_pin_L:E',    'skel_neck_pin_R:E'],    'Expression': 'WaistSpan',    'EnabledParam': 'en_WaistSpan'},
@@ -13,8 +13,6 @@ def get_block(ui_data=None):
             {'Name': 'BottomGap',    'Type': 'VerticalDistance',   'Targets': ['skel_neck_pin_R:S',    'skel_hip_pin_R:S'],      'Expression': 'BottomGap',    'EnabledParam': 'en_BottomGap'},
         ],
         "VolatileDimensions": [
-            {'Name': 'arc_shoulder_R_rad', 'Type': 'Radius', 'Target': 'arc_shoulder_R', 'Expression': 'ShoulderRadius', 'EnabledParam': 'en_ShoulderRadius'},
-            {'Name': 'arc_shoulder_L_rad', 'Type': 'Radius', 'Target': 'arc_shoulder_L', 'Expression': 'ShoulderRadius', 'EnabledParam': 'en_ShoulderRadius'},
             {'Name': 'arc_hip_R_rad',      'Type': 'Radius', 'Target': 'arc_hip_R',      'Expression': 'HipRadius',      'EnabledParam': 'en_HipRadius'},
             {'Name': 'arc_hip_L_rad',      'Type': 'Radius', 'Target': 'arc_hip_L',      'Expression': 'HipRadius',      'EnabledParam': 'en_HipRadius'},
             {'Name': 'arc_waist_R_rad',    'Type': 'Radius', 'Target': 'arc_waist_R',    'Expression': 'WaistRadius',    'EnabledParam': 'en_WaistRadius'},

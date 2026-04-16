@@ -155,6 +155,69 @@ def _get_arc_midpoint(ent):
         return None
 
 
+def get_design_dimensions():
+    try:
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct) if app else None
+        if not design:
+            return None, None
+
+        params = design.userParameters
+        if not params:
+            return None, None
+
+        w_param = params.itemByName('widthIn') or params.itemByName('BSG_widthIn')
+        h_param = params.itemByName('heightIn') or params.itemByName('BSG_heightIn')
+        width = float(w_param.value) if w_param else None
+        height = float(h_param.value) if h_param else None
+        return width, height
+    except:
+        return None, None
+
+
+def format_expr_component(value, symbol, scale):
+    try:
+        if scale is None or abs(scale) < 1e-9:
+            return None
+        if abs(value) < 1e-9:
+            return '0'
+
+        coeff = round(value / scale, 6)
+        if abs(coeff) < 1e-6:
+            return '0'
+
+        abs_coeff = abs(coeff)
+        if abs(abs_coeff - 1.0) < 1e-6:
+            term = symbol
+        else:
+            term = f"{symbol} * {abs_coeff}"
+
+        return f"-{term}" if coeff < 0 else term
+    except:
+        return None
+
+
+def format_point_expr(pt, width, height):
+    try:
+        x_expr = format_expr_component(pt.geometry.x, 'widthIn', width)
+        y_expr = format_expr_component(pt.geometry.y, 'heightIn', height)
+        if x_expr is None or y_expr is None:
+            return ''
+        return f"({x_expr}, {y_expr})"
+    except:
+        return ''
+
+
+def get_fb_attribute(ent, name):
+    try:
+        if hasattr(ent, 'attributes'):
+            a = ent.attributes.itemByName('FrameBuilder', name)
+            if a and a.value:
+                return a.value
+    except:
+        pass
+    return None
+
 def get_fb_metadata(ent):
     try:
         if hasattr(ent, 'nativeObject') and ent.nativeObject: ent = ent.nativeObject
@@ -187,7 +250,8 @@ def entity_fingerprint(ent):
 def get_entity_coord(e):
     try:
         if e.objectType.endswith('SketchPoint'):
-            return f"Point: ({round(e.geometry.x, 2)}, {round(e.geometry.y, 2)})"
+            point_name = get_fb_name(e)
+            return f"{point_name}: ({round(e.geometry.x, 2)}, {round(e.geometry.y, 2)})"
         if hasattr(e, 'startSketchPoint') and hasattr(e, 'endSketchPoint'):
             sp = e.startSketchPoint.geometry
             ep = e.endSketchPoint.geometry
@@ -211,6 +275,56 @@ def get_entity_coord(e):
             cx = round((bb.minPoint.x + bb.maxPoint.x) / 2, 2)
             cy = round((bb.minPoint.y + bb.maxPoint.y) / 2, 2)
             return f"Center: ({cx}, {cy})"
+    except: pass
+    return ""
+
+
+def get_entity_coord_expr(e):
+    try:
+        width, height = get_design_dimensions()
+        if e.objectType.endswith('SketchPoint'):
+            point_name = get_fb_name(e)
+            return f"{point_name}: {format_point_expr(e, width, height)}"
+        if hasattr(e, 'startSketchPoint') and hasattr(e, 'endSketchPoint'):
+            sp = e.startSketchPoint
+            ep = e.endSketchPoint
+            if hasattr(e, 'centerSketchPoint') and e.centerSketchPoint:
+                cp = e.centerSketchPoint
+                start_id = get_fb_attribute(e, 'StartID')
+                end_id = get_fb_attribute(e, 'EndID')
+                center_id = get_fb_attribute(e, 'CenterID')
+
+                start_label = start_id or get_fb_name(sp)
+                end_label = f"EndID={end_id}" if end_id else get_fb_name(ep)
+                center_label = f"CenterID={center_id}" if center_id else get_fb_name(cp)
+                arc_name = get_fb_name(e)
+                bulge_label = f"{arc_name}:B" if cp else None
+
+                start_expr = format_point_expr(sp, width, height)
+                end_expr = format_point_expr(ep, width, height)
+                center_expr = format_point_expr(cp, width, height)
+                bulge_expr = format_point_expr(cp, width, height) if cp else ''
+
+                if start_expr and end_expr and center_expr:
+                    text = f"({start_label} : {start_expr}) -> ({end_label} : {end_expr}) -> ({center_label} : {center_expr})"
+                    if bulge_label and bulge_expr:
+                        text += f" --> (BulgeCenter= {bulge_label} : {bulge_expr})"
+                    return text
+
+                return f"{format_point_expr(sp, width, height)} -> {format_point_expr(cp, width, height)} -> {format_point_expr(ep, width, height)}"
+            return f"{format_point_expr(sp, width, height)} -> {format_point_expr(ep, width, height)}"
+        if hasattr(e, 'geometry') and hasattr(e.geometry, 'startPoint'):
+            g = e.geometry
+            sp = g.startPoint
+            ep = g.endPoint
+            return f"{format_point_expr(sp, width, height)} -> {format_point_expr(ep, width, height)}"
+        if hasattr(e, 'boundingBox'):
+            bb = e.boundingBox
+            cx = (bb.minPoint.x + bb.maxPoint.x) / 2
+            cy = (bb.minPoint.y + bb.maxPoint.y) / 2
+            x_expr = format_expr_component(cx, 'widthIn', width)
+            y_expr = format_expr_component(cy, 'heightIn', height)
+            return f"Center: ({x_expr}, {y_expr})"
     except: pass
     return ""
 
@@ -248,10 +362,62 @@ def _push_selection_to_palette():
     _last_sel_ids = current_ids
 
     # Build High-Density Payload
-    p_data = build_payload(entities)
+    p_data = {
+        'count': count,
+        'mainFeature': 'Select geometry...',
+        'coord': '',
+        'linked': [],
+        'listLabel': 'Connections',
+        'meta': f"{count} Entities Selected",
+        'type': 'Other'
+    }
+
+    if entities:
+        e = entities[0]
+        if hasattr(e, 'nativeObject') and e.nativeObject: e = e.nativeObject
+        
+        # Single Selection Case
+        if count == 1:
+            p_data['mainFeature'] = get_fb_name(e)
+            p_data['coord'] = get_entity_coord(e)
+            p_data['coord_expr'] = get_entity_coord_expr(e)
+            p_data['linked'] = get_fb_connections(e)
+            p_data['listLabel'] = 'Details & Connections'
+        
+        # Batch Selection Case
+        else:
+            p_data['mainFeature'] = f"{count} Entities Selected"
+            p_data['coord'] = "(Batch View)"
+            p_data['coord_expr'] = "(Batch View)"
+            p_data['listLabel'] = 'Selection List'
+            p_data['linked_expr'] = []
+            
+            # List every item with its name, points/coordinates, and metadata
+            for ent in entities:
+                if hasattr(ent, 'nativeObject') and ent.nativeObject: ent = ent.nativeObject
+                name = get_fb_name(ent)
+                coord = get_entity_coord(ent)
+                coord_expr = get_entity_coord_expr(ent) or coord
+                fb_meta_item = get_fb_metadata(ent)
+                entry = f"{name} | {coord}"
+                expr_entry = f"{name} | {coord_expr}"
+                if fb_meta_item:
+                    entry += f" | {fb_meta_item}"
+                    expr_entry += f" | {fb_meta_item}"
+                p_data['linked'].append(entry)
+                p_data['linked_expr'].append(expr_entry)
+
+        bridge = get_fb_bridge(e)
+        plan = get_fb_plan(e)
+        fb_meta = get_fb_metadata(e)
+        p_data['meta'] = f"{e.objectType.split('::')[-1]} | Bridge: {bridge or 'N/A'} | Plan: {plan or 'N/A'}"
+        if fb_meta:
+            p_data['meta'] += f" | {fb_meta}"
     _latest_payload = json.dumps(p_data)
     try:
+        _log(f"[DEBUG_PUSH] palette valid={bool(palette and palette.isValid)} visible={bool(palette and palette.isVisible)}");
         palette.sendInfoToHTML('update', _latest_payload)
+        _log("[DEBUG_PUSH] sendInfoToHTML called")
     except Exception as e:
         _log(f"[ERROR] sendInfoToHTML failed: {e}")
 
@@ -259,16 +425,24 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         html_args = adsk.core.HTMLEventArgs.cast(args)
         if html_args.action == 'poll':
+            _log(f"[DEBUG_POLL] action=poll return_len={len(_latest_payload) if _latest_payload else 0}")
             html_args.returnData = _latest_payload
         elif html_args.action == 'copy':
             try:
-                _log(f"[DEBUG_COPY] received copy request len={len(html_args.data) if html_args.data else 0}")
-                proc = subprocess.Popen(['clip'], stdin=subprocess.PIPE, shell=True)
-                proc.communicate(input=html_args.data.encode('utf-8'))
+                payload = html_args.data or ''
+                _log(f"[DEBUG_COPY] received copy request len={len(payload)}")
+                proc = subprocess.Popen(['clip'], stdin=subprocess.PIPE, shell=False)
+                proc.communicate(input=payload.encode('utf-8'))
                 html_args.returnData = 'ok'
             except Exception as e:
                 _log(f"[ERROR_COPY] {e}")
                 html_args.returnData = 'error'
+        elif html_args.action == 'response':
+            _log('[DEBUG_HTML] ignore response event')
+            html_args.returnData = ''
+        else:
+            _log(f"[DEBUG_HTML] unknown action={html_args.action}")
+            html_args.returnData = ''
 
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):

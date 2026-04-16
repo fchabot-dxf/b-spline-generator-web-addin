@@ -15,4 +15,4 @@ def get_block(ui_data=None):
         {'Type': 'Coincident', 'Targets': ['arc_hip_L:C',      'skel_hip_pin_L:E'],      'Name': 'hip_center_pin_L',      'CK': 'ck_arc_hip_weld',      'AllowNudge': True},
     ]
 
-    return {"Name": "Welds", "PhaseID": "p12_welds", "BuildSequence": seq}
+    return {"Name": "Welds", "PhaseID": "p13_welds", "BuildSequence": seq}

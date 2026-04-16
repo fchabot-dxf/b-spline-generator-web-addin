@@ -7,16 +7,14 @@ def get_block(ui_data=None):
     """
     seq = [
         # RIGHT side
-        {'Type': 'Tangent', 'Targets': ['arc_shoulder_R', 'arc_waist_R']},
         {'Type': 'Tangent', 'Targets': ['arc_waist_R',    'arc_hip_R']},
 
         # LEFT side
         {'Type': 'Tangent', 'Targets': ['arc_hip_L',      'arc_waist_L']},
-        {'Type': 'Tangent', 'Targets': ['arc_waist_L',    'arc_shoulder_L']},
     ]
 
     return {
         "Name": "ArcTangency",
-        "PhaseID": "p09_tangency",
+        "PhaseID": "p10_tangency",
         "BuildSequence": seq
     }
