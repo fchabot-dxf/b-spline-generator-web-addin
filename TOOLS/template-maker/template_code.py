@@ -3,7 +3,7 @@ def build_header(file_name='template_phase.py', template_number='T2'):
         f"# File: {file_name}\n"
         f"# Template: {template_number}\n"
         "\n"
-        "from frame_builder.fb_engine import geometry, constraints, dimensions\n"
+        "from frame_builder.fb_engine import geometry, constraints, dimensions, Seeds\n"
         "\n"
         f"def build_sequence(ctx, sketch, plan='{template_number}'):\n"
         "    # Auto-generated template builder code\n"
@@ -43,6 +43,8 @@ def build_phase_footer(phase_name='PhaseName', phase_id='p01'):
 
 
 def wrap_statement(statement):
+    if not statement or not isinstance(statement, str):
+        return ''
     if statement.startswith('Seeds.'):
         return f'    seeds.append({statement})'
     if statement.startswith('Constraints.'):

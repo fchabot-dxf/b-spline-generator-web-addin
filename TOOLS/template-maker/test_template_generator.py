@@ -153,8 +153,15 @@ def run_test():
     payload_unique = template_generator.build_template_payload([unnamed1, unnamed2])
     assert payload_unique['items'][0]['name'] != payload_unique['items'][1]['name'], 'expected unique names for anonymous lines'
 
+    # Validate actual generated preview script exactly as the add-in would produce it.
     full_code = template_generator._default_header('test_template.py', 'T2') + payload['codePreview'] + template_generator._default_footer()
     compile(full_code, '<string>', 'exec')
+
+    # Validate phase block content is isolated to the phase block output.
+    assert not payload['phaseBlockCode'].startswith('# File:'), 'phaseBlockCode should not include wrapper header'
+    assert 'def get_block(' in payload['phaseBlockCode'], 'expected generated phase block function'
+    compile(payload['phaseBlockCode'], '<string>', 'exec')
+
     print('\nTest passed.')
 
 

@@ -159,6 +159,7 @@ def _push_selection_to_palette():
 
 class _HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
+        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
         html_args = adsk.core.HTMLEventArgs.cast(args)
         action = html_args.action
         if action == 'poll':
@@ -177,7 +178,6 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 data = html_args.data or ''
                 if isinstance(data, str):
                     data = json.loads(data)
-                global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
@@ -192,7 +192,6 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 data = html_args.data or ''
                 if isinstance(data, str):
                     data = json.loads(data)
-                global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
@@ -242,6 +241,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 def run(context):
     try:
+        _log("[run] started")
         _reload_modules()
         app = adsk.core.Application.get()
         ui = app.userInterface
@@ -329,3 +329,19 @@ def stop(context):
         _cleanup_cache_files(_current_dir)
     except Exception:
         pass
+
+    # Remove all registered event handlers and clear the list — must run
+    # unconditionally even if the block above raised, otherwise handlers
+    # accumulate on every reload and fire multiple times per selection.
+    try:
+        app = adsk.core.Application.get()
+        if app:
+            ui = app.userInterface
+            for h in _handlers:
+                try:
+                    ui.activeSelectionChanged.remove(h)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    _handlers.clear()

@@ -328,7 +328,7 @@
                 header.push('# Sketch: ' + sketchName);
             }
             header.push('',
-                'from frame_builder.fb_engine import geometry, constraints, dimensions',
+                'from frame_builder.fb_engine import geometry, constraints, dimensions, Seeds',
                 '',
                 "def build_sequence(ctx, sketch, plan='" + templateNumber + "'):",
                 '    # Auto-generated template builder code',
@@ -516,6 +516,22 @@
             return container;
         }
 
+        function wrapStatement(statement) {
+            if (!statement || typeof statement !== 'string') {
+                return statement;
+            }
+            if (statement.startsWith('Seeds.')) {
+                return 'seeds.append(' + statement + ')';
+            }
+            if (statement.startsWith('Constraints.')) {
+                return 'constraints.append(' + statement + ')';
+            }
+            if (statement.startsWith('dimensions.') || statement.startsWith('Dimensions.')) {
+                return 'dims.append(' + statement + ')';
+            }
+            return statement;
+        }
+
         function renderPanels(payload) {
             var container = document.getElementById('panels');
             container.innerHTML = '';
@@ -542,7 +558,7 @@
                     if (item.coord && item.coord !== item.coordExpr) {
                         content += '# coord: ' + item.coord + '\n';
                     }
-                    content += item.hint || '';
+                    content += wrapStatement(item.hint) || '';
                     if (item.meta) {
                         content += content ? '\n# ' + item.meta : '# ' + item.meta;
                     }
