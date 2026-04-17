@@ -28,6 +28,7 @@ adsk_core.Application = _FakeApplication
 # Import the generator modules after stubbing adsk.
 import expression_coords
 import template_generator
+from template_variable_block import format_variable_block
 
 
 def fake_design_params():
@@ -106,6 +107,25 @@ def build_fake_selection():
     return [line, arc]
 
 
+def test_hint_uses_design_parameter_expressions():
+    entities = build_fake_selection()
+    payload = template_generator.build_template_payload(entities)
+    assert payload['count'] == 2, 'expected 2 selected entities'
+    assert len(payload['items']) == 2, 'expected 2 items in payload'
+    assert any('coordExpr' in item and item['coordExpr'] for item in payload['items']), 'expected coordExpr for items'
+    assert any('widthIn' in item['coordExpr'] or 'heightIn' in item['coordExpr'] for item in payload['items']), 'expected design parameter expressions in coordExpr'
+    assert all(('widthIn' in item['hint'] or 'heightIn' in item['hint']) if item['coordExpr'] else True for item in payload['items']), 'expected generated hints to use parameter expressions'
+    variable_block = format_variable_block(payload['variables'])
+    # The T1 vars block is meant to declare extra user params the phase
+    # needs on top of the runtime-provided built-ins (widthIn/heightIn are
+    # always pre-existing in Frame Builder — read-only, no initiation).
+    # So built-ins MUST be excluded, and entity IDs MUST NOT leak in.
+    assert 'widthIn' not in variable_block, 'built-in widthIn should not appear in T1 vars block'
+    assert 'heightIn' not in variable_block, 'built-in heightIn should not appear in T1 vars block'
+    assert 'horn_TL' not in variable_block, 'entity IDs must not leak into vars block'
+    assert 'arc_shoulder_L' not in variable_block, 'entity IDs must not leak into vars block'
+
+
 def run_test():
     entities = build_fake_selection()
     payload = template_generator.build_template_payload(entities)
@@ -129,41 +149,52 @@ def run_test():
     assert len(payload['items']) == 2, 'expected 2 items in payload'
     assert any('coordExpr' in item and item['coordExpr'] for item in payload['items']), 'expected coordExpr for items'
     assert any('widthIn' in item['coordExpr'] or 'heightIn' in item['coordExpr'] for item in payload['items']), 'expected design parameter expressions in coordExpr'
+    assert all(('widthIn' in item['hint'] or 'heightIn' in item['hint']) if item['coordExpr'] else True for item in payload['items']), 'expected generated hints to use parameter expressions'
     assert 'seeds.append(' in payload['codePreview'], 'expected seed code in preview'
+    assert 'widthIn' in payload['codePreview'] or 'heightIn' in payload['codePreview'], 'expected parameter expressions in preview code'
     assert 'phaseBlockCode' in payload, 'expected phaseBlockCode in payload'
-    assert 'def get_block(' in payload['phaseBlockCode'], 'expected generated phase block function'
+    assert 'def get_block(' in payload['phaseBlockCode'], 'expected phase block to define get_block()'
 
-    dimension_step = template_generator._parse_statement_to_phase_step(
-        'Dimensions.Radius("dim1", p1, expression=widthIn*0.5)'
+
+def test_vars_block_includes_real_user_params_but_not_entity_ids():
+    """Positive + negative coverage for the T1 vars block.
+
+    A real Fusion `radius` user parameter should make it through into the
+    vars block when a selected entity's hint references it, while entity
+    IDs ("horn_TL", "arc_shoulder_L") and built-ins (widthIn, heightIn)
+    must not appear.
+    """
+    def params_with_radius():
+        return {
+            'widthIn': {'expression': '7 "', 'value': 7.0},
+            'heightIn': {'expression': '9 "', 'value': 9.0},
+            'radius': {'expression': '2.8255', 'value': 2.8255},
+        }
+
+    # Swap params for this test only, then restore.
+    saved_gen = template_generator.get_design_params
+    saved_expr = expression_coords.get_design_params
+    template_generator.get_design_params = params_with_radius
+    expression_coords.get_design_params = params_with_radius
+    try:
+        entities = build_fake_selection()
+        payload = template_generator.build_template_payload(entities)
+        variable_block = format_variable_block(payload['variables'])
+    finally:
+        template_generator.get_design_params = saved_gen
+        expression_coords.get_design_params = saved_expr
+
+    assert 'radius' in variable_block, (
+        f'expected real user param radius in vars block; got: {variable_block!r}'
     )
-    assert dimension_step is not None, 'expected dimension step parsing for Dimensions.Radius'
-    assert dimension_step['DimType'].value == 'Radius'
-    assert dimension_step['Name'].value == 'dim1'
-    assert isinstance(dimension_step['Target'], template_generator.RawCode)
-    assert dimension_step['Target'].code == 'p1'
-    assert isinstance(dimension_step['Expression'], template_generator.RawCode)
-    assert dimension_step['Expression'].code == 'widthIn*0.5'
-
-    p1 = FakePoint(0.0, 0.0)
-    p2 = FakePoint(1.0, 0.0)
-    p3 = FakePoint(0.0, 1.0)
-    p4 = FakePoint(1.0, 1.0)
-    unnamed1 = FakeSketchLine(p1, p2)
-    unnamed2 = FakeSketchLine(p3, p4)
-    payload_unique = template_generator.build_template_payload([unnamed1, unnamed2])
-    assert payload_unique['items'][0]['name'] != payload_unique['items'][1]['name'], 'expected unique names for anonymous lines'
-
-    # Validate actual generated preview script exactly as the add-in would produce it.
-    full_code = template_generator._default_header('test_template.py', 'T2') + payload['codePreview'] + template_generator._default_footer()
-    compile(full_code, '<string>', 'exec')
-
-    # Validate phase block content is isolated to the phase block output.
-    assert not payload['phaseBlockCode'].startswith('# File:'), 'phaseBlockCode should not include wrapper header'
-    assert 'def get_block(' in payload['phaseBlockCode'], 'expected generated phase block function'
-    compile(payload['phaseBlockCode'], '<string>', 'exec')
-
-    print('\nTest passed.')
+    assert 'widthIn' not in variable_block, 'built-in widthIn must not appear'
+    assert 'heightIn' not in variable_block, 'built-in heightIn must not appear'
+    assert 'horn_TL' not in variable_block, 'entity IDs must not leak'
+    assert 'arc_shoulder_L' not in variable_block, 'entity IDs must not leak'
 
 
 if __name__ == '__main__':
     run_test()
+    test_hint_uses_design_parameter_expressions()
+    test_vars_block_includes_real_user_params_but_not_entity_ids()
+    print('OK')

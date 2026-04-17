@@ -237,6 +237,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 _log(f"[ERROR] Failed to add HTML event handler: {e}")
 
         palette.isVisible = True
+        _push_selection_to_palette()
 
 
 def run(context):

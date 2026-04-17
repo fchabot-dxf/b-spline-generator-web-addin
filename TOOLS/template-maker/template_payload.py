@@ -54,13 +54,31 @@ def _strip_point_prefix(expr):
     return expr
 
 
+def _call_entity_coord_expr_fn(get_entity_coord_expr_fn, ent, params=None):
+    if not get_entity_coord_expr_fn:
+        return ''
+    try:
+        return get_entity_coord_expr_fn(ent, params)
+    except TypeError:
+        try:
+            return get_entity_coord_expr_fn(ent)
+        except Exception:
+            return ''
+    except Exception:
+        return ''
+
+
 BUILTIN_TEMPLATE_VARIABLES = {'widthIn', 'heightIn'}
 
 
 def _parse_expression_tokens(expr):
     if not expr:
         return []
-    tokens = re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b', expr)
+    # Drop content inside quoted strings before token-scanning so entity IDs
+    # like "horn_TL" (which appear inside Seeds.Line("horn_TL", ...)) don't
+    # get mistaken for variables.
+    stripped = re.sub(r'"[^"]*"|\'[^\']*\'', '', expr)
+    tokens = re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b', stripped)
     exclude = {
         'Point', 'Seeds', 'Arc', 'Line', 'Constraints', 'Dimensions',
         'center', 'start', 'end', 'SketchPoint', 'SketchLine', 'SketchArc',
@@ -115,7 +133,14 @@ def _merge_variables(primary, secondary):
     return merged
 
 
-def _collect_variables(entities, code_text='', logs=None, params=None, get_entity_coord_expr_fn=None, build_entity_hint_fn=None):
+def _collect_variables(entities, code_text='', logs=None, params=None, get_entity_coord_expr_fn=None, build_entity_hint_fn=None, valid_names=None):
+    """Scan selection-derived expressions/hints for variable-name tokens.
+
+    If ``valid_names`` is provided (e.g. the set of real Fusion user
+    parameters minus built-ins), tokens are accepted only if they appear in
+    that whitelist. That prevents entity IDs and stray identifiers (e.g.
+    the 'radius' in 'radius=2.8255') from leaking into the T1 vars block.
+    """
     names = []
 
     def add_tokens(expr, source):
@@ -124,12 +149,14 @@ def _collect_variables(entities, code_text='', logs=None, params=None, get_entit
         if tokens:
             _log_detection(logs, f"Detected tokens from {source}: {tokens}")
         for token in tokens:
+            if valid_names is not None and token not in valid_names:
+                continue
             if token not in names:
                 names.append(token)
 
     for i, ent in enumerate(entities):
         ent = _get_native(ent)
-        expr = _strip_point_prefix(get_entity_coord_expr_fn(ent, params)) if get_entity_coord_expr_fn else ''
+        expr = _strip_point_prefix(_call_entity_coord_expr_fn(get_entity_coord_expr_fn, ent, params)) if get_entity_coord_expr_fn else ''
         add_tokens(expr, f'selection[{i}] expr')
 
         hint = build_entity_hint_fn(ent, params) if build_entity_hint_fn else ''
@@ -149,20 +176,47 @@ def _collect_variables(entities, code_text='', logs=None, params=None, get_entit
     return variables
 
 
+_POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
+
+
 def _format_point_reference(pt, params=None, get_entity_coord_expr_fn=None):
+    """Format a reference to a geometry target for use inside a statement.
+
+    For sketch *points*, return a coordinate tuple expression (which is valid
+    Python — the arrow-joined multi-tuple format is only used for lines/arcs
+    and would be invalid syntax if embedded as a constraint/dim target).
+
+    For non-point entities (lines, arcs, circles), return the entity's name
+    as a quoted string literal. Frame Builder references geometry by ID
+    anyway, so ``"horn_TL"`` is the intended form for line targets in a
+    ``PerpendicularConstraint`` or ``ParallelConstraint``.
+    """
     if not pt:
         return 'UnknownPoint'
     pt = _get_native(pt)
+    ent_type = getattr(pt, 'objectType', '').split('::')[-1] if hasattr(pt, 'objectType') else ''
+
+    # Points → coord tuple (from expression if available, else literal coord).
+    if ent_type in _POINT_TYPES:
+        expr = _strip_point_prefix(_call_entity_coord_expr_fn(get_entity_coord_expr_fn, pt, params)) if get_entity_coord_expr_fn else ''
+        if expr:
+            return expr
+        name = get_fb_name(pt)
+        if name and not name.startswith('Sketch'):
+            return f'"{name}"'
+        coord = _strip_point_prefix(get_entity_coord(pt))
+        if coord:
+            return coord
+        return 'Point(...)'
+
+    # Non-points (SketchLine, SketchArc, SketchCircle, ...) → quoted name.
     name = get_fb_name(pt)
     if name and not name.startswith('Sketch'):
         return f'"{name}"'
-    expr = _strip_point_prefix(get_entity_coord_expr_fn(pt, params)) if get_entity_coord_expr_fn else ''
-    if expr:
-        return expr
-    coord = _strip_point_prefix(get_entity_coord(pt))
-    if coord:
-        return coord
-    return 'Point(...)'
+    # Unnamed: fall back to the entity type as a placeholder — still valid
+    # Python (string literal). The user can click Rename Selection to assign
+    # a real ID and regenerate.
+    return f'"{ent_type}"' if ent_type else 'Point(...)'
 
 
 def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
@@ -177,53 +231,174 @@ def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
     return targets
 
 
+# ---------------------------------------------------------------------------
+# Shape hint builders — each one takes (ent, name, ctx) and returns the
+# Seeds.* line for that sketch shape. ``ctx`` is a small dict carrying the
+# shared helpers (params + expr fn) so per-shape signatures stay compact.
+#
+# Dispatch lives in ``_SHAPE_HINT_HANDLERS`` below. Adding a new seed is a
+# matter of writing one handler and registering it — no more edits to a
+# monolithic if/elif chain in ``_build_entity_hint``.
+# ---------------------------------------------------------------------------
+
+
+def _hint_point(ent, name, ctx):
+    coord = _strip_point_prefix(_call_entity_coord_expr_fn(ctx['expr_fn'], ent, ctx['params'])) if ctx['expr_fn'] else ''
+    coord = coord or get_entity_coord(ent)
+    return f'Seeds.Point("{name}", {coord})' if coord else f'Seeds.Point("{name}", x, y)'
+
+
+def _hint_line(ent, name, ctx):
+    start_ref = _format_point_reference(getattr(ent, 'startSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    end_ref = _format_point_reference(getattr(ent, 'endSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    return f'Seeds.Line("{name}", {start_ref}, {end_ref})'
+
+
+def _hint_arc(ent, name, ctx):
+    start_ref = _format_point_reference(getattr(ent, 'startSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    end_ref = _format_point_reference(getattr(ent, 'endSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    center_ref = _format_point_reference(getattr(ent, 'centerSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    radius_suffix = ''
+    try:
+        r = getattr(ent.geometry, 'radius', None)
+        if r is not None:
+            radius_suffix = f', radius={round(float(r), 4)}'
+    except Exception:
+        radius_suffix = ''
+    return f'Seeds.Arc("{name}", {start_ref}, {end_ref}, center={center_ref}{radius_suffix})'
+
+
+def _hint_circle(ent, name, ctx):
+    center_ref = _format_point_reference(getattr(ent, 'centerSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    radius_suffix = ''
+    try:
+        r = getattr(ent.geometry, 'radius', None)
+        if r is not None:
+            radius_suffix = f', radius={round(float(r), 4)}'
+    except Exception:
+        radius_suffix = ''
+    return f'Seeds.Circle("{name}", center={center_ref}{radius_suffix})'
+
+
+def _hint_ellipse(ent, name, ctx):
+    center_ref = _format_point_reference(getattr(ent, 'centerSketchPoint', None), ctx['params'], ctx['expr_fn'])
+    parts = [f'"{name}"', f'center={center_ref}']
+    try:
+        geo = getattr(ent, 'geometry', None)
+        major = getattr(geo, 'majorAxisRadius', None)
+        if major is not None:
+            parts.append(f'majorRadius={round(float(major), 4)}')
+        minor = getattr(geo, 'minorAxisRadius', None)
+        if minor is not None:
+            parts.append(f'minorRadius={round(float(minor), 4)}')
+        axis = getattr(geo, 'majorAxis', None)
+        if axis is not None:
+            import math as _math
+            ax = getattr(axis, 'x', None)
+            ay = getattr(axis, 'y', None)
+            if ax is not None and ay is not None:
+                theta = _math.degrees(_math.atan2(float(ay), float(ax)))
+                parts.append(f'angleDeg={round(theta, 4)}')
+    except Exception:
+        pass
+    return f'Seeds.Ellipse({", ".join(parts)})'
+
+
+def _iter_spline_points(ent):
+    """Yield the control/fit points of a spline in native order.
+
+    Fusion SketchPointList exposes ``count`` + ``item(i)``; we fall back to
+    plain iteration for fakes/tests.
+    """
+    for attr in ('fitPoints', 'controlPoints'):
+        pts = getattr(ent, attr, None)
+        if pts is None:
+            continue
+        try:
+            count = getattr(pts, 'count', None)
+            if count is not None:
+                for i in range(count):
+                    yield pts.item(i)
+                return
+        except Exception:
+            pass
+        try:
+            for pt in pts:
+                yield pt
+            return
+        except Exception:
+            continue
+
+
+def _hint_spline_factory(seed_name):
+    """Return a hint handler that emits ``Seeds.<seed_name>("id", [pts])``."""
+
+    def handler(ent, name, ctx):
+        point_refs = [
+            _format_point_reference(pt, ctx['params'], ctx['expr_fn'])
+            for pt in _iter_spline_points(ent)
+        ]
+        pts_literal = '[' + ', '.join(point_refs) + ']'
+        return f'Seeds.{seed_name}("{name}", {pts_literal})'
+
+    return handler
+
+
+_SHAPE_HINT_HANDLERS = {
+    'SketchPoint':               _hint_point,
+    'SketchPoint2D':             _hint_point,
+    'SketchPoint3D':             _hint_point,
+    'SketchLine':                _hint_line,
+    'SketchArc':                 _hint_arc,
+    'SketchCircle':              _hint_circle,
+    'SketchEllipse':             _hint_ellipse,
+    'SketchFittedSpline':        _hint_spline_factory('FittedSpline'),
+    'SketchControlPointSpline':  _hint_spline_factory('ControlPointSpline'),
+    'SketchFixedSpline':         _hint_spline_factory('FixedSpline'),
+}
+
+
+def _hint_constraint(ent, ent_type, ctx):
+    targets = _constraint_targets(ent, ctx['params'], ctx['expr_fn'])
+    args = ', '.join(targets) if targets else '/* targets */'
+    return f'Constraints.{ent_type}( {args} )'
+
+
+def _hint_dimension(ent, ent_type, name, ctx):
+    expr = ''
+    try:
+        if hasattr(ent, 'parameter') and ent.parameter:
+            expr = str(getattr(ent.parameter, 'expression', '') or '')
+    except Exception:
+        expr = ''
+    # Pull out the geometry being measured — reuses the same prop-name walk
+    # as _constraint_targets (entityOne/entityTwo/lineOne/lineTwo/entity/
+    # circle for radial/diameter dims, etc.).
+    targets = _constraint_targets(ent, ctx['params'], ctx['expr_fn'])
+    args = [f'"{name}"']
+    args.extend(targets)
+    if expr:
+        args.append(f'expression="{expr}"')
+    return f'Dimensions.{ent_type}({", ".join(args)})'
+
+
 def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None, name_override=None):
     ent = _get_native(ent)
     ent_type = ent.objectType.split('::')[-1] if hasattr(ent, 'objectType') else 'Entity'
     name = name_override if name_override else _label_for_entity(ent)
-    if ent_type in ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D'):
-        coord = _strip_point_prefix(get_entity_coord_expr_fn(ent, params)) if get_entity_coord_expr_fn else ''
-        coord = coord or get_entity_coord(ent)
-        return f'Seeds.Point("{name}", {coord})' if coord else f'Seeds.Point("{name}", x, y)'
+    ctx = {'params': params, 'expr_fn': get_entity_coord_expr_fn}
 
-    if ent_type == 'SketchLine':
-        start_ref = _format_point_reference(getattr(ent, 'startSketchPoint', None), params, get_entity_coord_expr_fn)
-        end_ref = _format_point_reference(getattr(ent, 'endSketchPoint', None), params, get_entity_coord_expr_fn)
-        return f'Seeds.Line("{name}", {start_ref}, {end_ref})'
+    handler = _SHAPE_HINT_HANDLERS.get(ent_type)
+    if handler is not None:
+        return handler(ent, name, ctx)
 
-    if ent_type == 'SketchArc':
-        start_ref = _format_point_reference(getattr(ent, 'startSketchPoint', None), params, get_entity_coord_expr_fn)
-        end_ref = _format_point_reference(getattr(ent, 'endSketchPoint', None), params, get_entity_coord_expr_fn)
-        center_ref = _format_point_reference(getattr(ent, 'centerSketchPoint', None), params, get_entity_coord_expr_fn)
-        radius = ''
-        try:
-            radius = getattr(ent.geometry, 'radius', None)
-            if radius is not None:
-                radius = f', radius={round(radius, 4)}'
-            else:
-                radius = ''
-        except Exception:
-            radius = ''
-        return f'Seeds.Arc("{name}", {start_ref}, {end_ref}, center={center_ref}{radius})'
-
-    if 'SketchConstraint' in ent_type or ent_type.endswith('Constraint') or 'Constraint' in ent_type:
-        targets = _constraint_targets(ent, params, get_entity_coord_expr_fn)
-        args = ', '.join(targets) if targets else '/* targets */'
-        return f'Constraints.{ent_type}( {args} )'
-
+    # Constraints and dimensions are matched by substring — Fusion emits a
+    # zoo of subtypes (HorizontalConstraint, PerpendicularConstraint,
+    # SketchLinearDimension, SketchRadialDimension...) that all route through
+    # a single family handler.
+    if 'Constraint' in ent_type:
+        return _hint_constraint(ent, ent_type, ctx)
     if 'Dimension' in ent_type:
-        dim_name = name
-        expr = ''
-        try:
-            if hasattr(ent, 'parameter') and ent.parameter:
-                expr = str(getattr(ent.parameter, 'expression', '') or '')
-        except Exception:
-            expr = ''
-        targets = _constraint_targets(ent, params, get_entity_coord_expr_fn)
-        if len(targets) >= 2:
-            return f'Dimensions.Distance("{dim_name}", {targets[0]}, {targets[1]}, expression={expr})'
-        if len(targets) == 1:
-            return f'Dimensions.Radius("{dim_name}", {targets[0]}, expression={expr})'
-        return f'Dimensions.{ent_type}("{dim_name}", expression={expr})'
+        return _hint_dimension(ent, ent_type, name, ctx)
 
-    return f'# Review selected entity: {ent_type} "{name}"'
+    return f'# {ent_type}("{name}")'

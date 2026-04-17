@@ -69,8 +69,56 @@ def format_point(pt):
 def get_entity_coord(ent):
     try:
         ent = _get_native(ent)
-        if ent.objectType.endswith('SketchPoint'):
+        ot = ent.objectType if hasattr(ent, 'objectType') else ''
+        if ot.endswith('SketchPoint'):
             return f"Point: ({round(ent.geometry.x,2)}, {round(ent.geometry.y,2)})"
+        # Circle — center + radius; no start/end.
+        if ot.endswith('SketchCircle'):
+            c = getattr(ent, 'centerSketchPoint', None)
+            r = getattr(getattr(ent, 'geometry', None), 'radius', None)
+            parts = []
+            if c is not None:
+                parts.append(f"({round(c.geometry.x, 2)}, {round(c.geometry.y, 2)})")
+            if r is not None:
+                parts.append(f"r={round(float(r), 2)}")
+            return ' '.join(parts)
+        # Ellipse — center + majorR + minorR.
+        if ot.endswith('SketchEllipse'):
+            c = getattr(ent, 'centerSketchPoint', None)
+            g = getattr(ent, 'geometry', None)
+            major = getattr(g, 'majorAxisRadius', None)
+            minor = getattr(g, 'minorAxisRadius', None)
+            parts = []
+            if c is not None:
+                parts.append(f"({round(c.geometry.x, 2)}, {round(c.geometry.y, 2)})")
+            if major is not None:
+                parts.append(f"rM={round(float(major), 2)}")
+            if minor is not None:
+                parts.append(f"rm={round(float(minor), 2)}")
+            return ' '.join(parts)
+        # Splines — list of fit/control points joined with arrows.
+        if ot.endswith('SketchFittedSpline') or ot.endswith('SketchControlPointSpline') or ot.endswith('SketchFixedSpline'):
+            pieces = []
+            for attr in ('fitPoints', 'controlPoints'):
+                pts = getattr(ent, attr, None)
+                if pts is None:
+                    continue
+                try:
+                    count = getattr(pts, 'count', None)
+                    if count is not None:
+                        for i in range(count):
+                            p = pts.item(i)
+                            pieces.append(f"({round(p.geometry.x, 2)}, {round(p.geometry.y, 2)})")
+                        break
+                except Exception:
+                    pass
+                try:
+                    for p in pts:
+                        pieces.append(f"({round(p.geometry.x, 2)}, {round(p.geometry.y, 2)})")
+                    break
+                except Exception:
+                    continue
+            return ' -> '.join(pieces)
         if hasattr(ent, 'startSketchPoint') and hasattr(ent, 'endSketchPoint'):
             sp = ent.startSketchPoint.geometry
             ep = ent.endSketchPoint.geometry

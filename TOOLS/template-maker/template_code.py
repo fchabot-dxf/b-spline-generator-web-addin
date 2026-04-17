@@ -33,7 +33,7 @@ def build_phase_header(function_name='get_block', template_number='T2'):
 
 def build_phase_footer(phase_name='PhaseName', phase_id='p01'):
     return (
-        "    ]\n"
+        "\n    ]\n"
         "    return {\n"
         f"        'Name': '{phase_name}',\n"
         f"        'PhaseID': '{phase_id}',\n"

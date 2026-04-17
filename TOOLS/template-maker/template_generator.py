@@ -13,9 +13,11 @@ from template_payload import (
     _strip_point_prefix,
     _get_native,
     _log_detection,
+    BUILTIN_TEMPLATE_VARIABLES,
 )
 from template_payload_builder import build_payload_items, build_code_preview
 from template_code import build_header, build_footer, wrap_statement, format_phase_block
+from template_variable_block import format_variable_block
 
 
 # Legacy aliases preserved for compatibility with the existing test harness.
@@ -39,6 +41,12 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
     count = len(entities)
     logs = []
     design_vars = _collect_design_variables(logs, get_design_params)
+    # Only accept selection-derived tokens that are real Fusion user
+    # parameters (minus built-ins like widthIn/heightIn which are always
+    # pre-existing in the Frame Builder runtime and read-only — they should
+    # not be declared again in the T1 vars block).
+    all_param_names = set((get_design_params() or {}).keys())
+    valid_names = all_param_names - BUILTIN_TEMPLATE_VARIABLES
     selection_vars = _collect_variables(
         entities,
         '',
@@ -46,8 +54,10 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
         None,
         get_entity_coord_expr,
         lambda ent, params: _build_entity_hint(ent, params, get_entity_coord_expr),
+        valid_names=valid_names,
     )
     _log_detection(logs, f"build_template_payload: selection={count} design_vars={len(design_vars)} selection_vars={len(selection_vars)}")
+    merged_variables = _merge_variables(design_vars, selection_vars)
     payload = {
         'count': count,
         'mainFeature': 'Select sketch geometry...',
@@ -56,7 +66,8 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
         'phaseBlockCode': '# No phase block generated yet.',
         'headerText': build_header(template_number=template_number),
         'footerText': build_footer(),
-        'variables': _merge_variables(design_vars, selection_vars),
+        'variables': merged_variables,
+        'variableBlock': format_variable_block(merged_variables),
         'logs': logs,
         'items': [],
         'linked': [],
@@ -77,6 +88,10 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
     payload['mainFeature'] = entities[0].objectType.split('::')[-1] if count == 1 else f'{count} Entities Selected'
     payload['description'] = 'Use the buttons below to wrap preview text into a phase module header/footer.'
     payload['codePreview'] = build_code_preview(items)
-    payload['phaseBlockCode'] = _build_phase_block_code(items, phase_name=phase_name or 'Generated Phase', phase_id=phase_id or 'p01_generated', template_number=template_number)
-    payload['listLabel'] = 'Selection List'
+    payload['phaseBlockCode'] = _build_phase_block_code(
+        items,
+        phase_name=phase_name or 'Generated Phase',
+        phase_id=phase_id or 'p01_generated',
+        template_number=template_number,
+    )
     return payload

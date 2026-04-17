@@ -135,6 +135,7 @@ def _format_point_expr(pt, params=None):
     if isinstance(pt, (list, tuple)) and len(pt) >= 2:
         x_value, y_value = pt[0], pt[1]
     else:
+        # Direct attrs (works for Point3D and the unit-test FakePoint).
         if hasattr(pt, 'x'):
             try:
                 x_value = float(pt.x)
@@ -145,6 +146,24 @@ def _format_point_expr(pt, params=None):
                 y_value = float(pt.y)
             except Exception:
                 y_value = None
+        # Fusion SketchPoint/SketchPoint3D expose coords on .geometry, not
+        # directly on the entity. Fall back to that when needed.
+        if x_value is None or y_value is None:
+            try:
+                geo = getattr(pt, 'geometry', None)
+                if geo is not None:
+                    if x_value is None and hasattr(geo, 'x'):
+                        try:
+                            x_value = float(geo.x)
+                        except Exception:
+                            pass
+                    if y_value is None and hasattr(geo, 'y'):
+                        try:
+                            y_value = float(geo.y)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
     x_expr = _infer_coord_expr(x_value, 'x', params) if x_value is not None else ''
     y_expr = _infer_coord_expr(y_value, 'y', params) if y_value is not None else ''
@@ -152,9 +171,6 @@ def _format_point_expr(pt, params=None):
         return ''
 
     coord_expr = f"({x_expr}, {y_expr})"
-    name = _get_point_name(pt)
-    if name:
-        return f"({name} : {coord_expr})"
     return coord_expr
 
 
@@ -192,14 +208,85 @@ def get_design_params():
         return {}
 
 
+def _format_scalar_expr(value, axis=None, params=None):
+    """Format a single scalar (radius, axis length) as a parametric expression."""
+    if value is None:
+        return ''
+    try:
+        value = float(value)
+    except Exception:
+        return ''
+    return _infer_coord_expr(value, axis, params)
+
+
+def _spline_fit_points(ent):
+    """Return an iterable of SketchPoint-like objects describing a spline.
+
+    Fusion exposes fitted splines with .fitPoints and control-point splines
+    with .controlPoints; both are SketchPointList-like. We gracefully fall
+    back to an empty list for anything else.
+    """
+    for attr in ('fitPoints', 'controlPoints'):
+        points = getattr(ent, attr, None)
+        if points is None:
+            continue
+        # SketchPointList supports .count + item(i); regular lists iterate.
+        try:
+            count = getattr(points, 'count', None)
+            if count is not None:
+                return [points.item(i) for i in range(count)]
+        except Exception:
+            pass
+        try:
+            return list(points)
+        except Exception:
+            continue
+    return []
+
+
 def _build_entity_coord_expr_string(ent, params=None):
     try:
         if not ent:
             return ''
         ent = _get_native(ent)
-        if hasattr(ent, 'objectType') and 'SketchPoint' in ent.objectType:
+        ent_type = getattr(ent, 'objectType', '') if hasattr(ent, 'objectType') else ''
+
+        if 'SketchPoint' in ent_type:
             expr = _format_point_expr(ent, params)
             return f"Point: {expr}" if expr else ''
+
+        # Circle — center + radius (no start/end points).
+        if ent_type.endswith('SketchCircle'):
+            center = getattr(ent, 'centerSketchPoint', None)
+            if not center and hasattr(ent, 'geometry') and hasattr(ent.geometry, 'center'):
+                center = ent.geometry.center
+            center_expr = _format_point_expr(center, params)
+            r_value = getattr(getattr(ent, 'geometry', None), 'radius', None)
+            r_expr = _format_scalar_expr(r_value, 'x', params)
+            if center_expr and r_expr:
+                return f"{center_expr} r={r_expr}"
+            return center_expr or ''
+
+        # Ellipse — center + two axis radii.
+        if ent_type.endswith('SketchEllipse'):
+            center = getattr(ent, 'centerSketchPoint', None)
+            if not center and hasattr(ent, 'geometry') and hasattr(ent.geometry, 'center'):
+                center = ent.geometry.center
+            center_expr = _format_point_expr(center, params)
+            geo = getattr(ent, 'geometry', None)
+            major_expr = _format_scalar_expr(getattr(geo, 'majorAxisRadius', None), 'x', params)
+            minor_expr = _format_scalar_expr(getattr(geo, 'minorAxisRadius', None), 'y', params)
+            parts = [p for p in (center_expr, f"rM={major_expr}" if major_expr else '', f"rm={minor_expr}" if minor_expr else '') if p]
+            return ' '.join(parts)
+
+        # Splines (fitted or control-point) — list of points.
+        if ent_type.endswith('SketchFittedSpline') or ent_type.endswith('SketchControlPointSpline') or ent_type.endswith('SketchFixedSpline'):
+            point_exprs = []
+            for pt in _spline_fit_points(ent):
+                pe = _format_point_expr(pt, params)
+                if pe:
+                    point_exprs.append(pe)
+            return ' -> '.join(point_exprs)
 
         if hasattr(ent, 'startSketchPoint') and hasattr(ent, 'endSketchPoint'):
             start_expr = _format_point_expr(ent.startSketchPoint, params)

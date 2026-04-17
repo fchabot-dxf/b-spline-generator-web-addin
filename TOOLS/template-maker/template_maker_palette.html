@@ -122,7 +122,7 @@
             padding: 12px 14px;
             box-sizing: border-box;
             font-family: Consolas, "Courier New", monospace;
-            font-size: 0.88em;
+            font-size: 0.92em;
             line-height: 1.4;
             resize: vertical;
             background: #fbfcff;
@@ -168,6 +168,38 @@
             font-size: 0.9em;
             width: fit-content;
         }
+        .tab-bar {
+            display: flex;
+            gap: 8px;
+            margin: 14px 0;
+        }
+        .tab-button {
+            border: 1px solid #ccd7e4;
+            background: #ffffff;
+            color: #0f4d82;
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 700;
+        }
+        .tab-button.active {
+            background: #0077c8;
+            color: #ffffff;
+            border-color: #0077c8;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tab-section-title {
+            margin: 0 0 10px 0;
+            font-size: 1.0em;
+            color: #0f4d82;
+            font-weight: 700;
+        }
         .add-variable-btn:hover {
             background: #eef7ff;
         }
@@ -201,7 +233,7 @@
             border-radius: 8px;
             padding: 10px;
             font-family: Consolas, "Courier New", monospace;
-            font-size: 0.88em;
+            font-size: 0.92em;
             line-height: 1.4;
             resize: vertical;
             background: #ffffff;
@@ -231,6 +263,14 @@
         .secondary:hover {
             background: #4d5d73;
         }
+        .flash-ok {
+            background: #2f7d3f !important;
+            color: #fff !important;
+        }
+        .flash-err {
+            background: #a33a3a !important;
+            color: #fff !important;
+        }
     </style>
 </head>
 <body>
@@ -253,18 +293,32 @@
             <input id="sketch-name-input" type="text" placeholder="anatomy" value="anatomy">
         </label>
     </div>
-    <div id="panels"></div>
-    <textarea id="code-box" class="code-output" readonly placeholder="Combined code preview will appear here..."></textarea>
-    <div class="button-row">
-        <button id="wrap-start-btn">Insert Header</button>
-        <button id="wrap-end-btn">Insert Footer</button>
-        <button id="clear-wrap-btn" class="secondary">Reset Preview</button>
-        <button id="copy-btn">Copy Code</button>
-        <button id="rename-btn" class="secondary">Rename Selection</button>
+    <div class="tab-bar">
+        <button id="phase-tab-btn" class="tab-button active">Phase Generator</button>
+        <button id="variable-tab-btn" class="tab-button">Variable Generator</button>
     </div>
-    <textarea id="phase-code-box" class="code-output" readonly placeholder="Generated phase block code will appear here..."></textarea>
-    <div class="button-row">
-        <button id="copy-phase-btn" class="secondary">Copy Phase Block</button>
+    <div id="phase-section" class="tab-content active">
+        <div id="panels"></div>
+        <textarea id="code-box" class="code-output" readonly placeholder="Combined code preview will appear here..."></textarea>
+        <div class="button-row">
+            <button id="wrap-start-btn">Insert Header</button>
+            <button id="wrap-end-btn">Insert Footer</button>
+            <button id="clear-wrap-btn" class="secondary">Reset Preview</button>
+            <button id="copy-btn">Copy Code</button>
+            <button id="rename-btn" class="secondary">Rename Selection</button>
+        </div>
+        <textarea id="phase-code-box" class="code-output" readonly placeholder="Generated phase block code will appear here..."></textarea>
+        <div class="button-row">
+            <button id="copy-phase-btn" class="secondary">Copy Phase Block</button>
+        </div>
+    </div>
+    <div id="variable-section" class="tab-content">
+        <h2 class="tab-section-title">Variable Insertion Generator</h2>
+        <div id="variable-panel-container"></div>
+        <textarea id="variable-code-box" class="code-output" readonly placeholder="Generated variable block will appear here..."></textarea>
+        <div class="button-row">
+            <button id="copy-variable-btn">Copy Variable Block</button>
+        </div>
     </div>
 
     <script>
@@ -516,6 +570,18 @@
             return container;
         }
 
+        function renderVariablePanel(payload) {
+            var container = document.getElementById('variable-panel-container');
+            if (!container) {
+                return;
+            }
+            container.innerHTML = '';
+            if (!payload) {
+                return;
+            }
+            container.appendChild(renderVariables(payload));
+        }
+
         function wrapStatement(statement) {
             if (!statement || typeof statement !== 'string') {
                 return statement;
@@ -546,7 +612,6 @@
                 document.getElementById('sketch-name-input').value
             );
             container.appendChild(makeSection('Wrapper Metadata', headerText, 'header'));
-            container.appendChild(renderVariables(payload));
 
             if (payload.items && payload.items.length > 0) {
                 payload.items.forEach(function(item, idx) {
@@ -614,7 +679,7 @@
 
             if (currentPayload && currentPayload.codePreview && currentPayload.codePreview.trim() && sections.length <= 2) {
                 var previewLines = currentPayload.codePreview.trim().split('\n').map(function(line) {
-                    return line.trim();
+                    return line.replace(/\s+$/, '');
                 }).filter(function(line) {
                     return line.length > 0;
                 });
@@ -636,6 +701,7 @@
                 return line.length > 0;
             }).join('\n\n');
             updatePhaseBlockPreview();
+            updateVariableBlockPreview();
         }
 
         function updatePhaseBlockPreview() {
@@ -644,6 +710,30 @@
                 return;
             }
             phaseBox.value = currentPayload && currentPayload.phaseBlockCode ? currentPayload.phaseBlockCode : 'Generated phase block code will appear here...';
+        }
+
+        function updateVariableBlockPreview() {
+            var variableBox = document.getElementById('variable-code-box');
+            if (!variableBox) {
+                return;
+            }
+            var variables = getVariableRows();
+            var enabledVars = variables.filter(function(v) {
+                return v.enabled && v.name;
+            });
+            if (enabledVars.length === 0) {
+                variableBox.value = 'Generated variable block will appear here...';
+                return;
+            }
+            var lines = [];
+            enabledVars.forEach(function(v) {
+                if (v.expression && v.expression !== v.name) {
+                    lines.push(v.name + ' = ' + v.expression);
+                } else {
+                    lines.push(v.name);
+                }
+            });
+            variableBox.value = lines.join('\n');
         }
 
         function resetPreview() {
@@ -666,6 +756,12 @@
             document.getElementById('pulse-box').style.background = '#e8f5ff';
             document.getElementById('pulse-box').style.color = '#0f4d82';
             renderPanels(payload);
+            renderVariablePanel(payload);
+            var variableBox = document.getElementById('variable-code-box');
+            if (variableBox && payload.variableBlock) {
+                variableBox.value = payload.variableBlock;
+            }
+            updateVariableBlockPreview();
         }
 
         window.fusionJavaScriptHandler = function(action, data) {
@@ -719,6 +815,7 @@
         }
 
         function insertHeader() {
+            var btn = document.getElementById('wrap-start-btn');
             var code = document.getElementById('code-box').value;
             var header = buildHeaderText(
                 document.getElementById('file-name-input').value,
@@ -727,12 +824,27 @@
                 document.getElementById('sketch-name-input').value
             );
             document.getElementById('code-box').value = header + '\n' + code;
+            flashBtn(btn, 'Header inserted', true);
         }
 
         function insertFooter() {
+            var btn = document.getElementById('wrap-end-btn');
             var code = document.getElementById('code-box').value;
             var footer = buildFooterText();
             document.getElementById('code-box').value = code + '\n' + footer;
+            flashBtn(btn, 'Footer inserted', true);
+        }
+
+        function resetPreview() {
+            var btn = document.getElementById('clear-wrap-btn');
+            if (!currentPayload) {
+                flashBtn(btn, 'No payload', false);
+                return;
+            }
+            document.getElementById('file-name-input').value = 'T2_p05_lines.py';
+            document.getElementById('template-number-input').value = 'T2';
+            renderPanels(currentPayload);
+            flashBtn(btn, 'Reset', true);
         }
 
         function syncSettingsToHost() {
@@ -758,91 +870,135 @@
                 flashBtn(btn, 'Nothing', false);
                 return;
             }
+            sendTextToHost('copy', text, btn, 'Copied!');
+        }
+
+        function copyVariableBlockCode() {
+            var btn = document.getElementById('copy-variable-btn');
+            var text = document.getElementById('variable-code-box').value;
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            sendTextToHost('copy', text, btn, 'Copied!');
+        }
+
+        function sendTextToHost(action, text, btn, okLabel) {
             if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
-                adsk.fusionSendData('copy', text).then(function(resp) {
-                    flashBtn(btn, resp === 'ok' ? 'Copied!' : 'Error', resp === 'ok');
-                }).catch(function() {
-                    flashBtn(btn, 'Error', false);
-                });
-            } else {
                 try {
-                    var ta = document.createElement('textarea');
-                    ta.value = text;
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
-                    flashBtn(btn, 'Copied!', true);
-                } catch (e) {
-                    flashBtn(btn, 'Error', false);
-                }
+                    var result = adsk.fusionSendData(action, text);
+                    if (result && typeof result.then === 'function') {
+                        result.then(function(resp) {
+                            flashBtn(btn, resp === 'ok' ? okLabel : 'Error', resp === 'ok');
+                        }).catch(function() { flashBtn(btn, 'Error', false); });
+                        return;
+                    }
+                    flashBtn(btn, result === 'ok' ? okLabel : 'Error', result === 'ok');
+                    return;
+                } catch (e) { /* fall through to browser clipboard */ }
+            }
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                flashBtn(btn, okLabel, true);
+            } catch (e) {
+                flashBtn(btn, 'Error', false);
             }
         }
 
         function renameSelection() {
             var btn = document.getElementById('rename-btn');
+            var settings = {
+                phaseId: (document.getElementById('phase-id-input').value || '').trim(),
+                sketchName: (document.getElementById('sketch-name-input').value || '').trim(),
+                templateNumber: (document.getElementById('template-number-input').value || '').trim()
+            };
             if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
-                flashBtn(btn, 'Unavailable', false);
+                flashBtn(btn, 'No host', false);
                 return;
             }
-            var settings = {
-                phaseId: document.getElementById('phase-id-input').value.trim(),
-                sketchName: document.getElementById('sketch-name-input').value.trim(),
-                templateNumber: document.getElementById('template-number-input').value.trim()
-            };
-            adsk.fusionSendData('rename', JSON.stringify(settings)).then(function(resp) {
-                if (resp === 'ok') {
-                    flashBtn(btn, 'Renamed!', true);
-                    poll();
+            try {
+                var result = adsk.fusionSendData('rename', JSON.stringify(settings));
+                if (result && typeof result.then === 'function') {
+                    result.then(function(resp) {
+                        flashBtn(btn, resp === 'ok' ? 'Renamed' : 'Error', resp === 'ok');
+                    }).catch(function() { flashBtn(btn, 'Error', false); });
                 } else {
-                    flashBtn(btn, 'Error', false);
+                    flashBtn(btn, result === 'ok' ? 'Renamed' : 'Error', result === 'ok');
                 }
-            }).catch(function() {
+            } catch (e) {
                 flashBtn(btn, 'Error', false);
-            });
+            }
         }
 
-        function flashBtn(btn, message, success) {
-            var original = btn.textContent;
-            btn.textContent = message;
-            btn.style.background = success ? '#388e3c' : '#c0392b';
-            setTimeout(function() {
-                btn.textContent = original;
-                btn.style.background = '';
-            }, 1400);
+        function flashBtn(btn, label, ok) {
+            if (!btn) return;
+            var originalText = btn.dataset.originalText || btn.textContent;
+            btn.dataset.originalText = originalText;
+            btn.textContent = label;
+            btn.classList.remove('flash-ok', 'flash-err');
+            btn.classList.add(ok ? 'flash-ok' : 'flash-err');
+            clearTimeout(btn._flashTimer);
+            btn._flashTimer = setTimeout(function() {
+                btn.textContent = originalText;
+                btn.classList.remove('flash-ok', 'flash-err');
+            }, 1200);
         }
 
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('copy-btn').addEventListener('click', copyCode);
-            document.getElementById('copy-phase-btn').addEventListener('click', copyPhaseBlockCode);
-            document.getElementById('wrap-start-btn').addEventListener('click', insertHeader);
-            document.getElementById('wrap-end-btn').addEventListener('click', insertFooter);
-            document.getElementById('clear-wrap-btn').addEventListener('click', resetPreview);
-            document.getElementById('file-name-input').addEventListener('input', function() {
-                if (currentPayload) renderPanels(currentPayload);
+        function switchTab(target) {
+            var phaseBtn = document.getElementById('phase-tab-btn');
+            var varBtn = document.getElementById('variable-tab-btn');
+            var phaseSection = document.getElementById('phase-section');
+            var varSection = document.getElementById('variable-section');
+            var showVar = (target === 'variable');
+            if (phaseBtn) phaseBtn.classList.toggle('active', !showVar);
+            if (varBtn) varBtn.classList.toggle('active', showVar);
+            if (phaseSection) phaseSection.classList.toggle('active', !showVar);
+            if (varSection) varSection.classList.toggle('active', showVar);
+            if (showVar) updateVariableBlockPreview();
+        }
+
+        function bindUi() {
+            var on = function(id, evt, fn) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener(evt, fn);
+            };
+            on('copy-btn', 'click', copyCode);
+            on('copy-phase-btn', 'click', copyPhaseBlockCode);
+            on('copy-variable-btn', 'click', copyVariableBlockCode);
+            on('wrap-start-btn', 'click', insertHeader);
+            on('wrap-end-btn', 'click', insertFooter);
+            on('clear-wrap-btn', 'click', resetPreview);
+            on('rename-btn', 'click', renameSelection);
+            on('phase-tab-btn', 'click', function() { switchTab('phase'); });
+            on('variable-tab-btn', 'click', function() { switchTab('variable'); });
+
+            // Any change to the settings inputs should push to the host
+            // so the next selection push uses the correct phase_prefix.
+            ['phase-id-input', 'sketch-name-input', 'template-number-input', 'file-name-input'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('change', syncSettingsToHost);
+                el.addEventListener('blur', syncSettingsToHost);
+                el.addEventListener('input', updateCombinedPreview);
             });
-            document.getElementById('template-number-input').addEventListener('input', function() {
-                if (currentPayload) {
-                    renderPanels(currentPayload);
-                    syncSettingsToHost();
-                }
-            });
-            document.getElementById('phase-id-input').addEventListener('input', function() {
-                if (currentPayload) {
-                    renderPanels(currentPayload);
-                    syncSettingsToHost();
-                }
-            });
-            document.getElementById('sketch-name-input').addEventListener('input', function() {
-                if (currentPayload) {
-                    renderPanels(currentPayload);
-                    syncSettingsToHost();
-                }
-            });
-            document.getElementById('rename-btn').addEventListener('click', renameSelection);
+
+            // Fallback polling for environments where the push channel isn't live.
+            setInterval(poll, 800);
+            // Kick one immediately so the panel isn't empty on first open.
+            setTimeout(poll, 50);
             syncSettingsToHost();
-            setInterval(poll, 2200);
-        });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindUi);
+        } else {
+            bindUi();
+        }
     </script>
 </body>
 </html>
