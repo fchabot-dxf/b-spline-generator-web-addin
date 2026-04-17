@@ -2,13 +2,17 @@
 Template Maker — Selection-driven code preview for frame template creation.
 """
 
-import adsk.core, adsk.fusion, traceback, os, json, subprocess, sys
+import importlib
+import adsk.core, adsk.fusion, traceback, os, json, subprocess, sys, shutil
 
 _handlers = []
 _html_handler = None
 _doc_activated_handler = None
 _last_sel_ids = ""
 _latest_payload = ""
+_latest_phase_id = 'p01'
+_latest_sketch_name = ''
+_latest_template_number = 'T2'
 
 PALETTE_ID = 'TemplateMaker_Palette'
 CMD_ID = 'TemplateMaker_Command'
@@ -17,7 +21,11 @@ PANEL_ID = 'TemplateMaker_Panel'
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
-from template_generator import build_template_payload
+import template_generator
+import template_payload
+import template_code
+import expression_coords
+from rename_selection import rename_selection
 
 PALETTE_URL = os.path.join(_current_dir, 'template_maker_palette.html').replace('\\', '/')
 RESOURCES_PATH = os.path.join(_current_dir, 'ressources')
@@ -59,6 +67,14 @@ def _log(msg):
         pass
 
 
+def _reload_modules():
+    try:
+        for mod in (expression_coords, template_payload, template_code, template_generator):
+            importlib.reload(mod)
+    except Exception:
+        pass
+
+
 class _SelectionChangedHandler(adsk.core.ActiveSelectionEventHandler):
     def notify(self, args):
         try:
@@ -73,6 +89,20 @@ class _DocumentActivatedHandler(adsk.core.DocumentEventHandler):
             _push_selection_to_palette()
         except Exception:
             _log(traceback.format_exc())
+
+
+def _get_phase_prefix():
+    if _latest_phase_id and _latest_sketch_name:
+        return f'{_latest_phase_id}_{_latest_sketch_name}'
+    if _latest_phase_id:
+        return _latest_phase_id
+    return _latest_sketch_name or None
+
+
+def _get_phase_name():
+    if _latest_phase_id and _latest_sketch_name:
+        return f'{_latest_phase_id}_{_latest_sketch_name}'
+    return _latest_sketch_name or _latest_phase_id or 'Generated Phase'
 
 
 def _push_selection_to_palette():
@@ -113,7 +143,13 @@ def _push_selection_to_palette():
         return
     _last_sel_ids = current_ids
 
-    payload = build_template_payload(entities)
+    payload = template_generator.build_template_payload(
+        entities,
+        phase_prefix=_get_phase_prefix(),
+        phase_id=_latest_phase_id,
+        phase_name=_get_phase_name(),
+        template_number=_latest_template_number
+    )
     _latest_payload = json.dumps(payload)
     try:
         palette.sendInfoToHTML('update', _latest_payload)
@@ -135,6 +171,50 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 html_args.returnData = 'ok'
             except Exception as e:
                 _log(f"[ERROR_COPY] {e}")
+                html_args.returnData = 'error'
+        elif action == 'settings':
+            try:
+                data = html_args.data or ''
+                if isinstance(data, str):
+                    data = json.loads(data)
+                global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
+                _latest_phase_id = str(data.get('phaseId', '') or 'p01')
+                _latest_sketch_name = str(data.get('sketchName', '') or '')
+                _latest_template_number = str(data.get('templateNumber', '') or 'T2')
+                _last_sel_ids = ''
+                _push_selection_to_palette()
+                html_args.returnData = 'ok'
+            except Exception as e:
+                _log(f"[ERROR_SETTINGS] {e}")
+                html_args.returnData = 'error'
+        elif action == 'rename':
+            try:
+                data = html_args.data or ''
+                if isinstance(data, str):
+                    data = json.loads(data)
+                global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
+                _latest_phase_id = str(data.get('phaseId', '') or 'p01')
+                _latest_sketch_name = str(data.get('sketchName', '') or '')
+                _latest_template_number = str(data.get('templateNumber', '') or 'T2')
+                app = adsk.core.Application.get()
+                ui = app.userInterface
+                sels = ui.activeSelections
+                entities = []
+                if sels:
+                    for i in range(sels.count):
+                        try:
+                            ent = sels.item(i).entity
+                            if ent:
+                                entities.append(ent)
+                        except Exception:
+                            pass
+                renamed = rename_selection(entities, phase_prefix=_get_phase_prefix())
+                if renamed > 0:
+                    _last_sel_ids = ''
+                    _push_selection_to_palette()
+                html_args.returnData = 'ok'
+            except Exception as e:
+                _log(f"[ERROR_RENAME] {e}")
                 html_args.returnData = 'error'
         else:
             html_args.returnData = ''
@@ -162,6 +242,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 def run(context):
     try:
+        _reload_modules()
         app = adsk.core.Application.get()
         ui = app.userInterface
 

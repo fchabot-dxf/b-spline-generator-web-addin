@@ -130,6 +130,29 @@ def run_test():
     assert any('coordExpr' in item and item['coordExpr'] for item in payload['items']), 'expected coordExpr for items'
     assert any('widthIn' in item['coordExpr'] or 'heightIn' in item['coordExpr'] for item in payload['items']), 'expected design parameter expressions in coordExpr'
     assert 'seeds.append(' in payload['codePreview'], 'expected seed code in preview'
+    assert 'phaseBlockCode' in payload, 'expected phaseBlockCode in payload'
+    assert 'def get_block(' in payload['phaseBlockCode'], 'expected generated phase block function'
+
+    dimension_step = template_generator._parse_statement_to_phase_step(
+        'Dimensions.Radius("dim1", p1, expression=widthIn*0.5)'
+    )
+    assert dimension_step is not None, 'expected dimension step parsing for Dimensions.Radius'
+    assert dimension_step['DimType'].value == 'Radius'
+    assert dimension_step['Name'].value == 'dim1'
+    assert isinstance(dimension_step['Target'], template_generator.RawCode)
+    assert dimension_step['Target'].code == 'p1'
+    assert isinstance(dimension_step['Expression'], template_generator.RawCode)
+    assert dimension_step['Expression'].code == 'widthIn*0.5'
+
+    p1 = FakePoint(0.0, 0.0)
+    p2 = FakePoint(1.0, 0.0)
+    p3 = FakePoint(0.0, 1.0)
+    p4 = FakePoint(1.0, 1.0)
+    unnamed1 = FakeSketchLine(p1, p2)
+    unnamed2 = FakeSketchLine(p3, p4)
+    payload_unique = template_generator.build_template_payload([unnamed1, unnamed2])
+    assert payload_unique['items'][0]['name'] != payload_unique['items'][1]['name'], 'expected unique names for anonymous lines'
+
     full_code = template_generator._default_header('test_template.py', 'T2') + payload['codePreview'] + template_generator._default_footer()
     compile(full_code, '<string>', 'exec')
     print('\nTest passed.')

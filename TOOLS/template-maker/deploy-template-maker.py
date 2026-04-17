@@ -63,6 +63,14 @@ def cleanup_cache(directory: Path):
                     pass
 
 
+def _on_rm_error(func, path, exc_info):
+    try:
+        os.chmod(path, 0o666)
+        func(path)
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Deploy
 # ---------------------------------------------------------------------------
@@ -91,9 +99,10 @@ def deploy():
     if DEST_DIR.exists():
         print("  Removing old install...")
         try:
-            shutil.rmtree(DEST_DIR)
+            shutil.rmtree(DEST_DIR, onerror=_on_rm_error)
         except Exception as e:
             print(f"ERROR: could not remove old install: {e}")
+            print("  Hint: close Fusion 360 or stop the add-in before deploying, then retry.")
             sys.exit(1)
 
     print("  Copying fresh files...")

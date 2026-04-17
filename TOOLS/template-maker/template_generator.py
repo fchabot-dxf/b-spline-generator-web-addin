@@ -1,6 +1,10 @@
 import adsk.core, adsk.fusion
-from entity_helpers import get_entity_coord, get_fb_metadata
 from expression_coords import get_design_params, get_entity_coord_expr
+from phase_parser import parse_statement_to_phase_step, format_phase_step, RawCode, LiteralString
+
+_parse_statement_to_phase_step = parse_statement_to_phase_step
+RawCode = RawCode
+LiteralString = LiteralString
 from template_payload import (
     _build_entity_hint,
     _collect_design_variables,
@@ -8,13 +12,30 @@ from template_payload import (
     _merge_variables,
     _strip_point_prefix,
     _get_native,
-    _label_for_entity,
     _log_detection,
 )
-from template_code import _default_header, _default_footer, _wrap_sequence_hint
+from template_payload_builder import build_payload_items, build_code_preview
+from template_code import build_header, build_footer, wrap_statement, format_phase_block
 
 
-def build_template_payload(entities):
+# Legacy aliases preserved for compatibility with the existing test harness.
+_default_header = build_header
+_default_footer = build_footer
+_wrap_sequence_hint = wrap_statement
+
+
+def _build_phase_block_code(items, phase_name='Generated Phase', phase_id='p01_generated', function_name='get_block', template_number='T2'):
+    lines = []
+    for item in items:
+        step = parse_statement_to_phase_step(item['hint'])
+        if step:
+            lines.append(format_phase_step(step))
+        else:
+            lines.append(f"    # {item['hint']}")
+    return format_phase_block(lines, phase_name=phase_name, phase_id=phase_id, function_name=function_name, template_number=template_number)
+
+
+def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_name=None, template_number='T2'):
     count = len(entities)
     logs = []
     design_vars = _collect_design_variables(logs, get_design_params)
@@ -32,8 +53,9 @@ def build_template_payload(entities):
         'mainFeature': 'Select sketch geometry...',
         'description': 'Select sketch geometry to preview seed and constraint snippets.',
         'codePreview': '# No selection yet. Select sketch entities to generate code previews.',
-        'headerText': _default_header(),
-        'footerText': _default_footer(),
+        'phaseBlockCode': '# No phase block generated yet.',
+        'headerText': build_header(template_number=template_number),
+        'footerText': build_footer(),
         'variables': _merge_variables(design_vars, selection_vars),
         'logs': logs,
         'items': [],
@@ -46,34 +68,15 @@ def build_template_payload(entities):
     if count == 0:
         return payload
 
-    lines = [f'# Template Maker preview — {count} selected']
-    for ent in entities:
-        native = _get_native(ent)
-        label = _label_for_entity(native)
-        coord = get_entity_coord(native) or ''
-        expr = _strip_point_prefix(get_entity_coord_expr(native)) or coord
-        hint = _build_entity_hint(native, None, get_entity_coord_expr)
-        meta = get_fb_metadata(native) if hasattr(native, 'attributes') else ''
-
-        payload['items'].append({
-            'name': label,
-            'coord': coord,
-            'coordExpr': expr,
-            'meta': meta,
-            'hint': hint
-        })
-        payload['linked'].append(f"{label} | {coord}")
-        payload['linked_expr'].append(f"{label} | {expr}")
-        lines.append(f"    # {label}")
-        if expr:
-            lines.append(f"    # coordExpr: {expr}")
-        lines.append(_wrap_sequence_hint(hint))
-        if meta:
-            lines.append(f"    # {meta}")
-        lines.append('')
+    items = build_payload_items(entities, phase_prefix=phase_prefix)
+    payload['items'] = items
+    for item in items:
+        payload['linked'].append(f"{item['name']} | {item['coord']}")
+        payload['linked_expr'].append(f"{item['name']} | {item['coordExpr']}")
 
     payload['mainFeature'] = entities[0].objectType.split('::')[-1] if count == 1 else f'{count} Entities Selected'
     payload['description'] = 'Use the buttons below to wrap preview text into a phase module header/footer.'
-    payload['codePreview'] = '\n'.join(lines)
+    payload['codePreview'] = build_code_preview(items)
+    payload['phaseBlockCode'] = _build_phase_block_code(items, phase_name=phase_name or 'Generated Phase', phase_id=phase_id or 'p01_generated', template_number=template_number)
     payload['listLabel'] = 'Selection List'
     return payload

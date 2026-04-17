@@ -54,12 +54,15 @@ def _strip_point_prefix(expr):
     return expr
 
 
+BUILTIN_TEMPLATE_VARIABLES = {'widthIn', 'heightIn'}
+
+
 def _parse_expression_tokens(expr):
     if not expr:
         return []
     tokens = re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b', expr)
     exclude = {
-        'Point', 'Seeds', 'Arc', 'Line', 'Constraints',
+        'Point', 'Seeds', 'Arc', 'Line', 'Constraints', 'Dimensions',
         'center', 'start', 'end', 'SketchPoint', 'SketchLine', 'SketchArc',
         'SketchPoint3D', 'SketchPoint2D', 'centerSketchPoint', 'startSketchPoint',
         'endSketchPoint', 'geometry', 'ctx', 'sketch', 'plan', 'True', 'False',
@@ -67,7 +70,7 @@ def _parse_expression_tokens(expr):
     }
     result = []
     for token in tokens:
-        if token in exclude:
+        if token in exclude or token in BUILTIN_TEMPLATE_VARIABLES:
             continue
         if token.isdigit():
             continue
@@ -83,6 +86,8 @@ def _collect_design_variables(logs=None, get_design_params_fn=None):
     params = (get_design_params_fn() if get_design_params_fn else {}) or {}
     variables = []
     for name, info in params.items():
+        if name in BUILTIN_TEMPLATE_VARIABLES:
+            continue
         expr = info.get('expression') or ''
         if not expr:
             expr = str(info.get('value', '')).strip()
@@ -172,10 +177,10 @@ def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
     return targets
 
 
-def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None):
+def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None, name_override=None):
     ent = _get_native(ent)
     ent_type = ent.objectType.split('::')[-1] if hasattr(ent, 'objectType') else 'Entity'
-    name = _label_for_entity(ent)
+    name = name_override if name_override else _label_for_entity(ent)
     if ent_type in ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D'):
         coord = _strip_point_prefix(get_entity_coord_expr_fn(ent, params)) if get_entity_coord_expr_fn else ''
         coord = coord or get_entity_coord(ent)
@@ -205,5 +210,20 @@ def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None):
         targets = _constraint_targets(ent, params, get_entity_coord_expr_fn)
         args = ', '.join(targets) if targets else '/* targets */'
         return f'Constraints.{ent_type}( {args} )'
+
+    if 'Dimension' in ent_type:
+        dim_name = name
+        expr = ''
+        try:
+            if hasattr(ent, 'parameter') and ent.parameter:
+                expr = str(getattr(ent.parameter, 'expression', '') or '')
+        except Exception:
+            expr = ''
+        targets = _constraint_targets(ent, params, get_entity_coord_expr_fn)
+        if len(targets) >= 2:
+            return f'Dimensions.Distance("{dim_name}", {targets[0]}, {targets[1]}, expression={expr})'
+        if len(targets) == 1:
+            return f'Dimensions.Radius("{dim_name}", {targets[0]}, expression={expr})'
+        return f'Dimensions.{ent_type}("{dim_name}", expression={expr})'
 
     return f'# Review selected entity: {ent_type} "{name}"'

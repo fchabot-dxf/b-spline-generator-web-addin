@@ -63,6 +63,9 @@
             overflow: hidden;
         }
         .panel summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             padding: 12px 14px;
             font-weight: 700;
             cursor: pointer;
@@ -70,6 +73,46 @@
             border-bottom: 1px solid #d1dce8;
             color: #0f4d82;
             list-style: none;
+        }
+
+        .panel summary .section-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .panel summary .section-tooltip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            background: #0077c8;
+            color: #fff;
+            font-size: 0.75em;
+            font-weight: 700;
+            cursor: help;
+        }
+
+        .panel summary::before {
+            content: '';
+            display: inline-block;
+            width: 0.55rem;
+            height: 0.55rem;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            margin-right: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .panel[open] summary::before {
+            transform: rotate(135deg);
+        }
+
+        .panel summary::-webkit-details-marker {
+            display: none;
         }
         .panel textarea {
             width: 100%;
@@ -151,7 +194,7 @@
             font-size: 0.85em;
             margin-top: -4px;
         }
-        textarea#code-box {
+        textarea.code-output {
             width: 100%;
             min-height: 200px;
             border: 1px solid #ccd7e4;
@@ -202,13 +245,26 @@
             <input id="template-number-input" type="text" placeholder="T2" value="T2">
         </label>
     </div>
+    <div class="settings-row">
+        <label>Phase ID
+            <input id="phase-id-input" type="text" placeholder="p03" value="p03">
+        </label>
+        <label>Sketch Name
+            <input id="sketch-name-input" type="text" placeholder="anatomy" value="anatomy">
+        </label>
+    </div>
     <div id="panels"></div>
-    <textarea id="code-box" readonly placeholder="Combined code preview will appear here..."></textarea>
+    <textarea id="code-box" class="code-output" readonly placeholder="Combined code preview will appear here..."></textarea>
     <div class="button-row">
         <button id="wrap-start-btn">Insert Header</button>
         <button id="wrap-end-btn">Insert Footer</button>
         <button id="clear-wrap-btn" class="secondary">Reset Preview</button>
         <button id="copy-btn">Copy Code</button>
+        <button id="rename-btn" class="secondary">Rename Selection</button>
+    </div>
+    <textarea id="phase-code-box" class="code-output" readonly placeholder="Generated phase block code will appear here..."></textarea>
+    <div class="button-row">
+        <button id="copy-phase-btn" class="secondary">Copy Phase Block</button>
     </div>
 
     <script>
@@ -256,13 +312,22 @@
             return merged;
         }
 
-        function buildHeaderText(fileName, templateNumber) {
+        function buildHeaderText(fileName, templateNumber, phaseId, sketchName) {
             fileName = fileName || 'template_phase.py';
             templateNumber = templateNumber || 'T2';
-            return [
+            phaseId = phaseId || '';
+            sketchName = sketchName || '';
+            var header = [
                 '# File: ' + fileName,
-                '# Template: ' + templateNumber,
-                '',
+                '# Template: ' + templateNumber
+            ];
+            if (phaseId) {
+                header.push('# Phase: ' + phaseId);
+            }
+            if (sketchName) {
+                header.push('# Sketch: ' + sketchName);
+            }
+            header.push('',
                 'from frame_builder.fb_engine import geometry, constraints, dimensions',
                 '',
                 "def build_sequence(ctx, sketch, plan='" + templateNumber + "'):",
@@ -271,7 +336,8 @@
                 '    constraints = []',
                 '    dims = []',
                 ''
-            ].join('\n');
+            );
+            return header.join('\n');
         }
 
         function buildFooterText() {
@@ -289,11 +355,28 @@
             return 'templateMakerPanelState:' + title + ':' + (index != null ? index : 'base');
         }
 
-        function loadPanelState(key) {
+        function getSectionTooltip(title) {
+            switch (title) {
+                case 'Wrapper Metadata':
+                    return 'Editable wrapper metadata for the generated code preview.';
+                case 'Template Variables':
+                    return 'Detected template variables from the selection; enable, disable, or edit them here.';
+                case 'Return Block':
+                    return 'The return block for the generated code preview.';
+                default:
+                    return 'Review the selected entity preview for this section.';
+            }
+        }
+
+        function loadPanelState(key, defaultValue) {
             try {
-                return localStorage.getItem(key) !== '0';
+                var value = localStorage.getItem(key);
+                if (value === null || value === undefined) {
+                    return defaultValue;
+                }
+                return value !== '0';
             } catch (e) {
-                return true;
+                return defaultValue;
             }
         }
 
@@ -312,7 +395,23 @@
             detail.open = loadPanelState(stateKey);
 
             var summary = document.createElement('summary');
-            summary.textContent = title;
+            var titleSpan = document.createElement('span');
+            titleSpan.className = 'section-title';
+            var textSpan = document.createElement('span');
+            textSpan.textContent = title;
+            titleSpan.appendChild(textSpan);
+
+            var tooltipText = getSectionTooltip(title);
+            if (tooltipText) {
+                var help = document.createElement('span');
+                help.className = 'section-tooltip';
+                help.textContent = '?';
+                help.title = tooltipText;
+                titleSpan.appendChild(help);
+                summary.title = tooltipText;
+            }
+
+            summary.appendChild(titleSpan);
             detail.appendChild(summary);
 
             detail.addEventListener('toggle', function() {
@@ -384,10 +483,15 @@
         function renderVariables(payload) {
             var container = document.createElement('details');
             container.className = 'panel';
-            container.open = true;
+            var stateKey = getPanelStateKey('Template Variables', 'variables');
+            container.open = loadPanelState(stateKey, false);
             var summary = document.createElement('summary');
-            summary.textContent = 'Variables';
+            summary.textContent = 'Template Variables';
             container.appendChild(summary);
+
+            container.addEventListener('toggle', function() {
+                savePanelState(stateKey, container.open);
+            });
 
             var body = document.createElement('div');
             body.className = 'panel-body';
@@ -421,9 +525,11 @@
 
             var headerText = buildHeaderText(
                 document.getElementById('file-name-input').value,
-                document.getElementById('template-number-input').value
+                document.getElementById('template-number-input').value,
+                document.getElementById('phase-id-input').value,
+                document.getElementById('sketch-name-input').value
             );
-            container.appendChild(makeSection('Header', headerText, 'header'));
+            container.appendChild(makeSection('Wrapper Metadata', headerText, 'header'));
             container.appendChild(renderVariables(payload));
 
             if (payload.items && payload.items.length > 0) {
@@ -444,7 +550,7 @@
                 });
             }
 
-            container.appendChild(makeSection('Footer', buildFooterText(), 'footer'));
+            container.appendChild(makeSection('Return Block', buildFooterText(), 'footer'));
             updateCombinedPreview();
         }
 
@@ -513,6 +619,15 @@
             document.getElementById('code-box').value = lines.filter(function(line) {
                 return line.length > 0;
             }).join('\n\n');
+            updatePhaseBlockPreview();
+        }
+
+        function updatePhaseBlockPreview() {
+            var phaseBox = document.getElementById('phase-code-box');
+            if (!phaseBox) {
+                return;
+            }
+            phaseBox.value = currentPayload && currentPayload.phaseBlockCode ? currentPayload.phaseBlockCode : 'Generated phase block code will appear here...';
         }
 
         function resetPreview() {
@@ -591,7 +706,9 @@
             var code = document.getElementById('code-box').value;
             var header = buildHeaderText(
                 document.getElementById('file-name-input').value,
-                document.getElementById('template-number-input').value
+                document.getElementById('template-number-input').value,
+                document.getElementById('phase-id-input').value,
+                document.getElementById('sketch-name-input').value
             );
             document.getElementById('code-box').value = header + '\n' + code;
         }
@@ -600,6 +717,73 @@
             var code = document.getElementById('code-box').value;
             var footer = buildFooterText();
             document.getElementById('code-box').value = code + '\n' + footer;
+        }
+
+        function syncSettingsToHost() {
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                return;
+            }
+            var settings = {
+                phaseId: document.getElementById('phase-id-input').value.trim(),
+                sketchName: document.getElementById('sketch-name-input').value.trim(),
+                templateNumber: document.getElementById('template-number-input').value.trim()
+            };
+            try {
+                adsk.fusionSendData('settings', JSON.stringify(settings));
+            } catch (e) {
+                // ignore failures while the host bridge is not ready
+            }
+        }
+
+        function copyPhaseBlockCode() {
+            var btn = document.getElementById('copy-phase-btn');
+            var text = document.getElementById('phase-code-box').value;
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                adsk.fusionSendData('copy', text).then(function(resp) {
+                    flashBtn(btn, resp === 'ok' ? 'Copied!' : 'Error', resp === 'ok');
+                }).catch(function() {
+                    flashBtn(btn, 'Error', false);
+                });
+            } else {
+                try {
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    flashBtn(btn, 'Copied!', true);
+                } catch (e) {
+                    flashBtn(btn, 'Error', false);
+                }
+            }
+        }
+
+        function renameSelection() {
+            var btn = document.getElementById('rename-btn');
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                flashBtn(btn, 'Unavailable', false);
+                return;
+            }
+            var settings = {
+                phaseId: document.getElementById('phase-id-input').value.trim(),
+                sketchName: document.getElementById('sketch-name-input').value.trim(),
+                templateNumber: document.getElementById('template-number-input').value.trim()
+            };
+            adsk.fusionSendData('rename', JSON.stringify(settings)).then(function(resp) {
+                if (resp === 'ok') {
+                    flashBtn(btn, 'Renamed!', true);
+                    poll();
+                } else {
+                    flashBtn(btn, 'Error', false);
+                }
+            }).catch(function() {
+                flashBtn(btn, 'Error', false);
+            });
         }
 
         function flashBtn(btn, message, success) {
@@ -614,6 +798,7 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('copy-btn').addEventListener('click', copyCode);
+            document.getElementById('copy-phase-btn').addEventListener('click', copyPhaseBlockCode);
             document.getElementById('wrap-start-btn').addEventListener('click', insertHeader);
             document.getElementById('wrap-end-btn').addEventListener('click', insertFooter);
             document.getElementById('clear-wrap-btn').addEventListener('click', resetPreview);
@@ -621,8 +806,25 @@
                 if (currentPayload) renderPanels(currentPayload);
             });
             document.getElementById('template-number-input').addEventListener('input', function() {
-                if (currentPayload) renderPanels(currentPayload);
+                if (currentPayload) {
+                    renderPanels(currentPayload);
+                    syncSettingsToHost();
+                }
             });
+            document.getElementById('phase-id-input').addEventListener('input', function() {
+                if (currentPayload) {
+                    renderPanels(currentPayload);
+                    syncSettingsToHost();
+                }
+            });
+            document.getElementById('sketch-name-input').addEventListener('input', function() {
+                if (currentPayload) {
+                    renderPanels(currentPayload);
+                    syncSettingsToHost();
+                }
+            });
+            document.getElementById('rename-btn').addEventListener('click', renameSelection);
+            syncSettingsToHost();
             setInterval(poll, 2200);
         });
     </script>
