@@ -4,6 +4,16 @@ import re
 import tempfile
 from entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata, _get_arc_midpoint
 from expression_coords import _format_point_expr
+# ``_get_native`` and ``_same_entity`` moved to ``entity_util`` so that
+# ``relation_hints`` can reuse them without a circular import. Re-imported
+# here so existing callers like ``rename_selection`` and
+# ``template_naming`` that do ``from template_payload import _get_native``
+# keep working — Python adds imported names to the module namespace.
+from entity_util import _get_native, _same_entity
+# Relation-hint builders (constraints + dimensions) moved out to
+# ``relation_hints`` with crash guards baked in. Re-imported so
+# ``_build_entity_hint`` below can dispatch to them.
+from relation_hints import _hint_constraint, _hint_dimension
 
 _DEBUG_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-detection.log')
 _SOURCE_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-debug.log')
@@ -26,15 +36,6 @@ def _log_detection(logs, message):
     if logs is not None:
         logs.append(text)
     _write_debug_log(text)
-
-
-def _get_native(ent):
-    try:
-        if hasattr(ent, 'nativeObject') and ent.nativeObject:
-            return ent.nativeObject
-    except Exception:
-        pass
-    return ent
 
 
 def _label_for_entity(ent):
@@ -178,6 +179,10 @@ def _collect_variables(entities, code_text='', logs=None, params=None, get_entit
 
 
 _POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
+# NOTE: ``_POINT_TYPES`` is also referenced inside ``relation_hints``; that
+# module re-declares its own copy rather than importing to keep the two
+# modules decoupled (this constant rarely changes and each owner uses it
+# for a different check — seed vs. target role-ID).
 
 
 def _format_point_reference(pt, params=None, get_entity_coord_expr_fn=None):
@@ -226,125 +231,96 @@ def _format_point_reference(pt, params=None, get_entity_coord_expr_fn=None):
     return f'"{ent_type}"' if ent_type else 'Point(...)'
 
 
-def _same_entity(a, b):
-    """Best-effort identity check that works for both Fusion API proxies and
-    the plain Python objects used in tests. Fusion proxies may not be
-    ``is``-identical across fetches of the same underlying entity but should
-    compare equal via ``==`` (which delegates to the internal entity token).
+def _has_framebuilder_attribute(ent):
+    """Return True if ``ent`` directly carries a FrameBuilder ID attribute.
+
+    Checks both the current ``ID`` attribute and the legacy ``name``
+    attribute that older sketches were stamped with before the switch.
+    Missing or non-truthy values count as no tag.
     """
-    if a is b:
-        return True
-    try:
-        return a == b
-    except Exception:
+    if not ent or not hasattr(ent, 'attributes'):
         return False
-
-
-def _iter_connected_entities(pt):
-    """Yield the entities connected to a SketchPoint.
-
-    Fusion's ``SketchPoint.connectedEntities`` is a SketchEntityList
-    (``count`` + ``item(i)``). For tests we also accept a plain iterable.
-    """
-    connected = getattr(pt, 'connectedEntities', None)
-    if connected is None:
-        return
-    # SketchEntityList style.
     try:
-        count = getattr(connected, 'count', None)
-        if count is not None:
-            for i in range(count):
-                yield connected.item(i)
-            return
+        attr = ent.attributes.itemByName('FrameBuilder', 'ID')
+        if attr and attr.value:
+            return True
+        attr_old = ent.attributes.itemByName('FrameBuilder', 'name')
+        if attr_old and attr_old.value:
+            return True
     except Exception:
         pass
-    # Plain iterable (tests).
-    try:
-        for ent in connected:
-            yield ent
-    except Exception:
-        return
+    return False
 
 
-def _derive_point_role_id(pt):
-    """Return a Frame Builder point ID (``"curve_name:S|:E|:C"``) for a
-    SketchPoint that participates in a named curve's start/end/center slot,
-    or ``None`` if this point isn't owned by any named curve in Fusion.
-    """
-    for candidate in _iter_connected_entities(pt):
-        try:
-            parent = _get_native(candidate)
-            parent_name = get_fb_name(parent)
-            if not parent_name or parent_name.startswith('Sketch') or parent_name.startswith('Vertex of'):
-                continue
-            if _same_entity(getattr(parent, 'startSketchPoint', None), pt):
-                return f'{parent_name}:S'
-            if _same_entity(getattr(parent, 'endSketchPoint', None), pt):
-                return f'{parent_name}:E'
-            if _same_entity(getattr(parent, 'centerSketchPoint', None), pt):
-                return f'{parent_name}:C'
-        except Exception:
-            continue
-    return None
+def is_framebuilder_owned(ent):
+    """Ownership gate for the Template Maker scan.
 
+    Returns True if the entity is safe to include in a generated phase
+    block — i.e. it carries a FrameBuilder identity, directly or by
+    derivation. Three paths count as owned:
 
-def _format_target_reference(ent):
-    """Format an entity as an ID-only string literal for use inside a
-    Constraints.* / Dimensions.* argument list.
+      1. Direct: the entity carries a ``FrameBuilder.ID`` (or legacy
+         ``FrameBuilder.name``) attribute. This is every seed the runtime
+         has stamped.
 
-    Unlike ``_format_point_reference`` (used for seed statements, which need
-    real coords), this function NEVER emits coord tuples. Frame Builder's
-    constraints and dimensions take IDs like ``"horn_TL"`` or
-    ``"horn_TL:E"``. Emitting coords here would either be a no-op (both
-    coincident points share the same coords after Fusion settles them) or
-    actively wrong at phase-run time.
+      2. Derived (points only): a ``SketchPoint`` that serves as the
+         start / end / center of a named curve inherits that curve's
+         identity via a role ID (``"horn_TL:E"``). The point itself has
+         no attribute — ownership comes through the parent curve.
+
+      3. Target-derived (constraints / dimensions): Fusion does not tag
+         ``SketchConstraint`` / ``SketchDimension`` objects, so ownership
+         is inferred from their targets. If every target the constraint
+         / dimension references is itself owned, the constraint is
+         adoptable. If any target is untagged, the constraint is
+         skipped — same refusal model ``detect_projections`` uses for
+         untagged projection sources.
+
+    Anything else — user-drawn geometry, legacy untagged entities,
+    cross-sketch picks — returns False and is filtered out of the
+    payload upstream of the hint builders.
     """
     if not ent:
-        return '"UnknownTarget"'
+        return False
     ent = _get_native(ent)
-    ent_type = getattr(ent, 'objectType', '').split('::')[-1] if hasattr(ent, 'objectType') else ''
 
-    # Point-typed target: prefer the role-based curve-owned ID (horn_TL:E).
+    # (1) Direct attribute.
+    if _has_framebuilder_attribute(ent):
+        return True
+
+    ent_type = getattr(ent, 'objectType', '') or ''
+
+    # (2) Derived ownership for SketchPoints via the parent curve.
     if ent_type in _POINT_TYPES:
-        role_id = _derive_point_role_id(ent)
-        if role_id:
-            return f'"{role_id}"'
-        # Standalone SketchPoint with its own FrameBuilder name.
-        name = get_fb_name(ent)
-        if name and not name.startswith('Sketch') and not name.startswith('Vertex of'):
-            return f'"{name}"'
-        # No ID derivable — placeholder keeps the emitted statement syntactically
-        # valid. User can rename the owning curve and regenerate.
-        return f'"{ent_type}"'
+        if _derive_point_role_id(ent):
+            return True
+        return False
 
-    # Non-point entity (line, arc, circle, ellipse, spline) — use its FB name.
-    name = get_fb_name(ent)
-    if name and not name.startswith('Sketch'):
-        return f'"{name}"'
-    return f'"{ent_type}"' if ent_type else '"Unknown"'
+    # (3) Constraints / dimensions inherit ownership from their targets.
+    #     Every target must itself be owned; one untagged target fails
+    #     the whole constraint.
+    if 'Constraint' in ent_type or 'Dimension' in ent_type:
+        targets = []
+        for prop_name in ('entityOne', 'entityTwo', 'lineOne', 'lineTwo',
+                          'circleOne', 'circleTwo', 'pointOne', 'pointTwo',
+                          'point', 'entity', 'line', 'curve'):
+            try:
+                item = getattr(ent, prop_name, None)
+                if item is not None:
+                    targets.append(item)
+            except Exception:
+                continue
+        if not targets:
+            return False
+        return all(is_framebuilder_owned(t) for t in targets)
+
+    return False
 
 
-def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
-    """Collect the entity targets Fusion hangs off a Constraint or Dimension,
-    formatted as ID-only string literals ready for the emitted hint.
-
-    The ``params`` / ``get_entity_coord_expr_fn`` arguments are kept for
-    backwards compatibility with call sites, but they're intentionally
-    ignored: constraint targets must never carry coordinate expressions.
-    """
-    targets = []
-    # ``point`` goes before ``entity`` so a SketchCoincidentConstraint emits
-    # ``("the_point_id", "the_anchor_id")`` in the natural reading order.
-    for prop_name in ('entityOne', 'entityTwo', 'lineOne', 'lineTwo',
-                      'circleOne', 'circleTwo', 'pointOne', 'pointTwo',
-                      'point', 'entity', 'line', 'curve'):
-        try:
-            item = getattr(ent, prop_name, None)
-            if item:
-                targets.append(_format_target_reference(item))
-        except Exception:
-            pass
-    return targets
+# ``_derive_point_role_id``, ``_format_target_reference`` and
+# ``_constraint_targets`` moved to ``relation_hints`` along with
+# ``_hint_constraint`` / ``_hint_dimension``. They're not re-exported here
+# because nothing outside the relation-hint path uses them.
 
 
 # ---------------------------------------------------------------------------
@@ -484,35 +460,10 @@ _SHAPE_HINT_HANDLERS = {
 }
 
 
-def _hint_constraint(ent, ent_type, name, ctx):
-    # Constraints carry their own FrameBuilder name (matching the seed and
-    # dimension convention) so the runtime can identify / look them up
-    # later. Targets follow the name in positional order.
-    targets = _constraint_targets(ent, ctx['params'], ctx['expr_fn'])
-    args = [f'"{name}"']
-    if targets:
-        args.extend(targets)
-    else:
-        args.append('/* targets */')
-    return f'Constraints.{ent_type}({", ".join(args)})'
-
-
-def _hint_dimension(ent, ent_type, name, ctx):
-    expr = ''
-    try:
-        if hasattr(ent, 'parameter') and ent.parameter:
-            expr = str(getattr(ent.parameter, 'expression', '') or '')
-    except Exception:
-        expr = ''
-    # Pull out the geometry being measured — reuses the same prop-name walk
-    # as _constraint_targets (entityOne/entityTwo/lineOne/lineTwo/entity/
-    # circle for radial/diameter dims, etc.).
-    targets = _constraint_targets(ent, ctx['params'], ctx['expr_fn'])
-    args = [f'"{name}"']
-    args.extend(targets)
-    if expr:
-        args.append(f'expression="{expr}"')
-    return f'Dimensions.{ent_type}({", ".join(args)})'
+# ``_hint_constraint`` and ``_hint_dimension`` moved to ``relation_hints``.
+# They're imported at the top of this module so ``_build_entity_hint``
+# below can still dispatch to them by name — same call site, just a
+# different home.
 
 
 def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None, name_override=None):

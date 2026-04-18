@@ -60,6 +60,29 @@ def _unquote(value):
     return value
 
 
+def _parse_point_tuple(raw_expr):
+    """Split a ``(x, y)`` or ``[x, y]`` coordinate into a list of
+    ``LiteralString`` components.
+
+    The canonical phase-file Points format is a list-of-list-of-strings
+    (e.g. ``[['widthIn * 0.1', 'heightIn * 0.2']]``); the runtime reads each
+    string and evaluates it with ``widthIn`` / ``heightIn`` in scope. Earlier
+    drafts wrapped each coordinate as a single ``RawCode`` tuple, which
+    rendered as raw Python tuples ``(widthIn * 0.1, heightIn * 0.2)`` and
+    broke import because ``widthIn`` isn't a module-level symbol.
+
+    ``LiteralString`` wrapping ensures ``_format_raw_value`` emits the
+    expression *inside* quotes so the eval happens later, at phase-run time.
+    """
+    if not isinstance(raw_expr, str):
+        return []
+    s = raw_expr.strip()
+    if (s.startswith('(') and s.endswith(')')) or (s.startswith('[') and s.endswith(']')):
+        s = s[1:-1]
+    parts = _split_top_level_arguments(s)
+    return [LiteralString(p.strip()) for p in parts if p.strip()]
+
+
 def _split_kw_and_positional(args):
     """Split a list of raw argument strings into (positional, kw_dict).
 
@@ -151,7 +174,7 @@ def _build_line_step(args):
     return {
         'ID': LiteralString(name),
         'Type': LiteralString('Line'),
-        'Points': [RawCode(positional[0]), RawCode(positional[1])],
+        'Points': [_parse_point_tuple(positional[0]), _parse_point_tuple(positional[1])],
         'StartID': LiteralString(f'{name}:S'),
         'EndID': LiteralString(f'{name}:E'),
     }
@@ -187,18 +210,18 @@ def _build_arc_step(args):
 
     if len(positional) >= 3:
         base_step['Points'] = [
-            RawCode(positional[0]),
-            RawCode(positional[1]),
-            RawCode(positional[2]),
+            _parse_point_tuple(positional[0]),
+            _parse_point_tuple(positional[1]),
+            _parse_point_tuple(positional[2]),
         ]
         return base_step
 
     if len(positional) >= 2:
         center = kw.get('center')
         base_step['Points'] = [
-            RawCode(positional[0]),
-            RawCode(center or positional[1]),
-            RawCode(positional[1]),
+            _parse_point_tuple(positional[0]),
+            _parse_point_tuple(center or positional[1]),
+            _parse_point_tuple(positional[1]),
         ]
         radius = kw.get('radius')
         if radius:
@@ -258,7 +281,7 @@ def _build_spline_step_factory(seed_type):
                 inner = inner[1:-1]
             for piece in _split_top_level_arguments(inner):
                 if piece:
-                    points.append(RawCode(piece))
+                    points.append(_parse_point_tuple(piece))
         step = {
             'ID': LiteralString(name),
             'Type': LiteralString(seed_type),

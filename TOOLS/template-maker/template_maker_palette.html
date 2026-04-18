@@ -157,6 +157,50 @@
             background: #fff;
             color: #1c242f;
         }
+        /* Stepper composite — text input flanked by − / + buttons that bump
+         * the numeric portion of the value (e.g. T2 → T3, p06 → p07). The
+         * input itself stays fully editable so the user can still type, and
+         * the buttons / ArrowUp / ArrowDown just re-parse and rewrite the
+         * numeric chunk. Width preservation (e.g. padded "06") is kept by
+         * ``stepNumericField`` so the canonical two-digit phase number
+         * convention survives a click. */
+        .settings-row .stepper {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid #ccd7e4;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .settings-row .stepper input {
+            border: none;
+            border-radius: 0;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .settings-row .stepper input:focus {
+            outline: none;
+            background: #f3f7fc;
+        }
+        .settings-row .stepper-btn {
+            width: 26px;
+            border: none;
+            border-left: 1px solid #d7e0ec;
+            background: #eef3f9;
+            color: #1c242f;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            user-select: none;
+        }
+        .settings-row .stepper-btn:hover {
+            background: #dce6f2;
+        }
+        .settings-row .stepper-btn:active {
+            background: #c3d1e0;
+        }
         textarea.file-text {
             min-height: 120px;
         }
@@ -239,6 +283,12 @@
             resize: vertical;
             background: #fbfcff;
             color: #101a24;
+            tab-size: 4;
+            -moz-tab-size: 4;
+            white-space: pre;
+            overflow-x: auto;
+            word-wrap: normal;
+            word-break: normal;
         }
         .panel-body {
             padding: 10px 14px 14px 14px;
@@ -333,6 +383,20 @@
             background: #ffffff;
             color: #101a24;
         }
+        /* Section textareas are read-only inspection panes — the tinted
+           background distinguishes them from editable inputs and from the
+           final code-output box so users can tell at a glance that they
+           can copy but not edit. */
+        textarea.section-text {
+            background: #eef3f9;
+            color: #1a2634;
+            cursor: default;
+        }
+        textarea.section-text:focus {
+            /* Muted focus — keeps the non-editable affordance. */
+            outline: 1px solid #c3d1e0;
+            outline-offset: -1px;
+        }
         .button-row {
             margin-top: 10px;
             display: grid;
@@ -414,12 +478,20 @@
                     <input id="file-name-input" type="text" placeholder="T2_p05_lines.py" value="T2_p05_lines.py">
                 </label>
                 <label>Template Number
-                    <input id="template-number-input" type="text" placeholder="T2" value="T2">
+                    <div class="stepper">
+                        <input id="template-number-input" type="text" placeholder="T2" value="T2">
+                        <button type="button" class="stepper-btn" data-stepper-target="template-number-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement template number">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="template-number-input" data-stepper-step="1" tabindex="-1" aria-label="Increment template number">+</button>
+                    </div>
                 </label>
             </div>
             <div class="settings-row">
                 <label>Phase ID
-                    <input id="phase-id-input" type="text" placeholder="p03" value="p03">
+                    <div class="stepper">
+                        <input id="phase-id-input" type="text" placeholder="p03" value="p03">
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement phase number">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="1" tabindex="-1" aria-label="Increment phase number">+</button>
+                    </div>
                 </label>
                 <label>Sketch Name
                     <input id="sketch-name-input" type="text" placeholder="auto (from active sketch)">
@@ -546,6 +618,50 @@
             desc.textContent = payload.description || (n > 0 ? (payload.mainFeature || '') : 'Select sketch geometry to preview snippets.');
         }
 
+        /**
+         * Bump the numeric portion of a settings field by ``step``.
+         *
+         * Matches the FIRST run of digits in the value, rewrites just that
+         * run, and preserves any prefix (``T`` / ``p``) and trailing
+         * descriptor (``_arcs``, ``_anatomy``). Leading-zero width is
+         * preserved so "p03" → "p04" stays two-digit while "p3" → "p4"
+         * stays one-digit — no silent reformatting of what the user typed.
+         *
+         * Fires ``input`` + ``change`` so the pill, combined preview, and
+         * host-sync roundtrip all react exactly as they would for a real
+         * keystroke. ``blur`` isn't fired because focus doesn't leave the
+         * input — the host sync still happens on the real blur when the
+         * user tabs away.
+         */
+        function stepNumericField(input, step) {
+            if (!input) return;
+            var current = input.value || '';
+            var match = current.match(/^(\D*)(\d+)(.*)$/);
+            if (!match) {
+                // No digits to step — nothing to do. Leave the value alone
+                // rather than inventing one; the user can type a seed value
+                // and then step from there.
+                return;
+            }
+            var prefix = match[1];
+            var digits = match[2];
+            var suffix = match[3];
+            var width = digits.length;
+            var n = parseInt(digits, 10);
+            if (isNaN(n)) return;
+            n += step;
+            if (n < 1) n = 1; // floor — no T0 / p00
+            var out = String(n);
+            if (digits.charAt(0) === '0' && width > 1) {
+                while (out.length < width) out = '0' + out;
+            }
+            input.value = prefix + out + suffix;
+            // Re-use the existing input/change handlers — same behaviour as
+            // typing, so pill + preview + host sync all stay in lockstep.
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
         function updateSettingsPill() {
             var pill = document.getElementById('settings-pill');
             var auto = document.getElementById('settings-auto-indicator');
@@ -614,43 +730,28 @@
             return merged;
         }
 
-        function buildHeaderText(fileName, templateNumber, phaseId, sketchName) {
-            fileName = fileName || 'template_phase.py';
-            templateNumber = templateNumber || 'T2';
-            phaseId = phaseId || '';
-            sketchName = sketchName || '';
-            var header = [
-                '# File: ' + fileName,
-                '# Template: ' + templateNumber
-            ];
-            if (phaseId) {
-                header.push('# Phase: ' + phaseId);
-            }
-            if (sketchName) {
-                header.push('# Sketch: ' + sketchName);
-            }
-            header.push('',
-                'from frame_builder.fb_engine import geometry, constraints, dimensions, Seeds',
-                '',
-                "def build_sequence(ctx, sketch, plan='" + templateNumber + "'):",
-                '    # Auto-generated template builder code',
-                '    seeds = []',
-                '    constraints = []',
-                '    dims = []',
-                ''
+        // NOTE: the old `buildHeaderText` / `buildFooterText` JS builders
+        // were deleted as part of the format modularization. The parametric
+        // engine's phase-block shape (imports, `def get_block()`, `seq = [`
+        // opener, return dict with Name / PhaseID / BuildSequence) is now
+        // owned entirely by Python — `template_code.build_header` and
+        // `template_code.build_footer`. The palette consumes the rendered
+        // strings via `payload.headerText` and `payload.footerText`, so a
+        // shape change only needs a single Python-side edit.
+        //
+        // The one live-edit path is the PhaseID value in the footer: when
+        // the user types in the settings pill, we substitute PhaseID in
+        // `payload.footerText` locally so the preview is instantaneous.
+        // On blur/change, `syncSettingsToHost` pushes the new settings to
+        // Fusion, which regenerates and pushes an authoritative payload.
+        function substitutePhaseId(footerText, phaseId) {
+            if (!footerText) return footerText || '';
+            var clean = (phaseId || '').trim();
+            if (!clean) return footerText;
+            return footerText.replace(
+                /('PhaseID':\s*')[^']*(')/,
+                "$1" + clean + "$2"
             );
-            return header.join('\n');
-        }
-
-        function buildFooterText() {
-            return [
-                '    return {',
-                "        'seeds': seeds,",
-                "        'constraints': constraints,",
-                "        'dimensions': dims", 
-                '    }',
-                ''
-            ].join('\n');
         }
 
         function getPanelStateKey(title, index) {
@@ -774,12 +875,12 @@
             textarea.className = 'section-text';
             textarea.dataset.index = index;
             textarea.value = content || '';
-            textarea.addEventListener('input', function() {
-                updateCombinedPreview();
-                // Live auto-fit while typing — user-resized textareas opt
-                // out via the userResized flag set on mouseup below.
-                if (index === 'sequence') fitTextareaToContent(textarea, 5, 20);
-            });
+            // Sections are read-only inspection views. The final code (bottom
+            // code-box) is what users copy; title / phase id are edited in
+            // the settings pill, not here. Making these read-only removes a
+            // class of bugs where a manual edit would desync from the payload
+            // and break the next regeneration.
+            textarea.readOnly = true;
 
             // Persist manual resizes so subsequent re-renders (from host
             // pushes or selection changes) don't snap the textarea back
@@ -922,17 +1023,26 @@
         }
 
         function wrapStatement(statement) {
+            // Sequence items are now pre-formatted phase-step dict literals
+            // from the Python side (`build_code_preview` → `format_phase_step`).
+            // This function now just passes dict literals through.
+            //
+            // Legacy `Seeds.*` / `Constraints.*` / `Dimensions.*` inputs can
+            // still show up if an older payload or a hand-edited hint sneaks
+            // in — we comment them so they're visible in the preview instead
+            // of silently landing in `seq = [` as invalid Python.
             if (!statement || typeof statement !== 'string') {
                 return statement;
             }
-            if (statement.startsWith('Seeds.')) {
-                return 'seeds.append(' + statement + ')';
+            var trimmed = statement.trim();
+            if (trimmed.startsWith('{')) {
+                return statement;
             }
-            if (statement.startsWith('Constraints.')) {
-                return 'constraints.append(' + statement + ')';
-            }
-            if (statement.startsWith('dimensions.') || statement.startsWith('Dimensions.')) {
-                return 'dims.append(' + statement + ')';
+            if (trimmed.startsWith('Seeds.')
+                || trimmed.startsWith('Constraints.')
+                || trimmed.startsWith('Dimensions.')
+                || trimmed.startsWith('dimensions.')) {
+                return '# UNPARSED: ' + trimmed;
             }
             return statement;
         }
@@ -988,33 +1098,47 @@
                 return;
             }
 
-            // Default seed path — unchanged.
-            var headerText = buildHeaderText(
-                document.getElementById('file-name-input').value,
-                document.getElementById('template-number-input').value,
-                document.getElementById('phase-id-input').value,
-                document.getElementById('sketch-name-input').value
-            );
+            // Default seed path — wrapper text now comes straight from the
+            // payload (Python-side `template_code.build_header`). The four
+            // settings-pill inputs still exist and still feed phase-id /
+            // sketch-name / template-number back to Fusion on blur, but
+            // none of them influence the wrapper's rendered content —
+            // the wrapper is pure boilerplate (imports + `def get_block()`
+            // opener) and has no user-variable pieces in it.
+            var headerText = (payload && payload.headerText) || '';
             var wrapperLineCount = countLines(headerText);
             container.appendChild(makeSection('Wrapper Metadata', headerText, 'header',
                 wrapperLineCount + (wrapperLineCount === 1 ? ' line' : ' lines')));
 
             // All geometry/constraint/dimension items share a single
             // editable "Sequence" box placed directly after the wrapper.
-            // The return block (`return { 'seeds': seeds, ... }`) is NOT
-            // a separate section any more — updateCombinedPreview() glues
-            // it onto the bottom of the final code textarea automatically.
-            var sequenceLines = [];
+            // The return block (`return { ..., 'BuildSequence': seq }`) is
+            // NOT a separate section — updateCombinedPreview() glues it
+            // onto the bottom of the final code textarea automatically.
+            //
+            // Content comes from `payload.codePreview` which Python's
+            // `build_code_preview` already formatted as dict-literal phase
+            // steps. Python bakes in 8-space indent (list-interior); we
+            // strip it here so the textarea stays flush-left for easy
+            // editing, then re-add the indent at assembly time.
+            var rawPreview = payload.codePreview || '';
+            var sequenceText = rawPreview
+                .split('\n')
+                .map(function(l) { return l.replace(/^\s{0,8}/, function(m) {
+                    return m.length === 8 ? '' : m;
+                }); })
+                .join('\n');
+            var seqCount = 0;
             if (payload.items && payload.items.length > 0) {
-                payload.items.forEach(function(item) {
-                    var line = wrapStatement(item.hint);
-                    if (line) {
-                        sequenceLines.push(line);
+                sequenceText.split('\n').forEach(function(l) {
+                    if (l.trim()) {
+                        seqCount += 1;
                     }
                 });
+            } else {
+                sequenceText = '';
             }
-            var seqCount = sequenceLines.length;
-            container.appendChild(makeSection('Sequence', sequenceLines.join('\n'), 'sequence',
+            container.appendChild(makeSection('Sequence', sequenceText, 'sequence',
                 seqCount + (seqCount === 1 ? ' item' : ' items')));
 
             updateCombinedPreview();
@@ -1055,11 +1179,18 @@
 
             // Seed path — two editable sections feed the combined preview:
             //   section[0] = Wrapper Metadata (file/template comments +
-            //                imports + build_sequence signature + empty lists)
-            //   section[1] = Sequence (every seeds/constraints/dims line)
-            // The return block (`return { 'seeds': seeds, ... }`) is NOT
-            // a user-editable section — it's appended unconditionally at
+            //                imports + `def get_block(ui_data=None):` +
+            //                `    seq = [` opener)
+            //   section[1] = Sequence (dict-literal phase steps)
+            // The return block (`    ]` + `return { ..., 'BuildSequence': seq }`)
+            // is NOT a user-editable section — it's appended unconditionally at
             // the end of the combined preview.
+            //
+            // IMPORTANT: the Sequence textarea is stored flush-left for easy
+            // editing. We add the 8-space list-interior indent ONLY at assembly
+            // time (indentBlock below — 4 for function body + 4 inside `seq`).
+            // Never use .trim() here — it strips leading whitespace and breaks
+            // Python indentation.
             //
             // The Phase tab output is intentionally variable-free: the
             // Variable Generator tab owns variable declarations. Mixing
@@ -1068,26 +1199,60 @@
             var sections = document.querySelectorAll('.section-text');
             var lines = [];
 
-            if (sections.length > 0) {
-                lines.push(sections[0].value.trim());
+            // rstrip: trim trailing whitespace without touching leading indent.
+            function rstrip(s) { return (s || '').replace(/\s+$/, ''); }
+
+            // Indent every non-empty line of `block` with 8 spaces (list-interior
+            // level: 4 for function body + 4 inside the `seq = [ ... ]` list).
+            // Empty lines are left empty (no trailing spaces).
+            function indentBlock(block) {
+                return block.split('\n').map(function(l) {
+                    return l.length > 0 ? '        ' + l : l;
+                }).join('\n');
             }
 
-            // Sequence section (everything after the wrapper).
+            // Wrapper section — already contains its own indentation (the
+            // `    seq = [` opener is baked with 4-space indent inside
+            // Python's `template_code.build_header`). Leave as-is.
+            if (sections.length > 0) {
+                lines.push(rstrip(sections[0].value));
+            }
+
+            // Sequence section(s) — textarea content is flush-left. Indent
+            // each line with 4 spaces at assembly time.
             for (var i = 1; i < sections.length; i++) {
-                var value = sections[i].value.trim();
+                var value = rstrip(sections[i].value);
                 if (value) {
-                    lines.push(value);
+                    lines.push(indentBlock(value));
                 }
             }
 
-            // Footer (return block) — always emitted, even if the sequence
-            // is empty, so the generated function is always syntactically
-            // valid Python.
-            lines.push(buildFooterText().trim());
+            // Footer (list-close + return block) — pulled from the payload
+            // (Python-side `template_code.build_footer`). Already contains
+            // the 4-space indent for `    ]` and `    return {`; we only
+            // strip surrounding newlines so joining doesn't introduce gaps.
+            //
+            // Phase ID is substituted locally on every keystroke in the
+            // settings pill so the preview is instantaneous; on blur the
+            // host re-pushes with the authoritative footerText.
+            var phaseIdInput = document.getElementById('phase-id-input');
+            var phaseIdValue = phaseIdInput ? phaseIdInput.value : '';
+            var payloadFooter = (currentPayload && currentPayload.footerText) || '';
+            var footer = substitutePhaseId(payloadFooter, phaseIdValue)
+                .replace(/^\n+/, '')   // drop leading newlines only
+                .replace(/\s+$/, '');  // drop trailing whitespace
+            if (footer) {
+                lines.push(footer);
+            }
 
+            // Tight join — the wrapper/sequence/footer all belong to the same
+            // dict literal (`seq = [ ... ]`), so we don't want blank padding
+            // right after `seq = [` or right before `    ]`. Users can still
+            // add blank lines inside the Sequence textarea for readability;
+            // those are preserved verbatim through indentBlock.
             document.getElementById('code-box').value = lines.filter(function(line) {
                 return line.length > 0;
-            }).join('\n\n');
+            }).join('\n');
             updateVariableBlockPreview();
         }
 
@@ -1357,6 +1522,37 @@
                     updateCombinedPreview();
                     updateSettingsPill();
                 });
+            });
+
+            // Stepper buttons + ArrowUp/ArrowDown bump the numeric portion of
+            // ``template-number-input`` and ``phase-id-input``. The regex is
+            // permissive: it finds the FIRST run of digits in the value and
+            // rewrites it, so any prefix (T / p) and trailing descriptor
+            // (_arcs, _anatomy) stay put. Leading zeros are preserved by
+            // width — "p03" → "p04", "p3" → "p4" — so the canonical
+            // two-digit convention survives a click without forcing it on
+            // users who type single-digit values.
+            ['template-number-input', 'phase-id-input'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('keydown', function(e) {
+                    if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        stepNumericField(el, 1);
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        stepNumericField(el, -1);
+                    }
+                });
+            });
+            document.addEventListener('click', function(e) {
+                var btn = e.target && e.target.closest && e.target.closest('.stepper-btn');
+                if (!btn) return;
+                var target = document.getElementById(btn.getAttribute('data-stepper-target'));
+                var step = parseInt(btn.getAttribute('data-stepper-step'), 10) || 0;
+                if (target && step) {
+                    stepNumericField(target, step);
+                }
             });
 
             // Track manual edits to the sketch name specifically: once the

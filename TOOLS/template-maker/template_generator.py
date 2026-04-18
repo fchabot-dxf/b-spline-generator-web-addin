@@ -66,7 +66,7 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
         'codePreview': '# No selection yet. Select sketch entities to generate code previews.',
         'phaseBlockCode': '# No phase block generated yet.',
         'headerText': build_header(template_number=template_number),
-        'footerText': build_footer(),
+        'footerText': build_footer(phase_name=phase_name or 'PhaseName', phase_id=phase_id or 'p01'),
         'variables': merged_variables,
         'variableBlock': format_variable_block(merged_variables),
         'logs': logs,
@@ -75,14 +75,23 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
         'linked_expr': [],
         'listLabel': 'Selection',
         'type': 'TemplateMaker',
-        'detectedSketchName': detected_sketch_name or ''
+        'detectedSketchName': detected_sketch_name or '',
+        # Ownership gate — populated by ``build_payload_items``. The
+        # palette reads ``unownedCount`` to decide whether to render the
+        # "N untagged entities skipped" banner; ``unownedDetails`` is
+        # kept for diagnostics so users can see which picks failed.
+        'unownedCount': 0,
+        'unownedDetails': [],
     }
 
     if count == 0:
         return payload
 
-    items = build_payload_items(entities, phase_prefix=phase_prefix)
+    items, unowned = build_payload_items(entities, phase_prefix=phase_prefix)
     payload['items'] = items
+    payload['unownedCount'] = len(unowned)
+    payload['unownedDetails'] = unowned
+    _log_detection(logs, f"Ownership gate: {len(items)} owned, {len(unowned)} unowned")
     for item in items:
         payload['linked'].append(f"{item['name']} | {item['coord']}")
         payload['linked_expr'].append(f"{item['name']} | {item['coordExpr']}")
