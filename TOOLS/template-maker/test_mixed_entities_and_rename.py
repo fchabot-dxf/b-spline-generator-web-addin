@@ -159,16 +159,19 @@ def test_constraint_on_lines_uses_quoted_names():
     code = payload['codePreview']
     phase = payload['phaseBlockCode']
 
-    # Arrow syntax must not appear inside any constraint's argument list.
+    # codePreview and phaseBlockCode both render the phase-step dict literal
+    # ({'Type': 'PerpendicularConstraint', 'Name': 'perp_1',
+    #   'Targets': ["horn_TL", "brace_BR"]}). The constraint's own
+    # FrameBuilder name lands in the ``Name`` key; its two line targets land
+    # quoted inside the ``Targets`` list. Arrow syntax (``start->end``)
+    # must never appear — constraints take IDs, not coord tuples.
     for line in code.splitlines():
         if 'PerpendicularConstraint' in line:
-            # The constraint's own FrameBuilder name is now the first arg,
-            # followed by the target line names.
-            assert '"perp_1"' in line, (
-                f'expected constraint name as first arg, got: {line}'
+            assert "'Name': 'perp_1'" in line, (
+                f'expected Name key carrying constraint ID, got: {line}'
             )
             assert '"horn_TL"' in line and '"brace_BR"' in line, (
-                f'expected quoted line names in constraint, got: {line}'
+                f'expected quoted line names in Targets list, got: {line}'
             )
             assert '->' not in line, (
                 f'arrow syntax leaked into constraint: {line}'

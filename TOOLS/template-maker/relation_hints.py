@@ -35,6 +35,74 @@ from entity_util import _get_native, _same_entity
 _POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
 
 
+# Per-subtype property slots for every Fusion sketch constraint + dimension.
+# Both ``_constraint_targets`` (hint emission) and
+# ``template_payload.is_framebuilder_owned`` (ownership gate) use this map;
+# keeping it in one place prevents them drifting apart — the symptom when
+# they drift is "selecting X constraint does nothing in the palette" because
+# the gate can't see any targets to inherit ownership from.
+#
+# Why a per-subtype dispatch instead of a flat walk across every prop name:
+# Fusion's C++ layer will native-AV on ``getattr(ent, prop_name)`` for a
+# slot that isn't part of the subtype's public surface when the proxy is
+# still settling after a rename or new-constraint event. A native AV does
+# NOT raise a Python exception — ``try/except`` around the getattr is
+# powerless. The only safe approach is to never ask for a slot the subtype
+# doesn't own in the first place.
+#
+# Order within each tuple matters — it's the order targets appear in the
+# emitted ``Constraints.<Type>(...)`` call, so the natural reading order
+# (point before line, entityOne before entityTwo, etc.) must be preserved.
+#
+# Subtypes are keyed on the short object-type name
+# (``objectType.split('::')[-1]``). ``target_props_for`` below does the
+# split so callers can pass the fully-qualified name if they have it.
+CONSTRAINT_TARGET_PROPS_BY_TYPE = {
+    # --- Constraints --- (Fusion does NOT prefix constraint subtypes
+    # with ``Sketch`` — the class name is just ``CoincidentConstraint``
+    # etc. under ``adsk::fusion::``. Dimensions DO carry the prefix.)
+    'CoincidentConstraint':              ('point', 'entity'),
+    'HorizontalConstraint':              ('line',),
+    'VerticalConstraint':                ('line',),
+    'HorizontalPointsConstraint':        ('pointOne', 'pointTwo'),
+    'VerticalPointsConstraint':          ('pointOne', 'pointTwo'),
+    'ParallelConstraint':                ('lineOne', 'lineTwo'),
+    'PerpendicularConstraint':           ('lineOne', 'lineTwo'),
+    'CollinearConstraint':               ('lineOne', 'lineTwo'),
+    'EqualConstraint':                   ('curveOne', 'curveTwo'),
+    'SmoothConstraint':                  ('curveOne', 'curveTwo'),
+    'TangentConstraint':                 ('curveOne', 'curveTwo'),
+    'MidPointConstraint':                ('point', 'midPointCurve'),
+    'ConcentricConstraint':              ('entityOne', 'entityTwo'),
+    'SymmetryConstraint':                ('entityOne', 'entityTwo', 'symmetryLine'),
+    'PolygonConstraint':                 ('centerPoint', 'cornerPoint'),
+
+    # --- Dimensions ---
+    'SketchLinearDimension':             ('entityOne', 'entityTwo'),
+    'SketchAngularDimension':            ('lineOne', 'lineTwo'),
+    'SketchRadialDimension':             ('entity',),
+    'SketchDiameterDimension':           ('entity',),
+    'SketchConcentricCircleDimension':   ('circleOne', 'circleTwo'),
+    'SketchOffsetDimension':             ('line', 'entityTwo'),
+    'SketchEllipseMajorRadiusDimension': ('ellipse',),
+    'SketchEllipseMinorRadiusDimension': ('ellipse',),
+}
+
+
+def target_props_for(ent_type):
+    """Return the prop slots Fusion exposes for ``ent_type``.
+
+    ``ent_type`` can be the fully-qualified ``adsk::fusion::XConstraint`` or
+    just ``XConstraint`` — either way we key on the short name. Unknown
+    subtypes return ``()``; the emitter falls back to ``/* targets */`` and
+    the gate counts the entity as un-owned. That's intentional: asking
+    Fusion for a slot we don't know the subtype defines is exactly the
+    native-AV failure mode this dispatch exists to prevent.
+    """
+    short = (ent_type or '').split('::')[-1]
+    return CONSTRAINT_TARGET_PROPS_BY_TYPE.get(short, ())
+
+
 # ---------------------------------------------------------------------------
 # Graph traversal — find the curve that owns a shared point, so we can emit
 # a role-based ID ("horn_TL:E") rather than a raw coordinate.
@@ -154,57 +222,20 @@ def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
     backwards compatibility with call sites, but they're intentionally
     ignored: constraint targets must never carry coordinate expressions.
 
-    Each property access is wrapped in its own ``try`` so one problematic
-    property (e.g. ``circleOne`` on a non-circle constraint in a weird
-    subclass) can't kill the whole walk.
+    We dispatch on ``ent.objectType`` and probe ONLY the slots Fusion
+    defines for that subtype — see ``CONSTRAINT_TARGET_PROPS_BY_TYPE``.
+    Probing out-of-subtype slots on a settling proxy is a native-AV hazard
+    that no Python ``try/except`` can catch.
     """
     targets = []
-    # Property-name walk covering every Fusion constraint and dimension
-    # subtype. Each Fusion subtype exposes a different set of target slots;
-    # we try them all and keep the non-null hits. Order matters because
-    # some subtypes expose MORE than one matching name and we want the most
-    # specific read first (e.g. ``entityOne`` before the generic ``entity``).
-    #
-    # CONSTRAINT COVERAGE (Fusion sketch constraint subtypes):
-    #   * Coincident             → point, entity           [hybrid pt+any]
-    #   * Horizontal / Vertical  → line                    [single]
-    #   * HorizontalPoints /
-    #     VerticalPoints         → pointOne, pointTwo
-    #   * Parallel / Perp /
-    #     Collinear              → lineOne, lineTwo
-    #   * Equal / Smooth         → curveOne, curveTwo
-    #   * Tangent                → curveOne, curveTwo
-    #   * MidPoint               → point, line             [hybrid pt+line]
-    #   * Concentric             → entityOne, entityTwo
-    #   * Symmetry               → entityOne, entityTwo,
-    #                              symmetryLine            [3-target]
-    #   * Polygon                → centerPoint, cornerPoint
-    #
-    # DIMENSION COVERAGE (Fusion sketch dimension subtypes):
-    #   * Linear / Distance      → entityOne, entityTwo
-    #   * Angular                → lineOne, lineTwo
-    #   * Radial / Diameter /
-    #     Concentric             → entity
-    #   * Offset                 → line, entityTwo
-    #   * EllipseMajor/MinorRad  → ellipse
-    #
-    # NOT COVERED (multi-target collections — need dedicated handling if
-    # you ever use these): OffsetConstraint (parentCurves, childCurves),
-    # CircularPatternConstraint / RectangularPatternConstraint (entities
-    # collections). Those will emit with ``/* targets */`` and can be
-    # hand-edited in the phase file.
-    #
-    # ``point`` goes before ``entity`` so a SketchCoincidentConstraint emits
-    # ``("the_point_id", "the_anchor_id")`` in the natural reading order.
-    for prop_name in ('entityOne', 'entityTwo',
-                      'lineOne', 'lineTwo',
-                      'curveOne', 'curveTwo',
-                      'circleOne', 'circleTwo',
-                      'pointOne', 'pointTwo',
-                      'centerPoint', 'cornerPoint',
-                      'point', 'entity', 'line', 'curve',
-                      'symmetryLine', 'ellipse',
-                      'midPointCurve'):
+    ent_type = getattr(ent, 'objectType', '') or ''
+    # Subtypes not in the dispatch table (e.g. OffsetConstraint,
+    # CircularPatternConstraint — which expose multi-target collections
+    # rather than single-slot properties) return an empty tuple from
+    # ``target_props_for`` and fall through to the emitter's
+    # ``/* targets */`` placeholder. Users can hand-edit those in the phase
+    # file; crashing Fusion to "cover" them isn't an acceptable trade.
+    for prop_name in target_props_for(ent_type):
         try:
             item = getattr(ent, prop_name, None)
             if item:

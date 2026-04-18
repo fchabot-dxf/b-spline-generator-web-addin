@@ -612,10 +612,47 @@
                 }
             }
 
-            // Default: seeds or empty selection.
+            // Default: seeds or empty selection. When some picks failed the
+            // FrameBuilder ownership gate (constraints whose targets aren't
+            // tagged yet, or raw user-drawn geometry), surface the split so
+            // the user knows why nothing is rendering instead of silently
+            // dropping them. The counts come from build_payload_items in
+            // template_payload_builder.py — items[] are owned, unownedDetails[]
+            // are the rejects.
+            var unownedN = payload.unownedCount || 0;
+            var ownedN = (payload.items || []).length;
+            if (n === 0) {
+                bar.classList.add('status-live');
+                count.textContent = '0 selected';
+                desc.textContent = payload.description || 'Select sketch geometry to preview snippets.';
+                return;
+            }
+            if (unownedN > 0) {
+                // Amber when ANY pick is untagged. If everything's untagged
+                // the message is "rename first"; if it's a mix, show both
+                // counts so the user can see partial progress.
+                bar.classList.add('status-warn');
+                if (ownedN === 0) {
+                    count.textContent = n + ' untagged';
+                    desc.textContent = 'No FrameBuilder IDs yet — hit Rename to tag, then re-pick.';
+                } else {
+                    count.textContent = ownedN + ' tagged · ' + unownedN + ' untagged';
+                    // Compact type breakdown, e.g. "skipped: SketchLine, SketchTangentConstraint"
+                    var types = {};
+                    (payload.unownedDetails || []).forEach(function(d) {
+                        var t = (d && d.type) || 'Entity';
+                        types[t] = (types[t] || 0) + 1;
+                    });
+                    var typeList = Object.keys(types).map(function(t) {
+                        return types[t] > 1 ? (types[t] + '× ' + t) : t;
+                    }).join(', ');
+                    desc.textContent = typeList ? ('skipped: ' + typeList) : (payload.mainFeature || '');
+                }
+                return;
+            }
             bar.classList.add('status-live');
-            count.textContent = n === 0 ? '0 selected' : (n + (n === 1 ? ' selected' : ' selected'));
-            desc.textContent = payload.description || (n > 0 ? (payload.mainFeature || '') : 'Select sketch geometry to preview snippets.');
+            count.textContent = n + (n === 1 ? ' selected' : ' selected');
+            desc.textContent = payload.description || payload.mainFeature || '';
         }
 
         /**

@@ -145,15 +145,24 @@ def test_circle_emits_seed_and_phase_step():
     code = payload['codePreview']
     phase = payload['phaseBlockCode']
 
-    assert 'Seeds.Circle("hub"' in code
-    assert 'center=' in code and 'radius=1.25' in code
+    # codePreview and phaseBlockCode both render the phase-step dict literal
+    # ({'ID': 'hub', 'Type': 'Circle', 'Center': (...), 'Radius': 1.25, ...}) —
+    # that's what the FrameBuilder runtime executes as BuildSequence. The old
+    # Seeds.Circle("hub", ...) call-style format is no longer emitted.
+    assert "'Type': 'Circle'" in code
+    assert "'ID': 'hub'" in code
+    assert "'Radius': 1.25" in code
+    assert "'Center':" in code
     # Expression-based center uses widthIn/heightIn when they divide cleanly.
     assert 'widthIn' in code or 'heightIn' in code
-    # Phase step lands as a real dict, not a dropped comment.
+    # Phase block surfaces the same step, wrapped by the get_block() frame.
     assert "'Type': 'Circle'" in phase
     assert "'ID': 'hub'" in phase
     assert "'Radius': 1.25" in phase
-    assert "# Seeds.Circle" not in phase, 'circle should not fall through to comment'
+    # A parser fallthrough would leave a ``# …`` fallback line in the phase
+    # block; confirm the dict step landed, not a comment.
+    assert '# Seeds.Circle' not in phase
+    assert '# Circle' not in phase
 
 
 def test_ellipse_emits_seed_and_phase_step():
@@ -166,17 +175,19 @@ def test_ellipse_emits_seed_and_phase_step():
     code = payload['codePreview']
     phase = payload['phaseBlockCode']
 
-    assert 'Seeds.Ellipse("oval_L"' in code
-    assert 'majorRadius=2.5' in code
-    assert 'minorRadius=1.2' in code
-    # Rotation angle should have made it into the hint.
-    assert 'angleDeg=30' in code or 'angleDeg=30.0' in code
-    # Phase step.
+    assert "'Type': 'Ellipse'" in code
+    assert "'ID': 'oval_L'" in code
+    assert "'MajorRadius': 2.5" in code
+    assert "'MinorRadius': 1.2" in code
+    # Rotation angle should have made it into the dict (AngleDeg key).
+    assert "'AngleDeg': 30" in code
+    # Phase step reflects the same dict shape.
     assert "'Type': 'Ellipse'" in phase
     assert "'ID': 'oval_L'" in phase
     assert "'MajorRadius': 2.5" in phase
     assert "'MinorRadius': 1.2" in phase
-    assert "# Seeds.Ellipse" not in phase
+    assert '# Seeds.Ellipse' not in phase
+    assert '# Ellipse' not in phase
 
 
 def test_fitted_spline_emits_seed_and_phase_step():
@@ -187,19 +198,18 @@ def test_fitted_spline_emits_seed_and_phase_step():
     code = payload['codePreview']
     phase = payload['phaseBlockCode']
 
-    assert 'Seeds.FittedSpline("rib_curve"' in code
-    # Should produce a bracketed list of 4 coord tuples.
-    assert code.count('(') >= 4
-    # Phase step with the Points list preserved.
+    assert "'Type': 'FittedSpline'" in code
+    assert "'ID': 'rib_curve'" in code
+    assert "'Points':" in code
+    # Points render as a list of [x, y] pairs — we expect one sub-list per fit
+    # point (four for this input).
+    assert code.count('[') >= len(points) + 1  # outer Points list + one per point
+    # Phase step.
     assert "'Type': 'FittedSpline'" in phase
     assert "'ID': 'rib_curve'" in phase
     assert "'Points':" in phase
-    # All four fit points should appear in the phase block.
-    for fp in points:
-        # Each point renders as a tuple literal — just check both coords appear
-        # in the phase block text somewhere.
-        pass
-    assert "# Seeds.FittedSpline" not in phase
+    assert '# Seeds.FittedSpline' not in phase
+    assert '# FittedSpline' not in phase
 
 
 def test_control_point_spline_emits_seed_and_phase_step():
@@ -210,16 +220,19 @@ def test_control_point_spline_emits_seed_and_phase_step():
     code = payload['codePreview']
     phase = payload['phaseBlockCode']
 
-    assert 'Seeds.ControlPointSpline("cam_path"' in code
+    assert "'Type': 'ControlPointSpline'" in code
+    assert "'ID': 'cam_path'" in code
+    assert "'Points':" in code
     assert "'Type': 'ControlPointSpline'" in phase
     assert "'ID': 'cam_path'" in phase
     assert "'Points':" in phase
+    assert '# Seeds.ControlPointSpline' not in phase
 
 
 def test_rectangle_composes_from_sketchlines():
     """Document-test: selecting the four lines of a rectangle emits four
-    Seeds.Line calls today, no special Rectangle handling required. This
-    is the intentional behaviour the primitives cover."""
+    Line phase steps, no special Rectangle handling required. This is the
+    intentional behaviour the primitives cover."""
     _use_params()
     # Build a unit-ish rectangle (0,0) → (2,0) → (2,1) → (0,1) → (0,0).
     from test_mixed_entities_and_rename import FakeLine as TLine
@@ -235,8 +248,9 @@ def test_rectangle_composes_from_sketchlines():
     ]
     payload = template_generator.build_template_payload(lines)
     code = payload['codePreview']
+    # Each line shows up as a dict step keyed by its FrameBuilder ID.
     for name in ('rect_bot', 'rect_right', 'rect_top', 'rect_left'):
-        assert f'Seeds.Line("{name}"' in code, f'missing {name} in preview'
+        assert f"'ID': '{name}'" in code, f'missing {name} in preview'
     # Four phase steps, all of Type Line.
     phase = payload['phaseBlockCode']
     assert phase.count("'Type': 'Line'") == 4

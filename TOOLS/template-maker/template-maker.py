@@ -354,8 +354,18 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                             pass
                 renamed = rename_selection.rename_selection(entities, phase_prefix=_get_phase_prefix())
                 if renamed > 0:
+                    # Attribute writes + ``ent.name`` assignments triggered
+                    # by rename_selection put Fusion into a sketch-recompute
+                    # mid-stack-frame. Walking entity proxies synchronously
+                    # from here would hit the same reentrancy segfault the
+                    # selection-change handler dodges. Route the refresh
+                    # through deferred_rebuild so it runs on the next
+                    # event-pump tick, once Fusion has settled.
                     _last_sel_ids = ''
-                    _push_selection_to_palette()
+                    if deferred_rebuild is not None:
+                        deferred_rebuild.schedule()
+                    else:
+                        _push_selection_to_palette()
                 html_args.returnData = 'ok'
             except Exception as e:
                 _log(f"[ERROR_RENAME] {e}")

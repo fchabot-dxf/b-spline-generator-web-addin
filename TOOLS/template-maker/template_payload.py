@@ -1,7 +1,3 @@
-import datetime
-import os
-import re
-import tempfile
 from entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata, _get_arc_midpoint
 from expression_coords import _format_point_expr
 # ``_get_native`` and ``_same_entity`` moved to ``entity_util`` so that
@@ -12,30 +8,36 @@ from expression_coords import _format_point_expr
 from entity_util import _get_native, _same_entity
 # Relation-hint builders (constraints + dimensions) moved out to
 # ``relation_hints`` with crash guards baked in. Re-imported so
-# ``_build_entity_hint`` below can dispatch to them.
-from relation_hints import _hint_constraint, _hint_dimension
-
-_DEBUG_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-detection.log')
-_SOURCE_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-debug.log')
-_TEMP_LOG_PATH = os.path.join(tempfile.gettempdir(), 'template-maker-detection.log')
-
-
-def _write_debug_log(message):
-    timestamp = datetime.datetime.now().isoformat(sep=' ', timespec='seconds')
-    text = f"[{timestamp}] {message}\n"
-    for path in (_DEBUG_LOG_PATH, _SOURCE_LOG_PATH, _TEMP_LOG_PATH):
-        try:
-            with open(path, 'a', encoding='utf-8') as f:
-                f.write(text)
-        except Exception:
-            pass
-
-
-def _log_detection(logs, message):
-    text = str(message)
-    if logs is not None:
-        logs.append(text)
-    _write_debug_log(text)
+# ``_build_entity_hint`` below can dispatch to them. ``target_props_for``
+# is the single source of truth for the per-subtype property slots,
+# shared between the hint emitter and the ownership gate below — both
+# must only touch slots Fusion defines for the given subtype, because a
+# getattr on an out-of-subtype slot can native-AV mid-recompute and no
+# Python ``try/except`` will catch it.
+from relation_hints import _hint_constraint, _hint_dimension, target_props_for
+# Detection log moved to ``detection_log`` so every module can emit
+# diagnostic lines without reaching into the seed-hint module. Re-imported
+# here so ``from template_payload import _log_detection`` keeps working
+# — new callers should import from ``detection_log`` directly.
+from detection_log import _write_debug_log, _log_detection
+# Variable-scan layer (design-param collection + selection-token parsing)
+# moved to ``variable_scan``. Re-imported here so existing callers that do
+# ``from template_payload import _collect_variables`` (or any of the other
+# names below) keep working — new callers should import from
+# ``variable_scan`` directly. ``_strip_point_prefix`` and
+# ``_call_entity_coord_expr_fn`` live there because they're the two
+# adapters that feed the token scanner; they're also used by
+# ``_format_point_reference`` below, which is why they have to land in
+# this module's namespace too.
+from variable_scan import (
+    BUILTIN_TEMPLATE_VARIABLES,
+    _strip_point_prefix,
+    _call_entity_coord_expr_fn,
+    _parse_expression_tokens,
+    _collect_design_variables,
+    _collect_variables,
+    _merge_variables,
+)
 
 
 def _label_for_entity(ent):
@@ -46,136 +48,6 @@ def _label_for_entity(ent):
     if label and not label.startswith('Sketch'):
         return label
     return ent.objectType.split('::')[-1]
-
-
-def _strip_point_prefix(expr):
-    if not expr:
-        return ''
-    if expr.startswith('Point:'):
-        return expr[len('Point:'):].strip()
-    return expr
-
-
-def _call_entity_coord_expr_fn(get_entity_coord_expr_fn, ent, params=None):
-    if not get_entity_coord_expr_fn:
-        return ''
-    try:
-        return get_entity_coord_expr_fn(ent, params)
-    except TypeError:
-        try:
-            return get_entity_coord_expr_fn(ent)
-        except Exception:
-            return ''
-    except Exception:
-        return ''
-
-
-BUILTIN_TEMPLATE_VARIABLES = {'widthIn', 'heightIn'}
-
-
-def _parse_expression_tokens(expr):
-    if not expr:
-        return []
-    # Drop content inside quoted strings before token-scanning so entity IDs
-    # like "horn_TL" (which appear inside Seeds.Line("horn_TL", ...)) don't
-    # get mistaken for variables.
-    stripped = re.sub(r'"[^"]*"|\'[^\']*\'', '', expr)
-    tokens = re.findall(r'\b[A-Za-z_][A-Za-z0-9_]*\b', stripped)
-    exclude = {
-        'Point', 'Seeds', 'Arc', 'Line', 'Constraints', 'Dimensions',
-        'center', 'start', 'end', 'SketchPoint', 'SketchLine', 'SketchArc',
-        'SketchPoint3D', 'SketchPoint2D', 'centerSketchPoint', 'startSketchPoint',
-        'endSketchPoint', 'geometry', 'ctx', 'sketch', 'plan', 'True', 'False',
-        'cm', 'mm', 'in', 'math'
-    }
-    result = []
-    for token in tokens:
-        if token in exclude or token in BUILTIN_TEMPLATE_VARIABLES:
-            continue
-        if token.isdigit():
-            continue
-        if token.startswith('Point') or token.startswith('Sketch'):
-            continue
-        if token in result:
-            continue
-        result.append(token)
-    return result
-
-
-def _collect_design_variables(logs=None, get_design_params_fn=None):
-    params = (get_design_params_fn() if get_design_params_fn else {}) or {}
-    variables = []
-    for name, info in params.items():
-        if name in BUILTIN_TEMPLATE_VARIABLES:
-            continue
-        expr = info.get('expression') or ''
-        if not expr:
-            expr = str(info.get('value', '')).strip()
-        if expr:
-            variables.append({
-                'name': name,
-                'expression': expr,
-                'enabled': True,
-                'source': 'design'
-            })
-    if logs is not None:
-        _log_detection(logs, f"Detected {len(variables)} design parameters")
-    return variables
-
-
-def _merge_variables(primary, secondary):
-    seen = set()
-    merged = []
-    for variable in primary + secondary:
-        name = variable.get('name')
-        if not name or name in seen:
-            continue
-        merged.append(variable)
-        seen.add(name)
-    return merged
-
-
-def _collect_variables(entities, code_text='', logs=None, params=None, get_entity_coord_expr_fn=None, build_entity_hint_fn=None, valid_names=None):
-    """Scan selection-derived expressions/hints for variable-name tokens.
-
-    If ``valid_names`` is provided (e.g. the set of real Fusion user
-    parameters minus built-ins), tokens are accepted only if they appear in
-    that whitelist. That prevents entity IDs and stray identifiers (e.g.
-    the 'radius' in 'radius=2.8255') from leaking into the T1 vars block.
-    """
-    names = []
-
-    def add_tokens(expr, source):
-        expr = expr or ''
-        tokens = _parse_expression_tokens(expr)
-        if tokens:
-            _log_detection(logs, f"Detected tokens from {source}: {tokens}")
-        for token in tokens:
-            if valid_names is not None and token not in valid_names:
-                continue
-            if token not in names:
-                names.append(token)
-
-    for i, ent in enumerate(entities):
-        ent = _get_native(ent)
-        expr = _strip_point_prefix(_call_entity_coord_expr_fn(get_entity_coord_expr_fn, ent, params)) if get_entity_coord_expr_fn else ''
-        add_tokens(expr, f'selection[{i}] expr')
-
-        hint = build_entity_hint_fn(ent, params) if build_entity_hint_fn else ''
-        add_tokens(hint, f'selection[{i}] hint')
-
-    if code_text:
-        add_tokens(code_text, 'code_text')
-
-    variables = []
-    for name in names:
-        variables.append({
-            'name': name,
-            'expression': name,
-            'enabled': True
-        })
-    _log_detection(logs, f"Collected variable names: {names}")
-    return variables
 
 
 _POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
@@ -231,91 +103,14 @@ def _format_point_reference(pt, params=None, get_entity_coord_expr_fn=None):
     return f'"{ent_type}"' if ent_type else 'Point(...)'
 
 
-def _has_framebuilder_attribute(ent):
-    """Return True if ``ent`` directly carries a FrameBuilder ID attribute.
-
-    Checks both the current ``ID`` attribute and the legacy ``name``
-    attribute that older sketches were stamped with before the switch.
-    Missing or non-truthy values count as no tag.
-    """
-    if not ent or not hasattr(ent, 'attributes'):
-        return False
-    try:
-        attr = ent.attributes.itemByName('FrameBuilder', 'ID')
-        if attr and attr.value:
-            return True
-        attr_old = ent.attributes.itemByName('FrameBuilder', 'name')
-        if attr_old and attr_old.value:
-            return True
-    except Exception:
-        pass
-    return False
-
-
-def is_framebuilder_owned(ent):
-    """Ownership gate for the Template Maker scan.
-
-    Returns True if the entity is safe to include in a generated phase
-    block — i.e. it carries a FrameBuilder identity, directly or by
-    derivation. Three paths count as owned:
-
-      1. Direct: the entity carries a ``FrameBuilder.ID`` (or legacy
-         ``FrameBuilder.name``) attribute. This is every seed the runtime
-         has stamped.
-
-      2. Derived (points only): a ``SketchPoint`` that serves as the
-         start / end / center of a named curve inherits that curve's
-         identity via a role ID (``"horn_TL:E"``). The point itself has
-         no attribute — ownership comes through the parent curve.
-
-      3. Target-derived (constraints / dimensions): Fusion does not tag
-         ``SketchConstraint`` / ``SketchDimension`` objects, so ownership
-         is inferred from their targets. If every target the constraint
-         / dimension references is itself owned, the constraint is
-         adoptable. If any target is untagged, the constraint is
-         skipped — same refusal model ``detect_projections`` uses for
-         untagged projection sources.
-
-    Anything else — user-drawn geometry, legacy untagged entities,
-    cross-sketch picks — returns False and is filtered out of the
-    payload upstream of the hint builders.
-    """
-    if not ent:
-        return False
-    ent = _get_native(ent)
-
-    # (1) Direct attribute.
-    if _has_framebuilder_attribute(ent):
-        return True
-
-    ent_type = getattr(ent, 'objectType', '') or ''
-
-    # (2) Derived ownership for SketchPoints via the parent curve.
-    if ent_type in _POINT_TYPES:
-        if _derive_point_role_id(ent):
-            return True
-        return False
-
-    # (3) Constraints / dimensions inherit ownership from their targets.
-    #     Every target must itself be owned; one untagged target fails
-    #     the whole constraint.
-    if 'Constraint' in ent_type or 'Dimension' in ent_type:
-        targets = []
-        for prop_name in ('entityOne', 'entityTwo', 'lineOne', 'lineTwo',
-                          'circleOne', 'circleTwo', 'pointOne', 'pointTwo',
-                          'point', 'entity', 'line', 'curve'):
-            try:
-                item = getattr(ent, prop_name, None)
-                if item is not None:
-                    targets.append(item)
-            except Exception:
-                continue
-        if not targets:
-            return False
-        return all(is_framebuilder_owned(t) for t in targets)
-
-    return False
-
+# Ownership gate (``is_framebuilder_owned`` + ``_has_framebuilder_attribute``)
+# moved to ``ownership_gate`` so it lives next to ``relation_hints`` — both
+# share ``target_props_for`` and MUST agree on per-subtype slot coverage or
+# constraints silently drop out of the palette. Re-imported here so existing
+# callers like ``template_payload_builder`` that do
+# ``from template_payload import is_framebuilder_owned`` keep working. New
+# callers should import from ``ownership_gate`` directly.
+from ownership_gate import _has_framebuilder_attribute, is_framebuilder_owned
 
 # ``_derive_point_role_id``, ``_format_target_reference`` and
 # ``_constraint_targets`` moved to ``relation_hints`` along with
