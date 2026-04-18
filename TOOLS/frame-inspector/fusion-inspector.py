@@ -94,6 +94,126 @@ def get_fb_plan(ent):
     return ""
 
 
+def get_fb_connections(ent):
+    """Return a list of short strings describing what's connected to this entity.
+
+    Called for the single-selection ``Details & Connections`` panel. Previously
+    this function was referenced from ``_push_selection_to_palette`` at line
+    384 but never defined — every selection event raised ``NameError: name
+    'get_fb_connections' is not defined`` and the traceback escaped into
+    Fusion's event pump, which is why the addin refuses to re-RUN after one
+    interaction (Fusion flags a handler that throws and won't restart it until
+    the underlying code changes).
+
+    Output is a flat list of human-readable strings. Each string is rendered
+    as one ``<li>`` in ``inspector_palette.html``. Kept deliberately
+    defensive — this is called synchronously inside a Fusion selection-change
+    handler, so any unguarded attribute access on a stale proxy would crash
+    the host process.
+    """
+    try:
+        if hasattr(ent, 'nativeObject') and ent.nativeObject:
+            ent = ent.nativeObject
+        out = []
+        ent_type = getattr(ent, 'objectType', '') or ''
+
+        # SketchPoint: list every entity that uses this point.
+        if ent_type.endswith('SketchPoint'):
+            connected = getattr(ent, 'connectedEntities', None)
+            if connected is not None:
+                count = getattr(connected, 'count', None)
+                items = []
+                if count is not None:
+                    for i in range(count):
+                        try:
+                            items.append(connected.item(i))
+                        except Exception:
+                            continue
+                else:
+                    try:
+                        items = list(connected)
+                    except Exception:
+                        items = []
+                for c in items:
+                    try:
+                        name = get_fb_name(c)
+                        if name:
+                            out.append(f"Used by: {name}")
+                    except Exception:
+                        continue
+            return out
+
+        # Curves (line / arc / circle / spline): list the named endpoints
+        # plus any curves that share those endpoints.
+        for attr_name, label in (('startSketchPoint', 'Start'),
+                                 ('endSketchPoint', 'End'),
+                                 ('centerSketchPoint', 'Center')):
+            try:
+                pt = getattr(ent, attr_name, None)
+            except Exception:
+                pt = None
+            if not pt:
+                continue
+            coord = format_point(pt)
+            pt_name = get_fb_name(pt)
+            if coord and pt_name and not pt_name.startswith('Sketch'):
+                out.append(f"{label}: {pt_name} {coord}")
+            elif coord:
+                out.append(f"{label}: {coord}")
+
+            # Any other curves sharing this point.
+            try:
+                connected = getattr(pt, 'connectedEntities', None)
+                if connected is None:
+                    continue
+                count = getattr(connected, 'count', None)
+                neighbours = []
+                if count is not None:
+                    for i in range(count):
+                        try:
+                            neighbours.append(connected.item(i))
+                        except Exception:
+                            continue
+                for n in neighbours:
+                    try:
+                        # Skip the entity itself.
+                        if n is ent:
+                            continue
+                        try:
+                            if hasattr(n, 'nativeObject') and n.nativeObject is ent:
+                                continue
+                        except Exception:
+                            pass
+                        name = get_fb_name(n)
+                        if name:
+                            out.append(f"  ↳ {label} shared with: {name}")
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        # Constraints / dimensions: list their target entities by name.
+        if 'Constraint' in ent_type or 'Dimension' in ent_type:
+            for prop_name in ('entityOne', 'entityTwo', 'lineOne', 'lineTwo',
+                              'curveOne', 'curveTwo', 'circleOne', 'circleTwo',
+                              'pointOne', 'pointTwo', 'centerPoint', 'cornerPoint',
+                              'point', 'entity', 'line', 'curve',
+                              'symmetryLine', 'ellipse', 'midPointCurve'):
+                try:
+                    target = getattr(ent, prop_name, None)
+                    if not target:
+                        continue
+                    name = get_fb_name(target)
+                    if name:
+                        out.append(f"{prop_name}: {name}")
+                except Exception:
+                    continue
+
+        return out
+    except Exception:
+        return []
+
+
 def _get_entity_key(ent):
     try:
         if hasattr(ent, 'nativeObject') and ent.nativeObject:
