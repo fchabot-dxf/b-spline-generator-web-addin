@@ -100,6 +100,23 @@ def run_test():
     assert id1 in payload['items'][0]['hint']
     assert id2 in payload['items'][1]['hint']
 
+    # Existing FrameBuilder:ID must be preserved on rename, even when the
+    # user runs Rename Selection again. Fresh entities in the same pass
+    # must still get unique names (not collide with the preserved ID).
+    preserved = FakeSketchLine()
+    preserved.attributes = fake_attrs({'ID': 'horn_TL', 'name': 'horn_TL'})
+    preserved.name = 'horn_TL'
+    fresh = FakeSketchLine()
+    renamed = rename_selection.rename_selection([preserved, fresh], phase_prefix='p03_anatomy')
+    assert renamed == 1, f'expected exactly one renamed entity (fresh only), got {renamed}'
+    assert preserved.attributes.itemByName('FrameBuilder', 'ID').value == 'horn_TL', \
+        'preserved FrameBuilder:ID was clobbered by rename_selection'
+    assert preserved.attributes.itemByName('FrameBuilder', 'name').value == 'horn_TL', \
+        'preserved FrameBuilder:name was clobbered by rename_selection'
+    fresh_name = fresh.attributes.itemByName('FrameBuilder', 'name').value
+    assert fresh_name != 'horn_TL', f'fresh entity collided with preserved ID: {fresh_name}'
+    assert fresh_name.startswith('p03_anatomy_SketchLine'), f'unexpected fresh name {fresh_name}'
+
     print('test_rename_selection passed')
 
 

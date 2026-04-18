@@ -162,14 +162,21 @@ def test_constraint_on_lines_uses_quoted_names():
     # Arrow syntax must not appear inside any constraint's argument list.
     for line in code.splitlines():
         if 'PerpendicularConstraint' in line:
+            # The constraint's own FrameBuilder name is now the first arg,
+            # followed by the target line names.
+            assert '"perp_1"' in line, (
+                f'expected constraint name as first arg, got: {line}'
+            )
             assert '"horn_TL"' in line and '"brace_BR"' in line, (
                 f'expected quoted line names in constraint, got: {line}'
             )
             assert '->' not in line, (
                 f'arrow syntax leaked into constraint: {line}'
             )
-    # Same constraint should land in the phase block as a real step, not a comment.
+    # Same constraint should land in the phase block as a real step, with
+    # both the constraint's own Name and its Targets populated.
     assert "'Type': 'PerpendicularConstraint'" in phase
+    assert "'Name': 'perp_1'" in phase
     assert "'Targets': [\"horn_TL\", \"brace_BR\"]" in phase
 
 

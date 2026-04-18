@@ -27,17 +27,18 @@ _wrap_sequence_hint = wrap_statement
 
 
 def _build_phase_block_code(items, phase_name='Generated Phase', phase_id='p01_generated', function_name='get_block', template_number='T2'):
+    # Only the get_block() wrapper contributes `# ...` lines. Items that
+    # don't parse into a phase step are dropped silently rather than
+    # showing as stray comment fallbacks in the output.
     lines = []
     for item in items:
         step = parse_statement_to_phase_step(item['hint'])
         if step:
             lines.append(format_phase_step(step))
-        else:
-            lines.append(f"    # {item['hint']}")
     return format_phase_block(lines, phase_name=phase_name, phase_id=phase_id, function_name=function_name, template_number=template_number)
 
 
-def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_name=None, template_number='T2'):
+def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_name=None, template_number='T2', detected_sketch_name=None):
     count = len(entities)
     logs = []
     design_vars = _collect_design_variables(logs, get_design_params)
@@ -73,7 +74,8 @@ def build_template_payload(entities, phase_prefix=None, phase_id=None, phase_nam
         'linked': [],
         'linked_expr': [],
         'listLabel': 'Selection',
-        'type': 'TemplateMaker'
+        'type': 'TemplateMaker',
+        'detectedSketchName': detected_sketch_name or ''
     }
 
     if count == 0:

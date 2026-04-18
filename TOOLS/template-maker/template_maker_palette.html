@@ -7,34 +7,139 @@
         body {
             font-family: "Segoe UI", Arial, sans-serif;
             margin: 0;
-            padding: 12px;
+            padding: 10px 12px 72px 12px;
             background: #f3f6fb;
             color: #1c242f;
         }
-        #pulse-box {
-            padding: 8px 10px;
+        /* Compact status header: status dot + count + short description on one line. */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
             border-radius: 6px;
             background: #eef7ff;
             border: 1px solid #c7ddf7;
             color: #175a99;
             font-size: 0.9em;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
+            line-height: 1.3;
         }
-        h1 {
-            font-size: 1.1em;
-            margin: 0 0 10px 0;
-            color: #0f4d82;
+        .status-bar .status-dot {
+            flex: 0 0 auto;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #94a3b8;
+            box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
+            transition: background 0.2s ease, box-shadow 0.2s ease;
         }
-        .summary {
-            margin-bottom: 12px;
-            font-size: 0.95em;
+        .status-bar.status-live .status-dot {
+            background: #2f7d3f;
+            box-shadow: 0 0 0 2px rgba(47, 125, 63, 0.2);
+        }
+        .status-bar.status-waiting .status-dot {
+            background: #c98b1a;
+            box-shadow: 0 0 0 2px rgba(201, 139, 26, 0.2);
+        }
+        /* Amber: actionable warnings (mixed pick, multi-source note, etc.) */
+        .status-bar.status-warn {
+            background: #fff5e1;
+            border-color: #f0c779;
+            color: #7a4a00;
+        }
+        .status-bar.status-warn .status-dot {
+            background: #d97706;
+            box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
+        }
+        /* Red: hard refusals (untagged source, body-projected source, etc.) */
+        .status-bar.status-err {
+            background: #fde8e8;
+            border-color: #f4b4b4;
+            color: #8a1f1f;
+        }
+        .status-bar.status-err .status-dot {
+            background: #c0392b;
+            box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2);
+        }
+        .status-bar .status-count {
+            font-weight: 700;
+            flex: 0 0 auto;
+        }
+        .status-bar .status-desc {
             color: #32435b;
+            font-weight: 400;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Settings strip — single-line summary of current config. */
+        .settings-wrap {
+            margin-bottom: 10px;
+            border: 1px solid #d1dce8;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .settings-wrap summary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            font-size: 0.88em;
+            color: #0f4d82;
+            cursor: pointer;
+            background: #f7faff;
+            list-style: none;
+        }
+        .settings-wrap summary::-webkit-details-marker { display: none; }
+        .settings-wrap summary::after {
+            content: '';
+            display: inline-block;
+            width: 0.45rem;
+            height: 0.45rem;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            margin-left: auto;
+            transition: transform 0.2s ease;
+        }
+        .settings-wrap[open] summary::after {
+            transform: rotate(-135deg);
+        }
+        .settings-wrap .settings-gear {
+            font-size: 0.95em;
+            opacity: 0.75;
+        }
+        .settings-wrap .settings-pill {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.88em;
+            color: #1c242f;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .settings-wrap .settings-auto {
+            color: #2f7d3f;
+            font-style: italic;
+            font-weight: 500;
+            margin-left: 4px;
+            font-size: 0.82em;
+        }
+        .settings-wrap .settings-body {
+            padding: 10px 12px 12px 12px;
+            border-top: 1px solid #d1dce8;
+            background: #fff;
         }
         .settings-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 10px;
-            margin-bottom: 14px;
+            margin-bottom: 10px;
+        }
+        .settings-row:last-child {
+            margin-bottom: 0;
         }
         .settings-row label {
             display: flex;
@@ -66,13 +171,20 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 12px 14px;
+            padding: 8px 12px;
             font-weight: 700;
             cursor: pointer;
             background: #eff7ff;
             border-bottom: 1px solid #d1dce8;
             color: #0f4d82;
             list-style: none;
+        }
+        /* Count badge shown next to panel title — "Sequence · 5 items" */
+        .panel summary .section-count {
+            font-weight: 500;
+            font-size: 0.85em;
+            color: #5f7a9c;
+            margin-left: 8px;
         }
 
         .panel summary .section-title {
@@ -95,7 +207,7 @@
             cursor: help;
         }
 
-        .panel summary::before {
+        .panel summary::after {
             content: '';
             display: inline-block;
             width: 0.55rem;
@@ -103,11 +215,11 @@
             border-right: 2px solid currentColor;
             border-bottom: 2px solid currentColor;
             transform: rotate(45deg);
-            margin-right: 10px;
+            margin-left: 10px;
             transition: transform 0.2s ease;
         }
 
-        .panel[open] summary::before {
+        .panel[open] summary::after {
             transform: rotate(135deg);
         }
 
@@ -158,20 +270,10 @@
         .variable-row input.variable-name {
             min-width: 100px;
         }
-        .add-variable-btn {
-            border: 1px solid #0077c8;
-            background: #ffffff;
-            color: #0077c8;
-            padding: 8px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9em;
-            width: fit-content;
-        }
         .tab-bar {
             display: flex;
             gap: 8px;
-            margin: 14px 0;
+            margin: 8px 0 10px 0;
         }
         .tab-button {
             border: 1px solid #ccd7e4;
@@ -199,14 +301,6 @@
             font-size: 1.0em;
             color: #0f4d82;
             font-weight: 700;
-        }
-        .add-variable-btn:hover {
-            background: #eef7ff;
-        }
-        .panel-actions {
-            display: flex;
-            justify-content: flex-end;
-            padding: 0 14px 10px 14px;
         }
         .log-area {
             width: 100%;
@@ -242,8 +336,37 @@
         .button-row {
             margin-top: 10px;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
+        }
+        /* Sticky action bar — always reachable even if the sequence scrolls. */
+        .sticky-actions {
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            margin: 12px -12px -10px -12px;
+            padding: 10px 12px;
+            background: rgba(243, 246, 251, 0.95);
+            backdrop-filter: blur(4px);
+            border-top: 1px solid #d1dce8;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 8px;
+        }
+        .sticky-actions.single {
+            grid-template-columns: 1fr;
+        }
+        .sticky-actions button.primary-copy {
+            font-size: 0.98em;
+            font-weight: 700;
+        }
+        .sticky-actions button.secondary {
+            background: #7587a0;
+            font-size: 0.88em;
+            font-weight: 500;
+        }
+        .sticky-actions button.secondary:hover {
+            background: #5f6f84;
         }
         button {
             border: none;
@@ -274,25 +397,36 @@
     </style>
 </head>
 <body>
-    <div id="pulse-box">Bridge: WAITING...</div>
-    <h1>Template Maker</h1>
-    <div class="summary" id="summary-text">Select sketch geometry to preview seed and constraint snippets.</div>
-    <div class="settings-row">
-        <label>File Name
-            <input id="file-name-input" type="text" placeholder="T2_p05_lines.py" value="T2_p05_lines.py">
-        </label>
-        <label>Template Number
-            <input id="template-number-input" type="text" placeholder="T2" value="T2">
-        </label>
+    <div id="status-bar" class="status-bar status-waiting" title="Bridge status">
+        <span class="status-dot"></span>
+        <span class="status-count" id="status-count">—</span>
+        <span class="status-desc" id="status-desc">Waiting for Fusion bridge…</span>
     </div>
-    <div class="settings-row">
-        <label>Phase ID
-            <input id="phase-id-input" type="text" placeholder="p03" value="p03">
-        </label>
-        <label>Sketch Name
-            <input id="sketch-name-input" type="text" placeholder="anatomy" value="anatomy">
-        </label>
-    </div>
+    <details id="settings-wrap" class="settings-wrap">
+        <summary>
+            <span class="settings-gear">⚙</span>
+            <span class="settings-pill" id="settings-pill">T2 · p03 · anatomy</span>
+            <span class="settings-auto" id="settings-auto-indicator" style="display:none;">auto</span>
+        </summary>
+        <div class="settings-body">
+            <div class="settings-row">
+                <label>File Name
+                    <input id="file-name-input" type="text" placeholder="T2_p05_lines.py" value="T2_p05_lines.py">
+                </label>
+                <label>Template Number
+                    <input id="template-number-input" type="text" placeholder="T2" value="T2">
+                </label>
+            </div>
+            <div class="settings-row">
+                <label>Phase ID
+                    <input id="phase-id-input" type="text" placeholder="p03" value="p03">
+                </label>
+                <label>Sketch Name
+                    <input id="sketch-name-input" type="text" placeholder="auto (from active sketch)">
+                </label>
+            </div>
+        </div>
+    </details>
     <div class="tab-bar">
         <button id="phase-tab-btn" class="tab-button active">Phase Generator</button>
         <button id="variable-tab-btn" class="tab-button">Variable Generator</button>
@@ -300,32 +434,146 @@
     <div id="phase-section" class="tab-content active">
         <div id="panels"></div>
         <textarea id="code-box" class="code-output" readonly placeholder="Combined code preview will appear here..."></textarea>
-        <div class="button-row">
-            <button id="wrap-start-btn">Insert Header</button>
-            <button id="wrap-end-btn">Insert Footer</button>
-            <button id="clear-wrap-btn" class="secondary">Reset Preview</button>
-            <button id="copy-btn">Copy Code</button>
-            <button id="rename-btn" class="secondary">Rename Selection</button>
-        </div>
-        <textarea id="phase-code-box" class="code-output" readonly placeholder="Generated phase block code will appear here..."></textarea>
-        <div class="button-row">
-            <button id="copy-phase-btn" class="secondary">Copy Phase Block</button>
+        <div class="sticky-actions">
+            <button id="copy-btn" class="primary-copy">Copy Code</button>
+            <button id="rename-btn" class="secondary" title="Auto-assign IDs to the current Fusion selection based on Phase · Sketch prefix.">🏷 Rename selection</button>
         </div>
     </div>
     <div id="variable-section" class="tab-content">
         <h2 class="tab-section-title">Variable Insertion Generator</h2>
         <div id="variable-panel-container"></div>
         <textarea id="variable-code-box" class="code-output" readonly placeholder="Generated variable block will appear here..."></textarea>
-        <div class="button-row">
-            <button id="copy-variable-btn">Copy Variable Block</button>
+        <div class="sticky-actions">
+            <button id="copy-variable-btn" class="primary-copy">Copy Variable Block</button>
+            <button id="toggle-all-variables-btn" class="secondary">Select All</button>
         </div>
     </div>
 
     <script>
         var currentPayload = null;
+        var lastPayloadFingerprint = '';
+        // Tracks whether the user has manually typed a sketch name in this
+        // session. When false, the input auto-populates from the payload's
+        // detectedSketchName on every push. Clearing the input resets this
+        // flag so auto-detection resumes.
+        var sketchInputUserEdited = false;
 
         function dlog(msg) {
             // Debug logger disabled in UI mode.
+        }
+
+        function payloadFingerprint(payload) {
+            // Fingerprint covers only fields that affect the rendered
+            // panels/variables. Two pushes with the same fingerprint
+            // can safely be ignored — skipping their re-render keeps
+            // user-resized textareas and unfinished edits intact while
+            // the host continues to poll at 800ms intervals.
+            if (!payload) return '';
+            try {
+                return JSON.stringify({
+                    count: payload.count,
+                    description: payload.description,
+                    detectedSketchName: payload.detectedSketchName || '',
+                    selectionKind: payload.selectionKind || '',
+                    projectionsOk: payload.projectionsOk,
+                    projectionsError: payload.projectionsError || '',
+                    projectionsBlockCode: payload.projectionsBlockCode || '',
+                    mixedPickWarning: payload.mixedPickWarning || '',
+                    items: (payload.items || []).map(function(i) {
+                        return { name: i.name, hint: i.hint, coordExpr: i.coordExpr, meta: i.meta };
+                    }),
+                    variables: (payload.variables || []).map(function(v) {
+                        return { name: v.name, expression: v.expression, enabled: v.enabled };
+                    })
+                });
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function updateStatusBar(payload) {
+            var bar = document.getElementById('status-bar');
+            var count = document.getElementById('status-count');
+            var desc = document.getElementById('status-desc');
+            if (!bar || !count || !desc) return;
+            bar.classList.remove('status-waiting', 'status-live', 'status-warn', 'status-err');
+            if (!payload) {
+                bar.classList.add('status-waiting');
+                count.textContent = '—';
+                desc.textContent = 'Waiting for Fusion bridge…';
+                return;
+            }
+            var n = payload.count || 0;
+            var kind = payload.selectionKind || '';
+
+            // Mixed pick: seeds + projections together. Refuse, flash amber.
+            if (kind === 'mixed') {
+                bar.classList.add('status-warn');
+                count.textContent = n + ' mixed';
+                desc.textContent = payload.mixedPickWarning
+                    || 'Mixed pick: seeds + projections. Pick one kind at a time.';
+                return;
+            }
+
+            // Projection path: either success-with-note or hard refusal.
+            if (kind === 'projections') {
+                if (payload.projectionsOk === false) {
+                    bar.classList.add('status-err');
+                    count.textContent = n + ' blocked';
+                    desc.textContent = payload.projectionsError
+                        || 'Projection inference refused — see panel.';
+                    return;
+                }
+                if (payload.projectionsOk === true) {
+                    // Multi-source → amber note; single-source → live green.
+                    var sources = (payload.projections || []).reduce(function(acc, p) {
+                        if (p && p.SourceSketch) acc[p.SourceSketch] = true;
+                        return acc;
+                    }, {});
+                    var sourceCount = Object.keys(sources).length;
+                    bar.classList.add(sourceCount > 1 ? 'status-warn' : 'status-live');
+                    var nproj = (payload.projections || []).length;
+                    count.textContent = nproj + (nproj === 1 ? ' projection' : ' projections');
+                    desc.textContent = payload.projectionsNote
+                        || ('projected from ' + Object.keys(sources).join(' + '));
+                    return;
+                }
+            }
+
+            // Default: seeds or empty selection.
+            bar.classList.add('status-live');
+            count.textContent = n === 0 ? '0 selected' : (n + (n === 1 ? ' selected' : ' selected'));
+            desc.textContent = payload.description || (n > 0 ? (payload.mainFeature || '') : 'Select sketch geometry to preview snippets.');
+        }
+
+        function updateSettingsPill() {
+            var pill = document.getElementById('settings-pill');
+            var auto = document.getElementById('settings-auto-indicator');
+            if (!pill) return;
+            var tn = (document.getElementById('template-number-input').value || '').trim() || 'T?';
+            var pid = (document.getElementById('phase-id-input').value || '').trim() || 'p?';
+            var sn  = (document.getElementById('sketch-name-input').value || '').trim();
+            var fn  = (document.getElementById('file-name-input').value || '').trim();
+            var parts = [tn, pid];
+            parts.push(sn || '—');
+            if (fn) parts.push(fn);
+            pill.textContent = parts.join(' · ');
+            if (auto) {
+                auto.style.display = (sn && !sketchInputUserEdited) ? 'inline' : 'none';
+            }
+        }
+
+        function applyDetectedSketchName(payload) {
+            var input = document.getElementById('sketch-name-input');
+            if (!input) return;
+            var detected = (payload && payload.detectedSketchName) || '';
+            if (sketchInputUserEdited) return; // user has taken manual control
+            if (detected && input.value !== detected) {
+                input.value = detected;
+            } else if (!detected && input.value && !sketchInputUserEdited) {
+                // Selection cleared or sketch unclosed — leave last good value in place
+                // rather than clearing. This keeps the prefix stable between clicks.
+            }
         }
 
         function mergeVariableRows(payload) {
@@ -409,14 +657,36 @@
             return 'templateMakerPanelState:' + title + ':' + (index != null ? index : 'base');
         }
 
+        function getTextareaHeightKey(title, index) {
+            return 'templateMakerPanelHeight:' + title + ':' + (index != null ? index : 'base');
+        }
+
+        function loadTextareaHeight(key) {
+            try {
+                return localStorage.getItem(key) || '';
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function saveTextareaHeight(key, height) {
+            try {
+                if (height) {
+                    localStorage.setItem(key, height);
+                }
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
         function getSectionTooltip(title) {
             switch (title) {
                 case 'Wrapper Metadata':
                     return 'Editable wrapper metadata for the generated code preview.';
                 case 'Template Variables':
                     return 'Detected template variables from the selection; enable, disable, or edit them here.';
-                case 'Return Block':
-                    return 'The return block for the generated code preview.';
+                case 'Sequence':
+                    return 'Consolidated seeds/constraints/dimensions for the selected entities. Edit freely; the return block is appended automatically in the final code preview.';
                 default:
                     return 'Review the selected entity preview for this section.';
             }
@@ -442,7 +712,25 @@
             }
         }
 
-        function makeSection(title, content, index) {
+        function countLines(text) {
+            if (!text) return 0;
+            // Count non-empty lines so an empty trailing blank doesn't
+            // inflate the reported count.
+            return text.split('\n').filter(function(l) { return l.trim().length > 0; }).length;
+        }
+
+        function fitTextareaToContent(textarea, min, max) {
+            // Auto-size by line count, bounded by [min, max]. Respects a
+            // user-persisted explicit height (from a manual drag) if one
+            // is present — that wins over auto-fit.
+            if (!textarea) return;
+            if (textarea.dataset.userResized === '1') return;
+            var lines = (textarea.value || '').split('\n').length;
+            var rows = Math.max(min || 5, Math.min(max || 20, lines + 1));
+            textarea.rows = rows;
+        }
+
+        function makeSection(title, content, index, countLabel) {
             var detail = document.createElement('details');
             detail.className = 'panel';
             var stateKey = getPanelStateKey(title, index);
@@ -466,6 +754,16 @@
             }
 
             summary.appendChild(titleSpan);
+
+            // Count badge — e.g. "Sequence · 7 items" — lets you glance at
+            // the header while collapsed and know whether there's content.
+            if (countLabel) {
+                var badge = document.createElement('span');
+                badge.className = 'section-count';
+                badge.textContent = '· ' + countLabel;
+                summary.appendChild(badge);
+            }
+
             detail.appendChild(summary);
 
             detail.addEventListener('toggle', function() {
@@ -476,8 +774,40 @@
             textarea.className = 'section-text';
             textarea.dataset.index = index;
             textarea.value = content || '';
-            textarea.addEventListener('input', updateCombinedPreview);
+            textarea.addEventListener('input', function() {
+                updateCombinedPreview();
+                // Live auto-fit while typing — user-resized textareas opt
+                // out via the userResized flag set on mouseup below.
+                if (index === 'sequence') fitTextareaToContent(textarea, 5, 20);
+            });
+
+            // Persist manual resizes so subsequent re-renders (from host
+            // pushes or selection changes) don't snap the textarea back
+            // to its default height.
+            var heightKey = getTextareaHeightKey(title, index);
+            var savedHeight = loadTextareaHeight(heightKey);
+            if (savedHeight) {
+                textarea.style.height = savedHeight;
+                textarea.dataset.userResized = '1';
+            }
+            // `resize: vertical` mutates style.height inline. Capture it
+            // on mouseup (end of drag gesture) so we stash the final
+            // value, not every intermediate pixel. Once the user has
+            // dragged, we stop auto-fitting — their explicit height wins.
+            textarea.addEventListener('mouseup', function() {
+                if (textarea.style.height) {
+                    saveTextareaHeight(heightKey, textarea.style.height);
+                    textarea.dataset.userResized = '1';
+                }
+            });
+
             detail.appendChild(textarea);
+
+            // Apply initial auto-fit for the Sequence box (wrapper metadata
+            // stays at its natural CSS min-height — it's boilerplate that
+            // doesn't change length often).
+            if (index === 'sequence') fitTextareaToContent(textarea, 5, 20);
+
             return detail;
         }
 
@@ -494,7 +824,10 @@
             checkbox.type = 'checkbox';
             checkbox.checked = variable.enabled;
             checkbox.dataset.index = rowIndex;
-            checkbox.addEventListener('change', updateCombinedPreview);
+            checkbox.addEventListener('change', function() {
+                refreshToggleAllVariablesLabel();
+                updateCombinedPreview();
+            });
             label.appendChild(checkbox);
             var span = document.createElement('span');
             span.textContent = 'Use';
@@ -522,25 +855,33 @@
             return row;
         }
 
-        function makeAddVariableButton(body) {
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'add-variable-btn';
-            btn.textContent = 'Add new variable';
-            btn.addEventListener('click', function() {
-                body.appendChild(makeVariableRow({ name: '', expression: '', enabled: true }, null));
-                updateCombinedPreview();
-            });
-            return btn;
-        }
-
         function renderVariables(payload) {
+            // The rows shown here are detected from the active Fusion design's
+            // user parameters (scanned via get_design_params). Adding a row
+            // directly in this UI would "ghost-declare" a variable that
+            // doesn't actually exist in the design — the generated phase
+            // code would reference a non-existent parameter at runtime.
+            // So there's no "Add new variable" button: if you want a new
+            // variable, add it to the design in Fusion and it'll appear
+            // here automatically on the next selection push.
             var container = document.createElement('details');
             container.className = 'panel';
             var stateKey = getPanelStateKey('Template Variables', 'variables');
             container.open = loadPanelState(stateKey, false);
             var summary = document.createElement('summary');
-            summary.textContent = 'Template Variables';
+            var titleWrap = document.createElement('span');
+            titleWrap.className = 'section-title';
+            var titleText = document.createElement('span');
+            titleText.textContent = 'Template Variables';
+            titleWrap.appendChild(titleText);
+            summary.appendChild(titleWrap);
+            var vars = payload.variables || [];
+            if (vars.length) {
+                var badge = document.createElement('span');
+                badge.className = 'section-count';
+                badge.textContent = '· ' + vars.length + (vars.length === 1 ? ' variable' : ' variables');
+                summary.appendChild(badge);
+            }
             container.appendChild(summary);
 
             container.addEventListener('toggle', function() {
@@ -554,7 +895,7 @@
             if (!variables || variables.length === 0) {
                 var note = document.createElement('div');
                 note.className = 'variable-note';
-                note.textContent = 'No detected variable expressions in the current selection or file.';
+                note.textContent = 'No user parameters detected in the active design. Add parameters in Fusion (Modify → Change Parameters) and they will appear here.';
                 body.appendChild(note);
             } else {
                 variables.forEach(function(variable, idx) {
@@ -562,11 +903,7 @@
                 });
             }
 
-            var actions = document.createElement('div');
-            actions.className = 'panel-actions';
-            actions.appendChild(makeAddVariableButton(body));
             container.appendChild(body);
-            container.appendChild(actions);
             return container;
         }
 
@@ -577,9 +914,11 @@
             }
             container.innerHTML = '';
             if (!payload) {
+                refreshToggleAllVariablesLabel();
                 return;
             }
             container.appendChild(renderVariables(payload));
+            refreshToggleAllVariablesLabel();
         }
 
         function wrapStatement(statement) {
@@ -605,33 +944,79 @@
                 return;
             }
 
+            var kind = payload.selectionKind || '';
+
+            // Mixed pick: single informational panel, no editable sections.
+            // The code-box stays empty — nothing to copy.
+            if (kind === 'mixed') {
+                var warn = payload.mixedPickWarning
+                    || 'Mixed pick: seeds + projections. Pick one kind at a time.';
+                container.appendChild(makeSection('Mixed Selection', warn, 'mixed',
+                    'pick one kind'));
+                document.getElementById('code-box').value = '# ' + warn;
+                return;
+            }
+
+            // Projections path — either a ready-to-paste block or a refusal.
+            if (kind === 'projections') {
+                if (payload.projectionsOk === false) {
+                    var errMsg = payload.projectionsError
+                        || 'Projection inference refused.';
+                    var details = errMsg;
+                    if (payload.badPicks && payload.badPicks.length) {
+                        details += '\n\nFlagged picks:\n  ' + payload.badPicks.join('\n  ');
+                    }
+                    container.appendChild(makeSection('Projections — Blocked',
+                        details, 'proj-err', payload.badPicks
+                            ? payload.badPicks.length + ' flagged'
+                            : 'refused'));
+                    document.getElementById('code-box').value = '# ' + errMsg;
+                    return;
+                }
+
+                // Success: single editable panel carrying the full block.
+                var rows = payload.projections || [];
+                var blockCode = payload.projectionsBlockCode || '';
+                var countLabel = rows.length + (rows.length === 1 ? ' projection' : ' projections');
+                container.appendChild(makeSection('Projections', blockCode, 'projections',
+                    countLabel));
+                // Projection blocks are self-contained get_block() dicts — the
+                // combined preview is just the section text, no wrapper/footer
+                // glue required.
+                document.getElementById('code-box').value = blockCode;
+                updateVariableBlockPreview();
+                return;
+            }
+
+            // Default seed path — unchanged.
             var headerText = buildHeaderText(
                 document.getElementById('file-name-input').value,
                 document.getElementById('template-number-input').value,
                 document.getElementById('phase-id-input').value,
                 document.getElementById('sketch-name-input').value
             );
-            container.appendChild(makeSection('Wrapper Metadata', headerText, 'header'));
+            var wrapperLineCount = countLines(headerText);
+            container.appendChild(makeSection('Wrapper Metadata', headerText, 'header',
+                wrapperLineCount + (wrapperLineCount === 1 ? ' line' : ' lines')));
 
+            // All geometry/constraint/dimension items share a single
+            // editable "Sequence" box placed directly after the wrapper.
+            // The return block (`return { 'seeds': seeds, ... }`) is NOT
+            // a separate section any more — updateCombinedPreview() glues
+            // it onto the bottom of the final code textarea automatically.
+            var sequenceLines = [];
             if (payload.items && payload.items.length > 0) {
-                payload.items.forEach(function(item, idx) {
-                    var title = item.name || ('Item ' + (idx + 1));
-                    var content = '';
-                    if (item.coordExpr) {
-                        content += '# coordExpr: ' + item.coordExpr + '\n';
+                payload.items.forEach(function(item) {
+                    var line = wrapStatement(item.hint);
+                    if (line) {
+                        sequenceLines.push(line);
                     }
-                    if (item.coord && item.coord !== item.coordExpr) {
-                        content += '# coord: ' + item.coord + '\n';
-                    }
-                    content += wrapStatement(item.hint) || '';
-                    if (item.meta) {
-                        content += content ? '\n# ' + item.meta : '# ' + item.meta;
-                    }
-                    container.appendChild(makeSection(title, content, idx));
                 });
             }
+            var seqCount = sequenceLines.length;
+            container.appendChild(makeSection('Sequence', sequenceLines.join('\n'), 'sequence',
+                seqCount + (seqCount === 1 ? ' item' : ' items')));
 
-            container.appendChild(makeSection('Return Block', buildFooterText(), 'footer'));
             updateCombinedPreview();
         }
 
@@ -654,42 +1039,40 @@
         }
 
         function updateCombinedPreview() {
+            // Projection / mixed / refusal modes own the code-box directly
+            // (set by renderPanels) — they're self-contained blocks, no
+            // wrapper/sequence/footer assembly needed. Let section edits
+            // still propagate, but skip the wrapper+footer glue.
+            var kind = currentPayload && currentPayload.selectionKind;
+            if (kind === 'projections' || kind === 'mixed') {
+                var sections = document.querySelectorAll('.section-text');
+                if (sections.length > 0) {
+                    document.getElementById('code-box').value = sections[0].value;
+                }
+                updateVariableBlockPreview();
+                return;
+            }
+
+            // Seed path — two editable sections feed the combined preview:
+            //   section[0] = Wrapper Metadata (file/template comments +
+            //                imports + build_sequence signature + empty lists)
+            //   section[1] = Sequence (every seeds/constraints/dims line)
+            // The return block (`return { 'seeds': seeds, ... }`) is NOT
+            // a user-editable section — it's appended unconditionally at
+            // the end of the combined preview.
+            //
+            // The Phase tab output is intentionally variable-free: the
+            // Variable Generator tab owns variable declarations. Mixing
+            // them into the phase code here would duplicate what lives
+            // in the other tab.
             var sections = document.querySelectorAll('.section-text');
             var lines = [];
 
-            // Header
             if (sections.length > 0) {
                 lines.push(sections[0].value.trim());
             }
 
-            var variables = getVariableRows();
-            var enabledVars = variables.filter(function(v) {
-                return v.enabled && v.name;
-            });
-            if (enabledVars.length > 0) {
-                lines.push('# Variables');
-                enabledVars.forEach(function(v) {
-                    if (v.expression && v.expression !== v.name) {
-                        lines.push('# ' + v.name + ' = ' + v.expression);
-                    } else {
-                        lines.push('# ' + v.name);
-                    }
-                });
-            }
-
-            if (currentPayload && currentPayload.codePreview && currentPayload.codePreview.trim() && sections.length <= 2) {
-                var previewLines = currentPayload.codePreview.trim().split('\n').map(function(line) {
-                    return line.replace(/\s+$/, '');
-                }).filter(function(line) {
-                    return line.length > 0;
-                });
-                if (previewLines.length > 0) {
-                    lines.push('# Selection Preview');
-                    lines = lines.concat(previewLines);
-                }
-            }
-
-            // Sequence sections and footer
+            // Sequence section (everything after the wrapper).
             for (var i = 1; i < sections.length; i++) {
                 var value = sections[i].value.trim();
                 if (value) {
@@ -697,19 +1080,15 @@
                 }
             }
 
+            // Footer (return block) — always emitted, even if the sequence
+            // is empty, so the generated function is always syntactically
+            // valid Python.
+            lines.push(buildFooterText().trim());
+
             document.getElementById('code-box').value = lines.filter(function(line) {
                 return line.length > 0;
             }).join('\n\n');
-            updatePhaseBlockPreview();
             updateVariableBlockPreview();
-        }
-
-        function updatePhaseBlockPreview() {
-            var phaseBox = document.getElementById('phase-code-box');
-            if (!phaseBox) {
-                return;
-            }
-            phaseBox.value = currentPayload && currentPayload.phaseBlockCode ? currentPayload.phaseBlockCode : 'Generated phase block code will appear here...';
         }
 
         function updateVariableBlockPreview() {
@@ -736,25 +1115,26 @@
             variableBox.value = lines.join('\n');
         }
 
-        function resetPreview() {
-            if (!currentPayload) {
-                return;
-            }
-            document.getElementById('file-name-input').value = 'T2_p05_lines.py';
-            document.getElementById('template-number-input').value = 'T2';
-            renderPanels(currentPayload);
-        }
-
         function applyData(dataStr, source) {
             var payload = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
             if (currentPayload) {
                 payload.variables = mergeVariableRows(payload);
             }
+
+            // Skip re-render when the host keeps pushing the same
+            // selection payload (common while polling). Without this
+            // guard, the 800ms poll destroys and rebuilds every section
+            // textarea, which cancels any in-progress manual resize and
+            // wipes inline edits.
+            var fingerprint = payloadFingerprint(payload);
+            if (fingerprint && fingerprint === lastPayloadFingerprint) {
+                return;
+            }
+            lastPayloadFingerprint = fingerprint;
+
             currentPayload = payload;
-            document.getElementById('summary-text').textContent = payload.description || 'Select sketch geometry to preview seed and constraint snippets.';
-            document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + (payload.count || 0) + ' selected)';
-            document.getElementById('pulse-box').style.background = '#e8f5ff';
-            document.getElementById('pulse-box').style.color = '#0f4d82';
+            updateStatusBar(payload);
+            applyDetectedSketchName(payload);
             renderPanels(payload);
             renderVariablePanel(payload);
             var variableBox = document.getElementById('variable-code-box');
@@ -762,6 +1142,7 @@
                 variableBox.value = payload.variableBlock;
             }
             updateVariableBlockPreview();
+            updateSettingsPill();
         }
 
         window.fusionJavaScriptHandler = function(action, data) {
@@ -814,39 +1195,6 @@
             }
         }
 
-        function insertHeader() {
-            var btn = document.getElementById('wrap-start-btn');
-            var code = document.getElementById('code-box').value;
-            var header = buildHeaderText(
-                document.getElementById('file-name-input').value,
-                document.getElementById('template-number-input').value,
-                document.getElementById('phase-id-input').value,
-                document.getElementById('sketch-name-input').value
-            );
-            document.getElementById('code-box').value = header + '\n' + code;
-            flashBtn(btn, 'Header inserted', true);
-        }
-
-        function insertFooter() {
-            var btn = document.getElementById('wrap-end-btn');
-            var code = document.getElementById('code-box').value;
-            var footer = buildFooterText();
-            document.getElementById('code-box').value = code + '\n' + footer;
-            flashBtn(btn, 'Footer inserted', true);
-        }
-
-        function resetPreview() {
-            var btn = document.getElementById('clear-wrap-btn');
-            if (!currentPayload) {
-                flashBtn(btn, 'No payload', false);
-                return;
-            }
-            document.getElementById('file-name-input').value = 'T2_p05_lines.py';
-            document.getElementById('template-number-input').value = 'T2';
-            renderPanels(currentPayload);
-            flashBtn(btn, 'Reset', true);
-        }
-
         function syncSettingsToHost() {
             if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
                 return;
@@ -863,14 +1211,38 @@
             }
         }
 
-        function copyPhaseBlockCode() {
-            var btn = document.getElementById('copy-phase-btn');
-            var text = document.getElementById('phase-code-box').value;
-            if (!text) {
-                flashBtn(btn, 'Nothing', false);
+        function getVariableCheckboxes() {
+            return document.querySelectorAll('.variable-row input[type="checkbox"]');
+        }
+
+        function refreshToggleAllVariablesLabel() {
+            var btn = document.getElementById('toggle-all-variables-btn');
+            if (!btn) return;
+            var boxes = getVariableCheckboxes();
+            if (boxes.length === 0) {
+                btn.textContent = 'Select All';
+                btn.disabled = true;
                 return;
             }
-            sendTextToHost('copy', text, btn, 'Copied!');
+            btn.disabled = false;
+            var allChecked = true;
+            for (var i = 0; i < boxes.length; i++) {
+                if (!boxes[i].checked) { allChecked = false; break; }
+            }
+            btn.textContent = allChecked ? 'Deselect All' : 'Select All';
+        }
+
+        function toggleAllVariables() {
+            var boxes = getVariableCheckboxes();
+            if (boxes.length === 0) return;
+            var allChecked = true;
+            for (var i = 0; i < boxes.length; i++) {
+                if (!boxes[i].checked) { allChecked = false; break; }
+            }
+            var target = !allChecked;  // if all checked → uncheck all; else check all.
+            boxes.forEach(function(box) { box.checked = target; });
+            refreshToggleAllVariablesLabel();
+            updateCombinedPreview();
         }
 
         function copyVariableBlockCode() {
@@ -968,11 +1340,8 @@
                 if (el) el.addEventListener(evt, fn);
             };
             on('copy-btn', 'click', copyCode);
-            on('copy-phase-btn', 'click', copyPhaseBlockCode);
             on('copy-variable-btn', 'click', copyVariableBlockCode);
-            on('wrap-start-btn', 'click', insertHeader);
-            on('wrap-end-btn', 'click', insertFooter);
-            on('clear-wrap-btn', 'click', resetPreview);
+            on('toggle-all-variables-btn', 'click', toggleAllVariables);
             on('rename-btn', 'click', renameSelection);
             on('phase-tab-btn', 'click', function() { switchTab('phase'); });
             on('variable-tab-btn', 'click', function() { switchTab('variable'); });
@@ -984,8 +1353,26 @@
                 if (!el) return;
                 el.addEventListener('change', syncSettingsToHost);
                 el.addEventListener('blur', syncSettingsToHost);
-                el.addEventListener('input', updateCombinedPreview);
+                el.addEventListener('input', function() {
+                    updateCombinedPreview();
+                    updateSettingsPill();
+                });
             });
+
+            // Track manual edits to the sketch name specifically: once the
+            // user types anything, the palette stops auto-populating from
+            // the detected sketch. Emptying the field re-enables auto-fill.
+            var sketchInput = document.getElementById('sketch-name-input');
+            if (sketchInput) {
+                sketchInput.addEventListener('input', function() {
+                    var val = sketchInput.value.trim();
+                    sketchInputUserEdited = val.length > 0;
+                    if (!sketchInputUserEdited && currentPayload) {
+                        applyDetectedSketchName(currentPayload);
+                    }
+                    updateSettingsPill();
+                });
+            }
 
             // Fallback polling for environments where the push channel isn't live.
             setInterval(poll, 800);

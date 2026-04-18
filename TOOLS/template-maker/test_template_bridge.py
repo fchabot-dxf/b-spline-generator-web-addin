@@ -53,22 +53,42 @@ class FakeAttributeStore:
 
 
 class FakeSketchPoint:
-    def __init__(self, x, y, name=None):
+    def __init__(self, x, y, name=None, parent_sketch=None,
+                 is_reference=False, referenced_entity=None,
+                 fb_id=None):
         self.objectType = 'SketchPoint'
         self.x = x
         self.y = y
         self.geometry = types.SimpleNamespace(x=x, y=y)
-        self.attributes = FakeAttributeStore({'name': name} if name else None)
+        attrs = {}
+        if name:
+            attrs['name'] = name
+        if fb_id:
+            attrs['ID'] = fb_id
+        self.attributes = FakeAttributeStore(attrs or None)
         self.nativeObject = None
+        self.parentSketch = parent_sketch
+        self.isReference = is_reference
+        self.referencedEntity = referenced_entity
 
 
 class FakeSketchLine:
-    def __init__(self, start, end, name=None):
+    def __init__(self, start, end, name=None, parent_sketch=None,
+                 is_reference=False, referenced_entity=None,
+                 fb_id=None):
         self.objectType = 'SketchLine'
         self.startSketchPoint = start
         self.endSketchPoint = end
-        self.attributes = FakeAttributeStore({'name': name} if name else None)
+        attrs = {}
+        if name:
+            attrs['name'] = name
+        if fb_id:
+            attrs['ID'] = fb_id
+        self.attributes = FakeAttributeStore(attrs or None)
         self.nativeObject = None
+        self.parentSketch = parent_sketch
+        self.isReference = is_reference
+        self.referencedEntity = referenced_entity
 
 
 class FakeSketchArc:
@@ -261,12 +281,147 @@ def test_html_event_rename_applies_framebuilder_metadata():
     assert fb_id.value.startswith('p05_anatomy_')
 
 
+def _fake_sketch(name):
+    return types.SimpleNamespace(name=name)
+
+
+def test_push_selection_projections_success():
+    """A clean all-projected selection produces a projection block."""
+    src_sketch = _fake_sketch('T2_1_bounding-box')
+    src_line = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+        fb_id='BB_corner_TL',
+        parent_sketch=src_sketch,
+    )
+    # The projected copy in the current sketch: isReference=True, points back
+    # at src_line.
+    projected = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+        is_reference=True,
+        referenced_entity=src_line,
+    )
+    ui, palette = make_fake_app([projected], document=FakeDocument(full_filename='p.f3d'))
+
+    template_bridge._last_sel_ids = ''
+    template_bridge._latest_phase_id = 'p03_projs'
+    template_bridge._latest_sketch_name = 'frame-enclosure'
+    template_bridge._latest_template_number = 'T2'
+
+    template_bridge._push_selection_to_palette()
+
+    payload_obj = json.loads(palette.sent[-1][1])
+    assert payload_obj['selectionKind'] == 'projections'
+    assert payload_obj['projectionsOk'] is True
+    assert payload_obj['projections'] == [{
+        'SourceSketch': '1_bounding-box',
+        'SourceID':     'BB_corner_TL',
+        'TargetID':     'proj_BB_corner_TL',
+    }]
+    assert '1_bounding-box' in payload_obj['projectionsNote']
+    assert 'get_block' in payload_obj['projectionsBlockCode']
+    assert "'SourceID':" in payload_obj['projectionsBlockCode']
+
+
+def test_push_selection_projections_untagged_refusal():
+    """Projected pick with an untagged source refuses cleanly."""
+    src_sketch = _fake_sketch('T2_1_bounding-box')
+    # Source has no fb_id — this is the "upstream phase compromised" case.
+    src_line = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+        parent_sketch=src_sketch,
+    )
+    projected = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+        is_reference=True,
+        referenced_entity=src_line,
+    )
+    ui, palette = make_fake_app([projected], document=FakeDocument(full_filename='u.f3d'))
+
+    template_bridge._last_sel_ids = ''
+    template_bridge._latest_phase_id = 'p03_projs'
+    template_bridge._latest_sketch_name = 'frame-enclosure'
+
+    template_bridge._push_selection_to_palette()
+
+    payload_obj = json.loads(palette.sent[-1][1])
+    assert payload_obj['selectionKind'] == 'projections'
+    assert payload_obj['projectionsOk'] is False
+    assert payload_obj['projectionsReason'] == 'untagged_source'
+    assert 'untagged' in payload_obj['projectionsError']
+    assert payload_obj['projections'] == []
+    assert payload_obj['projectionsBlockCode'] == ''
+
+
+def test_push_selection_mixed_refusal():
+    """Seeds + projections in one pick → mixed warning, no projection block."""
+    src_sketch = _fake_sketch('T2_1_bounding-box')
+    src_line = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+        fb_id='BB_corner_TL',
+        parent_sketch=src_sketch,
+    )
+    projected = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+        is_reference=True,
+        referenced_entity=src_line,
+    )
+    native = FakeSketchLine(
+        FakeSketchPoint(2.0, 0.0),
+        FakeSketchPoint(3.0, 0.0),
+    )
+    ui, palette = make_fake_app([projected, native], document=FakeDocument(full_filename='m.f3d'))
+
+    template_bridge._last_sel_ids = ''
+    template_bridge._latest_phase_id = 'p03_projs'
+    template_bridge._latest_sketch_name = 'frame-enclosure'
+
+    template_bridge._push_selection_to_palette()
+
+    payload_obj = json.loads(palette.sent[-1][1])
+    assert payload_obj['selectionKind'] == 'mixed'
+    assert payload_obj['mixedPickWarning']
+    assert payload_obj['projections'] == []
+    assert payload_obj['projectionsOk'] is None
+
+
+def test_push_selection_seeds_unchanged():
+    """Plain seed selection leaves the new projection fields empty/defaults."""
+    line = FakeSketchLine(
+        FakeSketchPoint(0.0, 0.0),
+        FakeSketchPoint(1.0, 0.0),
+    )
+    ui, palette = make_fake_app([line], document=FakeDocument(full_filename='s.f3d'))
+
+    template_bridge._last_sel_ids = ''
+    template_bridge._latest_phase_id = 'p01'
+    template_bridge._latest_sketch_name = 'anatomy'
+
+    template_bridge._push_selection_to_palette()
+
+    payload_obj = json.loads(palette.sent[-1][1])
+    assert payload_obj['selectionKind'] == 'seeds'
+    assert payload_obj['projectionsOk'] is None
+    assert payload_obj['projections'] == []
+    # Seed path still emits its usual block code — unchanged behavior.
+    assert payload_obj['phaseBlockCode']
+
+
 def run_test():
     test_phase_prefix_and_name()
     test_push_selection_to_palette_sends_update()
     test_html_event_poll_returns_last_payload()
     test_html_event_settings_applies_values_and_refreshes()
     test_html_event_rename_applies_framebuilder_metadata()
+    test_push_selection_projections_success()
+    test_push_selection_projections_untagged_refusal()
+    test_push_selection_mixed_refusal()
+    test_push_selection_seeds_unchanged()
     print('test_template_bridge passed')
 
 

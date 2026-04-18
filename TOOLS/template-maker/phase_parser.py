@@ -158,22 +158,54 @@ def _build_line_step(args):
 
 
 def _build_arc_step(args):
+    """Build a phase step for ``Seeds.Arc``.
+
+    Two shapes are accepted:
+
+    * **Current (correct)** — three positional points ON the curve:
+      ``Seeds.Arc("name", start, mid, end)``. This matches the runtime's
+      ``sketchArcs.addByThreePoints`` exactly; all three points must lie on
+      the arc. The center is auto-tagged ``"{name}:C"`` at runtime.
+
+    * **Legacy** — two positional points plus ``center=`` kwarg:
+      ``Seeds.Arc("name", start, end, center=c)``. The template-maker no
+      longer emits this form because it produces geometrically wrong arcs
+      (center isn't a curve point). It's accepted here only so existing
+      hand-written templates still parse.
+    """
     name, positional, kw = _parse_seed_common(args)
-    if not name or len(positional) < 2:
+    if not name:
         return None
-    center = kw.get('center')
-    radius = kw.get('radius')
-    step = {
+
+    base_step = {
         'ID': LiteralString(name),
         'Type': LiteralString('Arc3Point'),
-        'Points': [RawCode(positional[0]), RawCode(center or positional[1]), RawCode(positional[1])],
         'StartID': LiteralString(f'{name}:S'),
         'EndID': LiteralString(f'{name}:E'),
         'CenterID': LiteralString(f'{name}:C'),
     }
-    if radius:
-        step['Radius'] = RawCode(radius)
-    return step
+
+    if len(positional) >= 3:
+        base_step['Points'] = [
+            RawCode(positional[0]),
+            RawCode(positional[1]),
+            RawCode(positional[2]),
+        ]
+        return base_step
+
+    if len(positional) >= 2:
+        center = kw.get('center')
+        base_step['Points'] = [
+            RawCode(positional[0]),
+            RawCode(center or positional[1]),
+            RawCode(positional[1]),
+        ]
+        radius = kw.get('radius')
+        if radius:
+            base_step['Radius'] = RawCode(radius)
+        return base_step
+
+    return None
 
 
 def _build_circle_step(args):
@@ -262,7 +294,23 @@ def _build_geometry_step(seed_type, args):
 # ---------------------------------------------------------------------------
 
 def _build_constraint_step(constraint_type, args):
-    targets = [RawCode(arg.strip()) for arg in args if arg.strip()]
+    # New shape (what the template-maker now emits):
+    #   Constraints.Perpendicular("perp_1", lineA, lineB)
+    #     → first arg is the constraint's own FrameBuilder name.
+    # Legacy shape (hand-written or older generator output):
+    #   Constraints.Perpendicular(lineA, lineB)
+    #     → every arg is a target, no name.
+    # We distinguish by whether the first arg is a quoted string literal.
+    cleaned = [arg.strip() for arg in args if arg.strip()]
+    if cleaned and _is_quoted_string(cleaned[0]):
+        name = _unquote(cleaned[0])
+        targets = [RawCode(arg) for arg in cleaned[1:]]
+        return {
+            'Type': LiteralString(constraint_type),
+            'Name': LiteralString(name),
+            'Targets': targets,
+        }
+    targets = [RawCode(arg) for arg in cleaned]
     return {
         'Type': LiteralString(constraint_type),
         'Targets': targets,

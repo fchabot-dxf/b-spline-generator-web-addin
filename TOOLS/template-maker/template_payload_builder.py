@@ -36,13 +36,14 @@ def build_payload_items(entities, phase_prefix=None):
 
 
 def build_code_preview(items):
-    lines = [f'# Template Maker preview — {len(items)} selected']
+    # Annotation comments (item name, coordExpr, FrameBuilder metadata) live
+    # in the item panels in the palette UI; they're intentionally kept OUT
+    # of the generated code preview so the copy-out is pure executable code
+    # wrapped only by the header/footer. The only `# ...` lines in the
+    # output belong to the header wrapper itself.
+    lines = []
     for item in items:
-        lines.append(f"    # {item['name']}")
-        if item['coordExpr']:
-            lines.append(f"    # coordExpr: {item['coordExpr']}")
-        lines.append(wrap_statement(item['hint']))
-        if item['meta']:
-            lines.append(f"    # {item['meta']}")
-        lines.append('')
+        statement = wrap_statement(item['hint'])
+        if statement:
+            lines.append(statement)
     return '\n'.join(lines)

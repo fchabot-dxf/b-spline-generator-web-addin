@@ -17,6 +17,8 @@ _latest_template_number = 'T2'
 PALETTE_ID = 'TemplateMaker_Palette'
 CMD_ID = 'TemplateMaker_Command'
 PANEL_ID = 'TemplateMaker_Panel'
+PALETTE_WIDTH = 1200
+PALETTE_HEIGHT = 700
 
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
@@ -226,7 +228,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
         ui = app.userInterface
         palette = ui.palettes.itemById(PALETTE_ID)
         if not palette:
-            palette = ui.palettes.add(PALETTE_ID, 'Template Maker', PALETTE_URL, True, True, True, 360, 700)
+            palette = ui.palettes.add(PALETTE_ID, 'Template Maker', PALETTE_URL, True, True, True, PALETTE_WIDTH, PALETTE_HEIGHT)
 
         if not _html_handler:
             _html_handler = _HTMLEventHandler()

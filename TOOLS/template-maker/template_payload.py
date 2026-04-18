@@ -2,7 +2,8 @@ import datetime
 import os
 import re
 import tempfile
-from entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata
+from entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata, _get_arc_midpoint
+from expression_coords import _format_point_expr
 
 _DEBUG_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-detection.log')
 _SOURCE_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-debug.log')
@@ -180,16 +181,22 @@ _POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
 
 
 def _format_point_reference(pt, params=None, get_entity_coord_expr_fn=None):
-    """Format a reference to a geometry target for use inside a statement.
+    """Format a reference to a geometry target for use inside a SEED statement.
 
     For sketch *points*, return a coordinate tuple expression (which is valid
     Python — the arrow-joined multi-tuple format is only used for lines/arcs
     and would be invalid syntax if embedded as a constraint/dim target).
 
     For non-point entities (lines, arcs, circles), return the entity's name
-    as a quoted string literal. Frame Builder references geometry by ID
-    anyway, so ``"horn_TL"`` is the intended form for line targets in a
-    ``PerpendicularConstraint`` or ``ParallelConstraint``.
+    as a quoted string literal.
+
+    NOTE: This function is for SEED statement arguments (which need real
+    coordinates to place the geometry). For CONSTRAINT / DIMENSION target
+    references use ``_format_target_reference`` instead — constraints must
+    always use ID strings, never coords, because the points Fusion hands us
+    will have already been moved to satisfy the constraint and emitting those
+    post-constraint coords into the constraint itself is either a no-op or a
+    bug at phase-run time.
     """
     if not pt:
         return 'UnknownPoint'
@@ -219,13 +226,122 @@ def _format_point_reference(pt, params=None, get_entity_coord_expr_fn=None):
     return f'"{ent_type}"' if ent_type else 'Point(...)'
 
 
+def _same_entity(a, b):
+    """Best-effort identity check that works for both Fusion API proxies and
+    the plain Python objects used in tests. Fusion proxies may not be
+    ``is``-identical across fetches of the same underlying entity but should
+    compare equal via ``==`` (which delegates to the internal entity token).
+    """
+    if a is b:
+        return True
+    try:
+        return a == b
+    except Exception:
+        return False
+
+
+def _iter_connected_entities(pt):
+    """Yield the entities connected to a SketchPoint.
+
+    Fusion's ``SketchPoint.connectedEntities`` is a SketchEntityList
+    (``count`` + ``item(i)``). For tests we also accept a plain iterable.
+    """
+    connected = getattr(pt, 'connectedEntities', None)
+    if connected is None:
+        return
+    # SketchEntityList style.
+    try:
+        count = getattr(connected, 'count', None)
+        if count is not None:
+            for i in range(count):
+                yield connected.item(i)
+            return
+    except Exception:
+        pass
+    # Plain iterable (tests).
+    try:
+        for ent in connected:
+            yield ent
+    except Exception:
+        return
+
+
+def _derive_point_role_id(pt):
+    """Return a Frame Builder point ID (``"curve_name:S|:E|:C"``) for a
+    SketchPoint that participates in a named curve's start/end/center slot,
+    or ``None`` if this point isn't owned by any named curve in Fusion.
+    """
+    for candidate in _iter_connected_entities(pt):
+        try:
+            parent = _get_native(candidate)
+            parent_name = get_fb_name(parent)
+            if not parent_name or parent_name.startswith('Sketch') or parent_name.startswith('Vertex of'):
+                continue
+            if _same_entity(getattr(parent, 'startSketchPoint', None), pt):
+                return f'{parent_name}:S'
+            if _same_entity(getattr(parent, 'endSketchPoint', None), pt):
+                return f'{parent_name}:E'
+            if _same_entity(getattr(parent, 'centerSketchPoint', None), pt):
+                return f'{parent_name}:C'
+        except Exception:
+            continue
+    return None
+
+
+def _format_target_reference(ent):
+    """Format an entity as an ID-only string literal for use inside a
+    Constraints.* / Dimensions.* argument list.
+
+    Unlike ``_format_point_reference`` (used for seed statements, which need
+    real coords), this function NEVER emits coord tuples. Frame Builder's
+    constraints and dimensions take IDs like ``"horn_TL"`` or
+    ``"horn_TL:E"``. Emitting coords here would either be a no-op (both
+    coincident points share the same coords after Fusion settles them) or
+    actively wrong at phase-run time.
+    """
+    if not ent:
+        return '"UnknownTarget"'
+    ent = _get_native(ent)
+    ent_type = getattr(ent, 'objectType', '').split('::')[-1] if hasattr(ent, 'objectType') else ''
+
+    # Point-typed target: prefer the role-based curve-owned ID (horn_TL:E).
+    if ent_type in _POINT_TYPES:
+        role_id = _derive_point_role_id(ent)
+        if role_id:
+            return f'"{role_id}"'
+        # Standalone SketchPoint with its own FrameBuilder name.
+        name = get_fb_name(ent)
+        if name and not name.startswith('Sketch') and not name.startswith('Vertex of'):
+            return f'"{name}"'
+        # No ID derivable — placeholder keeps the emitted statement syntactically
+        # valid. User can rename the owning curve and regenerate.
+        return f'"{ent_type}"'
+
+    # Non-point entity (line, arc, circle, ellipse, spline) — use its FB name.
+    name = get_fb_name(ent)
+    if name and not name.startswith('Sketch'):
+        return f'"{name}"'
+    return f'"{ent_type}"' if ent_type else '"Unknown"'
+
+
 def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
+    """Collect the entity targets Fusion hangs off a Constraint or Dimension,
+    formatted as ID-only string literals ready for the emitted hint.
+
+    The ``params`` / ``get_entity_coord_expr_fn`` arguments are kept for
+    backwards compatibility with call sites, but they're intentionally
+    ignored: constraint targets must never carry coordinate expressions.
+    """
     targets = []
-    for prop_name in ('entityOne', 'entityTwo', 'lineOne', 'lineTwo', 'circleOne', 'circleTwo', 'pointOne', 'pointTwo', 'entity', 'line', 'curve'):
+    # ``point`` goes before ``entity`` so a SketchCoincidentConstraint emits
+    # ``("the_point_id", "the_anchor_id")`` in the natural reading order.
+    for prop_name in ('entityOne', 'entityTwo', 'lineOne', 'lineTwo',
+                      'circleOne', 'circleTwo', 'pointOne', 'pointTwo',
+                      'point', 'entity', 'line', 'curve'):
         try:
             item = getattr(ent, prop_name, None)
             if item:
-                targets.append(_format_point_reference(item, params, get_entity_coord_expr_fn))
+                targets.append(_format_target_reference(item))
         except Exception:
             pass
     return targets
@@ -255,17 +371,27 @@ def _hint_line(ent, name, ctx):
 
 
 def _hint_arc(ent, name, ctx):
+    # Frame Builder's runtime creates arcs via Fusion's
+    # ``sketchArcs.addByThreePoints(p1, p2, p3)`` which REQUIRES three points
+    # that all sit on the curve: start, a midpoint along the arc, end.
+    # Center does NOT belong in this slot — passing it would produce a
+    # geometrically wrong arc wherever the center isn't coincidentally on
+    # the curve (always, for any real arc).
+    #
+    # The centerSketchPoint is auto-tagged "{name}:C" by the runtime, so we
+    # don't need to emit center metadata in the seed call; it stays
+    # reachable for constraints via that stable ID.
     start_ref = _format_point_reference(getattr(ent, 'startSketchPoint', None), ctx['params'], ctx['expr_fn'])
     end_ref = _format_point_reference(getattr(ent, 'endSketchPoint', None), ctx['params'], ctx['expr_fn'])
-    center_ref = _format_point_reference(getattr(ent, 'centerSketchPoint', None), ctx['params'], ctx['expr_fn'])
-    radius_suffix = ''
-    try:
-        r = getattr(ent.geometry, 'radius', None)
-        if r is not None:
-            radius_suffix = f', radius={round(float(r), 4)}'
-    except Exception:
-        radius_suffix = ''
-    return f'Seeds.Arc("{name}", {start_ref}, {end_ref}, center={center_ref}{radius_suffix})'
+
+    mid_pt = _get_arc_midpoint(ent)
+    if mid_pt is not None:
+        mid_expr = _format_point_expr(mid_pt, ctx['params'])
+    else:
+        mid_expr = ''
+    mid_ref = mid_expr if mid_expr else '(mid_x, mid_y)'
+
+    return f'Seeds.Arc("{name}", {start_ref}, {mid_ref}, {end_ref})'
 
 
 def _hint_circle(ent, name, ctx):
@@ -358,10 +484,17 @@ _SHAPE_HINT_HANDLERS = {
 }
 
 
-def _hint_constraint(ent, ent_type, ctx):
+def _hint_constraint(ent, ent_type, name, ctx):
+    # Constraints carry their own FrameBuilder name (matching the seed and
+    # dimension convention) so the runtime can identify / look them up
+    # later. Targets follow the name in positional order.
     targets = _constraint_targets(ent, ctx['params'], ctx['expr_fn'])
-    args = ', '.join(targets) if targets else '/* targets */'
-    return f'Constraints.{ent_type}( {args} )'
+    args = [f'"{name}"']
+    if targets:
+        args.extend(targets)
+    else:
+        args.append('/* targets */')
+    return f'Constraints.{ent_type}({", ".join(args)})'
 
 
 def _hint_dimension(ent, ent_type, name, ctx):
@@ -397,7 +530,7 @@ def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None, name_ove
     # SketchLinearDimension, SketchRadialDimension...) that all route through
     # a single family handler.
     if 'Constraint' in ent_type:
-        return _hint_constraint(ent, ent_type, ctx)
+        return _hint_constraint(ent, ent_type, name, ctx)
     if 'Dimension' in ent_type:
         return _hint_dimension(ent, ent_type, name, ctx)
 

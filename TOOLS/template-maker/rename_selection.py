@@ -48,6 +48,22 @@ def set_entity_fb_name(ent, name):
         pass
 
 
+def _existing_fb_id(ent):
+    """Return the FrameBuilder:ID value already stamped on this entity,
+    or '' if none is set. Existing IDs are considered user-owned — the
+    user intentionally reuses IDs across features, so Rename Selection
+    must never overwrite one that's already there."""
+    if not ent or not hasattr(ent, 'attributes'):
+        return ''
+    try:
+        attr = ent.attributes.itemByName('FrameBuilder', 'ID')
+        if attr and attr.value:
+            return attr.value
+    except Exception:
+        pass
+    return ''
+
+
 def rename_selection(entities, phase_prefix=None):
     if not entities:
         return 0
@@ -57,6 +73,18 @@ def rename_selection(entities, phase_prefix=None):
 
     for ent in entities:
         native = _get_native(ent)
+
+        # Preserve any FrameBuilder:ID that's already assigned. The user
+        # reuses IDs across features (sometimes on multiple entities at
+        # once), so a rename pass must leave them alone. We still
+        # register the existing ID in label_counts so fresh entities in
+        # the same pass don't accidentally generate a label that
+        # collides with it.
+        existing_id = _existing_fb_id(native)
+        if existing_id:
+            label_counts[existing_id] = label_counts.get(existing_id, 0) + 1
+            continue
+
         base_label = _label_for_entity(native)
         new_label = make_unique_label(native, base_label, label_counts, phase_prefix=phase_prefix)
         if new_label != base_label:

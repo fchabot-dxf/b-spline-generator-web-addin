@@ -33,11 +33,15 @@ def constraint_step(ctx, sketch, s_name, rel):
     gc = sketch.geometricConstraints
     ctype = rel["Type"]
     allow_nudge = rel.get("AllowNudge", False)
+    rel_name = rel.get("Name")
+
+    created = []  # (constraint_entity, suffix-or-None) — stamped after success
 
     try:
         if ctype == "Coincident" and len(targets) == 2:
             try:
-                gc.addCoincident(targets[0], targets[1])
+                c = gc.addCoincident(targets[0], targets[1])
+                created.append((c, None))
             except Exception as e:
                 if allow_nudge:
                     ctx.logger.log(f"Weld candidate failed ({rel['Targets']}). Attempting Jitter-Retry...", "WARNING")
@@ -46,11 +50,12 @@ def constraint_step(ctx, sketch, s_name, rel):
                     from fb_engine import geometry
                     p_to_move = targets[0] if hasattr(targets[0], 'geometry') else targets[1]
                     target_ent = targets[1] if p_to_move == targets[0] else targets[0]
-                    
+
                     if hasattr(p_to_move, 'geometry') and hasattr(target_ent, 'geometry'):
                         geometry.nudge_point_to_target(ctx, p_to_move, target_ent.geometry, radius=0.01)
                         # Second attempt
-                        gc.addCoincident(targets[0], targets[1])
+                        c = gc.addCoincident(targets[0], targets[1])
+                        created.append((c, None))
                         ctx.logger.log(f"CONSTRAINT RECOVERED via Jitter: {ctype} on {rel['Targets']}")
                     else:
                         raise e
@@ -58,24 +63,49 @@ def constraint_step(ctx, sketch, s_name, rel):
                     raise e
         elif ctype == "Collinear" and len(targets) == 2:
 
-            gc.addCollinear(targets[0], targets[1])
+            c = gc.addCollinear(targets[0], targets[1])
+            created.append((c, None))
         elif ctype == "Horizontal" and len(targets) >= 1:
-            for t in targets:
-                gc.addHorizontal(t)
+            # Multi-target H/V: each target gets its own constraint, so we
+            # suffix the name with the target index when more than one is
+            # passed. Single-target stays un-suffixed for readability.
+            for i, t in enumerate(targets):
+                c = gc.addHorizontal(t)
+                suffix = None if len(targets) == 1 else str(i)
+                created.append((c, suffix))
         elif ctype == "Vertical" and len(targets) >= 1:
-            for t in targets:
-                gc.addVertical(t)
+            for i, t in enumerate(targets):
+                c = gc.addVertical(t)
+                suffix = None if len(targets) == 1 else str(i)
+                created.append((c, suffix))
         elif ctype == "Tangent" and len(targets) == 2:
-            gc.addTangent(targets[0], targets[1])
+            c = gc.addTangent(targets[0], targets[1])
+            created.append((c, None))
         elif ctype == "Parallel" and len(targets) == 2:
-            gc.addParallel(targets[0], targets[1])
+            c = gc.addParallel(targets[0], targets[1])
+            created.append((c, None))
         elif ctype == "Equal" and len(targets) == 2:
-            gc.addEqual(targets[0], targets[1])
+            c = gc.addEqual(targets[0], targets[1])
+            created.append((c, None))
         else:
             ctx.logger.log(
                 f"CONSTRAINT SKIP: {ctype} needs different target count "
                 f"(got {len(targets)})", "WARNING")
             return
+
+        # Stamp unique IDs on the just-created constraint(s) so they can be
+        # looked up, re-inspected, or deleted by name later. If the template
+        # didn't supply a Name, we still register the constraint under an
+        # auto-generated ID so the entity_map stays complete.
+        for constr, suffix in created:
+            if not constr:
+                continue
+            if rel_name:
+                override_id = rel_name if suffix is None else f"{rel_name}_{suffix}"
+            else:
+                override_id = None  # set_id will auto-generate a constraint-N ID
+            ctx.set_id(constr, s_name, "constraint", override_id=override_id)
+
         ctx.logger.log(f"CONSTRAINT OK: {ctype} on {rel['Targets']}")
 
     except Exception as e:
