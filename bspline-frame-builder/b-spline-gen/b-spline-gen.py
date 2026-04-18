@@ -219,7 +219,7 @@ def _sync_user_parameters(design, params):
     Prefixes names with 'BSG_' to avoid collisions.
     """
     if not design or not params: return
-    
+
     # Shared Namespace: using widthIn/heightIn directly (v45 Simplified)
     param_map = {
         'widthIn':  ('widthIn', 'in'),
@@ -227,7 +227,7 @@ def _sync_user_parameters(design, params):
     }
 
     user_params = design.userParameters
-    
+
     for key, (f_name, unit) in param_map.items():
         if key in params:
             val = params[key]
@@ -235,11 +235,41 @@ def _sync_user_parameters(design, params):
                 existing = user_params.itemByName(f_name)
                 if existing:
                     existing.expression = str(val)
+                    param = existing
                 else:
                     val_input = adsk.core.ValueInput.createByString(str(val))
-                    user_params.add(f_name, val_input, unit, 'Design Master Parameter')
+                    param = user_params.add(f_name, val_input, unit, 'Design Master Parameter')
+                # Stamp bspline ownership on every touch (create OR update).
+                # Tagging on update covers the case where the parameter was
+                # first created by another tool (e.g. frame-builder's
+                # engine) and is now being sync'd by bspline — from that
+                # point on bspline is the source of truth for its value,
+                # so the ownership marker belongs here. The group name
+                # 'Bspline' is intentionally distinct from 'FrameBuilder'
+                # to avoid any confusion with the sketch-entity attribute
+                # group used across the rest of the toolchain.
+                _ensure_bspline_param_tag(param, f_name)
             except Exception as e:
                 _log(f"Failed to sync parameter {f_name}: {e}")
+
+
+def _ensure_bspline_param_tag(param, f_name):
+    """Idempotently stamp ``Bspline.owner = '1'`` on a UserParameter.
+
+    Safe to call on both freshly-created and pre-existing parameters.
+    Wrapped in try/except because UserParameter.attributes is
+    occasionally flaky across Fusion versions — tagging is never worth
+    failing the sync over.
+    """
+    try:
+        if not param or not hasattr(param, 'attributes'):
+            return
+        existing_tag = param.attributes.itemByName('Bspline', 'owner')
+        if existing_tag and existing_tag.value:
+            return
+        param.attributes.add('Bspline', 'owner', '1')
+    except Exception as tag_err:
+        _log(f"Tag skip on {f_name}: {tag_err}")
 
 
 # ── Palette Closed event handler ──────────────────────────────────────────────

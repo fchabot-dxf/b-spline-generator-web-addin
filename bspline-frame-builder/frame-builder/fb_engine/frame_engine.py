@@ -389,9 +389,9 @@ class FrameBuilder:
                     unit = p_info.get("Unit", "cm")
                     try:
                         self.user_params.add(
-                            name, 
-                            adsk.core.ValueInput.createByReal(default_val), 
-                            unit, 
+                            name,
+                            adsk.core.ValueInput.createByReal(default_val),
+                            unit,
                             "Template Master Parameter"
                         )
                         self.logger.log(f"MASTER (Created): {name} = {default_val} {unit}")
