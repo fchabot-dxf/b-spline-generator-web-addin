@@ -1,38 +1,13 @@
 def get_block(ui_data=None):
-    """
-    Step 5b: Silhouette Arcs.
-    Places the circular arc seeds for the 4-segment silhouette.
-    """
-
+    """Auto-generated phase block."""
     seq = [
-        # 4. ARC SEEDS
-        # RIGHT side — flows top to bottom
-        {'ID': 'arc_waist_R', 'Type': 'Arc3Point',
-         'Points': [['widthIn * 0.297624', 'heightIn * 0.261211'], ['widthIn * 0.377981', 'heightIn * 0.261211'], ['widthIn * 0.377981', 'heightIn * 0.198711']], 
-         'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C', 'Bulge': ['6.72', '5.97']},
-        {'Type': 'Radius', 'Target': 'arc_waist_R',    'Expression': 'heightIn/16', 'Name': 'seed_rad_waist_R'},
-
-        {'ID': 'arc_hip_R', 'Type': 'Arc3Point',
-         'Points': [['widthIn * 0.465238', 'heightIn * 0.135216'], ['widthIn * 0.38488', 'heightIn * 0.135216'], ['widthIn * 0.38488', 'heightIn * 0.197716']], 
-         'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E', 'CenterID': 'arc_hip_R:C', 'Bulge': ['6.84', '3.09']},
-        {'Type': 'Radius', 'Target': 'arc_hip_R',      'Expression': 'heightIn/16', 'Name': 'seed_rad_hip_R'},
-
-        # LEFT side — flows bottom to top
-        {'ID': 'arc_hip_L', 'Type': 'Arc3Point',
-         'Points': [['-widthIn * 0.383255', 'heightIn * 0.202523'], ['-widthIn * 0.383255', 'heightIn * 0.140023'], ['-widthIn * 0.463612', 'heightIn * 0.140023']], 
-         'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C', 'Bulge': ['-6.81', '3.2']},
-        {'Type': 'Radius', 'Target': 'arc_hip_L',      'Expression': 'heightIn/16', 'Name': 'seed_rad_hip_L'},
-
-        {'ID': 'arc_waist_L', 'Type': 'Arc3Point',
-         'Points': [['-widthIn * 0.37796', 'heightIn * 0.202858'], ['-widthIn * 0.37796', 'heightIn * 0.265358'], ['-widthIn * 0.297603', 'heightIn * 0.265358']], 
-         'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C', 'Bulge': ['-6.72', '6.07']},
-        {'Type': 'Radius', 'Target': 'arc_waist_L',    'Expression': 'heightIn/16', 'Name': 'seed_rad_waist_L'},
+        {'ID': 'arc_waist_L', 'Type': 'Arc3Point', 'StartID': 'arc_waist_L:S', 'EndID': 'arc_waist_L:E', 'CenterID': 'arc_waist_L:C', 'Points': [['widthIn * -0.378', 'heightIn * 0.2029'], ['widthIn * -0.3211', 'heightIn * 0.2212'], ['widthIn * -0.2976', 'heightIn * 0.2654']]},
+        {'ID': 'arc_hip_L', 'Type': 'Arc3Point', 'StartID': 'arc_hip_L:S', 'EndID': 'arc_hip_L:E', 'CenterID': 'arc_hip_L:C', 'Points': [['widthIn * -0.3833', 'heightIn * 0.2025'], ['widthIn * -0.4401', 'heightIn * 0.1842'], ['widthIn * -0.4636', 'heightIn * 0.14']]},
+        {'ID': 'arc_waist_R', 'Type': 'Arc3Point', 'StartID': 'arc_waist_R:S', 'EndID': 'arc_waist_R:E', 'CenterID': 'arc_waist_R:C', 'Points': [['widthIn * 0.2976', 'heightIn * 0.2612'], ['widthIn * 0.3212', 'heightIn * 0.217'], ['widthIn * 0.378', 'heightIn * 0.1987']]},
+        {'ID': 'arc_hip_R', 'Type': 'Arc3Point', 'StartID': 'arc_hip_R:S', 'EndID': 'arc_hip_R:E', 'CenterID': 'arc_hip_R:C', 'Points': [['widthIn * 0.4652', 'heightIn * 0.1352'], ['widthIn * 0.4417', 'heightIn * 0.1794'], ['widthIn * 0.3849', 'heightIn * 0.1977']]},
     ]
-
     return {
-        'Name': 'Silhouette Arcs',
-        'PhaseID': 'p06_arcs',
-        'BuildSequence': seq
+        'Name': 'p06',
+        'PhaseID': 'p03',
+        'BuildSequence': seq,
     }
-
-
