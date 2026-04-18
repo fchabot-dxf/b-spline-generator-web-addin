@@ -41,13 +41,40 @@ from variable_scan import (
 
 
 def _label_for_entity(ent):
+    """Return a display-friendly label for ``ent``.
+
+    ``get_fb_name`` has two non-attribute fallbacks we must NOT treat
+    as real labels:
+        * ``"Entity"`` — returned from its broad ``except`` branch
+          when attribute probing faults on a settling proxy (this is
+          the CoincidentConstraint case that used to silently collapse
+          every constraint to the label ``"Entity"``)
+        * ``"None"`` — returned when the entity itself is falsy
+    Treating either as a real label is how constraint picks ended up
+    with ``base_label = "Entity"``, which then made
+    ``new_label == base_label`` in ``rename_selection``, which then
+    made ``set_entity_fb_name`` get skipped entirely. The rename
+    appeared to "work" (no crash, renamed=0) while actually doing
+    nothing to the constraint's attributes. Falling through to the
+    objectType short name (``"CoincidentConstraint"``) gives
+    ``make_unique_label`` a real base to disambiguate from.
+    """
     ent = _get_native(ent)
     if not ent:
         return 'Unknown'
     label = get_fb_name(ent)
-    if label and not label.startswith('Sketch'):
+    if (label
+            and label not in ('Entity', 'None')
+            and not label.startswith('Sketch')
+            and not label.startswith('Vertex of')):
         return label
-    return ent.objectType.split('::')[-1]
+    try:
+        obj_type = ent.objectType.split('::')[-1]
+        if obj_type:
+            return obj_type
+    except Exception:
+        pass
+    return 'Unknown'
 
 
 _POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
@@ -271,6 +298,18 @@ def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None, name_ove
     if handler is not None:
         return handler(ent, name, ctx)
 
+    # OffsetConstraint is the single constraint subtype that routes to a
+    # dedicated step builder instead of the generic ``Constraints.<Type>``
+    # emitter. The runtime treats offsets as ``{'Type': 'Offset', ...}``
+    # steps with ``SourceID`` / ``DistanceExpr`` / ``TargetIDs`` slots —
+    # none of which fit the generic ``{'Type', 'Targets'}`` constraint
+    # shape. Routed here BEFORE the generic ``'Constraint' in ent_type``
+    # branch because OffsetConstraint's name contains 'Constraint' and
+    # would otherwise be caught by the generic handler.
+    if ent_type == 'OffsetConstraint':
+        from offset_hint import build_offset_step
+        return build_offset_step(ent, label_override=name_override)
+
     # Constraints and dimensions are matched by substring — Fusion emits a
     # zoo of subtypes (HorizontalConstraint, PerpendicularConstraint,
     # SketchLinearDimension, SketchRadialDimension...) that all route through
@@ -278,6 +317,19 @@ def _build_entity_hint(ent, params=None, get_entity_coord_expr_fn=None, name_ove
     if 'Constraint' in ent_type:
         return _hint_constraint(ent, ent_type, name, ctx)
     if 'Dimension' in ent_type:
-        return _hint_dimension(ent, ent_type, name, ctx)
+        # Dimensions route through ``dimension_hint.build_dimension_hint``
+        # rather than ``_hint_dimension`` directly. The wrapper enforces a
+        # naming convention the constraint path doesn't need: the step's
+        # ``Name`` field ends up written onto ``dim.parameter.name`` by the
+        # runtime, so it shares a namespace with Fusion user parameters.
+        # ``build_dimension_hint`` prepends ``dim_`` when a raw tag would
+        # collide with an existing user parameter (logging a detection-log
+        # warning), keeping dim identity unambiguous for the
+        # ``delete_dimension_by_name`` lookup. Target walk is still owned by
+        # ``relation_hints._constraint_targets`` (imported lazily inside
+        # ``build_dimension_hint`` to avoid the relation_hints ↔
+        # dimension_hint import cycle).
+        from dimension_hint import build_dimension_hint
+        return build_dimension_hint(ent, ent_type, name, ctx)
 
     return f'# {ent_type}("{name}")'

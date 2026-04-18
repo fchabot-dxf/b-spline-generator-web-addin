@@ -317,27 +317,105 @@ def _build_geometry_step(seed_type, args):
 # ---------------------------------------------------------------------------
 
 def _build_constraint_step(constraint_type, args):
-    # New shape (what the template-maker now emits):
-    #   Constraints.Perpendicular("perp_1", lineA, lineB)
-    #     → first arg is the constraint's own FrameBuilder name.
-    # Legacy shape (hand-written or older generator output):
-    #   Constraints.Perpendicular(lineA, lineB)
-    #     → every arg is a target, no name.
-    # We distinguish by whether the first arg is a quoted string literal.
+    """Parse ``Constraints.<Type>(target1, target2, ...)`` into a phase step.
+
+    Constraints carry no name — every positional argument is a target ID.
+    This is a deliberate architectural choice, not a parser shortcut:
+
+    * Fusion's C++ layer refuses ``.attributes`` access on several
+      constraint subtypes (``CoincidentConstraint`` is the observed
+      offender), so we can't stamp a FrameBuilder ID on them even if we
+      wanted to.
+    * The FrameBuilder runtime only ever used constraint names for debug
+      output — it never looks a constraint up by name. Creation is
+      target-driven (``addPerpendicular(lineA, lineB)``) and the target
+      tuple uniquely identifies the relationship.
+    * The old "first quoted arg = name, rest = targets" heuristic
+      collapses the moment any real constraint hint is emitted, because
+      *every* target is itself a quoted ID string (``"horn_TL"``). Trying
+      to dual-shape this parser produced phase steps where the first
+      target was swallowed into a ``Name`` field and only the remainder
+      survived as targets — exactly the bug this removal fixes.
+
+    Hand-written phase files that still carry a legacy name as the first
+    arg (``Constraints.X("name", lineA, lineB)``) will now surface that
+    quoted name as a target, which the runtime will correctly flag as an
+    unknown entity. The fix is to delete the name from the hand-written
+    statement; the parser does not try to cover for that mistake.
+    """
     cleaned = [arg.strip() for arg in args if arg.strip()]
-    if cleaned and _is_quoted_string(cleaned[0]):
-        name = _unquote(cleaned[0])
-        targets = [RawCode(arg) for arg in cleaned[1:]]
-        return {
-            'Type': LiteralString(constraint_type),
-            'Name': LiteralString(name),
-            'Targets': targets,
-        }
     targets = [RawCode(arg) for arg in cleaned]
     return {
         'Type': LiteralString(constraint_type),
         'Targets': targets,
     }
+
+
+# ---------------------------------------------------------------------------
+# Offsets — dedicated step builder, distinct from generic constraints.
+# ---------------------------------------------------------------------------
+
+def _parse_string_list(raw):
+    """Parse ``["a", "b", "c"]`` into a list of unquoted Python strings.
+
+    Used for the source and target lists in an ``Offset.From(...)`` hint.
+    Items that aren't quoted are kept as-is (they'll round-trip through
+    ``_format_raw_value`` as repr-wrapped strings, which still produces
+    valid Python at phase-run time).
+    """
+    if not isinstance(raw, str):
+        return []
+    s = raw.strip()
+    if s.startswith('[') and s.endswith(']'):
+        s = s[1:-1]
+    out = []
+    for piece in _split_top_level_arguments(s):
+        piece = piece.strip()
+        if not piece:
+            continue
+        out.append(_unquote(piece))
+    return out
+
+
+def _build_offset_step(args):
+    """Parse ``Offset.From([sources], distance="expr", targets=[...])`` into a
+    ``{'Type': 'Offset', 'SourceID': [...], 'DistanceExpr': ..., 'TargetIDs': [...]}``
+    step dict.
+
+    The runtime's ``fb_engine/offsets.py:offset_step`` reads exactly these
+    three slots (plus optional ``Direction`` and ``CornerIDs`` that the
+    Template Maker doesn't emit — ``addOffset2`` takes direction from the
+    sign of ``DistanceExpr`` and corner naming is a downstream hand-edit).
+
+    Missing sources or targets yields ``None`` rather than a partial step
+    so the code-preview skip-on-None path drops the broken hint silently
+    rather than writing a syntactically-valid but semantically-empty
+    offset entry.
+    """
+    if not args:
+        return None
+    positional, kw = _split_kw_and_positional(args)
+    sources_raw = positional[0] if positional else kw.get('sources')
+    if sources_raw is None:
+        return None
+    sources = _parse_string_list(sources_raw)
+    if not sources:
+        return None
+    distance = kw.get('distance')
+    if distance is None:
+        return None
+    targets_raw = kw.get('targets')
+    if targets_raw is None:
+        return None
+    targets = _parse_string_list(targets_raw)
+
+    step = {
+        'Type': LiteralString('Offset'),
+        'SourceID': [LiteralString(s) for s in sources],
+        'DistanceExpr': LiteralString(_unquote(distance)) if _is_quoted_string(distance) else RawCode(distance),
+        'TargetIDs': [LiteralString(t) for t in targets],
+    }
+    return step
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +484,10 @@ def parse_statement_to_phase_step(statement):
     if head.startswith('Constraints.'):
         constraint_type = head.split('.', 1)[1]
         return _build_constraint_step(constraint_type, args)
+    if head.startswith('Offset.'):
+        # Only ``Offset.From`` exists today — the subtype tail is unused and
+        # kept as an extension hook for future forms like ``Offset.By``.
+        return _build_offset_step(args)
     if head.startswith('Dimensions.'):
         dimension_type = head.split('.', 1)[1]
         return _build_dimension_step(dimension_type, args)

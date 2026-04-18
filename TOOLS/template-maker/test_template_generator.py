@@ -150,7 +150,13 @@ def run_test():
     assert any('coordExpr' in item and item['coordExpr'] for item in payload['items']), 'expected coordExpr for items'
     assert any('widthIn' in item['coordExpr'] or 'heightIn' in item['coordExpr'] for item in payload['items']), 'expected design parameter expressions in coordExpr'
     assert all(('widthIn' in item['hint'] or 'heightIn' in item['hint']) if item['coordExpr'] else True for item in payload['items']), 'expected generated hints to use parameter expressions'
-    assert 'seeds.append(' in payload['codePreview'], 'expected seed code in preview'
+    # codePreview now renders phase-step dict literals (``{'ID': ..., 'Type':
+    # 'Line', 'Points': [...]}``) that slot directly into the wrapper's
+    # ``seq = [ ... ]`` list. The old ``seeds.append(Seeds.*)`` format the
+    # preview used to emit doesn't map to any path in the runtime's
+    # parametric engine — the engine reads BuildSequence dicts, not method
+    # calls on a mutable seeds list — so that format has been retired.
+    assert "'Type': 'Line'" in payload['codePreview'], 'expected line phase-step in preview'
     assert 'widthIn' in payload['codePreview'] or 'heightIn' in payload['codePreview'], 'expected parameter expressions in preview code'
     assert 'phaseBlockCode' in payload, 'expected phaseBlockCode in payload'
     assert 'def get_block(' in payload['phaseBlockCode'], 'expected phase block to define get_block()'

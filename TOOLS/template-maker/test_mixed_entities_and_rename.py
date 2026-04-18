@@ -160,27 +160,34 @@ def test_constraint_on_lines_uses_quoted_names():
     phase = payload['phaseBlockCode']
 
     # codePreview and phaseBlockCode both render the phase-step dict literal
-    # ({'Type': 'PerpendicularConstraint', 'Name': 'perp_1',
-    #   'Targets': ["horn_TL", "brace_BR"]}). The constraint's own
-    # FrameBuilder name lands in the ``Name`` key; its two line targets land
-    # quoted inside the ``Targets`` list. Arrow syntax (``start->end``)
-    # must never appear — constraints take IDs, not coord tuples.
+    # ({'Type': 'PerpendicularConstraint',
+    #   'Targets': ["horn_TL", "brace_BR"]}). Constraints carry NO Name — the
+    # runtime identifies them purely by the geometry they target, and Fusion
+    # refuses to stamp FrameBuilder attributes on most constraint subtypes
+    # anyway. Both line targets land quoted inside the ``Targets`` list.
+    # Arrow syntax (``start->end``) must never appear — constraints take
+    # IDs, not coord tuples.
     for line in code.splitlines():
         if 'PerpendicularConstraint' in line:
-            assert "'Name': 'perp_1'" in line, (
-                f'expected Name key carrying constraint ID, got: {line}'
+            assert "'Name'" not in line, (
+                f'constraints must not carry a Name field, got: {line}'
             )
             assert '"horn_TL"' in line and '"brace_BR"' in line, (
-                f'expected quoted line names in Targets list, got: {line}'
+                f'expected both quoted line names in Targets list, got: {line}'
             )
             assert '->' not in line, (
                 f'arrow syntax leaked into constraint: {line}'
             )
-    # Same constraint should land in the phase block as a real step, with
-    # both the constraint's own Name and its Targets populated.
+    # Same constraint should land in the phase block as a real step with
+    # both line targets — and no Name key.
     assert "'Type': 'PerpendicularConstraint'" in phase
-    assert "'Name': 'perp_1'" in phase
     assert "'Targets': [\"horn_TL\", \"brace_BR\"]" in phase
+    # Defence in depth: no constraint row should carry a 'Name' field.
+    for line in phase.splitlines():
+        if 'PerpendicularConstraint' in line or 'CoincidentConstraint' in line:
+            assert "'Name'" not in line, (
+                f"constraint row unexpectedly carries 'Name': {line}"
+            )
 
 
 def test_dimensions_reach_phase_block():

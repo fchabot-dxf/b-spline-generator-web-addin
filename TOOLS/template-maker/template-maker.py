@@ -105,12 +105,67 @@ def get_log_path():
         return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'template-maker-debug.log')
 
 
-def _log(msg):
+def _source_root_debug_log_path():
+    """Mirror path in the source tree (resolved via ``project_path.json``),
+    or ``None`` if we can't or shouldn't mirror.
+
+    Matches the detection-log mirror in ``detection_log.py`` — when the
+    add-in runs from the deployed AddIns folder, this lets an outside
+    debugger (Claude, a separate VS Code window) follow along on the
+    source tree without copy-pasting from ``%APPDATA%`` by hand. If the
+    source root resolves to the same folder the add-in is already
+    running from, we skip the mirror so log lines aren't duplicated.
+    """
     try:
-        with open(get_log_path(), 'a', encoding='utf-8') as f:
-            f.write(f"{msg}\n")
+        import json as _json
+        cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'project_path.json')
+        if not os.path.isfile(cfg_path):
+            return None
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            cfg = _json.load(f) or {}
+        root = cfg.get('template_maker_root')
+        if not root:
+            return None
+        if os.path.normcase(os.path.abspath(root)) == os.path.normcase(os.path.dirname(os.path.abspath(__file__))):
+            return None
+        return os.path.join(root, 'template-maker-debug.log')
     except Exception:
-        pass
+        return None
+
+
+_SOURCE_DEBUG_LOG_PATH = _source_root_debug_log_path()
+
+
+def _log(msg):
+    # Timestamp + flush + fsync so a rename / palette / handler error
+    # lands on disk before Fusion has a chance to segfault, and so lines
+    # from this sink sort chronologically against the detection-log
+    # sink next door. Both logs now live in separate files
+    # (template-maker-debug.log here, template-maker-detection.log from
+    # detection_log.py); previously they were aliases of each other
+    # and the interleaved content made it impossible to tell which sink
+    # wrote which line.
+    #
+    # We write to both the local deploy path AND the source-tree mirror
+    # (if resolvable from project_path.json) so a debugger watching the
+    # source folder sees live entries without copying from %APPDATA%.
+    import datetime as _dt
+    timestamp = _dt.datetime.now().isoformat(sep=' ', timespec='seconds')
+    line = f"[{timestamp}] {msg}\n"
+    paths = [get_log_path()]
+    if _SOURCE_DEBUG_LOG_PATH:
+        paths.append(_SOURCE_DEBUG_LOG_PATH)
+    for path in paths:
+        try:
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write(line)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 
 def _reload_all_project_modules():
@@ -334,15 +389,18 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 html_args.returnData = 'error'
         elif action == 'rename':
             try:
+                _log('[rename] entered')
                 data = html_args.data or ''
                 if isinstance(data, str):
                     data = json.loads(data)
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
+                _log(f"[rename] phase={_latest_phase_id} sketch={_latest_sketch_name} tpl={_latest_template_number}")
                 app = adsk.core.Application.get()
                 ui = app.userInterface
                 sels = ui.activeSelections
+                _log(f"[rename] activeSelections count={sels.count if sels else 0}")
                 entities = []
                 if sels:
                     for i in range(sels.count):
@@ -350,9 +408,15 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                             ent = sels.item(i).entity
                             if ent:
                                 entities.append(ent)
-                        except Exception:
-                            pass
+                                try:
+                                    _log(f"[rename] sel[{i}] type={type(ent).__name__}")
+                                except Exception:
+                                    _log(f"[rename] sel[{i}] type=<unreadable>")
+                        except Exception as _se:
+                            _log(f"[rename] sel[{i}] fetch FAILED: {_se}")
+                _log(f"[rename] entities collected={len(entities)} -> rename_selection()")
                 renamed = rename_selection.rename_selection(entities, phase_prefix=_get_phase_prefix())
+                _log(f"[rename] rename_selection() returned renamed={renamed}")
                 if renamed > 0:
                     # Attribute writes + ``ent.name`` assignments triggered
                     # by rename_selection put Fusion into a sketch-recompute

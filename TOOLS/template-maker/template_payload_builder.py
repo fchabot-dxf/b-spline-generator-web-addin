@@ -13,6 +13,11 @@ from entity_helpers import get_entity_coord, get_fb_metadata
 from expression_coords import get_entity_coord_expr
 from template_code import wrap_statement
 from phase_parser import parse_statement_to_phase_step, format_phase_step
+from offset_hint import (
+    is_offset_constraint,
+    find_owning_offset_constraint,
+    oc_identity_key,
+)
 
 
 def _describe_unowned(ent):
@@ -36,6 +41,52 @@ def _describe_unowned(ent):
     return {'type': type_short, 'token': token}
 
 
+def _expand_offset_picks(entities):
+    """Resolve each picked entity to what actually belongs in the phase block.
+
+    Three cases, checked in this order:
+
+    1. The pick IS an OffsetConstraint — keep it (deduplicated by
+       identity key so two picks of the same OC don't emit twice).
+    2. The pick is a child curve of some OffsetConstraint — replace it
+       with the owning OC. This is the common case: users almost always
+       click the offset-result curves, not the OC glyph itself. The scan
+       has to reverse-lookup the OC from the child so the emitter gets
+       one ``Offset.From(...)`` step per constraint rather than one
+       un-seedable naked curve per child.
+    3. Everything else — pass through unchanged.
+
+    Cases 1 and 2 share the ``seen_ocs`` dedup set so picking a parent
+    OC *and* one of its children collapses to a single entry, regardless
+    of which order they were selected in.
+
+    Returns a list of native entities with offsets collapsed. Callers
+    still run the ownership gate and label pass on the result — that
+    logic is unchanged downstream of this pre-pass.
+    """
+    expanded = []
+    seen_ocs = set()
+    for ent in entities:
+        native = _get_native(ent)
+        if is_offset_constraint(native):
+            key = oc_identity_key(native)
+            if key is None or key in seen_ocs:
+                continue
+            seen_ocs.add(key)
+            expanded.append(native)
+            continue
+        oc = find_owning_offset_constraint(native)
+        if oc is not None:
+            key = oc_identity_key(oc)
+            if key is None or key in seen_ocs:
+                continue
+            seen_ocs.add(key)
+            expanded.append(oc)
+            continue
+        expanded.append(native)
+    return expanded
+
+
 def build_payload_items(entities, phase_prefix=None):
     """Build hint/coord items for each entity that passes the ownership gate.
 
@@ -50,7 +101,13 @@ def build_payload_items(entities, phase_prefix=None):
                 pick that was filtered out. The palette uses this to
                 surface a "N untagged entities skipped — rename first"
                 warning. Empty list on the happy path.
+
+    A pre-pass via ``_expand_offset_picks`` collapses child-curve picks
+    to their owning OffsetConstraints (and dedups direct OC picks). Done
+    up front so the ownership gate + label pass see a single canonical
+    entity per offset rather than N-times-the-children drift.
     """
+    entities = _expand_offset_picks(entities)
     items = []
     unowned = []
     label_counts = {}

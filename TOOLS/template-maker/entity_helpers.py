@@ -18,8 +18,24 @@ def get_fb_name(ent):
             return "None"
         ent = _get_native(ent)
         if hasattr(ent, 'attributes'):
+            # Prefer the canonical ``FrameBuilder.ID`` attribute — that's
+            # what ``rename_selection`` writes as the primary stamp and
+            # what ``_has_framebuilder_attribute`` checks first in the
+            # ownership gate. If we only read ``name`` here, a curve
+            # stamped with ``ID`` would come back anonymous, which then
+            # makes ``_derive_point_role_id`` return ``None`` for every
+            # SketchPoint start/end/center on that curve, which in turn
+            # makes ``is_framebuilder_owned`` reject every constraint
+            # whose targets include those points — the exact symptom of
+            # "constraints disappear from the sequence block while the
+            # geometry still renders". Legacy ``name`` is kept as the
+            # fallback so sketches stamped before the rename-writes-both
+            # change still resolve.
+            a = ent.attributes.itemByName('FrameBuilder', 'ID')
+            if a and a.value:
+                return a.value.split('\n')[0]
             a = ent.attributes.itemByName('FrameBuilder', 'name')
-            if a:
+            if a and a.value:
                 return a.value.split('\n')[0]
 
         if ent.objectType.endswith('SketchPoint'):

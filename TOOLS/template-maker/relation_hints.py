@@ -250,18 +250,33 @@ def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
 # ---------------------------------------------------------------------------
 
 def _hint_constraint(ent, ent_type, name, ctx):
-    """Emit ``Constraints.<Type>("name", target1, target2, ...)``.
+    """Emit ``Constraints.<Type>(target1, target2, ...)``.
 
-    Constraints carry their own FrameBuilder name (matching the seed and
-    dimension convention) so the runtime can identify / look them up
-    later. Targets follow the name in positional order.
+    We intentionally DO NOT prefix a constraint name. Constraints in
+    Fusion (at least ``CoincidentConstraint`` in this codebase's
+    observed environment) do not support custom attributes at all —
+    accessing ``.attributes`` raises ``"3 : object does not support
+    attributes"`` — so we can't stamp a ``FrameBuilder.ID`` on them
+    to begin with. And because the FrameBuilder runtime only uses
+    constraint names for debug display (never for lookup), the name
+    adds nothing but complexity here. Emitting target-only keeps the
+    sequence block honest: every constraint is identified purely by
+    the (already-named) geometry it targets, which is how the runtime
+    actually creates it at phase-run time.
+
+    The legacy ``_build_constraint_step`` in ``phase_parser`` already
+    handles the no-name shape (see its "every arg is a target" branch)
+    so dropping the name here needs no parser-side change.
+
+    ``name`` is kept in the signature so the shared dispatch in
+    ``_build_entity_hint`` doesn't need a special-case. Unused here.
     """
+    _ = name  # intentionally unused — see docstring
     targets = _constraint_targets(ent, ctx.get('params'), ctx.get('expr_fn'))
-    args = [f'"{name}"']
     if targets:
-        args.extend(targets)
+        args = list(targets)
     else:
-        args.append('/* targets */')
+        args = ['/* targets */']
     return f'Constraints.{ent_type}({", ".join(args)})'
 
 

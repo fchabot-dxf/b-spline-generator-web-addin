@@ -40,27 +40,114 @@ module directly.
 """
 
 import datetime
+import json
 import os
+import sys
 import tempfile
 
 
+# Live-add-in path: ``template-maker-detection.log`` next to the module. This
+# is the ONLY place detection lines land in a real Fusion session — the
+# ``template-maker-debug.log`` sibling is owned by ``template-maker.py``'s
+# ``_log()`` for rename / palette / handler errors, and mixing the two
+# streams in the same file is what previously made it impossible to tell
+# "Python exception on rename" apart from "detection rebuild ran".
 _DEBUG_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-detection.log')
-_SOURCE_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-debug.log')
+# Windows temp mirror — belt-and-braces so a read-only module directory
+# (rare, but we've seen it on locked-down deploy targets) doesn't suppress
+# detection entirely.
 _TEMP_LOG_PATH = os.path.join(tempfile.gettempdir(), 'template-maker-detection.log')
 
 
+def _source_root_log_path():
+    """Return the detection-log path inside the *source* template-maker
+    folder, or ``None`` if we can't determine one.
+
+    The running add-in lives in the Fusion AddIns directory (the deploy
+    target copied from source by ``deploy-template-maker.py``). That
+    script writes ``project_path.json`` next to the module with the
+    original source-folder path, and ``copytree`` carries the file into
+    the deploy folder — so at runtime we can read the JSON to find the
+    source tree and mirror log writes there. Why mirror: debugging
+    through a Claude session where only the source tree is mounted into
+    the assistant's sandbox; without this mirror the assistant sees an
+    empty log file even though the live add-in is logging furiously.
+    Resolved once at import to avoid a JSON parse on every log line.
+    """
+    try:
+        cfg_path = os.path.join(os.path.dirname(__file__), 'project_path.json')
+        if not os.path.isfile(cfg_path):
+            return None
+        with open(cfg_path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f) or {}
+        root = cfg.get('template_maker_root')
+        if not root:
+            return None
+        candidate = os.path.join(root, 'template-maker-detection.log')
+        # If the source root IS the module dir (running straight out of
+        # the source tree without a deploy step), skip the mirror —
+        # otherwise we'd write the same line twice and the timestamps
+        # would look doubled on investigation.
+        if os.path.normcase(os.path.abspath(root)) == os.path.normcase(os.path.dirname(os.path.abspath(__file__))):
+            return None
+        return candidate
+    except Exception:
+        return None
+
+
+_SOURCE_ROOT_LOG_PATH = _source_root_log_path()
+
+
+def _is_running_under_pytest():
+    """Cheap pytest detection so the test harness doesn't pollute the
+    live Fusion log with hundreds of synthetic detection lines.
+
+    ``PYTEST_CURRENT_TEST`` is exported by pytest for the duration of
+    each test; ``'pytest' in sys.modules`` catches import-time calls
+    (module-scope fixtures, session-level setup) before the env var is
+    set. Either signal is enough — we'd rather misclassify one live
+    log line as "test" than drown a real crash trail in noise.
+    """
+    if os.environ.get('PYTEST_CURRENT_TEST'):
+        return True
+    if 'pytest' in sys.modules:
+        return True
+    return False
+
+
+def _active_log_paths():
+    """Return the list of paths the current run should append to.
+
+    Under pytest, writes are redirected to a sandbox file in ``tempdir``
+    so the real ``template-maker-detection.log`` next to the module
+    keeps its live-Fusion trail intact. In a real Fusion session we
+    write the module-local path first (fastest for grep/tail), the
+    temp mirror as the durability fallback, and — if we can resolve it
+    from ``project_path.json`` — the *source* folder's copy of the log
+    too. The source mirror exists so debugging sessions that only have
+    the source tree mounted (e.g. through Claude) can still see the
+    live add-in's trail without asking the user to copy-paste files.
+    """
+    if _is_running_under_pytest():
+        return (os.path.join(tempfile.gettempdir(), 'template-maker-detection.pytest.log'),)
+    paths = [_DEBUG_LOG_PATH, _TEMP_LOG_PATH]
+    if _SOURCE_ROOT_LOG_PATH:
+        paths.append(_SOURCE_ROOT_LOG_PATH)
+    return tuple(paths)
+
+
 def _write_debug_log(message):
-    """Append a timestamped line to every detection log path.
+    """Append a timestamped line to every active detection log path.
 
     Each path gets its own ``open``/``write``/``flush``/``fsync`` cycle;
-    a failure on one path is swallowed so the other two still record
-    the line. ``fsync`` is wrapped in its own ``try`` because some
-    filesystems (notably some Windows network mounts) can raise on
-    ``fsync`` even though the write itself succeeded.
+    a failure on one path is swallowed so the other still records the
+    line. ``fsync`` is wrapped in its own ``try`` because some filesystems
+    (notably some Windows network mounts) can raise on ``fsync`` even
+    though the write itself succeeded.
     """
     timestamp = datetime.datetime.now().isoformat(sep=' ', timespec='seconds')
     text = f"[{timestamp}] {message}\n"
-    for path in (_DEBUG_LOG_PATH, _SOURCE_LOG_PATH, _TEMP_LOG_PATH):
+    for path in _active_log_paths():
         try:
             # Explicit flush + fsync so a Fusion segfault mid-rebuild doesn't
             # leave a truncated line on disk looking like a crash when it was

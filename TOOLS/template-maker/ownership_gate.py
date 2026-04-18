@@ -65,10 +65,21 @@ def _has_framebuilder_attribute(ent):
     is the Layer-2 guard: attribute reads on a settling proxy have been
     observed to raise, and we want the gate to return "not owned" in
     that case rather than escape upstream.
+
+    The ``hasattr`` probe is INSIDE the try block: Python 3's
+    ``hasattr`` only swallows ``AttributeError``, but Fusion raises
+    ``"3 : object does not support attributes"`` as a ``RuntimeError``
+    when a subtype's proxy refuses an attribute-slot access. Leaving
+    ``hasattr`` outside the guard let that RuntimeError escape up to
+    ``is_framebuilder_owned`` and then up to the ownership-gate caller
+    — same shape of crash that ``rename_selection._existing_fb_id``
+    used to hit.
     """
-    if not ent or not hasattr(ent, 'attributes'):
+    if not ent:
         return False
     try:
+        if not hasattr(ent, 'attributes'):
+            return False
         attr = ent.attributes.itemByName('FrameBuilder', 'ID')
         if attr and attr.value:
             return True
@@ -108,6 +119,26 @@ def is_framebuilder_owned(ent):
         if _derive_point_role_id(ent):
             return True
         return False
+
+    # (2b) OffsetConstraint — doesn't fit the generic constraint-targets
+    #      mould. Its ownership flows from the parent (source) curves,
+    #      not from a ``target_props_for`` slot list. The child curves
+    #      are offset-result geometry that Fusion labels with generic
+    #      names; only the parents carry user-owned FrameBuilder IDs.
+    #      Empty ``parents`` means the collection was unreachable (stale
+    #      proxy) — safest to refuse rather than emit a zero-source
+    #      offset step.
+    #
+    #      Checked BEFORE the generic ``'Constraint' in ent_type`` branch
+    #      because ``'OffsetConstraint'.__contains__('Constraint')`` would
+    #      otherwise route the entity through ``target_props_for``, which
+    #      has no entry for OffsetConstraint and would return no targets.
+    if ent_type.endswith('OffsetConstraint'):
+        from offset_hint import parent_curves
+        parents = parent_curves(ent)
+        if not parents:
+            return False
+        return all(is_framebuilder_owned(p) for p in parents)
 
     # (3) Constraints / dimensions inherit ownership from their targets.
     #     Every target must itself be owned; one untagged target fails
