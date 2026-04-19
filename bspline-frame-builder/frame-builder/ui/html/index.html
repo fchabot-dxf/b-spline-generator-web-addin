@@ -130,13 +130,17 @@
 
   <div class="app">
     <header>
-      <span class="logo">Hybrid Frame Builder</span>
       <div style="flex:1;"></div>
       <div style="display:flex; gap:12px; align-items:center;">
-        <div style="display:flex; align-items:center; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:2px 6px; height:32px;">
-          <button onclick="adjustPhase(-1)" style="background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;">−</button>
-          <span id="phase-display" style="font-size:11px; color:var(--text); min-width:32px; text-align:center; letter-spacing:0.5px;">P ?/?</span>
-          <button onclick="adjustPhase(1)"  style="background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;">+</button>
+        <div style="display:flex; flex-direction:column; align-items:center; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:4px 8px; width:130px; box-sizing:border-box;">
+          <div style="display:flex; align-items:center; gap:4px; width:100%; justify-content:center;">
+            <button onclick="adjustPhase(-1)" style="background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;">−</button>
+            <div id="phase-display" style="display:flex; flex-direction:column; align-items:center; font-size:11px; color:var(--text); width:100%; text-align:center; letter-spacing:0.5px; line-height:1.2;">
+              <span id="phase-label">P ?/?</span>
+              <span id="phase-filename" style="font-size:10px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; width:100%;"></span>
+            </div>
+            <button onclick="adjustPhase(1)" style="background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;">+</button>
+          </div>
         </div>
         <button class="btn btn-primary btn-xs" id="header-action-btn" onclick="runBuild('sketch')"
           style="min-width: 120px; box-shadow: 0 4px 10px rgba(37,99,235,0.25);">BUILD SKETCH</button>
@@ -400,6 +404,7 @@
 
     function syncTemplate() {
       const tmpl = document.getElementById('template-select').value;
+      console.log('[UI] template selection changed:', tmpl);
       notifyFusion('change_template', { template: tmpl });
     }
 
@@ -447,14 +452,52 @@
 
     // --- NEW: DYNAMIC PARAMETER RENDERING ---
     let currentParameters = [];
+    let _templateListInitialized = false;
 
     // --- PHASE STEPPER ---
-    let _phaseMax   = 1;   // updated when render_schema arrives
+    let _phaseMax = 1;   // updated when render_schema arrives
     let _phaseCurrent = 1;
+    let _phaseSequence = [];
+
+    function _formatPhaseFileName(filename) {
+      if (!filename) return '';
+      const stripped = filename.replace(/\.py$/i, '');
+      const match = stripped.match(/^p\d{2}_\d{2}_(.+)$/i);
+      return match ? match[1] : stripped;
+    }
+
+    function _buildPhaseSequence(sketches) {
+      const seq = [];
+      if (!Array.isArray(sketches)) return seq;
+      sketches.forEach((sketch, sketchIndex) => {
+        const count = Number(sketch.phase_count || 1);
+        const files = Array.isArray(sketch.phase_files) ? sketch.phase_files : [];
+        for (let phaseIndex = 1; phaseIndex <= count; phaseIndex++) {
+          seq.push({
+            label: `${sketchIndex + 1}.${phaseIndex}`,
+            file: _formatPhaseFileName(files[phaseIndex - 1] || '')
+          });
+        }
+      });
+      return seq;
+    }
 
     function _updatePhaseDisplay() {
-      const el = document.getElementById('phase-display');
-      if (el) el.innerText = `P ${_phaseCurrent}/${_phaseMax}`;
+      const labelEl = document.getElementById('phase-label');
+      const fileEl = document.getElementById('phase-filename');
+      if (!labelEl) return;
+      if (_phaseSequence.length > 0) {
+        const item = _phaseSequence[_phaseCurrent - 1] || {};
+        labelEl.innerText = `P ${item.label || '?'}`;
+        if (fileEl) {
+          fileEl.innerText = item.file || '';
+        }
+      } else {
+        labelEl.innerText = `P ${_phaseCurrent}/${_phaseMax}`;
+        if (fileEl) {
+          fileEl.innerText = '';
+        }
+      }
     }
 
     function adjustPhase(delta) {
@@ -504,7 +547,8 @@
         // Update phase stepper max from schema
         if (data.phase_count && data.phase_count > 0) {
           _phaseMax     = data.phase_count;
-          _phaseCurrent = _phaseMax;
+          _phaseSequence = _buildPhaseSequence(data.sketches);
+          _phaseCurrent = Math.min(_phaseMax, _phaseSequence.length || _phaseMax);
           _updatePhaseDisplay();
         }
 
@@ -697,16 +741,17 @@
 
       let data = {
         type: type,
+        template: document.getElementById('template-select')?.value,
         ui_data: ui_data,
         max_phase: (_phaseCurrent >= _phaseMax) ? null : _phaseCurrent
       };
-
 
       if (type === 'solid') {
         data.offset = document.getElementById('solid-offset').value;
         data.appearance = document.getElementById('solid-appearance').value;
       }
 
+      console.log('[UI] sending run_build', data);
       notifyFusion('run_build', data);
     }
 
@@ -759,8 +804,18 @@
           opt.textContent = t.label;
           select.appendChild(opt);
         });
-        if (data.selected) {
+        let selectedTemplate = null;
+        if (data.selected && select.querySelector(`option[value="${data.selected}"]`)) {
           select.value = data.selected;
+          selectedTemplate = data.selected;
+        } else if (templates.length) {
+          select.value = templates[0].value;
+          selectedTemplate = templates[0].value;
+        }
+        if (selectedTemplate && !_templateListInitialized) {
+          console.log('[BRIDGE] template_list received, syncing selected template:', selectedTemplate);
+          notifyFusion('change_template', { template: selectedTemplate });
+          _templateListInitialized = true;
         }
       } else if (action === 'selection_result') {
         if (data.success) {
@@ -869,7 +924,6 @@
           if (statusEl) statusEl.innerText = 'Synchronizing with Engine...';
           console.log('[BRIDGE] Handshake successful — requesting template list');
           notifyFusion('request_template_list', {});
-          notifyFusion('change_template', { template: 'Template 1 - Hourglass' });
           return true;
         }
         console.log('[BRIDGE] tryHandshake: adskReady=' + adskReady + ' canSend=' + bridgeCanSend());

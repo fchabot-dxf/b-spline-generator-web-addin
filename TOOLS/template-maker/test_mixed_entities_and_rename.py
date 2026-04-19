@@ -179,12 +179,16 @@ def test_constraint_on_lines_uses_quoted_names():
                 f'arrow syntax leaked into constraint: {line}'
             )
     # Same constraint should land in the phase block as a real step with
-    # both line targets — and no Name key.
-    assert "'Type': 'PerpendicularConstraint'" in phase
+    # both line targets — and no Name key. ``Type`` is the engine's
+    # normalized short form (``Perpendicular``), not Fusion's long class
+    # name (``PerpendicularConstraint``) — the dispatcher whitelist drops
+    # anything outside its short-form list, so emission was fixed to
+    # strip the ``Constraint`` suffix.
+    assert "'Type': 'Perpendicular'" in phase
     assert "'Targets': [\"horn_TL\", \"brace_BR\"]" in phase
     # Defence in depth: no constraint row should carry a 'Name' field.
     for line in phase.splitlines():
-        if 'PerpendicularConstraint' in line or 'CoincidentConstraint' in line:
+        if "'Type': 'Perpendicular'" in line or "'Type': 'Coincident'" in line:
             assert "'Name'" not in line, (
                 f"constraint row unexpectedly carries 'Name': {line}"
             )
@@ -197,9 +201,13 @@ def test_dimensions_reach_phase_block():
 
     # Previously, both dims dropped to `# Dimensions.X(...)` comments. They
     # must now appear as real build-sequence dict entries with the fields
-    # Frame Builder needs.
-    assert "'DimType': 'SketchLinearDimension'" in phase, phase
-    assert "'DimType': 'SketchRadialDimension'" in phase, phase
+    # Frame Builder needs. ``Type`` is the engine's normalized short form —
+    # ``SketchLinearDimension`` collapses to ``HorizontalDistance`` (or
+    # ``VerticalDistance`` when orientation="Vertical" is emitted), and
+    # ``SketchRadialDimension`` becomes plain ``Radius``. The long-form
+    # values were silently dropped by ``_process_sequence``'s whitelist.
+    assert "'Type': 'HorizontalDistance'" in phase, phase
+    assert "'Type': 'Radius'" in phase, phase
     assert 'dim_width' in phase and 'dim_shoulder_r' in phase
     # Radial dim uses a single Target, linear uses Targets (plural).
     assert "'Target': \"arc_shoulder_L\"" in phase

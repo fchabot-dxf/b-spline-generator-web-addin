@@ -253,6 +253,173 @@ def test_multi_cluster_preserves_order():
         cc._derive_point_role_id = original
 
 
+class FakeLine:
+    """Stand-in for a Fusion SketchLine.
+
+    Start/end points expose the real API surface
+    (``startSketchPoint.geometry.x/y/z``). ``fb_id`` populates the
+    direct FB-ID path — the line's ``_resolve_curve_id`` first asks
+    ``_origin_axis_token`` (patched to ``None`` in tests unless the
+    test explicitly installs a token) and only then falls back to
+    ``get_fb_id``.
+    """
+
+    def __init__(self, sx, sy, ex, ey, sz=0.0, ez=0.0, fb_id=''):
+        self.objectType = 'adsk::fusion::SketchLine'
+        self.startSketchPoint = types.SimpleNamespace(
+            geometry=types.SimpleNamespace(x=sx, y=sy, z=sz))
+        self.endSketchPoint = types.SimpleNamespace(
+            geometry=types.SimpleNamespace(x=ex, y=ey, z=ez))
+        self.nativeObject = None
+        self.isReference = False
+        self.referencedEntity = None
+        self._fb_id = fb_id
+        self.attributes = _FakeAttrs({'ID': fb_id} if fb_id else {})
+
+
+class FakeAxis:
+    """Stand-in for a root ``ConstructionAxis``.
+
+    ``_point_on_curve_distance`` reads ``curve.geometry.origin`` and
+    ``curve.geometry.direction`` (the InfiniteLine3D shape). We mirror
+    that surface plus an ``objectType`` the ``ConstructionAxis``
+    suffix matcher recognises.
+    """
+
+    def __init__(self, origin, direction):
+        self.objectType = 'adsk::fusion::ConstructionAxis'
+        self.geometry = types.SimpleNamespace(
+            origin=types.SimpleNamespace(
+                x=origin[0], y=origin[1], z=origin[2] if len(origin) > 2 else 0.0),
+            direction=types.SimpleNamespace(
+                x=direction[0], y=direction[1],
+                z=direction[2] if len(direction) > 2 else 0.0),
+        )
+        self.nativeObject = None
+
+
+def _patch_origin_token(mapping):
+    """Make ``_origin_axis_token`` honour a fixed entity→token map.
+
+    ``mapping`` is ``{id(fake_entity): 'Y_AXIS'}`` (or similar). The
+    patch covers the two code paths that call the helper:
+    ``_resolve_point_id`` (deferred import) and ``_resolve_curve_id``
+    (also deferred). Both look it up off the ``relation_hints`` module
+    at call time, so we patch the attribute there too.
+    """
+    import relation_hints
+    original = relation_hints._origin_axis_token
+    relation_hints._origin_axis_token = lambda ent: mapping.get(id(ent))
+    return original
+
+
+def _restore_origin_token(original):
+    import relation_hints
+    relation_hints._origin_axis_token = original
+
+
+def test_point_on_axis_emits_single_pair():
+    # One SketchPoint on Y-axis picked alongside the axis — expect a
+    # single auto-pair ``(point_id, 'Y_AXIS')``. No ambiguous cluster
+    # (cluster size < 2 at the point-point level).
+    point = FakePoint(0.0, 5.0, fb_id='rail_top')
+    axis = FakeAxis(origin=(0.0, 0.0, 0.0), direction=(0.0, 1.0, 0.0))
+    orig_token = _patch_origin_token({id(axis): 'Y_AXIS'})
+    try:
+        auto, amb = cc.detect_coincidence_pairs([point, axis])
+        assert amb == []
+        assert auto == [('rail_top', 'Y_AXIS')]
+    finally:
+        _restore_origin_token(orig_token)
+
+
+def test_point_on_line_emits_pair_with_fb_id():
+    # SketchPoint on a non-origin SketchLine — the line's FB-ID is the
+    # emission target (no origin-axis short-circuit since the token
+    # patch returns ``None`` for this line).
+    line = FakeLine(0.0, 0.0, 0.0, 10.0, fb_id='rail_1')
+    pt = FakePoint(0.0, 4.0, fb_id='knot_a')
+    orig_token = _patch_origin_token({})  # no tokens — force FB-ID path
+    try:
+        auto, amb = cc.detect_coincidence_pairs([pt, line])
+        assert amb == []
+        assert auto == [('knot_a', 'rail_1')]
+    finally:
+        _restore_origin_token(orig_token)
+
+
+def test_junction_a_equals_b_on_axis_emits_mst_only():
+    # {A, B, Y-axis} with A=B and both on Y. The point-point pass
+    # emits (A, B); the curve pass emits exactly one of (A, Y) or
+    # (B, Y) — the other is skipped by the MST rule because A and B
+    # are already transitively bound (redundant constraint would
+    # crash Fusion's solver).
+    a = FakePoint(0.0, 3.0)
+    b = FakePoint(0.0, 3.0)
+    axis = FakeAxis(origin=(0.0, 0.0, 0.0), direction=(0.0, 1.0, 0.0))
+    original = _patch_derive({id(a): 'A', id(b): 'B'})
+    orig_token = _patch_origin_token({id(axis): 'Y_AXIS'})
+    try:
+        auto, amb = cc.detect_coincidence_pairs([a, b, axis])
+        assert amb == []
+        # Two edges total: the point-point pair first, then one
+        # point-axis edge. Which endpoint ends up paired with the
+        # axis depends on pick order — A comes first so (A, Y_AXIS).
+        assert auto == [('A', 'B'), ('A', 'Y_AXIS')]
+    finally:
+        _restore_origin_token(orig_token)
+        cc._derive_point_role_id = original
+
+
+def test_two_distinct_points_on_axis_emits_both_edges():
+    # {A, B, Y-axis} with A != B (both on Y but at different heights).
+    # No point-point cluster; the curve pass emits both (A, Y) and
+    # (B, Y) because A and B are independent endpoints in the UF.
+    a = FakePoint(0.0, 2.0)
+    b = FakePoint(0.0, 7.0)
+    axis = FakeAxis(origin=(0.0, 0.0, 0.0), direction=(0.0, 1.0, 0.0))
+    original = _patch_derive({id(a): 'A', id(b): 'B'})
+    orig_token = _patch_origin_token({id(axis): 'Y_AXIS'})
+    try:
+        auto, amb = cc.detect_coincidence_pairs([a, b, axis])
+        assert amb == []
+        assert auto == [('A', 'Y_AXIS'), ('B', 'Y_AXIS')]
+    finally:
+        _restore_origin_token(orig_token)
+        cc._derive_point_role_id = original
+
+
+def test_point_off_axis_no_pair():
+    # Point's perpendicular distance exceeds tolerance — no pair.
+    pt = FakePoint(1.0, 5.0, fb_id='off')  # x=1 off the Y-axis at x=0
+    axis = FakeAxis(origin=(0.0, 0.0, 0.0), direction=(0.0, 1.0, 0.0))
+    orig_token = _patch_origin_token({id(axis): 'Y_AXIS'})
+    try:
+        auto, amb = cc.detect_coincidence_pairs([pt, axis])
+        assert auto == []
+        assert amb == []
+    finally:
+        _restore_origin_token(orig_token)
+
+
+def test_origin_token_resolves_projected_origin_point():
+    # A projected origin point (``isReference=True`` under the real
+    # API) — ``_resolve_point_id`` falls through derivation and finds
+    # the ORIGIN token via the deferred-import fallback. It should
+    # then pair with a line that passes through (0,0).
+    origin_pt = FakePoint(0.0, 0.0)
+    line = FakeLine(-5.0, 0.0, 5.0, 0.0, fb_id='rail_h')
+    original = _patch_derive({})  # no role ID — force token fallback
+    orig_token = _patch_origin_token({id(origin_pt): 'ORIGIN'})
+    try:
+        auto, amb = cc.detect_coincidence_pairs([origin_pt, line])
+        assert amb == []
+        assert auto == [('ORIGIN', 'rail_h')]
+    finally:
+        _restore_origin_token(orig_token)
+        cc._derive_point_role_id = original
+
+
 if __name__ == '__main__':
     test_emit_coincident_hint_shape()
     test_clusters_group_by_rounded_coord()
@@ -264,4 +431,10 @@ if __name__ == '__main__':
     test_cluster_with_untagged_member_is_dropped()
     test_singleton_cluster_ignored()
     test_multi_cluster_preserves_order()
+    test_point_on_axis_emits_single_pair()
+    test_point_on_line_emits_pair_with_fb_id()
+    test_junction_a_equals_b_on_axis_emits_mst_only()
+    test_two_distinct_points_on_axis_emits_both_edges()
+    test_point_off_axis_no_pair()
+    test_origin_token_resolves_projected_origin_point()
     print('test_coincidence_clusters passed')

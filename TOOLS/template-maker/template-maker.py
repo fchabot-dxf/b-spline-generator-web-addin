@@ -28,6 +28,17 @@ _refresh_registered   = False
 _last_sel_ids           = ""
 _latest_payload         = ""
 _latest_phase_id        = 'p01'
+# Phase Number — the ``_MM`` position within a sketch in the filename
+# scheme ``p{sketch:02}_{phase:02}_{descriptor}.py``. Carried through
+# from the palette but only used for downstream tooling that needs the
+# full filename stem; entity naming still uses ``phase_id`` alone.
+_latest_phase_number    = '01'
+# Full phase-file basename the palette has in its File Name field (no
+# directory prefix, with ``.py``). The palette's ``substitutePhaseId``
+# uses the stem of this value as the emitted ``PhaseID`` / ``Name``;
+# the host keeps it around so future emit-to-disk code can land the
+# file with the same name the user sees.
+_latest_file_name       = 'p01_01.py'
 _latest_sketch_name     = ''
 _latest_template_number = 'T2'
 # Coincidence-cluster round-trip state (Track B). See the matching
@@ -51,6 +62,11 @@ template_code      = None
 expression_coords  = None
 rename_selection   = None
 deferred_rebuild   = None
+# Projection pipeline — mirrors the import block in ``template_bridge.py``.
+# Held as a module reference (not ``from X import Y``) so reloads
+# propagate the same way the other sub-modules do. Populated inside
+# ``_reimport_project_modules`` below.
+detect_projections = None
 
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
@@ -182,7 +198,7 @@ def _reload_all_project_modules():
     the top-level ones we reference directly. This is what makes Stop -> Start
     pick up edits without a Fusion restart (importlib.reload alone doesn't
     cascade through dependencies)."""
-    global template_generator, template_payload, template_code, expression_coords, rename_selection, deferred_rebuild
+    global template_generator, template_payload, template_code, expression_coords, rename_selection, deferred_rebuild, detect_projections
 
     _cleanup_cache_files(_current_dir)
 
@@ -208,6 +224,14 @@ def _reload_all_project_modules():
     expression_coords  = importlib.import_module('expression_coords')
     rename_selection   = importlib.import_module('rename_selection')
     deferred_rebuild   = importlib.import_module('deferred_rebuild')
+    # Projection pipeline. Wired into ``_push_selection_to_palette`` below
+    # so the deferred-rebuild tick classifies + formats projection picks
+    # alongside the normal seed-path payload. Without this, live-link
+    # projections (``isReference=True`` sketch proxies) fall through as
+    # "N untagged entities skipped" even though the gate already
+    # whitelists them and ``detect_projections`` knows how to emit a
+    # ``Projections`` block for them.
+    detect_projections = importlib.import_module('detect_projections')
 
     _log('[reload] project sub-modules reloaded')
 
@@ -373,6 +397,55 @@ def _push_selection_to_palette():
         template_number=_latest_template_number,
         cluster_picks=_latest_cluster_picks,
     )
+
+    # Projection inference — mirror of the block in
+    # ``template_bridge.py::_push_selection_to_palette``. Classifies the
+    # current selection as 'empty' | 'seeds' | 'projections' | 'mixed'
+    # and, for the projections case, emits a ready-to-paste
+    # ``Projections`` block the palette renders in place of the usual
+    # seed-block code.
+    #
+    # This local ``_push_selection_to_palette`` is the one registered
+    # with ``deferred_rebuild`` (see ``register`` call below), so the
+    # projection branch MUST live here — the ``template_bridge`` copy
+    # is dead code on this entry path.
+    try:
+        from detection_log import _log_detection as _log_proj
+        kind = detect_projections.classify_selection(entities)
+        _log_proj(None, f"[proj-kind]   classify -> {kind} (count={len(entities)})")
+        payload['selectionKind'] = kind
+        payload['projections'] = []
+        payload['projectionsOk'] = None
+        payload['projectionsNote'] = None
+        payload['projectionsError'] = None
+        payload['projectionsReason'] = None
+        payload['projectionsBlockCode'] = ''
+        payload['badPicks'] = []
+        payload['mixedPickWarning'] = None
+
+        if kind == 'projections':
+            result = detect_projections.detect_projections(entities)
+            if result.get('ok'):
+                payload['projectionsOk'] = True
+                payload['projections'] = result['projections']
+                payload['projectionsNote'] = result.get('note')
+                payload['projectionsBlockCode'] = detect_projections.format_projection_block(
+                    result['projections'],
+                    phase_name=_get_phase_name(),
+                    phase_id=_latest_phase_id or 'p01_projs',
+                )
+            else:
+                payload['projectionsOk'] = False
+                payload['projectionsError'] = result.get('message', '')
+                payload['projectionsReason'] = result.get('reason', '')
+                payload['badPicks'] = result.get('bad_picks', [])
+        elif kind == 'mixed':
+            payload['mixedPickWarning'] = (
+                'Mixed pick: seeds + projections. Pick one kind at a time.'
+            )
+    except Exception as e:
+        _log(f"[ERROR_PROJ_INFER] {e}\n{traceback.format_exc()}")
+
     _latest_payload = json.dumps(payload)
     try:
         palette.sendInfoToHTML('update', _latest_payload)
@@ -383,7 +456,7 @@ def _push_selection_to_palette():
 # ── HTML bridge ───────────────────────────────────────────────────────────────
 class _HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
-        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids, _latest_cluster_picks
+        global _latest_phase_id, _latest_phase_number, _latest_file_name, _latest_sketch_name, _latest_template_number, _last_sel_ids, _latest_cluster_picks
         html_args = adsk.core.HTMLEventArgs.cast(args)
         action = html_args.action
         if action == 'poll':
@@ -403,6 +476,8 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 if isinstance(data, str):
                     data = json.loads(data)
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
+                _latest_phase_number = str(data.get('phaseNumber', '') or '01')
+                _latest_file_name = str(data.get('fileName', '') or 'p01_01.py')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
                 _last_sel_ids = ''
@@ -418,9 +493,11 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 if isinstance(data, str):
                     data = json.loads(data)
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
+                _latest_phase_number = str(data.get('phaseNumber', '') or '01')
+                _latest_file_name = str(data.get('fileName', '') or 'p01_01.py')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
-                _log(f"[rename] phase={_latest_phase_id} sketch={_latest_sketch_name} tpl={_latest_template_number}")
+                _log(f"[rename] phase={_latest_phase_id} pnum={_latest_phase_number} file={_latest_file_name} sketch={_latest_sketch_name} tpl={_latest_template_number}")
                 app = adsk.core.Application.get()
                 ui = app.userInterface
                 sels = ui.activeSelections
@@ -456,7 +533,13 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                         _push_selection_to_palette()
                 html_args.returnData = 'ok'
             except Exception as e:
-                _log(f"[ERROR_RENAME] {e}")
+                # Full traceback, not just ``str(e)`` — dim-rename errors
+                # on freshly-created SketchRadialDimensions only show the
+                # RuntimeError message without the stack (e.g. Fusion's
+                # ``"3 : object does not support attributes"`` vs a
+                # ``parentSketch`` probe raising on a settling proxy), so
+                # the debug log can't tell the crash sites apart.
+                _log(f"[ERROR_RENAME] {e}\n{traceback.format_exc()}")
                 html_args.returnData = 'error'
         elif action == 'clusterPicks':
             # Palette round-trip for size-3+ coincidence clusters. See

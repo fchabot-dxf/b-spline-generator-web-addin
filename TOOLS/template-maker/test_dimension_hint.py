@@ -292,10 +292,14 @@ def test_build_dimension_hint_roundtrips_through_phase_parser():
     This is the guarantee the template_payload -> phase_parser pipeline
     relies on: whatever ``build_dimension_hint`` emits has to survive
     ``parse_statement_to_phase_step`` and end up as a dict with the
-    Name / DimType / Expression / Targets slots the runtime reads.
+    Name / Type / Expression / Targets slots the runtime reads.
 
     The round-trip pins the shape so the generator and the parser can't
-    drift independently.
+    drift independently. ``Type`` is the engine's normalized short form
+    — ``SketchLinearDimension`` → ``HorizontalDistance`` (or
+    ``VerticalDistance`` when orientation="Vertical" rides along). The
+    long form silently dropped through ``_process_sequence``'s whitelist
+    before this normalization was added.
     """
     saved = expression_coords.get_design_params
     expression_coords.get_design_params = lambda: {
@@ -314,11 +318,11 @@ def test_build_dimension_hint_roundtrips_through_phase_parser():
 
         step = parse_statement_to_phase_step(hint)
         assert step is not None, f'parser returned None for {hint!r}'
-        # ``Name`` and ``DimType`` are stored as ``LiteralString`` which
+        # ``Name`` and ``Type`` are stored as ``LiteralString`` which
         # wraps the underlying string in ``.value``. Use that rather than
         # ``str()`` because ``LiteralString`` only defines ``__repr__``.
         assert step['Name'].value == 'dim_widthIn', step
-        assert step['DimType'].value == 'SketchLinearDimension', step
+        assert step['Type'].value == 'HorizontalDistance', step
         # Expression is emitted as a double-quoted string (``expression="widthIn"``)
         # so the parser strips the quotes and wraps the identifier in
         # ``LiteralString``. Pull the payload off ``.value`` regardless of

@@ -32,15 +32,47 @@ _FRAME_ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 _SKETCHES_ROOT = os.path.join(_FRAME_ROOT, 'sketches')
 _TEMPLATE_REGISTRY = None
 
+import re as _re
+
+# Module-name patterns that collide across template folders after the
+# T{N}_ prefix was dropped from phase/sketch files. Each template has
+# its own ``template_loader.py``, ``sketch_N_*.py``, and
+# ``phases/pNN_MM_*.py``, all sharing identical bare import names.
+# We purge any cached copy before loading a template and restore after,
+# so each template sees a clean ``sys.modules`` and re-imports with
+# ``sys.path`` pointing at its own folder.
+_TEMPLATE_SCOPED_NAMES = ('template_loader',)
+_PHASE_NAME_RE = _re.compile(r'^p\d{2}_\d{2}_.+$')
+_SKETCH_NAME_RE = _re.compile(r'^sketch_\d+_.+$')
+
+
+def _is_template_scoped_module(key):
+    """True if ``key`` is an import name that collides across template folders."""
+    if key in _TEMPLATE_SCOPED_NAMES:
+        return True
+    if key == 'phases' or key.startswith('phases.'):
+        return True
+    if _PHASE_NAME_RE.match(key):
+        return True
+    if _SKETCH_NAME_RE.match(key):
+        return True
+    return False
+
+
 def _load_template_module(data_path, module_name):
     module_dir = os.path.dirname(data_path)
     old_sys_path = list(sys.path)
     if module_dir not in sys.path:
         sys.path.insert(0, module_dir)
 
+    # Snapshot-and-purge any module name that could come from a sibling
+    # template folder. Without this, ``template_2``'s ``template_loader``
+    # import hits the cached copy from ``template_1`` and its ``_here()``
+    # points at the wrong folder — silently serving T1's phase list for
+    # T2's schema push.
     removed_modules = {}
     for key in list(sys.modules.keys()):
-        if key == 'phases' or key.startswith('phases.'):
+        if _is_template_scoped_module(key):
             removed_modules[key] = sys.modules.pop(key)
 
     phases_module = None
@@ -64,9 +96,13 @@ def _load_template_module(data_path, module_name):
         return module
     finally:
         sys.path[:] = old_sys_path
+        # Drop whatever this template populated so the next template
+        # load starts from the same clean slate.
         for key in list(sys.modules.keys()):
-            if key == 'phases' or key.startswith('phases.'):
+            if _is_template_scoped_module(key):
                 sys.modules.pop(key, None)
+        # Restore whatever was there before this call so the rest of
+        # the add-in's environment is unchanged.
         for key, value in removed_modules.items():
             sys.modules[key] = value
 
@@ -76,14 +112,22 @@ def _discover_template_entries():
     if not os.path.isdir(_SKETCHES_ROOT):
         return entries
 
+    if logger:
+        logger.log(f"TEMPLATE DISCOVERY: scanning {_SKETCHES_ROOT}")
+
     for folder in sorted(os.listdir(_SKETCHES_ROOT)):
         folder_path = os.path.join(_SKETCHES_ROOT, folder)
         if not os.path.isdir(folder_path) or not folder.startswith('template_'):
             continue
 
+        # Template folder carries identity via its folder name (``template_1``,
+        # ``template_2``, ...). The data file inside is always ``template_data.py``
+        # — no template-number suffix. The back-compat branch still accepts an
+        # old-style ``template_data_N.py`` so a half-migrated tree keeps loading.
         template_files = sorted([
             f for f in os.listdir(folder_path)
-            if f.startswith('template_data_') and f.endswith('.py')
+            if (f == 'template_data.py'
+                or (f.startswith('template_data_') and f.endswith('.py')))
         ])
         if not template_files:
             continue
@@ -132,6 +176,7 @@ def _discover_template_entries():
         prefix = f"T{template_index}" if template_index.isdigit() else folder.upper()
 
         entries.append({
+            'id': folder,
             'style_name': style_name,
             'loader': loader,
             'prefix': prefix,
@@ -151,17 +196,44 @@ def _ensure_template_registry():
 def _resolve_template(style_id, ui_data=None):
     """Return (template_spec, prefix) for the given style_id. Raises on unknown id."""
     registry = _ensure_template_registry()
+    normalized = str(style_id or '').strip()
+    registry_names = [f"{e['id']} ({e['style_name']})" for e in registry]
+    if logger:
+        logger.log(f"TEMPLATE RESOLVE: trying style_id='{style_id}' with registry={registry_names}")
+
     for entry in registry:
-        if entry['style_name'] == style_id or entry['style_name'] in style_id or style_id in entry['style_name']:
+        candidate_id = entry['id']
+        candidate_name = entry['style_name']
+        candidate_label = candidate_name.split(' - ')[0] if ' - ' in candidate_name else candidate_name
+
+        if normalized == candidate_id:
+            if logger:
+                logger.log(f"TEMPLATE RESOLVE: exact id match '{style_id}' -> '{candidate_name}' (folder={entry['folder']})")
             return entry['loader'](ui_data), entry['prefix']
-    raise ValueError(f"Unknown style_id: '{style_id}'. Registered: {[e['style_name'] for e in registry]}")
+        if normalized == candidate_name:
+            if logger:
+                logger.log(f"TEMPLATE RESOLVE: exact name match '{style_id}' -> '{candidate_name}' (folder={entry['folder']})")
+            return entry['loader'](ui_data), entry['prefix']
+        if normalized.lower() == candidate_label.lower():
+            if logger:
+                logger.log(f"TEMPLATE RESOLVE: base name match '{style_id}' -> '{candidate_name}' (folder={entry['folder']})")
+            return entry['loader'](ui_data), entry['prefix']
+        if candidate_name.lower() in normalized.lower() or normalized.lower() in candidate_name.lower():
+            if logger:
+                logger.log(f"TEMPLATE RESOLVE: fuzzy match '{style_id}' -> '{candidate_name}' (folder={entry['folder']})")
+            return entry['loader'](ui_data), entry['prefix']
+
+    raise ValueError(f"Unknown style_id: '{style_id}'. Registered: {registry_names}")
 
 
 def get_available_templates():
     """Return the list of available templates for UI population."""
     registry = _ensure_template_registry()
-    return [{"label": entry["style_name"], "value": entry["style_name"]}
+    templates = [{"label": entry["style_name"], "value": entry["id"]}
             for entry in registry]
+    if logger:
+        logger.log(f"TEMPLATE LIST GENERATED: {[t['value'] for t in templates]}")
+    return templates
 
 
 def get_template_spec(style_id="Template 1"):
@@ -176,6 +248,8 @@ def build_sketch_logic_v3(style_id="Template 1", joint_prefix="joint", *args, **
     if not external_logger and len(args) > 0:
         external_logger = args[0]
         
+    if external_logger:
+        external_logger.log(f"BUILD ENTRY: build_sketch_logic_v3(style_id='{style_id}')")
     builder = FrameBuilder(external_logger)
     data_dict = kwargs.get('data', {})
     # Unify session state (ui_state) and button snapshot (ui_data)
@@ -502,36 +576,9 @@ class FrameBuilder:
                 cx = (bbox.minPoint.x + bbox.maxPoint.x) / 2
                 cy = (bbox.minPoint.y + bbox.maxPoint.y) / 2
                 side_info = ""
-                if abs(cx) > abs(cy): side_info = "SIDE_LEFT" if cx < 0 else "SIDE_RIGHT"
-                else: side_info = "SPAN_BOTTOM" if cy < 0 else "SPAN_TOP"
-                feat.name = f"FRAME_{side_info}"
-                self.logger.log(f"Extruded profile {i}: {feat.name}")
             except Exception as e:
-                self.logger.log_error(f"Extrude profile {i} failed: {e}")
+                self.logger.log_error(f"FRAME EXTRUSION ERROR: {e}")
+                continue
 
-    def _create_assembly_joints(self, target_body, frame_comp, prefix="FrameJoint"):
-        self.logger.log("Creating assembly joints")
-        try:
-            core_occ = target_body.assemblyContext
-            if not core_occ:
-                self.logger.log("No core assembly context found; skipping joints")
-                return
-            frame_occ = frame_comp.assemblyContext
-            if frame_comp.bRepBodies.count == 0:
-                self.logger.log("No bodies in frame component; skipping joints")
-                return
-            joints = self.root.joints
-            geo1 = adsk.fusion.JointGeometry.createByPoint(frame_comp.originPoint)
-            geo2 = adsk.fusion.JointGeometry.createByPoint(core_occ.component.originPoint)
-            joint_input = joints.createInput(geo1, geo2)
-            joint_input.setAsRigidJointMotion()
-            joint = joints.add(joint_input)
-            index = 1
-            while True:
-                name = f"{prefix}_{index}"
-                if not joints.itemByName(name): break
-                index += 1
-            joint.name = name
-            self.logger.log(f"Created joint: {name}")
-        except Exception as e:
-            self.logger.log_error(f"Create assembly joints failed: {e}")
+        self.logger.log("Frame extrusion completed")
+   

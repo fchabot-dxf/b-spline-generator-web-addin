@@ -58,9 +58,16 @@ class _FakeApp:
 
 
 adsk.core.Application = _FakeApp
-sys.modules.setdefault('adsk', adsk)
-sys.modules.setdefault('adsk.core', adsk.core)
-sys.modules.setdefault('adsk.fusion', adsk.fusion)
+# Use straight assignment rather than ``setdefault`` — another test module
+# (``test_coincidence_clusters`` loads first under pytest's alphabetical
+# collection) may already have stubbed ``adsk``/``adsk.core`` in
+# ``sys.modules`` without an ``Application`` attribute. Setdefault would
+# no-op here and our ``_FakeApp`` would never reach the real
+# ``_get_origin_entity_map`` call, silently breaking every origin-token
+# assertion in this file.
+sys.modules['adsk'] = adsk
+sys.modules['adsk.core'] = adsk.core
+sys.modules['adsk.fusion'] = adsk.fusion
 
 
 import relation_hints

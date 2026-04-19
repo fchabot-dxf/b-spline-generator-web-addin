@@ -89,22 +89,19 @@ CONSTRAINT_TARGET_PROPS_BY_TYPE = {
     # and 21:02:06 (outright native AV, no Python exception). Reading
     # ``.point`` or ``.entity`` on that proxy remains unsafe.
     #
-    # BUT — by the time ``_constraint_targets`` or the ownership gate
-    # sees a CoincidentConstraint, it's ALREADY been swapped out.
-    # ``template_payload_builder._expand_offset_picks`` runs the
-    # ``coincident_hint.find_matching_coincident_constraint`` pre-pass:
-    # it walks ``sketch.geometricConstraints`` and distance-matches the
-    # picked proxy against the click hit-point Fusion records on the
-    # Selection wrapper. The iterated proxy returned by that function
-    # has fully-readable ``.point`` / ``.entity`` (confirmed across 8/8
-    # iterated reads in the 09:35:30 probe log, zero crashes).
-    #
-    # So the tuple is safe here IFF upstream swap is in place. If
-    # somebody refactors the swap out, this entry needs to revert to
-    # ``()`` OR the hit-point-match code needs to move into every
-    # caller of target_props_for. The swap-first, targets-second
-    # invariant is documented in coincident_hint.py and this comment;
-    # do not change one without the other.
+    # Coincidence is now expressed via ENTITY selection
+    # (``coincidence_clusters.detect_coincidence_pairs``) rather than by
+    # picking a CC glyph directly, so the iterated-proxy swap pre-pass
+    # (``coincident_hint.find_matching_coincident_constraint``) is GONE.
+    # The ``('point', 'entity')`` tuple is still safe because both
+    # call-sites — ``_constraint_targets`` below and
+    # ``ownership_gate.is_framebuilder_owned`` — guard with
+    # ``is_iterated_cc_proxy`` before walking the props. A direct-pick
+    # CC is refused cleanly at those canaries; only iterated proxies
+    # (from ``sketch.geometricConstraints.item(i)``, via future
+    # Track-B button path or a pre-existing CC in a template's sketch)
+    # ever reach the slot read. If somebody removes those canaries,
+    # THIS entry needs to revert to ``()``.
     'CoincidentConstraint':              ('point', 'entity'),
     'HorizontalConstraint':              ('line',),
     'VerticalConstraint':                ('line',),
@@ -430,12 +427,13 @@ def _constraint_targets(ent, params=None, get_entity_coord_expr_fn=None):
 
     # CoincidentConstraint pre-flight — same guard the ownership gate
     # runs, mirrored here because _constraint_targets is an independent
-    # probe path that gets called from the emitter side. If
-    # ``_expand_offset_picks`` couldn't swap a picked CC proxy for an
-    # iterated one (ambiguous junction pick with 3+ stacked glyphs, or
-    # no single best match under the 0.5 ratio rule), the picked proxy
-    # reaches us here. Reading ``.point`` / ``.entity`` on it raises
-    # "vector too long" at the Python level (caught below) but poisons
+    # probe path that gets called from the emitter side. The upstream
+    # iterated-proxy swap is no longer in place (coincidence is
+    # expressed via entity selection now; see
+    # ``coincidence_clusters.detect_coincidence_pairs``), so any
+    # directly-picked CC that slips through reaches us as the hazardous
+    # proxy form. Reading ``.point`` / ``.entity`` on it raises "vector
+    # too long" at the Python level (caught below) but poisons
     # Fusion's internal pointer graph — the next repaint ~4 s later
     # dereferences the corrupted pointer and native-AVs.
     #
@@ -532,4 +530,23 @@ def _hint_dimension(ent, ent_type, name, ctx):
     args.extend(targets)
     if expr:
         args.append(f'expression="{expr}"')
+    # SketchLinearDimension is a single Fusion type that covers both
+    # Horizontal and Vertical distance dims; the runtime's ``_process_
+    # sequence`` whitelist needs them distinguished as ``HorizontalDistance``
+    # vs ``VerticalDistance``. ``phase_parser._normalize_dim_type`` does
+    # the routing, but it needs ``orientation="Vertical"`` / ``"Horizontal"``
+    # in the hint to make the call — otherwise every linear dim silently
+    # lands as Horizontal regardless of what the user drew. Read-through
+    # is guarded because Fusion has been observed to fault on ``.orientation``
+    # for dim proxies that haven't fully settled.
+    if ent_type == 'SketchLinearDimension':
+        try:
+            import adsk.fusion
+            orient = getattr(ent, 'orientation', None)
+            if orient == adsk.fusion.DimensionOrientations.VerticalDimensionOrientation:
+                args.append('orientation="Vertical"')
+            elif orient == adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation:
+                args.append('orientation="Horizontal"')
+        except Exception:
+            pass
     return f'Dimensions.{ent_type}({", ".join(args)})'

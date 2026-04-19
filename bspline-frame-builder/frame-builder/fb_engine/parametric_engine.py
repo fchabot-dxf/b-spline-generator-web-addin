@@ -77,7 +77,8 @@ class ParametricSketchBuilder:
         remaining_phase = self.max_phase
         for sketch_spec in template.get("Sketches", []):
             try:
-                ctx.logger.log(f"--- Creating Sketch: {sketch_spec['Name']} (Remaining global phases: {remaining_phase}) ---")
+                sketch_label = sketch_spec.get("Label", sketch_spec['Name'])
+                ctx.logger.log(f"--- Creating Sketch: {sketch_label} (Remaining global phases: {remaining_phase}) ---")
                 
                 # Build the sketch, passing the current global cap and UI state
                 built_count = self.build_sketch(sketch_spec, limit=remaining_phase, ui_data=ctx.active_vars)
@@ -103,6 +104,7 @@ class ParametricSketchBuilder:
         """
         ctx = self.ctx
         sketch_name = f"{self.prefix}_{sketch_spec['Name']}"
+        sketch_label = sketch_spec.get("Label", sketch_spec['Name'])
         sketch_prefix = sketch_spec.get("Prefix", self.prefix)
         
         # 0. Sync UI parameters to Fusion UserParameters before building
@@ -143,13 +145,13 @@ class ParametricSketchBuilder:
         # Extract all phase categories from the spec
         built_count = 0
         if "Blocks" in sketch_spec:
-            built_count = self._build_blocks(sketch, sketch_name, sketch_spec["Blocks"], limit=limit)
+            built_count = self._build_blocks(sketch, sketch_name, sketch_spec["Blocks"], limit=limit, display_name=sketch_label)
         else:
             # Legacy sketches (monolithic) always count as 1 phase
-            self._build_legacy_phases(sketch, sketch_name, sketch_spec)
+            self._build_legacy_phases(sketch, sketch_name, sketch_spec, display_name=sketch_label)
             built_count = 1
 
-        ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] (Final count: {built_count}) ---")
+        ctx.logger.log(f"--- BUILD COMPLETE [{sketch_label}] (Final count: {built_count}) ---")
         return built_count
 
     def _sync_user_parameters(self, ctx, ui_data):
@@ -193,9 +195,10 @@ class ParametricSketchBuilder:
         except Exception as e:
             ctx.logger.log(f"PARAM SYNC ERROR: {e}", "WARNING")
 
-    def _build_blocks(self, sketch, sketch_name, blocks, limit=None):
+    def _build_blocks(self, sketch, sketch_name, blocks, limit=None, display_name=None):
         """Builds a sketch using the new sequential BuildingBlock pattern."""
-        self.ctx.logger.log(f"Using Procedural BLOCK-BASED synthesis in {sketch_name} (Global limit: {limit})")
+        display_name = display_name or sketch_name
+        self.ctx.logger.log(f"Using Procedural BLOCK-BASED synthesis in {display_name} (Global limit: {limit})")
         built_count = 0
 
         for i, block in enumerate(blocks):
@@ -232,7 +235,7 @@ class ParametricSketchBuilder:
             # Pulse the solver to settle geometry before offsets
             self.ctx.logger.log(f"  > PULSE SOLVE: {b_name}")
             sketch.isComputeDeferred = False
-            self._log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE")
+            self._log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE", display_name=display_name)
 
             # Offset Steps (runs in deferred mode for constraint stability)
             sketch.isComputeDeferred = True
@@ -274,7 +277,7 @@ class ParametricSketchBuilder:
             elif t == "Step":
                 step_step(self.ctx, sketch, sketch_name, step)
 
-    def _build_legacy_phases(self, sketch, sketch_name, sketch_spec):
+    def _build_legacy_phases(self, sketch, sketch_name, sketch_spec, display_name=None):
         """The original 8-phase bucket-based loop."""
         ctx = self.ctx
         phases = _extract_phases(sketch_spec)
@@ -291,7 +294,7 @@ class ParametricSketchBuilder:
         sketch.isComputeDeferred = False  # force solve
 
         # === PHASE 2: SNAP-TO-SEED (soft dimensions) ===
-        self._run_snap_seed_phase(ctx, sketch, sketch_name, phases, "INITIAL")
+        self._run_snap_seed_phase(ctx, sketch, sketch_name, phases, "INITIAL", display_name=display_name)
 
         # === PHASE 3: PRE-CONSTRAINTS / PRE-DIMENSIONS ===
         sketch.isComputeDeferred = True
@@ -299,7 +302,7 @@ class ParametricSketchBuilder:
             constraint_step(ctx, sketch, sketch_name, rel)
         for dim in phases["pre_dims"]:
             dimension_step(ctx, sketch, sketch_name, dim)
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 3 POST-SOLVE (PRE-CONSTRS)")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 3 POST-SOLVE (PRE-CONSTRS)", display_name=display_name)
         sketch.isComputeDeferred = False
 
         # === PHASE 4: MAIN GEOMETRY / CONSTRAINTS ===
@@ -308,14 +311,14 @@ class ParametricSketchBuilder:
             geom_step(ctx, sketch, sketch_name, g)
         for rel in phases["constrs"]:
             constraint_step(ctx, sketch, sketch_name, rel)
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 PRE-SOLVE (MAIN GEOM)")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 PRE-SOLVE (MAIN GEOM)", display_name=display_name)
         sketch.isComputeDeferred = False
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 POST-SOLVE (MAIN GEOM)")
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 (GEOMETRY)")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 POST-SOLVE (MAIN GEOM)", display_name=display_name)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 4 (GEOMETRY)", display_name=display_name)
 
         # === PHASE 4.5: SNAP-TO-SEED RECOVERY (Mid-Build Snap) ===
         # Re-run soft dimensions to settle Main Geometry before Post-Constraints
-        self._run_snap_seed_phase(ctx, sketch, sketch_name, phases, "RECOVERY")
+        self._run_snap_seed_phase(ctx, sketch, sketch_name, phases, "RECOVERY", display_name=display_name)
 
         # === PHASE 5: POST-GEOMETRY / POST-CONSTRAINTS ===
         sketch.isComputeDeferred = True
@@ -328,9 +331,9 @@ class ParametricSketchBuilder:
                 constraint_step(ctx, sketch, sketch_name, rel)
 
         # Pulse: settle anchors before tangency
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.1 PRE-PULSE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.1 PRE-PULSE", display_name=display_name)
         sketch.isComputeDeferred = False
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.1 POST-PULSE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.1 POST-PULSE", display_name=display_name)
         sketch.isComputeDeferred = True
         ctx.logger.log(f"PHASE PULSE: Anchors settled before tangency")
 
@@ -338,10 +341,10 @@ class ParametricSketchBuilder:
         for rel in phases["post_constrs"]:
             if rel.get("Type") != "Coincident":
                 constraint_step(ctx, sketch, sketch_name, rel)
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.2 PRE-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.2 PRE-SOLVE", display_name=display_name)
         sketch.isComputeDeferred = False
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.2 POST-SOLVE")
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5 (CONSTRAINTS/WELDS)")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5.2 POST-SOLVE", display_name=display_name)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 5 (CONSTRAINTS/WELDS)", display_name=display_name)
 
         # === PHASE 6: FINAL DIMENSIONS ===
         sketch.isComputeDeferred = True
@@ -349,10 +352,10 @@ class ParametricSketchBuilder:
             dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=False)
         for vdim in phases["vdims"]:
             dimension_step(ctx, sketch, sketch_name, vdim, is_snap_only=True)
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 PRE-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 PRE-SOLVE", display_name=display_name)
         sketch.isComputeDeferred = False
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 POST-SOLVE")
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 (FINAL DIMENSIONS)")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 POST-SOLVE", display_name=display_name)
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 6 (FINAL DIMENSIONS)", display_name=display_name)
 
         # === PHASE 7: OFFSETS / STEPS ===
         sketch.isComputeDeferred = True
@@ -361,31 +364,32 @@ class ParametricSketchBuilder:
         for step in phases["steps"]:
             from fb_engine import offsets
             offsets.step_step(ctx, sketch, sketch_name, step)
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 PRE-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 PRE-SOLVE", display_name=display_name)
         sketch.isComputeDeferred = False
-        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 POST-SOLVE")
+        self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 7 POST-SOLVE", display_name=display_name)
 
         # === PHASE 8: MITERS ===
         miters_list = phases["miters"]
-        ctx.logger.log(f"MITER PHASE: Found {len(miters_list)} definitions in {sketch_name}")
+        ctx.logger.log(f"MITER PHASE: Found {len(miters_list)} definitions in {display_name}")
         if miters_list:
             sketch.isComputeDeferred = True
-            self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 8 PRE-SOLVE")
+            self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 8 PRE-SOLVE", display_name=display_name)
             sketch.isComputeDeferred = False
-            self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 8 POST-SOLVE")
+            self._log_arc_audit(ctx, sketch, sketch_name, "PHASE 8 POST-SOLVE", display_name=display_name)
 
-        ctx.logger.log(f"--- BUILD COMPLETE [{sketch_name}] ---")
+        ctx.logger.log(f"--- BUILD COMPLETE [{display_name}] ---")
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-    def _run_snap_seed_phase(self, ctx, sketch, sketch_name, phases, note="SEED"):
+    def _run_snap_seed_phase(self, ctx, sketch, sketch_name, phases, note="SEED", display_name=None):
         """Run the snap-to-seed (soft dimension) logic for a sketch."""
+        display_name = display_name or sketch_name
         dims = phases.get("dims", []) + phases.get("vdims", [])
         if not dims:
             return
 
-        ctx.logger.log(f"--- SNAP-TO-SEED ({note}) in {sketch_name} ---")
+        ctx.logger.log(f"--- SNAP-TO-SEED ({note}) in {display_name} ---")
         for dim in dims:
             # SOFT DRIVE: We ignore the EnabledParam during the Snap phase.
             # This allows unlocked sliders to still move the geometry 
@@ -432,9 +436,10 @@ class ParametricSketchBuilder:
 # ------------------------------------------------------------------
 # Phase extraction helper (keeps build_sketch readable)
 # ------------------------------------------------------------------
-    def _log_arc_audit(self, ctx, sketch, sketch_name, phase_label):
+    def _log_arc_audit(self, ctx, sketch, sketch_name, phase_label, display_name=None):
         """Diagnostic helper to log coordinates of all arcs in the sketch."""
-        ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {sketch_name} ---")
+        display_name = display_name or sketch_name
+        ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {display_name} ---")
         
         ent_map = ctx.entity_map.get(sketch_name, {})
 

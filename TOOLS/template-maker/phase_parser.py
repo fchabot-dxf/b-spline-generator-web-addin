@@ -348,6 +348,49 @@ def _build_geometry_step(seed_type, args):
 # Constraints
 # ---------------------------------------------------------------------------
 
+# Fusion objectType → engine dispatcher form.
+#
+# ``parametric_engine._process_sequence`` (line 255) dispatches on a
+# short-form whitelist — ``"Coincident"``, ``"Tangent"``,
+# ``"Horizontal"``, ``"Vertical"``, ``"Parallel"``, ``"Perpendicular"``,
+# ``"Equal"``, ``"Concentric"``, ``"Midpoint"``, ``"PointOnCurve"``.
+# Fusion's ``objectType`` (and therefore ``Constraints.<Type>(...)``
+# hints) returns the full class name with a ``Constraint`` suffix
+# (``CoincidentConstraint``, ``HorizontalConstraint``, …), plus a
+# CapMid vs lowercase-p rename on one subtype. A phase step whose
+# ``'Type'`` doesn't match the whitelist is silently skipped by the
+# dispatcher — no exception, no log line — which is exactly the symptom
+# behind "p07 chain log shows START BLOCK / PULSE SOLVE with zero
+# CONSTRAINT OK lines in between".
+#
+# The map handles explicit renames; the generic ``Constraint`` suffix
+# strip in ``_build_constraint_step`` handles everything else so new
+# Fusion constraint subtypes flow through without a code change.
+_CONSTRAINT_TYPE_RENAMES = {
+    'MidPointConstraint': 'Midpoint',  # engine uses lowercase ``p``
+}
+
+
+def _normalize_constraint_type(constraint_type):
+    """Translate a Fusion-style constraint class name to the engine's
+    short-form dispatch token.
+
+    - Explicit renames first (``MidPointConstraint`` → ``Midpoint``).
+    - Then strip trailing ``Constraint`` (``CoincidentConstraint`` →
+      ``Coincident``).
+    - Hand-written hints that already use the short form
+      (``Constraints.Coincident(...)``) pass through unchanged.
+    """
+    if not constraint_type:
+        return constraint_type
+    renamed = _CONSTRAINT_TYPE_RENAMES.get(constraint_type)
+    if renamed is not None:
+        return renamed
+    if constraint_type.endswith('Constraint'):
+        return constraint_type[:-len('Constraint')]
+    return constraint_type
+
+
 def _build_constraint_step(constraint_type, args):
     """Parse ``Constraints.<Type>(target1, target2, ...)`` into a phase step.
 
@@ -374,11 +417,15 @@ def _build_constraint_step(constraint_type, args):
     quoted name as a target, which the runtime will correctly flag as an
     unknown entity. The fix is to delete the name from the hand-written
     statement; the parser does not try to cover for that mistake.
+
+    The ``constraint_type`` is normalized to the engine's short form
+    (see ``_normalize_constraint_type``) before being stamped into the
+    step dict so the dispatcher at ``parametric_engine.py:255`` matches.
     """
     cleaned = [arg.strip() for arg in args if arg.strip()]
     targets = [RawCode(arg) for arg in cleaned]
     return {
-        'Type': LiteralString(constraint_type),
+        'Type': LiteralString(_normalize_constraint_type(constraint_type)),
         'Targets': targets,
     }
 
@@ -462,6 +509,40 @@ _RADIAL_DIM_TYPES = {
 }
 
 
+# Fusion long-form → engine short-form. The engine's ``_process_sequence``
+# dispatches dim steps on ``step.get("Type")`` against the whitelist
+# ``["HorizontalDistance", "VerticalDistance", "Radius", "Diameter",
+# "ParallelDistance", "AngularDistance"]`` — anything outside that list
+# is silently dropped (no ``else`` branch). Template Maker emits hints
+# via ``Dimensions.<ent.objectType>(...)`` which reaches here as Fusion's
+# long-form class name; without this normalization the dim step never
+# enters the dim dispatcher. Linear dims need orientation-aware routing
+# which is handled separately in ``_build_dimension_step`` below.
+_DIM_TYPE_RENAMES = {
+    'SketchRadialDimension': 'Radius',
+    'SketchDiameterDimension': 'Diameter',
+    'SketchAngularDimension': 'AngularDistance',
+    'SketchOffsetDimension': 'ParallelDistance',
+}
+
+
+def _normalize_dim_type(dimension_type, orientation=None):
+    """Convert a Fusion dim class name to the engine's short-form whitelist.
+
+    - ``SketchLinearDimension`` requires the ``orientation`` kwarg to pick
+      between ``HorizontalDistance`` and ``VerticalDistance``. Defaults to
+      ``HorizontalDistance`` when orientation is absent (matches the
+      ``_create_dimension`` default in ``fb_engine/dimensions.py``).
+    - Any already-short hand-written type (``Radius``, ``HorizontalDistance``,
+      etc.) passes through unchanged.
+    """
+    if not dimension_type:
+        return dimension_type
+    if dimension_type == 'SketchLinearDimension':
+        return 'VerticalDistance' if (orientation or '').strip().lower() == 'vertical' else 'HorizontalDistance'
+    return _DIM_TYPE_RENAMES.get(dimension_type, dimension_type)
+
+
 def _build_dimension_step(dimension_type, args):
     if not args:
         return None
@@ -474,9 +555,27 @@ def _build_dimension_step(dimension_type, args):
     expression = kw.get('expression') or kw.get('value')
     orientation = kw.get('orientation')
 
+    # Engine dispatcher in ``parametric_engine._process_sequence`` reads
+    # ``step.get("Type")`` against a whitelist (Radius / VerticalDistance /
+    # HorizontalDistance / Diameter / ParallelDistance / AngularDistance) and
+    # silently drops anything unknown — there's no ``else`` branch. Emitting
+    # ``DimType`` kept the step from ever entering the dim dispatcher, so the
+    # dimension vanished with no log line. ``fb_engine.dimensions._create_
+    # dimension`` dual-reads ``dim.get("DimType") or dim.get("Type")`` so
+    # downstream is backward-compatible with any hand-written files that
+    # still carry ``DimType``.
+    #
+    # ``_normalize_dim_type`` converts Fusion long-form class names
+    # (``SketchRadialDimension``, ``SketchLinearDimension``, etc.) into the
+    # whitelisted short form. ``SketchLinearDimension`` needs orientation-
+    # aware routing (Horizontal vs Vertical), so ``orientation`` gets fed
+    # in — hand-written short-form types (``Radius``, ``HorizontalDistance``)
+    # pass through untouched.
+    orientation_unquoted = _unquote(orientation) if orientation and _is_quoted_string(orientation) else orientation
+    normalized_type = _normalize_dim_type(dimension_type, orientation_unquoted)
     step = {
         'Name': LiteralString(name),
-        'DimType': LiteralString(dimension_type),
+        'Type': LiteralString(normalized_type),
     }
     if expression:
         if _is_quoted_string(expression):
@@ -484,7 +583,7 @@ def _build_dimension_step(dimension_type, args):
         else:
             step['Expression'] = RawCode(expression)
     if orientation:
-        step['Orientation'] = LiteralString(orientation)
+        step['Orientation'] = LiteralString(orientation_unquoted)
 
     if dimension_type in _RADIAL_DIM_TYPES:
         if targets:

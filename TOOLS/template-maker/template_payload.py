@@ -39,6 +39,40 @@ from variable_scan import (
     _merge_variables,
 )
 
+import re as _re
+
+
+def _dim_label_from_type(obj_type):
+    """Transform a Dimension subtype name into a ``dim_<subtype>`` label.
+
+    Examples:
+        ``SketchRadialDimension`` -> ``dim_radial``
+        ``SketchLinearDimension`` -> ``dim_linear``
+        ``SketchAngularDimension`` -> ``dim_angular``
+        ``SketchConcentricCircleDimension`` -> ``dim_concentric_circle``
+        ``SketchDiameterDimension`` -> ``dim_diameter``
+        ``SketchOffsetDimension`` -> ``dim_offset``
+
+    Rationale: the phase-file convention (T2_p04_anatomy.py writes
+    ``'Name': 'dim_neck_offset'``; T2_p15_drivers.py writes
+    ``'Name': 'arc_hip_R_rad'``) is to put dimensions in their own
+    ``dim_`` namespace so ``dimension_hint.derive_dim_identity`` never
+    has to fall back to a ``dim_`` collision fix at emit time.
+
+    Strips the leading ``Sketch`` and trailing ``Dimension``, converts
+    the remaining CamelCase to snake_case, lowercases, prepends
+    ``dim_``. Returns ``'dim'`` alone for the degenerate case of an
+    empty core (shouldn't happen, but keeps the caller robust).
+    """
+    core = obj_type or ''
+    if core.startswith('Sketch'):
+        core = core[len('Sketch'):]
+    if core.endswith('Dimension'):
+        core = core[:-len('Dimension')]
+    # CamelCase -> snake_case
+    core = _re.sub(r'(?<!^)(?=[A-Z])', '_', core).lower()
+    return f'dim_{core}' if core else 'dim'
+
 
 def _label_for_entity(ent):
     """Return a display-friendly label for ``ent``.
@@ -81,15 +115,22 @@ def _label_for_entity(ent):
     try:
         obj_type = ent.objectType.split('::')[-1]
         if obj_type:
-            if obj_type == 'CoincidentConstraint':
-                try:
-                    from coincident_hint import describe_coincident_targets
-                    pt_name, en_name = describe_coincident_targets(ent)
-                    if (pt_name and pt_name != '<unknown>'
-                            and en_name and en_name != '<unknown>'):
-                        return f'Coincident: {pt_name} ↔ {en_name}'
-                except Exception:
-                    pass
+            # CoincidentConstraint glyph picks are no longer supported —
+            # coincidence pairs come from entity selection via
+            # ``coincidence_clusters.detect_coincidence_pairs`` instead.
+            # A directly-picked CC reaches this code path only as a user
+            # mistake; falling through to the generic ``obj_type`` label
+            # ("CoincidentConstraint") surfaces it in the items list with
+            # no target names, and the ownership gate will reject it.
+            # Dimension subtypes: emit ``dim_<subtype>`` (e.g.
+            # ``dim_radial`` for SketchRadialDimension) so the FB:ID
+            # written by ``rename_selection`` lives in the project's
+            # ``dim_`` namespace from the start. Matches the convention
+            # in existing phase files (``dim_neck_offset``,
+            # ``arc_hip_R_rad``) and prevents ``derive_dim_identity``
+            # from having to fix the name up at emit time.
+            if obj_type.endswith('Dimension'):
+                return _dim_label_from_type(obj_type)
             return obj_type
     except Exception:
         pass

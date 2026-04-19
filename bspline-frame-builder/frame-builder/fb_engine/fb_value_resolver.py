@@ -63,8 +63,12 @@ class FBValueResolver:
             # Width-based Drivers (Multipliers of widthIn)
             if name_lower in ['shoulderspan', 'waistspan', 'hipspan']:
                 result = f"(widthIn * {num_val})"
-            # Height-based Drivers (Multipliers of heightIn)
-            elif name_lower in ['topgap', 'bottomgap']:
+            # Height-based Drivers (Multipliers of heightIn) — TopGap/BottomGap
+            # are vertical offsets, Shoulder/Waist/HipRadius are arc radii that
+            # also scale with frame height (so the silhouette stays proportional
+            # as heightIn changes).
+            elif name_lower in ['topgap', 'bottomgap',
+                                'shoulderradius', 'waistradius', 'hipradius']:
                 result = f"(heightIn * {num_val})"
             # Special Case: Waist Offset (Multiplier of half-height)
             elif name_lower == 'waistoffset':

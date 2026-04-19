@@ -144,51 +144,16 @@ def _expand_offset_picks(entities):
                 f"[bp-expand]     [{idx}] non-curve type={native_type}, "
                 "skipping offset reverse-lookup",
             )
-            # CoincidentConstraint special-case — see coincident_hint.py
-            # for full rationale. The direct-pick CC proxy can't be
-            # questioned safely (every identity/target slot either
-            # throws InternalValidationError or is a delayed native-AV
-            # hazard). But the SAME CC accessed via sketch.geometric
-            # Constraints is a different proxy with fully-readable
-            # slots. ``find_matching_coincident_constraint`` walks
-            # that collection and distance-matches the picked proxy
-            # against the click hit-point Fusion records on the
-            # Selection wrapper. If the match is unambiguous, we swap
-            # to the iterated proxy here — downstream code (gate,
-            # hint builder, label) then sees a well-behaved object
-            # without knowing the swap happened.
-            #
-            # If the match is ambiguous or the sketch context is
-            # wrong (no active selection, no sketch, etc.), None
-            # comes back and we fall through to appending the picked
-            # proxy unchanged. The ownership gate will refuse it
-            # (empty target list → "no targets" → False), and the
-            # palette surfaces the pick in the "N unowned" warning.
-            # The user then knows to zoom in and retry, or to use
-            # the Coincident button path once that lands (Track B).
-            if native_type == 'CoincidentConstraint':
-                try:
-                    from coincident_hint import find_matching_coincident_constraint
-                    iter_cc = find_matching_coincident_constraint(native)
-                    if iter_cc is not None:
-                        _log_detection(
-                            None,
-                            f"[bp-expand]     [{idx}] CC swap "
-                            "picked -> iterated proxy",
-                        )
-                        expanded.append(iter_cc)
-                        continue
-                    _log_detection(
-                        None,
-                        f"[bp-expand]     [{idx}] CC no match "
-                        "(ambiguous or no sketch ctx) -> keep picked",
-                    )
-                except Exception as e:
-                    _log_detection(
-                        None,
-                        f"[bp-expand]     [{idx}] CC swap raised "
-                        f"{type(e).__name__}: {e} -> keep picked",
-                    )
+            # Coincidence is now expressed via ENTITY selection
+            # (coincidence_clusters.detect_coincidence_pairs) rather
+            # than by picking a CC glyph. A directly-picked
+            # CoincidentConstraint is therefore a user mistake — the
+            # picked-proxy form is hazardous to probe (``.point`` /
+            # ``.entity`` corrupt Fusion's pointer graph with a delayed
+            # native-AV) and we no longer have a safe iterated-proxy
+            # swap pre-pass. The ownership gate's ``cc_proxy`` canary
+            # refuses it cleanly at that later stage, so we just pass
+            # it through unchanged here and let the gate reject it.
             expanded.append(native)
             continue
         _log_detection(

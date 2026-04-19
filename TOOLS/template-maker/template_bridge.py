@@ -21,6 +21,12 @@ from detection_log import _log_detection as _log_proj
 _latest_payload = ''
 _last_sel_ids = ''
 _latest_phase_id = 'p01'
+# Phase Number — ``_MM`` position within a sketch in the filename scheme
+# ``p{sketch:02}_{phase:02}_{descriptor}.py``. Carried through from the
+# palette; entity naming still uses ``phase_id`` alone.
+_latest_phase_number = '01'
+# Full phase-file basename the palette shows in its File Name field.
+_latest_file_name = 'p01_01.py'
 _latest_sketch_name = ''          # User's explicit override (empty = use detected)
 _latest_template_number = 'T2'
 _detected_sketch_name = ''        # Auto-detected from current selection / edit context
@@ -244,7 +250,7 @@ class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
 
 class HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
-        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids, _latest_cluster_picks
+        global _latest_phase_id, _latest_phase_number, _latest_file_name, _latest_sketch_name, _latest_template_number, _last_sel_ids, _latest_cluster_picks
         html_args = adsk.core.HTMLEventArgs.cast(args)
         action = html_args.action
         if action == 'poll':
@@ -264,6 +270,8 @@ class HTMLEventHandler(adsk.core.HTMLEventHandler):
                 if isinstance(data, str):
                     data = json.loads(data)
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
+                _latest_phase_number = str(data.get('phaseNumber', '') or '01')
+                _latest_file_name = str(data.get('fileName', '') or 'p01_01.py')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
                 _last_sel_ids = ''
@@ -278,6 +286,8 @@ class HTMLEventHandler(adsk.core.HTMLEventHandler):
                 if isinstance(data, str):
                     data = json.loads(data)
                 _latest_phase_id = str(data.get('phaseId', '') or 'p01')
+                _latest_phase_number = str(data.get('phaseNumber', '') or '01')
+                _latest_file_name = str(data.get('fileName', '') or 'p01_01.py')
                 _latest_sketch_name = str(data.get('sketchName', '') or '')
                 _latest_template_number = str(data.get('templateNumber', '') or 'T2')
                 app = adsk.core.Application.get()

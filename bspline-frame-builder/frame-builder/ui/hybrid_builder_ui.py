@@ -116,6 +116,9 @@ def _push_schema_direct(style_id="Template 1"):
             if diag_logger: diag_logger.log("SCHEMA PUSH: frame_engine not ready", "WARNING")
             return
 
+        if diag_logger:
+            diag_logger.log(f"SCHEMA PUSH: trying to build schema for style_id='{style_id}'")
+
         template_spec = frame_engine.get_template_spec(style_id)
         if not template_spec:
             if diag_logger: diag_logger.log("SCHEMA PUSH: no template spec returned", "WARNING")
@@ -148,7 +151,8 @@ def _push_schema_direct(style_id="Template 1"):
                         # 2. De-scale Factors (Physical CM -> Multiplier Ratio)
                         if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
                             p_live['Val'] = round(raw_val / w_in, 4) if w_in != 0 else p.get('Val', 0)
-                        elif p_name in ['TopGap', 'BottomGap']:
+                        elif p_name in ['TopGap', 'BottomGap',
+                                        'ShoulderRadius', 'WaistRadius', 'HipRadius']:
                             p_live['Val'] = round(raw_val / h_in, 4) if h_in != 0 else p.get('Val', 0)
                         elif p_name == 'WaistOffset':
                             p_live['Val'] = round(raw_val / (h_in / 2.0), 4) if h_in != 0 else p.get('Val', 0)
@@ -167,7 +171,8 @@ def _push_schema_direct(style_id="Template 1"):
                         # If it's a factor, we still need to de-scale the evaluated result
                         if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
                             p_live['Val'] = round(eval_val / w_in, 4) if w_in != 0 else 0.8
-                        elif p_name in ['TopGap', 'BottomGap']:
+                        elif p_name in ['TopGap', 'BottomGap',
+                                        'ShoulderRadius', 'WaistRadius', 'HipRadius']:
                             p_live['Val'] = round(eval_val / h_in, 4) if h_in != 0 else 0.15
                         else:
                             p_live['Val'] = round(eval_val, 4)
@@ -192,11 +197,18 @@ def _push_schema_direct(style_id="Template 1"):
         phase_count = 0
         for sketch in template_spec.get("Sketches", []):
             blocks = sketch.get("Blocks", [])
-            phase_count += len(blocks) if blocks else 1
+            sketch_phase_count = len(blocks) if blocks else 1
+            phase_count += sketch_phase_count
+            phase_files = []
+            for block in blocks:
+                if isinstance(block, dict):
+                    phase_files.append(block.get("PhaseFile") or block.get("PhaseID") or '')
             sketches_out.append({
-                "name":       sketch.get("Name", ""),
-                "label":      sketch.get("Label", sketch.get("Name", "")),
-                "parameters": _hydrate_params(sketch.get("Parameters", []))
+                "name":        sketch.get("Name", ""),
+                "label":       sketch.get("Label", sketch.get("Name", "")),
+                "parameters":  _hydrate_params(sketch.get("Parameters", [])),
+                "phase_count": sketch_phase_count,
+                "phase_files": phase_files,
             })
 
         total_params = sum(len(s["parameters"]) for s in sketches_out)
@@ -241,7 +253,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         super().__init__()
         self.diag_logger = diag_logger
         self.selected_face = None
-        self.style_id = "Template 1 - Hourglass"
+        self.style_id = None
         self.active_vars = {} # Shadow state for UI variables (locks and values)
         if self.diag_logger:
             self.diag_logger.log(f"HTMLEventHandler INSTANCE CREATED: {self}")
@@ -323,6 +335,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not pal or not frame_engine:
                 return False
             templates = frame_engine.get_available_templates()
+            if self.diag_logger:
+                self.diag_logger.log(f"TEMPLATE LIST: available={[t['value'] for t in templates]} selected={self.style_id}")
             payload = {
                 'templates': templates,
                 'selected': self.style_id
@@ -475,11 +489,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             pass
 
     def _run_sketch_build(self, data):
-        if self.diag_logger: self.diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {self.style_id}")
+        style_id = data.get('template') or self.style_id
+        if self.diag_logger: self.diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {style_id}")
         # Inject the latest shadow state into the build request
         request_data = dict(data)
         request_data['ui_state'] = self.active_vars
-        _schedule_hidden_build('sketch', request_data, self.style_id)
+        _schedule_hidden_build('sketch', request_data, style_id)
 
     def _run_solid_build(self, data):
         if not self.selected_face:
@@ -488,10 +503,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             ui.messageBox("Please select a target face first.")
             return
 
-        if self.diag_logger: self.diag_logger.log(f"Scheduling solid build with face: {self.selected_face.tempId}")
+        style_id = data.get('template') or self.style_id
+        if self.diag_logger: self.diag_logger.log(f"Scheduling solid build with face: {self.selected_face.tempId} and style: {style_id}")
         request_data = dict(data)
         request_data['to_face'] = self.selected_face
-        _schedule_hidden_build('solid', request_data, self.style_id)
+        _schedule_hidden_build('solid', request_data, style_id)
 
     def _notify_status(self, msg):
         try:
@@ -720,7 +736,7 @@ def run_palette(engine_instance, diag_logger=None):
 
         # 2. CREATE: New palette instance
         html_path = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
-        pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 340, 700)
+        pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 450, 700)
         pal.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
         pal.setMinimumSize(320, 500)
 
@@ -764,11 +780,25 @@ def run_palette(engine_instance, diag_logger=None):
         # 5. SYNC: Ensure hidden build commands are fresh (includes SCHEMA_PUSH_CMD_ID)
         _ensure_hidden_build_commands(ui)
 
+        # 5b. Use the first available template if the handler still has a default placeholder.
+        try:
+            if frame_engine:
+                templates = frame_engine.get_available_templates()
+                if templates:
+                    first_template = templates[0]['value']
+                    _active_handler.style_id = first_template
+                    _style_id_ref[0] = first_template
+                    if diag_logger:
+                        diag_logger.log(f"INITIAL STYLE: selected first available template '{first_template}'")
+        except Exception as e:
+            if diag_logger:
+                diag_logger.log(f"INITIAL STYLE: failed to derive first template: {e}", "WARNING")
+
         # 6. INITIAL SCHEMA PUSH via deferred hidden command
         # sendInfoToHTML cannot be called here (page not loaded yet), so we schedule
         # a schema push that fires in a fresh Fusion event once the commands are ready.
-        _schedule_schema_push("Template 1")
-        if diag_logger: diag_logger.log("INITIAL SCHEMA PUSH scheduled.")
+        _schedule_schema_push(_active_handler.style_id)
+        if diag_logger: diag_logger.log(f"INITIAL SCHEMA PUSH scheduled for '{_active_handler.style_id}'.")
 
     except Exception as e:
         if diag_logger:

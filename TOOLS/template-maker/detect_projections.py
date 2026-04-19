@@ -128,6 +128,41 @@ def _candidate_forms(entity):
     return candidates
 
 
+def _is_origin_axis(entity):
+    """True if ``entity`` is (or references) a Fusion origin construction axis.
+
+    Fusion draws the origin's X/Y/Z axes inside a sketch as ``SketchLine``
+    instances whose ``isReference`` is True and whose ``referencedEntity``
+    is a ``ConstructionAxis``. They trip ``_is_projected`` by default,
+    which makes any "point + origin axis" pick classify as ``mixed`` and
+    bounce off the "seeds + projections" refusal gate.
+
+    Origin axes aren't projections in the template-author sense — they're
+    universal reference geometry that's always present on the canvas, not
+    cross-sketch references. Treating them as seeds keeps the domain
+    model clean and lets the coincidence-cluster pass run on the pick.
+
+    Handles both paths:
+      * Direct ``ConstructionAxis`` pick (from the browser tree).
+      * ``SketchLine`` with ``isReference=True`` whose ``referencedEntity``
+        is a ``ConstructionAxis`` (the common in-sketch pick).
+    """
+    for c in _candidate_forms(entity):
+        try:
+            ot = getattr(c, 'objectType', '') or ''
+            if ot.endswith('ConstructionAxis'):
+                return True
+            if getattr(c, 'isReference', False):
+                ref = getattr(c, 'referencedEntity', None)
+                if ref is not None:
+                    ref_ot = getattr(ref, 'objectType', '') or ''
+                    if ref_ot.endswith('ConstructionAxis'):
+                        return True
+        except Exception:
+            continue
+    return False
+
+
 def _is_projected(entity):
     """True if this entity (or its nativeObject) has isReference=True.
 
@@ -137,12 +172,21 @@ def _is_projected(entity):
     makes the classifier agree with Fusion's own "is this a projection?"
     semantics regardless of which layer the pick arrived at.
 
+    Origin construction axes are carved out via ``_is_origin_axis`` —
+    they are reference geometry per Fusion but not "projections" in the
+    template-author sense. Letting them classify as seeds unblocks
+    "point + Y-axis" coincidence picks without loosening the real
+    cross-sketch projection gate.
+
     Instrumented with ``[proj-is]`` markers — one per candidate form so
     a log tail after a selection shows which form carried the verdict
     (or whether both failed to resolve).
     """
     ent_type = type(entity).__name__
     _log_detection(None, f"[proj-is]     enter type={ent_type}")
+    if _is_origin_axis(entity):
+        _log_detection(None, "[proj-is]     origin axis -> verdict=False")
+        return False
     for idx, c in enumerate(_candidate_forms(entity)):
         try:
             val = getattr(c, 'isReference', False)

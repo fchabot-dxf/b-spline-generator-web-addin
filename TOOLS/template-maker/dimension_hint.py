@@ -156,4 +156,20 @@ def build_dimension_hint(ent, ent_type, name, ctx):
     args.extend(targets)
     if expr:
         args.append(f'expression="{expr}"')
+    # Linear dims need explicit orientation in the hint so
+    # ``phase_parser._normalize_dim_type`` can route them to the engine's
+    # distinct ``HorizontalDistance`` / ``VerticalDistance`` whitelist
+    # entries. Defaults to omitting the kwarg when the orientation can't
+    # be read — the normalizer falls back to Horizontal in that case,
+    # matching ``_create_dimension`` runtime behavior.
+    if ent_type == 'SketchLinearDimension':
+        try:
+            import adsk.fusion
+            orient = getattr(ent, 'orientation', None)
+            if orient == adsk.fusion.DimensionOrientations.VerticalDimensionOrientation:
+                args.append('orientation="Vertical"')
+            elif orient == adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation:
+                args.append('orientation="Horizontal"')
+        except Exception:
+            pass
     return f'Dimensions.{ent_type}({", ".join(args)})'

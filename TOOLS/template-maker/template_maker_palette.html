@@ -251,6 +251,14 @@
             cursor: help;
         }
 
+        .panel summary .summary-action {
+            margin-left: 10px;
+            padding: 6px 10px;
+            font-size: 0.8em;
+            border-radius: 5px;
+            white-space: nowrap;
+        }
+
         .panel summary::after {
             content: '';
             display: inline-block;
@@ -532,13 +540,13 @@
     <details id="settings-wrap" class="settings-wrap">
         <summary>
             <span class="settings-gear">⚙</span>
-            <span class="settings-pill" id="settings-pill">T2 · p03 · anatomy</span>
+            <span class="settings-pill" id="settings-pill">p02_05 · chain</span>
             <span class="settings-auto" id="settings-auto-indicator" style="display:none;">auto</span>
         </summary>
         <div class="settings-body">
             <div class="settings-row">
                 <label>File Name
-                    <input id="file-name-input" type="text" placeholder="T2_p05_lines.py" value="T2_p05_lines.py">
+                    <input id="file-name-input" type="text" placeholder="p02_05_chain.py" value="p02_05_chain.py">
                 </label>
                 <label>Template Number
                     <div class="stepper">
@@ -549,13 +557,22 @@
                 </label>
             </div>
             <div class="settings-row">
-                <label>Phase ID
+                <label>Sketch Slot
                     <div class="stepper">
-                        <input id="phase-id-input" type="text" placeholder="p03" value="p03">
-                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement phase number">−</button>
-                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="1" tabindex="-1" aria-label="Increment phase number">+</button>
+                        <input id="phase-id-input" type="text" placeholder="p02" value="p02">
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement sketch slot">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="1" tabindex="-1" aria-label="Increment sketch slot">+</button>
                     </div>
                 </label>
+                <label>Phase Number
+                    <div class="stepper">
+                        <input id="phase-number-input" type="text" placeholder="05" value="05">
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-number-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement phase number">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-number-input" data-stepper-step="1" tabindex="-1" aria-label="Increment phase number">+</button>
+                    </div>
+                </label>
+            </div>
+            <div class="settings-row">
                 <label>Sketch Name
                     <input id="sketch-name-input" type="text" placeholder="auto (from active sketch)">
                 </label>
@@ -769,15 +786,79 @@
             input.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
+        // Auto-sync the File Name input's canonical tokens to whatever
+        // the Sketch Slot / Phase Number fields hold.
+        //
+        // Canonical filename shape (matches the Frame Builder template
+        // loader's convention):
+        //     ``p{sketch:02}_{phase:02}_{descriptor}.py``
+        //
+        // Template identity now comes from the containing folder
+        // (``template_1/``, ``template_2/``, ...) — no ``T{N}_`` prefix
+        // on filenames. The Template Number field is still used for
+        // internal entity naming (sent to the host in the settings
+        // payload), it just doesn't drive the filename anymore.
+        //
+        // Both tokens are patched independently so manual descriptor
+        // text (the ``_chain`` / ``_lines`` / ``_drivers`` tail users
+        // type) survives any single bump — e.g. ``p02_05_chain.py``
+        // with Phase Number stepped to 07 becomes ``p02_07_chain.py``.
+        //
+        // Each replace is anchored so filenames with a non-canonical
+        // shape (user typed ``arcs.py``) are left alone. The ``test()``
+        // guards against mid-type values like ``p`` corrupting the
+        // filename before the user finishes the digit.
+        //
+        // Fires ``input`` so ``updateSettingsPill`` / ``syncSettingsToHost``
+        // pick up the change the same way a keystroke does.
+        function syncFileNameFromSettings() {
+            var fileInput = document.getElementById('file-name-input');
+            if (!fileInput) return;
+            var fn = fileInput.value || '';
+            if (!fn) return;
+            var pid = (document.getElementById('phase-id-input').value || '').trim();
+            var pnumEl = document.getElementById('phase-number-input');
+            var pnum = pnumEl ? (pnumEl.value || '').trim() : '';
+            var next = fn;
+            // Sketch slot bump: first ``p<digits>`` run.
+            // ``p02_05_chain.py`` → ``p03_05_chain.py`` under
+            // ``pid="p03"``. Anchored to the ``_`` boundary so a later
+            // ``p`` inside the descriptor (``p02_05_p_rotation.py``)
+            // isn't touched.
+            if (/^p\d+$/.test(pid)) {
+                next = next.replace(/p\d+/, pid);
+            }
+            // Phase number bump: digits between the sketch slot and the
+            // descriptor. Match is anchored to the ``p{sketch:02}_``
+            // prefix so only the phase-number run gets rewritten — a
+            // descriptor that happens to start with digits (unlikely but
+            // possible, e.g. ``_3d_ring``) stays intact. Zero-pad to 2
+            // digits on rewrite to match the loader's sort expectation.
+            if (/^\d+$/.test(pnum)) {
+                var padded = pnum.length < 2 ? ('0' + pnum).slice(-2) : pnum;
+                next = next.replace(/(p\d+_)\d+(_)/, '$1' + padded + '$2');
+            }
+            if (next !== fn) {
+                fileInput.value = next;
+                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+
         function updateSettingsPill() {
             var pill = document.getElementById('settings-pill');
             var auto = document.getElementById('settings-auto-indicator');
             if (!pill) return;
-            var tn = (document.getElementById('template-number-input').value || '').trim() || 'T?';
+            // Template identity is carried by the destination folder, not the
+            // filename — we deliberately don't show a ``T{N}`` token in the
+            // pill. Template Number still rides along in the host payload
+            // for internal entity naming; it's just not a filename token.
             var pid = (document.getElementById('phase-id-input').value || '').trim() || 'p?';
+            var pnum = (document.getElementById('phase-number-input') || {}).value || '';
+            pnum = (pnum || '').trim();
             var sn  = (document.getElementById('sketch-name-input').value || '').trim();
             var fn  = (document.getElementById('file-name-input').value || '').trim();
-            var parts = [tn, pid];
+            var slot = pnum ? (pid + '_' + pnum) : pid;
+            var parts = [slot];
             parts.push(sn || '—');
             if (fn) parts.push(fn);
             pill.textContent = parts.join(' · ');
@@ -851,14 +932,42 @@
         // `payload.footerText` locally so the preview is instantaneous.
         // On blur/change, `syncSettingsToHost` pushes the new settings to
         // Fusion, which regenerates and pushes an authoritative payload.
+        //
+        // We substitute BOTH ``'Name'`` and ``'PhaseID'`` from the same
+        // value — the filename stem (``p02_05_chain`` for
+        // ``p02_05_chain.py``). The host's generator sets ``Name`` from
+        // the phase prefix (sketch_name + phase_id) which collapses to
+        // just the phase_id when no sketch is selected — meaning Name
+        // and PhaseID are the same value for the common
+        // generate-from-scratch case. Leaving Name untouched while only
+        // PhaseID updated was the bug behind ``'Name': 'p01'`` /
+        // ``'PhaseID': 'p07'`` drift after keystrokes: the host hadn't
+        // re-pushed yet, so the footerText carried the old Name.
+        // Substituting both keeps the preview self-consistent until the
+        // host round-trips.
+        //
+        // Stem is computed from the File Name input so PhaseID stays in
+        // lockstep with the filename the user sees. Strips ``.py`` if
+        // present; otherwise the raw stem is used as-is.
+        function _phaseStemFromFilename() {
+            var el = document.getElementById('file-name-input');
+            var fn = el ? (el.value || '').trim() : '';
+            if (!fn) return '';
+            return fn.replace(/\.py$/i, '');
+        }
+
         function substitutePhaseId(footerText, phaseId) {
             if (!footerText) return footerText || '';
-            var clean = (phaseId || '').trim();
+            var clean = _phaseStemFromFilename();
+            if (!clean) {
+                // Fallback path — if the filename is empty, fall back to
+                // the raw phase-id so preview still has something sane.
+                clean = (phaseId || '').trim();
+            }
             if (!clean) return footerText;
-            return footerText.replace(
-                /('PhaseID':\s*')[^']*(')/,
-                "$1" + clean + "$2"
-            );
+            return footerText
+                .replace(/('Name':\s*')[^']*(')/, "$1" + clean + "$2")
+                .replace(/('PhaseID':\s*')[^']*(')/, "$1" + clean + "$2");
         }
 
         function getPanelStateKey(title, index) {
@@ -972,6 +1081,19 @@
                 badge.className = 'section-count';
                 badge.textContent = '· ' + countLabel;
                 summary.appendChild(badge);
+            }
+
+            if (index === 'sequence') {
+                var seqBtn = document.createElement('button');
+                seqBtn.type = 'button';
+                seqBtn.className = 'secondary summary-action';
+                seqBtn.textContent = 'Copy Sequence';
+                seqBtn.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    copySequence();
+                });
+                summary.appendChild(seqBtn);
             }
 
             detail.appendChild(summary);
@@ -1673,35 +1795,46 @@
                 flashBtn(btn, 'Nothing', false);
                 return;
             }
-            if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
-                adsk.fusionSendData('copy', text).then(function(resp) {
-                    flashBtn(btn, resp === 'ok' ? 'Copied!' : 'Error', resp === 'ok');
-                }).catch(function() {
-                    flashBtn(btn, 'Error', false);
-                });
-            } else {
-                try {
-                    var ta = document.createElement('textarea');
-                    ta.value = text;
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
-                    flashBtn(btn, 'Copied!', true);
-                } catch (e) {
-                    flashBtn(btn, 'Error', false);
+            if (copyTextLocally(text)) {
+                flashBtn(btn, 'Copied', true);
+                if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                    try { adsk.fusionSendData('copy', text); } catch (e) { /* ignore slow host */ }
                 }
+                return;
             }
+            sendTextToHost('copy', text, btn, 'Copied');
+        }
+
+        function copySequence() {
+            var btn = document.getElementById('copy-sequence-btn');
+            var textarea = document.querySelector('textarea.section-text[data-index="sequence"]');
+            var text = textarea ? textarea.value : '';
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            if (copyTextLocally(text)) {
+                flashBtn(btn, 'Copied', true);
+                if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                    try { adsk.fusionSendData('copy', text); } catch (e) { /* ignore slow host */ }
+                }
+                return;
+            }
+            sendTextToHost('copy', text, btn, 'Copied');
         }
 
         function syncSettingsToHost() {
             if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
                 return;
             }
+            var pnumEl = document.getElementById('phase-number-input');
+            var fnEl = document.getElementById('file-name-input');
             var settings = {
                 phaseId: document.getElementById('phase-id-input').value.trim(),
+                phaseNumber: pnumEl ? pnumEl.value.trim() : '',
                 sketchName: document.getElementById('sketch-name-input').value.trim(),
-                templateNumber: document.getElementById('template-number-input').value.trim()
+                templateNumber: document.getElementById('template-number-input').value.trim(),
+                fileName: fnEl ? fnEl.value.trim() : ''
             };
             try {
                 adsk.fusionSendData('settings', JSON.stringify(settings));
@@ -1751,7 +1884,28 @@
                 flashBtn(btn, 'Nothing', false);
                 return;
             }
-            sendTextToHost('copy', text, btn, 'Copied!');
+            if (copyTextLocally(text)) {
+                flashBtn(btn, 'Copied', true);
+                if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                    try { adsk.fusionSendData('copy', text); } catch (e) { /* ignore slow host */ }
+                }
+                return;
+            }
+            sendTextToHost('copy', text, btn, 'Copied');
+        }
+
+        function copyTextLocally(text) {
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return Boolean(ok);
+            } catch (e) {
+                return false;
+            }
         }
 
         function sendTextToHost(action, text, btn, okLabel) {
@@ -1783,10 +1937,14 @@
 
         function renameSelection() {
             var btn = document.getElementById('rename-btn');
+            var pnumEl = document.getElementById('phase-number-input');
+            var fnEl = document.getElementById('file-name-input');
             var settings = {
                 phaseId: (document.getElementById('phase-id-input').value || '').trim(),
+                phaseNumber: pnumEl ? (pnumEl.value || '').trim() : '',
                 sketchName: (document.getElementById('sketch-name-input').value || '').trim(),
-                templateNumber: (document.getElementById('template-number-input').value || '').trim()
+                templateNumber: (document.getElementById('template-number-input').value || '').trim(),
+                fileName: fnEl ? (fnEl.value || '').trim() : ''
             };
             if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
                 flashBtn(btn, 'No host', false);
@@ -1839,6 +1997,7 @@
                 if (el) el.addEventListener(evt, fn);
             };
             on('copy-btn', 'click', copyCode);
+            on('copy-sequence-btn', 'click', copySequence);
             on('copy-variable-btn', 'click', copyVariableBlockCode);
             on('toggle-all-variables-btn', 'click', toggleAllVariables);
             on('rename-btn', 'click', renameSelection);
@@ -1847,7 +2006,7 @@
 
             // Any change to the settings inputs should push to the host
             // so the next selection push uses the correct phase_prefix.
-            ['phase-id-input', 'sketch-name-input', 'template-number-input', 'file-name-input'].forEach(function(id) {
+            ['phase-id-input', 'phase-number-input', 'sketch-name-input', 'template-number-input', 'file-name-input'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (!el) return;
                 el.addEventListener('change', syncSettingsToHost);
@@ -1858,15 +2017,33 @@
                 });
             });
 
+            // Auto-rewrite the File Name token when Sketch Slot or Phase
+            // Number changes so the filename tracks the settings pill
+            // without users having to retype it. Template Number no longer
+            // appears in the filename (folder carries that identity), so
+            // it's deliberately not wired here. Sketch name is not part of
+            // the canonical file token.
+            //
+            // ``input`` fires on every keystroke / stepper bump, which is
+            // the same cadence as the pill/preview update. The sync
+            // helper itself dispatches ``input`` on file-name-input, so
+            // downstream listeners (pill, host-sync on blur) see the
+            // derived filename exactly as if the user typed it.
+            ['phase-id-input', 'phase-number-input'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', syncFileNameFromSettings);
+            });
+
             // Stepper buttons + ArrowUp/ArrowDown bump the numeric portion of
-            // ``template-number-input`` and ``phase-id-input``. The regex is
-            // permissive: it finds the FIRST run of digits in the value and
-            // rewrites it, so any prefix (T / p) and trailing descriptor
-            // (_arcs, _anatomy) stay put. Leading zeros are preserved by
-            // width — "p03" → "p04", "p3" → "p4" — so the canonical
-            // two-digit convention survives a click without forcing it on
-            // users who type single-digit values.
-            ['template-number-input', 'phase-id-input'].forEach(function(id) {
+            // the three numeric settings fields. The regex is permissive:
+            // it finds the FIRST run of digits in the value and rewrites
+            // it, so any prefix (T / p) and trailing descriptor (_arcs,
+            // _anatomy) stay put. Leading zeros are preserved by width —
+            // "p03" → "p04", "p3" → "p4" — so the canonical two-digit
+            // convention survives a click without forcing it on users
+            // who type single-digit values.
+            ['template-number-input', 'phase-id-input', 'phase-number-input'].forEach(function(id) {
                 var el = document.getElementById(id);
                 if (!el) return;
                 el.addEventListener('keydown', function(e) {

@@ -56,7 +56,15 @@ def make_unique_label(ent, base_label, label_counts, phase_prefix=None):
     """
     try:
         label = base_label
-        if base_label.startswith('Sketch'):
+        # Phase-prefix the generic type labels so they don't collide
+        # across phases. ``Sketch*`` covers SketchLine/SketchArc/
+        # SketchCircle/etc. that fell through to the objectType
+        # fallback; ``dim_*`` covers the dimension subtypes that
+        # ``_label_for_entity`` now normalises (``dim_radial``,
+        # ``dim_linear``, …) so the final FB:ID comes out
+        # ``{phase}_dim_radial`` — matching the existing
+        # ``{phase}_SketchLine_NN`` convention for unnamed curves.
+        if base_label.startswith('Sketch') or base_label.startswith('dim_'):
             if phase_prefix:
                 label = f'{safe_name(phase_prefix)}_{base_label}'
             else:

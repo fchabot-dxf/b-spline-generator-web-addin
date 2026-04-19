@@ -1081,8 +1081,8 @@ def stop(context):
         _log("--- SESSION STOPPED ---")
         _log('--- stop() start ---')
 
-        # 1. Remove any leftover preview geometry
-        _remove_last_import()
+        # 1. Remove any leftover preview geometry only. Keep final imported bodies.
+        _clear_custom_graphics()
 
         # 2. Delete the palette
         palette = ui.palettes.itemById(PALETTE_ID)

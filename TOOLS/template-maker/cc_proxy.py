@@ -25,12 +25,13 @@ token; picked proxies raise ``InternalValidationError`` at
 corrupted slots), so we can use it to decide whether the HAZARDOUS
 reads below (``.point`` / ``.entity``) are safe.
 
-``_expand_offset_picks`` tries to swap picked CC proxies for iterated
-ones upstream via ``find_matching_coincident_constraint``, so ideally
-the hazardous form never reaches the ownership gate or the target
-probe. But the swap can fail (ambiguous junction pick with 3+ stacked
-glyphs, or no single best match under the 0.5 distance-ratio rule),
-so both sides of the pipeline need their own defensive canary:
+Coincidence is now expressed via ENTITY selection
+(``coincidence_clusters.detect_coincidence_pairs``) rather than by
+picking CC glyphs directly, so the old iterated-proxy swap pre-pass
+(``coincident_hint.find_matching_coincident_constraint``) has been
+removed. Picked CC proxies still need refusing defensively — a user
+can always click a CC glyph by accident — so both sides of the
+pipeline run this canary independently:
 
 * ``ownership_gate.is_framebuilder_owned`` — refuses the CC as not
   owned rather than probing its targets.
