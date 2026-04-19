@@ -181,8 +181,8 @@ def test_phase_prefix_and_name():
     template_bridge._latest_phase_id = 'p02'
     template_bridge._latest_sketch_name = 'anatomy'
 
-    assert template_bridge._get_phase_prefix() == 'p02_anatomy'
-    assert template_bridge._get_phase_name() == 'p02_anatomy'
+    assert template_bridge._get_phase_prefix() == 'anatomy_p02'
+    assert template_bridge._get_phase_name() == 'anatomy_p02'
 
     template_bridge._latest_sketch_name = ''
     assert template_bridge._get_phase_prefix() == 'p02'
@@ -278,7 +278,7 @@ def test_html_event_rename_applies_framebuilder_metadata():
     assert fb_id and fb_id.value
     assert fb_name and fb_name.value
     assert fb_id.value == fb_name.value
-    assert fb_id.value.startswith('p05_anatomy_')
+    assert fb_id.value.startswith('anatomy_p05_')
 
 
 def _fake_sketch(name):

@@ -58,6 +58,16 @@ def _label_for_entity(ent):
     nothing to the constraint's attributes. Falling through to the
     objectType short name (``"CoincidentConstraint"``) gives
     ``make_unique_label`` a real base to disambiguate from.
+
+    CoincidentConstraint special case — if the swap pre-pass in
+    ``_expand_offset_picks`` landed (i.e. we're looking at an iterated
+    proxy, not the direct-pick one), we can read ``.point`` /
+    ``.entity`` safely and produce a target-aware label like
+    ``"Coincident: horn_TL:E ↔ horn_BR:S"``. That label surfaces in
+    the palette items list so the user can validate the pick before
+    committing. Falls back to the generic ``"CoincidentConstraint"``
+    if the describe call fails for any reason — labels are cosmetic,
+    so never raise out of this function for them.
     """
     ent = _get_native(ent)
     if not ent:
@@ -71,6 +81,15 @@ def _label_for_entity(ent):
     try:
         obj_type = ent.objectType.split('::')[-1]
         if obj_type:
+            if obj_type == 'CoincidentConstraint':
+                try:
+                    from coincident_hint import describe_coincident_targets
+                    pt_name, en_name = describe_coincident_targets(ent)
+                    if (pt_name and pt_name != '<unknown>'
+                            and en_name and en_name != '<unknown>'):
+                        return f'Coincident: {pt_name} ↔ {en_name}'
+                except Exception:
+                    pass
             return obj_type
     except Exception:
         pass
@@ -156,6 +175,30 @@ from ownership_gate import _has_framebuilder_attribute, is_framebuilder_owned
 # ---------------------------------------------------------------------------
 
 
+def _construction_suffix(ent):
+    """Return ``', isConstruction=True'`` if ``ent`` is a construction curve,
+    else ``''``.
+
+    Fusion exposes ``isConstruction`` on every curve subtype (SketchLine,
+    SketchArc, SketchCircle, SketchEllipse, all spline variants) but NOT
+    on SketchPoint — points don't carry construction. Read via getattr
+    with a False default so a settling proxy that refuses the slot just
+    falls through to a clean seed emission rather than crashing.
+
+    The suffix form ``, isConstruction=True`` slots after the existing
+    positional/kwarg list and is parsed back out by the phase_parser's
+    ``_split_kw_and_positional`` as a standard kwarg. Omitted entirely
+    when False so non-construction seeds stay diff-clean against the
+    pre-construction baseline.
+    """
+    try:
+        if getattr(ent, 'isConstruction', False):
+            return ', isConstruction=True'
+    except Exception:
+        pass
+    return ''
+
+
 def _hint_point(ent, name, ctx):
     coord = _strip_point_prefix(_call_entity_coord_expr_fn(ctx['expr_fn'], ent, ctx['params'])) if ctx['expr_fn'] else ''
     coord = coord or get_entity_coord(ent)
@@ -165,7 +208,7 @@ def _hint_point(ent, name, ctx):
 def _hint_line(ent, name, ctx):
     start_ref = _format_point_reference(getattr(ent, 'startSketchPoint', None), ctx['params'], ctx['expr_fn'])
     end_ref = _format_point_reference(getattr(ent, 'endSketchPoint', None), ctx['params'], ctx['expr_fn'])
-    return f'Seeds.Line("{name}", {start_ref}, {end_ref})'
+    return f'Seeds.Line("{name}", {start_ref}, {end_ref}{_construction_suffix(ent)})'
 
 
 def _hint_arc(ent, name, ctx):
@@ -189,7 +232,7 @@ def _hint_arc(ent, name, ctx):
         mid_expr = ''
     mid_ref = mid_expr if mid_expr else '(mid_x, mid_y)'
 
-    return f'Seeds.Arc("{name}", {start_ref}, {mid_ref}, {end_ref})'
+    return f'Seeds.Arc("{name}", {start_ref}, {mid_ref}, {end_ref}{_construction_suffix(ent)})'
 
 
 def _hint_circle(ent, name, ctx):
@@ -201,7 +244,7 @@ def _hint_circle(ent, name, ctx):
             radius_suffix = f', radius={round(float(r), 4)}'
     except Exception:
         radius_suffix = ''
-    return f'Seeds.Circle("{name}", center={center_ref}{radius_suffix})'
+    return f'Seeds.Circle("{name}", center={center_ref}{radius_suffix}{_construction_suffix(ent)})'
 
 
 def _hint_ellipse(ent, name, ctx):
@@ -225,6 +268,8 @@ def _hint_ellipse(ent, name, ctx):
                 parts.append(f'angleDeg={round(theta, 4)}')
     except Exception:
         pass
+    if getattr(ent, 'isConstruction', False):
+        parts.append('isConstruction=True')
     return f'Seeds.Ellipse({", ".join(parts)})'
 
 
@@ -263,7 +308,7 @@ def _hint_spline_factory(seed_name):
             for pt in _iter_spline_points(ent)
         ]
         pts_literal = '[' + ', '.join(point_refs) + ']'
-        return f'Seeds.{seed_name}("{name}", {pts_literal})'
+        return f'Seeds.{seed_name}("{name}", {pts_literal}{_construction_suffix(ent)})'
 
     return handler
 

@@ -30,6 +30,10 @@ _latest_payload         = ""
 _latest_phase_id        = 'p01'
 _latest_sketch_name     = ''
 _latest_template_number = 'T2'
+# Coincidence-cluster round-trip state (Track B). See the matching
+# global in ``template_bridge.py`` for the full rationale — mirrored
+# here because this module runs its own HTML event handler.
+_latest_cluster_picks   = {}
 
 PALETTE_ID        = 'TemplateMaker_Palette'
 CMD_ID            = 'TemplateMaker_Command'
@@ -62,7 +66,12 @@ _PROJECT_MODULES = [
     'entity_util',
     'expression_coords',
     'phase_parser',
+    'role_points',
+    'cc_proxy',
+    'fb_attributes',
+    'ownership_gate',
     'relation_hints',
+    'coincidence_clusters',
     'template_code',
     'template_naming',
     'template_payload',
@@ -291,17 +300,31 @@ def _register_refresh_event():
 
 # ── Phase helpers ─────────────────────────────────────────────────────────────
 def _get_phase_prefix():
-    if _latest_phase_id and _latest_sketch_name:
-        return f'{_latest_phase_id}_{_latest_sketch_name}'
-    if _latest_phase_id:
-        return _latest_phase_id
-    return _latest_sketch_name or None
+    # Delegate to ``rename_selection.build_phase_prefix`` — the single
+    # source of truth for the "{sketch_name}_{phase_id}" format shared
+    # with ``template_bridge._get_phase_prefix``. Going through
+    # ``rename_selection`` (the module variable reassigned in ``run()``)
+    # means a hot-reload picks up any future format change without
+    # having to re-edit this helper.
+    #
+    # The ``rename_selection is None`` guard covers the narrow window
+    # before ``run()`` fires — palette/rename callbacks only run after
+    # it, so the guard is paranoia for import-time calls (e.g. a future
+    # refactor that touches the prefix from module scope).
+    if rename_selection is None:
+        return None
+    return rename_selection.build_phase_prefix(
+        phase_id=_latest_phase_id,
+        sketch_name=_latest_sketch_name,
+    )
 
 
 def _get_phase_name():
-    if _latest_phase_id and _latest_sketch_name:
-        return f'{_latest_phase_id}_{_latest_sketch_name}'
-    return _latest_sketch_name or _latest_phase_id or 'Generated Phase'
+    # Same shape as the prefix; ``'Generated Phase'`` fallback is
+    # specific to this caller — ``build_phase_prefix`` returns None
+    # when both inputs are empty, which is the wrong output for a
+    # phase-block header string.
+    return _get_phase_prefix() or 'Generated Phase'
 
 
 def _push_selection_to_palette():
@@ -348,6 +371,7 @@ def _push_selection_to_palette():
         phase_id=_latest_phase_id,
         phase_name=_get_phase_name(),
         template_number=_latest_template_number,
+        cluster_picks=_latest_cluster_picks,
     )
     _latest_payload = json.dumps(payload)
     try:
@@ -359,7 +383,7 @@ def _push_selection_to_palette():
 # ── HTML bridge ───────────────────────────────────────────────────────────────
 class _HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
-        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
+        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids, _latest_cluster_picks
         html_args = adsk.core.HTMLEventArgs.cast(args)
         action = html_args.action
         if action == 'poll':
@@ -433,6 +457,26 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
                 html_args.returnData = 'ok'
             except Exception as e:
                 _log(f"[ERROR_RENAME] {e}")
+                html_args.returnData = 'error'
+        elif action == 'clusterPicks':
+            # Palette round-trip for size-3+ coincidence clusters. See
+            # the matching branch in ``template_bridge.HTMLEventHandler``
+            # for the full rationale. Data shape: dict mapping
+            # ``clusterId`` -> ``[index_a, index_b]`` (two integers into
+            # the cluster's ``points`` list, in the same order the
+            # palette received it on the previous push).
+            try:
+                data = html_args.data or ''
+                if isinstance(data, str):
+                    data = json.loads(data) if data else {}
+                if not isinstance(data, dict):
+                    data = {}
+                _latest_cluster_picks = data
+                _last_sel_ids = ''
+                _push_selection_to_palette()
+                html_args.returnData = 'ok'
+            except Exception as e:
+                _log(f"[ERROR_CLUSTERPICKS] {e}")
                 html_args.returnData = 'error'
         elif action == 'reload':
             # Palette-driven hot-reload. Fire the deferred CustomEvent instead

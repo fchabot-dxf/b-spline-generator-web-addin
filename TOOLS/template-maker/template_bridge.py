@@ -4,12 +4,19 @@ import traceback
 import adsk.core
 import adsk.fusion
 from template_generator import build_template_payload
-from rename_selection import rename_selection
+from rename_selection import rename_selection, build_phase_prefix
 from detect_projections import (
     classify_selection,
     detect_projections,
     format_projection_block,
 )
+# Bridge-level marker for the projection branch. ``detect_projections``
+# has its own ``[proj-cls]`` / ``[proj-det]`` probes; the ``[proj-kind]``
+# line below lines those up against the ``Ownership gate: X owned, Y
+# unowned`` summary that ``build_template_payload`` emits on the same
+# selection. Together they answer "did the seed-path gate and the
+# projection classifier agree on what this pick was?".
+from detection_log import _log_detection as _log_proj
 
 _latest_payload = ''
 _last_sel_ids = ''
@@ -17,6 +24,21 @@ _latest_phase_id = 'p01'
 _latest_sketch_name = ''          # User's explicit override (empty = use detected)
 _latest_template_number = 'T2'
 _detected_sketch_name = ''        # Auto-detected from current selection / edit context
+# Coincidence-cluster round-trip state. Populated by the ``clusterPicks``
+# HTML event — the palette sends a dict mapping ``clusterId`` →
+# ``[index_a, index_b]`` for each size-3+ cluster where the user has
+# checked exactly 2 points. Consumed by ``build_template_payload`` via
+# the ``cluster_picks`` kwarg so size-3+ clusters resolve to auto-pairs
+# on the next push.
+#
+# Kept as a module global (not a per-call param from the palette) for
+# two reasons: (1) ``_push_selection_to_palette`` is the only place
+# that calls ``build_template_payload``, and it has no other path to
+# receive palette-side state; (2) cluster picks need to SURVIVE the
+# next selection-change refresh so the user doesn't lose their choices
+# to an unrelated sketch tweak. Cleared only when the selection
+# fingerprint changes clusters out from under the saved picks.
+_latest_cluster_picks = {}
 
 
 def _effective_sketch_name():
@@ -26,19 +48,31 @@ def _effective_sketch_name():
 
 
 def _get_phase_prefix():
-    sketch_name = _effective_sketch_name()
-    if _latest_phase_id and sketch_name:
-        return f'{_latest_phase_id}_{sketch_name}'
-    if _latest_phase_id:
-        return _latest_phase_id
-    return sketch_name or None
+    # Delegate to ``rename_selection.build_phase_prefix`` — the single
+    # source of truth for the "{sketch_name}_{phase_id}" format. Before
+    # consolidation this function, ``template-maker._get_phase_prefix``,
+    # and ``build_phase_prefix`` itself each carried their own concat,
+    # and at one point they drifted (template_bridge used the raw sketch
+    # name while build_phase_prefix ran it through ``safe_name`` to
+    # strip hyphens — so a sketch named "T2_2_shape-outline" stamped
+    # "T2_2_shapeoutline_p03" on entities but the palette-side phase
+    # name showed "T2_2_shape-outline_p03"). One helper closes that gap.
+    return build_phase_prefix(
+        phase_id=_latest_phase_id,
+        sketch_name=_effective_sketch_name(),
+    )
 
 
 def _get_phase_name():
-    sketch_name = _effective_sketch_name()
-    if _latest_phase_id and sketch_name:
-        return f'{_latest_phase_id}_{sketch_name}'
-    return sketch_name or _latest_phase_id or 'Generated Phase'
+    # Human-facing phase name — same shape as the prefix. The extra
+    # ``'Generated Phase'`` fallback is here (not in ``build_phase_prefix``)
+    # because the prefix returns None when both inputs are empty, and
+    # callers on this side prefer a placeholder label over an empty
+    # string when rendering the phase block header.
+    return build_phase_prefix(
+        phase_id=_latest_phase_id,
+        sketch_name=_effective_sketch_name(),
+    ) or 'Generated Phase'
 
 
 def _detect_sketch_name(entities):
@@ -138,12 +172,14 @@ def _push_selection_to_palette():
         phase_name=_get_phase_name(),
         template_number=_latest_template_number,
         detected_sketch_name=_detected_sketch_name,
+        cluster_picks=_latest_cluster_picks,
     )
 
     # Projection inference — classify the selection, then either emit a ready
     # projection block, surface a refusal, or leave the payload's seed path
     # untouched.
     kind = classify_selection(entities)
+    _log_proj(None, f"[proj-kind]   classify -> {kind} (count={len(entities)})")
     payload['selectionKind'] = kind
     payload['projections'] = []
     payload['projectionsOk'] = None
@@ -208,7 +244,7 @@ class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
 
 class HTMLEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
-        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids
+        global _latest_phase_id, _latest_sketch_name, _latest_template_number, _last_sel_ids, _latest_cluster_picks
         html_args = adsk.core.HTMLEventArgs.cast(args)
         action = html_args.action
         if action == 'poll':
@@ -263,6 +299,32 @@ class HTMLEventHandler(adsk.core.HTMLEventHandler):
                 html_args.returnData = 'ok'
             except Exception as e:
                 _log(f"[ERROR_RENAME] {e}")
+                html_args.returnData = 'error'
+        elif action == 'clusterPicks':
+            # Palette sends a JSON object mapping ``clusterId`` ->
+            # ``[index_a, index_b]`` (two integers into the cluster's
+            # ``points`` list). We store it on the module global and
+            # force a re-push so the next ``build_template_payload``
+            # pass resolves the forced picks via
+            # ``detect_coincidence_pairs``'s ``forced_picks`` path.
+            #
+            # Bad shapes (non-dict data, non-list values, non-int
+            # indices) are tolerated by ``detect_coincidence_pairs``
+            # itself — it falls through to the ambiguous branch and
+            # logs, so a corrupt payload just re-surfaces the cluster
+            # rather than crashing the pipeline.
+            try:
+                data = html_args.data or ''
+                if isinstance(data, str):
+                    data = json.loads(data) if data else {}
+                if not isinstance(data, dict):
+                    data = {}
+                _latest_cluster_picks = data
+                _last_sel_ids = ''
+                _push_selection_to_palette()
+                html_args.returnData = 'ok'
+            except Exception as e:
+                _log(f"[ERROR_CLUSTERPICKS] {e}")
                 html_args.returnData = 'error'
         else:
             html_args.returnData = ''

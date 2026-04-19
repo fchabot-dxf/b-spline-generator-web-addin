@@ -46,6 +46,13 @@ instead so the walk can continue.
 
 from entity_helpers import get_fb_name
 from entity_util import _get_native, _same_entity
+# ``[foc-*]`` diagnostic markers narrow the CoincidentConstraint crash
+# chain down to a single slot. The last Fusion reproduction stopped
+# exactly at ``[bp-expand] find_owning_offset_constraint`` with no
+# completion line — the native AV is somewhere inside this function's
+# slot walk. fsync-per-write so the last marker survives even a hard
+# process kill.
+from detection_log import _log_detection
 
 
 # Type tag matching the runtime's dispatch in ``parametric_engine._process_sequence``
@@ -222,23 +229,66 @@ def find_owning_offset_constraint(curve, sketch=None):
     ``_safe_getattr`` because a proxy can refuse either slot.
     """
     if curve is None:
+        _log_detection(None, "[foc-enter]   curve=None -> None")
         return None
+    # Read objectType FIRST so the log records what we're about to walk
+    # even if the next slot touch kills Fusion. Wrap the read itself so
+    # the log is never the thing that crashes us.
+    try:
+        curve_type = (getattr(curve, 'objectType', '') or '').split('::')[-1]
+    except Exception:
+        curve_type = '<unreadable>'
+    # isReference on the picked curve. The question this probe answers:
+    # when a picked SketchLine ends up matching an OC's childCurves, is
+    # the line also a projection (isReference=True)? If yes, Fusion's
+    # data model allows a single entity to be BOTH a projection AND an
+    # offset child — which means the dedicated-dispatch routing needs a
+    # priority rule (projection should win; offsetting a projected line
+    # is still semantically a projection, not a fresh offset seed). If
+    # no, the user's "proj line" reading is a vocabulary/workflow
+    # overlap (e.g. "the parents of this offset happen to be
+    # projections, so I think of the child as a proj line too").
+    picked_is_ref = _safe_getattr(curve, 'isReference')
+    _log_detection(
+        None,
+        f"[foc-enter]   curve_type={curve_type} isReference={picked_is_ref}",
+    )
     if sketch is None:
         sketch = _safe_getattr(curve, 'parentSketch')
     if sketch is None:
+        _log_detection(None, "[foc-exit]    no parentSketch -> None")
         return None
     constraints = _safe_getattr(sketch, 'geometricConstraints')
     if constraints is None:
+        _log_detection(None, "[foc-exit]    no geometricConstraints -> None")
         return None
-    for c in _iter_curve_collection(constraints):
+    # Silent iteration — the per-item ``[foc-iter]`` noise was only needed
+    # while we were isolating the ``parentSketch`` native-AV site. Now that
+    # the CC guard in ``_expand_offset_picks`` skips constraints before we
+    # ever reach here, a match (or the final no-match summary) is all the
+    # log needs to record.
+    for idx, c in enumerate(_iter_curve_collection(constraints)):
         obj_type = _safe_getattr(c, 'objectType') or ''
         # Match both the fully-qualified ``adsk::fusion::OffsetConstraint``
         # and the short ``OffsetConstraint`` that fakes may report.
         if not obj_type.endswith('OffsetConstraint'):
             continue
-        for ch in _iter_curve_collection(_safe_getattr(c, 'childCurves')):
+        for ch_idx, ch in enumerate(_iter_curve_collection(_safe_getattr(c, 'childCurves'))):
+            # isReference on the candidate child — read before the
+            # equality check so the log captures the child's state even
+            # on a match. Paired with the [foc-enter] isReference
+            # value, this resolves interpretation (2) vs (3):
+            # both True = genuine data-model overlap; picked True but
+            # child False = _same_entity false positive.
+            ch_is_ref = _safe_getattr(ch, 'isReference')
             if _same_entity(ch, curve):
+                _log_detection(
+                    None,
+                    f"[foc-exit]    [{idx}] matched -> OC "
+                    f"(child[{ch_idx}] isReference={ch_is_ref})",
+                )
                 return c
+    _log_detection(None, "[foc-exit]    no match -> None")
     return None
 
 

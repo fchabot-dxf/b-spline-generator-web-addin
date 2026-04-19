@@ -2,6 +2,14 @@ import re
 from template_payload import _get_native, _label_for_entity
 from template_naming import make_unique_label, safe_name
 from detection_log import _write_debug_log as _rename_log
+from role_points import ROLE_POINT_SLOTS
+# Shared FrameBuilder attribute reader. Replaces the local
+# ``_existing_fb_id`` walk that used to duplicate the hasattr /
+# itemByName pair from ``ownership_gate._has_framebuilder_attribute``.
+# ``log_on_error=False`` — rename-side read failures are non-fatal
+# (entity just won't be preserved as already-owned) and we don't want
+# to flood the detection log during a large rename pass.
+from fb_attributes import get_fb_id
 
 
 def _normalize_prefix(value):
@@ -11,10 +19,16 @@ def _normalize_prefix(value):
 
 
 def build_phase_prefix(phase_id=None, sketch_name=None):
+    # Format: "{sketch_name}_{phase_id}". Sketch name first so labels
+    # group visually by the sketch in file browsers / attribute lists
+    # (e.g. "T2_2_shapeoutline_p01_SketchLine_01" and
+    # "T2_2_shapeoutline_p02_SketchLine_01" sort adjacent), with the
+    # phase suffix disambiguating feature passes inside the same sketch.
+    # Reversed from the earlier "{phase_id}_{sketch_name}" ordering.
     phase_id = (phase_id or '').strip()
     sketch_name = (sketch_name or '').strip()
     if phase_id and sketch_name:
-        return f'{_normalize_prefix(phase_id)}_{_normalize_prefix(sketch_name)}'
+        return f'{_normalize_prefix(sketch_name)}_{_normalize_prefix(phase_id)}'
     if phase_id:
         return _normalize_prefix(phase_id)
     if sketch_name:
@@ -79,33 +93,71 @@ def set_entity_fb_name(ent, name):
     return any_write
 
 
-def _existing_fb_id(ent):
-    """Return the FrameBuilder:ID value already stamped on this entity,
-    or '' if none is set. Existing IDs are considered user-owned — the
-    user intentionally reuses IDs across features, so Rename Selection
-    must never overwrite one that's already there.
+def _stamp_role_points(curve, curve_label):
+    """Stamp ``curve``'s start/end/center role points with role-suffixed
+    FrameBuilder IDs so the runtime resolver finds them via literal
+    attribute match.
 
-    The ``hasattr`` probe is INSIDE the broad try/except on purpose:
-    Python 3's ``hasattr`` only swallows ``AttributeError``, but Fusion
-    raises ``"3 : object does not support attributes"`` as a bare
-    ``RuntimeError`` when a subtype's proxy refuses an attribute-slot
-    access (e.g. a CoincidentConstraint during a rename pass). A naked
-    ``if not hasattr(ent, 'attributes')`` outside the guard lets that
-    RuntimeError escape and takes the rename handler down with it —
-    which is exactly what crashed Fusion for CoincidentConstraint picks
-    before this guard was added.
+    The FrameBuilder runtime does NOT walk role suffixes — a target
+    ``"Frame_p03_SketchLine:E"`` only resolves if some SketchPoint in
+    the sketch physically carries that exact ``FrameBuilder:ID``.
+    ``_derive_point_role_id`` in ``relation_hints`` handles the symmetric
+    READ side for generation (labels, ownership gate); this helper is
+    the WRITE side for rename. Without it, any Coincident/point-on-curve
+    constraint whose target is ``"{line_name}:E"`` fails at runtime even
+    though the curve itself is correctly named — which is what the user
+    observed empirically.
+
+    Preserves any role point that already has a FrameBuilder:ID (same
+    rule ``rename_selection`` applies to curves — user may have
+    deliberately stamped a cross-feature ID on the point itself).
+
+    Returns the number of role points whose stamp actually landed.
     """
-    if not ent:
-        return ''
-    try:
-        if not hasattr(ent, 'attributes'):
-            return ''
-        attr = ent.attributes.itemByName('FrameBuilder', 'ID')
-        if attr and attr.value:
-            return attr.value
-    except Exception:
-        pass
-    return ''
+    stamped = 0
+    for slot_name, suffix in ROLE_POINT_SLOTS:
+        try:
+            pt = getattr(curve, slot_name, None)
+        except Exception:
+            # Fusion proxies sometimes raise on slot access the same
+            # way they do on ``.attributes`` — catch and skip rather
+            # than crash the rename pass. A missing role point just
+            # means the curve subtype doesn't have that slot (e.g. a
+            # SketchCircle has no startSketchPoint) or it's on a
+            # settling proxy that'll recover after the next rebuild.
+            _rename_log(
+                f"[stamp_role_points] {slot_name} raised on getattr -> skip"
+            )
+            continue
+        if not pt:
+            continue
+        if _existing_fb_id(pt):
+            _rename_log(
+                f"[stamp_role_points] {slot_name} already has FB ID -> "
+                "preserve (user-owned)"
+            )
+            continue
+        role_label = f'{curve_label}{suffix}'
+        _rename_log(f"[stamp_role_points] {slot_name} -> {role_label}")
+        if set_entity_fb_name(pt, role_label):
+            stamped += 1
+    return stamped
+
+
+def _existing_fb_id(ent):
+    """Thin shim over :func:`fb_attributes.get_fb_id`.
+
+    Kept as a named function so the existing log-trace lines in
+    ``rename_selection`` (e.g. ``[rename_selection] ent[N] existing_id=...``)
+    still line up with a grep for ``_existing_fb_id``. Behaviour change
+    from the pre-consolidation version: this now also accepts a legacy
+    ``FrameBuilder:name`` attribute as evidence of ownership, matching
+    what the gate has always done. Legacy-named entities (pre-ID stamps)
+    are therefore preserved by rename rather than silently overwritten —
+    that's the intended behaviour; the old divergence between gate and
+    rename was itself the bug.
+    """
+    return get_fb_id(ent)
 
 
 def rename_selection(entities, phase_prefix=None):
@@ -165,6 +217,19 @@ def rename_selection(entities, phase_prefix=None):
         wrote = set_entity_fb_name(native, new_label)
         if wrote:
             renamed += 1
+            # Stamp the curve's role points with suffixed IDs
+            # ("{new_label}:S|:E|:C") so the runtime resolver can find
+            # them by literal FB-ID match. The derivation in
+            # ``relation_hints._derive_point_role_id`` is generate-side
+            # only; the runtime needs physical stamps. No-op for
+            # entities that don't expose these slots (constraints,
+            # dimensions, points picked directly).
+            role_stamps = _stamp_role_points(native, new_label)
+            if role_stamps:
+                _rename_log(
+                    f"[rename_selection] ent[{idx}] role-stamped "
+                    f"{role_stamps} point(s)"
+                )
         else:
             _rename_log(f"[rename_selection] ent[{idx}] stamp REJECTED by subtype — not counted")
 

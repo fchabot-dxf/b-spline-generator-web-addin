@@ -125,8 +125,20 @@ class ParametricSketchBuilder:
         # Also store with prefixed name for projection logic compatibility
         ctx.entity_map[sketch_name] = ctx.entity_map[sketch_spec['Name']]
 
-        # Project the vertical axis into the sketch
+        # Project the vertical + horizontal origin axes into the sketch.
+        # ``Y_AXIS`` = world Z axis projected into an XZ-plane sketch (the
+        # sketch's vertical line). ``X_AXIS`` = world X axis projected in
+        # (the sketch's horizontal line). Both are stored in entity_map as
+        # bare-token keys so constraint-step Targets can reference
+        # ``'Y_AXIS'`` / ``'X_AXIS'`` without a projection block or any
+        # FrameBuilder ID stamping — the runtime's ``resolve_entity`` does
+        # a direct string lookup on these keys. ``ORIGIN`` was already
+        # seeded above from ``sketch.originPoint``. ``Z_AXIS`` is
+        # deliberately NOT seeded — on an XZ-plane sketch it's perpendicular
+        # to the sketch and would project as a point coinciding with ORIGIN,
+        # so it's redundant.
         self._project_y_axis(sketch, sketch_name)
+        self._project_x_axis(sketch, sketch_name)
 
         # Extract all phase categories from the spec
         built_count = 0
@@ -390,6 +402,31 @@ class ParametricSketchBuilder:
                 self.ctx.logger.log(f"Y_AXIS projected into {sketch_name}")
         except Exception as e:
             self.ctx.logger.log(f"Y_AXIS projection skipped: {e}", "WARNING")
+
+    def _project_x_axis(self, sketch, sketch_name):
+        """Project the horizontal construction axis into the sketch.
+
+        Mirror of ``_project_y_axis``. On the Frame Builder's XZ-plane
+        sketches, the world X axis projects as the sketch's horizontal
+        reference line. Stored under the bare key ``"X_AXIS"`` in the
+        sketch's ``entity_map``, mirroring the ``Y_AXIS`` convention so
+        constraint ``Targets`` can reference either by bare token.
+
+        Skipped-not-raised on failure for the same reason as
+        ``_project_y_axis``: sketches on planes where the world X axis
+        is perpendicular (YZ-plane sketches) would fail this call with
+        "axis is normal to sketch plane" — log and move on rather than
+        take the whole parametric build down over a reference line the
+        template may not need.
+        """
+        try:
+            x_axis = self.ctx.design.rootComponent.xConstructionAxis
+            proj_axis = sketch.project(x_axis)
+            if proj_axis.count > 0:
+                self.ctx.entity_map[sketch_name]["X_AXIS"] = proj_axis.item(0)
+                self.ctx.logger.log(f"X_AXIS projected into {sketch_name}")
+        except Exception as e:
+            self.ctx.logger.log(f"X_AXIS projection skipped: {e}", "WARNING")
 
 
 # ------------------------------------------------------------------

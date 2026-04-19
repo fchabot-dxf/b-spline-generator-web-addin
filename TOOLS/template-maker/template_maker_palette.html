@@ -295,6 +295,69 @@
             display: grid;
             gap: 10px;
         }
+        /* Ambiguous-coincidence checkbox UI (Track B3). One ``.cluster-group``
+           per size-3+ cluster; the palette shows a header with the world
+           coord and a status pill ("1/2", "2/2"), and a list of one
+           ``.cluster-point`` row per candidate ID. Max two checkboxes may be
+           active at once — the third check bumps the oldest (FIFO). */
+        .cluster-body {
+            padding: 10px 14px 14px 14px;
+            display: grid;
+            gap: 10px;
+            border-top: 1px solid #d1dce8;
+            background: #fbfcff;
+        }
+        .cluster-intro {
+            font-size: 0.88em;
+            color: #5f7a9c;
+            line-height: 1.4;
+        }
+        .cluster-group {
+            border: 1px solid #e0e7ef;
+            border-radius: 6px;
+            background: #fff;
+            padding: 8px 10px;
+        }
+        .cluster-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .cluster-coord {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.85em;
+            color: #0f4d82;
+            font-weight: 600;
+        }
+        .cluster-pill {
+            font-size: 0.75em;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: #eef2f7;
+            color: #5f7a9c;
+        }
+        .cluster-pill.ready {
+            background: #d7f3e1;
+            color: #1b6e3b;
+        }
+        .cluster-points {
+            display: grid;
+            gap: 4px;
+        }
+        .cluster-point {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.85em;
+            color: #101a24;
+        }
+        .cluster-point input[type="checkbox"] {
+            margin: 0;
+        }
         .variable-row {
             display: grid;
             grid-template-columns: auto 1fr 1fr;
@@ -529,6 +592,13 @@
         // detectedSketchName on every push. Clearing the input resets this
         // flag so auto-detection resumes.
         var sketchInputUserEdited = false;
+        // Track B3 — per-cluster checked-indices state. Maps clusterId ->
+        // array of 0, 1, or 2 integer indices (indices into the cluster's
+        // ``points`` list in the order the host last sent it). Survives
+        // re-renders so the user doesn't lose picks to an unrelated
+        // selection-change refresh; pruned to only known clusterIds each
+        // render so stale entries don't accumulate across selections.
+        var pendingClusterPicks = {};
 
         function dlog(msg) {
             // Debug logger disabled in UI mode.
@@ -825,6 +895,8 @@
                     return 'Detected template variables from the selection; enable, disable, or edit them here.';
                 case 'Sequence':
                     return 'Consolidated seeds/constraints/dimensions for the selected entities. Edit freely; the return block is appended automatically in the final code preview.';
+                case 'Coincidence Clusters':
+                    return 'Size-3+ coincident-point clusters. Pick exactly two points per cluster; a third check bumps the oldest selection (FIFO). Only 2/2 clusters emit a CoincidentConstraint in the Sequence block. Resolved clusters stay visible so you can un-pick or revise.';
                 default:
                     return 'Review the selected entity preview for this section.';
             }
@@ -947,6 +1019,197 @@
             if (index === 'sequence') fitTextareaToContent(textarea, 5, 20);
 
             return detail;
+        }
+
+        function sendClusterPicksToHost() {
+            // Ship the full ``pendingClusterPicks`` dict — only entries
+            // with exactly 2 picks will resolve on the Python side
+            // (``detect_coincidence_pairs`` checks ``len(forced) == 2``),
+            // so partial 0/2 or 1/2 clusters ride along harmlessly and
+            // the host re-surfaces them as ambiguous next push. Filter
+            // here anyway so the log line on the Python side stays clean.
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                return;
+            }
+            var ready = {};
+            Object.keys(pendingClusterPicks).forEach(function(id) {
+                var picks = pendingClusterPicks[id];
+                if (picks && picks.length === 2) {
+                    ready[id] = picks.slice();
+                }
+            });
+            try {
+                adsk.fusionSendData('clusterPicks', JSON.stringify(ready));
+            } catch (e) {
+                // bridge not ready — next render will resync
+            }
+        }
+
+        function makeClusterSection(clusters) {
+            // Build the <details> panel for size-3+ coincidence clusters.
+            // Each cluster gets a sub-card with a coord header, a status
+            // pill ("{n}/2"), and one checkbox per candidate point. Max
+            // two checks per cluster; the 3rd check bumps the oldest
+            // selection (FIFO). Reaching 2/2 auto-sends the full
+            // ``pendingClusterPicks`` to the host via ``clusterPicks``.
+            //
+            // State persists in the module-level ``pendingClusterPicks``
+            // dict — we read from it when re-rendering so the user's
+            // partial picks survive unrelated selection-change pushes.
+            var detail = document.createElement('details');
+            detail.className = 'panel';
+            var stateKey = getPanelStateKey('Coincidence Clusters', 'clusters');
+            // Default OPEN — the user needs to see and act on
+            // unresolved clusters (and may want to revise resolved
+            // ones); collapsing them by default would hide missing
+            // CC steps from the emitted sequence.
+            detail.open = loadPanelState(stateKey, true);
+
+            var summary = document.createElement('summary');
+            var titleSpan = document.createElement('span');
+            titleSpan.className = 'section-title';
+            var textSpan = document.createElement('span');
+            textSpan.textContent = 'Coincidence Clusters';
+            titleSpan.appendChild(textSpan);
+            var tooltipText = getSectionTooltip('Coincidence Clusters');
+            if (tooltipText) {
+                var help = document.createElement('span');
+                help.className = 'section-tooltip';
+                help.textContent = '?';
+                help.title = tooltipText;
+                titleSpan.appendChild(help);
+                summary.title = tooltipText;
+            }
+            summary.appendChild(titleSpan);
+
+            var countLabel = clusters.length + (clusters.length === 1
+                ? ' cluster' : ' clusters');
+            var badge = document.createElement('span');
+            badge.className = 'section-count';
+            badge.textContent = '· ' + countLabel;
+            summary.appendChild(badge);
+
+            detail.appendChild(summary);
+            detail.addEventListener('toggle', function() {
+                savePanelState(stateKey, detail.open);
+            });
+
+            var body = document.createElement('div');
+            body.className = 'cluster-body';
+
+            var intro = document.createElement('div');
+            intro.className = 'cluster-intro';
+            intro.textContent =
+                'Pick exactly two points per cluster. A third check bumps '
+                + 'the oldest selection. Only 2/2 clusters will emit on the '
+                + 'next push.';
+            body.appendChild(intro);
+
+            clusters.forEach(function(cluster) {
+                body.appendChild(makeClusterGroup(cluster));
+            });
+
+            detail.appendChild(body);
+            return detail;
+        }
+
+        function makeClusterGroup(cluster) {
+            var group = document.createElement('div');
+            group.className = 'cluster-group';
+            group.dataset.clusterId = cluster.clusterId;
+
+            var header = document.createElement('div');
+            header.className = 'cluster-group-header';
+
+            var coord = document.createElement('span');
+            coord.className = 'cluster-coord';
+            coord.textContent = cluster.coord || '';
+            header.appendChild(coord);
+
+            var pill = document.createElement('span');
+            pill.className = 'cluster-pill';
+            header.appendChild(pill);
+
+            group.appendChild(header);
+
+            var pointsDiv = document.createElement('div');
+            pointsDiv.className = 'cluster-points';
+
+            // Rehydrate from saved state when possible — the host's
+            // ``clusterId`` is stable within a single build_template_payload
+            // call but CAN drift on selection changes. If the saved picks
+            // reference indices outside this cluster's size, drop them.
+            var picks = (pendingClusterPicks[cluster.clusterId] || []).filter(
+                function(i) { return i >= 0 && i < cluster.points.length; }
+            );
+            pendingClusterPicks[cluster.clusterId] = picks;
+
+            var checkboxes = [];
+
+            function refreshPill() {
+                var n = pendingClusterPicks[cluster.clusterId].length;
+                pill.textContent = n + '/2';
+                if (n === 2) {
+                    pill.classList.add('ready');
+                } else {
+                    pill.classList.remove('ready');
+                }
+            }
+
+            function syncCheckboxes() {
+                var active = pendingClusterPicks[cluster.clusterId];
+                checkboxes.forEach(function(cb, i) {
+                    cb.checked = active.indexOf(i) !== -1;
+                });
+            }
+
+            cluster.points.forEach(function(pt, i) {
+                var row = document.createElement('label');
+                row.className = 'cluster-point';
+
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.index = i;
+                cb.checked = picks.indexOf(i) !== -1;
+                cb.addEventListener('change', function() {
+                    var active = pendingClusterPicks[cluster.clusterId];
+                    if (cb.checked) {
+                        if (active.indexOf(i) === -1) {
+                            active.push(i);
+                        }
+                        // FIFO bump — keep at most 2. On a 3rd check,
+                        // the earliest entry is shifted out so the new
+                        // one takes its place.
+                        while (active.length > 2) {
+                            active.shift();
+                        }
+                    } else {
+                        var idx = active.indexOf(i);
+                        if (idx !== -1) {
+                            active.splice(idx, 1);
+                        }
+                    }
+                    syncCheckboxes();
+                    refreshPill();
+                    // Push on every change — the host ignores <2-pick
+                    // entries, and a 2/2 → 1/2 downgrade must also
+                    // propagate so a previously-auto-paired cluster
+                    // falls back to ambiguous.
+                    sendClusterPicksToHost();
+                });
+
+                row.appendChild(cb);
+                var label = document.createElement('span');
+                label.textContent = pt.id;
+                row.appendChild(label);
+
+                pointsDiv.appendChild(row);
+                checkboxes.push(cb);
+            });
+
+            group.appendChild(pointsDiv);
+            refreshPill();
+            return group;
         }
 
         var variableRowCounter = 0;
@@ -1175,6 +1438,40 @@
             } else {
                 sequenceText = '';
             }
+            // Track B3 — coincidence clusters (size 3+). The Python side
+            // already resolved size-2 clusters into synthetic
+            // CoincidentConstraint items in the Sequence block below;
+            // only size-3+ clusters surface here, both still-ambiguous
+            // AND already-resolved (so the user can un-pick or revise
+            // without the section vanishing). The panel is placed ABOVE
+            // Sequence so the user sees unresolved picks first.
+            //
+            // Prune ``pendingClusterPicks`` to only the IDs the host is
+            // showing us right now so stale picks from an earlier
+            // selection don't leak back in on the next push. Then seed
+            // any cluster that's ``resolved`` on the host side but has
+            // no local pick state (e.g. after a palette reload) so the
+            // checkboxes come back with the host's picks checked.
+            var clusters = (payload && payload.coincidenceClusters) || [];
+            var knownIds = {};
+            clusters.forEach(function(c) {
+                knownIds[c.clusterId] = true;
+                if (c.resolved
+                        && Array.isArray(c.pickedIndices)
+                        && c.pickedIndices.length === 2
+                        && !(c.clusterId in pendingClusterPicks)) {
+                    pendingClusterPicks[c.clusterId] = c.pickedIndices.slice();
+                }
+            });
+            Object.keys(pendingClusterPicks).forEach(function(id) {
+                if (!knownIds[id]) {
+                    delete pendingClusterPicks[id];
+                }
+            });
+            if (clusters.length > 0) {
+                container.appendChild(makeClusterSection(clusters));
+            }
+
             container.appendChild(makeSection('Sequence', sequenceText, 'sequence',
                 seqCount + (seqCount === 1 ? ' item' : ' items')));
 

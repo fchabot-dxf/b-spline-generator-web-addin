@@ -46,7 +46,23 @@ New callers should import from this module directly.
 """
 
 from entity_util import _get_native
-from relation_hints import _derive_point_role_id, target_props_for
+from relation_hints import _derive_point_role_id, _origin_axis_token, target_props_for
+# Detection log — same fsync-per-line channel ``_constraint_targets``
+# uses for its probe instrumentation. We import it here because the
+# gate does its own independent slot walk (lines 147-154) and that
+# walk is a separate crash site from the one in ``_constraint_targets``.
+# Either walk can native-AV Fusion, and the per-probe lines are what
+# let us tell them apart in the log tail after a crash.
+from detection_log import _log_detection
+from cc_proxy import is_iterated_cc_proxy
+# Shared FrameBuilder attribute reader. ``has_fb_id`` replaces the
+# local ``_has_framebuilder_attribute`` — both the gate and
+# ``rename_selection._existing_fb_id`` previously carried identical
+# hasattr/itemByName walks with the same Layer-2 guard; consolidated
+# into ``fb_attributes`` so a future change to the attribute contract
+# touches one place. ``log_on_error=True`` preserves the gate-side
+# ``[attr-raised]`` crash-diagnostic trail.
+from fb_attributes import has_fb_id
 
 
 # Must match ``relation_hints._POINT_TYPES``. Redeclared rather than
@@ -57,38 +73,19 @@ _POINT_TYPES = ('SketchPoint', 'SketchPoint3D', 'SketchPoint2D')
 
 
 def _has_framebuilder_attribute(ent):
-    """Return True if ``ent`` directly carries a FrameBuilder ID attribute.
+    """Back-compat shim around :func:`fb_attributes.has_fb_id`.
 
-    Checks both the current ``ID`` attribute and the legacy ``name``
-    attribute that older sketches were stamped with before the switch.
-    Missing or non-truthy values count as no tag. The broad try/except
-    is the Layer-2 guard: attribute reads on a settling proxy have been
-    observed to raise, and we want the gate to return "not owned" in
-    that case rather than escape upstream.
+    ``template_payload`` re-exports this name for external callers
+    doing ``from template_payload import _has_framebuilder_attribute``;
+    dropping it outright would break them. New code should import
+    ``has_fb_id`` from ``fb_attributes`` directly.
 
-    The ``hasattr`` probe is INSIDE the try block: Python 3's
-    ``hasattr`` only swallows ``AttributeError``, but Fusion raises
-    ``"3 : object does not support attributes"`` as a ``RuntimeError``
-    when a subtype's proxy refuses an attribute-slot access. Leaving
-    ``hasattr`` outside the guard let that RuntimeError escape up to
-    ``is_framebuilder_owned`` and then up to the ownership-gate caller
-    — same shape of crash that ``rename_selection._existing_fb_id``
-    used to hit.
+    ``log_on_error=True`` preserves the ``[attr-raised]`` log line the
+    gate relies on for crash-site identification after a native AV —
+    if the add-in dies shortly after, the fsynced tail tells us which
+    subtype's attribute slot escalated.
     """
-    if not ent:
-        return False
-    try:
-        if not hasattr(ent, 'attributes'):
-            return False
-        attr = ent.attributes.itemByName('FrameBuilder', 'ID')
-        if attr and attr.value:
-            return True
-        attr_old = ent.attributes.itemByName('FrameBuilder', 'name')
-        if attr_old and attr_old.value:
-            return True
-    except Exception:
-        pass
-    return False
+    return has_fb_id(ent, log_on_error=True, log_prefix='attr-raised')
 
 
 def is_framebuilder_owned(ent):
@@ -106,19 +103,39 @@ def is_framebuilder_owned(ent):
     """
     if not ent:
         return False
+    _log_detection(None, f"[gate-enter]  type={type(ent).__name__}")
     ent = _get_native(ent)
+    _log_detection(None, f"[gate-native] type={type(ent).__name__}")
 
     # (1) Direct attribute.
     if _has_framebuilder_attribute(ent):
+        _log_detection(None, "[gate-exit]   direct-attr -> True")
+        return True
+
+    # (1b) Origin-entity whitelist — root construction axes and the origin
+    #      point can never carry a FrameBuilder.ID attribute (they're
+    #      design-level, not sketch-level) AND don't participate in the
+    #      derived-point path (no parent curve owns them). But the runtime
+    #      pre-seeds them in ``ctx.entity_map`` under the bare tokens
+    #      ``"X_AXIS"`` / ``"Y_AXIS"`` / ``"ORIGIN"``, and
+    #      ``relation_hints._format_target_reference`` emits those tokens
+    #      verbatim. Allowing them through here makes origin-axis
+    #      Coincident targets a first-class ownership path — mirroring the
+    #      T2_p04 hand-written convention that's already in production
+    #      phase files.
+    origin_token = _origin_axis_token(ent)
+    if origin_token:
+        _log_detection(None, f"[gate-exit]   origin-token={origin_token} -> True")
         return True
 
     ent_type = getattr(ent, 'objectType', '') or ''
+    _log_detection(None, f"[gate-type]   {ent_type or '<empty>'}")
 
     # (2) Derived ownership for SketchPoints via the parent curve.
     if ent_type in _POINT_TYPES:
-        if _derive_point_role_id(ent):
-            return True
-        return False
+        result = bool(_derive_point_role_id(ent))
+        _log_detection(None, f"[gate-exit]   derived-point -> {result}")
+        return result
 
     # (2b) OffsetConstraint — doesn't fit the generic constraint-targets
     #      mould. Its ownership flows from the parent (source) curves,
@@ -137,23 +154,75 @@ def is_framebuilder_owned(ent):
         from offset_hint import parent_curves
         parents = parent_curves(ent)
         if not parents:
+            _log_detection(None, "[gate-exit]   oc-no-parents -> False")
             return False
         return all(is_framebuilder_owned(p) for p in parents)
 
     # (3) Constraints / dimensions inherit ownership from their targets.
     #     Every target must itself be owned; one untagged target fails
     #     the whole constraint.
+    #
+    # DIAGNOSTIC INSTRUMENTATION — mirror of the probe logging in
+    # ``relation_hints._constraint_targets``. This walk is INDEPENDENT
+    # of the one the emitter does; same slots, different function, so
+    # it's its own potential crash site. Prefix is ``[gate-*]`` not
+    # ``[probe-*]`` so a log tail can tell the two walks apart after
+    # a native AV. See the comment in _constraint_targets for the
+    # interpretation of each line shape.
     if 'Constraint' in ent_type or 'Dimension' in ent_type:
+        _log_detection(None, f"[gate-begin]  {ent_type}")
+
+        # CoincidentConstraint pre-flight — distinguish iterated proxy
+        # (safe) from direct-pick proxy (hazardous) before probing
+        # .point / .entity. See ``cc_proxy.is_iterated_cc_proxy`` for
+        # the full rationale; the short version is that
+        # ``_expand_offset_picks`` tries to swap picked CCs for
+        # iterated ones upstream, but if the swap failed (ambiguous
+        # pick, 3+ junction glyphs, no active sketch) we're still
+        # looking at the hazardous proxy here. Touching .point or
+        # .entity would corrupt Fusion's pointer graph and native-AV
+        # on the next repaint.
+        #
+        # This pre-flight is CoincidentConstraint-specific because
+        # CC is the only subtype with this pathology. Other constraint
+        # subtypes have readable target slots on their picked proxies
+        # and shouldn't pay the token-read cost.
+        if ent_type.endswith('CoincidentConstraint'):
+            if not is_iterated_cc_proxy(ent, log_prefix='gate-cc'):
+                return False
+
         targets = []
         for prop_name in target_props_for(ent_type):
+            _log_detection(None, f"[gate-probe]  {ent_type}.{prop_name}")
             try:
                 item = getattr(ent, prop_name, None)
+                _log_detection(
+                    None,
+                    f"[gate-got]    {ent_type}.{prop_name} -> "
+                    f"{type(item).__name__ if item is not None else 'None'}",
+                )
                 if item is not None:
                     targets.append(item)
-            except Exception:
+            except Exception as e:
+                _log_detection(
+                    None,
+                    f"[gate-raised] {ent_type}.{prop_name} -> "
+                    f"{type(e).__name__}: {e}",
+                )
                 continue
         if not targets:
+            _log_detection(
+                None,
+                f"[gate-end]    {ent_type} -> False (no targets)",
+            )
             return False
-        return all(is_framebuilder_owned(t) for t in targets)
+        result = all(is_framebuilder_owned(t) for t in targets)
+        _log_detection(
+            None,
+            f"[gate-end]    {ent_type} -> {result} "
+            f"(targets={len(targets)})",
+        )
+        return result
 
+    _log_detection(None, f"[gate-exit]   fallthrough type={ent_type or '<empty>'} -> False")
     return False

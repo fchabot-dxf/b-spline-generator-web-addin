@@ -163,21 +163,53 @@ def _parse_seed_common(args):
     return name, positional, kw
 
 
+def _is_construction_kw(kw):
+    """Return True if ``kw`` carries ``isConstruction=True``.
+
+    The template_payload hint emitters only produce the literal string
+    ``isConstruction=True`` (never ``False`` — the kwarg is omitted in
+    that case), but be permissive on parse: accept any common truthy
+    spelling so hand-written templates that used ``true`` / ``1`` still
+    round-trip cleanly into the ``IsConstruction: True`` step dict key
+    the Frame Builder runtime reads.
+    """
+    raw = kw.get('isConstruction')
+    if raw is None:
+        return False
+    return raw.strip().lower() in ('true', '1', 'yes')
+
+
+def _apply_construction_flag(step, kw):
+    """Stamp ``'IsConstruction': True`` on ``step`` when ``kw`` asks for it.
+
+    A plain Python ``True`` (not a ``LiteralString``) is used so
+    ``_format_raw_value`` renders it as the bare token ``True`` — which
+    is what the runtime's ``fb_engine/geometry.py`` expects to read
+    out of the step dict. The kwarg stays absent when False so
+    non-construction seeds emit a clean dict without a noisy
+    ``'IsConstruction': False`` key on every line.
+    """
+    if _is_construction_kw(kw):
+        step['IsConstruction'] = True
+    return step
+
+
 # ---------------------------------------------------------------------------
 # Individual seed builders (one per shape)
 # ---------------------------------------------------------------------------
 
 def _build_line_step(args):
-    name, positional, _ = _parse_seed_common(args)
+    name, positional, kw = _parse_seed_common(args)
     if not name or len(positional) < 2:
         return None
-    return {
+    step = {
         'ID': LiteralString(name),
         'Type': LiteralString('Line'),
         'Points': [_parse_point_tuple(positional[0]), _parse_point_tuple(positional[1])],
         'StartID': LiteralString(f'{name}:S'),
         'EndID': LiteralString(f'{name}:E'),
     }
+    return _apply_construction_flag(step, kw)
 
 
 def _build_arc_step(args):
@@ -214,7 +246,7 @@ def _build_arc_step(args):
             _parse_point_tuple(positional[1]),
             _parse_point_tuple(positional[2]),
         ]
-        return base_step
+        return _apply_construction_flag(base_step, kw)
 
     if len(positional) >= 2:
         center = kw.get('center')
@@ -226,7 +258,7 @@ def _build_arc_step(args):
         radius = kw.get('radius')
         if radius:
             base_step['Radius'] = RawCode(radius)
-        return base_step
+        return _apply_construction_flag(base_step, kw)
 
     return None
 
@@ -244,7 +276,7 @@ def _build_circle_step(args):
         step['Center'] = RawCode(kw['center'])
     if 'radius' in kw:
         step['Radius'] = RawCode(kw['radius'])
-    return step
+    return _apply_construction_flag(step, kw)
 
 
 def _build_ellipse_step(args):
@@ -262,7 +294,7 @@ def _build_ellipse_step(args):
                      ('angleDeg', 'AngleDeg')):
         if src in kw:
             step[dst] = RawCode(kw[src])
-    return step
+    return _apply_construction_flag(step, kw)
 
 
 def _build_spline_step_factory(seed_type):
@@ -289,7 +321,7 @@ def _build_spline_step_factory(seed_type):
         }
         if 'degree' in kw:
             step['Degree'] = RawCode(kw['degree'])
-        return step
+        return _apply_construction_flag(step, kw)
 
     return handler
 

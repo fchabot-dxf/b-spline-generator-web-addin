@@ -47,11 +47,11 @@ def test_make_unique_label_uses_phase_prefix_for_sketch_entities():
     entity = types.SimpleNamespace(objectType='SketchLine', parentSketch=sketch)
     counters = {}
 
-    first = template_naming.make_unique_label(entity, 'SketchLine', counters, phase_prefix='p02_anatomy')
-    second = template_naming.make_unique_label(entity, 'SketchLine', counters, phase_prefix='p02_anatomy')
+    first = template_naming.make_unique_label(entity, 'SketchLine', counters, phase_prefix='anatomy_p02')
+    second = template_naming.make_unique_label(entity, 'SketchLine', counters, phase_prefix='anatomy_p02')
 
-    assert first == 'p02_anatomy_SketchLine'
-    assert second == 'p02_anatomy_SketchLine_02'
+    assert first == 'anatomy_p02_SketchLine'
+    assert second == 'anatomy_p02_SketchLine_02'
 
 
 def test_make_unique_label_uses_sketch_prefix_when_no_phase_prefix():

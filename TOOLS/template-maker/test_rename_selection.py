@@ -74,27 +74,27 @@ class FakeSketchArc(FakeSketchEntity):
 def run_test():
     # Phase prefix generation
     phase_prefix = rename_selection.build_phase_prefix('p03', 'anatomy')
-    assert phase_prefix == 'p03_anatomy', f'expected phase prefix, got {phase_prefix}'
+    assert phase_prefix == 'anatomy_p03', f'expected phase prefix, got {phase_prefix}'
 
     # Entity name assignment
     line = FakeSketchLine()
-    rename_selection.set_entity_fb_name(line, 'p03_anatomy_SketchLine_01')
-    assert line.attributes.itemByName('FrameBuilder', 'ID').value == 'p03_anatomy_SketchLine_01'
-    assert line.attributes.itemByName('FrameBuilder', 'name').value == 'p03_anatomy_SketchLine_01'
+    rename_selection.set_entity_fb_name(line, 'anatomy_p03_SketchLine_01')
+    assert line.attributes.itemByName('FrameBuilder', 'ID').value == 'anatomy_p03_SketchLine_01'
+    assert line.attributes.itemByName('FrameBuilder', 'name').value == 'anatomy_p03_SketchLine_01'
 
     # Rename selection with generic entities
     unnamed1 = FakeSketchLine()
     unnamed2 = FakeSketchLine()
-    renamed = rename_selection.rename_selection([unnamed1, unnamed2], phase_prefix='p03_anatomy')
+    renamed = rename_selection.rename_selection([unnamed1, unnamed2], phase_prefix='anatomy_p03')
     assert renamed == 2, f'expected two renamed entities, got {renamed}'
     id1 = unnamed1.attributes.itemByName('FrameBuilder', 'name').value
     id2 = unnamed2.attributes.itemByName('FrameBuilder', 'name').value
     assert id1 != id2, 'expected unique names for renamed selection'
-    assert id1.startswith('p03_anatomy_SketchLine'), f'unexpected id1 {id1}'
-    assert id2.startswith('p03_anatomy_SketchLine'), f'unexpected id2 {id2}'
+    assert id1.startswith('anatomy_p03_SketchLine'), f'unexpected id1 {id1}'
+    assert id2.startswith('anatomy_p03_SketchLine'), f'unexpected id2 {id2}'
 
     # Ensure renamed labels appear in generated template payload hints
-    payload = template_generator.build_template_payload([unnamed1, unnamed2], phase_prefix='p03_anatomy')
+    payload = template_generator.build_template_payload([unnamed1, unnamed2], phase_prefix='anatomy_p03')
     assert payload['items'][0]['name'] == id1
     assert payload['items'][1]['name'] == id2
     assert id1 in payload['items'][0]['hint']
@@ -107,7 +107,7 @@ def run_test():
     preserved.attributes = fake_attrs({'ID': 'horn_TL', 'name': 'horn_TL'})
     preserved.name = 'horn_TL'
     fresh = FakeSketchLine()
-    renamed = rename_selection.rename_selection([preserved, fresh], phase_prefix='p03_anatomy')
+    renamed = rename_selection.rename_selection([preserved, fresh], phase_prefix='anatomy_p03')
     assert renamed == 1, f'expected exactly one renamed entity (fresh only), got {renamed}'
     assert preserved.attributes.itemByName('FrameBuilder', 'ID').value == 'horn_TL', \
         'preserved FrameBuilder:ID was clobbered by rename_selection'
@@ -115,7 +115,43 @@ def run_test():
         'preserved FrameBuilder:name was clobbered by rename_selection'
     fresh_name = fresh.attributes.itemByName('FrameBuilder', 'name').value
     assert fresh_name != 'horn_TL', f'fresh entity collided with preserved ID: {fresh_name}'
-    assert fresh_name.startswith('p03_anatomy_SketchLine'), f'unexpected fresh name {fresh_name}'
+    assert fresh_name.startswith('anatomy_p03_SketchLine'), f'unexpected fresh name {fresh_name}'
+
+    # Role-point stamping — when a line/arc gets renamed, its
+    # startSketchPoint / endSketchPoint / centerSketchPoint must be
+    # stamped with role-suffixed IDs so the FrameBuilder runtime
+    # resolver can find them via literal attribute match. Without
+    # this, a Coincident constraint targeting "{line_name}:E" fails
+    # at runtime even though the line itself is correctly named.
+    line_for_roles = FakeSketchLine()
+    rename_selection.rename_selection([line_for_roles], phase_prefix='anatomy_p03')
+    line_name = line_for_roles.attributes.itemByName('FrameBuilder', 'ID').value
+    start_id = line_for_roles.startSketchPoint.attributes.itemByName('FrameBuilder', 'ID').value
+    end_id = line_for_roles.endSketchPoint.attributes.itemByName('FrameBuilder', 'ID').value
+    assert start_id == f'{line_name}:S', f'startSketchPoint role stamp wrong: {start_id}'
+    assert end_id == f'{line_name}:E', f'endSketchPoint role stamp wrong: {end_id}'
+
+    # Arc adds a centerSketchPoint → :C.
+    arc_for_roles = FakeSketchArc()
+    rename_selection.rename_selection([arc_for_roles], phase_prefix='anatomy_p03')
+    arc_name = arc_for_roles.attributes.itemByName('FrameBuilder', 'ID').value
+    center_id = arc_for_roles.centerSketchPoint.attributes.itemByName('FrameBuilder', 'ID').value
+    assert center_id == f'{arc_name}:C', f'centerSketchPoint role stamp wrong: {center_id}'
+
+    # Existing FrameBuilder:ID on a role point must be preserved —
+    # user may have deliberately cross-linked a point to another
+    # feature and a parent-curve rename must not clobber that.
+    line_with_owned_point = FakeSketchLine()
+    line_with_owned_point.startSketchPoint.attributes = fake_attrs(
+        {'ID': 'pre_owned_point', 'name': 'pre_owned_point'}
+    )
+    rename_selection.rename_selection([line_with_owned_point], phase_prefix='anatomy_p03')
+    preserved_pt_id = line_with_owned_point.startSketchPoint.attributes.itemByName('FrameBuilder', 'ID').value
+    assert preserved_pt_id == 'pre_owned_point', \
+        f'pre-owned role point was clobbered: {preserved_pt_id}'
+    # The end point, which had no prior ID, should still have been stamped.
+    ep_id = line_with_owned_point.endSketchPoint.attributes.itemByName('FrameBuilder', 'ID').value
+    assert ep_id.endswith(':E'), f'endSketchPoint should have been stamped: {ep_id}'
 
     print('test_rename_selection passed')
 

@@ -18,6 +18,16 @@ from offset_hint import (
     find_owning_offset_constraint,
     oc_identity_key,
 )
+# Crash-durable diagnostic channel — same fsync-per-write log that the
+# ``[probe-*]`` and ``[gate-*]`` instrumentation uses. We need finer-grained
+# ``[bp-*]`` markers in this module to catch the silence gap between
+# ``build_template_payload: selection=N`` and the first ``[gate-*]`` line.
+# For the CoincidentConstraint crash chain the gate's own logs never fire,
+# so death must be happening in ``_expand_offset_picks`` OR in an early
+# branch of ``is_framebuilder_owned`` before the constraint-branch
+# instrumentation kicks in. ``[bp-*]`` pinpoints which entity and which
+# call was the last thing Fusion did before silence.
+from detection_log import _log_detection
 
 
 def _describe_unowned(ent):
@@ -39,6 +49,22 @@ def _describe_unowned(ent):
     except Exception:
         pass
     return {'type': type_short, 'token': token}
+
+
+def _type_short(ent):
+    """Short objectType name for log lines — never raises.
+
+    Used only by ``[bp-*]`` diagnostic lines. Wraps the ``objectType``
+    read itself in try/except because the whole point of this
+    instrumentation is to survive a settling-proxy that refuses basic
+    slot access (which is exactly the CoincidentConstraint symptom
+    ``_has_framebuilder_attribute`` is chasing).
+    """
+    try:
+        ot = getattr(ent, 'objectType', '') or ''
+        return ot.split('::')[-1] if ot else type(ent).__name__
+    except Exception:
+        return '<unreadable>'
 
 
 def _expand_offset_picks(entities):
@@ -64,18 +90,117 @@ def _expand_offset_picks(entities):
     still run the ownership gate and label pass on the result — that
     logic is unchanged downstream of this pre-pass.
     """
+    _log_detection(None, f"[bp-expand-in]  entities={len(entities)}")
     expanded = []
     seen_ocs = set()
-    for ent in entities:
+    for idx, ent in enumerate(entities):
+        _log_detection(
+            None,
+            f"[bp-expand]     [{idx}] native-in type={_type_short(ent)}",
+        )
         native = _get_native(ent)
+        native_type = _type_short(native)
+        _log_detection(
+            None,
+            f"[bp-expand]     [{idx}] native-out type={native_type}",
+        )
+        _log_detection(
+            None,
+            f"[bp-expand]     [{idx}] is_offset_constraint check",
+        )
         if is_offset_constraint(native):
+            _log_detection(None, f"[bp-expand]     [{idx}] IS offset, keeping")
             key = oc_identity_key(native)
             if key is None or key in seen_ocs:
                 continue
             seen_ocs.add(key)
             expanded.append(native)
             continue
+        # Skip the offset-child reverse-lookup for non-curve entity types.
+        # Constraints (other than OffsetConstraint, handled above) and
+        # dimensions can never appear in an OffsetConstraint's
+        # ``childCurves`` collection, so the lookup is semantically
+        # meaningless for them.
+        #
+        # Skipping is also required for crash safety:
+        # ``find_owning_offset_constraint`` reads ``curve.parentSketch`` as
+        # its first slot, and on a ``CoincidentConstraint`` proxy that read
+        # is a VERIFIED delayed native-AV site. The ``_safe_getattr``
+        # wrapper catches the Python-level RuntimeError cleanly, but the
+        # slot touch still corrupts Fusion's internal state and a repaint
+        # ~4 s later dereferences the poisoned pointer. See the ``[foc-*]``
+        # diagnostic log for the 20:58:47 repro — last durable line before
+        # Fusion dies is exactly ``[foc-probe] parentSketch`` on a
+        # ``CoincidentConstraint``.
+        #
+        # Arcs, lines, circles, splines, points, and dimensions all
+        # tolerate ``parentSketch`` cleanly (observed in the same repro
+        # log), so the guard is narrow to constraint/dimension types.
+        # Dimensions are excluded from the lookup for the semantic reason
+        # only — no crash hazard for them.
+        if native_type.endswith('Constraint') or native_type.endswith('Dimension'):
+            _log_detection(
+                None,
+                f"[bp-expand]     [{idx}] non-curve type={native_type}, "
+                "skipping offset reverse-lookup",
+            )
+            # CoincidentConstraint special-case — see coincident_hint.py
+            # for full rationale. The direct-pick CC proxy can't be
+            # questioned safely (every identity/target slot either
+            # throws InternalValidationError or is a delayed native-AV
+            # hazard). But the SAME CC accessed via sketch.geometric
+            # Constraints is a different proxy with fully-readable
+            # slots. ``find_matching_coincident_constraint`` walks
+            # that collection and distance-matches the picked proxy
+            # against the click hit-point Fusion records on the
+            # Selection wrapper. If the match is unambiguous, we swap
+            # to the iterated proxy here — downstream code (gate,
+            # hint builder, label) then sees a well-behaved object
+            # without knowing the swap happened.
+            #
+            # If the match is ambiguous or the sketch context is
+            # wrong (no active selection, no sketch, etc.), None
+            # comes back and we fall through to appending the picked
+            # proxy unchanged. The ownership gate will refuse it
+            # (empty target list → "no targets" → False), and the
+            # palette surfaces the pick in the "N unowned" warning.
+            # The user then knows to zoom in and retry, or to use
+            # the Coincident button path once that lands (Track B).
+            if native_type == 'CoincidentConstraint':
+                try:
+                    from coincident_hint import find_matching_coincident_constraint
+                    iter_cc = find_matching_coincident_constraint(native)
+                    if iter_cc is not None:
+                        _log_detection(
+                            None,
+                            f"[bp-expand]     [{idx}] CC swap "
+                            "picked -> iterated proxy",
+                        )
+                        expanded.append(iter_cc)
+                        continue
+                    _log_detection(
+                        None,
+                        f"[bp-expand]     [{idx}] CC no match "
+                        "(ambiguous or no sketch ctx) -> keep picked",
+                    )
+                except Exception as e:
+                    _log_detection(
+                        None,
+                        f"[bp-expand]     [{idx}] CC swap raised "
+                        f"{type(e).__name__}: {e} -> keep picked",
+                    )
+            expanded.append(native)
+            continue
+        _log_detection(
+            None,
+            f"[bp-expand]     [{idx}] find_owning_offset_constraint",
+        )
         oc = find_owning_offset_constraint(native)
+        _log_detection(
+            None,
+            f"[bp-expand]     [{idx}] find_owning_offset_constraint -> "
+            f"{_type_short(oc) if oc is not None else 'None'}",
+        )
         if oc is not None:
             key = oc_identity_key(oc)
             if key is None or key in seen_ocs:
@@ -84,6 +209,7 @@ def _expand_offset_picks(entities):
             expanded.append(oc)
             continue
         expanded.append(native)
+    _log_detection(None, f"[bp-expand-out] kept={len(expanded)}")
     return expanded
 
 
@@ -107,13 +233,28 @@ def build_payload_items(entities, phase_prefix=None):
     up front so the ownership gate + label pass see a single canonical
     entity per offset rather than N-times-the-children drift.
     """
+    _log_detection(None, f"[bp-enter]      build_payload_items entities={len(entities)}")
     entities = _expand_offset_picks(entities)
     items = []
     unowned = []
     label_counts = {}
-    for ent in entities:
+    for idx, ent in enumerate(entities):
+        _log_detection(
+            None,
+            f"[bp-item]       [{idx}] type={_type_short(ent)} -> _get_native",
+        )
         native = _get_native(ent)
-        if not is_framebuilder_owned(native):
+        _log_detection(
+            None,
+            f"[bp-item]       [{idx}] native type={_type_short(native)} "
+            f"-> is_framebuilder_owned",
+        )
+        owned = is_framebuilder_owned(native)
+        _log_detection(
+            None,
+            f"[bp-item]       [{idx}] owned={owned}",
+        )
+        if not owned:
             unowned.append(_describe_unowned(native))
             continue
         base_label = _label_for_entity(native)
@@ -123,13 +264,30 @@ def build_payload_items(entities, phase_prefix=None):
         hint = _build_entity_hint(native, None, get_entity_coord_expr, name_override=label)
         meta = get_fb_metadata(native) if hasattr(native, 'attributes') else ''
 
+        # ``construction`` is a palette-facing cosmetic flag — the
+        # Sequence renderer uses it to prefix construction seeds with
+        # a muted "◌" glyph so users can tell at a glance which picks
+        # were construction curves. The authoritative source of truth
+        # for the runtime is still the ``isConstruction=True`` kwarg
+        # baked into ``hint`` by the shape-hint handlers; this key is
+        # redundant for code emission but cheaper to read in JS than
+        # re-parsing the hint string.
+        try:
+            is_construction = bool(getattr(native, 'isConstruction', False))
+        except Exception:
+            is_construction = False
         items.append({
             'name': label,
             'coord': coord,
             'coordExpr': expr,
             'meta': meta,
-            'hint': hint
+            'hint': hint,
+            'construction': is_construction,
         })
+    _log_detection(
+        None,
+        f"[bp-exit]       build_payload_items items={len(items)} unowned={len(unowned)}",
+    )
     return items, unowned
 
 

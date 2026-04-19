@@ -60,6 +60,18 @@ Integration sketch (for the bridge):
 
 import re
 
+# Crash-durable diagnostic channel — same fsync-per-write log used by
+# ``[bp-*]``, ``[gate-*]``, ``[attr-*]``, ``[foc-*]``. The projection
+# path is the parallel sibling of the seed/ownership path: both run on
+# every pick, but only the seed side has been instrumented so far.
+# Adding ``[proj-*]`` probes closes the visibility gap the user flagged
+# — when a picked SketchLine shows up as "0 owned, 1 unowned" the log
+# should also tell us whether ``_is_projected`` saw ``isReference=True``,
+# what ``classify_selection`` returned, and whether ``detect_projections``
+# produced a block or a refusal. Line-up is on timestamp with the
+# ``[bp-*]`` / ``[gate-*]`` traces of the same pick.
+from detection_log import _log_detection
+
 
 _PREFIX_RE = re.compile(r'^T\d+_')
 
@@ -117,13 +129,38 @@ def _candidate_forms(entity):
 
 
 def _is_projected(entity):
-    """True if this entity (or its nativeObject) has isReference=True."""
-    for c in _candidate_forms(entity):
+    """True if this entity (or its nativeObject) has isReference=True.
+
+    Both candidate forms are probed because Fusion occasionally presents
+    a Selection pick as a shallow proxy whose ``isReference`` slot reads
+    False while the wrapped ``nativeObject`` reads True. The fallback
+    makes the classifier agree with Fusion's own "is this a projection?"
+    semantics regardless of which layer the pick arrived at.
+
+    Instrumented with ``[proj-is]`` markers — one per candidate form so
+    a log tail after a selection shows which form carried the verdict
+    (or whether both failed to resolve).
+    """
+    ent_type = type(entity).__name__
+    _log_detection(None, f"[proj-is]     enter type={ent_type}")
+    for idx, c in enumerate(_candidate_forms(entity)):
         try:
-            if getattr(c, 'isReference', False):
+            val = getattr(c, 'isReference', False)
+            _log_detection(
+                None,
+                f"[proj-is]     [{idx}] type={type(c).__name__} "
+                f"isReference={val}",
+            )
+            if val:
+                _log_detection(None, "[proj-is]     verdict=True")
                 return True
-        except Exception:
+        except Exception as e:
+            _log_detection(
+                None,
+                f"[proj-is]     [{idx}] raised {type(e).__name__}: {e}",
+            )
             continue
+    _log_detection(None, "[proj-is]     verdict=False")
     return False
 
 
@@ -165,24 +202,46 @@ def classify_selection(entities):
 
     Any single projected entity makes the selection 'projections'. Any native
     (non-reference) entity makes it 'seeds'. Both present → 'mixed'.
+
+    Instrumented with ``[proj-cls]`` markers — one per pick plus a final
+    verdict line. The palette renders radically different UI depending on
+    ``kind`` (projections panel vs seed/ownership path), so a disagreement
+    between what the user expected and what actually got rendered almost
+    always traces back to a single ``_is_projected`` call returning the
+    wrong answer for the pick the user thought they were handing in. This
+    log lets a tail answer "what did classify_selection decide for this
+    exact pick?" without having to instrument the call-site.
     """
+    _log_detection(None, f"[proj-cls]    enter count={len(entities) if entities else 0}")
     if not entities:
+        _log_detection(None, "[proj-cls]    verdict=empty (no entities)")
         return 'empty'
 
     any_projected = False
     any_native = False
-    for ent in entities:
+    for idx, ent in enumerate(entities):
+        _log_detection(
+            None,
+            f"[proj-cls]    [{idx}] type={type(ent).__name__} "
+            f"-> _is_projected",
+        )
         if _is_projected(ent):
             any_projected = True
+            _log_detection(None, f"[proj-cls]    [{idx}] -> projected")
         else:
             any_native = True
+            _log_detection(None, f"[proj-cls]    [{idx}] -> native")
         if any_projected and any_native:
+            _log_detection(None, "[proj-cls]    verdict=mixed (short-circuit)")
             return 'mixed'
 
     if any_projected:
+        _log_detection(None, "[proj-cls]    verdict=projections")
         return 'projections'
     if any_native:
+        _log_detection(None, "[proj-cls]    verdict=seeds")
         return 'seeds'
+    _log_detection(None, "[proj-cls]    verdict=empty (no verdict)")
     return 'empty'
 
 
@@ -201,41 +260,68 @@ def detect_projections(entities):
         can show 'N projections from a + b'.
       - Duplicate picks (same source) are de-duped silently.
     """
+    _log_detection(
+        None,
+        f"[proj-det]    enter count={len(entities) if entities else 0}",
+    )
     rows = []
     seen = set()
     sources = set()
     untagged_picks = []
     brep_picks = []
 
-    for ent in entities or []:
+    for idx, ent in enumerate(entities or []):
+        _log_detection(
+            None,
+            f"[proj-det]    [{idx}] type={type(ent).__name__} -> _get_source",
+        )
         src, kind = _get_source(ent)
+        _log_detection(
+            None,
+            f"[proj-det]    [{idx}] src_kind={kind} "
+            f"src_type={type(src).__name__ if src is not None else 'None'}",
+        )
 
         if kind == 'none':
             # Caller should have filtered these out via classify_selection.
             # If they leak through, treat as a refusal too — it means our
             # classifier disagreed with the resolver about what counts as
             # projected.
+            _log_detection(None, f"[proj-det]    [{idx}] none -> untagged")
             untagged_picks.append(_entity_token(ent))
             continue
 
         if kind == 'brep':
+            _log_detection(None, f"[proj-det]    [{idx}] brep -> refusal")
             brep_picks.append(_entity_token(ent))
             continue
 
         # kind == 'sketch'
+        _log_detection(None, f"[proj-det]    [{idx}] read FB ID from source")
         source_id = _read_fb_id(src)
+        _log_detection(
+            None,
+            f"[proj-det]    [{idx}] source_id={source_id or '<none>'}",
+        )
         if not source_id:
             untagged_picks.append(_entity_token(ent))
             continue
 
+        _log_detection(None, f"[proj-det]    [{idx}] read source.parentSketch.name")
         sketch_raw = getattr(src.parentSketch, 'name', '') or ''
         source_sketch = _strip_template_prefix(sketch_raw)
+        _log_detection(
+            None,
+            f"[proj-det]    [{idx}] source_sketch={source_sketch or '<none>'} "
+            f"(raw={sketch_raw or '<none>'})",
+        )
         if not source_sketch:
             untagged_picks.append(_entity_token(ent))
             continue
 
         key = (source_sketch, source_id)
         if key in seen:
+            _log_detection(None, f"[proj-det]    [{idx}] dedup key={key}")
             continue
         seen.add(key)
         sources.add(source_sketch)
@@ -245,9 +331,14 @@ def detect_projections(entities):
             'SourceID':     source_id,
             'TargetID':     f'proj_{source_id}',
         })
+        _log_detection(None, f"[proj-det]    [{idx}] row emitted")
 
     # Refusal cases take priority — never emit a partial block.
     if brep_picks:
+        _log_detection(
+            None,
+            f"[proj-det]    exit refused=brep count={len(brep_picks)}",
+        )
         return {
             'ok':        False,
             'reason':    'non_sketch_source',
@@ -257,6 +348,10 @@ def detect_projections(entities):
         }
 
     if untagged_picks:
+        _log_detection(
+            None,
+            f"[proj-det]    exit refused=untagged count={len(untagged_picks)}",
+        )
         return {
             'ok':        False,
             'reason':    'untagged_source',
@@ -264,6 +359,7 @@ def detect_projections(entities):
                           'sources — fix the upstream phase.'),
             'bad_picks': untagged_picks,
         }
+    _log_detection(None, f"[proj-det]    exit ok rows={len(rows)} sources={len(sources)}")
 
     # Success — build the note.
     note = None
