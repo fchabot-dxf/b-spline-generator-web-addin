@@ -134,7 +134,7 @@ def _log(msg):
 # ── Palette constants ─────────────────────────────────────────────────────────
 PALETTE_ID   = 'fusionHybridPalette'
 PALETTE_NAME = 'Symmetric B-Spline Gen'
-PALETTE_HTML = 'html/index.html'
+PALETTE_HTML = 'html/bspline_gen_palette.html'
 
 # Track occurrences and graphics added during the session
 last_imported_occurrences = []

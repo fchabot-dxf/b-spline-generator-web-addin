@@ -215,7 +215,7 @@ VERIFY_FILES = [
     "frame-builder/ui/hybrid_builder_ui.py",
     "frame-builder/ui/html/frame_builder_palette.html",
     "b-spline-gen/b-spline-gen.py",
-    "b-spline-gen/html/index.html",
+    "b-spline-gen/html/bspline_gen_palette.html",
 ]
 
 # Folders / patterns to SKIP in both local deploy and ZIP
