@@ -13,29 +13,33 @@
   <!-- canvg v4 loaded dynamically inside stamp.js -->
   <!-- Native CAD Design System -->
   <link rel="stylesheet" href="../../native-cad-style.css">
-  
+
   <link rel="stylesheet" href="shared-style.css">
   <link rel="stylesheet" href="shared-responsive.css">
   <link rel="stylesheet" href="editor/editor.css">
   <link rel="stylesheet" href="editor/editor-mobile.css">
-  
+
   <!-- CSS Overrides for B-Spline Gen integration -->
   <style>
     :root {
       --cad-sidebar-width: 260px;
     }
+
     .cad-app-shell {
       background: #f5f5f5;
     }
+
     .cad-main-content {
       display: grid;
       grid-template-columns: var(--cad-sidebar-width) auto 1fr;
       grid-template-rows: 1fr;
       flex: 1;
-      height: calc(100vh - 35px - 28px); /* Adjust for navbar and footer exact heights */
+      height: calc(100vh - 35px - 28px);
+      /* Adjust for navbar and footer exact heights */
       overflow: hidden;
       background: #f5f5f5;
     }
+
     .cad-sidebar {
       grid-column: 1;
       grid-row: 1;
@@ -48,6 +52,7 @@
       overflow-y: auto;
       min-height: 0;
     }
+
     .cad-resizer {
       grid-column: 2;
       width: 4px;
@@ -55,9 +60,12 @@
       background: transparent;
       transition: background 0.2s;
     }
-    .cad-resizer:hover, .cad-resizer.resizing {
+
+    .cad-resizer:hover,
+    .cad-resizer.resizing {
       background: var(--cad-accent-blue);
     }
+
     .cad-viewport {
       grid-column: 3;
       grid-row: 1;
@@ -65,26 +73,29 @@
       width: 100%;
       min-width: 0;
       min-height: 0;
-      background: #fdfdfd;
+      background: #111;
       position: relative;
       display: flex;
       flex-direction: column;
     }
+
     /* Ensure the Three.js canvas fills the CAD viewport exactly */
     #previewArea {
       flex: 1;
       width: 100%;
       height: 100%;
       position: relative;
-      background: #fdfdfd;
+      background: #111;
       overflow: hidden;
       min-height: 0;
     }
+
     #previewCanvas {
       width: 100% !important;
       height: 100% !important;
       display: block;
     }
+
     /* Harmonize legacy panels with new sidebar */
     .cad-sidebar .panel {
       margin-bottom: 0px;
@@ -92,6 +103,7 @@
       border: none;
       border-bottom: 1px solid var(--cad-border-standard);
     }
+
     .cad-sidebar .panel-header {
       padding: 10px 14px;
       font-weight: 700;
@@ -101,13 +113,16 @@
       color: #333;
       cursor: pointer;
     }
+
     .cad-sidebar .panel-header:hover {
       background: #e8e8e8;
     }
+
     .cad-sidebar .panel-body {
       padding: 8px 14px 12px 14px;
       background: #fff;
     }
+
     /* Native CAD Stepper */
     .cad-stepper {
       display: flex;
@@ -118,6 +133,7 @@
       height: 24px;
       background: #eee;
     }
+
     .cad-stepper button {
       width: 22px;
       height: 100%;
@@ -131,10 +147,12 @@
       justify-content: center;
       transition: background 0.2s;
     }
+
     .cad-stepper button:hover {
       background: #e0e0e0;
       color: #333;
     }
+
     .cad-stepper input[type="number"] {
       flex: 1;
       width: 100%;
@@ -149,6 +167,7 @@
       -moz-appearance: textfield;
       outline: none;
     }
+
     .cad-stepper input::-webkit-outer-spin-button,
     .cad-stepper input::-webkit-inner-spin-button {
       -webkit-appearance: none;
@@ -174,14 +193,18 @@
     </div>
   </header>
 
-  <main class="cad-main-content">
+  <main class="cad-main-content app">
     <aside class="cad-sidebar">
       <!-- 0. Sticky Header Actions -->
-      <div class="cad-panel-section" style="padding: 12px; background: rgba(0,0,0,0.02); border-bottom: 1px solid var(--cad-border-color);">
-        <button class="cad-btn cad-btn-secondary" id="btnRandomSeed" style="width:100%; height:32px;">🎲 Generate New Seed</button>
+      <div class="cad-panel-section"
+        style="padding: 12px; background: rgba(0,0,0,0.02); border-bottom: 1px solid var(--cad-border-color);">
+        <button class="cad-btn cad-btn-secondary" id="btnRandomSeed" style="width:100%; height:32px;">🎲 Generate New
+          Seed</button>
         <div style="display:flex; gap:8px; margin-top:8px;">
-          <button class="cad-btn cad-btn-secondary" id="btnGlobalUndo" style="flex:1; height:28px;" disabled>Undo</button>
-          <button class="cad-btn cad-btn-secondary" id="btnGlobalRedo" style="flex:1; height:28px;" disabled>Redo</button>
+          <button class="cad-btn cad-btn-secondary" id="btnGlobalUndo" style="flex:1; height:28px;"
+            disabled>Undo</button>
+          <button class="cad-btn cad-btn-secondary" id="btnGlobalRedo" style="flex:1; height:28px;"
+            disabled>Redo</button>
         </div>
       </div>
 
@@ -194,7 +217,8 @@
             <div class="cad-nested-input" style="flex:1;">
               <input type="text" id="presetName" maxlength="40">
             </div>
-            <button class="cad-btn cad-btn-primary" id="btnPresetSave" style="min-width:60px; height:24px; font-size:11px;">Save</button>
+            <button class="cad-btn cad-btn-primary" id="btnPresetSave"
+              style="min-width:60px; height:24px; font-size:11px;">Save</button>
           </div>
 
           <label class="cad-label">Saved Presets</label>
@@ -204,10 +228,13 @@
                 <option value="">— none —</option>
               </select>
             </div>
-            <button class="cad-btn cad-btn-secondary" id="btnPresetLoad" style="min-width:50px; height:24px; font-size:11px;">Load</button>
-            <button class="cad-btn cad-btn-secondary" id="btnPresetDelete" style="min-width:32px; height:24px; padding:0;">🗑</button>
+            <button class="cad-btn cad-btn-secondary" id="btnPresetLoad"
+              style="min-width:50px; height:24px; font-size:11px;">Load</button>
+            <button class="cad-btn cad-btn-secondary" id="btnPresetDelete"
+              style="min-width:32px; height:24px; padding:0;">🗑</button>
           </div>
-          <div id="presetMsg" class="cad-status-text" style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
+          <div id="presetMsg" class="cad-status-text"
+            style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
         </div>
       </div>
 
@@ -375,7 +402,8 @@
           <div id="stampLayerList" style="display:flex; flex-direction:column; gap:8px;">
             <!-- Managed by JS -->
           </div>
-          <button id="btnOpenSvgEditor" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:12px;">Open SVG Editor 🎨</button>
+          <button id="btnOpenSvgEditor" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:12px;">Open SVG
+            Editor 🎨</button>
         </div>
       </div>
 
@@ -402,7 +430,8 @@
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
             <button id="btnSculptTopUndo" class="cad-btn cad-btn-secondary" style="font-size:11px;">Undo</button>
             <button id="btnSculptTopRedo" class="cad-btn cad-btn-secondary" style="font-size:11px;">Redo</button>
-            <button id="btnSculptTopClear" class="cad-btn cad-btn-secondary" style="grid-column: span 2; font-size:11px;">Clear Sculpt</button>
+            <button id="btnSculptTopClear" class="cad-btn cad-btn-secondary"
+              style="grid-column: span 2; font-size:11px;">Clear Sculpt</button>
           </div>
         </div>
       </div>
@@ -424,7 +453,8 @@
             </div>
           </div>
 
-          <div id="thickenWarning" class="cad-status-text" style="display:none; color:#d97706; font-size:10px; margin-bottom:8px;">
+          <div id="thickenWarning" class="cad-status-text"
+            style="display:none; color:#d97706; font-size:10px; margin-bottom:8px;">
             ⚠️ Intersections detected
           </div>
         </div>
@@ -453,7 +483,8 @@
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
             <button id="btnSculptBotUndo" class="cad-btn cad-btn-secondary" style="font-size:11px;">Undo</button>
             <button id="btnSculptBotRedo" class="cad-btn cad-btn-secondary" style="font-size:11px;">Redo</button>
-            <button id="btnSculptBotClear" class="cad-btn cad-btn-secondary" style="grid-column: span 2; font-size:11px;">Clear Sculpt</button>
+            <button id="btnSculptBotClear" class="cad-btn cad-btn-secondary"
+              style="grid-column: span 2; font-size:11px;">Clear Sculpt</button>
           </div>
         </div>
       </div>
@@ -537,7 +568,8 @@
             style="color: #aaa; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
             SURFACE INSPECTOR</div>
           <div>TOP: <span id="heightTop" style="color: #ffcc00;">0.000</span>"</div>
-          <div id="inspectorBotRow" style="display: none;">BOT: <span id="heightBot" style="color: #4488ff;">0.000</span>"
+          <div id="inspectorBotRow" style="display: none;">BOT: <span id="heightBot"
+              style="color: #4488ff;">0.000</span>"
           </div>
           <div id="inspectorThickRow" style="display: none;">THK: <span id="heightThick"
               style="color: #00ff88;">0.000</span>"</div>
@@ -559,7 +591,8 @@
     <div id="settings-panel" class="cad-modal-window" style="width: 320px;">
       <div class="cad-modal-header">
         <span>Settings</span>
-        <span id="close-settings-btn" class="material-symbols-outlined" style="cursor:pointer; font-size:16px;">close</span>
+        <span id="close-settings-btn" class="material-symbols-outlined"
+          style="cursor:pointer; font-size:16px;">close</span>
       </div>
       <div class="cad-modal-body" style="padding: 12px; overflow-y: auto;">
         <div class="cad-panel-section">
@@ -580,7 +613,8 @@
               <input type="number" id="thickenYellowOffset" min="0.001" max="0.1" step="0.001" value="0.01">
             </div>
           </div>
-          <div class="cad-status-text" style="font-size: 10px; opacity: 0.6;">Offset below target to trigger Yellow warning
+          <div class="cad-status-text" style="font-size: 10px; opacity: 0.6;">Offset below target to trigger Yellow
+            warning
           </div>
         </div>
 
@@ -601,205 +635,212 @@
     </div>
   </div>
 
-<!-- Modals -->
-<!-- SVG Editor Modal (Native CAD Modal) -->
-<div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
-  <div class="cad-modal-window" style="width: 85vw; height: 85vh;">
-    <div class="cad-modal-header">
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span>SVG Stencil Editor</span>
-        <div class="cad-nested-input" style="width: 40px;">
-          <select id="editorLayerSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
-            <option value="0" selected>1</option>
-            <option value="1">2</option>
-            <option value="2">3</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <button id="editorClear" class="cad-btn cad-btn-secondary">Clear</button>
-        <button id="editorCancel" class="cad-btn cad-btn-secondary">Cancel</button>
-        <button id="editorApply" class="cad-btn cad-btn-primary">Apply Stencils</button>
-      </div>
-    </div>
-    <div class="cad-modal-body" style="display:flex;">
-      <aside class="cad-app-sidebar" style="width:40px; border-right:1px solid var(--cad-border-standard); align-items:center; padding: 4px 0;">
-        <button id="toolSelect" class="cad-icon-btn" style="margin-bottom:8px;" title="Select (V)">
-          <span class="material-symbols-outlined" style="font-size:20px;">near_me</span>
-        </button>
-        <button id="toolNode" class="cad-icon-btn" style="margin-bottom:8px;" title="Node Edit (A)">
-          <span class="material-symbols-outlined" style="font-size:20px;">gesture</span>
-        </button>
-        <button id="toolDraw" class="cad-icon-btn" style="margin-bottom:8px;" title="Draw (P)">
-          <span class="material-symbols-outlined" style="font-size:20px;">edit</span>
-        </button>
-        <button id="toolLine" class="cad-icon-btn" style="margin-bottom:8px;" title="Line (L)">
-          <span class="material-symbols-outlined" style="font-size:20px;">horizontal_rule</span>
-        </button>
-        <button id="toolRect" class="cad-icon-btn" style="margin-bottom:8px;" title="Rectangle (R)">
-          <span class="material-symbols-outlined" style="font-size:20px;">rectangle</span>
-        </button>
-        <button id="toolCircle" class="cad-icon-btn" style="margin-bottom:8px;" title="Circle (C)">
-          <span class="material-symbols-outlined" style="font-size:20px;">circle</span>
-        </button>
-        <div class="cad-status-divider" style="width:24px; margin: 4px 0;"></div>
-        <button id="editorUndo" class="cad-icon-btn" style="margin-bottom:8px;" title="Undo (Ctrl+Z)">
-          <span class="material-symbols-outlined" style="font-size:20px;">undo</span>
-        </button>
-        <button id="editorRedo" class="cad-icon-btn" style="margin-bottom:8px;" title="Redo (Ctrl+Y)">
-          <span class="material-symbols-outlined" style="font-size:20px;">redo</span>
-        </button>
-      </aside>
-      
-      <div style="flex:1; display:flex; flex-direction:column;">
-        <div style="height:32px; background:#f0f0f0; border-bottom:1px solid #ccc; display:flex; align-items:center; padding: 0 12px; gap:16px;">
-          <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
-            <span class="cad-status-text">Stroke:</span>
-            <div class="cad-nested-input" style="width:60px;">
-              <input type="number" id="editorStrokeWidth" value="0.5" step="0.1">
-            </div>
-          </div>
-          <div id="editorTextGroup" style="display:flex; align-items:center; gap:8px;">
-            <span class="cad-status-text">Font:</span>
-            <div class="cad-nested-input" style="width:100px;">
-              <select id="editorFontFamily" style="width:100%; border:none; background:transparent;">
-                <option value="Arial">Arial</option>
-                <option value="Courier New">Courier</option>
-              </select>
-            </div>
+  <!-- Modals -->
+  <!-- SVG Editor Modal (Native CAD Modal) -->
+  <div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
+    <div class="cad-modal-window" style="width: 85vw; height: 85vh;">
+      <div class="cad-modal-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span>SVG Stencil Editor</span>
+          <div class="cad-nested-input" style="width: 40px;">
+            <select id="editorLayerSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
+              <option value="0" selected>1</option>
+              <option value="1">2</option>
+              <option value="2">3</option>
+            </select>
           </div>
         </div>
-        <div style="flex:1; background:#efefef; position:relative;" id="editorCanvasContainer">
-          <div id="editorSVGContainer"></div>
-          <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
+        <div style="display:flex; gap:8px;">
+          <button id="editorClear" class="cad-btn cad-btn-secondary">Clear</button>
+          <button id="editorCancel" class="cad-btn cad-btn-secondary">Cancel</button>
+          <button id="editorApply" class="cad-btn cad-btn-primary">Apply Stencils</button>
+        </div>
+      </div>
+      <div class="cad-modal-body" style="display:flex;">
+        <aside class="cad-app-sidebar"
+          style="width:40px; border-right:1px solid var(--cad-border-standard); align-items:center; padding: 4px 0;">
+          <button id="toolSelect" class="cad-icon-btn" style="margin-bottom:8px;" title="Select (V)">
+            <span class="material-symbols-outlined" style="font-size:20px;">near_me</span>
+          </button>
+          <button id="toolNode" class="cad-icon-btn" style="margin-bottom:8px;" title="Node Edit (A)">
+            <span class="material-symbols-outlined" style="font-size:20px;">gesture</span>
+          </button>
+          <button id="toolDraw" class="cad-icon-btn" style="margin-bottom:8px;" title="Draw (P)">
+            <span class="material-symbols-outlined" style="font-size:20px;">edit</span>
+          </button>
+          <button id="toolLine" class="cad-icon-btn" style="margin-bottom:8px;" title="Line (L)">
+            <span class="material-symbols-outlined" style="font-size:20px;">horizontal_rule</span>
+          </button>
+          <button id="toolRect" class="cad-icon-btn" style="margin-bottom:8px;" title="Rectangle (R)">
+            <span class="material-symbols-outlined" style="font-size:20px;">rectangle</span>
+          </button>
+          <button id="toolCircle" class="cad-icon-btn" style="margin-bottom:8px;" title="Circle (C)">
+            <span class="material-symbols-outlined" style="font-size:20px;">circle</span>
+          </button>
+          <div class="cad-status-divider" style="width:24px; margin: 4px 0;"></div>
+          <button id="editorUndo" class="cad-icon-btn" style="margin-bottom:8px;" title="Undo (Ctrl+Z)">
+            <span class="material-symbols-outlined" style="font-size:20px;">undo</span>
+          </button>
+          <button id="editorRedo" class="cad-icon-btn" style="margin-bottom:8px;" title="Redo (Ctrl+Y)">
+            <span class="material-symbols-outlined" style="font-size:20px;">redo</span>
+          </button>
+        </aside>
+
+        <div style="flex:1; display:flex; flex-direction:column;">
+          <div
+            style="height:32px; background:#f0f0f0; border-bottom:1px solid #ccc; display:flex; align-items:center; padding: 0 12px; gap:16px;">
+            <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
+              <span class="cad-status-text">Stroke:</span>
+              <div class="cad-nested-input" style="width:60px;">
+                <input type="number" id="editorStrokeWidth" value="0.5" step="0.1">
+              </div>
+            </div>
+            <div id="editorTextGroup" style="display:flex; align-items:center; gap:8px;">
+              <span class="cad-status-text">Font:</span>
+              <div class="cad-nested-input" style="width:100px;">
+                <select id="editorFontFamily" style="width:100%; border:none; background:transparent;">
+                  <option value="Arial">Arial</option>
+                  <option value="Courier New">Courier</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1; background:#efefef; position:relative;" id="editorCanvasContainer">
+            <div id="editorSVGContainer"></div>
+            <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
+          </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Export Wizard Modal (Native CAD Modal) -->
-<div id="exportWizardModal" class="cad-modal-overlay" style="display: none;">
-  <div class="cad-modal-window" style="width: 400px;">
-    <div class="cad-modal-header">
-      <span>Export Terrain STEP</span>
-      <span id="btnWizardCancelX" class="material-symbols-outlined" style="cursor:pointer; font-size:16px;">close</span>
-    </div>
-    <div class="cad-modal-body" style="padding: 16px;">
-      <div style="display:flex; flex-direction:column; gap:12px;">
-        <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);" id="wizOptCleanSurface">
-          <input type="checkbox" id="wizCleanSurface" style="margin-right:12px;">
-          <div style="display:flex; flex-direction:column;">
-            <span style="font-weight:700; font-size:12px;">Clean Surface</span>
-            <span style="font-size:10px; opacity:0.7;">Basic noise surface (surface only)</span>
-          </div>
-        </label>
-        <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);" id="wizOptCleanSolid">
-          <input type="checkbox" id="wizCleanSolid" style="margin-right:12px;">
-          <div style="display:flex; flex-direction:column;">
-            <span style="font-weight:700; font-size:12px;">Clean Solid</span>
-            <span style="font-size:10px; opacity:0.7;">Thickened body representation</span>
-          </div>
-        </label>
-        <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);" id="wizOptStampedSurface">
-          <input type="checkbox" id="wizStampedSurface" style="margin-right:12px;">
-          <div style="display:flex; flex-direction:column;">
-            <span style="font-weight:700; font-size:12px;">Stamped Surface</span>
-            <span style="font-size:10px; opacity:0.7;">Single surface with projected stencils</span>
-          </div>
-        </label>
-        <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);" id="wizOptStampedSolid">
-          <input type="checkbox" id="wizStampedSolid" style="margin-right:12px;">
-          <div style="display:flex; flex-direction:column;">
-            <span style="font-weight:700; font-size:12px;">Stamped Solid</span>
-            <span style="font-size:10px; opacity:0.7;">Full thickened body with projected stencils</span>
-          </div>
-        </label>
+  <!-- Export Wizard Modal (Native CAD Modal) -->
+  <div id="exportWizardModal" class="cad-modal-overlay" style="display: none;">
+    <div class="cad-modal-window" style="width: 400px;">
+      <div class="cad-modal-header">
+        <span>Export Terrain STEP</span>
+        <span id="btnWizardCancelX" class="material-symbols-outlined"
+          style="cursor:pointer; font-size:16px;">close</span>
+      </div>
+      <div class="cad-modal-body" style="padding: 16px;">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);"
+            id="wizOptCleanSurface">
+            <input type="checkbox" id="wizCleanSurface" style="margin-right:12px;">
+            <div style="display:flex; flex-direction:column;">
+              <span style="font-weight:700; font-size:12px;">Clean Surface</span>
+              <span style="font-size:10px; opacity:0.7;">Basic noise surface (surface only)</span>
+            </div>
+          </label>
+          <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);"
+            id="wizOptCleanSolid">
+            <input type="checkbox" id="wizCleanSolid" style="margin-right:12px;">
+            <div style="display:flex; flex-direction:column;">
+              <span style="font-weight:700; font-size:12px;">Clean Solid</span>
+              <span style="font-size:10px; opacity:0.7;">Thickened body representation</span>
+            </div>
+          </label>
+          <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);"
+            id="wizOptStampedSurface">
+            <input type="checkbox" id="wizStampedSurface" style="margin-right:12px;">
+            <div style="display:flex; flex-direction:column;">
+              <span style="font-weight:700; font-size:12px;">Stamped Surface</span>
+              <span style="font-size:10px; opacity:0.7;">Single surface with projected stencils</span>
+            </div>
+          </label>
+          <label class="cad-select-button" style="height:auto; padding:12px; border-color:var(--cad-border-color);"
+            id="wizOptStampedSolid">
+            <input type="checkbox" id="wizStampedSolid" style="margin-right:12px;">
+            <div style="display:flex; flex-direction:column;">
+              <span style="font-weight:700; font-size:12px;">Stamped Solid</span>
+              <span style="font-size:10px; opacity:0.7;">Full thickened body with projected stencils</span>
+            </div>
+          </label>
+        </div>
+      </div>
+      <div class="cad-modal-footer">
+        <button id="btnWizardCancel" class="cad-btn cad-btn-secondary">Cancel</button>
+        <button id="btnWizardExport" class="cad-btn cad-btn-primary">Export STEP ✨</button>
       </div>
     </div>
-    <div class="cad-modal-footer">
-      <button id="btnWizardCancel" class="cad-btn cad-btn-secondary">Cancel</button>
-      <button id="btnWizardExport" class="cad-btn cad-btn-primary">Export STEP ✨</button>
-    </div>
   </div>
-</div>
 
-<script>
-  function togglePanel(h) { 
-    h.classList.toggle('collapsed'); 
-    h.nextElementSibling.classList.toggle('hidden'); 
-  }
-
-  /**
-   * Native CAD UI Integration Patch
-   * This bridges the new layout IDs and classes back to main.js logic 
-   * without requiring destructive modifications to the core engine.
-   */
-  document.addEventListener('DOMContentLoaded', () => {
-    // 1. Settings Panel Bridge
-    const settingsBtn = document.getElementById('settings-btn');
-    const settingsOverlay = document.getElementById('settings-panel-overlay');
-    const closeSettingsX = document.getElementById('close-settings-btn');
-    const closeSettingsFooter = document.getElementById('close-settings-footer-btn');
-
-    if (settingsBtn && settingsOverlay) {
-      settingsBtn.addEventListener('click', () => settingsOverlay.style.display = 'flex');
-      [closeSettingsX, closeSettingsFooter].forEach(btn => {
-        btn?.addEventListener('click', () => settingsOverlay.style.display = 'none');
-      });
-      // Legacy compatibility: ensure settings-panel hidden class doesn't conflict
-      document.getElementById('settings-panel')?.classList.remove('hidden');
+  <script>
+    function togglePanel(h) {
+      h.classList.toggle('collapsed');
+      h.nextElementSibling.classList.toggle('hidden');
     }
 
-    // 2. Export Wizard Bridge
-    const wizardModal = document.getElementById('exportWizardModal');
-    const closeWizX = document.getElementById('btnWizardCancelX');
-    if (wizardModal && closeWizX) {
-      closeWizX.addEventListener('click', () => wizardModal.style.display = 'none');
-    }
+    /**
+     * Native CAD UI Integration Patch
+     * This bridges the new layout IDs and classes back to main.js logic 
+     * without requiring destructive modifications to the core engine.
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Settings Panel Bridge
+      const settingsBtn = document.getElementById('settings-btn');
+      const settingsOverlay = document.getElementById('settings-panel-overlay');
+      const closeSettingsX = document.getElementById('close-settings-btn');
+      const closeSettingsFooter = document.getElementById('close-settings-footer-btn');
 
-    // 3. Resizer Compatibility logic
-    const resizer = document.getElementById('resizer');
-    if (resizer) {
-      let isResizing = false;
-      resizer.addEventListener('mousedown', (e) => {
-        isResizing = true;
-        resizer.classList.add('resizing');
-        document.body.style.cursor = 'col-resize';
-      });
-      window.addEventListener('mousemove', (e) => {
-        if (!isResizing) return;
-        const newWidth = Math.max(200, Math.min(e.clientX, window.innerWidth - 300));
-        document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
-        // Trigger Three.js resize if available
-        if (window.dispatchEvent) window.dispatchEvent(new Event('resize'));
-      });
-      window.addEventListener('mouseup', () => {
-        if (!isResizing) return;
-        isResizing = false;
-        resizer.classList.remove('resizing');
-        document.body.style.cursor = '';
-      });
-    }
-  });
-</script>
-<script>
-  /**
-   * GLOBAL HANDSHAKE BRIDGE
-   * Fusion 360's C++ bridge often expects onFusionNotify to be a truly global function.
-   * Defining it here (outside the ES module) ensures it is always visible.
-   */
-  window.onFusionNotify = function (action, data) {
-    const ev = new CustomEvent('fusionHandshake', { detail: { action, data } });
-    window.dispatchEvent(ev);
-  };
-  window.fusionNotify = window.onFusionNotify;
-  window.onNotify = window.onFusionNotify;
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-<!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
-<script type="module" src="./main/main.js?v=20260409_v21"></script>
+      if (settingsBtn && settingsOverlay) {
+        settingsBtn.addEventListener('click', () => settingsOverlay.style.display = 'flex');
+        [closeSettingsX, closeSettingsFooter].forEach(btn => {
+          btn?.addEventListener('click', () => settingsOverlay.style.display = 'none');
+        });
+        // Legacy compatibility: ensure settings-panel hidden class doesn't conflict
+        document.getElementById('settings-panel')?.classList.remove('hidden');
+      }
+
+      // 2. Export Wizard Bridge
+      const wizardModal = document.getElementById('exportWizardModal');
+      const closeWizX = document.getElementById('btnWizardCancelX');
+      if (wizardModal && closeWizX) {
+        closeWizX.addEventListener('click', () => wizardModal.style.display = 'none');
+      }
+
+      // 3. Resizer Compatibility logic
+      const resizer = document.getElementById('resizer');
+      if (resizer) {
+        let isResizing = false;
+        resizer.addEventListener('mousedown', (e) => {
+          isResizing = true;
+          resizer.classList.add('resizing');
+          document.body.style.cursor = 'col-resize';
+        });
+        window.addEventListener('mousemove', (e) => {
+          if (!isResizing) return;
+          const newWidth = Math.max(200, Math.min(e.clientX, window.innerWidth - 300));
+          document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
+          // Trigger Three.js resize if available
+          if (window.dispatchEvent) window.dispatchEvent(new Event('resize'));
+        });
+        window.addEventListener('mouseup', () => {
+          if (!isResizing) return;
+          isResizing = false;
+          resizer.classList.remove('resizing');
+          document.body.style.cursor = '';
+        });
+      }
+    });
+  </script>
+  <script>
+    /**
+     * GLOBAL HANDSHAKE BRIDGE
+     * Fusion 360's C++ bridge often expects onFusionNotify to be a truly global function.
+     * Defining it here (outside the ES module) ensures it is always visible.
+     */
+    window.onFusionNotify = function (action, data) {
+      const ev = new CustomEvent('fusionHandshake', { detail: { action, data } });
+      window.dispatchEvent(ev);
+    };
+    window.fusionNotify = window.onFusionNotify;
+    window.onNotify = window.onFusionNotify;
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
+  <script type="module" src="./main/main.js?v=20260409_v21"></script>
 
 </body>
 
