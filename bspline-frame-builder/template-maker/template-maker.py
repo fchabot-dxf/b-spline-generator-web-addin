@@ -69,11 +69,14 @@ deferred_rebuild   = None
 detect_projections = None
 
 _current_dir = os.path.dirname(os.path.realpath(__file__))
+_core_dir = os.path.join(_current_dir, 'core')
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
+if _core_dir not in sys.path:
+    sys.path.insert(0, _core_dir)
 
-PALETTE_URL    = os.path.join(_current_dir, 'template_maker_palette.html').replace('\\', '/')
-RESOURCES_PATH = os.path.join(_current_dir, 'ressources')
+PALETTE_URL    = os.path.join(_current_dir, 'ui', 'template_maker_palette.html').replace('\\', '/')
+RESOURCES_PATH = os.path.join(_current_dir, 'ui', 'ressources')
 
 # All project-local modules that should be force-reloaded on run().
 # Order irrelevant — we wipe then re-import the top-level ones we use directly.
@@ -201,6 +204,7 @@ def _reload_all_project_modules():
     global template_generator, template_payload, template_code, expression_coords, rename_selection, deferred_rebuild, detect_projections
 
     _cleanup_cache_files(_current_dir)
+    _cleanup_cache_files(_core_dir)
 
     # Wipe
     for name in _PROJECT_MODULES:
@@ -680,14 +684,7 @@ def run(context):
                     ctrl.isPromoted = True
                     ctrl.isPromotedByDefault = True
                     _log(f'[Template Maker] added {CMD_ID} to {unique_panel_id} on {tab.id!r} as promoted')
-                if reload_def and not panel.controls.itemById(RELOAD_CMD_ID):
-                    try:
-                        rctrl = panel.controls.addCommand(reload_def)
-                        rctrl.isPromoted          = False
-                        rctrl.isPromotedByDefault = False
-                        _log(f'[Template Maker] added reload button to {unique_panel_id} on {tab.id!r}')
-                    except Exception:
-                        _log('[Template Maker reload button] ' + traceback.format_exc())
+                # The reload button is completely removed from the UI panels.
             except Exception:
                 _log('[Template Maker] toolbar registration failed\n' + traceback.format_exc())
 

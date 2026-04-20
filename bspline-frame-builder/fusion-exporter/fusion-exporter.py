@@ -97,8 +97,8 @@ def run(context):
                     if cmd_def:
                         new_cntrl = panel.controls.addCommand(cmd_def)
                         try:
-                            new_cntrl.isPromoted = True
-                            new_cntrl.isPromotedByDefault = True
+                            new_cntrl.isPromoted = False
+                            new_cntrl.isPromotedByDefault = False
                         except:
                             pass
 

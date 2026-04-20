@@ -3,82 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <title>Frame Inspector</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frame Inspector · Native CAD</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../native-cad-style.css">
     <style>
-        body {
-            font-family: "Segoe UI", Arial, sans-serif;
-            background: #f4f4f4;
-            color: #222;
-            margin: 0;
-            padding: 10px;
-            min-width: 300px;
+        body { background: #f5f5f5; padding: 0; }
+        .inspector-container { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+        .meta-container { 
+            font-family: 'Consolas', 'Courier New', monospace; 
+            font-size: 10px; 
+            background: #eee; 
+            padding: 8px; 
+            border: 1px solid #ddd;
+            color: #666;
+            white-space: pre-wrap;
+            margin-top: 8px;
         }
-        #pulse-box {
-            background: #eee;
-            border: 1px solid #ccc;
-            padding: 4px 8px;
-            font-size: 0.8em;
-            color: #0077c8;
-            font-weight: bold;
-            margin-bottom: 10px;
-            border-radius: 4px;
-            text-align: center;
+        .linked-list { 
+            margin: 0; 
+            padding: 4px 8px 8px 24px; 
+            font-size: 11px; 
+            color: #444;
         }
-        #debug {
-            display: none;
-        }
-        h2 {
-            font-size: 1.1em;
-            color: #0077c8;
-            margin: 12px 0 6px 0;
-            border-bottom: 2px solid #0077c8;
-            padding-bottom: 2px;
-        }
-        .main-feature { font-weight: bold; font-size: 1.1em; margin: 15px 0 2px 0; color: #222; }
-        .coord { color: #666; font-size: 0.95em; margin-bottom: 8px; }
-        .linked-label { margin: 12px 0 4px 0; font-weight: 600; color: #0077c8; font-size: 0.9em; text-transform: uppercase; }
-        .linked-list { margin: 0 0 10px 10px; padding: 0; font-size: 0.95em; }
-        .linked-list li { margin-bottom: 2px; list-style: decimal inside; }
-        .meta { color: #888; font-size: 0.85em; margin-top: 15px; font-family: 'Consolas', monospace; border-top: 1px solid #ddd; padding-top: 8px; }
-        #copy-btn, #copy-short-btn {
-            display: inline-block;
-            width: 48%;
-            margin-top: 12px;
-            padding: 8px 0;
-            background: #0077c8;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 0.9em;
-            font-family: "Segoe UI", Arial, sans-serif;
-            font-weight: 600;
-            cursor: pointer;
-            letter-spacing: 0.02em;
-        }
-        #copy-btn:hover, #copy-short-btn:hover { background: #005fa3; }
-        #copy-btn.ok, #copy-short-btn.ok { background: #388E3C; }
-        #copy-btn.err, #copy-short-btn.err { background: #c0392b; }
+        .linked-list li { margin-bottom: 2px; }
         
-        .btn-container { display: flex; justify-content: space-between; gap: 4%; }
+        /* Specific status override */
+        #pulse-box {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #eee;
+            color: #888;
+            border: 1px solid #ddd;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
-    <div id="pulse-box">Bridge: WAITING...</div>
-    <div id="debug">JS init...</div>
-    <div id="main-feature" class="main-feature">Select geometry...</div>
-    <div id="coord" class="coord"></div>
-    <div id="meta-text" class="meta"></div>
-    <div id="linked-root" style="display:none;">
-        <div class="linked-label" id="list-label">Connections</div>
-        <ul id="linked-list" class="linked-list"></ul>
-    </div>
-    
-    <div style="margin-top: 12px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
-        <label style="font-size:0.9em; color:#444; display:flex; align-items:center; gap:6px;">
-            <input id="expr-toggle" type="checkbox"> Expression coords
-        </label>
-        <div class="btn-container" style="flex:1; justify-content:flex-end; gap:4px;">
-            <button type="button" id="copy-btn" title="Copy everything">Full Copy</button>
-            <button type="button" id="copy-short-btn" title="Copy name only">Copy Name</button>
+    <div class="cad-app-shell">
+        <header class="cad-navbar" style="padding: 0 12px;">
+            <div class="cad-nav-group">
+                <span class="cad-nav-title">FRAME INSPECTOR</span>
+            </div>
+            <div style="flex:1;"></div>
+            <div id="pulse-box">Bridge: WAITING...</div>
+        </header>
+
+        <div class="inspector-container">
+            <!-- 1. Selection Overview -->
+            <section class="cad-sidebar-panel">
+                <div class="cad-accordion-header">
+                    <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+                    ENTITY DATA
+                </div>
+                <div class="cad-dialog-content">
+                    <div id="main-feature" style="padding: 4px 12px; font-weight: 700; font-size: 12px; color: var(--cad-accent-blue);">Select geometry...</div>
+                    <div id="coord" style="padding: 0 12px 8px 12px; font-size: 11px; color: #666; border-bottom: 1px solid #eee;"></div>
+                    
+                    <div id="linked-root" style="display:none; margin-top: 8px;">
+                        <div class="cad-accordion-header dark" id="list-label" style="font-size: 10px;">Connections</div>
+                        <ul id="linked-list" class="linked-list"></ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Metadata / Raw -->
+            <section class="cad-sidebar-panel">
+                <div class="cad-accordion-header">
+                    <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+                    TECHNICAL META
+                </div>
+                <div class="cad-dialog-content">
+                    <div id="meta-text" class="meta-container"></div>
+                </div>
+            </section>
+
+            <!-- 3. Actions -->
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+                <label class="cad-label" style="display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding-right: 4px;">
+                    <input id="expr-toggle" type="checkbox"> Use Expression Coords
+                </label>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" id="copy-btn" class="cad-btn cad-btn-primary" style="flex: 1;">Full Copy</button>
+                    <button type="button" id="copy-short-btn" class="cad-btn" style="flex: 1;">Copy Name</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -154,9 +166,13 @@
 
         function applyData(dataStr, source) {
             updateCount++;
-            document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + updateCount + ') [' + source + ']';
-            document.getElementById('pulse-box').style.color = '#388E3C';
-            document.getElementById('pulse-box').style.background = '#E8F5E9';
+            var pulse = document.getElementById('pulse-box');
+            if (pulse) {
+                pulse.textContent = 'BRIDGE: LIVE (' + updateCount + ')';
+                pulse.style.color = '#059669';
+                pulse.style.background = '#ecfdf5';
+                pulse.style.borderColor = '#10b981';
+            }
             try {
                 dlog('APPLY start source=' + source + ' len=' + (dataStr ? dataStr.length : 0));
                 var d = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
@@ -363,8 +379,13 @@
         function flashBtn(btn, msg, success, originalText) {
             var old = originalText || btn.textContent;
             btn.textContent = msg;
-            btn.className = success ? 'ok' : 'err';
-            setTimeout(function(){ btn.textContent = old; btn.className = ''; }, 1500);
+            btn.style.background = success ? 'var(--cad-accent-green)' : 'var(--cad-accent-red)';
+            btn.style.color = '#fff';
+            setTimeout(function(){ 
+                btn.textContent = old; 
+                btn.style.background = ''; 
+                btn.style.color = '';
+            }, 1500);
         }
 
         function attachUIEvents() {

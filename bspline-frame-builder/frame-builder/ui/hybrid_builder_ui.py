@@ -22,7 +22,7 @@ except:
 
 PALETTE_ID = 'hybridFrameBuilderPalette'
 PALETTE_NAME = 'Hybrid Frame Builder'
-PALETTE_HTML = 'html/index.html'
+PALETTE_HTML = 'html/frame_builder_palette.html'
 
 BUILD_SKETCH_CMD_ID  = 'hybridBuildSketchCommand'
 BUILD_SOLID_CMD_ID   = 'hybridBuildSolidCommand'

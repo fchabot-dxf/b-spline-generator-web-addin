@@ -3,601 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <title>Template Maker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <link href="../../native-cad-style.css" rel="stylesheet" />
     <style>
+        /* Project-specific overrides/adjustments */
         body {
-            font-family: "Segoe UI", Arial, sans-serif;
-            margin: 0;
-            padding: 10px 12px 72px 12px;
-            background: #f3f6fb;
-            color: #1c242f;
-        }
-        /* Compact status header: status dot + count + short description on one line. */
-        .status-bar {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            border-radius: 6px;
-            background: #eef7ff;
-            border: 1px solid #c7ddf7;
-            color: #175a99;
-            font-size: 0.9em;
-            margin-bottom: 8px;
-            line-height: 1.3;
-        }
-        .status-bar .status-dot {
-            flex: 0 0 auto;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #94a3b8;
-            box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
-            transition: background 0.2s ease, box-shadow 0.2s ease;
-        }
-        .status-bar.status-live .status-dot {
-            background: #2f7d3f;
-            box-shadow: 0 0 0 2px rgba(47, 125, 63, 0.2);
-        }
-        .status-bar.status-waiting .status-dot {
-            background: #c98b1a;
-            box-shadow: 0 0 0 2px rgba(201, 139, 26, 0.2);
-        }
-        /* Amber: actionable warnings (mixed pick, multi-source note, etc.) */
-        .status-bar.status-warn {
-            background: #fff5e1;
-            border-color: #f0c779;
-            color: #7a4a00;
-        }
-        .status-bar.status-warn .status-dot {
-            background: #d97706;
-            box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
-        }
-        /* Red: hard refusals (untagged source, body-projected source, etc.) */
-        .status-bar.status-err {
-            background: #fde8e8;
-            border-color: #f4b4b4;
-            color: #8a1f1f;
-        }
-        .status-bar.status-err .status-dot {
-            background: #c0392b;
-            box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2);
-        }
-        .status-bar .status-count {
-            font-weight: 700;
-            flex: 0 0 auto;
-        }
-        .status-bar .status-desc {
-            color: #32435b;
-            font-weight: 400;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        /* Settings strip — single-line summary of current config. */
-        .settings-wrap {
-            margin-bottom: 10px;
-            border: 1px solid #d1dce8;
-            border-radius: 8px;
-            background: #fff;
-            overflow: hidden;
-        }
-        .settings-wrap summary {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 12px;
-            font-size: 0.88em;
-            color: #0f4d82;
-            cursor: pointer;
-            background: #f7faff;
-            list-style: none;
-        }
-        .settings-wrap summary::-webkit-details-marker { display: none; }
-        .settings-wrap summary::after {
-            content: '';
-            display: inline-block;
-            width: 0.45rem;
-            height: 0.45rem;
-            border-right: 2px solid currentColor;
-            border-bottom: 2px solid currentColor;
-            transform: rotate(45deg);
-            margin-left: auto;
-            transition: transform 0.2s ease;
-        }
-        .settings-wrap[open] summary::after {
-            transform: rotate(-135deg);
-        }
-        .settings-wrap .settings-gear {
-            font-size: 0.95em;
-            opacity: 0.75;
-        }
-        .settings-wrap .settings-pill {
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.88em;
-            color: #1c242f;
-            font-weight: 600;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .settings-wrap .settings-auto {
-            color: #2f7d3f;
-            font-style: italic;
-            font-weight: 500;
-            margin-left: 4px;
-            font-size: 0.82em;
-        }
-        .settings-wrap .settings-body {
-            padding: 10px 12px 12px 12px;
-            border-top: 1px solid #d1dce8;
-            background: #fff;
-        }
-        .settings-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .settings-row:last-child {
-            margin-bottom: 0;
-        }
-        .settings-row label {
-            display: flex;
-            flex-direction: column;
-            font-size: 0.9em;
-            color: #34495e;
-            gap: 6px;
-        }
-        .settings-row input {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ccd7e4;
-            border-radius: 6px;
-            font-size: 0.95em;
-            background: #fff;
-            color: #1c242f;
-        }
-        /* Stepper composite — text input flanked by − / + buttons that bump
-         * the numeric portion of the value (e.g. T2 → T3, p06 → p07). The
-         * input itself stays fully editable so the user can still type, and
-         * the buttons / ArrowUp / ArrowDown just re-parse and rewrite the
-         * numeric chunk. Width preservation (e.g. padded "06") is kept by
-         * ``stepNumericField`` so the canonical two-digit phase number
-         * convention survives a click. */
-        .settings-row .stepper {
-            display: flex;
-            align-items: stretch;
-            border: 1px solid #ccd7e4;
-            border-radius: 6px;
-            overflow: hidden;
-            background: #fff;
-        }
-        .settings-row .stepper input {
-            border: none;
-            border-radius: 0;
-            flex: 1 1 auto;
-            min-width: 0;
-        }
-        .settings-row .stepper input:focus {
-            outline: none;
-            background: #f3f7fc;
-        }
-        .settings-row .stepper-btn {
-            width: 26px;
-            border: none;
-            border-left: 1px solid #d7e0ec;
-            background: #eef3f9;
-            color: #1c242f;
-            font-size: 0.95em;
-            font-weight: 600;
-            cursor: pointer;
-            padding: 0;
-            line-height: 1;
-            user-select: none;
-        }
-        .settings-row .stepper-btn:hover {
-            background: #dce6f2;
-        }
-        .settings-row .stepper-btn:active {
-            background: #c3d1e0;
-        }
-        textarea.file-text {
-            min-height: 120px;
-        }
-        .panel {
-            margin-bottom: 10px;
-            border: 1px solid #d1dce8;
-            border-radius: 8px;
-            background: #fff;
-            overflow: hidden;
-        }
-        .panel summary {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 12px;
-            font-weight: 700;
-            cursor: pointer;
-            background: #eff7ff;
-            border-bottom: 1px solid #d1dce8;
-            color: #0f4d82;
-            list-style: none;
-        }
-        /* Count badge shown next to panel title — "Sequence · 5 items" */
-        .panel summary .section-count {
-            font-weight: 500;
-            font-size: 0.85em;
-            color: #5f7a9c;
-            margin-left: 8px;
-        }
-
-        .panel summary .section-title {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-        }
-
-        .panel summary .section-tooltip {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 1rem;
-            height: 1rem;
-            border-radius: 50%;
-            background: #0077c8;
-            color: #fff;
-            font-size: 0.75em;
-            font-weight: 700;
-            cursor: help;
-        }
-
-        .panel summary .summary-action {
-            margin-left: 10px;
-            padding: 6px 10px;
-            font-size: 0.8em;
-            border-radius: 5px;
-            white-space: nowrap;
-        }
-
-        .panel summary::after {
-            content: '';
-            display: inline-block;
-            width: 0.55rem;
-            height: 0.55rem;
-            border-right: 2px solid currentColor;
-            border-bottom: 2px solid currentColor;
-            transform: rotate(45deg);
-            margin-left: 10px;
-            transition: transform 0.2s ease;
-        }
-
-        .panel[open] summary::after {
-            transform: rotate(135deg);
-        }
-
-        .panel summary::-webkit-details-marker {
-            display: none;
-        }
-        .panel textarea {
-            width: 100%;
-            min-height: 140px;
-            border: none;
-            border-top: 1px solid #d1dce8;
-            padding: 12px 14px;
-            box-sizing: border-box;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.92em;
-            line-height: 1.4;
-            resize: vertical;
-            background: #fbfcff;
-            color: #101a24;
-            tab-size: 4;
-            -moz-tab-size: 4;
-            white-space: pre;
-            overflow-x: auto;
-            word-wrap: normal;
-            word-break: normal;
-        }
-        .panel-body {
-            padding: 10px 14px 14px 14px;
-            display: grid;
-            gap: 10px;
-        }
-        /* Ambiguous-coincidence checkbox UI (Track B3). One ``.cluster-group``
-           per size-3+ cluster; the palette shows a header with the world
-           coord and a status pill ("1/2", "2/2"), and a list of one
-           ``.cluster-point`` row per candidate ID. Max two checkboxes may be
-           active at once — the third check bumps the oldest (FIFO). */
-        .cluster-body {
-            padding: 10px 14px 14px 14px;
-            display: grid;
-            gap: 10px;
-            border-top: 1px solid #d1dce8;
-            background: #fbfcff;
-        }
-        .cluster-intro {
-            font-size: 0.88em;
-            color: #5f7a9c;
-            line-height: 1.4;
-        }
-        .cluster-group {
-            border: 1px solid #e0e7ef;
-            border-radius: 6px;
-            background: #fff;
-            padding: 8px 10px;
-        }
-        .cluster-group-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 6px;
-        }
-        .cluster-coord {
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.85em;
-            color: #0f4d82;
-            font-weight: 600;
-        }
-        .cluster-pill {
-            font-size: 0.75em;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 10px;
-            background: #eef2f7;
-            color: #5f7a9c;
-        }
-        .cluster-pill.ready {
-            background: #d7f3e1;
-            color: #1b6e3b;
-        }
-        .cluster-points {
-            display: grid;
-            gap: 4px;
-        }
-        .cluster-point {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.85em;
-            color: #101a24;
-        }
-        .cluster-point input[type="checkbox"] {
-            margin: 0;
-        }
-        .variable-row {
-            display: grid;
-            grid-template-columns: auto 1fr 1fr;
-            gap: 8px;
-            align-items: center;
-        }
-        .variable-row label {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-weight: 600;
-            color: #34495e;
-        }
-        .variable-row input[type="text"] {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ccd7e4;
-            border-radius: 6px;
-            font-size: 0.9em;
-            background: #fff;
-            color: #101a24;
-        }
-        .variable-row input.variable-name {
-            min-width: 100px;
-        }
-        .tab-bar {
-            display: flex;
-            gap: 8px;
-            margin: 8px 0 10px 0;
-        }
-        .tab-button {
-            border: 1px solid #ccd7e4;
-            background: #ffffff;
-            color: #0f4d82;
-            padding: 10px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.95em;
-            font-weight: 700;
-        }
-        .tab-button.active {
-            background: #0077c8;
-            color: #ffffff;
-            border-color: #0077c8;
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        .tab-section-title {
-            margin: 0 0 10px 0;
-            font-size: 1.0em;
-            color: #0f4d82;
-            font-weight: 700;
-        }
-        .log-area {
-            width: 100%;
-            min-height: 100px;
-            background: #f7fbff;
-            border: 1px solid #d1dce8;
-            border-radius: 6px;
-            padding: 10px;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.82em;
-            color: #172d46;
-            white-space: pre-wrap;
-            overflow: auto;
-        }
-        .variable-note {
-            color: #5f6f84;
-            font-size: 0.85em;
-            margin-top: -4px;
-        }
-        textarea.code-output {
-            width: 100%;
-            min-height: 200px;
-            border: 1px solid #ccd7e4;
-            border-radius: 8px;
-            padding: 10px;
-            font-family: Consolas, "Courier New", monospace;
-            font-size: 0.92em;
-            line-height: 1.4;
-            resize: vertical;
-            background: #ffffff;
-            color: #101a24;
-        }
-        /* Section textareas are read-only inspection panes — the tinted
-           background distinguishes them from editable inputs and from the
-           final code-output box so users can tell at a glance that they
-           can copy but not edit. */
-        textarea.section-text {
-            background: #eef3f9;
-            color: #1a2634;
-            cursor: default;
-        }
-        textarea.section-text:focus {
-            /* Muted focus — keeps the non-editable affordance. */
-            outline: 1px solid #c3d1e0;
-            outline-offset: -1px;
-        }
-        .button-row {
-            margin-top: 10px;
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
-        }
-        /* Sticky action bar — always reachable even if the sequence scrolls. */
-        .sticky-actions {
-            position: sticky;
-            bottom: 0;
-            z-index: 5;
-            margin: 12px -12px -10px -12px;
-            padding: 10px 12px;
-            background: rgba(243, 246, 251, 0.95);
-            backdrop-filter: blur(4px);
-            border-top: 1px solid #d1dce8;
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 8px;
-        }
-        .sticky-actions.single {
-            grid-template-columns: 1fr;
-        }
-        .sticky-actions button.primary-copy {
-            font-size: 0.98em;
-            font-weight: 700;
-        }
-        .sticky-actions button.secondary {
-            background: #7587a0;
-            font-size: 0.88em;
-            font-weight: 500;
-        }
-        .sticky-actions button.secondary:hover {
-            background: #5f6f84;
-        }
-        button {
-            border: none;
-            border-radius: 6px;
-            padding: 10px 12px;
-            background: #0077c8;
-            color: #fff;
-            cursor: pointer;
-            font-size: 0.92em;
-            font-weight: 600;
-        }
-        button:hover { background: #005a9c; }
-        button:active { transform: translateY(1px); }
-        .secondary {
-            background: #5f6f84;
-        }
-        .secondary:hover {
-            background: #4d5d73;
-        }
-        .flash-ok {
-            background: #2f7d3f !important;
-            color: #fff !important;
-        }
-        .flash-err {
-            background: #a33a3a !important;
-            color: #fff !important;
+            padding: 0 0 72px 0; /* Space for sticky bar */
+            background: #fcfcfc;
+        }
+        .status-dot-info {
+            background-color: #2f7d3f; /* standard green for live */
         }
     </style>
 </head>
 <body>
-    <div id="status-bar" class="status-bar status-waiting" title="Bridge status">
-        <span class="status-dot"></span>
-        <span class="status-count" id="status-count">—</span>
-        <span class="status-desc" id="status-desc">Waiting for Fusion bridge…</span>
+    <div id="status-bar" class="cad-status-header status-waiting">
+        <span class="cad-status-dot"></span>
+        <span class="cad-status-label" id="status-count">—</span>
+        <span id="status-desc">Waiting for Fusion bridge…</span>
     </div>
-    <details id="settings-wrap" class="settings-wrap">
-        <summary>
-            <span class="settings-gear">⚙</span>
-            <span class="settings-pill" id="settings-pill">p02_05 · chain</span>
-            <span class="settings-auto" id="settings-auto-indicator" style="display:none;">auto</span>
-        </summary>
-        <div class="settings-body">
-            <div class="settings-row">
-                <label>File Name
-                    <input id="file-name-input" type="text" placeholder="p02_05_chain.py" value="p02_05_chain.py">
-                </label>
-                <label>Template Number
-                    <div class="stepper">
-                        <input id="template-number-input" type="text" placeholder="T2" value="T2">
-                        <button type="button" class="stepper-btn" data-stepper-target="template-number-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement template number">−</button>
-                        <button type="button" class="stepper-btn" data-stepper-target="template-number-input" data-stepper-step="1" tabindex="-1" aria-label="Increment template number">+</button>
-                    </div>
-                </label>
+
+    <!-- SETTINGS ROLLOUT -->
+    <div class="cad-accordion-header dark" onclick="toggleSettings();">
+        <span class="material-symbols-outlined cad-accordion-icon" id="settings-toggle-icon">expand_more</span>
+        <span class="cad-status-label" id="settings-pill">p02_05 · chain</span>
+        <span id="settings-auto-indicator" style="display:none; color: #2f7d3f; font-style: italic; margin-left: 8px; font-size: 11px;">auto</span>
+    </div>
+    <div class="cad-accordion-body" id="settings-body">
+        <div style="padding: 8px;">
+            <div class="cad-field-row">
+                <label class="cad-label">File Name</label>
+                <input id="file-name-input" class="cad-input" type="text" placeholder="p02_05_chain.py" value="p02_05_chain.py">
             </div>
-            <div class="settings-row">
-                <label>Sketch Slot
-                    <div class="stepper">
-                        <input id="phase-id-input" type="text" placeholder="p02" value="p02">
-                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement sketch slot">−</button>
-                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="1" tabindex="-1" aria-label="Increment sketch slot">+</button>
-                    </div>
-                </label>
-                <label>Phase Number
-                    <div class="stepper">
-                        <input id="phase-number-input" type="text" placeholder="05" value="05">
-                        <button type="button" class="stepper-btn" data-stepper-target="phase-number-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement phase number">−</button>
-                        <button type="button" class="stepper-btn" data-stepper-target="phase-number-input" data-stepper-step="1" tabindex="-1" aria-label="Increment phase number">+</button>
-                    </div>
-                </label>
+            <div class="cad-field-row">
+                <label class="cad-label">Template</label>
+                <div class="cad-input-group">
+                    <input id="template-number-input" class="cad-input" type="text" value="T2">
+                    <span class="cad-icon-btn small" onclick="stepNumericField('template-number-input', -1)">−</span>
+                    <span class="cad-icon-btn small" onclick="stepNumericField('template-number-input', 1)">+</span>
+                </div>
             </div>
-            <div class="settings-row">
-                <label>Sketch Name
-                    <input id="sketch-name-input" type="text" placeholder="auto (from active sketch)">
-                </label>
+            <div class="cad-field-row">
+                <label class="cad-label">Sketch Slot</label>
+                <div class="cad-input-group">
+                    <input id="phase-id-input" class="cad-input" type="text" value="p02">
+                    <span class="cad-icon-btn small" onclick="stepNumericField('phase-id-input', -1)">−</span>
+                    <span class="cad-icon-btn small" onclick="stepNumericField('phase-id-input', 1)">+</span>
+                </div>
+            </div>
+            <div class="cad-field-row">
+                <label class="cad-label">Phase #</label>
+                <div class="cad-input-group">
+                    <input id="phase-number-input" class="cad-input" type="text" value="05">
+                    <span class="cad-icon-btn small" onclick="stepNumericField('phase-number-input', -1)">−</span>
+                    <span class="cad-icon-btn small" onclick="stepNumericField('phase-number-input', 1)">+</span>
+                </div>
+            </div>
+            <div class="cad-field-row">
+                <label class="cad-label">Sketch Name</label>
+                <input id="sketch-name-input" class="cad-input" type="text" placeholder="auto (from active)">
             </div>
         </div>
-    </details>
-    <div class="tab-bar">
-        <button id="phase-tab-btn" class="tab-button active">Phase Generator</button>
-        <button id="variable-tab-btn" class="tab-button">Variable Generator</button>
+    </div>
+
+    <!-- MODE SWITCHER -->
+    <div class="cad-text-tabs-bar">
+        <div id="phase-tab-btn" class="cad-text-tab-item active" onclick="switchTab('phase')">Phase Generator</div>
+        <div id="variable-tab-btn" class="cad-text-tab-item" onclick="switchTab('variable')">Variable Generator</div>
     </div>
     <div id="phase-section" class="tab-content active">
         <div id="panels"></div>
-        <textarea id="code-box" class="code-output" readonly placeholder="Combined code preview will appear here..."></textarea>
-        <div class="sticky-actions">
-            <button id="copy-btn" class="primary-copy">Copy Code</button>
-            <button id="rename-btn" class="secondary" title="Auto-assign IDs to the current Fusion selection based on Phase · Sketch prefix.">🏷 Rename selection</button>
+        <div style="padding: 0 8px;">
+            <textarea id="code-box" class="cad-textarea" readonly placeholder="Combined code preview will appear here..."></textarea>
+        </div>
+        <div class="sticky-actions cad-footer">
+            <button id="copy-btn" class="cad-btn cad-btn-primary" style="flex: 1;">Copy Code</button>
+            <button id="rename-btn" class="cad-btn" style="flex: 1;" title="Auto-assign IDs to the selection.">🏷 Rename selection</button>
         </div>
     </div>
     <div id="variable-section" class="tab-content">
-        <h2 class="tab-section-title">Variable Insertion Generator</h2>
-        <div id="variable-panel-container"></div>
-        <textarea id="variable-code-box" class="code-output" readonly placeholder="Generated variable block will appear here..."></textarea>
-        <div class="sticky-actions">
-            <button id="copy-variable-btn" class="primary-copy">Copy Variable Block</button>
-            <button id="toggle-all-variables-btn" class="secondary">Select All</button>
+        <div style="padding: 8px;">
+            <div id="variable-panel-container"></div>
+            <textarea id="variable-code-box" class="cad-textarea" readonly placeholder="Generated variable block..."></textarea>
+        </div>
+        <div class="sticky-actions cad-footer">
+            <button id="copy-variable-btn" class="cad-btn cad-btn-primary" style="flex: 1;">Copy Variable Block</button>
+            <button id="toggle-all-variables-btn" class="cad-btn" style="flex: 1;">Select All</button>
         </div>
     </div>
 
@@ -1050,12 +542,26 @@
         }
 
         function makeSection(title, content, index, countLabel) {
-            var detail = document.createElement('details');
-            detail.className = 'panel';
+            var detail = document.createElement('div');
+            detail.className = 'cad-accordion-wrap';
             var stateKey = getPanelStateKey(title, index);
-            detail.open = loadPanelState(stateKey);
+            var isOpen = loadPanelState(stateKey, true);
 
-            var summary = document.createElement('summary');
+            var header = document.createElement('div');
+            header.className = 'cad-accordion-header';
+            if (!isOpen) header.classList.add('collapsed');
+            
+            header.onclick = function() {
+                var isCollapsed = header.classList.toggle('collapsed');
+                textarea.style.display = isCollapsed ? 'none' : 'block';
+                savePanelState(stateKey, !isCollapsed);
+            };
+
+            var icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined cad-accordion-icon';
+            icon.textContent = 'expand_more';
+            header.appendChild(icon);
+
             var titleSpan = document.createElement('span');
             titleSpan.className = 'section-title';
             var textSpan = document.createElement('span');
@@ -1069,63 +575,48 @@
                 help.textContent = '?';
                 help.title = tooltipText;
                 titleSpan.appendChild(help);
-                summary.title = tooltipText;
+                header.title = tooltipText;
             }
+            header.appendChild(titleSpan);
 
-            summary.appendChild(titleSpan);
-
-            // Count badge — e.g. "Sequence · 7 items" — lets you glance at
-            // the header while collapsed and know whether there's content.
             if (countLabel) {
                 var badge = document.createElement('span');
                 badge.className = 'section-count';
                 badge.textContent = '· ' + countLabel;
-                summary.appendChild(badge);
+                header.appendChild(badge);
             }
 
             if (index === 'sequence') {
-                var seqBtn = document.createElement('button');
-                seqBtn.type = 'button';
-                seqBtn.className = 'secondary summary-action';
-                seqBtn.textContent = 'Copy Sequence';
-                seqBtn.addEventListener('click', function(event) {
-                    event.stopPropagation();
-                    event.preventDefault();
+                var seqBtn = document.createElement('span');
+                seqBtn.className = 'cad-btn';
+                seqBtn.style.marginLeft = 'auto';
+                seqBtn.style.height = '18px';
+                seqBtn.style.fontSize = '10px';
+                seqBtn.textContent = 'Copy Seq';
+                seqBtn.onclick = function(e) {
+                    e.stopPropagation();
                     copySequence();
-                });
-                summary.appendChild(seqBtn);
+                };
+                header.appendChild(seqBtn);
             }
 
-            detail.appendChild(summary);
-
-            detail.addEventListener('toggle', function() {
-                savePanelState(stateKey, detail.open);
-            });
+            detail.appendChild(header);
 
             var textarea = document.createElement('textarea');
-            textarea.className = 'section-text';
+            textarea.className = 'cad-textarea';
+            textarea.style.display = isOpen ? 'block' : 'none';
+            textarea.style.borderTop = 'none';
+            textarea.style.borderRadius = '0';
             textarea.dataset.index = index;
             textarea.value = content || '';
-            // Sections are read-only inspection views. The final code (bottom
-            // code-box) is what users copy; title / phase id are edited in
-            // the settings pill, not here. Making these read-only removes a
-            // class of bugs where a manual edit would desync from the payload
-            // and break the next regeneration.
             textarea.readOnly = true;
 
-            // Persist manual resizes so subsequent re-renders (from host
-            // pushes or selection changes) don't snap the textarea back
-            // to its default height.
             var heightKey = getTextareaHeightKey(title, index);
             var savedHeight = loadTextareaHeight(heightKey);
             if (savedHeight) {
                 textarea.style.height = savedHeight;
                 textarea.dataset.userResized = '1';
             }
-            // `resize: vertical` mutates style.height inline. Capture it
-            // on mouseup (end of drag gesture) so we stash the final
-            // value, not every intermediate pixel. Once the user has
-            // dragged, we stop auto-fitting — their explicit height wins.
             textarea.addEventListener('mouseup', function() {
                 if (textarea.style.height) {
                     saveTextareaHeight(heightKey, textarea.style.height);
@@ -1134,10 +625,6 @@
             });
 
             detail.appendChild(textarea);
-
-            // Apply initial auto-fit for the Sequence box (wrapper metadata
-            // stays at its natural CSS min-height — it's boilerplate that
-            // doesn't change length often).
             if (index === 'sequence') fitTextareaToContent(textarea, 5, 20);
 
             return detail;
@@ -1168,26 +655,26 @@
         }
 
         function makeClusterSection(clusters) {
-            // Build the <details> panel for size-3+ coincidence clusters.
-            // Each cluster gets a sub-card with a coord header, a status
-            // pill ("{n}/2"), and one checkbox per candidate point. Max
-            // two checks per cluster; the 3rd check bumps the oldest
-            // selection (FIFO). Reaching 2/2 auto-sends the full
-            // ``pendingClusterPicks`` to the host via ``clusterPicks``.
-            //
-            // State persists in the module-level ``pendingClusterPicks``
-            // dict — we read from it when re-rendering so the user's
-            // partial picks survive unrelated selection-change pushes.
-            var detail = document.createElement('details');
-            detail.className = 'panel';
+            var detail = document.createElement('div');
+            detail.className = 'cad-accordion-wrap';
             var stateKey = getPanelStateKey('Coincidence Clusters', 'clusters');
-            // Default OPEN — the user needs to see and act on
-            // unresolved clusters (and may want to revise resolved
-            // ones); collapsing them by default would hide missing
-            // CC steps from the emitted sequence.
-            detail.open = loadPanelState(stateKey, true);
+            var isOpen = loadPanelState(stateKey, true);
 
-            var summary = document.createElement('summary');
+            var header = document.createElement('div');
+            header.className = 'cad-accordion-header';
+            if (!isOpen) header.classList.add('collapsed');
+            
+            header.onclick = function() {
+                var isCollapsed = header.classList.toggle('collapsed');
+                body.style.display = isCollapsed ? 'none' : 'grid';
+                savePanelState(stateKey, !isCollapsed);
+            };
+
+            var icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined cad-accordion-icon';
+            icon.textContent = 'expand_more';
+            header.appendChild(icon);
+
             var titleSpan = document.createElement('span');
             titleSpan.className = 'section-title';
             var textSpan = document.createElement('span');
@@ -1200,31 +687,25 @@
                 help.textContent = '?';
                 help.title = tooltipText;
                 titleSpan.appendChild(help);
-                summary.title = tooltipText;
+                header.title = tooltipText;
             }
-            summary.appendChild(titleSpan);
+            header.appendChild(titleSpan);
 
-            var countLabel = clusters.length + (clusters.length === 1
-                ? ' cluster' : ' clusters');
+            var countLabel = clusters.length + (clusters.length === 1 ? ' cluster' : ' clusters');
             var badge = document.createElement('span');
             badge.className = 'section-count';
             badge.textContent = '· ' + countLabel;
-            summary.appendChild(badge);
+            header.appendChild(badge);
 
-            detail.appendChild(summary);
-            detail.addEventListener('toggle', function() {
-                savePanelState(stateKey, detail.open);
-            });
+            detail.appendChild(header);
 
             var body = document.createElement('div');
             body.className = 'cluster-body';
+            body.style.display = isOpen ? 'grid' : 'none';
 
             var intro = document.createElement('div');
             intro.className = 'cluster-intro';
-            intro.textContent =
-                'Pick exactly two points per cluster. A third check bumps '
-                + 'the oldest selection. Only 2/2 clusters will emit on the '
-                + 'next push.';
+            intro.textContent = 'Pick exactly two points per cluster.';
             body.appendChild(intro);
 
             clusters.forEach(function(cluster) {
@@ -1991,7 +1472,64 @@
             if (showVar) updateVariableBlockPreview();
         }
 
+        function toggleSettings() {
+            var body = document.getElementById('settings-body');
+            var icon = document.getElementById('settings-toggle-icon');
+            var header = icon.parentElement;
+            var isCollapsed = header.classList.toggle('collapsed');
+            body.style.display = isCollapsed ? 'none' : 'block';
+            savePanelState('settings-rollout', !isCollapsed);
+        }
+
+        function switchTab(mode) {
+            var phaseTab = document.getElementById('phase-tab-btn');
+            var varTab = document.getElementById('variable-tab-btn');
+            var phaseSection = document.getElementById('phase-section');
+            var varSection = document.getElementById('variable-section');
+
+            if (mode === 'phase') {
+                phaseTab.classList.add('active');
+                varTab.classList.remove('active');
+                phaseSection.style.display = 'block';
+                varSection.style.display = 'none';
+            } else {
+                phaseTab.classList.remove('active');
+                varTab.classList.add('active');
+                phaseSection.style.display = 'none';
+                varSection.style.display = 'block';
+            }
+        }
+
+        function stepNumericField(id, delta) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var val = el.value || '';
+            var match = val.match(/(\d+)/);
+            if (match) {
+                var numStr = match[1];
+                var num = parseInt(numStr, 10);
+                var newVal = num + delta;
+                if (newVal < 0) newVal = 0;
+                var newValStr = newVal.toString();
+                if (numStr.startsWith('0') && numStr.length > 1) {
+                    while (newValStr.length < numStr.length) newValStr = '0' + newValStr;
+                }
+                el.value = val.replace(numStr, newValStr);
+                el.dispatchEvent(new Event('input'));
+                el.dispatchEvent(new Event('change'));
+            }
+        }
+
         function bindUi() {
+            // Initial Settings state
+            var settingsOpen = loadPanelState('settings-rollout', true);
+            var settingsBody = document.getElementById('settings-body');
+            var settingsHeader = document.getElementById('settings-toggle-icon') ? document.getElementById('settings-toggle-icon').parentElement : null;
+            
+            if (!settingsOpen && settingsBody && settingsHeader) {
+                settingsBody.style.display = 'none';
+                settingsHeader.classList.add('collapsed');
+            }
             var on = function(id, evt, fn) {
                 var el = document.getElementById(id);
                 if (el) el.addEventListener(evt, fn);

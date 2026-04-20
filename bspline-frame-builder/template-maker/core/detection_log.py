@@ -52,7 +52,8 @@ import tempfile
 # ``_log()`` for rename / palette / handler errors, and mixing the two
 # streams in the same file is what previously made it impossible to tell
 # "Python exception on rename" apart from "detection rebuild ran".
-_DEBUG_LOG_PATH = os.path.join(os.path.dirname(__file__), 'template-maker-detection.log')
+_root_dir = os.path.dirname(os.path.dirname(__file__))
+_DEBUG_LOG_PATH = os.path.join(_root_dir, 'logs', 'template-maker-detection.log')
 # Windows temp mirror — belt-and-braces so a read-only module directory
 # (rare, but we've seen it on locked-down deploy targets) doesn't suppress
 # detection entirely.
@@ -75,7 +76,7 @@ def _source_root_log_path():
     Resolved once at import to avoid a JSON parse on every log line.
     """
     try:
-        cfg_path = os.path.join(os.path.dirname(__file__), 'project_path.json')
+        cfg_path = os.path.join(_root_dir, 'project_path.json')
         if not os.path.isfile(cfg_path):
             return None
         with open(cfg_path, 'r', encoding='utf-8') as f:
@@ -84,11 +85,11 @@ def _source_root_log_path():
         if not root:
             return None
         candidate = os.path.join(root, 'template-maker-detection.log')
-        # If the source root IS the module dir (running straight out of
+        # If the source root IS the root dir (running straight out of
         # the source tree without a deploy step), skip the mirror —
         # otherwise we'd write the same line twice and the timestamps
         # would look doubled on investigation.
-        if os.path.normcase(os.path.abspath(root)) == os.path.normcase(os.path.dirname(os.path.abspath(__file__))):
+        if os.path.normcase(os.path.abspath(root)) == os.path.normcase(os.path.abspath(_root_dir)):
             return None
         return candidate
     except Exception:

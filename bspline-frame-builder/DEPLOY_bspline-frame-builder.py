@@ -213,7 +213,7 @@ VERIFY_FILES = [
     "bspline-frame-builder.py",
     "bspline-frame-builder.manifest",
     "frame-builder/ui/hybrid_builder_ui.py",
-    "frame-builder/ui/html/index.html",
+    "frame-builder/ui/html/frame_builder_palette.html",
     "b-spline-gen/b-spline-gen.py",
     "b-spline-gen/html/index.html",
 ]

@@ -424,7 +424,7 @@ def run(context):
         COMMANDS = [
             {
                 'id':              'bsplineCommand',
-                'name':            'SVG Editor',
+                'name':            'B-Spline Gen',
                 'tooltip':         'Procedural B-Spline Surface & Solid Editor',
                 'res_path':        bs_res,
                 'handler_factory': lambda: _bs.CommandCreatedHandler(),

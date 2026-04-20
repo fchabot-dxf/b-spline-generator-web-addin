@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Native component library Showcase</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet" />
+    <link href="native-cad-style.css" rel="stylesheet" />
+    <style>
+        .showcase-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+            padding: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* Overrides to make the dialogs act like docked sidebars */
+        .showcase-container .cad-dialog {
+            width: 100% !important;
+            max-height: none !important;
+            resize: none !important;
+        }
+    </style>
+</head>
+<body class="cad-app-layout">
+    <!-- Top Navigation -->
+    <header class="cad-navbar">
+        <div class="cad-nav-group">
+            <span class="cad-nav-title">Native CAD Style Showcase</span>
+            <nav class="cad-nav-links">
+                <a class="cad-nav-link active" href="#">Components</a>
+                <a class="cad-nav-link" href="#">Grid</a>
+            </nav>
+        </div>
+        <div class="cad-nav-icons">
+            <span class="material-symbols-outlined cad-nav-icon" data-icon="settings">settings</span>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="cad-workspace">
+        <div class="cad-viewport-bg"></div>
+
+        <div class="showcase-container">
+            <!-- PANEL 1: Standard Dialog (Fillet) -->
+            <section class="cad-dialog">
+                <div class="cad-header">
+                    <span class="cad-header-minimize">−</span>
+                    <span class="cad-header-title">FILLET</span>
+                </div>
+                <div class="cad-dialog-content">
+                    <!-- Type Row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Type</label>
+                        <div class="cad-select-wrap">
+                            <span class="material-symbols-outlined cad-select-icon">rounded_corner</span>
+                            <select class="cad-select">
+                                <option>Fillet</option>
+                            </select>
+                            <span class="cad-select-arrow">▼</span>
+                        </div>
+                    </div>
+
+                    <!-- Selection List Box -->
+                    <div class="cad-selection-box">
+                        <div class="cad-selection-item">
+                            <span class="cad-selection-count">6 Faces</span>
+                            <div class="cad-selection-config">
+                                <div class="cad-nested-input">
+                                    <span class="material-symbols-outlined cad-select-icon">rounded_corner</span>
+                                    <input type="text" value='0.00 "' />
+                                </div>
+                                <div class="cad-nested-input disabled">
+                                    <input disabled type="text" value='0.00 "' />
+                                </div>
+                                <div class="cad-selection-tag">
+                                    <span class="material-symbols-outlined cad-selection-tag-icon">category</span>
+                                    <span>Tangent (G...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="cad-selection-tools">
+                            <span class="cad-icon-btn">+</span>
+                            <span class="cad-icon-btn small">✕</span>
+                        </div>
+                    </div>
+                    
+                    <div class="cad-h-2"></div>
+
+                    <!-- Radius Type Row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Radius Type</label>
+                        <div class="cad-select-wrap">
+                            <span class="material-symbols-outlined cad-select-icon">rounded_corner</span>
+                            <select class="cad-select">
+                                <option>Constant</option>
+                            </select>
+                            <span class="cad-select-arrow">▼</span>
+                        </div>
+                    </div>
+
+                    <!-- Edges/Faces/Features Row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Edges/Faces/Features</label>
+                        <div>
+                            <button class="cad-select-button active">
+                                <div class="cad-cursor-icon">
+                                    <svg viewBox="0 0 24 24">
+                                        <path class="cad-cursor-path" d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" />
+                                    </svg>
+                                </div>
+                                <span>Select</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tangent Chain Row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Tangent Chain</label>
+                        <div>
+                            <div class="checkbox-custom checked"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tangency Weight Row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Tangency Weight</label>
+                        <input class="cad-input" type="text" value="1.00" />
+                    </div>
+
+                    <div class="cad-divider-hr"></div>
+
+                    <!-- Corner Type Row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Corner Type</label>
+                        <div class="cad-select-wrap">
+                            <span class="material-symbols-outlined cad-select-icon" style="color: #3b82f6;">deployed_code</span>
+                            <select class="cad-select">
+                                <option>Rolling Ball</option>
+                            </select>
+                            <span class="cad-select-arrow">▼</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="cad-footer">
+                    <button class="cad-btn">OK</button>
+                    <button class="cad-btn">Cancel</button>
+                </div>
+            </section>
+
+            <!-- PANEL 2: Wide Settings Split View -->
+            <section class="cad-dialog" style="width: 700px; flex-shrink: 0;">
+                <div class="cad-header">
+                    <span class="cad-header-title">NC PROGRAM: NCProgram1</span>
+                </div>
+                <!-- Top Tabs -->
+                <div class="cad-text-tabs-bar">
+                    <div class="cad-text-tab-item active">Settings</div>
+                    <div class="cad-text-tab-item">Operations</div>
+                </div>
+                <!-- Split Layout -->
+                <div class="cad-split-view" style="min-height: 250px;">
+                    <div class="cad-split-left">
+                        <div class="cad-section-header">Program</div>
+                        <div class="cad-field-row-wide">
+                            <label class="cad-label">Name/number</label>
+                            <input class="cad-input" type="text" value="1001" />
+                        </div>
+                        <div class="cad-field-row-wide">
+                            <label class="cad-label">Output folder</label>
+                            <div class="cad-input-group">
+                                <input class="cad-input" type="text" value="C:/Downloads" />
+                                <span class="material-symbols-outlined cad-icon-btn">folder_open</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cad-split-divider"></div>
+                    <div class="cad-split-right">
+                        <div class="cad-section-header">Post properties</div>
+                        <div class="cad-accordion-header dark">
+                            <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+                            Preferences
+                        </div>
+                        <div class="cad-accordion-body">
+                            <div class="cad-field-row-wide" style="grid-template-columns: 1fr 20px;">
+                                <label class="cad-label">Optional stop</label>
+                                <div class="checkbox-custom checked"></div>
+                            </div>
+                            <div class="cad-field-row-wide" style="grid-template-columns: 1fr 80px;">
+                                <label class="cad-label">Use subroutines</label>
+                                <div class="cad-select-wrap">
+                                    <select class="cad-select cad-select-no-icon"><option>No</option></select>
+                                    <span class="cad-select-arrow">▼</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="cad-footer">
+                    <button class="cad-btn">Post</button>
+                    <button class="cad-btn">Cancel</button>
+                </div>
+            </section>
+
+            <!-- PANEL 3: Vertical Tool Palette (CAM) -->
+            <section class="cad-dialog" style="width: 300px; flex-shrink: 0;">
+                <div class="cad-header">
+                    <span class="cad-header-minimize">−</span>
+                    <span class="cad-header-title">POCKET : POCKET1</span>
+                </div>
+                
+                <!-- Icon Tabs -->
+                <div class="cad-icon-tabs">
+                    <div class="cad-icon-tab"><span class="material-symbols-outlined">plumbing</span></div>
+                    <div class="cad-icon-tab active"><span class="material-symbols-outlined">architecture</span></div>
+                    <div class="cad-icon-tab"><span class="material-symbols-outlined">format_line_spacing</span></div>
+                </div>
+
+                <div class="cad-dialog-content">
+                    <!-- Standard Accordion -->
+                    <div class="cad-accordion-header">
+                        <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+                        Geometry
+                    </div>
+                    
+                    <!-- Icon Dropdown inside row -->
+                    <div class="cad-field-row">
+                        <label class="cad-label">Machining Bound...</label>
+                        <div class="cad-select-wrap">
+                            <span class="material-symbols-outlined cad-select-icon" style="color: #10b981;">category</span>
+                            <select class="cad-select"><option>Bounding...</option></select>
+                            <span class="cad-select-arrow">▼</span>
+                        </div>
+                    </div>
+
+                    <div class="cad-divider-hr"></div>
+
+                    <!-- Checkbox Accordion -->
+                    <div class="cad-checkbox-accordion">
+                        <div class="cad-checkbox-header">
+                            <div class="checkbox-custom checked"></div>
+                            <span class="cad-checkbox-title">Rest Machining</span>
+                            <span class="material-symbols-outlined cad-accordion-icon" style="margin-left:auto;">arrow_drop_down</span>
+                        </div>
+                        <div class="cad-indented-row">
+                            <div class="cad-field-row" style="grid-template-columns: 80px 1fr;">
+                                <label class="cad-label">Source</label>
+                                <div class="cad-select-wrap">
+                                    <select class="cad-select cad-select-no-icon"><option>From prev...</option></select>
+                                    <span class="cad-select-arrow">▼</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cad-divider-hr"></div>
+
+                    <!-- Nested Table Data -->
+                    <div class="cad-accordion-header">
+                        <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+                        Avoid/Machine Surfaces
+                    </div>
+                    <div style="padding: 0 8px;">
+                        <button class="cad-select-button" style="width: 80px;"><span class="material-symbols-outlined" style="font-size: 14px; margin-right: 4px;">arrow_selector_tool</span> Groups...</button>
+                        <div class="cad-inner-table">
+                            <div class="cad-table-header">
+                                <span style="flex:1">Group</span>
+                                <span style="width:60px">Radial</span>
+                                <span style="width:60px">Axial</span>
+                            </div>
+                            <div class="cad-table-row">
+                                <span class="material-symbols-outlined" style="font-size:14px; color:#10b981; margin-right: 4px;">category</span>
+                                <span style="flex:1; font-size:11px;">Moc...</span>
+                                <div class="cad-nested-input" style="width:50px; margin-right:4px;"><input value="0.00 in"></div>
+                                <div class="cad-nested-input" style="width:50px;"><input value="0.00 in"></div>
+                            </div>
+                            <div class="cad-table-toolbar">
+                                <span class="material-symbols-outlined cad-icon-btn">add</span>
+                                <span class="material-symbols-outlined cad-icon-btn">remove</span>
+                                <span class="material-symbols-outlined cad-icon-btn">arrow_upward</span>
+                                <span class="material-symbols-outlined cad-icon-btn">arrow_downward</span>
+                                <span class="material-symbols-outlined cad-icon-btn">settings</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="cad-footer">
+                    <button class="cad-btn cad-btn-primary">OK</button>
+                    <button class="cad-btn">Cancel</button>
+                </div>
+            </section>
+
+            <!-- PANEL 4: Template Maker Mockup -->
+            <section class="cad-dialog" style="width: 350px; flex-shrink: 0;">
+                <div class="cad-header">
+                    <span class="cad-header-minimize">−</span>
+                    <span class="cad-header-title">TEMPLATE MAKER</span>
+                </div>
+                
+                <!-- Status Bar -->
+                <div class="cad-status-header">
+                    <span class="cad-status-dot"></span>
+                    <span class="cad-status-label">3 selected</span>
+                    <span style="font-size: 0.9em; opacity: 0.8;">· Live bridge active</span>
+                </div>
+
+                <div class="cad-dialog-content">
+                    <!-- Settings Rollout -->
+                    <div class="cad-accordion-header dark">
+                        <span class="material-symbols-outlined cad-accordion-icon">expand_more</span>
+                        <span>SETTINGS: p02_05 · chain</span>
+                    </div>
+                    <div class="cad-accordion-body">
+                        <div class="cad-field-row">
+                            <label class="cad-label">File Name</label>
+                            <input class="cad-input" type="text" value="p02_05_chain.py" />
+                        </div>
+                        <div class="cad-field-row">
+                            <label class="cad-label">Sketch Slot</label>
+                            <div class="cad-input-group">
+                                <input class="cad-input" type="text" value="p02" />
+                                <span class="cad-icon-btn small">−</span>
+                                <span class="cad-icon-btn small">+</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Text Tabs -->
+                    <div class="cad-text-tabs-bar" style="margin-top: 8px;">
+                        <div class="cad-text-tab-item active">Phase Generator</div>
+                        <div class="cad-text-tab-item">Variable Generator</div>
+                    </div>
+
+                    <div style="padding: 12px;">
+                        <div class="cad-label" style="margin-bottom: 8px; font-weight: 600; font-size: 10px; color: #666; letter-spacing: 0.05em;">CODE PREVIEW</div>
+                        <textarea class="cad-textarea" style="height: 180px;">def get_block(ui_data=None):
+    # Phase p02_05
+    seq = [
+        {'type': 'Seed', 'p': (0.0, 1.2)},
+        {'type': 'Fillet', 'radius': 0.12},
+    ]
+    return {'BuildSequence': seq}</textarea>
+                    </div>
+                </div>
+
+                <div class="cad-footer" style="padding: 8px;">
+                    <button class="cad-btn" style="flex: 1;">Rename selection</button>
+                    <button class="cad-btn cad-btn-primary" style="flex: 1;">Copy Code</button>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <script>
+        // Simple click listener for showcase transitions
+        document.querySelectorAll('.cad-accordion-header').forEach(header => {
+            header.addEventListener('click', () => {
+                header.classList.toggle('collapsed');
+                if (header.nextElementSibling) {
+                    header.nextElementSibling.classList.toggle('collapsed');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
