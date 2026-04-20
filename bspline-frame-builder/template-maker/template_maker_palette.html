@@ -1,0 +1,2098 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Template Maker</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            margin: 0;
+            padding: 10px 12px 72px 12px;
+            background: #f3f6fb;
+            color: #1c242f;
+        }
+        /* Compact status header: status dot + count + short description on one line. */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            background: #eef7ff;
+            border: 1px solid #c7ddf7;
+            color: #175a99;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+        .status-bar .status-dot {
+            flex: 0 0 auto;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #94a3b8;
+            box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
+            transition: background 0.2s ease, box-shadow 0.2s ease;
+        }
+        .status-bar.status-live .status-dot {
+            background: #2f7d3f;
+            box-shadow: 0 0 0 2px rgba(47, 125, 63, 0.2);
+        }
+        .status-bar.status-waiting .status-dot {
+            background: #c98b1a;
+            box-shadow: 0 0 0 2px rgba(201, 139, 26, 0.2);
+        }
+        /* Amber: actionable warnings (mixed pick, multi-source note, etc.) */
+        .status-bar.status-warn {
+            background: #fff5e1;
+            border-color: #f0c779;
+            color: #7a4a00;
+        }
+        .status-bar.status-warn .status-dot {
+            background: #d97706;
+            box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
+        }
+        /* Red: hard refusals (untagged source, body-projected source, etc.) */
+        .status-bar.status-err {
+            background: #fde8e8;
+            border-color: #f4b4b4;
+            color: #8a1f1f;
+        }
+        .status-bar.status-err .status-dot {
+            background: #c0392b;
+            box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2);
+        }
+        .status-bar .status-count {
+            font-weight: 700;
+            flex: 0 0 auto;
+        }
+        .status-bar .status-desc {
+            color: #32435b;
+            font-weight: 400;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Settings strip — single-line summary of current config. */
+        .settings-wrap {
+            margin-bottom: 10px;
+            border: 1px solid #d1dce8;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .settings-wrap summary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            font-size: 0.88em;
+            color: #0f4d82;
+            cursor: pointer;
+            background: #f7faff;
+            list-style: none;
+        }
+        .settings-wrap summary::-webkit-details-marker { display: none; }
+        .settings-wrap summary::after {
+            content: '';
+            display: inline-block;
+            width: 0.45rem;
+            height: 0.45rem;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            margin-left: auto;
+            transition: transform 0.2s ease;
+        }
+        .settings-wrap[open] summary::after {
+            transform: rotate(-135deg);
+        }
+        .settings-wrap .settings-gear {
+            font-size: 0.95em;
+            opacity: 0.75;
+        }
+        .settings-wrap .settings-pill {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.88em;
+            color: #1c242f;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .settings-wrap .settings-auto {
+            color: #2f7d3f;
+            font-style: italic;
+            font-weight: 500;
+            margin-left: 4px;
+            font-size: 0.82em;
+        }
+        .settings-wrap .settings-body {
+            padding: 10px 12px 12px 12px;
+            border-top: 1px solid #d1dce8;
+            background: #fff;
+        }
+        .settings-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .settings-row:last-child {
+            margin-bottom: 0;
+        }
+        .settings-row label {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.9em;
+            color: #34495e;
+            gap: 6px;
+        }
+        .settings-row input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccd7e4;
+            border-radius: 6px;
+            font-size: 0.95em;
+            background: #fff;
+            color: #1c242f;
+        }
+        /* Stepper composite — text input flanked by − / + buttons that bump
+         * the numeric portion of the value (e.g. T2 → T3, p06 → p07). The
+         * input itself stays fully editable so the user can still type, and
+         * the buttons / ArrowUp / ArrowDown just re-parse and rewrite the
+         * numeric chunk. Width preservation (e.g. padded "06") is kept by
+         * ``stepNumericField`` so the canonical two-digit phase number
+         * convention survives a click. */
+        .settings-row .stepper {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid #ccd7e4;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #fff;
+        }
+        .settings-row .stepper input {
+            border: none;
+            border-radius: 0;
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .settings-row .stepper input:focus {
+            outline: none;
+            background: #f3f7fc;
+        }
+        .settings-row .stepper-btn {
+            width: 26px;
+            border: none;
+            border-left: 1px solid #d7e0ec;
+            background: #eef3f9;
+            color: #1c242f;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            user-select: none;
+        }
+        .settings-row .stepper-btn:hover {
+            background: #dce6f2;
+        }
+        .settings-row .stepper-btn:active {
+            background: #c3d1e0;
+        }
+        textarea.file-text {
+            min-height: 120px;
+        }
+        .panel {
+            margin-bottom: 10px;
+            border: 1px solid #d1dce8;
+            border-radius: 8px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .panel summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            font-weight: 700;
+            cursor: pointer;
+            background: #eff7ff;
+            border-bottom: 1px solid #d1dce8;
+            color: #0f4d82;
+            list-style: none;
+        }
+        /* Count badge shown next to panel title — "Sequence · 5 items" */
+        .panel summary .section-count {
+            font-weight: 500;
+            font-size: 0.85em;
+            color: #5f7a9c;
+            margin-left: 8px;
+        }
+
+        .panel summary .section-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .panel summary .section-tooltip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            background: #0077c8;
+            color: #fff;
+            font-size: 0.75em;
+            font-weight: 700;
+            cursor: help;
+        }
+
+        .panel summary .summary-action {
+            margin-left: 10px;
+            padding: 6px 10px;
+            font-size: 0.8em;
+            border-radius: 5px;
+            white-space: nowrap;
+        }
+
+        .panel summary::after {
+            content: '';
+            display: inline-block;
+            width: 0.55rem;
+            height: 0.55rem;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg);
+            margin-left: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .panel[open] summary::after {
+            transform: rotate(135deg);
+        }
+
+        .panel summary::-webkit-details-marker {
+            display: none;
+        }
+        .panel textarea {
+            width: 100%;
+            min-height: 140px;
+            border: none;
+            border-top: 1px solid #d1dce8;
+            padding: 12px 14px;
+            box-sizing: border-box;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.92em;
+            line-height: 1.4;
+            resize: vertical;
+            background: #fbfcff;
+            color: #101a24;
+            tab-size: 4;
+            -moz-tab-size: 4;
+            white-space: pre;
+            overflow-x: auto;
+            word-wrap: normal;
+            word-break: normal;
+        }
+        .panel-body {
+            padding: 10px 14px 14px 14px;
+            display: grid;
+            gap: 10px;
+        }
+        /* Ambiguous-coincidence checkbox UI (Track B3). One ``.cluster-group``
+           per size-3+ cluster; the palette shows a header with the world
+           coord and a status pill ("1/2", "2/2"), and a list of one
+           ``.cluster-point`` row per candidate ID. Max two checkboxes may be
+           active at once — the third check bumps the oldest (FIFO). */
+        .cluster-body {
+            padding: 10px 14px 14px 14px;
+            display: grid;
+            gap: 10px;
+            border-top: 1px solid #d1dce8;
+            background: #fbfcff;
+        }
+        .cluster-intro {
+            font-size: 0.88em;
+            color: #5f7a9c;
+            line-height: 1.4;
+        }
+        .cluster-group {
+            border: 1px solid #e0e7ef;
+            border-radius: 6px;
+            background: #fff;
+            padding: 8px 10px;
+        }
+        .cluster-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .cluster-coord {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.85em;
+            color: #0f4d82;
+            font-weight: 600;
+        }
+        .cluster-pill {
+            font-size: 0.75em;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: #eef2f7;
+            color: #5f7a9c;
+        }
+        .cluster-pill.ready {
+            background: #d7f3e1;
+            color: #1b6e3b;
+        }
+        .cluster-points {
+            display: grid;
+            gap: 4px;
+        }
+        .cluster-point {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.85em;
+            color: #101a24;
+        }
+        .cluster-point input[type="checkbox"] {
+            margin: 0;
+        }
+        .variable-row {
+            display: grid;
+            grid-template-columns: auto 1fr 1fr;
+            gap: 8px;
+            align-items: center;
+        }
+        .variable-row label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            color: #34495e;
+        }
+        .variable-row input[type="text"] {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccd7e4;
+            border-radius: 6px;
+            font-size: 0.9em;
+            background: #fff;
+            color: #101a24;
+        }
+        .variable-row input.variable-name {
+            min-width: 100px;
+        }
+        .tab-bar {
+            display: flex;
+            gap: 8px;
+            margin: 8px 0 10px 0;
+        }
+        .tab-button {
+            border: 1px solid #ccd7e4;
+            background: #ffffff;
+            color: #0f4d82;
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 700;
+        }
+        .tab-button.active {
+            background: #0077c8;
+            color: #ffffff;
+            border-color: #0077c8;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .tab-section-title {
+            margin: 0 0 10px 0;
+            font-size: 1.0em;
+            color: #0f4d82;
+            font-weight: 700;
+        }
+        .log-area {
+            width: 100%;
+            min-height: 100px;
+            background: #f7fbff;
+            border: 1px solid #d1dce8;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.82em;
+            color: #172d46;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+        .variable-note {
+            color: #5f6f84;
+            font-size: 0.85em;
+            margin-top: -4px;
+        }
+        textarea.code-output {
+            width: 100%;
+            min-height: 200px;
+            border: 1px solid #ccd7e4;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.92em;
+            line-height: 1.4;
+            resize: vertical;
+            background: #ffffff;
+            color: #101a24;
+        }
+        /* Section textareas are read-only inspection panes — the tinted
+           background distinguishes them from editable inputs and from the
+           final code-output box so users can tell at a glance that they
+           can copy but not edit. */
+        textarea.section-text {
+            background: #eef3f9;
+            color: #1a2634;
+            cursor: default;
+        }
+        textarea.section-text:focus {
+            /* Muted focus — keeps the non-editable affordance. */
+            outline: 1px solid #c3d1e0;
+            outline-offset: -1px;
+        }
+        .button-row {
+            margin-top: 10px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+        /* Sticky action bar — always reachable even if the sequence scrolls. */
+        .sticky-actions {
+            position: sticky;
+            bottom: 0;
+            z-index: 5;
+            margin: 12px -12px -10px -12px;
+            padding: 10px 12px;
+            background: rgba(243, 246, 251, 0.95);
+            backdrop-filter: blur(4px);
+            border-top: 1px solid #d1dce8;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 8px;
+        }
+        .sticky-actions.single {
+            grid-template-columns: 1fr;
+        }
+        .sticky-actions button.primary-copy {
+            font-size: 0.98em;
+            font-weight: 700;
+        }
+        .sticky-actions button.secondary {
+            background: #7587a0;
+            font-size: 0.88em;
+            font-weight: 500;
+        }
+        .sticky-actions button.secondary:hover {
+            background: #5f6f84;
+        }
+        button {
+            border: none;
+            border-radius: 6px;
+            padding: 10px 12px;
+            background: #0077c8;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.92em;
+            font-weight: 600;
+        }
+        button:hover { background: #005a9c; }
+        button:active { transform: translateY(1px); }
+        .secondary {
+            background: #5f6f84;
+        }
+        .secondary:hover {
+            background: #4d5d73;
+        }
+        .flash-ok {
+            background: #2f7d3f !important;
+            color: #fff !important;
+        }
+        .flash-err {
+            background: #a33a3a !important;
+            color: #fff !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="status-bar" class="status-bar status-waiting" title="Bridge status">
+        <span class="status-dot"></span>
+        <span class="status-count" id="status-count">—</span>
+        <span class="status-desc" id="status-desc">Waiting for Fusion bridge…</span>
+    </div>
+    <details id="settings-wrap" class="settings-wrap">
+        <summary>
+            <span class="settings-gear">⚙</span>
+            <span class="settings-pill" id="settings-pill">p02_05 · chain</span>
+            <span class="settings-auto" id="settings-auto-indicator" style="display:none;">auto</span>
+        </summary>
+        <div class="settings-body">
+            <div class="settings-row">
+                <label>File Name
+                    <input id="file-name-input" type="text" placeholder="p02_05_chain.py" value="p02_05_chain.py">
+                </label>
+                <label>Template Number
+                    <div class="stepper">
+                        <input id="template-number-input" type="text" placeholder="T2" value="T2">
+                        <button type="button" class="stepper-btn" data-stepper-target="template-number-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement template number">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="template-number-input" data-stepper-step="1" tabindex="-1" aria-label="Increment template number">+</button>
+                    </div>
+                </label>
+            </div>
+            <div class="settings-row">
+                <label>Sketch Slot
+                    <div class="stepper">
+                        <input id="phase-id-input" type="text" placeholder="p02" value="p02">
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement sketch slot">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-id-input" data-stepper-step="1" tabindex="-1" aria-label="Increment sketch slot">+</button>
+                    </div>
+                </label>
+                <label>Phase Number
+                    <div class="stepper">
+                        <input id="phase-number-input" type="text" placeholder="05" value="05">
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-number-input" data-stepper-step="-1" tabindex="-1" aria-label="Decrement phase number">−</button>
+                        <button type="button" class="stepper-btn" data-stepper-target="phase-number-input" data-stepper-step="1" tabindex="-1" aria-label="Increment phase number">+</button>
+                    </div>
+                </label>
+            </div>
+            <div class="settings-row">
+                <label>Sketch Name
+                    <input id="sketch-name-input" type="text" placeholder="auto (from active sketch)">
+                </label>
+            </div>
+        </div>
+    </details>
+    <div class="tab-bar">
+        <button id="phase-tab-btn" class="tab-button active">Phase Generator</button>
+        <button id="variable-tab-btn" class="tab-button">Variable Generator</button>
+    </div>
+    <div id="phase-section" class="tab-content active">
+        <div id="panels"></div>
+        <textarea id="code-box" class="code-output" readonly placeholder="Combined code preview will appear here..."></textarea>
+        <div class="sticky-actions">
+            <button id="copy-btn" class="primary-copy">Copy Code</button>
+            <button id="rename-btn" class="secondary" title="Auto-assign IDs to the current Fusion selection based on Phase · Sketch prefix.">🏷 Rename selection</button>
+        </div>
+    </div>
+    <div id="variable-section" class="tab-content">
+        <h2 class="tab-section-title">Variable Insertion Generator</h2>
+        <div id="variable-panel-container"></div>
+        <textarea id="variable-code-box" class="code-output" readonly placeholder="Generated variable block will appear here..."></textarea>
+        <div class="sticky-actions">
+            <button id="copy-variable-btn" class="primary-copy">Copy Variable Block</button>
+            <button id="toggle-all-variables-btn" class="secondary">Select All</button>
+        </div>
+    </div>
+
+    <script>
+        var currentPayload = null;
+        var lastPayloadFingerprint = '';
+        // Tracks whether the user has manually typed a sketch name in this
+        // session. When false, the input auto-populates from the payload's
+        // detectedSketchName on every push. Clearing the input resets this
+        // flag so auto-detection resumes.
+        var sketchInputUserEdited = false;
+        // Track B3 — per-cluster checked-indices state. Maps clusterId ->
+        // array of 0, 1, or 2 integer indices (indices into the cluster's
+        // ``points`` list in the order the host last sent it). Survives
+        // re-renders so the user doesn't lose picks to an unrelated
+        // selection-change refresh; pruned to only known clusterIds each
+        // render so stale entries don't accumulate across selections.
+        var pendingClusterPicks = {};
+
+        function dlog(msg) {
+            // Debug logger disabled in UI mode.
+        }
+
+        function payloadFingerprint(payload) {
+            // Fingerprint covers only fields that affect the rendered
+            // panels/variables. Two pushes with the same fingerprint
+            // can safely be ignored — skipping their re-render keeps
+            // user-resized textareas and unfinished edits intact while
+            // the host continues to poll at 800ms intervals.
+            if (!payload) return '';
+            try {
+                return JSON.stringify({
+                    count: payload.count,
+                    description: payload.description,
+                    detectedSketchName: payload.detectedSketchName || '',
+                    selectionKind: payload.selectionKind || '',
+                    projectionsOk: payload.projectionsOk,
+                    projectionsError: payload.projectionsError || '',
+                    projectionsBlockCode: payload.projectionsBlockCode || '',
+                    mixedPickWarning: payload.mixedPickWarning || '',
+                    items: (payload.items || []).map(function(i) {
+                        return { name: i.name, hint: i.hint, coordExpr: i.coordExpr, meta: i.meta };
+                    }),
+                    variables: (payload.variables || []).map(function(v) {
+                        return { name: v.name, expression: v.expression, enabled: v.enabled };
+                    })
+                });
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function updateStatusBar(payload) {
+            var bar = document.getElementById('status-bar');
+            var count = document.getElementById('status-count');
+            var desc = document.getElementById('status-desc');
+            if (!bar || !count || !desc) return;
+            bar.classList.remove('status-waiting', 'status-live', 'status-warn', 'status-err');
+            if (!payload) {
+                bar.classList.add('status-waiting');
+                count.textContent = '—';
+                desc.textContent = 'Waiting for Fusion bridge…';
+                return;
+            }
+            var n = payload.count || 0;
+            var kind = payload.selectionKind || '';
+
+            // Mixed pick: seeds + projections together. Refuse, flash amber.
+            if (kind === 'mixed') {
+                bar.classList.add('status-warn');
+                count.textContent = n + ' mixed';
+                desc.textContent = payload.mixedPickWarning
+                    || 'Mixed pick: seeds + projections. Pick one kind at a time.';
+                return;
+            }
+
+            // Projection path: either success-with-note or hard refusal.
+            if (kind === 'projections') {
+                if (payload.projectionsOk === false) {
+                    bar.classList.add('status-err');
+                    count.textContent = n + ' blocked';
+                    desc.textContent = payload.projectionsError
+                        || 'Projection inference refused — see panel.';
+                    return;
+                }
+                if (payload.projectionsOk === true) {
+                    // Multi-source → amber note; single-source → live green.
+                    var sources = (payload.projections || []).reduce(function(acc, p) {
+                        if (p && p.SourceSketch) acc[p.SourceSketch] = true;
+                        return acc;
+                    }, {});
+                    var sourceCount = Object.keys(sources).length;
+                    bar.classList.add(sourceCount > 1 ? 'status-warn' : 'status-live');
+                    var nproj = (payload.projections || []).length;
+                    count.textContent = nproj + (nproj === 1 ? ' projection' : ' projections');
+                    desc.textContent = payload.projectionsNote
+                        || ('projected from ' + Object.keys(sources).join(' + '));
+                    return;
+                }
+            }
+
+            // Default: seeds or empty selection. When some picks failed the
+            // FrameBuilder ownership gate (constraints whose targets aren't
+            // tagged yet, or raw user-drawn geometry), surface the split so
+            // the user knows why nothing is rendering instead of silently
+            // dropping them. The counts come from build_payload_items in
+            // template_payload_builder.py — items[] are owned, unownedDetails[]
+            // are the rejects.
+            var unownedN = payload.unownedCount || 0;
+            var ownedN = (payload.items || []).length;
+            if (n === 0) {
+                bar.classList.add('status-live');
+                count.textContent = '0 selected';
+                desc.textContent = payload.description || 'Select sketch geometry to preview snippets.';
+                return;
+            }
+            if (unownedN > 0) {
+                // Amber when ANY pick is untagged. If everything's untagged
+                // the message is "rename first"; if it's a mix, show both
+                // counts so the user can see partial progress.
+                bar.classList.add('status-warn');
+                if (ownedN === 0) {
+                    count.textContent = n + ' untagged';
+                    desc.textContent = 'No FrameBuilder IDs yet — hit Rename to tag, then re-pick.';
+                } else {
+                    count.textContent = ownedN + ' tagged · ' + unownedN + ' untagged';
+                    // Compact type breakdown, e.g. "skipped: SketchLine, SketchTangentConstraint"
+                    var types = {};
+                    (payload.unownedDetails || []).forEach(function(d) {
+                        var t = (d && d.type) || 'Entity';
+                        types[t] = (types[t] || 0) + 1;
+                    });
+                    var typeList = Object.keys(types).map(function(t) {
+                        return types[t] > 1 ? (types[t] + '× ' + t) : t;
+                    }).join(', ');
+                    desc.textContent = typeList ? ('skipped: ' + typeList) : (payload.mainFeature || '');
+                }
+                return;
+            }
+            bar.classList.add('status-live');
+            count.textContent = n + (n === 1 ? ' selected' : ' selected');
+            desc.textContent = payload.description || payload.mainFeature || '';
+        }
+
+        /**
+         * Bump the numeric portion of a settings field by ``step``.
+         *
+         * Matches the FIRST run of digits in the value, rewrites just that
+         * run, and preserves any prefix (``T`` / ``p``) and trailing
+         * descriptor (``_arcs``, ``_anatomy``). Leading-zero width is
+         * preserved so "p03" → "p04" stays two-digit while "p3" → "p4"
+         * stays one-digit — no silent reformatting of what the user typed.
+         *
+         * Fires ``input`` + ``change`` so the pill, combined preview, and
+         * host-sync roundtrip all react exactly as they would for a real
+         * keystroke. ``blur`` isn't fired because focus doesn't leave the
+         * input — the host sync still happens on the real blur when the
+         * user tabs away.
+         */
+        function stepNumericField(input, step) {
+            if (!input) return;
+            var current = input.value || '';
+            var match = current.match(/^(\D*)(\d+)(.*)$/);
+            if (!match) {
+                // No digits to step — nothing to do. Leave the value alone
+                // rather than inventing one; the user can type a seed value
+                // and then step from there.
+                return;
+            }
+            var prefix = match[1];
+            var digits = match[2];
+            var suffix = match[3];
+            var width = digits.length;
+            var n = parseInt(digits, 10);
+            if (isNaN(n)) return;
+            n += step;
+            if (n < 1) n = 1; // floor — no T0 / p00
+            var out = String(n);
+            if (digits.charAt(0) === '0' && width > 1) {
+                while (out.length < width) out = '0' + out;
+            }
+            input.value = prefix + out + suffix;
+            // Re-use the existing input/change handlers — same behaviour as
+            // typing, so pill + preview + host sync all stay in lockstep.
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Auto-sync the File Name input's canonical tokens to whatever
+        // the Sketch Slot / Phase Number fields hold.
+        //
+        // Canonical filename shape (matches the Frame Builder template
+        // loader's convention):
+        //     ``p{sketch:02}_{phase:02}_{descriptor}.py``
+        //
+        // Template identity now comes from the containing folder
+        // (``template_1/``, ``template_2/``, ...) — no ``T{N}_`` prefix
+        // on filenames. The Template Number field is still used for
+        // internal entity naming (sent to the host in the settings
+        // payload), it just doesn't drive the filename anymore.
+        //
+        // Both tokens are patched independently so manual descriptor
+        // text (the ``_chain`` / ``_lines`` / ``_drivers`` tail users
+        // type) survives any single bump — e.g. ``p02_05_chain.py``
+        // with Phase Number stepped to 07 becomes ``p02_07_chain.py``.
+        //
+        // Each replace is anchored so filenames with a non-canonical
+        // shape (user typed ``arcs.py``) are left alone. The ``test()``
+        // guards against mid-type values like ``p`` corrupting the
+        // filename before the user finishes the digit.
+        //
+        // Fires ``input`` so ``updateSettingsPill`` / ``syncSettingsToHost``
+        // pick up the change the same way a keystroke does.
+        function syncFileNameFromSettings() {
+            var fileInput = document.getElementById('file-name-input');
+            if (!fileInput) return;
+            var fn = fileInput.value || '';
+            if (!fn) return;
+            var pid = (document.getElementById('phase-id-input').value || '').trim();
+            var pnumEl = document.getElementById('phase-number-input');
+            var pnum = pnumEl ? (pnumEl.value || '').trim() : '';
+            var next = fn;
+            // Sketch slot bump: first ``p<digits>`` run.
+            // ``p02_05_chain.py`` → ``p03_05_chain.py`` under
+            // ``pid="p03"``. Anchored to the ``_`` boundary so a later
+            // ``p`` inside the descriptor (``p02_05_p_rotation.py``)
+            // isn't touched.
+            if (/^p\d+$/.test(pid)) {
+                next = next.replace(/p\d+/, pid);
+            }
+            // Phase number bump: digits between the sketch slot and the
+            // descriptor. Match is anchored to the ``p{sketch:02}_``
+            // prefix so only the phase-number run gets rewritten — a
+            // descriptor that happens to start with digits (unlikely but
+            // possible, e.g. ``_3d_ring``) stays intact. Zero-pad to 2
+            // digits on rewrite to match the loader's sort expectation.
+            if (/^\d+$/.test(pnum)) {
+                var padded = pnum.length < 2 ? ('0' + pnum).slice(-2) : pnum;
+                next = next.replace(/(p\d+_)\d+(_)/, '$1' + padded + '$2');
+            }
+            if (next !== fn) {
+                fileInput.value = next;
+                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        }
+
+        function updateSettingsPill() {
+            var pill = document.getElementById('settings-pill');
+            var auto = document.getElementById('settings-auto-indicator');
+            if (!pill) return;
+            // Template identity is carried by the destination folder, not the
+            // filename — we deliberately don't show a ``T{N}`` token in the
+            // pill. Template Number still rides along in the host payload
+            // for internal entity naming; it's just not a filename token.
+            var pid = (document.getElementById('phase-id-input').value || '').trim() || 'p?';
+            var pnum = (document.getElementById('phase-number-input') || {}).value || '';
+            pnum = (pnum || '').trim();
+            var sn  = (document.getElementById('sketch-name-input').value || '').trim();
+            var fn  = (document.getElementById('file-name-input').value || '').trim();
+            var slot = pnum ? (pid + '_' + pnum) : pid;
+            var parts = [slot];
+            parts.push(sn || '—');
+            if (fn) parts.push(fn);
+            pill.textContent = parts.join(' · ');
+            if (auto) {
+                auto.style.display = (sn && !sketchInputUserEdited) ? 'inline' : 'none';
+            }
+        }
+
+        function applyDetectedSketchName(payload) {
+            var input = document.getElementById('sketch-name-input');
+            if (!input) return;
+            var detected = (payload && payload.detectedSketchName) || '';
+            if (sketchInputUserEdited) return; // user has taken manual control
+            if (detected && input.value !== detected) {
+                input.value = detected;
+            } else if (!detected && input.value && !sketchInputUserEdited) {
+                // Selection cleared or sketch unclosed — leave last good value in place
+                // rather than clearing. This keeps the prefix stable between clicks.
+            }
+        }
+
+        function mergeVariableRows(payload) {
+            var existing = getVariableRows();
+            var merged = [];
+            var seen = new Set();
+
+            (payload.variables || []).forEach(function(variable) {
+                var entry = {
+                    name: variable.name || '',
+                    expression: variable.expression || variable.name || '',
+                    enabled: variable.enabled !== false,
+                    source: variable.source || 'auto'
+                };
+                merged.push(entry);
+                if (entry.name) {
+                    seen.add(entry.name);
+                }
+            });
+
+            existing.forEach(function(variable) {
+                if (variable.name && seen.has(variable.name)) {
+                    var idx = merged.findIndex(function(item) { return item.name === variable.name; });
+                    if (idx !== -1) {
+                        merged[idx].expression = variable.expression;
+                        merged[idx].enabled = variable.enabled;
+                    }
+                } else {
+                    merged.push({
+                        name: variable.name || '',
+                        expression: variable.expression || '',
+                        enabled: variable.enabled,
+                        source: 'custom'
+                    });
+                }
+            });
+
+            return merged;
+        }
+
+        // NOTE: the old `buildHeaderText` / `buildFooterText` JS builders
+        // were deleted as part of the format modularization. The parametric
+        // engine's phase-block shape (imports, `def get_block()`, `seq = [`
+        // opener, return dict with Name / PhaseID / BuildSequence) is now
+        // owned entirely by Python — `template_code.build_header` and
+        // `template_code.build_footer`. The palette consumes the rendered
+        // strings via `payload.headerText` and `payload.footerText`, so a
+        // shape change only needs a single Python-side edit.
+        //
+        // The one live-edit path is the PhaseID value in the footer: when
+        // the user types in the settings pill, we substitute PhaseID in
+        // `payload.footerText` locally so the preview is instantaneous.
+        // On blur/change, `syncSettingsToHost` pushes the new settings to
+        // Fusion, which regenerates and pushes an authoritative payload.
+        //
+        // We substitute BOTH ``'Name'`` and ``'PhaseID'`` from the same
+        // value — the filename stem (``p02_05_chain`` for
+        // ``p02_05_chain.py``). The host's generator sets ``Name`` from
+        // the phase prefix (sketch_name + phase_id) which collapses to
+        // just the phase_id when no sketch is selected — meaning Name
+        // and PhaseID are the same value for the common
+        // generate-from-scratch case. Leaving Name untouched while only
+        // PhaseID updated was the bug behind ``'Name': 'p01'`` /
+        // ``'PhaseID': 'p07'`` drift after keystrokes: the host hadn't
+        // re-pushed yet, so the footerText carried the old Name.
+        // Substituting both keeps the preview self-consistent until the
+        // host round-trips.
+        //
+        // Stem is computed from the File Name input so PhaseID stays in
+        // lockstep with the filename the user sees. Strips ``.py`` if
+        // present; otherwise the raw stem is used as-is.
+        function _phaseStemFromFilename() {
+            var el = document.getElementById('file-name-input');
+            var fn = el ? (el.value || '').trim() : '';
+            if (!fn) return '';
+            return fn.replace(/\.py$/i, '');
+        }
+
+        function substitutePhaseId(footerText, phaseId) {
+            if (!footerText) return footerText || '';
+            var clean = _phaseStemFromFilename();
+            if (!clean) {
+                // Fallback path — if the filename is empty, fall back to
+                // the raw phase-id so preview still has something sane.
+                clean = (phaseId || '').trim();
+            }
+            if (!clean) return footerText;
+            return footerText
+                .replace(/('Name':\s*')[^']*(')/, "$1" + clean + "$2")
+                .replace(/('PhaseID':\s*')[^']*(')/, "$1" + clean + "$2");
+        }
+
+        function getPanelStateKey(title, index) {
+            return 'templateMakerPanelState:' + title + ':' + (index != null ? index : 'base');
+        }
+
+        function getTextareaHeightKey(title, index) {
+            return 'templateMakerPanelHeight:' + title + ':' + (index != null ? index : 'base');
+        }
+
+        function loadTextareaHeight(key) {
+            try {
+                return localStorage.getItem(key) || '';
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function saveTextareaHeight(key, height) {
+            try {
+                if (height) {
+                    localStorage.setItem(key, height);
+                }
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
+        function getSectionTooltip(title) {
+            switch (title) {
+                case 'Wrapper Metadata':
+                    return 'Editable wrapper metadata for the generated code preview.';
+                case 'Template Variables':
+                    return 'Detected template variables from the selection; enable, disable, or edit them here.';
+                case 'Sequence':
+                    return 'Consolidated seeds/constraints/dimensions for the selected entities. Edit freely; the return block is appended automatically in the final code preview.';
+                case 'Coincidence Clusters':
+                    return 'Size-3+ coincident-point clusters. Pick exactly two points per cluster; a third check bumps the oldest selection (FIFO). Only 2/2 clusters emit a CoincidentConstraint in the Sequence block. Resolved clusters stay visible so you can un-pick or revise.';
+                default:
+                    return 'Review the selected entity preview for this section.';
+            }
+        }
+
+        function loadPanelState(key, defaultValue) {
+            try {
+                var value = localStorage.getItem(key);
+                if (value === null || value === undefined) {
+                    return defaultValue;
+                }
+                return value !== '0';
+            } catch (e) {
+                return defaultValue;
+            }
+        }
+
+        function savePanelState(key, isOpen) {
+            try {
+                localStorage.setItem(key, isOpen ? '1' : '0');
+            } catch (e) {
+                // ignore storage errors
+            }
+        }
+
+        function countLines(text) {
+            if (!text) return 0;
+            // Count non-empty lines so an empty trailing blank doesn't
+            // inflate the reported count.
+            return text.split('\n').filter(function(l) { return l.trim().length > 0; }).length;
+        }
+
+        function fitTextareaToContent(textarea, min, max) {
+            // Auto-size by line count, bounded by [min, max]. Respects a
+            // user-persisted explicit height (from a manual drag) if one
+            // is present — that wins over auto-fit.
+            if (!textarea) return;
+            if (textarea.dataset.userResized === '1') return;
+            var lines = (textarea.value || '').split('\n').length;
+            var rows = Math.max(min || 5, Math.min(max || 20, lines + 1));
+            textarea.rows = rows;
+        }
+
+        function makeSection(title, content, index, countLabel) {
+            var detail = document.createElement('details');
+            detail.className = 'panel';
+            var stateKey = getPanelStateKey(title, index);
+            detail.open = loadPanelState(stateKey);
+
+            var summary = document.createElement('summary');
+            var titleSpan = document.createElement('span');
+            titleSpan.className = 'section-title';
+            var textSpan = document.createElement('span');
+            textSpan.textContent = title;
+            titleSpan.appendChild(textSpan);
+
+            var tooltipText = getSectionTooltip(title);
+            if (tooltipText) {
+                var help = document.createElement('span');
+                help.className = 'section-tooltip';
+                help.textContent = '?';
+                help.title = tooltipText;
+                titleSpan.appendChild(help);
+                summary.title = tooltipText;
+            }
+
+            summary.appendChild(titleSpan);
+
+            // Count badge — e.g. "Sequence · 7 items" — lets you glance at
+            // the header while collapsed and know whether there's content.
+            if (countLabel) {
+                var badge = document.createElement('span');
+                badge.className = 'section-count';
+                badge.textContent = '· ' + countLabel;
+                summary.appendChild(badge);
+            }
+
+            if (index === 'sequence') {
+                var seqBtn = document.createElement('button');
+                seqBtn.type = 'button';
+                seqBtn.className = 'secondary summary-action';
+                seqBtn.textContent = 'Copy Sequence';
+                seqBtn.addEventListener('click', function(event) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    copySequence();
+                });
+                summary.appendChild(seqBtn);
+            }
+
+            detail.appendChild(summary);
+
+            detail.addEventListener('toggle', function() {
+                savePanelState(stateKey, detail.open);
+            });
+
+            var textarea = document.createElement('textarea');
+            textarea.className = 'section-text';
+            textarea.dataset.index = index;
+            textarea.value = content || '';
+            // Sections are read-only inspection views. The final code (bottom
+            // code-box) is what users copy; title / phase id are edited in
+            // the settings pill, not here. Making these read-only removes a
+            // class of bugs where a manual edit would desync from the payload
+            // and break the next regeneration.
+            textarea.readOnly = true;
+
+            // Persist manual resizes so subsequent re-renders (from host
+            // pushes or selection changes) don't snap the textarea back
+            // to its default height.
+            var heightKey = getTextareaHeightKey(title, index);
+            var savedHeight = loadTextareaHeight(heightKey);
+            if (savedHeight) {
+                textarea.style.height = savedHeight;
+                textarea.dataset.userResized = '1';
+            }
+            // `resize: vertical` mutates style.height inline. Capture it
+            // on mouseup (end of drag gesture) so we stash the final
+            // value, not every intermediate pixel. Once the user has
+            // dragged, we stop auto-fitting — their explicit height wins.
+            textarea.addEventListener('mouseup', function() {
+                if (textarea.style.height) {
+                    saveTextareaHeight(heightKey, textarea.style.height);
+                    textarea.dataset.userResized = '1';
+                }
+            });
+
+            detail.appendChild(textarea);
+
+            // Apply initial auto-fit for the Sequence box (wrapper metadata
+            // stays at its natural CSS min-height — it's boilerplate that
+            // doesn't change length often).
+            if (index === 'sequence') fitTextareaToContent(textarea, 5, 20);
+
+            return detail;
+        }
+
+        function sendClusterPicksToHost() {
+            // Ship the full ``pendingClusterPicks`` dict — only entries
+            // with exactly 2 picks will resolve on the Python side
+            // (``detect_coincidence_pairs`` checks ``len(forced) == 2``),
+            // so partial 0/2 or 1/2 clusters ride along harmlessly and
+            // the host re-surfaces them as ambiguous next push. Filter
+            // here anyway so the log line on the Python side stays clean.
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                return;
+            }
+            var ready = {};
+            Object.keys(pendingClusterPicks).forEach(function(id) {
+                var picks = pendingClusterPicks[id];
+                if (picks && picks.length === 2) {
+                    ready[id] = picks.slice();
+                }
+            });
+            try {
+                adsk.fusionSendData('clusterPicks', JSON.stringify(ready));
+            } catch (e) {
+                // bridge not ready — next render will resync
+            }
+        }
+
+        function makeClusterSection(clusters) {
+            // Build the <details> panel for size-3+ coincidence clusters.
+            // Each cluster gets a sub-card with a coord header, a status
+            // pill ("{n}/2"), and one checkbox per candidate point. Max
+            // two checks per cluster; the 3rd check bumps the oldest
+            // selection (FIFO). Reaching 2/2 auto-sends the full
+            // ``pendingClusterPicks`` to the host via ``clusterPicks``.
+            //
+            // State persists in the module-level ``pendingClusterPicks``
+            // dict — we read from it when re-rendering so the user's
+            // partial picks survive unrelated selection-change pushes.
+            var detail = document.createElement('details');
+            detail.className = 'panel';
+            var stateKey = getPanelStateKey('Coincidence Clusters', 'clusters');
+            // Default OPEN — the user needs to see and act on
+            // unresolved clusters (and may want to revise resolved
+            // ones); collapsing them by default would hide missing
+            // CC steps from the emitted sequence.
+            detail.open = loadPanelState(stateKey, true);
+
+            var summary = document.createElement('summary');
+            var titleSpan = document.createElement('span');
+            titleSpan.className = 'section-title';
+            var textSpan = document.createElement('span');
+            textSpan.textContent = 'Coincidence Clusters';
+            titleSpan.appendChild(textSpan);
+            var tooltipText = getSectionTooltip('Coincidence Clusters');
+            if (tooltipText) {
+                var help = document.createElement('span');
+                help.className = 'section-tooltip';
+                help.textContent = '?';
+                help.title = tooltipText;
+                titleSpan.appendChild(help);
+                summary.title = tooltipText;
+            }
+            summary.appendChild(titleSpan);
+
+            var countLabel = clusters.length + (clusters.length === 1
+                ? ' cluster' : ' clusters');
+            var badge = document.createElement('span');
+            badge.className = 'section-count';
+            badge.textContent = '· ' + countLabel;
+            summary.appendChild(badge);
+
+            detail.appendChild(summary);
+            detail.addEventListener('toggle', function() {
+                savePanelState(stateKey, detail.open);
+            });
+
+            var body = document.createElement('div');
+            body.className = 'cluster-body';
+
+            var intro = document.createElement('div');
+            intro.className = 'cluster-intro';
+            intro.textContent =
+                'Pick exactly two points per cluster. A third check bumps '
+                + 'the oldest selection. Only 2/2 clusters will emit on the '
+                + 'next push.';
+            body.appendChild(intro);
+
+            clusters.forEach(function(cluster) {
+                body.appendChild(makeClusterGroup(cluster));
+            });
+
+            detail.appendChild(body);
+            return detail;
+        }
+
+        function makeClusterGroup(cluster) {
+            var group = document.createElement('div');
+            group.className = 'cluster-group';
+            group.dataset.clusterId = cluster.clusterId;
+
+            var header = document.createElement('div');
+            header.className = 'cluster-group-header';
+
+            var coord = document.createElement('span');
+            coord.className = 'cluster-coord';
+            coord.textContent = cluster.coord || '';
+            header.appendChild(coord);
+
+            var pill = document.createElement('span');
+            pill.className = 'cluster-pill';
+            header.appendChild(pill);
+
+            group.appendChild(header);
+
+            var pointsDiv = document.createElement('div');
+            pointsDiv.className = 'cluster-points';
+
+            // Rehydrate from saved state when possible — the host's
+            // ``clusterId`` is stable within a single build_template_payload
+            // call but CAN drift on selection changes. If the saved picks
+            // reference indices outside this cluster's size, drop them.
+            var picks = (pendingClusterPicks[cluster.clusterId] || []).filter(
+                function(i) { return i >= 0 && i < cluster.points.length; }
+            );
+            pendingClusterPicks[cluster.clusterId] = picks;
+
+            var checkboxes = [];
+
+            function refreshPill() {
+                var n = pendingClusterPicks[cluster.clusterId].length;
+                pill.textContent = n + '/2';
+                if (n === 2) {
+                    pill.classList.add('ready');
+                } else {
+                    pill.classList.remove('ready');
+                }
+            }
+
+            function syncCheckboxes() {
+                var active = pendingClusterPicks[cluster.clusterId];
+                checkboxes.forEach(function(cb, i) {
+                    cb.checked = active.indexOf(i) !== -1;
+                });
+            }
+
+            cluster.points.forEach(function(pt, i) {
+                var row = document.createElement('label');
+                row.className = 'cluster-point';
+
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.dataset.index = i;
+                cb.checked = picks.indexOf(i) !== -1;
+                cb.addEventListener('change', function() {
+                    var active = pendingClusterPicks[cluster.clusterId];
+                    if (cb.checked) {
+                        if (active.indexOf(i) === -1) {
+                            active.push(i);
+                        }
+                        // FIFO bump — keep at most 2. On a 3rd check,
+                        // the earliest entry is shifted out so the new
+                        // one takes its place.
+                        while (active.length > 2) {
+                            active.shift();
+                        }
+                    } else {
+                        var idx = active.indexOf(i);
+                        if (idx !== -1) {
+                            active.splice(idx, 1);
+                        }
+                    }
+                    syncCheckboxes();
+                    refreshPill();
+                    // Push on every change — the host ignores <2-pick
+                    // entries, and a 2/2 → 1/2 downgrade must also
+                    // propagate so a previously-auto-paired cluster
+                    // falls back to ambiguous.
+                    sendClusterPicksToHost();
+                });
+
+                row.appendChild(cb);
+                var label = document.createElement('span');
+                label.textContent = pt.id;
+                row.appendChild(label);
+
+                pointsDiv.appendChild(row);
+                checkboxes.push(cb);
+            });
+
+            group.appendChild(pointsDiv);
+            refreshPill();
+            return group;
+        }
+
+        var variableRowCounter = 0;
+
+
+        function makeVariableRow(variable, index) {
+            var row = document.createElement('div');
+            row.className = 'variable-row';
+            var rowIndex = index != null ? index : variableRowCounter++;
+
+            var label = document.createElement('label');
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = variable.enabled;
+            checkbox.dataset.index = rowIndex;
+            checkbox.addEventListener('change', function() {
+                refreshToggleAllVariablesLabel();
+                updateCombinedPreview();
+            });
+            label.appendChild(checkbox);
+            var span = document.createElement('span');
+            span.textContent = 'Use';
+            label.appendChild(span);
+            row.appendChild(label);
+
+            var nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.className = 'variable-name';
+            nameInput.dataset.index = rowIndex;
+            nameInput.placeholder = 'name';
+            nameInput.value = variable.name || '';
+            nameInput.addEventListener('input', updateCombinedPreview);
+            row.appendChild(nameInput);
+
+            var exprInput = document.createElement('input');
+            exprInput.type = 'text';
+            exprInput.className = 'variable-expression';
+            exprInput.dataset.index = rowIndex;
+            exprInput.placeholder = 'expression';
+            exprInput.value = variable.expression || variable.name || '';
+            exprInput.addEventListener('input', updateCombinedPreview);
+            row.appendChild(exprInput);
+
+            return row;
+        }
+
+        function renderVariables(payload) {
+            // The rows shown here are detected from the active Fusion design's
+            // user parameters (scanned via get_design_params). Adding a row
+            // directly in this UI would "ghost-declare" a variable that
+            // doesn't actually exist in the design — the generated phase
+            // code would reference a non-existent parameter at runtime.
+            // So there's no "Add new variable" button: if you want a new
+            // variable, add it to the design in Fusion and it'll appear
+            // here automatically on the next selection push.
+            var container = document.createElement('details');
+            container.className = 'panel';
+            var stateKey = getPanelStateKey('Template Variables', 'variables');
+            container.open = loadPanelState(stateKey, false);
+            var summary = document.createElement('summary');
+            var titleWrap = document.createElement('span');
+            titleWrap.className = 'section-title';
+            var titleText = document.createElement('span');
+            titleText.textContent = 'Template Variables';
+            titleWrap.appendChild(titleText);
+            summary.appendChild(titleWrap);
+            var vars = payload.variables || [];
+            if (vars.length) {
+                var badge = document.createElement('span');
+                badge.className = 'section-count';
+                badge.textContent = '· ' + vars.length + (vars.length === 1 ? ' variable' : ' variables');
+                summary.appendChild(badge);
+            }
+            container.appendChild(summary);
+
+            container.addEventListener('toggle', function() {
+                savePanelState(stateKey, container.open);
+            });
+
+            var body = document.createElement('div');
+            body.className = 'panel-body';
+
+            var variables = payload.variables || [];
+            if (!variables || variables.length === 0) {
+                var note = document.createElement('div');
+                note.className = 'variable-note';
+                note.textContent = 'No user parameters detected in the active design. Add parameters in Fusion (Modify → Change Parameters) and they will appear here.';
+                body.appendChild(note);
+            } else {
+                variables.forEach(function(variable, idx) {
+                    body.appendChild(makeVariableRow(variable, idx));
+                });
+            }
+
+            container.appendChild(body);
+            return container;
+        }
+
+        function renderVariablePanel(payload) {
+            var container = document.getElementById('variable-panel-container');
+            if (!container) {
+                return;
+            }
+            container.innerHTML = '';
+            if (!payload) {
+                refreshToggleAllVariablesLabel();
+                return;
+            }
+            container.appendChild(renderVariables(payload));
+            refreshToggleAllVariablesLabel();
+        }
+
+        function wrapStatement(statement) {
+            // Sequence items are now pre-formatted phase-step dict literals
+            // from the Python side (`build_code_preview` → `format_phase_step`).
+            // This function now just passes dict literals through.
+            //
+            // Legacy `Seeds.*` / `Constraints.*` / `Dimensions.*` inputs can
+            // still show up if an older payload or a hand-edited hint sneaks
+            // in — we comment them so they're visible in the preview instead
+            // of silently landing in `seq = [` as invalid Python.
+            if (!statement || typeof statement !== 'string') {
+                return statement;
+            }
+            var trimmed = statement.trim();
+            if (trimmed.startsWith('{')) {
+                return statement;
+            }
+            if (trimmed.startsWith('Seeds.')
+                || trimmed.startsWith('Constraints.')
+                || trimmed.startsWith('Dimensions.')
+                || trimmed.startsWith('dimensions.')) {
+                return '# UNPARSED: ' + trimmed;
+            }
+            return statement;
+        }
+
+        function renderPanels(payload) {
+            var container = document.getElementById('panels');
+            container.innerHTML = '';
+            if (!payload) {
+                return;
+            }
+
+            var kind = payload.selectionKind || '';
+
+            // Mixed pick: single informational panel, no editable sections.
+            // The code-box stays empty — nothing to copy.
+            if (kind === 'mixed') {
+                var warn = payload.mixedPickWarning
+                    || 'Mixed pick: seeds + projections. Pick one kind at a time.';
+                container.appendChild(makeSection('Mixed Selection', warn, 'mixed',
+                    'pick one kind'));
+                document.getElementById('code-box').value = '# ' + warn;
+                return;
+            }
+
+            // Projections path — either a ready-to-paste block or a refusal.
+            if (kind === 'projections') {
+                if (payload.projectionsOk === false) {
+                    var errMsg = payload.projectionsError
+                        || 'Projection inference refused.';
+                    var details = errMsg;
+                    if (payload.badPicks && payload.badPicks.length) {
+                        details += '\n\nFlagged picks:\n  ' + payload.badPicks.join('\n  ');
+                    }
+                    container.appendChild(makeSection('Projections — Blocked',
+                        details, 'proj-err', payload.badPicks
+                            ? payload.badPicks.length + ' flagged'
+                            : 'refused'));
+                    document.getElementById('code-box').value = '# ' + errMsg;
+                    return;
+                }
+
+                // Success: single editable panel carrying the full block.
+                var rows = payload.projections || [];
+                var blockCode = payload.projectionsBlockCode || '';
+                var countLabel = rows.length + (rows.length === 1 ? ' projection' : ' projections');
+                container.appendChild(makeSection('Projections', blockCode, 'projections',
+                    countLabel));
+                // Projection blocks are self-contained get_block() dicts — the
+                // combined preview is just the section text, no wrapper/footer
+                // glue required.
+                document.getElementById('code-box').value = blockCode;
+                updateVariableBlockPreview();
+                return;
+            }
+
+            // Default seed path — wrapper text now comes straight from the
+            // payload (Python-side `template_code.build_header`). The four
+            // settings-pill inputs still exist and still feed phase-id /
+            // sketch-name / template-number back to Fusion on blur, but
+            // none of them influence the wrapper's rendered content —
+            // the wrapper is pure boilerplate (imports + `def get_block()`
+            // opener) and has no user-variable pieces in it.
+            var headerText = (payload && payload.headerText) || '';
+            var wrapperLineCount = countLines(headerText);
+            container.appendChild(makeSection('Wrapper Metadata', headerText, 'header',
+                wrapperLineCount + (wrapperLineCount === 1 ? ' line' : ' lines')));
+
+            // All geometry/constraint/dimension items share a single
+            // editable "Sequence" box placed directly after the wrapper.
+            // The return block (`return { ..., 'BuildSequence': seq }`) is
+            // NOT a separate section — updateCombinedPreview() glues it
+            // onto the bottom of the final code textarea automatically.
+            //
+            // Content comes from `payload.codePreview` which Python's
+            // `build_code_preview` already formatted as dict-literal phase
+            // steps. Python bakes in 8-space indent (list-interior); we
+            // strip it here so the textarea stays flush-left for easy
+            // editing, then re-add the indent at assembly time.
+            var rawPreview = payload.codePreview || '';
+            var sequenceText = rawPreview
+                .split('\n')
+                .map(function(l) { return l.replace(/^\s{0,8}/, function(m) {
+                    return m.length === 8 ? '' : m;
+                }); })
+                .join('\n');
+            var seqCount = 0;
+            if (payload.items && payload.items.length > 0) {
+                sequenceText.split('\n').forEach(function(l) {
+                    if (l.trim()) {
+                        seqCount += 1;
+                    }
+                });
+            } else {
+                sequenceText = '';
+            }
+            // Track B3 — coincidence clusters (size 3+). The Python side
+            // already resolved size-2 clusters into synthetic
+            // CoincidentConstraint items in the Sequence block below;
+            // only size-3+ clusters surface here, both still-ambiguous
+            // AND already-resolved (so the user can un-pick or revise
+            // without the section vanishing). The panel is placed ABOVE
+            // Sequence so the user sees unresolved picks first.
+            //
+            // Prune ``pendingClusterPicks`` to only the IDs the host is
+            // showing us right now so stale picks from an earlier
+            // selection don't leak back in on the next push. Then seed
+            // any cluster that's ``resolved`` on the host side but has
+            // no local pick state (e.g. after a palette reload) so the
+            // checkboxes come back with the host's picks checked.
+            var clusters = (payload && payload.coincidenceClusters) || [];
+            var knownIds = {};
+            clusters.forEach(function(c) {
+                knownIds[c.clusterId] = true;
+                if (c.resolved
+                        && Array.isArray(c.pickedIndices)
+                        && c.pickedIndices.length === 2
+                        && !(c.clusterId in pendingClusterPicks)) {
+                    pendingClusterPicks[c.clusterId] = c.pickedIndices.slice();
+                }
+            });
+            Object.keys(pendingClusterPicks).forEach(function(id) {
+                if (!knownIds[id]) {
+                    delete pendingClusterPicks[id];
+                }
+            });
+            if (clusters.length > 0) {
+                container.appendChild(makeClusterSection(clusters));
+            }
+
+            container.appendChild(makeSection('Sequence', sequenceText, 'sequence',
+                seqCount + (seqCount === 1 ? ' item' : ' items')));
+
+            updateCombinedPreview();
+        }
+
+        function getVariableRows() {
+            var rows = [];
+            var vars = document.querySelectorAll('.variable-row');
+            vars.forEach(function(row) {
+                var checkbox = row.querySelector('input[type="checkbox"]');
+                var nameInput = row.querySelector('.variable-name');
+                var exprInput = row.querySelector('.variable-expression');
+                if (checkbox && nameInput && exprInput) {
+                    rows.push({
+                        enabled: checkbox.checked,
+                        name: nameInput.value.trim(),
+                        expression: exprInput.value.trim()
+                    });
+                }
+            });
+            return rows;
+        }
+
+        function updateCombinedPreview() {
+            // Projection / mixed / refusal modes own the code-box directly
+            // (set by renderPanels) — they're self-contained blocks, no
+            // wrapper/sequence/footer assembly needed. Let section edits
+            // still propagate, but skip the wrapper+footer glue.
+            var kind = currentPayload && currentPayload.selectionKind;
+            if (kind === 'projections' || kind === 'mixed') {
+                var sections = document.querySelectorAll('.section-text');
+                if (sections.length > 0) {
+                    document.getElementById('code-box').value = sections[0].value;
+                }
+                updateVariableBlockPreview();
+                return;
+            }
+
+            // Seed path — two editable sections feed the combined preview:
+            //   section[0] = Wrapper Metadata (file/template comments +
+            //                imports + `def get_block(ui_data=None):` +
+            //                `    seq = [` opener)
+            //   section[1] = Sequence (dict-literal phase steps)
+            // The return block (`    ]` + `return { ..., 'BuildSequence': seq }`)
+            // is NOT a user-editable section — it's appended unconditionally at
+            // the end of the combined preview.
+            //
+            // IMPORTANT: the Sequence textarea is stored flush-left for easy
+            // editing. We add the 8-space list-interior indent ONLY at assembly
+            // time (indentBlock below — 4 for function body + 4 inside `seq`).
+            // Never use .trim() here — it strips leading whitespace and breaks
+            // Python indentation.
+            //
+            // The Phase tab output is intentionally variable-free: the
+            // Variable Generator tab owns variable declarations. Mixing
+            // them into the phase code here would duplicate what lives
+            // in the other tab.
+            var sections = document.querySelectorAll('.section-text');
+            var lines = [];
+
+            // rstrip: trim trailing whitespace without touching leading indent.
+            function rstrip(s) { return (s || '').replace(/\s+$/, ''); }
+
+            // Indent every non-empty line of `block` with 8 spaces (list-interior
+            // level: 4 for function body + 4 inside the `seq = [ ... ]` list).
+            // Empty lines are left empty (no trailing spaces).
+            function indentBlock(block) {
+                return block.split('\n').map(function(l) {
+                    return l.length > 0 ? '        ' + l : l;
+                }).join('\n');
+            }
+
+            // Wrapper section — already contains its own indentation (the
+            // `    seq = [` opener is baked with 4-space indent inside
+            // Python's `template_code.build_header`). Leave as-is.
+            if (sections.length > 0) {
+                lines.push(rstrip(sections[0].value));
+            }
+
+            // Sequence section(s) — textarea content is flush-left. Indent
+            // each line with 4 spaces at assembly time.
+            for (var i = 1; i < sections.length; i++) {
+                var value = rstrip(sections[i].value);
+                if (value) {
+                    lines.push(indentBlock(value));
+                }
+            }
+
+            // Footer (list-close + return block) — pulled from the payload
+            // (Python-side `template_code.build_footer`). Already contains
+            // the 4-space indent for `    ]` and `    return {`; we only
+            // strip surrounding newlines so joining doesn't introduce gaps.
+            //
+            // Phase ID is substituted locally on every keystroke in the
+            // settings pill so the preview is instantaneous; on blur the
+            // host re-pushes with the authoritative footerText.
+            var phaseIdInput = document.getElementById('phase-id-input');
+            var phaseIdValue = phaseIdInput ? phaseIdInput.value : '';
+            var payloadFooter = (currentPayload && currentPayload.footerText) || '';
+            var footer = substitutePhaseId(payloadFooter, phaseIdValue)
+                .replace(/^\n+/, '')   // drop leading newlines only
+                .replace(/\s+$/, '');  // drop trailing whitespace
+            if (footer) {
+                lines.push(footer);
+            }
+
+            // Tight join — the wrapper/sequence/footer all belong to the same
+            // dict literal (`seq = [ ... ]`), so we don't want blank padding
+            // right after `seq = [` or right before `    ]`. Users can still
+            // add blank lines inside the Sequence textarea for readability;
+            // those are preserved verbatim through indentBlock.
+            document.getElementById('code-box').value = lines.filter(function(line) {
+                return line.length > 0;
+            }).join('\n');
+            updateVariableBlockPreview();
+        }
+
+        function updateVariableBlockPreview() {
+            var variableBox = document.getElementById('variable-code-box');
+            if (!variableBox) {
+                return;
+            }
+            var variables = getVariableRows();
+            var enabledVars = variables.filter(function(v) {
+                return v.enabled && v.name;
+            });
+            if (enabledVars.length === 0) {
+                variableBox.value = 'Generated variable block will appear here...';
+                return;
+            }
+            var lines = [];
+            enabledVars.forEach(function(v) {
+                if (v.expression && v.expression !== v.name) {
+                    lines.push(v.name + ' = ' + v.expression);
+                } else {
+                    lines.push(v.name);
+                }
+            });
+            variableBox.value = lines.join('\n');
+        }
+
+        function applyData(dataStr, source) {
+            var payload = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
+            if (currentPayload) {
+                payload.variables = mergeVariableRows(payload);
+            }
+
+            // Skip re-render when the host keeps pushing the same
+            // selection payload (common while polling). Without this
+            // guard, the 800ms poll destroys and rebuilds every section
+            // textarea, which cancels any in-progress manual resize and
+            // wipes inline edits.
+            var fingerprint = payloadFingerprint(payload);
+            if (fingerprint && fingerprint === lastPayloadFingerprint) {
+                return;
+            }
+            lastPayloadFingerprint = fingerprint;
+
+            currentPayload = payload;
+            updateStatusBar(payload);
+            applyDetectedSketchName(payload);
+            renderPanels(payload);
+            renderVariablePanel(payload);
+            var variableBox = document.getElementById('variable-code-box');
+            if (variableBox && payload.variableBlock) {
+                variableBox.value = payload.variableBlock;
+            }
+            updateVariableBlockPreview();
+            updateSettingsPill();
+        }
+
+        window.fusionJavaScriptHandler = function(action, data) {
+            if (action === 'update' && data) {
+                applyData(data, 'PUSH');
+            }
+        };
+
+        function poll() {
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                return;
+            }
+            var result = adsk.fusionSendData('poll', 'ping');
+            if (result && typeof result.then === 'function') {
+                result.then(function(resp) {
+                    if (resp && resp.length > 0) {
+                        applyData(resp, 'POLL');
+                    }
+                });
+            } else if (typeof result === 'string' && result.length > 0) {
+                applyData(result, 'POLL');
+            }
+        }
+
+        function copyCode() {
+            var btn = document.getElementById('copy-btn');
+            var text = document.getElementById('code-box').value;
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            if (copyTextLocally(text)) {
+                flashBtn(btn, 'Copied', true);
+                if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                    try { adsk.fusionSendData('copy', text); } catch (e) { /* ignore slow host */ }
+                }
+                return;
+            }
+            sendTextToHost('copy', text, btn, 'Copied');
+        }
+
+        function copySequence() {
+            var btn = document.getElementById('copy-sequence-btn');
+            var textarea = document.querySelector('textarea.section-text[data-index="sequence"]');
+            var text = textarea ? textarea.value : '';
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            if (copyTextLocally(text)) {
+                flashBtn(btn, 'Copied', true);
+                if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                    try { adsk.fusionSendData('copy', text); } catch (e) { /* ignore slow host */ }
+                }
+                return;
+            }
+            sendTextToHost('copy', text, btn, 'Copied');
+        }
+
+        function syncSettingsToHost() {
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                return;
+            }
+            var pnumEl = document.getElementById('phase-number-input');
+            var fnEl = document.getElementById('file-name-input');
+            var settings = {
+                phaseId: document.getElementById('phase-id-input').value.trim(),
+                phaseNumber: pnumEl ? pnumEl.value.trim() : '',
+                sketchName: document.getElementById('sketch-name-input').value.trim(),
+                templateNumber: document.getElementById('template-number-input').value.trim(),
+                fileName: fnEl ? fnEl.value.trim() : ''
+            };
+            try {
+                adsk.fusionSendData('settings', JSON.stringify(settings));
+            } catch (e) {
+                // ignore failures while the host bridge is not ready
+            }
+        }
+
+        function getVariableCheckboxes() {
+            return document.querySelectorAll('.variable-row input[type="checkbox"]');
+        }
+
+        function refreshToggleAllVariablesLabel() {
+            var btn = document.getElementById('toggle-all-variables-btn');
+            if (!btn) return;
+            var boxes = getVariableCheckboxes();
+            if (boxes.length === 0) {
+                btn.textContent = 'Select All';
+                btn.disabled = true;
+                return;
+            }
+            btn.disabled = false;
+            var allChecked = true;
+            for (var i = 0; i < boxes.length; i++) {
+                if (!boxes[i].checked) { allChecked = false; break; }
+            }
+            btn.textContent = allChecked ? 'Deselect All' : 'Select All';
+        }
+
+        function toggleAllVariables() {
+            var boxes = getVariableCheckboxes();
+            if (boxes.length === 0) return;
+            var allChecked = true;
+            for (var i = 0; i < boxes.length; i++) {
+                if (!boxes[i].checked) { allChecked = false; break; }
+            }
+            var target = !allChecked;  // if all checked → uncheck all; else check all.
+            boxes.forEach(function(box) { box.checked = target; });
+            refreshToggleAllVariablesLabel();
+            updateCombinedPreview();
+        }
+
+        function copyVariableBlockCode() {
+            var btn = document.getElementById('copy-variable-btn');
+            var text = document.getElementById('variable-code-box').value;
+            if (!text) {
+                flashBtn(btn, 'Nothing', false);
+                return;
+            }
+            if (copyTextLocally(text)) {
+                flashBtn(btn, 'Copied', true);
+                if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                    try { adsk.fusionSendData('copy', text); } catch (e) { /* ignore slow host */ }
+                }
+                return;
+            }
+            sendTextToHost('copy', text, btn, 'Copied');
+        }
+
+        function copyTextLocally(text) {
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return Boolean(ok);
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function sendTextToHost(action, text, btn, okLabel) {
+            if (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function') {
+                try {
+                    var result = adsk.fusionSendData(action, text);
+                    if (result && typeof result.then === 'function') {
+                        result.then(function(resp) {
+                            flashBtn(btn, resp === 'ok' ? okLabel : 'Error', resp === 'ok');
+                        }).catch(function() { flashBtn(btn, 'Error', false); });
+                        return;
+                    }
+                    flashBtn(btn, result === 'ok' ? okLabel : 'Error', result === 'ok');
+                    return;
+                } catch (e) { /* fall through to browser clipboard */ }
+            }
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                flashBtn(btn, okLabel, true);
+            } catch (e) {
+                flashBtn(btn, 'Error', false);
+            }
+        }
+
+        function renameSelection() {
+            var btn = document.getElementById('rename-btn');
+            var pnumEl = document.getElementById('phase-number-input');
+            var fnEl = document.getElementById('file-name-input');
+            var settings = {
+                phaseId: (document.getElementById('phase-id-input').value || '').trim(),
+                phaseNumber: pnumEl ? (pnumEl.value || '').trim() : '',
+                sketchName: (document.getElementById('sketch-name-input').value || '').trim(),
+                templateNumber: (document.getElementById('template-number-input').value || '').trim(),
+                fileName: fnEl ? (fnEl.value || '').trim() : ''
+            };
+            if (typeof adsk === 'undefined' || typeof adsk.fusionSendData !== 'function') {
+                flashBtn(btn, 'No host', false);
+                return;
+            }
+            try {
+                var result = adsk.fusionSendData('rename', JSON.stringify(settings));
+                if (result && typeof result.then === 'function') {
+                    result.then(function(resp) {
+                        flashBtn(btn, resp === 'ok' ? 'Renamed' : 'Error', resp === 'ok');
+                    }).catch(function() { flashBtn(btn, 'Error', false); });
+                } else {
+                    flashBtn(btn, result === 'ok' ? 'Renamed' : 'Error', result === 'ok');
+                }
+            } catch (e) {
+                flashBtn(btn, 'Error', false);
+            }
+        }
+
+        function flashBtn(btn, label, ok) {
+            if (!btn) return;
+            var originalText = btn.dataset.originalText || btn.textContent;
+            btn.dataset.originalText = originalText;
+            btn.textContent = label;
+            btn.classList.remove('flash-ok', 'flash-err');
+            btn.classList.add(ok ? 'flash-ok' : 'flash-err');
+            clearTimeout(btn._flashTimer);
+            btn._flashTimer = setTimeout(function() {
+                btn.textContent = originalText;
+                btn.classList.remove('flash-ok', 'flash-err');
+            }, 1200);
+        }
+
+        function switchTab(target) {
+            var phaseBtn = document.getElementById('phase-tab-btn');
+            var varBtn = document.getElementById('variable-tab-btn');
+            var phaseSection = document.getElementById('phase-section');
+            var varSection = document.getElementById('variable-section');
+            var showVar = (target === 'variable');
+            if (phaseBtn) phaseBtn.classList.toggle('active', !showVar);
+            if (varBtn) varBtn.classList.toggle('active', showVar);
+            if (phaseSection) phaseSection.classList.toggle('active', !showVar);
+            if (varSection) varSection.classList.toggle('active', showVar);
+            if (showVar) updateVariableBlockPreview();
+        }
+
+        function bindUi() {
+            var on = function(id, evt, fn) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener(evt, fn);
+            };
+            on('copy-btn', 'click', copyCode);
+            on('copy-sequence-btn', 'click', copySequence);
+            on('copy-variable-btn', 'click', copyVariableBlockCode);
+            on('toggle-all-variables-btn', 'click', toggleAllVariables);
+            on('rename-btn', 'click', renameSelection);
+            on('phase-tab-btn', 'click', function() { switchTab('phase'); });
+            on('variable-tab-btn', 'click', function() { switchTab('variable'); });
+
+            // Any change to the settings inputs should push to the host
+            // so the next selection push uses the correct phase_prefix.
+            ['phase-id-input', 'phase-number-input', 'sketch-name-input', 'template-number-input', 'file-name-input'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('change', syncSettingsToHost);
+                el.addEventListener('blur', syncSettingsToHost);
+                el.addEventListener('input', function() {
+                    updateCombinedPreview();
+                    updateSettingsPill();
+                });
+            });
+
+            // Auto-rewrite the File Name token when Sketch Slot or Phase
+            // Number changes so the filename tracks the settings pill
+            // without users having to retype it. Template Number no longer
+            // appears in the filename (folder carries that identity), so
+            // it's deliberately not wired here. Sketch name is not part of
+            // the canonical file token.
+            //
+            // ``input`` fires on every keystroke / stepper bump, which is
+            // the same cadence as the pill/preview update. The sync
+            // helper itself dispatches ``input`` on file-name-input, so
+            // downstream listeners (pill, host-sync on blur) see the
+            // derived filename exactly as if the user typed it.
+            ['phase-id-input', 'phase-number-input'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', syncFileNameFromSettings);
+            });
+
+            // Stepper buttons + ArrowUp/ArrowDown bump the numeric portion of
+            // the three numeric settings fields. The regex is permissive:
+            // it finds the FIRST run of digits in the value and rewrites
+            // it, so any prefix (T / p) and trailing descriptor (_arcs,
+            // _anatomy) stay put. Leading zeros are preserved by width —
+            // "p03" → "p04", "p3" → "p4" — so the canonical two-digit
+            // convention survives a click without forcing it on users
+            // who type single-digit values.
+            ['template-number-input', 'phase-id-input', 'phase-number-input'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('keydown', function(e) {
+                    if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        stepNumericField(el, 1);
+                    } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        stepNumericField(el, -1);
+                    }
+                });
+            });
+            document.addEventListener('click', function(e) {
+                var btn = e.target && e.target.closest && e.target.closest('.stepper-btn');
+                if (!btn) return;
+                var target = document.getElementById(btn.getAttribute('data-stepper-target'));
+                var step = parseInt(btn.getAttribute('data-stepper-step'), 10) || 0;
+                if (target && step) {
+                    stepNumericField(target, step);
+                }
+            });
+
+            // Track manual edits to the sketch name specifically: once the
+            // user types anything, the palette stops auto-populating from
+            // the detected sketch. Emptying the field re-enables auto-fill.
+            var sketchInput = document.getElementById('sketch-name-input');
+            if (sketchInput) {
+                sketchInput.addEventListener('input', function() {
+                    var val = sketchInput.value.trim();
+                    sketchInputUserEdited = val.length > 0;
+                    if (!sketchInputUserEdited && currentPayload) {
+                        applyDetectedSketchName(currentPayload);
+                    }
+                    updateSettingsPill();
+                });
+            }
+
+            // Fallback polling for environments where the push channel isn't live.
+            setInterval(poll, 800);
+            // Kick one immediately so the panel isn't empty on first open.
+            setTimeout(poll, 50);
+            syncSettingsToHost();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindUi);
+        } else {
+            bindUi();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "c59e6bea-6bbf-4f29-9580-f7ecac7735b4",
+    "author": "Antigravity",
+    "description": {
+        "": "Selection-driven Template Maker for Fusion 360."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
