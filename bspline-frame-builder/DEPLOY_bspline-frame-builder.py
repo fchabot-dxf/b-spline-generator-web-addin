@@ -14,7 +14,7 @@ touched by this script — it continues to handle the HTML/JS web publish
 and its own standalone ZIP independently.
 
 Usage:
-    python DEPLOY_bspline-frame-builder.py
+    python DEPLOY_bspline-frame-builder.pyS
 """
 
 import os
@@ -215,7 +215,7 @@ VERIFY_FILES = [
     "frame-builder/ui/hybrid_builder_ui.py",
     "frame-builder/ui/html/frame_builder_palette.html",
     "b-spline-gen/b-spline-gen.py",
-    "b-spline-gen/html/bspline_gen_palette.html",
+    "b-spline-gen/html/index.html",
 ]
 
 # Folders / patterns to SKIP in both local deploy and ZIP
