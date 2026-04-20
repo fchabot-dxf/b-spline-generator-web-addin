@@ -75,11 +75,23 @@ export function bindControls(preview) {
     const inputs = Array.from(document.querySelectorAll('input[type="number"]'));
     inputs.forEach(input => {
       if (!input.isConnected) return;
-      if (input.closest('.stepper-container') || input.closest('.cad-stepper')) return;
       if (input.classList.contains('no-stepper')) return;
       if (input.closest('label')?.classList.contains('no-stepper')) return;
-      const wrapper = document.createElement('div');
-      wrapper.className = 'cad-stepper';
+
+      // Check if already in a stepper container (legacy)
+      if (input.closest('.stepper-container')) return;
+
+      // Check if already in our new cad-stepper
+      let wrapper = input.closest('.cad-stepper');
+      
+      // If it exists but already has buttons, skip
+      if (wrapper && wrapper.querySelectorAll('button').length > 0) return;
+
+      if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'cad-stepper';
+        input.parentNode.insertBefore(wrapper, input);
+      }
 
       const minus = document.createElement('button');
       minus.type = 'button';
@@ -109,9 +121,9 @@ export function bindControls(preview) {
       minus.addEventListener('click', () => adjust(-step));
       plus.addEventListener('click', () => adjust(step));
 
-      input.parentNode.insertBefore(wrapper, input);
-      wrapper.appendChild(minus);
-      wrapper.appendChild(input);
+      // Append in correct order [-] [input] [+]
+      // We prepend minus, then input is already there or we append it, then append plus
+      wrapper.insertBefore(minus, input);
       wrapper.appendChild(plus);
     });
   };
