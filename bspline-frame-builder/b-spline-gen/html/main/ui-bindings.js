@@ -91,20 +91,18 @@ export function bindControls(preview) {
     const inputs = Array.from(document.querySelectorAll('input[type="number"]'));
     inputs.forEach(input => {
       if (!input.isConnected) return;
-      if (input.closest('.stepper-container')) return;
+      if (input.closest('.stepper-container') || input.closest('.cad-stepper')) return;
       if (input.classList.contains('no-stepper')) return;
       if (input.closest('label')?.classList.contains('no-stepper')) return;
       const wrapper = document.createElement('div');
-      wrapper.className = 'stepper-container';
+      wrapper.className = 'cad-stepper';
 
       const minus = document.createElement('button');
       minus.type = 'button';
-      minus.className = 'stepper-btn';
       minus.textContent = '−';
 
       const plus = document.createElement('button');
       plus.type = 'button';
-      plus.className = 'stepper-btn';
       plus.textContent = '+';
 
       const step = Number(input.step) || 1;

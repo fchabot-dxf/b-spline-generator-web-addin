@@ -217,17 +217,13 @@
             <div style="flex:1;">
               <label class="cad-label">Width (X)</label>
               <div class="cad-stepper">
-                <button onclick="let i=document.getElementById('widthIn'); i.value=Math.max(1,parseFloat(i.value)-1); i.dispatchEvent(new Event('input'))">−</button>
                 <input type="number" id="widthIn" value="7">
-                <button onclick="let i=document.getElementById('widthIn'); i.value=parseFloat(i.value)+1; i.dispatchEvent(new Event('input'))">+</button>
               </div>
             </div>
             <div style="flex:1;">
               <label class="cad-label">Height (Y)</label>
               <div class="cad-stepper">
-                <button onclick="let i=document.getElementById('heightIn'); i.value=Math.max(1,parseFloat(i.value)-1); i.dispatchEvent(new Event('input'))">−</button>
                 <input type="number" id="heightIn" value="9">
-                <button onclick="let i=document.getElementById('heightIn'); i.value=parseFloat(i.value)+1; i.dispatchEvent(new Event('input'))">+</button>
               </div>
             </div>
           </div>
@@ -236,9 +232,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="carveZSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('carveZ'); i.value=Math.max(0.1,parseFloat(i.value)-0.1); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="carveZ" value="1.5" step="0.1">
-              <button onclick="let i=document.getElementById('carveZ'); i.value=parseFloat(i.value)+0.1; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -246,9 +240,7 @@
           <div class="cad-slider-row">
             <input type="range" id="edgeMarginInSlider" class="cad-slider" min="0" max="10" step="0.05" value="0">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('edgeMarginIn'); i.value=Math.max(0,parseFloat(i.value)-0.1); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="edgeMarginIn" value="0">
-              <button onclick="let i=document.getElementById('edgeMarginIn'); i.value=parseFloat(i.value)+0.1; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
         </div>
@@ -284,9 +276,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="scaleSlider" class="cad-slider" min="0.2" max="12" step="0.1" value="3.7">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('scale'); i.value=Math.max(0.2,parseFloat(i.value)-0.1); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="scale" value="3.7">
-              <button onclick="let i=document.getElementById('scale'); i.value=parseFloat(i.value)+0.1; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -294,9 +284,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('macroScale'); i.value=Math.max(0.05,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="macroScale" value="0.65">
-              <button onclick="let i=document.getElementById('macroScale'); i.value=parseFloat(i.value)+0.05; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -304,9 +292,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="detailDensitySlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('detailDensity'); i.value=Math.max(0,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="detailDensity" value="1">
-              <button onclick="let i=document.getElementById('detailDensity'); i.value=Math.min(1,parseFloat(i.value)+0.05); i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -314,9 +300,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="detailStrengthSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.25">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('detailStrength'); i.value=Math.max(0,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="detailStrength" value="0.25">
-              <button onclick="let i=document.getElementById('detailStrength'); i.value=Math.min(1,parseFloat(i.value)+0.05); i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -344,9 +328,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="smoothIntensitySlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('smoothIntensity'); i.value=Math.max(0,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="smoothIntensity" value="0">
-              <button onclick="let i=document.getElementById('smoothIntensity'); i.value=Math.min(1,parseFloat(i.value)+0.05); i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -354,9 +336,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="smoothRadiusSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.2">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('smoothRadius'); i.value=Math.max(0.1,parseFloat(i.value)-0.5); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="smoothRadius" value="1.2">
-              <button onclick="let i=document.getElementById('smoothRadius'); i.value=parseFloat(i.value)+0.5; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -375,9 +355,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampDepthSlider" class="cad-slider" min="-2" max="2" step="0.005" value="0.8">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('stampDepth'); i.value=parseFloat(i.value)-0.05; i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="stampDepth" value="0.8" step="0.05">
-              <button onclick="let i=document.getElementById('stampDepth'); i.value=parseFloat(i.value)+0.05; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -407,9 +385,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptTopRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('sculptTopRadius'); i.value=Math.max(0.1,parseFloat(i.value)-0.5); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="sculptTopRadius" value="1.5">
-              <button onclick="let i=document.getElementById('sculptTopRadius'); i.value=parseFloat(i.value)+0.5; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -417,9 +393,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptTopHardnessSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.5">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('sculptTopHardness'); i.value=Math.max(0,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="sculptTopHardness" value="0.5">
-              <button onclick="let i=document.getElementById('sculptTopHardness'); i.value=Math.min(1,parseFloat(i.value)+0.05); i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -444,9 +418,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="thickenOffsetSlider" class="cad-slider" min="0.01" max="5" step="0.01" value="0.2">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('thickenOffset'); i.value=Math.max(0.01,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="thickenOffset" value="0.2" step="0.1">
-              <button onclick="let i=document.getElementById('thickenOffset'); i.value=parseFloat(i.value)+0.05; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -464,9 +436,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptBotRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('sculptBotRadius'); i.value=Math.max(0.1,parseFloat(i.value)-0.5); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="sculptBotRadius" value="1.5">
-              <button onclick="let i=document.getElementById('sculptBotRadius'); i.value=parseFloat(i.value)+0.5; i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
@@ -474,9 +444,7 @@
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptBotHardnessSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.5">
             <div class="cad-stepper" style="width:75px;">
-              <button onclick="let i=document.getElementById('sculptBotHardness'); i.value=Math.max(0,parseFloat(i.value)-0.05); i.dispatchEvent(new Event('input'))">−</button>
               <input type="number" id="sculptBotHardness" value="0.5">
-              <button onclick="let i=document.getElementById('sculptBotHardness'); i.value=Math.min(1,parseFloat(i.value)+0.05); i.dispatchEvent(new Event('input'))">+</button>
             </div>
           </div>
 
