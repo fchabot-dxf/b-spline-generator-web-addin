@@ -72,26 +72,26 @@ def run(context):
             new_def.commandCreated.add(on_created)
             handlers.append(on_created)
             
-        # --- 2. Add to UI (Solid Tab & Manufacture Utilities) ---
-        target_tabs = ['SolidTab', 'CAMUtilitiesTab']
+        # --- 2. Add to UI (shared B-Spline Builder panel on Solid and Sketch tabs) ---
+        target_tabs = ['SolidTab', 'SketchTab']
         for tab_id in target_tabs:
             tab = ui.allToolbarTabs.itemById(tab_id)
+            if not tab:
+                for t in ui.allToolbarTabs:
+                    if tab_id in t.id or tab_id in t.name:
+                        tab = t
+                        break
             if tab:
-                panel_id = 'FusionIOPanel'
-                panel_name = 'FUSION-IO'
-                
-                # Get or create the panel
+                panel_id = 'bsplinePanel'
+                panel_name = 'B-Spline Builder'
                 panel = tab.toolbarPanels.itemById(panel_id)
                 if not panel:
-                    panel = tab.toolbarPanels.add(panel_id, panel_name)
-                
-                # Add buttons to the panel
+                    panel = tab.toolbarPanels.add(panel_id, panel_name, 'SelectPanel', False)
                 for cmd_info in commands:
                     cmd_id = cmd_info['id']
-                    # Ensure no duplicate control exists
                     cntrl = panel.controls.itemById(cmd_id)
-                    if cntrl: cntrl.deleteMe()
-                    
+                    if cntrl:
+                        cntrl.deleteMe()
                     cmd_def = cmd_defs.itemById(cmd_id)
                     if cmd_def:
                         panel.controls.addCommand(cmd_def)

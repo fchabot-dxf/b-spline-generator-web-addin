@@ -96,6 +96,60 @@ def _load_submodule(safe_name, subdir, filename):
     return module
 
 
+def _normalize_module_path(path):
+    try:
+        return os.path.normcase(os.path.normpath(path))
+    except Exception:
+        return path
+
+
+def _find_related_addin_modules():
+    current_path = _normalize_module_path(__file__)
+    suffixes = [
+        os.path.normcase(os.path.normpath(os.path.join('b-spline-gen', 'b-spline-gen.py'))),
+        os.path.normcase(os.path.normpath(os.path.join('frame-builder', 'ui', 'hybrid_builder_ui.py'))),
+        os.path.normcase(os.path.normpath(os.path.join('frame-inspector', 'fusion-inspector.py'))),
+        os.path.normcase(os.path.normpath(os.path.join('fusion-exporter', 'fusion-exporter.py'))),
+        os.path.normcase(os.path.normpath(os.path.join('template-maker', 'template-maker.py'))),
+    ]
+
+    for mod in list(sys.modules.values()):
+        mod_file = getattr(mod, '__file__', None)
+        if not mod_file:
+            continue
+        mod_path = _normalize_module_path(mod_file)
+        if mod_path == current_path:
+            continue
+        mod_path = os.path.splitext(mod_path)[0]
+        for suffix in suffixes:
+            if mod_path.endswith(os.path.splitext(suffix)[0]):
+                yield mod
+                break
+
+
+def _invoke_addin_action(modules, action_name):
+    for mod in modules:
+        action = getattr(mod, action_name, None)
+        if not callable(action):
+            continue
+        try:
+            action(None)
+        except Exception:
+            _log_error(
+                f'{action_name} failed for related addin module '
+                f'{getattr(mod, "__file__", repr(mod))}\n'
+                + traceback.format_exc()
+            )
+
+
+def _stop_related_addins(modules):
+    _invoke_addin_action(modules, 'stop')
+
+
+def _run_related_addins(modules):
+    _invoke_addin_action(modules, 'run')
+
+
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
@@ -200,8 +254,11 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
 
     def notify(self, args):
         try:
+            related = list(_find_related_addin_modules())
             stop(None)
+            _stop_related_addins(related)
             run(None)
+            _run_related_addins(related)
         except Exception:
             _log_error('deferred refresh failed\n' + traceback.format_exc())
 
@@ -332,37 +389,40 @@ def run(context):
         except Exception:
             _log_error('reload cmd registration failed\n' + traceback.format_exc())
 
-        # 7. Add buttons to the unified toolbar panel.
-        ws = ui.workspaces.itemById('FusionSolidEnvironment')
-        if not ws: ws = ui.workspaces.itemById('SolidEnvironment')
-        if not ws: ws = ui.activeWorkspace
-        if ws:
-            tab = ws.toolbarTabs.itemById('SolidTab')
-            if not tab:
-                for t in ws.toolbarTabs:
-                    if 'Solid' in t.id or 'Solid' in t.name:
-                        tab = t
-                        break
-            if tab:
-                panel = tab.toolbarPanels.itemById(PANEL_ID)
-                if not panel:
-                    panel = tab.toolbarPanels.add(PANEL_ID, 'B-Spline Builder', 'SelectPanel', False)
-                for cmd in COMMANDS:
-                    cid = cmd['id']
-                    if not panel.controls.itemById(cid):
-                        ctrl = panel.controls.addCommand(cmd_defs.itemById(cid))
-                        ctrl.isPromoted          = True
-                        ctrl.isPromotedByDefault = True
+        # 7. Add buttons to the unified toolbar panel on both Solid and Sketch tabs.
+        for ws in ui.workspaces:
+            try:
+                for target_id in ('SolidTab', 'SketchTab'):
+                    tab = ws.toolbarTabs.itemById(target_id)
+                    if not tab:
+                        for t in ws.toolbarTabs:
+                            if target_id in t.id or target_id in t.name:
+                                tab = t
+                                break
+                    if not tab:
+                        continue
 
-                # Reload button — sits in the same panel, unpromoted so it
-                # stays in the overflow menu (right-click it to bind a hotkey).
-                if not panel.controls.itemById(RELOAD_COMMAND_ID):
-                    try:
-                        rctrl = panel.controls.addCommand(cmd_defs.itemById(RELOAD_COMMAND_ID))
-                        rctrl.isPromoted          = False
-                        rctrl.isPromotedByDefault = False
-                    except Exception:
-                        _log_error('reload button add failed\n' + traceback.format_exc())
+                    panel = tab.toolbarPanels.itemById(PANEL_ID)
+                    if not panel:
+                        panel = tab.toolbarPanels.add(PANEL_ID, 'B-Spline Builder', 'SelectPanel', False)
+                    for cmd in COMMANDS:
+                        cid = cmd['id']
+                        if not panel.controls.itemById(cid):
+                            ctrl = panel.controls.addCommand(cmd_defs.itemById(cid))
+                            ctrl.isPromoted          = True
+                            ctrl.isPromotedByDefault = True
+
+                    # Reload button — sits in the same panel, unpromoted so it
+                    # stays in the overflow menu (right-click it to bind a hotkey).
+                    if not panel.controls.itemById(RELOAD_COMMAND_ID):
+                        try:
+                            rctrl = panel.controls.addCommand(cmd_defs.itemById(RELOAD_COMMAND_ID))
+                            rctrl.isPromoted          = False
+                            rctrl.isPromotedByDefault = False
+                        except Exception:
+                            _log_error('reload button add failed\n' + traceback.format_exc())
+            except Exception:
+                _log_error('panel registration failed\n' + traceback.format_exc())
 
         if _diag_logger:
             _diag_logger.log('RUN complete')
@@ -394,31 +454,34 @@ def stop(context):
         except Exception:
             _log_error('teardown_submodules failed\n' + traceback.format_exc())
 
-        # 2. Remove the unified toolbar panel (controls + panel itself).
+        # 2. Remove the unified toolbar panel (controls + panel itself) from both Solid and Sketch tabs.
         try:
-            ws = ui.workspaces.itemById('FusionSolidEnvironment')
-            if not ws: ws = ui.workspaces.itemById('SolidEnvironment')
-            if ws:
-                tab = ws.toolbarTabs.itemById('SolidTab')
-                if not tab:
-                    for t in ws.toolbarTabs:
-                        if 'Solid' in t.id or 'Solid' in t.name:
-                            tab = t
-                            break
-                if tab:
-                    panel = tab.toolbarPanels.itemById(PANEL_ID)
-                    if panel:
-                        for _ in range(50):      # safety counter
-                            if panel.controls.count == 0:
-                                break
+            for ws in ui.workspaces:
+                try:
+                    for target_id in ('SolidTab', 'SketchTab'):
+                        tab = ws.toolbarTabs.itemById(target_id)
+                        if not tab:
+                            for t in ws.toolbarTabs:
+                                if target_id in t.id or target_id in t.name:
+                                    tab = t
+                                    break
+                        if not tab:
+                            continue
+                        panel = tab.toolbarPanels.itemById(PANEL_ID)
+                        if panel:
+                            for _ in range(50):      # safety counter
+                                if panel.controls.count == 0:
+                                    break
+                                try:
+                                    panel.controls.item(panel.controls.count - 1).deleteMe()
+                                except Exception:
+                                    break
                             try:
-                                panel.controls.item(panel.controls.count - 1).deleteMe()
+                                panel.deleteMe()
                             except Exception:
-                                break
-                        try:
-                            panel.deleteMe()
-                        except Exception:
-                            pass
+                                pass
+                except Exception:
+                    pass
         except Exception:
             _log_error('panel cleanup failed\n' + traceback.format_exc())
 

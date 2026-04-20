@@ -50,6 +50,142 @@ DEST_DIR = DEST_ROOT / ADDIN_NAME
 # ZIP output location (sits next to this script, easy to find / distribute)
 ZIP_OUT  = SRC_DIR / f"{ADDIN_NAME}.zip"
 
+# ---------------------------------------------------------------------------
+# Shared Add-in Deploy Helpers
+# ---------------------------------------------------------------------------
+
+def get_default_dest_root() -> Path:
+    if sys.platform == "win32":
+        _appdata = os.getenv("APPDATA", os.path.expanduser("~\\AppData\\Roaming"))
+        return Path(_appdata) / "Autodesk" / "Autodesk Fusion 360" / "API" / "AddIns"
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Autodesk" / "Autodesk Fusion 360" / "API" / "AddIns"
+    else:
+        raise RuntimeError(f"Unsupported OS: {sys.platform}")
+
+
+def _deploy_addin(src_dir: Path, addin_name: str, verify_files: list[str], skip_names=None, skip_suffixes=None, skip_files_exact=None, extra_copy=None) -> bool:
+    dest_dir = get_default_dest_root() / addin_name
+    print("=" * 60)
+    print(f"DEPLOYING {addin_name}")
+    print(f"  Source : {src_dir}")
+    print(f"  Target : {dest_dir}")
+    print("=" * 60)
+
+    if not src_dir.exists():
+        print(f"ERROR: source directory not found: {src_dir}")
+        return False
+
+    if skip_names is None:
+        skip_names = SKIP_NAMES
+    if skip_suffixes is None:
+        skip_suffixes = SKIP_SUFFIXES
+    if skip_files_exact is None:
+        skip_files_exact = SKIP_FILES_EXACT
+
+    def _ignore(src_path: str, names: list) -> list:
+        return [n for n in names if n in skip_names or n in skip_files_exact or Path(n).suffix.lower() in skip_suffixes or n.startswith('.')]
+
+    src_hashes = {}
+    for rel in verify_files:
+        p = src_dir / rel
+        if p.exists():
+            src_hashes[rel] = md5(p)
+        else:
+            print(f"  WARNING: expected source file missing: {rel}")
+
+    scrub_source(src_dir)
+
+    if dest_dir.exists():
+        print("  Removing old install...")
+        clean_dir(dest_dir)
+
+    print("  Copying files...")
+    try:
+        shutil.copytree(src_dir, dest_dir, ignore=_ignore)
+        if extra_copy:
+            extra_copy(src_dir, dest_dir)
+    except Exception as e:
+        print(f"  ERROR: copytree failed: {e}")
+        return False
+
+    print("  Verifying key files...")
+    all_ok = True
+    for rel, src_hash in src_hashes.items():
+        dest_path = dest_dir / rel
+        if not dest_path.exists():
+            print(f"  FAIL    {rel}  — missing in destination!")
+            all_ok = False
+            continue
+        dest_hash = md5(dest_path)
+        status = "OK     " if dest_hash == src_hash else "MISMATCH"
+        print(f"  {status}  {rel}")
+        if dest_hash != src_hash:
+            all_ok = False
+
+    if all_ok:
+        print(f"  {addin_name} deploy successful.")
+    else:
+        print(f"  ERROR: {addin_name} deploy had problems.")
+
+    return all_ok
+
+
+def deploy_template_maker() -> bool:
+    from pathlib import Path as _Path
+    addin_dir = SRC_DIR / "template-maker"
+    verify_files = [
+        "template-maker.py",
+        "template-maker.manifest",
+        "template_maker_palette.html",
+        "template_generator.py",
+        "entity_helpers.py",
+        "expression_coords.py",
+        "ressources/16x16.png",
+        "ressources/32x32.png",
+        "ressources/64x64.png",
+    ]
+    return _deploy_addin(addin_dir, "template-maker", verify_files)
+
+
+def deploy_fusion_inspector() -> bool:
+    addin_dir = SRC_DIR / "frame-inspector"
+    verify_files = [
+        "fusion-inspector.py",
+        "fusion-inspector.manifest",
+        "inspector_palette.html",
+        "selection_items.py",
+        "entity_helpers.py",
+        "payload_builder.py",
+        "resources/InspectorCommand/16x16.png",
+        "resources/InspectorCommand/32x32.png",
+        "resources/InspectorCommand/64x64.png",
+    ]
+    return _deploy_addin(addin_dir, "fusion-inspector", verify_files)
+
+
+def deploy_fusion_exporter() -> bool:
+    addin_dir = SRC_DIR / "fusion-exporter"
+    verify_files = [
+        "fusion-exporter.py",
+        "fusion-exporter.manifest",
+        "exporter.py",
+        "ressources/16x16.png",
+        "ressources/32x32.png",
+        "ressources/64x64.png",
+    ]
+    return _deploy_addin(addin_dir, "fusion-exporter", verify_files)
+
+
+def deploy_all() -> bool:
+    success = True
+    success &= deploy_local()
+    success &= deploy_template_maker()
+    success &= deploy_fusion_inspector()
+    success &= deploy_fusion_exporter()
+    return success
+
+
 # Files to verify after the local copy
 VERIFY_FILES = [
     "bspline-frame-builder.py",
@@ -208,7 +344,7 @@ def deploy_local():
         print("  Next: Shift+S in Fusion 360 -> Add-ins -> Stop then Run.")
     else:
         print("\n  ERROR: one or more files did not copy correctly.")
-        sys.exit(1)
+    return all_ok
 
 
 def _write_fb_handshake():
@@ -282,8 +418,34 @@ def build_zip():
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _usage():
+    print("Usage: python DEPLOY_bspline-frame-builder.py [all|bbf|template-maker|fusion-inspector|fusion-exporter]")
+    print("  all              Deploy bspline-frame-builder, template-maker, fusion-inspector, and fusion-exporter")
+    print("  bbf              Deploy bspline-frame-builder only")
+    print("  template-maker   Deploy template-maker only")
+    print("  fusion-inspector Deploy fusion-inspector only")
+    print("  fusion-exporter  Deploy fusion-exporter only")
+    print("\nExample: python DEPLOY_bspline-frame-builder.py all")
+
 if __name__ == "__main__":
-    deploy_local()
+    target = sys.argv[1].lower() if len(sys.argv) > 1 else "all"
+
+    if target in {"all", "deploy-all"}:
+        success = deploy_all()
+    elif target in {"bbf", "bspline", "framebuilder", "frame-builder", "bspline-frame-builder", "local"}:
+        success = deploy_local()
+    elif target in {"template-maker", "template_maker", "template"}:
+        success = deploy_template_maker()
+    elif target in {"fusion-inspector", "fusion_inspector", "inspector"}:
+        success = deploy_fusion_inspector()
+    elif target in {"fusion-exporter", "fusion_exporter", "exporter"}:
+        success = deploy_fusion_exporter()
+    else:
+        _usage()
+        sys.exit(1)
+
+    if not success:
+        sys.exit(1)
     # build_zip()  # Disabled for faster local iteration
     print()
     print("All done.")

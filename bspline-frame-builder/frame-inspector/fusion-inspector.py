@@ -14,7 +14,7 @@ _latest_payload = ""
 
 PALETTE_ID = 'FusionInspector_Palette'
 CMD_ID = 'FusionInspector_Command'
-PANEL_ID = 'FusionInspector_Panel' 
+PANEL_ID = 'bsplinePanel'
 
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
@@ -610,33 +610,25 @@ def run(context):
         # Add Inspector button to SketchTab in all workspaces that have it
         for ws in ui.workspaces:
             try:
-                tab = ws.toolbarTabs.itemById('SketchTab')
-                _log(f"[DEBUG] ws.toolbarTabs.itemById('SketchTab') in workspace '{ws.id}': {repr(tab)}")
-                if not tab:
-                    # Fallback: search for any tab containing 'SketchTab' in its id
-                    for t in ws.toolbarTabs:
-                        if 'SketchTab' in t.id:
-                            tab = t
-                            break
-                if tab:
-                    _log(f"[LOG] Found workspace: {ws.id}")
-                    _log(f"[LOG] Found tab: {tab.id} in workspace: {ws.id}")
+                for target_id in ('SketchTab', 'SolidTab'):
+                    tab = ws.toolbarTabs.itemById(target_id)
+                    if not tab:
+                        for t in ws.toolbarTabs:
+                            if target_id in t.id:
+                                tab = t
+                                break
+                    if not tab:
+                        continue
+
                     panel = tab.toolbarPanels.itemById(PANEL_ID)
                     if not panel:
-                        panel = tab.toolbarPanels.add(PANEL_ID, 'INSPECTOR', '', False)
-                        _log(f"[LOG] Created panel: {PANEL_ID} in tab: {tab.id}")
-                    else:
-                        _log(f"[LOG] Found existing panel: {PANEL_ID} in tab: {tab.id}")
+                        panel = tab.toolbarPanels.add(PANEL_ID, 'B-Spline Builder', 'SelectPanel', False)
                     if not panel.controls.itemById(CMD_ID):
                         ctrl = panel.controls.addCommand(cmd_def)
                         ctrl.isPromoted = True
                         ctrl.isPromotedByDefault = True
-                        _log(f"[LOG] Added command button: {CMD_ID} to panel: {PANEL_ID} in tab: {tab.id}")
-                    else:
-                        _log(f"[LOG] Command button: {CMD_ID} already exists in panel: {PANEL_ID} in tab: {tab.id}")
-                # else: do not log missing SketchTab for every workspace
             except Exception as e:
-                _log(f"[ERROR] Failed to add Inspector to SketchTab in workspace '{ws.id}': {e}")
+                _log(f"[ERROR] Failed to add Inspector to toolbar in workspace '{ws.id}': {e}")
         # 3. Selection Monitor
         sel_handler = _SelectionChangedHandler()
         ui.activeSelectionChanged.add(sel_handler)
