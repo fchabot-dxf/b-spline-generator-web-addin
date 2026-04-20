@@ -84,9 +84,10 @@ def run(context):
             if tab:
                 panel_id = 'bsplinePanel'
                 panel_name = 'B-Spline Builder'
-                panel = tab.toolbarPanels.itemById(panel_id)
+                unique_panel_id = f"{panel_id}_{tab.id}"
+                panel = tab.toolbarPanels.itemById(unique_panel_id)
                 if not panel:
-                    panel = tab.toolbarPanels.add(panel_id, panel_name, 'SelectPanel', False)
+                    panel = tab.toolbarPanels.add(unique_panel_id, panel_name, 'SelectPanel', False)
                 for cmd_info in commands:
                     cmd_id = cmd_info['id']
                     cntrl = panel.controls.itemById(cmd_id)
@@ -94,7 +95,13 @@ def run(context):
                         cntrl.deleteMe()
                     cmd_def = cmd_defs.itemById(cmd_id)
                     if cmd_def:
-                        panel.controls.addCommand(cmd_def)
+                        new_cntrl = panel.controls.addCommand(cmd_def)
+                        try:
+                            new_cntrl.isPromoted = True
+                            new_cntrl.isPromotedByDefault = True
+                        except:
+                            pass
+
 
     except:
         if ui: ui.messageBox('Add-In Start Failed:\n{}'.format(traceback.format_exc()))
@@ -127,11 +134,17 @@ def stop(context):
                 pass
             
         # 3. Clean up the panels if they are empty
-        solid_tab = ui.allToolbarTabs.itemById('SolidTab')
-        if solid_tab:
+        for tab in ui.allToolbarTabs:
+            if tab is None:
+                continue
             for p_id in panels_to_clean:
                 try:
-                    panel = solid_tab.toolbarPanels.itemById(p_id)
+                    unique_panel_id = f"{p_id}_{tab.id}"
+                    panel = tab.toolbarPanels.itemById(unique_panel_id)
+                    # Also try checking for just the raw p_id in case it was a legacy panel
+                    if not panel:
+                        panel = tab.toolbarPanels.itemById(p_id)
+
                     if panel and panel.controls.count == 0:
                         panel.deleteMe()
                 except:

@@ -656,33 +656,40 @@ def run(context):
             _log('[reload cmd] ' + traceback.format_exc())
 
         # 6. Add both commands to toolbar panels.
-        for ws in ui.workspaces:
+        for target_id in ('SketchTab', 'SolidTab'):
             try:
-                for target_id in ('SketchTab', 'SolidTab'):
-                    tab = ws.toolbarTabs.itemById(target_id)
-                    if not tab:
-                        for t in ws.toolbarTabs:
-                            if target_id in t.id:
-                                tab = t
-                                break
-                    if not tab:
-                        continue
+                tab = ui.allToolbarTabs.itemById(target_id)
+                if not tab:
+                    for t in ui.allToolbarTabs:
+                        if target_id in getattr(t, 'id', '') or target_id in getattr(t, 'name', ''):
+                            tab = t
+                            break
+                if not tab:
+                    _log(f'[Template Maker] could not find tab {target_id}. Available tabs:')
+                    for t in ui.allToolbarTabs:
+                        _log(f'  {getattr(t, "id", None)!r} / {getattr(t, "name", None)!r}')
+                    continue
 
-                    panel = tab.toolbarPanels.itemById(PANEL_ID)
-                    if not panel:
-                        panel = tab.toolbarPanels.add(PANEL_ID, 'B-Spline Builder', 'SelectPanel', False)
-                    if not panel.controls.itemById(CMD_ID):
-                        panel.controls.addCommand(cmd_def)
-                    # Reload button, unpromoted so it sits in the overflow menu.
-                    if reload_def and not panel.controls.itemById(RELOAD_CMD_ID):
-                        try:
-                            rctrl = panel.controls.addCommand(reload_def)
-                            rctrl.isPromoted          = False
-                            rctrl.isPromotedByDefault = False
-                        except Exception:
-                            _log('[reload button] ' + traceback.format_exc())
+                _log(f'[Template Maker] using tab {target_id} (id={tab.id!r}, name={tab.name!r})')
+                unique_panel_id = f"{PANEL_ID}_{tab.id}"
+                panel = tab.toolbarPanels.itemById(unique_panel_id)
+                if not panel:
+                    panel = tab.toolbarPanels.add(unique_panel_id, 'B-Spline Builder', 'SelectPanel', False)
+                if not panel.controls.itemById(CMD_ID):
+                    ctrl = panel.controls.addCommand(cmd_def)
+                    ctrl.isPromoted = True
+                    ctrl.isPromotedByDefault = True
+                    _log(f'[Template Maker] added {CMD_ID} to {unique_panel_id} on {tab.id!r} as promoted')
+                if reload_def and not panel.controls.itemById(RELOAD_CMD_ID):
+                    try:
+                        rctrl = panel.controls.addCommand(reload_def)
+                        rctrl.isPromoted          = False
+                        rctrl.isPromotedByDefault = False
+                        _log(f'[Template Maker] added reload button to {unique_panel_id} on {tab.id!r}')
+                    except Exception:
+                        _log('[Template Maker reload button] ' + traceback.format_exc())
             except Exception:
-                pass
+                _log('[Template Maker] toolbar registration failed\n' + traceback.format_exc())
 
         # 7. Selection + documentActivated subscriptions.
         global _sel_handler, _doc_activated_handler
@@ -737,31 +744,27 @@ def stop(context):
         except Exception:
             _log('[stop] palette cleanup\n' + traceback.format_exc())
 
-        # 2. Remove toolbar controls + panels we own across all relevant
-        #    workspaces.
-        for ws_id in ('FusionSolidEnvironment', 'SolidEnvironment', 'SketchEnvironment'):
+        # 2. Remove toolbar controls + panels we own across all relevant tabs.
+        for tab in ui.allToolbarTabs:
             try:
-                ws = ui.workspaces.itemById(ws_id)
-                if not ws:
+                if tab is None:
                     continue
-                for tab in ws.toolbarTabs:
-                    try:
-                        panel = tab.toolbarPanels.itemById(PANEL_ID)
-                        if not panel:
-                            continue
-                        ctrl = panel.controls.itemById(CMD_ID)
-                        if ctrl:
-                            try:
-                                ctrl.deleteMe()
-                            except Exception:
-                                pass
-                        if panel.controls.count == 0:
-                            try:
-                                panel.deleteMe()
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
+                panels_to_check = []
+                for p in tab.toolbarPanels:
+                    if p.id.startswith(PANEL_ID):
+                        panels_to_check.append(p)
+                for panel in panels_to_check:
+                    ctrl = panel.controls.itemById(CMD_ID)
+                    if ctrl:
+                        try:
+                            ctrl.deleteMe()
+                        except Exception:
+                            pass
+                    if panel.controls.count == 0:
+                        try:
+                            panel.deleteMe()
+                        except Exception:
+                            pass
             except Exception:
                 pass
 

@@ -20,7 +20,6 @@ _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
 from expression_coords import get_design_params
-from entity_helpers import entity_fingerprint
 from payload_builder import build_payload
 
 PALETTE_URL = os.path.join(_current_dir, 'inspector_palette.html').replace('\\', '/')
@@ -607,28 +606,34 @@ def run(context):
         _handlers.append(handler)
         
         # 2. UI Button Insertion (Dynamic SketchTab Registration)
-        # Add Inspector button to SketchTab in all workspaces that have it
-        for ws in ui.workspaces:
+        # Add Inspector button to SketchTab and SolidTab.
+        for target_id in ('SketchTab', 'SolidTab'):
             try:
-                for target_id in ('SketchTab', 'SolidTab'):
-                    tab = ws.toolbarTabs.itemById(target_id)
-                    if not tab:
-                        for t in ws.toolbarTabs:
-                            if target_id in t.id:
-                                tab = t
-                                break
-                    if not tab:
-                        continue
+                tab = ui.allToolbarTabs.itemById(target_id)
+                if not tab:
+                    for t in ui.allToolbarTabs:
+                        if target_id in getattr(t, 'id', '') or target_id in getattr(t, 'name', ''):
+                            tab = t
+                            break
+                if not tab:
+                    _log(f"[Fusion Inspector] could not find tab {target_id}. Available tabs:")
+                    for t in ui.allToolbarTabs:
+                        _log(f"  {getattr(t, 'id', None)!r} / {getattr(t, 'name', None)!r}")
+                    continue
 
-                    panel = tab.toolbarPanels.itemById(PANEL_ID)
-                    if not panel:
-                        panel = tab.toolbarPanels.add(PANEL_ID, 'B-Spline Builder', 'SelectPanel', False)
-                    if not panel.controls.itemById(CMD_ID):
-                        ctrl = panel.controls.addCommand(cmd_def)
-                        ctrl.isPromoted = True
-                        ctrl.isPromotedByDefault = True
+                _log(f"[Fusion Inspector] using tab {target_id} (id={tab.id!r}, name={tab.name!r})")
+                unique_panel_id = f"{PANEL_ID}_{tab.id}"
+                panel = tab.toolbarPanels.itemById(unique_panel_id)
+                if not panel:
+                    panel = tab.toolbarPanels.add(unique_panel_id, 'B-Spline Builder', 'SelectPanel', False)
+                    _log(f"[Fusion Inspector] created panel {unique_panel_id} on {tab.id!r}")
+                if not panel.controls.itemById(CMD_ID):
+                    ctrl = panel.controls.addCommand(cmd_def)
+                    ctrl.isPromoted = True
+                    ctrl.isPromotedByDefault = True
+                    _log(f"[Fusion Inspector] added {CMD_ID} to {unique_panel_id} on {tab.id!r} as promoted")
             except Exception as e:
-                _log(f"[ERROR] Failed to add Inspector to toolbar in workspace '{ws.id}': {e}")
+                _log(f"[Fusion Inspector] toolbar registration failed for {target_id}: {e}\n" + traceback.format_exc())
         # 3. Selection Monitor
         sel_handler = _SelectionChangedHandler()
         ui.activeSelectionChanged.add(sel_handler)
@@ -646,18 +651,29 @@ def stop(context):
         palette = ui.palettes.itemById(PALETTE_ID)
         if palette: palette.deleteMe()
         
-        # Cleanup panels in specific workspaces
-        target_ws_ids = ['FusionSolidEnvironment', 'SolidEnvironment', 'SketchEnvironment']
-        for ws_id in target_ws_ids:
-            ws = ui.workspaces.itemById(ws_id)
-            if ws:
-                for tab in ws.toolbarTabs:
-                    panel = tab.toolbarPanels.itemById(PANEL_ID)
-                    if panel:
-                        ctrl = panel.controls.itemById(CMD_ID)
-                        if ctrl: ctrl.deleteMe()
-                        if panel.controls.count == 0:
+        for tab in ui.allToolbarTabs:
+            if tab is None:
+                continue
+            try:
+                panels_to_check = []
+                for p in tab.toolbarPanels:
+                    if p.id.startswith(PANEL_ID):
+                        panels_to_check.append(p)
+                        
+                for panel in panels_to_check:
+                    ctrl = panel.controls.itemById(CMD_ID)
+                    if ctrl:
+                        try:
+                            ctrl.deleteMe()
+                        except Exception:
+                            pass
+                    if panel.controls.count == 0:
+                        try:
                             panel.deleteMe()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
         cmd_def = ui.commandDefinitions.itemById(CMD_ID)
         if cmd_def: cmd_def.deleteMe()

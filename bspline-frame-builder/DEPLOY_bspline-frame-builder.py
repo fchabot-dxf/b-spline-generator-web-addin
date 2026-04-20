@@ -177,13 +177,35 @@ def deploy_fusion_exporter() -> bool:
     return _deploy_addin(addin_dir, "fusion-exporter", verify_files)
 
 
+def cleanup_legacy_standalone_addins() -> None:
+    """Remove the old top-level AddIns folders that used to house template-maker,
+    fusion-inspector, and fusion-exporter as SEPARATE Fusion add-ins.
+
+    These three modules are now consolidated into the bspline-frame-builder
+    add-in (they live under its subfolders and are loaded by the main
+    bootstrap). Leaving the old folders in place would make Fusion's Add-Ins
+    dialog show them as duplicate entries alongside the unified one.
+    """
+    dest_root = get_default_dest_root()
+    legacy = ['template-maker', 'fusion-inspector', 'fusion-exporter']
+    print("=" * 60)
+    print("CLEANUP: removing legacy standalone add-in folders")
+    print("=" * 60)
+    for name in legacy:
+        path = dest_root / name
+        if path.exists():
+            print(f"  Removing {path}")
+            clean_dir(path)
+        else:
+            print(f"  (not present) {path}")
+
+
 def deploy_all() -> bool:
-    success = True
-    success &= deploy_local()
-    success &= deploy_template_maker()
-    success &= deploy_fusion_inspector()
-    success &= deploy_fusion_exporter()
-    return success
+    cleanup_legacy_standalone_addins()
+    # The three former sub-add-ins are now bundled INSIDE bspline-frame-builder
+    # (their source subfolders are copied as part of deploy_local), so we no
+    # longer install them as separate top-level AddIns.
+    return deploy_local()
 
 
 # Files to verify after the local copy
@@ -419,12 +441,16 @@ def build_zip():
 # ---------------------------------------------------------------------------
 
 def _usage():
-    print("Usage: python DEPLOY_bspline-frame-builder.py [all|bbf|template-maker|fusion-inspector|fusion-exporter]")
-    print("  all              Deploy bspline-frame-builder, template-maker, fusion-inspector, and fusion-exporter")
-    print("  bbf              Deploy bspline-frame-builder only")
-    print("  template-maker   Deploy template-maker only")
-    print("  fusion-inspector Deploy fusion-inspector only")
-    print("  fusion-exporter  Deploy fusion-exporter only")
+    print("Usage: python DEPLOY_bspline-frame-builder.py [all|bbf|cleanup]")
+    print("  all        Remove legacy standalone add-in folders, then deploy the")
+    print("             unified bspline-frame-builder add-in (contains template-maker,")
+    print("             fusion-inspector, and fusion-exporter as sub-modules).")
+    print("  bbf        Deploy bspline-frame-builder only (skip cleanup).")
+    print("  cleanup    Only remove the legacy standalone add-in folders,")
+    print("             don't deploy anything.")
+    print("\nLegacy targets (template-maker | fusion-inspector | fusion-exporter)")
+    print("are still supported for emergency debug but install those modules as")
+    print("SEPARATE Fusion add-ins, which conflicts with the unified add-in.")
     print("\nExample: python DEPLOY_bspline-frame-builder.py all")
 
 if __name__ == "__main__":
@@ -434,11 +460,20 @@ if __name__ == "__main__":
         success = deploy_all()
     elif target in {"bbf", "bspline", "framebuilder", "frame-builder", "bspline-frame-builder", "local"}:
         success = deploy_local()
+    elif target in {"cleanup", "clean"}:
+        cleanup_legacy_standalone_addins()
+        success = True
     elif target in {"template-maker", "template_maker", "template"}:
+        print("WARNING: installing template-maker as a SEPARATE add-in.")
+        print("         The unified bspline-frame-builder add-in already contains it.")
         success = deploy_template_maker()
     elif target in {"fusion-inspector", "fusion_inspector", "inspector"}:
+        print("WARNING: installing fusion-inspector as a SEPARATE add-in.")
+        print("         The unified bspline-frame-builder add-in already contains it.")
         success = deploy_fusion_inspector()
     elif target in {"fusion-exporter", "fusion_exporter", "exporter"}:
+        print("WARNING: installing fusion-exporter as a SEPARATE add-in.")
+        print("         The unified bspline-frame-builder add-in already contains it.")
         success = deploy_fusion_exporter()
     else:
         _usage()

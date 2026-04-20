@@ -51,20 +51,33 @@ def _create_hidden_build_command(cmd_defs, cmd_id, name):
 
 
 def _ensure_hidden_build_commands(ui):
+    """
+    Ensure the hidden bridge commands exist. These are used by the HTML palette 
+    to trigger Python actions and do NOT need toolbar buttons.
+    """
     try:
         cmd_defs = ui.commandDefinitions
-        for cmd_id, cmd_name in (
+        targets = (
             (BUILD_SKETCH_CMD_ID, 'Build Skeleton'),
             (BUILD_SOLID_CMD_ID,  'Build Solid Frame'),
             (SCHEMA_PUSH_CMD_ID,  'Push Schema'),
-        ):
+        )
+        
+        for cmd_id, cmd_name in targets:
+            # 1. Clean up existing definitions to avoid 'already exists' errors
             existing = cmd_defs.itemById(cmd_id)
             if existing:
                 try:
                     existing.deleteMe()
                 except:
                     pass
+            
+            # 2. Re-register the hidden command
             _create_hidden_build_command(cmd_defs, cmd_id, cmd_name)
+            
+    except Exception:
+        if diag_logger:
+            diag_logger.log_error(f"_ensure_hidden_build_commands FAILED:\n{traceback.format_exc()}")
     except:
         pass
 

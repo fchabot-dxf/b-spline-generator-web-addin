@@ -27,6 +27,9 @@ _refresh_handlers = []       # CustomEvent handlers (kept alive for whole sessio
 _bs               = None     # b-spline-gen module (reloaded every run)
 _fbh              = None     # hybrid_builder_ui module (reloaded every run)
 _engine           = None     # frame_engine module (reloaded every run)
+_tm               = None     # template-maker module (reloaded every run)
+_fi               = None     # fusion-inspector module (reloaded every run)
+_fe               = None     # fusion-exporter module (reloaded every run)
 _diag_logger      = None     # DebugLogger (re-created every run)
 _refresh_event    = None     # Registered once per Fusion session
 _refresh_registered = False
@@ -49,6 +52,16 @@ def _fallback_log(msg):
             f.write(msg + '\n')
     except Exception:
         pass
+
+
+def _log(msg):
+    if _diag_logger is not None:
+        try:
+            _diag_logger.log(msg)
+            return
+        except Exception:
+            pass
+    _fallback_log('[INFO] ' + msg)
 
 
 def _log_error(msg):
@@ -153,7 +166,7 @@ def _run_related_addins(modules):
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
-    global _bs, _fbh, _engine, _diag_logger
+    global _bs, _fbh, _engine, _tm, _fi, _fe, _diag_logger
 
     # --- Logger ---
     _utils_path = os.path.join(_addin_root, 'frame-builder', 'fb_utils')
@@ -197,13 +210,56 @@ def _bootstrap():
     # Inject the fresh engine object
     _fbh.frame_engine = _engine
 
+    # --- Consolidated former-standalone add-ins ---
+    # These three modules used to install as separate Fusion add-ins. They now
+    # live inside this add-in so there's a single entry in Fusion's Add-Ins
+    # dialog. Each sub-module registers its own button in the shared
+    # 'bsplinePanel' toolbar panel on its own `run()` call (see `run()` below).
+    #
+    # IMPORTANT: template-maker and frame-inspector each ship their OWN copy of
+    # shared-name project modules (expression_coords.py, entity_helpers.py,
+    # etc.). If a previous _bootstrap() already cached one version in
+    # sys.modules, the sub-module we're about to load would bind to the WRONG
+    # version on re-import. Wipe those names before each load so each sub's
+    # top-level imports resolve fresh from its own folder (sys.path[0] gets
+    # set by the sub-module's own module-level `sys.path.insert(0, ...)`).
+    _shared_project_names = [
+        'expression_coords', 'entity_helpers', 'entity_util', 'payload_builder',
+        'phase_parser', 'role_points', 'cc_proxy', 'fb_attributes',
+        'ownership_gate', 'relation_hints', 'coincidence_clusters',
+        'template_generator', 'template_code', 'template_payload',
+        'detect_projections', 'rename_selection', 'deferred_rebuild',
+        'exporter',
+    ]
+
+    _force_wipe(_shared_project_names)
+    try:
+        _fe = _load_submodule('fusion_exporter_mod',  'fusion-exporter', 'fusion-exporter.py')
+    except Exception:
+        _log_error('fusion-exporter submodule load failed\n' + traceback.format_exc())
+        _fe = None
+
+    _force_wipe(_shared_project_names)
+    try:
+        _fi = _load_submodule('fusion_inspector_mod', 'frame-inspector', 'fusion-inspector.py')
+    except Exception:
+        _log_error('fusion-inspector submodule load failed\n' + traceback.format_exc())
+        _fi = None
+
+    _force_wipe(_shared_project_names)
+    try:
+        _tm = _load_submodule('template_maker_mod',   'template-maker',  'template-maker.py')
+    except Exception:
+        _log_error('template-maker submodule load failed\n' + traceback.format_exc())
+        _tm = None
+
     _diag_logger.log('BOOTSTRAP: sub-modules loaded (fresh from disk)')
 
 
 # ── Submodule teardown (called from stop) ─────────────────────────────────────
 def _teardown_submodules():
     """Release resources held by loaded sub-modules before we drop our refs."""
-    global _bs, _fbh, _engine
+    global _bs, _fbh, _engine, _tm, _fi, _fe
 
     app = None
     try:
@@ -242,9 +298,29 @@ def _teardown_submodules():
         except Exception:
             _log_error('teardown: _bs.stop failed\n' + traceback.format_exc())
 
+    # 3. Consolidated former-standalone add-ins — each cleans up its own
+    #    command defs, palettes, event subscriptions, and panel buttons.
+    #    Stop in REVERSE of the run order so late-bound resources (palettes,
+    #    selection handlers) release before earlier commands.
+    for _sub_label, _sub_mod in (('template-maker',   _tm),
+                                 ('fusion-inspector', _fi),
+                                 ('fusion-exporter',  _fe)):
+        if _sub_mod is None:
+            continue
+        _sub_stop = getattr(_sub_mod, 'stop', None)
+        if not callable(_sub_stop):
+            continue
+        try:
+            _sub_stop(None)
+        except Exception:
+            _log_error(f'teardown: {_sub_label} stop() failed\n' + traceback.format_exc())
+
     _bs = None
     _fbh = None
     _engine = None
+    _tm = None
+    _fi = None
+    _fe = None
 
 
 # ── Deferred refresh via CustomEvent ──────────────────────────────────────────
@@ -253,12 +329,14 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
         super().__init__()
 
     def notify(self, args):
+        # Since template-maker, fusion-inspector, and fusion-exporter are now
+        # consolidated into this add-in's own run()/stop() lifecycle (see
+        # _bootstrap() and _teardown_submodules()), the former
+        # `_find_related_addin_modules` scan is redundant — a plain stop/run
+        # cycle already tears down and rebuilds every sub-module from disk.
         try:
-            related = list(_find_related_addin_modules())
             stop(None)
-            _stop_related_addins(related)
             run(None)
-            _run_related_addins(related)
         except Exception:
             _log_error('deferred refresh failed\n' + traceback.format_exc())
 
@@ -389,40 +467,99 @@ def run(context):
         except Exception:
             _log_error('reload cmd registration failed\n' + traceback.format_exc())
 
-        # 7. Add buttons to the unified toolbar panel on both Solid and Sketch tabs.
-        for ws in ui.workspaces:
+        # 7. Add buttons to the unified toolbar panel on both Solid and Sketch environments.
+        # Registration must target the specific workspace's tab collection to ensure visibility.
+        ENVIRONMENT_TARGETS = (
+            ('FusionSolidEnvironment',  'SolidTab'),
+            ('FusionSketchEnvironment', 'SketchTab'),
+        )
+
+        for ws_id, tab_id in ENVIRONMENT_TARGETS:
             try:
-                for target_id in ('SolidTab', 'SketchTab'):
-                    tab = ws.toolbarTabs.itemById(target_id)
-                    if not tab:
-                        for t in ws.toolbarTabs:
-                            if target_id in t.id or target_id in t.name:
-                                tab = t
-                                break
-                    if not tab:
-                        continue
+                # 1. Attempt to find the tab within the specific workspace.
+                ws = ui.workspaces.itemById(ws_id)
+                tab = None
+                if ws:
+                    tab = ws.toolbarTabs.itemById(tab_id)
+                
+                # 2. Fallback: Search allToolbarTabs directly if workspace lookup was unsuccessful.
+                if not tab:
+                    tab = ui.allToolbarTabs.itemById(tab_id)
+                
+                # 3. Last stand: Fuzzy search by name/partial ID.
+                if not tab:
+                    for t in ui.allToolbarTabs:
+                        if tab_id in getattr(t, 'id', '') or tab_id in getattr(t, 'name', ''):
+                            tab = t
+                            break
 
-                    panel = tab.toolbarPanels.itemById(PANEL_ID)
-                    if not panel:
-                        panel = tab.toolbarPanels.add(PANEL_ID, 'B-Spline Builder', 'SelectPanel', False)
-                    for cmd in COMMANDS:
-                        cid = cmd['id']
-                        if not panel.controls.itemById(cid):
-                            ctrl = panel.controls.addCommand(cmd_defs.itemById(cid))
-                            ctrl.isPromoted          = True
-                            ctrl.isPromotedByDefault = True
+                if not tab:
+                    _log(f'ERROR: Target tab {tab_id!r} not found (WS context: {ws_id!r}).')
+                    # Diagnostics: list what IS available to help user debug.
+                    _log('Available Workspaces:')
+                    for w in ui.workspaces:
+                        _log(f'  - {getattr(w, "id", "???")!r} ({getattr(w, "name", "???")!r})')
+                    _log('Available Toolbar Tabs:')
+                    for t in ui.allToolbarTabs:
+                        _log(f'  - {getattr(t, "id", "???")!r} ({getattr(t, "name", "???")!r})')
+                    continue
 
-                    # Reload button — sits in the same panel, unpromoted so it
-                    # stays in the overflow menu (right-click it to bind a hotkey).
-                    if not panel.controls.itemById(RELOAD_COMMAND_ID):
-                        try:
-                            rctrl = panel.controls.addCommand(cmd_defs.itemById(RELOAD_COMMAND_ID))
-                            rctrl.isPromoted          = False
-                            rctrl.isPromotedByDefault = False
-                        except Exception:
-                            _log_error('reload button add failed\n' + traceback.format_exc())
+                unique_panel_id = f"{PANEL_ID}_{tab.id}"
+                _log(f'Registering in {ws_id!r} context -> {tab_id!r} (Found ID={tab.id!r})')
+                panel = tab.toolbarPanels.itemById(unique_panel_id)
+                if not panel:
+                    panel = tab.toolbarPanels.add(unique_panel_id, 'B-Spline Builder', 'SelectPanel', False)
+                    _log(f'Created panel {unique_panel_id} in tab {tab.id!r}')
+                else:
+                    _log(f'Found existing panel {unique_panel_id} in tab {tab.id!r}')
+
+                for cmd in COMMANDS:
+                    cid = cmd['id']
+                    ctrl = panel.controls.itemById(cid)
+                    if not ctrl:
+                        ctrl = panel.controls.addCommand(cmd_defs.itemById(cid))
+                        _log(f'Added command {cid} to panel {unique_panel_id} in tab {tab.id!r}')
+                    else:
+                        _log(f'Command {cid} already exists in panel {unique_panel_id} on tab {tab.id!r}')
+                    try:
+                        ctrl.isPromoted = True
+                        ctrl.isPromotedByDefault = True
+
+                    except Exception:
+                        pass
+
+                rctrl = panel.controls.itemById(RELOAD_COMMAND_ID)
+                if not rctrl:
+                    try:
+                        rctrl = panel.controls.addCommand(cmd_defs.itemById(RELOAD_COMMAND_ID))
+                        _log(f'Added reload command to panel {unique_panel_id} in tab {tab.id!r}')
+                    except Exception:
+                        _log_error('reload button add failed\n' + traceback.format_exc())
+                if rctrl:
+                    try:
+                        rctrl.isPromoted = False
+                        rctrl.isPromotedByDefault = False
+                    except Exception:
+                        pass
             except Exception:
-                _log_error('panel registration failed\n' + traceback.format_exc())
+                _log_error(f'Panel registration failed for {ws_id}/{tab_id}\n' + traceback.format_exc())
+
+        # 8. Run the consolidated former-standalone sub-add-ins. Each one
+        #    registers its own command definition and adds a button to the
+        #    shared 'bsplinePanel'. Failures are isolated — one bad sub-module
+        #    shouldn't take down the whole add-in.
+        for _sub_label, _sub_mod in (('fusion-exporter',  _fe),
+                                     ('fusion-inspector', _fi),
+                                     ('template-maker',   _tm)):
+            if _sub_mod is None:
+                continue
+            _sub_run = getattr(_sub_mod, 'run', None)
+            if not callable(_sub_run):
+                continue
+            try:
+                _sub_run(context)
+            except Exception:
+                _log_error(f'{_sub_label} run() failed\n' + traceback.format_exc())
 
         if _diag_logger:
             _diag_logger.log('RUN complete')
@@ -456,30 +593,28 @@ def stop(context):
 
         # 2. Remove the unified toolbar panel (controls + panel itself) from both Solid and Sketch tabs.
         try:
-            for ws in ui.workspaces:
+            for tab in ui.allToolbarTabs:
                 try:
-                    for target_id in ('SolidTab', 'SketchTab'):
-                        tab = ws.toolbarTabs.itemById(target_id)
-                        if not tab:
-                            for t in ws.toolbarTabs:
-                                if target_id in t.id or target_id in t.name:
-                                    tab = t
-                                    break
-                        if not tab:
-                            continue
-                        panel = tab.toolbarPanels.itemById(PANEL_ID)
-                        if panel:
-                            for _ in range(50):      # safety counter
-                                if panel.controls.count == 0:
-                                    break
-                                try:
-                                    panel.controls.item(panel.controls.count - 1).deleteMe()
-                                except Exception:
-                                    break
+                    if tab is None:
+                        continue
+                    # Clean up any panels matching our unique prefix
+                    panels_to_delete = []
+                    for p in tab.toolbarPanels:
+                        if p.id.startswith(PANEL_ID):
+                            panels_to_delete.append(p)
+                    
+                    for panel in panels_to_delete:
+                        for _ in range(50):      # safety counter
+                            if panel.controls.count == 0:
+                                break
                             try:
-                                panel.deleteMe()
+                                panel.controls.item(panel.controls.count - 1).deleteMe()
                             except Exception:
-                                pass
+                                break
+                        try:
+                            panel.deleteMe()
+                        except Exception:
+                            pass
                 except Exception:
                     pass
         except Exception:
