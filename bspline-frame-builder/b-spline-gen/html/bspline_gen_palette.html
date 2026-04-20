@@ -112,53 +112,6 @@
 </head>
 
 
-<!-- Settings Panel (Native CAD Modal) -->
-<div id="settings-panel-overlay" class="cad-modal-overlay" style="display: none;">
-  <div id="settings-panel" class="cad-modal-window" style="width: 320px;">
-    <div class="cad-modal-header">
-      <span>Settings</span>
-      <span id="close-settings-btn" class="material-symbols-outlined" style="cursor:pointer; font-size:16px;">close</span>
-    </div>
-    <div class="cad-modal-body" style="padding: 12px; overflow-y: auto;">
-      <div class="cad-panel-section">
-        <label class="cad-label">Undo Limit</label>
-        <div class="cad-nested-input" style="width:100%;">
-          <input type="number" id="undo-limit" value="10" min="1" max="100">
-        </div>
-      </div>
-
-      <div class="cad-status-divider" style="margin: 12px 0;"></div>
-
-      <div class="cad-panel-section">
-        <label class="cad-label">Thicken Analysis</label>
-        <div class="cad-slider-row">
-          <input type="range" id="thickenYellowOffsetSlider" class="cad-slider" min="0.001" max="0.1" step="0.001" value="0.01">
-          <div class="cad-nested-input" style="width:60px;">
-            <input type="number" id="thickenYellowOffset" min="0.001" max="0.1" step="0.001" value="0.01">
-          </div>
-        </div>
-        <div class="cad-status-text" style="font-size: 10px; opacity: 0.6;">Offset below target to trigger Yellow warning</div>
-      </div>
-
-      <div class="cad-status-divider" style="margin: 12px 0;"></div>
-
-      <div class="cad-panel-section">
-        <label class="cad-label">Keyboard Shortcuts</label>
-        <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 11px;">
-          <span style="opacity:0.7;">Node Edit (A)</span><kbd class="cad-status-text">A</kbd>
-          <span style="opacity:0.7;">Select tool (V)</span><kbd class="cad-status-text">V</kbd>
-          <span style="opacity:0.7;">Pen tool (F)</span><kbd class="cad-status-text">F</kbd>
-        </div>
-      </div>
-    </div>
-    <div class="cad-modal-footer">
-      <button class="cad-btn cad-btn-primary" id="close-settings-footer-btn">Done</button>
-    </div>
-  </div>
-</div>
-<div id="settings-overlay" class="hidden"></div>
-
-<div id="settings-overlay" class="settings-overlay hidden"></div>
 <body class="cad-app-shell">
   <!-- Navigation Header -->
   <header class="cad-navbar">
@@ -188,100 +141,151 @@
 
     <!-- 1. Presets -->
     <div class="panel panel-preset">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">💾 Presets</div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">💾 PRESETS</div>
       <div class="panel-body hidden">
-        <label><span>Preset Name</span>
-          <div class="preset-name-row"><input type="text" id="presetName" maxlength="40"><button
-              class="btn btn-primary btn-xs" id="btnPresetSave">Save</button></div>
-        </label>
-        <label><span>Saved Presets</span>
-          <div class="preset-select-row"><select id="presetSelect">
+        <label class="cad-label">Preset Name</label>
+        <div style="display:flex; gap:6px; margin-bottom:12px;">
+          <div class="cad-nested-input" style="flex:1;">
+            <input type="text" id="presetName" maxlength="40">
+          </div>
+          <button class="cad-btn cad-btn-primary" id="btnPresetSave" style="min-width:60px; height:24px; font-size:11px;">Save</button>
+        </div>
+
+        <label class="cad-label">Saved Presets</label>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <div class="cad-nested-input" style="flex:1;">
+            <select id="presetSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
               <option value="">— none —</option>
-            </select><button class="btn btn-secondary btn-xs" id="btnPresetLoad">Load</button><button
-              class="btn btn-secondary btn-xs" id="btnPresetDelete">🗑</button></div>
-        </label>
-        <div id="presetMsg" class="tip" style="display:none;"></div>
+            </select>
+          </div>
+          <button class="cad-btn cad-btn-secondary" id="btnPresetLoad" style="min-width:50px; height:24px; font-size:11px;">Load</button>
+          <button class="cad-btn cad-btn-secondary" id="btnPresetDelete" style="min-width:32px; height:24px; padding:0;">🗑</button>
+        </div>
+        <div id="presetMsg" class="cad-status-text" style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
       </div>
     </div>
 
     <!-- 3. Stock -->
     <div class="panel panel-stock">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">📐 Stock Dimensions</div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">📐 STOCK DIMENSIONS</div>
       <div class="panel-body hidden">
-        <div class="row2">
-          <label><span>Width (X)</span><input type="number" id="widthIn" value="7"></label>
-          <label><span>Height (Y)</span><input type="number" id="heightIn" value="9"></label>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <div style="flex:1;">
+            <label class="cad-label">Width (X)</label>
+            <div class="cad-nested-input"><input type="number" id="widthIn" value="7"></div>
+          </div>
+          <div style="flex:1;">
+            <label class="cad-label">Height (Y)</label>
+            <div class="cad-nested-input"><input type="number" id="heightIn" value="9"></div>
+          </div>
         </div>
-        <label><span>Carve Depth (Z)</span>
-          <div class="slider-row"><input type="range" id="carveZSlider" min="0.1" max="20" step="0.1"
-              value="1.5"><input type="number" id="carveZ" value="1.5" step="0.1"></div>
-        </label>
-        <label><span>Flat Border</span>
-          <div class="slider-row"><input type="range" id="edgeMarginInSlider" min="0" max="10" step="0.05"
-              value="0"><input type="number" id="edgeMarginIn" value="0"></div>
-        </label>
+
+        <label class="cad-label">Carve Depth (Z)</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="carveZSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.5">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="carveZ" value="1.5" step="0.1"></div>
+        </div>
+
+        <label class="cad-label">Flat Border</label>
+        <div class="cad-slider-row">
+          <input type="range" id="edgeMarginInSlider" class="cad-slider" min="0" max="10" step="0.05" value="0">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="edgeMarginIn" value="0"></div>
+        </div>
       </div>
     </div>
 
     <!-- 4. Terrain -->
     <div class="panel panel-terrain">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">🌄 Terrain Noise</div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">🌄 TERRAIN NOISE</div>
       <div class="panel-body hidden">
-        <label><span>Seed</span><input type="number" id="seed" value="42"></label>
-        <label><span>Noise Type</span><select id="noiseType">
-            <option value="simplex" selected>Smooth Hills</option>
-            <option value="sculptural">Ridged Armor</option>
-            <option value="hetero">Fibrous Grain</option>
-            <option value="basalt">Terraced Basalt</option>
-            <option value="artifact">Lunar Craters</option>
-            <option value="cracked">Cracked Earth</option>
-            <option value="chest">Anatomical</option>
-            <option value="xeno">Biomechanical</option>
-          </select></label>
-        <label><span>Fine Scale</span>
-          <div class="slider-row"><input type="range" id="scaleSlider" min="0.2" max="12" step="0.1" value="3.7"><input
-              type="number" id="scale" value="3.7"></div>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <div style="flex:1;">
+            <label class="cad-label">Seed</label>
+            <div class="cad-nested-input"><input type="number" id="seed" value="42"></div>
+          </div>
+          <div style="flex:1;">
+            <label class="cad-label">Noise Type</label>
+            <div class="cad-nested-input">
+              <select id="noiseType" style="width:100%; border:none; background:transparent; font-size:11px;">
+                <option value="simplex" selected>Smooth Hills</option>
+                <option value="sculptural">Ridged Armor</option>
+                <option value="hetero">Fibrous Grain</option>
+                <option value="basalt">Terraced Basalt</option>
+                <option value="artifact">Lunar Craters</option>
+                <option value="cracked">Cracked Earth</option>
+                <option value="chest">Anatomical</option>
+                <option value="xeno">Biomechanical</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <label class="cad-label">Fine Scale</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="scaleSlider" class="cad-slider" min="0.2" max="12" step="0.1" value="3.7">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="scale" value="3.7"></div>
+        </div>
+
+        <label class="cad-label">Region Scale</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="macroScale" value="0.65"></div>
+        </div>
+
+        <label class="cad-label">Detail Coverage</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="detailDensitySlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="detailDensity" value="1"></div>
+        </div>
+
+        <label class="cad-label">Warp Intensity</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="warpIntensitySlider" class="cad-slider" min="0" max="10" step="0.1" value="1.0">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="warpIntensity" value="1.0"></div>
+        </div>
+
+        <label class="cad-label">Detail Strength</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="detailStrengthSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.25">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="detailStrength" value="0.25"></div>
+        </div>
+
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="detailDensityRespectSymmetry" checked>
+          <span>Detail Respects Symmetry</span>
         </label>
-        <label><span>Region Scale</span>
-          <div class="slider-row"><input type="range" id="macroSlider" min="0.05" max="2" step="0.05"
-              value="0.65"><input type="number" id="macroScale" value="0.65"></div>
-        </label>
-        <label><span>Detail Coverage</span>
-          <div class="slider-row"><input type="range" id="detailDensitySlider" min="0" max="1" step="0.01"
-              value="1"><input type="number" id="detailDensity" value="1"></div>
-        </label>
-        <label><span>Warp Intensity</span>
-          <div class="slider-row"><input type="range" id="warpIntensitySlider" min="0" max="10" step="0.1" value="1.0"><input
-              type="number" id="warpIntensity" value="1.0"></div>
-        </label>
-        <label><span>Detail Strength</span>
-          <div class="slider-row"><input type="range" id="detailStrengthSlider" min="0" max="1" step="0.01"
-              value="0.25"><input type="number" id="detailStrength" value="0.25"></div>
-        </label>
-        <label class="label-inline"><input type="checkbox"
-            id="detailDensityRespectSymmetry" checked><span>Detail Respects Symmetry</span></label>
-        <label><span>Symmetry</span><select id="symmetry">
+
+        <label class="cad-label">Symmetry</label>
+        <div class="cad-nested-input" style="width:100%;">
+          <select id="symmetry" style="width:100%; border:none; background:transparent; font-size:11px;">
             <option value="none">None</option>
             <option value="x" selected>Mirror X</option>
             <option value="y">Mirror Y</option>
-          </select></label>
+          </select>
+        </div>
       </div>
     </div>
 
     <!-- 5. Smoothing -->
     <div class="panel panel-smooth">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">🫧 Smoothing</div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">🫧 SMOOTHING</div>
       <div class="panel-body hidden">
-        <label><span>Intensity</span>
-          <div class="slider-row"><input type="range" id="smoothIntensitySlider" min="0" max="1" step="0.01"
-              value="0"><input type="number" id="smoothIntensity" value="0"></div>
+        <label class="cad-label">Intensity</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="smoothIntensitySlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="smoothIntensity" value="0"></div>
+        </div>
+
+        <label class="cad-label">Radius</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="smoothRadiusSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.2">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="smoothRadius" value="1.2"></div>
+        </div>
+
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="smoothRespectSymmetry" checked>
+          <span>Smooth Respects Symmetry</span>
         </label>
-        <label><span>Radius</span>
-          <div class="slider-row"><input type="range" id="smoothRadiusSlider" min="0.1" max="20" step="0.1"
-              value="1.2"><input type="number" id="smoothRadius" value="1.2"></div>
-        </label>
-        <label class="label-inline"><input type="checkbox" id="smoothRespectSymmetry"
-            checked><span>Smooth Respects Symmetry</span></label>
       </div>
     </div>
 
@@ -444,45 +448,113 @@
 
         <label><span>Brush Radius</span>
           <div class="slider-row"><input type="range" id="sculptBotRadiusSlider" min="0.2" max="20" step="0.1" value="1.0"><input type="number" id="sculptBotRadius" value="1.0"></div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">⛓️ THICKEN</div>
+      <div class="panel-body hidden">
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+          <input type="checkbox" id="thickenEnabled">
+          <span style="font-weight:700;">Enable Thickness</span>
         </label>
-        <label><span>Brush Strength</span>
-          <div class="slider-row"><input type="range" id="sculptBotStrengthSlider" min="0.001" max="0.1" step="0.001" value="0.008"><input type="number" id="sculptBotStrength" value="0.008"></div>
-        </label>
-        <label class="label-inline"><input type="checkbox" id="sculptBotRespectSymmetry" checked><span>Respect Symmetry</span></label>
-        <div style="display:flex;gap:4px;"><button class="btn btn-secondary btn-xs" id="btnSculptBotUndo" style="flex:1;">Undo</button><button class="btn btn-secondary btn-xs" id="btnSculptBotRedo" style="flex:1;">Redo</button><button class="btn btn-secondary btn-xs" id="btnSculptBotClear" style="flex:1;">Clear</button></div>
+
+        <label class="cad-label">Offset (Thickness)</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="thickenOffsetSlider" class="cad-slider" min="0.01" max="5" step="0.01" value="0.2">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="thickenOffset" value="0.2"></div>
+        </div>
+
+        <div id="thickenWarning" class="cad-status-text" style="display:none; color:#d97706; font-size:10px; margin-bottom:8px;">
+          ⚠️ Intersections detected
+        </div>
+      </div>
+    </div>
+
+    <!-- 9. Sculpt Bottom -->
+    <div class="panel panel-sculpt-bot">
+      <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT BOTTOM</div>
+      <div class="panel-body hidden">
+        <label class="cad-label">Brush Size</label>
+        <div class="cad-slider-row" style="margin-bottom:8px;">
+          <input type="range" id="sculptBotRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="sculptBotRadius" value="1.5"></div>
+        </div>
+
+        <label class="cad-label">Hardness</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="sculptBotHardnessSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.5">
+          <div class="cad-nested-input" style="width:60px;"><input type="number" id="sculptBotHardness" value="0.5"></div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+          <button id="btnSculptBotUndo" class="cad-btn cad-btn-secondary" style="font-size:11px;">Undo</button>
+          <button id="btnSculptBotRedo" class="cad-btn cad-btn-secondary" style="font-size:11px;">Redo</button>
+          <button id="btnSculptBotClear" class="cad-btn cad-btn-secondary" style="grid-column: span 2; font-size:11px;">Clear Sculpt</button>
+        </div>
       </div>
     </div>
 
     <!-- 10. View -->
     <div class="panel panel-view">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">👁 View</div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">👁️ VIEW</div>
       <div class="panel-body hidden">
-        <label class="label-inline"><input type="checkbox" id="showMesh"><span>Show
-            Wireframe</span></label>
-        <label class="label-inline"><input type="checkbox" id="flatShading"><span>Flat Shading</span></label>
+        <label class="cad-label">Environment</label>
+        <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+          <select id="envMap" style="width:100%; border:none; background:transparent; font-size:11px;">
+            <option value="none">Default</option>
+            <option value="studio">Studio Light</option>
+            <option value="sunset">Sunset Gold</option>
+            <option value="arctic">Arctic Snow</option>
+          </select>
+        </div>
+
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <input type="checkbox" id="showMesh" checked>
+          <span>Show Wireframe</span>
+        </label>
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="autoRebuild" checked>
+          <span>Auto Rebuild</span>
+        </label>
       </div>
     </div>
 
     <!-- 11. Export Settings -->
     <div class="panel panel-export">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">📤 Export Settings</div>
+      <div class="panel-header collapsed" onclick="togglePanel(this)">📩 EXPORT SETTINGS</div>
       <div class="panel-body hidden">
-        <label class="label-inline"><input type="checkbox" id="includeSVG" checked><span>Include SVG sidecar</span></label>
-        <p style="margin: 8px 0 0 0; font-size: 0.85em; color: var(--text-muted);">Toggle SVG export independently of STEP output.</p>
+        <label class="cad-label">Orientation</label>
+        <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+          <select id="exportOrientation" style="width:100%; border:none; background:transparent; font-size:11px;">
+            <option value="y-up">Y-Up (Fusion Default)</option>
+            <option value="z-up">Z-Up (Cnc/3D Print)</option>
+          </select>
+        </div>
+
+        <label class="cad-label">Carve Direction</label>
+        <div class="cad-nested-input" style="width:100%;">
+          <select id="carveDirection" style="width:100%; border:none; background:transparent; font-size:11px;">
+            <option value="down">Carve Down (Inward)</option>
+            <option value="up">Carve Up (Outward)</option>
+          </select>
+        </div>
       </div>
     </div>
 
     <!-- 12. Resolution -->
-    <div class="panel panel-resolution">
-      <div class="panel-header collapsed" onclick="togglePanel(this)">⚙ Resolution</div>
+    <div class="panel panel-resolution" style="border-bottom:none;">
+      <div class="panel-header collapsed" onclick="togglePanel(this)">⚙️ RESOLUTION</div>
       <div class="panel-body hidden">
-        <label><span>Spacing</span><select id="spacing">
+        <label class="cad-label">Base Spacing</label>
+        <div class="cad-nested-input" style="width:100%;">
+          <select id="spacing" style="width:100%; border:none; background:transparent; font-size:11px;">
             <option value="1.0">Coarse</option>
             <option value="0.4">Fine</option>
             <option value="0.15">Ultra</option>
             <option value="0.05" selected>Mega Ultra</option>
             <option value="0.03">Ultimate</option>
-          </select></label>
+          </select>
+        </div>
+        <div class="cad-status-text" style="font-size:10px; opacity:0.6; margin-top:6px;">
+          Higher spacing = faster performance, lower detail.
+        </div>
       </div>
     </div>
     </aside>
@@ -513,6 +585,54 @@
     <div class="cad-status-divider"></div>
     <span id="system-status" class="cad-status-text">Ready</span>
   </footer>
+
+  <!-- Modals -->
+  <!-- Settings Panel (Native CAD Modal) -->
+  <div id="settings-panel-overlay" class="cad-modal-overlay" style="display: none;">
+    <div id="settings-panel" class="cad-modal-window" style="width: 320px;">
+      <div class="cad-modal-header">
+        <span>Settings</span>
+        <span id="close-settings-btn" class="material-symbols-outlined" style="cursor:pointer; font-size:16px;">close</span>
+      </div>
+      <div class="cad-modal-body" style="padding: 12px; overflow-y: auto;">
+        <div class="cad-panel-section">
+          <label class="cad-label">Undo Limit</label>
+          <div class="cad-nested-input" style="width:100%;">
+            <input type="number" id="undo-limit" value="10" min="1" max="100">
+          </div>
+        </div>
+
+        <div class="cad-status-divider" style="margin: 12px 0;"></div>
+
+        <div class="cad-panel-section">
+          <label class="cad-label">Thicken Analysis</label>
+          <div class="cad-slider-row">
+            <input type="range" id="thickenYellowOffsetSlider" class="cad-slider" min="0.001" max="0.1" step="0.001"
+              value="0.01">
+            <div class="cad-nested-input" style="width:60px;">
+              <input type="number" id="thickenYellowOffset" min="0.001" max="0.1" step="0.001" value="0.01">
+            </div>
+          </div>
+          <div class="cad-status-text" style="font-size: 10px; opacity: 0.6;">Offset below target to trigger Yellow warning
+          </div>
+        </div>
+
+        <div class="cad-status-divider" style="margin: 12px 0;"></div>
+
+        <div class="cad-panel-section">
+          <label class="cad-label">Keyboard Shortcuts</label>
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 11px;">
+            <span style="opacity:0.7;">Node Edit (A)</span><kbd class="cad-status-text">A</kbd>
+            <span style="opacity:0.7;">Select tool (V)</span><kbd class="cad-status-text">V</kbd>
+            <span style="opacity:0.7;">Pen tool (F)</span><kbd class="cad-status-text">F</kbd>
+          </div>
+        </div>
+      </div>
+      <div class="cad-modal-footer">
+        <button class="cad-btn cad-btn-primary" id="close-settings-footer-btn">Done</button>
+      </div>
+    </div>
+  </div>
 
 <!-- Modals -->
 <!-- SVG Editor Modal (Native CAD Modal) -->
