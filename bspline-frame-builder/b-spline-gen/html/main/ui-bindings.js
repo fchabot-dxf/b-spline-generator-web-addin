@@ -91,6 +91,7 @@ export function bindControls(preview) {
         wrapper = document.createElement('div');
         wrapper.className = 'cad-stepper';
         input.parentNode.insertBefore(wrapper, input);
+        wrapper.appendChild(input); // move input INTO the wrapper
       }
 
       const minus = document.createElement('button');
@@ -121,8 +122,7 @@ export function bindControls(preview) {
       minus.addEventListener('click', () => adjust(-step));
       plus.addEventListener('click', () => adjust(step));
 
-      // Append in correct order [-] [input] [+]
-      // We prepend minus, then input is already there or we append it, then append plus
+      // Order: [-] [input] [+]
       wrapper.insertBefore(minus, input);
       wrapper.appendChild(plus);
     });
