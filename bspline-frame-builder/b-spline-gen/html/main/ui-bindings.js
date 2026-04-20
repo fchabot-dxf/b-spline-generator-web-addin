@@ -70,22 +70,6 @@ export function bindControls(preview) {
     updateStampUI();
   }
 
-  const bindStepper = (minusId, plusId, targetId, step) => {
-    const m = document.getElementById(minusId);
-    const p = document.getElementById(plusId);
-    const t = document.getElementById(targetId);
-    if (m && p && t) {
-      m.addEventListener('click', () => {
-        const val = parseFloat(t.value) - step;
-        applyParam(targetId, parseFloat(val.toFixed(3)));
-      });
-      p.addEventListener('click', () => {
-        const val = parseFloat(t.value) + step;
-        applyParam(targetId, parseFloat(val.toFixed(3)));
-      });
-    }
-  };
-  bindStepper('stampDepthMinus', 'stampDepthPlus', 'stampDepth', 0.05);
 
   const attachNumberSteppers = () => {
     const inputs = Array.from(document.querySelectorAll('input[type="number"]'));
