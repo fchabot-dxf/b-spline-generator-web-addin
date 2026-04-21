@@ -205,4 +205,8 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
     placeholder.tabIndex = -1;
     grid.appendChild(placeholder);
   }
+
+  if (typeof window !== 'undefined') {
+    window.populateSymbolKeyboard = (editorInstance, family = 'Symbol') => populateSymbolKeyboard(editorInstance, family);
+  }
 }

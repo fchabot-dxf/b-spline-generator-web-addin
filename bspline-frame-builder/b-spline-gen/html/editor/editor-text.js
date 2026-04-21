@@ -216,6 +216,7 @@ export function commitText(editor) {
     } else {
         // Replace two-tspan structure with clean final text
         editor._editingTextEl.plain(editor._currentText);
+        editor._editingTextEl.font({ family: editor._fontFamily });
         editor._editingTextEl.css({ cursor: 'pointer' });
 
         editor._editingTextEl = null;
@@ -268,9 +269,23 @@ export function setFontSize(editor, size) {
 
 export function insertSymbol(editor, symbol, fontFamily) {
     console.log(`[COORD_STD] editor-text: insertSymbol "${symbol}" (U+${symbol.codePointAt(0).toString(16).toUpperCase()}) with font "${fontFamily}"`);
+    const appliedFamily = fontFamily || editor._fontFamily || 'Arial';
     if (fontFamily) {
         setFontFamily(editor, fontFamily);
     }
+
+    if (editor._editingTextEl) {
+        try {
+            editor._editingTextEl.font({ family: appliedFamily });
+            editor._editingTextEl.attr('font-family', appliedFamily);
+            if (editor._editingTextEl.node && editor._editingTextEl.node.style) {
+                editor._editingTextEl.node.style.fontFamily = appliedFamily;
+            }
+        } catch (err) {
+            console.warn('[EDITOR] insertSymbol: failed to apply font family', err);
+        }
+    }
+
     const input = document.getElementById('editorHiddenInput');
     if (!input) return;
     const value = input.value || '';

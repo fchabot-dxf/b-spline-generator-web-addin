@@ -3,37 +3,52 @@
 /* Symbol fonts from 'svg-editor' branch - Pure CSS Path */
 @font-face {
     font-family: 'Symbol';
-    src: url('../fonts/symbol.ttf') format('truetype');
+    src: local('Symbol'), url('../fonts/symbol.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
+    font-display: block;
 }
 @font-face {
     font-family: 'Webdings';
-    src: url('../fonts/webdings.ttf') format('truetype');
+    src: local('Webdings'), url('../fonts/webdings.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
+    font-display: block;
 }
 @font-face {
     font-family: 'Wingdings';
-    src: url('../fonts/wingdings.ttf') format('truetype');
+    src: local('Wingdings'), url('../fonts/wingdings.ttf') format('truetype');
     font-weight: normal;
     font-style: normal;
+    font-display: block;
 }
 @font-face {
     font-family: 'Segoe UI Symbol';
-    src: url('../fonts/segoe-symbols.ttf') format('truetype');
+    src: local('Segoe UI Symbol'), url('../fonts/segoe-symbols.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
 }
 @font-face {
     font-family: 'Segoe MDL2 Assets';
-    src: url('../fonts/segoe-mdl2.ttf') format('truetype');
+    src: local('Segoe MDL2 Assets'), url('../fonts/segoe-mdl2.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
 }
 @font-face {
     font-family: 'Segoe Fluent Icons';
-    src: url('../fonts/segoe-fluent-icons.ttf') format('truetype');
+    src: local('Segoe Fluent Icons'), url('../fonts/segoe-fluent-icons.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
 }
 @font-face {
     font-family: 'Segoe UI Emoji';
-    src: url('../fonts/segoe-emoji.ttf') format('truetype');
+    src: local('Segoe UI Emoji'), url('../fonts/segoe-emoji.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
 }
 
 
