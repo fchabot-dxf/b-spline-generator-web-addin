@@ -137,10 +137,6 @@
       pointer-events: none;
     }
 
-    .hidden {
-      display: none !important;
-    }
-
     html,
     body {
       margin: 0;
@@ -151,59 +147,6 @@
       background: var(--bg);
       color: var(--text);
       font: 13px/1.5 Arial, sans-serif;
-    }
-
-    /* Stepper UI for Plunge Depth */
-    .stepper-container {
-      display: flex;
-      align-items: center;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      overflow: hidden;
-      height: 28px;
-    }
-
-    .stepper-container input {
-      border: none !important;
-      min-width: 50px !important;
-      flex: 1;
-      text-align: center;
-      background: transparent !important;
-      padding: 0 6px !important;
-      margin: 0 !important;
-      font-weight: 600;
-      -moz-appearance: textfield;
-      appearance: none;
-    }
-
-    .stepper-container input::-webkit-outer-spin-button,
-    .stepper-container input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-
-    .stepper-btn {
-      background: var(--surface);
-      border: none;
-      width: 24px;
-      height: 100%;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--accent);
-      transition: background 0.2s;
-    }
-
-    .stepper-btn:hover {
-      background: #e0e0e0;
-    }
-
-    .stepper-btn:active {
-      background: #d0d0d0;
     }
 
     /* Update the main app grid to use 3 columns on desktop */
@@ -227,50 +170,6 @@
       border-bottom: 1px solid var(--border);
       padding: 4px;
       gap: 4px;
-    }
-
-    .tab-btn {
-      flex: 1;
-      padding: 10px;
-      border: 1px solid rgba(0, 0, 0, 0.08);
-      background: rgba(0, 0, 0, 0.06);
-      color: var(--text-dim);
-      font-weight: 600;
-      font-size: 11px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      cursor: pointer;
-      border-radius: 4px;
-      transition: all 0.2s ease;
-    }
-
-    .tab-btn.active {
-      background: rgba(255, 255, 255, 0.36);
-      color: var(--text);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-      border-color: rgba(0, 0, 0, 0.08);
-    }
-
-    .tab-btn:hover:not(.active) {
-      background: rgba(0, 0, 0, 0.1);
-      border-color: rgba(0, 0, 0, 0.12);
-    }
-
-    .main-content {
-      flex: 1;
-      overflow-y: auto;
-      padding: var(--gap);
-      background: var(--bg);
-    }
-
-    .tab-content {
-      display: none;
-      flex-direction: column;
-      gap: var(--gap);
-    }
-
-    .tab-content.active {
-      display: flex;
     }
 
     /* Base positions for Desktop */
@@ -311,56 +210,6 @@
       flex-direction: column;
       gap: var(--gap);
       min-height: 0;
-    }
-
-    .panel {
-      background: rgba(255, 255, 255, 0.7);
-      border-left: 3px solid #ccc;
-      border-radius: var(--r);
-      overflow: hidden;
-      flex-shrink: 0;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-    }
-
-    .panel-header {
-      padding: 9px 12px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: #111;
-      background: rgba(0, 0, 0, .05);
-      cursor: pointer;
-      user-select: none;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .panel-header::before {
-      content: '▼';
-      font-size: 14px; /* Scaled up as requested */
-      transition: transform 0.2s;
-      width: 16px;
-      display: inline-block;
-      text-align: center;
-      opacity: 0.6;
-    }
-
-    .panel.collapsed .panel-header::before,
-    .panel-header.collapsed::before {
-      transform: rotate(-90deg);
-    }
-
-    .panel-body {
-      padding: var(--panel-body-padding) !important;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .panel.collapsed .panel-body {
-      display: none;
     }
 
     .panel-stock {
@@ -507,44 +356,6 @@
       gap: 8px;
     }
 
-    .slider-wrap {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .slider-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .slider-name {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text);
-    }
-
-    .slider-val {
-      font-size: 12px;
-      color: var(--text-dim);
-      min-width: 48px;
-      text-align: right;
-    }
-
-    .slider-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-    }
-
-    .slider-row input[type=range] {
-      flex: 1;
-      accent-color: var(--accent);
-    }
-
     .slider-row input[type=number] {
       width: 62px;
       flex-shrink: 0;
@@ -618,40 +429,9 @@
       margin-bottom: 8px;
     }
 
-    .btn-icon {
-      height: 32px;
-      width: 32px;
-      padding: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .btn-wide {
-      width: 100%;
-      height: 32px;
-    }
-
     .slider-row input[type=number] {
       width: 62px;
       flex-shrink: 0;
-    }
-
-    .btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      border: none;
-      border-radius: 6px;
-      padding: 9px 14px;
-      font: 600 13px/1 inherit;
-      cursor: pointer;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
     }
 
     #btnDownload {
@@ -678,17 +458,6 @@
 
     #btnDownload:hover {
       background: linear-gradient(180deg, #2563eb, #1d4ed8) !important;
-    }
-
-    .btn-secondary {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-    }
-
-    .btn-xs {
-      padding: 5px 10px;
-      font-size: 11px;
     }
 
     #theme-control {
