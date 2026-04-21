@@ -10,7 +10,7 @@ export function initTextProperties(editor) {
   const symbolPanel = el('editorSymbolKeyboard');
   const symbolClose = el('editorSymbolKeyboardClose');
   const symbolFamily = el('editorSymbolFamily');
-  const canvasContainer = el('editorCanvasContainer');
+  const canvasContainer = el('editorCanvasContainer').parentElement;
 
   if (fontFamilyEl) {
     fontFamilyEl.addEventListener('change', () => {
@@ -38,14 +38,12 @@ export function initTextProperties(editor) {
 
   const updateKeyboardPadding = () => {
     if (!canvasContainer || !symbolPanel) return;
-    if (window.innerWidth > 720) {
-      const isOpen = !symbolPanel.classList.contains('hidden');
-      if (isOpen) {
-        const height = symbolPanel.getBoundingClientRect().height;
-        canvasContainer.style.paddingBottom = `${height}px`;
-      } else {
-        canvasContainer.style.paddingBottom = '';
-      }
+    const isOpen = !symbolPanel.classList.contains('hidden');
+    if (isOpen) {
+      const height = symbolPanel.getBoundingClientRect().height;
+      canvasContainer.style.paddingBottom = `${height}px`;
+    } else {
+      canvasContainer.style.paddingBottom = '0px';
     }
   };
 
@@ -155,8 +153,10 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
   const grid = el('editorSymbolKeyboardGrid');
   const panel = el('editorSymbolKeyboard');
   if (!grid || !panel) return;
+  console.log(`[COORD_STD] properties-text: populating Symbol Keyboard with family "${family}"`);
   grid.innerHTML = '';
 
+  // Reverted to 'svg-editor' branch style: 32-255 ASCII range, no Base64/PUA offsets
   const range = {
     Symbol: { start: 32, end: 255 },
     Webdings: { start: 32, end: 255 },
@@ -170,7 +170,7 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
   const count = Math.max(0, range.end - range.start + 1);
   const defaultHeight = window.innerWidth <= 720 ? '40vh' : '50vh';
   const maxHeight = window.innerWidth <= 720 ? '80vh' : '80vh';
-  panel.style.width = '';
+  panel.style.width = '100%';
   panel.style.height = defaultHeight;
   panel.style.removeProperty('max-height');
   panel.style.setProperty('--keyboard-max-height', maxHeight);
@@ -181,14 +181,18 @@ function populateSymbolKeyboard(editor, family = 'Symbol') {
     btn.type = 'button';
     btn.className = 'symbol-key';
     btn.textContent = char;
-    btn.style.fontFamily = `'${family}', sans-serif`;
-    btn.addEventListener('click', () => {
-      if (editor._editingTextEl) {
-        insertSymbol(editor, char, family);
-      } else {
-        alert('Open a text object and start editing before inserting symbols.');
-      }
-    });
+    
+    // Apply font with fallbacks
+    btn.style.fontFamily = `'${family}', "Segoe UI Symbol", "Apple Color Emoji", "Noto Sans Symbols", sans-serif`;
+    
+    btn.onclick = () => {
+        console.log(`[COORD_STD] Symbol clicked: ${char} (0x${code.toString(16).toUpperCase()}) using font: ${family}`);
+        if (editor && editor._editingTextEl) {
+            insertSymbol(editor, char, family);
+        } else {
+            alert('Select a text object or click the canvas to start typing before inserting symbols.');
+        }
+    };
     grid.appendChild(btn);
   }
 

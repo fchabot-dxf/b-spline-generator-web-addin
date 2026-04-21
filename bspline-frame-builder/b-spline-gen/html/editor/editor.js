@@ -48,6 +48,9 @@ export class VectorEditor {
         this._isClickMode = false;
         this._dragDist = 0;
         this._activeLayer = '0';
+        
+        this._isSnapping = false;
+        this._snapSize = 2.0;
     }
 
     initEditor(containerId, backgroundCanvasId, onChange, onCommit, onSelect) {
@@ -112,6 +115,20 @@ export class VectorEditor {
     }
     setFontFamily(f) { return setFontFamily(this, f); }
     setFontSize(s) { return setFontSize(this, s); }
+
+    toggleSnapping() {
+        this._isSnapping = !this._isSnapping;
+        updateToolbarVisibility(this); // Refresh status bar styles
+        return this._isSnapping;
+    }
+
+    _snap(pt) {
+        if (!this._isSnapping) return pt;
+        return {
+            x: Math.round(pt.x / this._snapSize) * this._snapSize,
+            y: Math.round(pt.y / this._snapSize) * this._snapSize
+        };
+    }
 
     setActiveLayer(layerId) { return setActiveLayer(this, layerId); }
 

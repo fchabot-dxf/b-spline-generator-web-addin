@@ -1062,6 +1062,7 @@ input, select, textarea, button {
 input[type="range"].cad-slider {
     -webkit-appearance: none;
     flex: 1;
+    min-width: 20px; /* Allow shrinking for narrow sidebars */
     height: 4px;
     background: #e0e0e0;
     border-radius: 2px;

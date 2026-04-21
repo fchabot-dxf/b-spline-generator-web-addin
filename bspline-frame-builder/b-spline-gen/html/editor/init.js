@@ -12,6 +12,7 @@ export function createEditorCanvas(containerId) {
     }
 
     const draw = window.SVG().addTo('#' + containerId).size('100%', '100%');
+    
     const bgLayer = draw.group().id('bg-layer');
     const sketchLayer = draw.group().id('sketch-layer');
     const handleLayer = draw.group().id('handle-layer');

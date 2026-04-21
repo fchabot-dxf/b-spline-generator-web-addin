@@ -1,31 +1,23 @@
 /* ── Self-hosted fonts — no network needed ── */
-    @font-face { font-family: 'Arial';              font-weight: 400; src: url('fonts/arial.ttf'); }
-    @font-face { font-family: 'Arial';              font-weight: 700; src: url('fonts/arial-bold.ttf'); }
-    @font-face { font-family: 'Tahoma';             font-weight: 400; src: url('fonts/tahoma.ttf'); }
-    @font-face { font-family: 'Tahoma';             font-weight: 700; src: url('fonts/tahoma-bold.ttf'); }
-    @font-face { font-family: 'Verdana';            font-weight: 400; src: url('fonts/verdana.ttf'); }
-    @font-face { font-family: 'Verdana';            font-weight: 700; src: url('fonts/verdana-bold.ttf'); }
-    @font-face { font-family: 'Bahnschrift';        font-weight: 400; src: url('fonts/bahnschrift.ttf'); }
-    @font-face { font-family: 'Impact';             font-weight: 400; src: url('fonts/impact.ttf'); }
-    @font-face { font-family: 'Georgia';            font-weight: 400; src: url('fonts/georgia.ttf'); }
-    @font-face { font-family: 'Georgia';            font-weight: 700; src: url('fonts/georgia-bold.ttf'); }
-    @font-face { font-family: 'Times New Roman';    font-weight: 400; src: url('fonts/times.ttf'); }
-    @font-face { font-family: 'Times New Roman';    font-weight: 700; src: url('fonts/times-bold.ttf'); }
-    @font-face { font-family: 'Courier New';        font-weight: 400; src: url('fonts/courier.ttf'); }
-    @font-face { font-family: 'Courier New';        font-weight: 700; src: url('fonts/courier-bold.ttf'); }
-    @font-face { font-family: 'Cascadia Code';      font-weight: 400; src: url('fonts/CascadiaCode-Regular.ttf'); }
-    @font-face { font-family: 'Cascadia Code';      font-weight: 700; src: url('fonts/CascadiaCode-Bold.ttf'); }
-    @font-face { font-family: 'Cascadia Mono';      font-weight: 400; src: url('fonts/CascadiaMono-Regular.ttf'); }
-    @font-face { font-family: 'Cascadia Mono';      font-weight: 700; src: url('fonts/CascadiaMono-Bold.ttf'); }
-    @font-face { font-family: 'Marlett';            font-weight: 400; src: url('fonts/marlett.ttf'); }
-    @font-face { font-family: 'Symbol';             font-weight: 400; src: url('fonts/symbol.ttf'); }
-    @font-face { font-family: 'Webdings';           font-weight: 400; src: url('fonts/webdings.ttf'); }
-    @font-face { font-family: 'Wingdings';          font-weight: 400; src: url('fonts/wingdings.ttf'); }
-    @font-face { font-family: 'Segoe UI Symbol';    font-weight: 400; src: url('fonts/segoe-symbols.ttf'); }
-    @font-face { font-family: 'Segoe MDL2 Assets';  font-weight: 400; src: url('fonts/segoe-mdl2.ttf'); }
-    @font-face { font-family: 'Segoe Fluent Icons'; font-weight: 400; src: url('fonts/segoe-fluent-icons.ttf'); }
-    @font-face { font-family: 'Segoe UI Emoji';      font-weight: 400; src: url('fonts/segoe-emoji.ttf'); }
-
+    @font-face { font-family: 'Arial';              font-weight: 400; src: url('fonts/arial.ttf') format('truetype'); }
+    @font-face { font-family: 'Arial';              font-weight: 700; src: url('fonts/arial-bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Tahoma';             font-weight: 400; src: url('fonts/tahoma.ttf') format('truetype'); }
+    @font-face { font-family: 'Tahoma';             font-weight: 700; src: url('fonts/tahoma-bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Verdana';            font-weight: 400; src: url('fonts/verdana.ttf') format('truetype'); }
+    @font-face { font-family: 'Verdana';            font-weight: 700; src: url('fonts/verdana-bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Bahnschrift';        font-weight: 400; src: url('fonts/bahnschrift.ttf') format('truetype'); }
+    @font-face { font-family: 'Impact';             font-weight: 400; src: url('fonts/impact.ttf') format('truetype'); }
+    @font-face { font-family: 'Georgia';            font-weight: 400; src: url('fonts/georgia.ttf') format('truetype'); }
+    @font-face { font-family: 'Georgia';            font-weight: 700; src: url('fonts/georgia-bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Times New Roman';    font-weight: 400; src: url('fonts/times.ttf') format('truetype'); }
+    @font-face { font-family: 'Times New Roman';    font-weight: 700; src: url('fonts/times-bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Courier New';        font-weight: 400; src: url('fonts/courier.ttf') format('truetype'); }
+    @font-face { font-family: 'Courier New';        font-weight: 700; src: url('fonts/courier-bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Cascadia Code';      font-weight: 400; src: url('fonts/CascadiaCode-Regular.ttf') format('truetype'); }
+    @font-face { font-family: 'Cascadia Code';      font-weight: 700; src: url('fonts/CascadiaCode-Bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Cascadia Mono';      font-weight: 400; src: url('fonts/CascadiaMono-Regular.ttf') format('truetype'); }
+    @font-face { font-family: 'Cascadia Mono';      font-weight: 700; src: url('fonts/CascadiaMono-Bold.ttf') format('truetype'); }
+    @font-face { font-family: 'Marlett';            font-weight: 400; src: url('fonts/marlett.ttf') format('truetype'); }
 *,
     *::before,
     *::after {

@@ -1,15 +1,14 @@
 /**
  * editor-ui.js - Mode management, toolbar sync, and selection highlights for VectorEditor.
  */
-import { el as getEl, queryAll } from './dom.js';
-import { renderPropertiesPanel } from './properties-panels.js';
+import { el as getEl, queryAll, query } from './dom.js';
 
 export function setMode(editor, mode) {
     if (editor._editingTextEl) editor._commitText();
     if (editor._isDrawing) editor._cancelDrawing();
     
     editor._currentMode = mode;
-    updateToolbarVisibility(editor);
+    updateToolbarVisibility(editor, mode, editor._selectedElement);
 
     // Update active class on buttons
     const btns = queryAll('.editor-sidebar .tool-btn');
@@ -34,43 +33,68 @@ export function setMode(editor, mode) {
     editor._updateSelectionHighlight();
 }
 
-export function updateToolbarVisibility(editor) {
-    renderPropertiesPanel(editor);
+export function updateToolbarVisibility(editor, mode, el) {
+    const isTextMode = mode === 'text' || (el && el.type === 'text');
+    
+    const fontGroup = getEl('editorFontGroup');
+    const expandGroup = getEl('editorExpandGroup');
+    const symbolToggle = getEl('editorSymbolKeyboardToggle');
+    const divider = query('.property-divider');
+    const strokeGroup = getEl('editorStrokeGroup');
 
-    const el = editor._selectedElement;
-    const isTextMode = editor._currentMode === 'text' || (el && el.type === 'text');
+    const isExpandMode = mode === 'expand';
 
+    if (fontGroup) fontGroup.classList.toggle('hidden', !isTextMode);
+    if (expandGroup) expandGroup.classList.toggle('hidden', !isExpandMode);
+    if (symbolToggle) symbolToggle.classList.toggle('hidden', !isTextMode);
+    if (divider) divider.classList.toggle('hidden', !isTextMode && !isExpandMode);
+    
+    // Hide stroke group in expand mode for space
+    if (strokeGroup) strokeGroup.classList.toggle('hidden', isExpandMode);
+    
+    const selectPanel = getEl('editorSelectPanel');
+    
+    // Selection details logic
+    if (selectPanel) {
+        const hasSelection = el || (editor._selectedNodes && editor._selectedNodes.length > 0);
+        selectPanel.classList.toggle('hidden', !hasSelection);
+    }
+
+    // Sync Snap Toggle UI
+    const snapToggle = getEl('editorSnapToggle');
+    if (snapToggle) snapToggle.classList.toggle('active', editor._isSnapping);
+
+    // Auto-hide symbol keyboard if leaving text mode (but keep it open when using the text tool)
     const symbolPanel = getEl('editorSymbolKeyboard');
-    if (symbolPanel && !isTextMode) {
-        symbolPanel.classList.add('hidden');
+    if (symbolPanel && !isTextMode && symbolPanel.classList.contains('hidden') === false) {
+        // Only hide if we explicitly click a non-text tool button
+        // (Managed in tool click listeners, but we keep this as a fallback)
     }
 
     const expandBtn = getEl('toolExpand');
+    // Ensure Expand tool is always visible in the new Native CAD layout
     if (expandBtn) {
-        const isExpandable = el && el.type !== 'image';
-        expandBtn.classList.toggle('hidden', !isExpandable);
+        expandBtn.classList.remove('hidden');
     }
 }
 
-export function updateNodeCountUI(editor, pathData) {
-    const countEl = getEl('editorNodeCount');
-    if (!countEl) return;
-    if (!pathData) {
-        countEl.textContent = 'Nodes: --';
-        return;
+export function updateNodeCountUI(editor, data) {
+    const ui = getEl('editorNodeCountUI');
+    if (!ui) return;
+
+    let count = '--';
+    if (data && data.nodes !== undefined) count = data.nodes;
+    else if (editor._selectedElement) {
+        const type = editor._selectedElement.type;
+        if (type === 'polyline' || type === 'polygon') count = editor._selectedElement.array().length;
+        else if (type === 'line') count = 2;
+        else if (type === 'rect' || type === 'circle' || type === 'text') count = 1;
     }
 
-    let count = 0;
-    const cmds = pathData.match(/[MLCAZ]/gi);
-    if (cmds) count = cmds.length;
-    
-    if (editor._selectedElement) {
-        if (editor._selectedElement.type === 'polyline' || editor._selectedElement.type === 'polygon') {
-            count = editor._selectedElement.array().length;
-        }
-    }
-    
-    el.textContent = `Nodes: ${count}`;
+    const x = data?.x !== undefined ? data.x.toFixed(1) : '--';
+    const y = data?.y !== undefined ? data.y.toFixed(1) : '--';
+
+    ui.textContent = `Nodes: ${count} / X: ${x} Y: ${y}`;
 }
 
 export function updateSelectionHighlight(editor) {

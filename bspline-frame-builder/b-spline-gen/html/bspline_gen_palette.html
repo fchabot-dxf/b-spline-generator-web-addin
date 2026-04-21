@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="shared-responsive.css">
   <link rel="stylesheet" href="editor/editor.css">
   <link rel="stylesheet" href="editor/editor-mobile.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
 
   <!-- CSS Overrides for B-Spline Gen integration -->
   <style>
@@ -55,15 +56,40 @@
 
     .cad-resizer {
       grid-column: 2;
-      width: 4px;
+      grid-row: 1;
+      width: 10px; /* Broader interactive area */
+      height: 100% !important;
+      align-self: stretch !important;
       cursor: col-resize;
-      background: transparent;
+      background: #eee;
+      border-left: 1px solid #ddd;
+      border-right: 1px solid #ddd;
       transition: background 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 100; /* Ensure it stays above canvas */
+    }
+
+    .cad-resizer::after {
+      content: "";
+      width: 2px;
+      height: 60px; /* Centered pill length */
+      background: #888;
+      border-radius: 2px;
+      transition: background 0.2s, height 0.2s;
     }
 
     .cad-resizer:hover,
     .cad-resizer.resizing {
-      background: var(--cad-accent-blue);
+      background: #e8e8e8;
+    }
+
+    .cad-resizer:hover::after,
+    .cad-resizer.resizing::after {
+      background: #0696D7; /* Highlight pill on interaction */
+      height: 80px;
     }
 
     .cad-viewport {
@@ -123,6 +149,29 @@
       background: #fff;
     }
 
+    /* Nested Input Wrapper (Used for grouping inputs like Select or Seed) */
+    .cad-nested-input {
+      display: flex;
+      align-items: center;
+      background: #eee;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: var(--cad-radius-sm);
+      overflow: hidden;
+      height: 24px;
+      width: 100%;
+    }
+
+    .cad-nested-input input, 
+    .cad-nested-input select {
+      flex: 1;
+      height: 100%;
+      border: none;
+      background: transparent;
+      padding: 0 8px;
+      font-size: 11px;
+      outline: none;
+    }
+
     /* Native CAD Stepper */
     .cad-stepper {
       display: flex;
@@ -132,6 +181,8 @@
       overflow: hidden;
       height: 24px;
       background: #eee;
+      flex-shrink: 0; /* Prevent squashing by sliders */
+      min-width: 75px; /* Robust minimum width */
     }
 
     .cad-stepper button {
@@ -279,12 +330,14 @@
       <div class="panel panel-terrain">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🌄 TERRAIN NOISE</div>
         <div class="panel-body hidden">
-          <div style="display:flex; gap:8px; margin-bottom:12px;">
-            <div style="flex:1;">
+          <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap: wrap;">
+            <div style="flex:1; min-width: 80px;">
               <label class="cad-label">Seed</label>
-              <div class="cad-nested-input"><input type="number" id="seed" value="42"></div>
+              <div class="cad-nested-input">
+                <input type="number" id="seed" value="42">
+              </div>
             </div>
-            <div style="flex:1;">
+            <div style="flex:1; min-width: 110px;">
               <label class="cad-label">Noise Type</label>
               <div class="cad-nested-input">
                 <select id="noiseType" style="width:100%; border:none; background:transparent; font-size:11px;">
@@ -380,6 +433,8 @@
       <div class="panel panel-stamp">
         <div class="panel-header collapsed" onclick="togglePanel(this)">📐 VECTOR STAMPING</div>
         <div class="panel-body hidden">
+          <button id="btnStampEdit" class="cad-btn cad-btn-secondary" style="width:100%; margin-bottom:12px;">Open SVG Editor 🎨</button>
+
           <label class="cad-label">Plunge Depth</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampDepthSlider" class="cad-slider" min="-2" max="2" step="0.005" value="0.8">
@@ -398,12 +453,61 @@
             </select>
           </div>
 
-          <label class="cad-label">Active Layers</label>
-          <div id="stampLayerList" style="display:flex; flex-direction:column; gap:8px;">
-            <!-- Managed by JS -->
+          <div id="vBitAngleContainer" style="display:none;">
+            <label class="cad-label">V-Bit Angle</label>
+            <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+              <input type="number" id="stampVBitAngle" value="90">
+            </div>
           </div>
-          <button id="btnOpenSvgEditor" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:12px;">Open SVG
-            Editor 🎨</button>
+
+          <label class="cad-label">Active Layer</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="stampActiveLayer" style="width:100%; border:none; background:transparent; font-size:11px;">
+              <option value="0">Layer 1</option>
+              <option value="1">Layer 2</option>
+              <option value="2">Layer 3</option>
+            </select>
+          </div>
+
+          <label class="cad-label">SVG Blueprint</label>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
+            <button id="btnStampChoose" class="cad-btn cad-btn-secondary" style="flex:1; font-size:11px;">Browse...</button>
+            <button id="btnStampClear" class="cad-btn cad-btn-secondary" style="width:32px; padding:0;">🗑</button>
+            <input type="file" id="stampUpload" accept=".svg" style="display:none;">
+          </div>
+          <div id="stampFileName" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">No file chosen</div>
+
+          <label class="cad-label">Blur Radius</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampBlurSlider" class="cad-slider" min="0" max="50" step="1" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampBlur" value="0">
+            </div>
+          </div>
+
+          <label class="cad-label">Smoothing</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampSmoothingRadiusSlider" class="cad-slider" min="0" max="100" step="1" value="15">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampSmoothingRadius" value="15">
+            </div>
+          </div>
+
+          <label class="cad-label">Texture Suppression</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampTextureSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.15">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampTextureSuppression" value="0.15">
+            </div>
+          </div>
+
+          <label class="cad-label">Edge Fillet</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampEdgeFilletRadiusSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampEdgeFilletRadius" value="0">
+            </div>
+          </div>
         </div>
       </div>
 
@@ -637,82 +741,7 @@
 
   <!-- Modals -->
   <!-- SVG Editor Modal (Native CAD Modal) -->
-  <div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
-    <div class="cad-modal-window" style="width: 85vw; height: 85vh;">
-      <div class="cad-modal-header">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <span>SVG Stencil Editor</span>
-          <div class="cad-nested-input" style="width: 40px;">
-            <select id="editorLayerSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
-              <option value="0" selected>1</option>
-              <option value="1">2</option>
-              <option value="2">3</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button id="editorClear" class="cad-btn cad-btn-secondary">Clear</button>
-          <button id="editorCancel" class="cad-btn cad-btn-secondary">Cancel</button>
-          <button id="editorApply" class="cad-btn cad-btn-primary">Apply Stencils</button>
-        </div>
-      </div>
-      <div class="cad-modal-body" style="display:flex;">
-        <aside class="cad-app-sidebar"
-          style="width:40px; border-right:1px solid var(--cad-border-standard); align-items:center; padding: 4px 0;">
-          <button id="toolSelect" class="cad-icon-btn" style="margin-bottom:8px;" title="Select (V)">
-            <span class="material-symbols-outlined" style="font-size:20px;">near_me</span>
-          </button>
-          <button id="toolNode" class="cad-icon-btn" style="margin-bottom:8px;" title="Node Edit (A)">
-            <span class="material-symbols-outlined" style="font-size:20px;">gesture</span>
-          </button>
-          <button id="toolDraw" class="cad-icon-btn" style="margin-bottom:8px;" title="Draw (P)">
-            <span class="material-symbols-outlined" style="font-size:20px;">edit</span>
-          </button>
-          <button id="toolLine" class="cad-icon-btn" style="margin-bottom:8px;" title="Line (L)">
-            <span class="material-symbols-outlined" style="font-size:20px;">horizontal_rule</span>
-          </button>
-          <button id="toolRect" class="cad-icon-btn" style="margin-bottom:8px;" title="Rectangle (R)">
-            <span class="material-symbols-outlined" style="font-size:20px;">rectangle</span>
-          </button>
-          <button id="toolCircle" class="cad-icon-btn" style="margin-bottom:8px;" title="Circle (C)">
-            <span class="material-symbols-outlined" style="font-size:20px;">circle</span>
-          </button>
-          <div class="cad-status-divider" style="width:24px; margin: 4px 0;"></div>
-          <button id="editorUndo" class="cad-icon-btn" style="margin-bottom:8px;" title="Undo (Ctrl+Z)">
-            <span class="material-symbols-outlined" style="font-size:20px;">undo</span>
-          </button>
-          <button id="editorRedo" class="cad-icon-btn" style="margin-bottom:8px;" title="Redo (Ctrl+Y)">
-            <span class="material-symbols-outlined" style="font-size:20px;">redo</span>
-          </button>
-        </aside>
-
-        <div style="flex:1; display:flex; flex-direction:column;">
-          <div
-            style="height:32px; background:#f0f0f0; border-bottom:1px solid #ccc; display:flex; align-items:center; padding: 0 12px; gap:16px;">
-            <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
-              <span class="cad-status-text">Stroke:</span>
-              <div class="cad-nested-input" style="width:60px;">
-                <input type="number" id="editorStrokeWidth" value="0.5" step="0.1">
-              </div>
-            </div>
-            <div id="editorTextGroup" style="display:flex; align-items:center; gap:8px;">
-              <span class="cad-status-text">Font:</span>
-              <div class="cad-nested-input" style="width:100px;">
-                <select id="editorFontFamily" style="width:100%; border:none; background:transparent;">
-                  <option value="Arial">Arial</option>
-                  <option value="Courier New">Courier</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div style="flex:1; background:#efefef; position:relative;" id="editorCanvasContainer">
-            <div id="editorSVGContainer"></div>
-            <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Modals -->
 
   <!-- Export Wizard Modal (Native CAD Modal) -->
   <div id="exportWizardModal" class="cad-modal-overlay" style="display: none;">
@@ -841,6 +870,129 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
   <script type="module" src="./main/main.js?v=20260409_v21"></script>
+
+  <!-- SVG Editor Modal (Pro-Global Full-Screen) -->
+  <div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
+    <div class="cad-modal-window overhauled" style="width: 100vw; height: 100vh; max-width: none; max-height: none; display: flex; flex-direction: column; overflow: hidden; position: relative; border-radius: 0;">
+      
+      <!-- Editor Header -->
+      <div class="cad-modal-header" id="svgEditorHeader" style="flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: #f3f3f3; border-bottom: 1px solid var(--cad-border-standard);">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="cad-nested-input" style="width: 80px; background: #eee; border: 1px solid #ccc; border-radius: 3px; padding: 2px 8px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size:9px; font-weight:700; color:#666;">LYR</span>
+            <select id="editorLayerSelect" style="width:100%; border:none; background:transparent; font-size:11px; font-weight:700; outline:none; cursor:pointer;">
+              <option value="0" selected>1</option>
+              <option value="1">2</option>
+              <option value="2">3</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="editorClear" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Clear</button>
+          <button id="editorCancel" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Cancel</button>
+          <button id="editorApply" class="cad-btn cad-btn-primary" style="font-size:11px; padding: 4px 14px;">Apply Stencils</button>
+        </div>
+      </div>
+
+      <!-- Editor Properties Bar -->
+      <div class="editor-toolbar-top" style="height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; gap: 16px; flex-shrink: 0; overflow: hidden;">
+        <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
+          <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Stroke</span>
+          <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
+            <button type="button" id="editorStrokeWidthMinus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">−</button>
+            <input type="number" id="editorStrokeWidth" value="0.5" step="0.1" style="width:40px; border:none; background:transparent; font-size:11px; text-align:center; outline:none;">
+            <button type="button" id="editorStrokeWidthPlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
+          </div>
+        </div>
+        
+        <div id="editorFontGroup" class="property-group hidden" style="display:flex; align-items:center; gap:16px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Font</span>
+            <select id="editorFontFamily" style="background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; font-size:11px; width:110px; outline:none;">
+               <option value="Arial" selected>Arial</option>
+               <option value="Tahoma">Tahoma</option>
+               <option value="Verdana">Verdana</option>
+            </select>
+          </div>
+          <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
+            <button type="button" id="editorFontSizeMinus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">−</button>
+            <input type="number" id="editorFontSize" value="3.0" step="0.2" style="width:40px; border:none; background:transparent; font-size:11px; text-align:center; outline:none;">
+            <button type="button" id="editorFontSizePlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
+          </div>
+          <button id="editorSymbolKeyboardToggle" class="cad-btn cad-btn-secondary" style="height:24px; padding:0 8px; font-size:10px; font-weight:700;">Symbols</button>
+        </div>
+
+        <div id="editorExpandGroup" class="property-group hidden" style="display:flex; align-items:center; gap:16px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Detail</span>
+            <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
+              <button type="button" id="editorExpandDetailMinus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">−</button>
+              <input type="number" id="editorExpandDetail" value="1.0" step="0.2" style="width:40px; border:none; background:transparent; font-size:11px; text-align:center; outline:none;">
+              <button type="button" id="editorExpandDetailPlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
+            </div>
+          </div>
+          <button id="editorRunExpand" class="cad-btn cad-btn-secondary" style="height:24px; padding:0 12px; font-size:11px; font-weight:700;">EXPAND</button>
+        </div>
+        <div style="flex:1;"></div>
+      </div>
+
+      <!-- Main Workspace -->
+      <div class="cad-modal-body" style="display:flex; flex:1; overflow:hidden; position:relative;">
+        <aside class="editor-sidebar" style="width:44px; background:#fdfdfd; border-right:1px solid var(--cad-border-standard); display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:8px; z-index:10;">
+          <button id="toolSelect" class="tool-btn active" title="Select (V)"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+          <button id="toolNode" class="tool-btn" title="Nodes (A)"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+          <button id="toolDraw" class="tool-btn" title="Pen (P)"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m12 3 7 7L7 22H3v-4L12 3z"/><path d="m19 10-6-6"/></svg></button>
+          <button id="toolText" class="tool-btn" title="Text (T)"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" x2="12" y1="4" y2="20" /></svg></button>
+          <button id="toolLine" class="tool-btn" title="Line (L)"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
+          <button id="toolRect" class="tool-btn" title="Rectangle (R)"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
+          <button id="toolExpand" class="tool-btn" title="Expand" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
+          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+          <button id="toolDelete" class="tool-btn" title="Delete" style="color:#d32f2f;"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg></button>
+          <div style="flex:1;"></div>
+          <button id="editorUndo" class="tool-btn" title="Undo"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5"/></svg></button>
+          <button id="editorRedo" class="tool-btn" title="Redo"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5"/></svg></button>
+        </aside>
+
+        <!-- Canvas -->
+        <div style="flex:1; background:#ececec; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;" id="editorCanvasContainer">
+          <div class="canvas-grid" style="position:absolute; top:0; left:0; right:0; bottom:0; background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px); background-size: 20px 20px; opacity:0.7;"></div>
+          <div id="editorSVGContainer" style="position:relative; z-index:2; width:100%; height:100%;"></div>
+        </div>
+
+        <!-- Symbol Keyboard (Docked) -->
+        <div id="editorSymbolKeyboard" class="cad-symbol-keyboard hidden" style="position:absolute; bottom:0; left:0; right:0; height:200px; background:white; border-top:1px solid var(--cad-border-standard); box-shadow:0 -2px 10px rgba(0,0,0,0.08); z-index:100; display:flex; flex-direction:column;">
+          <div class="editor-symbol-keyboard-grip" title="Drag to resize keyboard" style="height:12px; cursor:ns-resize; background:#eee; border-top:1px solid #ddd; border-bottom:1px solid #ddd; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+            <div style="width:60px; height:2px; background:#888; border-radius:2px;"></div>
+          </div>
+          <div class="cad-modal-header" style="height:32px; padding:0 8px; background:#fcfcfc; display:flex; align-items:center; flex-shrink:0;">
+            <span style="font-size:9px; font-weight:700; color:#666; text-transform:uppercase;">Glyphs</span>
+            <div style="flex:1;"></div>
+            <button id="editorSymbolKeyboardClose" class="cad-icon-btn small">✕</button>
+          </div>
+          
+          <div style="padding:8px; border-bottom:1px solid #eee; flex-shrink:0;">
+            <select id="editorSymbolFamily" onchange="if(window.svgEditor) populateSymbolKeyboard(window.svgEditor, this.value)" style="width:100%; height:24px; font-size:11px; outline:none; border:1px solid #ccc; border-radius:3px; background:#fff;">
+              <option value="Symbol" selected>Symbol</option>
+              <option value="Webdings">Webdings</option>
+              <option value="Wingdings">Wingdings</option>
+              <option value="Segoe UI Symbol">Segoe UI Symbol</option>
+            </select>
+          </div>
+
+          <div id="editorSymbolKeyboardGrid" style="flex:1; overflow-y:auto; display:grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap:1px; padding:4px; background:#fafafa;"></div>
+          <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
+        </div>
+      </div>
+      
+      <!-- Invisible interaction elements (needed for JS compatibility) -->
+      <button id="editorSnapToggle" style="display:none;"></button>
+      <div id="editorNodeCountUI" style="display:none;"></div>
+      <canvas id="svgEditorTopView" style="display:none;"></canvas>
+    </div>
+  </div>
 
 </body>
 

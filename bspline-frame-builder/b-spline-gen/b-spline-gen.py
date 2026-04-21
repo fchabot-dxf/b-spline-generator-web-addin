@@ -939,7 +939,7 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
                 _log(f'Creating palette, html_path={html_path}')
                 palette = palettes.add(
                     PALETTE_ID, PALETTE_NAME, html_path,
-                    True, True, True, 450, 1000
+                    True, True, True, 1000, 850
                 )
                 palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
                 onHTMLEvent = PaletteHTMLEventHandler()

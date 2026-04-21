@@ -338,6 +338,22 @@ def deploy_local():
         if style_src.exists():
             shutil.copy2(style_src, style_dest)
             print("  Consolidated shared-style.css to UI folder.")
+        
+        # Also consolidate fonts-embedded.css
+        embed_src = SRC_DIR / "b-spline-gen" / "html" / "fonts-embedded.css"
+        embed_dest = DEST_DIR / "frame-builder" / "ui" / "html" / "fonts-embedded.css"
+        if embed_src.exists():
+            shutil.copy2(embed_src, embed_dest)
+            print("  Consolidated fonts-embedded.css to UI folder.")
+        
+        # Also consolidate fonts directory
+        fonts_src = SRC_DIR / "b-spline-gen" / "html" / "fonts"
+        fonts_dest = DEST_DIR / "frame-builder" / "ui" / "html" / "fonts"
+        if fonts_src.exists():
+            if fonts_dest.exists():
+                shutil.rmtree(fonts_dest)
+            shutil.copytree(fonts_src, fonts_dest)
+            print("  Consolidated local fonts to UI folder.")
     except Exception as e:
         print(f"  ERROR: copytree failed: {e}")
         sys.exit(1)

@@ -242,6 +242,7 @@ export function initText(editor) {
 }
 
 export function setFontFamily(editor, family) {
+    console.log(`[COORD_STD] editor-text: setFontFamily to "${family}"`);
     editor._fontFamily = family;
     if (editor._editingTextEl) {
         editor._editingTextEl.font({ family });
@@ -266,6 +267,7 @@ export function setFontSize(editor, size) {
 }
 
 export function insertSymbol(editor, symbol, fontFamily) {
+    console.log(`[COORD_STD] editor-text: insertSymbol "${symbol}" (U+${symbol.codePointAt(0).toString(16).toUpperCase()}) with font "${fontFamily}"`);
     if (fontFamily) {
         setFontFamily(editor, fontFamily);
     }

@@ -35,7 +35,9 @@ function handleDblClick(editor, e) {
 
 function handleStart(editor, e) {
     if (e.type === 'touchstart' && e.touches.length > 1) return;
-    const pt = editor._getMousePoint(e);
+    let pt = editor._getMousePoint(e);
+    // Apply snapping at start of interaction
+    pt = editor._snap(pt);
     
     // Check for node hit if in node mode
     if (editor._currentMode === 'node' && editor._selectedElement) {
@@ -84,7 +86,9 @@ function handleStart(editor, e) {
 }
 
 function handleMove(editor, e) {
-    const pt = editor._getMousePoint(e);
+    let pt = editor._getMousePoint(e);
+    // Apply snapping during movement
+    pt = editor._snap(pt);
     
     // If drawing, update the current shape
     if (editor._isDrawing) {
@@ -142,6 +146,7 @@ function handleEnd(editor, e) {
 }
 
 function dragNode(editor, pt) {
+    // Note: pt is already snapped by handleMove
     const el = editor._selectedElement;
     const idx = editor._dragNodeIndex;
     if (el.type === 'line') {
