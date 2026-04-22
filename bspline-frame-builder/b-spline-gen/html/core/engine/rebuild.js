@@ -278,66 +278,146 @@ function updateSculptNotice(layer, count, maxOver, maxUnder) {
     }
 }
 
-export function updateEditorTopView(heights, nx, nz) {
+function bilinearSample(data, nx, nz, u, v) {
+  if (!data || data.length === 0) return 0;
+  const x = u * (nx - 1);
+  const y = v * (nz - 1);
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(x0 + 1, nx - 1);
+  const y1 = Math.min(y0 + 1, nz - 1);
+  const fx = x - x0;
+  const fy = y - y0;
+  const v00 = data[y0 * nx + x0];
+  const v10 = data[y0 * nx + x1];
+  const v01 = data[y1 * nx + x0];
+  const v11 = data[y1 * nx + x1];
+  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+}
+
+export function updateEditorTopView(heightsLow, nxLow, nzLow) {
     const canvas = document.getElementById('svgEditorTopView');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const baseSize = 512;
-    const scale = 2;
-    const displaySize = baseSize * scale;
-    canvas.width = displaySize;
-    canvas.height = displaySize;
-    canvas.style.width = `${baseSize}px`;
-    canvas.style.height = `${baseSize}px`;
+    // 1. Calculate Balanced Dimensions (Lowered to 384 for a very soft UI look)
+    const target = 384;
+    const aspect = P.widthIn / P.heightIn;
+    let nx, nz;
+    if (aspect >= 1) { 
+        nx = target; 
+        nz = Math.max(4, Math.round(target / aspect)); 
+    } else { 
+        nz = target; 
+        nx = Math.max(4, Math.round(target * aspect)); 
+    }
 
-    const imgData = ctx.createImageData(displaySize, displaySize);
+    const displaySize = nx; // Match canvas buffer to nx for 1:1 data-to-pixel mapping
+    canvas.width = nx;
+    canvas.height = nz;
+    canvas.style.width = `512px`;
+    canvas.style.height = `${Math.round(512 / aspect)}px`;
+
+    // 2. Generate High-Res Base Noise
+    const { heights: heightsBase } = generateHeightmap({ ...P, nx, nz }, { mask: null });
+    const heights = new Float32Array(heightsBase);
+
+    // 3. Blend Low-Res Sculpting & Stamps (Bilinear)
+    for (let k = 0; k < nx * nz; k++) {
+        const u = (k % nx) / (nx - 1);
+        const v = Math.floor(k / nx) / (nz - 1);
+        
+        // Add Sculpting deltas (Keep manual sculpting in background)
+        if (preDelta) heights[k] += bilinearSample(preDelta, nxLow, nzLow, u, v);
+    }
+
+    const imgData = ctx.createImageData(nx, nz);
     const data = imgData.data;
 
-    const lx = -1, ly = 1, lz = 1;
+    const lx = -1.0, ly = 1.0, lz = 0.8; // More balanced overhead sun
     const lmag = Math.sqrt(lx*lx + ly*ly + lz*lz);
     const nlx = lx/lmag, nly = ly/lmag, nlz = lz/lmag;
-    const shadingIntensity = 0.85;
+    const shadingIntensity = 0.9;
 
-    for (let py = 0; py < displaySize; py++) {
-        const iy  = COORD_SYSTEM.rasterYToGridRow(py, nz, displaySize);
-
-        for (let px = 0; px < displaySize; px++) {
-            const fx = px / displaySize * nx;
-            const ix = Math.min(Math.floor(fx), nx - 1);
+    for (let py = 0; py < nz; py++) {
+        const iy = py;
+        for (let px = 0; px < nx; px++) {
+            const ix = px;
             const k  = iy * nx + ix;
 
-            let col = 160;
-
+            let dot = 0.5;
+            let cavity = 0; 
+            
             if (ix > 0 && ix < nx - 1 && iy > 0 && iy < nz - 1) {
-                const dzdx = (heights[k + 1]  - heights[k - 1])  * 40.0;
-                const dzdy = (heights[k + nx] - heights[k - nx]) * 40.0;
+                // Seam-Aware Gradient (Prevents sharp lines at the mirror axis)
+                let hL = heights[k - 1];
+                let hR = heights[k + 1];
+                let hU = heights[k - nx];
+                let hD = heights[k + nx];
+
+                // If X-Symmetry is on, the center line (nx/2) is a "fold". 
+                // We mirror the neighbor sample to get a smooth gradient across the fold.
+                const centerX = Math.floor(nx / 2);
+                const symX = P.symmetry === 'x' || P.symmetry === 'radial';
+                if (symX && ix === centerX) {
+                    hL = hR; // Reflect neighbor to zero-out gradient at the seam
+                }
+
+                const centerY = Math.floor(nz / 2);
+                const symY = P.symmetry === 'y' || P.symmetry === 'radial';
+                if (symY && iy === centerY) {
+                    hU = hD; // Reflect neighbor
+                }
+
+                const dzdx = (hR - hL) * 35.0;
+                const dzdy = (hD - hU) * 35.0;
                 const nx_ = -dzdx, ny_ = -dzdy, nz_ = 1.0;
                 const nmag = Math.sqrt(nx_*nx_ + ny_*ny_ + nz_*nz_);
-                const dot  = (nx_/nmag)*nlx + (ny_/nmag)*nly + (nz_/nmag)*nlz;
-                col = Math.round(Math.max(0, Math.min(255, col + (dot - 0.5) * 150.0 * shadingIntensity)));
+                dot = (nx_/nmag)*nlx + (ny_/nmag)*nly + (nz_/nmag)*nlz;
+
+                const h = heights[k];
+                const avg = (hL + hR + hU + hD) * 0.25;
+                cavity = (h - avg) * 30.0; 
             }
 
-            const off = (py * displaySize + px) * 4;
-            data[off]     = col;
-            data[off + 1] = col;
-            data[off + 2] = col;
+            const off = (py * nx + px) * 4;
+            
+            // "Balanced High-Res" lighting logic
+            const intensity = Math.max(0, dot);
+            const ambient = 25; // Softer shadows
+            const diff = intensity * 200; // Balanced highlights
+            
+            // Apply Softened Cavity Occlusion
+            const shade = Math.max(0, Math.min(255, ambient + diff + cavity * 55));
+            
+            data[off]     = Math.min(255, shade * 0.94); 
+            data[off + 1] = Math.min(255, shade * 0.96); 
+            data[off + 2] = Math.min(255, shade * 1.06); // subtle professional cool tint
             data[off + 3] = 255;
         }
     }
 
     ctx.putImageData(imgData, 0, 0);
 
-    ctx.fillStyle   = 'rgba(220, 30, 30, 0.9)';
-    ctx.strokeStyle = 'rgba(220, 30, 30, 1)';
-    ctx.lineWidth   = 2;
-    const cx = displaySize / 2, cy = displaySize / 2;
-    ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI * 2); ctx.fill();
+    // Precision Reticle (Professional CAD style)
+    ctx.strokeStyle = 'rgba(0, 120, 212, 0.4)'; // Subtle blue
+    ctx.lineWidth   = 1;
+    const cx = nx / 2, cy = nz / 2;
+    
+    // Horizontal line
     ctx.beginPath();
-    ctx.moveTo(cx - 8, cy); ctx.lineTo(cx + 8, cy);
-    ctx.moveTo(cx, cy - 8); ctx.lineTo(cx, cy + 8);
+    ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy);
     ctx.stroke();
+    
+    // Vertical line
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20);
+    ctx.stroke();
+
+    // Center dot
+    ctx.fillStyle = 'rgba(0, 120, 212, 0.6)';
+    ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
 
     if (window.svgEditor && typeof window.svgEditor.sync3DBackground === 'function') {
         window.svgEditor.sync3DBackground();
