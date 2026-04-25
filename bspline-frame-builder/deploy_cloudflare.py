@@ -104,9 +104,14 @@ clean_dir(os.path.join(workspace_dir, "deploy_dist"))
 print(f"Preparing unique deployment folder: {deploy_dist}")
 os.makedirs(deploy_dist, exist_ok=True)
 
-# Only copy web-related files (HTML, JS, CSS, and common image formats)
+# Only copy web-related files (HTML, JS, CSS, fonts, and common image formats)
 # This excludes .py, .manifest, and the 'resources' folder.
-web_extensions = ('.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico', '.json')
+# .ttf/.woff/.woff2/.otf are needed: the SVG editor loads them as stamp assets
+# via opentype.js (see b-spline-gen/html/editor/editor-geometry.js).
+web_extensions = (
+    '.html', '.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.ico', '.json',
+    '.ttf', '.woff', '.woff2', '.otf',
+)
 for root, dirs, files in os.walk(source_dir):
     rel_root = os.path.relpath(root, source_dir)
     dest_root = deploy_dist if rel_root == '.' else os.path.join(deploy_dist, rel_root)
@@ -115,56 +120,80 @@ for root, dirs, files in os.walk(source_dir):
         if filename.lower().endswith(web_extensions):
             shutil.copy2(os.path.join(root, filename), os.path.join(dest_root, filename))
 
-# Deploy-only copy of shared theme assets required by the published HTML.
-extra_web_assets = [
-    (os.path.join(workspace_dir, "shared", "ui", "theme.css"), os.path.join(deploy_dist, "theme.css")),
-    (os.path.join(workspace_dir, "shared", "ui", "win3x-theme.css"), os.path.join(deploy_dist, "win3x-theme.css")),
-]
-for src_path, dst_path in extra_web_assets:
-    if os.path.exists(src_path):
-        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-        shutil.copy2(src_path, dst_path)
-        print(f"  Copied deploy-only asset: {src_path} -> {dst_path}")
-    else:
-        print(f"  Warning: missing deploy-only asset {src_path}")
-
-# Rewrite the web deployment root HTML so theme links resolve from root.
-index_html_path = os.path.join(deploy_dist, "index.html")
-if os.path.exists(index_html_path):
-    with open(index_html_path, 'r', encoding='utf-8') as f:
-        index_html = f.read()
-    index_html = index_html.replace('href="../../shared/ui/win3x-theme.css"', 'href="win3x-theme.css"')
-    index_html = index_html.replace('href="../../shared/ui/theme.css"', 'href="theme.css"')
-    with open(index_html_path, 'w', encoding='utf-8') as f:
-        f.write(index_html)
-    print(f"  Rewrote theme stylesheet paths in {index_html_path}")
+# Copy the shared styles/ folder into deploy_dist/styles/.
+# All HTMLs reference these stylesheets via "../../styles/<name>.css" (resolved
+# correctly in the local repo); after deploy we flatten everything under root,
+# so we land styles/ at the deploy root and rewrite the link hrefs below.
+styles_src = os.path.join(workspace_dir, "styles")
+styles_dest = os.path.join(deploy_dist, "styles")
+if os.path.isdir(styles_src):
+    os.makedirs(styles_dest, exist_ok=True)
+    for filename in os.listdir(styles_src):
+        if filename.lower().endswith(('.css',)):
+            shutil.copy2(os.path.join(styles_src, filename), os.path.join(styles_dest, filename))
+            print(f"  Copied stylesheet: styles/{filename}")
 else:
-    print(f"  Warning: index.html not found in deployment folder ({index_html_path})")
+    print(f"  Warning: styles/ folder not found at {styles_src}")
+
+# Rewrite stylesheet hrefs in every deployed HTML so "../../styles/X.css"
+# (which would escape the deploy root) becomes "styles/X.css".
+for html_name in os.listdir(deploy_dist):
+    if not html_name.lower().endswith('.html'):
+        continue
+    html_path = os.path.join(deploy_dist, html_name)
+    with open(html_path, 'r', encoding='utf-8') as f:
+        html = f.read()
+    rewritten = html.replace('href="../../styles/', 'href="styles/')
+    if rewritten != html:
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(rewritten)
+        print(f"  Rewrote stylesheet hrefs in {html_name}")
 
 
-# 2. Bundle the clean bspline-frame-builder add-in ZIP (Distribution Version)
-print(f"Bundling clean distribution ZIP to {deploy_dist}...")
-zip_target = os.path.join(deploy_dist, "bspline-frame-builder.zip")
+# 2. Build the Fusion add-in distribution ZIP NEXT TO this script (NOT inside
+# deploy_dist — Cloudflare Pages caps individual files at 25 MiB and the zip
+# exceeds that). The website's download button at
+# b-spline-gen/html/main/main.js#ADDIN_RELEASE_URL points to the GitHub
+# release tagged `latest`, so we attach this zip there at the end of the
+# script via `gh release upload latest <zip> --clobber`.
+import zipfile
 
-def should_skip(name):
-    skip_names = {".git", ".gitignore", "__pycache__", ".venv", "venv", "node_modules", ".wrangler", "desktop.ini"}
-    skip_exts  = {".log", ".old", ".pyc", ".zip"} # Skip log files and PREVIOUS zips!
-    if name in skip_names or os.path.splitext(name)[1].lower() in skip_exts:
+zip_target = os.path.join(workspace_dir, "bspline-frame-builder.zip")
+print(f"Building distribution ZIP at {zip_target}...")
+
+# Files/dirs to exclude from the distribution archive
+zip_skip_names = {".git", ".gitignore", "__pycache__", ".venv", "venv",
+                  "node_modules", ".wrangler", "desktop.ini"}
+zip_skip_exts = {".log", ".old", ".pyc", ".zip"}  # also skip prior zips
+
+def _zip_should_skip(name):
+    if name in zip_skip_names:
+        return True
+    if os.path.splitext(name)[1].lower() in zip_skip_exts:
+        return True
+    if name.startswith('.'):
         return True
     return False
 
-import zipfile
+# Archive paths look like "bspline-frame-builder/frame-builder/..." so the
+# zip extracts into a containing folder ready to drop into Fusion's AddIns.
+addin_root_name = os.path.basename(os.path.normpath(workspace_dir))
+zip_file_count = 0
+if os.path.exists(zip_target):
+    os.remove(zip_target)
 with zipfile.ZipFile(zip_target, 'w', zipfile.ZIP_DEFLATED) as zf:
     for root, dirs, files in os.walk(workspace_dir):
-        # Prune directories
-        dirs[:] = [d for d in dirs if not should_skip(d)]
+        dirs[:] = [d for d in dirs if not _zip_should_skip(d) and d != "deploy_dist" and not d.startswith("deploy_dist_")]
         for f in files:
-            if should_skip(f): continue
+            if _zip_should_skip(f):
+                continue
             abs_path = os.path.join(root, f)
-            rel_path = os.path.relpath(abs_path, workspace_dir)
-            zf.write(abs_path, rel_path)
-
-print(f"  Clean ZIP created: {os.path.basename(zip_target)}")
+            rel_inside = os.path.relpath(abs_path, workspace_dir)
+            arc_path = os.path.join(addin_root_name, rel_inside)
+            zf.write(abs_path, arc_path)
+            zip_file_count += 1
+zip_size_mb = os.path.getsize(zip_target) / (1024 * 1024)
+print(f"  Packed {zip_file_count} files -> {os.path.basename(zip_target)} ({zip_size_mb:.1f} MiB)")
 
 
 # 3. Refresh local Fusion 360 Add-In (Developer Convenience)
@@ -201,12 +230,50 @@ result = subprocess.run([
     WRANGLER_CMD, "pages", "deploy", deploy_dist, "--project-name", PROJECT_NAME
 ], cwd=workspace_dir)
 
-# 2. Cleanup
+# Cleanup the deploy folder regardless of outcome
 clean_dir(deploy_dist)
 
-if result.returncode == 0:
-    print("Deployment complete.")
+if result.returncode != 0:
+    print(f"Deployment failed (exit code {result.returncode}).")
+    sys.exit(result.returncode)
+
+print("Cloudflare Pages deployment complete.")
+
+
+# 4. Upload distribution ZIP to the GitHub `latest` release so the website's
+# download button (ADDIN_RELEASE_URL in main/main.js) gets the freshest bits.
+GH_CMD = shutil.which("gh") or shutil.which("gh.cmd")
+if GH_CMD is None:
+    print("Warning: 'gh' CLI not found on PATH. Skipping GitHub release upload.")
+    print(f"         To publish the zip manually, run:")
+    print(f"         gh release upload latest \"{zip_target}\" --clobber")
     sys.exit(0)
 
-print(f"Deployment failed (exit code {result.returncode}).")
-sys.exit(result.returncode)
+print("Uploading distribution ZIP to GitHub release 'latest'...")
+
+# Make sure a 'latest' release exists; create it as a prerelease if not.
+view_check = subprocess.run([GH_CMD, "release", "view", "latest"],
+                            cwd=workspace_dir, capture_output=True)
+if view_check.returncode != 0:
+    print("  No 'latest' release found — creating it as a prerelease.")
+    create = subprocess.run([
+        GH_CMD, "release", "create", "latest",
+        "--prerelease",
+        "--title", "Latest dev build",
+        "--notes", "Rolling release: the most recent bspline-frame-builder build. Overwritten on every Cloudflare deploy.",
+    ], cwd=workspace_dir)
+    if create.returncode != 0:
+        print(f"  Warning: could not create 'latest' release (exit {create.returncode}). Skipping upload.")
+        sys.exit(0)
+
+upload = subprocess.run([
+    GH_CMD, "release", "upload", "latest", zip_target, "--clobber"
+], cwd=workspace_dir)
+if upload.returncode == 0:
+    print("  GitHub release 'latest' updated with new bspline-frame-builder.zip.")
+else:
+    print(f"  Warning: gh release upload exited {upload.returncode}.")
+    print(f"           To publish the zip manually, run:")
+    print(f"           gh release upload latest \"{zip_target}\" --clobber")
+
+sys.exit(0)

@@ -32,6 +32,8 @@ import {
 import { TerrainPreview } from '../core/preview.js';
 import { generateStep, generateThickenedStep } from '../core/stepWriter.js';
 import { resolveGrid } from '../core/terrain.js';
+import { populateNoiseDropdown } from '../core/noise/index.js';
+import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { VectorEditor } from '../editor/index.js';
 import { AppState } from './app-state.js';
 import { applyParam, updateSculptToolButtons } from './param-manager.js';
@@ -62,7 +64,35 @@ document.addEventListener('DOMContentLoaded', () => {
     initResizer(preview);
     setupMobileViewportHandling();
     window.addEventListener('resize', () => resizeApp(preview));
-    
+
+    // 2b. Populate noise-type dropdown from the noise modules (single source of truth).
+    // Must run before bindControls so listeners read a fully-populated <select>.
+    const noiseSelect = document.getElementById('noiseType');
+    populateNoiseDropdown(noiseSelect);
+
+    // 2c. Edit-Filter slider panel — per-filter UI knobs from each mode's
+    // `tweaks` schema. Render the initial filter and re-render whenever the
+    // noise type changes. Slider edits write into P.filterTweaks and trigger
+    // a rebuild via scheduleRebuild (debounced; smooth during drag).
+    const tweaksPanelEl = document.getElementById('filterTweaksPanel');
+    const tweaksBodyEl  = document.getElementById('filterTweaksBody');
+    const tweaksResetEl = document.getElementById('filterTweaksReset');
+    bindTweaksUI({
+        panelEl:  tweaksPanelEl,
+        bodyEl:   tweaksBodyEl,
+        resetBtnEl: tweaksResetEl,
+        getActiveFilterId: () => noiseSelect?.value || 'simplex',
+        onChange: () => {
+            scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
+        },
+    });
+    renderTweaksPanel(noiseSelect?.value || 'simplex');
+    if (noiseSelect) {
+        noiseSelect.addEventListener('change', (e) => {
+            renderTweaksPanel(e.target.value);
+        });
+    }
+
     // 3. Bind ALL Controls (Sidebar, Header, Presets)
     bindControls(preview);
     bindPresets(preview);

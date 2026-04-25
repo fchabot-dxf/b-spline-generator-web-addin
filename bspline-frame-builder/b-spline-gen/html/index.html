@@ -11,10 +11,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
-  <link rel="stylesheet" href="../../native-cad-style.css">
-  <link rel="stylesheet" href="shared-style.css">
-  <link rel="stylesheet" href="editor/editor.css">
-  <link rel="stylesheet" href="editor/editor-mobile.css">
+  <link rel="stylesheet" href="../../styles/base.css">
+  <link rel="stylesheet" href="../../styles/layout-app.css">
+  <link rel="stylesheet" href="../../styles/editor.css">
 </head>
 
 
@@ -159,16 +158,20 @@
       <div class="panel-header collapsed" onclick="togglePanel(this)">🌄 Terrain Noise</div>
       <div class="panel-body hidden">
         <label><span>Seed</span><input type="number" id="seed" value="42"></label>
-        <label><span>Noise Type</span><select id="noiseType">
-            <option value="simplex" selected>Smooth Hills</option>
-            <option value="sculptural">Ridged Armor</option>
-            <option value="hetero">Fibrous Grain</option>
-            <option value="basalt">Terraced Basalt</option>
-            <option value="artifact">Lunar Craters</option>
-            <option value="cracked">Cracked Earth</option>
-            <option value="chest">Anatomical</option>
-            <option value="xeno">Biomechanical</option>
+        <label><span>Noise Type</span><select id="noiseType" data-default="simplex">
+            <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
           </select></label>
+        <!-- Edit-Filter sub-panel: per-filter slider knobs from tweaks schema. -->
+        <div class="panel-sub panel-filter-tweaks" id="filterTweaksPanel">
+          <div class="panel-header collapsed" onclick="togglePanel(this)">
+            <span>⚙️ Edit Filter</span>
+            <button type="button" class="filter-tweaks-reset" id="filterTweaksReset"
+                title="Reset all knobs to defaults">Reset all</button>
+          </div>
+          <div class="panel-body hidden" id="filterTweaksBody">
+            <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel(). -->
+          </div>
+        </div>
         <label><span>Fine Scale</span>
           <div class="slider-row"><input type="range" id="scaleSlider" min="0.2" max="12" step="0.1" value="3.7"><input
               type="number" id="scale" value="3.7"></div>

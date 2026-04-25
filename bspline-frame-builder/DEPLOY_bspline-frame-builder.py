@@ -1,20 +1,15 @@
 """
 DEPLOY_bspline-frame-builder.py
 ================================
-Deploys the unified bspline-frame-builder add-in (all 3 commands) in two steps:
+Local-install only: copies the unified bspline-frame-builder add-in (all 3
+commands) into Fusion 360's AddIns folder so you can immediately Stop/Run it
+inside Fusion.
 
-  1. LOCAL DEPLOY  — copies the add-in into Fusion 360's AddIns folder so you
-                     can immediately Stop/Run it inside Fusion.
-
-  2. ZIP BUNDLE    — creates  bspline-frame-builder.zip  next to this script,
-                     suitable for distributing to other users.
-
-The b-spline-gen Cloudflare deploy (DEPLOY_cloudflare.py) is NOT
-touched by this script — it continues to handle the HTML/JS web publish
-and its own standalone ZIP independently.
+The public distribution ZIP and GitHub release are built and uploaded by
+deploy_cloudflare.py (the public-publish event), NOT by this script.
 
 Usage:
-    python DEPLOY_bspline-frame-builder.pyS
+    python DEPLOY_bspline-frame-builder.py
 """
 
 import os
@@ -23,7 +18,6 @@ import shutil
 import hashlib
 import json
 import time
-import zipfile
 from pathlib import Path
 from datetime import datetime
 
@@ -46,9 +40,6 @@ else:
     sys.exit(1)
 
 DEST_DIR = DEST_ROOT / ADDIN_NAME
-
-# ZIP output location (sits next to this script, easy to find / distribute)
-ZIP_OUT  = SRC_DIR / f"{ADDIN_NAME}.zip"
 
 # ---------------------------------------------------------------------------
 # Shared Add-in Deploy Helpers
@@ -328,32 +319,14 @@ def deploy_local():
         print("  Removing old install...")
         clean_dir(DEST_DIR)
 
-    # Copy
+    # Copy. shutil.copytree mirrors the whole repo, so styles/, fonts under
+    # b-spline-gen/html/fonts/, and every command's HTML/JS/CSS land in place
+    # automatically. The CSS files reference fonts via opentype.js (in
+    # editor-geometry.js) using "../fonts/<file>.ttf" relative to the editor
+    # JS — that resolves correctly inside the deployed add-in.
     print("  Copying files...")
     try:
         shutil.copytree(SRC_DIR, DEST_DIR, ignore=ignore_for_copy)
-        # CONSOLIDATION: Copy shared-style.css into the frame-builder UI folder
-        style_src = SRC_DIR / "b-spline-gen" / "html" / "shared-style.css"
-        style_dest = DEST_DIR / "frame-builder" / "ui" / "html" / "shared-style.css"
-        if style_src.exists():
-            shutil.copy2(style_src, style_dest)
-            print("  Consolidated shared-style.css to UI folder.")
-        
-        # Also consolidate fonts-embedded.css
-        embed_src = SRC_DIR / "b-spline-gen" / "html" / "fonts-embedded.css"
-        embed_dest = DEST_DIR / "frame-builder" / "ui" / "html" / "fonts-embedded.css"
-        if embed_src.exists():
-            shutil.copy2(embed_src, embed_dest)
-            print("  Consolidated fonts-embedded.css to UI folder.")
-        
-        # Also consolidate fonts directory
-        fonts_src = SRC_DIR / "b-spline-gen" / "html" / "fonts"
-        fonts_dest = DEST_DIR / "frame-builder" / "ui" / "html" / "fonts"
-        if fonts_src.exists():
-            if fonts_dest.exists():
-                shutil.rmtree(fonts_dest)
-            shutil.copytree(fonts_src, fonts_dest)
-            print("  Consolidated local fonts to UI folder.")
     except Exception as e:
         print(f"  ERROR: copytree failed: {e}")
         sys.exit(1)
@@ -412,47 +385,6 @@ def _write_fb_handshake():
 
 
 # ---------------------------------------------------------------------------
-# Step 2 — ZIP bundle for distribution
-# ---------------------------------------------------------------------------
-
-def build_zip():
-    print()
-    print("=" * 60)
-    print("STEP 2: ZIP bundle")
-    print(f"  Output : {ZIP_OUT}")
-    print("=" * 60)
-
-    if ZIP_OUT.exists():
-        ZIP_OUT.unlink()
-
-    def _iter_files(base: Path):
-        """Yield (abs_path, archive_path) for every file to include."""
-        for root, dirs, files in os.walk(base):
-            root_path = Path(root)
-
-            # Prune dirs in-place (affects os.walk descent)
-            dirs[:] = [d for d in dirs if not _should_skip(d)]
-
-            for fname in files:
-                if _should_skip(fname):
-                    continue
-                abs_path  = root_path / fname
-                # Archive path: ADDIN_NAME/frame-builder/engine/... etc.
-                rel_path  = abs_path.relative_to(base.parent)
-                yield abs_path, str(rel_path)
-
-    file_count = 0
-    with zipfile.ZipFile(ZIP_OUT, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for abs_path, arc_path in _iter_files(SRC_DIR):
-            zf.write(abs_path, arc_path)
-            file_count += 1
-
-    size_kb = ZIP_OUT.stat().st_size / 1024
-    print(f"  Packed {file_count} files → {ZIP_OUT.name}  ({size_kb:.1f} KB)")
-    print("\n  ZIP bundle complete.")
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -497,6 +429,5 @@ if __name__ == "__main__":
 
     if not success:
         sys.exit(1)
-    # build_zip()  # Disabled for faster local iteration
     print()
     print("All done.")

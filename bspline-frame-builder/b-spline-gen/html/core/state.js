@@ -25,6 +25,10 @@ export const DEFAULT = {
     smoothRadius: 1.2,
     showMesh: false,
     noiseType: 'simplex',
+    // Per-filter UI tweaks: filterTweaks[filterId][paramKey] = value.
+    // Session-only — defaults live in each filter's `tweaks` schema and
+    // are NOT seeded here. Empty object means "use schema defaults".
+    filterTweaks: {},
     detailDensity: 1.0,
     detailStrength: 0.25,
     detailDensityRespectSymmetry: true,

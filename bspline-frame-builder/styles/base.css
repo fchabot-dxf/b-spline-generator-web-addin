@@ -1,0 +1,1971 @@
+/* =========================================================================
+   base.css — Universal foundation
+   Loaded by every command/page. Contains:
+   - Box-sizing reset, html/body reset
+   - :root design tokens (Native CAD palette + b-spline-gen palette merged)
+   - Utility classes used everywhere
+   - Form controls (inputs, selects, sliders, labels)
+   - Buttons (.btn, .btn-primary, .btn-secondary, .cad-btn family)
+   - .panel / .panel-header / .panel-body collapsible system
+   - Modal system (.modal-overlay/.modal-window and .cad-modal-* family)
+   - Settings panel + theme dropdown
+   - .cad-* component palette (navbar, dialog, accordions, status, tabs,
+     selection, tools, etc.) used by frame-builder / inspector / template-maker
+
+   NOTE: The .ttf files under b-spline-gen/html/fonts/ are stamp assets
+   loaded directly by opentype.js in editor-geometry.js to convert text
+   into SVG paths. They are NOT CSS web fonts — no @font-face block here.
+   ========================================================================= */
+
+/* =========================================================================
+   1. Reset
+   ========================================================================= */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+* {
+    font-family: inherit;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    /* Prevent browser handling of touch gestures */
+    -webkit-overflow-scrolling: touch;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--cad-font-family);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+input, select, textarea, button {
+    font-family: var(--cad-font-family);
+}
+
+/* =========================================================================
+   3. Design tokens
+   ========================================================================= */
+:root {
+    /* Base Spacing & Sizing */
+    --cad-border-width: 1px;
+    --cad-radius-sm: 2px;
+    --cad-radius-md: 4px;
+    --cad-radius-lg: 8px;
+    --cad-gap: 12px;
+    --cad-panel-body-padding: 12px;
+
+    /* Semantic Color Palette (from CADpanel & cadstyle) */
+    --cad-bg-standard: #ffffff;
+    --cad-bg-secondary: #f3f3f3;
+    --cad-bg-tertiary: #e0e0e0;
+    --cad-border-standard: #ddd;
+    --cad-border-focus: #4a9eff;
+
+    /* Animations & Transitions */
+    --cad-transition-fast: 0.15s ease;
+    --cad-transition-standard: 0.25s ease;
+    --cad-border-soft: #eeeeee;
+
+    --cad-accent-blue: #0696D7;
+    --cad-accent-hover: #057fb5;
+    --cad-accent-green: #34a853;
+
+    --cad-text-main: #333333;
+    --cad-text-muted: #666666;
+
+    /* Typography */
+    --cad-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+    /* b-spline-gen palette tokens (merged from shared-style.css) */
+    --bg: #f3f3f3;
+    --surface: #ffffff;
+    --surface2: #e8e8e8;
+    --border: #d1d1d1;
+    --accent: #0066cc;
+    --accent2: #5a30e8;
+    --text: #222222;
+    --muted: #555555;
+    --good: #208a4f;
+    --gap: 12px;
+    --r: 8px;
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --surface-mid: #f8fafc;
+    --text-dim: #64748b;
+    --panel-body-padding: 12px;
+}
+
+/* =========================================================================
+   4. Universal utilities
+   ========================================================================= */
+.hidden {
+    display: none !important;
+}
+
+.flex-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.flex-row-spread {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.row label {
+    flex: 1;
+}
+
+.row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.label-divider {
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+}
+
+.label-inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.mt-4 {
+    margin-top: 4px;
+}
+
+.input-xs {
+    width: 60px;
+    flex-shrink: 0;
+}
+
+.select-sm {
+    width: 140px;
+    max-width: 100%;
+}
+
+.panel-divider {
+    margin-top: 16px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
+.panel-spaced {
+    margin-top: 24px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+}
+
+.tip {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.4;
+    background: rgba(0, 102, 204, .01);
+    border-left: 2px solid var(--accent);
+    padding: 6px 10px;
+}
+
+/* =========================================================================
+   5. Form controls
+   ========================================================================= */
+label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+label span {
+    color: var(--text);
+    font-weight: 500;
+}
+
+input[type=number],
+input[type=text],
+select {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 8px;
+    color: var(--text);
+    font: inherit;
+}
+
+.slider-container {
+    width: 100%;
+}
+
+.slider-container input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.slider-row input[type=range] {
+    flex: 1;
+    accent-color: var(--cad-accent-blue);
+}
+
+.slider-row input[type=number] {
+    width: 62px;
+    flex-shrink: 0;
+}
+
+.slider-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.slider-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.slider-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cad-text-main);
+}
+
+.slider-val {
+    font-size: 12px;
+    color: var(--cad-text-muted);
+    min-width: 48px;
+    text-align: right;
+}
+
+.lock-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+}
+
+.lock-toggle input[type=checkbox] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.checkbox-custom {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #707070;
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1px;
+    cursor: pointer;
+}
+
+.checkbox-custom.checked {
+    background: #666666;
+    border-color: #666666;
+}
+
+.checkbox-custom.checked::after {
+    content: '✔';
+    font-size: 10px;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+/* =========================================================================
+   6. Buttons
+   ========================================================================= */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 14px;
+    font: 600 13px/1 inherit;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: var(--cad-accent-blue);
+    color: #ffffff;
+}
+
+.btn-secondary {
+    background: var(--cad-bg-tertiary);
+    border: 1px solid var(--cad-border-standard);
+    color: var(--cad-text-main);
+}
+
+.btn-xs {
+    padding: 5px 10px;
+    font-size: 11px;
+}
+
+.btn-icon {
+    height: 32px;
+    width: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-wide {
+    width: 100%;
+    height: 32px;
+}
+
+.cad-ui-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 6px;
+    padding: 9px 14px;
+    font: 600 13px/1 inherit;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: inherit;
+    transition: background var(--cad-transition-fast), color var(--cad-transition-fast), border-color var(--cad-transition-fast);
+}
+
+/* Stepper */
+.stepper-container {
+    display: flex;
+    align-items: center;
+    background: var(--cad-bg-tertiary);
+    border: 1px solid var(--cad-border-standard);
+    border-radius: 4px;
+    overflow: hidden;
+    height: 28px;
+}
+
+.stepper-container input {
+    border: none !important;
+    min-width: 50px !important;
+    flex: 1;
+    text-align: center;
+    background: transparent !important;
+    padding: 0 6px !important;
+    margin: 0 !important;
+    font-weight: 600;
+    -moz-appearance: textfield;
+    appearance: none;
+}
+
+.stepper-container input::-webkit-outer-spin-button,
+.stepper-container input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.stepper-btn {
+    background: var(--cad-bg-standard);
+    border: none;
+    width: 24px;
+    height: 100%;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cad-accent-blue);
+    transition: background var(--cad-transition-fast);
+}
+
+.stepper-btn:hover {
+    background: #e0e0e0;
+}
+
+.stepper-btn:active {
+    background: #d0d0d0;
+}
+
+/* Tab buttons (.btn-style tabs distinct from .tab-bar / cad-text-tabs) */
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--cad-text-muted);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+    background: rgba(255, 255, 255, 0.36);
+    color: var(--cad-text-main);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    border-color: rgba(0, 0, 0, 0.08);
+}
+
+.tab-btn:hover:not(.active) {
+    background: rgba(0, 0, 0, 0.1);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+
+.tab-content {
+    display: none;
+    flex-direction: column;
+    gap: var(--cad-gap);
+}
+
+.tab-content.active {
+    display: flex;
+}
+
+/* Tab bar */
+.tab-bar {
+    display: flex;
+    background: rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid var(--border);
+    padding: 4px;
+    gap: 4px;
+}
+
+/* Logo / Badge */
+.logo {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+}
+
+.badge {
+    font-size: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 99px;
+    color: var(--muted);
+}
+
+/* Header (purely visual base — layout/grid placement lives in layout-app.css) */
+header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+/* =========================================================================
+   7. Main content + Panel system
+   ========================================================================= */
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--cad-gap);
+    background: var(--cad-bg-secondary);
+}
+
+.panel {
+    background: rgba(255, 255, 255, 0.7);
+    border-left: 3px solid #ccc;
+    border-radius: var(--cad-radius-lg);
+    overflow: hidden;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.panel-header {
+    padding: 9px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #111;
+    background: rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.panel-header::before {
+    content: '▼';
+    font-size: 14px;
+    transition: transform 0.2s;
+    width: 16px;
+    display: inline-block;
+    text-align: center;
+    opacity: 0.6;
+}
+
+.panel.collapsed .panel-header::before,
+.panel-header.collapsed::before {
+    transform: rotate(-90deg);
+}
+
+.panel-body {
+    padding: var(--cad-panel-body-padding) !important;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.panel.collapsed .panel-body {
+    display: none;
+}
+
+/* =========================================================================
+   8. Settings panel
+   ========================================================================= */
+.settings-panel {
+    position: fixed;
+    top: 0;
+    right: -320px;
+    width: 320px;
+    height: 100vh;
+    background: var(--surface);
+    box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
+    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2002;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-panel:not(.hidden) {
+    right: 0;
+}
+
+.settings-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface-mid);
+}
+
+.settings-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.settings-body {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.setting-row label {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.setting-row input {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    width: 60px;
+    text-align: right;
+}
+
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(2px);
+    z-index: 2001;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.settings-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* =========================================================================
+   9. Theme dropdown
+   ========================================================================= */
+#theme-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+#theme-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-color: var(--border);
+    color: var(--text);
+    background: var(--surface2);
+}
+
+.theme-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 180px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12);
+    z-index: 1200;
+    overflow: hidden;
+}
+
+.theme-dropdown.hidden {
+    display: none;
+}
+
+.theme-dropdown button {
+    all: unset;
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    color: var(--text);
+    cursor: pointer;
+    font: 13px/1.4 inherit;
+}
+
+.theme-dropdown button:hover,
+.theme-dropdown button.active {
+    background: var(--surface2);
+}
+
+/* =========================================================================
+   10. Modal system (b-spline-gen .modal-* family)
+   ========================================================================= */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(2px);
+    z-index: 9999;
+    display: none;
+    /* Controlled by JS / Inline style */
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-window {
+    background: var(--surface);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    max-width: 95vw;
+    max-height: 95vh;
+    overflow: hidden;
+}
+
+.modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface-mid);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    background: var(--surface-mid);
+}
+
+/* Shared editor keyboard drag handle */
+.editor-symbol-keyboard-grip {
+    width: 34px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.18);
+    cursor: ns-resize;
+    flex: 0 0 auto;
+    margin-bottom: 2px;
+    transition: background 0.16s ease;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.editor-symbol-keyboard.grabbing .editor-symbol-keyboard-grip {
+    background: rgba(0,0,0,0.28);
+}
+
+/* Wizard Enhancements */
+#exportWizardModal .modal-window {
+    width: 420px;
+    max-height: 90vh;
+}
+
+.wizard-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.wizard-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 12px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    cursor: pointer;
+    transition: 0.2s;
+    position: relative;
+}
+
+.wizard-option:hover {
+    background: var(--surface);
+    border-color: var(--accent);
+}
+
+.wizard-option input {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    margin: 0;
+}
+
+.wizard-icon {
+    font-size: 1.4rem;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    margin-top: 4px;
+}
+
+.wizard-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.wizard-info .title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text);
+}
+
+.wizard-info .desc {
+    display: none;
+}
+
+.wizard-option.disabled {
+    opacity: 0.3;
+    pointer-events: none;
+    filter: grayscale(1);
+}
+
+/* =========================================================================
+   11. Pulse animations + status lights
+   ========================================================================= */
+@keyframes cad-pulse-live {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); transform: scale(1); }
+    70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); transform: scale(1.05); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); transform: scale(1); }
+}
+
+@keyframes cad-pulse-warn {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); transform: scale(1); }
+    70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); transform: scale(1.05); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); transform: scale(1); }
+}
+
+.cad-status-light {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: var(--cad-transition-standard);
+}
+
+.cad-status-light.live {
+    background-color: var(--cad-accent-green);
+    animation: cad-pulse-live 2s infinite;
+}
+
+.cad-status-light.dead {
+    background-color: var(--cad-accent-red);
+    animation: cad-pulse-warn 3s infinite;
+}
+
+/* =========================================================================
+   12. Native CAD shell layout (used by frame-builder, inspector,
+       template-maker, bspline_gen_palette)
+   ========================================================================= */
+.cad-app-shell,
+.cad-app-layout {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: var(--cad-font-family);
+    background-color: #f5f5f5;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.cad-navbar {
+    background-color: #ffffff;
+    border-bottom: var(--cad-border-width) solid var(--cad-border-soft);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    height: 36px;
+    width: 100%;
+    z-index: 50;
+}
+
+.cad-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.cad-nav-title {
+    color: #1e40af;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: -0.025em;
+}
+
+.cad-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 12px;
+}
+
+.cad-nav-link {
+    color: #6b7280;
+    padding: 4px;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.cad-nav-link:hover {
+    color: #1f2937;
+}
+
+.cad-nav-link.active {
+    color: #1d4ed8;
+    border-bottom: 2px solid #2563eb;
+    font-weight: 600;
+}
+
+.cad-nav-icons {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.cad-nav-icon {
+    color: #6b7280;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.cad-workspace {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.cad-viewport-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.3;
+    filter: grayscale(100%);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cad-viewport-img {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+}
+
+.cad-footer-bar {
+    background-color: #f3f4f6;
+    border-top: var(--cad-border-width) solid var(--cad-border-soft);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    height: 32px;
+    width: 100%;
+    z-index: 50;
+}
+
+.cad-footer-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.cad-footer-text {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.cad-footer-link {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+    color: #6b7280;
+    cursor: pointer;
+}
+
+.cad-footer-link:hover {
+    color: #1f2937;
+}
+
+/* =========================================================================
+   13. Native CAD Dialog component
+   ========================================================================= */
+.cad-dialog {
+    background-color: #fcfcfc;
+    border: var(--cad-border-width) solid var(--cad-border-color);
+    border-radius: var(--cad-radius-md);
+    box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.12);
+    width: 350px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    resize: both;
+    overflow: hidden;
+}
+
+.cad-sidebar-panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    flex-shrink: 0;
+    background-color: transparent;
+}
+
+.cad-header,
+.cad-accordion-header {
+    padding: 5px 8px;
+    display: flex;
+    align-items: center;
+    background-color: #edeef0;
+    border: none;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 700;
+    color: #444;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.cad-accordion-header.dark {
+    background-color: #e5e7eb;
+    padding-left: 16px;
+}
+
+.cad-accordion-header.dark + .cad-accordion-body {
+    padding-left: 16px;
+}
+
+.cad-header-minimize,
+.cad-accordion-icon {
+    margin-right: 6px;
+    font-size: 12px;
+    color: #555;
+    transition: transform 0.2s;
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+.collapsed .cad-header-minimize,
+.collapsed .cad-accordion-icon {
+    transform: rotate(-90deg);
+}
+
+.cad-dialog-content.collapsed,
+.cad-accordion-body.collapsed,
+.cad-indented-row.collapsed {
+    display: none !important;
+}
+
+.cad-dialog-content {
+    padding: 4px 0;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.cad-field-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    padding: 4px 8px;
+}
+
+.cad-label {
+    font-size: 12px;
+    color: #333;
+}
+
+/* Shared Control Base */
+.cad-input,
+.cad-btn,
+.cad-select-wrap,
+.cad-nested-input {
+    height: 24px;
+    border-radius: var(--cad-radius-sm);
+    font-size: 11.5px;
+    transition: all 0.05s;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+}
+
+.cad-input {
+    border: var(--cad-border-width) solid #ccc;
+    padding: 0 4px;
+    width: 100%;
+    background-color: #ffffff;
+}
+
+.cad-input:hover {
+    border: 1.5px solid #a0a0a0;
+}
+
+.cad-textarea {
+    width: 100%;
+    min-height: 120px;
+    border: var(--cad-border-width) solid var(--cad-border-color);
+    border-radius: var(--cad-radius-sm);
+    padding: 8px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 11.5px;
+    line-height: 1.5;
+    background-color: #ffffff;
+    resize: vertical;
+    outline: none;
+    color: #1a2634;
+}
+
+.cad-textarea:focus {
+    border-color: #00a2e8;
+}
+
+.cad-select-wrap {
+    position: relative;
+    background-color: #ffffff;
+    border: var(--cad-border-width) solid #bcbcbc;
+    padding: 0 4px;
+    width: 100%;
+}
+
+.cad-select-wrap:hover {
+    border: 1.5px solid #a0a0a0;
+}
+
+.cad-select-icon {
+    font-size: 14px;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.cad-select-icon-blue {
+    color: #3b82f6;
+}
+
+.cad-select {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+    border: none;
+    font-size: 11.5px;
+    appearance: none;
+    outline: none;
+    z-index: 2;
+    cursor: pointer;
+    padding-left: 24px;
+    padding-right: 16px;
+}
+
+.cad-select-no-icon {
+    padding-left: 6px !important;
+}
+
+.cad-select-arrow {
+    font-size: 8px;
+    color: #9ca3af;
+    pointer-events: none;
+    margin-left: auto;
+    z-index: 1;
+}
+
+.cad-nested-input {
+    background-color: #ffffff;
+    border: var(--cad-border-width) solid var(--cad-border-soft);
+    padding: 0 4px;
+    width: 80px;
+}
+
+.cad-nested-input:hover {
+    border: 1.5px solid #a0a0a0;
+}
+
+.cad-nested-input.disabled {
+    background-color: #f9fafb;
+    border: 1px solid #e5e7eb;
+    width: 64px;
+    opacity: 0.5;
+}
+
+.cad-nested-input input {
+    width: 100%;
+    font-size: 11px;
+    border: none;
+    padding: 0;
+    outline: none;
+    background-color: transparent;
+}
+
+/* =========================================================================
+   14. Native CAD Selection Box
+   ========================================================================= */
+.cad-selection-box {
+    border: var(--cad-border-width) solid var(--cad-border-color);
+    border-radius: var(--cad-radius-sm);
+    margin: 4px 8px 0 8px;
+    min-height: 120px;
+    background: #fff;
+    position: relative;
+}
+
+.cad-selection-item {
+    background-color: #e5f3ff;
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    font-size: 12px;
+    gap: 8px;
+}
+
+.cad-selection-count {
+    font-size: 12px;
+}
+
+.cad-selection-config {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    gap: 4px;
+}
+
+.cad-selection-tag {
+    display: flex;
+    align-items: center;
+    margin-left: 8px;
+    font-size: 11px;
+    gap: 4px;
+}
+
+.cad-selection-tag-icon {
+    font-size: 14px;
+    color: #2563eb;
+}
+
+.cad-selection-tools {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    display: flex;
+    gap: 8px;
+}
+
+/* =========================================================================
+   15. Native CAD Buttons & Icons
+   ========================================================================= */
+.cad-icon-btn {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #666;
+    cursor: pointer;
+}
+
+.cad-icon-btn.small {
+    font-size: 12px;
+}
+
+.cad-icon-btn:hover {
+    background-color: #eee;
+}
+
+.cad-btn {
+    min-width: 75px;
+    border: 1px solid #bcbcbc;
+    background: #ffffff;
+    color: #333;
+    justify-content: center;
+    padding: 0 12px;
+    cursor: pointer;
+}
+
+.cad-btn:hover {
+    border: 1.5px solid #a0a0a0;
+    background: #ffffff;
+}
+
+.cad-btn-primary {
+    background: #0696D7;
+    color: #ffffff;
+    border: 1px solid #057fb5;
+    font-weight: 500;
+}
+
+.cad-btn-primary:hover {
+    background: #058ac7;
+    border: 1.5px solid #5db0e5;
+}
+
+.cad-btn.disabled {
+    background: #f4f4f4;
+    color: #a0a0a0;
+    border: var(--cad-border-width) solid #d9d9d9;
+    cursor: default;
+}
+
+.cad-select-button {
+    border: var(--cad-border-width) solid var(--cad-border-soft);
+    background: #ffffff;
+    border-radius: var(--cad-radius-sm);
+    padding: 0 8px;
+    height: 22px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.cad-select-button:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+}
+
+.cad-select-button.active,
+.cad-select-button.selecting {
+    border: 1.5px solid #5db0e5;
+    background: #e5f3ff;
+    color: #333;
+}
+
+.cad-select-button.active:hover {
+    background: #d1e9ff;
+    border-color: #008cd2;
+}
+
+.cad-cursor-icon {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+}
+
+.cad-cursor-icon svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0px 1px 1px rgba(0, 0, 0, 0.1));
+}
+
+.cad-cursor-path {
+    fill: #ffffff;
+    stroke: #444444;
+    stroke-width: 1.5px;
+    stroke-linejoin: round;
+}
+
+.cad-select-button svg,
+.cad-select-button .material-symbols-outlined {
+    color: #4b5563;
+}
+
+.material-symbols-outlined {
+    font-size: 16px;
+}
+
+/* =========================================================================
+   16. Native CAD Utilities
+   ========================================================================= */
+.cad-divider-hr {
+    border-top: var(--cad-border-width) solid var(--cad-border-soft);
+    margin: 4px 8px;
+}
+
+.cad-mt-2 {
+    margin-top: 8px;
+}
+
+.cad-h-2 {
+    height: 8px;
+}
+
+.cad-footer {
+    border-top: var(--cad-border-width) solid #e0e0e0;
+    border-bottom-left-radius: var(--cad-radius-md);
+    border-bottom-right-radius: var(--cad-radius-md);
+    padding: 8px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    background-color: #fcfcfc;
+}
+
+.cad-footer-info {
+    margin-right: auto;
+    align-self: center;
+}
+
+.cad-footer-info-icon {
+    font-size: 14px;
+    color: #9ca3af;
+    background-color: #e5e7eb;
+}
+
+/* =========================================================================
+   17. Native CAD Top-Level Tabs (Text-Based)
+   ========================================================================= */
+.cad-text-tabs-bar {
+    display: flex;
+    border-bottom: var(--cad-border-width) solid var(--cad-border-soft);
+    padding: 0 16px;
+    background-color: #f3f4f6;
+}
+
+.cad-text-tab-item {
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #4b5563;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    margin-bottom: -1px;
+}
+
+.cad-text-tab-item:hover {
+    color: #1f2937;
+}
+
+.cad-text-tab-item.active {
+    color: #1f2937;
+    border-bottom-color: #0696D7;
+    font-weight: 500;
+}
+
+/* =========================================================================
+   18. Native CAD Multi-Column Layouts
+   ========================================================================= */
+.cad-split-view {
+    display: flex;
+    width: 100%;
+    flex: 1;
+    overflow: hidden;
+}
+
+.cad-split-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 8px 16px 8px;
+    overflow-y: auto;
+}
+
+.cad-split-right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    background-color: #f9fafb;
+    border-left: var(--cad-border-width) solid var(--cad-border-soft);
+    overflow-y: auto;
+}
+
+/* =========================================================================
+   19. Native CAD Headers & Status Indicators
+   ========================================================================= */
+.cad-status-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background-color: #eef7ff;
+    border-bottom: var(--cad-border-width) solid #c7ddf7;
+    font-size: 11.5px;
+    color: #175a99;
+}
+
+.cad-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #2f7d3f;
+}
+
+.cad-status-label {
+    font-weight: 700;
+}
+
+.cad-section-header {
+    font-size: 15px;
+    color: #4b5563;
+    font-weight: 400;
+    margin-top: 16px;
+    margin-bottom: 8px;
+    padding-left: 8px;
+}
+
+.cad-section-header:first-child {
+    margin-top: 8px;
+}
+
+.cad-field-row-wide {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    padding: 2px 8px;
+    min-height: 28px;
+}
+
+/* =========================================================================
+   20. Accordion / Collapsible Groups
+   ========================================================================= */
+.cad-accordion-header,
+.cad-checkbox-header {
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1f2937;
+    cursor: pointer;
+    margin-bottom: 2px;
+}
+
+.cad-accordion-header {
+    background-color: #f3f4f6;
+}
+
+.cad-checkbox-header {
+    padding: 8px 8px 8px 4px;
+    border-top: var(--cad-border-width) solid var(--cad-border-soft);
+}
+
+.cad-accordion-header.dark {
+    background-color: #e5e7eb;
+}
+
+.cad-accordion-icon {
+    font-size: 14px;
+    margin-right: 8px;
+    color: #6b7280;
+    transition: transform 0.2s;
+}
+
+.cad-accordion-header.collapsed .cad-accordion-icon {
+    transform: rotate(-90deg);
+}
+
+.cad-accordion-body {
+    padding-left: 2px;
+    padding-right: 2px;
+    margin-bottom: 8px;
+}
+
+.cad-accordion-body.collapsed {
+    display: none;
+}
+
+/* =========================================================================
+   21. Input Groups
+   ========================================================================= */
+.cad-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+/* =========================================================================
+   22. Tool Palette UI Patterns
+   ========================================================================= */
+.cad-icon-tabs {
+    display: flex;
+    background-color: #f3f4f6;
+    border-bottom: var(--cad-border-width) solid var(--cad-border-color);
+    padding-left: 4px;
+}
+
+.cad-icon-tab {
+    width: 36px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 30px;
+    cursor: pointer;
+    border-left: 1px solid transparent;
+    border-right: 1px solid transparent;
+    border-bottom: 1px solid transparent;
+    color: #4b5563;
+    transition: background-color var(--cad-transition-fast), border-color var(--cad-transition-fast), transform 0.12s;
+    user-select: none;
+    font-size: 18px;
+    margin-bottom: -1px;
+    z-index: 1;
+}
+
+.cad-icon-tab:hover:not(.active) {
+    background-color: #e5e7eb;
+}
+
+.cad-icon-tab.active {
+    background-color: #ffffff;
+    color: #1f2937;
+    border-left: var(--cad-border-width) solid var(--cad-border-color);
+    border-right: var(--cad-border-width) solid var(--cad-border-color);
+    border-bottom: var(--cad-border-width) solid #ffffff;
+    z-index: 2;
+}
+
+.cad-checkbox-header {
+    padding-left: 16px;
+    display: flex;
+    align-items: center;
+}
+
+.cad-checkbox-header .checkbox-custom {
+    margin-right: 8px;
+    margin-left: 0;
+}
+
+.cad-indented-row {
+    padding-left: 40px;
+}
+
+.cad-inner-table {
+    border: var(--cad-border-width) solid var(--cad-border-soft);
+    border-radius: var(--cad-radius-sm);
+    background-color: #ffffff;
+    width: 100%;
+    margin-top: 4px;
+    display: flex;
+    flex-direction: column;
+}
+
+.cad-table-header {
+    display: flex;
+    font-size: 10px;
+    color: #6b7280;
+    padding: 4px 8px;
+    border-bottom: var(--cad-border-width) solid var(--cad-border-soft);
+}
+
+.cad-table-row {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom: var(--cad-border-width) solid var(--cad-border-soft);
+}
+
+.cad-table-toolbar {
+    display: flex;
+    background-color: #f9fafb;
+    padding: 4px;
+    gap: 4px;
+}
+
+.cad-table-toolbar .cad-icon-btn {
+    color: #9ca3af;
+}
+
+.cad-table-toolbar .cad-icon-btn:hover {
+    color: #374151;
+}
+
+.cad-static-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: center;
+    padding: 4px 8px;
+}
+
+.cad-static-value {
+    font-size: 12px;
+    color: #4b5563;
+}
+
+/* =========================================================================
+   23. Native CAD App Layout (multi-panel shells used by frame-builder)
+   ========================================================================= */
+.cad-app-header {
+    height: 32px;
+    background: var(--cad-bg-standard);
+    border-bottom: 1px solid var(--cad-border-standard);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    flex-shrink: 0;
+    gap: 8px;
+    z-index: 10;
+}
+
+.cad-app-body {
+    display: grid;
+    grid-template-columns: var(--sidebar-width, 240px) 6px 1fr;
+    flex: 1;
+    overflow: hidden;
+}
+
+.cad-app-sidebar {
+    grid-column: 1;
+    background: #f5f5f5;
+    border-right: none;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+#cad-resizer {
+    grid-column: 2;
+    background: #f0f0f0;
+    border-left: 1px solid var(--cad-border-standard);
+    border-right: 1px solid var(--cad-border-standard);
+    cursor: col-resize;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+}
+
+#cad-resizer:hover,
+#cad-resizer.resizing {
+    background: var(--cad-accent-blue);
+    border-color: var(--cad-accent-blue);
+}
+
+#cad-resizer::after {
+    content: '';
+    width: 2px;
+    height: 20px;
+    background: #ccc;
+    border-radius: 1px;
+}
+
+.cad-app-main {
+    grid-column: 3;
+    background: #ddd;
+    position: relative;
+    overflow: hidden;
+}
+
+/* =========================================================================
+   24. Complex Sidebar Controls (Native CAD)
+   ========================================================================= */
+.cad-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+input[type="range"].cad-slider {
+    -webkit-appearance: none;
+    flex: 1;
+    min-width: 20px;
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    outline: none;
+    margin: 0;
+}
+
+input[type="range"].cad-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--cad-accent-blue);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.cad-btn-tool {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 32px;
+    flex: 1;
+    background: #f0f0f0;
+    border: 1px solid var(--cad-border-standard);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--cad-text-main);
+    cursor: pointer;
+    transition: all 0.1s;
+}
+
+.cad-btn-tool:hover {
+    background: #e8e8e8;
+    border-color: #bbb;
+}
+
+.cad-btn-tool.active {
+    background: #fff;
+    border-color: var(--cad-accent-blue);
+    box-shadow: 0 0 0 1px var(--cad-accent-blue);
+}
+
+.cad-btn-tool .material-symbols-outlined {
+    font-size: 16px;
+}
+
+.cad-action-row {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.cad-action-row .cad-btn {
+    flex: 1;
+    padding: 4px;
+    font-size: 10px;
+    height: 22px;
+    background: #f5f5f5;
+}
+
+.cad-accordion-wrap.accent-green {
+    border-left: 3px solid var(--cad-accent-green);
+}
+
+.cad-accordion-header span.material-symbols-outlined {
+    font-size: 14px;
+    margin-right: 6px;
+    opacity: 0.8;
+}
+
+/* =========================================================================
+   25. Native CAD Modal & Dialog System
+   ========================================================================= */
+.cad-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.cad-modal-window {
+    background: var(--cad-bg-standard);
+    border: 1px solid #777;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-width: 95vw;
+    max-height: 95vh;
+}
+
+.cad-modal-header {
+    background: #e8e8e8;
+    border-bottom: 1px solid var(--cad-border-standard);
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 11px;
+    color: #333;
+    flex-shrink: 0;
+}
+
+.cad-modal-body {
+    flex: 1;
+    overflow: hidden;
+    background: var(--cad-bg-standard);
+}
+
+.cad-modal-footer {
+    background: #e8e8e8;
+    border-top: 1px solid var(--cad-border-standard);
+    padding: 8px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.cad-btn.active {
+    background-color: var(--cad-accent-blue) !important;
+    color: white !important;
+    border-color: var(--cad-accent-blue) !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2) !important;
+}
+
+/* =========================================================================
+   26. Native CAD Tool Group Patterns
+   ========================================================================= */
+.cad-tool-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    background: var(--cad-bg-tertiary);
+    padding: 2px;
+    border-radius: var(--cad-radius-md);
+    margin-bottom: 12px;
+}
+
+.cad-tool-btn {
+    height: 48px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 4px !important;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--cad-text-muted);
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+}
+
+.cad-tool-btn .material-symbols-outlined {
+    font-size: 20px !important;
+}
+
+.cad-tool-btn.active {
+    background: var(--cad-bg-standard) !important;
+    color: var(--cad-accent-blue) !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+    border-radius: var(--cad-radius-sm);
+}

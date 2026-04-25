@@ -5,7 +5,7 @@
  */
 
 import { PerlinNoise } from './noise.js';
-import { NoiseModes, NoiseMetadata } from './noise-modes.js';
+import { NoiseModes, NoiseMetadata } from './noise/index.js';
 
 /**
  * Generate a flat Float32Array[nz × nx] of heights in inches.
@@ -38,6 +38,12 @@ export function generateHeightmap(params, stampParams = null) {
   const heights = new Float32Array(nx * nz);
   const aspect  = widthIn / heightIn;
 
+  // Extract the active filter's UI tweaks once. Each mode fn reads
+  // params.tweaks?.<key> ?? <default>, so an empty/missing object
+  // means "use schema defaults" — behavior identical to pre-tweaks.
+  const tweaks = (params.filterTweaks && params.filterTweaks[noiseType]) || {};
+  const modeParams = { ...params, tweaks };
+
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
     for (let i = 0; i < nx; i++) {
@@ -51,7 +57,7 @@ export function generateHeightmap(params, stampParams = null) {
         // ── Pass 1: Fine Detail (Strategy Pattern) ──
         const modeFunc = NoiseModes[noiseType] || NoiseModes['simplex'];
         const noiseRefs = { noiseFine, noiseWarp, noiseCoarse, rawU: u, rawV: v };
-        let fine = modeFunc(su, sv, aspect, params, noiseRefs);
+        let fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
 
         // ── Detail Modulation (Spatial Density) ──
         let detailIntensity = 1.0;

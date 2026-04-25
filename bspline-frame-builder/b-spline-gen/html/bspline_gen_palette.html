@@ -11,12 +11,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
-  <!-- Native CAD Design System -->
-  <link rel="stylesheet" href="../../native-cad-style.css">
-
-  <link rel="stylesheet" href="shared-style.css">
-  <link rel="stylesheet" href="editor/editor.css">
-  <link rel="stylesheet" href="editor/editor-mobile.css">
+  <!-- Consolidated stylesheets -->
+  <link rel="stylesheet" href="../../styles/base.css">
+  <link rel="stylesheet" href="../../styles/layout-app.css">
+  <link rel="stylesheet" href="../../styles/editor.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
 
   <!-- CSS Overrides for B-Spline Gen integration -->
@@ -245,9 +243,9 @@
 
   <main class="cad-main-content app">
     <aside class="cad-sidebar">
-      <!-- 0. Sticky Header Actions -->
+      <!-- 0. Sticky Header Actions — pinned to top of sidebar scroll viewport -->
       <div class="cad-panel-section"
-        style="padding: 12px; background: rgba(0,0,0,0.02); border-bottom: 1px solid var(--cad-border-color);">
+        style="padding: 12px; background: #fdfdfd; border-bottom: 1px solid var(--cad-border-color); position: sticky; top: 0; z-index: 20; box-shadow: 0 4px 6px -4px rgba(0,0,0,0.18);">
         <button class="cad-btn cad-btn-secondary" id="btnRandomSeed" style="width:100%; height:32px;">🎲 Generate New
           Seed</button>
         <div style="display:flex; gap:8px; margin-top:8px;">
@@ -339,17 +337,22 @@
             <div style="flex:1; min-width: 110px;">
               <label class="cad-label">Noise Type</label>
               <div class="cad-nested-input">
-                <select id="noiseType" style="width:100%; border:none; background:transparent; font-size:11px;">
-                  <option value="simplex" selected>Smooth Hills</option>
-                  <option value="sculptural">Ridged Armor</option>
-                  <option value="hetero">Fibrous Grain</option>
-                  <option value="basalt">Terraced Basalt</option>
-                  <option value="artifact">Lunar Craters</option>
-                  <option value="cracked">Cracked Earth</option>
-                  <option value="chest">Anatomical</option>
-                  <option value="xeno">Biomechanical</option>
+                <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
+                  <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
                 </select>
               </div>
+            </div>
+          </div>
+
+          <!-- Edit-Filter sub-panel: per-filter slider knobs from tweaks schema. -->
+          <div class="panel-sub panel-filter-tweaks" id="filterTweaksPanel" style="margin-bottom:12px;">
+            <div class="panel-header collapsed" onclick="togglePanel(this)">
+              <span>⚙️ Edit Filter</span>
+              <button type="button" class="filter-tweaks-reset" id="filterTweaksReset"
+                  title="Reset all knobs to defaults">Reset all</button>
+            </div>
+            <div class="panel-body hidden" id="filterTweaksBody">
+              <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel(). -->
             </div>
           </div>
 
