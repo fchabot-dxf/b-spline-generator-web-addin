@@ -6,6 +6,7 @@
 
 import { PerlinNoise } from './noise.js';
 import { NoiseModes, NoiseMetadata } from './noise/index.js';
+import { SeedTypes } from './seed/index.js';
 
 /**
  * Generate a flat Float32Array[nz × nx] of heights in inches.
@@ -55,7 +56,12 @@ export function generateHeightmap(params, stampParams = null) {
         if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(sv * 2 - 1);
 
         // ── Pass 1: Fine Detail (Strategy Pattern) ──
-        const modeFunc = NoiseModes[noiseType] || NoiseModes['simplex'];
+        // Skeleton-isolation mode bypasses the filter with a flat 0.5,
+        // so downstream macro/gate/fade/smooth produce the pure skeleton
+        // shape with no filter character mixed in.
+        const modeFunc = params.isolateSkeleton
+            ? () => 0.5
+            : (NoiseModes[noiseType] || NoiseModes['simplex']);
         const noiseRefs = { noiseFine, noiseWarp, noiseCoarse, rawU: u, rawV: v };
         let fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
 
@@ -85,12 +91,61 @@ export function generateHeightmap(params, stampParams = null) {
         fine = lerp(0.5, fine, effectiveDetail);
 
         // ── Pass 2: Coarse Redistribution ──────
+        // Seed (raw pattern) → Skeleton transforms (peakShape, clustering,
+        // density, edge fade, smoothing). The seed type is dispatched
+        // through SeedTypes; new seed kinds drop into core/seed/ without
+        // touching this file.
         const meta = NoiseMetadata[noiseType] || NoiseMetadata['simplex'];
         const cMultiplier = meta.cMultiplier;
         const cFreq = (macroScale || 0.65) * cMultiplier;
-        const cx = su * cFreq * aspect;
-        const cz = sv * cFreq;
-        const coarse = applyContrast((noiseCoarse.fbm(cx + 4.33, cz + 8.77, 2, 2.0, 0.6) + 1) * 0.5, 2.2);
+        let cx = su * cFreq * aspect;
+        let cz = sv * cFreq;
+
+        // Apply seed-panel rotation about the (su, sv) origin BEFORE offset.
+        // Keeps "spin the field" predictable: rotate first, then translate.
+        const rot = (params.seedRotation || 0) * Math.PI / 180;
+        if (rot !== 0) {
+          const cs = Math.cos(rot), sn = Math.sin(rot);
+          const rx = cx * cs - cz * sn;
+          const rz = cx * sn + cz * cs;
+          cx = rx; cz = rz;
+        }
+        // Offset lets the user pan continuously through the seed field.
+        // We scale by cFreq so "1 unit of offset" = "pan by one screen-width"
+        // — the visible field only spans ~cFreq noise units, so adding raw
+        // offset values would jump past Perlin's correlation length almost
+        // immediately and feel like switching to a different seed.
+        cx += (params.seedOffsetX || 0) * cFreq * aspect;
+        cz += (params.seedOffsetY || 0) * cFreq;
+
+        const seedType = params.seedType || 'perlin';
+        const seedFn = SeedTypes[seedType] || SeedTypes['perlin'];
+        const seedRefs = { noiseCoarse };
+        // Peak Shape replaces the legacy hard-coded `2.2` contrast strength.
+        // <1 = round/blobby, 2.2 = legacy look, >2.2 = sharper peaks.
+        const peakShape = (params.peakShape != null) ? params.peakShape : 2.2;
+        let coarse = applyContrast(seedFn(cx, cz, seedRefs), peakShape);
+
+        // Clustering: multiply the coarse field by a low-freq mask so peaks
+        // group into clumps. 0 = even distribution (today's behavior),
+        // 1 = strongly clustered. Mask runs at a coarser frequency than the
+        // main coarse field so its variation reads as "clumps" not "more peaks".
+        const clustering = params.clustering || 0;
+        if (clustering > 0.001) {
+            const clFreq = cFreq * 0.35;
+            const cm = (noiseCoarse.fbm(su * clFreq * aspect + 17.7, sv * clFreq + 23.1, 2, 2.0, 0.55) + 1) * 0.5;
+            const mask = lerp(1, cm, clustering);
+            coarse *= mask;
+        }
+
+        // Density: soft threshold gate. 1 = no gating (today's behavior),
+        // 0 = silence the whole coarse field. Smoothstep keeps transitions
+        // smooth so we don't introduce sharp contour lines into the heightmap.
+        const density = (params.density != null) ? params.density : 1.0;
+        if (density < 0.999) {
+            const threshold = 1.0 - density;
+            coarse = smoothstep(threshold - 0.05, threshold + 0.05, coarse) * coarse;
+        }
 
         const LOW = 0.22, PEAK_BASE = 0.58, PEAK_RNG = 0.42;
         let h = lerp(fine * LOW,  PEAK_BASE + fine * PEAK_RNG,  coarse);

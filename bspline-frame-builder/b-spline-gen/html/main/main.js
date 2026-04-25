@@ -33,6 +33,7 @@ import { TerrainPreview } from '../core/preview.js';
 import { generateStep, generateThickenedStep } from '../core/stepWriter.js';
 import { resolveGrid } from '../core/terrain.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
+import { populateSeedDropdown } from '../core/seed/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { VectorEditor } from '../editor/index.js';
 import { AppState } from './app-state.js';
@@ -42,6 +43,7 @@ import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindPresets } from './preset-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
+import { initSkeletonEditor } from '../core/skeleton-editor.js';
 
 // --- Global Instances ---
 let preview = null;
@@ -69,6 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Must run before bindControls so listeners read a fully-populated <select>.
     const noiseSelect = document.getElementById('noiseType');
     populateNoiseDropdown(noiseSelect);
+
+    // 2b'. Populate seed-type dropdown from the seed modules (mirrors noise pattern).
+    const seedSelect = document.getElementById('seedType');
+    populateSeedDropdown(seedSelect);
 
     // 2c. Edit-Filter slider panel — per-filter UI knobs from each mode's
     // `tweaks` schema. Render the initial filter and re-render whenever the
@@ -98,6 +104,10 @@ document.addEventListener('DOMContentLoaded', () => {
     bindPresets(preview);
     bindHeaderAndSettings();
     if (window.initBsplineTheme) window.initBsplineTheme();
+
+    // 3b. Skeleton Editor (fullscreen 2D modal). Must run after bindControls so
+    // the sidebar's "Edit Skeleton" button exists and isn't double-wired.
+    initSkeletonEditor();
 
     // 4. Fusion 360 Detection
     // REWIRE 2: Double requestAnimationFrame to yield to browser paint

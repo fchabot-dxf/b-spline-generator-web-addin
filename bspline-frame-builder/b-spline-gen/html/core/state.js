@@ -33,6 +33,31 @@ export const DEFAULT = {
     detailStrength: 0.25,
     detailDensityRespectSymmetry: true,
     smoothRespectSymmetry: true,
+    // Skeleton seed-character — shape the coarse Perlin field that drives the
+    // skeleton. peakShape replaces the old hard-coded applyContrast(2.2):
+    // <1 = round/blobby, =2.2 = legacy look, >2.2 = sharper peaks.
+    // density (0..1) is a soft threshold gate on the coarse field; 1 = today's
+    // behavior (no gating), 0 = empty plate. clustering (0..1) multiplies the
+    // coarse field by a low-freq mask so peaks group into clumps; 0 = even
+    // distribution, 1 = strongly clustered.
+    peakShape: 2.2,
+    density: 1.0,
+    clustering: 0,
+    // SEED panel — selects the underlying coarse-field generator.
+    // Lives BEFORE the skeleton in the mental model: seed = raw pattern,
+    // skeleton = transforms applied to it, filter = fine detail layered on top.
+    // seedOffsetX/Y let the user pan through the noise field continuously
+    // (Perlin seed integers are a hash, so adjacent integers are uncorrelated;
+    // offset gives smooth "browsing" within one chosen seed).
+    // seedRotation rotates the sampling coordinates before the seed sees them.
+    seedType: 'perlin',
+    seedOffsetX: 0,
+    seedOffsetY: 0,
+    seedRotation: 0,
+    // Skeleton isolation mode — when true, terrain.js bypasses the filter
+    // (substitutes a flat 0.5) so the user sees only the skeleton's
+    // contribution: coarse field, detail-density gate, edge fade, smoothing.
+    isolateSkeleton: false,
     // Thicken
     thickenEnabled: true,
     thickness: 0.125,
@@ -85,6 +110,12 @@ export const SLIDER_PAIRS = {
     smoothRadius: 'smoothRadiusSlider',
     detailDensity: 'detailDensitySlider',
     detailStrength: 'detailStrengthSlider',
+    peakShape: 'peakShapeSlider',
+    density: 'densitySlider',
+    clustering: 'clusteringSlider',
+    seedOffsetX: 'seedOffsetXSlider',
+    seedOffsetY: 'seedOffsetYSlider',
+    seedRotation: 'seedRotationSlider',
     thickness: 'thicknessSlider',
     warpIntensity: 'warpIntensitySlider',
     sculptTopRadius: 'sculptTopRadiusSlider',
@@ -253,11 +284,12 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer'];
+    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
+        'isolateSkeleton',
         'includeUnstampedSolid', 'thickenWireframe', 'flatShading'
     ];
 
@@ -268,6 +300,10 @@ export function updateP(key, value) {
     // Safety Floor: Prevent critical parameters from becoming 0
     if (key === 'carveZ' || key === 'macroScale' || key === 'scale') {
         value = Math.max(0.001, parseFloat(value));
+    }
+    if (key === 'peakShape') {
+        // applyContrast does pow(|x|, 1/strength); strength→0 = divide-by-zero.
+        value = Math.max(0.1, parseFloat(value));
     }
 
     if (stringParams.includes(key)) {

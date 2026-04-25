@@ -8,10 +8,13 @@ import { AppState } from './app-state.js';
 
 const immediateRebuildParams = [
   'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType',
+  'seedType', 'seedOffsetX', 'seedOffsetY', 'seedRotation',
   'symmetry', 'carveZ', 'scale', 'macroScale', 'warpIntensity',
+  'peakShape', 'density', 'clustering',
   'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
-  'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile'
+  'stampEdgeFilletRadius', 'stampFilletPower', 'stampProfile',
+  'isolateSkeleton'
 ];
 
 const stampMaskParams = [

@@ -306,62 +306,41 @@
           </div>
 
           <label class="cad-label">Carve Depth <span style="color:#0a84ff;font-weight:600;">(Z)</span></label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
+          <div class="cad-slider-row">
             <input type="range" id="carveZSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
               <input type="number" id="carveZ" value="1.5" step="0.1">
             </div>
           </div>
-
-          <label class="cad-label">Flat Border</label>
-          <div class="cad-slider-row">
-            <input type="range" id="edgeMarginInSlider" class="cad-slider" min="0" max="10" step="0.05" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="edgeMarginIn" value="0">
-            </div>
-          </div>
         </div>
       </div>
 
-      <!-- 3. Terrain Noise -->
-      <div class="panel panel-terrain">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🌄 TERRAIN NOISE</div>
+      <!-- 3. Seed (raw coarse-field generator — comes BEFORE the skeleton).
+           Seed = the raw pattern. Skeleton = transforms applied to it.
+           Filter = fine detail layered on top. Three panels = three jobs. -->
+      <div class="panel panel-seed">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🌱 SEED</div>
         <div class="panel-body hidden">
-          <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap: wrap;">
-            <div style="flex:1; min-width: 80px;">
-              <label class="cad-label">Seed</label>
-              <div class="cad-nested-input">
-                <input type="number" id="seed" value="42">
-              </div>
-            </div>
-            <div style="flex:1; min-width: 110px;">
-              <label class="cad-label">Noise Type</label>
-              <div class="cad-nested-input">
-                <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
-                  <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
-                </select>
-              </div>
-            </div>
+          <button type="button" id="btnEditSeed"
+                  style="width:100%; margin-bottom:12px; padding:8px 10px;
+                         background:#eaffea; border:1px solid #99cc99; border-radius:4px;
+                         font-weight:700; cursor:pointer; display:flex; align-items:center;
+                         justify-content:space-between; gap:8px;">
+            <span>🌱 Edit Seed</span>
+            <span style="font-size:10px; opacity:0.7; font-weight:500;">fullscreen 2D</span>
+          </button>
+
+          <label class="cad-label">Seed Type</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="seedType" data-default="perlin"
+                    style="width:100%; border:none; background:transparent; font-size:11px;">
+              <!-- Options populated at runtime from core/seed/index.js → populateSeedDropdown() -->
+            </select>
           </div>
 
-          <!-- Edit-Filter sub-panel: per-filter slider knobs from tweaks schema. -->
-          <div class="panel-sub panel-filter-tweaks" id="filterTweaksPanel" style="margin-bottom:12px;">
-            <div class="panel-header collapsed" onclick="togglePanel(this)">
-              <span>⚙️ Edit Filter</span>
-              <button type="button" class="filter-tweaks-reset" id="filterTweaksReset"
-                  title="Reset all knobs to defaults">Reset all</button>
-            </div>
-            <div class="panel-body hidden" id="filterTweaksBody">
-              <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel(). -->
-            </div>
-          </div>
-
-          <label class="cad-label">Fine Scale</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="scaleSlider" class="cad-slider" min="0.2" max="12" step="0.1" value="3.7">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="scale" value="3.7">
-            </div>
+          <label class="cad-label">Seed</label>
+          <div class="cad-nested-input" style="margin-bottom:12px;">
+            <input type="number" id="seed" value="42">
           </div>
 
           <label class="cad-label">Region Scale</label>
@@ -369,6 +348,121 @@
             <input type="range" id="macroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
             <div class="cad-stepper" style="width:75px;">
               <input type="number" id="macroScale" value="0.65">
+            </div>
+          </div>
+
+          <label class="cad-label">Offset X <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="seedOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="seedOffsetX" value="0" step="0.01">
+            </div>
+          </div>
+
+          <label class="cad-label">Offset Y <span style="font-size:10px; opacity:0.6; font-weight:400;">(pan, in screens)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="seedOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="seedOffsetY" value="0" step="0.01">
+            </div>
+          </div>
+
+          <label class="cad-label">Rotation <span style="font-size:10px; opacity:0.6; font-weight:400;">(degrees)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="seedRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="seedRotation" value="0" step="1">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Skeleton (filter-independent host pipeline) -->
+      <div class="panel panel-skeleton">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🦴 SKELETON</div>
+        <div class="panel-body hidden">
+          <label class="cad-label">Peak Shape <span style="font-size:10px; opacity:0.6; font-weight:400;">(round ↔ spiky)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="peakShapeSlider" class="cad-slider" min="0.3" max="5" step="0.05" value="2.2">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="peakShape" value="2.2" step="0.05">
+            </div>
+          </div>
+
+          <label class="cad-label">Density <span style="font-size:10px; opacity:0.6; font-weight:400;">(sparse ↔ dense)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="densitySlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="density" value="1" step="0.01">
+            </div>
+          </div>
+
+          <label class="cad-label">Clustering <span style="font-size:10px; opacity:0.6; font-weight:400;">(even ↔ clumped)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="clusteringSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="clustering" value="0" step="0.01">
+            </div>
+          </div>
+
+          <label class="cad-label">Symmetry</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="symmetry" style="width:100%; border:none; background:transparent; font-size:11px;">
+              <option value="none">None</option>
+              <option value="x" selected>Mirror X</option>
+              <option value="y">Mirror Y</option>
+            </select>
+          </div>
+
+          <label class="cad-label">Flat Border</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="edgeMarginInSlider" class="cad-slider" min="0" max="10" step="0.05" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="edgeMarginIn" value="0">
+            </div>
+          </div>
+
+          <div class="cad-status-divider" style="margin: 4px 0 12px 0;"></div>
+
+          <label class="cad-label">Smoothing Intensity</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="smoothIntensitySlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="smoothIntensity" value="0">
+            </div>
+          </div>
+
+          <label class="cad-label">Smoothing Radius</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="smoothRadiusSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.2">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="smoothRadius" value="1.2">
+            </div>
+          </div>
+
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="smoothRespectSymmetry" checked>
+            <span>Smooth Respects Symmetry</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 4. Filter (noise type + per-filter tweaks) -->
+      <div class="panel panel-filter">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 FILTER</div>
+        <div class="panel-body hidden">
+          <label class="cad-label">Noise Type</label>
+          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
+            <select id="noiseType" data-default="simplex" style="width:100%; border:none; background:transparent; font-size:11px;">
+              <!-- Options populated at runtime from core/noise/index.js → populateNoiseDropdown() -->
+            </select>
+          </div>
+
+          <label class="cad-label">Fine Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="scaleSlider" class="cad-slider" min="0.2" max="12" step="0.1" value="3.7">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="scale" value="3.7">
             </div>
           </div>
 
@@ -393,41 +487,17 @@
             <span>Detail Respects Symmetry</span>
           </label>
 
-          <label class="cad-label">Symmetry</label>
-          <div class="cad-nested-input" style="width:100%;">
-            <select id="symmetry" style="width:100%; border:none; background:transparent; font-size:11px;">
-              <option value="none">None</option>
-              <option value="x" selected>Mirror X</option>
-              <option value="y">Mirror Y</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- 4. Smoothing -->
-      <div class="panel panel-smooth">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🫧 SMOOTHING</div>
-        <div class="panel-body hidden">
-          <label class="cad-label">Intensity</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="smoothIntensitySlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="smoothIntensity" value="0">
+          <!-- Edit-Filter sub-panel: per-filter slider knobs from tweaks schema. -->
+          <div class="panel-sub panel-filter-tweaks" id="filterTweaksPanel">
+            <div class="panel-header collapsed" onclick="togglePanel(this)">
+              <span>⚙️ Edit Filter</span>
+              <button type="button" class="filter-tweaks-reset" id="filterTweaksReset"
+                  title="Reset all knobs to defaults">Reset all</button>
+            </div>
+            <div class="panel-body hidden" id="filterTweaksBody">
+              <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel(). -->
             </div>
           </div>
-
-          <label class="cad-label">Radius</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="smoothRadiusSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.2">
-            <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="smoothRadius" value="1.2">
-            </div>
-          </div>
-
-          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" id="smoothRespectSymmetry" checked>
-            <span>Smooth Respects Symmetry</span>
-          </label>
         </div>
       </div>
 
@@ -1055,6 +1125,216 @@
       <button id="editorSnapToggle" style="display:none;"></button>
       <div id="editorNodeCountUI" style="display:none;"></div>
       <canvas id="svgEditorTopView" style="display:none;"></canvas>
+    </div>
+  </div>
+
+  <!-- Skeleton Editor Modal — fullscreen 2D editor for the host pipeline.
+       While open, P.isolateSkeleton = true (filter bypassed) so the canvas
+       shows only what the skeleton itself shapes. -->
+  <style>
+    #skeletonEditorModal .skel-editor-body {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    #skeletonEditorModal .skel-editor-canvas-wrap {
+      flex: 1;
+      min-width: 0;
+      min-height: 0;
+      background: #ececec;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #skeletonEditorModal .skel-editor-canvas-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px);
+      background-size: 20px 20px;
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    #skelEditorCanvas {
+      max-width: 95%;
+      max-height: 95%;
+      width: auto;
+      height: auto;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+      border: 1px solid #aaa;
+      background: #555;
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+      position: relative;
+      z-index: 2;
+    }
+    #skeletonEditorModal .skel-editor-sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      background: #fdfdfd;
+      border-left: 1px solid var(--cad-border-standard);
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #skeletonEditorModal .skel-editor-toolbar-left {
+      width: 44px;
+      flex-shrink: 0;
+      background: #fdfdfd;
+      border-right: 1px solid var(--cad-border-standard);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 12px;
+      gap: 6px;
+    }
+    #skeletonEditorModal .skel-tool-btn {
+      width: 32px;
+      height: 32px;
+      border: 1px solid #ddd;
+      background: #fff;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #aaa;
+      font-size: 16px;
+    }
+    #skeletonEditorModal .skel-tool-btn.active {
+      background: #e8f1ff;
+      border-color: #4f8ef7;
+      color: #4f8ef7;
+    }
+    /* Mobile: stack canvas above scrollable sliders, hide left toolbar (no tools yet). */
+    @media (max-width: 720px) {
+      #skeletonEditorModal .skel-editor-body {
+        flex-direction: column;
+      }
+      #skeletonEditorModal .skel-editor-toolbar-left {
+        display: none;
+      }
+      #skeletonEditorModal .skel-editor-sidebar {
+        width: 100%;
+        max-height: 50vh;
+        border-left: none;
+        border-top: 1px solid var(--cad-border-standard);
+      }
+      #skeletonEditorModal .skel-editor-canvas-wrap {
+        min-height: 40vh;
+      }
+    }
+  </style>
+  <div id="skeletonEditorModal" class="cad-modal-overlay" style="display: none;">
+    <div class="cad-modal-window" style="width: 100vw; height: 100vh; max-width: none; max-height: none; display: flex; flex-direction: column; overflow: hidden; border-radius: 0;">
+
+      <!-- Header -->
+      <div class="cad-modal-header" style="flex-shrink: 0; height: 48px; padding: 0 16px; background: #f3f3f3; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-weight:700; font-size:13px;">🌱 Seed Editor</span>
+          <span style="font-size:10px; opacity:0.6; padding:2px 8px; background:#eaffea; border:1px solid #99cc99; border-radius:3px;">raw seed view</span>
+        </div>
+        <button id="skelEditorClose" class="cad-btn cad-btn-primary" style="font-size:11px; padding: 4px 14px;">Done</button>
+      </div>
+
+      <!-- Top toolbar (placeholder for future view-mode switching) -->
+      <div style="height: 32px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; flex-shrink: 0; gap: 12px;">
+        <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">View</span>
+        <span id="skelEditorViewLabel" style="font-size:10px; color:#888;">Seed (shaded relief)</span>
+      </div>
+
+      <!-- Body: left tool sidebar | canvas | right slider panel -->
+      <div class="skel-editor-body">
+
+        <!-- Left toolbar (placeholder for future paint tools) -->
+        <div class="skel-editor-toolbar-left">
+          <button class="skel-tool-btn active" title="View (no tools yet)">👁</button>
+        </div>
+
+        <!-- Canvas -->
+        <div class="skel-editor-canvas-wrap">
+          <canvas id="skelEditorCanvas" width="384" height="288"></canvas>
+        </div>
+
+        <!-- Right: seed parameter sliders + view toggle -->
+        <aside class="skel-editor-sidebar">
+          <div style="font-weight:700; font-size:11px; color:#333; padding-bottom:6px; border-bottom:1px solid #eee;">Seed Parameters</div>
+          <div style="font-size:10px; color:#888; line-height:1.4;">
+            This shows the RAW seed only — skeleton transforms (peak shape,
+            density, clustering, smoothing) are not applied here.
+          </div>
+
+          <div>
+            <label class="cad-label">Seed Type</label>
+            <div class="cad-nested-input" style="width:100%;">
+              <select id="skelSeedType" data-default="perlin"
+                      style="width:100%; border:none; background:transparent; font-size:11px;">
+                <!-- Populated at runtime from core/seed/index.js → populateSeedDropdown() -->
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Seed</label>
+            <div class="cad-nested-input">
+              <input type="number" id="skelSeed" value="42">
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Region Scale</label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelMacroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelMacroScale" value="0.65">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelOffsetX" value="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelOffsetY" value="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Rotation <span style="font-size:10px; opacity:0.6;">(°)</span></label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelRotation" value="0" step="1">
+              </div>
+            </div>
+          </div>
+
+          <div class="cad-status-divider" style="margin: 6px 0;"></div>
+
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="skelVectorsOnly">
+            <span>Vectors Only <span style="font-size:10px; opacity:0.6; font-weight:400;">(contour lines)</span></span>
+          </label>
+        </aside>
+      </div>
     </div>
   </div>
 
