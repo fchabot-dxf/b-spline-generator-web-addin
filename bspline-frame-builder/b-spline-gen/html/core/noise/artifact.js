@@ -1,9 +1,19 @@
 /**
- * Lunar (Craters) 🌑🌋
- * High-fidelity impact architecture with central peaks, rim ejecta, and maria.
+ * Artifact (Mesa Plateau) 🪨🏜️
+ * Subtractive plateau-carving — `pow<1` FBM lifts midtones into broad
+ * flat mesas, then a single sinuous canyon and sparse flat-floor pits
+ * are carved INTO the mesa. This is the only filter in the set that
+ * builds features subtractively (the planet family is additive).
+ *
+ * Composition (subtractive):
+ *   1. Mesa base       — pow<1 lifted FBM → flat tablelands.
+ *   2. Canyon          — single anisotropic line (V-axis ×10) → one
+ *                        long sinuous rift carved into the mesa.
+ *   3. Flat-floor pits — broad pow-falloff Worley depressions with
+ *                        soft floors, subtracted from the surface.
  */
 export const id = 'artifact';
-export const label = 'Lunar Craters';
+export const label = 'Artifact';
 export const cMultiplier = 3.0;
 
 export const tweaks = [

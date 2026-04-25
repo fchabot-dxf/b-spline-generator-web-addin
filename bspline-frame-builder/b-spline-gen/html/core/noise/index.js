@@ -26,24 +26,24 @@ import * as sculptural from './sculptural.js';
 import * as hetero     from './hetero.js';
 import * as basalt     from './basalt.js';
 import * as artifact   from './artifact.js';
+import * as stone      from './stone.js';
 import * as cracked    from './cracked.js';
 import * as chest      from './chest.js';
 import * as xeno       from './xeno.js';
 import * as magma      from './magma.js';
 import * as reef       from './reef.js';
 import * as glacier    from './glacier.js';
-import * as planet     from './planet.js';
-import * as damask     from './damask.js';
+import * as mars       from './mars.js';
+import * as moon       from './moon.js';
+import * as venus      from './venus.js';
 import * as mycelium   from './mycelium.js';
-import * as caustic    from './caustic.js';
-import * as woven      from './woven.js';
 import * as dunes      from './dunes.js';
 
 // Order here = dropdown order.
 const _all = [
-  simplex, sculptural, hetero, basalt, artifact, cracked,
-  chest, xeno, magma, reef, glacier, planet,
-  damask, mycelium, caustic, woven, dunes,
+  simplex, sculptural, hetero, basalt, artifact, stone, cracked,
+  chest, xeno, magma, reef, glacier,
+  mars, moon, venus, mycelium, dunes,
 ];
 
 export const NoiseModes    = Object.fromEntries(_all.map(m => [m.id, m.fn]));
