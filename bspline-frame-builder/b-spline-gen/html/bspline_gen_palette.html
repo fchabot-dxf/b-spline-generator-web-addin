@@ -294,20 +294,20 @@
         <div class="panel-body">
           <div style="display:flex; gap:8px; margin-bottom:12px;">
             <div style="flex:1;">
-              <label class="cad-label">Width (X)</label>
+              <label class="cad-label">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
               <div class="cad-stepper">
                 <input type="number" id="widthIn" value="7">
               </div>
             </div>
             <div style="flex:1;">
-              <label class="cad-label">Height (Y)</label>
+              <label class="cad-label">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
               <div class="cad-stepper">
                 <input type="number" id="heightIn" value="9">
               </div>
             </div>
           </div>
 
-          <label class="cad-label">Carve Depth (Z)</label>
+          <label class="cad-label">Carve Depth <span style="color:#0a84ff;font-weight:600;">(Z)</span></label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="carveZSlider" class="cad-slider" min="0.1" max="20" step="0.1" value="1.5">
             <div class="cad-stepper" style="width:75px;">
@@ -514,6 +514,29 @@
       <div class="panel panel-sculpt-top">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT TOP</div>
         <div class="panel-body hidden">
+          <div class="cad-tool-group" style="grid-template-columns: 1fr 1fr; display: grid;">
+            <button id="btnToolTopDraw" class="cad-btn cad-tool-btn active">
+              <span class="material-symbols-outlined">brush</span>
+              <span>Draw</span>
+            </button>
+            <button id="btnToolTopSmooth" class="cad-btn cad-tool-btn">
+              <span class="material-symbols-outlined">blur_on</span>
+              <span>Smooth</span>
+            </button>
+            <button id="btnToolTopNoise" class="cad-btn cad-tool-btn">
+              <span class="material-symbols-outlined">texture</span>
+              <span>Noise</span>
+            </button>
+            <button id="btnToolTopInflate" class="cad-btn cad-tool-btn">
+              <span class="material-symbols-outlined">add_circle</span>
+              <span>Inflate</span>
+            </button>
+          </div>
+          <button id="btnToolTopErase" class="cad-btn cad-btn-secondary" style="width:100%; margin-bottom:12px; height:32px; gap:8px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">ink_eraser</span>
+            <span>Erase / Restore Sculpt</span>
+          </button>
+
           <label class="cad-label">Brush Size</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptTopRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
@@ -522,11 +545,19 @@
             </div>
           </div>
 
-          <label class="cad-label">Hardness</label>
+          <label class="cad-label">Strength / Hardness</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptTopHardnessSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.5">
             <div class="cad-stepper" style="width:75px;">
               <input type="number" id="sculptTopHardness" value="0.5">
+            </div>
+          </div>
+
+          <label class="cad-label">Noise Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="sculptTopNoiseScaleSlider" class="cad-slider" min="0.1" max="50" step="0.1" value="10">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="sculptTopNoiseScale" value="10">
             </div>
           </div>
 
@@ -567,6 +598,29 @@
       <div class="panel panel-sculpt-bot">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT BOTTOM</div>
         <div class="panel-body hidden">
+          <div class="cad-tool-group" style="grid-template-columns: 1fr 1fr; display: grid;">
+            <button id="btnToolBotDraw" class="cad-btn cad-tool-btn active">
+              <span class="material-symbols-outlined">brush</span>
+              <span>Draw</span>
+            </button>
+            <button id="btnToolBotSmooth" class="cad-btn cad-tool-btn">
+              <span class="material-symbols-outlined">blur_on</span>
+              <span>Smooth</span>
+            </button>
+            <button id="btnToolBotNoise" class="cad-btn cad-tool-btn">
+              <span class="material-symbols-outlined">texture</span>
+              <span>Noise</span>
+            </button>
+            <button id="btnToolBotInflate" class="cad-btn cad-tool-btn">
+              <span class="material-symbols-outlined">add_circle</span>
+              <span>Inflate</span>
+            </button>
+          </div>
+          <button id="btnToolBotErase" class="cad-btn cad-btn-secondary" style="width:100%; margin-bottom:12px; height:32px; gap:8px;">
+            <span class="material-symbols-outlined" style="font-size:18px;">ink_eraser</span>
+            <span>Erase / Restore Sculpt</span>
+          </button>
+
           <label class="cad-label">Brush Size</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptBotRadiusSlider" class="cad-slider" min="0.1" max="10" step="0.1" value="1.5">
@@ -575,11 +629,19 @@
             </div>
           </div>
 
-          <label class="cad-label">Hardness</label>
+          <label class="cad-label">Strength / Hardness</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="sculptBotHardnessSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.5">
             <div class="cad-stepper" style="width:75px;">
               <input type="number" id="sculptBotHardness" value="0.5">
+            </div>
+          </div>
+
+          <label class="cad-label">Noise Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="sculptBotNoiseScaleSlider" class="cad-slider" min="0.1" max="50" step="0.1" value="10">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="sculptBotNoiseScale" value="10">
             </div>
           </div>
 

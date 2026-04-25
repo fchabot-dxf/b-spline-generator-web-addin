@@ -118,8 +118,10 @@ class ParametricSketchBuilder:
         except:
             pass
 
-        # Create the sketch on the XZ construction plane
-        sketch = ctx.target.sketches.add(ctx.target.xZConstructionPlane)
+        # Create the sketch on the XY construction plane (Z-up Fusion: floor
+        # plane). Was xZConstructionPlane back when the user ran Y-up Fusion;
+        # XY-plane is the natural frame-layout plane in Z-up.
+        sketch = ctx.target.sketches.add(ctx.target.xYConstructionPlane)
         sketch.name = sketch_name
         ctx.sketches[sketch_name] = sketch
         # Use the raw name for the entity map key to support internal lookups
@@ -128,17 +130,17 @@ class ParametricSketchBuilder:
         ctx.entity_map[sketch_name] = ctx.entity_map[sketch_spec['Name']]
 
         # Project the vertical + horizontal origin axes into the sketch.
-        # ``Y_AXIS`` = world Z axis projected into an XZ-plane sketch (the
-        # sketch's vertical line). ``X_AXIS`` = world X axis projected in
-        # (the sketch's horizontal line). Both are stored in entity_map as
-        # bare-token keys so constraint-step Targets can reference
-        # ``'Y_AXIS'`` / ``'X_AXIS'`` without a projection block or any
-        # FrameBuilder ID stamping — the runtime's ``resolve_entity`` does
-        # a direct string lookup on these keys. ``ORIGIN`` was already
+        # ``Y_AXIS`` = world Y axis projected into an XY-plane sketch (the
+        # sketch's vertical line in sketch-local coords). ``X_AXIS`` = world
+        # X axis projected in (the sketch's horizontal line). Both are stored
+        # in entity_map as bare-token keys so constraint-step Targets can
+        # reference ``'Y_AXIS'`` / ``'X_AXIS'`` without a projection block or
+        # any FrameBuilder ID stamping — the runtime's ``resolve_entity``
+        # does a direct string lookup on these keys. ``ORIGIN`` was already
         # seeded above from ``sketch.originPoint``. ``Z_AXIS`` is
-        # deliberately NOT seeded — on an XZ-plane sketch it's perpendicular
-        # to the sketch and would project as a point coinciding with ORIGIN,
-        # so it's redundant.
+        # deliberately NOT seeded — on an XY-plane sketch (Z-up) it's
+        # perpendicular to the sketch and would project as a point coinciding
+        # with ORIGIN, so it's redundant.
         self._project_y_axis(sketch, sketch_name)
         self._project_x_axis(sketch, sketch_name)
 
@@ -397,10 +399,17 @@ class ParametricSketchBuilder:
             dimension_step(ctx, sketch, sketch_name, dim, is_snap_only=True)
 
     def _project_y_axis(self, sketch, sketch_name):
-        """Project the vertical construction axis into the sketch."""
+        """Project the vertical construction axis into the sketch.
+
+        On the Frame Builder's XY-plane sketches (Z-up Fusion floor plane),
+        the world Y axis is in-plane and projects directly as the sketch's
+        local Y reference line. Pre-Z-up port this projected the world Z
+        axis into an XZ-plane sketch — same conceptual role, different
+        world axis.
+        """
         try:
-            z_axis = self.ctx.design.rootComponent.zConstructionAxis
-            proj_axis = sketch.project(z_axis)
+            y_axis = self.ctx.design.rootComponent.yConstructionAxis
+            proj_axis = sketch.project(y_axis)
             if proj_axis.count > 0:
                 self.ctx.entity_map[sketch_name]["Y_AXIS"] = proj_axis.item(0)
                 self.ctx.logger.log(f"Y_AXIS projected into {sketch_name}")
@@ -410,11 +419,12 @@ class ParametricSketchBuilder:
     def _project_x_axis(self, sketch, sketch_name):
         """Project the horizontal construction axis into the sketch.
 
-        Mirror of ``_project_y_axis``. On the Frame Builder's XZ-plane
-        sketches, the world X axis projects as the sketch's horizontal
-        reference line. Stored under the bare key ``"X_AXIS"`` in the
-        sketch's ``entity_map``, mirroring the ``Y_AXIS`` convention so
-        constraint ``Targets`` can reference either by bare token.
+        Mirror of ``_project_y_axis``. On the Frame Builder's XY-plane
+        sketches (Z-up), the world X axis is in-plane and projects as the
+        sketch's horizontal reference line. Stored under the bare key
+        ``"X_AXIS"`` in the sketch's ``entity_map``, mirroring the
+        ``Y_AXIS`` convention so constraint ``Targets`` can reference
+        either by bare token.
 
         Skipped-not-raised on failure for the same reason as
         ``_project_y_axis``: sketches on planes where the world X axis

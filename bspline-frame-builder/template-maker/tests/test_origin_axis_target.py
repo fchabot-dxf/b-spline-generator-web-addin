@@ -40,12 +40,12 @@ adsk.fusion = types.ModuleType('adsk.fusion')
 #     first test. Plain SimpleNamespace objects satisfy that contract
 #     without dragging in any of the real API surface.
 FAKE_X_AXIS = types.SimpleNamespace(_tag='root-x-axis')
-FAKE_Z_AXIS = types.SimpleNamespace(_tag='root-z-axis')   # Y_AXIS in sketch space
+FAKE_Y_AXIS = types.SimpleNamespace(_tag='root-y-axis')   # Y_AXIS in sketch space (Z-up XY-plane sketch)
 FAKE_ORIGIN_PT = types.SimpleNamespace(_tag='root-origin-pt')
 
 FAKE_ROOT = types.SimpleNamespace(
     xConstructionAxis=FAKE_X_AXIS,
-    zConstructionAxis=FAKE_Z_AXIS,
+    yConstructionAxis=FAKE_Y_AXIS,
     originConstructionPoint=FAKE_ORIGIN_PT,
 )
 FAKE_PRODUCT = types.SimpleNamespace(rootComponent=FAKE_ROOT)
@@ -126,13 +126,13 @@ def test_origin_token_direct_identity_x_axis():
     assert relation_hints._origin_axis_token(FAKE_X_AXIS) == 'X_AXIS'
 
 
-def test_origin_token_direct_identity_y_axis_is_z_axis():
-    # Frame Builder's XZ-plane convention: sketch-space ``Y_AXIS`` maps
-    # to the WORLD Z axis. This test pins that mapping — if someone
-    # flips the convention by mistake to ``yConstructionAxis``, the
-    # runtime's pre-seed and the Template Maker's emission drift apart
-    # silently and this test catches the drift.
-    assert relation_hints._origin_axis_token(FAKE_Z_AXIS) == 'Y_AXIS'
+def test_origin_token_direct_identity_y_axis():
+    # Frame Builder's XY-plane convention (Z-up Fusion): sketch-space
+    # ``Y_AXIS`` maps to the WORLD Y axis. This test pins that mapping —
+    # if someone flips the convention by mistake (e.g. back to
+    # ``zConstructionAxis``), the runtime's pre-seed and the Template
+    # Maker's emission drift apart silently and this test catches it.
+    assert relation_hints._origin_axis_token(FAKE_Y_AXIS) == 'Y_AXIS'
 
 
 def test_origin_token_direct_identity_origin_point():
@@ -146,7 +146,7 @@ def test_origin_token_reference_through_projected_axis():
     sketch_line = _make_sketch_axis_proxy(FAKE_X_AXIS)
     assert relation_hints._origin_axis_token(sketch_line) == 'X_AXIS'
 
-    sketch_line_y = _make_sketch_axis_proxy(FAKE_Z_AXIS)
+    sketch_line_y = _make_sketch_axis_proxy(FAKE_Y_AXIS)
     assert relation_hints._origin_axis_token(sketch_line_y) == 'Y_AXIS'
 
 
@@ -198,7 +198,7 @@ def test_format_target_emits_bare_origin_token_for_projected_axis():
     # formatted into the argument list of a Coincident constraint must
     # come out as ``"Y_AXIS"`` (with quotes, because
     # ``_format_target_reference`` wraps literals in double-quotes).
-    sketch_line_y = _make_sketch_axis_proxy(FAKE_Z_AXIS)
+    sketch_line_y = _make_sketch_axis_proxy(FAKE_Y_AXIS)
     assert relation_hints._format_target_reference(sketch_line_y) == '"Y_AXIS"'
 
 
@@ -244,7 +244,7 @@ def test_gate_allows_projected_axis_via_origin_whitelist():
     # no role-id derivation) and the whole Coincident would be refused
     # as un-ownable. With the whitelist, the axis passes and the
     # Coincident inherits ownership from both its targets.
-    sketch_line_y = _make_sketch_axis_proxy(FAKE_Z_AXIS)
+    sketch_line_y = _make_sketch_axis_proxy(FAKE_Y_AXIS)
     assert ownership_gate.is_framebuilder_owned(sketch_line_y) is True
 
 
@@ -281,7 +281,7 @@ def test_gate_still_refuses_untagged_non_origin_geometry():
 
 if __name__ == '__main__':
     test_origin_token_direct_identity_x_axis()
-    test_origin_token_direct_identity_y_axis_is_z_axis()
+    test_origin_token_direct_identity_y_axis()
     test_origin_token_direct_identity_origin_point()
     test_origin_token_reference_through_projected_axis()
     test_origin_token_reference_through_projected_origin()
@@ -295,3 +295,4 @@ if __name__ == '__main__':
     test_gate_allows_projected_origin_via_whitelist()
     test_gate_still_refuses_untagged_non_origin_geometry()
     print('test_origin_axis_target passed')
+axis_target passed')

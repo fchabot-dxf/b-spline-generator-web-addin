@@ -2,7 +2,7 @@ import { P, updateP } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { scheduleRebuild, rebuild, updateEditorTopView } from '../core/engine.js';
+import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { AppState } from './app-state.js';
 
@@ -21,7 +21,10 @@ const stampMaskParams = [
 ];
 
 export function updateSculptToolButtons() {
-  const ids = ['btnToolTopDraw', 'btnToolTopSmooth', 'btnToolBotDraw', 'btnToolBotSmooth'];
+  const ids = [
+    'btnToolTopDraw', 'btnToolTopSmooth', 'btnToolTopNoise', 'btnToolTopInflate', 'btnToolTopErase',
+    'btnToolBotDraw', 'btnToolBotSmooth', 'btnToolBotNoise', 'btnToolBotInflate', 'btnToolBotErase'
+  ];
   ids.forEach(id => document.getElementById(id)?.classList.remove('active'));
   if (!P.activeSculptLayer) return;
 
@@ -56,7 +59,7 @@ export function applyParam(key, value) {
   }
 
   if (key === 'thickenWireframe') {
-    scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
+    scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), 0);
   }
 
   if (key === 'stampProfile') {
@@ -68,9 +71,9 @@ export function applyParam(key, value) {
   if (!AppState.isInitializing) {
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
     if (nx !== AppState.lastNx || nz !== AppState.lastNz || stampMaskParams.includes(key)) {
-      refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode, updateEditorTopView);
+      refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
     } else {
-      scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), delay);
+      scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), delay);
     }
     AppState.lastNx = nx;
     AppState.lastNz = nz;

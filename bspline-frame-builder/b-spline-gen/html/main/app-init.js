@@ -1,7 +1,7 @@
 import { P, loadLastSession, lastResult, setStampLayerSvg } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
-import { rebuild, updateEditorTopView } from '../core/engine.js';
+import { rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateGlobalButtons } from '../core/history.js';
 import { AppState } from './app-state.js';
@@ -30,9 +30,9 @@ export async function initApp(preview, wireGlobalEvents) {
   const { nx, nz } = grid;
 
   if (P.stampLayers && P.stampLayers.some(l => l.svg)) {
-    await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode, updateEditorTopView);
+    await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
   } else {
-    rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView);
+    rebuild(preview, updateStampMasks, updatePreviewSculptMode);
   }
 
   updateGlobalButtons();
@@ -50,7 +50,7 @@ export function initSvgEditor(preview) {
       if (svg) {
         setStampLayerSvg(P.activeLayerIdx, svg);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-        refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode, updateEditorTopView);
+        refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }
     },
     (svg) => {
@@ -58,7 +58,7 @@ export function initSvgEditor(preview) {
       if (svg) {
         setStampLayerSvg(P.activeLayerIdx, svg);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-        refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode, updateEditorTopView);
+        refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }
       const modal = document.getElementById('svgEditorModal');
       if (modal) modal.style.display = 'none';

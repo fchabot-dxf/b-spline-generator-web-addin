@@ -1,7 +1,7 @@
-import { 
-    P, lastNx, lastNz, preDelta, postDelta, lastResult, 
+import {
+    P, lastNx, lastNz, preDelta, postDelta, lastResult,
     setLastResult, setPreDelta, setPostDelta, setLastGridSize,
-    isFusionMode, extraThickenThinMask
+    isFusionMode, extraThickenThinMask, strokeCache
 } from '../state.js';
 import { updatePreviewSculptMode } from '../sculpt-interaction.js';
 
@@ -16,11 +16,13 @@ import { COORD_SYSTEM } from '../coords.js';
 import { getSmoothedHeights } from './utils.js';
 import { scheduleRebuild } from './scheduler.js';
 
+import { updateEditorTopView } from '../render-topview.js';
+
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
-export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode, updateEditorTopView) {
+export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode) {
     if (rebuild.isRebuilding) {
-        rebuild.pendingRebuild = () => rebuild(preview, refreshStampMask, updatePreviewSculptMode, updateEditorTopView);
+        rebuild.pendingRebuild = () => rebuild(preview, refreshStampMask, updatePreviewSculptMode);
         return;
     }
     rebuild.isRebuilding = true;
@@ -46,7 +48,59 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
         }
         setLastGridSize(nx, nz);
     }
-    
+
+    // ── Stroke fast-path ─────────────────────────────────────────────────────
+    // If a sculpt drag is active and the cached baseline matches the current
+    // grid size, skip the heavy work (generateHeightmap, stamps, normals,
+    // safeMap, thicken, smoothOffsetPoints, intersection loop, heat-map
+    // colours, status bar, editor topview, Fusion mesh send) and just push the
+    // new top-surface heights to the preview.  The full rebuild re-runs at
+    // onSculptStrokeEnd, which clears strokeCache.
+    if (strokeCache && strokeCache.layer === 'top' &&
+        strokeCache.nx === nx && strokeCache.nz === nz &&
+        strokeCache.baseStamped && strokeCache.baseStamped.length === nx * nz) {
+        const heights = new Float32Array(strokeCache.baseStamped);
+        if (preDelta && preDelta.length === heights.length) {
+            for (let k = 0; k < heights.length; k++) heights[k] += preDelta[k];
+        }
+        const thickenData = strokeCache.thickenData;
+        const baseHeights = strokeCache.baseHeights ?? heights;
+        setLastResult({
+            ...(lastResult || {}),
+            heights,
+            cleanHeights: heights,   // approximate during stroke; recomputed on release
+            baseHeights,
+            nx, nz,
+            thickenData,
+        });
+
+        await yieldToMain();
+
+        if (preview) {
+            preview.update(
+                heights, nx, nz, P.widthIn, P.heightIn, P.carveZ,
+                thickenData?.meshColours, thickenData?.worstPts ?? [], P.showLeaders,
+                thickenData?.offsetPts, P.stampRelief,
+                thickenData?.thinPts ?? [], thickenData?.intersectPts ?? [],
+                P.thickenWireframe, thickenData?.botColours, P.flatShading
+            );
+            // NOTE: deliberately skipping updatePreviewSculptMode here — it
+            // would call setSculptMode → _clearSculptOverlays on every tick,
+            // and the sculpt drag relies on the overlay state from mousedown.
+            // The sculpt config's `heights` ref goes slightly stale for the
+            // duration of the stroke, but _sculptRaycast uses _lastHitZ and
+            // hover overlay rebuilds are guarded by !_sculptDrag anyway.
+        }
+
+        rebuild.isRebuilding = false;
+        if (rebuild.pendingRebuild) {
+            const next = rebuild.pendingRebuild;
+            rebuild.pendingRebuild = null;
+            next();
+        }
+        return;
+    }
+
     let minThk = Infinity;
     let sumThk = 0;
     const edgeMargin = (P.edgeMarginIn > 0) ? Math.min(0.49, P.edgeMarginIn / Math.min(P.widthIn, P.heightIn)) : 0;
@@ -275,151 +329,5 @@ function updateSculptNotice(layer, count, maxOver, maxUnder) {
         notice.style.display = 'block';
     } else {
         notice.style.display = 'none';
-    }
-}
-
-function bilinearSample(data, nx, nz, u, v) {
-  if (!data || data.length === 0) return 0;
-  const x = u * (nx - 1);
-  const y = v * (nz - 1);
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const x1 = Math.min(x0 + 1, nx - 1);
-  const y1 = Math.min(y0 + 1, nz - 1);
-  const fx = x - x0;
-  const fy = y - y0;
-  const v00 = data[y0 * nx + x0];
-  const v10 = data[y0 * nx + x1];
-  const v01 = data[y1 * nx + x0];
-  const v11 = data[y1 * nx + x1];
-  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
-}
-
-export function updateEditorTopView(heightsLow, nxLow, nzLow) {
-    const canvas = document.getElementById('svgEditorTopView');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // 1. Calculate Balanced Dimensions (Lowered to 384 for a very soft UI look)
-    const target = 384;
-    const aspect = P.widthIn / P.heightIn;
-    let nx, nz;
-    if (aspect >= 1) { 
-        nx = target; 
-        nz = Math.max(4, Math.round(target / aspect)); 
-    } else { 
-        nz = target; 
-        nx = Math.max(4, Math.round(target * aspect)); 
-    }
-
-    const displaySize = nx; // Match canvas buffer to nx for 1:1 data-to-pixel mapping
-    canvas.width = nx;
-    canvas.height = nz;
-    canvas.style.width = `512px`;
-    canvas.style.height = `${Math.round(512 / aspect)}px`;
-
-    // 2. Generate High-Res Base Noise
-    const { heights: heightsBase } = generateHeightmap({ ...P, nx, nz }, { mask: null });
-    const heights = new Float32Array(heightsBase);
-
-    // 3. Blend Low-Res Sculpting & Stamps (Bilinear)
-    for (let k = 0; k < nx * nz; k++) {
-        const u = (k % nx) / (nx - 1);
-        const v = Math.floor(k / nx) / (nz - 1);
-        
-        // Add Sculpting deltas (Keep manual sculpting in background)
-        if (preDelta) heights[k] += bilinearSample(preDelta, nxLow, nzLow, u, v);
-    }
-
-    const imgData = ctx.createImageData(nx, nz);
-    const data = imgData.data;
-
-    const lx = -1.0, ly = 1.0, lz = 0.8; // More balanced overhead sun
-    const lmag = Math.sqrt(lx*lx + ly*ly + lz*lz);
-    const nlx = lx/lmag, nly = ly/lmag, nlz = lz/lmag;
-    const shadingIntensity = 0.9;
-
-    for (let py = 0; py < nz; py++) {
-        const iy = py;
-        for (let px = 0; px < nx; px++) {
-            const ix = px;
-            const k  = iy * nx + ix;
-
-            let dot = 0.5;
-            let cavity = 0; 
-            
-            if (ix > 0 && ix < nx - 1 && iy > 0 && iy < nz - 1) {
-                // Seam-Aware Gradient (Prevents sharp lines at the mirror axis)
-                let hL = heights[k - 1];
-                let hR = heights[k + 1];
-                let hU = heights[k - nx];
-                let hD = heights[k + nx];
-
-                // If X-Symmetry is on, the center line (nx/2) is a "fold". 
-                // We mirror the neighbor sample to get a smooth gradient across the fold.
-                const centerX = Math.floor(nx / 2);
-                const symX = P.symmetry === 'x' || P.symmetry === 'radial';
-                if (symX && ix === centerX) {
-                    hL = hR; // Reflect neighbor to zero-out gradient at the seam
-                }
-
-                const centerY = Math.floor(nz / 2);
-                const symY = P.symmetry === 'y' || P.symmetry === 'radial';
-                if (symY && iy === centerY) {
-                    hU = hD; // Reflect neighbor
-                }
-
-                const dzdx = (hR - hL) * 35.0;
-                const dzdy = (hD - hU) * 35.0;
-                const nx_ = -dzdx, ny_ = -dzdy, nz_ = 1.0;
-                const nmag = Math.sqrt(nx_*nx_ + ny_*ny_ + nz_*nz_);
-                dot = (nx_/nmag)*nlx + (ny_/nmag)*nly + (nz_/nmag)*nlz;
-
-                const h = heights[k];
-                const avg = (hL + hR + hU + hD) * 0.25;
-                cavity = (h - avg) * 30.0; 
-            }
-
-            const off = (py * nx + px) * 4;
-            
-            // "Balanced High-Res" lighting logic
-            const intensity = Math.max(0, dot);
-            const ambient = 25; // Softer shadows
-            const diff = intensity * 200; // Balanced highlights
-            
-            // Apply Softened Cavity Occlusion
-            const shade = Math.max(0, Math.min(255, ambient + diff + cavity * 55));
-            
-            data[off]     = Math.min(255, shade * 0.94); 
-            data[off + 1] = Math.min(255, shade * 0.96); 
-            data[off + 2] = Math.min(255, shade * 1.06); // subtle professional cool tint
-            data[off + 3] = 255;
-        }
-    }
-
-    ctx.putImageData(imgData, 0, 0);
-
-    // Precision Reticle (Professional CAD style)
-    ctx.strokeStyle = 'rgba(0, 120, 212, 0.4)'; // Subtle blue
-    ctx.lineWidth   = 1;
-    const cx = nx / 2, cy = nz / 2;
-    
-    // Horizontal line
-    ctx.beginPath();
-    ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy);
-    ctx.stroke();
-    
-    // Vertical line
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20);
-    ctx.stroke();
-
-    // Center dot
-    ctx.fillStyle = 'rgba(0, 120, 212, 0.6)';
-    ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
-
-    if (window.svgEditor && typeof window.svgEditor.sync3DBackground === 'function') {
-        window.svgEditor.sync3DBackground();
     }
 }

@@ -48,6 +48,16 @@ export class TerrainPreview {
     this._sculptValBox    = null;  // HTML overlay — value input
     this._lastHitZ        = null;  // last known terrain Z for plane intersection
 
+    // Sculpt hover/cursor responsiveness
+    this._lastHoverCi       = null;   // last grid column the overlay was built for
+    this._lastHoverCj       = null;   // last grid row    the overlay was built for
+    this._lastHoverSelected = null;   // last selected-state of the overlay
+    this._pendingMouseEvt   = null;   // most-recent mousemove, drained on next rAF
+    this._overlayRafId      = 0;      // 0 means no rAF queued
+    this._inspectorRefs     = null;   // cached DOM refs for height inspector
+    this._lastMouseEvt      = null;   // last mousemove on the canvas (for instant cursor on sculpt-mode entry)
+    this._sculptPrevLayer   = null;   // previous sculpt layer, to detect fresh entries vs. config refreshes
+
     // Renderer
     this._renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this._renderer.setPixelRatio(window.devicePixelRatio);
@@ -88,10 +98,22 @@ export class TerrainPreview {
     fill.position.set(-5, 3, -4);
     this._scene.add(fill);
 
+    // Ground grid (XY plane at Z=0). Extents track stock dimensions + 20%
+    // padding per side, refreshed from update(). Fusion-style: subtle gray
+    // gridlines, slightly bolder major every 2", red +X tick, green +Y tick,
+    // numeric labels around the perimeter.
+    this._groundGroup = new THREE.Group();
+    this._groundGroup.renderOrder = -1; // draw under everything else
+    this._scene.add(this._groundGroup);
+    this._currentGridKey = null;
+    this._showGroundGrid = true;
+
 
     // Orbit state (Quaternion-based for unlimited rotation)
+    // Home view: Fusion-style Z-up isometric showing TOP/FRONT/RIGHT.
+    // theta = +π/4 (camera between +X and -Y), phi ≈ 0.955 rad (≈35° tilt from horizontal).
     this._orb = {
-      q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.85, 0, -0.6, 'ZXY')),
+      q: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.955, 0, Math.PI / 4, 'ZXY')),
       r: 14,
       target: new THREE.Vector3()
     };
@@ -129,11 +151,175 @@ export class TerrainPreview {
    * @param {Float32Array|null} offsetPts    optional [nx*nz*3] bottom surface positions
    * @returns {{ minZ, maxZ }}
    */
+  /**
+   * Hide / show the ground grid without destroying it.
+   */
+  setGroundGridVisible(v) {
+    this._showGroundGrid = !!v;
+    if (this._groundGroup) this._groundGroup.visible = !!v;
+  }
+
+  /**
+   * Dispose all geometries/materials/textures inside the ground group and
+   * clear it. Called before each rebuild and on full preview disposal.
+   */
+  _disposeGroundGrid() {
+    if (!this._groundGroup) return;
+    while (this._groundGroup.children.length) {
+      const child = this._groundGroup.children[0];
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+      if (child.userData?._tex) child.userData._tex.dispose();
+      this._groundGroup.remove(child);
+    }
+  }
+
+  /**
+   * Build a small Sprite holding a tick-mark numeric label. Disposable
+   * texture is kept in userData._tex so _disposeGroundGrid can release it.
+   */
+  _makeAxisNumberSprite(text) {
+    const THREE = window.THREE;
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 32);
+    ctx.font = 'bold 18px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#7a7a7a';
+    ctx.fillText(text, 32, 17);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 4;
+    const mat = new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthTest: false, depthWrite: false
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.userData = { _tex: tex };
+    return sprite;
+  }
+
+  /**
+   * (Re)build the XY ground grid sized to widthIn / heightIn + 20% padding
+   * per side. Cheap to call every update; rebuild is skipped when grid extent
+   * hasn't changed.
+   */
+  _updateGroundGrid(widthIn, heightIn) {
+    if (!this._groundGroup) return;
+    const THREE = window.THREE;
+
+    // 20% padding per side. Round half-extents up to whole inches so
+    // the grid lines and tick numbers align cleanly.
+    const halfW = Math.ceil(widthIn  * 0.5 + widthIn  * 0.2);
+    const halfH = Math.ceil(heightIn * 0.5 + heightIn * 0.2);
+    if (!isFinite(halfW) || !isFinite(halfH) || halfW <= 0 || halfH <= 0) return;
+
+    const sizeKey = `${halfW}|${halfH}`;
+    if (this._currentGridKey === sizeKey) return;
+    this._currentGridKey = sizeKey;
+
+    this._disposeGroundGrid();
+
+    const z0 = 0;
+    const minorVerts = [];
+    const majorVerts = [];
+    const majorEvery = 2; // major every 2 inches
+
+    // Vertical lines (parallel to Y) at each integer X tick
+    for (let x = -halfW; x <= halfW; x += 1) {
+      const arr = (x % majorEvery === 0) ? majorVerts : minorVerts;
+      arr.push(x, -halfH, z0,  x, halfH, z0);
+    }
+    // Horizontal lines (parallel to X) at each integer Y tick
+    for (let y = -halfH; y <= halfH; y += 1) {
+      const arr = (y % majorEvery === 0) ? majorVerts : minorVerts;
+      arr.push(-halfW, y, z0,  halfW, y, z0);
+    }
+
+    // Minor gridlines — subtle
+    {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(minorVerts, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0xcccccc, transparent: true, opacity: 0.45
+      });
+      this._groundGroup.add(new THREE.LineSegments(geo, mat));
+    }
+    // Major gridlines — slightly stronger
+    {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(majorVerts, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0xa8a8a8, transparent: true, opacity: 0.65
+      });
+      this._groundGroup.add(new THREE.LineSegments(geo, mat));
+    }
+    // Outer border
+    {
+      const verts = [
+        -halfW, -halfH, z0,   halfW, -halfH, z0,
+         halfW, -halfH, z0,   halfW,  halfH, z0,
+         halfW,  halfH, z0,  -halfW,  halfH, z0,
+        -halfW,  halfH, z0,  -halfW, -halfH, z0,
+      ];
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0x808080, transparent: true, opacity: 0.85
+      });
+      this._groundGroup.add(new THREE.LineSegments(geo, mat));
+    }
+
+    // Red tick on +X axis edge (Fusion-style)
+    {
+      const t = 0.5;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([
+        halfW - t, 0, z0,  halfW + t, 0, z0
+      ], 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xff3b30 });
+      this._groundGroup.add(new THREE.LineSegments(geo, mat));
+    }
+    // Green tick on +Y axis edge
+    {
+      const t = 0.5;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([
+        0, halfH - t, z0,  0, halfH + t, z0
+      ], 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0x34c759 });
+      this._groundGroup.add(new THREE.LineSegments(geo, mat));
+    }
+
+    // Numeric labels along bottom (X) and left (Y) edges, every 2"
+    const labelStep = 2;
+    const labelOffset = 0.45;
+    for (let x = -halfW; x <= halfW; x += labelStep) {
+      const sprite = this._makeAxisNumberSprite(String(x));
+      sprite.position.set(x, -halfH - labelOffset, z0);
+      sprite.scale.set(0.9, 0.45, 1);
+      this._groundGroup.add(sprite);
+    }
+    for (let y = -halfH; y <= halfH; y += labelStep) {
+      const sprite = this._makeAxisNumberSprite(String(y));
+      sprite.position.set(-halfW - labelOffset, y, z0);
+      sprite.scale.set(0.9, 0.45, 1);
+      this._groundGroup.add(sprite);
+    }
+
+    this._groundGroup.visible = !!this._showGroundGrid;
+  }
+
   update(heights, nx, nz, width, height, carveZ,
     meshColours = null, worstPts = [], showLeaders = true, offsetPts = null, shadingIntensity = 0.25,
     thinPts = [], intersectPts = [], thickenWireframe = false, botColours = null, flatShading = false) {
     const THREE = this._THREE;
     this._dispose();
+    this._updateGroundGrid(width, height);
 
     // (Overlay spheres for thin/intersecting points removed for clean mesh-only heatmap)
 
@@ -405,8 +591,8 @@ export class TerrainPreview {
       this._lastW = W;
       this._lastH = H;
 
-      // Save this fresh state as our 'Home' view
-      this._home.q      = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.85, 0, -0.6, 'ZXY'));
+      // Save this fresh state as our 'Home' view (Fusion Z-up isometric: TOP/FRONT/RIGHT)
+      this._home.q      = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.955, 0, Math.PI / 4, 'ZXY'));
       this._home.r      = this._targetOrb.r;
       this._home.target = this._targetOrb.target.clone();
     }
@@ -593,8 +779,8 @@ export class TerrainPreview {
     const rH = W / (0.8 * aspect);
     const rFit = Math.max(rV, rH, Math.sqrt(W*W + H*H) * 1.5) * 1.25;
 
-    // Reset to default home orientation and best-fit zoom
-    this._targetOrb.q.setFromEuler(new window.THREE.Euler(0.85, 0, -0.6, 'ZXY'));
+    // Reset to default home orientation and best-fit zoom (Fusion Z-up iso)
+    this._targetOrb.q.setFromEuler(new window.THREE.Euler(0.955, 0, Math.PI / 4, 'ZXY'));
     this._targetOrb.r = rFit;
     
     // Center of terrain in Z (midZ already stored in this._targetOrb.target.z)
@@ -738,6 +924,7 @@ export class TerrainPreview {
   dispose() {
     cancelAnimationFrame(this._animId);
     this._ro.disconnect();
+    this._disposeGroundGrid();
     this._renderer.dispose();
     if (this._viewCube) this._viewCube.dispose();
     if (this._homeBtn) this._homeBtn.remove();
@@ -1115,18 +1302,70 @@ export class TerrainPreview {
    *   getDelta(ci,cj), onDelta(layer,ci,cj,dZ), heights }
    */
   setSculptMode(config) {
+    const prevLayer = this._sculptPrevLayer;
     this._sculpt = config;
     // Clear visuals but do NOT wipe _sculptDrag — an active stroke must
     // survive the mesh rebuild that fires after every onStroke tick.
     this._clearSculptOverlays();
     this._hideSculptValBox();
+
     if (!config) {
       // Fully disable: also clear drag/selection state and hide sight
-      this._sculptSelected = null;
-      this._sculptDrag     = null;
+      this._sculptSelected  = null;
+      this._sculptDrag      = null;
+      this._sculptPrevLayer = null;
       if (this._sculptSight) this._sculptSight.style.display = 'none';
+      this._canvas.style.cursor = '';
+      return;
     }
-    this._canvas.style.cursor = config ? 'crosshair' : '';
+
+    this._canvas.style.cursor = 'crosshair';
+
+    // Show a brush preview the moment sculpt mode is entered, the layer
+    // changes, or a non-drag config refresh fires (e.g. brush-radius slider).
+    // Two strategies:
+    //   1. If we've already seen the cursor over the canvas, replay that
+    //      mousemove through the normal hover path so the overlay snaps to
+    //      where the mouse actually is.
+    //   2. Otherwise (or if the raycast missed), drop the overlay at the grid
+    //      centre as a "this is your brush" preview.  The first real mousemove
+    //      replaces it via _handleSculptHover().
+    //
+    // Skipped during an active drag so onStroke-driven rebuilds don't churn
+    // the overlay.
+    this._sculptPrevLayer = config.layer ?? null;
+
+    if (this._sculptDrag) return;
+
+    // Update the sight square to track wherever the mouse last was, too.
+    if (this._sculptSight && this._lastMouseEvt) {
+      const rect = this._canvas.getBoundingClientRect();
+      const sx = this._lastMouseEvt.clientX - rect.left;
+      const sy = this._lastMouseEvt.clientY - rect.top;
+      this._sculptSight.style.display = 'block';
+      this._sculptSight.style.transform = `translate(calc(${sx}px - 50%), calc(${sy}px - 50%))`;
+    }
+
+    if (this._lastMouseEvt) {
+      this._handleSculptHover(this._lastMouseEvt);
+    }
+
+    // Fallback: if the hover raycast missed (or we never saw a mousemove),
+    // place the overlay at the grid centre so something is always visible.
+    if (!this._falloffRing) {
+      const nx = config.nx ?? 1;
+      const nz = config.nz ?? 1;
+      const ci = Math.floor((nx - 1) / 2);
+      const cj = Math.floor((nz - 1) / 2);
+      const wz = (config.heights && config.heights.length > cj * nx + ci)
+                 ? config.heights[cj * nx + ci]
+                 : 0;
+      this._buildSculptOverlay(ci, cj, wz, false);
+      this._lastHoverCi       = ci;
+      this._lastHoverCj       = cj;
+      this._lastHoverSelected = false;
+      this._lastHitZ          = wz;
+    }
   }
 
   // ── Sculpt internals ────────────────────────────────────────────────────────
@@ -1291,6 +1530,80 @@ export class TerrainPreview {
     disposeGroup(this._falloffRing);     this._falloffRing     = null;
     disposeGroup(this._sculptCrossGroup); this._sculptCrossGroup = null;
     disposeGroup(this._sculptDotGroup);  this._sculptDotGroup  = null;
+    // Invalidate hover tracking so the next mousemove rebuilds.
+    this._lastHoverCi       = null;
+    this._lastHoverCj       = null;
+    this._lastHoverSelected = null;
+  }
+
+  /**
+   * Lazily resolve and cache the height-inspector DOM refs.
+   * Called from the rAF mousemove path so we don't run getElementById ×6
+   * on every pointer move.
+   */
+  _getInspectorRefs() {
+    if (this._inspectorRefs) return this._inspectorRefs;
+    this._inspectorRefs = {
+      inspector: document.getElementById('heightInspector'),
+      topVal:    document.getElementById('heightTop'),
+      botVal:    document.getElementById('heightBot'),
+      thickVal:  document.getElementById('heightThick'),
+      botRow:    document.getElementById('inspectorBotRow'),
+      thickRow:  document.getElementById('inspectorThickRow'),
+    };
+    return this._inspectorRefs;
+  }
+
+  /**
+   * rAF-throttled hover work: raycast, inspector update, overlay rebuild.
+   *
+   * Cheap-path optimisation: if the raycast resolves to the same grid cell
+   * we already drew the overlay for, skip the dispose+rebuild entirely.
+   * Because _sculptRaycast snaps to the nearest CP, most mousemove events
+   * within a single cell take this short-circuit — that's the bulk of the
+   * perceived responsiveness win.
+   */
+  _handleSculptHover(e) {
+    const ndc = this._mouseNDC(e);
+    const rc  = this._sculptRaycast(ndc.x, ndc.y);
+    const refs = this._getInspectorRefs();
+
+    if (!rc.hit) {
+      if (refs.inspector) refs.inspector.style.display = 'none';
+      return;
+    }
+
+    if (refs.inspector) refs.inspector.style.display = 'block';
+    if (refs.topVal)    refs.topVal.textContent = rc.wz.toFixed(3);
+
+    const offsetPts = this._sculpt?.offsetPts || this._lastOffsetPts;
+    const haveOffset = offsetPts && offsetPts.length > 0;
+    if (haveOffset) {
+      const idx = (rc.cj * this._lastNx + rc.ci) * 3;
+      const zBot = offsetPts[idx + 2];
+      if (refs.botRow)   refs.botRow.style.display = 'block';
+      if (refs.thickRow) refs.thickRow.style.display = 'block';
+      if (refs.botVal)   refs.botVal.textContent = zBot.toFixed(3);
+      if (refs.thickVal) refs.thickVal.textContent = Math.abs(rc.wz - zBot).toFixed(3);
+    } else {
+      if (refs.botRow)   refs.botRow.style.display = 'none';
+      if (refs.thickRow) refs.thickRow.style.display = 'none';
+    }
+
+    if (this._sculpt && !this._sculptDrag && !this._drag) {
+      const selected = false;
+      if (this._lastHoverCi       !== rc.ci ||
+          this._lastHoverCj       !== rc.cj ||
+          this._lastHoverSelected !== selected) {
+        const dZ = (this._sculpt.layer === 'bot' && haveOffset)
+                   ? offsetPts[(rc.cj * this._lastNx + rc.ci) * 3 + 2]
+                   : rc.wz;
+        this._buildSculptOverlay(rc.ci, rc.cj, dZ, selected);
+        this._lastHoverCi       = rc.ci;
+        this._lastHoverCj       = rc.cj;
+        this._lastHoverSelected = selected;
+      }
+    }
   }
 
   /** Clear selection state and hide all sculpt visuals. */
@@ -1584,20 +1897,33 @@ export class TerrainPreview {
         e.preventDefault();
         return;
       }
+      // Decompose the current quaternion into turntable angles (theta around
+      // world Z, phi as elevation from top) so an Inventor-style orbit can
+      // operate on world-stable axes during the drag.
+      const startEuler = new this._THREE.Euler().setFromQuaternion(this._targetOrb.q, 'ZXY');
       this._drag = {
         x: e.clientX, y: e.clientY,
         q: this._targetOrb.q.clone(),
         target: this._targetOrb.target.clone(),
         btn: this._sculpt ? 0 : e.button,  // in sculpt mode right-click = orbit
         shift: e.shiftKey,
+        theta: startEuler.z,  // azimuth (rotation around world Z)
+        phi:   startEuler.x,  // elevation (0 = top-down, π/2 = horizon, π = bottom-up)
       };
       e.preventDefault();
     });
 
 
-    // Hover — show falloff ring preview while not dragging, and update height inspector
+    // Hover — show falloff ring preview while not dragging, and update height inspector.
+    //
+    // Two-tier handler:
+    //   1. Sight cursor → updated synchronously on every event (pure CSS transform,
+    //      GPU composited, no layout) so it tracks the mouse pixel-perfect.
+    //   2. Raycast + inspector + overlay rebuild → rAF-coalesced so multiple
+    //      mousemove events per frame collapse into one update.
     el.addEventListener('mousemove', e => {
-      // Sight: update transform first — GPU composited, no layout, runs before any raycast work
+      this._lastMouseEvt = e;   // remembered so sculpt-mode entry can show the cursor at the right spot
+
       if (this._sculptSight && this._sculpt) {
         const rect = this._canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -1605,48 +1931,26 @@ export class TerrainPreview {
         this._sculptSight.style.display = 'block';
         this._sculptSight.style.transform = `translate(calc(${x}px - 50%), calc(${y}px - 50%))`;
       }
-      const ndc = this._mouseNDC(e);
-      const rc = this._sculptRaycast(ndc.x, ndc.y);
 
-      const inspector = document.getElementById('heightInspector');
-      const topVal   = document.getElementById('heightTop');
-      const botVal   = document.getElementById('heightBot');
-      const thickVal = document.getElementById('heightThick');
-      const botRow   = document.getElementById('inspectorBotRow');
-      const thickRow = document.getElementById('inspectorThickRow');
-
-      if (rc.hit) {
-        if (inspector) inspector.style.display = 'block';
-        if (topVal) topVal.textContent = rc.wz.toFixed(3);
-
-        // 2. Report Bottom Surface & Thickness if Thicken is active
-        const offsetPts = this._sculpt?.offsetPts || this._lastOffsetPts;
-        if (offsetPts && offsetPts.length > 0) {
-          const idx = (rc.cj * this._lastNx + rc.ci) * 3;
-          const zBot = offsetPts[idx + 2];
-          if (botRow) botRow.style.display = 'block';
-          if (thickRow) thickRow.style.display = 'block';
-          if (botVal) botVal.textContent = zBot.toFixed(3);
-          if (thickVal) thickVal.textContent = Math.abs(rc.wz - zBot).toFixed(3);
-        } else {
-          if (botRow) botRow.style.display = 'none';
-          if (thickRow) thickRow.style.display = 'none';
-        }
-
-        // Existing sculpt overlay logic...
-        if (this._sculpt && !this._sculptDrag && !this._drag) {
-          const dZ = (this._sculpt.layer === 'bot' && offsetPts)
-                     ? offsetPts[(rc.cj * this._lastNx + rc.ci) * 3 + 2]
-                     : rc.wz;
-          this._buildSculptOverlay(rc.ci, rc.cj, dZ, false);
-        }
-      } else {
-        if (inspector) inspector.style.display = 'none';
+      this._pendingMouseEvt = e;
+      if (!this._overlayRafId) {
+        this._overlayRafId = requestAnimationFrame(() => {
+          this._overlayRafId = 0;
+          const ev = this._pendingMouseEvt;
+          this._pendingMouseEvt = null;
+          if (ev) this._handleSculptHover(ev);
+        });
       }
     });
 
     el.addEventListener('mouseleave', () => {
       if (!this._sculptDrag) this._clearSculptOverlays();
+      // Cancel any pending hover work so the overlay doesn't flash back in.
+      if (this._overlayRafId) {
+        cancelAnimationFrame(this._overlayRafId);
+        this._overlayRafId = 0;
+      }
+      this._pendingMouseEvt = null;
     });
 
     window.addEventListener('mousemove', e => {
@@ -1674,10 +1978,21 @@ export class TerrainPreview {
       const isPan   = (this._drag.btn === 2) || (this._drag.btn === 1 && !e.shiftKey);
 
       if (isOrbit) {
-        // Trackball orbit — rotate around camera local axes
-        const qX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * 0.006);
-        const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * 0.006);
-        this._targetOrb.q.copy(this._drag.q).multiply(qX).multiply(qY);
+        const speed = 0.006;
+        if (e.shiftKey) {
+          // Shift+drag — free trackball orbit (legacy behavior, useful for
+          // unconstrained inspection / posing).
+          const qX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), dy * speed);
+          const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * speed);
+          this._targetOrb.q.copy(this._drag.q).multiply(qX).multiply(qY);
+        } else {
+          // Inventor-style turntable: horizontal drag spins around world Z,
+          // vertical drag tilts elevation. World +Z stays "up" on screen.
+          const newTheta = this._drag.theta + dx * speed;
+          const eps = 0.01;  // keep phi away from poles to avoid gimbal flip
+          const newPhi = Math.max(eps, Math.min(Math.PI - eps, this._drag.phi + dy * speed));
+          this._targetOrb.q.setFromEuler(new THREE.Euler(newPhi, 0, newTheta, 'ZXY'));
+        }
       } else if (isPan) {
         const vRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this._camera.quaternion);
         const vUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(this._camera.quaternion);
@@ -1699,7 +2014,48 @@ export class TerrainPreview {
 
     el.addEventListener('wheel', e => {
       e.preventDefault();
-      this._targetOrb.r = Math.max(0.1, this._targetOrb.r * (1 + e.deltaY * 0.001));
+      const THREE = this._THREE;
+
+      // Ground every wheel event in the currently *rendered* state. Reading
+      // r and target from this._orb (not this._targetOrb) means rapid scroll
+      // events don't compound drift while the damped lerp is still catching
+      // up — each event applies a single coherent zoom to what the user can
+      // see right now and writes the result as the new target.
+      const oldR       = this._orb.r;
+      const zoomFactor = 1 + e.deltaY * 0.0025;
+      const newR       = Math.max(0.1, oldR * zoomFactor);
+      this._targetOrb.r = newR;
+
+      if (e.deltaY < 0) {
+        // ── Zoom IN: anchor world point under the cursor ──────────────────
+        const rect = this._canvas.getBoundingClientRect();
+        const ndcX =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+        const ndcY = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this._camera.quaternion);
+        const camUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(this._camera.quaternion);
+        const aspect   = this._canvas.clientWidth / this._canvas.clientHeight;
+        const oldSize  = Math.max(0.1, oldR  * 0.35);
+        const newSize  = Math.max(0.1, newR  * 0.35);
+        const dSize    = oldSize - newSize;
+
+        // Keep the world point under the cursor invariant:
+        //   WP = target + camRight·ndcX·aspect·size + camUp·ndcY·size
+        // so newTarget = renderedTarget + (oldSize − newSize)·cursorOffset.
+        this._targetOrb.target.copy(this._orb.target)
+          .addScaledVector(camRight, ndcX * aspect * dSize)
+          .addScaledVector(camUp,    ndcY * dSize);
+      } else {
+        // ── Zoom OUT: gently re-center on the scene XY origin ─────────────
+        // Each tick pulls target.x/y a fraction of the way back to (0, 0).
+        // The pull is proportional to the zoom-out amount, so a single
+        // small scroll barely shifts but a long zoom-out drift settles the
+        // view back on the model. Z is preserved (model midZ stays valid).
+        const pull = Math.min(0.6, (zoomFactor - 1) * 1.0);
+        this._targetOrb.target.copy(this._orb.target);
+        this._targetOrb.target.x *= (1 - pull);
+        this._targetOrb.target.y *= (1 - pull);
+      }
     }, { passive: false });
 
     let lt = null, lp = null;

@@ -3,7 +3,7 @@ import { bind, syncPair, syncUItoParam } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { applyParam, updateSculptToolButtons } from './param-manager.js';
-import { scheduleRebuild, rebuild, updateEditorTopView } from '../core/engine.js';
+import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode, sculptClear } from '../core/sculpt-interaction.js';
 import { setStampLayerSvg, setStampLayerMask } from '../core/state.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -53,8 +53,18 @@ export function bindControls(preview) {
   updateSculptToolButtons();
   bindToolBtn('btnToolTopDraw', 'top', 'draw');
   bindToolBtn('btnToolTopSmooth', 'top', 'smooth');
+  bindToolBtn('btnToolTopNoise', 'top', 'noise');
+  bindToolBtn('btnToolTopInflate', 'top', 'inflate');
+  bindToolBtn('btnToolTopErase', 'top', 'erase');
+
   bindToolBtn('btnToolBotDraw', 'bot', 'draw');
   bindToolBtn('btnToolBotSmooth', 'bot', 'smooth');
+  bindToolBtn('btnToolBotNoise', 'bot', 'noise');
+  bindToolBtn('btnToolBotInflate', 'bot', 'inflate');
+  bindToolBtn('btnToolBotErase', 'bot', 'erase');
+
+  document.getElementById('btnSculptTopClear')?.addEventListener('click', () => sculptClear('top', scheduleRebuild));
+  document.getElementById('btnSculptBotClear')?.addEventListener('click', () => sculptClear('bot', scheduleRebuild));
 
   const stampProfile = document.getElementById('stampProfile');
   if (stampProfile) {
@@ -65,7 +75,7 @@ export function bindControls(preview) {
     stampProfile.addEventListener('change', () => {
       updateStampUI();
       const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode, updateEditorTopView);
+      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
     });
     updateStampUI();
   }
@@ -142,7 +152,7 @@ export function bindControls(preview) {
       const text = await file.text();
       setStampLayerSvg(P.activeLayerIdx, text);
       const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode, updateEditorTopView);
+      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
     });
   }
 
@@ -153,7 +163,7 @@ export function bindControls(preview) {
       setStampLayerMask(P.activeLayerIdx, null);
       const fileNameSpan = document.getElementById('stampFileName');
       if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
-      scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
+      scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
     });
   }
 
@@ -204,7 +214,7 @@ export function bindControls(preview) {
   if (btnAutoThickenThin) {
     btnAutoThickenThin.addEventListener('click', () => {
       fusLog('Auto Thicken Thin Parts triggered');
-      scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
+      scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
     });
   }
 

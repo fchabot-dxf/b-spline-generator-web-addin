@@ -1,7 +1,7 @@
 import { P, setPreDelta, setPostDelta } from '../core/state.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons } from '../core/history.js';
-import { scheduleRebuild, rebuild, updateEditorTopView } from '../core/engine.js';
+import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { AppState } from './app-state.js';
@@ -20,5 +20,5 @@ export function applySnapshot(snap, preview) {
     P.stampLayers[0].svg = snap.stampSvgText;
   }
   updateGlobalButtons();
-  scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), 0);
+  scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
 }

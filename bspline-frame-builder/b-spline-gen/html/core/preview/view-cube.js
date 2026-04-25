@@ -4,11 +4,12 @@ class ViewCube {
     this._THREE = THREE;
     this._onNavigate = onNavigate;
 
-    // Renderer
+    // Renderer — expanded canvas to leave room for axis indicators around the cube
+    this._size = 130;
     this._canvas = document.createElement('canvas');
     Object.assign(this._canvas.style, {
       position: 'absolute', top: '10px', right: '10px',
-      width: '100px', height: '100px', pointerEvents: 'auto',
+      width: this._size + 'px', height: this._size + 'px', pointerEvents: 'auto',
       zIndex: '10'
     });
     parent.appendChild(this._canvas);
@@ -19,11 +20,11 @@ class ViewCube {
       alpha: true
     });
     this._renderer.setPixelRatio(window.devicePixelRatio);
-    this._renderer.setSize(100, 100);
+    this._renderer.setSize(this._size, this._size);
 
-    // Scene
+    // Scene — frustum widened so axis tips & labels stay inside view
     this._scene = new THREE.Scene();
-    this._camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+    this._camera = new THREE.OrthographicCamera(-1.3, 1.3, 1.3, -1.3, 0.1, 100);
     this._camera.position.set(0, 0, 5);
     this._camera.lookAt(0, 0, 0);
 
@@ -48,7 +49,7 @@ class ViewCube {
   }
 
   resize() {
-    this._renderer.setSize(100, 100);
+    this._renderer.setSize(this._size, this._size);
   }
 
   dispose() {
@@ -68,6 +69,16 @@ class ViewCube {
       c.geometry.dispose();
       c.material.dispose();
     });
+    if (this._axisObjs) {
+      this._axisObjs.forEach(o => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (o.material.map) o.material.map.dispose();
+          o.material.dispose();
+        }
+        if (o.userData?.tex) o.userData.tex.dispose();
+      });
+    }
   }
 
   sync(mainCamera) {
@@ -163,6 +174,94 @@ class ViewCube {
       this._corners.push(mesh);
       this._group.add(mesh);
     }
+
+    // ── Colored axis indicators (Fusion-style: X=red, Y=green, Z=blue) ─────
+    // All three axes share an origin at the FRONT-LEFT-BOTTOM corner of the
+    // cube, then run along the cube's edges and extend past the opposite
+    // corner. This matches Fusion's view-cube triad. Tracked in _axisObjs
+    // for proper disposal.
+    this._axisObjs = [];
+    const C = 0.41; // half-cube extent (cube faces sit at ±0.41)
+    const corner = [-C, -C, -C]; // front-left-bottom in local coords
+    const axes = [
+      { dir: [1, 0, 0],  color: 0xff3b30, label: 'X' },
+      { dir: [0, 1, 0],  color: 0x34c759, label: 'Y' },
+      { dir: [0, 0, 1],  color: 0x0a84ff, label: 'Z' },
+    ];
+    const tipExt    = 0.55; // how far past the far corner the axis sticks out
+    const labelGap  = 0.13; // additional gap from tip to label center
+
+    axes.forEach(a => {
+      // Tip = corner + direction * (full-edge-length + tipExt)
+      const edgeLen = 2 * C; // length along the cube edge
+      const tipDist = edgeLen + tipExt;
+      const tip = [
+        corner[0] + a.dir[0] * tipDist,
+        corner[1] + a.dir[1] * tipDist,
+        corner[2] + a.dir[2] * tipDist,
+      ];
+
+      // Line: corner → tip (runs along a cube edge, then out past the corner)
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+        corner[0], corner[1], corner[2],
+        tip[0],    tip[1],    tip[2]
+      ], 3));
+      const lineMat = new THREE.LineBasicMaterial({ color: a.color, linewidth: 2 });
+      const line = new THREE.Line(lineGeo, lineMat);
+      this._axisObjs.push(line);
+      this._group.add(line);
+
+      // Label sprite at (slightly past) the tip
+      const labelTex = this._getAxisLabelTexture(a.label, a.color);
+      const labelMat = new THREE.SpriteMaterial({
+        map: labelTex,
+        transparent: true,
+        depthTest: false   // always draw on top so the letter is readable
+      });
+      const sprite = new THREE.Sprite(labelMat);
+      sprite.position.set(
+        tip[0] + a.dir[0] * labelGap,
+        tip[1] + a.dir[1] * labelGap,
+        tip[2] + a.dir[2] * labelGap
+      );
+      sprite.scale.set(0.28, 0.28, 0.28);
+      sprite.userData = { type: 'axis-label', tex: labelTex };
+      this._axisObjs.push(sprite);
+      this._group.add(sprite);
+    });
+  }
+
+  /**
+   * Render a single colored axis-letter ("X" / "Y" / "Z") onto a transparent
+   * canvas texture for use as a sprite label.
+   */
+  _getAxisLabelTexture(letter, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+
+    // Convert numeric color to css
+    const r = (color >> 16) & 0xff;
+    const g = (color >>  8) & 0xff;
+    const b = (color)       & 0xff;
+    const css = `rgb(${r}, ${g}, ${b})`;
+
+    // Letter with subtle white halo for readability over the cube
+    ctx.font = 'bold 44px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.strokeText(letter, 32, 34);
+    ctx.fillStyle = css;
+    ctx.fillText(letter, 32, 34);
+
+    const tex = new this._THREE.CanvasTexture(canvas);
+    tex.anisotropy = 4;
+    return tex;
   }
 
   _getTexture(text, hover) {

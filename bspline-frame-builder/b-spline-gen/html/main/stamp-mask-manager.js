@@ -30,10 +30,10 @@ export async function updateStampMasks(nx, nz) {
   await Promise.all(promises);
 }
 
-export async function refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode, updateEditorTopView) {
+export async function refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode) {
   try {
     await updateStampMasks(nx, nz);
-    scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView));
+    scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode));
   } catch (e) {
     console.error('Failed to refresh stamp masks:', e);
   }

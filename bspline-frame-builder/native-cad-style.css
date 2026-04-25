@@ -1540,3 +1540,50 @@ input[type="range"].cad-slider::-webkit-slider-thumb {
     gap: 8px;
     flex-shrink: 0;
 }
+/* Sculpting Tool Active States */
+.cad-btn.active {
+    background-color: var(--cad-accent-blue) !important;
+    color: white !important;
+    border-color: var(--cad-accent-blue) !important;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2) !important;
+}
+
+/* Native CAD Tool Group Patterns */
+.cad-tool-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    background: var(--cad-bg-tertiary);
+    padding: 2px;
+    border-radius: var(--cad-radius-md);
+    margin-bottom: 12px;
+}
+
+.cad-tool-btn {
+    height: 48px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 4px !important;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--cad-text-muted);
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+}
+
+.cad-tool-btn .material-symbols-outlined {
+    font-size: 20px !important;
+}
+
+.cad-tool-btn.active {
+    background: var(--cad-bg-standard) !important;
+    color: var(--cad-accent-blue) !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+    border-radius: var(--cad-radius-sm);
+}

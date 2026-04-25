@@ -19,7 +19,7 @@ import {
     takeSnapshot, unifiedUndo, unifiedRedo, updateGlobalButtons, isEditorOpen 
 } from '../core/history.js';
 import { 
-    rebuild, scheduleRebuild, updateEditorTopView 
+    rebuild, scheduleRebuild
 } from '../core/engine.js';
 import { 
     onSculptStart, onSculptStroke, onSculptStrokeEnd, 
@@ -194,10 +194,10 @@ function wireGlobalEvents(preview) {
     const clearTop = document.getElementById('btnSculptTopClear');
     const clearBot = document.getElementById('btnSculptBotClear');
     if (clearTop) clearTop.addEventListener('click', () => {
-        sculptClear('top', (d) => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), d));
+        sculptClear('top', (d) => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), d));
     });
     if (clearBot) clearBot.addEventListener('click', () => {
-        sculptClear('bot', (d) => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView), d));
+        sculptClear('bot', (d) => scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), d));
     });
 
     const undoTop = document.getElementById('btnSculptTopUndo');
@@ -264,7 +264,7 @@ function closeWizard() {
 
 function onFusionApply() {
     if (!lastResult) {
-        rebuild(preview, updateStampMasks, updatePreviewSculptMode, updateEditorTopView);
+        rebuild(preview, updateStampMasks, updatePreviewSculptMode);
         return;
     }
 

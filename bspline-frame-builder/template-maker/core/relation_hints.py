@@ -217,15 +217,16 @@ def _get_origin_entity_map():
     """Return ``{'X_AXIS': ax, 'Y_AXIS': ax, 'ORIGIN': pt}`` for the active
     design, or ``{}`` if the design can't be reached.
 
-    Frame Builder's XZ-plane sketch convention — documented alongside
-    ``parametric_engine._project_y_axis`` / ``_project_x_axis`` — maps the
-    sketch-space tokens to these root construction entities:
+    Frame Builder's XY-plane sketch convention (Z-up Fusion) — documented
+    alongside ``parametric_engine._project_y_axis`` / ``_project_x_axis``
+    — maps the sketch-space tokens to these root construction entities:
 
         ``X_AXIS``  -> ``rootComponent.xConstructionAxis`` (world X,
                        sketch-horizontal)
-        ``Y_AXIS``  -> ``rootComponent.zConstructionAxis`` (world Z,
-                       sketch-vertical — NOT yConstructionAxis; that's
-                       perpendicular to an XZ sketch plane)
+        ``Y_AXIS``  -> ``rootComponent.yConstructionAxis`` (world Y,
+                       sketch-vertical on an XY-plane sketch — NOT
+                       zConstructionAxis; that's perpendicular to the
+                       XY plane in Z-up)
         ``ORIGIN``  -> ``rootComponent.originConstructionPoint``
 
     The runtime pre-seeds the first two via sketch.project() and
@@ -250,7 +251,7 @@ def _get_origin_entity_map():
             return {}
         return {
             'X_AXIS': getattr(root, 'xConstructionAxis', None),
-            'Y_AXIS': getattr(root, 'zConstructionAxis', None),
+            'Y_AXIS': getattr(root, 'yConstructionAxis', None),
             'ORIGIN': getattr(root, 'originConstructionPoint', None),
         }
     except Exception:
@@ -264,7 +265,7 @@ def _origin_axis_token(ent):
     Two match paths, evaluated in this order:
 
     1. **Direct identity.** ``ent`` IS one of the root construction
-       entities (``xConstructionAxis``, ``zConstructionAxis``,
+       entities (``xConstructionAxis``, ``yConstructionAxis``,
        ``originConstructionPoint``). This covers the edge case where the
        user picks the construction entity straight out of the browser
        tree.

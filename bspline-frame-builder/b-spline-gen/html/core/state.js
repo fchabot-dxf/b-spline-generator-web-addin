@@ -46,17 +46,19 @@ export const DEFAULT = {
     sculptTopStrength: 0.03,  // default for draw sculpt brush
     sculptTopRespectSymmetry: true,
     sculptTopMode: 'draw',
+    sculptTopNoiseScale: 10.0,
     // Sculpt Bottom (post-thicken)
     sculptBotRadius: 1.0,
     sculptBotStrength: 0.008,
     sculptBotRespectSymmetry: true,
     sculptBotMode: 'draw',
+    sculptBotNoiseScale: 10.0,
 
     // Extra Thickness (Thin Parts)
     extraThickenThin: 0.4,
     extraThickenThinFalloff: 0.05,
     // Export Configuration
-    exportOrientation: 'y-up',
+    exportOrientation: 'z-up',
     // Flat border
     edgeMarginIn: 0,
     // Vector Stamping (Multi-Layer Support)
@@ -85,6 +87,8 @@ export const SLIDER_PAIRS = {
     sculptTopStrength: 'sculptTopStrengthSlider',
     sculptBotRadius: 'sculptBotRadiusSlider',
     sculptBotStrength: 'sculptBotStrengthSlider',
+    sculptTopNoiseScale: 'sculptTopNoiseScaleSlider',
+    sculptBotNoiseScale: 'sculptBotNoiseScaleSlider',
     edgeMarginIn: 'edgeMarginInSlider',
     extraThickenThin: 'extraThickenThinSlider',
     extraThickenThinFalloff: 'extraThickenThinFalloffSlider',
@@ -117,11 +121,25 @@ export let lastNx = 0, lastNz = 0;
 export let suppressionMask = null;
 export let extraThickenThinMask = null;
 
+/**
+ * Pre-stroke cache used to fast-path rebuild() during sculpt drags.
+ * null when no stroke is in progress.  When non-null:
+ *   {
+ *     layer: 'top' | 'bot',
+ *     baseStamped: Float32Array,   // heights with all stamps applied but WITHOUT preDelta
+ *     baseHeights: Float32Array,   // pure B-spline heights (no preDelta, no stamps)
+ *     thickenData:  object | null, // frozen thicken result reused for the duration of the stroke
+ *     nx, nz:       number,
+ *   }
+ */
+export let strokeCache = null;
+
 export function setPreDelta(val) { preDelta = val; }
 export function setPostDelta(val) { postDelta = val; }
 export function setLastResult(val) { lastResult = val; }
 export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
+export function setStrokeCache(val) { strokeCache = val; }
 
 export function setStampLayerSvg(idx, svg) { 
     if (P.stampLayers[idx]) {
