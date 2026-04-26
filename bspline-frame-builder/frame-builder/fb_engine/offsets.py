@@ -265,26 +265,6 @@ def _tag_offset_results(ctx, s_name, off, offset_curves):
             cid = mapping[semantic]
             _register_curve(ctx, s_name, curve, cid)
 
-    # --- Corner tagging: pick outermost vertex per quadrant ---
-    corner_ids = off.get("CornerIDs", {})
-    if corner_ids:
-        all_pts = []
-        for c in curves:
-            all_pts.extend([c.startSketchPoint, c.endSketchPoint])
-
-        unique_pts = {}
-        for p in all_pts:
-            unique_pts[p.entityToken] = p
-
-        ctx.logger.log(f"CLASSIFYING OFFSET CORNERS in {s_name}")
-        quadrants = ctx.classify_points_by_quadrant(list(unique_pts.values()))
-
-        for quad, p in quadrants.items():
-            cid = corner_ids.get(quad)
-            if cid:
-                ctx.set_id(p, s_name, "corner", override_id=cid)
-                g = p.geometry
-                ctx.logger.log(f"DYNAMIC CORNER {quad}: Tagged {cid} at ({g.x:.3f}, {g.y:.3f})")
 
 
 def _curve_centroid(curve):

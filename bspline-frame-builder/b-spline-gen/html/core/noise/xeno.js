@@ -33,11 +33,17 @@ export const fn = (su, sv, aspect, params, noiseRefs) => {
   const plateStrength   = t.plateStrength   ?? 0.32;
   const conduitStrength = t.conduitStrength ?? 0.20;
 
-  // Mirrored coords (dx) for symmetric anatomy; a small organic warp
-  // breaks dead-center symmetry so the spine doesn't read as a CAD axis.
+  // Edge-aligned spine: dxW = 0 at su=0 (one side of the folded surface),
+  // dxW = 1 at su=1 (opposite side). With mirror-X symmetry on, su=0 IS
+  // the symmetry axis, so the spine lands exactly on the axis and renders
+  // as a single clean column instead of two mirrored quarter-spines.
+  // Without symmetry the spine hugs the left edge — by design, since this
+  // filter is intended to be paired with mirror-X.
+  // A small organic warp breaks dead-on alignment so the spine doesn't
+  // read as a CAD axis.
   const wxAnat = noiseWarp.noise2(su * 3, sv * 3) * 0.05 * warpIntensity;
   const wyAnat = noiseWarp.noise2(su * 3 + 5, sv * 3 + 1) * 0.05 * warpIntensity;
-  const dxW = Math.abs((su + wxAnat) * 2 - 1);
+  const dxW = Math.max(0, Math.min(1, su + wxAnat));
   const dyW = sv + wyAnat;
 
   // Seed-derived structural variation (consistent across the surface,

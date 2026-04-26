@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extrude Frame · Native CAD</title>
+  <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../../../styles/base.css">
+  <style>
+    .face-status {
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.03);
+      color: #777;
+      font-size: 11px;
+      margin-top: 4px;
+      font-weight: 600;
+      border: 1px solid rgba(0,0,0,0.05);
+      transition: all 0.2s;
+    }
+    .face-status.selected {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--cad-accent-green);
+      border-color: var(--cad-accent-green);
+    }
+    .face-status.waiting {
+      background: #fffbeb;
+      color: #d97706;
+      border-color: #f59e0b;
+      animation: pulse-waiting 1.5s infinite;
+    }
+    @keyframes pulse-waiting {
+      0% { opacity: 1; }
+      50% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
+    body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
+    .hidden { display: none !important; }
+
+    .cad-palette-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+      background: #f5f5f5;
+    }
+
+    .cad-palette-scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      background: #fdfdfd;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cad-sidebar-panel {
+      border-right: none;
+      border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+  </style>
+</head>
+<body class="cad-app-layout">
+  <div class="cad-palette-container" id="app-shell">
+
+    <!-- Navigation Header -->
+    <header class="cad-navbar">
+      <div class="cad-nav-group">
+        <span style="font-size: 11px; font-weight: 800; color: #444; letter-spacing: 0.05em;">EXTRUDE FRAME</span>
+      </div>
+
+      <div style="flex:1;"></div>
+
+      <div style="display:flex; gap:12px; align-items:center;">
+        <button class="cad-btn cad-btn-primary" id="header-action-btn" onclick="runBuild()">EXTRUDE</button>
+      </div>
+    </header>
+
+    <!-- Main Streamlined Content Area -->
+    <main class="cad-palette-scroll-area">
+      <section class="cad-sidebar-panel">
+        <div class="cad-accordion-header">
+          <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+          SURFACE MAPPING
+        </div>
+        <div class="cad-dialog-content">
+          <div class="cad-field-row" style="grid-template-columns: 1fr auto;">
+            <label class="cad-label">Target Face</label>
+            <button class="cad-btn" id="btn-select-face" onclick="pickFace()">SELECT FACE</button>
+          </div>
+          <div class="face-status" id="label-face-selection" style="margin: 0 8px 12px 8px;">No face selected...</div>
+        </div>
+      </section>
+
+      <section class="cad-sidebar-panel">
+        <div class="cad-accordion-header">
+          <span class="material-symbols-outlined cad-accordion-icon">arrow_drop_down</span>
+          EXTRUSION PARAMETERS
+        </div>
+        <div class="cad-dialog-content">
+          <div class="cad-field-row">
+            <label class="cad-label">Start Offset</label>
+            <input type="text" class="cad-input" id="solid-offset" value="-1 in">
+          </div>
+          <div class="cad-field-row">
+            <label class="cad-label">Appearance</label>
+            <div class="cad-select-wrap">
+              <select id="solid-appearance" class="cad-select cad-select-no-icon">
+                <option value="3D Ash - Unfinished">3D Ash - Unfinished</option>
+                <option value="3D Mahogany - Unfinished">3D Mahogany - Unfinished</option>
+                <option value="3D Pine - Unfinished">3D Pine - Unfinished</option>
+                <option value="3D Cherry - Unfinished">3D Cherry - Unfinished</option>
+                <option value="3D Maple - Unfinished">3D Maple - Unfinished</option>
+              </select>
+              <span class="cad-select-arrow">▼</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    /* ── CORE FUSION 360 BRIDGE LOGIC ─────────────────────────────────────── */
+
+    function notifyFusion(action, data) {
+      if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
+        adsk.fusionSendData(action, JSON.stringify(data || {}));
+      } else {
+        console.warn('[BRIDGE] Native adsk missing. Action:', action, data);
+      }
+    }
+
+    window.fusionJavaScriptHandler = {
+      handle: function (action, data) {
+        try {
+          return _dispatchFromPython(action, data);
+        } catch (e) {
+          console.error('[Handler Error]', e.message);
+          return "ERROR_" + e.message;
+        }
+      }
+    };
+
+    function _dispatchFromPython(action, rawData) {
+      let data = {};
+      try {
+        data = (typeof rawData === 'string') ? JSON.parse(rawData) : (rawData || {});
+      } catch(e) {
+        console.error('[BRIDGE] JSON parse failed', e);
+      }
+
+      if (action === 'status_update') {
+        const statusEl = document.getElementById('system-status');
+        if (statusEl) statusEl.innerText = (data.msg || '').toUpperCase();
+
+        if ((data.msg || '').toLowerCase().includes('ready') || (data.msg || '').toLowerCase().includes('complete')) {
+          const light = document.getElementById('bridge-status-light');
+          const label = document.getElementById('bridge-label');
+          if (light) {
+            light.classList.remove('dead');
+            light.classList.add('live');
+            light.style.backgroundColor = '';
+          }
+          if (label) label.innerText = 'BRIDGE LIVE';
+        }
+      } else if (action === 'selection_result') {
+        if (data.success) {
+          setFaceSelectionState('selected', data.name, data.count || 1);
+        } else {
+          setFaceSelectionState('idle');
+        }
+      } else if (action === 'face_selected') {
+        setFaceSelectionState('selected', data.name, data.count || 1);
+      }
+      return 'OK';
+    }
+
+    /* ── UI STATE ─────────────────────────────────────────────────────────── */
+
+    function setFaceSelectionState(state, name, count) {
+      const label = document.getElementById('label-face-selection');
+      const btn = document.getElementById('btn-select-face');
+      btn.classList.remove('selecting', 'selected');
+      label.className = 'face-status';
+
+      if (state === 'waiting') {
+        label.innerText = 'WAITING FOR FUSION SELECTION...';
+        label.classList.add('waiting');
+        btn.classList.add('selecting');
+        btn.innerText = 'SELECTING...';
+      } else if (state === 'selected') {
+        const faceText = name || 'Face selected';
+        label.innerText = (count > 1 ? `${faceText} (${count} FACES)` : faceText).toUpperCase();
+        label.classList.add('selected');
+        btn.classList.add('selected');
+        btn.innerText = 'SELECT FACE';
+      } else {
+        label.innerText = 'NO FACE SELECTED...';
+        btn.innerText = 'SELECT FACE';
+      }
+    }
+
+    function runBuild() {
+      notifyFusion('run_build', {
+        type: 'solid',
+        offset: document.getElementById('solid-offset')?.value,
+        appearance: document.getElementById('solid-appearance')?.value
+      });
+    }
+
+    function pickFace() {
+      setFaceSelectionState('waiting');
+      notifyFusion('pick_face', {});
+    }
+
+    /* ── STARTUP HANDSHAKE ────────────────────────────────────────────────── */
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const adskReady = (typeof adsk !== 'undefined' && adsk.fusionSendData);
+        if (adskReady) {
+          const light = document.getElementById('bridge-status-light');
+          if (light) {
+            light.classList.remove('dead');
+            light.classList.add('live');
+            light.style.backgroundColor = '';
+          }
+          const label = document.getElementById('bridge-label');
+          if (label) label.innerText = 'BRIDGE LIVE';
+          const statusEl = document.getElementById('system-status');
+          if (statusEl) statusEl.innerText = 'READY';
+          notifyFusion('ping', {});
+        } else {
+          const heartbeat = setInterval(() => {
+            if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
+              notifyFusion('ping', {});
+              clearInterval(heartbeat);
+            }
+          }, 1000);
+        }
+      }, 500);
+    });
+  </script>
+</body>
+</html>

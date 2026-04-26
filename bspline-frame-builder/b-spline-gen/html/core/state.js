@@ -20,6 +20,12 @@ export const DEFAULT = {
     macroScale: 0.65,
     warpIntensity: 1.0,
     symmetry: 'x',
+    // Symmetry mirror-line offsets. 0 = mirror through panel center (legacy
+    // behavior). Range -0.45..0.45 in normalized panel units (so ±45% of
+    // the panel's width/height). Applied to both terrain folding and
+    // sculpt mirroring so visual + interactive symmetry stay in sync.
+    symOffsetX: 0,
+    symOffsetY: 0,
     spacing: 0.05,
     smoothIntensity: 0,
     smoothRadius: 1.2,
@@ -30,6 +36,11 @@ export const DEFAULT = {
     // are NOT seeded here. Empty object means "use schema defaults".
     filterTweaks: {},
     detailDensity: 1.0,
+    // detailStrength = floor for the "empty" zones carved out by detailDensity.
+    // At detailDensity = 1 it has no visible effect (no empty zones exist).
+    // When detailDensity < 1 it controls how much detail residue remains inside
+    // the smooth patches: 0 = fully smooth, 1 = full detail (cancels the mask).
+    // Default 0.25 = subtle residue in empty zones.
     detailStrength: 0.25,
     detailDensityRespectSymmetry: true,
     smoothRespectSymmetry: true,
@@ -116,6 +127,8 @@ export const SLIDER_PAIRS = {
     seedOffsetX: 'seedOffsetXSlider',
     seedOffsetY: 'seedOffsetYSlider',
     seedRotation: 'seedRotationSlider',
+    symOffsetX: 'symOffsetXSlider',
+    symOffsetY: 'symOffsetYSlider',
     thickness: 'thicknessSlider',
     warpIntensity: 'warpIntensitySlider',
     sculptTopRadius: 'sculptTopRadiusSlider',

@@ -1,66 +1,67 @@
-import sys, os
+import os
 
-# Ensure this package's directory is on sys.path so flat sibling imports resolve
-# regardless of whether this module is loaded as a package or directly.
-_here = os.path.dirname(os.path.realpath(__file__))
-if _here not in sys.path:
-    sys.path.insert(0, _here)
+from template_loader import TemplateLoader
 
-from template_loader import load_all_sketches, reload_all
+# Per-template loader instance. State (caches, folder path) lives on the
+# instance so two templates can never share caches or step on each
+# other's sys.modules entries. ``reload_all`` drops caches so edited
+# phase files take effect without restarting Fusion.
+_loader = TemplateLoader(os.path.dirname(os.path.realpath(__file__)))
+load_all_sketches = _loader.load_all_sketches
+reload_all = _loader.reload_all
 
-# Fusion 360 caches Python modules across Run invocations; drop the loader's
-# internal caches on every reimport so edited phase files take effect
-# without a full Fusion restart. Matches the old per-template reload_modules.
 reload_all()
 
 
 # ---------------------------------------------------------------------------
-# UI metadata — declared at module load time. ``get_template_logic`` simply
+# UI metadata - declared at module load time. ``get_template_logic`` simply
 # stamps these onto the auto-discovered sketch dicts.
 # ---------------------------------------------------------------------------
 
 TEMPLATE_NAME = "Template 1 - Hourglass"
-TEMPLATE_DESCRIPTION = "Standardized Arc Series - Metric Unified"
+TEMPLATE_DESCRIPTION = "Standardized Arc Series - Inches Unified"
 
 SKETCH_1_LABEL = "Bounding Box"
 SKETCH_1_PARAMETERS = [
-    # ReadOnly — owned by b-spline add-in, displayed but not editable
-    {"Name": "widthIn",           "Label": "Width (Model)",  "Category": "Frame Spec", "Val": 14.0,  "Unit": "cm", "ReadOnly": True},
-    {"Name": "heightIn",          "Label": "Height (Model)", "Category": "Frame Spec", "Val": 5.0,   "Unit": "cm", "ReadOnly": True},
+    # ReadOnly - owned by b-spline add-in, displayed but not editable.
+    # Inches throughout to match the rest of the user-facing UI; Fusion
+    # stores cm internally (createByString honours the "in" suffix).
+    {"Name": "widthIn",           "Label": "Width (Model)",  "Category": "Frame Spec", "Val": 5.51, "Unit": "in", "Min": 1.0, "Max": 48.0, "ReadOnly": True},
+    {"Name": "heightIn",          "Label": "Height (Model)", "Category": "Frame Spec", "Val": 1.97, "Unit": "in", "Min": 1.0, "Max": 48.0, "ReadOnly": True},
     # Read-only bounding box border display
-    {"Name": "boundingboxoffset", "Label": "BBox Border",    "Category": "Frame Spec", "Val": 0.635, "Unit": "cm", "ReadOnly": True},
+    {"Name": "boundingboxoffset", "Label": "BBox Border",    "Category": "Frame Spec", "Val": 0.25, "Unit": "in", "ReadOnly": True},
 ]
 
 SKETCH_2_LABEL = "Shape Outline"
 SKETCH_2_PARAMETERS = [
-    # Anatomy — solver seeds, user-lockable
+    # Anatomy - solver seeds, user-lockable
     {"Name": "ShoulderSpan", "Label": "Shoulder Width",  "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
     {"Name": "WaistSpan",    "Label": "Waist Width",     "Category": "Anatomy", "Val": 0.95, "Min": 0.2,  "Max": 1.25, "Unit": "", "DisplayUnit": "x"},
     {"Name": "HipSpan",      "Label": "Hip Width",       "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
     {"Name": "TopGap",       "Label": "Top Height %",     "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,  "Unit": "", "DisplayUnit": "%"},
     {"Name": "BottomGap",    "Label": "Bottom Height %",  "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,  "Unit": "", "DisplayUnit": "%"},
-    {"Name": "WaistOffset",  "Label": "Waist Offset",      "Category": "Anatomy", "Val": 0.0,  "Min": -1.0, "Max": 1.0,  "Unit": "cm", "Expose": True},
+    {"Name": "WaistOffset",  "Label": "Waist Offset",      "Category": "Anatomy", "Val": 0.0,  "Min": -0.5, "Max": 0.5,  "Unit": "in", "Expose": True},
 
-    # Silhouette — factors of heightIn. Resolver wraps as ``(heightIn * N)``;
+    # Silhouette - factors of heightIn. Resolver wraps as ``(heightIn * N)``;
     # UI de-scales back to the factor on panel reopen. Defaults reproduce
     # the prior 2.5/2.8/2.5 cm values at the default heightIn=5 cm.
     {"Name": "ShoulderRadius", "Label": "Shoulder Radius", "Category": "Silhouette", "Val": 0.5,  "Min": 0.1, "Max": 2.0, "Unit": "", "DisplayUnit": "x"},
     {"Name": "WaistRadius",    "Label": "Waist Radius",    "Category": "Silhouette", "Val": 0.56, "Min": 0.1, "Max": 2.0, "Unit": "", "DisplayUnit": "x"},
     {"Name": "HipRadius",      "Label": "Hip Radius",      "Category": "Silhouette", "Val": 0.5,  "Min": 0.1, "Max": 2.0, "Unit": "", "DisplayUnit": "x"},
 
-    # Anatomy Toggles — 0.0 = seed, 1.0 = hard constraint
+    # Anatomy Toggles - 0.0 = seed, 1.0 = hard constraint
     {"Name": "en_ShoulderSpan",   "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
     {"Name": "en_WaistSpan",      "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
     {"Name": "en_HipSpan",        "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
     {"Name": "en_TopGap",         "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
     {"Name": "en_BottomGap",      "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
 
-    # Silhouette Toggles — 0.0 = seed, 1.0 = hard constraint
+    # Silhouette Toggles - 0.0 = seed, 1.0 = hard constraint
     {"Name": "en_ShoulderRadius", "Category": "Silhouette", "Val": 0.0, "Unit": ""},
     {"Name": "en_WaistRadius",    "Category": "Silhouette", "Val": 0.0, "Unit": ""},
     {"Name": "en_HipRadius",      "Category": "Silhouette", "Val": 0.0, "Unit": ""},
 
-    # Constraint Toggles — 1.0 = apply, 0.0 = skip
+    # Constraint Toggles - 1.0 = apply, 0.0 = skip
     {"Name": "ck_arc_shoulder_weld",   "Label": "Shoulder Arc Weld",      "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
     {"Name": "ck_arc_hip_weld",        "Label": "Hip Arc Weld",           "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
     {"Name": "ck_skel_shoulder_merge", "Label": "Shoulder Skeleton Merge","Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
@@ -80,10 +81,10 @@ SKETCH_3_PARAMETERS = [
         "Name": "frame_thickness",
         "Label": "Frame thickness",
         "Category": "Frame Spec",
-        "Val": 2.0,
-        "Unit": "cm",
-        "Min": 0.5,
-        "Max": 5.0,
+        "Val": 0.75,
+        "Unit": "in",
+        "Min": 0.1,
+        "Max": 2.0,
         "Expose": True,
     },
 ]
@@ -92,10 +93,12 @@ SKETCH_3_PARAMETERS = [
 def get_template_logic(ui_data=None):
     """
     Returns the parametric logic for Template 1.
-    Standardized to Metric (cm) to prevent unit-flip explosions.
+    Standardized to Inches at the schema level - Fusion stores cm
+    internally; createByString("X in") in frame_engine Phase 1 honours
+    the suffix so the UI shows inches end-to-end.
     Supports dynamic pinning via ui_data injection.
 
-    Sketches are discovered automatically by ``template_loader`` via
+    Sketches are discovered automatically by ``TemplateLoader`` via
     filename convention (``sketch_N_*.py``). Their phase lists come
     from the same loader scanning ``phases/pNN_MM_*.py``. UI metadata
     (Label / Parameters) is loaded at module level above and stamped

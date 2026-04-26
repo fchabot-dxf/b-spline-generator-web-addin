@@ -1423,11 +1423,18 @@ export class TerrainPreview {
     const s   = this._sculpt;
     const sym = s?.symmetry ?? 'none';
     const nx  = s?.nx ?? 1, nz = s?.nz ?? 1;
-    const mi  = nx - 1 - ci, mj = nz - 1 - cj;
+    const sox = s?.symOffsetX ?? 0;
+    const soy = s?.symOffsetY ?? 0;
+    const centerI = (nx - 1) * (0.5 + sox);
+    const centerJ = (nz - 1) * (0.5 + soy);
+    const mi  = Math.round(2 * centerI - ci);
+    const mj  = Math.round(2 * centerJ - cj);
+    const inI = mi >= 0 && mi < nx;
+    const inJ = mj >= 0 && mj < nz;
     const pos = [{ ci, cj, mirror: false }];
-    if ((sym === 'x'      || sym === 'radial') && mi !== ci             ) pos.push({ ci: mi, cj,    mirror: true });
-    if ((sym === 'y'      || sym === 'radial') && mj !== cj             ) pos.push({ ci,     cj: mj, mirror: true });
-    if ( sym === 'radial'                      && mi !== ci && mj !== cj) pos.push({ ci: mi, cj: mj, mirror: true });
+    if ((sym === 'x'      || sym === 'radial') && inI && mi !== ci             ) pos.push({ ci: mi, cj,    mirror: true });
+    if ((sym === 'y'      || sym === 'radial') && inJ && mj !== cj             ) pos.push({ ci,     cj: mj, mirror: true });
+    if ( sym === 'radial'                      && inI && inJ && mi !== ci && mj !== cj) pos.push({ ci: mi, cj: mj, mirror: true });
     return pos;
   }
 

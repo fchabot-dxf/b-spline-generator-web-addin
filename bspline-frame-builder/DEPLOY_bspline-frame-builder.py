@@ -88,16 +88,19 @@ def _deploy_addin(src_dir: Path, addin_name: str, verify_files: list[str], skip_
     scrub_source(src_dir)
 
     if dest_dir.exists():
-        print("  Removing old install...")
         clean_dir(dest_dir)
 
     print("  Copying files...")
     try:
-        shutil.copytree(src_dir, dest_dir, ignore=_ignore)
+        copied, skipped = copy_overlay(src_dir, dest_dir, _ignore)
+        if skipped:
+            print(f"  Copied {copied} files, skipped {skipped} (likely locked by a running Fusion addin).")
+        else:
+            print(f"  Copied {copied} files.")
         if extra_copy:
             extra_copy(src_dir, dest_dir)
     except Exception as e:
-        print(f"  ERROR: copytree failed: {e}")
+        print(f"  ERROR: copy_overlay failed: {e}")
         return False
 
     print("  Verifying key files...")
@@ -168,31 +171,7 @@ def deploy_fusion_exporter() -> bool:
     return _deploy_addin(addin_dir, "fusion-exporter", verify_files)
 
 
-def cleanup_legacy_standalone_addins() -> None:
-    """Remove the old top-level AddIns folders that used to house template-maker,
-    fusion-inspector, and fusion-exporter as SEPARATE Fusion add-ins.
-
-    These three modules are now consolidated into the bspline-frame-builder
-    add-in (they live under its subfolders and are loaded by the main
-    bootstrap). Leaving the old folders in place would make Fusion's Add-Ins
-    dialog show them as duplicate entries alongside the unified one.
-    """
-    dest_root = get_default_dest_root()
-    legacy = ['template-maker', 'fusion-inspector', 'fusion-exporter']
-    print("=" * 60)
-    print("CLEANUP: removing legacy standalone add-in folders")
-    print("=" * 60)
-    for name in legacy:
-        path = dest_root / name
-        if path.exists():
-            print(f"  Removing {path}")
-            clean_dir(path)
-        else:
-            print(f"  (not present) {path}")
-
-
 def deploy_all() -> bool:
-    cleanup_legacy_standalone_addins()
     # The three former sub-add-ins are now bundled INSIDE bspline-frame-builder
     # (their source subfolders are copied as part of deploy_local), so we no
     # longer install them as separate top-level AddIns.
@@ -203,8 +182,10 @@ def deploy_all() -> bool:
 VERIFY_FILES = [
     "bspline-frame-builder.py",
     "bspline-frame-builder.manifest",
-    "frame-builder/ui/hybrid_builder_ui.py",
-    "frame-builder/ui/html/frame_builder_palette.html",
+    "frame-builder/ui/sketch_builder_ui.py",
+    "frame-builder/ui/solid_builder_ui.py",
+    "frame-builder/ui/html/sketch_builder_palette.html",
+    "frame-builder/ui/html/solid_builder_palette.html",
     "b-spline-gen/b-spline-gen.py",
     "b-spline-gen/html/index.html",
 ]
@@ -216,6 +197,7 @@ SKIP_NAMES = {
     ".wrangler", "deploy_dist",
     "probe.txt", "import_test.txt", "run_test.txt", "run_debug.txt",
     "desktop.ini",
+    "_legacy_archived",  # archived hybrid-palette source — kept locally, not shipped
 }
 SKIP_SUFFIXES = {".log", ".old", ".pyc", ".pyo"}
 # Dev-only scripts that shouldn't ship to end-users
@@ -261,20 +243,66 @@ def ignore_for_copy(src_path: str, names: list) -> list:
     return [n for n in names if _should_skip(n)]
 
 
-def clean_dir(path: Path, retries: int = 3):
-    """Robustly delete a directory, retrying on transient locks."""
+def clean_dir(path: Path, retries: int = 2, verbose: bool = True):
+    """Try to delete a directory. Silent fall-through to overlay-copy mode
+    when locked files (e.g. an addin log Fusion still has open) make rmtree
+    impossible.
+
+    We attempt rmtree a couple of times with a short backoff. On final
+    failure we print a single concise note (only when ``verbose``) and let
+    the caller fall back to ``copy_overlay``. No multi-line retry spam.
+    """
     if not path.exists():
-        return
+        return True
     for i in range(retries):
         try:
             shutil.rmtree(path)
-            return
-        except Exception as e:
+            return True
+        except Exception:
             if i < retries - 1:
-                print(f"  Retry {i+1}: could not remove {path}: {e}")
-                time.sleep(1)
+                time.sleep(0.5)
             else:
-                print(f"  WARNING: could not fully remove {path}: {e}")
+                if verbose:
+                    print(f"  Old install left in place (some files locked); files will be overlaid.")
+                return False
+    return False
+
+
+def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, int]:
+    """Walk ``src`` and copy every file into ``dst``, overwriting.
+
+    Tolerant of locked files: per-file errors are reported and counted but
+    don't abort the whole deploy. Returns ``(copied, skipped)``. Mirrors
+    ``shutil.copytree`` filtering semantics via ``ignore_func``.
+    """
+    copied = 0
+    skipped = 0
+    for root, dirs, files in os.walk(src):
+        rel_root = Path(root).relative_to(src)
+        # Apply ignore filter on dirnames in-place so os.walk skips them.
+        ignored_here = ignore_func(root, list(dirs) + list(files))
+        dirs[:]  = [d for d in dirs  if d not in ignored_here]
+        files    = [f for f in files if f not in ignored_here]
+
+        target_root = dst / rel_root
+        try:
+            target_root.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"  WARNING: cannot create {target_root}: {e}")
+            skipped += len(files)
+            continue
+
+        for fname in files:
+            src_file = Path(root) / fname
+            dst_file = target_root / fname
+            try:
+                shutil.copy2(src_file, dst_file)
+                copied += 1
+            except Exception as e:
+                # Most common reason: Fusion has the file open (logs).
+                print(f"  SKIP {dst_file.relative_to(dst)}: {e}")
+                skipped += 1
+    return copied, skipped
 
 def scrub_source(base: Path):
     """Recursively delete __pycache__ and .pyc files in the source tree."""
@@ -314,21 +342,24 @@ def deploy_local():
     # Scrub source
     scrub_source(SRC_DIR)
 
-    # Remove old install
+    # Remove old install (silent fall-through to overlay if locked)
     if DEST_DIR.exists():
-        print("  Removing old install...")
         clean_dir(DEST_DIR)
 
-    # Copy. shutil.copytree mirrors the whole repo, so styles/, fonts under
-    # b-spline-gen/html/fonts/, and every command's HTML/JS/CSS land in place
-    # automatically. The CSS files reference fonts via opentype.js (in
-    # editor-geometry.js) using "../fonts/<file>.ttf" relative to the editor
-    # JS — that resolves correctly inside the deployed add-in.
+    # Copy. copy_overlay mirrors the whole repo file-by-file, so styles/,
+    # fonts under b-spline-gen/html/fonts/, and every command's HTML/JS/CSS
+    # land in place automatically. Per-file errors (e.g. Fusion holding a
+    # log file open) are skipped without aborting the deploy.
     print("  Copying files...")
     try:
-        shutil.copytree(SRC_DIR, DEST_DIR, ignore=ignore_for_copy)
+        copied, skipped = copy_overlay(SRC_DIR, DEST_DIR, ignore_for_copy)
+        if skipped:
+            print(f"  Copied {copied} files, skipped {skipped} (likely locked by a running Fusion addin).")
+            print(f"  Tip: stop the addin in Fusion (Tools -> Add-Ins -> Stop) before redeploying for a clean copy.")
+        else:
+            print(f"  Copied {copied} files.")
     except Exception as e:
-        print(f"  ERROR: copytree failed: {e}")
+        print(f"  ERROR: copy_overlay failed: {e}")
         sys.exit(1)
 
     # Write project_path.json handshake for the frame-builder sub-module so
@@ -389,13 +420,11 @@ def _write_fb_handshake():
 # ---------------------------------------------------------------------------
 
 def _usage():
-    print("Usage: python DEPLOY_bspline-frame-builder.py [all|bbf|cleanup]")
-    print("  all        Remove legacy standalone add-in folders, then deploy the")
-    print("             unified bspline-frame-builder add-in (contains template-maker,")
-    print("             fusion-inspector, and fusion-exporter as sub-modules).")
-    print("  bbf        Deploy bspline-frame-builder only (skip cleanup).")
-    print("  cleanup    Only remove the legacy standalone add-in folders,")
-    print("             don't deploy anything.")
+    print("Usage: python DEPLOY_bspline-frame-builder.py [all|bbf]")
+    print("  all        Deploy the unified bspline-frame-builder add-in (contains")
+    print("             template-maker, fusion-inspector, and fusion-exporter as")
+    print("             sub-modules).")
+    print("  bbf        Same as 'all' (deploy bspline-frame-builder).")
     print("\nLegacy targets (template-maker | fusion-inspector | fusion-exporter)")
     print("are still supported for emergency debug but install those modules as")
     print("SEPARATE Fusion add-ins, which conflicts with the unified add-in.")
@@ -408,9 +437,6 @@ if __name__ == "__main__":
         success = deploy_all()
     elif target in {"bbf", "bspline", "framebuilder", "frame-builder", "bspline-frame-builder", "local"}:
         success = deploy_local()
-    elif target in {"cleanup", "clean"}:
-        cleanup_legacy_standalone_addins()
-        success = True
     elif target in {"template-maker", "template_maker", "template"}:
         print("WARNING: installing template-maker as a SEPARATE add-in.")
         print("         The unified bspline-frame-builder add-in already contains it.")

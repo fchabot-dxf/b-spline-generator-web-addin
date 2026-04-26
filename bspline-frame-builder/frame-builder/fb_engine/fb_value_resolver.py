@@ -102,8 +102,14 @@ class FBValueResolver:
             return None
 
     def determine_unit(self, name):
-        """Helper to assign correct Fusion units based on parameter typing."""
+        """Helper to assign correct Fusion units based on parameter typing.
+
+        Length params display in inches to match the imperial-authoring
+        convention used by template_data.py and the b-spline add-in.
+        Fusion still stores everything in cm internally — this only affects
+        the user-visible display unit on the userParameter.
+        """
         if 'Taper' in name:
             return 'deg'
-        return 'cm'
+        return 'in'
 

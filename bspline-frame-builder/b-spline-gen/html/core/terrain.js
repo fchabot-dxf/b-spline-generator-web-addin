@@ -24,6 +24,8 @@ export function generateHeightmap(params, stampParams = null) {
     roughness      = 0.5,
     edgeMargin     = 0,
     symmetry       = 'none',
+    symOffsetX     = 0,
+    symOffsetY     = 0,
     noiseType      = 'simplex',
     smoothIntensity = 0,
     smoothRadius   = 1.2,
@@ -51,9 +53,14 @@ export function generateHeightmap(params, stampParams = null) {
         const u = i / (nx - 1);
         const v = j / (nz - 1);
 
+        // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
+        // through center (legacy behavior). The fold output is scaled by 2
+        // so the noise frequency stays consistent with the un-offset case.
         let su = u, sv = v;
-        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(su * 2 - 1);
-        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(sv * 2 - 1);
+        const mx = 0.5 + symOffsetX;
+        const my = 0.5 + symOffsetY;
+        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(u - mx) * 2;
+        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(v - my) * 2;
 
         // ── Pass 1: Fine Detail (Strategy Pattern) ──
         // Skeleton-isolation mode bypasses the filter with a flat 0.5,
@@ -66,28 +73,34 @@ export function generateHeightmap(params, stampParams = null) {
         let fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
 
         // ── Detail Modulation (Spatial Density) ──
+        //   detailDensity   (0..1) spatial mask: 1 = full detail everywhere,
+        //                          lower values carve out "smooth" patches.
+        //   detailStrength  (0..1) floor for the smooth (empty) zones — controls
+        //                          how much detail residue remains where the
+        //                          density mask carves out. 0 = fully smooth
+        //                          empty zones, 1 = empty zones get full detail
+        //                          (effectively cancels the mask).
+        //   detailDensityRespectSymmetry — when ON, the spatial mask uses the
+        //                          symmetry-folded coords (mask is mirrored).
+        //                          Only visible when detailDensity < 1.
         let detailIntensity = 1.0;
         if (params.detailDensity < 0.99) {
-            let msu = su, msv = sv;
-            if (params.detailDensityRespectSymmetry) {
-              // Symmetry is already calculated in su, sv
-              msu = su; msv = sv;
-            } else {
-              // If we DON'T respect symmetry for modulation, use raw u, v
-              msu = u; msv = v;
-            }
-            const modFreq = 2.5; // Frequency high enough to create several patches
-            // Boost contrast of modulation noise to fill 0..1 range better
+            // Use folded coords (msu=su, msv=sv) when respecting symmetry,
+            // otherwise raw u,v so the mask breaks symmetry intentionally.
+            const msu = params.detailDensityRespectSymmetry ? su : u;
+            const msv = params.detailDensityRespectSymmetry ? sv : v;
+            const modFreq = 2.5;
             let mVal = (noiseCoarse.fbm(msu * modFreq, msv * modFreq, 2) * 1.5 + 1) * 0.5;
             mVal = Math.max(0, Math.min(1, mVal));
-            
-            // Map 0..1 density to a threshold that allows detail to appear even at 0.9+
             const threshold = 1.0 - params.detailDensity;
             detailIntensity = smoothstep(threshold - 0.05, threshold + 0.05, mVal);
         }
-        
-        // Detail Strength (Smooth Area Detail) — how much detail is left in the "smooth" zones
-        const effectiveDetail = detailIntensity + (1.0 - detailIntensity) * (params.detailStrength || 0);
+
+        // Empty-zone floor: lift the masked-out areas back up by detailStrength.
+        // detailIntensity = 1 inside detailed zones (no change), and where the
+        // mask carves out (detailIntensity = 0), the floor is detailStrength.
+        const strength = (params.detailStrength != null) ? params.detailStrength : 0.25;
+        const effectiveDetail = detailIntensity + (1.0 - detailIntensity) * strength;
         fine = lerp(0.5, fine, effectiveDetail);
 
         // ── Pass 2: Coarse Redistribution ──────
@@ -143,8 +156,13 @@ export function generateHeightmap(params, stampParams = null) {
         // smooth so we don't introduce sharp contour lines into the heightmap.
         const density = (params.density != null) ? params.density : 1.0;
         if (density < 0.999) {
+            // Wider band = no pop-in edges. Band is widest near density=0.5
+            // (where the most material is in transition) and tapers near 0/1
+            // so the extremes stay decisive.
             const threshold = 1.0 - density;
-            coarse = smoothstep(threshold - 0.05, threshold + 0.05, coarse) * coarse;
+            const band = 0.10 + 0.20 * (1.0 - Math.abs(density - 0.5) * 2.0);
+            const mask = smoothstep(threshold - band, threshold + band, coarse);
+            coarse = mask * coarse;
         }
 
         const LOW = 0.22, PEAK_BASE = 0.58, PEAK_RNG = 0.42;
@@ -173,12 +191,15 @@ export function generateHeightmap(params, stampParams = null) {
     
     let centres = lcgPoints(seed ^ 0xdeadbeef, count);
     
-    // Respect Symmetry for smoothing centers
+    // Respect Symmetry for smoothing centers (also honors symOffsetX/Y).
     if (params.smoothRespectSymmetry && symmetry !== 'none') {
         const symCentres = [];
+        const mxL = 0.5 + symOffsetX;
+        const myL = 0.5 + symOffsetY;
         for (const c of centres) {
             symCentres.push(c);
-            const mi = 1.0 - c.u, mj = 1.0 - c.v;
+            const mi = 2 * mxL - c.u;
+            const mj = 2 * myL - c.v;
             if (symmetry === 'x' || symmetry === 'radial') symCentres.push({ u: mi, v: c.v });
             if (symmetry === 'y' || symmetry === 'radial') symCentres.push({ u: c.u, v: mj });
             if (symmetry === 'radial') symCentres.push({ u: mi, v: mj });
@@ -228,8 +249,19 @@ function applyVectorDrape(heights, mask, depth, profile = 'vbit') {
 function lerp(a, b, t) { return a + (b - a) * t; }
 
 function applyContrast(h, strength) {
-  const x = h * 2 - 1;
-  return (Math.sign(x) * Math.pow(Math.abs(x), 1 / strength) + 1) * 0.5;
+  // Smooth S-curve, no cusp at midline. The previous formulation used
+  // Math.pow(|x|, 1/strength) which has an infinite slope at x=0 — every
+  // time the seed value crossed 0.5 it baked a sharp ledge into the
+  // heightfield, showing up as parallel grooves on slopes (worst on
+  // Ridged seeds where zero-crossings are dense).
+  //
+  // This rational sigmoid is C^∞ everywhere, identity at strength=1,
+  // and visually matches the old curve's character for strength 1.5..4.
+  if (Math.abs(strength - 1.0) < 1e-4) return h;
+  const x = h * 2 - 1;            // [-1, 1]
+  const k = strength - 1.0;       // 0 = identity, > 0 = S-curve
+  const y = x * (1 + k) / (1 + k * x * x);
+  return y * 0.5 + 0.5;
 }
 
 function edgeFade(t, margin) {

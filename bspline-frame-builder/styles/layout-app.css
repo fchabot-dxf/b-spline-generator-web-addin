@@ -339,8 +339,15 @@ aside {
 
 /* =========================================================================
    9. Resizer
+   -------------------------------------------------------------------------
+   Scoped to the bare `.app` layout (index.html). The b-spline-gen palette
+   wraps its grid in `.cad-main-content.app` and supplies its own
+   `.cad-resizer` styling, so we explicitly exclude that container here to
+   avoid the id-specificity collision that previously squashed the handle
+   into a tiny stranded pill (and the responsive @media block below kicked
+   it into row 3 of a 1-row grid).
    ========================================================================= */
-#resizer {
+.app:not(.cad-main-content) > #resizer {
     grid-column: 2;
     grid-row: 2;
     background: var(--surface2);
@@ -356,13 +363,13 @@ aside {
     transition: background 0.1s;
 }
 
-#resizer:hover,
-#resizer:active {
+.app:not(.cad-main-content) > #resizer:hover,
+.app:not(.cad-main-content) > #resizer:active {
     background: #d4d4d4;
 }
 
 /* Little grip lines */
-#resizer::after {
+.app:not(.cad-main-content) > #resizer::after {
     content: '';
     display: block;
     width: 2px;
@@ -386,19 +393,19 @@ aside {
    top-to-bottom under the preview, instead of being squished into a
    320px column. */
 @media (max-width: 700px) {
-    .app {
+    .app:not(.cad-main-content) {
         --sidebar-width: 100%;
         --preview-height: 40vh;
         grid-template-columns: 1fr !important;
         grid-template-rows: auto var(--preview-height) 12px 1fr auto !important;
     }
 
-    header {
+    .app:not(.cad-main-content) > header {
         grid-column: 1 !important;
         grid-row: 1 !important;
     }
 
-    #previewArea {
+    .app:not(.cad-main-content) > #previewArea {
         grid-column: 1 !important;
         grid-row: 2 !important;
         border-left: none;
@@ -406,7 +413,7 @@ aside {
         min-height: 0;
     }
 
-    #resizer {
+    .app:not(.cad-main-content) > #resizer {
         grid-column: 1 !important;
         grid-row: 3 !important;
         width: 100% !important;
@@ -418,12 +425,12 @@ aside {
         border-bottom: 1px solid var(--border);
     }
 
-    #resizer::after {
+    .app:not(.cad-main-content) > #resizer::after {
         width: 32px;
         height: 2px;
     }
 
-    aside {
+    .app:not(.cad-main-content) > aside {
         grid-column: 1 !important;
         grid-row: 4 !important;
         width: 100%;
@@ -432,7 +439,7 @@ aside {
         padding: 12px 12px 60px 12px;
     }
 
-    #bottomStatusBar {
+    .app:not(.cad-main-content) > #bottomStatusBar {
         grid-column: 1 !important;
         grid-row: 5 !important;
     }
@@ -449,10 +456,10 @@ aside {
 }
 
 @media (max-width: 400px) {
-    .app {
+    .app:not(.cad-main-content) {
         --preview-height: 35vh;
     }
-    header {
+    .app:not(.cad-main-content) > header {
         padding: 8px 10px;
         gap: 8px;
     }

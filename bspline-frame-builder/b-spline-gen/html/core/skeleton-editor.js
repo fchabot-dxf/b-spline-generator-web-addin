@@ -8,13 +8,10 @@
  * applied here: the editor's job is to let you see the seed's character
  * in isolation.
  *
- * Two render modes (toggle in the modal sidebar):
- *   - Shaded relief    — same lighting as render-topview.js for visual
- *                         continuity with the rest of the app.
- *   - Vectors Only     — marching-squares contour lines (iso-height) on a
- *                         clean background. Topo-map feel; useful for
- *                         studying ridge/valley structure without the
- *                         model getting in the way.
+ * Render mode: marching-squares contour lines (iso-height) on a clean
+ * background. Topo-map feel; the relief/model view was removed because
+ * the seed editor's purpose is studying vector structure — the main 3D
+ * preview already covers the shaded view.
  *
  * Exposes window.skeletonEditor with open() / close() (kept for back-compat).
  */
@@ -30,7 +27,6 @@ let _state = {
     ctx: null,
     renderTimer: null,
     boundResize: null,
-    vectorsOnly: false,
 };
 
 // SEED-panel param keys whose changes should trigger a canvas re-render
@@ -100,31 +96,12 @@ export function initSkeletonEditor() {
         }
     }
 
-    // Vectors Only toggle — flips the canvas between shaded relief and
-    // contour lines.
-    const vectorsOnlyEl = document.getElementById('skelVectorsOnly');
-    if (vectorsOnlyEl) {
-        vectorsOnlyEl.addEventListener('change', () => {
-            _state.vectorsOnly = vectorsOnlyEl.checked;
-            updateViewLabel();
-            scheduleRender();
-        });
-    }
-
     window.skeletonEditor = { open, close, isOpen: () => _state.open };
 
     // Close on Escape.
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && _state.open) close();
     });
-}
-
-function updateViewLabel() {
-    const lbl = document.getElementById('skelEditorViewLabel');
-    if (!lbl) return;
-    lbl.textContent = _state.vectorsOnly
-        ? 'Seed (contour lines)'
-        : 'Seed (shaded relief)';
 }
 
 function open() {
@@ -144,10 +121,9 @@ function open() {
         }
     }
 
-    // Sync vectors-only toggle from current state.
-    const vectorsOnlyEl = document.getElementById('skelVectorsOnly');
-    if (vectorsOnlyEl) vectorsOnlyEl.checked = _state.vectorsOnly;
-    updateViewLabel();
+    // Set the view label once — there's only one mode now.
+    const lbl = document.getElementById('skelEditorViewLabel');
+    if (lbl) lbl.textContent = 'Seed (contour lines)';
 
     modal.style.display = 'flex';
     _state.open = true;
@@ -220,55 +196,6 @@ function sampleSeedField(nx, nz) {
         }
     }
     return field;
-}
-
-/**
- * Render the seed field as shaded relief. Same lighting as render-topview.js
- * for visual continuity with the main 3D preview.
- */
-function renderShadedRelief(ctx, field, nx, nz) {
-    const imgData = ctx.createImageData(nx, nz);
-    const data = imgData.data;
-
-    // Lighting setup (matches render-topview.js).
-    const lx = -1.0, ly = 1.0, lz = 0.8;
-    const lmag = Math.sqrt(lx * lx + ly * ly + lz * lz);
-    const nlx = lx / lmag, nly = ly / lmag, nlz = lz / lmag;
-
-    for (let py = 0; py < nz; py++) {
-        for (let px = 0; px < nx; px++) {
-            const k = py * nx + px;
-            let dot = 0.5;
-            let cavity = 0;
-
-            if (px > 0 && px < nx - 1 && py > 0 && py < nz - 1) {
-                const hL = field[k - 1];
-                const hR = field[k + 1];
-                const hU = field[k - nx];
-                const hD = field[k + nx];
-
-                const dzdx = (hR - hL) * 35.0;
-                const dzdy = (hD - hU) * 35.0;
-                const nx_ = -dzdx, ny_ = -dzdy, nz_ = 1.0;
-                const nmag = Math.sqrt(nx_ * nx_ + ny_ * ny_ + nz_ * nz_);
-                dot = (nx_ / nmag) * nlx + (ny_ / nmag) * nly + (nz_ / nmag) * nlz;
-
-                const h = field[k];
-                const avg = (hL + hR + hU + hD) * 0.25;
-                cavity = (h - avg) * 30.0;
-            }
-
-            const off = k * 4;
-            const shade = Math.max(0, Math.min(255, 25 + Math.max(0, dot) * 200 + cavity * 55));
-
-            data[off]     = Math.min(255, shade * 0.94);
-            data[off + 1] = Math.min(255, shade * 0.96);
-            data[off + 2] = Math.min(255, shade * 1.06);
-            data[off + 3] = 255;
-        }
-    }
-
-    ctx.putImageData(imgData, 0, 0);
 }
 
 /**
@@ -397,12 +324,7 @@ function render() {
     }
 
     const field = sampleSeedField(nx, nz);
-
-    if (_state.vectorsOnly) {
-        renderContours(ctx, field, nx, nz);
-    } else {
-        renderShadedRelief(ctx, field, nx, nz);
-    }
+    renderContours(ctx, field, nx, nz);
 }
 
 // Re-export for explicit imports if main.js prefers named imports.

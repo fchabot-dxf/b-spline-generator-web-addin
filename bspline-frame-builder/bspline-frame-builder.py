@@ -1,9 +1,10 @@
 # Entry point for the unified Fusion 360 add-in: bspline-frame-builder
 #
 # Wiring map:
-#   bsplineCommand          -> b-spline-gen   CommandCreatedHandler (SVG / B-Spline palette)
-#   hybridBuilderCommand    -> frame-builder  ui/hybrid_builder_ui.py (Unified Palette)
-#   bsplineFbReloadCommand  -> deferred refresh (stop + bootstrap + run) via CustomEvent
+#   bsplineCommand              -> b-spline-gen   CommandCreatedHandler (SVG / B-Spline palette)
+#   frameSketchBuilderCommand   -> frame-builder  ui/sketch_builder_ui.py (Sketch Builder palette)
+#   frameSolidBuilderCommand    -> frame-builder  ui/solid_builder_ui.py  (Extrude Frame palette)
+#   bsplineFbReloadCommand      -> deferred refresh (stop + bootstrap + run) via CustomEvent
 #
 # Lifecycle rules (enforced below):
 #   * Sub-module loading happens inside `run()` so every Stop -> Start reloads the
@@ -25,7 +26,8 @@ sys.dont_write_bytecode = True
 handlers          = []       # Command / event handlers from the current run cycle
 _refresh_handlers = []       # CustomEvent handlers (kept alive for whole session)
 _bs               = None     # b-spline-gen module (reloaded every run)
-_fbh              = None     # hybrid_builder_ui module (reloaded every run)
+_fb_sketch        = None     # sketch_builder_ui module (reloaded every run)
+_fb_solid         = None     # solid_builder_ui module (reloaded every run)
 _engine           = None     # frame_engine module (reloaded every run)
 _tm               = None     # template-maker module (reloaded every run)
 _fi               = None     # fusion-inspector module (reloaded every run)
@@ -120,7 +122,8 @@ def _find_related_addin_modules():
     current_path = _normalize_module_path(__file__)
     suffixes = [
         os.path.normcase(os.path.normpath(os.path.join('b-spline-gen', 'b-spline-gen.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('frame-builder', 'ui', 'hybrid_builder_ui.py'))),
+        os.path.normcase(os.path.normpath(os.path.join('frame-builder', 'ui', 'sketch_builder_ui.py'))),
+        os.path.normcase(os.path.normpath(os.path.join('frame-builder', 'ui', 'solid_builder_ui.py'))),
         os.path.normcase(os.path.normpath(os.path.join('frame-inspector', 'fusion-inspector.py'))),
         os.path.normcase(os.path.normpath(os.path.join('fusion-exporter', 'fusion-exporter.py'))),
         os.path.normcase(os.path.normpath(os.path.join('template-maker', 'template-maker.py'))),
@@ -166,7 +169,7 @@ def _run_related_addins(modules):
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
-    global _bs, _fbh, _engine, _tm, _fi, _fe, _diag_logger
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _diag_logger
 
     # --- Logger ---
     _utils_path = os.path.join(_addin_root, 'frame-builder', 'fb_utils')
@@ -180,7 +183,9 @@ def _bootstrap():
     # --- Clear cached sub-module state ---
     _force_wipe([
         'bspline_ui',
-        'hybrid_builder_ui',
+        'sketch_builder_ui',
+        'solid_builder_ui',
+        'hybrid_builder_ui',  # legacy — purge if a previous install still cached it
         'frame_engine_core',
         'fb_engine.frame_engine',
         'fb_engine',
@@ -204,11 +209,13 @@ def _bootstrap():
     eng_spec.loader.exec_module(_engine)
 
     # --- UI sub-modules ---
-    _bs  = _load_submodule('bspline_ui',        'b-spline-gen',      'b-spline-gen.py')
-    _fbh = _load_submodule('hybrid_builder_ui', 'frame-builder/ui',  'hybrid_builder_ui.py')
+    _bs        = _load_submodule('bspline_ui',        'b-spline-gen',     'b-spline-gen.py')
+    _fb_sketch = _load_submodule('sketch_builder_ui', 'frame-builder/ui', 'sketch_builder_ui.py')
+    _fb_solid  = _load_submodule('solid_builder_ui',  'frame-builder/ui', 'solid_builder_ui.py')
 
-    # Inject the fresh engine object
-    _fbh.frame_engine = _engine
+    # Inject the fresh engine object into both palettes
+    _fb_sketch.frame_engine = _engine
+    _fb_solid.frame_engine  = _engine
 
     # --- Consolidated former-standalone add-ins ---
     # These three modules used to install as separate Fusion add-ins. They now
@@ -259,7 +266,7 @@ def _bootstrap():
 # ── Submodule teardown (called from stop) ─────────────────────────────────────
 def _teardown_submodules():
     """Release resources held by loaded sub-modules before we drop our refs."""
-    global _bs, _fbh, _engine, _tm, _fi, _fe
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe
 
     app = None
     try:
@@ -267,26 +274,34 @@ def _teardown_submodules():
     except Exception:
         pass
 
-    # 1. Hybrid Builder — remove its app.documentActivated subscription and clear
+    # 1. Sketch Builder — remove its app.documentActivated subscription and clear
     #    its own handlers list. Those survive module reloads otherwise.
-    if _fbh is not None:
+    if _fb_sketch is not None:
         try:
-            doc_handler = getattr(_fbh, '_doc_activated_handler', None)
+            doc_handler = getattr(_fb_sketch, '_doc_activated_handler', None)
             if doc_handler is not None and app is not None:
                 try:
                     app.documentActivated.remove(doc_handler)
                 except Exception:
                     pass
                 try:
-                    setattr(_fbh, '_doc_activated_handler', None)
+                    setattr(_fb_sketch, '_doc_activated_handler', None)
                 except Exception:
                     pass
         except Exception:
-            _log_error('teardown: hybrid doc handler\n' + traceback.format_exc())
+            _log_error('teardown: sketch doc handler\n' + traceback.format_exc())
 
         try:
-            if hasattr(_fbh, 'handlers'):
-                _fbh.handlers.clear()
+            if hasattr(_fb_sketch, 'handlers'):
+                _fb_sketch.handlers.clear()
+        except Exception:
+            pass
+
+    # 1b. Solid Builder — no documentActivated subscription, just clear handlers.
+    if _fb_solid is not None:
+        try:
+            if hasattr(_fb_solid, 'handlers'):
+                _fb_solid.handlers.clear()
         except Exception:
             pass
 
@@ -316,7 +331,8 @@ def _teardown_submodules():
             _log_error(f'teardown: {_sub_label} stop() failed\n' + traceback.format_exc())
 
     _bs = None
-    _fbh = None
+    _fb_sketch = None
+    _fb_solid = None
     _engine = None
     _tm = None
     _fi = None
@@ -377,9 +393,10 @@ class _ReloadCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 
 # ── Resource paths (evaluated lazily inside run) ──────────────────────────────
 def _res_paths():
-    fb_res_so = os.path.join(_addin_root, 'frame-builder', 'resources', 'SolidCommand')
-    bs_res    = os.path.join(_addin_root, 'b-spline-gen', 'resources')
-    return fb_res_so, bs_res
+    fb_res_sketch = os.path.join(_addin_root, 'frame-builder', 'resources', 'SketchCommand')
+    fb_res_solid  = os.path.join(_addin_root, 'frame-builder', 'resources', 'SolidCommand')
+    bs_res        = os.path.join(_addin_root, 'b-spline-gen', 'resources')
+    return fb_res_sketch, fb_res_solid, bs_res
 
 
 # ── run() ─────────────────────────────────────────────────────────────────────
@@ -402,13 +419,19 @@ def run(context):
                 ui.messageBox('Frame Builder bootstrap failed:\n' + tb)
             return
 
-        if not _bs or not _fbh:
-            _log_error(f'Sub-modules did not load (BS: {bool(_bs)}, FBH: {bool(_fbh)})')
+        if not _bs or not _fb_sketch or not _fb_solid:
+            _log_error(
+                f'Sub-modules did not load (BS: {bool(_bs)}, '
+                f'SKETCH: {bool(_fb_sketch)}, SOLID: {bool(_fb_solid)})'
+            )
             return
 
         # 3. Kill any leftover palettes so the new bridge/HTML is picked up.
-        for pid in (getattr(_fbh, 'PALETTE_ID', None),
-                    getattr(_bs,  'PALETTE_ID', None)):
+        #    Includes the legacy hybrid palette ID so old installs purge cleanly.
+        for pid in (getattr(_fb_sketch, 'PALETTE_ID', None),
+                    getattr(_fb_solid,  'PALETTE_ID', None),
+                    getattr(_bs,        'PALETTE_ID', None),
+                    'hybridFrameBuilderPalette'):
             if not pid:
                 continue
             try:
@@ -419,7 +442,7 @@ def run(context):
                 pass
 
         cmd_defs = ui.commandDefinitions
-        fb_res_so, bs_res = _res_paths()
+        fb_res_sketch, fb_res_solid, bs_res = _res_paths()
 
         COMMANDS = [
             {
@@ -430,16 +453,28 @@ def run(context):
                 'handler_factory': lambda: _bs.CommandCreatedHandler(),
             },
             {
-                'id':              'hybridBuilderCommand',
-                'name':            'Frame Builder',
-                'tooltip':         'Unified Hybrid Frame Builder (Sketch + Solid)',
-                'res_path':        fb_res_so,
-                'handler_factory': lambda: _fbh.CommandCreatedHandler(),
+                'id':              'frameSketchBuilderCommand',
+                'name':            'Sketch Builder',
+                'tooltip':         'Build parametric skeleton sketch from a template',
+                'res_path':        fb_res_sketch,
+                'handler_factory': lambda: _fb_sketch.CommandCreatedHandler(),
+            },
+            {
+                'id':              'frameSolidBuilderCommand',
+                'name':            'Extrude Frame',
+                'tooltip':         'Extrude the frame outline onto a target face',
+                'res_path':        fb_res_solid,
+                'handler_factory': lambda: _fb_solid.CommandCreatedHandler(),
             },
         ]
 
-        # 4. Purge any stale command definitions for our IDs (including the reload cmd).
-        for cid in ('bsplineCommand', 'hybridBuilderCommand', RELOAD_COMMAND_ID):
+        # 4. Purge any stale command definitions for our IDs (including the reload cmd
+        #    and the legacy hybridBuilderCommand from prior installs).
+        for cid in ('bsplineCommand',
+                    'frameSketchBuilderCommand',
+                    'frameSolidBuilderCommand',
+                    'hybridBuilderCommand',
+                    RELOAD_COMMAND_ID):
             try:
                 existing = cmd_defs.itemById(cid)
                 if existing:
@@ -602,7 +637,7 @@ def stop(context):
                     for p in tab.toolbarPanels:
                         if p.id.startswith(PANEL_ID):
                             panels_to_delete.append(p)
-                    
+
                     for panel in panels_to_delete:
                         for _ in range(50):      # safety counter
                             if panel.controls.count == 0:
@@ -620,8 +655,13 @@ def stop(context):
         except Exception:
             _log_error('panel cleanup failed\n' + traceback.format_exc())
 
-        # 3. Remove our command definitions.
-        for cid in ('bsplineCommand', 'hybridBuilderCommand', RELOAD_COMMAND_ID):
+        # 3. Remove our command definitions (includes legacy hybridBuilderCommand
+        #    so old installs are purged when the new build first runs).
+        for cid in ('bsplineCommand',
+                    'frameSketchBuilderCommand',
+                    'frameSolidBuilderCommand',
+                    'hybridBuilderCommand',
+                    RELOAD_COMMAND_ID):
             try:
                 cd = cmd_defs.itemById(cid)
                 if cd:
@@ -629,8 +669,11 @@ def stop(context):
             except Exception:
                 pass
 
-        # 4. Close any palettes that are still open.
-        for pid in ('fusionHybridPalette', 'hybridFrameBuilderPalette'):
+        # 4. Close any palettes that are still open (includes legacy hybrid IDs).
+        for pid in ('fusionHybridPalette',
+                    'hybridFrameBuilderPalette',
+                    'frameSketchBuilderPalette',
+                    'frameSolidBuilderPalette'):
             try:
                 pal = ui.palettes.itemById(pid)
                 if pal:

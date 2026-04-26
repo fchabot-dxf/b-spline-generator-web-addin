@@ -9,7 +9,7 @@ import { AppState } from './app-state.js';
 const immediateRebuildParams = [
   'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType',
   'seedType', 'seedOffsetX', 'seedOffsetY', 'seedRotation',
-  'symmetry', 'carveZ', 'scale', 'macroScale', 'warpIntensity',
+  'symmetry', 'symOffsetX', 'symOffsetY', 'carveZ', 'scale', 'macroScale', 'warpIntensity',
   'peakShape', 'density', 'clustering',
   'thickenEnabled', 'thickness', 'thickenDir', 'thickenMode',
   'edgeMarginIn', 'stampDepth', 'stampBlur', 'stampSmoothingRadius',
@@ -50,6 +50,11 @@ export function applyParam(key, value) {
     console.log(`[DEBUG] applyParam triggers updatePreviewSculptMode: key=${key}, value=${value}`);
     updatePreviewSculptMode(AppState.preview, scheduleRebuild);
     updateSculptToolButtons();
+  }
+
+  // Live-update sculpt mirror axes when symmetry or its offsets change.
+  if (key === 'symmetry' || key === 'symOffsetX' || key === 'symOffsetY') {
+    updatePreviewSculptMode(AppState.preview, scheduleRebuild);
   }
 
   if (key === 'showMesh') {

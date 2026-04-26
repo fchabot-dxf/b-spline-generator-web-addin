@@ -200,23 +200,63 @@ def _remove_last_import():
 
 
 def _get_current_board_size():
-    """Queries the design for widthIn/heightIn to sync the UI."""
+    """Queries the design for widthIn/heightIn to sync the UI.
+
+    Only returns keys that actually exist in the design. If neither
+    parameter exists, returns an empty dict so the palette keeps its
+    last-session / default values instead of being reset to placeholders.
+    """
+    out = {}
     try:
         app = adsk.core.Application.get()
         design = adsk.fusion.Design.cast(app.activeProduct)
-        if not design: return {"widthIn": 7, "heightIn": 9}
+        if not design:
+            return out
         w_param = design.allParameters.itemByName('widthIn') or design.allParameters.itemByName('BSG_widthIn')
         h_param = design.allParameters.itemByName('heightIn') or design.allParameters.itemByName('BSG_heightIn')
-        return {
-            "widthIn": w_param.value / 2.54 if w_param else 7,
-            "heightIn": h_param.value / 2.54 if h_param else 9
-        }
-    except: return {"widthIn": 7, "heightIn": 9}
+        if w_param:
+            out['widthIn'] = w_param.value / 2.54
+        if h_param:
+            out['heightIn'] = h_param.value / 2.54
+    except Exception as e:
+        _log(f"_get_current_board_size failed: {e}")
+    return out
+
+def _expression_is_numeric(expr):
+    """Return True if a Fusion parameter expression is a plain number
+    (optionally followed by a unit suffix like ' in' or ' mm'), and False
+    if it references other parameters or contains arithmetic ops.
+
+    Used to decide whether a widthIn/heightIn expression in the design is
+    a literal value (safe to overwrite) or a parametric formula like
+    'd3 - 1' that the user wants preserved.
+    """
+    if not expr:
+        return True
+    s = str(expr).strip()
+    # Strip a trailing unit suffix (Fusion stores expressions like '7 in').
+    for unit in (' in', ' mm', ' cm', ' m', ' ft'):
+        if s.endswith(unit):
+            s = s[:-len(unit)].strip()
+            break
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
 
 def _sync_user_parameters(design, params):
     """
     Creates or updates Fusion 360 User Parameters based on generator settings.
     Prefixes names with 'BSG_' to avoid collisions.
+
+    Expression-preservation rule for widthIn/heightIn: if the parameter
+    already has a non-numeric expression (e.g. 'd3 - 1') AND the palette's
+    value matches the resolved expression value, we skip the write so the
+    parametric link survives. If the palette value differs, we treat that
+    as a manual user override and overwrite the expression with the new
+    number — restoring the bspline tool as the source of truth.
     """
     if not design or not params: return
 
@@ -227,6 +267,7 @@ def _sync_user_parameters(design, params):
     }
 
     user_params = design.userParameters
+    EPS_IN = 0.001  # inch tolerance for "values match"
 
     for key, (f_name, unit) in param_map.items():
         if key in params:
@@ -234,7 +275,17 @@ def _sync_user_parameters(design, params):
             try:
                 existing = user_params.itemByName(f_name)
                 if existing:
-                    existing.expression = str(val)
+                    skip_write = False
+                    if not _expression_is_numeric(existing.expression):
+                        # Resolved value comes back from Fusion in cm.
+                        resolved_in = existing.value / 2.54
+                        if abs(resolved_in - float(val)) < EPS_IN:
+                            # Palette already matches the formula — preserve it.
+                            skip_write = True
+                            _log(f"Preserving expression for {f_name}: '{existing.expression}' "
+                                 f"(resolved {resolved_in:.4f}in matches palette {float(val):.4f}in)")
+                    if not skip_write:
+                        existing.expression = str(val)
                     param = existing
                 else:
                     val_input = adsk.core.ValueInput.createByString(str(val))

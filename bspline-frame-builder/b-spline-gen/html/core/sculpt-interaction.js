@@ -21,21 +21,29 @@ let _lastSculptRebuildTime = 0;
 /**
  * Compute all grid positions that should receive a stroke given a primary
  * position (ci, cj) and the current terrain symmetry setting.
+ *
+ * Mirror axis can be offset from center by symOffsetX/Y (P state, normalized
+ * panel units in [-0.45..0.45]). Mirror index is `2*centerI - ci` clamped
+ * to grid bounds.
  */
-export function mirroredPositions(ci, cj, nx, nz, symmetry) {
+export function mirroredPositions(ci, cj, nx, nz, symmetry, symOffsetX = 0, symOffsetY = 0) {
     const positions = [{ ci, cj }];
     if (!symmetry || symmetry === 'none') return positions;
 
-    const mi = nx - 1 - ci;
-    const mj = nz - 1 - cj;
+    const centerI = (nx - 1) * (0.5 + symOffsetX);
+    const centerJ = (nz - 1) * (0.5 + symOffsetY);
+    const mi = Math.round(2 * centerI - ci);
+    const mj = Math.round(2 * centerJ - cj);
+    const inBoundsI = mi >= 0 && mi < nx;
+    const inBoundsJ = mj >= 0 && mj < nz;
 
     if (symmetry === 'x' || symmetry === 'radial') {
-        if (mi !== ci) positions.push({ ci: mi, cj });
+        if (inBoundsI && mi !== ci) positions.push({ ci: mi, cj });
     }
     if (symmetry === 'y' || symmetry === 'radial') {
-        if (mj !== cj) positions.push({ ci, cj: mj });
+        if (inBoundsJ && mj !== cj) positions.push({ ci, cj: mj });
     }
-    if (symmetry === 'radial' && mi !== ci && mj !== cj) {
+    if (symmetry === 'radial' && inBoundsI && inBoundsJ && mi !== ci && mj !== cj) {
         positions.push({ ci: mi, cj: mj });
     }
     return positions;
@@ -52,7 +60,9 @@ export function onSculptStroke(layer, ci, cj, screenDY, scheduleRebuild) {
     const respectSym = layer === 'top' ? P.sculptTopRespectSymmetry : P.sculptBotRespectSymmetry;
     const delta = layer === 'top' ? preDelta : postDelta;
     const sym = respectSym ? P.symmetry : 'none';
-    const positions = mirroredPositions(ci, cj, nx, nz, sym);
+    const sox = respectSym ? (P.symOffsetX || 0) : 0;
+    const soy = respectSym ? (P.symOffsetY || 0) : 0;
+    const positions = mirroredPositions(ci, cj, nx, nz, sym, sox, soy);
 
     const dZ = -screenDY * strength;
     const absZ = new Float32Array(nx * nz);
@@ -179,6 +189,8 @@ export function updatePreviewSculptMode(preview, scheduleRebuild) {
         heights: lastResult?.heights,
         offsetPts: lastResult?.thickenData?.offsetPts ?? null,
         symmetry: respectSym ? P.symmetry : 'none',
+        symOffsetX: respectSym ? (P.symOffsetX || 0) : 0,
+        symOffsetY: respectSym ? (P.symOffsetY || 0) : 0,
         onStart: onSculptStart,
         // FIX 2: Wrap callbacks so scheduleRebuild is safely injected
         onStroke: (layer, ci, cj, dy) => onSculptStroke(layer, ci, cj, dy, scheduleRebuild),

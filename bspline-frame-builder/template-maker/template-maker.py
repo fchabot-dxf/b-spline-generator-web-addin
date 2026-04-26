@@ -586,10 +586,27 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
         app = adsk.core.Application.get()
         ui = app.userInterface
         palette = ui.palettes.itemById(PALETTE_ID)
+        newly_created = False
         if not palette:
             palette = ui.palettes.add(
                 PALETTE_ID, 'Template Maker', PALETTE_URL,
                 True, True, True, PALETTE_WIDTH, PALETTE_HEIGHT)
+            newly_created = True
+
+        # Dock the palette to the right edge of Fusion's main window. Without
+        # this, Fusion would restore the palette wherever it floated last,
+        # which on a multi-monitor setup tends to land it on the secondary
+        # screen far away from the Fusion window. Docking forces it to live
+        # inside the Fusion window so it always appears on the same screen.
+        # We only set it on first creation so the user can still undock and
+        # reposition it later — the palette ID survives Stop/Start, so an
+        # already-existing palette keeps the user's chosen state.
+        if newly_created:
+            try:
+                palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
+                palette.setMinimumSize(PALETTE_WIDTH, 480)
+            except Exception as e:
+                _log(f"[WARN] Failed to dock Template Maker palette: {e}")
 
         if not _html_handler:
             _html_handler = _HTMLEventHandler()

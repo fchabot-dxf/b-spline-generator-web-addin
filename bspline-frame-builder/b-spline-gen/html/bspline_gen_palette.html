@@ -32,8 +32,8 @@
       grid-template-columns: var(--cad-sidebar-width) auto 1fr;
       grid-template-rows: 1fr;
       flex: 1;
-      height: calc(100vh - 35px - 28px);
-      /* Adjust for navbar and footer exact heights */
+      height: calc(100vh - 35px);
+      /* Adjust for navbar exact height (footer removed) */
       overflow: hidden;
       background: #f5f5f5;
     }
@@ -235,6 +235,10 @@
     <div style="flex:1;"></div>
 
     <div style="display:flex; gap:12px; align-items:center;">
+      <button class="cad-btn cad-btn-secondary" id="btnAppRefresh" title="Reload the app (clears in-memory state, fetches latest code)" style="display:flex; align-items:center; gap:4px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
+        <span>Reload</span>
+      </button>
       <button class="cad-btn cad-btn-secondary" id="btnDownloadAddin">Add-In</button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
       <span class="material-symbols-outlined cad-nav-icon" id="settings-btn" style="cursor:pointer;">settings</span>
@@ -294,13 +298,13 @@
             <div style="flex:1;">
               <label class="cad-label">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
               <div class="cad-stepper">
-                <input type="number" id="widthIn" value="7">
+                <input type="number" id="widthIn" value="7" step="any">
               </div>
             </div>
             <div style="flex:1;">
               <label class="cad-label">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
               <div class="cad-stepper">
-                <input type="number" id="heightIn" value="9">
+                <input type="number" id="heightIn" value="9" step="any">
               </div>
             </div>
           </div>
@@ -411,7 +415,24 @@
               <option value="none">None</option>
               <option value="x" selected>Mirror X</option>
               <option value="y">Mirror Y</option>
+              <option value="radial">Mirror X &amp; Y (quadrant)</option>
             </select>
+          </div>
+
+          <label class="cad-label">Symmetry Offset X <span style="font-size:10px; opacity:0.6;">(panel-width fraction)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:8px;">
+            <input type="range" id="symOffsetXSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="symOffsetX" value="0" step="0.01" min="-0.45" max="0.45">
+            </div>
+          </div>
+
+          <label class="cad-label">Symmetry Offset Y <span style="font-size:10px; opacity:0.6;">(panel-height fraction)</span></label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="symOffsetYSlider" class="cad-slider" min="-0.45" max="0.45" step="0.01" value="0">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="symOffsetY" value="0" step="0.01" min="-0.45" max="0.45">
+            </div>
           </div>
 
           <label class="cad-label">Flat Border</label>
@@ -474,7 +495,7 @@
             </div>
           </div>
 
-          <label class="cad-label">Detail Strength</label>
+          <label class="cad-label">Empty Zone Detail</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="detailStrengthSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.25">
             <div class="cad-stepper" style="width:75px;">
@@ -816,13 +837,6 @@
     </section>
   </main>
 
-  <footer class="cad-footer">
-    <div id="bridge-status-light" class="cad-status-light live"></div>
-    <span id="bridge-label" class="cad-status-text" style="font-weight:700;">BRIDGE LIVE</span>
-    <div class="cad-status-divider"></div>
-    <span id="system-status" class="cad-status-text">Ready</span>
-  </footer>
-
   <!-- Modals -->
   <!-- Settings Panel (Native CAD Modal) -->
   <div id="settings-panel-overlay" class="cad-modal-overlay" style="display: none;">
@@ -990,20 +1004,38 @@
   <script>
     /**
      * GLOBAL HANDSHAKE BRIDGE
-     * Fusion 360's C++ bridge often expects onFusionNotify to be a truly global function.
-     * Defining it here (outside the ES module) ensures it is always visible.
+     *
+     * Fusion 360's pal.sendInfoToHTML(action, data) dispatches to
+     * window.fusionJavaScriptHandler.handle(action, data) — that's the
+     * documented API. We re-route into a CustomEvent('fusionHandshake')
+     * so ES modules elsewhere can listen via window.addEventListener.
+     *
+     * onFusionNotify / fusionNotify / onNotify are kept as legacy aliases
+     * — some older Fusion builds and our own internal callers still poke
+     * them — but the canonical entry point is fusionJavaScriptHandler.
      */
-    window.onFusionNotify = function (action, data) {
+    function _dispatchFusion(action, data) {
       const ev = new CustomEvent('fusionHandshake', { detail: { action, data } });
       window.dispatchEvent(ev);
+    }
+    window.fusionJavaScriptHandler = {
+      handle: function (action, data) {
+        try {
+          _dispatchFusion(action, data);
+        } catch (e) {
+          return 'FAILED:\n' + e + '\n' + (e && e.stack ? e.stack : '');
+        }
+        return 'OK';
+      }
     };
-    window.fusionNotify = window.onFusionNotify;
-    window.onNotify = window.onFusionNotify;
+    window.onFusionNotify = function (action, data) { _dispatchFusion(action, data); };
+    window.fusionNotify   = window.onFusionNotify;
+    window.onNotify       = window.onFusionNotify;
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <!-- canvg v4 is loaded dynamically inside stamp.js via dynamic import (esm.sh) -->
-  <script type="module" src="./main/main.js?v=20260409_v21"></script>
+  <script type="module" src="./main/main.js?v=20260425_v23"></script>
 
   <!-- SVG Editor Modal (Pro-Global Full-Screen) -->
   <div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
@@ -1327,12 +1359,6 @@
             </div>
           </div>
 
-          <div class="cad-status-divider" style="margin: 6px 0;"></div>
-
-          <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" id="skelVectorsOnly">
-            <span>Vectors Only <span style="font-size:10px; opacity:0.6; font-weight:400;">(contour lines)</span></span>
-          </label>
         </aside>
       </div>
     </div>

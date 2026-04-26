@@ -5,7 +5,7 @@ class ViewCube {
     this._onNavigate = onNavigate;
 
     // Renderer — expanded canvas to leave room for axis indicators around the cube
-    this._size = 130;
+    this._size = 160;
     this._canvas = document.createElement('canvas');
     Object.assign(this._canvas.style, {
       position: 'absolute', top: '10px', right: '10px',
@@ -116,8 +116,11 @@ class ViewCube {
       { name: 'LEFT',   pos: [-0.42, 0, 0], rot: [0, -Math.PI/2, 0],view: { t: -Math.PI/2,  p: Math.PI/2 } },
     ];
 
+    // Face plane matches the cube body's full face (0.82) so the entire
+    // visible white square is a hit target — no dead zone between the labeled
+    // tile and the cube edge. Sits 0.01 in front of the body to avoid z-fight.
     faceData.forEach(d => {
-      const geo = new THREE.PlaneGeometry(0.68, 0.68);
+      const geo = new THREE.PlaneGeometry(0.82, 0.82);
       const mat = new THREE.MeshBasicMaterial({
         map: this._getTexture(d.name, false),
         transparent: true,
@@ -131,8 +134,12 @@ class ViewCube {
       this._group.add(mesh);
     });
 
-    const edgeSize = 0.15;
-    const edgeLen = 0.65;
+    // Edge hitboxes shrunk so they only cover the middle ~50% of each cube
+    // edge. This leaves a much bigger uncontested face area for standard-view
+    // clicks (corners > edges > faces in raycast priority, so any edge/corner
+    // overlap steals the click).
+    const edgeSize = 0.10;
+    const edgeLen = 0.40;
     const edges = [
       { pos: [0, -0.41, 0.41], size: [edgeLen, edgeSize, edgeSize], view: { t: 0, p: Math.PI/4 } },
       { pos: [0, 0.41, 0.41],  size: [edgeLen, edgeSize, edgeSize], view: { t: Math.PI, p: Math.PI/4 } },
@@ -158,7 +165,9 @@ class ViewCube {
       this._group.add(mesh);
     });
 
-    const cSize = 0.18;
+    // Corner hitboxes shrunk so they sit at the corners but don't bleed into
+    // adjacent face area. Raycaster still picks them first when hovered.
+    const cSize = 0.14;
     for (let i = 0; i < 8; i++) {
       const x = (i & 1) ? 0.41 : -0.41;
       const y = (i & 2) ? 0.41 : -0.41;
@@ -322,10 +331,14 @@ class ViewCube {
         const type = this._hovered.userData.type;
         if (type === 'face') {
           this._hovered.material.map = this._hovered.userData.hoverMap;
+          this._hovered.material.needsUpdate = true;
         } else {
           this._hovered.material.opacity = 0.5;
         }
       }
+      // Force immediate redraw so hover feedback shows up even when the
+      // parent preview isn't running a continuous render loop.
+      this.render();
     }
   }
 
@@ -340,11 +353,14 @@ class ViewCube {
     const type = this._hovered.userData.type;
     if (type === 'face') {
       this._hovered.material.map = this._hovered.userData.normalMap;
+      this._hovered.material.needsUpdate = true;
     } else {
       this._hovered.material.opacity = 0;
     }
     this._hovered = null;
     this._canvas.style.cursor = 'default';
+    // Force redraw so the un-hover state is visible immediately.
+    this.render();
   }
 }
 

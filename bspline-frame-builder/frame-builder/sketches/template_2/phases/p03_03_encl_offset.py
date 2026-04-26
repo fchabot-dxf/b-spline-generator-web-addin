@@ -18,7 +18,6 @@ def get_block(ui_data=None):
                 "SourceID":     outline_ids,
                 "DistanceExpr": "frame_thickness",
                 "TargetIDs":    inner_ids,
-                "CornerIDs":    {'TL': 'inner_corner_TL', 'TR': 'inner_corner_TR', 'BL': 'inner_corner_BL', 'BR': 'inner_corner_BR'}
             }
         ]
     }
