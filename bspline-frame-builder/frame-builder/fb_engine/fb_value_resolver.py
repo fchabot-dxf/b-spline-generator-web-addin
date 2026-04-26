@@ -1,9 +1,23 @@
 """
-FBValueResolver — The Geometric Brain of the FrameBuilder.
+FBValueResolver - The Geometric Brain of the FrameBuilder.
 Handles unit normalization, aesthetic scaling, and parameter resolution.
 Ensures metric (cm) consistency across the entire build pipeline.
 """
 import adsk.core
+
+# Unit-default rules now live in ``parameter_schema.ParameterSchema`` —
+# the single source of truth used by every site that creates / updates
+# Fusion userParameters. The module-level ``default_unit_for`` and
+# ``determine_unit`` names below are kept as backward-compat shims so
+# existing callers (parametric_engine, sketch_builder_ui) keep working;
+# new code should import ``ParameterSchema`` directly.
+from fb_engine.parameter_schema import (
+    ParameterSchema,
+    _UNITLESS_PREFIXES,
+    default_unit_for,
+    determine_unit,
+)
+
 
 class FBValueResolver:
     def __init__(self, design, logger=None):
@@ -34,7 +48,7 @@ class FBValueResolver:
         # 1. UI Override Priority
         if active_vars and name in active_vars:
             raw_val = active_vars[name]
-        
+
         # 2. Factor Wrapping (Unifies 'Val' defaults and 'active_vars' overrides)
         raw_val = self.wrap_expression_if_factor(name, raw_val)
 
@@ -42,7 +56,7 @@ class FBValueResolver:
 
     def wrap_expression_if_factor(self, name, value):
         """
-        Wraps a numeric or string value in a widthIn/heightIn expression 
+        Wraps a numeric or string value in a widthIn/heightIn expression
         if the parameter name belongs to the scaled anatomy categories.
         Now hardened against string inputs with unit suffixes.
         """
@@ -50,20 +64,20 @@ class FBValueResolver:
         try:
             # 1. Clean input: remove units if present (e.g. '1.03 cm' -> '1.03')
             val_str = str(value).lower().replace('cm', '').replace('in', '').replace('"', '').replace('mm', '').strip()
-            
+
             # 2. Skip if already an expression
             if 'widthin' in val_str or 'heightin' in val_str or '*' in val_str:
                 return value
-                
+
             num_val = float(val_str)
-            
+
             # 3. Categorized Wrapping (Case-Insensitive Match)
             name_lower = name.lower()
-            
+
             # Width-based Drivers (Multipliers of widthIn)
             if name_lower in ['shoulderspan', 'waistspan', 'hipspan']:
                 result = f"(widthIn * {num_val})"
-            # Height-based Drivers (Multipliers of heightIn) — TopGap/BottomGap
+            # Height-based Drivers (Multipliers of heightIn) - TopGap/BottomGap
             # are vertical offsets, Shoulder/Waist/HipRadius are arc radii that
             # also scale with frame height (so the silhouette stays proportional
             # as heightIn changes).
@@ -75,14 +89,14 @@ class FBValueResolver:
                 result = f"((heightIn / 2.0) * {num_val})"
             else:
                 result = value
-                
+
             if self.logger and result != original_value:
                 self.logger.log(f"[RESOLVER] Wrapped '{name}': '{original_value}' -> '{result}'")
             return result
         except Exception as e:
             if self.logger:
                 self.logger.log(f"[RESOLVER WARNING] Skipping wrap for '{name}' ({value}): {e}")
-            
+
         return value
 
     def validate_unit_consistency(self, name, expression, target_unit):
@@ -102,14 +116,8 @@ class FBValueResolver:
             return None
 
     def determine_unit(self, name):
-        """Helper to assign correct Fusion units based on parameter typing.
-
-        Length params display in inches to match the imperial-authoring
-        convention used by template_data.py and the b-spline add-in.
-        Fusion still stores everything in cm internally — this only affects
-        the user-visible display unit on the userParameter.
+        """Backward-compat method - delegates to module-level
+        ``determine_unit(name)`` so all callers (instance and free-function)
+        share one implementation.
         """
-        if 'Taper' in name:
-            return 'deg'
-        return 'in'
-
+        return determine_unit(name)

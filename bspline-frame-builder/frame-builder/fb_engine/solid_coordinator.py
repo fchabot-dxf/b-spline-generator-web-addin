@@ -4,6 +4,7 @@ Coordinates document discovery, geometry extrusion, and appearance finishing.
 """
 import adsk.core, adsk.fusion, traceback, os, importlib, re, time
 from fb_engine.appearance_manager import AppearanceManager, APPEARANCE_PRESETS
+from fb_engine.appearance_strategy import AppearanceStrategy, DefaultAppearanceStrategy
 from fb_engine.extrusion_engine import ExtrusionEngine
 
 # --- VERSION STAMP (Diagnostic) ---
@@ -18,26 +19,34 @@ except Exception:
 def build_solid_logic_v3(comp_name=None, to_face=None,
                       start_offset_expr="0 in",
                       appearance_name=None,
-                      external_logger=None):
+                      external_logger=None,
+                      appearance_strategy=None):
     """
     Public entry point (v3) for the frame synthesis operation.
     """
-    coordinator = SolidCoordinator(to_face, start_offset_expr, appearance_name, external_logger)
+    coordinator = SolidCoordinator(
+        to_face,
+        start_offset_expr,
+        appearance_name,
+        external_logger,
+        appearance_strategy=appearance_strategy,
+    )
     coordinator.log.log(f"--- SOLID V3 ENTRY POINT TRIGGERED (FB_VERSION: {FB_VERSION}) ---")
     coordinator.run(comp_name)
 
 class SolidCoordinator:
-    def __init__(self, to_face=None, start_offset_expr="0 in", appearance_name=None, external_logger=None):
+    def __init__(self, to_face=None, start_offset_expr="0 in", appearance_name=None,
+                 external_logger=None, appearance_strategy=None):
         self.app = adsk.core.Application.get()
         self.design = adsk.fusion.Design.cast(self.app.activeProduct)
         self.root = self.design.rootComponent if self.design else None
-        
+
         if external_logger:
             self.log = external_logger
         else:
             addin_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
             self.log = (_logger_mod.DebugLogger(addin_root) if _logger_mod else _NullLogger())
-        
+
         self.to_face = to_face
         self.start_offset_expr = start_offset_expr
         self.appearance_name = appearance_name
@@ -46,6 +55,14 @@ class SolidCoordinator:
         # Initialize Specialized Engines (Sharing the unified logger)
         self.appearance_manager = AppearanceManager(self.app, self.design, self.log)
         self.extrusion_engine   = ExtrusionEngine(self.app, self.design, self.log)
+
+        # Appearance pipeline is pluggable. If the caller hasn't supplied a
+        # strategy, build the default one (capture true panel paint, restore
+        # after the cut, finish with preset-or-fallback). Tests and custom
+        # production rules can pass in a different AppearanceStrategy.
+        if appearance_strategy is None:
+            appearance_strategy = DefaultAppearanceStrategy(self.appearance_manager, self.log)
+        self.appearance_strategy = appearance_strategy
 
     def run(self, comp_name):
         """
@@ -72,34 +89,11 @@ class SolidCoordinator:
             self.log.log(f"Discovery Phase: {time.time() - t_discovery:.2f}s")
 
             # 2. CAPTURE & SNAPSHOT
-            # We must find the core panel's true 'Custom Paint' before the trim cut vandalizes it.
+            # Strategy snapshots the core panel's true 'Custom Paint' before
+            # the trim cut vandalizes it. Default strategy walks the body /
+            # faces / assembly context looking for non-generic appearances.
             core_body = self.to_face.body if self.to_face else None
-            original_app = None
-            
-            if core_body:
-                # 1. Start with the body appearance
-                original_app = core_body.appearance
-                
-                # 2. ANTI-FALLBACK: If it looks like a generic default, look for the real paint.
-                generic_names = ['Pine', 'Steel', 'Aluminum', 'Brass']
-                needs_better = not original_app or any(g in (original_app.name or '') for g in generic_names)
-                
-                if needs_better:
-                    try:
-                        # Check sample faces first (source of most custom paints)
-                        for f in core_body.faces:
-                            if f.appearance and not any(g in f.appearance.name for g in generic_names):
-                                self.log.log(f"  SNAPSHOT HIT (Face): Captured Custom Paint '{f.appearance.name}'")
-                                original_app = f.appearance
-                                break
-                        
-                        # Check context/occurrence if faces are still generic
-                        if not original_app or any(g in original_app.name for g in generic_names):
-                            occ = core_body.assemblyContext
-                            if occ and occ.appearance: original_app = occ.appearance
-                    except: pass
-
-            self.log.log(f"SNAPSHOT: core='{core_body.name if core_body else 'None'}', app={original_app.name if original_app else 'None'}")
+            original_app = self.appearance_strategy.capture(core_body)
 
             # 3. GEOMETRY SYNTHESIS (Extrusion Engine)
             t_extrusion = time.time()
@@ -108,20 +102,16 @@ class SolidCoordinator:
             )
             self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
 
-            # 4. SURGICAL CLEANUP (Appearance Manager)
+            # 4. SURGICAL CLEANUP — strategy restores the captured paint and
+            # clears Fusion's grey-steel face overrides on the cut faces.
             t_finish = time.time()
-            if core_body:
-                self.appearance_manager.restore_core_appearance(core_body, original_app)
+            self.appearance_strategy.restore(core_body, original_app)
 
-            # 5. FINISHING (Appearance Manager)
-            if bodies:
-                if self.appearance_name and self.appearance_name != "(none)":
-                    self.appearance_manager.apply_appearance(bodies, self.appearance_name)
-                elif original_app:
-                    for b in bodies:
-                        try: b.appearance = original_app
-                        except: pass
-            
+            # 5. FINISHING — strategy applies the UI-selected preset to new
+            # bar bodies, or falls back to the captured panel paint, or
+            # leaves them alone (a custom strategy may also choose none).
+            self.appearance_strategy.finish(bodies, self.appearance_name, original_app)
+
             self.log.log(f"Finishing Phase: {time.time() - t_finish:.2f}s")
             self.log.log(f"SOLID SYNTHESIS FINISHED OK (Total: {time.time() - start_time:.2f}s)")
 
@@ -149,7 +139,8 @@ class SolidCoordinator:
                     if comp:
                         self.log.log(f"  DISCOVERY HIT (Tag): '{comp.name}'")
                         return comp
-        except: pass
+        except Exception as attr_err:
+            self.log.log(f"  DISCOVERY: attribute search failed: {attr_err}", "DEBUG")
 
         # --- 2. Greedy Scavenge (Case-Insensitive 'frame' search) ---
         self.log.log("  DISCOVERY: Attributes failed. Greedy scavenging...")
@@ -173,9 +164,10 @@ class SolidCoordinator:
                                 best_comp = occ.component
                         elif not best_comp:
                             best_comp = occ.component
-                    except:
+                    except Exception:
                         if not best_comp: best_comp = occ.component
-            except: continue
+            except Exception:
+                continue
             
         if best_comp:
             self.log.log(f"  SCAVENGE HIT: Using frame-like component '{best_comp.name}'")

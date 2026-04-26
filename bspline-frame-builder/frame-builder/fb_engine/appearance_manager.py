@@ -16,11 +16,71 @@ APPEARANCE_PRESETS = [
     "Brass",
 ]
 
+# Generic appearance names that indicate Fusion's default materials, not
+# a user's intentional finish. The capture path treats these as "needs
+# better" and probes faces / assembly context for the real custom paint.
+GENERIC_APPEARANCE_NAMES = ('Pine', 'Steel', 'Aluminum', 'Brass')
+
+
 class AppearanceManager:
     def __init__(self, app, design, logger):
         self.app = app
         self.design = design
         self.log = logger
+
+    def capture_core_appearance(self, core_body):
+        """Snapshot the panel's true 'Custom Paint' before the trim cut
+        vandalizes it.
+
+        Anti-fallback walk: start with the body appearance; if it looks
+        generic (Pine / Steel / Aluminum / Brass), probe sample faces
+        first, then the occurrence's assembly context, looking for a
+        custom appearance to use instead. Returns the resolved Appearance
+        (or None if nothing usable was found).
+
+        Was inline in ``SolidCoordinator.run()``; lives here now so all
+        appearance logic — capture, restore, apply — sits in one module
+        and is testable as a unit.
+        """
+        if not core_body:
+            return None
+
+        # 1. Start with the body appearance
+        original_app = core_body.appearance
+
+        # 2. ANTI-FALLBACK: If it looks like a generic default, look for the real paint.
+        needs_better = not original_app or any(
+            g in (original_app.name or '') for g in GENERIC_APPEARANCE_NAMES
+        )
+
+        if needs_better:
+            try:
+                # Check sample faces first (source of most custom paints)
+                for f in core_body.faces:
+                    if f.appearance and not any(
+                        g in f.appearance.name for g in GENERIC_APPEARANCE_NAMES
+                    ):
+                        self.log.log(
+                            f"  SNAPSHOT HIT (Face): Captured Custom Paint '{f.appearance.name}'"
+                        )
+                        original_app = f.appearance
+                        break
+
+                # Check context/occurrence if faces are still generic
+                if not original_app or any(
+                    g in original_app.name for g in GENERIC_APPEARANCE_NAMES
+                ):
+                    occ = core_body.assemblyContext
+                    if occ and occ.appearance:
+                        original_app = occ.appearance
+            except Exception as snap_err:
+                self.log.log(f"  SNAPSHOT: capture failed: {snap_err}", "DEBUG")
+
+        self.log.log(
+            f"SNAPSHOT: core='{core_body.name}', "
+            f"app={original_app.name if original_app else 'None'}"
+        )
+        return original_app
 
     def apply_appearance(self, bodies, appearance_name):
         """
@@ -59,8 +119,8 @@ class AppearanceManager:
                 self.log.log("  RESTORE: skipped (invalid body object context)")
                 return
             self.log.log(f"  RESTORE (AGGRESSIVE): body='{body.name}' type={type(body).__name__}")
-        except:
-            self.log.log("  RESTORE: skipped (body reference invalidated post-cut)")
+        except Exception as ref_err:
+            self.log.log(f"  RESTORE: skipped (body reference invalidated post-cut): {ref_err}")
             return
 
         # Phase 1: Re-stamp Body Appearance
@@ -106,7 +166,8 @@ class AppearanceManager:
                 if lib_app:
                     self.log.log(f"      [DISCOVERY] Found '{name}' in '{lib.name}'. Copying...")
                     return self.design.appearances.addByCopy(lib_app, name)
-            except: continue
+            except Exception:
+                continue
 
         # --- 3. ROBUST SCANNER (Failsafe for naming inconsistencies) ---
         # If itemByName fails, we manually iterate to find a match (ignores casing/metadata mismatches)
@@ -119,7 +180,8 @@ class AppearanceManager:
                     if app_asset.name.lower() == search_term:
                         self.log.log(f"      [DISCOVERY HIT] Found direct match '{app_asset.name}' via scan in '{lib.name}'.")
                         return self.design.appearances.addByCopy(app_asset, app_asset.name)
-            except: continue
+            except Exception:
+                continue
 
         self.log.log(f"      [WARNING] Global MISS: could not find any appearance matching '{name}'.", "WARNING")
         return None

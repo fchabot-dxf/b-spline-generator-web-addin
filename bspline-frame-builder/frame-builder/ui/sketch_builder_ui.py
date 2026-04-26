@@ -288,19 +288,28 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
     def _update_fusion_param(self, design, name, value):
         try:
+            # Late import — fb_engine is initialized by the entry point and
+            # may not be importable at module-load time. Pulling the
+            # resolver module up here gives us the FBValueResolver for
+            # factor wrapping; ParameterSchema owns the unit defaults.
+            from fb_engine import fb_value_resolver, parameter_schema
+            importlib.reload(parameter_schema)
+            importlib.reload(fb_value_resolver)
+            from fb_engine.parameter_schema import ParameterSchema
+
             params = design.userParameters
             p = params.itemByName(name)
             if not p:
                 try:
-                    unit = '' if name.startswith('en_') else 'cm'
+                    # Schema-aware unit (was hardcoded 'cm' — silently
+                    # demoted ReadOnly inches params on first add).
+                    unit = ParameterSchema.default_unit(name)
                     p = params.add(name, adsk.core.ValueInput.createByReal(0.0), unit, "Sketch Builder Sync")
                 except Exception as ex:
                     if self.diag_logger: self.diag_logger.log(f"PARAM SYNC: Failed to create '{name}': {ex}", "ERROR")
                     return
 
             if p:
-                from fb_engine import fb_value_resolver
-                importlib.reload(fb_value_resolver)
                 resolver = fb_value_resolver.FBValueResolver(design, self.diag_logger)
                 expr = resolver.wrap_expression_if_factor(name, value)
 
