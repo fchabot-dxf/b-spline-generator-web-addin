@@ -18,6 +18,7 @@ try:
         fb_value_resolver,
         parameter_schema,
         template_resolver,
+        document_discovery,
     )
     from fb_engine.parameter_schema import ParameterSchema
     from fb_engine.template_resolver import (
@@ -25,10 +26,12 @@ try:
         get_available_templates,
         get_template_spec,
     )
+    from fb_engine.document_discovery import DocumentDiscovery
     from fb_utils import fb_logger
     logger = fb_logger.DebugLogger(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     importlib.reload(parameter_schema)
     importlib.reload(template_resolver)
+    importlib.reload(document_discovery)
     importlib.reload(parametric_engine)
     importlib.reload(fb_value_resolver)
 except Exception as e:
@@ -104,6 +107,12 @@ class FrameBuilder:
         except Exception as e:
             self.logger.log(f"CRITICAL: Failed to load FBValueResolver: {e}", "ERROR")
             self.resolver = None
+
+        # Centralized document-state queries (find aesthetic core, frame
+        # component, frame sketch). Single source of truth for the
+        # FrameBuilder attribute namespace and the name-pattern fallback
+        # ladders — see fb_engine.document_discovery.
+        self.discovery = DocumentDiscovery(self.app, self.design, self.logger)
             
         self.logger.log("FrameBuilder initialized")
         self.logger.log(f"Design loaded: {'yes' if self.design else 'no'}")
@@ -123,9 +132,10 @@ class FrameBuilder:
             self.root = self.design.rootComponent
             self.user_params = self.design.userParameters
             
-            # Re-point Resolver to the new design
+            # Re-point Resolver and Discovery to the new design
             from fb_engine import fb_value_resolver
             self.resolver = fb_value_resolver.FBValueResolver(self.design, self.logger)
+            self.discovery = DocumentDiscovery(self.app, self.design, self.logger)
             self.logger.log("New design created, re-pointed root and resolver")
 
     def _restore_root_active_component(self):
@@ -323,48 +333,15 @@ class FrameBuilder:
                         self.logger.log(f"DEPENDENT UPDATE FAIL ({name}): {e}", "WARNING")
 
     def _discover_aesthetic_core(self):
-        self.logger.log("Discovering aesthetic core body")
-        
-        # 1. Official Discovery: Search via Universal Attribute Tagging
-        attrs = self.design.findAttributes('FrameBuilder', 'ComponentType')
-        for attr in attrs:
-            if attr.value == 'AestheticCore':
-                comp = adsk.fusion.Component.cast(attr.parent)
-                if comp and comp.bRepBodies.count > 0:
-                    self.logger.log(f"Aesthetic core found via Attribute on component: {comp.name}")
-                    return comp.bRepBodies.item(0)
+        """Thin pass-through to ``DocumentDiscovery.find_aesthetic_core_body``.
 
-        # 2. Legacy/Named discovery:
-        existing_occ = self.root.occurrences.itemByName("AESTHETIC_CORE")
-        if existing_occ and existing_occ.component.bRepBodies.count > 0:
-            self.logger.log("Found AESTHETIC_CORE occurrence")
-            return existing_occ.component.bRepBodies.item(0)
-
-        # Search by name patterns in occurrences (using comp.name for stability)
-        for occ in self.root.occurrences:
-            c_name = occ.component.name.lower()
-            if "b-spline set" in c_name or "terrain" in c_name:
-                self.logger.log(f"Candidate component found: {occ.component.name}")
-                target_comp = occ.component
-                
-                # Check for "clean solid" sub-bodies
-                if target_comp.bRepBodies.count == 0:
-                    # Look deeper if it's a container
-                    for sub_occ in occ.childOccurrences:
-                        if "clean solid" in sub_occ.component.name.lower():
-                            target_comp = sub_occ.component
-                            break
-                            
-                if target_comp.bRepBodies.count > 0:
-                    self.logger.log(f"Aesthetic core body found in: {target_comp.name}")
-                    return target_comp.bRepBodies.item(0)
-
-        if self.root.bRepBodies.count > 0:
-            self.logger.log("Using first body in root component as aesthetic core")
-            return self.root.bRepBodies.item(0)
-
-        self.logger.log("No aesthetic core found")
-        return None
+        The ladder (attribute → AESTHETIC_CORE occurrence → name-pattern
+        scavenge with clean-solid drill-down → root body) lives in
+        :py:mod:`fb_engine.document_discovery`. Kept as a method so any
+        caller still using ``self._discover_aesthetic_core()`` keeps
+        working without code churn.
+        """
+        return self.discovery.find_aesthetic_core_body()
 
     def _extrude_jesmo_frame(self, sketch, target_body, target_comp):
         self.logger.log("Starting extrusion of frame sketch")

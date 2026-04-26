@@ -98,16 +98,15 @@ class ExtrusionEngine:
                     bodies_created += 1
                 elif ctype == "SURROUND":
                     feat.name = f"{prefix}_TRIM_CUT"
-                    # Initial face cleanup (AppearanceManager handles the deep clean)
+                    # Clear the grey-steel face overrides Fusion stamps onto
+                    # newly cut faces so they inherit the body appearance
+                    # (wood grain, etc.). AppearanceManager.restore_core_appearance
+                    # does the deep clean later; this is the first pass.
                     try:
                         for face in feat.faces:
                             face.appearance = None
-                    except: pass
-                    # Reset cut faces to inherit body appearance (wood grain)
-                    try:
-                        for face in feat.faces:
-                            face.appearance = None
-                    except: pass
+                    except Exception:
+                        pass
 
             except Exception as e:
                 self.log.log(f"    EXTRUDE FAIL {i}: {e}", "ERROR")

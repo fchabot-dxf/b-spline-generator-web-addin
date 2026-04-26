@@ -20,7 +20,7 @@ import adsk.core, adsk.fusion, traceback
 import importlib
 
 # Sub-module imports (Absolute naming for manual loading stability)
-from fb_engine import build_context, geometry, constraints, dimensions, projections, offsets, miters, fb_value_resolver, parameter_schema
+from fb_engine import build_context, geometry, constraints, dimensions, projections, offsets, miters, fb_value_resolver, parameter_schema, diagnostics
 importlib.reload(parameter_schema)
 importlib.reload(build_context)
 importlib.reload(geometry)
@@ -30,6 +30,7 @@ importlib.reload(projections)
 importlib.reload(offsets)
 importlib.reload(miters)
 importlib.reload(fb_value_resolver)
+importlib.reload(diagnostics)
 
 from fb_engine.build_context import BuildContext
 from fb_engine.geometry import geom_step
@@ -39,6 +40,7 @@ from fb_engine.projections import project_step
 from fb_engine.offsets import offset_step, step_step
 from fb_engine.miters import miter_step
 from fb_engine.parameter_schema import ParameterSchema
+from fb_engine.diagnostics import log_arc_audit
 
 
 class ParametricSketchBuilder:
@@ -258,7 +260,7 @@ class ParametricSketchBuilder:
             # Pulse the solver to settle geometry before offsets
             self.ctx.logger.log(f"  > PULSE SOLVE: {b_name}")
             sketch.isComputeDeferred = False
-            self._log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE", display_name=display_name)
+            log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE", display_name=display_name)
 
             # Offset Steps (runs in deferred mode for constraint stability)
             sketch.isComputeDeferred = True
@@ -347,47 +349,3 @@ class ParametricSketchBuilder:
         except Exception as e:
             self.ctx.logger.log(f"X_AXIS projection skipped: {e}", "WARNING")
 
-    def _log_arc_audit(self, ctx, sketch, sketch_name, phase_label, display_name=None):
-        """Diagnostic helper to log coordinates of all arcs in the sketch."""
-        display_name = display_name or sketch_name
-        ctx.logger.log(f"--- ARC AUDIT: {phase_label} in {display_name} ---")
-        
-        ent_map = ctx.entity_map.get(sketch_name, {})
-
-        def _p2s(pt):
-            """Safe point to string."""
-            if not pt: return "?,?"
-            try:
-                geom = pt.geometry
-                return f"{geom.x:.3f}, {geom.y:.3f}"
-            except Exception:
-                return "ERR"
-
-        try:
-            for arc in sketch.sketchCurves.sketchArcs:
-                # Find the human-readable ID by searching the entity map
-                arc_id = "unknown_arc"
-                for eid, eobj in ent_map.items():
-                    if eobj == arc:
-                        arc_id = eid
-                        break
-                
-                # 1. Basic points (Start, End, Center)
-                s_str = _p2s(arc.startSketchPoint)
-                e_str = _p2s(arc.endSketchPoint)
-                c_str = _p2s(arc.centerSketchPoint)
-
-                # 2. Midpoint (Isolate evaluator for safety)
-                m_str = "?,?"
-                try:
-                    res = arc.geometry.evaluator.getPointAtParameter(0.5)
-                    if res and res[1]:
-                        m_str = f"{res[1].x:.3f}, {res[1].y:.3f}"
-                except Exception:
-                    m_str = "eval_fail"
-                
-                log_msg = f"  [{arc_id}] S({s_str}) | M({m_str}) | E({e_str}) | C({c_str})"
-                ctx.logger.log(log_msg)
-                    
-        except Exception as e:
-            ctx.logger.log(f"ARC AUDIT FATAL FAIL: {e}", "WARNING")

@@ -2,9 +2,10 @@
 Solid Coordinator — The orchestrator for frame synthesis.
 Coordinates document discovery, geometry extrusion, and appearance finishing.
 """
-import adsk.core, adsk.fusion, traceback, os, importlib, re, time
+import adsk.core, adsk.fusion, traceback, os, importlib, time
 from fb_engine.appearance_manager import AppearanceManager, APPEARANCE_PRESETS
 from fb_engine.appearance_strategy import AppearanceStrategy, DefaultAppearanceStrategy
+from fb_engine.document_discovery import DocumentDiscovery
 from fb_engine.extrusion_engine import ExtrusionEngine
 
 # --- VERSION STAMP (Diagnostic) ---
@@ -55,6 +56,9 @@ class SolidCoordinator:
         # Initialize Specialized Engines (Sharing the unified logger)
         self.appearance_manager = AppearanceManager(self.app, self.design, self.log)
         self.extrusion_engine   = ExtrusionEngine(self.app, self.design, self.log)
+        # Centralized document-state queries — shared with FrameBuilder
+        # via fb_engine.document_discovery.
+        self.discovery          = DocumentDiscovery(self.app, self.design, self.log)
 
         # Appearance pipeline is pluggable. If the caller hasn't supplied a
         # strategy, build the default one (capture true panel paint, restore
@@ -119,126 +123,25 @@ class SolidCoordinator:
             self.log.log(f"COORDINATOR CRASH:\n{traceback.format_exc()}", "ERROR")
 
     def _resolve_component(self, comp_name):
+        """Locate the frame component to drop bars into.
+
+        ``comp_name`` is currently advisory only — the actual ladder
+        (attribute → greedy scavenge → root fallback) lives in
+        :py:meth:`fb_engine.document_discovery.DocumentDiscovery.find_frame_component`
+        and is name-agnostic. Kept as a thin pass-through so the rest of
+        the coordinator's call sites stay unchanged.
         """
-        Ultra-Robust Discovery:
-        1. Attribute Tagging (Elite)
-        2. Exact Name (UI Selected)
-        3. Greedy Scavenge (Case-insensitive 'frame' search)
-        4. Active Component (Ultimate Failsafe)
-        """
-        if not self.root:
-            self.log.log("  DISCOVERY ERROR: design root is missing.")
-            return None
-
-        # --- 1. Attribute Search ---
-        try:
-            attrs = self.design.findAttributes('FrameBuilder', 'ComponentType')
-            for attr in attrs:
-                if attr.value == 'Frame':
-                    comp = adsk.fusion.Component.cast(attr.parent)
-                    if comp:
-                        self.log.log(f"  DISCOVERY HIT (Tag): '{comp.name}'")
-                        return comp
-        except Exception as attr_err:
-            self.log.log(f"  DISCOVERY: attribute search failed: {attr_err}", "DEBUG")
-
-        # --- 2. Greedy Scavenge (Case-Insensitive 'frame' search) ---
-        self.log.log("  DISCOVERY: Attributes failed. Greedy scavenging...")
-        best_comp = None
-        max_idx = -1
-        
-        # We check all occurrences in the root for anything 'frame-like'
-        for occ in self.root.occurrences:
-            try:
-                cname = occ.component.name.lower()
-                if "frame" in cname:
-                    # Potential hit! Let's try to find if it has a number
-                    try:
-                        # Extract number from names like 'Frame_45', 'frame 1', etc.
-                        import re
-                        match = re.search(r'\d+', cname)
-                        if match:
-                            idx = int(match.group())
-                            if idx > max_idx:
-                                max_idx = idx
-                                best_comp = occ.component
-                        elif not best_comp:
-                            best_comp = occ.component
-                    except Exception:
-                        if not best_comp: best_comp = occ.component
-            except Exception:
-                continue
-            
-        if best_comp:
-            self.log.log(f"  SCAVENGE HIT: Using frame-like component '{best_comp.name}'")
-            return best_comp
-
-        # --- 3. Ultimate Fallback: Root Component ---
-        # If we can't find anything named 'frame', use the document root.
-        if self.root:
-            self.log.log(f"  DISCOVERY FALLBACK: Using Root Component '{self.root.name}'")
-            return self.root
-        return None
+        return self.discovery.find_frame_component()
 
     def _find_sketch(self, target_comp):
+        """Locate the frame outline sketch + its prefix token.
+
+        Delegates to :py:meth:`fb_engine.document_discovery.DocumentDiscovery.find_frame_sketch`,
+        which preserves the original category priority (FRAME ENCLOSURE
+        > FRAME SKETCH > SHAPE OUTLINE) and the deep-scavenge fallback
+        across ``design.allComponents``.
         """
-        Deep-Search for the solid synthesis sketch with Category Priority.
-        1. FRAME ENCLOSURE (Phase 3)
-        2. FRAME SKETCH (General)
-        3. SHAPE OUTLINE (Phase 2 Fallback)
-        """
-        target_patterns = [
-            ("FRAME ENCLOSURE", [
-                "_3_frame-enclosure", "_3_frame_enclosure", "_3_frame enclosure",
-                "3_frame-enclosure", "3_frame_enclosure", "3_frame enclosure",
-                "_frame-enclosure", "_frame_enclosure", "frame-enclosure", "frame_enclosure", "frame enclosure"
-            ]),
-            ("FRAME SKETCH", [
-                "_3_frame", "_frame", "frame"
-            ]),
-            ("SHAPE OUTLINE", [
-                "_2_shape-outline", "_2_shape_outline", "_2_shape outline",
-                "2_shape-outline", "2_shape_outline", "2_shape outline",
-                "shape-outline", "shape_outline", "shape outline"
-            ])
-        ]
-        
-        # 1. Targeted check in target_comp (ordered by category priority)
-        if target_comp:
-            self.log.log(f"  DISCOVERY: Searching project sketches in '{target_comp.name}'...")
-            
-            # Diagnostic: Log ALL available candidates first
-            for i in range(target_comp.sketches.count):
-                sk = target_comp.sketches.item(i)
-                self.log.log(f"    SKETCH CANDIDATE: component='{target_comp.name}' sketch='{sk.name}'")
-
-            # Priority Search Loop: Category FIRST
-            for category, patterns in target_patterns:
-                for i in range(target_comp.sketches.count):
-                    sk = target_comp.sketches.item(i)
-                    sk_name = (sk.name or '').lower()
-                    for pattern in patterns:
-                        if pattern in sk_name:
-                            self.log.log(f"  SKETCH HIT: component='{target_comp.name}' sketch='{sk_name}' category='{category}' pattern='{pattern}'")
-                            prefix = sk_name.split("_")[0]
-                            return sk, prefix
-
-        # 2. Deep Scavenge (Failsafe for entire assembly, also by category priority)
-        self.log.log("  SKETCH: Targeted search failed. Deep-scanning assembly by priority...")
-        all_comps = self.design.allComponents
-        
-        for category, patterns in target_patterns:
-            for comp in all_comps:
-                for i in range(comp.sketches.count):
-                    sk = comp.sketches.item(i)
-                    sk_name = (sk.name or '').lower()
-                    for pattern in patterns:
-                        if pattern in sk_name:
-                            self.log.log(f"  SKETCH HIT (Deep): Found '{sk_name}' in '{comp.name}' [{category}]")
-                            prefix = sk_name.split("_")[0]
-                            return sk, prefix
-
-        return None, "T1"
+        return self.discovery.find_frame_sketch(target_comp)
 
 
 class _NullLogger:
