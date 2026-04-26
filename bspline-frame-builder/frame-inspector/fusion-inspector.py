@@ -234,43 +234,35 @@ def format_point(pt):
 
 
 def _get_arc_midpoint(ent):
+    """Return (x, y) of the actual midpoint along an arc.
+
+    Uses ``ent.geometry.evaluator.getPointAtParameter`` at the midpoint
+    of the parameter range. This is the only reliable method for arcs
+    where ``startPoint`` and ``endPoint`` are diametrically opposite
+    (semicircles) - the angle-bisector math used previously had a
+    silent ambiguity in that case (cross product is 0, neither
+    direction-correction branch fires, and the default delta sign
+    picks the wrong half of the circle 50% of the time).
+
+    The evaluator knows which half the arc actually occupies because
+    the arc geometry stores start/end angles and sweep direction
+    directly. No guessing required.
+    """
     try:
-        if not hasattr(ent, 'startSketchPoint') or not hasattr(ent, 'endSketchPoint'):
+        geom = getattr(ent, 'geometry', None)
+        if geom is None:
             return None
-
-        sp = ent.startSketchPoint.geometry
-        ep = ent.endSketchPoint.geometry
-        cp = None
-        if hasattr(ent, 'centerSketchPoint') and ent.centerSketchPoint:
-            cp = ent.centerSketchPoint.geometry
-        elif hasattr(ent, 'geometry') and hasattr(ent.geometry, 'center'):
-            cp = ent.geometry.center
-        if not cp:
+        evaluator = getattr(geom, 'evaluator', None)
+        if evaluator is None:
             return None
-
-        dx1 = sp.x - cp.x
-        dy1 = sp.y - cp.y
-        dx2 = ep.x - cp.x
-        dy2 = ep.y - cp.y
-        r1 = math.hypot(dx1, dy1)
-        r2 = math.hypot(dx2, dy2)
-        if r1 == 0 or r2 == 0:
+        ok, t_min, t_max = evaluator.getParameterExtents()
+        if not ok:
             return None
-
-        angle1 = math.atan2(dy1, dx1)
-        angle2 = math.atan2(dy2, dx2)
-        cross = dx1 * dy2 - dy1 * dx2
-        delta = angle2 - angle1
-        if cross < 0 and delta > 0:
-            delta -= 2 * math.pi
-        elif cross > 0 and delta < 0:
-            delta += 2 * math.pi
-
-        mid_angle = angle1 + delta / 2.0
-        mid_x = cp.x + r1 * math.cos(mid_angle)
-        mid_y = cp.y + r1 * math.sin(mid_angle)
-        return (mid_x, mid_y)
-    except:
+        ok2, mid_pt = evaluator.getPointAtParameter((t_min + t_max) / 2.0)
+        if not ok2 or mid_pt is None:
+            return None
+        return (mid_pt.x, mid_pt.y)
+    except Exception:
         return None
 
 
@@ -350,9 +342,13 @@ def get_fb_metadata(ent):
                 info.append(f"{name}={a.value}")
 
         if hasattr(ent, 'centerSketchPoint') and ent.centerSketchPoint:
-            center_coord = format_point(ent.centerSketchPoint)
-            if center_coord:
-                info.append(f"BulgeCenter={center_coord}")
+            # Emit the real arc midpoint as "Bulge". Was previously the
+            # center-of-curvature coord, which made Bulge == Center -
+            # a misleading duplicate. The midpoint is a point ON the
+            # arc; the center sits on the OPPOSITE side of the chord.
+            mid = _get_arc_midpoint(ent)
+            if mid is not None:
+                info.append(f"Bulge=({round(mid[0], 2)},{round(mid[1], 2)})")
 
         return ' | '.join(info)
     except:
@@ -422,12 +418,33 @@ def get_entity_coord_expr(e):
                 start_expr = format_point_expr(sp, width, height)
                 end_expr = format_point_expr(ep, width, height)
                 center_expr = format_point_expr(cp, width, height)
-                bulge_expr = format_point_expr(cp, width, height) if cp else ''
+
+                # Compute the REAL arc mid-point (a point lying ON the arc,
+                # halfway between start and end). Was previously copied from
+                # the center, which made `BulgeCenter == Center` - a confusing
+                # duplicate. The center of curvature is on the OPPOSITE side
+                # of the chord from where the arc actually bulges, so passing
+                # it as the third point to `addByThreePoints` produced arcs
+                # bending the wrong way. The real midpoint is what callers
+                # need to reconstruct the arc faithfully.
+                mid = _get_arc_midpoint(e)
+                bulge_expr = ''
+                if mid is not None:
+                    mid_x_expr = format_expr_component(mid[0], 'widthIn', width)
+                    mid_y_expr = format_expr_component(mid[1], 'heightIn', height)
+                    if mid_x_expr is not None and mid_y_expr is not None:
+                        bulge_expr = f"({mid_x_expr}, {mid_y_expr})"
 
                 if start_expr and end_expr and center_expr:
-                    text = f"({start_label} : {start_expr}) -> ({end_label} : {end_expr}) -> ({center_label} : {center_expr})"
+                    # Order: S -> B -> E -> C. The first three are points on
+                    # the arc (Start, Bulge midpoint, End) and feed directly
+                    # into `Arc3Point`'s Points list in that order. C is the
+                    # center of curvature, kept as trailing metadata.
+                    text = f"({start_label} : {start_expr})"
                     if bulge_label and bulge_expr:
-                        text += f" --> (BulgeCenter= {bulge_label} : {bulge_expr})"
+                        text += f" -> ({bulge_label} : {bulge_expr})"
+                    text += f" -> ({end_label} : {end_expr})"
+                    text += f" -> ({center_label} : {center_expr})"
                     return text
 
                 return f"{format_point_expr(sp, width, height)} -> {format_point_expr(cp, width, height)} -> {format_point_expr(ep, width, height)}"
@@ -521,8 +538,13 @@ def _push_selection_to_palette():
                 entry = f"{name} | {coord}"
                 expr_entry = f"{name} | {coord_expr}"
                 if fb_meta_item:
+                    # Append metadata only to the raw-coord entry. The
+                    # parametric expr_entry already labels its points
+                    # with their FrameBuilder IDs (e.g. "arc_X:S",
+                    # "arc_X:B", "arc_X:E", "arc_X:C"), so re-appending
+                    # "StartID=... | EndID=... | Bulge=..." would just
+                    # duplicate the same information.
                     entry += f" | {fb_meta_item}"
-                    expr_entry += f" | {fb_meta_item}"
                 p_data['linked'].append(entry)
                 p_data['linked_expr'].append(expr_entry)
 

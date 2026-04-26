@@ -50,7 +50,13 @@ def offset_step(ctx, sketch, s_name, off):
         if offset_result and offset_result.count > 0:
             ctx.logger.log(f"OFFSET SUCCESS: Generated {offset_result.count} curves")
             _tag_offset_results(ctx, s_name, off, offset_result)
-            
+
+            # --- Tag corner points if requested ---
+            # When the offset step declares a CornerIDs map (e.g. for the
+            # BB safe-zone rectangle), label the 4 corner SketchPoints so
+            # downstream projection phases can find them.
+            _tag_corner_points(ctx, s_name, off, offset_result)
+
             # --- Global Naming Sweep (Safety Net) ---
             # Even if addOffset2 failed or returned a generic name, we sweep and fix it.
             # We pass d_expr to ensure we name it exactly what the template requested.
@@ -288,6 +294,101 @@ def _register_curve(ctx, s_name, curve, cid):
         ctx.set_id(curve.endSketchPoint,   s_name, "point", override_id=f"{cid}:E")
     except Exception:
         pass
+
+
+def _tag_corner_points(ctx, s_name, off, offset_curves):
+    """
+    Tag the 4 corners of an offset rectangle with user-specified IDs.
+
+    Reads ``off['CornerIDs']`` which maps positional labels to target IDs:
+    ``{"TL": "offset_BB_corner_TL", "TR": "offset_BB_corner_TR",
+       "BL": "offset_BB_corner_BL", "BR": "offset_BB_corner_BR"}``
+
+    For a closed 4-curve offset rectangle, every corner is shared between
+    two adjacent offset curves. We collect all curve endpoints, dedupe
+    by entityToken, classify each unique SketchPoint by spatial position
+    (left/right X, top/bottom Y relative to the centroid), and tag it
+    via ``ctx.set_id``. After this runs, the corner is findable in
+    ``entity_map[s_name][corner_ids[label]]`` so projection phases that
+    reference the user-friendly ID resolve correctly.
+
+    No-op when CornerIDs is empty or absent.
+    """
+    corner_ids = off.get("CornerIDs") or {}
+    if not corner_ids:
+        return
+
+    # Collect endpoints from every offset curve.
+    endpoints = []
+    for i in range(offset_curves.count):
+        curve = offset_curves.item(i)
+        try:
+            endpoints.append(curve.startSketchPoint)
+            endpoints.append(curve.endSketchPoint)
+        except Exception:
+            continue
+
+    if not endpoints:
+        ctx.logger.log(
+            f"CORNER TAG SKIP: no endpoints found in {s_name}", "WARNING")
+        return
+
+    # Dedupe by entityToken; closed loops share corners between curves.
+    unique = {}
+    for pt in endpoints:
+        try:
+            unique[pt.entityToken] = pt
+        except Exception:
+            continue
+    points = list(unique.values())
+
+    if len(points) != 4:
+        ctx.logger.log(
+            f"CORNER TAG: expected 4 unique corners, got {len(points)} "
+            f"in {s_name} - corner tagging may be partial",
+            "WARNING")
+
+    def coords(pt):
+        try:
+            g = pt.geometry
+            return float(g.x), float(g.y)
+        except Exception:
+            return 0.0, 0.0
+
+    pts_with_coords = [(coords(p), p) for p in points]
+    if not pts_with_coords:
+        return
+
+    xs = [c[0] for c, _ in pts_with_coords]
+    ys = [c[1] for c, _ in pts_with_coords]
+    cx = (min(xs) + max(xs)) / 2.0
+    cy = (min(ys) + max(ys)) / 2.0
+
+    # Classify by quadrant relative to the centroid of the 4 corners.
+    classified = {}
+    for (x, y), pt in pts_with_coords:
+        if x <= cx and y >= cy:
+            classified["TL"] = pt
+        elif x >= cx and y >= cy:
+            classified["TR"] = pt
+        elif x <= cx and y <= cy:
+            classified["BL"] = pt
+        elif x >= cx and y <= cy:
+            classified["BR"] = pt
+
+    for label, target_id in corner_ids.items():
+        pt = classified.get(label)
+        if not pt or not target_id:
+            ctx.logger.log(
+                f"CORNER TAG MISS: {label} -> {target_id!r} not classified "
+                f"in {s_name}",
+                "WARNING")
+            continue
+        ctx.set_id(pt, s_name, "corner", override_id=target_id)
+        x, y = coords(pt)
+        ctx.logger.log(
+            f"CORNER TAG: {label} -> {target_id} at ({x:.3f}, {y:.3f}) "
+            f"in {s_name}")
 
 
 def _tag_by_proximity(ctx, s_name, off, offset_curves, t_ids):

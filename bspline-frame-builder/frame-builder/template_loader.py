@@ -53,6 +53,7 @@ Switching to a class kills that whole class of problem:
 import importlib.util
 import os
 import re
+import sys
 
 
 _PHASE_RE = re.compile(r'^p(\d{2})_(\d{2})_[^.]+\.py$')
@@ -75,7 +76,7 @@ class TemplateLoader:
     # -- discovery -----------------------------------------------------
 
     def _scan_phase_files(self):
-        """Return ``{sketch_idx: [(phase_idx, abs_path), …]}`` sorted."""
+        """Return ``{sketch_idx: [(phase_idx, abs_path), ...]}`` sorted."""
         buckets = {}
         if not os.path.isdir(self.phases_dir):
             return buckets
@@ -92,7 +93,7 @@ class TemplateLoader:
         return buckets
 
     def _scan_sketch_files(self):
-        """Return ``[(sketch_idx, abs_path), …]`` sorted by sketch index."""
+        """Return ``[(sketch_idx, abs_path), ...]`` sorted by sketch index."""
         found = []
         if not os.path.isdir(self.folder):
             return found
@@ -116,7 +117,7 @@ class TemplateLoader:
         the same folder get distinct keys.
         """
         stem = os.path.splitext(os.path.basename(abs_path))[0]
-        return f"fb_tpl_{self.tag}__{stem}"
+        return "fb_tpl_{}__{}".format(self.tag, stem)
 
     def _exec_module(self, abs_path, inject):
         """Load ``abs_path`` as a fresh module with ``inject`` keys preset.
@@ -124,14 +125,14 @@ class TemplateLoader:
         ``inject`` is a dict whose entries are stamped onto the new
         module's namespace **before** ``exec_module`` runs. That's how
         sketch files get ``load_phase_blocks`` without writing an
-        ``import`` statement — the function is already defined in their
+        ``import`` statement - the function is already defined in their
         module globals by the time their source executes.
         """
         key = self._unique_module_name(abs_path)
         spec = importlib.util.spec_from_file_location(key, abs_path)
         if spec is None or spec.loader is None:
             raise ImportError(
-                f"TemplateLoader: could not build spec for {abs_path}")
+                "TemplateLoader: could not build spec for {}".format(abs_path))
         module = importlib.util.module_from_spec(spec)
         for name, value in inject.items():
             setattr(module, name, value)
@@ -164,11 +165,11 @@ class TemplateLoader:
         return blocks
 
     def load_all_sketches(self, ui_data=None):
-        """Return ``[sketch_dict, …]`` in sketch-index order.
+        """Return ``[sketch_dict, ...]`` in sketch-index order.
 
         Each sketch module exposes ``get_sketch(ui_data)`` returning a
         dict with at least ``Name`` and ``Blocks``. Sketch files reach
-        ``load_phase_blocks`` through namespace injection — they don't
+        ``load_phase_blocks`` through namespace injection - they don't
         import it. Caller stamps ``Label`` and ``Parameters`` after.
         """
         results = []
@@ -184,19 +185,37 @@ class TemplateLoader:
         return results
 
     def reload_all(self):
-        """Drop caches so the next ``load_*`` call re-execs from disk."""
+        """Drop caches so the next ``load_*`` call re-execs from disk.
+
+        Also evicts ``sketches._common.*`` from ``sys.modules``.
+        Per-template phase and sketch files are exec'd via
+        ``spec_from_file_location`` and never registered in
+        ``sys.modules``, so clearing the instance caches is enough for
+        those. Shim files in each template's ``phases/`` folder, however,
+        do real ``from sketches._common.phases.X import get_block``
+        statements that go through Python's regular import machinery and
+        cache the canonical modules. Without this eviction, edits or
+        Ctrl+Z to files in ``sketches/_common/`` would not be picked up
+        on reload - the shim would re-exec but get the stale cached
+        ``get_block`` back.
+        """
         self._phase_cache.clear()
         self._sketch_cache.clear()
+        stale = [k for k in sys.modules
+                 if k == 'sketches._common'
+                 or k.startswith('sketches._common.')]
+        for k in stale:
+            del sys.modules[k]
 
     def describe(self):
         """Human-readable summary of what this loader sees on disk."""
-        lines = [f"TemplateLoader[{self.tag}] @ {self.folder}"]
+        lines = ["TemplateLoader[{}] @ {}".format(self.tag, self.folder)]
         sketches = self._scan_sketch_files()
         buckets = self._scan_phase_files()
-        lines.append(f"  sketches: {len(sketches)}")
+        lines.append("  sketches: {}".format(len(sketches)))
         for idx, abs_path in sketches:
             phase_count = len(buckets.get(idx, []))
             lines.append(
-                f"    [{idx}] {os.path.basename(abs_path)}  "
-                f"({phase_count} phases)")
+                "    [{}] {}  ({} phases)".format(
+                    idx, os.path.basename(abs_path), phase_count))
         return "\n".join(lines)

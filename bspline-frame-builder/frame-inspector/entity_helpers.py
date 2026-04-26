@@ -35,7 +35,43 @@ def format_point(pt):
         return ''
 
 
+def _get_arc_midpoint_via_evaluator(ent):
+    """Reliable arc midpoint via Fusion's geometry evaluator.
+
+    See fusion-inspector.py for full rationale - the angle-bisector
+    method below silently picks the wrong half-circle when S and E
+    are diametrically opposite (cross product is 0). The evaluator
+    traces the actual arc as constructed, so direction is unambiguous.
+    """
+    try:
+        geom = getattr(ent, 'geometry', None)
+        if geom is None:
+            return None
+        evaluator = getattr(geom, 'evaluator', None)
+        if evaluator is None:
+            return None
+        ok, t_min, t_max = evaluator.getParameterExtents()
+        if not ok:
+            return None
+        ok2, mid_pt = evaluator.getPointAtParameter((t_min + t_max) / 2.0)
+        if not ok2 or mid_pt is None:
+            return None
+        return (mid_pt.x, mid_pt.y)
+    except Exception:
+        return None
+
+
 def _get_arc_midpoint(ent):
+    # Prefer the evaluator-based path (handles the semicircle ambiguity
+    # the angle-bisector math fails on). Fall back to the legacy path
+    # only if the evaluator is unavailable for some reason.
+    via_eval = _get_arc_midpoint_via_evaluator(ent)
+    if via_eval is not None:
+        return via_eval
+    return _get_arc_midpoint_legacy(ent)
+
+
+def _get_arc_midpoint_legacy(ent):
     try:
         if not hasattr(ent, 'startSketchPoint') or not hasattr(ent, 'endSketchPoint'):
             return None
@@ -135,9 +171,15 @@ def get_fb_metadata(ent):
                 info.append(f"{name}={a.value}")
 
         if hasattr(ent, 'centerSketchPoint') and ent.centerSketchPoint:
-            center_coord = format_point(ent.centerSketchPoint)
-            if center_coord:
-                info.append(f"BulgeCenter={center_coord}")
+            # Emit the real arc mid-point as "Bulge". Was previously set
+            # to the center coordinate, which made Bulge == Center - a
+            # misleading duplicate. The center sits on the OPPOSITE side
+            # of the chord from the actual arc bulge, so duplicating it
+            # under a "Bulge" label was wrong both semantically and for
+            # downstream consumers passing it to addByThreePoints.
+            mid = _get_arc_midpoint(ent)
+            if mid is not None:
+                info.append(f"Bulge=({round(mid[0], 2)},{round(mid[1], 2)})")
 
         return ' | '.join(info)
     except:

@@ -88,29 +88,59 @@ class ParametricSketchBuilder:
         # We no longer handle parameter creation here to avoid overwriting 
         # parametric expressions with raw numeric factors.
 
-        # 2. Iterate through sketches with Global Phase Tracking
+        # 2. Iterate through sketches with Global Phase Tracking.
+        #
+        # Phase-counter decrement lives in a ``finally`` so a crash mid-
+        # sketch can't leave the counter stale. Without this, a sketch-N
+        # crash would skip the decrement, sketch-N+1 would start with
+        # the wrong remaining_phase, and the user's max_phase cap would
+        # be silently overrun (e.g. asking for 5 phases would build 7+
+        # if sketch 2 crashed at phase 5).
+        #
+        # On crash we ALSO break out of the sketch loop. Continuing to
+        # subsequent sketches after a crash produces only cascading
+        # errors - the next sketch's projections reference geometry that
+        # was never built, the welds reference missing endpoints, the
+        # offset finds no source curves. One real error is more useful
+        # than fifty downstream symptoms.
         remaining_phase = self.max_phase
+        crashed = False
         for sketch_spec in template.get("Sketches", []):
+            # Phase budget exhausted: don't even enter this sketch. Without
+            # this check, the engine would still create the Fusion sketch
+            # object, project axes, and log "Creating Sketch" for any sketch
+            # past the cap - producing empty sketches that confuse the user
+            # ("why is Frame Enclosure being created if I selected phase
+            # loop?"). Treat budget=0 as a hard stop.
+            if remaining_phase is not None and remaining_phase <= 0:
+                ctx.logger.log(
+                    f"PHASE BUDGET EXHAUSTED - skipping {sketch_spec['Name']} "
+                    f"and any subsequent sketches.")
+                break
+
             try:
                 sketch_label = sketch_spec.get("Label", sketch_spec['Name'])
                 ctx.logger.log(f"--- Creating Sketch: {sketch_label} (Remaining global phases: {remaining_phase}) ---")
-                
+
                 # Build the sketch, passing the current global cap and UI state
                 built_count = self.build_sketch(sketch_spec, limit=remaining_phase, ui_data=ctx.active_vars)
-                
-                # Decrement the global cap by the number of blocks consumed
-                # by this sketch so the next sketch picks up where this one
-                # left off. ``Blocks`` is now required by the template
-                # validator (template_resolver._validate_template_spec), so
-                # missing-key fallbacks aren't needed here.
+
+            except Exception:
+                ctx.logger.log_error(
+                    f"CRASH in Sketch {sketch_spec['Name']}:\n{traceback.format_exc()}")
+                crashed = True
+            finally:
                 if remaining_phase is not None:
                     remaining_phase -= len(sketch_spec.get("Blocks", []))
                     if remaining_phase < 0:
                         remaining_phase = 0
 
-            except Exception:
-                ctx.logger.log_error(
-                    f"CRASH in Sketch {sketch_spec['Name']}:\n{traceback.format_exc()}")
+            if crashed:
+                ctx.logger.log(
+                    "BUILD HALTED after sketch crash - subsequent sketches "
+                    "skipped to avoid cascading errors on missing geometry.",
+                    "WARNING")
+                break
 
         ctx.logger.log("SYNTHESIS COMPLETE")
 

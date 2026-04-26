@@ -68,25 +68,51 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
 
 def delete_dimension_by_name(ctx, sketch, name):
     """
-    Find and delete a dimension in the sketch by its persistent parameter name.
+    Find and delete a dimension in the sketch.
+
+    Tries two lookup paths in order:
+      1. entity_map lookup via the FrameBuilder ID stamped at creation
+         time. Survives parameter-rename failures because the FB
+         attribute is independent of Fusion's parameter naming.
+      2. Iterate sketchDimensions and match d.parameter.name == name.
+         Used for legacy dims that weren't tagged with FB.ID, or as a
+         safety net.
     """
     if not name:
         return
-    
+
+    s_name = sketch.name
+
+    # Path 1: entity_map (preferred - survives rename failures).
     try:
-        # We must iterate all dimensions because 'itemByName' works on Parameters, 
-        # but here we need to find the SketchDimension object to call deleteMe().
+        em = ctx.entity_map.get(s_name, {})
+        d = em.get(name)
+        if d is not None:
+            try:
+                d.deleteMe()
+                ctx.logger.log(f"DIM DELETED (via entity_map): {name}")
+                # Drop the stale entry so subsequent lookups don't return
+                # a deleted entity.
+                em.pop(name, None)
+                return
+            except Exception as e:
+                ctx.logger.log(f"DIM DELETE ERROR (via entity_map): {name}: {e}", "WARNING")
+    except Exception:
+        pass
+
+    # Path 2: fallback - iterate dimensions by parameter name.
+    try:
         found = False
         for d in sketch.sketchDimensions:
             if d.parameter and d.parameter.name == name:
                 d.deleteMe()
-                ctx.logger.log(f"DIM DELETED: {name}")
+                ctx.logger.log(f"DIM DELETED (via param name): {name}")
                 found = True
-                break # unique name
-        
+                break
+
         if not found:
-             ctx.logger.log(f"DIM DELETE MISS: No dimension named '{name}' found in {sketch.name}", "DEBUG")
-             
+            ctx.logger.log(f"DIM DELETE MISS: No dimension named '{name}' found in {s_name}", "DEBUG")
+
     except Exception as e:
         ctx.logger.log(f"DIM DELETE ERROR: Failed to delete '{name}': {e}", "WARNING")
 
@@ -166,10 +192,35 @@ def _apply_expression(ctx, sketch, d, dim_name, dim_target, expr, tgt, is_snap_o
             try:
                 d.parameter.name = dim_name
             except Exception as e:
-                ctx.logger.log(f"DIM NAME FAIL: {dim_name} (already exists?): {e}", "DEBUG")
+                # Bumped to WARNING because silent rename failure leads to
+                # DeleteDimension misses downstream - the dim keeps its
+                # auto-generated 'd##' name, the radius_removal lookup by
+                # 'seed_rad_*' finds nothing, and the user is left puzzled
+                # why their seed dims don't get cleaned up.
+                ctx.logger.log(f"DIM NAME FAIL: {dim_name} (already exists?): {e}", "WARNING")
 
         d.parameter.expression = str(expr)
-        ctx.logger.log(f"DIM OK: {dim_name} on '{dim_target}' = {expr}")
+        # Log BOTH the requested name and the actual parameter name. They
+        # differ when the rename silently failed; logging only the requested
+        # name makes 'DIM OK' falsely reassuring.
+        actual = d.parameter.name
+        if actual == dim_name:
+            ctx.logger.log(f"DIM OK: {dim_name} on '{dim_target}' = {expr}")
+        else:
+            ctx.logger.log(f"DIM OK (renamed): requested={dim_name} actual={actual} on '{dim_target}' = {expr}", "WARNING")
+
+        # Register the dimension in entity_map under its semantic name so
+        # downstream phases (DeleteDimension, sweeps, etc.) can find it
+        # even when the parameter rename above silently failed because of
+        # a UserParameter name collision from a previous build. The FB
+        # attribute path is independent of Fusion's parameter naming so
+        # it survives that failure mode.
+        if dim_name and dim_name != "?":
+            try:
+                s_name_actual = sketch.name
+                ctx.set_id(d, s_name_actual, "dim", override_id=dim_name)
+            except Exception as e:
+                ctx.logger.log(f"DIM TAG FAIL: {dim_name}: {e}", "WARNING")
 
         if is_snap_only:
             d.deleteMe()

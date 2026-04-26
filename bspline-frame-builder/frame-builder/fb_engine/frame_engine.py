@@ -198,7 +198,7 @@ class FrameBuilder:
                     self.logger.log(f"run_full_synthesis: selected sketch '{sk_name}' for extrusion")
                     break
             if not sketch:
-                sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame-enclosure")
+                sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame_enclosure")
             if sketch:
                 self._extrude_jesmo_frame(sketch, target_body, frame_comp)
                 

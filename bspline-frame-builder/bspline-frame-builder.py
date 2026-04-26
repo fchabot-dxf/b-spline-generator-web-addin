@@ -181,6 +181,12 @@ def _bootstrap():
     _diag_logger = DebugLogger(os.path.join(_addin_root, 'frame-builder'))
 
     # --- Clear cached sub-module state ---
+    # ``_force_wipe`` cascades through sub-packages, so passing 'fb_engine'
+    # wipes 'fb_engine.parametric_engine', 'fb_engine.offsets', etc.
+    # 'sketches' wipes the whole sketches package incl. ``_common``,
+    # ``template_1``, ``template_2`` and their phase modules.
+    # 'template_loader' is at the frame-builder root (top-level import,
+    # not under fb_engine) so it needs its own entry to be reloaded.
     _force_wipe([
         'bspline_ui',
         'sketch_builder_ui',
@@ -189,6 +195,8 @@ def _bootstrap():
         'frame_engine_core',
         'fb_engine.frame_engine',
         'fb_engine',
+        'template_loader',
+        'sketches',
     ])
 
     # --- Engine ---

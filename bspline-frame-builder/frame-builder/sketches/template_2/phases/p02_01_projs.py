@@ -7,10 +7,10 @@ def get_block(ui_data=None):
         "PhaseID": "p02_01_projs",
         "Name": "Projections",
         "Projections": [
-            {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_TL', 'TargetID': 'proj_off_corner_TL'},
-            {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_TR', 'TargetID': 'proj_off_corner_TR'},
-            {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_BL', 'TargetID': 'proj_off_corner_BL'},
-            {'SourceSketch': '1_bounding-box', 'SourceID': 'BB_corner_BR', 'TargetID': 'proj_off_corner_BR'},
-            {'SourceSketch': '1_bounding-box', 'SourceID': 'offset_BB_top', 'TargetID': 'proj_off_BB_top'},
+            {'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_corner_TL', 'TargetID': 'proj_off_corner_TL'},
+            {'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_corner_TR', 'TargetID': 'proj_off_corner_TR'},
+            {'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_corner_BL', 'TargetID': 'proj_off_corner_BL'},
+            {'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_corner_BR', 'TargetID': 'proj_off_corner_BR'},
+            {'SourceSketch': '1_bounding_box', 'SourceID': 'offset_BB_top', 'TargetID': 'proj_off_BB_top'},
         ]
     }

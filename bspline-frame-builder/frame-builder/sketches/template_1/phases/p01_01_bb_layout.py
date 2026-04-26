@@ -1,25 +1,10 @@
-def get_block(ui_data=None):
-    """
-    Phase 0a: Bounding Box Layout.
-    Defines the outer model limits and anchors the center point to the origin.
-    """
-    return {
-        "Name": "BB Layout",
-        "PhaseID": "p01_01_bb_layout",
-        "Geometry": [
-            {
-                "ID": "BB_RECT",
-                "Type": "Rectangle",
-                "Center": [0.0, 0.0],
-                "Size": ["widthIn", "heightIn"],
-                "LineIDs": ["BB_top", "BB_right", "BB_bottom", "BB_left"]
-            }
-        ],
-        "Constraints": [
-            {"Type": "Coincident", "Targets": ["BB_RECT:C", "ORIGIN"]}
-        ],
-        "Dimensions": [
-            {"Target": "BB_top",   "Expression": "widthIn",  "Name": "dim_width"},
-            {"Target": "BB_right", "Expression": "heightIn", "Name": "dim_height"}
-        ]
-    }
+"""Shim — defers to the canonical BB Layout phase in ``_common``.
+
+The actual block content lives in
+``sketches/_common/phases/p01_01_bb_layout.py``. This file exists so
+``TemplateLoader._scan_phase_files`` still finds a ``p01_01_*.py`` here
+(filename → ``PhaseID`` convention) and so ``ls phases/`` still answers
+"what does this template build?".
+"""
+
+from sketches._common.phases.p01_01_bb_layout import get_block  # noqa: F401
