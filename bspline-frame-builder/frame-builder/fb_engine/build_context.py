@@ -80,11 +80,21 @@ class BuildContext:
         s_name      : Sketch name key for entity_map
         prefix      : Fallback category prefix (e.g. "line", "arc", "point")
         override_id : Explicit ID to use instead of auto-generated one
+
+        The attribute/name mutations are best-effort - some Fusion entity
+        types (notably the SketchPoints returned by sketch.offset() on
+        long mixed line+arc loops) reject ``entity.name = ...`` with
+        duplicate-name or read-only errors. We don't let those kill the
+        entity_map registration; otherwise downstream lookups for
+        ``ID:S`` / ``ID:E`` fail silently.
         """
         if not entity:
             return
         final_id = override_id if override_id else f"{prefix}-{self.feature_count}"
         self.feature_count += 1
+
+        # Best-effort attribute/name mutation. Logged at DEBUG on failure
+        # so we can see which entities reject naming if needed.
         try:
             if hasattr(entity, 'attributes'):
                 attr = entity.attributes.itemByName('FrameBuilder', 'ID')
@@ -101,11 +111,26 @@ class BuildContext:
 
             if hasattr(entity, 'name'):
                 entity.name = final_id
+        except Exception as e:
+            self.logger.log(
+                f"ATTR SET FAIL: {final_id} on {type(entity).__name__} "
+                f"in {s_name}: {e}",
+                "DEBUG")
 
+        # Always register in entity_map regardless of attribute success.
+        # entity_map is what downstream phases (miters, projections,
+        # constraints) use to resolve IDs - it must be populated even
+        # if the cosmetic ``name`` set failed.
+        try:
             self.entity_map[s_name][final_id] = entity
-            self.logger.log(f"ATTR TAG: {final_id} assigned to {type(entity).__name__} in {s_name}", "DEBUG")
-        except Exception:
-            pass
+            self.logger.log(
+                f"ATTR TAG: {final_id} assigned to {type(entity).__name__} "
+                f"in {s_name}",
+                "DEBUG")
+        except Exception as e:
+            self.logger.log(
+                f"MAP REGISTER FAIL: {final_id} in {s_name}: {e}",
+                "WARNING")
 
     # ------------------------------------------------------------------
     # Entity lookup (with :S / :E / :C suffix resolution)

@@ -83,10 +83,10 @@ The Frame Builder Template 1 - Hourglass uses a **Multi-Sketch Sequence** to ens
 ## Sketch 3 — Enclosure: Frame Wall
 *Relationship: Projects the finalized Sketch 2 silhouette to generate the solid profile.*
 
-### Step 15 — Enclosure Projections (`p15_encl_projs.py`)
+### Step 15 — Enclosure Projections (`p03_01_encl_projs.py`)
 - **Action**: Imports the finalized silhouette loop from Sketch 2.
-- **Source**: `2_shape-outline:top_edge`, `horn_TR`, etc.
-- **Anchors**: Also projects internal miter anchors (`proj_anchor_TL`).
+- **Source**: `2_shape_outline:top_edge`, `horn_TR`, etc. (12 projected curves total).
+- **Note**: Separate `proj_anchor_*` SketchPoints used to be projected here for the miter sources, but were removed — projection already creates curve endpoint vertices at each corner, so the miter sources `proj_top_edge:S` / `proj_horn_TR:S` / etc. directly.
 
 ### Step 16 — Enclosure Welds (`p16_encl_welds.py`)
 - **Action**: Stabilizes the projected loop for the offset operation.
@@ -96,9 +96,9 @@ The Frame Builder Template 1 - Hourglass uses a **Multi-Sketch Sequence** to ens
 - **Key IDs**: `inner_corner_TL`, `inner_corner_TR`, etc.
 - **Driver**: `frame_thickness`.
 
-### Step 18 — Enclosure Miters (`p18_encl_miters.py`)
+### Step 18 — Enclosure Miters (`p03_03_encl_miters.py`)
 - **Action**: Bridges the outer silhouette and inner enclosure.
-- **Relation**: Connects `proj_anchor_TR` (Silhouette) to `inner_corner_TR` (Offset).
+- **Relation**: Connects parent-curve endpoints under the "start of next curve" convention — `proj_horn_TR:S` (outer TR) to `inner_proj_horn_TR:S` (inner TR), and the equivalent at TL/BR/BL.
 
 ---
 

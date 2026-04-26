@@ -49,6 +49,31 @@ def offset_step(ctx, sketch, s_name, off):
         # --- Tag results ---
         if offset_result and offset_result.count > 0:
             ctx.logger.log(f"OFFSET SUCCESS: Generated {offset_result.count} curves")
+
+            # Pulse the solver so the new offset entities are fully
+            # realized before we try to read .startSketchPoint /
+            # .endSketchPoint and assign names.
+            #
+            # The engine runs offset steps inside an
+            # isComputeDeferred=True window (intentionally, for
+            # constraint stability). In deferred mode, the curve
+            # collection returned by sketch.offset() / addOffset2 hands
+            # back proxies that aren't yet finalized - reads like
+            # .startSketchPoint may work, but writes like
+            # ``entity.name = X`` silently no-op. Result: endpoints
+            # never get registered as ID:S / ID:E in entity_map, and
+            # downstream miters / constraints can't find them.
+            #
+            # Toggling False then True forces Fusion to do a single
+            # compute pass (finalizing the new entities) and then
+            # re-enter deferred mode for the miters that follow.
+            try:
+                sketch.isComputeDeferred = False
+                sketch.isComputeDeferred = True
+            except Exception as e:
+                ctx.logger.log(
+                    f"OFFSET PULSE FAIL in {s_name}: {e}", "WARNING")
+
             _tag_offset_results(ctx, s_name, off, offset_result)
 
             # --- Tag corner points if requested ---
@@ -359,22 +384,37 @@ def _tag_corner_points(ctx, s_name, off, offset_curves):
     if not pts_with_coords:
         return
 
-    xs = [c[0] for c, _ in pts_with_coords]
-    ys = [c[1] for c, _ in pts_with_coords]
-    cx = (min(xs) + max(xs)) / 2.0
-    cy = (min(ys) + max(ys)) / 2.0
-
-    # Classify by quadrant relative to the centroid of the 4 corners.
+    # Pick the MOST EXTREME point per corner via explicit ranking.
+    #
+    # The previous logic ("for each point, assign to its quadrant by
+    # x/y signs vs centroid; last assignment wins") works for a
+    # 4-corner rectangle but fails for non-rectangular offsets like
+    # the 12-segment silhouette - many points land in each quadrant
+    # (BB-equivalent corners AND arc endpoints), and which one wins
+    # depends on iteration order. Result: 2 corners on actual BB
+    # extremes, 2 corners on arbitrary arc endpoints.
+    #
+    # The ranking-based approach picks the truly extreme point per
+    # quadrant by maximising a combined metric:
+    #   TL: max(y - x)   most upper-left (y high, x low)
+    #   TR: max(x + y)   most upper-right
+    #   BL: min(x + y)   most lower-left
+    #   BR: max(x - y)   most lower-right
+    # Equivalent to "closest to that infinite quadrant corner" by L1
+    # distance. Works for any closed loop, not just rectangles.
     classified = {}
-    for (x, y), pt in pts_with_coords:
-        if x <= cx and y >= cy:
-            classified["TL"] = pt
-        elif x >= cx and y >= cy:
-            classified["TR"] = pt
-        elif x <= cx and y <= cy:
-            classified["BL"] = pt
-        elif x >= cx and y <= cy:
-            classified["BR"] = pt
+
+    rankings = {
+        "TL": lambda c: c[1] - c[0],
+        "TR": lambda c: c[0] + c[1],
+        "BL": lambda c: -(c[0] + c[1]),
+        "BR": lambda c: c[0] - c[1],
+    }
+    for label, key_fn in rankings.items():
+        if label not in corner_ids:
+            continue
+        best = max(pts_with_coords, key=lambda p: key_fn(p[0]))
+        classified[label] = best[1]
 
     for label, target_id in corner_ids.items():
         pt = classified.get(label)

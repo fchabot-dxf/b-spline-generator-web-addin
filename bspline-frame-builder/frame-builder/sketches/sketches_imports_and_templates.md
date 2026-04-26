@@ -78,7 +78,7 @@ Phase files now use the naming pattern:
 
 - `p01_01_bb_layout.py`
 - `p02_05_chain.py`
-- `p03_03_encl_offset.py`
+- `p03_02_encl_offset.py`
 
 Each phase file contains a block that includes a `PhaseID` string. The current convention is:
 

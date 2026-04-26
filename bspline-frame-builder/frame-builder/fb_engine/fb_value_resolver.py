@@ -29,7 +29,7 @@ class FBValueResolver:
         """Returns the standardized metric defaults for every frame."""
         return {
             'frame_thickness':      -1.905, # -0.75 in (XY Inset)
-            'frame_depth':           2.54,   #  1.00 in (Z Height)
+            'frame_depth':           1.905,  #  0.75 in (Z Height) - matches template_data.py UI default
             'Skel_Slot_Tolerance':   0.635, #  0.25 in
             'boundingboxoffset':     0.635, #  0.25 in
             'Skel_Frame_Taper':      0.0,

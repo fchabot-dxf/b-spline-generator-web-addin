@@ -34,47 +34,16 @@ SKETCH_1_PARAMETERS = [
 
 SKETCH_2_LABEL = "Shape Outline"
 SKETCH_2_PARAMETERS = [
-    # Anatomy - solver seeds, user-lockable
-    {"Name": "ShoulderSpan", "Label": "Shoulder Width",  "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
-    {"Name": "WaistSpan",    "Label": "Waist Width",     "Category": "Anatomy", "Val": 0.95, "Min": 0.2,  "Max": 1.25, "Unit": "", "DisplayUnit": "x"},
-    {"Name": "HipSpan",      "Label": "Hip Width",       "Category": "Anatomy", "Val": 0.80, "Min": 0.2,  "Max": 0.9,  "Unit": "", "DisplayUnit": "x"},
-    {"Name": "TopGap",       "Label": "Top Height %",     "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,  "Unit": "", "DisplayUnit": "%"},
-    {"Name": "BottomGap",    "Label": "Bottom Height %",  "Category": "Anatomy", "Val": 0.15, "Min": 0.0,  "Max": 0.5,  "Unit": "", "DisplayUnit": "%"},
-    {"Name": "WaistOffset",  "Label": "Waist Offset",      "Category": "Anatomy", "Val": 0.0,  "Min": -0.5, "Max": 0.5,  "Unit": "in", "Expose": True},
-
-    # Silhouette - solver seeds, user-lockable. Factors of heightIn
-    # (matches the widthIn/heightIn factor convention used by Spans and
-    # Gaps). Resolver wraps as ``(heightIn * N)``; UI de-scales back to
-    # the factor on panel reopen. Defaults reproduce the prior 2.5/2.8/
-    # 2.5 cm values at the default heightIn=5 cm.
-    {"Name": "ShoulderRadius", "Label": "Shoulder Radius", "Category": "Silhouette", "Val": 0.5,  "Min": 0.1, "Max": 2.0, "Unit": "", "DisplayUnit": "x"},
-    {"Name": "WaistRadius",    "Label": "Waist Radius",    "Category": "Silhouette", "Val": 0.56, "Min": 0.1, "Max": 2.0, "Unit": "", "DisplayUnit": "x"},
-    {"Name": "HipRadius",      "Label": "Hip Radius",      "Category": "Silhouette", "Val": 0.5,  "Min": 0.1, "Max": 2.0, "Unit": "", "DisplayUnit": "x"},
-
-    # Anatomy Toggles - 0.0 = seed, 1.0 = hard constraint
-    {"Name": "en_ShoulderSpan",   "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
-    {"Name": "en_WaistSpan",      "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
-    {"Name": "en_HipSpan",        "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
-    {"Name": "en_TopGap",         "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
-    {"Name": "en_BottomGap",      "Category": "Anatomy",    "Val": 0.0, "Unit": ""},
-
-    # Silhouette Toggles - 0.0 = seed, 1.0 = hard constraint
-    {"Name": "en_ShoulderRadius", "Category": "Silhouette", "Val": 0.0, "Unit": ""},
-    {"Name": "en_WaistRadius",    "Category": "Silhouette", "Val": 0.0, "Unit": ""},
-    {"Name": "en_HipRadius",      "Category": "Silhouette", "Val": 0.0, "Unit": ""},
-
-    # Constraint Toggles - 1.0 = apply, 0.0 = skip
-    {"Name": "ck_arc_shoulder_weld",   "Label": "Shoulder Arc Weld",      "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_arc_hip_weld",        "Label": "Hip Arc Weld",           "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_shoulder_merge", "Label": "Shoulder Skeleton Merge","Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_shoulder_equal", "Label": "Shoulder Skeleton Equal", "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_neck_merge",    "Label": "Neck Skeleton Merge",   "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_neck_equal",    "Label": "Neck Skeleton Equal",    "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_hip_merge",      "Label": "Hip Skeleton Merge",     "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_hip_equal",      "Label": "Hip Skeleton Equal",      "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_shoulder_horiz", "Label": "Shoulder Horizontal",    "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_neck_horiz",    "Label": "Neck Horizontal",       "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
-    {"Name": "ck_skel_hip_horiz",      "Label": "Hip Horizontal",         "Category": "Constraints", "Val": 1.0, "Unit": "", "Expose": True},
+    # All anatomy/silhouette span and radius sliders (and their en_*
+    # lock toggles, plus all ck_* constraint gates) were removed when
+    # the drivers phase was retired. Seeds are hardcoded as literal
+    # widthIn/heightIn fractions inside the phase files; if you want
+    # different proportions, edit the seeds (or regenerate via the
+    # template-maker) rather than driving them from the UI.
+    #
+    # No T2 phase currently consumes a CK gate, so none are declared
+    # here either. Re-add them per-template if a phase ever needs a
+    # runtime kill-switch.
 ]
 
 SKETCH_3_LABEL = "Frame Enclosure"
@@ -87,6 +56,20 @@ SKETCH_3_PARAMETERS = [
         "Unit": "in",
         "Min": 0.1,
         "Max": 2.0,
+        "Expose": True,
+    },
+    {
+        # Z-axis extrusion height for the jesmonite frame body. Read by
+        # fb_engine.frame_engine._extrude_jesmo_frame via the Fusion
+        # UserParameter of the same name. Previously a hidden default
+        # (2.54 cm = 1.00 in) in fb_value_resolver - now user-adjustable.
+        "Name": "frame_depth",
+        "Label": "Frame depth",
+        "Category": "Frame Spec",
+        "Val": 0.75,
+        "Unit": "in",
+        "Min": 0.1,
+        "Max": 4.0,
         "Expose": True,
     },
 ]

@@ -10,7 +10,7 @@ def get_block(ui_data=None):
     inner_ids = [f'inner_{eid}' for eid in outline_ids]
 
     return {
-        "PhaseID": "p03_03_encl_offset",
+        "PhaseID": "p03_02_encl_offset",
         "Name": "Enclosure Offset",
         "Steps": [
             {
@@ -18,6 +18,11 @@ def get_block(ui_data=None):
                 "SourceID":     outline_ids,
                 "DistanceExpr": "frame_thickness",
                 "TargetIDs":    inner_ids,
+                # CornerIDs intentionally omitted. p03_03_encl_miters
+                # references the inner offset corners by parent-curve
+                # endpoint names (e.g. inner_proj_top_edge:S for TL),
+                # not by spatial classification, so we don't need
+                # inner_corner_TL/TR/BL/BR tags.
             }
         ]
     }

@@ -91,22 +91,21 @@ The Frame Builder Template 2 - Narrow Neck uses a **Multi-Sketch Sequence** to e
 
 ### 🔵 Phase 3.1 — Enclosure Projections (`p03_01_encl_projs.py`)
 - **Action**: Imports the finalized silhouette loop from Sketch 2.
-- **Source**: `2_shape-outline:top_edge`, `horn_TR`, etc.
-- **Anchors**: Also projects internal miter anchors (`proj_anchor_TL`).
+- **Source**: `2_shape_outline:top_edge`, `horn_TR`, etc. (12 projected curves total).
+- **Note**: Separate `proj_anchor_*` SketchPoints used to be projected here for the miter sources, but were removed — projection already creates curve endpoint vertices at each corner, so the miter sources `proj_top_edge:S` / `proj_horn_TR:S` / etc. directly.
 
-### 🔵 Phase 3.2 — Enclosure Welds (`p03_02_encl_welds.py`)
-- **Action**: Stabilizes the projected loop for the offset operation.
-
-### 🔵 Phase 3.3 — Enclosure Offset (`p03_03_encl_offset.py`)
+### 🔵 Phase 3.2 — Enclosure Offset (`p03_02_encl_offset.py`)
 - **Action**: Generates the structural thickness of the frame.
-- **Key IDs**: `inner_corner_TL`, `inner_corner_TR`, etc.
+- **Key IDs**: `inner_proj_top_edge:S` (TL corner), `inner_proj_horn_TR:S` (TR), etc. — corners are referenced by parent-curve endpoints under the "start of next curve" convention.
 - **Driver**: `frame_thickness`.
 
-### 🔵 Phase 3.4 — Enclosure Miters (`p03_04_encl_miters.py`)
-- **Action**: Bridges the outer silhouette and inner enclosure.
-- **Relation**: Connects `proj_anchor_TR` (Silhouette) to `inner_corner_TR` (Offset).
+> Note: an explicit Enclosure Welds phase used to live here at 3.2 but was removed — the silhouette curves are projections that already inherit endpoint coincidences from the source loop, so explicit welds over-constrained the sketch.
 
-### 🔵 Phase 3.5 — Enclosure Surround Rectangle (`p03_05_encl_surround_rect.py`)
+### 🔵 Phase 3.3 — Enclosure Miters (`p03_03_encl_miters.py`)
+- **Action**: Bridges the outer silhouette and inner enclosure.
+- **Relation**: Connects parent-curve endpoints under the "start of next curve" convention — e.g. `proj_horn_TR:S` (outer TR) to `inner_proj_horn_TR:S` (inner TR), and the equivalent at TL/BR/BL.
+
+### 🔵 Phase 3.4 — Enclosure Surround Rectangle (`p03_04_encl_surround_rect.py`)
 - **Action**: Adds the surround rectangle used to cap the frame wall and finalize the profile boundary.
 - **Relation**: Anchors the surround rect center to the origin while preserving its offset from the silhouette.
 

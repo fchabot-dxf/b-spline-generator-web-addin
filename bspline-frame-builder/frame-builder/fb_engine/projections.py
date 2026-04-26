@@ -73,8 +73,10 @@ def project_step(ctx, sketch, s_name, proj):
                 target_id if target_id and res.count == 1
                 else f"proj_{base_name}_{i}"
             )
-            ctx.set_id(res.item(i), s_name, "proj", override_id=proj_name)
-            _log_projection(ctx, proj, proj_name, res.item(i), s_name)
+            ent = res.item(i)
+            ctx.set_id(ent, s_name, "proj", override_id=proj_name)
+            _register_endpoints(ctx, s_name, ent, proj_name)
+            _log_projection(ctx, proj, proj_name, ent, s_name)
             proj_names.append(proj_name)
 
         return ", ".join(proj_names)
@@ -88,6 +90,39 @@ def project_step(ctx, sketch, s_name, proj):
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+def _register_endpoints(ctx, s_name, ent, base_id):
+    """
+    Register :S / :E (and :C for arcs) sub-IDs for a projected curve.
+
+    Mirrors what offsets._register_curve does for offset results: when a
+    line or arc lands in a sketch via Project, it owns its own start /
+    end SketchPoints (independent from any source entity's coincidences),
+    and downstream phases (miters, constraints) reference them as
+    ``base_id:S`` / ``base_id:E``.
+
+    Without this registration, miters that source from
+    ``proj_top_edge:S`` etc. fail with MITER MISS even though the curve
+    itself is correctly tagged. SketchPoint projections (single points)
+    have no endpoints; this function silently no-ops on them.
+    """
+    if not ent:
+        return
+    try:
+        sp = getattr(ent, 'startSketchPoint', None)
+        ep = getattr(ent, 'endSketchPoint', None)
+        cp = getattr(ent, 'centerSketchPoint', None)
+        if sp:
+            ctx.set_id(sp, s_name, "point", override_id=f"{base_id}:S")
+        if ep:
+            ctx.set_id(ep, s_name, "point", override_id=f"{base_id}:E")
+        if cp:
+            ctx.set_id(cp, s_name, "point", override_id=f"{base_id}:C")
+    except Exception as e:
+        ctx.logger.log(
+            f"PROJ ENDPOINT REGISTER FAIL: {base_id} in {s_name}: {e}",
+            "DEBUG")
+
+
 def _attribute_fallback(ctx, base_id):
     """Search design attributes for an entity tagged with the given ID."""
     try:
