@@ -1,11 +1,11 @@
 def get_block(ui_data=None):
     """
     Phase 19: Enclosure Surround Rectangle.
-    Adds the surround rectangle in Sketch 3 using the same variable-based logic as Template 2,
+    Adds the surround rectangle in Sketch 3 using the same variable-based logic as Template 1,
     with a small center offset to avoid origin-snapping problems before grounding the center.
     """
     return {
-        "PhaseID": "p03_04_encl_surround_rect",
+        "PhaseID": "p03_05_encl_surround_rect",
         "Name": "Enclosure Surround Rectangle",
         "BuildSequence": [
             {

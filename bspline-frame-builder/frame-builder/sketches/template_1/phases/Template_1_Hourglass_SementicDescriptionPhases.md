@@ -96,7 +96,11 @@ The Frame Builder Template 1 - Hourglass uses a **Multi-Sketch Sequence** to ens
 - **Key IDs**: `inner_corner_TL`, `inner_corner_TR`, etc.
 - **Driver**: `frame_thickness`.
 
-### Step 18 — Enclosure Miters (`p03_03_encl_miters.py`)
+### Step 17.5 — Inner Corner Resolve (`p03_03_inner_corner_resolve.py`)
+- **Action**: Locates the 4 inner-enclosure corner SketchPoints by computed position and registers them under the names the miter phase expects.
+- **Why**: At high `frame_thickness`, Fusion's offset merges colliding side arcs and the resulting curves' attribute API is locked, so naming inner corners via offset-curve endpoints fails. The corners themselves still exist (formed by intersection of straight-line offsets that never collapse) — this phase computes each expected position from the outer projection + frame_thickness and tags the nearest SketchPoint.
+
+### Step 18 — Enclosure Miters (`p03_04_encl_miters.py`)
 - **Action**: Bridges the outer silhouette and inner enclosure.
 - **Relation**: Connects parent-curve endpoints under the "start of next curve" convention — `proj_horn_TR:S` (outer TR) to `inner_proj_horn_TR:S` (inner TR), and the equivalent at TL/BR/BL.
 

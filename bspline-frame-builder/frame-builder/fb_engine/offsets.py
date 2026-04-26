@@ -38,6 +38,9 @@ def offset_step(ctx, sketch, s_name, off):
         # --- Audit the loop (now supporting flipped connections) ---
         _audit_loop_integrity(ctx, coll, s_name)
 
+        # --- Diagnostic: source-loop endpoint topology ---
+        _audit_endpoint_topology(ctx, coll, s_name, label="source")
+
 
         # --- Primary: addOffset2 (parametric) ---
         offset_result = _try_parametric_offset(ctx, sketch, coll, d_expr, s_name)
@@ -49,6 +52,9 @@ def offset_step(ctx, sketch, s_name, off):
         # --- Tag results ---
         if offset_result and offset_result.count > 0:
             ctx.logger.log(f"OFFSET SUCCESS: Generated {offset_result.count} curves")
+
+            # --- Diagnostic: result-loop endpoint topology ---
+            _audit_endpoint_topology(ctx, offset_result, s_name, label="result")
 
             # Pulse the solver so the new offset entities are fully
             # realized before we try to read .startSketchPoint /
@@ -471,6 +477,84 @@ def _tag_by_proximity(ctx, s_name, off, offset_curves, t_ids):
             ctx.logger.log(
                 f"OFFSET PROXIMITY: No source match for curve at ({ocx:.3f},{ocy:.3f}) "
                 f"in {s_name}, using {fallback}", "WARNING")
+
+
+# ------------------------------------------------------------------
+# Endpoint topology audit
+# ------------------------------------------------------------------
+def _audit_endpoint_topology(ctx, coll, s_name, label="result"):
+    """
+    Count unique endpoint SketchPoints across a curve collection.
+
+    For a closed N-curve loop:
+      - SHARED topology  -> N unique points (one per junction, both
+                            adjacent curves' endpoints resolve to the
+                            same SketchPoint object)
+      - PAIRED topology  -> 2N unique points (each curve owns its own
+                            start/end pair, junctions linked via
+                            Coincident constraints between separate
+                            entities)
+
+    Manually-drawn geometry (Line/Arc seeds with explicit Points +
+    Coincident chains) is PAIRED. Offset-generated geometry (output of
+    sketch.offset() / addOffset2) is SHARED, because Fusion's offset
+    kernel emits the curves with already-merged junction points.
+    """
+    if not coll or coll.count == 0:
+        return
+    try:
+        n = coll.count
+    except Exception:
+        return
+
+    unique_tokens = set()
+    total_endpoint_refs = 0
+    type_counts = {}
+
+    for i in range(n):
+        try:
+            curve = coll.item(i)
+        except Exception:
+            continue
+        # Track curve-type composition for context (e.g. is the loop
+        # made of pure lines, mixed lines+arcs, etc.).
+        try:
+            t_name = type(curve).__name__
+            type_counts[t_name] = type_counts.get(t_name, 0) + 1
+        except Exception:
+            pass
+        for getter in ("startSketchPoint", "endSketchPoint"):
+            try:
+                pt = getattr(curve, getter, None)
+                if pt is None:
+                    continue
+                tok = getattr(pt, "entityToken", None)
+                if tok:
+                    unique_tokens.add(tok)
+                    total_endpoint_refs += 1
+            except Exception:
+                continue
+
+    expected_shared = n
+    expected_paired = n * 2
+    unique_count = len(unique_tokens)
+
+    if unique_count == expected_shared:
+        verdict = "SHARED (one point per junction)"
+    elif unique_count == expected_paired:
+        verdict = "PAIRED (two points per junction)"
+    else:
+        verdict = (
+            f"MIXED ({unique_count} unique / "
+            f"{expected_shared} shared-expected / "
+            f"{expected_paired} paired-expected)")
+
+    type_str = ", ".join(f"{k}:{v}" for k, v in sorted(type_counts.items()))
+
+    ctx.logger.log(
+        f"ENDPOINT TOPOLOGY ({label}) in {s_name}: {n} curves "
+        f"({type_str}), {total_endpoint_refs} endpoint refs, "
+        f"{unique_count} unique tokens -> {verdict}")
 
 
 # ------------------------------------------------------------------

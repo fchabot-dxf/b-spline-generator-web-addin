@@ -49,32 +49,20 @@ SKETCH_2_PARAMETERS = [
 SKETCH_3_LABEL = "Frame Enclosure"
 SKETCH_3_PARAMETERS = [
     {
-        # Max bound to heightIn / (14 + 0.05) - a hair below the
-        # heightIn / 14 geometric threshold. Min at 0.25 in. See
-        # template_1's copy for rationale.
+        # Static 2.0 in cap - p03_03_inner_corner_resolve handles
+        # the merged-offset regime so the tight geometric cap is no
+        # longer required. See template_1's copy for rationale.
         "Name": "frame_thickness",
         "Label": "Frame thickness",
         "Category": "Frame Spec",
         "Val": 0.75,
         "Unit": "in",
         "Min": 0.25,
-        "Max": "heightIn / (14 + 0.05)",
+        "Max": 1.5,
         "Expose": True,
     },
-    {
-        # Z-axis extrusion height for the jesmonite frame body. Read by
-        # fb_engine.frame_engine._extrude_jesmo_frame via the Fusion
-        # UserParameter of the same name. Previously a hidden default
-        # (2.54 cm = 1.00 in) in fb_value_resolver - now user-adjustable.
-        "Name": "frame_depth",
-        "Label": "Frame depth",
-        "Category": "Frame Spec",
-        "Val": 0.75,
-        "Unit": "in",
-        "Min": 0.1,
-        "Max": 4.0,
-        "Expose": True,
-    },
+    # frame_depth is owned by the solid builder, not this palette - see
+    # template_1's copy of this section for the rationale.
 ]
 
 

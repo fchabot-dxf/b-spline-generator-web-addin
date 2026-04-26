@@ -17,7 +17,7 @@ def get_block(ui_data=None):
     earlier when picking the "extreme per quadrant" point.
     """
     return {
-        "PhaseID": "p03_03_encl_miters",
+        "PhaseID": "p03_04_encl_miters",
         "Name": "Enclosure Miters",
         "Miters": [
             {'Source': 'proj_top_edge:S',    'Target': 'inner_proj_top_edge:S',    'IsConstruction': False},

@@ -24,6 +24,10 @@ preserves the original behavior verbatim by delegating to
 """
 
 import adsk.core, adsk.fusion
+import importlib
+
+from fb_engine import grain_orient
+importlib.reload(grain_orient)
 
 
 class AppearanceStrategy:
@@ -76,6 +80,7 @@ class DefaultAppearanceStrategy(AppearanceStrategy):
 
         if requested_name and requested_name != "(none)":
             self.am.apply_appearance(bodies, requested_name)
+            self._orient_grain(bodies)
             return
 
         # Fallback: apply the captured panel paint to each new body.
@@ -88,3 +93,22 @@ class DefaultAppearanceStrategy(AppearanceStrategy):
                         f"  Could not apply appearance to body '{b.name}': {app_err}",
                         "DEBUG",
                     )
+            self._orient_grain(bodies)
+
+    def _orient_grain(self, bodies):
+        """Run the grain auto-orient pass on each body. Best-effort:
+        bodies without a wood-style appearance, or unsupported
+        textureMapControl variants, are silently skipped (the module
+        logs at DEBUG level). Errors never propagate out of here.
+        """
+        for b in bodies:
+            try:
+                grain_orient.auto_orient_grain(b, self.log)
+            except Exception as e:
+                try:
+                    self.log.log(
+                        f"  Grain orient failed for body '{b.name}': {e}",
+                        "DEBUG",
+                    )
+                except Exception:
+                    pass

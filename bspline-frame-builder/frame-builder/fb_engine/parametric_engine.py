@@ -20,7 +20,7 @@ import adsk.core, adsk.fusion, traceback
 import importlib
 
 # Sub-module imports (Absolute naming for manual loading stability)
-from fb_engine import build_context, geometry, constraints, dimensions, projections, offsets, miters, fb_value_resolver, parameter_schema, diagnostics
+from fb_engine import build_context, geometry, constraints, dimensions, projections, offsets, miters, fb_value_resolver, parameter_schema, diagnostics, inner_corners
 importlib.reload(parameter_schema)
 importlib.reload(build_context)
 importlib.reload(geometry)
@@ -31,6 +31,7 @@ importlib.reload(offsets)
 importlib.reload(miters)
 importlib.reload(fb_value_resolver)
 importlib.reload(diagnostics)
+importlib.reload(inner_corners)
 
 from fb_engine.build_context import BuildContext
 from fb_engine.geometry import geom_step
@@ -331,6 +332,14 @@ class ParametricSketchBuilder:
                 sketch.isComputeDeferred = True
             elif t == "Step":
                 step_step(self.ctx, sketch, sketch_name, step)
+            elif t == "ResolveInnerCorners":
+                # Locate inner-enclosure corner SketchPoints by position
+                # and register them under expected miter target IDs.
+                # Bypasses offset-tagging fragility at high
+                # frame_thickness (where Fusion merges colliding side
+                # arcs and the resulting curves' attribute API is
+                # locked). See fb_engine/inner_corners.py.
+                inner_corners.inner_corner_step(self.ctx, sketch, sketch_name, step)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -18,7 +18,7 @@ def get_block(ui_data=None):
                 "SourceID":     outline_ids,
                 "DistanceExpr": "frame_thickness",
                 "TargetIDs":    inner_ids,
-                # CornerIDs intentionally omitted. p03_03_encl_miters
+                # CornerIDs intentionally omitted. p03_04_encl_miters
                 # references the inner offset corners by parent-curve
                 # endpoint names (e.g. inner_proj_top_edge:S for TL),
                 # not by spatial classification, so we don't need

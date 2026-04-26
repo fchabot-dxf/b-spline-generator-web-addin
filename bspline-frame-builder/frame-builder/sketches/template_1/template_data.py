@@ -56,12 +56,13 @@ SKETCH_2_PARAMETERS = [
 SKETCH_3_LABEL = "Frame Enclosure"
 SKETCH_3_PARAMETERS = [
     {
-        # Max bound to smallest silhouette feature radius (arcs are
-        # seeded at heightIn / 14). Divisor bumped to 14.05 so the cap
-        # lands a hair below the geometric threshold - above it the
-        # inward offset collapses corner arcs into phantom mega-arcs
-        # that Fusion blocks from API attribute access, so miters /
-        # endpoint resolution fail downstream.
+        # Static 2.0 in cap. The previous heightIn-relative cap was
+        # there because high frame_thickness made Fusion's offset merge
+        # the side arcs and corrupt the miter pipeline. The
+        # p03_03_inner_corner_resolve phase now handles the merged
+        # regime by finding inner corners by computed position, so the
+        # tight geometric cap isn't required - miters fire even when
+        # the side arcs collapse.
         # Min at 0.25 in (typical wall thickness floor for a cast
         # jesmonite frame).
         "Name": "frame_thickness",
@@ -70,23 +71,15 @@ SKETCH_3_PARAMETERS = [
         "Val": 0.75,
         "Unit": "in",
         "Min": 0.25,
-        "Max": "heightIn / (14 + 0.05)",
+        "Max": 1.5,
         "Expose": True,
     },
-    {
-        # Z-axis extrusion height for the jesmonite frame body. Read by
-        # fb_engine.frame_engine._extrude_jesmo_frame via the Fusion
-        # UserParameter of the same name. Previously a hidden default
-        # (2.54 cm = 1.00 in) in fb_value_resolver - now user-adjustable.
-        "Name": "frame_depth",
-        "Label": "Frame depth",
-        "Category": "Frame Spec",
-        "Val": 0.75,
-        "Unit": "in",
-        "Min": 0.1,
-        "Max": 4.0,
-        "Expose": True,
-    },
+    # frame_depth is owned by the solid builder, not the sketch builder
+    # - it only drives the Z extrusion and has no effect on sketch
+    # geometry. The Fusion UserParameter is still created from
+    # fb_value_resolver's defaults (0.75 in) so the extrude can read
+    # it; users who want a different depth set it via Fusion's
+    # parameter dialog or in the solid builder UI.
 ]
 
 

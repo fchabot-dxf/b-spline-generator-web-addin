@@ -101,11 +101,15 @@ The Frame Builder Template 2 - Narrow Neck uses a **Multi-Sketch Sequence** to e
 
 > Note: an explicit Enclosure Welds phase used to live here at 3.2 but was removed — the silhouette curves are projections that already inherit endpoint coincidences from the source loop, so explicit welds over-constrained the sketch.
 
-### 🔵 Phase 3.3 — Enclosure Miters (`p03_03_encl_miters.py`)
+### 🔵 Phase 3.3 — Inner Corner Resolve (`p03_03_inner_corner_resolve.py`)
+- **Action**: Locates the 4 inner-enclosure corner SketchPoints by position and registers them under the names the miter phase expects.
+- **Why**: At high `frame_thickness`, Fusion's offset merges colliding side arcs into phantom curves whose attribute API is locked, so naming the inner corners via the offset's curve endpoints fails. The corners themselves still exist as valid geometry (they're formed by intersection of straight-line offsets that never collapse) — this phase finds them by computed position and tags them directly.
+
+### 🔵 Phase 3.4 — Enclosure Miters (`p03_04_encl_miters.py`)
 - **Action**: Bridges the outer silhouette and inner enclosure.
 - **Relation**: Connects parent-curve endpoints under the "start of next curve" convention — e.g. `proj_horn_TR:S` (outer TR) to `inner_proj_horn_TR:S` (inner TR), and the equivalent at TL/BR/BL.
 
-### 🔵 Phase 3.4 — Enclosure Surround Rectangle (`p03_04_encl_surround_rect.py`)
+### 🔵 Phase 3.5 — Enclosure Surround Rectangle (`p03_05_encl_surround_rect.py`)
 - **Action**: Adds the surround rectangle used to cap the frame wall and finalize the profile boundary.
 - **Relation**: Anchors the surround rect center to the origin while preserving its offset from the silhouette.
 

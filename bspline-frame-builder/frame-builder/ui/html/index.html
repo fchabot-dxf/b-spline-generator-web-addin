@@ -102,15 +102,20 @@
     .slider-wrap.readonly {
       opacity: 0.8;
       pointer-events: none;
-      border-left: 2px solid var(--accent);
-      background: rgba(255, 255, 255, 0.03);
       margin-bottom: 8px;
-      padding-left: 10px;
     }
 
+    /* Readonly values are display-only - render as plain text, not as
+       an input field. Strip background, border, padding and any
+       border-radius so they don't look interactive. */
     .slider-wrap.readonly .slider-val {
       color: var(--accent);
       font-weight: 600;
+      background: transparent !important;
+      border: none !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
     }
   </style>
 </head>
