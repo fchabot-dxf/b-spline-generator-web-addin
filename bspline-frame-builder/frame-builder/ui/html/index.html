@@ -603,6 +603,18 @@
           let sliderVal = parseFloat(p.Val);
           if (isNaN(sliderVal)) sliderVal = 50;
 
+          // Clamp slider value to [Min, Max] so a saved param above the
+          // current cap (e.g. frame_thickness=0.75 in a doc whose heightIn
+          // just dropped to 6 - cap is heightIn/16=0.375) doesn't show
+          // the knob at max while the actual value sits invalid above
+          // until first interaction. This prevents a build from running
+          // on an out-of-range value that the user never explicitly
+          // confirmed.
+          const minVal = parseFloat(p.Min);
+          const maxVal = parseFloat(p.Max);
+          if (!isNaN(minVal) && sliderVal < minVal) sliderVal = minVal;
+          if (!isNaN(maxVal) && sliderVal > maxVal) sliderVal = maxVal;
+
           const sliderStep = getSliderStep(p);
 
           wrap.innerHTML = `

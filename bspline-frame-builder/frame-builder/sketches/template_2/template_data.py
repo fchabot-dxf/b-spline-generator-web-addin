@@ -49,13 +49,16 @@ SKETCH_2_PARAMETERS = [
 SKETCH_3_LABEL = "Frame Enclosure"
 SKETCH_3_PARAMETERS = [
     {
+        # Max bound to heightIn / (14 + 0.05) - a hair below the
+        # heightIn / 14 geometric threshold. Min at 0.25 in. See
+        # template_1's copy for rationale.
         "Name": "frame_thickness",
         "Label": "Frame thickness",
         "Category": "Frame Spec",
         "Val": 0.75,
         "Unit": "in",
-        "Min": 0.1,
-        "Max": 2.0,
+        "Min": 0.25,
+        "Max": "heightIn / (14 + 0.05)",
         "Expose": True,
     },
     {

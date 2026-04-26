@@ -161,6 +161,20 @@ def _push_schema_direct(style_id="Template 1"):
                             expr = p_live[key]
                             if design:
                                 eval_val = design.unitsManager.evaluateExpression(expr, p_live.get('Unit', 'cm'))
+                                # evaluateExpression returns the value in
+                                # Fusion's database units (cm). Convert to
+                                # the param's display unit so the slider's
+                                # max attribute matches the slider's
+                                # value space - mirrors the Val conversion
+                                # on the line above. Without this, a
+                                # frame_thickness Max of "heightIn / 16"
+                                # for heightIn=6 in evaluates to 0.9525
+                                # cm and the slider treats that as 0.95
+                                # in, letting the user pick values way
+                                # above the geometric threshold.
+                                target_unit = p_live.get('Unit', 'cm')
+                                if target_unit == 'in':
+                                    eval_val = eval_val / 2.54
                                 p_live[key] = round(eval_val, 4)
                         except:
                             pass

@@ -56,13 +56,21 @@ SKETCH_2_PARAMETERS = [
 SKETCH_3_LABEL = "Frame Enclosure"
 SKETCH_3_PARAMETERS = [
     {
+        # Max bound to smallest silhouette feature radius (arcs are
+        # seeded at heightIn / 14). Divisor bumped to 14.05 so the cap
+        # lands a hair below the geometric threshold - above it the
+        # inward offset collapses corner arcs into phantom mega-arcs
+        # that Fusion blocks from API attribute access, so miters /
+        # endpoint resolution fail downstream.
+        # Min at 0.25 in (typical wall thickness floor for a cast
+        # jesmonite frame).
         "Name": "frame_thickness",
         "Label": "Frame thickness",
         "Category": "Frame Spec",
         "Val": 0.75,
         "Unit": "in",
-        "Min": 0.1,
-        "Max": 2.0,
+        "Min": 0.25,
+        "Max": "heightIn / (14 + 0.05)",
         "Expose": True,
     },
     {
