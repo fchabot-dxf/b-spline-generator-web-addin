@@ -284,101 +284,165 @@ def _wrap_timeline_in_group(start_count, group_name):
 
 
 def _post_import_setup(occurrences):
-    """Post-import verify & normalize pass.
+    """Walk the imported occurrence tree, find Clean / Stamped components
+    wherever they sit (handles the wrapper occurrence Fusion creates for
+    multi-product STEP files), and normalize their component name and
+    body names.
 
-    Replaces the old _consolidate_bspline_variants function. After the
-    architectural rewrite, the JS-side stepWriter emits ONE STEP file
-    with bodies grouped under PRODUCTs by base ('Clean', 'Stamped'),
-    each body labeled 'panel' (solid) or 'surface'. Fusion's STEP
-    importer creates components named after the PRODUCTs and bodies
-    named after the body labels. So in the common case this function
-    finds everything already correct and just logs that.
+    Why a walk: the JS-side stepWriter emits a STEP with two top-level
+    PRODUCTs ('Clean' and 'Stamped'). Fusion's importer creates ONE
+    wrapper occurrence (named after the STEP file -- e.g. 'B-Spline')
+    containing those products as children. So the structure post-import is:
 
-    Defensive renames cover edge cases: STEP importers in some Fusion
-    versions append " (1)" to component names, or assign generic body
-    names like "Body1" / "Body2" that need to be normalized.
+        B-Spline Set                           <- our parent component
+          B-Spline                             <- wrapper from STEP file
+            Clean    [panel, surface]
+            Stamped  [panel, surface]
 
-    Returns the input list (unchanged in length; no merging happens any
-    more).
+    We just want to rename Clean / Stamped's bodies to canonical names
+    if Fusion's importer auto-named them (Body1 / Body2). The wrapper
+    occurrence stays -- it's cosmetic and harmless.
+
+    Body classification is by b.isSolid (most reliable signal in Fusion
+    after STEP import, where labels can be lost during 'unstitching'):
+      - solid bodies   -> 'panel'
+      - non-solid bodies -> 'surface'
     """
     if not occurrences:
         return occurrences
 
     _log(f"[POST-IMPORT] >>> verifying {len(occurrences)} occurrence(s)")
 
+    # Phase 1: collect all Clean / Stamped occurrences anywhere in the
+    # subtree of the input occurrences. Stop recursing once we hit one
+    # (don't recurse INSIDE a Clean to find another Clean).
+    targets = []
     for occ in occurrences:
-        try:
-            cname = occ.component.name or ""
-        except Exception as e:
-            _log(f"[POST-IMPORT]   comp name read failed: {e}")
-            continue
-        cname_lower = cname.lower()
+        targets.extend(_find_clean_stamped(occ, depth=0))
 
-        # Determine the canonical base name.
-        if "stamped" in cname_lower:
-            target_cname = "Stamped"
-        elif "clean" in cname_lower:
-            target_cname = "Clean"
-        elif "analytical" in cname_lower:
-            target_cname = "Analytical"
-        elif "preview" in cname_lower:
-            target_cname = "Preview"
-        else:
-            _log(f"[POST-IMPORT]   unrecognized comp {cname!r} - leaving alone")
-            continue
+    _log(f"[POST-IMPORT]   found {len(targets)} Clean/Stamped target(s) in subtree")
 
-        # Rename component if Fusion suffixed it (e.g. "Clean (1)" -> "Clean").
-        if cname != target_cname:
-            try:
-                occ.component.name = target_cname
-                _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r}")
-            except Exception as e:
-                _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r} FAILED: {e}")
-
-        # Verify body names. STEP labels should already be 'panel' / 'surface',
-        # but if Fusion assigned generic names (Body1, Body2) we infer from
-        # isSolid: solid -> panel, surface -> surface.
-        try:
-            body_count = occ.component.bRepBodies.count
-        except Exception as e:
-            _log(f"[POST-IMPORT]   body count read failed: {e}")
-            continue
-
-        for i in range(body_count):
-            try:
-                b = occ.component.bRepBodies.item(i)
-                bn = b.name or ""
-            except Exception as e:
-                _log(f"[POST-IMPORT]     body[{i}] read failed: {e}")
-                continue
-            bn_lower = bn.lower()
-
-            if _is_panel_body_name(bn_lower):
-                target_bn = "panel"
-            elif _is_surface_body_name(bn_lower):
-                target_bn = "surface"
-            else:
-                # Generic name: classify by isSolid.
-                try:
-                    target_bn = "panel" if b.isSolid else "surface"
-                except Exception:
-                    target_bn = None
-
-            if target_bn is None:
-                _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r}: cannot classify, leaving alone")
-                continue
-
-            if bn != target_bn:
-                try:
-                    b.name = target_bn
-                    _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r}")
-                except Exception as e:
-                    _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} FAILED: {e}")
-            else:
-                _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r} ok")
+    # Phase 2: for each, normalize component name + body names.
+    for occ in targets:
+        _normalize_occurrence(occ)
 
     _log(f"[POST-IMPORT] <<< done")
     return occurrences
+
+
+def _find_clean_stamped(occ, depth):
+    """Recursively search occ's subtree for Clean / Stamped / Analytical
+    components. Returns list. Bounded depth for safety."""
+    if depth > 6:
+        return []
+    found = []
+    try:
+        cname = (occ.component.name or "").lower()
+    except Exception:
+        return found
+
+    # Hit -- don't recurse further (avoid finding nested Cleans).
+    if "stamped" in cname or "clean" in cname or "analytical" in cname:
+        found.append(occ)
+        return found
+
+    # Otherwise walk children.
+    try:
+        n = occ.childOccurrences.count
+    except Exception:
+        return found
+
+    for i in range(n):
+        try:
+            child = occ.childOccurrences.item(i)
+            if child and child.isValid:
+                found.extend(_find_clean_stamped(child, depth + 1))
+        except Exception:
+            continue
+    return found
+
+
+def _normalize_occurrence(occ):
+    """Rename component to canonical name, rename bodies to panel / surface
+    based on isSolid."""
+    try:
+        cname = occ.component.name or ""
+    except Exception:
+        return
+    cname_lower = cname.lower()
+
+    if "stamped" in cname_lower:
+        target_cname = "Stamped"
+    elif "clean" in cname_lower:
+        target_cname = "Clean"
+    elif "analytical" in cname_lower:
+        target_cname = "Analytical"
+    else:
+        return
+
+    if cname != target_cname:
+        try:
+            occ.component.name = target_cname
+            _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r}")
+        except Exception as e:
+            _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r} FAILED: {e}")
+
+    # Rename bodies based on isSolid. Multiple bodies of the same kind
+    # (shouldn't normally happen) get sequential suffixes panel_1, surface_1, etc.
+    try:
+        body_count = occ.component.bRepBodies.count
+    except Exception as e:
+        _log(f"[POST-IMPORT]   body count read failed in {target_cname!r}: {e}")
+        return
+
+    panel_seq = 0
+    surface_seq = 0
+    for i in range(body_count):
+        try:
+            b = occ.component.bRepBodies.item(i)
+            bn = b.name or ""
+        except Exception as e:
+            _log(f"[POST-IMPORT]     body[{i}] read failed: {e}")
+            continue
+
+        # Decide kind -- isSolid is the reliable signal post-import.
+        try:
+            kind = "panel" if b.isSolid else "surface"
+        except Exception:
+            # Fall back to name pattern if isSolid is unavailable.
+            bn_lower = bn.lower()
+            if _is_panel_body_name(bn_lower):
+                kind = "panel"
+            elif _is_surface_body_name(bn_lower):
+                kind = "surface"
+            else:
+                _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r}: cannot classify, leaving alone")
+                continue
+
+        # Pick canonical name with sequence suffix if needed.
+        if kind == "panel":
+            target_bn = "panel" if panel_seq == 0 else f"panel_{panel_seq}"
+            panel_seq += 1
+        else:
+            target_bn = "surface" if surface_seq == 0 else f"surface_{surface_seq}"
+            surface_seq += 1
+
+        if bn == target_bn:
+            _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r} ok (isSolid={kind=='panel'})")
+            continue
+
+        # Two-step rename to dodge Fusion's auto-uniquifier when target
+        # already exists somewhere (e.g. Stamped's panel and Clean's panel).
+        try:
+            tmp = f"_bsg_tmp_{target_cname}_{i}"
+            b.name = tmp
+        except Exception as e:
+            _log(f"[POST-IMPORT]     tmp-rename failed: {e}")
+        try:
+            b.name = target_bn
+            _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} (isSolid={kind=='panel'})")
+        except Exception as e:
+            _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} FAILED: {e}")
 
 
 def _get_current_board_size():

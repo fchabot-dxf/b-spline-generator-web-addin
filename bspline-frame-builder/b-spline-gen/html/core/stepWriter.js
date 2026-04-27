@@ -354,14 +354,27 @@ export function generateThickenedStep(heights, offsetPts, params, unstampedHeigh
     const idPD   = b.nextId(); b.write(idPD,   `PRODUCT_DEFINITION('part','',#${idPDF},#${idPDCtx})`);
     const idPDS  = b.nextId(); b.write(idPDS,  `PRODUCT_DEFINITION_SHAPE('',$,#${idPD})`);
 
-    // ONE SHAPE_REPRESENTATION listing every body's geometry as items.
-    // Fusion's importer turns these into separate bodies inside the
-    // resulting component, naming each from its underlying solid/shell
-    // label (set elsewhere in this function to body.label).
-    const itemRefs = items.map(it => `#${it.rid}`).join(',');
-    const idSR = b.nextId();
-    b.write(idSR, `SHAPE_REPRESENTATION('${baseName}',(${itemRefs}),#${idGeomCtx})`);
-    b.write(b.nextId(), `SHAPE_DEFINITION_REPRESENTATION(#${idPDS},#${idSR})`);
+    // Multi-rep: one SHAPE_REPRESENTATION per body, each linked to the
+    // SAME PRODUCT_DEFINITION_SHAPE via its own SHAPE_DEFINITION_REPRESENTATION.
+    //
+    // Crucially: use the RIGHT REP TYPE per body class --
+    //   - ADVANCED_BREP_SHAPE_REPRESENTATION    for solids (MANIFOLD_SOLID_BREP)
+    //   - MANIFOLD_SURFACE_SHAPE_REPRESENTATION for surfaces (SHELL_BASED_SURFACE_MODEL)
+    //
+    // When multiple items sit in a SINGLE generic SHAPE_REPRESENTATION,
+    // Fusion's STEP importer treats them as loose geometry, wraps them
+    // in an "Unstitched" feature, and discards the original body labels
+    // (giving them auto-names like Body1, Body2). Splitting per-body
+    // with the type-specific reps gets each body imported as a first-
+    // class body inside the component, named from the SR's label.
+    for (const it of items) {
+      const repType = it.body.isSolid
+        ? 'ADVANCED_BREP_SHAPE_REPRESENTATION'
+        : 'MANIFOLD_SURFACE_SHAPE_REPRESENTATION';
+      const idSR = b.nextId();
+      b.write(idSR, `${repType}('${it.body.label}',(#${it.rid}),#${idGeomCtx})`);
+      b.write(b.nextId(), `SHAPE_DEFINITION_REPRESENTATION(#${idPDS},#${idSR})`);
+    }
   }
 
   // Presentation Styles (applied globally to the faces/items already created)
