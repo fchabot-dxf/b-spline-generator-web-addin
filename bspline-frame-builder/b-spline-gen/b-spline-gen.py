@@ -145,6 +145,34 @@ custom_graphics_group     = None
 importing_done = False
 chunk_buffer   = []
 
+# ── Body name classifiers ────────────────────────────────────────────────────
+# A "panel" or "surface" body may end up with several name shapes:
+#   - clean rename: 'panel' / 'surface'
+#   - bspline-gen suffix: 'panel_1' / 'surface_2'   (our underscore convention)
+#   - Fusion auto-uniquifier: 'panel (1)' / 'surface (1)'   (when a setter
+#     detects a name collision and Fusion forces a numeric suffix in parens)
+# Centralise the detection so every consumer (consolidator, stamp helper,
+# visibility block) treats them identically. ``bn`` is expected lowercased.
+def _is_panel_body_name(bn):
+    if bn == 'panel':
+        return True
+    if bn.startswith('panel_'):
+        return True
+    if bn.startswith('panel (') and bn.endswith(')'):
+        return True
+    return False
+
+
+def _is_surface_body_name(bn):
+    if bn == 'surface':
+        return True
+    if bn.startswith('surface_'):
+        return True
+    if bn.startswith('surface (') and bn.endswith(')'):
+        return True
+    return False
+
+
 def _send_progress(msg):
     """Sends a progress message to the JS UI."""
     try:
@@ -199,6 +227,62 @@ def _remove_last_import():
     _clear_custom_graphics()
 
 
+def _timeline_marker_safe():
+    """Read the current parametric timeline length, or None if we can't.
+
+    Returns the timeline ENTRY COUNT (not markerPosition) — we use it as
+    a stable anchor to grab any new entries created between two snapshots.
+    Returns ``None`` if the design isn't parametric (direct-edit mode has
+    no timeline) or if Fusion is in a state where the timeline isn't
+    accessible. Callers must handle the None case gracefully.
+    """
+    try:
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design:
+            return None
+        # Direct-edit designs have no timeline → designType == DirectDesignType.
+        if design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
+            return None
+        return design.timeline.count
+    except Exception:
+        return None
+
+
+def _wrap_timeline_in_group(start_count, group_name):
+    """Wrap timeline entries [start_count .. current end] into a TimelineGroup.
+
+    Call this after a batch of timeline-producing operations to collapse
+    them visually into one expandable row. Silently no-op if:
+      - No new entries were added (start_count >= current count)
+      - We can't read the timeline (direct-edit design)
+      - TimelineGroups.add raises for any reason
+    """
+    if start_count is None:
+        return
+    try:
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct)
+        if not design or design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
+            return
+        timeline = design.timeline
+        end_idx = timeline.count - 1
+        if end_idx < start_count:
+            return  # nothing new added
+        group = timeline.timelineGroups.add(start_count, end_idx)
+        try:
+            group.name = group_name
+        except Exception:
+            pass
+        # Collapse it by default so the user doesn't see the inner copy/paste/delete features.
+        try:
+            group.isCollapsed = True
+        except Exception:
+            pass
+    except Exception as e:
+        _log(f"[CONSOLIDATE] timeline group wrap failed: {e}")
+
+
 def _consolidate_bspline_variants(occurrences):
     """Group up to 4 imported variants ("Clean Solid", "Clean Surface",
     "Stamped Solid", "Stamped Surface") into max 2 occurrences ("Clean"
@@ -230,6 +314,11 @@ def _consolidate_bspline_variants(occurrences):
     """
     if not occurrences:
         return occurrences
+
+    # Snapshot timeline length so we can group whatever this consolidation
+    # adds (CopyPasteBodies features, occurrence deletions, etc.) under a
+    # single expandable timeline row.
+    _tl_start = _timeline_marker_safe()
 
     # 1. Bucket
     #
@@ -286,8 +375,8 @@ def _consolidate_bspline_variants(occurrences):
             except Exception:
                 body_names = []
 
-            has_panel   = any(n == 'panel'   or n.startswith('panel_')   for n in body_names)
-            has_surface = any(n == 'surface' or n.startswith('surface_') for n in body_names)
+            has_panel   = any(_is_panel_body_name(n)   for n in body_names)
+            has_surface = any(_is_surface_body_name(n) for n in body_names)
 
             if has_panel:
                 kind = 'solid'
@@ -324,75 +413,212 @@ def _consolidate_bspline_variants(occurrences):
         # Stamp the home component's bodies
         _stamp_body_name(home_occ, 'panel' if home_kind == 'solid' else 'surface')
 
-        # Copy bodies from sibling occurrences into the home component,
-        # then delete the source occurrences, THEN rename the new bodies.
-        #
-        # Why this 3-phase order matters: BRepBody.name uniquification in
-        # Fusion can pick up the source body (still alive in the not-yet-
-        # deleted sibling) or copyToComponent's intermediate auto-name,
-        # producing 'surface (1)' instead of 'surface'. By the time we
-        # do the rename, the source occurrences are gone and only the
-        # home component holds the new bodies — so the desired name is
-        # always free.
-        pending_renames = []  # [(new_body, desired_name), ...]
-        for sib_kind, sib_list in bucket.items():
-            target_body_name = 'panel' if sib_kind == 'solid' else 'surface'
-            for occ in sib_list:
-                if occ is home_occ:
-                    continue
-                try:
-                    src_bodies = [occ.component.bRepBodies.item(i)
-                                  for i in range(occ.component.bRepBodies.count)]
-                except Exception:
-                    src_bodies = []
-
-                for sb in src_bodies:
-                    try:
-                        new_b = sb.copyToComponent(home_occ)
-                        pending_renames.append((new_b, target_body_name))
-                    except Exception as e:
-                        _log(f"[CONSOLIDATE] copyToComponent failed for {target_body_name}: {e}")
-
-                try:
-                    occ.deleteMe()
-                except Exception as e:
-                    _log(f"[CONSOLIDATE] deleteMe sibling failed: {e}")
-
-        # Now that all source occurrences are gone, rename the freshly
-        # copied bodies. Multiple bodies of the same kind get _1/_2 suffix
-        # via the same scheme as _stamp_body_name (NOT Fusion's auto " (n)"
-        # uniquifier, which we want to avoid).
+        # Snapshot kind_counters BEFORE any copies so the freshly-copied
+        # bodies aren't double-counted as "existing" when we figure out
+        # suffix numbers. Counting after the copy loop made the rename
+        # pass think there was already a 'surface' present and bump the
+        # next one to 'surface_1' — even though that body WAS the only
+        # surface (which is what produced 'surface_1 (1)' in the tree).
         kind_counters = {'panel': 0, 'surface': 0}
-        # Account for bodies already in home (e.g. the existing 'panel'
-        # the home component started with) so suffixing starts after them.
         try:
             for i in range(home_occ.component.bRepBodies.count):
                 try:
                     nm = (home_occ.component.bRepBodies.item(i).name or '').lower()
                 except Exception:
                     nm = ''
-                if nm == 'panel' or nm.startswith('panel_'):
+                if _is_panel_body_name(nm):
                     kind_counters['panel'] += 1
-                elif nm == 'surface' or nm.startswith('surface_'):
+                elif _is_surface_body_name(nm):
                     kind_counters['surface'] += 1
         except Exception:
             pass
 
-        for new_b, desired in pending_renames:
-            already = kind_counters.get(desired, 0)
-            target = desired if already == 0 else f"{desired}_{already}"
+        # Copy bodies from sibling occurrences into the home component using
+        # the TemporaryBRepManager pattern, then delete the source occurrences,
+        # THEN rename the new bodies.
+        #
+        # Why not BRepBody.copyToComponent any more?
+        # ------------------------------------------
+        # copyToComponent creates a parametric "Copy/Paste Bodies" timeline
+        # feature that holds back-references to BOTH the source body AND the
+        # source occurrence. We then have to delete the source occurrence in
+        # the same pass (otherwise we'd end up with duplicate geometry in
+        # sibling occurrences), which leaves the parametric reference in the
+        # CopyPasteBodies feature DANGLING. Fusion flags this on the next
+        # compute as two yellow-triangle warnings:
+        #   "1 Reference Failures: The model is using cached geometry to solve."
+        #   "1 Reference Failures: Failed to get target occurrence transform"
+        # Wrapping in a BaseFeature doesn't help — copyToComponent's reference
+        # is created at the parametric layer and survives BaseFeature wrapping.
+        #
+        # Replacement strategy:
+        # 1. TemporaryBRepManager.copy(sb) gets us an in-memory body in
+        #    sib_component LOCAL coordinates (no parametric reference at all).
+        # 2. We compute the transform from sib's world space into home's
+        #    local space (sib_world * inv(home_world)) and apply it to the
+        #    transient body so it lands at the right world position. For
+        #    STEP imports under the same parent this is typically identity,
+        #    but we apply it defensively in case the wrapper or a sibling
+        #    has been moved/rotated upstream.
+        # 3. home_component.bRepBodies.add(transient, baseFeature) inserts
+        #    the body into a BaseFeature edit on the HOME component (not
+        #    cross-component) — no parametric back-reference to the source.
+        # 4. After finishEdit(), sib_occ.deleteMe() runs as an ordinary
+        #    parametric op with no dangling reference behind it.
+        tbm = adsk.fusion.TemporaryBRepManager.get()
+
+        # Compute inv(home_world) once per home for transform differentials.
+        try:
+            home_w = home_occ.transform2
+            home_inv = home_w.copy()
+            home_inv.invert()
+        except Exception:
+            home_inv = None
+
+        # Open a single BaseFeature on the home component so all the new
+        # bodies land in one timeline entry. No-op if the design is in
+        # direct-edit mode (then the add() below auto-uses direct geometry).
+        home_bf = None
+        try:
+            home_bf = home_occ.component.features.baseFeatures.add()
+            home_bf.startEdit()
+        except Exception as e:
+            _log(f"[CONSOLIDATE] home BaseFeature wrap unavailable: {e}")
+            home_bf = None
+
+        pending_renames = []  # [(new_body, desired_name), ...]
+        sibs_to_delete = []
+        try:
+            for sib_kind, sib_list in bucket.items():
+                target_body_name = 'panel' if sib_kind == 'solid' else 'surface'
+                for occ in sib_list:
+                    if occ is home_occ:
+                        continue
+                    sibs_to_delete.append(occ)
+                    try:
+                        src_bodies = [occ.component.bRepBodies.item(i)
+                                      for i in range(occ.component.bRepBodies.count)]
+                    except Exception:
+                        src_bodies = []
+
+                    # Differential transform: sib_world * inv(home_world) so
+                    # transient bodies in sib_local end up in home_local at
+                    # the original world position.
+                    xform = None
+                    if home_inv is not None:
+                        try:
+                            sib_w = occ.transform2
+                            xform = sib_w.copy()
+                            xform.transformBy(home_inv)
+                        except Exception:
+                            xform = None
+
+                    for sb in src_bodies:
+                        try:
+                            transient = tbm.copy(sb)
+                            if xform is not None:
+                                try:
+                                    tbm.transform(transient, xform)
+                                except Exception:
+                                    pass
+                            if home_bf is not None:
+                                new_b = home_occ.component.bRepBodies.add(transient, home_bf)
+                            else:
+                                # Direct-edit fallback (no BaseFeature in
+                                # direct mode — bRepBodies.add takes the
+                                # transient directly).
+                                new_b = home_occ.component.bRepBodies.add(transient)
+                            pending_renames.append((new_b, target_body_name))
+                        except Exception as e:
+                            _log(f"[CONSOLIDATE] tbm-copy/add failed for {target_body_name}: {e}; falling back to copyToComponent")
+                            # Last-resort fallback so a TBM hiccup doesn't
+                            # silently drop the body. The dangling-reference
+                            # warning will come back on this code path but
+                            # functional correctness is preserved.
+                            try:
+                                new_b = sb.copyToComponent(home_occ)
+                                pending_renames.append((new_b, target_body_name))
+                            except Exception as ee:
+                                _log(f"[CONSOLIDATE] copyToComponent fallback failed: {ee}")
+        finally:
+            if home_bf is not None:
+                try:
+                    home_bf.finishEdit()
+                except Exception as e:
+                    _log(f"[CONSOLIDATE] home BaseFeature finishEdit failed: {e}")
+
+        # Rename pass runs AFTER the BaseFeature edit closes — body name
+        # writes inside an active BaseFeature edit are read-only metadata
+        # in some Fusion versions and would silently no-op.
+        _apply_pending_renames(pending_renames, kind_counters)
+
+        # Delete sib occurrences last so any failure above doesn't lose
+        # geometry — the original sib bodies are still alive until this
+        # loop runs.
+        for occ in sibs_to_delete:
             try:
-                new_b.name = target
+                if occ.isValid:
+                    occ.deleteMe()
             except Exception as e:
-                _log(f"[CONSOLIDATE] rename copied body to '{target}' failed: {e}")
-            kind_counters[desired] = already + 1
-            # Visibility (surface hidden vs visible) is set centrally in the
-            # post-import block — it depends on whether a Stamped occurrence
-            # is taking primary stage and we don't have that context here.
+                _log(f"[CONSOLIDATE] deleteMe sibling failed: {e}")
 
         consolidated.append(home_occ)
 
+    # Collapse all the timeline entries we just produced into one named
+    # group so the user isn't staring at a column of CopyPasteBodies +
+    # occurrence-delete features. No-op in direct-edit mode.
+    _wrap_timeline_in_group(_tl_start, "B-Spline Consolidate")
+
     return consolidated + other
+
+
+def _apply_pending_renames(pending_renames, kind_counters):
+    """Rename freshly-copied bodies to ``panel`` / ``surface`` (with
+    ``_N`` suffixes if multiple of the same kind landed in the same
+    home). Called from inside the BaseFeature edit so the body refs
+    are still live.
+
+    Behavior:
+      - If the body already reads the target name (the pre-rename of
+        the source body propagated through copyToComponent), SKIP the
+        setter entirely. Re-assigning a body's current name is exactly
+        what triggers Fusion's auto-uniquifier (``surface`` → ``surface (1)``).
+      - Otherwise, do the defensive tmp-name dance (assign a unique
+        temp name first to release any internal claim on the desired
+        name, then assign the desired name).
+
+    ``kind_counters`` is mutated as we go so suffixes are deterministic
+    across calls.
+    """
+    for new_b, desired in pending_renames:
+        already = kind_counters.get(desired, 0)
+        target = desired if already == 0 else f"{desired}_{already}"
+
+        actual = ''
+        try:
+            actual = (new_b.name or '')
+        except Exception:
+            pass
+        if actual.lower() == target.lower():
+            kind_counters[desired] = already + 1
+            continue
+
+        tmp = f"_bsg_tmp_{id(new_b)}_{already}"
+        try:
+            new_b.name = tmp
+        except Exception as e:
+            _log(f"[CONSOLIDATE] tmp-rename '{tmp}' failed: {e}")
+        try:
+            new_b.name = target
+        except Exception as e:
+            _log(f"[CONSOLIDATE] rename copied body to '{target}' failed: {e}")
+        try:
+            final = new_b.name
+            if final != target:
+                _log(f"[CONSOLIDATE] rename collision: wanted '{target}' got '{final}' (before='{actual}')")
+        except Exception:
+            pass
+        kind_counters[desired] = already + 1
 
 
 def _stamp_body_name(occ, name):
@@ -1128,7 +1354,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                                 try:
                                     for i in range(o.component.bRepBodies.count):
                                         nm = (o.component.bRepBodies.item(i).name or '').lower()
-                                        if nm == 'panel' or nm.startswith('panel_'):
+                                        if _is_panel_body_name(nm):
                                             return True
                                 except Exception:
                                     pass
@@ -1149,60 +1375,59 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             if best:
                                 primary_imported_occurrence = best
 
-                            # Visibility rules:
-                            #   • Stamped panel exists → IT is the sole primary.
-                            #     - Stamped occurrence visible; its panel visible,
-                            #       its surface bodies hidden.
-                            #     - Clean occurrence hidden; clean panel ALSO
-                            #       hidden so toggling Clean back on doesn't
-                            #       reveal a competing panel; clean surface hidden.
-                            #   • No Stamped (only Clean) → leave Clean fully
-                            #     visible, including its surface body. Per user:
-                            #     "if only clean is there keep it visible".
-                            def _set_body_visibility(occ, panel_on, surface_on):
+                            # Visibility rules (final):
+                            #   Body level — ALWAYS:
+                            #     panel  → visible
+                            #     surface → hidden
+                            #   Component (occurrence) level:
+                            #     - If a Stamped (with panel) exists, it's the
+                            #       primary visible occurrence; Clean is hidden.
+                            #     - If only Clean exists, Clean is the visible
+                            #       occurrence.
+                            def _set_body_visibility(occ):
+                                """Panels visible, surfaces hidden — unconditionally."""
                                 try:
                                     for i in range(occ.component.bRepBodies.count):
                                         b  = occ.component.bRepBodies.item(i)
                                         bn = (b.name or '').lower()
-                                        if bn == 'panel' or bn.startswith('panel_'):
-                                            try: b.isLightBulbOn = panel_on
+                                        if _is_panel_body_name(bn):
+                                            try: b.isLightBulbOn = True
                                             except: pass
-                                        elif bn == 'surface' or bn.startswith('surface_'):
-                                            try: b.isLightBulbOn = surface_on
+                                        elif _is_surface_body_name(bn):
+                                            try: b.isLightBulbOn = False
                                             except: pass
                                 except Exception as e:
                                     _log(f'[VISIBILITY] body toggle failed: {e}')
 
+                            # Stamp body visibility on every consolidated occurrence first
+                            # — same rule everywhere, doesn't depend on which one is primary.
                             for occ in consolidated:
-                                try:
-                                    cname = (occ.component.name or '').lower()
-                                except:
-                                    cname = ''
-                                is_clean = 'clean' in cname
+                                _set_body_visibility(occ)
 
-                                if stamped_with_panel is not None:
-                                    if occ is stamped_with_panel:
-                                        try: occ.isLightBulbOn = is_visible
-                                        except: pass
-                                        _set_body_visibility(occ, panel_on=True, surface_on=False)
-                                    elif is_clean:
-                                        try: occ.isLightBulbOn = False
-                                        except: pass
-                                        _set_body_visibility(occ, panel_on=False, surface_on=False)
-                                    # Anything else uncategorized: leave alone.
-                                else:
-                                    # Only Clean (or only an unclassified primary):
-                                    # keep it visible AND keep its bodies visible.
-                                    try: occ.isLightBulbOn = is_visible if occ is best else False
-                                    except: pass
-                                    if occ is best:
-                                        _set_body_visibility(occ, panel_on=True, surface_on=True)
+                            # Then occurrence visibility: only the primary lights up.
+                            #
+                            # NOTE: we IGNORE the per-call `is_visible` flag here.
+                            # JS sends `isVisible: false` for surface-variant calls
+                            # (e.g. cleanSurface, stampedSurface) so they don't
+                            # visually clash with the solid imports. After
+                            # consolidation that signal is meaningless: the surface
+                            # body is already inside the same component as the
+                            # panel and is hidden body-side. The consolidated
+                            # primary occurrence (panel-bearing) must be visible
+                            # so the user can see the panel that just landed.
+                            # If we honor `is_visible` here, the LAST call's
+                            # value wins — and surface calls run last in the
+                            # back-to-back single-step pattern, so Stamped
+                            # ends up dark even though it should be primary.
+                            for occ in consolidated:
+                                try: occ.isLightBulbOn = (occ is best)
+                                except: pass
 
                             if stamped_with_panel is not None:
-                                _log('[VISIBILITY] Stamped panel is primary; Clean hidden.')
+                                _log('[VISIBILITY] Stamped panel is primary; Clean occurrence hidden. Surfaces hidden.')
                             elif best:
                                 try:
-                                    _log(f'[VISIBILITY] Primary: "{best.component.name}" (only Clean — surface kept visible)')
+                                    _log(f'[VISIBILITY] Primary: "{best.component.name}" (only Clean). Surface hidden, panel visible.')
                                 except: pass
                 except Exception as e:
                     _log(f'[CONSOLIDATE] post-import failed: {e}')
