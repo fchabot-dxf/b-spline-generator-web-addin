@@ -437,14 +437,81 @@ def audit_cam_setups_granular(app, context):
     index = []
     cam_p = app.activeDocument.products.itemByProductType('CAMProductType')
     if not cam_p: return []
+
+    # Top-level Manufacturing Models dump (sibling to setups). Useful when
+    # diffing a hand-built reference job against what the CAM-builder
+    # add-in produces, since MMs are how Setup -> bodies linkage works.
+    mm_index = []
+    try:
+        for mi in range(cam_p.manufacturingModels.count):
+            mm = cam_p.manufacturingModels.item(mi)
+            mm_index.append({
+                "Name": getattr(mm, 'name', '<unnamed>'),
+                "OccurrenceFullPath": getattr(getattr(mm, 'occurrence', None), 'fullPathName', ''),
+            })
+    except Exception:
+        pass
+
     for i in range(cam_p.setups.count):
         try:
             s = cam_p.setups.item(i)
-            s_data = {"Name": s.name, "Stock": int(getattr(s, 'stockType', 0)), "Ops": []}
+            s_data = {
+                "Name": s.name,
+                "Stock": int(getattr(s, 'stockType', 0)),
+                # Setup-level parameters (job_stockMode, wcs_origin_mode,
+                # wcs_orientation_mode, etc) -- the exact names + working
+                # expression strings we need for setup_builder. Captures
+                # everything; downstream code can grep for what it needs.
+                "SetupParams": {},
+                "ModelBodies": [],
+                "Ops": [],
+            }
+
+            # Dump every setup parameter with name + expression + value.
+            # ``expression`` is the canonical form for choice params
+            # (string is "'modelOrientation'" with inner quotes).
+            try:
+                for p in s.parameters:
+                    try:
+                        rec = {"Expression": p.expression}
+                        try:
+                            rec["Value"] = str(p.value.value)
+                        except Exception:
+                            pass
+                        try:
+                            rec["Title"] = p.title
+                        except Exception:
+                            pass
+                        try:
+                            choices = list(getattr(p.value, 'choices', []) or [])
+                            if choices:
+                                rec["Choices"] = choices
+                        except Exception:
+                            pass
+                        s_data["SetupParams"][p.name] = rec
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Bound model bodies (what setup.models was set to). Helps
+            # us verify the body-binding pass.
+            try:
+                for m in s.models:
+                    try:
+                        s_data["ModelBodies"].append({
+                            "Type": m.objectType.split('::')[-1],
+                            "Name": getattr(m, 'name', ''),
+                        })
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
             for op in s.allOperations:
                 op_data = {
-                    "Name": op.name, 
-                    "Type": op.objectType.split('::')[-1], 
+                    "Name": op.name,
+                    "Type": op.objectType.split('::')[-1],
                     "Path": op.hasToolpath,
                     "Params": {}
                 }
@@ -458,12 +525,22 @@ def audit_cam_setups_granular(app, context):
                         except: pass
                 except: pass
                 s_data["Ops"].append(op_data)
-            
+
             f_name = f"SETUP_{i+1:02d}_{s.name}.json"
             f_path = os.path.join(context["cam_folder"], "setups", f_name)
             with open(f_path, 'w', encoding='utf-8') as f: json.dump(s_data, f, indent=4)
             index.append({"Name": s.name, "File": f"CAM/setups/{f_name}"})
         except: pass
+
+    # Also write the MM index alongside setups for one-stop reference.
+    if mm_index:
+        try:
+            mm_path = os.path.join(context["cam_folder"], "MANUFACTURING_MODELS.json")
+            with open(mm_path, 'w', encoding='utf-8') as f:
+                json.dump(mm_index, f, indent=4)
+        except Exception:
+            pass
+
     return index
 
 def audit_nc_programs_granular(app, context):

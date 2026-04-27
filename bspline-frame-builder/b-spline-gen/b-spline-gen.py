@@ -199,6 +199,245 @@ def _remove_last_import():
     _clear_custom_graphics()
 
 
+def _consolidate_bspline_variants(occurrences):
+    """Group up to 4 imported variants ("Clean Solid", "Clean Surface",
+    "Stamped Solid", "Stamped Surface") into max 2 occurrences ("Clean"
+    and "Stamped"), each holding both the thickened solid body (renamed
+    ``panel``) and the source surface body (renamed ``surface``) in the
+    same component.
+
+    This makes the downstream tree easier to read AND lets
+    CAM-builder's classifier work on stable body names rather than
+    component-name patterns. Single-variant runs still produce one
+    consolidated occurrence; runs with only solids or only surfaces
+    keep just whichever bodies exist.
+
+    Strategy:
+      1. Bucket occurrences by base ('Clean' | 'Stamped') and kind
+         ('solid' | 'surface'). Anything we can't classify (e.g.
+         analytical thick-region surfaces) is left alone and returned
+         as-is.
+      2. For each base, pick a "home" occurrence -- preferring the
+         solid one because it's usually the one users care about.
+         Rename its component to the base ("Clean" / "Stamped") and
+         rename its body to "panel" or "surface".
+      3. Copy bodies from sibling occurrences into the home component
+         using ``BRepBody.copyToComponent``, naming them appropriately.
+         Delete the now-empty sibling occurrences.
+
+    Returns the trimmed list of consolidated + un-classified
+    occurrences, suitable for replacing ``all_newly_added``.
+    """
+    if not occurrences:
+        return occurrences
+
+    # 1. Bucket
+    #
+    # Recognize three name patterns:
+    #   a) Fresh STEP import: 'terrain clean solid' / 'terrain stamped surface' etc.
+    #      → classified by 'clean|stamped' + 'solid|surface' tokens in the comp name.
+    #   b) Already-consolidated by a prior pass: comp name is exactly 'Clean' or
+    #      'Stamped' (or Fusion-suffixed 'Clean (1)') AND it owns 'panel'/'surface'
+    #      bodies. We must classify these so the next single-step import folds
+    #      INTO them instead of becoming a sibling. This is the back-to-back
+    #      single-step case (cleanSolid call → 'Clean' + panel, then cleanSurface
+    #      call → 'terrain clean surface' lands as a new sibling and must merge
+    #      into the existing 'Clean').
+    buckets = {}   # base -> {'solid': [occ], 'surface': [occ]}
+    other   = []
+    for occ in occurrences:
+        try:
+            cname_raw = occ.component.name or ''
+        except Exception:
+            other.append(occ)
+            continue
+        cname = cname_raw.lower()
+
+        # Detect base from comp name tokens.
+        if 'stamped' in cname:
+            base = 'Stamped'
+        elif 'clean' in cname:
+            base = 'Clean'
+        else:
+            other.append(occ)
+            continue
+
+        # Detect kind from comp name tokens first (fresh-import path).
+        kind = None
+        if 'solid' in cname:
+            kind = 'solid'
+        elif 'surface' in cname:
+            kind = 'surface'
+
+        # If comp name has no kind token, it's an already-consolidated occurrence
+        # (e.g. just 'Clean' or 'Clean (1)'). Inspect its body names: a
+        # consolidated Clean has 'panel' (solid) and/or 'surface' (surface).
+        # We bucket it under whichever kind(s) it has so a new sibling of the
+        # missing kind gets folded into it. Prefer 'solid' as the home anchor
+        # if both bodies are present.
+        if kind is None:
+            try:
+                body_names = []
+                for i in range(occ.component.bRepBodies.count):
+                    try:
+                        body_names.append((occ.component.bRepBodies.item(i).name or '').lower())
+                    except Exception:
+                        pass
+            except Exception:
+                body_names = []
+
+            has_panel   = any(n == 'panel'   or n.startswith('panel_')   for n in body_names)
+            has_surface = any(n == 'surface' or n.startswith('surface_') for n in body_names)
+
+            if has_panel:
+                kind = 'solid'
+            elif has_surface:
+                kind = 'surface'
+            else:
+                # Comp name like 'Clean' but no recognizable bodies → leave alone.
+                other.append(occ)
+                continue
+
+        bucket = buckets.setdefault(base, {'solid': [], 'surface': []})
+        bucket[kind].append(occ)
+
+    consolidated = []
+
+    # 2. Per base: pick home, move bodies, delete siblings
+    for base, bucket in buckets.items():
+        # Prefer the first solid occurrence as home (panel is the
+        # primary body people machine). Fall back to surface.
+        home_occ = None
+        home_kind = None
+        if bucket['solid']:
+            home_occ, home_kind = bucket['solid'][0], 'solid'
+        elif bucket['surface']:
+            home_occ, home_kind = bucket['surface'][0], 'surface'
+        if home_occ is None:
+            continue
+
+        try:
+            home_occ.component.name = base
+        except Exception as e:
+            _log(f"[CONSOLIDATE] rename home '{base}' failed: {e}")
+
+        # Stamp the home component's bodies
+        _stamp_body_name(home_occ, 'panel' if home_kind == 'solid' else 'surface')
+
+        # Copy bodies from sibling occurrences into the home component,
+        # then delete the source occurrences, THEN rename the new bodies.
+        #
+        # Why this 3-phase order matters: BRepBody.name uniquification in
+        # Fusion can pick up the source body (still alive in the not-yet-
+        # deleted sibling) or copyToComponent's intermediate auto-name,
+        # producing 'surface (1)' instead of 'surface'. By the time we
+        # do the rename, the source occurrences are gone and only the
+        # home component holds the new bodies — so the desired name is
+        # always free.
+        pending_renames = []  # [(new_body, desired_name), ...]
+        for sib_kind, sib_list in bucket.items():
+            target_body_name = 'panel' if sib_kind == 'solid' else 'surface'
+            for occ in sib_list:
+                if occ is home_occ:
+                    continue
+                try:
+                    src_bodies = [occ.component.bRepBodies.item(i)
+                                  for i in range(occ.component.bRepBodies.count)]
+                except Exception:
+                    src_bodies = []
+
+                for sb in src_bodies:
+                    try:
+                        new_b = sb.copyToComponent(home_occ)
+                        pending_renames.append((new_b, target_body_name))
+                    except Exception as e:
+                        _log(f"[CONSOLIDATE] copyToComponent failed for {target_body_name}: {e}")
+
+                try:
+                    occ.deleteMe()
+                except Exception as e:
+                    _log(f"[CONSOLIDATE] deleteMe sibling failed: {e}")
+
+        # Now that all source occurrences are gone, rename the freshly
+        # copied bodies. Multiple bodies of the same kind get _1/_2 suffix
+        # via the same scheme as _stamp_body_name (NOT Fusion's auto " (n)"
+        # uniquifier, which we want to avoid).
+        kind_counters = {'panel': 0, 'surface': 0}
+        # Account for bodies already in home (e.g. the existing 'panel'
+        # the home component started with) so suffixing starts after them.
+        try:
+            for i in range(home_occ.component.bRepBodies.count):
+                try:
+                    nm = (home_occ.component.bRepBodies.item(i).name or '').lower()
+                except Exception:
+                    nm = ''
+                if nm == 'panel' or nm.startswith('panel_'):
+                    kind_counters['panel'] += 1
+                elif nm == 'surface' or nm.startswith('surface_'):
+                    kind_counters['surface'] += 1
+        except Exception:
+            pass
+
+        for new_b, desired in pending_renames:
+            already = kind_counters.get(desired, 0)
+            target = desired if already == 0 else f"{desired}_{already}"
+            try:
+                new_b.name = target
+            except Exception as e:
+                _log(f"[CONSOLIDATE] rename copied body to '{target}' failed: {e}")
+            kind_counters[desired] = already + 1
+            # Visibility (surface hidden vs visible) is set centrally in the
+            # post-import block — it depends on whether a Stamped occurrence
+            # is taking primary stage and we don't have that context here.
+
+        consolidated.append(home_occ)
+
+    return consolidated + other
+
+
+def _stamp_body_name(occ, name):
+    """Rename BRepBodies in ``occ.component`` to ``name`` (the home kind:
+    'panel' or 'surface'), but leave bodies already named with the OTHER
+    semantic name alone. This protects re-consolidation passes: when a
+    home already holds both ``panel`` AND ``surface`` and we stamp it
+    with 'panel', the existing 'surface' body must NOT be renamed to
+    'panel_1'. Only un-stamped bodies (or bodies already matching ``name``)
+    get touched. Multiple un-stamped bodies get suffixed ``_1``, ``_2``."""
+    try:
+        bodies = [occ.component.bRepBodies.item(i)
+                  for i in range(occ.component.bRepBodies.count)]
+    except Exception:
+        return
+
+    SEMANTIC = ('panel', 'surface')
+    other = 'surface' if name == 'panel' else 'panel'
+
+    seq = 0
+    for b in bodies:
+        try:
+            current = (b.name or '').lower()
+        except Exception:
+            current = ''
+        # Skip bodies already correctly tagged as the OTHER semantic name —
+        # they were placed by a prior consolidation pass and must be preserved.
+        if current == other or current.startswith(other + '_'):
+            continue
+        # Already correctly named this kind? Leave it (and bump the suffix
+        # counter so any further un-stamped bodies get _1/_2 etc.).
+        if current == name:
+            seq += 1
+            continue
+        try:
+            b.name = name if seq == 0 else f"{name}_{seq}"
+            seq += 1
+        except Exception as e:
+            _log(f"[CONSOLIDATE] body rename to '{name}' failed: {e}")
+    # NOTE: visibility (panels visible, surfaces hidden) is decided centrally
+    # in the post-import block, not here, because the rule depends on whether
+    # a Stamped occurrence is taking primary stage. When only Clean exists,
+    # surfaces stay visible.
+
+
 def _get_current_board_size():
     """Queries the design for widthIn/heightIn to sync the UI.
 
@@ -684,35 +923,39 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         _log(f'  importToTarget failed for variant "{v_name}": {e}')
                         continue
 
+                _log(f'[MULTI-VARIANT] Total occurrences imported (pre-consolidation): {len(all_newly_added)}')
+
+                # Consolidate up to 4 imported occurrences into max 2
+                # ("Clean" and/or "Stamped"), each holding the solid body
+                # named "panel" and the surface body named "surface".
+                # See _consolidate_bspline_variants() docstring for the
+                # rationale -- short version: makes downstream MM body
+                # filtering trivial since solid+surface stay paired.
+                all_newly_added = _consolidate_bspline_variants(all_newly_added)
+                _log(f'[MULTI-VARIANT] After consolidation: {len(all_newly_added)} occurrence(s)')
+
                 # v41: Fix append logic to ensure all imported occurrences are tracked
                 if is_append:
                     last_imported_occurrences.extend(all_newly_added)
                 else:
                     last_imported_occurrences = all_newly_added
-                _log(f'[MULTI-VARIANT] Total occurrences imported: {len(all_newly_added)}')
 
-                # Smart Visibility: show highest-priority body, dim the rest
-                # Priority: Stamped Solid (4) > Stamped Surface (3) > Clean Solid (2) > Clean Surface (1)
+                # Smart Visibility: show Stamped if present, else Clean.
+                # Priority: Stamped (2) > Clean (1) > everything else (0)
                 best_occ, max_p = None, -1
                 for occ in all_newly_added:
-                    name_parts = [occ.component.name.lower(), occ.name.lower()]
                     try:
-                        for b in occ.component.bRepBodies:
-                            name_parts.append(b.name.lower())
-                    except: pass
-                    nm = ' '.join(name_parts)
-                    p  = 4 if ('stamped' in nm and 'solid' in nm) else \
-                         3 if  'stamped' in nm else \
-                         2 if  'solid'   in nm else \
-                         1 if  'surface' in nm else 0
+                        nm = (occ.component.name or '').lower()
+                    except Exception:
+                        nm = ''
+                    p = 2 if 'stamped' in nm else 1 if 'clean' in nm else 0
                     if p > max_p:
                         max_p, best_occ = p, occ
 
                 if best_occ:
                     primary_imported_occurrence = best_occ
-                    _log(f'[VISIBILITY] Primary body: "{best_occ.component.name}" (priority={max_p})')
+                    _log(f'[VISIBILITY] Primary: "{best_occ.component.name}" (priority={max_p})')
                     for occ in all_newly_added:
-                        # v41: Respect isVisible flag and priority
                         try: occ.isLightBulbOn = (occ == best_occ and is_visible)
                         except: pass
                 elif all_newly_added:
@@ -825,6 +1068,144 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         _log(f'Final failure: {e2}')
                         if ui: ui.messageBox('Failed to import STEP:\n{}'.format(e2))
                         return
+
+            # ── UNIFIED post-import consolidation ────────────────────────────────
+            # After EITHER the multi-variant or single-step path runs, walk
+            # whatever occurrences ended up inside B-Spline Set and fold any
+            # Clean Solid + Clean Surface (and Stamped equivalents) into max
+            # 2 components ("Clean" / "Stamped") with body names "panel" /
+            # "surface".
+            #
+            # This block exists (in addition to the inline multi-variant
+            # consolidation) because some JS export paths split the output
+            # into back-to-back single-stepText calls -- one for cleanSolid,
+            # then one for cleanSurface with isAppend=True. Each lands in
+            # the SINGLE-STEP Python path, so consolidation has to run
+            # every time the import handler completes.
+            #
+            # Idempotent: if multi-variant already consolidated, this finds
+            # the merged components and bucketing produces zero work.
+            if not is_preview:
+                try:
+                    if 'current_import_group' in globals() and current_import_group and current_import_group.isValid:
+                        comp = current_import_group.component
+                        all_siblings = []
+                        try:
+                            for i in range(comp.occurrences.count):
+                                try:
+                                    occ = comp.occurrences.item(i)
+                                    if occ and occ.isValid:
+                                        all_siblings.append(occ)
+                                except: pass
+                        except Exception as e:
+                            _log(f'[CONSOLIDATE] sibling enum failed: {e}')
+
+                        if all_siblings:
+                            before = len(all_siblings)
+                            consolidated = _consolidate_bspline_variants(all_siblings)
+                            after = len(consolidated)
+                            _log(f'[CONSOLIDATE] post-import: {before} -> {after} occurrence(s)')
+
+                            # Track the consolidated set so future
+                            # _remove_last_import() targets the live nodes
+                            # rather than the deleted sibling references.
+                            if is_append:
+                                # In append mode last_imported_occurrences may
+                                # also hold occurrences from prior runs; keep
+                                # only the still-valid ones plus consolidated.
+                                live = [o for o in last_imported_occurrences
+                                        if (o is not None and getattr(o, 'isValid', False))]
+                                last_imported_occurrences = live + [
+                                    o for o in consolidated if o not in live
+                                ]
+                            else:
+                                last_imported_occurrences = list(consolidated)
+
+                            # Re-pick primary -- prefer Stamped (if it actually
+                            # carries a 'panel' body), fall back to first
+                            # consolidated occurrence.
+                            def _has_panel_body(o):
+                                try:
+                                    for i in range(o.component.bRepBodies.count):
+                                        nm = (o.component.bRepBodies.item(i).name or '').lower()
+                                        if nm == 'panel' or nm.startswith('panel_'):
+                                            return True
+                                except Exception:
+                                    pass
+                                return False
+
+                            stamped_with_panel = None
+                            for occ in consolidated:
+                                try:
+                                    nm = (occ.component.name or '').lower()
+                                except: nm = ''
+                                if 'stamped' in nm and _has_panel_body(occ):
+                                    stamped_with_panel = occ
+                                    break
+
+                            best = stamped_with_panel
+                            if not best and consolidated:
+                                best = consolidated[0]
+                            if best:
+                                primary_imported_occurrence = best
+
+                            # Visibility rules:
+                            #   • Stamped panel exists → IT is the sole primary.
+                            #     - Stamped occurrence visible; its panel visible,
+                            #       its surface bodies hidden.
+                            #     - Clean occurrence hidden; clean panel ALSO
+                            #       hidden so toggling Clean back on doesn't
+                            #       reveal a competing panel; clean surface hidden.
+                            #   • No Stamped (only Clean) → leave Clean fully
+                            #     visible, including its surface body. Per user:
+                            #     "if only clean is there keep it visible".
+                            def _set_body_visibility(occ, panel_on, surface_on):
+                                try:
+                                    for i in range(occ.component.bRepBodies.count):
+                                        b  = occ.component.bRepBodies.item(i)
+                                        bn = (b.name or '').lower()
+                                        if bn == 'panel' or bn.startswith('panel_'):
+                                            try: b.isLightBulbOn = panel_on
+                                            except: pass
+                                        elif bn == 'surface' or bn.startswith('surface_'):
+                                            try: b.isLightBulbOn = surface_on
+                                            except: pass
+                                except Exception as e:
+                                    _log(f'[VISIBILITY] body toggle failed: {e}')
+
+                            for occ in consolidated:
+                                try:
+                                    cname = (occ.component.name or '').lower()
+                                except:
+                                    cname = ''
+                                is_clean = 'clean' in cname
+
+                                if stamped_with_panel is not None:
+                                    if occ is stamped_with_panel:
+                                        try: occ.isLightBulbOn = is_visible
+                                        except: pass
+                                        _set_body_visibility(occ, panel_on=True, surface_on=False)
+                                    elif is_clean:
+                                        try: occ.isLightBulbOn = False
+                                        except: pass
+                                        _set_body_visibility(occ, panel_on=False, surface_on=False)
+                                    # Anything else uncategorized: leave alone.
+                                else:
+                                    # Only Clean (or only an unclassified primary):
+                                    # keep it visible AND keep its bodies visible.
+                                    try: occ.isLightBulbOn = is_visible if occ is best else False
+                                    except: pass
+                                    if occ is best:
+                                        _set_body_visibility(occ, panel_on=True, surface_on=True)
+
+                            if stamped_with_panel is not None:
+                                _log('[VISIBILITY] Stamped panel is primary; Clean hidden.')
+                            elif best:
+                                try:
+                                    _log(f'[VISIBILITY] Primary: "{best.component.name}" (only Clean — surface kept visible)')
+                                except: pass
+                except Exception as e:
+                    _log(f'[CONSOLIDATE] post-import failed: {e}')
 
             # ── SVG Stamping (applied to primary body) ───────────────────────────
             _send_progress('Analyzing Stamping Surface...')

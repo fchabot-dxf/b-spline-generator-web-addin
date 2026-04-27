@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAM Builder &middot; Native CAD</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../../../styles/base.css">
+  <style>
+    body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
+    .hidden { display: none !important; }
+
+    .cam-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+      background: #f5f5f5;
+    }
+    .cam-scroll {
+      flex: 1;
+      overflow-y: auto;
+      background: #fdfdfd;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .cam-card {
+      background: #fff;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: var(--cad-radius-md);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cam-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .cam-card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--cad-text-main);
+      letter-spacing: 0.02em;
+    }
+    .cam-card-blurb {
+      font-size: 11px;
+      color: var(--cad-text-muted);
+    }
+    .cam-mm-tag {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .cam-mm-stock   { background: #e8f1ff; color: #0066cc; }
+    .cam-mm-bspline { background: #f3e8ff; color: #7b3fbf; }
+    .cam-mm-frame   { background: #e8f6ee; color: #208a4f; }
+    .cam-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+    }
+    .cam-row .k { color: var(--cad-text-muted); }
+    .cam-row .v { color: var(--cad-text-main); font-weight: 500; }
+    .cam-row .v.warn { color: #b76b00; }
+    .cam-row .v.action { color: var(--cad-accent-blue); }
+
+    .cam-pipeline {
+      padding: 8px 10px;
+      background: #f0f7ff;
+      border: 1px solid #cfe4ff;
+      border-radius: var(--cad-radius-md);
+      font-size: 11px;
+      color: #0a4280;
+    }
+
+    .cam-status {
+      padding: 6px 10px;
+      background: #f7f7f7;
+      border-top: 1px solid var(--cad-border-soft);
+      font-size: 10px;
+      color: var(--cad-text-muted);
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    }
+    .cam-status.ok    { color: var(--cad-accent-green); }
+    .cam-status.fail  { color: #b00020; }
+    .cam-status.warn  { color: #b76b00; }
+
+    .cam-status-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+    }
+    .cam-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ccc;
+      display: inline-block;
+    }
+    .cam-dot.ok   { background: var(--cad-accent-green); }
+    .cam-dot.fail { background: #b00020; }
+  </style>
+</head>
+<body class="cad-app-layout">
+  <div class="cam-shell">
+
+    <header class="cad-navbar">
+      <div class="cad-nav-group">
+        <span style="font-size: 11px; font-weight: 800; color: #444; letter-spacing: 0.05em;">CAM BUILDER</span>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span id="status-summary" style="font-size:10px; font-weight:600; color: var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
+        <button class="cad-btn" id="preview-btn" type="button" onclick="runPreview()" style="font-size:11px; padding:5px 10px;">PREVIEW</button>
+        <button class="cad-btn cad-btn-primary" id="generate-btn" type="button" onclick="runGenerate()">GENERATE</button>
+      </div>
+    </header>
+
+    <main class="cam-scroll">
+
+      <div class="cam-card" data-setup="stock">
+        <div class="cam-card-head">
+          <div class="cam-card-title">Setup 1 &mdash; Stock</div>
+          <span class="cam-mm-tag cam-mm-stock">MM: stock</span>
+        </div>
+        <div class="cam-card-blurb">Raw stock blank &mdash; pre-machining state</div>
+        <div class="cam-row"><span class="k">Body filter</span><span class="v warn">remove all</span></div>
+        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+        <div class="cam-row"><span class="k">WCS</span><span class="v">Origin + Z up</span></div>
+        <div class="cam-row"><span class="k">Status</span>
+          <span class="cam-status-row"><span class="cam-dot" id="dot-stock"></span><span id="state-stock">pending</span></span>
+        </div>
+      </div>
+
+      <div class="cam-card" data-setup="bspline_top">
+        <div class="cam-card-head">
+          <div class="cam-card-title">Setup 2 &mdash; B-spline Top</div>
+          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
+        </div>
+        <div class="cam-card-blurb">Top-side surfacing of the b-spline panel</div>
+        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
+        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+        <div class="cam-row"><span class="k">WCS</span><span class="v">Box top, +Z</span></div>
+        <div class="cam-row"><span class="k">Status</span>
+          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
+        </div>
+      </div>
+
+      <div class="cam-card" data-setup="bspline_bottom">
+        <div class="cam-card-head">
+          <div class="cam-card-title">Setup 3 &mdash; B-spline Bottom</div>
+          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
+        </div>
+        <div class="cam-card-blurb">Bottom-side surfacing &mdash; flip after Setup 2</div>
+        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
+        <div class="cam-row"><span class="k">Stock def</span><span class="v">From Setup 2 IPV</span></div>
+        <div class="cam-row"><span class="k">WCS</span><span class="v action">Box bottom, &minus;Z (flip)</span></div>
+        <div class="cam-row"><span class="k">Status</span>
+          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_bottom"></span><span id="state-bspline_bottom">pending</span></span>
+        </div>
+      </div>
+
+      <div class="cam-card" data-setup="frame">
+        <div class="cam-card-head">
+          <div class="cam-card-title">Setup 4 &mdash; Frame</div>
+          <span class="cam-mm-tag cam-mm-frame">MM: frame</span>
+        </div>
+        <div class="cam-card-blurb">Frame profile cut &mdash; reorient flat</div>
+        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove panel</span></div>
+        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+        <div class="cam-row"><span class="k">WCS</span><span class="v action">Reoriented frame top</span></div>
+        <div class="cam-row"><span class="k">Status</span>
+          <span class="cam-status-row"><span class="cam-dot" id="dot-frame"></span><span id="state-frame">pending</span></span>
+        </div>
+      </div>
+
+      <div class="cam-pipeline">
+        <strong>Pipeline:</strong>
+        Build 3 Manufacturing Models &rarr; attach 4 Setups.
+        Operations stay empty &mdash; toolpath templates added later.
+      </div>
+
+    </main>
+
+    <div class="cam-status" id="status-bar">status &mdash; ready</div>
+  </div>
+
+<script>
+  const SETUP_KEYS = ['stock', 'bspline_top', 'bspline_bottom', 'frame'];
+
+  function send(action, payload) {
+    const data = JSON.stringify(Object.assign({ action }, payload || {}));
+    if (window.adsk && window.adsk.fusionSendData) {
+      window.adsk.fusionSendData(action, data);
+    }
+  }
+
+  function setStatus(msg, cls) {
+    const bar = document.getElementById('status-bar');
+    if (!bar) return;
+    bar.textContent = 'status — ' + msg;
+    bar.className = 'cam-status' + (cls ? ' ' + cls : '');
+  }
+
+  function setSetupState(key, state) {
+    const dot = document.getElementById('dot-' + key);
+    const lbl = document.getElementById('state-' + key);
+    if (dot) {
+      dot.classList.remove('ok', 'fail');
+      if (state === 'ok')   dot.classList.add('ok');
+      if (state === 'fail') dot.classList.add('fail');
+    }
+    if (lbl) lbl.textContent = state;
+  }
+
+  function runGenerate() {
+    SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
+    setStatus('generating...');
+    send('generate');
+  }
+
+  function runPreview() {
+    setStatus('preview · classifying bodies...');
+    send('preview');
+  }
+
+  // Receives messages from Python via palette.sendInfoToHTML(action, json).
+  window.fusionJavaScriptHandler = {
+    handle: function(action, data) {
+      try {
+        const payload = data ? JSON.parse(data) : {};
+        if (action === 'report') {
+          (payload.setups || []).forEach(s => {
+            const key = s.name.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '');
+            const matched = SETUP_KEYS.find(k => key.includes(k.replace('_', ''))) || key;
+            setSetupState(matched, s.ok ? 'ok' : 'fail');
+          });
+          if (payload.ok) {
+            setStatus('done · 3 MMs · 4 setups', 'ok');
+          } else {
+            setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
+          }
+        } else if (action === 'preview') {
+          if (!payload.ok) {
+            setStatus('preview failed — ' + (payload.msg || 'unknown'), 'fail');
+          } else {
+            const c = payload.counts || {};
+            const samples = payload.samples || {};
+            const sampleStr = Object.keys(samples)
+              .filter(k => (samples[k] || []).length)
+              .map(k => k + ':' + samples[k].slice(0, 3).join(','))
+              .join(' | ');
+            setStatus(
+              'preview · frame=' + (c.frame || 0) +
+              ' · panel=' + (c.panel || 0) +
+              ' · unknown=' + (c.unknown || 0) +
+              (sampleStr ? ' · ' + sampleStr : ''),
+              'ok'
+            );
+          }
+        }
+      } catch (e) {
+        setStatus('parse error: ' + e.message, 'fail');
+      }
+      return 'ok';
+    }
+  };
+</script>
+</body>
+</html>

@@ -365,6 +365,8 @@ def deploy_local():
     # Write project_path.json handshake for the frame-builder sub-module so
     # its DebugLogger can write logs back to the source workspace.
     _write_fb_handshake()
+    _write_cam_handshake()
+    _write_bspline_handshake()
 
     # Verify
     print("  Verifying key files...")
@@ -413,6 +415,61 @@ def _write_fb_handshake():
             print(f"  Handshake written (Portable): {path_str}")
     except Exception as e:
         print(f"  WARNING: could not write frame-builder handshake: {e}")
+
+
+def _write_cam_handshake():
+    """
+    Write project_path.json into the deployed CAM-builder sub-folder so
+    its CamDebugLogger knows where to write source-side logs (mirrors
+    _write_fb_handshake -- without this, CamDebugLogger falls back to
+    frame-builder's handshake and routes CAM-builder logs to the wrong
+    source folder).
+    """
+    try:
+        cam_dest = DEST_DIR / "CAM-builder"
+        if cam_dest.exists():
+            try:
+                home = Path.home()
+                rel_to_home = (SRC_DIR / "CAM-builder").relative_to(home)
+                path_str = f"~/{rel_to_home.as_posix()}"
+            except ValueError:
+                path_str = str(SRC_DIR / "CAM-builder")
+
+            config     = {"project_root": path_str}
+            handshake  = cam_dest / "project_path.json"
+            with open(handshake, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+            print(f"  CAM Handshake written (Portable): {path_str}")
+    except Exception as e:
+        print(f"  WARNING: could not write CAM-builder handshake: {e}")
+
+
+def _write_bspline_handshake():
+    """
+    Write workspace_link.json into the deployed b-spline-gen sub-folder
+    so its ``get_log_path()`` writes b_spline_gen_log.txt back to the
+    source workspace instead of the deployed addin folder.
+
+    Different filename + key from the frame-builder/CAM-builder handshake
+    because b-spline-gen uses its own pre-existing convention
+    (workspace_link.json + 'workspace_root' key). Kept that way for
+    backwards-compat; the unifying refactor can wait.
+    """
+    try:
+        bs_dest = DEST_DIR / "b-spline-gen"
+        if not bs_dest.exists():
+            return
+        # Resolve the source path. Use absolute (not ~) form because
+        # b-spline-gen's get_log_path uses os.path.isdir directly without
+        # expanding tildes.
+        src_path = (SRC_DIR / "b-spline-gen").resolve()
+        config    = {"workspace_root": str(src_path)}
+        handshake = bs_dest / "workspace_link.json"
+        with open(handshake, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+        print(f"  B-Spline Handshake written: {src_path}")
+    except Exception as e:
+        print(f"  WARNING: could not write b-spline-gen handshake: {e}")
 
 
 # ---------------------------------------------------------------------------

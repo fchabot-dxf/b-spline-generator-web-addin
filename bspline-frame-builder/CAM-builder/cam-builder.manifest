@@ -1,0 +1,14 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "cam-builder",
+    "author": "danse",
+    "description": {
+        "": "CAM Builder -- 3 Manufacturing Models + 4 Setups scaffold for the Ultimate Bee CNC."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true,
+    "entry": "cam-builder.py"
+}

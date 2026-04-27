@@ -629,7 +629,7 @@ def run(context):
         
         # 2. UI Button Insertion (Dynamic SketchTab Registration)
         # Add Inspector button to SketchTab and SolidTab.
-        for target_id in ('SketchTab', 'SolidTab'):
+        for target_id in ('SketchTab', 'SolidTab', 'MillingTab'):
             try:
                 tab = ui.allToolbarTabs.itemById(target_id)
                 if not tab:

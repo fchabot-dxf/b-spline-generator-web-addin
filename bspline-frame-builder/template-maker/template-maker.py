@@ -677,7 +677,7 @@ def run(context):
             _log('[reload cmd] ' + traceback.format_exc())
 
         # 6. Add both commands to toolbar panels.
-        for target_id in ('SketchTab', 'SolidTab'):
+        for target_id in ('SketchTab', 'SolidTab', 'MillingTab'):
             try:
                 tab = ui.allToolbarTabs.itemById(target_id)
                 if not tab:

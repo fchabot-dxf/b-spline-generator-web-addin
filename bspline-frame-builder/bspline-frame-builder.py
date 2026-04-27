@@ -32,6 +32,7 @@ _engine           = None     # frame_engine module (reloaded every run)
 _tm               = None     # template-maker module (reloaded every run)
 _fi               = None     # fusion-inspector module (reloaded every run)
 _fe               = None     # fusion-exporter module (reloaded every run)
+_cam              = None     # cam-builder module (reloaded every run)
 _diag_logger      = None     # DebugLogger (re-created every run)
 _refresh_event    = None     # Registered once per Fusion session
 _refresh_registered = False
@@ -169,7 +170,7 @@ def _run_related_addins(modules):
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
-    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _diag_logger
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _diag_logger
 
     # --- Logger ---
     _utils_path = os.path.join(_addin_root, 'frame-builder', 'fb_utils')
@@ -268,13 +269,23 @@ def _bootstrap():
         _log_error('template-maker submodule load failed\n' + traceback.format_exc())
         _tm = None
 
+    # CAM-builder ships its own engine package (cam_engine, cam_utils) so we
+    # wipe those names too -- they aren't in _shared_project_names since no
+    # other sub-module touches them.
+    _force_wipe(['cam_engine', 'cam_utils'])
+    try:
+        _cam = _load_submodule('cam_builder_mod', 'CAM-builder', 'cam-builder.py')
+    except Exception:
+        _log_error('cam-builder submodule load failed\n' + traceback.format_exc())
+        _cam = None
+
     _diag_logger.log('BOOTSTRAP: sub-modules loaded (fresh from disk)')
 
 
 # ── Submodule teardown (called from stop) ─────────────────────────────────────
 def _teardown_submodules():
     """Release resources held by loaded sub-modules before we drop our refs."""
-    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam
 
     app = None
     try:
@@ -325,7 +336,8 @@ def _teardown_submodules():
     #    command defs, palettes, event subscriptions, and panel buttons.
     #    Stop in REVERSE of the run order so late-bound resources (palettes,
     #    selection handlers) release before earlier commands.
-    for _sub_label, _sub_mod in (('template-maker',   _tm),
+    for _sub_label, _sub_mod in (('cam-builder',      _cam),
+                                 ('template-maker',   _tm),
                                  ('fusion-inspector', _fi),
                                  ('fusion-exporter',  _fe)):
         if _sub_mod is None:
@@ -345,6 +357,7 @@ def _teardown_submodules():
     _tm = None
     _fi = None
     _fe = None
+    _cam = None
 
 
 # ── Deferred refresh via CustomEvent ──────────────────────────────────────────
@@ -510,11 +523,15 @@ def run(context):
         except Exception:
             _log_error('reload cmd registration failed\n' + traceback.format_exc())
 
-        # 7. Add buttons to the unified toolbar panel on both Solid and Sketch environments.
-        # Registration must target the specific workspace's tab collection to ensure visibility.
+        # 7. Add buttons to the unified toolbar panel on Solid, Sketch, and
+        # Manufacture environments. Registration targets each workspace's
+        # tab collection so the button is visible inside that workspace.
+        # Panel IDs are uniquified per-tab via f"{PANEL_ID}_{tab.id}" further
+        # below, so the three panels never collide.
         ENVIRONMENT_TARGETS = (
             ('FusionSolidEnvironment',  'SolidTab'),
             ('FusionSketchEnvironment', 'SketchTab'),
+            ('CAMEnvironment',          'MillingTab'),
         )
 
         for ws_id, tab_id in ENVIRONMENT_TARGETS:
@@ -593,7 +610,8 @@ def run(context):
         #    shouldn't take down the whole add-in.
         for _sub_label, _sub_mod in (('fusion-exporter',  _fe),
                                      ('fusion-inspector', _fi),
-                                     ('template-maker',   _tm)):
+                                     ('template-maker',   _tm),
+                                     ('cam-builder',      _cam)):
             if _sub_mod is None:
                 continue
             _sub_run = getattr(_sub_mod, 'run', None)
