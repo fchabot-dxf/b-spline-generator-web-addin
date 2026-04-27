@@ -486,7 +486,16 @@ def _consolidate_bspline_variants(occurrences):
             _log(f"[CONSOLIDATE] home BaseFeature wrap unavailable: {e}")
             home_bf = None
 
-        pending_renames = []  # [(new_body, desired_name), ...]
+        # Track new bodies by POSITIONAL INDEX in home_occ.component.bRepBodies.
+        # The body reference returned by bRepBodies.add(transient, base_feat)
+        # is bound to the active BaseFeature edit; once finishEdit() commits,
+        # that reference is stale and writes through it silently no-op
+        # (verified in the field: bodies kept their auto-assigned 'Body2' name
+        # and were later renamed to 'panel_1' by the next pass's
+        # _stamp_body_name fallback). After finishEdit we MUST refetch the
+        # body via home_occ.component.bRepBodies.item(index) to get a live
+        # reference whose .name setter actually persists.
+        index_renames = []  # [(idx, desired_name), ...]
         sibs_to_delete = []
         try:
             for sib_kind, sib_list in bucket.items():
@@ -528,16 +537,43 @@ def _consolidate_bspline_variants(occurrences):
                                 # direct mode — bRepBodies.add takes the
                                 # transient directly).
                                 new_b = home_occ.component.bRepBodies.add(transient)
-                            pending_renames.append((new_b, target_body_name))
+                            # New body lands at the END of the collection.
+                            # Capture its index NOW (still valid inside the
+                            # edit) so we can refetch by position post-edit.
+                            try:
+                                new_idx = home_occ.component.bRepBodies.count - 1
+                            except Exception:
+                                new_idx = -1
+                            # Belt-and-suspenders: also try renaming via the
+                            # held ref while the edit is still open. Some
+                            # Fusion versions accept this and persist the
+                            # name through finishEdit; on others it no-ops.
+                            try:
+                                if new_b is not None:
+                                    new_b.name = target_body_name
+                            except Exception:
+                                pass
+                            if new_idx >= 0:
+                                index_renames.append((new_idx, target_body_name))
                         except Exception as e:
                             _log(f"[CONSOLIDATE] tbm-copy/add failed for {target_body_name}: {e}; falling back to copyToComponent")
                             # Last-resort fallback so a TBM hiccup doesn't
                             # silently drop the body. The dangling-reference
                             # warning will come back on this code path but
-                            # functional correctness is preserved.
+                            # functional correctness is preserved. Track the
+                            # fallback body the same way.
                             try:
-                                new_b = sb.copyToComponent(home_occ)
-                                pending_renames.append((new_b, target_body_name))
+                                fb = sb.copyToComponent(home_occ)
+                                try:
+                                    fb.name = target_body_name
+                                except Exception:
+                                    pass
+                                try:
+                                    fb_idx = home_occ.component.bRepBodies.count - 1
+                                    if fb_idx >= 0:
+                                        index_renames.append((fb_idx, target_body_name))
+                                except Exception:
+                                    pass
                             except Exception as ee:
                                 _log(f"[CONSOLIDATE] copyToComponent fallback failed: {ee}")
         finally:
@@ -547,10 +583,56 @@ def _consolidate_bspline_variants(occurrences):
                 except Exception as e:
                     _log(f"[CONSOLIDATE] home BaseFeature finishEdit failed: {e}")
 
-        # Rename pass runs AFTER the BaseFeature edit closes — body name
-        # writes inside an active BaseFeature edit are read-only metadata
-        # in some Fusion versions and would silently no-op.
-        _apply_pending_renames(pending_renames, kind_counters)
+        # Rename via FRESH refs fetched from home_occ.component.bRepBodies.item(idx).
+        # This is what actually makes the rename stick — the held new_b
+        # references captured during the edit are stale post-finishEdit.
+        for idx, desired in index_renames:
+            try:
+                if idx >= home_occ.component.bRepBodies.count:
+                    _log(f"[CONSOLIDATE] index {idx} out of range (count={home_occ.component.bRepBodies.count})")
+                    continue
+                live = home_occ.component.bRepBodies.item(idx)
+                if live is None or not live.isValid:
+                    _log(f"[CONSOLIDATE] body at idx {idx} is invalid; skipping rename to '{desired}'")
+                    continue
+                # Apply suffix logic: kind_counters tracks how many of this
+                # kind have already landed in the home, so a second 'surface'
+                # becomes 'surface_1', third 'surface_2', etc.
+                kind_key = 'panel' if desired == 'panel' else 'surface'
+                already = kind_counters.get(kind_key, 0)
+                target = desired if already == 0 else f"{desired}_{already}"
+
+                # Skip if it already reads the target name (the in-edit
+                # rename above may have already taken).
+                try:
+                    cur = (live.name or '')
+                except Exception:
+                    cur = ''
+                if cur.lower() == target.lower():
+                    kind_counters[kind_key] = already + 1
+                    continue
+
+                # Two-step rename to dodge Fusion's auto-uniquifier when the
+                # target name happens to already exist in the design (the
+                # cross-component 'surface' collision).
+                tmp = f"_bsg_tmp_{idx}_{already}"
+                try:
+                    live.name = tmp
+                except Exception as e:
+                    _log(f"[CONSOLIDATE] tmp-rename failed at idx {idx}: {e}")
+                try:
+                    live.name = target
+                except Exception as e:
+                    _log(f"[CONSOLIDATE] rename to '{target}' failed at idx {idx}: {e}")
+                try:
+                    final = live.name
+                    if final != target:
+                        _log(f"[CONSOLIDATE] rename collision at idx {idx}: wanted '{target}' got '{final}'")
+                except Exception:
+                    pass
+                kind_counters[kind_key] = already + 1
+            except Exception as e:
+                _log(f"[CONSOLIDATE] index_renames pass raised at idx {idx}: {e}")
 
         # Delete sib occurrences last so any failure above doesn't lose
         # geometry — the original sib bodies are still alive until this
