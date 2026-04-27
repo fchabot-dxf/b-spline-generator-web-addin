@@ -299,16 +299,19 @@ def _do_preview():
 
 def _do_generate():
     """Pass 1: build 3 MMs (no body filter) + 4 Setups."""
-    if _engine is None:
-        try:
-            _load_engine()
-        except Exception:
-            _log_error("engine load failed\n" + traceback.format_exc())
-            _send_to_html('report', {
-                'ok': False,
-                'errors': ['Engine load failed -- see log.']
-            })
-            return
+    # Always reload the engine on each generate so iterative edits to
+    # cam_engine.* (mm_builder, setup_builder, etc.) pick up without an
+    # addin Stop/Start. The cost is a handful of imports, negligible
+    # compared to the actual MM/Setup build time.
+    try:
+        _load_engine()
+    except Exception:
+        _log_error("engine load failed\n" + traceback.format_exc())
+        _send_to_html('report', {
+            'ok': False,
+            'errors': ['Engine load failed -- see log.']
+        })
+        return
 
     try:
         report = _engine.run(classifier=_classify_body, logger=_logger)
@@ -354,21 +357,28 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
 
 
 def _register_refresh_event():
-    global _refresh_event, _refresh_registered
-    if _refresh_registered:
-        return
+    """Register the deferred-refresh CustomEvent. Always unregisters any
+    pre-existing event by the same id first so a previous addin lifecycle
+    leaving a stale handler around doesn't double-fire. Idempotent: safe
+    to call repeatedly across run/stop cycles."""
+    global _refresh_event, _refresh_registered, _refresh_handlers
     try:
         app = adsk.core.Application.get()
+        if not app:
+            return
         try:
             app.unregisterCustomEvent(REFRESH_EVENT_ID)
         except Exception:
             pass
+        _refresh_handlers = []  # let GC the old ones
         _refresh_event = app.registerCustomEvent(REFRESH_EVENT_ID)
         h = _DeferredRefreshHandler()
         _refresh_event.add(h)
         _refresh_handlers.append(h)
         _refresh_registered = True
     except Exception:
+        _refresh_registered = False
+        _refresh_event = None
         _log_error("_register_refresh_event\n" + traceback.format_exc())
 
 
@@ -377,15 +387,41 @@ def _register_refresh_event():
 # ---------------------------------------------------------------------------
 
 def run(context):
+    """Add-in entry point. Defensive: every step is wrapped so a partial
+    Fusion state (orphan command def, leftover panel control, missing
+    resource folder, etc.) doesn't poison the rest of the boot. If
+    something fails mid-run we call stop() to wind back down rather than
+    leaving half-registered handlers and orphaned UI elements behind.
+    """
+    booted_ok = False
     try:
+        # 1. Best-effort: clean any leftover state from a prior crash/reload.
+        # stop() is idempotent and tolerant of missing pieces, so it's safe
+        # to invoke even on a fresh boot.
+        try:
+            stop(None)
+        except Exception:
+            # stop() should not raise (it has its own try/excepts), but
+            # if it does we still want to attempt run() — log and continue.
+            _log_error("pre-run stop() raised\n" + traceback.format_exc())
+
+        # 2. Refresh event + engine load. Engine load failure is fatal for
+        # the addin (no point registering a button that won't work), so
+        # we re-raise to land in the outer handler.
         _register_refresh_event()
         _load_engine()
 
         app = adsk.core.Application.get()
+        if not app:
+            _log_error("run(): Application.get() returned None")
+            return
         ui = app.userInterface
+        if not ui:
+            _log_error("run(): no userInterface")
+            return
         cmd_defs = ui.commandDefinitions
 
-        # Purge prior versions of our commands.
+        # 3. Purge prior versions of our commands. Best-effort per id.
         for cid in (CMD_ID, RELOAD_CMD_ID):
             try:
                 ex = cmd_defs.itemById(cid)
@@ -394,86 +430,161 @@ def run(context):
             except Exception:
                 pass
 
-        # Register the visible button.
-        cmd_def = cmd_defs.addButtonDefinition(
-            CMD_ID, 'CAM Builder',
-            'Build the 3 Manufacturing Models + 4 Setups for the Ultimate Bee CNC.',
-            RESOURCES_PATH if os.path.isdir(RESOURCES_PATH) else ''
-        )
-        on_created = _CmdCreatedHandler()
-        cmd_def.commandCreated.add(on_created)
-        _handlers.append(on_created)
+        # 4. Register the visible button. Tolerate missing resources path
+        # by passing '' (Fusion shows a default icon).
+        try:
+            icon_dir = RESOURCES_PATH if os.path.isdir(RESOURCES_PATH) else ''
+            cmd_def = cmd_defs.addButtonDefinition(
+                CMD_ID, 'CAM Builder',
+                'Build the 3 Manufacturing Models + 4 Setups for the Ultimate Bee CNC.',
+                icon_dir,
+            )
+        except Exception:
+            _log_error("run(): addButtonDefinition failed\n" + traceback.format_exc())
+            return  # outer try will run finally cleanup if booted_ok stays False
 
-        # Drop the button into the shared bsplinePanel on every tab where
-        # the unified addin set one up (Solid, Sketch, Milling). Promote
-        # the button so it sits in the visible row, not the overflow
-        # dropdown -- especially important in Manufacture's MillingTab
-        # which is where this command actually does something useful.
-        for tab in ui.allToolbarTabs:
-            try:
-                for panel in tab.toolbarPanels:
-                    if not panel.id.startswith(PANEL_ID):
-                        continue
-                    ctrl = panel.controls.itemById(CMD_ID)
-                    if not ctrl:
-                        ctrl = panel.controls.addCommand(cmd_def)
-                        _log(f"button added to {panel.id} on tab {tab.id}")
-                    try:
-                        ctrl.isPromoted = True
-                        ctrl.isPromotedByDefault = True
-                    except Exception:
-                        pass
-            except Exception:
-                continue
+        try:
+            on_created = _CmdCreatedHandler()
+            cmd_def.commandCreated.add(on_created)
+            _handlers.append(on_created)
+        except Exception:
+            _log_error("run(): commandCreated.add failed\n" + traceback.format_exc())
+            return
 
+        # 5. Drop the button into the shared bsplinePanel on every tab
+        # where the unified addin set one up (Solid, Sketch, Milling).
+        # Per-tab/per-panel failures don't abort the whole boot.
+        added_any = False
+        try:
+            for tab in ui.allToolbarTabs:
+                try:
+                    for panel in tab.toolbarPanels:
+                        try:
+                            if not panel.id.startswith(PANEL_ID):
+                                continue
+                            ctrl = panel.controls.itemById(CMD_ID)
+                            if not ctrl:
+                                ctrl = panel.controls.addCommand(cmd_def)
+                                added_any = True
+                                _log(f"button added to {panel.id} on tab {tab.id}")
+                            try:
+                                ctrl.isPromoted = True
+                                ctrl.isPromotedByDefault = True
+                            except Exception:
+                                pass
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+        except Exception:
+            _log_error("run(): toolbar walk failed\n" + traceback.format_exc())
+
+        if not added_any:
+            # The addin still works (the command def exists), but the user
+            # has no button to click. Likely the bsplinePanel hasn't been
+            # set up yet (other addin loaded later). Log + carry on.
+            _log("run(): no bsplinePanel found yet; button will not appear "
+                 "until the host addin registers the panel.", "WARNING")
+
+        booted_ok = True
         _log("CAM-builder run() complete")
     except Exception:
         _log_error("run() failed\n" + traceback.format_exc())
+    finally:
+        if not booted_ok:
+            # Partial boot — wind back down so we don't leave orphaned
+            # state for the next start.
+            try:
+                stop(None)
+            except Exception:
+                _log_error("post-failure stop() raised\n" + traceback.format_exc())
 
 
 def stop(context):
+    """Tear down everything the addin registered. Idempotent: safe to call
+    multiple times, safe to call on a partially-booted state, safe to call
+    when Fusion is mid-shutdown (Application.get() may return None).
+    """
+    global _html_handler, _engine, _logger
+    global _refresh_event, _refresh_registered
+
+    app = None
+    ui = None
     try:
         app = adsk.core.Application.get()
-        if not app:
-            _handlers.clear()
-            return
-        ui = app.userInterface
-        cmd_defs = ui.commandDefinitions
+    except Exception:
+        app = None
+    if app is not None:
+        try:
+            ui = app.userInterface
+        except Exception:
+            ui = None
 
-        # Close palette
+    # 1. Palette: hide + delete + drop the html handler reference.
+    if ui is not None:
         try:
             palette = ui.palettes.itemById(PALETTE_ID)
             if palette:
-                palette.deleteMe()
+                try: palette.isVisible = False
+                except Exception: pass
+                try: palette.deleteMe()
+                except Exception: pass
         except Exception:
             pass
+    _html_handler = None  # lose the reference even if Fusion is gone
 
-        # Remove button controls
+    # 2. Remove button controls from any panel they ended up in.
+    if ui is not None:
         try:
             for tab in ui.allToolbarTabs:
-                for panel in tab.toolbarPanels:
-                    if panel.id.startswith(PANEL_ID):
-                        ctrl = panel.controls.itemById(CMD_ID)
-                        if ctrl:
-                            try:
-                                ctrl.deleteMe()
-                            except Exception:
-                                pass
+                try:
+                    for panel in tab.toolbarPanels:
+                        try:
+                            if not panel.id.startswith(PANEL_ID):
+                                continue
+                            ctrl = panel.controls.itemById(CMD_ID)
+                            if ctrl:
+                                try: ctrl.deleteMe()
+                                except Exception: pass
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
         except Exception:
             pass
 
-        # Remove command defs
-        for cid in (CMD_ID, RELOAD_CMD_ID):
-            try:
-                cd = cmd_defs.itemById(cid)
-                if cd:
-                    cd.deleteMe()
-            except Exception:
-                pass
-    except Exception:
-        _log_error("stop() outer\n" + traceback.format_exc())
-    finally:
-        _handlers.clear()
+    # 3. Remove command definitions.
+    if ui is not None:
+        try:
+            cmd_defs = ui.commandDefinitions
+            for cid in (CMD_ID, RELOAD_CMD_ID):
+                try:
+                    cd = cmd_defs.itemById(cid)
+                    if cd:
+                        cd.deleteMe()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    # 4. Unregister the deferred-refresh CustomEvent and drop its handlers.
+    if app is not None:
+        try:
+            app.unregisterCustomEvent(REFRESH_EVENT_ID)
+        except Exception:
+            pass
+    _refresh_event = None
+    _refresh_registered = False
+    _refresh_handlers.clear()
+
+    # 5. Clear per-run handlers (CommandCreated etc).
+    _handlers.clear()
+
+    # 6. Drop engine + logger references so a subsequent run() starts fresh.
+    # Don't destroy the logger — it just owns a file handle and Python GC
+    # will close it.
+    _engine = None
+    _logger = None
 
 
 # ---------------------------------------------------------------------------
