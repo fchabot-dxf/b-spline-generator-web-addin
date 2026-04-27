@@ -338,17 +338,36 @@ def _apply_bspline_panel_filter(mm, logger):
 
         clean_children   = []
         stamped_children = []
+        orphan_children  = []
         for i in range(child_count):
             try:
                 child = parent_occ.childOccurrences.item(i)
                 cn = (child.component.name or '').lower()
             except Exception:
                 continue
+            # Orphans from bspline-gen consolidation: '_bsg_orphan_*'.
+            # The source design keeps these alive (just hidden + renamed)
+            # so the CopyPasteBodies parametric ref stays valid. They
+            # must NEVER reach CAM, so always delete them from the MM
+            # snapshot - cross-component occurrence delete works fine
+            # inside the wrapper-component BaseFeature edit.
+            if cn.startswith('_bsg_orphan'):
+                orphan_children.append(child)
+                continue
             has_panel = _component_has_panel_body(child.component)
             if 'stamped' in cn and has_panel:
                 stamped_children.append(child)
             elif 'clean' in cn:
                 clean_children.append(child)
+
+        # Always delete orphans, regardless of whether Stamped/Clean rule applies.
+        for orph in orphan_children:
+            try:
+                nm = orph.component.name
+            except Exception:
+                nm = '<unnamed>'
+            occs_to_delete.append((orph, nm))
+            _log(logger, f"BSPLINE FILTER: queued orphan delete '{nm}'", "DEBUG")
 
         # Rule 1: Stamped wins.
         if stamped_children:
