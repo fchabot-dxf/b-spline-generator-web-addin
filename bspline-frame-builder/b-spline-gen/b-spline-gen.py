@@ -284,47 +284,48 @@ def _wrap_timeline_in_group(start_count, group_name):
 
 
 def _post_import_setup(occurrences):
-    """Walk the imported occurrence tree, find Clean / Stamped components
-    wherever they sit (handles the wrapper occurrence Fusion creates for
-    multi-product STEP files), and normalize their component name and
-    body names.
+    """Three-phase post-import normalization:
 
-    Why a walk: the JS-side stepWriter emits a STEP with two top-level
-    PRODUCTs ('Clean' and 'Stamped'). Fusion's importer creates ONE
-    wrapper occurrence (named after the STEP file -- e.g. 'B-Spline')
-    containing those products as children. So the structure post-import is:
+      Phase 1: walk the imported subtree, find Clean / Stamped components
+               wherever Fusion stuck them, normalize their component
+               name and body names (panel / surface based on isSolid).
+      Phase 2: if Fusion created a wrapper occurrence around the products
+               (multi-product STEPs do this, naming the wrapper after the
+               file), uplift Clean / Stamped to be direct children of
+               the wrapper's parent and delete the wrapper.
+      Phase 3: surface bodies imported via MANIFOLD_SURFACE_SHAPE_REPRESENTATION
+               land inside an "Unstitched" parametric feature in each
+               component. Replace each unstitched body with an equivalent
+               BaseFeature-owned body of the same geometry, then delete
+               the Unstitched feature. The replacement body sits directly
+               under the component's bRepBodies (sibling to panel),
+               which is what the user expects to see in the browser.
 
-        B-Spline Set                           <- our parent component
-          B-Spline                             <- wrapper from STEP file
-            Clean    [panel, surface]
-            Stamped  [panel, surface]
-
-    We just want to rename Clean / Stamped's bodies to canonical names
-    if Fusion's importer auto-named them (Body1 / Body2). The wrapper
-    occurrence stays -- it's cosmetic and harmless.
-
-    Body classification is by b.isSolid (most reliable signal in Fusion
-    after STEP import, where labels can be lost during 'unstitching'):
-      - solid bodies   -> 'panel'
-      - non-solid bodies -> 'surface'
+    Final tree on import:
+      B-Spline Set
+        Clean    [panel, surface]
+        Stamped  [panel, surface]
+    No wrapper, no Unstitched feature, correct names, no warnings.
     """
     if not occurrences:
         return occurrences
 
     _log(f"[POST-IMPORT] >>> verifying {len(occurrences)} occurrence(s)")
 
-    # Phase 1: collect all Clean / Stamped occurrences anywhere in the
-    # subtree of the input occurrences. Stop recursing once we hit one
-    # (don't recurse INSIDE a Clean to find another Clean).
+    # ── Phase 1: find and normalize Clean / Stamped ──
     targets = []
     for occ in occurrences:
         targets.extend(_find_clean_stamped(occ, depth=0))
-
     _log(f"[POST-IMPORT]   found {len(targets)} Clean/Stamped target(s) in subtree")
-
-    # Phase 2: for each, normalize component name + body names.
     for occ in targets:
         _normalize_occurrence(occ)
+
+    # ── Phase 2: uplift through any wrapper ──
+    _uplift_through_wrappers(occurrences, targets)
+
+    # ── Phase 3: eliminate Unstitched feature in each target ──
+    for occ in targets:
+        _eliminate_unstitched(occ)
 
     _log(f"[POST-IMPORT] <<< done")
     return occurrences
@@ -341,12 +342,10 @@ def _find_clean_stamped(occ, depth):
     except Exception:
         return found
 
-    # Hit -- don't recurse further (avoid finding nested Cleans).
     if "stamped" in cname or "clean" in cname or "analytical" in cname:
         found.append(occ)
         return found
 
-    # Otherwise walk children.
     try:
         n = occ.childOccurrences.count
     except Exception:
@@ -363,7 +362,7 @@ def _find_clean_stamped(occ, depth):
 
 
 def _normalize_occurrence(occ):
-    """Rename component to canonical name, rename bodies to panel / surface
+    """Rename component to canonical name; rename bodies to panel / surface
     based on isSolid."""
     try:
         cname = occ.component.name or ""
@@ -387,8 +386,6 @@ def _normalize_occurrence(occ):
         except Exception as e:
             _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r} FAILED: {e}")
 
-    # Rename bodies based on isSolid. Multiple bodies of the same kind
-    # (shouldn't normally happen) get sequential suffixes panel_1, surface_1, etc.
     try:
         body_count = occ.component.bRepBodies.count
     except Exception as e:
@@ -405,11 +402,9 @@ def _normalize_occurrence(occ):
             _log(f"[POST-IMPORT]     body[{i}] read failed: {e}")
             continue
 
-        # Decide kind -- isSolid is the reliable signal post-import.
         try:
             kind = "panel" if b.isSolid else "surface"
         except Exception:
-            # Fall back to name pattern if isSolid is unavailable.
             bn_lower = bn.lower()
             if _is_panel_body_name(bn_lower):
                 kind = "panel"
@@ -419,7 +414,6 @@ def _normalize_occurrence(occ):
                 _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r}: cannot classify, leaving alone")
                 continue
 
-        # Pick canonical name with sequence suffix if needed.
         if kind == "panel":
             target_bn = "panel" if panel_seq == 0 else f"panel_{panel_seq}"
             panel_seq += 1
@@ -431,8 +425,6 @@ def _normalize_occurrence(occ):
             _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r} ok (isSolid={kind=='panel'})")
             continue
 
-        # Two-step rename to dodge Fusion's auto-uniquifier when target
-        # already exists somewhere (e.g. Stamped's panel and Clean's panel).
         try:
             tmp = f"_bsg_tmp_{target_cname}_{i}"
             b.name = tmp
@@ -443,6 +435,236 @@ def _normalize_occurrence(occ):
             _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} (isSolid={kind=='panel'})")
         except Exception as e:
             _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} FAILED: {e}")
+
+
+def _uplift_through_wrappers(roots, targets):
+    """If each target sits ONE level deeper than its corresponding root
+    (Fusion's auto-wrapper for multi-product STEPs), move it up to be a
+    direct child of the root and delete the now-empty wrapper.
+
+    Tree before:
+        B-Spline Set       <- root
+            B-Spline       <- wrapper
+                Clean      <- target
+                Stamped    <- target
+
+    Tree after:
+        B-Spline Set
+            Clean
+            Stamped
+
+    Uses Occurrence.moveToComponent if available; falls back to leaving
+    the wrapper in place if the API call fails (Fusion version
+    differences). When fallback hits, the wrapper just stays - bodies
+    are still correctly named, structure is just nested one extra level.
+    """
+    if not roots or not targets:
+        return
+
+    # Identify wrappers: any occurrence that sits between a root and a target,
+    # AND whose ONLY children are targets (i.e. Fusion's pure wrapper).
+    wrappers_to_remove = set()
+    target_set = set(id(t) for t in targets)
+
+    for root in roots:
+        try:
+            n = root.childOccurrences.count
+        except Exception:
+            continue
+        for i in range(n):
+            try:
+                child = root.childOccurrences.item(i)
+                if not child or not child.isValid:
+                    continue
+                # Skip if this child IS already a target (no wrapping).
+                if id(child) in target_set:
+                    continue
+                # Check if child's children are all targets.
+                gc_count = child.childOccurrences.count
+                if gc_count == 0:
+                    continue
+                gc_targets = []
+                gc_other = 0
+                for j in range(gc_count):
+                    gc = child.childOccurrences.item(j)
+                    if gc and gc.isValid and id(gc) in target_set:
+                        gc_targets.append(gc)
+                    else:
+                        gc_other += 1
+                if gc_targets and gc_other == 0:
+                    wrappers_to_remove.add((id(child), child, root, tuple(gc_targets)))
+            except Exception as e:
+                _log(f"[POST-IMPORT]   wrapper detect raised: {e}")
+
+    for _, wrapper, root, gc_targets in wrappers_to_remove:
+        try:
+            wname = wrapper.component.name
+        except Exception:
+            wname = "<?>"
+        try:
+            rname = root.component.name
+        except Exception:
+            rname = "<?>"
+        _log(f"[POST-IMPORT]   wrapper detected: {wname!r} between {rname!r} and {len(gc_targets)} target(s); uplifting")
+
+        moved = 0
+        for gc in gc_targets:
+            try:
+                gc_name_before = gc.component.name
+            except Exception:
+                gc_name_before = "<?>"
+            try:
+                gc.moveToComponent(root)
+                moved += 1
+                _log(f"[POST-IMPORT]     moved {gc_name_before!r} from {wname!r} -> {rname!r}")
+            except Exception as e:
+                _log(f"[POST-IMPORT]     moveToComponent FAILED for {gc_name_before!r}: {e}")
+
+        # Delete wrapper if empty now.
+        if moved == len(gc_targets):
+            try:
+                wrapper.deleteMe()
+                _log(f"[POST-IMPORT]     deleted empty wrapper {wname!r}")
+            except Exception as e:
+                _log(f"[POST-IMPORT]     wrapper {wname!r} deleteMe failed: {e}")
+        else:
+            _log(f"[POST-IMPORT]     wrapper {wname!r} not deleted -- only {moved}/{len(gc_targets)} children moved")
+
+
+def _eliminate_unstitched(occ):
+    """In ``occ.component``, find Unstitched parametric features and
+    replace each one's output bodies with equivalent BaseFeature-owned
+    bodies (same geometry, same names), then delete the Unstitched
+    feature. Result: surface bodies appear directly under Bodies as
+    siblings of panel, instead of nested inside an Unstitched feature.
+
+    The dance:
+      1. tbm.copy each output body of the Unstitched feature (transient,
+         no parametric back-reference)
+      2. open BaseFeature on the same component
+      3. add each transient via bRepBodies.add(transient, baseFeature)
+      4. set name in-edit to a temp value (avoids collision with the
+         original body that's still alive)
+      5. capture index of the new body
+      6. finishEdit
+      7. delete the Unstitched feature -> original output bodies vanish
+         along with it
+      8. refetch the new bodies via bRepBodies.item(idx) and rename to
+         the original target name (now uncollided)
+    """
+    try:
+        comp = occ.component
+        cname = comp.name
+    except Exception as e:
+        _log(f"[POST-IMPORT]   _eliminate_unstitched: comp read failed: {e}")
+        return
+
+    # Find Unstitched features. The collection name may differ across
+    # Fusion versions; try a few.
+    unstitch_feats = []
+    for attr in ("unstitchFeatures",):
+        try:
+            coll = getattr(comp.features, attr, None)
+            if coll is not None:
+                for i in range(coll.count):
+                    try:
+                        f = coll.item(i)
+                        if f and f.isValid:
+                            unstitch_feats.append(f)
+                    except Exception:
+                        continue
+                break
+        except Exception:
+            continue
+
+    if not unstitch_feats:
+        _log(f"[POST-IMPORT]   {cname!r}: no Unstitched feature(s) to eliminate")
+        return
+
+    _log(f"[POST-IMPORT]   {cname!r}: found {len(unstitch_feats)} Unstitched feature(s) to dissolve")
+
+    tbm = adsk.fusion.TemporaryBRepManager.get()
+
+    for uf in unstitch_feats:
+        # Capture geometry + names of output bodies
+        records = []  # [(transient, original_name)]
+        try:
+            ub = uf.bodies  # BRepBodies collection
+            n = ub.count
+            for i in range(n):
+                try:
+                    b = ub.item(i)
+                    if not b or not b.isValid:
+                        continue
+                    bname = b.name or ""
+                    transient = tbm.copy(b)
+                    records.append((transient, bname))
+                except Exception as e:
+                    _log(f"[POST-IMPORT]     tbm.copy of unstitch body[{i}] failed: {e}")
+        except Exception as e:
+            _log(f"[POST-IMPORT]     read unstitch outputs failed: {e}")
+
+        if not records:
+            _log(f"[POST-IMPORT]     no recoverable bodies in this Unstitched -- skipping")
+            continue
+
+        _log(f"[POST-IMPORT]     captured {len(records)} body/bodies from Unstitched")
+
+        # Open BaseFeature, add the transients
+        bf = None
+        try:
+            bf = comp.features.baseFeatures.add()
+            bf.startEdit()
+        except Exception as e:
+            _log(f"[POST-IMPORT]     BaseFeature open failed: {e}; cannot dissolve this Unstitched")
+            continue
+
+        new_records = []  # [(idx, original_name)]
+        try:
+            for k, (transient, original_name) in enumerate(records):
+                try:
+                    new_b = comp.bRepBodies.add(transient, bf)
+                    # In-edit temp name (avoid collision with the original
+                    # which is still alive until we delete the Unstitched).
+                    try:
+                        new_b.name = f"_bsg_unstitch_repl_{k}"
+                    except Exception:
+                        pass
+                    idx = comp.bRepBodies.count - 1
+                    new_records.append((idx, original_name))
+                except Exception as e:
+                    _log(f"[POST-IMPORT]     bRepBodies.add inside BaseFeature failed: {e}")
+        finally:
+            try:
+                bf.finishEdit()
+            except Exception as e:
+                _log(f"[POST-IMPORT]     BaseFeature finishEdit failed: {e}")
+
+        # Delete the Unstitched feature -- this removes the original
+        # output bodies, releasing their names.
+        try:
+            uf.deleteMe()
+            _log(f"[POST-IMPORT]     Unstitched feature deleted")
+        except Exception as e:
+            _log(f"[POST-IMPORT]     Unstitched deleteMe failed: {e}")
+
+        # Refetch the new bodies via index and rename to the original names.
+        for idx, original_name in new_records:
+            try:
+                if idx >= comp.bRepBodies.count:
+                    _log(f"[POST-IMPORT]     verify idx={idx}: out of range")
+                    continue
+                live = comp.bRepBodies.item(idx)
+                if live is None or not live.isValid:
+                    _log(f"[POST-IMPORT]     verify idx={idx}: invalid body ref")
+                    continue
+                try:
+                    live.name = original_name
+                    _log(f"[POST-IMPORT]     promoted body to {original_name!r} in {cname!r}")
+                except Exception as e:
+                    _log(f"[POST-IMPORT]     post-edit rename to {original_name!r} failed: {e}")
+            except Exception as e:
+                _log(f"[POST-IMPORT]     verify raised: {e}")
 
 
 def _get_current_board_size():
