@@ -286,59 +286,51 @@ def _wrap_timeline_in_group(start_count, group_name):
 def _consolidate_bspline_variants(occurrences):
     """Group imported STEP variants into Clean and Stamped occurrences,
     each holding a solid 'panel' body and a surface 'surface' body in
-    the same component.
+    the same component. After this pass the design tree shows exactly
+    two children of B-Spline Set (Clean and Stamped) - no orphans, no
+    timeline warnings.
 
-    Cross-component body merge approach (the right way, post-stacked-fixes):
-    --------------------------------------------------------------------
-    Fusion's API for cross-component body relocation has TWO native paths
-    and BOTH have downsides if used naively:
+    Cross-component body merge - the right way:
+    -------------------------------------------
+    Fusion's API has two native paths and both have known footguns:
 
       A) BRepBody.copyToComponent(target_occ)
-         - Returns a stable, immediately-renameable body ref.
-         - Creates a parametric "Copy/Paste Bodies" timeline feature with
-           back-references to BOTH the source body AND the source
-           occurrence. If the source occurrence is later deleted, those
-           refs DANGLE on the next compute -- yellow-triangle warnings:
-             "Reference Failures: cached geometry to solve"
-             "Reference Failures: failed to get target occurrence transform"
+         - Stable ref, immediate rename works.
+         - Creates a parametric "Copy/Paste Bodies" feature with refs to
+           the source body AND source occurrence. deleting the source
+           afterwards leaves dangling refs -> yellow-triangle warnings.
 
       B) TemporaryBRepManager.copy(body) + bRepBodies.add(transient, baseFeature)
-         - No parametric back-reference (clean timeline).
-         - But the body ref returned by .add() is bound to the active
-           BaseFeature edit; after finishEdit() the ref is stale and
-           writes through it silently no-op. Bodies kept their auto-
-           assigned 'Body2' name, which the next pass's _stamp_body_name
-           then renamed to 'panel_1'. (Confirmed in the field; it is
-           why we do not go down this road any more.)
+         - No parametric back-reference (clean timeline, source can be
+           deleted normally).
+         - The body ref returned by .add() is bound to the active edit.
+           After finishEdit() it goes stale and writes through it
+           silently no-op. Bodies kept their auto 'Body2' name and the
+           next pass's _stamp_body_name then renamed them to 'panel_1'.
 
-    Path A is the right one IF we can stop the source occurrence from
-    being deleted. The fix: KEEP THE SOURCE ALIVE. Rename it to
-    '_bsg_orphan_*' and hide it (isLightBulbOn = False). The
-    CopyPasteBodies feature's parametric refs stay valid -- no warnings.
-    The orphan is hidden so it does not clutter the visible tree, and the
-    CAM-builder MM filter sweeps '_bsg_orphan_*' occurrences out of the
-    Manufacturing Model so CAM never sees them.
+    This implementation uses path B but avoids the held-ref trap by:
+      1. Renaming INSIDE the BaseFeature edit, while the ref is still
+         live. This is the operative rename.
+      2. Capturing the body's positional index inside the edit
+         (count - 1 after add).
+      3. After finishEdit, refetching via component.bRepBodies.item(idx)
+         to get a fresh live ref. Verifying the in-edit rename
+         persisted; if it did not, force-renaming on the fresh ref.
+      4. THEN sib_occ.deleteMe() runs cleanly: there is no parametric
+         feature to dangle a ref through.
 
-    Returns the trimmed list of consolidated + un-classified occurrences,
-    suitable for replacing ``all_newly_added``. Orphans are NOT included
-    in the returned list -- they are considered done with from the
-    consolidation's perspective.
+    Returns the trimmed list of consolidated + un-classified occurrences.
     """
     if not occurrences:
         return occurrences
 
     _log(f"[CONSOLIDATE] >>> START: {len(occurrences)} occurrence(s) to process")
 
-    # Snapshot timeline length so we can wrap whatever this consolidation
-    # adds (CopyPasteBodies features) into a single named timeline group.
     _tl_start = _timeline_marker_safe()
 
+    tbm = adsk.fusion.TemporaryBRepManager.get()
+
     # ----- 1. BUCKET ----------------------------------------------------------
-    # Classify each occurrence by base ('Clean'|'Stamped') and kind
-    # ('solid'|'surface'). Already-consolidated occurrences (comp name is
-    # exactly 'Clean' or 'Stamped') are classified by INSPECTING THEIR
-    # BODY NAMES so a fresh single-step append folds INTO them. Orphans
-    # from prior consolidations are skipped entirely.
     buckets = {}
     other = []
     for occ in occurrences:
@@ -349,12 +341,6 @@ def _consolidate_bspline_variants(occurrences):
             other.append(occ)
             continue
         cname = cname_raw.lower()
-
-        # Skip orphans from prior consolidations -- they are alive only
-        # to keep CopyPasteBodies refs valid and must not be re-processed.
-        if cname.startswith('_bsg_orphan'):
-            _log(f"[CONSOLIDATE]   skip orphan {cname_raw!r}")
-            continue
 
         if 'stamped' in cname:
             base = 'Stamped'
@@ -372,8 +358,6 @@ def _consolidate_bspline_variants(occurrences):
             kind = 'surface'
 
         if kind is None:
-            # Already-consolidated (e.g. comp name is just 'Clean'). Inspect
-            # its body names to decide which kind(s) it represents.
             try:
                 body_names = []
                 for i in range(occ.component.bRepBodies.count):
@@ -408,17 +392,12 @@ def _consolidate_bspline_variants(occurrences):
 
     consolidated = []
 
-    # ----- 2. PER-BASE: pick home, copy bodies, orphan the sibs --------------
-    # Counter for unique orphan names across all bases in this consolidation
-    # call (so '_bsg_orphan_clean_solid_1', '_bsg_orphan_stamped_surface_2', ...).
-    orphan_seq = 0
-
+    # ----- 2. PER-BASE: pick home, copy bodies via TBM, rename in edit, delete sibs --
     for base, bucket in buckets.items():
         n_solid = len(bucket['solid'])
         n_surf  = len(bucket['surface'])
         _log(f"[CONSOLIDATE] === base {base!r}: solid={n_solid} surface={n_surf}")
 
-        # Prefer the first solid as home (panel is the primary CAM body).
         home_occ = None
         home_kind = None
         if bucket['solid']:
@@ -434,19 +413,15 @@ def _consolidate_bspline_variants(occurrences):
         except Exception as e:
             _log(f"[CONSOLIDATE]   home component rename to {base!r} failed: {e}")
 
-        # Stamp existing home bodies with the home_kind name.
         target_home_body = 'panel' if home_kind == 'solid' else 'surface'
         _stamp_body_name(home_occ, target_home_body)
         try:
-            home_bodies_after_stamp = [(home_occ.component.bRepBodies.item(i).name or '')
-                                       for i in range(home_occ.component.bRepBodies.count)]
+            after_stamp = [(home_occ.component.bRepBodies.item(i).name or '')
+                           for i in range(home_occ.component.bRepBodies.count)]
         except Exception:
-            home_bodies_after_stamp = []
-        _log(f"[CONSOLIDATE]   home bodies after stamp({target_home_body!r}): {home_bodies_after_stamp}")
+            after_stamp = []
+        _log(f"[CONSOLIDATE]   home bodies after stamp({target_home_body!r}): {after_stamp}")
 
-        # Compute kind_counters AFTER stamping so suffixes account for what
-        # is already in home (e.g. an existing 'panel' counts toward the
-        # 'panel' counter, so a freshly-copied solid sibling becomes 'panel_1').
         kind_counters = {'panel': 0, 'surface': 0}
         for i in range(home_occ.component.bRepBodies.count):
             try:
@@ -459,102 +434,203 @@ def _consolidate_bspline_variants(occurrences):
                 kind_counters['surface'] += 1
         _log(f"[CONSOLIDATE]   pre-copy kind_counters: {kind_counters}")
 
-        # Copy bodies from each sib into home and rename in place.
-        # The ORDER ('solid' first, then 'surface') is stable so the suffix
-        # numbering is deterministic across runs.
-        for sib_kind in ('solid', 'surface'):
-            if sib_kind not in bucket:
-                continue
-            sib_list = bucket[sib_kind]
-            target_body_name = 'panel' if sib_kind == 'solid' else 'surface'
+        # Compute inv(home_world) once for transform differentials.
+        try:
+            home_w = home_occ.transform2
+            home_inv = home_w.copy()
+            home_inv.invert()
+            _log(f"[CONSOLIDATE]   home_world inverse computed")
+        except Exception as e:
+            _log(f"[CONSOLIDATE]   home_world inverse FAILED: {e} - bodies will land in home_local without transform")
+            home_inv = None
 
-            for sib_occ in sib_list:
-                if sib_occ is home_occ:
+        # Open ONE BaseFeature on the home component. All sib bodies for
+        # this base land inside it as ONE timeline entry.
+        home_bf = None
+        try:
+            home_bf = home_occ.component.features.baseFeatures.add()
+            home_bf.startEdit()
+            _log(f"[CONSOLIDATE]   home BaseFeature opened")
+        except Exception as e:
+            _log(f"[CONSOLIDATE]   home BaseFeature open FAILED: {e}")
+            home_bf = None
+
+        # Track positional indices of newly-added bodies for post-edit verify.
+        # Format: (idx, target_full_name, sib_kind)
+        new_body_records = []
+        # Track sibs to deleteMe AFTER finishEdit. We don't delete inside
+        # the edit because TBM-added bodies + sib delete in same edit can
+        # confuse Fusion's edit graph.
+        sibs_to_delete = []
+
+        try:
+            for sib_kind in ('solid', 'surface'):
+                if sib_kind not in bucket:
                     continue
+                sib_list = bucket[sib_kind]
+                target_body_name = 'panel' if sib_kind == 'solid' else 'surface'
 
-                try:
-                    sib_cname = sib_occ.component.name
-                except Exception:
-                    sib_cname = '<?>'
-                _log(f"[CONSOLIDATE]   sib {sib_cname!r} kind={sib_kind} target_body={target_body_name!r}")
-
-                try:
-                    src_bodies = [sib_occ.component.bRepBodies.item(i)
-                                  for i in range(sib_occ.component.bRepBodies.count)]
-                except Exception as e:
-                    _log(f"[CONSOLIDATE]     enumerate src bodies failed: {e}")
-                    src_bodies = []
-                _log(f"[CONSOLIDATE]     src bodies count: {len(src_bodies)}")
-
-                for sb_idx, sb in enumerate(src_bodies):
-                    try:
-                        sb_orig = sb.name
-                    except Exception:
-                        sb_orig = '?'
-
-                    # Path A: copyToComponent gives us a stable ref.
-                    try:
-                        new_b = sb.copyToComponent(home_occ)
-                    except Exception as e:
-                        _log(f"[CONSOLIDATE]     copyToComponent FAILED for {sb_orig!r}: {e}")
+                for sib_occ in sib_list:
+                    if sib_occ is home_occ:
                         continue
+
                     try:
-                        new_b_initial = new_b.name
+                        sib_cname = sib_occ.component.name
                     except Exception:
-                        new_b_initial = '?'
-                    _log(f"[CONSOLIDATE]     copyToComponent OK: {sb_orig!r} -> new_b.name={new_b_initial!r}")
+                        sib_cname = '<?>'
+                    _log(f"[CONSOLIDATE]   sib {sib_cname!r} kind={sib_kind} target_body={target_body_name!r}")
 
-                    # Decide final name. If it is already correct, leave it
-                    # alone (re-assigning a body's existing name is what
-                    # triggers Fusion's auto-uniquifier 'surface (1)').
-                    already = kind_counters[target_body_name]
-                    target_full = target_body_name if already == 0 else f"{target_body_name}_{already}"
+                    try:
+                        src_bodies = [sib_occ.component.bRepBodies.item(i)
+                                      for i in range(sib_occ.component.bRepBodies.count)]
+                    except Exception as e:
+                        _log(f"[CONSOLIDATE]     enumerate src bodies failed: {e}")
+                        src_bodies = []
+                    _log(f"[CONSOLIDATE]     {len(src_bodies)} src body/bodies")
 
-                    if (new_b_initial or '').lower() == target_full.lower():
-                        _log(f"[CONSOLIDATE]     name already {target_full!r} - skipping setter")
-                    else:
-                        # Two-step rename to release any internal name
-                        # claim Fusion may hold on the target.
-                        tmp = f"_bsg_tmp_{orphan_seq}_{sb_idx}_{already}"
+                    # Differential transform sib_world * inv(home_world) so
+                    # transient bodies in sib_local end up in home_local at
+                    # the original world position.
+                    xform = None
+                    if home_inv is not None:
                         try:
-                            new_b.name = tmp
+                            sib_w = sib_occ.transform2
+                            xform = sib_w.copy()
+                            xform.transformBy(home_inv)
                         except Exception as e:
-                            _log(f"[CONSOLIDATE]     tmp-rename to {tmp!r} failed: {e}")
+                            _log(f"[CONSOLIDATE]     transform diff failed: {e} - body may land mis-positioned")
+                            xform = None
+
+                    for sb_idx, sb in enumerate(src_bodies):
+                        try:
+                            sb_orig = sb.name
+                        except Exception:
+                            sb_orig = '?'
+
+                        # Step 1: TBM.copy (transient, no parametric ref)
+                        try:
+                            transient = tbm.copy(sb)
+                            _log(f"[CONSOLIDATE]     tbm.copy OK for {sb_orig!r}")
+                        except Exception as e:
+                            _log(f"[CONSOLIDATE]     tbm.copy FAILED for {sb_orig!r}: {e}")
+                            continue
+
+                        # Step 2: optional transform
+                        if xform is not None:
+                            try:
+                                tbm.transform(transient, xform)
+                                _log(f"[CONSOLIDATE]     tbm.transform applied")
+                            except Exception as e:
+                                _log(f"[CONSOLIDATE]     tbm.transform failed: {e}")
+
+                        # Step 3: bRepBodies.add inside the BaseFeature edit
+                        try:
+                            if home_bf is not None:
+                                new_b = home_occ.component.bRepBodies.add(transient, home_bf)
+                            else:
+                                new_b = home_occ.component.bRepBodies.add(transient)
+                            try:
+                                initial_name = new_b.name
+                            except Exception:
+                                initial_name = '?'
+                            _log(f"[CONSOLIDATE]     bRepBodies.add OK; initial name={initial_name!r}")
+                        except Exception as e:
+                            _log(f"[CONSOLIDATE]     bRepBodies.add FAILED: {e}")
+                            continue
+
+                        # Step 4: capture index for post-edit verification
+                        try:
+                            new_idx = home_occ.component.bRepBodies.count - 1
+                        except Exception:
+                            new_idx = -1
+
+                        # Step 5: decide final name (with suffix if needed)
+                        already = kind_counters[target_body_name]
+                        target_full = target_body_name if already == 0 else f"{target_body_name}_{already}"
+
+                        # Step 6: IN-EDIT RENAME on the live ref
                         try:
                             new_b.name = target_full
+                            _log(f"[CONSOLIDATE]     in-edit rename to {target_full!r} OK")
                         except Exception as e:
-                            _log(f"[CONSOLIDATE]     final rename to {target_full!r} failed: {e}")
+                            _log(f"[CONSOLIDATE]     in-edit rename to {target_full!r} FAILED: {e}")
 
-                    # Verify
-                    try:
-                        actual = new_b.name
-                    except Exception:
-                        actual = '?'
-                    if actual != target_full:
-                        _log(f"[CONSOLIDATE]     RENAME COLLISION: wanted {target_full!r} got {actual!r}")
+                        # Step 7: record for post-edit verify
+                        if new_idx >= 0:
+                            new_body_records.append((new_idx, target_full, sib_kind))
+                        kind_counters[target_body_name] = already + 1
+
+                    sibs_to_delete.append(sib_occ)
+        finally:
+            if home_bf is not None:
+                try:
+                    home_bf.finishEdit()
+                    _log(f"[CONSOLIDATE]   home BaseFeature finishEdit OK")
+                except Exception as e:
+                    _log(f"[CONSOLIDATE]   home BaseFeature finishEdit FAILED: {e}")
+
+        # ----- POST-EDIT: verify rename persisted; force on fresh ref if not -
+        for idx, target_full, sib_kind in new_body_records:
+            try:
+                count_now = home_occ.component.bRepBodies.count
+                if idx >= count_now:
+                    _log(f"[CONSOLIDATE]   verify idx={idx}: out of range (count={count_now})")
+                    continue
+                live = home_occ.component.bRepBodies.item(idx)
+                if live is None or not live.isValid:
+                    _log(f"[CONSOLIDATE]   verify idx={idx}: invalid body ref")
+                    continue
+                try:
+                    cur = live.name
+                except Exception as e:
+                    _log(f"[CONSOLIDATE]   verify idx={idx}: name read failed: {e}")
+                    continue
+
+                if cur == target_full:
+                    _log(f"[CONSOLIDATE]   verify idx={idx}: in-edit rename PERSISTED ({cur!r})")
+                    continue
+
+                _log(f"[CONSOLIDATE]   verify idx={idx}: in-edit name DID NOT persist (got {cur!r}, want {target_full!r}) - forcing")
+                # Two-step rename to dodge auto-uniquifier on a name that
+                # already exists somewhere.
+                tmp = f"_bsg_tmp_{idx}_{target_full}"
+                try:
+                    live.name = tmp
+                except Exception as e:
+                    _log(f"[CONSOLIDATE]     force tmp-rename failed: {e}")
+                try:
+                    live.name = target_full
+                except Exception as e:
+                    _log(f"[CONSOLIDATE]     force final rename to {target_full!r} failed: {e}")
+                try:
+                    final_check = live.name
+                    if final_check == target_full:
+                        _log(f"[CONSOLIDATE]   verify idx={idx}: forced rename OK ({final_check!r})")
                     else:
-                        _log(f"[CONSOLIDATE]     body landed as {actual!r} OK")
+                        _log(f"[CONSOLIDATE]   verify idx={idx}: RENAME COLLISION (got {final_check!r}, want {target_full!r})")
+                except Exception:
+                    pass
+            except Exception as e:
+                _log(f"[CONSOLIDATE]   verify idx={idx} raised: {e}")
 
-                    kind_counters[target_body_name] = already + 1
+        # ----- DELETE SIBS (no parametric ref to dangle: TBM created none) ---
+        for sib_occ in sibs_to_delete:
+            try:
+                sib_cname = sib_occ.component.name
+            except Exception:
+                sib_cname = '<?>'
+            try:
+                if sib_occ.isValid:
+                    if sib_occ.deleteMe():
+                        _log(f"[CONSOLIDATE]   deleted sib {sib_cname!r}")
+                    else:
+                        _log(f"[CONSOLIDATE]   sib {sib_cname!r} deleteMe returned False")
+                else:
+                    _log(f"[CONSOLIDATE]   sib {sib_cname!r} already invalid; skipped")
+            except Exception as e:
+                _log(f"[CONSOLIDATE]   sib {sib_cname!r} deleteMe raised: {e}")
 
-                # Mark sib as orphan: rename + hide. Do NOT deleteMe --
-                # keeping it alive preserves the CopyPasteBodies parametric
-                # back-reference. The MM filter will sweep orphans out of
-                # the CAM snapshot.
-                orphan_seq += 1
-                orphan_name = f"_bsg_orphan_{base.lower()}_{sib_kind}_{orphan_seq}"
-                try:
-                    sib_occ.component.name = orphan_name
-                    _log(f"[CONSOLIDATE]     sib renamed to {orphan_name!r}")
-                except Exception as e:
-                    _log(f"[CONSOLIDATE]     sib rename to {orphan_name!r} failed: {e}")
-                try:
-                    sib_occ.isLightBulbOn = False
-                    _log(f"[CONSOLIDATE]     sib hidden (isLightBulbOn=False)")
-                except Exception as e:
-                    _log(f"[CONSOLIDATE]     sib hide failed: {e}")
-
-        # Final state of home for this base
+        # ----- final state report -----
         try:
             final = [(home_occ.component.bRepBodies.item(i).name or '')
                      for i in range(home_occ.component.bRepBodies.count)]
@@ -564,12 +640,9 @@ def _consolidate_bspline_variants(occurrences):
 
         consolidated.append(home_occ)
 
-    # Wrap timeline entries this consolidation produced into one collapsed
-    # group so the user sees one row labelled "B-Spline Consolidate"
-    # instead of N separate CopyPasteBodies entries.
     _wrap_timeline_in_group(_tl_start, "B-Spline Consolidate")
 
-    _log(f"[CONSOLIDATE] <<< END: {len(consolidated)} consolidated, {len(other)} other (orphans excluded from return)")
+    _log(f"[CONSOLIDATE] <<< END: {len(consolidated)} consolidated, {len(other)} other")
     return consolidated + other
 
 
