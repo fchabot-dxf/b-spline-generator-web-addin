@@ -283,459 +283,102 @@ def _wrap_timeline_in_group(start_count, group_name):
         _log(f"[CONSOLIDATE] timeline group wrap failed: {e}")
 
 
-def _consolidate_bspline_variants(occurrences):
-    """Group imported STEP variants into Clean and Stamped occurrences,
-    each holding a solid 'panel' body and a surface 'surface' body in
-    the same component. After this pass the design tree shows exactly
-    two children of B-Spline Set (Clean and Stamped) - no orphans, no
-    timeline warnings.
+def _post_import_setup(occurrences):
+    """Post-import verify & normalize pass.
 
-    Cross-component body merge - the right way:
-    -------------------------------------------
-    Fusion's API has two native paths and both have known footguns:
+    Replaces the old _consolidate_bspline_variants function. After the
+    architectural rewrite, the JS-side stepWriter emits ONE STEP file
+    with bodies grouped under PRODUCTs by base ('Clean', 'Stamped'),
+    each body labeled 'panel' (solid) or 'surface'. Fusion's STEP
+    importer creates components named after the PRODUCTs and bodies
+    named after the body labels. So in the common case this function
+    finds everything already correct and just logs that.
 
-      A) BRepBody.copyToComponent(target_occ)
-         - Stable ref, immediate rename works.
-         - Creates a parametric "Copy/Paste Bodies" feature with refs to
-           the source body AND source occurrence. deleting the source
-           afterwards leaves dangling refs -> yellow-triangle warnings.
+    Defensive renames cover edge cases: STEP importers in some Fusion
+    versions append " (1)" to component names, or assign generic body
+    names like "Body1" / "Body2" that need to be normalized.
 
-      B) TemporaryBRepManager.copy(body) + bRepBodies.add(transient, baseFeature)
-         - No parametric back-reference (clean timeline, source can be
-           deleted normally).
-         - The body ref returned by .add() is bound to the active edit.
-           After finishEdit() it goes stale and writes through it
-           silently no-op. Bodies kept their auto 'Body2' name and the
-           next pass's _stamp_body_name then renamed them to 'panel_1'.
-
-    This implementation uses path B but avoids the held-ref trap by:
-      1. Renaming INSIDE the BaseFeature edit, while the ref is still
-         live. This is the operative rename.
-      2. Capturing the body's positional index inside the edit
-         (count - 1 after add).
-      3. After finishEdit, refetching via component.bRepBodies.item(idx)
-         to get a fresh live ref. Verifying the in-edit rename
-         persisted; if it did not, force-renaming on the fresh ref.
-      4. THEN sib_occ.deleteMe() runs cleanly: there is no parametric
-         feature to dangle a ref through.
-
-    Returns the trimmed list of consolidated + un-classified occurrences.
+    Returns the input list (unchanged in length; no merging happens any
+    more).
     """
     if not occurrences:
         return occurrences
 
-    _log(f"[CONSOLIDATE] >>> START: {len(occurrences)} occurrence(s) to process")
+    _log(f"[POST-IMPORT] >>> verifying {len(occurrences)} occurrence(s)")
 
-    _tl_start = _timeline_marker_safe()
-
-    tbm = adsk.fusion.TemporaryBRepManager.get()
-
-    # ----- 1. BUCKET ----------------------------------------------------------
-    buckets = {}
-    other = []
     for occ in occurrences:
         try:
-            cname_raw = occ.component.name or ''
+            cname = occ.component.name or ""
         except Exception as e:
-            _log(f"[CONSOLIDATE]   bucket: comp name read failed: {e}")
-            other.append(occ)
+            _log(f"[POST-IMPORT]   comp name read failed: {e}")
             continue
-        cname = cname_raw.lower()
+        cname_lower = cname.lower()
 
-        if 'stamped' in cname:
-            base = 'Stamped'
-        elif 'clean' in cname:
-            base = 'Clean'
+        # Determine the canonical base name.
+        if "stamped" in cname_lower:
+            target_cname = "Stamped"
+        elif "clean" in cname_lower:
+            target_cname = "Clean"
+        elif "analytical" in cname_lower:
+            target_cname = "Analytical"
+        elif "preview" in cname_lower:
+            target_cname = "Preview"
         else:
-            _log(f"[CONSOLIDATE]   unrecognized comp {cname_raw!r} -> other")
-            other.append(occ)
+            _log(f"[POST-IMPORT]   unrecognized comp {cname!r} - leaving alone")
             continue
 
-        kind = None
-        if 'solid' in cname:
-            kind = 'solid'
-        elif 'surface' in cname:
-            kind = 'surface'
-
-        if kind is None:
+        # Rename component if Fusion suffixed it (e.g. "Clean (1)" -> "Clean").
+        if cname != target_cname:
             try:
-                body_names = []
-                for i in range(occ.component.bRepBodies.count):
-                    try:
-                        body_names.append((occ.component.bRepBodies.item(i).name or '').lower())
-                    except Exception:
-                        pass
-            except Exception:
-                body_names = []
+                occ.component.name = target_cname
+                _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r}")
+            except Exception as e:
+                _log(f"[POST-IMPORT]   comp rename {cname!r} -> {target_cname!r} FAILED: {e}")
 
-            has_panel   = any(_is_panel_body_name(n)   for n in body_names)
-            has_surface = any(_is_surface_body_name(n) for n in body_names)
+        # Verify body names. STEP labels should already be 'panel' / 'surface',
+        # but if Fusion assigned generic names (Body1, Body2) we infer from
+        # isSolid: solid -> panel, surface -> surface.
+        try:
+            body_count = occ.component.bRepBodies.count
+        except Exception as e:
+            _log(f"[POST-IMPORT]   body count read failed: {e}")
+            continue
 
-            if has_panel:
-                kind = 'solid'
-            elif has_surface:
-                kind = 'surface'
+        for i in range(body_count):
+            try:
+                b = occ.component.bRepBodies.item(i)
+                bn = b.name or ""
+            except Exception as e:
+                _log(f"[POST-IMPORT]     body[{i}] read failed: {e}")
+                continue
+            bn_lower = bn.lower()
+
+            if _is_panel_body_name(bn_lower):
+                target_bn = "panel"
+            elif _is_surface_body_name(bn_lower):
+                target_bn = "surface"
             else:
-                _log(f"[CONSOLIDATE]   {cname_raw!r} has no recognizable bodies -> other")
-                other.append(occ)
+                # Generic name: classify by isSolid.
+                try:
+                    target_bn = "panel" if b.isSolid else "surface"
+                except Exception:
+                    target_bn = None
+
+            if target_bn is None:
+                _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r}: cannot classify, leaving alone")
                 continue
 
-        try:
-            body_dump = [(occ.component.bRepBodies.item(i).name or '')
-                         for i in range(occ.component.bRepBodies.count)]
-        except Exception:
-            body_dump = []
-        _log(f"[CONSOLIDATE]   bucket {cname_raw!r} -> {base}/{kind} bodies={body_dump}")
-
-        bucket = buckets.setdefault(base, {'solid': [], 'surface': []})
-        bucket[kind].append(occ)
-
-    consolidated = []
-
-    # ----- 2. PER-BASE: pick home, copy bodies via TBM, rename in edit, delete sibs --
-    for base, bucket in buckets.items():
-        n_solid = len(bucket['solid'])
-        n_surf  = len(bucket['surface'])
-        _log(f"[CONSOLIDATE] === base {base!r}: solid={n_solid} surface={n_surf}")
-
-        home_occ = None
-        home_kind = None
-        if bucket['solid']:
-            home_occ, home_kind = bucket['solid'][0], 'solid'
-        elif bucket['surface']:
-            home_occ, home_kind = bucket['surface'][0], 'surface'
-        if home_occ is None:
-            continue
-
-        try:
-            home_occ.component.name = base
-            _log(f"[CONSOLIDATE]   home component renamed to {base!r}")
-        except Exception as e:
-            _log(f"[CONSOLIDATE]   home component rename to {base!r} failed: {e}")
-
-        target_home_body = 'panel' if home_kind == 'solid' else 'surface'
-        _stamp_body_name(home_occ, target_home_body)
-        try:
-            after_stamp = [(home_occ.component.bRepBodies.item(i).name or '')
-                           for i in range(home_occ.component.bRepBodies.count)]
-        except Exception:
-            after_stamp = []
-        _log(f"[CONSOLIDATE]   home bodies after stamp({target_home_body!r}): {after_stamp}")
-
-        kind_counters = {'panel': 0, 'surface': 0}
-        for i in range(home_occ.component.bRepBodies.count):
-            try:
-                nm = (home_occ.component.bRepBodies.item(i).name or '').lower()
-            except Exception:
-                nm = ''
-            if _is_panel_body_name(nm):
-                kind_counters['panel'] += 1
-            elif _is_surface_body_name(nm):
-                kind_counters['surface'] += 1
-        _log(f"[CONSOLIDATE]   pre-copy kind_counters: {kind_counters}")
-
-        # Compute inv(home_world) once for transform differentials.
-        try:
-            home_w = home_occ.transform2
-            home_inv = home_w.copy()
-            home_inv.invert()
-            _log(f"[CONSOLIDATE]   home_world inverse computed")
-        except Exception as e:
-            _log(f"[CONSOLIDATE]   home_world inverse FAILED: {e} - bodies will land in home_local without transform")
-            home_inv = None
-
-        # Open ONE BaseFeature on the home component. All sib bodies for
-        # this base land inside it as ONE timeline entry.
-        home_bf = None
-        try:
-            home_bf = home_occ.component.features.baseFeatures.add()
-            home_bf.startEdit()
-            _log(f"[CONSOLIDATE]   home BaseFeature opened")
-        except Exception as e:
-            _log(f"[CONSOLIDATE]   home BaseFeature open FAILED: {e}")
-            home_bf = None
-
-        # Track positional indices of newly-added bodies for post-edit verify.
-        # Format: (idx, target_full_name, sib_kind)
-        new_body_records = []
-        # Track sibs to deleteMe AFTER finishEdit. We don't delete inside
-        # the edit because TBM-added bodies + sib delete in same edit can
-        # confuse Fusion's edit graph.
-        sibs_to_delete = []
-
-        try:
-            for sib_kind in ('solid', 'surface'):
-                if sib_kind not in bucket:
-                    continue
-                sib_list = bucket[sib_kind]
-                target_body_name = 'panel' if sib_kind == 'solid' else 'surface'
-
-                for sib_occ in sib_list:
-                    if sib_occ is home_occ:
-                        continue
-
-                    try:
-                        sib_cname = sib_occ.component.name
-                    except Exception:
-                        sib_cname = '<?>'
-                    _log(f"[CONSOLIDATE]   sib {sib_cname!r} kind={sib_kind} target_body={target_body_name!r}")
-
-                    try:
-                        src_bodies = [sib_occ.component.bRepBodies.item(i)
-                                      for i in range(sib_occ.component.bRepBodies.count)]
-                    except Exception as e:
-                        _log(f"[CONSOLIDATE]     enumerate src bodies failed: {e}")
-                        src_bodies = []
-                    _log(f"[CONSOLIDATE]     {len(src_bodies)} src body/bodies")
-
-                    # Differential transform sib_world * inv(home_world) so
-                    # transient bodies in sib_local end up in home_local at
-                    # the original world position.
-                    xform = None
-                    if home_inv is not None:
-                        try:
-                            sib_w = sib_occ.transform2
-                            xform = sib_w.copy()
-                            xform.transformBy(home_inv)
-                        except Exception as e:
-                            _log(f"[CONSOLIDATE]     transform diff failed: {e} - body may land mis-positioned")
-                            xform = None
-
-                    for sb_idx, sb in enumerate(src_bodies):
-                        try:
-                            sb_orig = sb.name
-                        except Exception:
-                            sb_orig = '?'
-
-                        # Step 1: TBM.copy (transient, no parametric ref)
-                        try:
-                            transient = tbm.copy(sb)
-                            _log(f"[CONSOLIDATE]     tbm.copy OK for {sb_orig!r}")
-                        except Exception as e:
-                            _log(f"[CONSOLIDATE]     tbm.copy FAILED for {sb_orig!r}: {e}")
-                            continue
-
-                        # Step 2: optional transform
-                        if xform is not None:
-                            try:
-                                tbm.transform(transient, xform)
-                                _log(f"[CONSOLIDATE]     tbm.transform applied")
-                            except Exception as e:
-                                _log(f"[CONSOLIDATE]     tbm.transform failed: {e}")
-
-                        # Step 3: bRepBodies.add inside the BaseFeature edit
-                        try:
-                            if home_bf is not None:
-                                new_b = home_occ.component.bRepBodies.add(transient, home_bf)
-                            else:
-                                new_b = home_occ.component.bRepBodies.add(transient)
-                            try:
-                                initial_name = new_b.name
-                            except Exception:
-                                initial_name = '?'
-                            _log(f"[CONSOLIDATE]     bRepBodies.add OK; initial name={initial_name!r}")
-                        except Exception as e:
-                            _log(f"[CONSOLIDATE]     bRepBodies.add FAILED: {e}")
-                            continue
-
-                        # Step 4: capture index for post-edit verification
-                        try:
-                            new_idx = home_occ.component.bRepBodies.count - 1
-                        except Exception:
-                            new_idx = -1
-
-                        # Step 5: decide final name (with suffix if needed)
-                        already = kind_counters[target_body_name]
-                        target_full = target_body_name if already == 0 else f"{target_body_name}_{already}"
-
-                        # Step 6: IN-EDIT RENAME on the live ref
-                        try:
-                            new_b.name = target_full
-                            _log(f"[CONSOLIDATE]     in-edit rename to {target_full!r} OK")
-                        except Exception as e:
-                            _log(f"[CONSOLIDATE]     in-edit rename to {target_full!r} FAILED: {e}")
-
-                        # Step 7: record for post-edit verify
-                        if new_idx >= 0:
-                            new_body_records.append((new_idx, target_full, sib_kind))
-                        kind_counters[target_body_name] = already + 1
-
-                    sibs_to_delete.append(sib_occ)
-        finally:
-            if home_bf is not None:
+            if bn != target_bn:
                 try:
-                    home_bf.finishEdit()
-                    _log(f"[CONSOLIDATE]   home BaseFeature finishEdit OK")
+                    b.name = target_bn
+                    _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r}")
                 except Exception as e:
-                    _log(f"[CONSOLIDATE]   home BaseFeature finishEdit FAILED: {e}")
+                    _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} FAILED: {e}")
+            else:
+                _log(f"[POST-IMPORT]     body {bn!r} in {target_cname!r} ok")
 
-        # ----- POST-EDIT: verify rename persisted; force on fresh ref if not -
-        for idx, target_full, sib_kind in new_body_records:
-            try:
-                count_now = home_occ.component.bRepBodies.count
-                if idx >= count_now:
-                    _log(f"[CONSOLIDATE]   verify idx={idx}: out of range (count={count_now})")
-                    continue
-                live = home_occ.component.bRepBodies.item(idx)
-                if live is None or not live.isValid:
-                    _log(f"[CONSOLIDATE]   verify idx={idx}: invalid body ref")
-                    continue
-                try:
-                    cur = live.name
-                except Exception as e:
-                    _log(f"[CONSOLIDATE]   verify idx={idx}: name read failed: {e}")
-                    continue
-
-                if cur == target_full:
-                    _log(f"[CONSOLIDATE]   verify idx={idx}: in-edit rename PERSISTED ({cur!r})")
-                    continue
-
-                _log(f"[CONSOLIDATE]   verify idx={idx}: in-edit name DID NOT persist (got {cur!r}, want {target_full!r}) - forcing")
-                # Two-step rename to dodge auto-uniquifier on a name that
-                # already exists somewhere.
-                tmp = f"_bsg_tmp_{idx}_{target_full}"
-                try:
-                    live.name = tmp
-                except Exception as e:
-                    _log(f"[CONSOLIDATE]     force tmp-rename failed: {e}")
-                try:
-                    live.name = target_full
-                except Exception as e:
-                    _log(f"[CONSOLIDATE]     force final rename to {target_full!r} failed: {e}")
-                try:
-                    final_check = live.name
-                    if final_check == target_full:
-                        _log(f"[CONSOLIDATE]   verify idx={idx}: forced rename OK ({final_check!r})")
-                    else:
-                        _log(f"[CONSOLIDATE]   verify idx={idx}: RENAME COLLISION (got {final_check!r}, want {target_full!r})")
-                except Exception:
-                    pass
-            except Exception as e:
-                _log(f"[CONSOLIDATE]   verify idx={idx} raised: {e}")
-
-        # ----- DELETE SIBS (no parametric ref to dangle: TBM created none) ---
-        for sib_occ in sibs_to_delete:
-            try:
-                sib_cname = sib_occ.component.name
-            except Exception:
-                sib_cname = '<?>'
-            try:
-                if sib_occ.isValid:
-                    if sib_occ.deleteMe():
-                        _log(f"[CONSOLIDATE]   deleted sib {sib_cname!r}")
-                    else:
-                        _log(f"[CONSOLIDATE]   sib {sib_cname!r} deleteMe returned False")
-                else:
-                    _log(f"[CONSOLIDATE]   sib {sib_cname!r} already invalid; skipped")
-            except Exception as e:
-                _log(f"[CONSOLIDATE]   sib {sib_cname!r} deleteMe raised: {e}")
-
-        # ----- final state report -----
-        try:
-            final = [(home_occ.component.bRepBodies.item(i).name or '')
-                     for i in range(home_occ.component.bRepBodies.count)]
-        except Exception:
-            final = []
-        _log(f"[CONSOLIDATE]   {base!r} final bodies: {final}")
-
-        consolidated.append(home_occ)
-
-    _wrap_timeline_in_group(_tl_start, "B-Spline Consolidate")
-
-    _log(f"[CONSOLIDATE] <<< END: {len(consolidated)} consolidated, {len(other)} other")
-    return consolidated + other
-
-
-def _apply_pending_renames(pending_renames, kind_counters):
-    """Rename freshly-copied bodies to ``panel`` / ``surface`` (with
-    ``_N`` suffixes if multiple of the same kind landed in the same
-    home). Called from inside the BaseFeature edit so the body refs
-    are still live.
-
-    Behavior:
-      - If the body already reads the target name (the pre-rename of
-        the source body propagated through copyToComponent), SKIP the
-        setter entirely. Re-assigning a body's current name is exactly
-        what triggers Fusion's auto-uniquifier (``surface`` → ``surface (1)``).
-      - Otherwise, do the defensive tmp-name dance (assign a unique
-        temp name first to release any internal claim on the desired
-        name, then assign the desired name).
-
-    ``kind_counters`` is mutated as we go so suffixes are deterministic
-    across calls.
-    """
-    for new_b, desired in pending_renames:
-        already = kind_counters.get(desired, 0)
-        target = desired if already == 0 else f"{desired}_{already}"
-
-        actual = ''
-        try:
-            actual = (new_b.name or '')
-        except Exception:
-            pass
-        if actual.lower() == target.lower():
-            kind_counters[desired] = already + 1
-            continue
-
-        tmp = f"_bsg_tmp_{id(new_b)}_{already}"
-        try:
-            new_b.name = tmp
-        except Exception as e:
-            _log(f"[CONSOLIDATE] tmp-rename '{tmp}' failed: {e}")
-        try:
-            new_b.name = target
-        except Exception as e:
-            _log(f"[CONSOLIDATE] rename copied body to '{target}' failed: {e}")
-        try:
-            final = new_b.name
-            if final != target:
-                _log(f"[CONSOLIDATE] rename collision: wanted '{target}' got '{final}' (before='{actual}')")
-        except Exception:
-            pass
-        kind_counters[desired] = already + 1
-
-
-def _stamp_body_name(occ, name):
-    """Rename BRepBodies in ``occ.component`` to ``name`` (the home kind:
-    'panel' or 'surface'), but leave bodies already named with the OTHER
-    semantic name alone. This protects re-consolidation passes: when a
-    home already holds both ``panel`` AND ``surface`` and we stamp it
-    with 'panel', the existing 'surface' body must NOT be renamed to
-    'panel_1'. Only un-stamped bodies (or bodies already matching ``name``)
-    get touched. Multiple un-stamped bodies get suffixed ``_1``, ``_2``."""
-    try:
-        bodies = [occ.component.bRepBodies.item(i)
-                  for i in range(occ.component.bRepBodies.count)]
-    except Exception:
-        return
-
-    SEMANTIC = ('panel', 'surface')
-    other = 'surface' if name == 'panel' else 'panel'
-
-    seq = 0
-    for b in bodies:
-        try:
-            current = (b.name or '').lower()
-        except Exception:
-            current = ''
-        # Skip bodies already correctly tagged as the OTHER semantic name —
-        # they were placed by a prior consolidation pass and must be preserved.
-        if current == other or current.startswith(other + '_'):
-            continue
-        # Already correctly named this kind? Leave it (and bump the suffix
-        # counter so any further un-stamped bodies get _1/_2 etc.).
-        if current == name:
-            seq += 1
-            continue
-        try:
-            b.name = name if seq == 0 else f"{name}_{seq}"
-            seq += 1
-        except Exception as e:
-            _log(f"[CONSOLIDATE] body rename to '{name}' failed: {e}")
-    # NOTE: visibility (panels visible, surfaces hidden) is decided centrally
-    # in the post-import block, not here, because the rule depends on whether
-    # a Stamped occurrence is taking primary stage. When only Clean exists,
-    # surfaces stay visible.
+    _log(f"[POST-IMPORT] <<< done")
+    return occurrences
 
 
 def _get_current_board_size():
@@ -1231,7 +874,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # See _consolidate_bspline_variants() docstring for the
                 # rationale -- short version: makes downstream MM body
                 # filtering trivial since solid+surface stay paired.
-                all_newly_added = _consolidate_bspline_variants(all_newly_added)
+                all_newly_added = _post_import_setup(all_newly_added)
                 _log(f'[MULTI-VARIANT] After consolidation: {len(all_newly_added)} occurrence(s)')
 
                 # v41: Fix append logic to ensure all imported occurrences are tracked
@@ -1402,9 +1045,9 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
                         if all_siblings:
                             before = len(all_siblings)
-                            consolidated = _consolidate_bspline_variants(all_siblings)
+                            consolidated = _post_import_setup(all_siblings)
                             after = len(consolidated)
-                            _log(f'[CONSOLIDATE] post-import: {before} -> {after} occurrence(s)')
+                            _log(f'[POST-IMPORT] occurrences: {before} -> {after} occurrence(s)')
 
                             # Track the consolidated set so future
                             # _remove_last_import() targets the live nodes

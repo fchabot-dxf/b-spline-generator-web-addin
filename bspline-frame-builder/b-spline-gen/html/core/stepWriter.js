@@ -178,17 +178,23 @@ export function generateThickenedStep(heights, offsetPts, params, unstampedHeigh
   const currentStamped = heights;
   const currentClean   = unstampedHeights || heights;
 
+  // Body 'label' is the FUSION BODY NAME ('panel' or 'surface') -- it is
+  // baked into MANIFOLD_SOLID_BREP / SHELL_BASED_SURFACE_MODEL names below.
+  // 'base' is the FUSION COMPONENT NAME ('Clean' or 'Stamped'); bodies with
+  // the same base are grouped under one PRODUCT in the product-assembly
+  // pass at the bottom of this function. Result on import: two components
+  // ('Clean', 'Stamped') each owning a 'panel' body and a 'surface' body.
   if (options.stamped && currentStamped) {
-    bodies.push({ data: currentStamped, label: 'Stamped Solid', rgb: COLORS.GREEN, isSolid: true, offsetPts: offsetPts });
+    bodies.push({ data: currentStamped, label: 'panel',   base: 'Stamped', rgb: COLORS.GREEN,  isSolid: true,  offsetPts: offsetPts });
   }
   if (options.clean && currentClean) {
-    bodies.push({ data: currentClean, label: 'Clean Solid', rgb: COLORS.RED, isSolid: true, offsetPts: offsetPts });
+    bodies.push({ data: currentClean,   label: 'panel',   base: 'Clean',   rgb: COLORS.RED,    isSolid: true,  offsetPts: offsetPts });
   }
   if (options.cleanSurf && currentClean) {
-    bodies.push({ data: currentClean, label: 'Clean Surface', rgb: COLORS.YELLOW, isSolid: false });
+    bodies.push({ data: currentClean,   label: 'surface', base: 'Clean',   rgb: COLORS.YELLOW, isSolid: false });
   }
   if (options.stampedSurf && currentStamped) {
-    bodies.push({ data: currentStamped, label: 'Stamped Surface', rgb: COLORS.BLUE, isSolid: false });
+    bodies.push({ data: currentStamped, label: 'surface', base: 'Stamped', rgb: COLORS.BLUE,   isSolid: false });
   }
   // Analytical: Export thick (teal/blue) regions as a separate surface if present
   if (params.clampMap && params.thickness) {
@@ -202,13 +208,13 @@ export function generateThickenedStep(heights, offsetPts, params, unstampedHeigh
       for (let k = 0; k < params.clampMap.length; k++) {
         thickSurf[k] = thickMask.includes(k) ? heights[k] : NaN;
       }
-      bodies.push({ data: thickSurf, label: 'Thick Regions (Analytical)', rgb: [0.0, 0.8, 1.0], isSolid: false });
+      bodies.push({ data: thickSurf, label: 'thick_regions', base: 'Analytical', rgb: [0.0, 0.8, 1.0], isSolid: false });
     }
   }
 
   // Fallback ONLY if absolutely nothing selected (typically preview mode)
   if (bodies.length === 0) {
-    bodies.push({ data: currentStamped, label: 'Preview Solid', rgb: COLORS.GREEN, isSolid: true, offsetPts: offsetPts });
+    bodies.push({ data: currentStamped, label: 'panel', base: 'Preview', rgb: COLORS.GREEN, isSolid: true, offsetPts: offsetPts });
   }
 
   const resultIds = [];
@@ -320,21 +326,41 @@ export function generateThickenedStep(heights, offsetPts, params, unstampedHeigh
     }
   }
 
-  // 3. Assemble each body as a separate Product in the STEP assembly
+  // 3. Assemble bodies grouped by base into PRODUCTs.
+  //
+  //    One PRODUCT per base ('Clean', 'Stamped') owning all the bodies
+  //    tagged with that base. Fusion imports each PRODUCT as a component
+  //    and the bodies inside become children of that component, named per
+  //    each body's label. Net result on import:
+  //
+  //      B-Spline Set
+  //        Clean    [panel, surface]
+  //        Stamped  [panel, surface]
+  //
+  //    No cross-component body merging is required on the Python side.
+  const byBase = {};
   for (let i = 0; i < bodies.length; i++) {
-    const body = bodies[i];
-    const rid  = resultIds[i];
-    const bName = `${name} - ${body.label}`;
+    const base = bodies[i].base || name;
+    if (!byBase[base]) byBase[base] = [];
+    byBase[base].push({ rid: resultIds[i], body: bodies[i] });
+  }
 
-    // Each body gets its own Product Identity
-    const idProd = b.nextId(); b.write(idProd, `PRODUCT('${bName}','${bName}',$,(#${idProdCtx}))`);
-    const idPDF  = b.nextId(); b.write(idPDF, `PRODUCT_DEFINITION_FORMATION('',$,#${idProd})`);
-    const idPD   = b.nextId(); b.write(idPD, `PRODUCT_DEFINITION('part','',#${idPDF},#${idPDCtx})`);
-    const idPDS  = b.nextId(); b.write(idPDS, `PRODUCT_DEFINITION_SHAPE('',$,#${idPD})`);
+  for (const baseName of Object.keys(byBase)) {
+    const items = byBase[baseName];
+    if (!items || items.length === 0) continue;
 
-    // Link the unique geometry representation to this specific product
+    const idProd = b.nextId(); b.write(idProd, `PRODUCT('${baseName}','${baseName}',$,(#${idProdCtx}))`);
+    const idPDF  = b.nextId(); b.write(idPDF,  `PRODUCT_DEFINITION_FORMATION('',$,#${idProd})`);
+    const idPD   = b.nextId(); b.write(idPD,   `PRODUCT_DEFINITION('part','',#${idPDF},#${idPDCtx})`);
+    const idPDS  = b.nextId(); b.write(idPDS,  `PRODUCT_DEFINITION_SHAPE('',$,#${idPD})`);
+
+    // ONE SHAPE_REPRESENTATION listing every body's geometry as items.
+    // Fusion's importer turns these into separate bodies inside the
+    // resulting component, naming each from its underlying solid/shell
+    // label (set elsewhere in this function to body.label).
+    const itemRefs = items.map(it => `#${it.rid}`).join(',');
     const idSR = b.nextId();
-    b.write(idSR, `SHAPE_REPRESENTATION('${bName}',(#${rid}),#${idGeomCtx})`);
+    b.write(idSR, `SHAPE_REPRESENTATION('${baseName}',(${itemRefs}),#${idGeomCtx})`);
     b.write(b.nextId(), `SHAPE_DEFINITION_REPRESENTATION(#${idPDS},#${idSR})`);
   }
 

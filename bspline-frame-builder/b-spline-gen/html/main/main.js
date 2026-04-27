@@ -371,65 +371,51 @@ function onFusionApply() {
 
     const check = (id) => document.getElementById(id)?.checked;
     
-    // Determine batches
-    const batches = [];
-    if (hasThicken) batches.push({ clean: true, name: 'cleanSolid' });
-    if (hasThicken && hasStamp) batches.push({ stamped: true, name: 'stampedSolid' });
-    batches.push({ cleanSurf: true, name: 'cleanSurface' });
-    if (hasStamp) batches.push({ stampedSurf: true, name: 'stampedSurface' });
-
-    let visibleBatchIndex = -1;
-    const priority = ['stampedSolid', 'cleanSolid', 'stampedSurface', 'cleanSurface'];
-    for (const p of priority) {
-        const idx = batches.findIndex(b => b.name === p);
-        if (idx !== -1) {
-            visibleBatchIndex = idx;
-            break;
-        }
-    }
-
+    // Single-batch export (post-architectural-rewrite):
+    // ----------------------------------------------------
+    // Previously this function split the export into 1-4 batches and
+    // sent each as a separate STEP file with isAppend=true. The Python
+    // side then had to merge them across components, which is the worst-
+    // supported operation in Fusion's API and produced a long string of
+    // workarounds (CopyPasteBodies dangling refs, BaseFeature held-ref
+    // invalidation, orphan tracking, etc.).
+    //
+    // The right architecture is: ONE export call, ONE STEP file, ONE
+    // Python import. stepWriter.js's generateThickenedStep already
+    // supports multiple bodies per file, and (as of this rewrite)
+    // groups them by 'base' ('Clean', 'Stamped') into separate
+    // PRODUCTs so Fusion imports them as two components with two
+    // bodies each ('panel' + 'surface'). No cross-component body merge
+    // ever needs to happen.
     const includeSVG = hasStamp && !!document.getElementById('includeSVG')?.checked;
-    console.log('[SVG DEBUG] onFusionApply hasStamp=', hasStamp, 'includeSVG checkbox=', !!document.getElementById('includeSVG')?.checked, 'resolved includeSVG=', includeSVG);
+    console.log('[SVG DEBUG] onFusionApply hasStamp=', hasStamp, 'includeSVG=', includeSVG);
+
+    const options = {
+        clean:       hasThicken,
+        stamped:     hasThicken && hasStamp,
+        cleanSurf:   true,
+        stampedSurf: hasStamp,
+        includeSVG:  includeSVG,
+        isVisible:   true,
+    };
 
     if (isFusionMode) {
         (async () => {
             const btn = document.getElementById('btnFusionApply');
-            if (btn) btn.disabled = true;
-
-            for (let i = 0; i < batches.length; i++) {
-                if (btn) btn.textContent = `Baking [${i+1}/${batches.length}]...`;
-                
-                const batch = batches[i];
-                let label = "Terrain";
-                if (batch.stamped && batch.clean) label = "Stamped Solid";
-                else if (batch.stamped) label = "Stamped Surface";
-                else if (batch.clean) label = "Clean Solid";
-                else if (batch.cleanSurf) label = "Clean Surface";
-
-                const isAppend = i > 0;
-                const options = { 
-                    ...batch, 
-                    includeSVG: (i === batches.length - 1) && includeSVG,
-                    isVisible: (i === visibleBatchIndex)
-                };
-                
-                // Pass the specific label as a filename hint
-                const filename = `terrain_${label.replace(/\s+/g, '_').toLowerCase()}.step`;
-                await executeExport(options, isAppend, filename);
-            }
             if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'OK';
+                btn.disabled    = true;
+                btn.textContent = 'Baking...';
+            }
+            try {
+                await executeExport(options, false, 'B-Spline.step');
+            } finally {
+                if (btn) {
+                    btn.disabled    = false;
+                    btn.textContent = 'OK';
+                }
             }
         })();
     } else {
-        const options = {
-            clean: hasThicken,
-            stamped: hasThicken && hasStamp,
-            stampedSurf: hasStamp,
-            cleanSurf: true,
-            includeSVG: includeSVG
-        };
         executeExport(options);
     }
 }

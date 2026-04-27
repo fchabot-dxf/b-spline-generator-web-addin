@@ -278,35 +278,37 @@ def _apply_occurrence_filter(mm, rule, classifier, logger):
 
 
 def _apply_bspline_panel_filter(mm, logger):
-    """Inside the bspline_set MM, enforce the same primary-panel rules
-    that the b-spline generator enforces on the live design tree, but
-    using ``deleteMe()`` instead of visibility toggles because this is
-    the CAM snapshot.
+    """Inside the bspline_set MM, enforce primary-panel rules:
 
-    Rules:
-      1. The B-Spline Set parent has up to two children: ``Clean`` and
-         ``Stamped`` (both contain a ``panel`` body and optional
-         ``surface`` body). If a Stamped occurrence with a panel body
-         exists, delete the Clean occurrence and any of its descendants
-         — Stamped is what we machine; Clean is a fallback that the
-         user already decided not to use.
-      2. On every remaining panel-bearing occurrence, delete bodies
-         named ``surface`` / ``surface_N``. CAM only needs the solid
-         ``panel`` body; surfaces are reference geometry from the
-         export pipeline and would just confuse stock/contact tests.
+      1. If a Stamped occurrence with a panel body exists, delete the
+         Clean occurrence -- Stamped is what we machine; Clean is the
+         alternative the user already decided not to use.
+      2. On the surviving panel-bearing occurrence, delete the surface
+         body. CAM only needs the solid panel; the surface body is
+         reference geometry from the export pipeline.
 
-    Wrapped in a single BaseFeature edit so the MM timeline gets one
-    'Base Feature' entry instead of one Remove per body/occurrence
-    deletion — matches the pattern in ``_apply_occurrence_filter``.
+    After the architectural rewrite, the source design has exactly two
+    children of B-Spline Set (Clean and Stamped) each with two bodies
+    (panel and surface). No orphan handling, no consolidation cleanup --
+    the JS-side STEP writer produces the correct shape from the start.
+
+    Two-phase deletion:
+      Phase A: occurrence delete inside a wrapper-component BaseFeature
+        edit. Cross-component occurrence deletion is special-cased by
+        Fusion to work inside BaseFeature scope.
+      Phase B: body delete OUTSIDE any BaseFeature edit. Bodies live in
+        CHILD components (Stamped); deleting them inside a wrapper
+        BaseFeature raises InternalValidationError. Each body produces
+        one ordinary 'Remove' timeline entry -- with one body per
+        survivor that's tolerable.
     """
     try:
         comp = mm.occurrence.component
     except Exception as e:
-        _log(logger, f"BSPLINE FILTER: could not read mm.occurrence.component: {e}", "ERROR")
+        _log(logger, f"BSPLINE FILTER: read mm comp failed: {e}", "ERROR")
         return
 
-    # Find every B-Spline Set occurrence in the snapshot. Usually one,
-    # but iterate defensively.
+    # Find the B-Spline Set occurrence(s) inside the MM snapshot.
     try:
         all_occs = [comp.allOccurrences.item(i) for i in range(comp.allOccurrences.count)]
     except Exception as e:
@@ -323,93 +325,61 @@ def _apply_bspline_panel_filter(mm, logger):
             bspline_set_occs.append(o)
 
     if not bspline_set_occs:
-        _log(logger, "BSPLINE FILTER: no B-Spline Set occurrence found in MM snapshot", "DEBUG")
+        _log(logger, "BSPLINE FILTER: no B-Spline Set occurrence in MM snapshot", "DEBUG")
         return
 
-    # For each B-Spline Set, look at its direct children for Clean/Stamped.
+    # Walk children of each B-Spline Set, classify Clean vs Stamped.
     occs_to_delete = []
     surface_bodies_to_delete = []
+
     for parent_occ in bspline_set_occs:
+        clean_occ   = None
+        stamped_occ = None
         try:
-            child_count = parent_occ.childOccurrences.count
-        except Exception as e:
-            _log(logger, f"BSPLINE FILTER: childOccurrences read failed: {e}", "WARNING")
-            continue
-
-        clean_children   = []
-        stamped_children = []
-        orphan_children  = []
-        for i in range(child_count):
-            try:
-                child = parent_occ.childOccurrences.item(i)
-                cn = (child.component.name or '').lower()
-            except Exception:
-                continue
-            # Orphans from bspline-gen consolidation: '_bsg_orphan_*'.
-            # The source design keeps these alive (just hidden + renamed)
-            # so the CopyPasteBodies parametric ref stays valid. They
-            # must NEVER reach CAM, so always delete them from the MM
-            # snapshot - cross-component occurrence delete works fine
-            # inside the wrapper-component BaseFeature edit.
-            if cn.startswith('_bsg_orphan'):
-                orphan_children.append(child)
-                continue
-            has_panel = _component_has_panel_body(child.component)
-            if 'stamped' in cn and has_panel:
-                stamped_children.append(child)
-            elif 'clean' in cn:
-                clean_children.append(child)
-
-        # Always delete orphans, regardless of whether Stamped/Clean rule applies.
-        for orph in orphan_children:
-            try:
-                nm = orph.component.name
-            except Exception:
-                nm = '<unnamed>'
-            occs_to_delete.append((orph, nm))
-            _log(logger, f"BSPLINE FILTER: queued orphan delete '{nm}'", "DEBUG")
-
-        # Rule 1: Stamped wins.
-        if stamped_children:
-            for clean_occ in clean_children:
+            for i in range(parent_occ.childOccurrences.count):
                 try:
-                    nm = clean_occ.component.name
-                except Exception:
-                    nm = '<unnamed>'
-                occs_to_delete.append((clean_occ, nm))
-
-        # Rule 2: collect surface bodies on the panel-bearing survivors.
-        # Match ALL surface name shapes the bspline-gen produces and any
-        # Fusion auto-uniquified variants:
-        #   'surface'       — clean rename
-        #   'surface_1'     — bspline-gen's underscore suffix
-        #   'surface (1)'   — Fusion's space+parens auto-suffix when the
-        #                     setter detects a name collision
-        # Bodies named 'panel' / 'panel_N' / 'panel (N)' are NOT touched.
-        survivors = stamped_children if stamped_children else clean_children
-        for surv in survivors:
-            try:
-                bodies = [surv.component.bRepBodies.item(i)
-                          for i in range(surv.component.bRepBodies.count)]
-            except Exception:
-                bodies = []
-            for b in bodies:
-                try:
-                    bn = (b.name or '').lower()
+                    child = parent_occ.childOccurrences.item(i)
+                    cn = (child.component.name or '').lower()
                 except Exception:
                     continue
-                if _is_surface_body_name(bn):
-                    surface_bodies_to_delete.append((b, surv.component.name, b.name))
+                if 'stamped' in cn and _component_has_panel_body(child.component):
+                    stamped_occ = child
+                elif 'clean' in cn:
+                    clean_occ = child
+        except Exception as e:
+            _log(logger, f"BSPLINE FILTER: child walk failed: {e}", "WARNING")
+            continue
+
+        # Stamped wins: queue Clean for deletion.
+        survivor = stamped_occ if stamped_occ is not None else clean_occ
+        if stamped_occ is not None and clean_occ is not None:
+            try:
+                nm = clean_occ.component.name
+            except Exception:
+                nm = '<unnamed>'
+            occs_to_delete.append((clean_occ, nm))
+
+        # On the survivor, queue surface body for deletion.
+        if survivor is not None:
+            try:
+                for i in range(survivor.component.bRepBodies.count):
+                    try:
+                        b  = survivor.component.bRepBodies.item(i)
+                        bn = (b.name or '').lower()
+                    except Exception:
+                        continue
+                    if _is_surface_body_name(bn):
+                        surface_bodies_to_delete.append(
+                            (b, survivor.component.name, b.name)
+                        )
+            except Exception as e:
+                _log(logger, f"BSPLINE FILTER: body walk failed: {e}", "WARNING")
 
     if not occs_to_delete and not surface_bodies_to_delete:
-        _log(logger, "BSPLINE FILTER: nothing to prune (no Stamped/Clean overlap, no surface bodies)", "DEBUG")
+        _log(logger, "BSPLINE FILTER: nothing to prune", "DEBUG")
         return
 
-    # ── Phase A: occurrence deletes (cross-component, BaseFeature-friendly) ──
-    # Occurrence deletion inside a BaseFeature edit on the wrapper component
-    # is special-cased by Fusion and works across child boundaries — that's
-    # how _apply_occurrence_filter collapses N deletes into one timeline row.
-    # We use the same pattern here for the Clean-occurrence delete.
+    # ---- Phase A: occurrence deletes inside wrapper BaseFeature ----
     occ_deleted = 0
     if occs_to_delete:
         base_feat = None
@@ -417,7 +387,7 @@ def _apply_bspline_panel_filter(mm, logger):
             base_feat = comp.features.baseFeatures.add()
             base_feat.startEdit()
         except Exception as e:
-            _log(logger, f"BSPLINE FILTER: BaseFeature wrap (occ phase) unavailable: {e}", "DEBUG")
+            _log(logger, f"BSPLINE FILTER: BaseFeature open failed: {e}", "DEBUG")
             base_feat = None
 
         try:
@@ -428,43 +398,33 @@ def _apply_bspline_panel_filter(mm, logger):
                         continue
                     if occ.deleteMe():
                         occ_deleted += 1
-                        _log(logger, f"BSPLINE FILTER: DEL Clean occ '{nm}' (Stamped takes primary)", "INFO")
+                        _log(logger, f"BSPLINE FILTER: deleted Clean occ '{nm}' (Stamped wins)", "INFO")
                     else:
-                        _log(logger, f"BSPLINE FILTER: deleteMe() returned False for occ '{nm}'", "WARNING")
+                        _log(logger, f"BSPLINE FILTER: occ deleteMe returned False for '{nm}'", "WARNING")
                 except Exception as e:
-                    _log(logger, f"BSPLINE FILTER: deleteMe() raised on occ '{nm}': {e}", "WARNING")
+                    _log(logger, f"BSPLINE FILTER: occ deleteMe '{nm}' raised: {e}", "WARNING")
         finally:
             if base_feat is not None:
                 try:
                     base_feat.finishEdit()
                 except Exception as e:
-                    _log(logger, f"BSPLINE FILTER: BaseFeature.finishEdit (occ phase) failed: {e}", "WARNING")
+                    _log(logger, f"BSPLINE FILTER: BaseFeature.finishEdit failed: {e}", "WARNING")
 
-    # ── Phase B: body deletes (must run OUTSIDE any BaseFeature edit) ──
-    # The surface bodies live in CHILD components (Stamped / Clean), not the
-    # wrapper. A BaseFeature edit is scoped to its host component for body
-    # operations — body.deleteMe() on a child-component body inside a wrapper
-    # BaseFeature edit raises 'InternalValidationError : res' (verified in
-    # cam-builder-cam-debug.log at 06:34:59 and 06:57:29). Cross-component
-    # body deletion only works as an ordinary parametric op. Each body
-    # produces its own 'Remove' timeline entry; with at most one or two
-    # surfaces per consolidated occurrence that's a tolerable cost in
-    # exchange for the deletion actually taking effect.
+    # ---- Phase B: body deletes (must run OUTSIDE BaseFeature) ----
     body_deleted = 0
     for body, comp_name, body_name in surface_bodies_to_delete:
         try:
             if not body.isValid:
-                _log(logger, f"BSPLINE FILTER: skipping invalid body '{body_name}' in '{comp_name}'", "DEBUG")
                 continue
             if body.deleteMe():
                 body_deleted += 1
-                _log(logger, f"BSPLINE FILTER: DEL surface body '{body_name}' from '{comp_name}'", "DEBUG")
+                _log(logger, f"BSPLINE FILTER: deleted surface body '{body_name}' from '{comp_name}'", "DEBUG")
             else:
-                _log(logger, f"BSPLINE FILTER: deleteMe() returned False for body '{body_name}' in '{comp_name}'", "WARNING")
+                _log(logger, f"BSPLINE FILTER: body deleteMe returned False for '{body_name}' in '{comp_name}'", "WARNING")
         except Exception as e:
-            _log(logger, f"BSPLINE FILTER: surface body delete raised on '{body_name}' in '{comp_name}': {e}", "WARNING")
+            _log(logger, f"BSPLINE FILTER: body deleteMe '{body_name}' raised: {e}", "WARNING")
 
-    _log(logger, f"BSPLINE FILTER: pruned {occ_deleted} Clean occurrence(s) and {body_deleted} surface body/bodies", "INFO")
+    _log(logger, f"BSPLINE FILTER: pruned {occ_deleted} Clean occ(s) and {body_deleted} surface body/bodies", "INFO")
 
 
 def _component_has_panel_body(comp):
