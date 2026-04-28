@@ -72,8 +72,8 @@ def run(context):
             new_def.commandCreated.add(on_created)
             handlers.append(on_created)
             
-        # --- 2. Add to UI (shared B-Spline Builder panel on Solid and Sketch tabs) ---
-        target_tabs = ['SolidTab', 'SketchTab']
+        # --- 2. Add to UI (shared B-Spline Builder panel on Solid, Sketch, and Milling tabs) ---
+        target_tabs = ['SolidTab', 'SketchTab', 'MillingTab']
         for tab_id in target_tabs:
             tab = ui.allToolbarTabs.itemById(tab_id)
             if not tab:
@@ -97,8 +97,8 @@ def run(context):
                     if cmd_def:
                         new_cntrl = panel.controls.addCommand(cmd_def)
                         try:
-                            new_cntrl.isPromoted = False
-                            new_cntrl.isPromotedByDefault = False
+                            new_cntrl.isPromoted = True
+                            new_cntrl.isPromotedByDefault = True
                         except:
                             pass
 

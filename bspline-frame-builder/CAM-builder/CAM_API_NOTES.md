@@ -10,7 +10,9 @@ assumptions below.
 - **Manufacturing Model creation**: `cam.manufacturingModels.add(input)` where `input = cam.manufacturingModels.createInput()`. The input only exposes `name` — no source-component / transform args. Result has `mm.occurrence` pointing into the cam tree.
 - **Setup creation**: `cam.setups.createInput(operationType)` with `operationType = adsk.cam.OperationTypes.MillingOperation`. Then `setupInput.models = [body_or_occurrence, ...]` and `cam.setups.add(setupInput)`.
 - **Setup ↔ MM linkage**: implicit via `setupInput.models` — bodies/occurrences inside an MM's occurrence make the Setup "of" that MM. **No explicit `setupInput.manufacturingModel` property exists.**
-- **WCS**: set on `setupInput.parameters` *before* `add()`. Param names: `wcs_orientation_mode`, `wcs_origin_mode`, `wcs_origin_boxPoint` etc. Use `ChoiceParameterValue` for string enum params.
+- **WCS**: set on the LIVE `setup.parameters` *AFTER* `cam.setups.add()`. Choice parameters on a `SetupInput` expose `value.choices == []` (verified by runtime log) so any pre-add `set_choice` falls back to the placeholder `<UNSPECIFIED>` and fails on write. Both Autodesk samples (`SetViseOriginAsSetupWCSOrigin`, `CreateSetupsFromHoleRecognition`) follow the post-add pattern. Param names: `wcs_orientation_mode`, `wcs_origin_mode`, `wcs_origin_boxPoint`, `wcs_orientation_axisX/Y`, `wcs_orientation_flipY`. Two write idioms (both work):
+  - **Mode/enum**: `param.expression = "'axesXY'"` (note double-quoted -- inner single quotes are part of the Fusion expression). Or `param.value.value = 'axesXY'` (docs call this "typically better").
+  - **Entity binding**: `param.value.value = [entity]` (a *list*, even for a single axis). Used for `wcs_orientation_axisX/Y` and `wcs_origin_point`.
 - **Empty Setups are legal**: zero operations is fine, persists in browser.
 
 ## What's PARTIAL / risky
@@ -19,7 +21,7 @@ assumptions below.
 - **Transforms inside an MM**: two paths
   - cheap: `mm.occurrence.transform2 = matrix` (whole-MM move)
   - inside: `MoveFeatures.createInput(...)` on `mm.occurrence.component.features.moveFeatures`. Forum reports `MoveFeature` failing when called from non-root component — must call on the *owning* component's `moveFeatures`.
-- **Stock parameters**: param-driven, no clean enum API. Known mode strings: `'fromSolid'`, `'relativeBox'`, `'fixedBox'`, `'fromPrecedingSetup'`. Companion params: `job_stockSolids`, `job_stockOffsetMode`, `job_stockFixedX/Y/Z`. Set on `setupInput` *before* `add()` — setting on existing setup often fails silently. **Enumerate `parameter.value.choices` at runtime; do not hardcode enum strings.**
+- **Stock mode**: The typed enum is the verified-clean path. `setup.stockMode = adsk.cam.SetupStockModes.RelativeBoxStock` (or `FixedBoxStock` / `FromSolidStock` / `FromPreviousSetup`) sidesteps the whole enum-string resolution problem. The Autodesk `CreateSetupsFromHoleRecognition` sample uses both idioms but the typed enum is what it uses for the *primary* setup. The `job_stockMode` parameter-dictionary path is empirically fragile -- `'relativebox'` is REJECTED at write time on current builds (live audit shows current value `'fixedbox'` after the param accepts no relativebox candidate). `'previoussetup'` / `'fixedbox'` / `'fromsolid'` *do* work via the param dict (verified). Order of preference: typed enum first, param dict only as fallback. Companion params for fixed-size dims still go through the dict: `job_stockSolids`, `job_stockOffsetMode`, `job_stockFixedX/Y/Z`. Set on the **live `setup.parameters` after `cam.setups.add()`**.
 
 ## Architecture implications
 

@@ -54,7 +54,27 @@ def _entity_meta(ent):
 def export_data_logic(config=None):
     app = adsk.core.Application.get()
     ui  = app.userInterface
-    design = adsk.fusion.Design.cast(app.activeProduct)
+
+    # Resolve the Design via activeDocument.products rather than
+    # app.activeProduct -- the latter returns CAMProduct when launched
+    # from the Manufacture workspace, which fails the Design.cast and
+    # would falsely report "no active design". The products lookup
+    # works from any workspace as long as the document carries a Design.
+    design = None
+    try:
+        doc = app.activeDocument
+        if doc:
+            ds = doc.products.itemByProductType('DesignProductType')
+            if ds:
+                design = adsk.fusion.Design.cast(ds)
+    except:
+        design = None
+
+    # Fallback for completeness: if products lookup didn't work for some
+    # reason, try the original activeProduct cast path.
+    if not design:
+        design = adsk.fusion.Design.cast(app.activeProduct)
+
     if not design:
         ui.messageBox('No active Fusion design', 'Fusion Export')
         return
@@ -63,7 +83,15 @@ def export_data_logic(config=None):
         config = {'phys': True, 'param': True, 'sketch_deep': True, 'attr': True, 'mfg': True}
 
     # Ask user for export location (folder picker) with a sensible default.
-    default_output_dir = r'C:\Users\danse\APPS\import-export-template\comparative-audit\Fusion-json'
+    default_output_dir = r'C:\Users\danse\APPS\b-spline-generator-web-addin\bspline-frame-builder\fusion-exporter\exported files'
+    # Pre-create the default dir so the picker actually opens there
+    # rather than silently falling back to the parent (or worse, the
+    # last system-wide picker location).
+    try:
+        if not os.path.exists(default_output_dir):
+            os.makedirs(default_output_dir)
+    except:
+        pass
     output_dir = default_output_dir
     try:
         folder_dlg = ui.createFolderDialog()

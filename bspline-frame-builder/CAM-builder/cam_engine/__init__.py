@@ -8,8 +8,8 @@ Layered modules:
                        Autodesk's internal enum strings.
   - mm_builder         Build the 3 Manufacturing Models (stock /
                        B-spline set / frame).
-  - setup_builder      Build the 4 Setups (Stock, B-spline Top,
-                       B-spline Bottom, Frame) bound to MMs via
+  - setup_builder      Build the 4 Setups (Stock, B-spline Back,
+                       B-spline Top, Frame) bound to MMs via
                        ``setupInput.models``.
   - cam_coordinator    Top-level orchestrator the UI calls into.
 

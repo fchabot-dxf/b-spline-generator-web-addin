@@ -33,61 +33,45 @@ import adsk.cam
 # ---------------------------------------------------------------------------
 
 STOCK_MODE_CANDIDATES = {
-    'auto_bbox':        ['relativeBox', 'relativesize box', 'relativeSize'],
-    'fixed_box':        ['fixedBox', 'fixedsize box', 'fixedSize'],
-    'from_solid':       ['fromSolid'],
-    'from_prev_setup':  ['fromPrecedingSetup', 'fromPreviousSetup'],
+    # Verified strings come from Autodesk's CreateSetupsFromHoleRecognition
+    # sample and runtime audits of real setups; older candidate aliases
+    # are kept as fallbacks for older Fusion builds.
+    'auto_bbox':        ['relativebox', 'relativeBox', 'relativesize box', 'relativeSize'],
+    'fixed_box':        ['fixedbox', 'fixedBox', 'fixedsize box', 'fixedSize'],
+    'from_solid':       ['fromsolid', 'fromSolid'],
+    'from_prev_setup':  ['previoussetup', 'fromPrecedingSetup', 'fromPreviousSetup'],
 }
 
 WCS_ORIGIN_MODE_CANDIDATES = {
+    # 'stockPoint' is what live audits show -- it means "pick a named
+    # corner of the stock bbox" (works with wcs_origin_boxPoint='top 1' etc.)
     'model_origin':     ['modelOrigin', 'modelPoint'],
-    'box_point':        ['boxPoint'],
-    'selected_point':   ['selectedPoint', 'point'],
+    'box_point':        ['stockPoint', 'boxPoint'],
+    'selected_point':   ['point', 'selectedPoint'],
 }
 
 WCS_ORIENTATION_CANDIDATES = {
     'model':            ['modelOrientation'],
-    'select_z_x':       ['selectZ_selectX'],
-    'select_x_y':       ['selectX_selectY', 'selectXY'],
+    'select_z_x':       ['selectZ_selectX', 'axesZX'],
+    'select_x_y':       ['axesXY', 'selectX_selectY', 'selectXY'],
 }
 
 
-def resolve_choice(param, candidates, logger=None):
-    """Pick the first candidate string the parameter actually supports.
-
-    Returns ``(matched_string, was_fallback)``. If nothing matches we
-    return the parameter's current value and log a WARNING so the
-    caller knows their intent was ignored.
-    """
-    if not param:
-        return (None, True)
-
-    try:
-        choices = list(getattr(param.value, 'choices', []) or [])
-    except Exception as e:
-        _log(logger, f"CAM PARAM: failed to read choices for {param.name}: {e}", "WARNING")
-        choices = []
-
-    for c in candidates:
-        if c in choices:
-            return (c, False)
-
-    try:
-        current = param.value.value
-    except Exception:
-        current = None
-    _log(logger,
-         f"CAM PARAM: none of {candidates} matched choices={choices} for "
-         f"{getattr(param, 'name', '?')}; falling back to {current!r}",
-         "WARNING")
-    return (current, True)
-
-
 def set_choice(setup_or_input_params, param_name, candidates, logger=None):
-    """Resolve and set a choice parameter in one call.
+    """Resolve and set a choice parameter by trying each candidate string
+    until one is accepted by Fusion.
 
-    Returns the string actually written, or ``None`` on failure. Works
-    on both ``setup.parameters`` and ``setupInput.parameters``.
+    Returns the string actually written, or ``None`` on failure. Works on
+    both ``setup.parameters`` and ``setupInput.parameters`` (though the
+    Autodesk samples set choices on the LIVE setup, not the input).
+
+    The previous implementation introspected ``param.value.choices`` to
+    pre-validate, but in current Fusion builds this list is empty -- the
+    enum is opaque from the API side. The Autodesk samples
+    (``SetViseOriginAsSetupWCSOrigin``, ``CreateSetupsFromHoleRecognition``)
+    never query choices; they just write directly. We do the same here:
+    try each candidate, catch the "Invalid enumeration value" error, move
+    to the next.
     """
     if setup_or_input_params is None:
         return None
@@ -102,16 +86,33 @@ def set_choice(setup_or_input_params, param_name, candidates, logger=None):
         _log(logger, f"CAM PARAM: '{param_name}' not present in this CAM env", "WARNING")
         return None
 
-    chosen, _ = resolve_choice(param, candidates, logger)
-    if chosen is None:
-        return None
+    last_err = None
+    for cand in candidates:
+        # Path 1: expression with quoted string -- the form Autodesk's
+        # samples use (param.expression = "'axesXY'"). The outer quotes
+        # are Python; the inner single quotes are Fusion expression syntax.
+        try:
+            param.expression = "'" + cand + "'"
+            return cand
+        except Exception as e:
+            last_err = e
+        # Path 2: direct value write -- the form the docs call "typically
+        # better". Some builds prefer this over expressions.
+        try:
+            param.value.value = cand
+            return cand
+        except Exception as e:
+            last_err = e
 
     try:
-        param.value.value = chosen
-        return chosen
-    except Exception as e:
-        _log(logger, f"CAM PARAM: setting {param_name}={chosen!r} failed: {e}", "WARNING")
-        return None
+        current = param.value.value
+    except Exception:
+        current = '<unreadable>'
+    _log(logger,
+         f"CAM PARAM: none of {candidates} accepted by {param_name} "
+         f"(current={current!r}, last_err={last_err}); leaving as-is",
+         "WARNING")
+    return None
 
 
 def _log(logger, msg, level="INFO"):

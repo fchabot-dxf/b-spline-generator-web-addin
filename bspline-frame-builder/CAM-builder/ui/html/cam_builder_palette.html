@@ -140,31 +140,31 @@
         </div>
       </div>
 
-      <div class="cam-card" data-setup="bspline_top">
+      <div class="cam-card" data-setup="bspline_back">
         <div class="cam-card-head">
-          <div class="cam-card-title">Setup 2 &mdash; B-spline Top</div>
+          <div class="cam-card-title">Setup 2 &mdash; B-spline Back</div>
           <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
         </div>
-        <div class="cam-card-blurb">Top-side surfacing of the b-spline panel</div>
+        <div class="cam-card-blurb">Back-side surfacing of the b-spline panel</div>
         <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
         <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v">Box top, +Z</span></div>
+        <div class="cam-row"><span class="k">WCS</span><span class="v">Box back, axes X/Y</span></div>
         <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
+          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_back"></span><span id="state-bspline_back">pending</span></span>
         </div>
       </div>
 
-      <div class="cam-card" data-setup="bspline_bottom">
+      <div class="cam-card" data-setup="bspline_top">
         <div class="cam-card-head">
-          <div class="cam-card-title">Setup 3 &mdash; B-spline Bottom</div>
+          <div class="cam-card-title">Setup 3 &mdash; B-spline Top</div>
           <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
         </div>
-        <div class="cam-card-blurb">Bottom-side surfacing &mdash; flip after Setup 2</div>
+        <div class="cam-card-blurb">Top-side surfacing &mdash; flip Y after Setup 2</div>
         <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
         <div class="cam-row"><span class="k">Stock def</span><span class="v">From Setup 2 IPV</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v action">Box bottom, &minus;Z (flip)</span></div>
+        <div class="cam-row"><span class="k">WCS</span><span class="v action">Box top, axes X/Y (flip Y)</span></div>
         <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_bottom"></span><span id="state-bspline_bottom">pending</span></span>
+          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
         </div>
       </div>
 
@@ -194,7 +194,7 @@
   </div>
 
 <script>
-  const SETUP_KEYS = ['stock', 'bspline_top', 'bspline_bottom', 'frame'];
+  const SETUP_KEYS = ['stock', 'bspline_back', 'bspline_top', 'frame'];
 
   function send(action, payload) {
     const data = JSON.stringify(Object.assign({ action }, payload || {}));
