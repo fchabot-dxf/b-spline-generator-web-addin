@@ -47,6 +47,8 @@ import adsk.core
 import adsk.cam
 import adsk.fusion
 
+from ..cam_utils import get_design
+
 
 MM_RULES = ('stock', 'bspline_set', 'frame')
 
@@ -83,7 +85,7 @@ def build_all_mms(cam, design, classifier, logger=None):
     app = adsk.core.Application.get()
     original_active = None
     try:
-        des = adsk.fusion.Design.cast(app.activeProduct) if app else None
+        des = get_design(app, logger)
         if des:
             original_active = des.activeEditObject
     except Exception:
@@ -228,13 +230,30 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
         _log(logger, f"PARAM PROP ({mm.name}): activate failed: {e}", "WARNING")
         return 0
 
-    # 3. After activation, app.activeProduct should be a Design pointing
-    #    to the MM's own scope. If it isn't, abort cleanly -- writing to
-    #    the wrong product would either no-op or pollute the source.
+    # 3. After activation, app.activeProduct *should* be a Design pointing
+    #    to the MM's own scope. On current Fusion builds it stays as the
+    #    Manufacture workspace's CAMProduct, which means we can't reach
+    #    the MM's derived design via this path. Falling back to the source
+    #    Design via get_design() lets the propagation proceed -- the
+    #    name-collision guard (`existing` check below) makes this a
+    #    no-op when the source already has these params, which is the
+    #    common case (we're snapshotting FROM the source). The trade-off:
+    #    if the user has edited a param's expression in MM scope, this
+    #    fallback won't see it; it'll write source values instead.
     mm_design = adsk.fusion.Design.cast(app.activeProduct)
     if mm_design is None:
-        _log(logger, f"PARAM PROP ({mm.name}): activeProduct after activate is not a Design; skipping", "WARNING")
-        return 0
+        mm_design = get_design(app, logger)
+        if mm_design is None:
+            _log(logger,
+                 f"PARAM PROP ({mm.name}): activeProduct is not a Design and "
+                 f"no source Design available either; skipping",
+                 "WARNING")
+            return 0
+        _log(logger,
+             f"PARAM PROP ({mm.name}): activeProduct after activate is not a Design "
+             f"(MM-scope unreachable on this Fusion build); writing into source "
+             f"Design (idempotent for source params)",
+             "DEBUG")
 
     try:
         mm_user_params = mm_design.userParameters
@@ -308,9 +327,20 @@ def _populate_stock_placeholder(mm, source_design, logger):
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): activate failed: {e}", "WARNING")
         return False
 
+    # Unlike PARAM PROP, we cannot fall back to the source Design here:
+    # this function CREATES a body, and writing into the source would
+    # pollute the user's design. If activeProduct doesn't expose the MM's
+    # derived design, we have to skip and surface a clearer message --
+    # the cleaner long-term fix is to bind the stock body via the Setup's
+    # own stockSolids surface instead of via the MM (TODO).
     mm_design = adsk.fusion.Design.cast(app.activeProduct)
     if mm_design is None:
-        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): activeProduct after activate is not a Design; skipping", "WARNING")
+        _log(logger,
+             f"STOCK PLACEHOLDER ({mm.name}): activeProduct after activate is not a Design "
+             f"(MM-scope unreachable on this Fusion build); skipping. Stock setup will "
+             f"bind 0 bodies until the user picks MM-Stock manually OR until we wire "
+             f"stockSolids on the Setup directly.",
+             "WARNING")
         return False
 
     try:

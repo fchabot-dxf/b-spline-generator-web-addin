@@ -25,6 +25,7 @@ import adsk.cam
 import adsk.fusion
 
 from . import parameter_introspect as pi
+from ..cam_utils import get_design
 
 
 # ---------------------------------------------------------------------------
@@ -304,16 +305,7 @@ def _get_origin_axes(logger):
     X/Y selection to the model origin without interactive picking.
     """
     try:
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
-        if design is None:
-            # Manufacture workspace returns CAMProduct from activeProduct;
-            # fall back to looking up the design product directly.
-            doc = app.activeDocument
-            if doc:
-                ds = doc.products.itemByProductType('DesignProductType')
-                if ds:
-                    design = adsk.fusion.Design.cast(ds)
+        design = get_design(logger=logger)
         if design is None:
             _log(logger, "SETUP BUILD: no Design to source origin axes from", "WARNING")
             return (None, None)
