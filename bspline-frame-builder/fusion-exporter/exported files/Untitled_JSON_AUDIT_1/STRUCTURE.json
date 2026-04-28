@@ -1,0 +1,226 @@
+{
+    "Metadata": {
+        "Project": "Untitled",
+        "Version": "1.0.8-DeepMFG",
+        "Timestamp": "2026-03-28 13:24",
+        "GlobalProducts": [
+            "DesignProductType",
+            "CAMProductType",
+            "DesignProductType",
+            "WorkingModelProductType",
+            "WorkingModelProductType",
+            "WorkingModelProductType"
+        ],
+        "Dbg_0_WorkingModelProductType_Valid": true,
+        "Dbg_1_WorkingModelProductType_Valid": true,
+        "Dbg_2_WorkingModelProductType_Valid": true
+    },
+    "Timeline": [
+        {
+            "Idx": 0,
+            "Name": " B-Spline Set:1",
+            "Type": "adsk::fusion::Occurrence",
+            "Supp": false
+        },
+        {
+            "Idx": 1,
+            "Name": "Group1",
+            "Type": "Ghost/Internal",
+            "Supp": false
+        },
+        {
+            "Idx": 2,
+            "Name": "Group2",
+            "Type": "Ghost/Internal",
+            "Supp": false
+        },
+        {
+            "Idx": 3,
+            "Name": " Frame_1:1",
+            "Type": "adsk::fusion::Occurrence",
+            "Supp": false
+        },
+        {
+            "Idx": 4,
+            "Name": "T1_1_bounding_box",
+            "Type": "adsk::fusion::Sketch",
+            "Supp": false
+        },
+        {
+            "Idx": 5,
+            "Name": "T1_2_shape_outline",
+            "Type": "adsk::fusion::Sketch",
+            "Supp": false
+        },
+        {
+            "Idx": 6,
+            "Name": "T1_3_frame_enclosure",
+            "Type": "adsk::fusion::Sketch",
+            "Supp": false
+        },
+        {
+            "Idx": 7,
+            "Name": "t1_frame_bottom_Extrude",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Supp": false
+        },
+        {
+            "Idx": 8,
+            "Name": "t1_frame_right_Extrude",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Supp": false
+        },
+        {
+            "Idx": 9,
+            "Name": "t1_frame_left_Extrude",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Supp": false
+        },
+        {
+            "Idx": 10,
+            "Name": "t1_frame_top_Extrude",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Supp": false
+        },
+        {
+            "Idx": 11,
+            "Name": "t1_TRIM_CUT",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Supp": false
+        }
+    ],
+    "DesignTree": {
+        "InstName": "(Unsaved)",
+        "RefID": "Comp_f0403b8c-0947-42c7-9781-f46824f9d05b",
+        "Children": [
+            {
+                "InstName": "B-Spline Set:1",
+                "RefID": "Comp_2918264d-8ecd-48e6-81ab-25b638d82c9d",
+                "Children": [
+                    {
+                        "InstName": "Clean:1",
+                        "RefID": "Comp_bb3c6f89-dc56-4fe2-8473-1fdcd4e0f7bc",
+                        "Children": [],
+                        "Trans": [
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0
+                        ]
+                    },
+                    {
+                        "InstName": "Stamped:1",
+                        "RefID": "Comp_d0e05680-5079-4a1e-9843-4df15af1e1ae",
+                        "Children": [],
+                        "Trans": [
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0
+                        ]
+                    }
+                ],
+                "Trans": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            },
+            {
+                "InstName": "Frame_1:1",
+                "RefID": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336",
+                "Children": [],
+                "Trans": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            }
+        ]
+    },
+    "CAMIndex": {
+        "Models": [
+            {
+                "Name": "Model_1",
+                "Path": "CAM/mfgmodel/Model_1"
+            },
+            {
+                "Name": "Model_2",
+                "Path": "CAM/mfgmodel/Model_2"
+            },
+            {
+                "Name": "Model_3",
+                "Path": "CAM/mfgmodel/Model_3"
+            }
+        ],
+        "Setups": [
+            {
+                "Name": "Stock",
+                "File": "CAM/setups/SETUP_01_Stock.json"
+            },
+            {
+                "Name": "B-spline Top",
+                "File": "CAM/setups/SETUP_02_B-spline Top.json"
+            },
+            {
+                "Name": "B-spline Bottom",
+                "File": "CAM/setups/SETUP_03_B-spline Bottom.json"
+            },
+            {
+                "Name": "Frame",
+                "File": "CAM/setups/SETUP_04_Frame.json"
+            }
+        ],
+        "NCPrograms": []
+    }
+}

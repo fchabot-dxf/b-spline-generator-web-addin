@@ -1,0 +1,78 @@
+{
+    "User": [],
+    "Model": [],
+    "Features": [
+        {
+            "Feat": "WorkingModel1",
+            "Parent": "Comp_d19f27c2-5f86-46f9-b036-4fa0f0db5c11",
+            "Type": "adsk::fusion::Feature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Base Feature1",
+            "Parent": "Comp_d19f27c2-5f86-46f9-b036-4fa0f0db5c11",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Base Feature2",
+            "Parent": "Comp_d19f27c2-5f86-46f9-b036-4fa0f0db5c11",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_d44a087a-de44-415b-ab28-2f27c33455d5",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "RemoveInstance-Frame_1:1",
+            "Parent": "Comp_d44a087a-de44-415b-ab28-2f27c33455d5",
+            "Type": "adsk::fusion::RemoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_37206fd7-211f-4b95-bd0f-f75d69e1d698",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "RemoveInstance-Clean:1",
+            "Parent": "Comp_37206fd7-211f-4b95-bd0f-f75d69e1d698",
+            "Type": "adsk::fusion::RemoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_14e56ed4-2d04-46de-ba23-064dfb1b6fa4",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "RemoveBody-surface",
+            "Parent": "Comp_14e56ed4-2d04-46de-ba23-064dfb1b6fa4",
+            "Type": "adsk::fusion::RemoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        }
+    ]
+}

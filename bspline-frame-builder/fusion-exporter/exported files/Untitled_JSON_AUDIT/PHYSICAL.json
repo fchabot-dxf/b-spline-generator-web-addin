@@ -1,0 +1,116 @@
+{
+    "Bodies": [
+        {
+            "RefID": "Comp_bb3c6f89-dc56-4fe2-8473-1fdcd4e0f7bc_Body_panel",
+            "Parent": "Comp_bb3c6f89-dc56-4fe2-8473-1fdcd4e0f7bc",
+            "Name": "panel",
+            "Phys": {
+                "Mass": 0.11534291825331905,
+                "Vol": 202.26470004377302,
+                "COM": [
+                    0.0133482603265241,
+                    0.14498065954782574,
+                    1.4839275162361538
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_bb3c6f89-dc56-4fe2-8473-1fdcd4e0f7bc_Body_surface",
+            "Parent": "Comp_bb3c6f89-dc56-4fe2-8473-1fdcd4e0f7bc",
+            "Name": "surface",
+            "Phys": {
+                "Mass": 0.0,
+                "Vol": 0.0,
+                "COM": [
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_d0e05680-5079-4a1e-9843-4df15af1e1ae_Body_panel",
+            "Parent": "Comp_d0e05680-5079-4a1e-9843-4df15af1e1ae",
+            "Name": "panel",
+            "Phys": {
+                "Mass": 0.10218262325703273,
+                "Vol": 179.18687992077798,
+                "COM": [
+                    0.05707345495191486,
+                    0.1243485108709499,
+                    1.4874031091764086
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_d0e05680-5079-4a1e-9843-4df15af1e1ae_Body_surface",
+            "Parent": "Comp_d0e05680-5079-4a1e-9843-4df15af1e1ae",
+            "Name": "surface",
+            "Phys": {
+                "Mass": 0.0,
+                "Vol": 0.0,
+                "COM": [
+                    0.0,
+                    0.0,
+                    0.0
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336_Body_frame_bottom",
+            "Parent": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336",
+            "Name": "frame_bottom",
+            "Phys": {
+                "Mass": 0.06527551025453762,
+                "Vol": 114.46677179470758,
+                "COM": [
+                    0.00019393884125113654,
+                    -9.8880251796413,
+                    -0.479300468220342
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336_Body_frame_right",
+            "Parent": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336",
+            "Name": "frame_right",
+            "Phys": {
+                "Mass": 0.08427031189883936,
+                "Vol": 147.7759503308168,
+                "COM": [
+                    6.798391135993774,
+                    0.02802502482842378,
+                    -0.757378117284651
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336_Body_frame_left",
+            "Parent": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336",
+            "Name": "frame_left",
+            "Phys": {
+                "Mass": 0.08461162371604923,
+                "Vol": 148.3744728354905,
+                "COM": [
+                    -6.7932608899621485,
+                    0.03443410658859675,
+                    -0.7529434673485577
+                ]
+            }
+        },
+        {
+            "RefID": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336_Body_frame_top",
+            "Parent": "Comp_b61575cd-ae65-4d11-9e56-bf25dfeb2336",
+            "Name": "frame_top",
+            "Phys": {
+                "Mass": 0.0709043735992989,
+                "Vol": 124.3375152547879,
+                "COM": [
+                    6.569222428960862e-05,
+                    9.88564837877931,
+                    -0.298569007475538
+                ]
+            }
+        }
+    ]
+}

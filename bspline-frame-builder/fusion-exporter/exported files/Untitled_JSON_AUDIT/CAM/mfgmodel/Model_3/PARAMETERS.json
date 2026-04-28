@@ -1,0 +1,46 @@
+{
+    "User": [],
+    "Model": [],
+    "Features": [
+        {
+            "Feat": "WorkingModel1",
+            "Parent": "Comp_93f2f046-081c-4bba-95be-dc75bc8c8d0a",
+            "Type": "adsk::fusion::Feature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Base Feature1",
+            "Parent": "Comp_93f2f046-081c-4bba-95be-dc75bc8c8d0a",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_bc9778e3-b7a1-4334-87d7-eea4b1cb62dd",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "RemoveInstance-B-Spline Set:1",
+            "Parent": "Comp_bc9778e3-b7a1-4334-87d7-eea4b1cb62dd",
+            "Type": "adsk::fusion::RemoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_3aa3767b-61a6-4ee3-b79b-6375fa374702",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        }
+    ]
+}
