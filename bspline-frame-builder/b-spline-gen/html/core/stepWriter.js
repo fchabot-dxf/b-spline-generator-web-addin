@@ -217,6 +217,21 @@ export function generateThickenedStep(heights, offsetPts, params, unstampedHeigh
     bodies.push({ data: currentStamped, label: 'panel', base: 'Preview', rgb: COLORS.GREEN, isSolid: true, offsetPts: offsetPts });
   }
 
+  // Optional per-base filter. When set, only bodies whose `base` matches
+  // are kept -- producing a STEP file with exactly ONE PRODUCT. This is
+  // how the multi-STEP architecture avoids Fusion's multi-PRODUCT auto-
+  // wrapper: caller (main.js) calls this function once per base
+  // ('Stamped', 'Clean'), each call yields a single-PRODUCT STEP, and
+  // each file imports as one component directly under the import target
+  // group with no intermediate wrapper. Returns '' if no bodies match
+  // (caller must drop the variant rather than send an empty STEP).
+  if (params.baseFilter) {
+    const filtered = bodies.filter(body => body.base === params.baseFilter);
+    bodies.length = 0;
+    bodies.push(...filtered);
+    if (bodies.length === 0) return '';
+  }
+
   const resultIds = [];
   const styledItemIds = [];
 

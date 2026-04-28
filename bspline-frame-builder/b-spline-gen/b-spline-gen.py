@@ -283,36 +283,52 @@ def _wrap_timeline_in_group(start_count, group_name):
         _log(f"[CONSOLIDATE] timeline group wrap failed: {e}")
 
 
-def _post_import_setup(occurrences):
-    """Three-phase post-import normalization:
+def _post_import_setup(occurrences, parent_hint=None):
+    """Post-import verify & normalize pass.
 
-      Phase 1: walk the imported subtree, find Clean / Stamped components
-               wherever Fusion stuck them, normalize their component
-               name and body names (panel / surface based on isSolid).
-      Phase 2: if Fusion created a wrapper occurrence around the products
-               (multi-product STEPs do this, naming the wrapper after the
-               file), uplift Clean / Stamped to be direct children of
-               the wrapper's parent and delete the wrapper.
-      Phase 3: surface bodies imported via MANIFOLD_SURFACE_SHAPE_REPRESENTATION
-               land inside an "Unstitched" parametric feature in each
-               component. Replace each unstitched body with an equivalent
-               BaseFeature-owned body of the same geometry, then delete
-               the Unstitched feature. The replacement body sits directly
-               under the component's bRepBodies (sibling to panel),
-               which is what the user expects to see in the browser.
+    Walks the imported subtree, finds Clean / Stamped components wherever
+    Fusion stuck them, and normalizes component names and body names
+    (panel / surface based on isSolid).
 
-    Final tree on import:
-      B-Spline Set
-        Clean    [panel, surface]
-        Stamped  [panel, surface]
-    No wrapper, no Unstitched feature, correct names, no warnings.
+    Resulting tree on import (the "B-Spline" wrapper is Fusion's auto-
+    wrapping for multi-product STEP files; we accept it):
+
+        B-Spline Set
+            B-Spline                    <- Fusion wrapper, kept
+                Clean   [panel, surface]
+                Stamped [panel, surface]
+
+    History: earlier revisions tried to delete the "B-Spline" wrapper
+    via Occurrence.moveToComponent. That API's documented behavior
+    contradicts itself (one sentence says "into the component owned by
+    the specified occurrence", another says "into the parent component
+    of the target occurrence") and empirically the second reading wins:
+    moveToComponent makes the source a SIBLING of the target, not a
+    child of target.component. Passing the wrapper's parent as target
+    therefore moves Clean/Stamped UP TO ROOT instead of into the
+    parent's component, leaving B-Spline Set empty. Multiple attempts
+    to work around this broke the design tree. Definitively parked
+    until a reliable mechanism for cross-context occurrence moves
+    surfaces. See BSPLINE_CONTEXT.md "Stop trying these things".
+
+    The Unstitched feature dissolve (Phase 3 in earlier revisions) is
+    also parked - see _eliminate_unstitched below.
+
+    The `parent_hint` parameter is kept in the signature for call-site
+    compatibility but currently unused. It was previously passed by
+    callers who fetched occurrences via component.occurrences.item(i),
+    which yields native (assemblyContext=None) occurrences; the hint
+    let _uplift_through_wrappers find the destination. With uplift
+    disabled the hint has no effect.
+
+    Returns the input list unchanged.
     """
     if not occurrences:
         return occurrences
 
     _log(f"[POST-IMPORT] >>> verifying {len(occurrences)} occurrence(s)")
 
-    # ── Phase 1: find and normalize Clean / Stamped ──
+    # Phase 1: find and normalize Clean / Stamped (only phase that runs).
     targets = []
     for occ in occurrences:
         targets.extend(_find_clean_stamped(occ, depth=0))
@@ -320,12 +336,8 @@ def _post_import_setup(occurrences):
     for occ in targets:
         _normalize_occurrence(occ)
 
-    # ── Phase 2: uplift through any wrapper ──
-    _uplift_through_wrappers(occurrences, targets)
-
-    # ── Phase 3: eliminate Unstitched feature in each target ──
-    for occ in targets:
-        _eliminate_unstitched(occ)
+    # Phase 2 (wrapper uplift) and Phase 3 (Unstitched dissolve) are parked.
+    # See _post_import_setup docstring and BSPLINE_CONTEXT.md.
 
     _log(f"[POST-IMPORT] <<< done")
     return occurrences
@@ -437,129 +449,49 @@ def _normalize_occurrence(occ):
             _log(f"[POST-IMPORT]     body rename {bn!r} -> {target_bn!r} in {target_cname!r} FAILED: {e}")
 
 
-def _uplift_through_wrappers(occurrences, targets):
-    """If any occurrence in ``occurrences`` is a pure wrapper around the
-    target list (its child(ren) are exactly the targets, nothing else),
-    move the targets up to be siblings of the wrapper, then delete the
-    empty wrapper.
+def _uplift_through_wrappers(occurrences, targets, parent_hint=None):
+    """PARKED. Do not call. Do not revive without rereading the history.
 
-    Tree before:
-        B-Spline Set                 <- assemblyContext of wrapper
-            B-Spline                 <- wrapper IS in `occurrences`
-                Clean                <- target
-                Stamped              <- target
+    Goal: delete Fusion's auto-wrapper occurrence around multi-product
+    STEP imports so the design tree shows Clean/Stamped as direct
+    children of the import target group.
 
-    Tree after:
-        B-Spline Set
-            Clean
-            Stamped
+    Why parked: every implementation has misbehaved because
+    Occurrence.moveToComponent(target) does not do what the API docs
+    primarily claim. The doc page contradicts itself:
+      - Sentence 1: "into the component owned by the specified
+        occurrence" implies source becomes a CHILD of target.component.
+      - Sentence 2: "into the parent component of the target occurrence"
+        implies source becomes a SIBLING of target.
+    Empirically the SECOND reading is correct. Passing the wrapper's
+    parent (e.g. B-Spline Set) as target moved Clean/Stamped UP to the
+    root component instead of into the parent's component, leaving
+    B-Spline Set empty. Confirmed in the field, design tree
+    screenshotted, undone. The "obvious" fix of passing the wrapper
+    itself as target also runs into the documented "must be in the
+    same context" requirement: the wrapper proxy and its child proxies
+    have different assemblyContexts, so moveToComponent silently
+    returns None.
 
-    Critical detail: do NOT compare occurrences with id(). Fusion creates
-    a new Python wrapper object every time you call .item(i), so id()
-    differs between the target list and the children-iteration even
-    though they refer to the same Fusion entity. Use fullPathName
-    instead -- it's a stable string identifier (the assembly path).
+    Other approaches considered and discarded:
+      - Component.occurrences.addExistingComponent + delete wrapper:
+        creates fresh Stamped:2 / Clean:2 occurrences (since :1 is
+        still referenced), and deleting the wrapper would also nuke
+        the original Stamped:1 / Clean:1 references. Net result:
+        cosmetic name churn and at least one invalid intermediate
+        state. Not tried in the field but high probability of new
+        breakage.
+      - Direct-edit-mode conversion of the import: destructive,
+        breaks parametric history.
+
+    Decision: keep the wrapper. Cosmetic but stable. Downstream code
+    (CAM filter, body lookups by name) walks by component name and is
+    indifferent to the extra hierarchy level.
+
+    See BSPLINE_CONTEXT.md "Stop trying these things" for the full
+    history. _post_import_setup no longer calls this function.
     """
-    if not occurrences or not targets:
-        return
-
-    # Build set of target paths for O(1) lookup.
-    target_paths = set()
-    for t in targets:
-        try:
-            p = t.fullPathName
-            if p:
-                target_paths.add(p)
-        except Exception:
-            pass
-    if not target_paths:
-        _log("[POST-IMPORT]   uplift: no resolvable target paths -- skipping")
-        return
-
-    wrappers = []  # (wrapper_occ, parent_occ, target_children)
-    for occ in occurrences:
-        # If this occurrence IS a target, no wrapping.
-        try:
-            occ_path = occ.fullPathName
-        except Exception:
-            continue
-        if occ_path in target_paths:
-            continue
-
-        # Get children
-        try:
-            n = occ.childOccurrences.count
-        except Exception:
-            continue
-        children = []
-        for i in range(n):
-            try:
-                c = occ.childOccurrences.item(i)
-                if c and c.isValid:
-                    children.append(c)
-            except Exception:
-                continue
-        if not children:
-            continue
-
-        target_kids = []
-        other_kids  = []
-        for c in children:
-            try:
-                cp = c.fullPathName
-            except Exception:
-                cp = None
-            if cp and cp in target_paths:
-                target_kids.append(c)
-            else:
-                other_kids.append(c)
-
-        if target_kids and not other_kids:
-            try:
-                parent = occ.assemblyContext
-            except Exception:
-                parent = None
-            if parent is None:
-                try:
-                    wname = occ.component.name
-                except Exception:
-                    wname = "<?>"
-                _log(f"[POST-IMPORT]   wrapper {wname!r} has no assemblyContext (root-level) -- cannot uplift")
-                continue
-            wrappers.append((occ, parent, target_kids))
-
-    for wrapper, parent, gc_targets in wrappers:
-        try:
-            wname = wrapper.component.name
-        except Exception:
-            wname = "<?>"
-        try:
-            pname = parent.component.name
-        except Exception:
-            pname = "<?>"
-        _log(f"[POST-IMPORT]   wrapper detected: {wname!r} -> parent {pname!r}, {len(gc_targets)} child(ren) to uplift")
-
-        moved = 0
-        for gc in gc_targets:
-            try:
-                gc_name = gc.component.name
-            except Exception:
-                gc_name = "<?>"
-            try:
-                gc.moveToComponent(parent)
-                moved += 1
-                _log(f"[POST-IMPORT]     moved {gc_name!r} from {wname!r} -> {pname!r}")
-            except Exception as e:
-                _log(f"[POST-IMPORT]     moveToComponent {gc_name!r} -> {pname!r} FAILED: {e}")
-
-        if moved == len(gc_targets):
-            try:
-                wrapper.deleteMe()
-                _log(f"[POST-IMPORT]     deleted empty wrapper {wname!r}")
-            except Exception as e:
-                _log(f"[POST-IMPORT]     wrapper {wname!r} deleteMe FAILED: {e}")
-        else:
-            _log(f"[POST-IMPORT]     wrapper {wname!r} not deleted -- only {moved}/{len(gc_targets)} moved")
+    return  # no-op
 
 
 def _eliminate_unstitched(occ):
@@ -1076,12 +1008,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
                 _log(f'[MULTI-VARIANT] Total occurrences imported (pre-consolidation): {len(all_newly_added)}')
 
-                # Consolidate up to 4 imported occurrences into max 2
-                # ("Clean" and/or "Stamped"), each holding the solid body
-                # named "panel" and the surface body named "surface".
-                # See _consolidate_bspline_variants() docstring for the
-                # rationale -- short version: makes downstream MM body
-                # filtering trivial since solid+surface stay paired.
+                # Verify component / body names. Since the JS side now
+                # emits one STEP per OK click with bodies pre-grouped by
+                # base, this is a thin pass that just confirms names are
+                # canonical. It does NOT try to delete Fusion's auto-
+                # wrapper -- see _post_import_setup docstring for why.
                 all_newly_added = _post_import_setup(all_newly_added)
                 _log(f'[MULTI-VARIANT] After consolidation: {len(all_newly_added)} occurrence(s)')
 
@@ -1091,29 +1022,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 else:
                     last_imported_occurrences = all_newly_added
 
-                # Smart Visibility: show Stamped if present, else Clean.
-                # Priority: Stamped (2) > Clean (1) > everything else (0)
-                best_occ, max_p = None, -1
-                for occ in all_newly_added:
-                    try:
-                        nm = (occ.component.name or '').lower()
-                    except Exception:
-                        nm = ''
-                    p = 2 if 'stamped' in nm else 1 if 'clean' in nm else 0
-                    if p > max_p:
-                        max_p, best_occ = p, occ
-
-                if best_occ:
-                    primary_imported_occurrence = best_occ
-                    _log(f'[VISIBILITY] Primary: "{best_occ.component.name}" (priority={max_p})')
-                    for occ in all_newly_added:
-                        try: occ.isLightBulbOn = (occ == best_occ and is_visible)
-                        except: pass
-                elif all_newly_added:
+                # Visibility is set by the unified post-import block below
+                # (see ~50 lines down). That block applies the canonical
+                # rules (panel ON / surface ALWAYS OFF; Stamped ON, Clean
+                # OFF when both exist; Clean ON when alone) and is the
+                # sole visibility authority. The earlier inline block here
+                # was removed because it honored the per-call `is_visible`
+                # flag and could be overridden by a stale 'last call wins'
+                # ordering -- now defangged. Just track the first occurrence
+                # so primary_imported_occurrence isn't None on the path
+                # leading into the unified block.
+                if all_newly_added:
                     primary_imported_occurrence = all_newly_added[0]
-                    for occ in all_newly_added:
-                        try: occ.isLightBulbOn = is_visible
-                        except: pass
 
             # ════════════════════════════════════════════════════════════════════
             # SINGLE-STEP PATH  (live preview → sendFusionPreview → stepText)
@@ -1239,12 +1159,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview:
                 try:
                     if 'current_import_group' in globals() and current_import_group and current_import_group.isValid:
-                        comp = current_import_group.component
+                        # Iterate the import target's children. childOccurrences
+                        # returns proxies in this occurrence's context (vs.
+                        # comp.occurrences which returns natives); the
+                        # difference is harmless here -- _post_import_setup
+                        # only renames in-place, no occurrence reparenting.
                         all_siblings = []
                         try:
-                            for i in range(comp.occurrences.count):
+                            kids = current_import_group.childOccurrences
+                            for i in range(kids.count):
                                 try:
-                                    occ = comp.occurrences.item(i)
+                                    occ = kids.item(i)
                                     if occ and occ.isValid:
                                         all_siblings.append(occ)
                                 except: pass

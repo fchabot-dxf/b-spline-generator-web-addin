@@ -520,12 +520,35 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
         console.log('[EXPORT DEBUG] layersToExport=', layersToExport.length, layersToExport.map((l, i) => ({ index: i + 1, profile: l.profile, hasViewBox: /viewBox=/.test(l.svg || '') })));
 
         if (isFusionMode) {
-            const stepText = generateThickenedStep(heights, offsetPts, shared, unstamped);
+            // Per-base STEP files. Each PRODUCT in its own file → Fusion's
+            // multi-PRODUCT auto-wrapper never triggers, so each variant
+            // imports as a single component directly under B-Spline Set
+            // with both panel and surface bodies inside it. (See
+            // BSPLINE_CONTEXT.md "Stop trying these things" for why we
+            // don't try to delete the wrapper after-the-fact.)
+            const bases = [];
+            if (options.clean || options.cleanSurf) bases.push('Clean');
+            if (options.stamped || options.stampedSurf) bases.push('Stamped');
+
+            const stepVariants = bases
+                .map(baseName => ({
+                    name: baseName,
+                    stepText: generateThickenedStep(heights, offsetPts,
+                        { ...shared, baseFilter: baseName }, unstamped),
+                }))
+                .filter(v => v.stepText && v.stepText.length > 0);
+
+            if (stepVariants.length === 0) {
+                if (typeof fusLog === 'function') fusLog('[EXPORT] No bodies selected; skipping Fusion send.');
+                if (btn) { btn.disabled = false; btn.textContent = 'OK'; }
+                return;
+            }
+
+            const totalLen = stepVariants.reduce((s, v) => s + v.stepText.length, 0);
             const payload = JSON.stringify({
                 params: { ...P },
-                stepText,
+                stepVariants,
                 filename: filename_hint || `B-Spline-${Date.now()}.step`,
-                isSolid: options.clean || options.stamped,
                 isPreview: false,
                 isAppend: isAppend,
                 isVisible: options.isVisible !== undefined ? options.isVisible : true,
@@ -540,7 +563,7 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
                 }
             });
             if (typeof fusLog === 'function') {
-                fusLog(`[SVG DEBUG] sendFusionPayload payload stepLen=${stepText.length} stampEnabled=${options.includeSVG} stampLayers=${layersToExport.length}`);
+                fusLog(`[SVG DEBUG] sendFusionPayload variants=${stepVariants.length} bases=${stepVariants.map(v => v.name).join(',')} totalStepLen=${totalLen} stampEnabled=${options.includeSVG} stampLayers=${layersToExport.length}`);
             }
             await sendFusionPayloadChunked(payload);
             if (!isAppend) startFusionPolling(btn);
