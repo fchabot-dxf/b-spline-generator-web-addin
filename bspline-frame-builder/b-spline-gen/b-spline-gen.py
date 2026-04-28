@@ -454,20 +454,36 @@ def _uplift_through_wrappers(occurrences, targets):
             Clean
             Stamped
 
-    The bug in the previous version: it looked for a wrapper INSIDE
-    each occurrence in the input list, but the wrapper IS the input
-    (because ``occurrences`` is the children-of-B-Spline-Set list, and
-    that list contains ONE entry: the wrapper).
+    Critical detail: do NOT compare occurrences with id(). Fusion creates
+    a new Python wrapper object every time you call .item(i), so id()
+    differs between the target list and the children-iteration even
+    though they refer to the same Fusion entity. Use fullPathName
+    instead -- it's a stable string identifier (the assembly path).
     """
     if not occurrences or not targets:
         return
 
-    target_set = set(id(t) for t in targets)
+    # Build set of target paths for O(1) lookup.
+    target_paths = set()
+    for t in targets:
+        try:
+            p = t.fullPathName
+            if p:
+                target_paths.add(p)
+        except Exception:
+            pass
+    if not target_paths:
+        _log("[POST-IMPORT]   uplift: no resolvable target paths -- skipping")
+        return
 
     wrappers = []  # (wrapper_occ, parent_occ, target_children)
     for occ in occurrences:
         # If this occurrence IS a target, no wrapping.
-        if id(occ) in target_set:
+        try:
+            occ_path = occ.fullPathName
+        except Exception:
+            continue
+        if occ_path in target_paths:
             continue
 
         # Get children
@@ -486,11 +502,19 @@ def _uplift_through_wrappers(occurrences, targets):
         if not children:
             continue
 
-        target_kids = [c for c in children if id(c) in target_set]
-        other_kids  = [c for c in children if id(c) not in target_set]
+        target_kids = []
+        other_kids  = []
+        for c in children:
+            try:
+                cp = c.fullPathName
+            except Exception:
+                cp = None
+            if cp and cp in target_paths:
+                target_kids.append(c)
+            else:
+                other_kids.append(c)
 
         if target_kids and not other_kids:
-            # Pure wrapper. Find its parent.
             try:
                 parent = occ.assemblyContext
             except Exception:
@@ -539,196 +563,30 @@ def _uplift_through_wrappers(occurrences, targets):
 
 
 def _eliminate_unstitched(occ):
-    """Replace the surface body in ``occ.component`` with a fresh
-    BaseFeature-owned body of the same geometry, then remove the
-    parametric feature that originally produced the surface.
+    """No-op (parked).
 
-    Why this is more involved than just looking at unstitchFeatures:
-    Fusion's STEP importer doesn't always materialize the
-    surface-grouping as a true UnstitchFeature; the import path
-    creates an opaque feature subtype whose only stable fingerprint
-    is "this feature's bodies output includes our 'surface' body".
-    So we walk the active design's TIMELINE looking for the feature
-    that owns each surface body in this component, and dissolve it.
+    Earlier versions of this function tried to dissolve Fusion's
+    Unstitched parametric feature -- which wraps surface bodies imported
+    via MANIFOLD_SURFACE_SHAPE_REPRESENTATION -- by capturing each output
+    body's geometry via TemporaryBRepManager, recreating it inside a
+    BaseFeature edit on the same component, then deleting the original
+    parametric feature. In practice the dance was unreliable: the field
+    log showed BaseFeature.add returning a body, finishEdit appearing to
+    succeed, then the post-edit refetch finding bRepBodies smaller than
+    expected -- both panel AND surface ended up gone, replaced by a
+    single auto-named Body3. Until we have a reliable way to dissolve
+    the parametric Unstitched feature without collateral, the cosmetic
+    "Unstitched" folder in the browser stays.
 
-    Algorithm:
-      1. find the surface body in the component (b.isSolid == False, name 'surface')
-      2. tbm.copy(body) to a transient
-      3. open BaseFeature on the component
-      4. bRepBodies.add(transient, baseFeature) inside the edit
-      5. give the new body a temp name (avoids collision with the
-         original surface still alive)
-      6. capture the new body's positional index
-      7. finishEdit
-      8. walk design.timeline, find the parametric feature that has
-         the original surface body in its bodies output, deleteMe it
-      9. refetch the new body via bRepBodies.item(idx) and rename it
-         to 'surface'
-
-    On failure, the body name is still correct -- just nested under
-    the original feature. Functionally fine; cosmetic only.
+    The body itself is correctly named ("surface") and accessible via
+    occ.component.bRepBodies. CAM-builder's MM filter and any caller
+    walking by name finds it without needing the folder dissolved.
     """
     try:
-        comp = occ.component
-        cname = comp.name
-    except Exception as e:
-        _log(f"[POST-IMPORT]   _eliminate_unstitched: comp read failed: {e}")
-        return
-
-    # Step 1: find surface body
-    surface_body = None
-    try:
-        for i in range(comp.bRepBodies.count):
-            b = comp.bRepBodies.item(i)
-            try:
-                if not b.isValid:
-                    continue
-                if not b.isSolid and _is_surface_body_name((b.name or "").lower()):
-                    surface_body = b
-                    break
-            except Exception:
-                continue
-    except Exception as e:
-        _log(f"[POST-IMPORT]   {cname!r}: enumerate bodies failed: {e}")
-        return
-
-    if surface_body is None:
-        _log(f"[POST-IMPORT]   {cname!r}: no surface body found, nothing to dissolve")
-        return
-
-    try:
-        original_name = surface_body.name
+        cname = occ.component.name
     except Exception:
-        original_name = "surface"
-
-    # Step 2: capture geometry
-    tbm = adsk.fusion.TemporaryBRepManager.get()
-    try:
-        transient = tbm.copy(surface_body)
-    except Exception as e:
-        _log(f"[POST-IMPORT]   {cname!r}: tbm.copy(surface) failed: {e}")
-        return
-    _log(f"[POST-IMPORT]   {cname!r}: captured surface body geometry via TBM")
-
-    # Step 3-5: open BaseFeature, add transient with temp name
-    new_idx = -1
-    bf = None
-    try:
-        bf = comp.features.baseFeatures.add()
-        bf.startEdit()
-    except Exception as e:
-        _log(f"[POST-IMPORT]   {cname!r}: BaseFeature open failed: {e}")
-        return
-
-    try:
-        try:
-            new_b = comp.bRepBodies.add(transient, bf)
-            try:
-                new_b.name = "_bsg_surface_repl"
-            except Exception:
-                pass
-            new_idx = comp.bRepBodies.count - 1
-            _log(f"[POST-IMPORT]   {cname!r}: BaseFeature.add OK, new body at idx {new_idx}")
-        except Exception as e:
-            _log(f"[POST-IMPORT]   {cname!r}: bRepBodies.add inside BaseFeature failed: {e}")
-    finally:
-        try:
-            bf.finishEdit()
-        except Exception as e:
-            _log(f"[POST-IMPORT]   {cname!r}: BaseFeature.finishEdit failed: {e}")
-
-    if new_idx < 0:
-        return
-
-    # Step 8: find and delete the feature that owns the original surface body.
-    # Walk design.timeline (gives access to features regardless of subtype).
-    deleted_owner = False
-    try:
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
-        timeline = design.timeline
-        # Iterate from end to beginning so deleting one doesn't shift indices below.
-        for ti in range(timeline.count - 1, -1, -1):
-            try:
-                tle = timeline.item(ti)
-                feat = tle.entity
-            except Exception:
-                continue
-            if feat is None:
-                continue
-            # Check if feature has a 'bodies' attribute (collection)
-            bodies_attr = getattr(feat, "bodies", None)
-            if bodies_attr is None:
-                continue
-            # Iterate bodies in the feature, see if our surface_body is among them
-            try:
-                bn_count = bodies_attr.count
-            except Exception:
-                continue
-            owns_surface = False
-            for bi in range(bn_count):
-                try:
-                    fb = bodies_attr.item(bi)
-                    if fb is not None and fb == surface_body:
-                        owns_surface = True
-                        break
-                except Exception:
-                    continue
-            if not owns_surface:
-                continue
-            # Found it. Get the feature's identity for logging.
-            try:
-                ftype = feat.classType()
-            except Exception:
-                ftype = "?"
-            try:
-                fname = feat.name
-            except Exception:
-                fname = "?"
-            _log(f"[POST-IMPORT]   {cname!r}: found owning feature {fname!r} type={ftype!r}; deleting")
-            try:
-                if feat.deleteMe():
-                    deleted_owner = True
-                    _log(f"[POST-IMPORT]   {cname!r}: deleted owning feature OK")
-                else:
-                    _log(f"[POST-IMPORT]   {cname!r}: feat.deleteMe returned False")
-            except Exception as e:
-                _log(f"[POST-IMPORT]   {cname!r}: feat.deleteMe raised: {e}")
-            break
-    except Exception as e:
-        _log(f"[POST-IMPORT]   {cname!r}: timeline walk failed: {e}")
-
-    if not deleted_owner:
-        # Fall back: try direct surface body delete. May or may not work.
-        try:
-            if surface_body.isValid and surface_body.deleteMe():
-                _log(f"[POST-IMPORT]   {cname!r}: fallback direct body deleteMe OK")
-            else:
-                _log(f"[POST-IMPORT]   {cname!r}: fallback direct body deleteMe failed")
-        except Exception as e:
-            _log(f"[POST-IMPORT]   {cname!r}: fallback direct body deleteMe raised: {e}")
-
-    # Step 9: rename new body to original name
-    try:
-        if new_idx < comp.bRepBodies.count:
-            live = comp.bRepBodies.item(new_idx)
-            if live and live.isValid:
-                try:
-                    live.name = original_name
-                    _log(f"[POST-IMPORT]   {cname!r}: promoted body to {original_name!r} (sibling of panel under Bodies)")
-                except Exception as e:
-                    _log(f"[POST-IMPORT]   {cname!r}: rename to {original_name!r} failed: {e}; trying suffix variant")
-                    try:
-                        live.name = f"{original_name}_promoted"
-                        _log(f"[POST-IMPORT]   {cname!r}: settled for {original_name!r}_promoted")
-                    except Exception:
-                        pass
-            else:
-                _log(f"[POST-IMPORT]   {cname!r}: new body invalid post-edit")
-        else:
-            _log(f"[POST-IMPORT]   {cname!r}: new_idx {new_idx} out of range")
-    except Exception as e:
-        _log(f"[POST-IMPORT]   {cname!r}: post-edit access failed: {e}")
+        cname = "<?>"
+    _log(f"[POST-IMPORT]   {cname!r}: Unstitched dissolve skipped (cosmetic Fusion display)")
 
 
 def _get_current_board_size():
