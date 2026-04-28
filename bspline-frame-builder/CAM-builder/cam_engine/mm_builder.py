@@ -73,12 +73,34 @@ _DELETE_OCC_CLASSES = {
 
 
 def build_all_mms(cam, design, classifier, logger=None):
-    """Build the three MMs in one pass and return ``{rule: ManufacturingModel}``."""
+    """Build the three MMs in one pass and return ``{rule: ManufacturingModel}``.
+
+    User-parameter propagation (called from each ``build_mm``) activates
+    the MM to write into its scope. We capture the original active edit
+    target up front and restore it at the end so the user lands back in
+    their starting context regardless of how many MMs we built.
+    """
+    app = adsk.core.Application.get()
+    original_active = None
+    try:
+        des = adsk.fusion.Design.cast(app.activeProduct) if app else None
+        if des:
+            original_active = des.activeEditObject
+    except Exception:
+        original_active = None
+
     out = {}
     for rule in MM_RULES:
         mm = build_mm(cam, design, rule, classifier, logger)
         if mm:
             out[rule] = mm
+
+    if original_active is not None:
+        try:
+            original_active.activate()
+        except Exception as e:
+            _log(logger, f"MM BUILD: restore activeEditObject failed: {e}", "DEBUG")
+
     return out
 
 
@@ -131,8 +153,293 @@ def build_mm(cam, design, rule, classifier, logger=None):
         except Exception as e:
             _log(logger, f"MM BUILD ({rule}): bspline panel filter raised: {e}", "WARNING")
 
+    # Propagate the source design's user parameters into the MM's own
+    # parameter scope. Per the Autodesk docs, an MM is "a derive of the
+    # Design scene, which can be augmented without any effects of the
+    # original Design" -- meaning the MM has its own parameter namespace
+    # and the source's userParameters do not auto-inherit. Without this
+    # pass, sketches/operations authored inside the MM cannot reference
+    # source-design names like 'widthIn' or 'heightIn'.
+    try:
+        _propagate_user_parameters_to_mm(mm, design, logger)
+    except Exception as e:
+        _log(logger, f"MM BUILD ({rule}): user-parameter propagation raised: {e}", "WARNING")
+
+    # Stock-MM-only: populate with a parametric placeholder body so the
+    # downstream Setup has something to bind. The stock filter has just
+    # nuked every body in this MM (by design -- stock should be a raw
+    # blank, not a copy of the source geometry); that leaves the Setup
+    # with no model unless we put one back.
+    if rule == 'stock':
+        try:
+            _populate_stock_placeholder(mm, design, logger)
+        except Exception as e:
+            _log(logger, f"MM BUILD ({rule}): stock placeholder build raised: {e}", "WARNING")
+
     # PASS 3 hook -- frame reorient + stock extrude go here.
     return mm
+
+
+def _propagate_user_parameters_to_mm(mm, source_design, logger):
+    """Copy every user parameter from ``source_design`` into ``mm``'s
+    own parameter scope.
+
+    Fusion API quirk: ``ManufacturingModel`` has no ``userParameters``
+    property of its own. The only documented path into MM-scope is to
+    activate the MM and then write through ``app.activeProduct``'s
+    Design (which, while the MM is active, points to the MM's own
+    derived design rather than the source).
+
+    Idempotent: any parameter that already exists in the MM scope (by
+    name) is left alone -- we never overwrite a user-edited expression.
+
+    Returns the count of parameters actually added.
+    """
+    app = adsk.core.Application.get()
+    if app is None:
+        _log(logger, f"PARAM PROP ({mm.name}): app is None; skipping", "WARNING")
+        return 0
+
+    # 1. Snapshot the source design's user params BEFORE switching contexts.
+    snapshot = []
+    try:
+        for p in source_design.userParameters:
+            try:
+                snapshot.append({
+                    'name':       p.name,
+                    'expression': p.expression,
+                    'unit':       p.unit,
+                    'comment':    p.comment or '',
+                })
+            except Exception as e:
+                _log(logger, f"PARAM PROP ({mm.name}): snapshot of one source param failed: {e}", "WARNING")
+    except Exception as e:
+        _log(logger, f"PARAM PROP ({mm.name}): source userParameters read failed: {e}", "WARNING")
+        return 0
+
+    if not snapshot:
+        _log(logger, f"PARAM PROP ({mm.name}): source design has no user parameters; nothing to propagate", "DEBUG")
+        return 0
+
+    # 2. Activate the MM to enter its parameter scope.
+    try:
+        mm.activate()
+    except Exception as e:
+        _log(logger, f"PARAM PROP ({mm.name}): activate failed: {e}", "WARNING")
+        return 0
+
+    # 3. After activation, app.activeProduct should be a Design pointing
+    #    to the MM's own scope. If it isn't, abort cleanly -- writing to
+    #    the wrong product would either no-op or pollute the source.
+    mm_design = adsk.fusion.Design.cast(app.activeProduct)
+    if mm_design is None:
+        _log(logger, f"PARAM PROP ({mm.name}): activeProduct after activate is not a Design; skipping", "WARNING")
+        return 0
+
+    try:
+        mm_user_params = mm_design.userParameters
+    except Exception as e:
+        _log(logger, f"PARAM PROP ({mm.name}): userParameters access failed: {e}", "WARNING")
+        return 0
+
+    # 4. Write each snapshot entry. Skip names that already exist (the
+    #    MM may already carry the param if this is a re-run, or if the
+    #    user has hand-authored one in MM scope).
+    copied = 0
+    skipped = 0
+    failed = 0
+    for entry in snapshot:
+        name = entry['name']
+        try:
+            existing = mm_user_params.itemByName(name)
+        except Exception:
+            existing = None
+        if existing:
+            skipped += 1
+            continue
+        try:
+            value = adsk.core.ValueInput.createByString(entry['expression'])
+            param = mm_user_params.add(name, value, entry['unit'], entry['comment'])
+            if param:
+                copied += 1
+                _log(logger,
+                     f"PARAM PROP ({mm.name}): added '{name}' = {entry['expression']!r} ({entry['unit']})",
+                     "DEBUG")
+            else:
+                failed += 1
+                _log(logger, f"PARAM PROP ({mm.name}): add returned None for '{name}'", "WARNING")
+        except Exception as e:
+            failed += 1
+            _log(logger, f"PARAM PROP ({mm.name}): add '{name}' raised: {e}", "WARNING")
+
+    _log(logger, f"PARAM PROP ({mm.name}): copied={copied} skipped={skipped} failed={failed} of {len(snapshot)} source params")
+    return copied
+
+
+def _populate_stock_placeholder(mm, source_design, logger):
+    """Create a parametric rectangular stock body inside MM-Stock.
+
+    Geometry: a centered rectangle on the XY plane, sized
+    ``(widthIn + 1in) x (heightIn + 1in)``, extruded ``2 in`` in +Z.
+    The two horizontal dimensions reference the source design's user
+    parameters (which ``_propagate_user_parameters_to_mm`` has already
+    mirrored into MM scope), so the stock auto-resizes if the panel
+    parameters change. Z is a literal -- 2in is a sensible default for
+    rough stock; bump it later if needed.
+
+    Idempotent: skips if the MM root component already has any body
+    (lets the user re-run CAM Builder without nuking edits, and avoids
+    duplicates if the function ever fires twice).
+
+    Why this exists: the 'stock' MM rule wipes every body via the
+    occurrence filter (so the MM is a clean blank). That leaves the
+    Stock Setup with no model to bind, hence the auto-bind via
+    ``setup_input.models`` no-ops and the user has to pick MM-Stock
+    manually in the dialog. Putting one body here closes the loop.
+    """
+    app = adsk.core.Application.get()
+    if app is None:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): app is None; skipping", "WARNING")
+        return False
+
+    try:
+        mm.activate()
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): activate failed: {e}", "WARNING")
+        return False
+
+    mm_design = adsk.fusion.Design.cast(app.activeProduct)
+    if mm_design is None:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): activeProduct after activate is not a Design; skipping", "WARNING")
+        return False
+
+    try:
+        root_comp = mm_design.rootComponent
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): rootComponent read failed: {e}", "WARNING")
+        return False
+
+    # Idempotent: if there's already a body in the root, leave it alone.
+    try:
+        existing = root_comp.bRepBodies.count
+    except Exception:
+        existing = 0
+    if existing > 0:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): root already has {existing} body/bodies; skipping", "DEBUG")
+        return False
+
+    # Verify the parametric expressions will resolve in this scope.
+    try:
+        mm_user_params = mm_design.userParameters
+        missing = [n for n in ('widthIn', 'heightIn') if mm_user_params.itemByName(n) is None]
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): userParameters read failed: {e}", "WARNING")
+        return False
+    if missing:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): required params {missing} missing in MM scope; skipping (run user-param propagation first)", "WARNING")
+        return False
+
+    # ---- Build the sketch ----
+    try:
+        sketch = root_comp.sketches.add(root_comp.xYConstructionPlane)
+        sketch.name = 'Stock Placeholder'
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): sketch.add failed: {e}", "WARNING")
+        return False
+
+    try:
+        sketch_lines = sketch.sketchCurves.sketchLines
+        # Initial corners are arbitrary in cm (Fusion internal units);
+        # the dimensions added below drive the actual size. 5 cm x 5 cm
+        # gives the constraint solver a sane non-degenerate seed.
+        center = adsk.core.Point3D.create(0, 0, 0)
+        corner = adsk.core.Point3D.create(5.0, 5.0, 0)
+        rect_lines = sketch_lines.addCenterPointRectangle(center, corner)
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): addCenterPointRectangle failed: {e}", "WARNING")
+        return False
+
+    # Find one horizontal line and one vertical line for dimensioning.
+    # addCenterPointRectangle adds implicit H/V constraints; we just
+    # walk the returned collection and classify by endpoint deltas.
+    horizontal_line = None
+    vertical_line = None
+    try:
+        for i in range(rect_lines.count):
+            ln = rect_lines.item(i)
+            sp = ln.startSketchPoint.geometry
+            ep = ln.endSketchPoint.geometry
+            dx = abs(sp.x - ep.x)
+            dy = abs(sp.y - ep.y)
+            if dy < 1e-6 and horizontal_line is None:
+                horizontal_line = ln
+            elif dx < 1e-6 and vertical_line is None:
+                vertical_line = ln
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): line classification failed: {e}", "WARNING")
+        return False
+
+    if horizontal_line is None or vertical_line is None:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): could not find both H and V lines in rectangle", "WARNING")
+        return False
+
+    # Add parametric dimensions. SketchDimensions.addDistanceDimension
+    # returns the new dimension; we then write the parametric
+    # expression onto its underlying parameter.
+    try:
+        sketch_dims = sketch.sketchDimensions
+        H_DIM_ORIENT = adsk.fusion.DimensionOrientations.HorizontalDimensionOrientation
+        V_DIM_ORIENT = adsk.fusion.DimensionOrientations.VerticalDimensionOrientation
+
+        width_dim = sketch_dims.addDistanceDimension(
+            horizontal_line.startSketchPoint, horizontal_line.endSketchPoint,
+            H_DIM_ORIENT,
+            adsk.core.Point3D.create(0, -7, 0),
+        )
+        width_dim.parameter.expression = 'widthIn + 1 in'
+
+        height_dim = sketch_dims.addDistanceDimension(
+            vertical_line.startSketchPoint, vertical_line.endSketchPoint,
+            V_DIM_ORIENT,
+            adsk.core.Point3D.create(-7, 0, 0),
+        )
+        height_dim.parameter.expression = 'heightIn + 1 in'
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): dimensioning failed: {e}", "WARNING")
+        return False
+
+    # ---- Extrude ----
+    try:
+        if sketch.profiles.count == 0:
+            _log(logger, f"STOCK PLACEHOLDER ({mm.name}): sketch has no profile after rectangle build", "WARNING")
+            return False
+        profile = sketch.profiles.item(0)
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): profile fetch failed: {e}", "WARNING")
+        return False
+
+    try:
+        extrudes = root_comp.features.extrudeFeatures
+        ext_input = extrudes.createInput(
+            profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
+        )
+        # Fixed 2in thickness as specified -- not parametric.
+        distance = adsk.core.ValueInput.createByString('2 in')
+        ext_input.setDistanceExtent(False, distance)
+        extrude = extrudes.add(ext_input)
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): extrude failed: {e}", "WARNING")
+        return False
+
+    # Name the body for clarity in the browser and in the Setup dialog.
+    try:
+        if extrude.bodies.count > 0:
+            extrude.bodies.item(0).name = 'Stock'
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): body rename failed: {e}", "DEBUG")
+
+    _log(logger, f"STOCK PLACEHOLDER ({mm.name}): created '(widthIn+1in) x (heightIn+1in) x 2in' body 'Stock'")
+    return True
 
 
 def _classify_occurrence(occ):
