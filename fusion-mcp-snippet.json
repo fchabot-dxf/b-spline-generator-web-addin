@@ -1,0 +1,10 @@
+﻿{
+    "mcpServers":  {
+                       "fusion360":  {
+                                         "args":  [
+                                                      "C:\\Users\\danse\\APPS\\fusion360-mcp-bridge\\mcp-server\\server.py"
+                                                  ],
+                                         "command":  "python"
+                                     }
+                   }
+}

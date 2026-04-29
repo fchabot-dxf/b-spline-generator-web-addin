@@ -1,0 +1,18 @@
+{
+  "dxt_version": "0.1",
+  "name": "fusion360-mcp-bridge",
+  "version": "0.1.0",
+  "description": "Bridge to Autodesk Fusion 360. Exposes fusion_execute (run any Python with full adsk.* API access) and fusion_screenshot (capture viewport PNG). Requires the FusionMCPBridge add-in running inside Fusion 360.",
+  "author": {
+    "name": "ndoo (packaged by Frederic for Cowork)"
+  },
+  "server": {
+    "type": "python",
+    "entry_point": "mcp-server/server.py",
+    "mcp_config": {
+      "command": "python",
+      "args": ["${__dirname}/mcp-server/server.py"],
+      "env": {}
+    }
+  }
+}
