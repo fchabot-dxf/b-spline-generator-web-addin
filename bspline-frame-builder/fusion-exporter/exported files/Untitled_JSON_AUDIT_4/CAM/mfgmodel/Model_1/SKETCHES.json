@@ -1,0 +1,361 @@
+{
+    "Sketches": [
+        {
+            "RefID": "Comp_2041de21-9f3d-4808-8812-abbb8c174ddc_Sketch_Stock Placeholder",
+            "Parent": "Comp_2041de21-9f3d-4808-8812-abbb8c174ddc",
+            "Name": "Stock Placeholder",
+            "Geom": [
+                {
+                    "GeomID": "G_00",
+                    "Type": "adsk::fusion::SketchLine",
+                    "Entity": {
+                        "Type": "adsk::fusion::SketchLine",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCqYAAA1wXtC5MAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "GeomID": "G_01",
+                    "Type": "adsk::fusion::SketchLine",
+                    "Entity": {
+                        "Type": "adsk::fusion::SketchLine",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCmYAAAjrurCZMAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "GeomID": "G_02",
+                    "Type": "adsk::fusion::SketchLine",
+                    "Entity": {
+                        "Type": "adsk::fusion::SketchLine",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCuYAAAudFpCJMAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "GeomID": "G_03",
+                    "Type": "adsk::fusion::SketchLine",
+                    "Entity": {
+                        "Type": "adsk::fusion::SketchLine",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaAB0DQCEljUDkwAAAA==",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "GeomID": "G_04",
+                    "Type": "adsk::fusion::SketchLine",
+                    "Entity": {
+                        "Type": "adsk::fusion::SketchLine",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCpYAAAs/z3ApMAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": true,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "GeomID": "G_05",
+                    "Type": "adsk::fusion::SketchLine",
+                    "Entity": {
+                        "Type": "adsk::fusion::SketchLine",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaAhkAgBZoJq1kwAAAA==",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": true,
+                        "Attributes": []
+                    }
+                }
+            ],
+            "Relations": [
+                {
+                    "Type": "HorizontalConstraint",
+                    "Targets": [
+                        "G_00"
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::HorizontalConstraint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DqQ9UbGFqYA3ue/+IkAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "Type": "HorizontalConstraint",
+                    "Targets": [
+                        "G_02"
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::HorizontalConstraint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DqQ9UbGFmYAZLa2YYkAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "Type": "VerticalConstraint",
+                    "Targets": [
+                        "G_01"
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::VerticalConstraint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DqQ9UbGFuYA8oaxFokAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                },
+                {
+                    "Type": "VerticalConstraint",
+                    "Targets": [
+                        "G_03"
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::VerticalConstraint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DqQ9UbGFhYAY5sOhokAAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    }
+                }
+            ],
+            "Dimensions": [
+                {
+                    "Name": "d12",
+                    "Value": 20.32
+                },
+                {
+                    "Name": "d13",
+                    "Value": 25.4
+                }
+            ],
+            "RefPoints": [
+                {
+                    "PointID": "P_000",
+                    "Coords": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::SketchPoint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DojUzMQaWxiqmBoYAAA1QJggI8AAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    },
+                    "MappedAs": null,
+                    "Connected": []
+                },
+                {
+                    "PointID": "P_001",
+                    "Coords": [
+                        10.160000000000002,
+                        12.7,
+                        0.0
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::SketchPoint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DojUzMQaWxiqmBoYAgAQzJn948AAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    },
+                    "MappedAs": null,
+                    "Connected": [
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCqYAAA1wXtC5MAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaAB0DQCEljUDkwAAAA==",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCpYAAAs/z3ApMAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": true,
+                            "Attributes": []
+                        }
+                    ]
+                },
+                {
+                    "PointID": "P_002",
+                    "Coords": [
+                        -10.16,
+                        12.7,
+                        0.0
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::SketchPoint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DojUzMQaWxiqmBoYAQA+WNubo8AAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    },
+                    "MappedAs": null,
+                    "Connected": [
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCqYAAA1wXtC5MAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCmYAAAjrurCZMAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaAhkAgBZoJq1kwAAAA==",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": true,
+                            "Attributes": []
+                        }
+                    ]
+                },
+                {
+                    "PointID": "P_003",
+                    "Coords": [
+                        -10.159999999999998,
+                        -12.7,
+                        0.0
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::SketchPoint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DojUzMQaWxiqmBoYAwAb1NpGY8AAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    },
+                    "MappedAs": null,
+                    "Connected": [
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCmYAAAjrurCZMAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCuYAAAudFpCJMAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCpYAAAs/z3ApMAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": true,
+                            "Attributes": []
+                        }
+                    ]
+                },
+                {
+                    "PointID": "P_004",
+                    "Coords": [
+                        10.160000000000002,
+                        -12.7,
+                        0.0
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::SketchPoint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DojUzMQaWxiqmBoYAIAzMYNh48AAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    },
+                    "MappedAs": null,
+                    "Connected": [
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaGCuYAAAudFpCJMAAAA=",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaAB0DQCEljUDkwAAAA==",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": false,
+                            "Attributes": []
+                        },
+                        {
+                            "Type": "adsk::fusion::SketchLine",
+                            "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DpTQyMwbWRsYqpgaAhkAgBZoJq1kwAAAA==",
+                            "Name": null,
+                            "IsReference": false,
+                            "IsConstruction": true,
+                            "Attributes": []
+                        }
+                    ]
+                },
+                {
+                    "PointID": "P_005",
+                    "Coords": [
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "Meta": {
+                        "Type": "adsk::fusion::SketchPoint",
+                        "Token": "/v4BAAAARlJLZXkAH4sIAAAAAAAA/zNQsFAwAEJDBSMgBrOMLIAsQwUTkIiZwiK53423Jvjf26ptsHZa5a4eoAojBWMzBSMDE8OUVCNDXcs04xRdEwsDC10LC0Mj3cSkpCSLZENzk5SUZLBaoBkMaABsn4EC2DojUzMQaWxiqmBoaAgAAgN87o8AAAA=",
+                        "Name": null,
+                        "IsReference": false,
+                        "IsConstruction": false,
+                        "Attributes": []
+                    },
+                    "MappedAs": null,
+                    "Connected": []
+                }
+            ]
+        }
+    ]
+}

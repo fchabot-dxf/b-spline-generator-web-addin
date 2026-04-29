@@ -1,0 +1,70 @@
+{
+    "User": [],
+    "Model": [],
+    "Features": [
+        {
+            "Feat": "WorkingModel1",
+            "Parent": "Comp_6d537ad7-f06d-4c00-b8c3-f355b3062530",
+            "Type": "adsk::fusion::Feature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Base Feature1",
+            "Parent": "Comp_6d537ad7-f06d-4c00-b8c3-f355b3062530",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_fbcaad3e-9b57-4246-8877-4e3b3b25b194",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "RemoveInstance-B-Spline Set:1",
+            "Parent": "Comp_fbcaad3e-9b57-4246-8877-4e3b3b25b194",
+            "Type": "adsk::fusion::RemoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Derived Base Feature1",
+            "Parent": "Comp_fb7b7e56-de8f-4f83-bbbc-376f3840d32b",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Move1",
+            "Parent": "Comp_fb7b7e56-de8f-4f83-bbbc-376f3840d32b",
+            "Type": "adsk::fusion::MoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Move2",
+            "Parent": "Comp_fb7b7e56-de8f-4f83-bbbc-376f3840d32b",
+            "Type": "adsk::fusion::MoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Move3",
+            "Parent": "Comp_fb7b7e56-de8f-4f83-bbbc-376f3840d32b",
+            "Type": "adsk::fusion::MoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        }
+    ]
+}

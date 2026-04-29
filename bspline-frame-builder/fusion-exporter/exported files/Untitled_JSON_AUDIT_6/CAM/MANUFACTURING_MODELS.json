@@ -1,0 +1,14 @@
+[
+    {
+        "Name": "MM - Stock (raw blank)",
+        "OccurrenceFullPath": "Manufacturing Models:1+MM - Stock (raw blank):2"
+    },
+    {
+        "Name": "MM - B-spline set",
+        "OccurrenceFullPath": "Manufacturing Models:1+MM - B-spline set:3"
+    },
+    {
+        "Name": "MM - Frame (lay-flat)",
+        "OccurrenceFullPath": "Manufacturing Models:1+MM - Frame (lay-flat):4"
+    }
+]

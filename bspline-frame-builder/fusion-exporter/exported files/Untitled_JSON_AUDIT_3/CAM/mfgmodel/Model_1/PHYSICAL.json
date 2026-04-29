@@ -1,0 +1,18 @@
+{
+    "Bodies": [
+        {
+            "RefID": "Comp_30fc9b58-0030-4e71-93eb-5108a4ca8ad1_Body_Stock",
+            "Parent": "Comp_30fc9b58-0030-4e71-93eb-5108a4ca8ad1",
+            "Name": "Stock",
+            "Phys": {
+                "Mass": 1.4951748143535517,
+                "Vol": 2621.9302399999997,
+                "COM": [
+                    0.0,
+                    0.0,
+                    2.54
+                ]
+            }
+        }
+    ]
+}

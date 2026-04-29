@@ -1,0 +1,83 @@
+{
+    "Metadata": {
+        "MfgModel": "Model_2",
+        "SourceType": "WorkingModelProductType"
+    },
+    "DesignTree": {
+        "InstName": "MM - B-spline set",
+        "RefID": "Comp_ce095bbc-e566-4fb1-88c9-c1d112f744b2",
+        "Children": [
+            {
+                "InstName": "(Unsaved):1",
+                "RefID": "Comp_92adb61b-2178-461c-b0b3-6f92acd28bf5",
+                "Children": [
+                    {
+                        "InstName": "B-Spline Set:1",
+                        "RefID": "Comp_a2c8ae20-4860-4c40-933b-452fd0e1abb9",
+                        "Children": [
+                            {
+                                "InstName": "Clean:1",
+                                "RefID": "Comp_8d883165-6956-4135-aebc-6a147e2c38fd",
+                                "Children": [],
+                                "Trans": [
+                                    1.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    1.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    1.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    0.0,
+                                    1.0
+                                ]
+                            }
+                        ],
+                        "Trans": [
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0
+                        ]
+                    }
+                ],
+                "Trans": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            }
+        ]
+    }
+}

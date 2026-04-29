@@ -1,0 +1,318 @@
+{
+    "User": [
+        {
+            "Name": "widthIn",
+            "Expr": "7 \"",
+            "Val": 17.78,
+            "Unit": "in"
+        },
+        {
+            "Name": "heightIn",
+            "Expr": "9 \"",
+            "Val": 22.86,
+            "Unit": "in"
+        },
+        {
+            "Name": "frame_thickness",
+            "Expr": "0.75 \"",
+            "Val": 1.905,
+            "Unit": "in"
+        },
+        {
+            "Name": "frame_depth",
+            "Expr": "3/4\"",
+            "Val": 1.905,
+            "Unit": "in"
+        },
+        {
+            "Name": "Skel_Slot_Tolerance",
+            "Expr": "1/4\"",
+            "Val": 0.635,
+            "Unit": "in"
+        },
+        {
+            "Name": "boundingboxoffset",
+            "Expr": "0.25 \"",
+            "Val": 0.635,
+            "Unit": "in"
+        },
+        {
+            "Name": "Skel_Frame_Taper",
+            "Expr": "0.0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        },
+        {
+            "Name": "ck_arc_shoulder_weld",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "ck_arc_hip_weld",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "ck_skel_shoulder_equal",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "ck_skel_waist_equal",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "lay_flat_clearance",
+            "Expr": "0.55 \"",
+            "Val": 1.3970000000000002,
+            "Unit": "in"
+        }
+    ],
+    "Model": [
+        {
+            "Name": "widthIn",
+            "Expr": "7 \"",
+            "Val": 17.78,
+            "Unit": "in"
+        },
+        {
+            "Name": "heightIn",
+            "Expr": "9 \"",
+            "Val": 22.86,
+            "Unit": "in"
+        },
+        {
+            "Name": "frame_thickness",
+            "Expr": "0.75 \"",
+            "Val": 1.905,
+            "Unit": "in"
+        },
+        {
+            "Name": "frame_depth",
+            "Expr": "3/4\"",
+            "Val": 1.905,
+            "Unit": "in"
+        },
+        {
+            "Name": "Skel_Slot_Tolerance",
+            "Expr": "1/4\"",
+            "Val": 0.635,
+            "Unit": "in"
+        },
+        {
+            "Name": "boundingboxoffset",
+            "Expr": "0.25 \"",
+            "Val": 0.635,
+            "Unit": "in"
+        },
+        {
+            "Name": "Skel_Frame_Taper",
+            "Expr": "0.0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        },
+        {
+            "Name": "ck_arc_shoulder_weld",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "ck_arc_hip_weld",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "ck_skel_shoulder_equal",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "ck_skel_waist_equal",
+            "Expr": "1",
+            "Val": 1.0,
+            "Unit": ""
+        },
+        {
+            "Name": "lay_flat_clearance",
+            "Expr": "0.55 \"",
+            "Val": 1.3970000000000002,
+            "Unit": "in"
+        },
+        {
+            "Name": "d34",
+            "Expr": "-1\"",
+            "Val": -2.54,
+            "Unit": "in"
+        },
+        {
+            "Name": "d35",
+            "Expr": "0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        },
+        {
+            "Name": "dim_width",
+            "Expr": "widthIn",
+            "Val": 17.78,
+            "Unit": "in"
+        },
+        {
+            "Name": "dim_height",
+            "Expr": "heightIn",
+            "Val": 22.86,
+            "Unit": "in"
+        },
+        {
+            "Name": "d14",
+            "Expr": "boundingboxoffset",
+            "Val": 0.635,
+            "Unit": "in"
+        },
+        {
+            "Name": "d21",
+            "Expr": "frame_thickness",
+            "Val": 1.905,
+            "Unit": "in"
+        },
+        {
+            "Name": "d22",
+            "Expr": "-1\"",
+            "Val": -2.54,
+            "Unit": "in"
+        },
+        {
+            "Name": "d23",
+            "Expr": "0\"",
+            "Val": 0.0,
+            "Unit": "in"
+        },
+        {
+            "Name": "d24",
+            "Expr": "0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        },
+        {
+            "Name": "d25",
+            "Expr": "-1\"",
+            "Val": -2.54,
+            "Unit": "in"
+        },
+        {
+            "Name": "d26",
+            "Expr": "0\"",
+            "Val": 0.0,
+            "Unit": "in"
+        },
+        {
+            "Name": "d27",
+            "Expr": "0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        },
+        {
+            "Name": "d28",
+            "Expr": "-1\"",
+            "Val": -2.54,
+            "Unit": "in"
+        },
+        {
+            "Name": "d29",
+            "Expr": "0\"",
+            "Val": 0.0,
+            "Unit": "in"
+        },
+        {
+            "Name": "d30",
+            "Expr": "0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        },
+        {
+            "Name": "d31",
+            "Expr": "-1\"",
+            "Val": -2.54,
+            "Unit": "in"
+        },
+        {
+            "Name": "d32",
+            "Expr": "0\"",
+            "Val": 0.0,
+            "Unit": "in"
+        },
+        {
+            "Name": "d33",
+            "Expr": "0 \u00b0",
+            "Val": 0.0,
+            "Unit": "deg"
+        }
+    ],
+    "Features": [
+        {
+            "Feat": "Base Feature1",
+            "Parent": "Comp_688f9277-b5fd-47a7-9d08-0a3cfcfc9344",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "t1_TRIM_CUT",
+            "Parent": "Comp_688f9277-b5fd-47a7-9d08-0a3cfcfc9344",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {
+                "Op": "Cut"
+            }
+        },
+        {
+            "Feat": "t1_frame_bottom_Extrude",
+            "Parent": "Comp_55f56465-4b70-4019-b060-76a513e3257d",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {
+                "Op": "NewBody"
+            }
+        },
+        {
+            "Feat": "t1_frame_right_Extrude",
+            "Parent": "Comp_55f56465-4b70-4019-b060-76a513e3257d",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {
+                "Op": "NewBody"
+            }
+        },
+        {
+            "Feat": "t1_frame_left_Extrude",
+            "Parent": "Comp_55f56465-4b70-4019-b060-76a513e3257d",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {
+                "Op": "NewBody"
+            }
+        },
+        {
+            "Feat": "t1_frame_top_Extrude",
+            "Parent": "Comp_55f56465-4b70-4019-b060-76a513e3257d",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {
+                "Op": "NewBody"
+            }
+        }
+    ]
+}

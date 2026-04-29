@@ -1,0 +1,59 @@
+{
+    "Metadata": {
+        "MfgModel": "Model_3",
+        "SourceType": "WorkingModelProductType"
+    },
+    "DesignTree": {
+        "InstName": "MM - Frame (lay-flat)",
+        "RefID": "Comp_8dbf2496-4249-4697-b3da-5aabdbb5a7e7",
+        "Children": [
+            {
+                "InstName": "(Unsaved):1",
+                "RefID": "Comp_390db5e4-42ef-48ef-a4d4-a89cb9590d25",
+                "Children": [
+                    {
+                        "InstName": "Frame_1:1",
+                        "RefID": "Comp_6d5e77e6-6e24-4774-9046-a65c47561ab8",
+                        "Children": [],
+                        "Trans": [
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            1.0
+                        ]
+                    }
+                ],
+                "Trans": [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            }
+        ]
+    }
+}

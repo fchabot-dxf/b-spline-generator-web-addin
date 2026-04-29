@@ -1,0 +1,1168 @@
+{
+    "Name": "B-spline Top",
+    "Stock": 0,
+    "SetupParams": {
+        "advancedMode": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Advanced Mode"
+        },
+        "betaMode": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Beta Mode"
+        },
+        "alphaMode": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Alpha Mode"
+        },
+        "isXpress": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Inventor CAM Express"
+        },
+        "licenseMultiaxis": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Multi-axis licensed"
+        },
+        "license3D": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "3D licensed"
+        },
+        "metric": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Metric"
+        },
+        "isAssemblyDocument": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "IsAssemblyDocument"
+        },
+        "strategy": {
+            "Expression": "'setup'",
+            "Value": "setup",
+            "Title": "Strategy"
+        },
+        "operation_description": {
+            "Expression": "''",
+            "Value": "",
+            "Title": "Operation description"
+        },
+        "isOperationTemplate": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Is Operation Template"
+        },
+        "surfaceZHigh": {
+            "Expression": "-1.75560723008631",
+            "Value": "-0.17556072300863101",
+            "Title": ""
+        },
+        "surfaceZLow": {
+            "Expression": "-28.24439276991369",
+            "Value": "-2.824439276991369",
+            "Title": ""
+        },
+        "surfaceXLow": {
+            "Expression": "2.05",
+            "Value": "0.205",
+            "Title": "Surface X Low"
+        },
+        "surfaceXHigh": {
+            "Expression": "217.94999999999999",
+            "Value": "21.795",
+            "Title": "Surface X High"
+        },
+        "surfaceYLow": {
+            "Expression": "2.44999999999999",
+            "Value": "0.244999999999999",
+            "Title": "Surface Y Low"
+        },
+        "surfaceYHigh": {
+            "Expression": "167.55000000000001",
+            "Value": "16.755000000000003",
+            "Title": "Surface Y High"
+        },
+        "stockZHigh": {
+            "Expression": "0.0",
+            "Value": "0.0",
+            "Title": ""
+        },
+        "stockZLow": {
+            "Expression": "-30.",
+            "Value": "-3.0",
+            "Title": ""
+        },
+        "stockXLow": {
+            "Expression": "0.0",
+            "Value": "0.0",
+            "Title": "Stock X Low"
+        },
+        "stockXHigh": {
+            "Expression": "220.",
+            "Value": "22.0",
+            "Title": "Stock X High"
+        },
+        "stockYLow": {
+            "Expression": "0.0",
+            "Value": "0.0",
+            "Title": "Stock Y Low"
+        },
+        "stockYHigh": {
+            "Expression": "170.",
+            "Value": "17.0",
+            "Title": "Stock Y High"
+        },
+        "modelDiameter": {
+            "Expression": "NaN",
+            "Value": "nan",
+            "Title": "Model Diameter"
+        },
+        "modelDiameterInner": {
+            "Expression": "NaN",
+            "Value": "nan",
+            "Title": "Model Diameter Inner"
+        },
+        "modelLength": {
+            "Expression": "26.48878553982739",
+            "Value": "2.648878553982738",
+            "Title": "Model Length"
+        },
+        "stockDiameter": {
+            "Expression": "NaN",
+            "Value": "nan",
+            "Title": "Stock Diameter"
+        },
+        "stockDiameterInner": {
+            "Expression": "NaN",
+            "Value": "nan",
+            "Title": "Stock Diameter Inner"
+        },
+        "stockLength": {
+            "Expression": "NaN",
+            "Value": "nan",
+            "Title": "Stock Length"
+        },
+        "arrange_checkbox": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": ""
+        },
+        "job_machine": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Machine"
+        },
+        "job_groupSetup": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Setup"
+        },
+        "job_type": {
+            "Expression": "'milling'",
+            "Value": "milling",
+            "Title": "Operation Type"
+        },
+        "job_enableWCSForAdditive": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Enable WCS for Additive"
+        },
+        "arrange_setup": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": ""
+        },
+        "job_boolArrange": {
+            "Expression": "arrange_setup ? false : true",
+            "Value": "True",
+            "Title": "Arrangement"
+        },
+        "job_spindle": {
+            "Expression": "'primary'",
+            "Value": "primary",
+            "Title": "Spindle"
+        },
+        "machineMaxTilt": {
+            "Expression": "90",
+            "Value": "90.0",
+            "Title": "Machine maximum tilt value"
+        },
+        "machineMaxTiltValidation": {
+            "Expression": "180",
+            "Value": "180.0",
+            "Title": "Machine maximum tilt validation value"
+        },
+        "machine_dimension_x": {
+            "Expression": "-1",
+            "Value": "-0.1",
+            "Title": ""
+        },
+        "machine_dimension_y": {
+            "Expression": "-1",
+            "Value": "-0.1",
+            "Title": ""
+        },
+        "machine_dimension_z": {
+            "Expression": "-1",
+            "Value": "-0.1",
+            "Title": ""
+        },
+        "job_groupWCS": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Work Coordinate System (WCS)"
+        },
+        "wcs_orientation_mode": {
+            "Expression": "'axesXY'",
+            "Value": "axesXY",
+            "Title": "Orientation"
+        },
+        "job_rotaryAxis": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4C1B0> >",
+            "Title": "Z Axis (Rotary Axis)"
+        },
+        "wcs_orientation_axisZ": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4D980> >",
+            "Title": "Z Axis"
+        },
+        "wcs_orientation_flipZ": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Flip Z Axis"
+        },
+        "wcs_orientation_axesZX_unselected_default": {
+            "Expression": "'model'",
+            "Value": "model",
+            "Title": "Unselected Axis Default"
+        },
+        "wcs_orientation_axesZY_unselected_default": {
+            "Expression": "'model'",
+            "Value": "model",
+            "Title": "Unselected Axis Default"
+        },
+        "wcs_orientation_axesXY_unselected_default": {
+            "Expression": "'model'",
+            "Value": "model",
+            "Title": "Unselected Axis Default"
+        },
+        "wcs_orientation_axesXZ_unselected_default": {
+            "Expression": "'model'",
+            "Value": "model",
+            "Title": "Unselected Axis Default"
+        },
+        "wcs_orientation_cSys": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4D230> >",
+            "Title": "Coordinate System"
+        },
+        "job_axisXPosition": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4D1A0> >",
+            "Title": "X Axis from Point"
+        },
+        "wcs_orientation_axisX": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4C6C0> >",
+            "Title": "X Axis"
+        },
+        "wcs_orientation_flipX": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Flip X Axis"
+        },
+        "wcs_orientation_axisY": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4C7E0> >",
+            "Title": "Y Axis"
+        },
+        "wcs_orientation_flipY": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Flip Y Axis"
+        },
+        "wcs_origin_turning": {
+            "Expression": "'stock front'",
+            "Value": "stock front",
+            "Title": "Origin"
+        },
+        "wcs_origin_mode": {
+            "Expression": "'stockPoint'",
+            "Value": "stockPoint",
+            "Title": "Origin"
+        },
+        "wcs_origin_point": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4F4B0> >",
+            "Title": "WCS Origin"
+        },
+        "wcs_model_point": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF4C4B0> >",
+            "Title": "Model Point"
+        },
+        "wcs_origin_boxPoint": {
+            "Expression": "'top 1'",
+            "Value": "top 1",
+            "Title": "Bounding Box Point"
+        },
+        "wcs_stock_point": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF530C0> >",
+            "Title": "Stock Point"
+        },
+        "job_homePosition": {
+            "Expression": "jobSafeZ_value",
+            "Value": "0.5",
+            "Title": "Home Position"
+        },
+        "job_safeZ_group": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Safe Planes"
+        },
+        "jobSafeZ_mode": {
+            "Expression": "'stock front'",
+            "Value": "stock front",
+            "Title": "Safe Z Reference"
+        },
+        "jobSafeZ_offset": {
+            "Expression": "stockZHigh + 5mm",
+            "Value": "0.5",
+            "Title": "Offset"
+        },
+        "jobSafeZ_value": {
+            "Expression": "5.",
+            "Value": "0.5",
+            "Title": "Safe Z"
+        },
+        "jobSafeZ_absolute": {
+            "Expression": "true",
+            "Value": "False",
+            "Title": ""
+        },
+        "chuckFront_mode": {
+            "Expression": "'model back'",
+            "Value": "model back",
+            "Title": "Chuck Reference"
+        },
+        "chuckFront_offset": {
+            "Expression": "-10mm",
+            "Value": "-1.016",
+            "Title": "Offset"
+        },
+        "chuckFront_value": {
+            "Expression": "-38.40439276991369",
+            "Value": "-1.016",
+            "Title": "Chuck Front Position"
+        },
+        "chuckFront_absolute": {
+            "Expression": "true",
+            "Value": "False",
+            "Title": ""
+        },
+        "chuckFront_ref": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF50B10> >",
+            "Title": "Selection"
+        },
+        "job_groupMachine": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Machine"
+        },
+        "job_machine_manufacturer": {
+            "Expression": "'renishaw'",
+            "Value": "renishaw",
+            "Title": "Manufacturer"
+        },
+        "job_machine_type": {
+            "Expression": "'renishaw250'",
+            "Value": "renishaw250",
+            "Title": "Type"
+        },
+        "job_machine_configuration": {
+            "Expression": "'titanium1'",
+            "Value": "titanium1",
+            "Title": "Configuration"
+        },
+        "job_machine_configuration_id": {
+            "Expression": "''",
+            "Value": "",
+            "Title": "Configuration id"
+        },
+        "job_machine_build_strategy_id": {
+            "Expression": "''",
+            "Value": "",
+            "Title": "Build config id"
+        },
+        "job_groupWorkflow": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Workflow"
+        },
+        "job_slmOptimized": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Use optimized SLM workflow"
+        },
+        "job_useModel": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Model"
+        },
+        "job_workingModel": {
+            "Expression": "'MfgWorkingModel_2'",
+            "Value": "MfgWorkingModel_2",
+            "Title": "Manufacturing Model"
+        },
+        "job_model": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF523D0> >",
+            "Title": "Model"
+        },
+        "job_useSpunProfile": {
+            "Expression": "true",
+            "Value": "False",
+            "Title": "Spun Profile"
+        },
+        "job_spunProfileTolerance": {
+            "Expression": "0.01mm",
+            "Value": "0.0010160000000000002",
+            "Title": "Spun Profile Tolerance"
+        },
+        "job_spunProfileSmoothing": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Spun Profile Smoothing"
+        },
+        "job_spunProfileConvertToSketch": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Spun Profile Convert to Sketch"
+        },
+        "job_fixtureGroup": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Fixture"
+        },
+        "job_fixture": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF504B0> >",
+            "Title": "Fixture"
+        },
+        "radialFixtureClearanceSetup": {
+            "Expression": "5 mm",
+            "Value": "0.5",
+            "Title": "Radial Clearance"
+        },
+        "axialFixtureClearanceSetup": {
+            "Expression": "5 mm",
+            "Value": "0.5",
+            "Title": "Axial Clearance"
+        },
+        "job_fixtureAttachment": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF52EE0> >",
+            "Title": "Fixture Attachment"
+        },
+        "job_enableStockSimForAdditive": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Enable Stock Simulation for Additive"
+        },
+        "job_groupStock": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Stock"
+        },
+        "job_stockMode": {
+            "Expression": "'fixedbox'",
+            "Value": "fixedbox",
+            "Title": "Mode"
+        },
+        "job_groundStockModelOrigin": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Ground Stock at Model Origin"
+        },
+        "job_stockOffsetMode": {
+            "Expression": "'simple'",
+            "Value": "simple",
+            "Title": "Stock Offset Mode"
+        },
+        "job_isSameComponent": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Same Component"
+        },
+        "job_continueMachining": {
+            "Expression": "true",
+            "Value": "False",
+            "Title": "Continue Rest Machining"
+        },
+        "job_stockSolid": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF51FB0> >",
+            "Title": "Stock Solid"
+        },
+        "job_boundingSolid": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF51050> >",
+            "Title": "Bounding Solid"
+        },
+        "job_useBoundingSolidWCS": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Bounding Solid WCS"
+        },
+        "job_stockOffsetSides": {
+            "Expression": "1mm",
+            "Value": "0.10160000000000001",
+            "Title": "Stock Side Offset"
+        },
+        "job_stockOffsetTop": {
+            "Expression": "1mm",
+            "Value": "0.10160000000000001",
+            "Title": "Stock Top Offset"
+        },
+        "job_stockOffsetBottom": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock Bottom Offset"
+        },
+        "job_stockOffsetXBack": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock -X Offset"
+        },
+        "job_stockOffsetXFront": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock +X Offset"
+        },
+        "job_stockOffsetYBack": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock -Y Offset"
+        },
+        "job_stockOffsetYFront": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock +Y Offset"
+        },
+        "job_stockOffsetZBack": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock -Z Offset"
+        },
+        "job_stockOffsetZFront": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock +Z Offset"
+        },
+        "job_stockFixedX": {
+            "Expression": "Math.ceilto(surfaceXHigh - surfaceXLow; job_stockFixedRoundingValue)",
+            "Value": "22.0",
+            "Title": "Width (X)"
+        },
+        "job_stockFixedXMode": {
+            "Expression": "job_groundStockModelOrigin ? 'model' : 'center'",
+            "Value": "center",
+            "Title": "Model Position"
+        },
+        "job_stockFixedXOffset": {
+            "Expression": "(job_stockFixedX - (surfaceXHigh - surfaceXLow)) / 2",
+            "Value": "0.20500000000000115",
+            "Title": "Offset"
+        },
+        "job_stockFixedY": {
+            "Expression": "Math.ceilto(surfaceYHigh - surfaceYLow; job_stockFixedRoundingValue)",
+            "Value": "17.0",
+            "Title": "Depth (Y)"
+        },
+        "job_stockFixedYMode": {
+            "Expression": "job_groundStockModelOrigin ? 'model' : 'center'",
+            "Value": "center",
+            "Title": "Model Position"
+        },
+        "job_stockFixedYOffset": {
+            "Expression": "(job_stockFixedY - (surfaceYHigh - surfaceYLow)) / 2",
+            "Value": "0.24499999999999889",
+            "Title": "Offset"
+        },
+        "job_stockFixedZ": {
+            "Expression": "Math.ceilto(surfaceZHigh - surfaceZLow; job_stockFixedRoundingValue)",
+            "Value": "3.0",
+            "Title": "Height (Z)"
+        },
+        "job_stockFixedZMode": {
+            "Expression": "job_groundStockModelOrigin ? 'model' : 'center'",
+            "Value": "center",
+            "Title": "Model Position"
+        },
+        "job_stockFixedZOffset": {
+            "Expression": "(job_stockFixedZ - (surfaceZHigh - surfaceZLow)) / 2",
+            "Value": "0.17556072300863104",
+            "Title": "Offset"
+        },
+        "job_stockOffset": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Stock Offset"
+        },
+        "job_stockHeight": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Stock Height"
+        },
+        "job_stockAxisEnabled": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Select Axis"
+        },
+        "job_stockAxis": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DF52010> >",
+            "Title": "Axis"
+        },
+        "job_stockDiameter": {
+            "Expression": "Math.ceilto(modelDiameter; job_stockFixedRoundingValue)",
+            "Value": "nan",
+            "Title": "Stock Diameter"
+        },
+        "job_stockDiameterInner": {
+            "Expression": "Math.floorto(modelDiameterInner; job_stockFixedRoundingValue)",
+            "Value": "0.0",
+            "Title": "Stock Inner Diameter"
+        },
+        "job_stockLength": {
+            "Expression": "Math.ceilto(modelLength; job_stockFixedRoundingValue)",
+            "Value": "3.0",
+            "Title": "Length"
+        },
+        "job_stockLengthMode": {
+            "Expression": "'center'",
+            "Value": "center",
+            "Title": "Model Position"
+        },
+        "job_stockLengthOffset": {
+            "Expression": "0",
+            "Value": "0.0",
+            "Title": "Offset"
+        },
+        "job_stockRadialOffset": {
+            "Expression": "1mm",
+            "Value": "0.10160000000000001",
+            "Title": "Radial Stock Offset"
+        },
+        "job_stockOffsetFront": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Frontside Stock Offset"
+        },
+        "job_stockOffsetBack": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Backside Stock Offset"
+        },
+        "job_stockFixedRoundingValue": {
+            "Expression": "((job_stockMode == 'default') || (job_stockMode == 'relativecylinder') || (job_stockMode == 'relativetube')) ? 0.0mm : 10mm",
+            "Value": "1.0",
+            "Title": "Round Up to Nearest"
+        },
+        "job_groupCuttingForce": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Cutting Force Analysis"
+        },
+        "job_stockSpecificCuttingForce": {
+            "Expression": "1500.0",
+            "Value": "1500.0",
+            "Title": "Specific Cutting Force"
+        },
+        "job_stockSpecificCuttingForceUnit": {
+            "Expression": "'N/mm2'",
+            "Value": "N/mm2",
+            "Title": "Specific Cutting Force Unit"
+        },
+        "job_stockInitialToolWear": {
+            "Expression": "0.0",
+            "Value": "0.0",
+            "Title": "Initial Tool Wear"
+        },
+        "job_stockInitialToolWearUnit": {
+            "Expression": "'J'",
+            "Value": "J",
+            "Title": "Initial Tool Wear Unit"
+        },
+        "job_stockCuttingForceOutputFolder": {
+            "Expression": "''",
+            "Value": "",
+            "Title": "Output Folder"
+        },
+        "job_groupStockMaterial": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Stock Material"
+        },
+        "job_groupStockInfo": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Stock Dimensions"
+        },
+        "job_stockInfoDiameter": {
+            "Expression": "stockDiameter",
+            "Value": "nan",
+            "Title": "Stock Diameter"
+        },
+        "job_stockInfoLength": {
+            "Expression": "stockLength",
+            "Value": "nan",
+            "Title": "Stock Length"
+        },
+        "job_stockInfoDimensionX": {
+            "Expression": "stockXHigh - stockXLow",
+            "Value": "22.0",
+            "Title": "Stock Width (X)"
+        },
+        "job_stockInfoDimensionY": {
+            "Expression": "stockYHigh - stockYLow",
+            "Value": "17.0",
+            "Title": "Stock Depth (Y)"
+        },
+        "job_stockInfoDimensionZ": {
+            "Expression": "stockZHigh - stockZLow",
+            "Value": "3.0",
+            "Title": "Stock Height (Z)"
+        },
+        "job_groupModelInfo": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Model Dimensions"
+        },
+        "job_modelInfoDiameter": {
+            "Expression": "modelDiameter",
+            "Value": "nan",
+            "Title": "Model Diameter"
+        },
+        "job_modelInfoLength": {
+            "Expression": "modelLength",
+            "Value": "2.648878553982738",
+            "Title": "Model Length"
+        },
+        "job_modelInfoDimensionX": {
+            "Expression": "surfaceXHigh - surfaceXLow",
+            "Value": "21.59",
+            "Title": "Model Width (X)"
+        },
+        "job_modelInfoDimensionY": {
+            "Expression": "surfaceYHigh - surfaceYLow",
+            "Value": "16.51",
+            "Title": "Model Depth (Y)"
+        },
+        "job_modelInfoDimensionZ": {
+            "Expression": "surfaceZHigh - surfaceZLow",
+            "Value": "2.648878553982738",
+            "Title": "Model Height (Z)"
+        },
+        "job_position": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Part Position"
+        },
+        "job_positionReference_origin_mode": {
+            "Expression": "'fixturePoint'",
+            "Value": "fixturePoint",
+            "Title": "Part Attach Point"
+        },
+        "job_positionReference_origin_point": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA26D0> >",
+            "Title": "Selected Point"
+        },
+        "job_positionReference_model_point": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA0FC0> >",
+            "Title": "Model Point"
+        },
+        "job_positionReference_origin_boxPoint": {
+            "Expression": "'bottom center'",
+            "Value": "bottom center",
+            "Title": "Bounding Box Point"
+        },
+        "job_positionReference_fixture_point": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA2BE0> >",
+            "Title": "Fixture Point"
+        },
+        "job_positionReference_stock_point": {
+            "Expression": "true",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA0960> >",
+            "Title": "Stock Point"
+        },
+        "job_positionAttach": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA3960> >",
+            "Title": "Table Attach Point"
+        },
+        "job_positionXOffset": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "X Distance"
+        },
+        "job_positionYOffset": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Y Distance"
+        },
+        "job_positionZOffset": {
+            "Expression": "0mm",
+            "Value": "0.0",
+            "Title": "Z Distance"
+        },
+        "generate_connections": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Connections"
+        },
+        "connections_retraction_type": {
+            "Expression": "'full'",
+            "Value": "full",
+            "Title": "Retraction"
+        },
+        "connectionMoveClearanceAreaType": {
+            "Expression": "'plane'",
+            "Value": "plane",
+            "Title": "Type"
+        },
+        "connectionMoveClearanceArea_orientation_mode": {
+            "Expression": "'setupAxisZ'",
+            "Value": "setupAxisZ",
+            "Title": "Direction"
+        },
+        "connectionMoveClearanceArea_orientation_selAxis": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA0300> >",
+            "Title": "Axis"
+        },
+        "connectionMoveClearanceArea_origin_mode": {
+            "Expression": "(connectionMoveClearanceArea_orientation_mode == 'surfaceNormalX' || connectionMoveClearanceArea_orientation_mode == 'surfaceNormalY') ? 'surfacePointOrigin' : 'jobOrigin'",
+            "Value": "jobOrigin",
+            "Title": "Origin"
+        },
+        "connectionMoveClearanceArea_origin_point": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA3330> >",
+            "Title": "Selection"
+        },
+        "connectionMoveClearanceAreaHeight_mode": {
+            "Expression": "'from stock top'",
+            "Value": "from stock top",
+            "Title": "From"
+        },
+        "connectionMoveClearanceAreaHeight_ref": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA27F0> >",
+            "Title": "Selection"
+        },
+        "connectionMoveClearanceAreaHeight_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset"
+        },
+        "connectionMoveClearanceAreaHeight_value": {
+            "Expression": "10.16",
+            "Value": "0.0",
+            "Title": "Height"
+        },
+        "connectionMoveClearanceAreaHeight_absolute": {
+            "Expression": "true",
+            "Value": "False",
+            "Title": ""
+        },
+        "connectionMoveClearanceAreaCylinderRadius_mode": {
+            "Expression": "'from stock od'",
+            "Value": "from stock od",
+            "Title": "From"
+        },
+        "connectionMoveClearanceAreaCylinderRadius_ref": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA3A80> >",
+            "Title": "Selection"
+        },
+        "connectionMoveClearanceAreaCylinderRadiusFromOutermost_checkStock": {
+            "Expression": "'outer diameter'",
+            "Value": "outer diameter",
+            "Title": "Stock "
+        },
+        "connectionMoveClearanceAreaCylinderRadiusFromOutermost_checkModel": {
+            "Expression": "'outer diameter'",
+            "Value": "outer diameter",
+            "Title": "Model"
+        },
+        "connectionMoveClearanceAreaCylinderRadiusFromOutermost_checkFixture": {
+            "Expression": "'outer diameter'",
+            "Value": "outer diameter",
+            "Title": "Fixture"
+        },
+        "connectionMoveClearanceAreaCylinderRadius_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset"
+        },
+        "connectionMoveClearanceAreaCylinderRadius_direct": {
+            "Expression": "connectionMoveClearanceAreaCylinderRadius_mode == 'radius' ? connectionMoveClearanceAreaCylinderRadius_value : connectionMoveClearanceAreaCylinderRadius_value * 2",
+            "Value": "0.20320000000000002",
+            "Title": "Value"
+        },
+        "connectionMoveClearanceAreaCylinderRadius_value": {
+            "Expression": "10.16",
+            "Value": "0.10160000000000001",
+            "Title": "Radius"
+        },
+        "connectionMoveClearanceAreaCylinderRadius_absolute": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": ""
+        },
+        "connectionMoveClearanceAreaSphereRadius_mode": {
+            "Expression": "'from stock od'",
+            "Value": "from stock od",
+            "Title": "From"
+        },
+        "connectionMoveClearanceAreaSphereRadius_ref": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA25B0> >",
+            "Title": "Selection"
+        },
+        "connectionMoveClearanceAreaSphereRadiusFromOutermost_checkStock": {
+            "Expression": "'outer diameter'",
+            "Value": "outer diameter",
+            "Title": "Stock "
+        },
+        "connectionMoveClearanceAreaSphereRadiusFromOutermost_checkModel": {
+            "Expression": "'outer diameter'",
+            "Value": "outer diameter",
+            "Title": "Model"
+        },
+        "connectionMoveClearanceAreaSphereRadiusFromOutermost_checkFixture": {
+            "Expression": "'outer diameter'",
+            "Value": "outer diameter",
+            "Title": "Fixture"
+        },
+        "connectionMoveClearanceAreaSphereRadius_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset"
+        },
+        "connectionMoveClearanceAreaSphereRadius_direct": {
+            "Expression": "connectionMoveClearanceAreaSphereRadius_mode == 'radius' ? connectionMoveClearanceAreaSphereRadius_value : connectionMoveClearanceAreaSphereRadius_value * 2",
+            "Value": "0.20320000000000002",
+            "Title": "Value"
+        },
+        "connectionMoveClearanceAreaSphereRadius_value": {
+            "Expression": "10.16",
+            "Value": "0.10160000000000001",
+            "Title": "Radius"
+        },
+        "connectionMoveClearanceAreaSphereRadius_absolute": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": ""
+        },
+        "connectionMoveClearanceAreaCuboid_mode": {
+            "Expression": "'from stock box'",
+            "Value": "from stock box",
+            "Title": "Mode"
+        },
+        "connectionMoveClearanceAreaCuboid_symmetricalOffsets": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Symmetry"
+        },
+        "connectionMoveClearanceAreaCuboidPosX_value": {
+            "Expression": "230.16",
+            "Value": "0.0",
+            "Title": "Value +X (INTERNAL ONLY)"
+        },
+        "connectionMoveClearanceAreaCuboidPosX_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset +X"
+        },
+        "connectionMoveClearanceAreaCuboidNegX_value": {
+            "Expression": "10.16",
+            "Value": "0.0",
+            "Title": "Value -X (INTERNAL ONLY)"
+        },
+        "connectionMoveClearanceAreaCuboidNegX_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset -X"
+        },
+        "connectionMoveClearanceAreaCuboidPosY_value": {
+            "Expression": "180.16",
+            "Value": "0.0",
+            "Title": "Value +Y (INTERNAL ONLY)"
+        },
+        "connectionMoveClearanceAreaCuboidPosY_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset +Y"
+        },
+        "connectionMoveClearanceAreaCuboidNegY_value": {
+            "Expression": "10.16",
+            "Value": "0.0",
+            "Title": "Value -Y (INTERNAL ONLY)"
+        },
+        "connectionMoveClearanceAreaCuboidNegY_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset -Y"
+        },
+        "connectionMoveClearanceAreaCuboidPosZ_value": {
+            "Expression": "10.16",
+            "Value": "0.0",
+            "Title": "Value +Z (INTERNAL ONLY)"
+        },
+        "connectionMoveClearanceAreaCuboidPosZ_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset +Z"
+        },
+        "connectionMoveClearanceAreaCuboidNegZ_value": {
+            "Expression": "40.16",
+            "Value": "0.0",
+            "Title": "Value -Z (INTERNAL ONLY)"
+        },
+        "connectionMoveClearanceAreaCuboidNegZ_offset": {
+            "Expression": "10mm",
+            "Value": "1.016",
+            "Title": "Offset -Z"
+        },
+        "job_groupPostVars": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Program"
+        },
+        "job_programName": {
+            "Expression": "'1001'",
+            "Value": "1001",
+            "Title": "Program Name/Number"
+        },
+        "job_programComment": {
+            "Expression": "''",
+            "Value": "",
+            "Title": "Program Comment"
+        },
+        "job_groupMachineWCS": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Machine WCS"
+        },
+        "job_workOffset": {
+            "Expression": "1",
+            "Value": "1",
+            "Title": "WCS Offset"
+        },
+        "job_probeWorkOffset": {
+            "Expression": "job_workOffset",
+            "Value": "1",
+            "Title": "Probe WCS override"
+        },
+        "job_multipleWorkOffsets": {
+            "Expression": "false",
+            "Value": "False",
+            "Title": "Multiple WCS Offsets"
+        },
+        "job_numberOfWorkDuplicates": {
+            "Expression": "1",
+            "Value": "1",
+            "Title": "Number of Instances"
+        },
+        "job_workOffsetIncrement": {
+            "Expression": "1",
+            "Value": "1",
+            "Title": "WCS Offset Increment"
+        },
+        "job_workOrder": {
+            "Expression": "'default'",
+            "Value": "default",
+            "Title": "Operation Order"
+        },
+        "platformVisibilityState": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "Platform Visibility"
+        },
+        "noBuildZoneVisibilityState": {
+            "Expression": "true",
+            "Value": "True",
+            "Title": "No Build Zone Visibility"
+        },
+        "outOfBoundsModels": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA3690> >",
+            "Title": "Out of Bounds Models"
+        },
+        "lastKnownCollisions": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA32A0> >",
+            "Title": "Last Known Collision Models"
+        },
+        "additiveMachineTechnology": {
+            "Expression": "'UNKNOWN'",
+            "Value": "UNKNOWN",
+            "Title": "Which Additive Technology is the machine of"
+        },
+        "associatedView": {
+            "Expression": "false",
+            "Value": "<adsk.core.BaseVector; proxy of <Swig Object of type 'std::vector< adsk::core::Ptr< adsk::core::Base > > *' at 0x000001D14DEA2370> >",
+            "Title": "Associated View"
+        }
+    },
+    "TypedProps": {
+        "stockMode": "0",
+        "operationType": "0",
+        "isActive": "False",
+        "name": "B-spline Top",
+        "objectType": "adsk::cam::Setup"
+    },
+    "WorkCoordinateSystem": {
+        "Origin_cm": [
+            85.0,
+            -110.0,
+            30.004405
+        ],
+        "XAxis": [
+            0.0,
+            1.0,
+            0.0
+        ],
+        "YAxis": [
+            -1.0,
+            0.0,
+            0.0
+        ],
+        "ZAxis": [
+            0.0,
+            -0.0,
+            1.0
+        ],
+        "_note": "Origin in cm (Fusion internal units). Axes are unit vectors. Compare against SetupParams['wcs_origin_boxPoint'] etc to spot silent re-resolution."
+    },
+    "ModelBodies": [
+        {
+            "Type": "BRepBody",
+            "Name": "panel"
+        }
+    ],
+    "Ops": []
+}

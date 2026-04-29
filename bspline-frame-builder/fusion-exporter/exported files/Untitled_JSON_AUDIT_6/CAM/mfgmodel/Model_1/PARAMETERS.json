@@ -1,0 +1,40 @@
+{
+    "User": [],
+    "Model": [],
+    "Features": [
+        {
+            "Feat": "WorkingModel1",
+            "Parent": "Comp_20e3f2ed-f12a-4dd8-b107-3fbfe41d1dbe",
+            "Type": "adsk::fusion::Feature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Base Feature1",
+            "Parent": "Comp_20e3f2ed-f12a-4dd8-b107-3fbfe41d1dbe",
+            "Type": "adsk::fusion::BaseFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "RemoveInstance-(Unsaved):1",
+            "Parent": "Comp_20e3f2ed-f12a-4dd8-b107-3fbfe41d1dbe",
+            "Type": "adsk::fusion::RemoveFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {}
+        },
+        {
+            "Feat": "Extrude1",
+            "Parent": "Comp_20e3f2ed-f12a-4dd8-b107-3fbfe41d1dbe",
+            "Type": "adsk::fusion::ExtrudeFeature",
+            "Suppressed": false,
+            "Params": [],
+            "Settings": {
+                "Op": "NewBody"
+            }
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+{
+    "Metadata": {
+        "MfgModel": "Model_1",
+        "SourceType": "WorkingModelProductType"
+    },
+    "DesignTree": {
+        "InstName": "MM - Stock (raw blank)",
+        "RefID": "Comp_2041de21-9f3d-4808-8812-abbb8c174ddc",
+        "Children": []
+    }
+}

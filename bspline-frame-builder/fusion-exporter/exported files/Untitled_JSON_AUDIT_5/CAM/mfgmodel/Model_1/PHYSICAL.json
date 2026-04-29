@@ -1,0 +1,60 @@
+{
+    "Bodies": [
+        {
+            "RefID": "Comp_4a991cde-7faa-4a0d-810b-3cb3af61b881_Body_Stock",
+            "Parent": "Comp_4a991cde-7faa-4a0d-810b-3cb3af61b881",
+            "Name": "Stock",
+            "Phys": {
+                "Mass": 1.4951748143535517,
+                "Vol": 2621.9302399999997,
+                "COM": [
+                    0.0,
+                    0.0,
+                    2.54
+                ]
+            },
+            "BBox": {
+                "Min": [
+                    -10.16,
+                    -12.7,
+                    0.0
+                ],
+                "Max": [
+                    10.16,
+                    12.7,
+                    5.08
+                ],
+                "Size": [
+                    20.32,
+                    25.4,
+                    5.08
+                ]
+            },
+            "OBB": {
+                "Center": [
+                    0.0,
+                    0.0,
+                    2.54
+                ],
+                "LengthDirection": [
+                    1.0,
+                    0.0,
+                    0.0
+                ],
+                "WidthDirection": [
+                    0.0,
+                    1.0,
+                    0.0
+                ],
+                "HeightDirection": [
+                    0.0,
+                    0.0,
+                    1.0
+                ],
+                "Length": 20.32,
+                "Width": 25.4,
+                "Height": 5.08
+            }
+        }
+    ]
+}
