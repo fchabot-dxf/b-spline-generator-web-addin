@@ -25,7 +25,7 @@ import adsk.cam
 import adsk.fusion
 
 from . import parameter_introspect as pi
-from ..cam_utils import get_design
+from cam_utils import get_design
 
 
 # ---------------------------------------------------------------------------
@@ -38,15 +38,33 @@ SETUP_SPECS = [
         'name':         'Stock',
         'mm_rule':      'stock',
         'stock_intent': 'auto_bbox',
-        'wcs_origin':   'model_origin',
-        'wcs_orient':   'model',
-        'box_point':    None,
-        'flip_y':       False,
+        # Orientation mirrors the B-spline Top setup so the stock blank
+        # sits in the same WCS frame the user will look at when they
+        # author top-side toolpaths. Same corner ('top 1'), same axesXY
+        # orient mode, same flipY=True.
+        'wcs_origin':   'box_point',
+        'wcs_orient':   'select_x_y',
+        'box_point':    'top 1',
+        'flip_y':       True,
+        # 1in of stock above the model body's top → setup dialog shows
+        # Stock Height (Z) = body 2in + top offset 1in = 3in. Verified
+        # against 2026-04-28 audit (job_stockOffsetTop = '1in').
+        'stock_offset_top':    '1 in',
+        # Sides + bottom MUST be explicitly zeroed: Fusion's default for
+        # job_stockOffsetSides is 1mm (= 0.0394 in), which silently bloats
+        # Stock Width(X)/Depth(Y) by 2mm (1mm per side). Without these
+        # writes the dialog reports 10.0787 / 8.0787 instead of 10.0 / 8.0.
+        'stock_offset_sides':  '0 in',
+        'stock_offset_bottom': '0 in',
     },
     {
         'name':         'B-spline Back',
         'mm_rule':      'bspline_set',
-        'stock_intent': 'auto_bbox',
+        # Fixed-box stock: dimensions come from the parametric stock body
+        # in MM-Stock rather than auto-bboxing the panel itself. Lets the
+        # back-side toolpaths see the FULL stock blank (including the 1in
+        # top offset air), not just the panel surface bbox.
+        'stock_intent': 'fixed_box',
         'wcs_origin':   'box_point',          # corner of stock bbox
         'wcs_orient':   'select_x_y',         # axesXY -- pick X & Y axes from model
         'box_point':    'top 1',              # verified from audit JSON
@@ -55,20 +73,24 @@ SETUP_SPECS = [
     {
         'name':         'B-spline Top',
         'mm_rule':      'bspline_set',
-        'stock_intent': 'from_prev_setup',
+        'stock_intent': 'fixed_box',
         'wcs_origin':   'box_point',          # corner of stock bbox (flipY handles second side)
         'wcs_orient':   'select_x_y',         # axesXY -- same axes as Back, flipped Y
         'box_point':    'top 1',              # verified from audit JSON -- same corner
         'flip_y':       True,
+        # Rest machining flag retained so the user can switch Top back
+        # to from_prev_setup later without re-editing the spec. With
+        # fixed_box it's a harmless no-op (no previous setup to chain).
+        'continue_machining': True,
     },
     {
         'name':         'Frame',
         'mm_rule':      'frame',
-        'stock_intent': 'auto_bbox',
-        'wcs_origin':   'model_origin',
-        'wcs_orient':   'model',
-        'box_point':    None,
-        'flip_y':       False,
+        'stock_intent': 'fixed_box',
+        'wcs_origin':   'box_point',
+        'wcs_orient':   'select_x_y',         # axesXY -- same axes swap as Stock/Back/Top
+        'box_point':    'top 1',
+        'flip_y':       True,                 # Z up to match Stock and B-spline Top
     },
 ]
 
@@ -157,8 +179,17 @@ def build_setup(cam, mms, spec, logger=None):
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): stockMode set raised: {e}", "WARNING")
 
-    # WCS via the runtime-introspected parameter dictionary --
-    # operating on the live setup, where the choice enums are populated.
+    # WCS write order matters. Fusion evaluates wcs_origin_boxPoint
+    # against the CURRENT orientation frame (axes + flips). If we set
+    # the corner BEFORE the axes/flipY are established, "top 1" picks
+    # a corner in the half-resolved frame; afterwards Fusion may
+    # re-resolve and the geom.origin lands somewhere unexpected (this
+    # is exactly the divergence between Back and Top we saw in audit_4).
+    #
+    # Final order: origin_mode → orientation_mode → axes → flipY → boxPoint
+    # so the corner is picked LAST, in the fully-resolved post-flip frame.
+
+    # 1. origin/orientation MODES (which kind of WCS, not which corner yet).
     try:
         pi.set_choice(setup.parameters, 'wcs_origin_mode',
                       pi.WCS_ORIGIN_MODE_CANDIDATES[spec['wcs_origin']], logger)
@@ -167,17 +198,7 @@ def build_setup(cam, mms, spec, logger=None):
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): WCS parameter set raised: {e}", "WARNING")
 
-    # Box-point corner -- only meaningful when wcs_origin_mode == 'stockPoint',
-    # i.e. when wcs_origin is 'box_point' in the spec. The audit shows both
-    # B-spline setups land on 'top 1' (a top-face corner of the stock bbox);
-    # set_choice will try a couple of casings since older Fusion builds use
-    # 'top1' (no space).
-    if spec.get('box_point'):
-        pt = spec['box_point']
-        pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
-                      [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
-
-    # Axes for axesXY orientation -- bind X/Y to the root component's
+    # 2. Axes for axesXY orientation -- bind X/Y to the root component's
     # construction axes so the WCS aligns with the model origin without
     # the user having to pick faces interactively. The flipY toggle (below)
     # handles the second-side flip for B-spline Top.
@@ -197,7 +218,7 @@ def build_setup(cam, mms, spec, logger=None):
             _set_entity_param(setup.parameters, 'wcs_orientation_axisY',
                               x_axis, spec['name'], logger)
 
-    # Flip Y -- second-side machining of the b-spline panel uses the same
+    # 3. Flip Y -- second-side machining of the b-spline panel uses the same
     # axesXY orientation as the first side, but with the Y axis flipped so
     # the cutter approaches from the opposite face. The audit shows this is
     # the ONLY parameter that differs between Setup 2 (Back) and Setup 3
@@ -205,6 +226,48 @@ def build_setup(cam, mms, spec, logger=None):
     if spec.get('flip_y'):
         _set_bool_param(setup.parameters, 'wcs_orientation_flipY', True,
                         spec['name'], logger)
+
+    # 4. Box-point corner LAST. Only meaningful when wcs_origin_mode ==
+    # 'stockPoint' (i.e. spec['wcs_origin'] == 'box_point'). With the
+    # axes + flipY already in place, "top 1" is interpreted in the final
+    # post-flip frame instead of the unflipped frame, so the physical
+    # corner that the WCS lands on matches what the spec asked for.
+    # set_choice will try a couple of casings since older Fusion builds
+    # use 'top1' (no space).
+    if spec.get('box_point'):
+        pt = spec['box_point']
+        pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
+                      [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
+
+    # Continue rest machining — when True, the setup only cuts material
+    # left over by the previous setup instead of re-cutting solved volume.
+    # B-spline Top opts in (it's the second side of the panel; the Back
+    # roughing pass already removed most of the stock).
+    if spec.get('continue_machining') is not None:
+        _set_bool_param(setup.parameters, 'job_continueMachining',
+                        bool(spec['continue_machining']),
+                        spec['name'], logger)
+
+    # Stock offsets — real-valued parameters carrying expression strings
+    # (e.g. '1 in'). Optional per-spec; only written if the spec opts in.
+    # The Stock setup uses stock_offset_top='1 in' so the dialog reports
+    # Stock Height (Z) = body 2in + 1in top offset = 3in (matches audit).
+    if spec.get('stock_offset_top') is not None:
+        _set_expr_param(setup.parameters, 'job_stockOffsetTop',
+                        spec['stock_offset_top'], spec['name'], logger)
+    if spec.get('stock_offset_sides') is not None:
+        _set_expr_param(setup.parameters, 'job_stockOffsetSides',
+                        spec['stock_offset_sides'], spec['name'], logger)
+    if spec.get('stock_offset_bottom') is not None:
+        _set_expr_param(setup.parameters, 'job_stockOffsetBottom',
+                        spec['stock_offset_bottom'], spec['name'], logger)
+
+    # Read-back log: dump what Fusion actually has on the live setup AFTER
+    # all writes. Catches the silent-reject case where set_choice falls
+    # back to a default without raising. If the WCS dialog later shows a
+    # different corner than the spec asked for, this log is the smoking
+    # gun — it tells us exactly which parameter Fusion didn't honour.
+    _log_wcs_readback(setup, spec, logger)
 
     try:
         mm_name = mm.name
@@ -391,6 +454,157 @@ def _set_bool_param(params, name, value, setup_name, logger):
         return True
     except Exception as e:
         _log(logger, f"SETUP BUILD ({setup_name}): set {name}={value!r} failed: {e}", "WARNING")
+        return False
+
+
+def _log_wcs_readback(setup, spec, logger):
+    """Read the WCS-relevant params off the LIVE setup and log them, so
+    the log shows what Fusion accepted vs. what the spec asked for.
+
+    Why this matters: ``pi.set_choice`` and the entity/bool/expr setters
+    all log on failure but go silent on success. When Fusion silently
+    rejects a value (e.g. an unknown ``wcs_origin_boxPoint`` casing) and
+    falls back to a default, the build looks fine in the log but the
+    Setup dialog shows the wrong corner. This dump catches that.
+
+    Format chosen for grep-ability: one line per param, ``WCS READBACK
+    (<setup_name>) <param>=<value>  spec=<expected>``.
+    """
+    setup_name = spec.get('name', '<unnamed>')
+    if setup is None:
+        _log(logger, f"WCS READBACK ({setup_name}): setup is None; skipping", "WARNING")
+        return
+    try:
+        params = setup.parameters
+    except Exception as e:
+        _log(logger, f"WCS READBACK ({setup_name}): setup.parameters raised: {e}", "WARNING")
+        return
+
+    # (param_name, spec_key) pairs. spec_key=None means "no expectation,
+    # just dump the value". For axisX/axisY entity params, we report
+    # whether ANY entity is bound rather than the entity itself (the
+    # repr of a ConstructionAxis isn't useful in a log).
+    fields = [
+        ('wcs_origin_mode',         'wcs_origin'),
+        ('wcs_orientation_mode',    'wcs_orient'),
+        ('wcs_origin_boxPoint',     'box_point'),
+        ('wcs_orientation_flipY',   'flip_y'),
+        ('wcs_orientation_flipX',   None),
+        ('wcs_orientation_flipZ',   None),
+        ('job_stockMode',           'stock_intent'),
+        ('job_stockOffsetTop',      'stock_offset_top'),
+        ('job_stockOffsetSides',    'stock_offset_sides'),
+        ('job_stockOffsetBottom',   'stock_offset_bottom'),
+        ('job_continueMachining',   'continue_machining'),
+    ]
+
+    for pname, spec_key in fields:
+        try:
+            p = params.itemByName(pname)
+        except Exception as e:
+            _log(logger, f"WCS READBACK ({setup_name}): itemByName({pname}) raised: {e}", "DEBUG")
+            continue
+        if not p:
+            # Param not present on this setup type — silent skip
+            continue
+        # Try expression first (most informative), fall back to value
+        try:
+            actual = p.expression
+        except Exception:
+            try:
+                actual = str(p.value.value) if hasattr(p, 'value') else '<no value>'
+            except Exception:
+                actual = '<unreadable>'
+        expected = repr(spec.get(spec_key)) if spec_key else '—'
+        _log(logger,
+             f"WCS READBACK ({setup_name}): {pname}={actual!r}  spec[{spec_key}]={expected}",
+             "DEBUG")
+
+    # Entity bindings: report "bound" / "not bound" rather than the repr,
+    # which is a SWIG proxy string and useless for diagnostics.
+    for ename in ('wcs_orientation_axisX', 'wcs_orientation_axisY'):
+        try:
+            p = params.itemByName(ename)
+        except Exception:
+            continue
+        if not p:
+            continue
+        bound = '<unknown>'
+        try:
+            v = p.value.value
+            if v is None:
+                bound = 'not bound'
+            elif hasattr(v, '__len__'):
+                bound = f'bound ({len(v)} entity)' if len(v) else 'not bound'
+            else:
+                bound = 'bound (single)'
+        except Exception as e:
+            bound = f'<readback failed: {e}>'
+        _log(logger,
+             f"WCS READBACK ({setup_name}): {ename}={bound}",
+             "DEBUG")
+
+    # GEOMETRIC WCS — the ground truth that drives the on-screen triad.
+    # Read straight from setup.workCoordinateSystem (a Matrix3D), which is
+    # independent of the string-valued parameters above. If the JSON audit
+    # exporter only walks `setup.parameters`, it can MISS this — and when
+    # Fusion silently re-resolves a parameter the matrix is the only place
+    # the truth shows up. Logging origin + axes in cm (Fusion's internal
+    # units) so the values can be sanity-checked against the stock bbox
+    # and matched up with the dialog's "Stock Width(X)/Depth(Y)/Height(Z)"
+    # row directly.
+    try:
+        wcs = setup.workCoordinateSystem  # adsk.core.Matrix3D
+    except Exception as e:
+        _log(logger, f"WCS READBACK ({setup_name}): setup.workCoordinateSystem raised: {e}", "DEBUG")
+        return
+    if wcs is None:
+        _log(logger, f"WCS READBACK ({setup_name}): workCoordinateSystem is None", "DEBUG")
+        return
+    try:
+        origin, xAxis, yAxis, zAxis = wcs.getAsCoordinateSystem()
+    except Exception as e:
+        _log(logger, f"WCS READBACK ({setup_name}): getAsCoordinateSystem raised: {e}", "DEBUG")
+        return
+
+    def _vfmt(v):
+        try:
+            return f"({v.x:+.4f}, {v.y:+.4f}, {v.z:+.4f})"
+        except Exception:
+            return "<unreadable>"
+
+    _log(logger, f"WCS READBACK ({setup_name}): geom.origin (cm)= {_vfmt(origin)}", "DEBUG")
+    _log(logger, f"WCS READBACK ({setup_name}): geom.xAxis      = {_vfmt(xAxis)}", "DEBUG")
+    _log(logger, f"WCS READBACK ({setup_name}): geom.yAxis      = {_vfmt(yAxis)}", "DEBUG")
+    _log(logger, f"WCS READBACK ({setup_name}): geom.zAxis      = {_vfmt(zAxis)}", "DEBUG")
+
+
+def _set_expr_param(params, name, expr, setup_name, logger):
+    """Set a real-valued CAM parameter (e.g. ``job_stockOffsetTop``) to a
+    Fusion expression string like ``'1 in'`` / ``'5 mm'`` / ``'0.25 in'``.
+
+    These are unit-aware numeric parameters, distinct from choice/enum
+    parameters (``set_choice``), entity-selection parameters
+    (``_set_entity_param``), and booleans (``_set_bool_param``). The
+    expression form is preferred over numeric ``.value`` so the user
+    sees the typed expression in the dialog and units round-trip cleanly.
+    """
+    if params is None:
+        return False
+    try:
+        param = params.itemByName(name)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD ({setup_name}): itemByName({name}) failed: {e}", "WARNING")
+        return False
+    if not param:
+        _log(logger, f"SETUP BUILD ({setup_name}): '{name}' not present", "WARNING")
+        return False
+    try:
+        param.expression = str(expr)
+        _log(logger, f"SETUP BUILD ({setup_name}): {name} <- {expr!r}", "DEBUG")
+        return True
+    except Exception as e:
+        _log(logger, f"SETUP BUILD ({setup_name}): set {name}={expr!r} failed: {e}", "WARNING")
         return False
 
 

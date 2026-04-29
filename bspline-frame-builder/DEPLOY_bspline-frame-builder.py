@@ -1,9 +1,9 @@
 """
 DEPLOY_bspline-frame-builder.py
 ================================
-Local-install only: copies the unified bspline-frame-builder add-in (all 3
-commands) into Fusion 360's AddIns folder so you can immediately Stop/Run it
-inside Fusion.
+Local-install only: copies the unified bspline-frame-builder add-in (B-Spline Gen, 
+Frame Builder, CAM Builder, Fusion Inspector, Fusion Exporter, Template Maker) 
+into Fusion 360's AddIns folder so you can immediately Stop/Run it inside Fusion.
 
 The public distribution ZIP and GitHub release are built and uploaded by
 deploy_cloudflare.py (the public-publish event), NOT by this script.

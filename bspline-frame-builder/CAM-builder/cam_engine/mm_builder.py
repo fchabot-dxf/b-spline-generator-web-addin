@@ -43,11 +43,13 @@ Reference: see ``CAM_API_NOTES.md`` -- "Manufacturing Model creation"
 and "Body removal inside an MM".
 """
 
+import math
+
 import adsk.core
 import adsk.cam
 import adsk.fusion
 
-from ..cam_utils import get_design
+from cam_utils import get_design
 
 
 MM_RULES = ('stock', 'bspline_set', 'frame')
@@ -83,6 +85,13 @@ def build_all_mms(cam, design, classifier, logger=None):
     their starting context regardless of how many MMs we built.
     """
     app = adsk.core.Application.get()
+
+    # Ensure CAM-Builder-specific user parameters exist in the source
+    # design BEFORE we snapshot MMs. Idempotent — won't overwrite a
+    # user-edited expression. Adding to source so the existing
+    # _propagate_user_parameters_to_mm pass picks them up automatically.
+    _ensure_cam_builder_user_parameters(design, logger)
+
     original_active = None
     try:
         des = get_design(app, logger)
@@ -104,6 +113,60 @@ def build_all_mms(cam, design, classifier, logger=None):
             _log(logger, f"MM BUILD: restore activeEditObject failed: {e}", "DEBUG")
 
     return out
+
+
+def _ensure_cam_builder_user_parameters(source_design, logger):
+    """Ensure CAM-Builder-specific user parameters exist in the source
+    design. Idempotent: only adds parameters that aren't already there,
+    never overwrites a user-edited expression.
+
+    These parameters live in source-design scope (mild pollution) so
+    that the existing param-propagation pass picks them up automatically
+    when each MM is built. Adding them to source is the only way to
+    get them into MM-scope on the current Fusion build, since the MM's
+    own derived-design userParameters aren't reliably writable from
+    outside the MM context.
+
+    Currently registered:
+      - ``lay_flat_clearance`` (default 0.55 in): row-spacing between
+        adjacent frame pieces in MM-Frame's lay-flat layout. Used by
+        the (forthcoming) ``_populate_frame_geometry`` Move features.
+        Should be at least cutter diameter + chip clearance.
+    """
+    cam_builder_params = [
+        # (name, default_expression, unit, comment)
+        ('lay_flat_clearance', '0.55 in', 'in',
+         'CAM Builder: row-spacing between adjacent frame pieces in '
+         'the lay-flat layout. At least cutter diameter + chip clearance.'),
+    ]
+
+    if source_design is None:
+        _log(logger, "ENSURE PARAMS: source_design is None; skipping", "WARNING")
+        return
+
+    try:
+        user_params = source_design.userParameters
+    except Exception as e:
+        _log(logger, f"ENSURE PARAMS: source.userParameters access failed: {e}", "WARNING")
+        return
+
+    for name, expr, unit, comment in cam_builder_params:
+        try:
+            existing = user_params.itemByName(name)
+        except Exception:
+            existing = None
+        if existing:
+            _log(logger, f"ENSURE PARAMS: '{name}' already in source design (kept user expression)", "DEBUG")
+            continue
+        try:
+            value = adsk.core.ValueInput.createByString(expr)
+            param = user_params.add(name, value, unit, comment)
+            if param:
+                _log(logger, f"ENSURE PARAMS: added '{name}' = {expr!r} ({unit}) to source design")
+            else:
+                _log(logger, f"ENSURE PARAMS: add returned None for '{name}'", "WARNING")
+        except Exception as e:
+            _log(logger, f"ENSURE PARAMS: add '{name}' raised: {e}", "WARNING")
 
 
 def build_mm(cam, design, rule, classifier, logger=None):
@@ -178,7 +241,16 @@ def build_mm(cam, design, rule, classifier, logger=None):
         except Exception as e:
             _log(logger, f"MM BUILD ({rule}): stock placeholder build raised: {e}", "WARNING")
 
-    # PASS 3 hook -- frame reorient + stock extrude go here.
+    # Frame-MM-only: rotate the two horizontal pieces 90° around Z and
+    # pack all four pieces into a row so the user can machine the frame
+    # in a single setup with one stock board. Positions aren't critical
+    # (user fine-tunes per stock); rotation is.
+    if rule == 'frame':
+        try:
+            _populate_frame_geometry(mm, design, logger)
+        except Exception as e:
+            _log(logger, f"MM BUILD ({rule}): frame geometry build raised: {e}", "WARNING")
+
     return mm
 
 
@@ -223,37 +295,31 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
         _log(logger, f"PARAM PROP ({mm.name}): source design has no user parameters; nothing to propagate", "DEBUG")
         return 0
 
-    # 2. Activate the MM to enter its parameter scope.
+    # 2. Activate the MM so the user lands inside it after the build,
+    #    then resolve the MM's derived Design via the component handle
+    #    rather than via app.activeProduct. The activeProduct path is
+    #    unreliable on current Fusion builds (silently returns the
+    #    source Design or a CAMProduct depending on workspace state)
+    #    and any pollution that lands in source via that path is
+    #    invisible until the user opens the source design. Going
+    #    through ``mm.occurrence.component.parentDesign`` is a stable
+    #    handle into MM scope.
     try:
         mm.activate()
     except Exception as e:
-        _log(logger, f"PARAM PROP ({mm.name}): activate failed: {e}", "WARNING")
-        return 0
+        _log(logger, f"PARAM PROP ({mm.name}): activate failed (non-fatal): {e}", "DEBUG")
 
-    # 3. After activation, app.activeProduct *should* be a Design pointing
-    #    to the MM's own scope. On current Fusion builds it stays as the
-    #    Manufacture workspace's CAMProduct, which means we can't reach
-    #    the MM's derived design via this path. Falling back to the source
-    #    Design via get_design() lets the propagation proceed -- the
-    #    name-collision guard (`existing` check below) makes this a
-    #    no-op when the source already has these params, which is the
-    #    common case (we're snapshotting FROM the source). The trade-off:
-    #    if the user has edited a param's expression in MM scope, this
-    #    fallback won't see it; it'll write source values instead.
-    mm_design = adsk.fusion.Design.cast(app.activeProduct)
+    try:
+        mm_root = mm.occurrence.component
+        mm_design = mm_root.parentDesign if mm_root is not None else None
+    except Exception as e:
+        _log(logger, f"PARAM PROP ({mm.name}): mm.occurrence.component.parentDesign read failed: {e}", "WARNING")
+        return 0
     if mm_design is None:
-        mm_design = get_design(app, logger)
-        if mm_design is None:
-            _log(logger,
-                 f"PARAM PROP ({mm.name}): activeProduct is not a Design and "
-                 f"no source Design available either; skipping",
-                 "WARNING")
-            return 0
         _log(logger,
-             f"PARAM PROP ({mm.name}): activeProduct after activate is not a Design "
-             f"(MM-scope unreachable on this Fusion build); writing into source "
-             f"Design (idempotent for source params)",
-             "DEBUG")
+             f"PARAM PROP ({mm.name}): MM-scope Design unreachable via component handle; skipping",
+             "WARNING")
+        return 0
 
     try:
         mm_user_params = mm_design.userParameters
@@ -296,60 +362,71 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
 
 
 def _populate_stock_placeholder(mm, source_design, logger):
-    """Create a parametric rectangular stock body inside MM-Stock.
+    """Create a parametric rectangular stock body INSIDE MM-Stock.
 
-    Geometry: a centered rectangle on the XY plane, sized
-    ``(widthIn + 1in) x (heightIn + 1in)``, extruded ``2 in`` in +Z.
-    The two horizontal dimensions reference the source design's user
-    parameters (which ``_propagate_user_parameters_to_mm`` has already
-    mirrored into MM scope), so the stock auto-resizes if the panel
-    parameters change. Z is a literal -- 2in is a sensible default for
-    rough stock; bump it later if needed.
+    Geometry: a centered rectangle on the XY plane (centre-point
+    rectangle), sized ``(widthIn + 1in) x (heightIn + 1in)``, extruded
+    ``2 in`` in +Z. Horizontal dims reference the user parameters that
+    ``_propagate_user_parameters_to_mm`` already mirrored into MM scope,
+    so the stock auto-resizes when the panel params change. Z is a
+    literal — 2in is a sensible rough-stock default.
+
+    Scope guarantee
+    ---------------
+    Everything is created against ``mm.occurrence.component`` directly,
+    NOT against ``app.activeProduct`` after ``mm.activate()``. On the
+    user's Fusion build, the post-activate ``activeProduct`` resolves
+    to the source Design instead of the MM's derived design, which
+    would silently pollute the source. Using ``mm.occurrence.component``
+    is a stable handle into the MM's own scope and never falls back.
+    User parameters come from ``component.parentDesign.userParameters``
+    — the MM's derived Design — for the same reason.
+
+    The ``mm.activate()`` call is still made so the user lands inside
+    the MM in the browser after the build, but no API path through
+    ``activeProduct`` is taken.
 
     Idempotent: skips if the MM root component already has any body
     (lets the user re-run CAM Builder without nuking edits, and avoids
     duplicates if the function ever fires twice).
-
-    Why this exists: the 'stock' MM rule wipes every body via the
-    occurrence filter (so the MM is a clean blank). That leaves the
-    Stock Setup with no model to bind, hence the auto-bind via
-    ``setup_input.models`` no-ops and the user has to pick MM-Stock
-    manually in the dialog. Putting one body here closes the loop.
     """
-    app = adsk.core.Application.get()
-    if app is None:
-        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): app is None; skipping", "WARNING")
+    # 1. Stable handle into the MM's own component. This is the single
+    #    most important line in the function — every subsequent geometry
+    #    operation (sketches.add, dimensions.add, extrudes.add) goes
+    #    through this reference, so the body cannot land in the source
+    #    Design.
+    try:
+        root_comp = mm.occurrence.component
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): mm.occurrence.component read failed: {e}", "WARNING")
+        return False
+    if root_comp is None:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): mm.occurrence.component is None; skipping", "WARNING")
         return False
 
+    # 2. The MM's derived Design lives behind the component. This is
+    #    where MM-scope userParameters live (NOT the source design's
+    #    userParameters, which would defeat the purpose of param
+    #    propagation).
+    try:
+        mm_design = root_comp.parentDesign
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): parentDesign read failed: {e}", "WARNING")
+        return False
+    if mm_design is None:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): parentDesign is None; skipping", "WARNING")
+        return False
+
+    # 3. Activate the MM so the user lands inside it in the browser
+    #    after the build completes. Failure here is non-fatal — the
+    #    geometry calls below don't depend on activation, only on the
+    #    component reference grabbed in step 1.
     try:
         mm.activate()
     except Exception as e:
-        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): activate failed: {e}", "WARNING")
-        return False
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): activate failed (non-fatal, continuing): {e}", "DEBUG")
 
-    # Unlike PARAM PROP, we cannot fall back to the source Design here:
-    # this function CREATES a body, and writing into the source would
-    # pollute the user's design. If activeProduct doesn't expose the MM's
-    # derived design, we have to skip and surface a clearer message --
-    # the cleaner long-term fix is to bind the stock body via the Setup's
-    # own stockSolids surface instead of via the MM (TODO).
-    mm_design = adsk.fusion.Design.cast(app.activeProduct)
-    if mm_design is None:
-        _log(logger,
-             f"STOCK PLACEHOLDER ({mm.name}): activeProduct after activate is not a Design "
-             f"(MM-scope unreachable on this Fusion build); skipping. Stock setup will "
-             f"bind 0 bodies until the user picks MM-Stock manually OR until we wire "
-             f"stockSolids on the Setup directly.",
-             "WARNING")
-        return False
-
-    try:
-        root_comp = mm_design.rootComponent
-    except Exception as e:
-        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): rootComponent read failed: {e}", "WARNING")
-        return False
-
-    # Idempotent: if there's already a body in the root, leave it alone.
+    # 4. Idempotent: if MM-Stock already has a body, leave it alone.
     try:
         existing = root_comp.bRepBodies.count
     except Exception:
@@ -358,7 +435,7 @@ def _populate_stock_placeholder(mm, source_design, logger):
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): root already has {existing} body/bodies; skipping", "DEBUG")
         return False
 
-    # Verify the parametric expressions will resolve in this scope.
+    # 5. Verify the parametric expressions will resolve in the MM's scope.
     try:
         mm_user_params = mm_design.userParameters
         missing = [n for n in ('widthIn', 'heightIn') if mm_user_params.itemByName(n) is None]
@@ -377,41 +454,149 @@ def _populate_stock_placeholder(mm, source_design, logger):
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): sketch.add failed: {e}", "WARNING")
         return False
 
+    # Build the rectangle with addCenterPointRectangle. CRITICAL: seed it
+    # OFF origin so every coincident constraint we add later has a
+    # non-zero delta to resolve. Per the fusion360-api skill notes,
+    # addCoincident on a point that's already at the target location
+    # crashes Fusion's constraint solver. Seeding at (3, 3) keeps the
+    # rectangle centre well clear of (0, 0) — the final
+    # coincident-to-origin is what translates the whole structure so
+    # the centre lands on the sketch origin.
     try:
         sketch_lines = sketch.sketchCurves.sketchLines
-        # Initial corners are arbitrary in cm (Fusion internal units);
-        # the dimensions added below drive the actual size. 5 cm x 5 cm
-        # gives the constraint solver a sane non-degenerate seed.
-        center = adsk.core.Point3D.create(0, 0, 0)
-        corner = adsk.core.Point3D.create(5.0, 5.0, 0)
+        center = adsk.core.Point3D.create(3.0, 3.0, 0)
+        corner = adsk.core.Point3D.create(8.0, 8.0, 0)
         rect_lines = sketch_lines.addCenterPointRectangle(center, corner)
     except Exception as e:
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): addCenterPointRectangle failed: {e}", "WARNING")
         return False
 
-    # Find one horizontal line and one vertical line for dimensioning.
-    # addCenterPointRectangle adds implicit H/V constraints; we just
-    # walk the returned collection and classify by endpoint deltas.
-    horizontal_line = None
-    vertical_line = None
+    # Walk the rectangle's lines: collect 4 corner sketch points, classify
+    # each line as horizontal vs vertical by its initial geometry, and
+    # remember one of each for the parametric dimensions later.
+    #
+    # IMPORTANT: in practice, addCenterPointRectangle on this user's
+    # Fusion build only welds the corner endpoints — it does NOT add H/V
+    # constraints on the edges. The rectangle is free to skew. We add
+    # H/V manually below, wrapped in try/except so the call is defensive
+    # if a future Fusion build does add them implicitly (redundant H/V
+    # constraints can crash the solver — wrap and continue).
+    corner_pts = {}        # key: (x_round, y_round) -> SketchPoint
+    horizontal_lines = []  # all 2 top/bottom lines
+    vertical_lines = []    # all 2 left/right lines
     try:
         for i in range(rect_lines.count):
             ln = rect_lines.item(i)
-            sp = ln.startSketchPoint.geometry
-            ep = ln.endSketchPoint.geometry
-            dx = abs(sp.x - ep.x)
-            dy = abs(sp.y - ep.y)
-            if dy < 1e-6 and horizontal_line is None:
-                horizontal_line = ln
-            elif dx < 1e-6 and vertical_line is None:
-                vertical_line = ln
+            sp = ln.startSketchPoint
+            ep = ln.endSketchPoint
+            for pt in (sp, ep):
+                k = (round(pt.geometry.x, 6), round(pt.geometry.y, 6))
+                if k not in corner_pts:
+                    corner_pts[k] = pt
+            dx = abs(sp.geometry.x - ep.geometry.x)
+            dy = abs(sp.geometry.y - ep.geometry.y)
+            if dy < 1e-6:
+                horizontal_lines.append(ln)
+            elif dx < 1e-6:
+                vertical_lines.append(ln)
     except Exception as e:
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): line classification failed: {e}", "WARNING")
         return False
 
-    if horizontal_line is None or vertical_line is None:
-        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): could not find both H and V lines in rectangle", "WARNING")
+    if len(horizontal_lines) < 1 or len(vertical_lines) < 1:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): could not classify H/V lines (H={len(horizontal_lines)}, V={len(vertical_lines)})", "WARNING")
         return False
+    if len(corner_pts) != 4:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): expected 4 unique corners, found {len(corner_pts)}; skipping anchor", "WARNING")
+        return False
+
+    horizontal_line = horizontal_lines[0]
+    vertical_line = vertical_lines[0]
+
+    # Sort corners deterministically: BL, TL, BR, TR (sort by x, then y).
+    ordered_corners = sorted(
+        corner_pts.values(),
+        key=lambda p: (round(p.geometry.x, 6), round(p.geometry.y, 6)),
+    )
+    bl, tl, br, tr = ordered_corners
+
+    geom = sketch.geometricConstraints
+
+    # ---- Apply H/V constraints to each edge of the rectangle ----
+    # Without these the rectangle is just 4 lines sharing endpoints — it
+    # can skew into a parallelogram. Each call is wrapped: if Fusion
+    # already has an implicit one in place, the redundant add raises and
+    # we log + continue.
+    for ln in horizontal_lines:
+        try:
+            geom.addHorizontal(ln)
+        except Exception as e:
+            _log(logger, f"STOCK PLACEHOLDER ({mm.name}): addHorizontal failed (likely already H, continuing): {e}", "DEBUG")
+    for ln in vertical_lines:
+        try:
+            geom.addVertical(ln)
+        except Exception as e:
+            _log(logger, f"STOCK PLACEHOLDER ({mm.name}): addVertical failed (likely already V, continuing): {e}", "DEBUG")
+
+    # ---- Construction diagonals + intersection sketch point ----
+    # Two construction lines from BL→TR and BR→TL. Their intersection is
+    # the rectangle's geometric centre. We then add a sketch point and
+    # constrain it onto both diagonals → it lands at the centre. Finally
+    # we anchor that point to the sketch origin, which translates the
+    # whole rectangle so its centre is at (0, 0).
+
+    diag1 = None
+    diag2 = None
+    try:
+        diag1 = sketch_lines.addByTwoPoints(bl, tr)
+        diag2 = sketch_lines.addByTwoPoints(br, tl)
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): diagonal addByTwoPoints failed: {e}", "WARNING")
+        return False
+
+    try:
+        diag1.isConstruction = True
+        diag2.isConstruction = True
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): diagonal isConstruction set failed (non-fatal): {e}", "DEBUG")
+
+    # Intersection sketch point — seed slightly off origin so the final
+    # addCoincident(origin) has a delta to resolve. Both diagonal coincident
+    # constraints will pull this point to the diagonals' crossing first.
+    try:
+        intersection_pt = sketch.sketchPoints.add(adsk.core.Point3D.create(0.1, 0.1, 0))
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): intersection sketchPoints.add failed: {e}", "WARNING")
+        return False
+
+    # Constrain the point to lie on both diagonals. Each addCoincident is
+    # wrapped — if Fusion considers one redundant we keep going.
+    try:
+        geom.addCoincident(intersection_pt, diag1)
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): addCoincident(intersection, diag1) failed: {e}", "WARNING")
+    try:
+        geom.addCoincident(intersection_pt, diag2)
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): addCoincident(intersection, diag2) failed: {e}", "WARNING")
+
+    # Anchor the intersection (and therefore the rectangle's centre) to
+    # the sketch origin. Distance check guards the solver-crash case from
+    # the skill: addCoincident on already-coincident points blows up.
+    try:
+        origin_pt = sketch.originPoint
+        dist_to_origin = intersection_pt.geometry.distanceTo(origin_pt.geometry)
+        if dist_to_origin > 1e-4:
+            geom.addCoincident(intersection_pt, origin_pt)
+        else:
+            _log(logger,
+                 f"STOCK PLACEHOLDER ({mm.name}): intersection already at origin "
+                 f"(dist={dist_to_origin:.6f}); skipping origin coincident "
+                 f"(rectangle is centred but intersection is unconstrained — "
+                 f"consider re-seeding off origin if drift is observed)",
+                 "WARNING")
+    except Exception as e:
+        _log(logger, f"STOCK PLACEHOLDER ({mm.name}): origin anchor failed: {e}", "WARNING")
 
     # Add parametric dimensions. SketchDimensions.addDistanceDimension
     # returns the new dimension; we then write the parametric
@@ -469,6 +654,240 @@ def _populate_stock_placeholder(mm, source_design, logger):
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): body rename failed: {e}", "DEBUG")
 
     _log(logger, f"STOCK PLACEHOLDER ({mm.name}): created '(widthIn+1in) x (heightIn+1in) x 2in' body 'Stock'")
+    return True
+
+
+def _populate_frame_geometry(mm, source_design, logger):
+    """Lay the four frame bodies flat in a row inside MM-Frame.
+
+    Critical behavior
+    -----------------
+    Rotate ``frame_top`` and ``frame_bottom`` exactly 90° around the
+    world Z axis so their long extents flip from X to Y. After rotation
+    all four pieces have their long axes along Y (they're "vertical"
+    in the WCS frame), matching the existing orientation of
+    ``frame_left`` and ``frame_right``. This is what makes the lay-flat
+    machinable in a single setup pass.
+
+    Layout (best-effort, not critical)
+    ----------------------------------
+    Anchor on ``frame_right`` (no move). Pack the other three pieces
+    to its right along +X, separated by ``lay_flat_clearance`` (user
+    parameter, default 0.55 in). All centers aligned on Y=0. Z left
+    untouched (the bodies are already roughly co-planar).
+
+    Positions are computed numerically from the post-rotation bounding
+    boxes, NOT from a parametric expression. ``lay_flat_clearance`` is
+    READ from the live MM userParameters at build time but baked into
+    the Move features as literal cm values — changing the parameter
+    later requires re-Generate to update the layout. The user is
+    expected to fine-tune piece positions per their actual stock board
+    after generation, so layout precision isn't worth a heavier
+    parametric implementation.
+
+    Idempotent: skips if MM-Frame already has any moveFeatures (lets
+    the user re-run CAM Builder without nuking their hand-tweaks).
+    """
+    # 1. Stable handle into the MM (same pattern as _populate_stock_placeholder)
+    try:
+        root_comp = mm.occurrence.component
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): mm.occurrence.component read failed: {e}", "WARNING")
+        return False
+    if root_comp is None:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): mm.occurrence.component is None; skipping", "WARNING")
+        return False
+
+    # MM's derived design — for userParameters lookup and z-axis entity
+    try:
+        mm_design = root_comp.parentDesign
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): parentDesign read failed: {e}", "WARNING")
+        return False
+    if mm_design is None:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): parentDesign is None; skipping", "WARNING")
+        return False
+
+    # 2. Activate the MM so user lands inside it after build (non-fatal)
+    try:
+        mm.activate()
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): activate failed (non-fatal): {e}", "DEBUG")
+
+    # 3. Idempotent: skip if already laid out. Move features for the
+    #    frame bodies live on the *body-owning* component (Frame_1),
+    #    NOT on the MM wrapper (Fusion rejects cross-context moves with
+    #    "object is not in the assembly context of this component").
+    #    We check this owner component below after we've found the bodies.
+    #    For now defer the idempotent check.
+
+    # 4. Find the four frame_* bodies. They live in child occurrences
+    #    (Frame_1 component nested inside the MM wrapper). Walk all
+    #    occurrences recursively.
+    frame_bodies = {}  # name (lowercased) -> BRepBody
+    expected_names = {'frame_bottom', 'frame_top', 'frame_left', 'frame_right'}
+
+    def _yield_all_bodies(comp):
+        try:
+            for b in comp.bRepBodies:
+                yield b
+        except Exception:
+            pass
+        try:
+            for occ in comp.allOccurrences:
+                try:
+                    for b in occ.component.bRepBodies:
+                        yield b
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    try:
+        for body in _yield_all_bodies(root_comp):
+            try:
+                bn = (body.name or '').lower()
+            except Exception:
+                continue
+            if bn in expected_names and bn not in frame_bodies:
+                frame_bodies[bn] = body
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): body walk failed: {e}", "WARNING")
+        return False
+
+    if len(frame_bodies) < 4:
+        missing = expected_names - set(frame_bodies.keys())
+        _log(logger, f"FRAME LAYOUT ({mm.name}): expected 4 frame bodies, found {len(frame_bodies)} (missing: {missing}); skipping", "WARNING")
+        return False
+
+    # 5. Read lay_flat_clearance from MM userParameters (cm). Fallback to
+    #    0.55 in if missing.
+    clearance_cm = 1.397  # 0.55 in default
+    try:
+        p = mm_design.userParameters.itemByName('lay_flat_clearance')
+        if p is not None:
+            clearance_cm = float(p.value)
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): lay_flat_clearance read failed (using {clearance_cm:.4f} cm default): {e}", "DEBUG")
+
+    # 6. Get the move features collection from the BODY-OWNING component,
+    #    not the MM wrapper. All four frame_* bodies share the same parent
+    #    component (Frame_1 nested inside the MM wrapper). Adding moves to
+    #    the wrapper raises "object is not in the assembly context of this
+    #    component" because the body objects belong to Frame_1's scope.
+    #    Pick any body's parentComponent.
+    sample_body = next(iter(frame_bodies.values()))
+    try:
+        owner_comp = sample_body.parentComponent
+    except Exception as e:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): body.parentComponent read failed: {e}", "WARNING")
+        return False
+    if owner_comp is None:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): body.parentComponent is None; skipping", "WARNING")
+        return False
+
+    # Now apply the deferred idempotent check on the OWNER component.
+    try:
+        existing_moves = owner_comp.features.moveFeatures.count
+    except Exception:
+        existing_moves = 0
+    if existing_moves > 0:
+        _log(logger, f"FRAME LAYOUT ({mm.name}): {existing_moves} moveFeature(s) already on {owner_comp.name}; skipping (idempotent)", "DEBUG")
+        return False
+
+    move_features = owner_comp.features.moveFeatures
+
+    # Build a 90°-around-Z rotation matrix (pivot at world origin) and
+    # apply it via defineAsFreeMove. This bypasses defineAsRotate's
+    # entity-axis requirement, which kept failing here with "Invalid
+    # entity" — the construction axis from owner_comp.zConstructionAxis
+    # isn't in the right context for the move feature even when the
+    # bodies are. Matrix3D + defineAsFreeMove is context-free.
+    rot_z_90 = adsk.core.Matrix3D.create()
+    rot_z_90.setToRotation(
+        math.pi / 2,                                  # 90° in radians
+        adsk.core.Vector3D.create(0.0, 0.0, 1.0),     # rotate around +Z
+        adsk.core.Point3D.create(0.0, 0.0, 0.0),      # pivot at world origin
+    )
+
+    for body_name in ('frame_bottom', 'frame_top'):
+        body = frame_bodies[body_name]
+        try:
+            bodies_collection = adsk.core.ObjectCollection.create()
+            bodies_collection.add(body)
+            move_input = move_features.createInput2(bodies_collection)
+            move_input.defineAsFreeMove(rot_z_90)
+            move_features.add(move_input)
+            _log(logger, f"FRAME LAYOUT ({mm.name}): rotated {body_name} by 90° around world Z (Matrix3D free-move)")
+        except Exception as e:
+            _log(logger, f"FRAME LAYOUT ({mm.name}): rotate {body_name} failed: {e}", "WARNING")
+            # Don't bail — continue with whatever rotated successfully
+
+    # 7. Read post-rotation bbox sizes and centers for all four bodies.
+    sizes = {}    # name -> (sizeX, sizeY, sizeZ) in cm
+    centers = {}  # name -> (cx, cy, cz) in cm
+    for name, body in frame_bodies.items():
+        try:
+            bb = body.boundingBox
+            if bb is None:
+                _log(logger, f"FRAME LAYOUT ({mm.name}): {name} boundingBox is None; skipping", "WARNING")
+                return False
+            mn, mx = bb.minPoint, bb.maxPoint
+            sizes[name] = (mx.x - mn.x, mx.y - mn.y, mx.z - mn.z)
+            centers[name] = ((mx.x + mn.x) / 2, (mx.y + mn.y) / 2, (mx.z + mn.z) / 2)
+        except Exception as e:
+            _log(logger, f"FRAME LAYOUT ({mm.name}): bbox read for {name} failed: {e}", "WARNING")
+            return False
+
+    # 8. Lay the row out. Anchor: frame_right keeps its current X position.
+    #    Pack the other three to the +X side, each adjacent center spaced
+    #    by (left_W/2 + clearance + right_W/2). Y centers all at 0.
+    layout_order = ['frame_right', 'frame_left', 'frame_bottom', 'frame_top']
+
+    target_x = {}
+    target_x['frame_right'] = centers['frame_right'][0]  # anchor
+
+    prev_right_edge = centers['frame_right'][0] + sizes['frame_right'][0] / 2
+    for name in layout_order[1:]:
+        body_w = sizes[name][0]
+        target_x[name] = prev_right_edge + clearance_cm + body_w / 2
+        prev_right_edge = target_x[name] + body_w / 2
+
+    # 9. Apply translations. frame_right is the anchor — no move. The
+    #    other three each get one translate Move feature.
+    for name in layout_order[1:]:
+        body = frame_bodies[name]
+        cur_cx, cur_cy, cur_cz = centers[name]
+        dx = target_x[name] - cur_cx
+        dy = 0.0 - cur_cy           # align row on Y=0
+        dz = 0.0                    # leave Z alone
+        # Skip vanishingly small moves (avoids degenerate Move features)
+        if abs(dx) < 1e-4 and abs(dy) < 1e-4 and abs(dz) < 1e-4:
+            _log(logger, f"FRAME LAYOUT ({mm.name}): {name} already at target; skipping translate", "DEBUG")
+            continue
+        try:
+            bodies_collection = adsk.core.ObjectCollection.create()
+            bodies_collection.add(body)
+            move_input = move_features.createInput2(bodies_collection)
+            move_input.defineAsTranslateXYZ(
+                adsk.core.ValueInput.createByReal(dx),
+                adsk.core.ValueInput.createByReal(dy),
+                adsk.core.ValueInput.createByReal(dz),
+                True,  # isWorldSpace — interpret deltas in world frame
+            )
+            move_features.add(move_input)
+            _log(logger,
+                 f"FRAME LAYOUT ({mm.name}): translated {name} by "
+                 f"({dx:+.3f}, {dy:+.3f}, {dz:+.3f}) cm "
+                 f"to row position X={target_x[name]:.3f}",
+                 "DEBUG")
+        except Exception as e:
+            _log(logger, f"FRAME LAYOUT ({mm.name}): translate {name} failed: {e}", "WARNING")
+
+    _log(logger,
+         f"FRAME LAYOUT ({mm.name}): laid out 4 pieces in row "
+         f"(anchor=frame_right, clearance={clearance_cm:.4f} cm, "
+         f"row span ≈ {prev_right_edge - centers['frame_right'][0] + sizes['frame_right'][0] / 2:.2f} cm)")
     return True
 
 

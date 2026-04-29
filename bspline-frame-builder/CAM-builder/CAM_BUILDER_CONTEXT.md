@@ -89,12 +89,12 @@ command handler: `cam-builder.py` (palette UI lives in `ui/html/`).
 
 ## Setup table (point of truth)
 
-| Setup           | MM rule       | Stock intent      | WCS origin   | WCS orient | Box point | flipY |
-|-----------------|---------------|-------------------|--------------|------------|-----------|-------|
-| Stock           | `stock`       | auto_bbox         | model_origin | model      | —         | false |
-| B-spline Back   | `bspline_set` | auto_bbox         | box_point    | axesXY     | `top 1`   | false |
-| B-spline Top    | `bspline_set` | from_prev_setup   | box_point    | axesXY     | `top 1`   | true  |
-| Frame           | `frame`       | auto_bbox         | model_origin | model      | —         | false |
+| Setup           | MM rule       | Stock intent | WCS origin   | WCS orient | Box point | flipY | Rest mach. |
+|-----------------|---------------|--------------|--------------|------------|-----------|-------|------------|
+| Stock           | `stock`       | auto_bbox    | box_point    | axesXY     | `top 1`   | true  | —          |
+| B-spline Back   | `bspline_set` | fixed_box    | box_point    | axesXY     | `top 1`   | false | —          |
+| B-spline Top    | `bspline_set` | fixed_box    | box_point    | axesXY     | `top 1`   | true  | true       |
+| Frame           | `frame`       | fixed_box    | box_point    | axesXY     | `top 1`   | true  | —          |
 
 The two B-spline setups are **identical** except for stock intent (Top
 inherits from Back) and `flipY`. Same MM, same corner, same axes.

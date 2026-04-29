@@ -287,6 +287,48 @@ def audit_component_definition(comp, ref_id, context):
                 p = body.getPhysicalProperties(adsk.fusion.CalculationAccuracy.MediumCalculationAccuracy)
                 b_data["Phys"] = {"Mass": p.mass, "Vol": p.volume, "COM": [p.centerOfMass.x, p.centerOfMass.y, p.centerOfMass.z]}
             except: pass
+
+        # Axis-aligned bbox (world coords). Cheap rotation-detection: if a
+        # body was rotated 90° around Z, its AABB X and Y dimensions swap.
+        # All values in cm (Fusion internal units).
+        try:
+            bb = body.boundingBox
+            if bb is not None:
+                mn, mx = bb.minPoint, bb.maxPoint
+                b_data["BBox"] = {
+                    "Min":  [round(mn.x, 6), round(mn.y, 6), round(mn.z, 6)],
+                    "Max":  [round(mx.x, 6), round(mx.y, 6), round(mx.z, 6)],
+                    "Size": [round(mx.x - mn.x, 6), round(mx.y - mn.y, 6), round(mx.z - mn.z, 6)],
+                }
+        except Exception:
+            pass
+
+        # Oriented Minimum Bounding Box — captures ROTATION directly via the
+        # length/width/height direction vectors. If a body was rotated 90°
+        # around Z, its lengthDirection swaps from (1,0,0) to (0,1,0). This
+        # is the cleanest rotation diagnostic for diffing two audits — pure
+        # AABB-size swaps could come from many transforms; OBB axes pin
+        # down which way the body is actually facing.
+        try:
+            obb = body.orientedMinimumBoundingBox
+            if obb is not None:
+                def _v(v):
+                    try:
+                        return [round(v.x, 6), round(v.y, 6), round(v.z, 6)]
+                    except Exception:
+                        return None
+                b_data["OBB"] = {
+                    "Center":          _v(obb.centerPoint),
+                    "LengthDirection": _v(obb.lengthDirection),
+                    "WidthDirection":  _v(obb.widthDirection),
+                    "HeightDirection": _v(obb.heightDirection),
+                    "Length":          round(obb.length, 6),
+                    "Width":           round(obb.width, 6),
+                    "Height":          round(obb.height, 6),
+                }
+        except Exception:
+            pass
+
         portfolio["PHYSICAL"]["Bodies"].append(b_data)
         
     for sketch in comp.sketches:
@@ -491,6 +533,19 @@ def audit_cam_setups_granular(app, context):
                 # expression strings we need for setup_builder. Captures
                 # everything; downstream code can grep for what it needs.
                 "SetupParams": {},
+                # Typed properties on the Setup object that DON'T live in
+                # the parameters dict. These are the closest thing to
+                # ground truth -- when a string parameter and a typed
+                # property disagree, the typed property is what Fusion
+                # actually uses to draw / generate code.
+                "TypedProps": {},
+                # Geometric WCS -- the actual triad transform Fusion uses
+                # to position the on-screen widget and emit G-code. If a
+                # string param like wcs_origin_boxPoint silently re-resolves,
+                # the Matrix is the only place the truth shows up. Captured
+                # as origin + xAxis + yAxis + zAxis vectors in cm
+                # (Fusion's internal units).
+                "WorkCoordinateSystem": None,
                 "ModelBodies": [],
                 "Ops": [],
             }
@@ -521,6 +576,46 @@ def audit_cam_setups_granular(app, context):
                         pass
             except Exception:
                 pass
+
+            # Typed properties on the Setup object. These don't appear in
+            # ``s.parameters``, so a parameter-only walk misses them. List:
+            #   - stockMode  : adsk.cam.SetupStockModes enum (RelativeBoxStock, etc)
+            #   - operationType : OperationTypes enum
+            #   - isActive   : bool
+            #   - workOffset : int
+            for prop_name in ('stockMode', 'operationType', 'isActive',
+                              'workOffset', 'name', 'objectType'):
+                try:
+                    val = getattr(s, prop_name)
+                    # Enum values come out as ints; stringify so JSON is
+                    # readable. For everything else, str() is fine too.
+                    s_data["TypedProps"][prop_name] = str(val) if val is not None else None
+                except Exception:
+                    pass
+
+            # Geometric WCS -- read setup.workCoordinateSystem (Matrix3D)
+            # and decompose into origin + x/y/z axis vectors. This is the
+            # single most diagnostic field for WCS issues: when the dialog
+            # shows the triad in a corner that doesn't match what
+            # wcs_origin_boxPoint claims, the truth is here.
+            try:
+                wcs = s.workCoordinateSystem
+                if wcs is not None:
+                    origin, xAxis, yAxis, zAxis = wcs.getAsCoordinateSystem()
+                    def _v(v):
+                        try:
+                            return [round(v.x, 6), round(v.y, 6), round(v.z, 6)]
+                        except Exception:
+                            return None
+                    s_data["WorkCoordinateSystem"] = {
+                        "Origin_cm": _v(origin),
+                        "XAxis":     _v(xAxis),
+                        "YAxis":     _v(yAxis),
+                        "ZAxis":     _v(zAxis),
+                        "_note": "Origin in cm (Fusion internal units). Axes are unit vectors. Compare against SetupParams['wcs_origin_boxPoint'] etc to spot silent re-resolution.",
+                    }
+            except Exception as e:
+                s_data["WorkCoordinateSystem"] = {"_error": str(e)}
 
             # Bound model bodies (what setup.models was set to). Helps
             # us verify the body-binding pass.
