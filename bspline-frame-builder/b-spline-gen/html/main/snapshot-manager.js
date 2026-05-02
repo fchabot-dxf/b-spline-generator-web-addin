@@ -4,9 +4,10 @@ import { updateGlobalButtons } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
+import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
 
-export function applySnapshot(snap, preview) {
+export async function applySnapshot(snap, preview) {
   if (!snap) return;
   AppState.isInitializing = true;
   Object.keys(snap.P).forEach(k => {
@@ -30,5 +31,25 @@ export function applySnapshot(snap, preview) {
     P.stampLayers[0].svg = snap.stampSvgText;
   }
   updateGlobalButtons();
+
+  // Stamp masks are stripped on save (typed-array JSON corruption: a
+  // Float32Array round-trips as {"0":..., "1":...} which fails downstream
+  // instanceof / .length checks). The save path relies on
+  // updateStampMasks() to regenerate masks from .svg before any rebuild
+  // reads them. rebuild() in engine/rebuild.js silently skips any layer
+  // whose .mask is null:
+  //   if (layer && layer.svg && layer.mask && layer.mask.length === nx*nz)
+  // so without regen, the SVG is loaded but never imprinted.
+  // Regenerate masks here before scheduling the rebuild.
+  const hasStampSvg = (P.stampLayers || []).some(L => L && L.svg && L.enabled !== false);
+  if (hasStampSvg) {
+    try {
+      const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+      await updateStampMasks(nx, nz);
+    } catch (e) {
+      console.warn('[applySnapshot] stamp mask regen failed:', e);
+    }
+  }
+
   scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
 }
