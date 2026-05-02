@@ -41,8 +41,7 @@ import { applyParam, updateSculptToolButtons } from './param-manager.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
-import { bindPresets } from './preset-manager.js';
-import { bindCloudPresets } from './cloud-preset-manager.js';
+import { bindProjectManager } from './cloud-project-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { initSkeletonEditor } from '../core/skeleton-editor.js';
 
@@ -102,8 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Bind ALL Controls (Sidebar, Header, Presets)
     bindControls(preview);
-    bindPresets(preview);
-    bindCloudPresets(preview);
+    bindProjectManager(preview);
     bindHeaderAndSettings();
     if (window.initBsplineTheme) window.initBsplineTheme();
 
@@ -618,4 +616,5 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
             closeWizard();
         }
     } catch (e) {
-        console.error('Export Fai
+        console.error('Export Failed:', e);
+        if (btn) { btn.disabled = false; btn.textContent = 'Tr

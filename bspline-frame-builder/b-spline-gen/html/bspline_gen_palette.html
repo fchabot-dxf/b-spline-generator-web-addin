@@ -16,7 +16,7 @@
        Deploy the Worker from cloud/preset-worker/ (see its README), then
        uncomment and paste the printed *.workers.dev URL below. -->
   <script>
-    // window.BSPLINE_PRESETS_API_URL = 'https://bspline-presets.YOUR-SUBDOMAIN.workers.dev';
+    window.BSPLINE_PRESETS_API_URL = 'https://bspline-presets.dansemur.workers.dev';
   </script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
   <!-- Consolidated stylesheets -->
@@ -242,10 +242,14 @@
 
     <div style="flex:1;"></div>
 
-    <div style="display:flex; gap:12px; align-items:center;">
+    <div style="display:flex; gap:8px; align-items:center;">
       <button class="cad-btn cad-btn-secondary" id="btnAppRefresh" title="Reload the app (clears in-memory state, fetches latest code)" style="display:flex; align-items:center; gap:4px;">
         <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
         <span>Reload</span>
+      </button>
+      <button class="cad-btn cad-btn-secondary" id="btnOpenProjectManager" title="Open Project Manager" style="display:flex; align-items:center; gap:4px; min-height:32px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">folder_open</span>
+        <span>Projects</span>
       </button>
       <button class="cad-btn cad-btn-secondary" id="btnDownloadAddin">Add-In</button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
@@ -268,60 +272,14 @@
         </div>
       </div>
 
-      <!-- 1. Presets -->
-      <div class="panel panel-preset">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">💾 PRESETS</div>
-        <div class="panel-body hidden">
-          <label class="cad-label">Preset Name</label>
-          <div style="display:flex; gap:6px; margin-bottom:12px;">
-            <div class="cad-nested-input" style="flex:1;">
-              <input type="text" id="presetName" maxlength="40">
-            </div>
-            <button class="cad-btn cad-btn-primary" id="btnPresetSave"
-              style="min-width:60px; height:24px; font-size:11px;">Save</button>
-          </div>
-
-          <label class="cad-label">Saved Presets</label>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <div class="cad-nested-input" style="flex:1;">
-              <select id="presetSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
-                <option value="">— none —</option>
-              </select>
-            </div>
-            <button class="cad-btn cad-btn-secondary" id="btnPresetLoad"
-              style="min-width:50px; height:24px; font-size:11px;">Load</button>
-            <button class="cad-btn cad-btn-secondary" id="btnPresetDelete"
-              style="min-width:32px; height:24px; padding:0;">🗑</button>
-          </div>
-          <div id="presetMsg" class="cad-status-text"
-            style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
-
-          <!-- Cloud presets (KV-backed, cross-device). UI is auto-disabled
-               by cloud-preset-manager.js if BSPLINE_PRESETS_API_URL is unset. -->
-          <hr style="margin:14px 0 10px; border:none; border-top:1px solid var(--cad-border-standard);">
-          <label class="cad-label">☁ Cloud Preset Name</label>
-          <div style="display:flex; gap:6px; margin-bottom:12px;">
-            <div class="cad-nested-input" style="flex:1;">
-              <input type="text" id="cloudPresetName" maxlength="40">
-            </div>
-            <button class="cad-btn cad-btn-primary" id="btnCloudPresetSave"
-              style="min-width:60px; height:24px; font-size:11px;">Save</button>
-          </div>
-
-          <label class="cad-label">Cloud Saved Presets</label>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <div class="cad-nested-input" style="flex:1;">
-              <select id="cloudPresetSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
-                <option value="">— none —</option>
-              </select>
-            </div>
-            <button class="cad-btn cad-btn-secondary" id="btnCloudPresetLoad"
-              style="min-width:50px; height:24px; font-size:11px;">Load</button>
-            <button class="cad-btn cad-btn-secondary" id="btnCloudPresetDelete"
-              style="min-width:32px; height:24px; padding:0;">🗑</button>
-          </div>
-          <div id="cloudPresetMsg" class="cad-status-text"
-            style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
+      <!-- 1. Projects (full manager opens as a fullscreen panel) -->
+      <div class="panel" style="border-bottom:1px solid var(--cad-border-color);">
+        <div class="panel-body" style="padding:10px 12px;">
+          <button class="cad-btn cad-btn-secondary" data-open-projects
+            style="width:100%; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:15px;">folder_open</span>
+            Projects
+          </button>
         </div>
       </div>
 
@@ -1349,4 +1307,260 @@
 
           <div>
             <label class="cad-label">Seed</label>
-            <div clas
+            <div class="cad-nested-input">
+              <input type="number" id="skelSeed" value="42">
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Region Scale</label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelMacroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelMacroScale" value="0.65">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelOffsetX" value="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelOffsetY" value="0" step="0.01">
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="cad-label">Rotation <span style="font-size:10px; opacity:0.6;">(°)</span></label>
+            <div class="cad-slider-row">
+              <input type="range" id="skelRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
+              <div class="cad-stepper" style="width:75px;">
+                <input type="number" id="skelRotation" value="0" step="1">
+              </div>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Project Manager Styles -->
+  <style>
+    #projectManagerModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9500;
+      background: rgba(0,0,0,0.55);
+      align-items: center;
+      justify-content: center;
+    }
+    .pm-dialog {
+      width: 720px;
+      max-width: 95vw;
+      height: 560px;
+      max-height: 92vh;
+      background: #fff;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.42);
+      overflow: hidden;
+    }
+    .pm-header {
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      height: 50px;
+      background: #2b2b2b;
+      color: #fff;
+      border-radius: 10px 10px 0 0;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .pm-header-title { font-weight: 600; font-size: 14px; letter-spacing: 0.5px; }
+    .pm-close-btn {
+      background: none; border: none; color: #999; font-size: 22px;
+      cursor: pointer; padding: 0; min-width: 44px; min-height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px; transition: color 0.15s;
+    }
+    .pm-close-btn:hover { color: #fff; }
+    .pm-body { display: flex; flex: 1; overflow: hidden; }
+    .pm-list-col {
+      width: 250px; flex-shrink: 0;
+      border-right: 1px solid #e4e4e4;
+      background: #fafafa;
+      display: flex; flex-direction: column;
+    }
+    .pm-search-wrap { padding: 10px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+    .pm-search-input {
+      width: 100%; box-sizing: border-box; padding: 7px 10px;
+      border: 1px solid #d4d4d4; border-radius: 5px;
+      font-size: 12px; font-family: inherit; outline: none; height: 36px;
+    }
+    .pm-search-input:focus { border-color: #4f8ef7; box-shadow: 0 0 0 2px rgba(79,142,247,.2); }
+    #fmProjectList { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .pm-status-bar {
+      padding: 7px 12px; font-size: 11px; color: #999;
+      border-top: 1px solid #eee; background: #f5f5f5; flex-shrink: 0;
+    }
+    .fm-project-item {
+      padding: 10px 14px; font-size: 12px; color: #333; cursor: pointer;
+      border-radius: 4px; margin: 1px 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      min-height: 40px; display: flex; align-items: center;
+      transition: background 0.1s;
+    }
+    .fm-project-item:hover     { background: #eef3ff; }
+    .fm-project-item.fm-selected { background: #4f8ef7; color: #fff; }
+    .pm-actions-col {
+      flex: 1; display: flex; flex-direction: column;
+      padding: 20px; overflow-y: auto;
+    }
+    .pm-field-label {
+      font-size: 11px; font-weight: 700; color: #666;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      display: block; margin-bottom: 6px;
+    }
+    .pm-name-input {
+      width: 100%; box-sizing: border-box; padding: 9px 10px;
+      border: 1.5px solid #d0d0d0; border-radius: 6px;
+      font-size: 13px; font-family: inherit; outline: none;
+      height: 42px; margin-bottom: 14px;
+    }
+    .pm-name-input:focus { border-color: #4f8ef7; box-shadow: 0 0 0 3px rgba(79,142,247,.15); }
+    .pm-btn {
+      width: 100%; min-height: 44px; padding: 0 16px;
+      border-radius: 6px; font-size: 13px; font-family: inherit;
+      cursor: pointer; border: 1px solid transparent;
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; transition: background 0.15s, border-color 0.15s;
+    }
+    .pm-btn-primary  { background: #4f8ef7; color: #fff; border-color: #3a7de0; font-weight: 600; }
+    .pm-btn-primary:hover:not(:disabled)   { background: #3a7de0; }
+    .pm-btn-secondary { background: #f0f0f0; color: #333; border-color: #d0d0d0; }
+    .pm-btn-secondary:hover:not(:disabled) { background: #e4e8f0; }
+    .pm-btn-danger    { background: #fff0f0; color: #c00; border-color: #f0c0c0; }
+    .pm-btn-danger:hover:not(:disabled)    { background: #ffe0e0; }
+    .pm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pm-btn-row { display: flex; flex-direction: column; gap: 8px; }
+    .pm-divider { border: none; border-top: 1px solid #eee; margin: 6px 0; }
+    #fmProjectMsg { margin-top: 14px; font-size: 12px; color: #888; min-height: 20px; }
+    .pm-hint {
+      margin-top: auto; padding-top: 14px;
+      border-top: 1px solid #f0f0f0;
+      font-size: 11px; color: #ccc;
+    }
+    /* Mobile: stack list above actions */
+    @media (max-width: 700px) {
+      .pm-dialog {
+        width: 100vw; max-width: 100vw;
+        height: 100dvh; max-height: 100dvh;
+        border-radius: 0;
+      }
+      .pm-header { border-radius: 0; }
+      .pm-body   { flex-direction: column; }
+      .pm-list-col {
+        width: 100%; height: 44vh;
+        border-right: none; border-bottom: 1px solid #e4e4e4;
+        flex-shrink: 0;
+      }
+      .pm-actions-col { padding: 14px 16px; }
+      .pm-name-input  { height: 44px; margin-bottom: 12px; }
+    }
+    /* Mobile landscape: tighter heights */
+    @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
+      .pm-list-col    { height: 38vh; }
+      .pm-actions-col { padding: 10px 14px; }
+      .pm-btn         { min-height: 40px; font-size: 12px; }
+      .pm-name-input  { height: 38px; margin-bottom: 10px; }
+      .pm-hint        { display: none; }
+    }
+  </style>
+
+  <!-- Project Manager Modal -->
+  <div id="projectManagerModal" role="dialog" aria-modal="true"
+       aria-label="Project Manager" aria-hidden="true">
+    <div class="pm-dialog">
+
+      <!-- Title bar -->
+      <div class="pm-header">
+        <span class="material-symbols-outlined" style="font-size:20px;">folder_open</span>
+        <span class="pm-header-title">PROJECTS</span>
+        <div style="flex:1;"></div>
+        <button id="fmCloseBtn" class="pm-close-btn" title="Close (Esc)">&#x2715;</button>
+      </div>
+
+      <!-- Body: two-column on desktop, stacked on mobile -->
+      <div class="pm-body">
+
+        <!-- Left: project list -->
+        <div class="pm-list-col">
+          <div class="pm-search-wrap">
+            <input type="search" id="fmProjectSearch" class="pm-search-input"
+              placeholder="Search projects..." autocomplete="off"
+              aria-label="Search projects">
+          </div>
+          <div id="fmProjectList" role="listbox" aria-label="Saved projects">
+            <div style="padding:24px 12px; color:#bbb; font-size:12px; text-align:center;">
+              Loading...
+            </div>
+          </div>
+          <div id="fmProjectStatus" class="pm-status-bar">--</div>
+        </div>
+
+        <!-- Right: name input + actions -->
+        <div class="pm-actions-col">
+          <label for="fmProjectName" class="pm-field-label">Project Name</label>
+          <input type="text" id="fmProjectName" class="pm-name-input"
+            maxlength="80" placeholder="Enter project name..." autocomplete="off">
+
+          <div class="pm-btn-row">
+            <button id="fmBtnSave"   class="pm-btn pm-btn-primary">
+              <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+              Save Current State
+            </button>
+            <button id="fmBtnLoad"   class="pm-btn pm-btn-secondary" disabled>
+              <span class="material-symbols-outlined" style="font-size:16px;">folder_open</span>
+              Load Selected
+            </button>
+            <button id="fmBtnRename" class="pm-btn pm-btn-secondary" disabled>
+              <span class="material-symbols-outlined" style="font-size:16px;">edit</span>
+              Rename Selected to Name Above
+            </button>
+            <hr class="pm-divider">
+            <button id="fmBtnDelete" class="pm-btn pm-btn-danger" disabled>
+              <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
+              Delete Selected
+            </button>
+          </div>
+
+          <div id="fmProjectMsg" aria-live="polite"></div>
+
+          <p class="pm-hint">
+            Double-click a project to load instantly &middot; Enter = load &middot; Esc = close
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
