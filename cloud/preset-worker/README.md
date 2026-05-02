@@ -129,8 +129,6 @@ import { bindProjectManager } from './cloud-project-manager.js';
 bindProjectManager(preview);
 ```
 
-There's also a deprecated `cloud-preset-manager.js` from an earlier dropdown
-UI iteration; it's no longer imported and can be deleted whenever convenient.
 
 ## Local development
 
@@ -143,3 +141,8 @@ Useful for iterating without burning deploys. Same API shape as production.
 
 ## Costs
 
+For a single-user workflow this fits the Cloudflare Workers free tier:
+
+- 100,000 requests/day free
+- 1 GB KV storage free
+- 1,000 KV writes/day free, $5/M
