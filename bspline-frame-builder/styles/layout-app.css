@@ -338,129 +338,184 @@ aside {
 }
 
 /* =========================================================================
-   9. Resizer
+   9. Native CAD layout (.cad-app-shell / .cad-main-content / .cad-sidebar
+       / .cad-resizer / .cad-viewport / #previewArea / #previewCanvas)
    -------------------------------------------------------------------------
-   Scoped to the bare `.app` layout (index.html). The b-spline-gen palette
-   wraps its grid in `.cad-main-content.app` and supplies its own
-   `.cad-resizer` styling, so we explicitly exclude that container here to
-   avoid the id-specificity collision that previously squashed the handle
-   into a tiny stranded pill (and the responsive @media block below kicked
-   it into row 3 of a 1-row grid).
+   These rules used to live in an inline <style> block at the top of
+   bspline_gen_palette.html. They were moved here so the mobile @media
+   block (Section 10 below) can actually override them at narrow
+   viewports — when this rule lived after layout-app.css in source order,
+   it stomped on the @media rules' grid-template-columns / -rows even at
+   ≤700px and the responsive layout never engaged.
+   Page-specific styles (.cad-sidebar .panel overrides, .cad-nested-input,
+   .cad-stepper, etc.) intentionally stay inline in the page since they
+   only apply to b-spline-gen and nothing else loads them.
    ========================================================================= */
-.app:not(.cad-main-content) > #resizer {
+:root {
+    --cad-sidebar-width: 260px;
+}
+
+.cad-app-shell {
+    background: #f5f5f5;
+}
+
+.cad-main-content {
+    display: grid;
+    grid-template-columns: var(--cad-sidebar-width) auto 1fr;
+    grid-template-rows: 1fr;
+    flex: 1;
+    height: calc(100vh - 35px); /* Adjust for navbar exact height */
+    overflow: hidden;
+    background: #f5f5f5;
+}
+
+.cad-sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    width: var(--cad-sidebar-width);
+    height: 100%;
+    background: #fdfdfd;
+    border-right: 1px solid var(--cad-border-standard);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.cad-resizer {
     grid-column: 2;
-    grid-row: 2;
-    background: var(--surface2);
-    border-left: 1px solid var(--border);
-    border-right: 1px solid var(--border);
+    grid-row: 1;
+    width: 10px; /* Broader interactive area */
+    height: 100% !important;
+    align-self: stretch !important;
     cursor: col-resize;
-    touch-action: none;
-    /* Prevent scroll on mobile drag */
+    background: #eee;
+    border-left: 1px solid #ddd;
+    border-right: 1px solid #ddd;
+    transition: background 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 50;
-    transition: background 0.1s;
+    position: relative;
+    z-index: 100; /* Stay above canvas */
 }
 
-.app:not(.cad-main-content) > #resizer:hover,
-.app:not(.cad-main-content) > #resizer:active {
-    background: #d4d4d4;
-}
-
-/* Little grip lines */
-.app:not(.cad-main-content) > #resizer::after {
-    content: '';
-    display: block;
+.cad-resizer::after {
+    content: "";
     width: 2px;
-    height: 24px;
-    background: #a0a0a0;
+    height: 60px; /* Centered pill length */
+    background: #888;
     border-radius: 2px;
+    transition: background 0.2s, height 0.2s;
+}
+
+.cad-resizer:hover,
+.cad-resizer.resizing {
+    background: #e8e8e8;
+}
+
+.cad-resizer:hover::after,
+.cad-resizer.resizing::after {
+    background: #0696D7; /* Highlight pill on interaction */
+    height: 80px;
+}
+
+.cad-viewport {
+    grid-column: 3;
+    grid-row: 1;
+    height: 100%;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    background: #111;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure the Three.js canvas fills the CAD viewport exactly */
+#previewArea {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: #111;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#previewCanvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
 }
 
 /* =========================================================================
-   10. Responsive — Vertical / Mobile layout
+   10. Responsive — Mobile layout for .cad-main-content
    =========================================================================
-   index.html uses bare elements (`.app`, `aside`, `#previewArea`,
-   `#resizer`) rather than the `.cad-*` palette layout. These rules stack
-   the sections in a single column when the viewport gets narrow:
-     row 1 — header
-     row 2 — 3D preview (anchored, fixed height)
-     row 3 — horizontal resizer
-     row 4 — sidebar (panels), takes remaining space
-     row 5 — bottom status bar
-   The aside flips back to a normal block flow so its panels lay out
-   top-to-bottom under the preview, instead of being squished into a
-   320px column. */
+   The desktop layout (defined in Section 9 above as a 3-column grid:
+   sidebar | resizer | viewport) flips to a single-column vertical
+   stack on narrow viewports:
+     row 1 — .cad-viewport (3D preview, 40vh — 35vh under 400px)
+     row 2 — .cad-resizer  (horizontal grip, 12px tall)
+     row 3 — .cad-sidebar  (panels, scrollable, takes remaining space)
+   The sticky `.cad-panel-section` at the top of .cad-sidebar is already
+   position: sticky in the page's inline styles, so the Seed / Undo / Redo
+   block stays pinned at the top of the now-bottom panel area without
+   needing extra rules here.
+   NOTE on the resizer: the existing JS in bspline_gen_palette.html
+   (~line 976) tracks horizontal X-delta and adjusts sidebar column
+   width. On this mobile layout the column is 1fr — so the cursor reads
+   row-resize but the drag won't actually adjust preview height. CSS
+   layout is correct without that fix; a follow-up JS change can detect
+   viewport width and switch to Y-delta + grid-template-rows adjustment.
+   The pre-cad-* mobile rules that previously lived here were scoped
+   with `.app:not(.cad-main-content)` to fence themselves off from the
+   migrated page. Since no HTML in the project still uses the bare
+   `.app` layout, those rules were removed in this refactor along with
+   the corresponding desktop resizer fence.
+   ========================================================================= */
 @media (max-width: 700px) {
-    .app:not(.cad-main-content) {
-        --sidebar-width: 100%;
-        --preview-height: 40vh;
-        grid-template-columns: 1fr !important;
-        grid-template-rows: auto var(--preview-height) 12px 1fr auto !important;
+    .cad-main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: 40vh 12px 1fr;
     }
 
-    .app:not(.cad-main-content) > header {
-        grid-column: 1 !important;
-        grid-row: 1 !important;
-    }
-
-    .app:not(.cad-main-content) > #previewArea {
-        grid-column: 1 !important;
-        grid-row: 2 !important;
-        border-left: none;
-        border-bottom: 1px solid var(--border);
+    .cad-main-content > .cad-viewport {
+        grid-column: 1;
+        grid-row: 1;
         min-height: 0;
     }
 
-    .app:not(.cad-main-content) > #resizer {
-        grid-column: 1 !important;
-        grid-row: 3 !important;
-        width: 100% !important;
+    .cad-main-content > .cad-resizer {
+        grid-column: 1;
+        grid-row: 2;
+        width: 100%;
         height: 12px !important;
-        cursor: row-resize !important;
-        border-left: none !important;
-        border-right: none !important;
-        border-top: 1px solid var(--border);
-        border-bottom: 1px solid var(--border);
+        cursor: row-resize;
+        border-left: none;
+        border-right: none;
+        border-top: 1px solid #ddd;
+        border-bottom: 1px solid #ddd;
     }
 
-    .app:not(.cad-main-content) > #resizer::after {
-        width: 32px;
+    .cad-main-content > .cad-resizer::after {
+        width: 60px;
         height: 2px;
     }
 
-    .app:not(.cad-main-content) > aside {
-        grid-column: 1 !important;
-        grid-row: 4 !important;
+    .cad-main-content > .cad-sidebar {
+        grid-column: 1;
+        grid-row: 3;
         width: 100%;
         border-right: none;
         border-top: none;
-        padding: 12px 12px 60px 12px;
-    }
-
-    .app:not(.cad-main-content) > #bottomStatusBar {
-        grid-column: 1 !important;
-        grid-row: 5 !important;
-    }
-
-    /* Sticky seed/undo block stays pinned at top of the (now bottom)
-       sidebar — user can still reach it without scrolling within the
-       sidebar block. Pull padding compensation matches the new aside
-       padding above. */
-    .sticky-actions {
-        top: -12px;
-        margin: -12px -12px 0 -12px;
-        padding: 10px 12px 8px 12px;
+        padding-bottom: 60px;
     }
 }
 
 @media (max-width: 400px) {
-    .app:not(.cad-main-content) {
-        --preview-height: 35vh;
-    }
-    .app:not(.cad-main-content) > header {
-        padding: 8px 10px;
-        gap: 8px;
+    .cad-main-content {
+        grid-template-rows: 35vh 12px 1fr;
     }
 }

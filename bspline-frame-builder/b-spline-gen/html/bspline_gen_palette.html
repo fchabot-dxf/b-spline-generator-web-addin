@@ -27,105 +27,15 @@
 
   <!-- CSS Overrides for B-Spline Gen integration -->
   <style>
-    :root {
-      --cad-sidebar-width: 260px;
-    }
-
-    .cad-app-shell {
-      background: #f5f5f5;
-    }
-
-    .cad-main-content {
-      display: grid;
-      grid-template-columns: var(--cad-sidebar-width) auto 1fr;
-      grid-template-rows: 1fr;
-      flex: 1;
-      height: calc(100vh - 35px);
-      /* Adjust for navbar exact height (footer removed) */
-      overflow: hidden;
-      background: #f5f5f5;
-    }
-
-    .cad-sidebar {
-      grid-column: 1;
-      grid-row: 1;
-      width: var(--cad-sidebar-width);
-      height: 100%;
-      background: #fdfdfd;
-      border-right: 1px solid var(--cad-border-standard);
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-      min-height: 0;
-    }
-
-    .cad-resizer {
-      grid-column: 2;
-      grid-row: 1;
-      width: 10px; /* Broader interactive area */
-      height: 100% !important;
-      align-self: stretch !important;
-      cursor: col-resize;
-      background: #eee;
-      border-left: 1px solid #ddd;
-      border-right: 1px solid #ddd;
-      transition: background 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      z-index: 100; /* Ensure it stays above canvas */
-    }
-
-    .cad-resizer::after {
-      content: "";
-      width: 2px;
-      height: 60px; /* Centered pill length */
-      background: #888;
-      border-radius: 2px;
-      transition: background 0.2s, height 0.2s;
-    }
-
-    .cad-resizer:hover,
-    .cad-resizer.resizing {
-      background: #e8e8e8;
-    }
-
-    .cad-resizer:hover::after,
-    .cad-resizer.resizing::after {
-      background: #0696D7; /* Highlight pill on interaction */
-      height: 80px;
-    }
-
-    .cad-viewport {
-      grid-column: 3;
-      grid-row: 1;
-      height: 100%;
-      width: 100%;
-      min-width: 0;
-      min-height: 0;
-      background: #111;
-      position: relative;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Ensure the Three.js canvas fills the CAD viewport exactly */
-    #previewArea {
-      flex: 1;
-      width: 100%;
-      height: 100%;
-      position: relative;
-      background: #111;
-      overflow: hidden;
-      min-height: 0;
-    }
-
-    #previewCanvas {
-      width: 100% !important;
-      height: 100% !important;
-      display: block;
-    }
+    /* The Native CAD layout rules (.cad-app-shell, .cad-main-content,
+       .cad-sidebar, .cad-resizer, .cad-viewport, #previewArea,
+       #previewCanvas) and the --cad-sidebar-width custom property have
+       been moved to ../../styles/layout-app.css (Section 9). Keeping
+       them inline here used to override the mobile @media block by
+       source order, killing the responsive layout at narrow viewports.
+       Page-specific styles (.cad-sidebar .panel*, .cad-nested-input,
+       .cad-stepper, etc.) intentionally stay below — they only apply
+       to this page. */
 
     /* Harmonize legacy panels with new sidebar */
     .cad-sidebar .panel {
@@ -243,9 +153,16 @@
     <div style="flex:1;"></div>
 
     <div style="display:flex; gap:8px; align-items:center;">
-      <button class="cad-btn cad-btn-secondary" id="btnAppRefresh" title="Reload the app (clears in-memory state, fetches latest code)" style="display:flex; align-items:center; gap:4px;">
-        <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
-        <span>Reload</span>
+      <!-- Quick Save (replaces the old Reload button). Uses _currentFile
+           (set after a successful Save/Load in the Project Manager). When
+           set: silent overwrite. When not set: opens the Project Manager
+           and starts a Save prompt. Label updates to show the active
+           file name so the user always sees what they're editing. -->
+      <button class="cad-btn cad-btn-secondary" id="btnQuickSave"
+              title="Save (no file associated yet)"
+              style="display:flex; align-items:center; gap:4px; min-height:32px; max-width:220px;">
+        <span class="material-symbols-outlined" style="font-size:16px;">save</span>
+        <span id="btnQuickSaveLabel" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Save…</span>
       </button>
       <button class="cad-btn cad-btn-secondary" id="btnOpenProjectManager" title="Open Project Manager" style="display:flex; align-items:center; gap:4px; min-height:32px;">
         <span class="material-symbols-outlined" style="font-size:16px;">folder_open</span>
@@ -970,26 +887,69 @@
       }
 
       // 3. Resizer Compatibility logic
+      //
+      // Two modes, picked at drag-start time from the viewport width:
+      //   horizontal  (desktop, >700px)  → drag X, resize sidebar column
+      //                                    via --cad-sidebar-width.
+      //   vertical    (mobile,  ≤700px)  → drag Y, resize preview row
+      //                                    via inline grid-template-rows.
+      // The breakpoint matches the @media block in styles/layout-app.css.
+      // Touch events are wired up for mobile too. When the viewport
+      // crosses the breakpoint we drop any inline grid-template-rows the
+      // mobile drag set, so the @media rule / desktop default reasserts.
       const resizer = document.getElementById('resizer');
-      if (resizer) {
+      const mainContent = document.querySelector('.cad-main-content');
+      if (resizer && mainContent) {
+        const mqlMobile = window.matchMedia('(max-width: 700px)');
         let isResizing = false;
-        resizer.addEventListener('mousedown', (e) => {
+        let mode = 'horizontal';
+
+        const getClient = (e) => {
+          if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }
+          return { x: e.clientX, y: e.clientY };
+        };
+
+        const start = (e) => {
           isResizing = true;
+          mode = mqlMobile.matches ? 'vertical' : 'horizontal';
           resizer.classList.add('resizing');
-          document.body.style.cursor = 'col-resize';
-        });
-        window.addEventListener('mousemove', (e) => {
+          document.body.style.cursor = mode === 'vertical' ? 'row-resize' : 'col-resize';
+          if (e.cancelable) e.preventDefault();
+        };
+
+        const move = (e) => {
           if (!isResizing) return;
-          const newWidth = Math.max(200, Math.min(e.clientX, window.innerWidth - 300));
-          document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
-          // Trigger Three.js resize if available
+          const { x, y } = getClient(e);
+          if (mode === 'vertical') {
+            const rect = mainContent.getBoundingClientRect();
+            const previewPx = Math.max(120, Math.min(y - rect.top, rect.height - 120));
+            mainContent.style.gridTemplateRows = `${previewPx}px 12px 1fr`;
+          } else {
+            const newWidth = Math.max(200, Math.min(x, window.innerWidth - 300));
+            document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
+          }
           if (window.dispatchEvent) window.dispatchEvent(new Event('resize'));
-        });
-        window.addEventListener('mouseup', () => {
+          if (e.cancelable) e.preventDefault();
+        };
+
+        const stop = () => {
           if (!isResizing) return;
           isResizing = false;
           resizer.classList.remove('resizing');
           document.body.style.cursor = '';
+        };
+
+        resizer.addEventListener('mousedown', start);
+        resizer.addEventListener('touchstart', start, { passive: false });
+        window.addEventListener('mousemove', move);
+        window.addEventListener('touchmove', move, { passive: false });
+        window.addEventListener('mouseup', stop);
+        window.addEventListener('touchend', stop);
+
+        mqlMobile.addEventListener('change', () => {
+          mainContent.style.gridTemplateRows = '';
         });
       }
     });
@@ -1142,8 +1102,18 @@
           </div>
 
           <div id="editorSymbolKeyboardGrid" style="flex:1; overflow-y:auto; display:grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap:1px; padding:4px; background:#fafafa;"></div>
-          <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
         </div>
+
+        <!-- Hidden text-editing input. CRITICAL: this MUST live outside
+             #editorSymbolKeyboard. The keyboard panel gets class="hidden"
+             (which applies display:none !important via base.css) whenever
+             it is closed — and a display:none ancestor makes
+             input.focus() a silent no-op, so canvas-tap-to-type breaks
+             entirely. Keeping the input as a sibling of the keyboard,
+             inside .cad-modal-body, preserves the original absolute-
+             positioning offsetParent while ensuring the input is always
+             focusable regardless of keyboard visibility. -->
+        <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
       </div>
       
       <!-- Invisible interaction elements (needed for JS compatibility) -->
@@ -1358,122 +1328,249 @@
   </div>
 
 
-  <!-- Project Manager Styles -->
+  <!-- Project Manager Styles — files-first redesign with tile / list views -->
   <style>
     #projectManagerModal {
       display: none;
-      position: fixed;
-      inset: 0;
+      position: fixed; inset: 0;
       z-index: 9500;
       background: rgba(0,0,0,0.55);
-      align-items: center;
-      justify-content: center;
+      align-items: center; justify-content: center;
     }
     .pm-dialog {
-      width: 720px;
-      max-width: 95vw;
-      height: 560px;
-      max-height: 92vh;
-      background: #fff;
-      border-radius: 10px;
-      display: flex;
-      flex-direction: column;
+      width: 880px; max-width: 95vw;
+      height: 620px; max-height: 92vh;
+      background: #fff; border-radius: 10px;
+      display: flex; flex-direction: column;
       box-shadow: 0 24px 64px rgba(0,0,0,0.42);
       overflow: hidden;
     }
+
+    /* Header — title + view toggle + close */
     .pm-header {
-      display: flex;
-      align-items: center;
-      padding: 0 16px;
-      height: 50px;
-      background: #2b2b2b;
-      color: #fff;
+      display: flex; align-items: center;
+      padding: 0 12px; height: 48px;
+      background: #2b2b2b; color: #fff;
       border-radius: 10px 10px 0 0;
-      flex-shrink: 0;
-      gap: 8px;
+      flex-shrink: 0; gap: 10px;
     }
-    .pm-header-title { font-weight: 600; font-size: 14px; letter-spacing: 0.5px; }
+    .pm-header-title { font-weight: 600; font-size: 14px; letter-spacing: 0.5px; flex: 1; }
+    .pm-view-toggle { display: flex; background: #1a1a1a; border-radius: 6px; padding: 2px; }
+    .pm-view-toggle button {
+      background: none; border: none; color: #999;
+      padding: 5px 10px; cursor: pointer; font-size: 11px;
+      border-radius: 4px; display: flex; align-items: center; gap: 4px;
+      font-family: inherit;
+    }
+    .pm-view-toggle button.active { background: #4f8ef7; color: #fff; }
     .pm-close-btn {
-      background: none; border: none; color: #999; font-size: 22px;
-      cursor: pointer; padding: 0; min-width: 44px; min-height: 44px;
+      background: none; border: none; color: #999; font-size: 20px;
+      cursor: pointer; padding: 0; min-width: 36px; min-height: 36px;
       display: flex; align-items: center; justify-content: center;
-      border-radius: 4px; transition: color 0.15s;
+      border-radius: 4px;
     }
     .pm-close-btn:hover { color: #fff; }
-    .pm-body { display: flex; flex: 1; overflow: hidden; }
-    .pm-list-col {
-      width: 250px; flex-shrink: 0;
-      border-right: 1px solid #e4e4e4;
-      background: #fafafa;
-      display: flex; flex-direction: column;
+
+    /* Breadcrumb + toolbar */
+    .pm-toolbar {
+      display: flex; align-items: center;
+      padding: 8px 12px; gap: 12px;
+      background: #fafafa; border-bottom: 1px solid #e8e8e8;
+      flex-shrink: 0; min-height: 44px;
     }
-    .pm-search-wrap { padding: 10px; border-bottom: 1px solid #eee; flex-shrink: 0; }
-    .pm-search-input {
-      width: 100%; box-sizing: border-box; padding: 7px 10px;
-      border: 1px solid #d4d4d4; border-radius: 5px;
-      font-size: 12px; font-family: inherit; outline: none; height: 36px;
+    .pm-breadcrumb {
+      flex: 1; display: flex; align-items: center;
+      font-size: 13px; color: #555; gap: 2px;
+      overflow-x: auto; white-space: nowrap;
     }
-    .pm-search-input:focus { border-color: #4f8ef7; box-shadow: 0 0 0 2px rgba(79,142,247,.2); }
-    #fmProjectList { flex: 1; overflow-y: auto; padding: 4px 0; }
-    .pm-status-bar {
-      padding: 7px 12px; font-size: 11px; color: #999;
-      border-top: 1px solid #eee; background: #f5f5f5; flex-shrink: 0;
-    }
-    .fm-project-item {
-      padding: 10px 14px; font-size: 12px; color: #333; cursor: pointer;
-      border-radius: 4px; margin: 1px 4px;
-      min-height: 40px; display: flex; align-items: center; gap: 10px;
+    .pm-crumb {
+      cursor: pointer; padding: 4px 8px; border-radius: 4px;
       transition: background 0.1s;
     }
-    .fm-project-item:hover     { background: #eef3ff; }
-    .fm-project-item.fm-selected { background: #4f8ef7; color: #fff; }
-    .fm-project-item .fm-project-name {
-      flex: 1; min-width: 0;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    .pm-crumb:hover { background: #e8e8e8; }
+    .pm-crumb-sep { color: #aaa; user-select: none; padding: 0 2px; }
+    .pm-crumb-current { color: #333; font-weight: 600; cursor: default; }
+    .pm-crumb-current:hover { background: none; }
+    .pm-toolbar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .pm-toolbar-btn {
+      background: #fff; border: 1px solid #d0d0d0; color: #333;
+      padding: 6px 12px; border-radius: 5px; cursor: pointer;
+      font-size: 12px; font-family: inherit;
+      display: flex; align-items: center; gap: 4px;
+      transition: background 0.1s, border-color 0.1s;
     }
-    .fm-project-item .fm-project-date {
-      flex-shrink: 0; font-size: 11px; color: #999; font-variant-numeric: tabular-nums;
+    .pm-toolbar-btn:hover { background: #f0f4ff; border-color: #4f8ef7; }
+    .pm-toolbar-btn-primary {
+      background: #4f8ef7; border-color: #3a7de0; color: #fff; font-weight: 600;
     }
-    .fm-project-item.fm-selected .fm-project-date { color: rgba(255,255,255,0.85); }
-    .pm-actions-col {
-      flex: 1; display: flex; flex-direction: column;
-      padding: 20px; overflow-y: auto;
+    .pm-toolbar-btn-primary:hover { background: #3a7de0; border-color: #2a6dd0; }
+
+    /* Content area — dominant */
+    .pm-content {
+      flex: 1; overflow: auto;
+      background: #fff; position: relative;
     }
-    .pm-field-label {
-      font-size: 11px; font-weight: 700; color: #666;
-      text-transform: uppercase; letter-spacing: 0.8px;
-      display: block; margin-bottom: 6px;
+
+    /* Tile view */
+    .pm-tile-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px; padding: 14px;
     }
-    .pm-name-input {
-      width: 100%; box-sizing: border-box; padding: 9px 10px;
-      border: 1.5px solid #d0d0d0; border-radius: 6px;
-      font-size: 13px; font-family: inherit; outline: none;
-      height: 42px; margin-bottom: 14px;
+    .pm-tile {
+      display: flex; flex-direction: column;
+      border: 1px solid #e4e4e4; border-radius: 6px;
+      background: #fafafa; cursor: pointer;
+      overflow: hidden;
+      transition: border-color 0.1s, box-shadow 0.1s;
+      position: relative;
     }
-    .pm-name-input:focus { border-color: #4f8ef7; box-shadow: 0 0 0 3px rgba(79,142,247,.15); }
-    .pm-btn {
-      width: 100%; min-height: 44px; padding: 0 16px;
-      border-radius: 6px; font-size: 13px; font-family: inherit;
-      cursor: pointer; border: 1px solid transparent;
+    .pm-tile:hover {
+      border-color: #4f8ef7; box-shadow: 0 4px 12px rgba(79,142,247,0.15);
+    }
+    .pm-tile.fm-selected {
+      border-color: #4f8ef7; box-shadow: 0 0 0 2px #4f8ef7;
+      background: #eef3ff;
+    }
+    .pm-tile-thumb {
+      width: 100%; aspect-ratio: 4/3;
+      background: #f0f0f0;
       display: flex; align-items: center; justify-content: center;
-      gap: 6px; transition: background 0.15s, border-color 0.15s;
+      color: #ccc;
     }
-    .pm-btn-primary  { background: #4f8ef7; color: #fff; border-color: #3a7de0; font-weight: 600; }
-    .pm-btn-primary:hover:not(:disabled)   { background: #3a7de0; }
-    .pm-btn-secondary { background: #f0f0f0; color: #333; border-color: #d0d0d0; }
-    .pm-btn-secondary:hover:not(:disabled) { background: #e4e8f0; }
-    .pm-btn-danger    { background: #fff0f0; color: #c00; border-color: #f0c0c0; }
-    .pm-btn-danger:hover:not(:disabled)    { background: #ffe0e0; }
-    .pm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .pm-btn-row { display: flex; flex-direction: column; gap: 8px; }
-    .pm-divider { border: none; border-top: 1px solid #eee; margin: 6px 0; }
-    #fmProjectMsg { margin-top: 14px; font-size: 12px; color: #888; min-height: 20px; }
-    .pm-hint {
-      margin-top: auto; padding-top: 14px;
-      border-top: 1px solid #f0f0f0;
-      font-size: 11px; color: #ccc;
+    .pm-tile-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .pm-tile-thumb .material-symbols-outlined { font-size: 56px; }
+    .pm-tile-name {
+      padding: 8px 10px 2px; font-size: 12px; color: #333;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-weight: 500;
     }
-    /* Mobile: stack list above actions */
+    .pm-tile-date {
+      padding: 0 10px 8px; font-size: 11px; color: #888;
+      font-variant-numeric: tabular-nums;
+    }
+    .pm-tile-folder .pm-tile-thumb {
+      background: #fffbe5; color: #d97706;
+    }
+    .pm-tile-folder .pm-tile-name { color: #c2710a; }
+
+    /* List view (table) */
+    .pm-list-table {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    .pm-list-table th, .pm-list-table td {
+      text-align: left; padding: 8px 12px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .pm-list-table th {
+      position: sticky; top: 0;
+      background: #f5f5f5; font-weight: 600; color: #555;
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+      cursor: pointer; user-select: none; z-index: 1;
+    }
+    .pm-list-table th:hover { background: #ebebeb; }
+    .pm-list-table tr.fm-row { cursor: pointer; }
+    .pm-list-table tr.fm-row:hover { background: #f4f7ff; }
+    .pm-list-table tr.fm-row.fm-selected { background: #eef3ff; color: #1e3a8a; }
+    .pm-list-table .pm-list-icon {
+      vertical-align: middle; margin-right: 6px;
+      color: #888; font-size: 16px;
+    }
+    .pm-list-table .pm-list-folder .pm-list-icon { color: #d97706; }
+    .pm-list-table .pm-list-folder { color: #c2710a; font-weight: 500; }
+    .pm-col-num { text-align: right; font-variant-numeric: tabular-nums; color: #777; }
+    .pm-col-yes { color: #2a7; font-weight: 600; }
+    .pm-col-no  { color: #aaa; }
+
+    /* Empty state */
+    .pm-empty {
+      padding: 80px 20px; text-align: center;
+      color: #aaa; font-size: 13px;
+    }
+    .pm-empty .material-symbols-outlined { font-size: 48px; opacity: 0.5; display: block; margin-bottom: 8px; }
+
+    /* Bottom selection bar — info + actions */
+    .pm-selbar {
+      display: flex; align-items: center;
+      padding: 8px 12px; gap: 12px;
+      background: #fafafa; border-top: 1px solid #e8e8e8;
+      flex-shrink: 0; min-height: 48px;
+    }
+    .pm-selbar-info {
+      flex: 1; font-size: 12px; color: #666;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .pm-selbar-info-name { color: #333; font-weight: 600; }
+    .pm-selbar-info-meta { color: #888; }
+    .pm-selbar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .pm-selbar-btn {
+      background: #fff; border: 1px solid #d0d0d0; color: #555;
+      padding: 6px 10px; border-radius: 5px; cursor: pointer;
+      font-size: 12px; font-family: inherit;
+      display: flex; align-items: center; gap: 4px;
+      transition: background 0.1s;
+    }
+    .pm-selbar-btn:hover:not(:disabled) { background: #f0f0f0; }
+    .pm-selbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pm-selbar-btn-danger { color: #c00; border-color: #f0c0c0; }
+    .pm-selbar-btn-danger:hover:not(:disabled) { background: #ffe0e0; }
+    .pm-selbar-btn-primary {
+      background: #4f8ef7; border-color: #3a7de0; color: #fff; font-weight: 600;
+    }
+    .pm-selbar-btn-primary:hover:not(:disabled) { background: #3a7de0; }
+
+    /* Status bar */
+    .pm-status-bar {
+      padding: 5px 12px; font-size: 11px; color: #888;
+      border-top: 1px solid #f0f0f0; background: #f5f5f5;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0;
+    }
+    #fmProjectMsg { font-size: 11px; color: #888; min-height: 14px; }
+
+    /* In-page prompt / confirm dialog (replaces window.prompt + window.confirm
+       which CEF disables by default — see promptForName / confirmDialog in
+       cloud-project-manager.js for rationale). */
+    .pm-prompt-overlay {
+      position: fixed; inset: 0;
+      z-index: 9700;
+      background: rgba(0,0,0,0.4);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pm-prompt-dialog {
+      min-width: 360px; max-width: 90vw;
+      background: #fff; border-radius: 8px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+      padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .pm-prompt-title { font-size: 13px; color: #333; line-height: 1.4; }
+    .pm-prompt-message { font-size: 13px; color: #333; line-height: 1.5; }
+    .pm-prompt-input {
+      width: 100%; box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1.5px solid #d0d0d0; border-radius: 5px;
+      font-size: 13px; font-family: inherit; outline: none; height: 38px;
+    }
+    .pm-prompt-input:focus { border-color: #4f8ef7; box-shadow: 0 0 0 3px rgba(79,142,247,.18); }
+    .pm-prompt-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .pm-prompt-btn {
+      padding: 7px 16px; min-width: 70px;
+      border-radius: 5px; cursor: pointer; font-size: 12px;
+      font-family: inherit;
+      border: 1px solid #d0d0d0; background: #fff; color: #333;
+    }
+    .pm-prompt-btn:hover { background: #f0f0f0; }
+    .pm-prompt-ok {
+      background: #4f8ef7; border-color: #3a7de0; color: #fff; font-weight: 600;
+    }
+    .pm-prompt-ok:hover { background: #3a7de0; }
+    .pm-prompt-ok.pm-prompt-danger {
+      background: #d33; border-color: #b22; color: #fff;
+    }
+    .pm-prompt-ok.pm-prompt-danger:hover { background: #b22; }
+
+    /* Mobile */
     @media (max-width: 700px) {
       .pm-dialog {
         width: 100vw; max-width: 100vw;
@@ -1481,90 +1578,101 @@
         border-radius: 0;
       }
       .pm-header { border-radius: 0; }
-      .pm-body   { flex-direction: column; }
-      .pm-list-col {
-        width: 100%; height: 44vh;
-        border-right: none; border-bottom: 1px solid #e4e4e4;
-        flex-shrink: 0;
+      .pm-toolbar { flex-wrap: wrap; }
+      .pm-tile-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 8px; padding: 10px;
       }
-      .pm-actions-col { padding: 14px 16px; }
-      .pm-name-input  { height: 44px; margin-bottom: 12px; }
-    }
-    /* Mobile landscape: tighter heights */
-    @media (max-width: 900px) and (orientation: landscape) and (max-height: 500px) {
-      .pm-list-col    { height: 38vh; }
-      .pm-actions-col { padding: 10px 14px; }
-      .pm-btn         { min-height: 40px; font-size: 12px; }
-      .pm-name-input  { height: 38px; margin-bottom: 10px; }
-      .pm-hint        { display: none; }
+      .pm-list-table { font-size: 11px; }
+      .pm-list-table th, .pm-list-table td { padding: 6px 8px; }
+      /* Hide some columns on mobile */
+      .pm-list-table .pm-col-mobile-hide { display: none; }
     }
   </style>
 
-  <!-- Project Manager Modal -->
+  <!-- Project Manager Modal — files-first redesign with virtual folders -->
   <div id="projectManagerModal" role="dialog" aria-modal="true"
        aria-label="Project Manager" aria-hidden="true">
     <div class="pm-dialog">
 
-      <!-- Title bar -->
+      <!-- Title bar with view toggle -->
       <div class="pm-header">
         <span class="material-symbols-outlined" style="font-size:20px;">folder_open</span>
         <span class="pm-header-title">PROJECTS</span>
-        <div style="flex:1;"></div>
+        <div class="pm-view-toggle" role="tablist" aria-label="View mode">
+          <button id="fmViewToggleTiles" class="active" role="tab" aria-selected="true" title="Tile view">
+            <span class="material-symbols-outlined" style="font-size:14px;">grid_view</span>
+            Tiles
+          </button>
+          <button id="fmViewToggleList" role="tab" aria-selected="false" title="List view">
+            <span class="material-symbols-outlined" style="font-size:14px;">view_list</span>
+            List
+          </button>
+        </div>
         <button id="fmCloseBtn" class="pm-close-btn" title="Close (Esc)">&#x2715;</button>
       </div>
 
-      <!-- Body: two-column on desktop, stacked on mobile -->
-      <div class="pm-body">
-
-        <!-- Left: project list -->
-        <div class="pm-list-col">
-          <div class="pm-search-wrap">
-            <input type="search" id="fmProjectSearch" class="pm-search-input"
-              placeholder="Search projects..." autocomplete="off"
-              aria-label="Search projects">
-          </div>
-          <div id="fmProjectList" role="listbox" aria-label="Saved projects">
-            <div style="padding:24px 12px; color:#bbb; font-size:12px; text-align:center;">
-              Loading...
-            </div>
-          </div>
-          <div id="fmProjectStatus" class="pm-status-bar">--</div>
+      <!-- Breadcrumb + folder/save toolbar -->
+      <div class="pm-toolbar">
+        <div id="fmBreadcrumb" class="pm-breadcrumb" aria-label="Folder path">
+          <span class="pm-crumb pm-crumb-current" data-path="">📁</span>
         </div>
-
-        <!-- Right: name input + actions -->
-        <div class="pm-actions-col">
-          <label for="fmProjectName" class="pm-field-label">Project Name</label>
-          <input type="text" id="fmProjectName" class="pm-name-input"
-            maxlength="80" placeholder="Enter project name..." autocomplete="off">
-
-          <div class="pm-btn-row">
-            <button id="fmBtnSave"   class="pm-btn pm-btn-primary">
-              <span class="material-symbols-outlined" style="font-size:16px;">save</span>
-              Save Current State
-            </button>
-            <button id="fmBtnLoad"   class="pm-btn pm-btn-secondary" disabled>
-              <span class="material-symbols-outlined" style="font-size:16px;">folder_open</span>
-              Load Selected
-            </button>
-            <button id="fmBtnRename" class="pm-btn pm-btn-secondary" disabled>
-              <span class="material-symbols-outlined" style="font-size:16px;">edit</span>
-              Rename Selected to Name Above
-            </button>
-            <hr class="pm-divider">
-            <button id="fmBtnDelete" class="pm-btn pm-btn-danger" disabled>
-              <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
-              Delete Selected
-            </button>
-          </div>
-
-          <div id="fmProjectMsg" aria-live="polite"></div>
-
-          <p class="pm-hint">
-            Double-click a project to load instantly &middot; Enter = load &middot; Esc = close
-          </p>
+        <div class="pm-toolbar-actions">
+          <button id="fmBtnNewFolder" class="pm-toolbar-btn" title="Create a new (virtual) folder here">
+            <span class="material-symbols-outlined" style="font-size:14px;">create_new_folder</span>
+            New Folder
+          </button>
+          <button id="fmBtnSaveAs" class="pm-toolbar-btn"
+                  title="Save current state under a new name (Save As…)">
+            <span class="material-symbols-outlined" style="font-size:14px;">save_as</span>
+            <span>Save As…</span>
+          </button>
+          <button id="fmBtnSave" class="pm-toolbar-btn pm-toolbar-btn-primary"
+                  title="Save current state — prompts for a name">
+            <span class="material-symbols-outlined" style="font-size:14px;">save</span>
+            <span class="pm-save-label">Save…</span>
+          </button>
         </div>
-
       </div>
+
+      <!-- Content area — tiles or list (renderer chooses) -->
+      <div id="fmProjectList" class="pm-content" role="listbox" aria-label="Saved projects">
+        <div class="pm-empty">
+          <span class="material-symbols-outlined">hourglass_empty</span>
+          <div>Loading...</div>
+        </div>
+      </div>
+
+      <!-- Bottom selection bar -->
+      <div class="pm-selbar">
+        <div id="fmSelbarInfo" class="pm-selbar-info">No selection</div>
+        <div class="pm-selbar-actions">
+          <button id="fmBtnLoad" class="pm-selbar-btn pm-selbar-btn-primary" disabled
+                  title="Load the selected project (or double-click)">
+            <span class="material-symbols-outlined" style="font-size:14px;">folder_open</span>
+            Load
+          </button>
+          <button id="fmBtnRename" class="pm-selbar-btn" disabled title="Rename selected">
+            <span class="material-symbols-outlined" style="font-size:14px;">edit</span>
+            Rename
+          </button>
+          <button id="fmBtnDelete" class="pm-selbar-btn pm-selbar-btn-danger" disabled
+                  title="Delete selected (no undo)">
+            <span class="material-symbols-outlined" style="font-size:14px;">delete</span>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="pm-status-bar">
+        <span id="fmProjectStatus">--</span>
+        <span id="fmProjectMsg" aria-live="polite"></span>
+      </div>
+
+      <!-- Hidden — the JS still reads this for save/rename name. We populate
+           it via prompts now that the modal toolbar replaced the visible input. -->
+      <input type="hidden" id="fmProjectName">
     </div>
   </div>
 

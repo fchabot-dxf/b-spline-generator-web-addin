@@ -12,27 +12,10 @@ if (window && window.console) {
     console.log('[COORD_STD] editor-geometry.js loaded!');
 }
 import { COORD_SYSTEM } from '../core/coords.js';
-
-const FONT_MAP = {
-    "Arial": "arial.ttf",
-    "Tahoma": "tahoma.ttf",
-    "Verdana": "verdana.ttf",
-    "Bahnschrift": "bahnschrift.ttf",
-    "Impact": "impact.ttf",
-    "Georgia": "georgia.ttf",
-    "Times New Roman": "times.ttf",
-    "Courier New": "courier.ttf",
-    "Cascadia Code": "CascadiaCode-Regular.ttf",
-    "Cascadia Mono": "CascadiaMono-Regular.ttf",
-    "Marlett": "marlett.ttf",
-    "Symbol": "symbol.ttf",
-    "Webdings": "webdings.ttf",
-    "Wingdings": "wingdings.ttf",
-    "Segoe UI Symbol": "segoe-symbols.ttf",
-    "Segoe MDL2 Assets": "segoe-mdl2.ttf",
-    "Segoe Fluent Icons": "segoe-fluent-icons.ttf",
-    "Segoe UI Emoji": "segoe-emoji.ttf"
-};
+// FONT_MAP is the single source of truth for the editor's bundled fonts;
+// see editor-fonts.js for the rationale (used by both this module's
+// opentype path and the on-screen Symbol Keyboard's @font-face injection).
+import { FONT_MAP } from './editor-fonts.js';
 
 // --- INTERNAL GEOM UTILS ---
 function _add(a, b) { return { x: a.x + b.x, y: a.y + b.y }; }

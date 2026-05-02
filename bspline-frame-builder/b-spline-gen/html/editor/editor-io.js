@@ -84,6 +84,55 @@ async function getEmbeddedFontCss(family) {
     return null;
 }
 
+/**
+ * Like save() but scans every <text> element in the sketch layer for its
+ * font-family and embeds matching @font-face rules (with base64 data:
+ * URLs) inside a <defs><style> block. Required by the stamp/rasterization
+ * pipeline on iOS, where the rasterizer loads the SVG as a detached
+ * data: URL — document-level @font-face does NOT apply, and iOS does
+ * not ship Symbol/Wingdings/Webdings/Segoe UI Symbol as system fonts,
+ * so without embedded fonts those text elements rasterize as plain
+ * Latin glyphs. Async because of the font fetch + base64 conversion.
+ */
+export async function saveForRasterization(editor, dpi = 96) {
+    if (!editor._draw) return "";
+    const rawContent = editor._sketchLayer.node.innerHTML;
+    const content = rawContent.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+
+    // Collect every font-family referenced by a <text> in the content.
+    // Parse via DOMParser so we work on real elements regardless of how
+    // svg.js serialized the markup.
+    const fontFamilies = new Set();
+    try {
+        const tempSvg = `<svg xmlns="http://www.w3.org/2000/svg">${content}</svg>`;
+        const parsed = new DOMParser().parseFromString(tempSvg, 'image/svg+xml');
+        parsed.querySelectorAll('text').forEach(textEl => {
+            const family = textEl.getAttribute('font-family');
+            if (family) fontFamilies.add(family.replace(/['"]/g, '').trim());
+        });
+    } catch (err) {
+        console.warn('[editor-io] saveForRasterization: font-family scan failed', err);
+    }
+
+    // Embed @font-face for every family we have a webfont registered for.
+    // getEmbeddedFontCss returns null for families we don't ship — those
+    // fall through to OS fonts (fine for Arial / Tahoma / etc.).
+    const fontCss = [];
+    for (const family of fontFamilies) {
+        const css = await getEmbeddedFontCss(family);
+        if (css) fontCss.push(css);
+    }
+
+    const wPx = editor._mW * dpi;
+    const hPx = editor._mH * dpi;
+    const styleBlock = fontCss.length
+        ? `<defs class="rasterization-fonts"><style type="text/css">${fontCss.join('\n')}</style></defs>`
+        : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${content}</svg>`;
+    editor.lastSvg = svgString;
+    return svgString;
+}
+
 export async function saveWithTextCopies(editor, dpi = 96) {
     if (!editor._draw) return "";
     const rawContent = editor._sketchLayer.node.innerHTML;

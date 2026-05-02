@@ -40,10 +40,16 @@ class DebugLogger:
         except:
             pass
 
-        # Perform initial cap to clean up old bloat
+        # Truncate every log file on addin start so each session begins
+        # with a clean slate. (session_start() still uses _cap_log_file for
+        # its mid-session trimming, so logs aren't wiped while you're
+        # working — only at addin start / reload.)
         for path in self.log_paths:
-            self._cap_log_file(path)
-            
+            try:
+                open(path, 'w', encoding='utf-8').close()
+            except:
+                pass
+
         self.log(f"LOGGER INITIALIZED. ACTIVE PATHS: {len(self.log_paths)}")
 
     def log(self, message, level="INFO"):

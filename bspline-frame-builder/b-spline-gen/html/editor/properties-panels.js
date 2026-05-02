@@ -1,29 +1,19 @@
-import { queryAll } from './dom.js';
-
-const PANEL_IDS = {
-  shape: 'editorShapePanel',
-  text: 'editorTextPanel',
-  select: 'editorSelectPanel',
-  default: 'editorDefaultPanel'
-};
-
-export function getActivePropertiesPanel(editor) {
-  const el = editor._selectedElement;
-  const mode = editor._currentMode;
-  const isTextMode = mode === 'text' || (el && el.type === 'text');
-  const isSelectMode = mode === 'select' || mode === 'node';
-  const isShapeMode = ['draw', 'line', 'rect', 'circle'].includes(mode);
-  const isShapeSelected = el && el.type && el.type !== 'text' && el.type !== 'image';
-
-  if (isTextMode) return PANEL_IDS.text;
-  if (isSelectMode) return PANEL_IDS.select;
-  if (isShapeMode || isShapeSelected) return PANEL_IDS.shape;
-  return PANEL_IDS.default;
-}
-
-export function renderPropertiesPanel(editor) {
-  const activePanel = getActivePropertiesPanel(editor);
-  const panels = queryAll('.editor-properties-pane');
-  if (!panels.length) return;
-  panels.forEach(panel => panel.classList.toggle('active', panel.id === activePanel));
-}
+/**
+ * properties-panels.js - REMOVED.
+ *
+ * This module managed a tabbed property-panels UI (#editorShapePanel /
+ * #editorTextPanel / #editorSelectPanel / #editorDefaultPanel) that toggled
+ * an .active class on .editor-properties-pane elements. None of those IDs
+ * or classes still exist in the HTML - the editor moved to the inline
+ * #editor*Group toolbar approach (#editorFontGroup, #editorStrokeGroup,
+ * #editorExpandGroup) with simple .property-group.hidden visibility.
+ *
+ * The original module had no remaining importers and queryAll(...) returned
+ * empty, so renderPropertiesPanel() was a no-op every call. Removed during
+ * the mobile-UI orphan cleanup that also stripped the matching CSS rules
+ * from styles/editor.css.
+ *
+ * If you need a tabbed property UI again, build it against the live
+ * #editor*Group elements in bspline_gen_palette.html - don't reintroduce
+ * the .editor-properties-pane abstraction.
+ */

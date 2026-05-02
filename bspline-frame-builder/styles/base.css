@@ -14,7 +14,10 @@
 
    NOTE: The .ttf files under b-spline-gen/html/fonts/ are stamp assets
    loaded directly by opentype.js in editor-geometry.js to convert text
-   into SVG paths. They are NOT CSS web fonts — no @font-face block here.
+   into SVG paths. They are ALSO registered as CSS @font-face faces —
+   but at runtime by editor-fonts.js (injectFontFaceRules), not here or
+   in editor.css. That keeps a single source of truth (FONT_MAP) shared
+   between opentype loading and the on-screen Symbol Keyboard.
    ========================================================================= */
 
 /* =========================================================================
@@ -1105,7 +1108,14 @@ header {
     color: #333;
 }
 
-/* Shared Control Base */
+/* Shared Control Base
+   NOTE: transition is restricted to non-layout properties (border-color,
+   background-color, color). Using `transition: all` here previously
+   caused the Sketch Builder Rule Set dropdown to slowly grow downward
+   when opened in Fusion's CEF browser — any incidental layout shift
+   (popup opening, scrollbar appearing, options being appended) was
+   getting smoothly animated by the `all` rule. Color-only transitions
+   are safe; layout changes apply instantly as they should. */
 .cad-input,
 .cad-btn,
 .cad-select-wrap,
@@ -1113,7 +1123,7 @@ header {
     height: 24px;
     border-radius: var(--cad-radius-sm);
     font-size: 11.5px;
-    transition: all 0.05s;
+    transition: border-color 0.05s, background-color 0.05s, color 0.05s;
     display: inline-flex;
     align-items: center;
     box-sizing: border-box;

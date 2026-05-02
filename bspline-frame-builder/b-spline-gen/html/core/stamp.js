@@ -138,7 +138,17 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
     console.log(`[STAMP DEBUG] Rasterizing for grid: ${nx}x${nz}. Stock: ${widthIn}x${heightIn}`);
     
     return new Promise(async (resolve) => {
-        let processedSvg = svgText.replace(/<style[\s\S]*?<\/style>/gi, '');
+        // Strip <style> blocks but PRESERVE any @font-face rules inside
+        // them. The strip is intended to remove svg.js styling that
+        // interferes with rasterization; @font-face is required so the
+        // detached SVG render context (data: URL → Image → canvas) can
+        // resolve Symbol/Wingdings/Webdings/etc. on iOS, where those
+        // fonts are not installed at the OS level.
+        let processedSvg = svgText.replace(/<style[\s\S]*?<\/style>/gi, (match) => {
+            const fontFaceRules = match.match(/@font-face\s*\{[^}]*\}/g);
+            if (!fontFaceRules || fontFaceRules.length === 0) return '';
+            return `<style type="text/css">${fontFaceRules.join('\n')}</style>`;
+        });
         processedSvg = processedSvg.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
         processedSvg = processedSvg.replace(/(<text[^>]*?)font-family=(["'])([^"']*?)\2/gi, (match, pre, quote, fams) => {
             // Keep any font that the browser recognises — local self-hosted fonts first,

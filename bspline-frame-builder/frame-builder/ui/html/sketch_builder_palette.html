@@ -111,12 +111,58 @@
       }
     };
 
+    // TEMPORARY DEBUG — remove once dropdown growth bug is diagnosed.
+    // Captures every Python→JS message with a timestamp so we can see what
+    // arrives between user clicks. Inspect via sendInfoToHTML('eval_js', ...).
+    if (!window._messageLog) {
+      window._messageLog = [];
+      window._dropdownEvents = [];
+      // Watch the select for option-list rebuilds (innerHTML mutations).
+      const _watchSelect = () => {
+        const sel = document.getElementById('template-select');
+        if (!sel) { setTimeout(_watchSelect, 200); return; }
+        const obs = new MutationObserver(() => {
+          window._dropdownEvents.push({
+            ts: performance.now().toFixed(0),
+            type: 'children-mutated',
+            optionCount: sel.children.length,
+            value: sel.value,
+            wrapHeight: sel.parentElement?.getBoundingClientRect().height,
+          });
+        });
+        obs.observe(sel, { childList: true, subtree: false });
+      };
+      _watchSelect();
+    }
+
     function _dispatchFromPython(action, rawData) {
+      // TEMPORARY DEBUG: log every incoming message.
+      window._messageLog.push({
+        ts: performance.now().toFixed(0),
+        action,
+        dataPreview: (typeof rawData === 'string' ? rawData : JSON.stringify(rawData || {})).slice(0, 180),
+      });
+
       let data = {};
       try {
         data = (typeof rawData === 'string') ? JSON.parse(rawData) : (rawData || {});
       } catch(e) {
         console.error('[BRIDGE] JSON parse failed', e);
+      }
+
+      // TEMPORARY DEBUG: arbitrary JS eval handler. Lets fusion_execute
+      // call sendInfoToHTML('eval_js', '<expr>') and read back any DOM
+      // / window state. Removable once bug is fixed.
+      if (action === 'eval_js') {
+        try {
+          const code = (typeof data === 'string') ? data : (data.code || rawData);
+          const result = eval(code);
+          return (typeof result === 'object' && result !== null)
+            ? JSON.stringify(result)
+            : String(result);
+        } catch (e) {
+          return 'EVAL_ERROR: ' + e.message;
+        }
       }
 
       if (action === 'render_schema') {
@@ -426,6 +472,111 @@
           }, 1000);
         }
       }, 500);
+
+      /* ── TEMPORARY DEBUG: dropdown growth observer ────────────────────
+         Watches the rule-set dropdown for any size change and emits
+         debug_tx (transition/animation) and debug_resize (size change)
+         events to the addin log so we can pin down what's growing.
+         Remove this whole block once the bug is identified. */
+      setTimeout(() => {
+        const sel = document.getElementById('template-select');
+        const wrap = sel?.parentElement;
+        if (!sel || !wrap) return;
+
+        // (a) Watch for any CSS transition or animation under the panel
+        const panel = wrap.closest('.cad-sidebar-panel') || wrap;
+        const txLog = (e) => {
+          notifyFusion('debug_tx', JSON.stringify({
+            ts: performance.now() | 0,
+            type: e.type,
+            prop: e.propertyName,
+            tag: e.target.tagName,
+            id: e.target.id,
+            cls: (e.target.className || '').toString().slice(0, 60),
+          }));
+        };
+        ['transitionstart','transitionrun','transitionend','animationstart','animationend']
+          .forEach(ev => document.addEventListener(ev, txLog, true));
+
+        // (b) ResizeObserver on the wrapper + select — emits whenever
+        // either changes size, with the new dimensions
+        const ro = new ResizeObserver((entries) => {
+          for (const e of entries) {
+            notifyFusion('debug_resize', JSON.stringify({
+              ts: performance.now() | 0,
+              tag: e.target.tagName,
+              id: e.target.id,
+              w: e.contentRect.width | 0,
+              h: e.contentRect.height | 0,
+            }));
+          }
+        });
+        ro.observe(wrap);
+        ro.observe(sel);
+
+        // (c) Click counter on the select itself + inline-style observer.
+        // If something is mutating the wrapper's style attribute (our
+        // current top suspect), we'll see it here.
+        sel.addEventListener('mousedown', () => notifyFusion('debug_click', 'select-mousedown'));
+        sel.addEventListener('focus',     () => notifyFusion('debug_focus', 'select-focus'));
+        sel.addEventListener('blur',      () => notifyFusion('debug_focus', 'select-blur'));
+        new MutationObserver((muts) => {
+          muts.forEach(m => {
+            notifyFusion('debug_mut', JSON.stringify({
+              ts: performance.now() | 0,
+              target: m.target.tagName + '#' + (m.target.id || '') + '.' + (m.target.className || '').toString().slice(0,40),
+              attr: m.attributeName,
+              newVal: m.target.getAttribute(m.attributeName)?.slice(0, 120),
+            }));
+          });
+        }).observe(wrap, { attributes: true, attributeFilter: ['style', 'class'] });
+
+        // (d) Watch the SELECT itself for child additions/removals.
+        // If the user's hypothesis is right (invisible options being
+        // appended over time), this will catch every appendChild and
+        // report the running option count + the new option's text/value.
+        new MutationObserver((muts) => {
+          muts.forEach(m => {
+            if (m.type !== 'childList') return;
+            const added = Array.from(m.addedNodes).map(n => ({
+              tag: n.tagName,
+              text: (n.textContent || '').slice(0, 60),
+              empty: !(n.textContent || '').trim(),
+              value: n.value,
+            }));
+            const removed = Array.from(m.removedNodes).length;
+            notifyFusion('debug_optmut', JSON.stringify({
+              ts: performance.now() | 0,
+              addedCount: m.addedNodes.length,
+              removedCount: removed,
+              totalNow: sel.children.length,
+              added: added.slice(0, 5),
+            }));
+          });
+        }).observe(sel, { childList: true, subtree: false });
+
+        // (e) Periodic option-count snapshot — every 250ms emit the
+        // current count + sel/wrap height. If the user's "looks like
+        // it's growing" intuition is right, the count will tick up
+        // over time even if (d) misses some additions.
+        let lastCount = sel.children.length;
+        let lastH = sel.getBoundingClientRect().height | 0;
+        setInterval(() => {
+          const c = sel.children.length;
+          const h = sel.getBoundingClientRect().height | 0;
+          if (c !== lastCount || h !== lastH) {
+            notifyFusion('debug_periodic', JSON.stringify({
+              ts: performance.now() | 0,
+              optCount: c, deltaCount: c - lastCount,
+              selH: h, deltaH: h - lastH,
+            }));
+            lastCount = c;
+            lastH = h;
+          }
+        }, 250);
+
+        notifyFusion('debug_observer', 'installed (with children + periodic watchers)');
+      }, 700);
     });
   </script>
 </body>

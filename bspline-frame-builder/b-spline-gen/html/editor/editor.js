@@ -3,7 +3,7 @@
  * Refactored into a modular ES6 architecture.
  */
 
-import { initIO, save, saveWithTextCopies, open, sync3DBackground, getPointerPos } from './editor-io.js';
+import { initIO, save, saveWithTextCopies, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { initText, commitText, cancelText, setFontFamily, setFontSize } from './editor-text.js';
 import { getDynamicTolerance, getNodes, fitCurve, getHybridBezierPath, expandCurrent, getNearbyElement } from './editor-geometry.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
@@ -93,6 +93,16 @@ export class VectorEditor {
     saveWithTextCopies(dpi = 96) {
         this._commitText();
         return saveWithTextCopies(this, dpi);
+    }
+    /**
+     * Async save that embeds @font-face (base64 data: URLs) for every
+     * font referenced by a <text>. Use this for the stamp/rasterization
+     * pipeline so on-screen and stamped glyphs match on iOS, where the
+     * rasterizer is detached from document-level @font-face.
+     */
+    saveForRasterization(dpi = 96) {
+        this._commitText();
+        return saveForRasterization(this, dpi);
     }
     open(svgString, w, h) { return open(this, svgString, w, h); }
     sync3DBackground() { return sync3DBackground(this); }

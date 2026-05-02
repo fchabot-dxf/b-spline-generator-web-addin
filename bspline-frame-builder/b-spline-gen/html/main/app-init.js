@@ -45,18 +45,27 @@ export function initSvgEditor(preview) {
   window.svgEditor.initEditor(
     'editorSVGContainer',
     'svgEditorTopView',
-    () => {
-      const svg = window.svgEditor.save();
+    // onChange — fires after every edit. Use saveForRasterization (async)
+    // so the SVG handed to stamp.js carries embedded @font-face for every
+    // text element. Without this, iOS rasterizes Symbol/Wingdings/Webdings
+    // text as plain Latin glyphs (no document-level @font-face reaches a
+    // detached data: URL render context).
+    async () => {
+      const svg = await window.svgEditor.saveForRasterization();
       if (svg) {
         setStampLayerSvg(P.activeLayerIdx, svg);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }
     },
-    (svg) => {
+    // onCommit — same rationale: re-build with embedded fonts so the
+    // committed stamp matches the on-screen rendering.
+    async (svg) => {
       if (svg === 'push') return;
-      if (svg) {
-        setStampLayerSvg(P.activeLayerIdx, svg);
+      // Ignore the sync svg arg; rebuild with embedded fonts for the stamp.
+      const fontEmbeddedSvg = svg ? await window.svgEditor.saveForRasterization() : null;
+      if (fontEmbeddedSvg) {
+        setStampLayerSvg(P.activeLayerIdx, fontEmbeddedSvg);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }

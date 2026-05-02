@@ -36,6 +36,7 @@ function _buildTspans(textEl, textContent, x, y) {
 }
 
 export function startTextAt(editor, pt, pointerEvent) {
+    console.log(`[TEXT-DBG] startTextAt: pt=(${pt.x.toFixed(1)},${pt.y.toFixed(1)}) hadEditingText=${!!editor._editingTextEl} ptrEvtType=${pointerEvent?.type}`);
     // Commit any active text session before starting a new one
     if (editor._editingTextEl) commitText(editor);
     editor._editingTextEl = editor._sketchLayer.text('')
@@ -63,6 +64,7 @@ export function startTextAt(editor, pt, pointerEvent) {
 }
 
 export function beginTextEdit(editor, el) {
+    console.log(`[TEXT-DBG] beginTextEdit: hadEditingText=${!!editor._editingTextEl} elText="${el?.text?.() ?? ''}"`);
     if (editor._editingTextEl) commitText(editor);
     editor._editingTextEl = el;
     // Read existing text — strip any leftover cursor character
@@ -79,7 +81,11 @@ export function beginTextEdit(editor, el) {
 }
 
 export function initTextSession(editor, pointer) {
-    if (!editor._editingTextEl) return;
+    console.log(`[TEXT-DBG] initTextSession: hasEditingText=${!!editor._editingTextEl} pointer=${pointer ? `(${pointer.x},${pointer.y})` : 'null'}`);
+    if (!editor._editingTextEl) {
+        console.log('[TEXT-DBG] initTextSession: no editing text, returning early');
+        return;
+    }
 
     // Clean up any stale session first (guards against double-init)
     _teardownTextListeners(editor);
@@ -107,14 +113,30 @@ export function initTextSession(editor, pointer) {
             input.style.pointerEvents = 'none';
         }
 
+        // NOTE: do NOT touch the inputmode attribute here. iOS Safari
+        // has a quirk where any DOM mutation on `inputmode` in the same
+        // gesture stack as focus() can silently suppress the keyboard
+        // popup, even if the attribute was never set. The Symbol
+        // Keyboard's open/close handlers in properties-text.js are the
+        // single owner of this attribute — they set inputmode='none'
+        // when the panel opens and remove it when the panel closes. The
+        // attribute state then persists across text sessions on its
+        // own. If you find yourself wanting to assert inputmode here,
+        // route the change through syncNativeKeyboardSuppression instead.
+        console.log(`[TEXT-DBG] initTextSession: inputmode-attr="${input.getAttribute('inputmode') ?? '(none)'}"  about to focus()`);
+
         input.focus();
+        console.log(`[TEXT-DBG] initTextSession: focus() done, activeElement is ${document.activeElement?.id || document.activeElement?.tagName} (matches=${document.activeElement === input})`);
         // Move cursor to end
         const len = input.value.length;
         input.setSelectionRange(len, len);
 
         // Secondary focus for stubborn environments
         setTimeout(() => {
+            const stillActive = document.activeElement === input;
+            console.log(`[TEXT-DBG] initTextSession +50ms: hasEditingText=${!!editor._editingTextEl} activeMatches=${stillActive} active=${document.activeElement?.id || document.activeElement?.tagName}`);
             if (editor._editingTextEl && document.activeElement !== input) {
+                console.log('[TEXT-DBG] initTextSession +50ms: refocusing (secondary)');
                 input.focus();
             }
         }, 50);
@@ -138,6 +160,7 @@ export function initTextSession(editor, pointer) {
     // 2. Sync hidden input to SVG text — only writer of tspan[0]
     editor._textInputHandler = (e) => {
         const newVal = e.target.value;
+        console.log(`[TEXT-DBG] input event: value="${newVal}" (len=${newVal.length}) hasEditingText=${!!editor._editingTextEl}`);
         editor._currentText = newVal;
         // Update only the text tspan, leave cursor tspan untouched
         const textSpan = editor._editingTextEl.node.childNodes[0];
@@ -149,6 +172,7 @@ export function initTextSession(editor, pointer) {
 
     // 3. Handle control keys on input
     editor._textKeyHandler = (e) => {
+        console.log(`[TEXT-DBG] keydown: key="${e.key}" code=${e.code}`);
         if (e.key === 'Enter') {
             e.preventDefault();
             commitText(editor);
@@ -165,17 +189,30 @@ export function initTextSession(editor, pointer) {
     editor._refocusReady = false;
     setTimeout(() => { editor._refocusReady = true; }, 150);
     editor._refocusHandler = (e) => {
-        if (!editor._editingTextEl || !editor._refocusReady) return;
+        if (!editor._editingTextEl || !editor._refocusReady) {
+            console.log(`[TEXT-DBG] refocusHandler skipped: hasEditingText=${!!editor._editingTextEl} ready=${editor._refocusReady} target=<${e.target?.tagName}>`);
+            return;
+        }
         // Don't steal focus from toolbar controls
         const topBar = document.querySelector('.editor-toolbar-top');
         const sideBar = document.querySelector('.editor-sidebar');
-        if ((topBar && topBar.contains(e.target)) || (sideBar && sideBar.contains(e.target))) return;
+        if ((topBar && topBar.contains(e.target)) || (sideBar && sideBar.contains(e.target))) {
+            console.log(`[TEXT-DBG] refocusHandler skipped: toolbar/sidebar target=<${e.target?.tagName}>`);
+            return;
+        }
         const tag = e.target.tagName;
-        if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON' || tag === 'OPTION') return;
+        if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON' || tag === 'OPTION') {
+            console.log(`[TEXT-DBG] refocusHandler skipped: form-element target=<${tag}>`);
+            return;
+        }
+        console.log(`[TEXT-DBG] refocusHandler firing: target=<${tag}> ts=${Math.round(e.timeStamp)} — will refocus on next tick`);
         // Defer focus so it doesn't fight with handleStart → startTextAt
         setTimeout(() => {
             if (editor._editingTextEl && document.activeElement !== input) {
+                console.log('[TEXT-DBG] refocusHandler: refocusing input now');
                 input?.focus();
+            } else {
+                console.log(`[TEXT-DBG] refocusHandler: refocus skipped, hasEditingText=${!!editor._editingTextEl} alreadyActive=${document.activeElement === input}`);
             }
         }, 0);
     };
@@ -184,6 +221,7 @@ export function initTextSession(editor, pointer) {
 
 /** Shared cleanup for text session listeners — safe to call multiple times. */
 function _teardownTextListeners(editor) {
+    console.log(`[TEXT-DBG] _teardownTextListeners: hasInputHandler=${!!editor._textInputHandler} hasRefocus=${!!editor._refocusHandler}`);
     clearInterval(editor._cursorBlinkInterval);
     const input = document.getElementById('editorHiddenInput');
     if (input) {
@@ -201,6 +239,7 @@ function _teardownTextListeners(editor) {
 }
 
 export function commitText(editor) {
+    console.log(`[TEXT-DBG] commitText called: hasEditingText=${!!editor._editingTextEl} currentText="${editor._currentText}" (len=${editor._currentText?.length ?? 0})`);
     if (!editor._editingTextEl) return;
 
     _teardownTextListeners(editor);
@@ -227,6 +266,7 @@ export function commitText(editor) {
 }
 
 export function cancelText(editor) {
+    console.log(`[TEXT-DBG] cancelText called: hasEditingText=${!!editor._editingTextEl}`);
     if (!editor._editingTextEl) return;
 
     _teardownTextListeners(editor);

@@ -34,11 +34,15 @@ function handleDblClick(editor, e) {
 }
 
 function handleStart(editor, e) {
-    if (e.type === 'touchstart' && e.touches.length > 1) return;
+    console.log(`[TEXT-DBG] handleStart fired: type=${e.type} mode=${editor._currentMode} hasEditingText=${!!editor._editingTextEl} ts=${Math.round(e.timeStamp)} target=<${e.target?.tagName}>`);
+    if (e.type === 'touchstart' && e.touches.length > 1) {
+        console.log('[TEXT-DBG] handleStart: multi-touch, returning');
+        return;
+    }
     let pt = editor._getMousePoint(e);
     // Apply snapping at start of interaction
     pt = editor._snap(pt);
-    
+
     // Check for node hit if in node mode
     if (editor._currentMode === 'node' && editor._selectedElement) {
         const nodes = editor._getNodes(editor._selectedElement);
@@ -53,14 +57,17 @@ function handleStart(editor, e) {
     }
 
     const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+    console.log(`[TEXT-DBG] handleStart hit-test: ${hit ? `HIT type=${hit.type}` : 'no hit'}`);
     if (hit) {
         // In text mode, clicking an existing text element opens it for editing
         if (editor._currentMode === 'text' && hit.type === 'text') {
+            console.log('[TEXT-DBG] handleStart branch: text-mode, hit text → beginTextEdit');
             beginTextEdit(editor, hit);
             return;
         }
         // In text mode, ignore non-text elements — place new text instead
         if (editor._currentMode === 'text') {
+            console.log('[TEXT-DBG] handleStart branch: text-mode, hit non-text → startTextAt');
             editor._deselect();
             startTextAt(editor, pt, e);
             return;
@@ -76,6 +83,7 @@ function handleStart(editor, e) {
         if (drawModes.includes(editor._currentMode)) {
             startDrawing(editor, pt);
         } else if (editor._currentMode === 'text') {
+            console.log('[TEXT-DBG] handleStart branch: text-mode, no hit → startTextAt');
             startTextAt(editor, pt, e);
         } else {
             // Standard selection drag logic

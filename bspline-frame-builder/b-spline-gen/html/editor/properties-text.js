@@ -1,7 +1,13 @@
 import { el, query, addClass } from './dom.js';
 import { insertSymbol } from './editor-text.js';
+import { injectFontFaceRules, verifyFontLoaded, SYMBOL_FAMILIES } from './editor-fonts.js';
 
 export function initTextProperties(editor) {
+  // Register @font-face rules for the bundled symbol fonts before any
+  // keyboard rendering happens. Idempotent — safe even if some other
+  // editor entry point ends up calling this twice.
+  injectFontFaceRules();
+
   const fontFamilyEl = el('editorFontFamily');
   const fontSizeEl = el('editorFontSize');
   const fsMinus = el('editorFontSizeMinus');
@@ -47,6 +53,37 @@ export function initTextProperties(editor) {
     }
   };
 
+  // Suppress / restore the iOS-native software keyboard while the Symbol
+  // Keyboard is open. The text editor uses #editorHiddenInput as its
+  // input surface — when that input has focus on iOS, Safari pops up its
+  // own keyboard and covers our Symbol Keyboard. Setting inputmode="none"
+  // keeps the input focusable and event-driven (so insertSymbol's
+  // programmatic writes still work) but tells iOS NOT to show its
+  // keyboard. We blur+refocus when toggling so iOS actually re-evaluates
+  // the inputmode change in the same gesture instead of next focus.
+  //
+  // Restore path REMOVES the attribute entirely rather than asserting
+  // inputmode='text'. iOS Safari has a quirk where dynamically setting
+  // inputmode (even to its default) can suppress the keyboard popup on
+  // the same gesture, breaking plain text editing. Removing the
+  // attribute leaves the input in its native default state.
+  const syncNativeKeyboardSuppression = (suppress) => {
+    const input = document.getElementById('editorHiddenInput');
+    if (!input) return;
+    if (suppress) {
+      input.setAttribute('inputmode', 'none');
+    } else {
+      input.removeAttribute('inputmode');
+    }
+    if (document.activeElement === input) {
+      input.blur();
+      // Re-focus on next tick so editor._editingTextEl can keep typing.
+      setTimeout(() => {
+        if (editor && editor._editingTextEl) input.focus();
+      }, 0);
+    }
+  };
+
   if (symbolToggle && symbolPanel && symbolFamily) {
     symbolToggle.addEventListener('click', () => {
       const isOpen = !symbolPanel.classList.toggle('hidden');
@@ -55,6 +92,7 @@ export function initTextProperties(editor) {
         populateSymbolKeyboard(editor, symbolFamily.value || 'Symbol');
         symbolFamily.focus();
       }
+      syncNativeKeyboardSuppression(isOpen);
       updateKeyboardPadding();
     });
   }
@@ -62,6 +100,7 @@ export function initTextProperties(editor) {
   symbolClose?.addEventListener('click', () => {
     if (symbolPanel) addClass(symbolPanel, 'hidden');
     canvasContainer?.classList.remove('keyboard-open');
+    syncNativeKeyboardSuppression(false);
     updateKeyboardPadding();
   });
 
@@ -149,12 +188,56 @@ export function initTextProperties(editor) {
   }
 }
 
+/**
+ * Show or hide a banner inside the Symbol Keyboard panel warning the
+ * user that the requested symbol font failed to load. This is the
+ * runtime self-test surface — when it appears, something in the font
+ * pipeline (editor-fonts.js / .ttf files / network) has regressed and
+ * needs investigating. Don't suppress the banner; it's the early-warning
+ * system that prevents the iOS keyboard bug from coming back silently.
+ */
+function setKeyboardFontWarning(panel, family, isLoaded) {
+  if (!panel) return;
+  let banner = panel.querySelector('.editor-symbol-keyboard-warning');
+  if (isLoaded) {
+    if (banner) banner.remove();
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.className = 'editor-symbol-keyboard-warning';
+    banner.setAttribute('role', 'alert');
+    // Insert just below the grip / above the family selector for visibility.
+    const grip = panel.querySelector('.editor-symbol-keyboard-grip');
+    if (grip && grip.nextSibling) {
+      panel.insertBefore(banner, grip.nextSibling);
+    } else {
+      panel.insertBefore(banner, panel.firstChild);
+    }
+  }
+  banner.textContent = `⚠ "${family}" font failed to load — symbol glyphs may render as plain Latin characters. Check editor-fonts.js / fonts directory.`;
+}
+
 function populateSymbolKeyboard(editor, family = 'Symbol') {
   const grid = el('editorSymbolKeyboardGrid');
   const panel = el('editorSymbolKeyboard');
   if (!grid || !panel) return;
   console.log(`[COORD_STD] properties-text: populating Symbol Keyboard with family "${family}"`);
   grid.innerHTML = '';
+
+  // Runtime self-test: only meaningful for families that we explicitly
+  // bundle as @font-face. For system-only families we'd get false
+  // positives because document.fonts.check returns true regardless.
+  if (SYMBOL_FAMILIES.has(family)) {
+    verifyFontLoaded(family).then(ok => {
+      if (!ok) {
+        console.warn(`[editor-fonts] Symbol Keyboard: font "${family}" failed to load. Banner shown to user.`);
+      }
+      setKeyboardFontWarning(panel, family, ok);
+    });
+  } else {
+    setKeyboardFontWarning(panel, family, true);
+  }
 
   // Reverted to 'svg-editor' branch style: 32-255 ASCII range, no Base64/PUA offsets
   const range = {

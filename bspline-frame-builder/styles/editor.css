@@ -6,11 +6,29 @@
    responsive overrides for narrow viewports.
    ========================================================================= */
 
-/* NOTE: The .ttf files under b-spline-gen/html/fonts/ are stamp assets
-   loaded by opentype.js in editor-geometry.js, not CSS web fonts. The
-   .symbol-key buttons further down rely on system font fallbacks
-   (Segoe UI Symbol on Windows, Apple Color Emoji on macOS/iOS,
-   Noto Sans Symbols on Linux). */
+/* IMPORTANT — bundled symbol-font @font-face rules are NOT defined here.
+   They are injected at runtime by editor-fonts.js (injectFontFaceRules)
+   so that the family→file mapping has a single source of truth shared
+   with the opentype.js stamp pipeline in editor-geometry.js. Do not add
+   static @font-face declarations for Symbol / Wingdings / Webdings /
+   Segoe UI Symbol / Segoe MDL2 Assets / Segoe Fluent Icons / Segoe UI
+   Emoji here — that's exactly the duplication we removed.
+   If symbol glyphs render as plain Latin on iOS again, the Symbol
+   Keyboard's runtime self-test will display a warning banner pointing
+   at editor-fonts.js. Start there. */
+
+/* Symbol Keyboard runtime warning banner (shown by populateSymbolKeyboard
+   via setKeyboardFontWarning when verifyFontLoaded() fails). */
+.editor-symbol-keyboard-warning {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    background: #fff3cd;
+    color: #856404;
+    border-bottom: 1px solid #ffeeba;
+    font-size: 11px;
+    line-height: 1.3;
+    font-weight: 500;
+}
 
 #svgEditorModal {
     z-index: 2000;
@@ -175,10 +193,6 @@
     display: none !important;
 }
 
-.editor-properties-pane {
-    display: flex !important; /* Managed by group visibility now */
-}
-
 /* Status Item (Snap) Active Style */
 .status-item.active {
     color: var(--cad-accent) !important;
@@ -306,38 +320,6 @@
         padding: 8px 10px;
         gap: 8px;
     }
-
-    .editor-properties-panel {
-        width: 100%;
-        max-width: none;
-        justify-content: space-between;
-    }
-
-    .editor-properties-pane,
-    .property-row {
-        width: 100%;
-        justify-content: space-between;
-    }
-
-    .property-select,
-    .property-number {
-        min-width: 90px;
-        height: 30px;
-    }
-
-    .property-row {
-        flex-wrap: wrap;
-    }
-
-    .editor-symbol-keyboard-header {
-        flex-wrap: wrap;
-        justify-content: space-between;
-        gap: 8px;
-    }
-
-    .editor-symbol-keyboard-actions {
-        margin-left: auto;
-    }
 }
 
 @media (max-width: 700px) {
@@ -411,122 +393,6 @@
     #svgEditorHeader > div:last-child > button.btn-secondary,
     #svgEditorHeader > div:last-child > button.btn-primary {
         flex: 0 0 auto !important;
-    }
-
-    .editor-properties-panel {
-        display: flex;
-        flex: 1 1 auto;
-        min-width: 0;
-        gap: 12px;
-        align-items: center;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-    }
-
-    .editor-properties-pane {
-        display: none;
-        align-items: center;
-        gap: 12px;
-        min-width: 0;
-        flex-wrap: nowrap;
-    }
-
-    .editor-properties-pane.active {
-        display: flex;
-    }
-
-    .property-row {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: nowrap;
-        min-width: 0;
-    }
-
-    .property-label {
-        font-size: 11px;
-        opacity: 0.75;
-        white-space: nowrap;
-        min-width: 0;
-    }
-
-    .property-select,
-    .property-number,
-    .property-range {
-        font: 13px/1.4 Arial, sans-serif;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--surface);
-        color: var(--text);
-        outline: none;
-        transition: border-color 0.16s ease, box-shadow 0.16s ease;
-    }
-
-    .property-select {
-        min-width: 120px;
-        height: 32px;
-        padding: 0 10px;
-    }
-
-    .property-number {
-        width: 50px;
-        min-width: 50px;
-        height: 32px;
-        padding: 0 8px;
-        text-align: center;
-    }
-
-    .property-range {
-        min-width: 140px;
-        max-width: 220px;
-        height: 24px;
-    }
-
-    .stepper-group {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
-
-    .stepper-btn {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        border: 1px solid var(--border);
-        background: var(--surface2);
-        color: var(--text);
-        cursor: pointer;
-        font-size: 16px;
-        line-height: 1;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.16s ease, border-color 0.16s ease;
-    }
-
-    .stepper-btn:hover {
-        background: var(--surface);
-        border-color: rgba(0,0,0,0.12);
-    }
-
-    .editor-action-btn {
-        height: 32px;
-        min-width: 84px;
-    }
-
-    .editor-layer-group {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding-left: 12px;
-        border-left: 1px solid var(--border);
-        margin-left: 12px;
-        white-space: nowrap;
-    }
-
-    .property-note {
-        font-size: 12px;
-        opacity: 0.75;
     }
 
     #editorStrokeGroup,
