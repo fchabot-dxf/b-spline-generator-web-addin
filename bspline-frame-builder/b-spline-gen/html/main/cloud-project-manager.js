@@ -365,4 +365,65 @@ async function checkMigration() {
   let store = null;
   try { store = JSON.parse(localStorage.getItem('splineGenPresets') || 'null'); } catch { /* ignore */ }
 
-  // No ol
+  // No old data — just mark as done
+  if (!store || !Object.keys(store).length) {
+    localStorage.setItem('splineGenProjectsMigrated', '1');
+    return;
+  }
+
+  const names  = Object.keys(store);
+  const plural = names.length !== 1;
+  if (!confirm(
+    `Found ${names.length} local project${plural ? 's' : ''} saved in this browser:\n` +
+    `  ${names.join(', ')}\n\n` +
+    `Migrate ${plural ? 'them' : 'it'} to the cloud now?`
+  )) {
+    localStorage.setItem('splineGenProjectsMigrated', '1');
+    return;
+  }
+
+  if (!_API_URL) {
+    setMsg('No API URL — cannot migrate. Configure BSPLINE_PRESETS_API_URL first.', 'warn');
+    localStorage.setItem('splineGenProjectsMigrated', '1');
+    return;
+  }
+
+  setMsg('Migrating local projects to cloud…');
+  let ok = 0, fail = 0;
+  for (const [name, snap] of Object.entries(store)) {
+    try {
+      const r = await fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snap),
+      });
+      r.ok ? ok++ : fail++;
+    } catch { fail++; }
+  }
+
+  localStorage.removeItem('splineGenPresets');
+  localStorage.setItem('splineGenProjectsMigrated', '1');
+  setMsg(
+    `Migration done: ${ok} uploaded${fail ? `, ${fail} failed` : ''}.`,
+    ok > 0 ? 'ok' : 'warn'
+  );
+}
+
+// ─── Tiny helpers ─────────────────────────────────────────────────────────────
+function setStatus(text) { if (_statusEl) _statusEl.textContent = text; }
+
+function setMsg(text, type = '') {
+  if (!_msgEl) return;
+  _msgEl.textContent  = text;
+  _msgEl.style.color  = { ok: '#2a7', warn: '#a60', error: '#c00' }[type] || '#666';
+  if (type === 'ok') setTimeout(() => { if (_msgEl?.textContent === text) _msgEl.textContent = ''; }, 3000);
+}
+
+async function safeJson(r) { try { return await r.json(); } catch { return {}; } }
+
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeText(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}

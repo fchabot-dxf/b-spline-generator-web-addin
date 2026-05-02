@@ -58,6 +58,16 @@ for var in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
 # Always deploy to the known Pages project and avoid prompting for a stale project name.
 PROJECT_NAME = os.getenv("CLOUDFLARE_PROJECT", "symmetric-b-spline-gen")
 
+# Ensure node/npm global bin dirs are in PATH so wrangler.cmd can invoke node
+if sys.platform == "win32":
+    _extra_paths = [
+        os.path.expandvars(r"%APPDATA%\npm"),
+        os.path.expandvars(r"%LOCALAPPDATA%\nvm"),
+        r"C:\nvm4w\nodejs",
+        os.path.expandvars(r"%ProgramFiles%\nodejs"),
+    ]
+    os.environ["PATH"] = os.pathsep.join(_extra_paths) + os.pathsep + os.environ.get("PATH", "")
+
 # prefer looking in PATH (wrangler or wrangler.cmd on Windows)
 WRANGLER_CMD = shutil.which("wrangler") or shutil.which("wrangler.cmd")
 

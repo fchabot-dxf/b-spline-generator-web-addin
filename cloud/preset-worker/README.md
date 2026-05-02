@@ -145,4 +145,32 @@ For a single-user workflow this fits the Cloudflare Workers free tier:
 
 - 100,000 requests/day free
 - 1 GB KV storage free
-- 1,000 KV writes/day free, $5/M
+- 1,000 KV writes/day free, $5/M after
+- 10 M KV reads/day free, $0.50/M after
+
+A typical session does maybe 10–50 KV ops; you'd need to be saving presets
+constantly to exceed the free tier.
+
+## What's NOT implemented yet
+
+Listed roughly in order of when you'd add them:
+
+1. **A shared bearer token.** Trivial to add: set a `Worker secret`
+   (`npx wrangler secret put PRESETS_TOKEN`), check it in the Worker via
+   `request.headers.get('Authorization')`, send it from the client. Stops
+   anyone who finds the URL from blowing away your data.
+2. **Rate limiting.** Cloudflare's built-in
+   [Rate Limiting Rules](https://developers.cloudflare.com/waf/rate-limiting-rules/)
+   on the Worker route is the no-code option.
+3. **Per-user namespacing.** If this ever becomes multi-user, prefix keys
+   with `userId/` and read the userId from a JWT.
+4. **Conflict resolution.** Right now, last write wins. KV is eventually
+   consistent (~60s), so two devices saving the same name within a minute
+   could clobber each other. For a single user this is fine.
+5. **Audit log.** Mirror writes to an append-only log (R2 or another KV
+   namespace) so you can recover from accidental deletes.
+6. **Compression.** PUT bodies above ~10 KB benefit from gzip;
+   `CompressionStream` is built into Workers.
+
+Each of these is a small, isolated addition once the basics are confirmed
+working — none require a redesign.

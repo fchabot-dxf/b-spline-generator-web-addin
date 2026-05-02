@@ -617,4 +617,6 @@ async function executeExport(options = null, isAppend = false, filename_hint = n
         }
     } catch (e) {
         console.error('Export Failed:', e);
-        if (btn) { btn.disabled = false; btn.textContent = 'Tr
+        if (btn) { btn.disabled = false; btn.textContent = 'Try Again'; }
+    }
+}

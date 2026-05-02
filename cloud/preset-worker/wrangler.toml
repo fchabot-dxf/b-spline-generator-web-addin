@@ -1,25 +1,8 @@
 name = "bspline-presets"
 main = "src/index.js"
 compatibility_date = "2024-09-01"
+account_id = "014e18b89793d634a95538e7910dce19"
 
-# KV namespace for preset storage.
-#
-# Before first deploy, create the namespace and paste its id here:
-#   npx wrangler kv namespace create PRESETS
-#
-# Wrangler will print a block like:
-#   [[kv_namespaces]]
-#   binding = "PRESETS"
-#   id = "abc123..."
-#
-# Replace REPLACE_WITH_KV_ID below with the printed id.
 [[kv_namespaces]]
 binding = "PRESETS"
-id = "REPLACE_WITH_KV_ID"
-
-# Optional: route under a custom domain instead of *.workers.dev.
-# Uncomment after binding a Cloudflare zone.
-#
-# [[routes]]
-# pattern = "presets.example.com/*"
-# zone_name = "example.com"
+id = "7c5a9da610ff46d98209265d5c270818"
