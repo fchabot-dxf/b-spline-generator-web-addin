@@ -10,6 +10,14 @@
     href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,5 95,25 95,75 50,95 5,75 5,25%22 fill=%22%234f8ef7%22/></svg>">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
+  <!-- Cloud preset sync: set window.BSPLINE_PRESETS_API_URL to your
+       deployed Worker URL to enable. If unset, cloud preset UI no-ops
+       and the local preset feature continues to work unchanged.
+       Deploy the Worker from cloud/preset-worker/ (see its README), then
+       uncomment and paste the printed *.workers.dev URL below. -->
+  <script>
+    // window.BSPLINE_PRESETS_API_URL = 'https://bspline-presets.YOUR-SUBDOMAIN.workers.dev';
+  </script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
   <!-- Consolidated stylesheets -->
   <link rel="stylesheet" href="../../styles/base.css">
@@ -286,6 +294,33 @@
               style="min-width:32px; height:24px; padding:0;">🗑</button>
           </div>
           <div id="presetMsg" class="cad-status-text"
+            style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
+
+          <!-- Cloud presets (KV-backed, cross-device). UI is auto-disabled
+               by cloud-preset-manager.js if BSPLINE_PRESETS_API_URL is unset. -->
+          <hr style="margin:14px 0 10px; border:none; border-top:1px solid var(--cad-border-standard);">
+          <label class="cad-label">☁ Cloud Preset Name</label>
+          <div style="display:flex; gap:6px; margin-bottom:12px;">
+            <div class="cad-nested-input" style="flex:1;">
+              <input type="text" id="cloudPresetName" maxlength="40">
+            </div>
+            <button class="cad-btn cad-btn-primary" id="btnCloudPresetSave"
+              style="min-width:60px; height:24px; font-size:11px;">Save</button>
+          </div>
+
+          <label class="cad-label">Cloud Saved Presets</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <div class="cad-nested-input" style="flex:1;">
+              <select id="cloudPresetSelect" style="width:100%; border:none; background:transparent; font-size:11px;">
+                <option value="">— none —</option>
+              </select>
+            </div>
+            <button class="cad-btn cad-btn-secondary" id="btnCloudPresetLoad"
+              style="min-width:50px; height:24px; font-size:11px;">Load</button>
+            <button class="cad-btn cad-btn-secondary" id="btnCloudPresetDelete"
+              style="min-width:32px; height:24px; padding:0;">🗑</button>
+          </div>
+          <div id="cloudPresetMsg" class="cad-status-text"
             style="display:none; margin-top:8px; color:var(--cad-accent-blue);"></div>
         </div>
       </div>
@@ -1314,56 +1349,4 @@
 
           <div>
             <label class="cad-label">Seed</label>
-            <div class="cad-nested-input">
-              <input type="number" id="skelSeed" value="42">
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label">Region Scale</label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelMacroSlider" class="cad-slider" min="0.05" max="2" step="0.05" value="0.65">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelMacroScale" value="0.65">
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label">Offset X <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelOffsetXSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelOffsetX" value="0" step="0.01">
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label">Offset Y <span style="font-size:10px; opacity:0.6;">(screens)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelOffsetYSlider" class="cad-slider" min="-3" max="3" step="0.01" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelOffsetY" value="0" step="0.01">
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label class="cad-label">Rotation <span style="font-size:10px; opacity:0.6;">(°)</span></label>
-            <div class="cad-slider-row">
-              <input type="range" id="skelRotationSlider" class="cad-slider" min="-180" max="180" step="1" value="0">
-              <div class="cad-stepper" style="width:75px;">
-                <input type="number" id="skelRotation" value="0" step="1">
-              </div>
-            </div>
-          </div>
-
-        </aside>
-      </div>
-    </div>
-  </div>
-
-</body>
-
-</html>
+            <div clas
