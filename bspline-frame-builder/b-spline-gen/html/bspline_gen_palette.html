@@ -1422,12 +1422,19 @@
     .fm-project-item {
       padding: 10px 14px; font-size: 12px; color: #333; cursor: pointer;
       border-radius: 4px; margin: 1px 4px;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      min-height: 40px; display: flex; align-items: center;
+      min-height: 40px; display: flex; align-items: center; gap: 10px;
       transition: background 0.1s;
     }
     .fm-project-item:hover     { background: #eef3ff; }
     .fm-project-item.fm-selected { background: #4f8ef7; color: #fff; }
+    .fm-project-item .fm-project-name {
+      flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .fm-project-item .fm-project-date {
+      flex-shrink: 0; font-size: 11px; color: #999; font-variant-numeric: tabular-nums;
+    }
+    .fm-project-item.fm-selected .fm-project-date { color: rgba(255,255,255,0.85); }
     .pm-actions-col {
       flex: 1; display: flex; flex-direction: column;
       padding: 20px; overflow-y: auto;
@@ -1544,23 +1551,4 @@
               Rename Selected to Name Above
             </button>
             <hr class="pm-divider">
-            <button id="fmBtnDelete" class="pm-btn pm-btn-danger" disabled>
-              <span class="material-symbols-outlined" style="font-size:16px;">delete</span>
-              Delete Selected
-            </button>
-          </div>
-
-          <div id="fmProjectMsg" aria-live="polite"></div>
-
-          <p class="pm-hint">
-            Double-click a project to load instantly &middot; Enter = load &middot; Esc = close
-          </p>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
-</body>
-
-</html>
+       

@@ -55,7 +55,10 @@ function unpackPoints(snap) {
 // ─── Module state ─────────────────────────────────────────────────────────────
 let _preview  = null;
 let _API_URL  = null;
-let _projects = [];    // sorted list from last fetch
+// _projects: array of { name, savedAt?, size? } sorted by name. savedAt is
+// epoch milliseconds; entries saved before metadata was added to the Worker
+// have no savedAt and render with an em dash in place of the date.
+let _projects = [];
 let _selected = null;  // currently highlighted project name
 
 // DOM refs (populated once the modal is first opened)
@@ -169,7 +172,11 @@ async function refreshList() {
     const r = await fetch(`${_API_URL}/projects`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    _projects = (data.names || []).slice().sort((a, b) => a.localeCompare(b));
+    // Prefer items[] (with metadata), fall back to names[] for old Workers.
+    const items = Array.isArray(data.items) && data.items.length
+      ? data.items
+      : (data.names || []).map((name) => ({ name }));
+    _projects = items.slice().sort((a, b) => a.name.localeCompare(b.name));
     setStatus(`${_projects.length} project${_projects.length !== 1 ? 's' : ''}`);
   } catch (e) {
     console.warn('[project-manager] list failed:', e);
@@ -182,7 +189,7 @@ async function refreshList() {
 function renderList() {
   if (!_fmList) return;
   const q     = (_fmSearch?.value || '').toLowerCase().trim();
-  const items = _projects.filter((n) => !q || n.toLowerCase().includes(q));
+  const items = _projects.filter((p) => !q || p.name.toLowerCase().includes(q));
 
   if (!items.length) {
     _fmList.innerHTML = `<div style="padding:24px 12px; color:#bbb; font-size:12px; text-align:center;">
@@ -196,15 +203,47 @@ function renderList() {
   // Click and dblclick are handled via delegated listeners on _fmList
   // (wired once in wireModalListeners). Each item carries its name in
   // data-name; the delegate reads it to dispatch.
-  _fmList.innerHTML = items.map((n) => {
-    const sel = n === _selected;
-    const ea  = escapeAttr(n);
-    const et  = escapeText(n);
+  _fmList.innerHTML = items.map((p) => {
+    const sel       = p.name === _selected;
+    const ea        = escapeAttr(p.name);
+    const et        = escapeText(p.name);
+    const dateShort = p.savedAt ? formatRelativeDate(p.savedAt) : '—';
+    const dateFull  = p.savedAt ? new Date(p.savedAt).toLocaleString() : 'unknown save time';
+    const tipExtra  = p.savedAt ? `\nSaved ${dateFull}` : '';
     return `<div class="fm-project-item${sel ? ' fm-selected' : ''}"
         role="option" aria-selected="${sel}"
         data-name="${ea}"
-        title="${ea}">${et}</div>`;
+        title="${ea}${escapeAttr(tipExtra)}">
+      <span class="fm-project-name">${et}</span>
+      <span class="fm-project-date" title="${escapeAttr(dateFull)}">${escapeText(dateShort)}</span>
+    </div>`;
   }).join('');
+}
+
+// "10:42", "yesterday", "Mar 14", "Mar 14 2024" — short forms.
+// Full timestamp lives in the title attribute (hover) and the dateFull span.
+function formatRelativeDate(epoch) {
+  const d   = new Date(epoch);
+  const now = new Date();
+  if (Number.isNaN(d.getTime())) return '—';
+
+  // Same calendar day → time only
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Yesterday
+  const yest = new Date(now);
+  yest.setDate(now.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) return 'yesterday';
+
+  // Same year → "Mar 14"
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+
+  // Older → "Mar 14 2024"
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function selectProject(name) {
@@ -326,52 +365,4 @@ async function checkMigration() {
   let store = null;
   try { store = JSON.parse(localStorage.getItem('splineGenPresets') || 'null'); } catch { /* ignore */ }
 
-  // No old data — just mark as done
-  if (!store || !Object.keys(store).length) {
-    localStorage.setItem('splineGenProjectsMigrated', '1');
-    return;
-  }
-
-  const names  = Object.keys(store);
-  const plural = names.length !== 1;
-  if (!confirm(
-    `Found ${names.length} local project${plural ? 's' : ''} saved in this browser:\n` +
-    `  ${names.join(', ')}\n\n` +
-    `Migrate ${plural ? 'them' : 'it'} to the cloud now?`
-  )) {
-    localStorage.setItem('splineGenProjectsMigrated', '1');
-    return;
-  }
-
-  if (!_API_URL) {
-    setMsg('No API URL — cannot migrate. Configure BSPLINE_PRESETS_API_URL first.', 'warn');
-    localStorage.setItem('splineGenProjectsMigrated', '1');
-    return;
-  }
-
-  setMsg('Migrating local projects to cloud…');
-  let ok = 0, fail = 0;
-  for (const [name, snap] of Object.entries(store)) {
-    try {
-      const r = await fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snap),
-      });
-      r.ok ? ok++ : fail++;
-    } catch { fail++; }
-  }
-
-  localStorage.removeItem('splineGenPresets');
-  localStorage.setItem('splineGenProjectsMigrated', '1');
-  setMsg(
-    `Migration done: ${ok} uploaded${fail ? `, ${fail} failed` : ''}.`,
-    ok > 0 ? 'ok' : 'warn'
-  );
-}
-
-// ─── Tiny helpers ─────────────────────────────────────────────────────────────
-function setStatus(text) { if (_statusEl) _statusEl.textContent = text; }
-
-function setMsg(text, type = '') {
-  if (!_msgEl) return;
-  _msgEl.textContent  = text;
-  _msgEl.style.color  = { ok: '#2a
+  // No ol
