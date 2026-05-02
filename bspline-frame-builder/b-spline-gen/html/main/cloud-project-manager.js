@@ -76,10 +76,6 @@ export function bindProjectManager(preview) {
   // Wire all trigger buttons (navbar + any data-attr ones in sidebar)
   document.querySelectorAll('#btnOpenProjectManager, [data-open-projects]')
     .forEach((el) => el.addEventListener('click', openModal));
-
-  // Globals used by inline onclick in rendered list items (set once here)
-  window._pmSelect = selectProject;
-  window._pmLoad   = (name) => { selectProject(name); onLoad(name); };
 }
 
 // ─── Open / Close ─────────────────────────────────────────────────────────────
@@ -136,6 +132,19 @@ function wireModalListeners() {
   _btnLoad?.addEventListener('click',   () => onLoad(_selected));
   _btnRename?.addEventListener('click', onRename);
   _btnDelete?.addEventListener('click', onDelete);
+
+  // Delegated click/dblclick on the project list — replaces inline onclick
+  // (which broke when JSON-stringified names contained double quotes).
+  _fmList?.addEventListener('click', (e) => {
+    const item = e.target.closest('.fm-project-item');
+    if (!item) return;
+    selectProject(item.dataset.name);
+  });
+  _fmList?.addEventListener('dblclick', (e) => {
+    const item = e.target.closest('.fm-project-item');
+    if (!item) return;
+    onLoad(item.dataset.name);
+  });
 }
 
 function onModalKey(e) {
@@ -182,6 +191,11 @@ function renderList() {
     return;
   }
 
+  // Inline onclick won't work here because JSON.stringify(name) produces a
+  // string containing double quotes, which breaks out of the HTML attribute.
+  // Click and dblclick are handled via delegated listeners on _fmList
+  // (wired once in wireModalListeners). Each item carries its name in
+  // data-name; the delegate reads it to dispatch.
   _fmList.innerHTML = items.map((n) => {
     const sel = n === _selected;
     const ea  = escapeAttr(n);
@@ -189,8 +203,6 @@ function renderList() {
     return `<div class="fm-project-item${sel ? ' fm-selected' : ''}"
         role="option" aria-selected="${sel}"
         data-name="${ea}"
-        onclick="window._pmSelect(${JSON.stringify(n)})"
-        ondblclick="window._pmLoad(${JSON.stringify(n)})"
         title="${ea}">${et}</div>`;
   }).join('');
 }
@@ -362,17 +374,4 @@ function setStatus(text) { if (_statusEl) _statusEl.textContent = text; }
 function setMsg(text, type = '') {
   if (!_msgEl) return;
   _msgEl.textContent  = text;
-  _msgEl.style.color  = { ok: '#2a7', warn: '#a60', error: '#c00' }[type] || '#666';
-  if (type === 'ok') setTimeout(() => { if (_msgEl?.textContent === text) _msgEl.textContent = ''; }, 3000);
-}
-
-async function safeJson(r) { try { return await r.json(); } catch { return {}; } }
-
-function escapeAttr(s) {
-  return String(s)
-    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-function escapeText(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+  _msgEl.style.color  = { ok: '#2a
