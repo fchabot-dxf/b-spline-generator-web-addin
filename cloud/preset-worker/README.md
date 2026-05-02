@@ -1,19 +1,35 @@
 # bspline-preset-worker
 
-Cloudflare Worker that backs cross-device preset sync for the B-Spline
+Cloudflare Worker that backs cross-device project sync for the B-Spline
 generator palette. Storage is Cloudflare Workers KV. The Worker is **public
 and unauthenticated** — anyone who knows the URL can read, write, or delete
-presets. Acceptable for a single-user prototype; replace with real auth
+projects. Acceptable for a single-user prototype; replace with real auth
 before exposing publicly.
+
+The folder is still named `preset-worker/` for git history continuity, but
+the active terminology in the palette UI is "project". The Worker accepts
+both `/projects/*` (primary) and `/presets/*` (legacy alias) on the same
+KV namespace, so old and new clients hit the same data.
 
 ## API
 
-| Method | Path             | Body              | Response                    |
-| ------ | ---------------- | ----------------- | --------------------------- |
-| GET    | `/presets`       | —                 | `{ names: ["a", "b", ...] }` |
-| GET    | `/presets/:name` | —                 | snapshot JSON or 404        |
-| PUT    | `/presets/:name` | snapshot JSON     | `{ ok: true, name }`        |
-| DELETE | `/presets/:name` | —                 | `{ ok: true, name }`        |
+Primary routes (use these from new code):
+
+| Method | Path              | Body          | Response                    |
+| ------ | ----------------- | ------------- | --------------------------- |
+| GET    | `/projects`       | —             | `{ names: ["a", "b", ...] }` |
+| GET    | `/projects/:name` | —             | snapshot JSON or 404        |
+| PUT    | `/projects/:name` | snapshot JSON | `{ ok: true, name }`        |
+| DELETE | `/projects/:name` | —             | `{ ok: true, name }`        |
+
+Legacy aliases — same KV, same keys, kept for backward compat:
+
+| Method | Path             | Body          | Response                    |
+| ------ | ---------------- | ------------- | --------------------------- |
+| GET    | `/presets`       | —             | `{ names: ["a", "b", ...] }` |
+| GET    | `/presets/:name` | —             | snapshot JSON or 404        |
+| PUT    | `/presets/:name` | snapshot JSON | `{ ok: true, name }`        |
+| DELETE | `/presets/:name` | —             | `{ ok: true, name }`        |
 
 CORS open to all origins. 10 MB max body size on PUT.
 
@@ -56,19 +72,22 @@ Replace `<API>` with the URL from step 5:
 
 ```bash
 # list (empty initially)
-curl <API>/presets
+curl <API>/projects
 
-# save a preset
-curl -X PUT <API>/presets/test \
+# save a project
+curl -X PUT <API>/projects/test \
   -H 'Content-Type: application/json' \
   --data '{"P":{"widthIn":7},"preDelta":null,"postDelta":null}'
 
 # load it back
-curl <API>/presets/test
+curl <API>/projects/test
 
 # delete
-curl -X DELETE <API>/presets/test
+curl -X DELETE <API>/projects/test
 ```
+
+The legacy `/presets/*` paths still work and hit the same KV — useful if
+you have any old clients pointed at them.
 
 ## Wiring the client
 
@@ -81,28 +100,37 @@ Easiest spot: an inline `<script>` near the top of the palette HTML.
 </script>
 ```
 
-The client module
-(`bspline-frame-builder/b-spline-gen/html/main/cloud-preset-manager.js`)
-reads this global. If it isn't set, the cloud preset UI is left disabled
-and the existing localStorage preset feature continues to work unchanged.
+The active client module is
+`bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js`,
+which renders a fullscreen Project Manager modal and calls `/projects/*`.
+It reads `window.BSPLINE_PRESETS_API_URL` (env var name unchanged for git
+history). If unset, the modal still opens but every fetch shows
+"⚠ No API configured" and operations are no-ops.
 
-The cloud UI also expects these element IDs in the palette HTML — add them
-alongside the existing local-preset controls when you're ready to wire it
-up:
+The Project Manager modal expects these element IDs in the palette HTML
+(already present in `bspline_gen_palette.html`):
 
-- `#cloudPresetName` — text input
-- `#btnCloudPresetSave`
-- `#btnCloudPresetLoad`
-- `#btnCloudPresetDelete`
-- `#cloudPresetSelect`
+- `#projectManagerModal` — the modal container
+- `#fmCloseBtn` — close button
+- `#fmProjectList` — the listbox of saved projects
+- `#fmProjectSearch` — filter input
+- `#fmProjectName` — the name field
+- `#fmBtnSave`, `#fmBtnLoad`, `#fmBtnRename`, `#fmBtnDelete`
+- `#fmProjectStatus`, `#fmProjectMsg`
 
-Then in `main.js`:
+Open triggers (any of these): `#btnOpenProjectManager` (navbar) or any
+element with `data-open-projects` (sidebar button).
+
+In `main.js`:
 
 ```js
-import { bindCloudPresets } from './cloud-preset-manager.js';
-// ...alongside bindPresets(preview):
-bindCloudPresets(preview);
+import { bindProjectManager } from './cloud-project-manager.js';
+// ...inside the bootstrap, after bindControls(preview):
+bindProjectManager(preview);
 ```
+
+There's also a deprecated `cloud-preset-manager.js` from an earlier dropdown
+UI iteration; it's no longer imported and can be deleted whenever convenient.
 
 ## Local development
 
@@ -115,36 +143,3 @@ Useful for iterating without burning deploys. Same API shape as production.
 
 ## Costs
 
-For a single-user workflow this fits the Cloudflare Workers free tier:
-
-- 100,000 requests/day free
-- 1 GB KV storage free
-- 1,000 KV writes/day free, $5/M after
-- 10 M KV reads/day free, $0.50/M after
-
-A typical session does maybe 10–50 KV ops; you'd need to be saving presets
-constantly to exceed the free tier.
-
-## What's NOT implemented yet
-
-Listed roughly in order of when you'd add them:
-
-1. **A shared bearer token.** Trivial to add: set a `Worker secret`
-   (`npx wrangler secret put PRESETS_TOKEN`), check it in the Worker via
-   `request.headers.get('Authorization')`, send it from the client. Stops
-   anyone who finds the URL from blowing away your data.
-2. **Rate limiting.** Cloudflare's built-in
-   [Rate Limiting Rules](https://developers.cloudflare.com/waf/rate-limiting-rules/)
-   on the Worker route is the no-code option.
-3. **Per-user namespacing.** If this ever becomes multi-user, prefix keys
-   with `userId/` and read the userId from a JWT.
-4. **Conflict resolution.** Right now, last write wins. KV is eventually
-   consistent (~60s), so two devices saving the same name within a minute
-   could clobber each other. For a single user this is fine.
-5. **Audit log.** Mirror writes to an append-only log (R2 or another KV
-   namespace) so you can recover from accidental deletes.
-6. **Compression.** PUT bodies above ~10 KB benefit from gzip;
-   `CompressionStream` is built into Workers.
-
-Each of these is a small, isolated addition once the basics are confirmed
-working — none require a redesign.
