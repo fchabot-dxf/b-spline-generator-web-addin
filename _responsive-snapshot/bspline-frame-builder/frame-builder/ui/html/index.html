@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hybrid Frame Builder</title>
+  <link rel="stylesheet" href="../../../b-spline-gen/html/shared-style.css">
+  <style>
+    body,
+    .app {
+      background: var(--bg);
+    }
+
+    .app {
+      display: flex !important;
+      flex-direction: column !important;
+      width: 100%;
+      height: 100%;
+    }
+
+    aside {
+      flex: 1 1 auto !important;
+      min-height: 0 !important;
+      padding-top: 10px !important;
+    }
+
+    .main-content {
+      background: var(--surface) !important;
+    }
+
+    #resizer,
+    #previewArea {
+      display: none !important;
+    }
+
+    .face-status {
+      padding: 0.45rem 0.6rem;
+      border-radius: 0.45rem;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      font-size: 0.9rem;
+      min-height: 2.05rem;
+      display: flex;
+      align-items: center;
+    }
+
+    .face-status.waiting {
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .face-status.selected {
+      background: rgba(0, 160, 100, 0.16);
+      color: var(--good);
+      font-weight: 600;
+    }
+
+    #btn-select-face.selecting {
+      border-color: var(--good);
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text-dim);
+    }
+
+    #btn-select-face.selected {
+      border-color: var(--good);
+      background: rgba(0, 160, 100, 0.16);
+      color: var(--good);
+    }
+
+    .tab-content {
+      display: none;
+      flex-direction: column;
+      gap: 24px;
+      /* Space between major panels */
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+
+    #dynamic-parameters {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      /* Space between dynamic category panels */
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .panel.collapsed .panel-body {
+      display: none;
+    }
+
+    .slider-wrap.readonly {
+      opacity: 0.8;
+      pointer-events: none;
+      border-left: 2px solid var(--accent);
+      background: rgba(255, 255, 255, 0.03);
+      margin-bottom: 8px;
+      padding-left: 10px;
+    }
+
+    .slider-wrap.readonly .slider-val {
+      color: var(--accent);
+      font-weight: 600;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="settings-panel" class="settings-panel hidden">
+    <div class="settings-header">
+      <span>Settings</span>
+      <button id="close-settings-btn" class="lock-btn" type="button">✕</button>
+    </div>
+    <div class="settings-body">
+      <div class="row">
+        <label>Theme preview is applied instantly.</label>
+      </div>
+    </div>
+  </div>
+  <div id="settings-overlay" class="settings-overlay hidden"></div>
+
+  <div class="app">
+    <header>
+      <span class="logo">Hybrid Frame Builder</span>
+      <div style="flex:1;"></div>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <div style="display:flex; align-items:center; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:2px 6px; height:32px;">
+          <button onclick="adjustPhase(-1)" style="background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;">−</button>
+          <span id="phase-display" style="font-size:11px; color:var(--text); min-width:32px; text-align:center; letter-spacing:0.5px;">P ?/?</span>
+          <button onclick="adjustPhase(1)"  style="background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; line-height:1;">+</button>
+        </div>
+        <button class="btn btn-primary btn-xs" id="header-action-btn" onclick="runBuild('sketch')"
+          style="min-width: 120px; box-shadow: 0 4px 10px rgba(37,99,235,0.25);">BUILD SKETCH</button>
+        <button class="btn btn-secondary btn-xs" id="settings-btn" title="Settings"
+          style="height:32px; width:32px; padding:0; display:flex; align-items:center; justify-content:center; border-color:var(--accent); color:var(--accent);">⚙</button>
+      </div>
+    </header>
+
+    <aside>
+      <div class="tab-bar">
+        <button class="tab-btn active" id="tab-form" onclick="switchTab('form')">SKETCH</button>
+        <button class="tab-btn" id="tab-solidify" onclick="switchTab('solidify')">EXTRUDE</button>
+      </div>
+
+      <div class="main-content">
+        <!-- SKETCH TAB -->
+        <div id="content-form" class="tab-content active">
+          <div class="row" style="padding: 0 0 10px 0; border-bottom: 1px solid var(--border); margin-bottom: 4px;">
+            <span id="constraint-count" style="font-size:0.75rem; font-weight:600; color:var(--accent);">0/3 Locked</span>
+            <label style="flex-direction:row; align-items:center; gap:8px; color:var(--text-dim);">Rule Set</label>
+            <select id="template-select" style="width: 140px;" onchange="syncTemplate()">
+              <option value="Template 1">Template 1</option>
+              <option value="Template 2">Template 2</option>
+              <option value="Template 3">Template 3</option>
+              <option value="Template 4">Template 4</option>
+            </select>
+          </div>
+
+          <div id="dynamic-parameters" style="display: flex; flex-direction: column; gap: 24px;">
+            <div style="padding: 20px; text-align: center; color: var(--text-dim); font-style: italic;">
+              Loading template DNA...
+            </div>
+          </div>
+        </div>
+
+        <!-- EXTRUDE TAB -->
+        <div id="content-solidify" class="tab-content">
+          <div class="panel panel-surface">
+            <div class="panel-header">Surface Mapping</div>
+            <div class="panel-body">
+              <div class="row">
+                <label>Target Face</label>
+                <button class="btn btn-secondary btn-xs" id="btn-select-face" style="flex: 0; white-space: nowrap;"
+                  onclick="pickFace()">SELECT FACE</button>
+              </div>
+              <div class="face-status" id="label-face-selection">No face selected...</div>
+            </div>
+          </div>
+
+          <div class="panel panel-extrusion">
+            <div class="panel-header">Extrusion Parameters</div>
+            <div class="panel-body">
+              <div class="row">
+                <label>Start Offset</label>
+                <input type="text" id="solid-offset" value="-1 in" style="width: 80px;">
+              </div>
+              <div class="row">
+                <label>Appearance</label>
+                <select id="solid-appearance" style="width: 140px;">
+                  <option value="3D Ash - Unfinished">3D Ash - Unfinished</option>
+                  <option value="3D Mahogany - Unfinished">3D Mahogany - Unfinished</option>
+                  <option value="3D Pine - Unfinished">3D Pine - Unfinished</option>
+                  <option value="3D Cherry - Unfinished">3D Cherry - Unfinished</option>
+                  <option value="3D Maple - Unfinished">3D Maple - Unfinished</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- UI Logic Script -->
+  <script>
+    // Global Error Tracker - Discretely logged to console
+    window.addEventListener('error', function (event) {
+      console.error('[JS ERR]', event.message, 'at', event.filename, ':', event.lineno);
+    });
+
+    // NOTE: Fusion 360 captures this handle reference ONCE at palette creation time.
+    // This MUST be the canonical handler — the second assignment below is invisible to Fusion.
+    // _dispatchFromPython is a function declaration (hoisted) so it is safe to call here.
+    window.fusionJavaScriptHandler = {
+      handle: function (action, data) {
+        try {
+          return _dispatchFromPython(action, data);
+        } catch (e) {
+          console.error('[Handler Top-Level Error]', e.message);
+          return "ERROR_" + e.message;
+        }
+      }
+    };
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      document.getElementById('tab-' + tabId).classList.add('active');
+      document.getElementById('content-' + tabId).classList.add('active');
+
+      // Contextual Header Button Update
+      const actionBtn = document.getElementById('header-action-btn');
+      if (actionBtn) {
+        if (tabId === 'form') {
+          actionBtn.innerText = 'BUILD SKETCH';
+          actionBtn.onclick = () => runBuild('sketch');
+          updateConstraintStatus(); // Restore disabled state if needed
+        } else {
+          actionBtn.innerText = 'GENERATE EXTRUDE 😊';
+          actionBtn.onclick = () => runBuild('solid');
+          actionBtn.disabled = false;
+          actionBtn.style.opacity = 1.0;
+        }
+      }
+    }
+
+    function formatParamValue(val, unit, name, displayUnit) {
+      const num = parseFloat(val);
+      if (isNaN(num)) return val; // Return string expressions as-is
+
+      const effectiveUnit = displayUnit || unit;
+      if (effectiveUnit === 'multiplier' || effectiveUnit === 'x') {
+        return num.toFixed(2) + 'x';
+      }
+      if (effectiveUnit === 'percent' || effectiveUnit === '%') {
+        return (num * 100).toFixed(0) + '%';
+      }
+      if (effectiveUnit === 'in') {
+        return num.toFixed(2) + ' in';
+      }
+      if (!effectiveUnit) {
+        return num.toString();
+      }
+
+      const precision = Math.abs(num) < 1 ? 2 : (Math.abs(num) < 10 ? 1 : 0);
+      return num.toFixed(precision) + ' cm';
+    }
+
+    function getSliderStep(p) {
+      const effectiveUnit = p.DisplayUnit || p.Unit;
+      const useFactorStep = (effectiveUnit === 'multiplier' || effectiveUnit === 'x' || effectiveUnit === 'percent' || effectiveUnit === '%');
+      if (useFactorStep) return 0.01;
+
+      const minVal = parseFloat(p.Min ?? 0);
+      const maxVal = parseFloat(p.Max ?? 1);
+      const range = Math.abs(maxVal - minVal);
+      if (!isFinite(range) || range <= 0) return 0.001;
+      if (range <= 0.1) return 0.001;
+      if (range <= 1) return 0.01;
+      if (range <= 5) return 0.02;
+      if (range <= 10) return 0.05;
+      return Math.max(0.1, (range / 100).toFixed(3));
+    }
+
+    function updateLabel(id) {
+      const el = document.getElementById('val-' + id);
+      if (!el) return;
+      
+      const param = currentParameters.find(p => p.Name === id);
+      const unit = param ? param.Unit : 'cm';
+      const labelEl = document.getElementById('val-' + id + '-label');
+      
+      if (labelEl) {
+        labelEl.innerText = formatParamValue(el.value, unit, id, param ? param.DisplayUnit : undefined);
+      }
+    }
+
+    function updateFusion(id) {
+      const el = document.getElementById('val-' + id);
+      if (!el) return;
+      const val = (el.type === 'checkbox') ? (el.checked ? 1.0 : 0.0) : el.value;
+      notifyFusion('update_param', { name: id, value: val });
+    }
+
+    function toggleLock(id, isLocked) {
+      const getLock = (name) => document.getElementById('lock-' + name);
+      const input = getLock(id);
+
+      if (isLocked) {
+        // Rule 1: Waist excludes ALL heights
+        if (id === 'WaistSpan') {
+          ['TopGap', 'BottomGap'].forEach(name => {
+            const l = getLock(name);
+            if (l.checked) {
+              l.checked = false;
+              notifyFusion('update_lock', { name: name, locked: false });
+              console.log('Mutual Exclusion: Locked Waist, released', name);
+            }
+          });
+        }
+
+        // Rule 2: Shoulder / Top Height conflict
+        if (id === 'ShoulderSpan' && getLock('TopGap').checked) {
+          getLock('TopGap').checked = false;
+          notifyFusion('update_lock', { name: 'TopGap', locked: false });
+        }
+        if (id === 'TopGap') {
+          ['ShoulderSpan', 'WaistSpan'].forEach(name => {
+            const l = getLock(name);
+            if (l.checked) {
+              l.checked = false;
+              notifyFusion('update_lock', { name: name, locked: false });
+            }
+          });
+        }
+
+        // Rule 3: Hip / Bottom Height conflict
+        if (id === 'HipSpan' && getLock('BottomGap').checked) {
+          getLock('BottomGap').checked = false;
+          notifyFusion('update_lock', { name: 'BottomGap', locked: false });
+        }
+        if (id === 'BottomGap') {
+          ['HipSpan', 'WaistSpan'].forEach(name => {
+            const l = getLock(name);
+            if (l.checked) {
+              l.checked = false;
+              notifyFusion('update_lock', { name: name, locked: false });
+            }
+          });
+        }
+
+        // Global MAX 3 logic (FIFO) - only if we are still over limit
+        const activeLocks = Array.from(document.querySelectorAll('.lock-toggle input:checked'))
+          .filter(i => i.id !== 'lock-' + id);
+
+        if (activeLocks.length >= 3) {
+          const oldest = activeLocks[0];
+          oldest.checked = false;
+          const oldestId = oldest.id.replace('lock-', '');
+          notifyFusion('update_lock', { name: oldestId, locked: false });
+        }
+      }
+
+      input.checked = isLocked;
+      updateConstraintStatus();
+      notifyFusion('update_lock', { name: id, locked: isLocked });
+    }
+
+    function updateConstraintStatus() {
+      const lockedCount = document.querySelectorAll('.lock-toggle input:checked').length;
+      const label = document.getElementById('constraint-count');
+      label.innerText = lockedCount + '/3 Locked';
+
+      const actionBtn = document.getElementById('header-action-btn');
+      label.style.color = lockedCount === 3 ? 'var(--good)' : 'var(--accent)';
+      if (actionBtn) {
+        actionBtn.disabled = lockedCount > 3;
+        actionBtn.style.opacity = lockedCount > 3 ? 0.5 : 1.0;
+      }
+    }
+
+    function togglePanel(header) {
+      header.classList.toggle('collapsed');
+      const body = header.nextElementSibling;
+      if (body) body.classList.toggle('hidden');
+    }
+
+    document.querySelectorAll('.panel-header').forEach(header => {
+      header.addEventListener('click', () => togglePanel(header));
+    });
+
+    function syncTemplate() {
+      const tmpl = document.getElementById('template-select').value;
+      notifyFusion('change_template', { template: tmpl });
+    }
+
+    function pickFace() {
+      setFaceSelectionState('waiting');
+      notifyFusion('pick_face', {});
+    }
+
+    // Settings Panel Toggle Logic
+    document.getElementById('settings-btn')?.addEventListener('click', () => {
+      document.getElementById('settings-panel')?.classList.toggle('hidden');
+      document.getElementById('settings-overlay')?.classList.toggle('hidden');
+    });
+    document.getElementById('close-settings-btn')?.addEventListener('click', () => {
+      document.getElementById('settings-panel')?.classList.add('hidden');
+      document.getElementById('settings-overlay')?.classList.add('hidden');
+    });
+    document.getElementById('settings-overlay')?.addEventListener('click', () => {
+      document.getElementById('settings-panel')?.classList.add('hidden');
+      document.getElementById('settings-overlay')?.classList.add('hidden');
+    });
+
+    function setFaceSelectionState(state, name, count) {
+      const label = document.getElementById('label-face-selection');
+      const btn = document.getElementById('btn-select-face');
+      btn.classList.remove('selecting', 'selected');
+      label.classList.remove('waiting', 'selected');
+
+      if (state === 'waiting') {
+        label.innerText = 'Waiting for selection in Fusion...';
+        label.classList.add('waiting');
+        btn.classList.add('selecting');
+        btn.innerText = 'SELECTING...';
+      } else if (state === 'selected') {
+        const faceText = name || 'Face selected';
+        label.innerText = count > 1 ? `${faceText} (${count} faces)` : faceText;
+        label.classList.add('selected');
+        btn.classList.add('selected');
+        btn.innerText = 'SELECT FACE';
+      } else {
+        label.innerText = 'No face selected...';
+        btn.innerText = 'SELECT FACE';
+      }
+    }
+
+    // --- NEW: DYNAMIC PARAMETER RENDERING ---
+    let currentParameters = [];
+
+    // --- PHASE STEPPER ---
+    let _phaseMax   = 1;   // updated when render_schema arrives
+    let _phaseCurrent = 1;
+
+    function _updatePhaseDisplay() {
+      const el = document.getElementById('phase-display');
+      if (el) el.innerText = `P ${_phaseCurrent}/${_phaseMax}`;
+    }
+
+    function adjustPhase(delta) {
+      _phaseCurrent = Math.min(_phaseMax, Math.max(1, _phaseCurrent + delta));
+      _updatePhaseDisplay();
+      
+      // AUTO-REBUILD: Trigger a fresh sketch build up to this phase index
+      console.log('[PHASE] Stepping to Phase', _phaseCurrent);
+      runBuild('sketch');
+    }
+
+    function renderSchema(data) {
+      const logEl = document.getElementById('fusion-log');
+      const statusEl = document.getElementById('system-status');
+      try {
+        console.log('[SCHEMA] renderSchema called. data keys:', Object.keys(data || {}));
+
+        const container = document.getElementById('dynamic-parameters');
+        if (!container) {
+          console.error('[SCHEMA] #dynamic-parameters not found in DOM!');
+          if (logEl) logEl.innerText = '[ERR] #dynamic-parameters missing from DOM';
+          return;
+        }
+
+        // Support new sketch-level format { sketches: [{name, label, parameters}] }
+        // with legacy fallback to flat { parameters: [...] }
+        const sketches = data.sketches;
+        const hasSketchLayout = sketches && Array.isArray(sketches) && sketches.length > 0;
+
+        let allParams = [];
+        if (hasSketchLayout) {
+          sketches.forEach(s => { allParams = allParams.concat(s.parameters || []); });
+        } else {
+          allParams = data.parameters || [];
+        }
+
+        if (!allParams.length) {
+          console.error('[SCHEMA] No params found in schema');
+          if (logEl) logEl.innerText = '[ERR] render_schema: no params found';
+          return;
+        }
+
+        console.log('[SCHEMA] Rendering', allParams.length, 'total params,',
+          hasSketchLayout ? sketches.length + ' sketches' : 'flat layout');
+        if (logEl) logEl.innerText = `[SCHEMA] Rendering ${allParams.length} params...`;
+        if (statusEl) statusEl.innerText = `Schema loaded: ${allParams.length} params`;
+
+        currentParameters = allParams;
+
+        // Update phase stepper max from schema
+        if (data.phase_count && data.phase_count > 0) {
+          _phaseMax     = data.phase_count;
+          _phaseCurrent = _phaseMax;
+          _updatePhaseDisplay();
+        }
+
+        container.innerHTML = '';
+
+        // Rendering rules (evaluated in order, against a given param list):
+        //   1. Has matching en_ sibling  → render with LOCK toggle (solver seed)
+        //   2. ReadOnly === true         → render as read-only display
+        //   3. Expose === true           → render as plain slider (or ck_ checkbox)
+        //   4. None of the above        → internal param, hidden
+        function _shouldRender(p, paramList) {
+          if (p.Name.startsWith('en_')) return false;
+          if (paramList.find(t => t.Name === 'en_' + p.Name)) return true; // rule 1
+          if (p.ReadOnly) return true;                                       // rule 2
+          if (p.Expose)   return true;                                       // rule 3
+          return false;                                                      // rule 4
+        }
+
+        // Render a single parameter into a body element
+        function _renderParam(p, paramList, body) {
+          const toggle = paramList.find(t => t.Name === 'en_' + p.Name);
+          const isLocked = toggle ? (parseFloat(toggle.Val) > 0.5) : false;
+          const label = p.Label || p.Name;
+
+          // ck_ params render as a checkbox toggle, not a slider
+          if (p.Name.startsWith('ck_')) {
+            const isChecked = parseFloat(p.Val ?? 1.0) > 0.5;
+            const ckClass = isChecked ? 'ck-on' : 'ck-off';
+            const wrap = document.createElement('div');
+            wrap.className = 'slider-wrap ck-toggle-wrap';
+            wrap.innerHTML = `
+              <div class="slider-header">
+                <span class="slider-name">${label}</span>
+                <label class="ck-toggle ${ckClass}" id="ck-label-${p.Name}">
+                  <input type="checkbox" id="val-${p.Name}"
+                         onchange="updateFusion('${p.Name}'); _updateCkLabel('${p.Name}', this.checked)"
+                         ${isChecked ? 'checked' : ''}>
+                  <span>${isChecked ? 'ON' : 'OFF'}</span>
+                </label>
+              </div>
+            `;
+            body.appendChild(wrap);
+            return;
+          }
+
+          // Standard slider or read-only display
+          const wrap = document.createElement('div');
+          wrap.className = 'slider-wrap' + (p.ReadOnly ? ' readonly' : '');
+
+          const displayLabel = formatParamValue(p.Val, p.Unit, p.Name, p.DisplayUnit);
+          let sliderVal = parseFloat(p.Val);
+          if (isNaN(sliderVal)) sliderVal = 50;
+
+          const sliderStep = getSliderStep(p);
+
+          wrap.innerHTML = `
+            <div class="slider-header">
+              <span class="slider-name">${label}</span>
+              <div class="flex-row">
+                <span class="slider-val" id="val-${p.Name}-label">${displayLabel}</span>
+                ${toggle && !p.ReadOnly ? `
+                <label class="lock-toggle">
+                  <input type="checkbox" id="lock-${p.Name}"
+                         onchange="toggleLock('${p.Name}', this.checked)"
+                         ${isLocked ? 'checked' : ''}>
+                  LOCK
+                </label>
+                ` : ''}
+              </div>
+            </div>
+            ${!p.ReadOnly ? `
+            <div class="slider-container">
+              <input type="range" id="val-${p.Name}"
+                     min="${p.Min ?? 0}" max="${p.Max ?? 1}"
+                     step="${sliderStep}"
+                     value="${sliderVal}"
+                     oninput="updateLabel('${p.Name}')"
+                     onchange="updateFusion('${p.Name}')">
+            </div>
+            ` : ''}
+          `;
+          body.appendChild(wrap);
+        }
+
+        if (hasSketchLayout) {
+          // New layout: sketch outer panels → category sub-panels → params
+          sketches.forEach(sketch => {
+            const sketchParams = (sketch.parameters || []);
+            const visibleParams = sketchParams.filter(p => _shouldRender(p, sketchParams));
+            if (!visibleParams.length) return;
+
+            // Group visible params by Category
+            const cats = {};
+            visibleParams.forEach(p => {
+              const cat = p.Category || 'Miscellaneous';
+              if (!cats[cat]) cats[cat] = [];
+              cats[cat].push(p);
+            });
+
+            // Outer sketch panel
+            const sketchPanel = document.createElement('div');
+            const sketchLabel = sketch.label || sketch.name || 'Sketch';
+            const shouldCollapse = sketchLabel === 'Bounding Box';
+            sketchPanel.className = 'panel' + (shouldCollapse ? ' collapsed' : '');
+            const sketchBodyId = 'sketch-' + (sketch.name || '').replace(/\s+/g, '-');
+            sketchPanel.innerHTML = `
+              <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                ${sketchLabel}
+              </div>
+              <div class="panel-body" id="${sketchBodyId}" style="gap:8px;"></div>
+            `;
+            container.appendChild(sketchPanel);
+            const sketchBody = sketchPanel.querySelector('.panel-body');
+
+            // Inner category sub-panels
+            Object.keys(cats).forEach(cat => {
+              const catId = sketchBodyId + '-' + cat.replace(/\s+/g, '-');
+              const subPanel = document.createElement('div');
+              subPanel.className = 'panel-sub';
+              subPanel.innerHTML = `
+                <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                  ${cat}
+                </div>
+                <div class="panel-body" id="${catId}"></div>
+              `;
+              sketchBody.appendChild(subPanel);
+              const catBody = subPanel.querySelector('.panel-body');
+              cats[cat].forEach(p => _renderParam(p, sketchParams, catBody));
+            });
+          });
+
+          console.log('[SCHEMA] Rendered', sketches.length, 'sketch panels');
+
+        } else {
+          // Legacy flat layout: group by Category, single-level panels
+          const groups = {};
+          allParams.forEach(p => {
+            if (!_shouldRender(p, allParams)) return;
+            const cat = p.Category || 'Miscellaneous';
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(p);
+          });
+
+          console.log('[SCHEMA] Legacy categories:', Object.keys(groups));
+
+          Object.keys(groups).forEach(cat => {
+            const groupPanel = document.createElement('div');
+            groupPanel.className = 'panel';
+            groupPanel.innerHTML = `
+              <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                ${cat}
+              </div>
+              <div class="panel-body" id="group-${cat.replace(/\s+/g, '-')}"></div>
+            `;
+            container.appendChild(groupPanel);
+            const body = groupPanel.querySelector('.panel-body');
+            groups[cat].forEach(p => _renderParam(p, allParams, body));
+          });
+        }
+
+        if (logEl) logEl.innerText = `[SCHEMA] Done — ${allParams.length} params`;
+        updateConstraintStatus();
+
+      } catch(e) {
+        console.error('[SCHEMA] renderSchema CRASHED:', e);
+        if (logEl) logEl.innerText = '[ERR] renderSchema crash: ' + e.message;
+        if (statusEl) statusEl.innerText = 'Schema render failed — see console';
+      }
+    }
+
+    // Update ck_ toggle label and colour class after user interaction
+    function _updateCkLabel(name, isChecked) {
+      const lbl = document.getElementById('ck-label-' + name);
+      if (!lbl) return;
+      lbl.className = 'ck-toggle ' + (isChecked ? 'ck-on' : 'ck-off');
+      const span = lbl.querySelector('span');
+      if (span) span.textContent = isChecked ? 'ON' : 'OFF';
+    }
+
+    function runBuild(type) {
+      document.getElementById('system-status').innerText = 'Building ' + type + '...';
+
+      const ui_data = {};
+      currentParameters.forEach(p => {
+        const el = document.getElementById('val-' + p.Name);
+        if (el) ui_data[p.Name] = (el.type === 'checkbox') ? (el.checked ? 1.0 : 0.0) : el.value;
+        const lock = document.getElementById('lock-' + p.Name);
+        if (lock) ui_data['en_' + p.Name] = lock.checked ? 1.0 : 0.0;
+      });
+
+      let data = {
+        type: type,
+        ui_data: ui_data,
+        max_phase: (_phaseCurrent >= _phaseMax) ? null : _phaseCurrent
+      };
+
+
+      if (type === 'solid') {
+        data.offset = document.getElementById('solid-offset').value;
+        data.appearance = document.getElementById('solid-appearance').value;
+      }
+
+      notifyFusion('run_build', data);
+    }
+
+    // ── Fusion 360 Python→JS dispatch ───────────────────────────────────────
+    // sendInfoToHTML() routes through window.fusionJavaScriptHandler.handle (defined above).
+    // Some Fusion versions pass data as a pre-parsed JS object; others pass a JSON string.
+    // We handle both cases defensively.
+    function _dispatchFromPython(action, rawData) {
+      const logEl = document.getElementById('fusion-log');
+      if (logEl) logEl.innerText = `[Fusion→UI] ${action}`;
+
+      // Safe preview for logging — works for both string and object
+      const preview = (typeof rawData === 'string')
+        ? rawData.substring(0, 100)
+        : JSON.stringify(rawData || {}).substring(0, 100);
+      console.log('[BRIDGE] _dispatchFromPython:', action, preview);
+
+      // Normalise to a plain JS object regardless of input type
+      let data = {};
+      try {
+        data = (typeof rawData === 'string') ? JSON.parse(rawData) : (rawData || {});
+      } catch(e) {
+        console.error('[BRIDGE] JSON parse failed:', e, '| rawData type:', typeof rawData);
+      }
+
+      if (action === 'render_schema') {
+        const _pCount = data.sketches
+          ? data.sketches.reduce((n, s) => n + (s.parameters || []).length, 0)
+          : (data.parameters || []).length;
+        console.log('[BRIDGE] → calling renderSchema, param count:', _pCount,
+          data.sketches ? '(' + data.sketches.length + ' sketches)' : '(flat)');
+        renderSchema(data);
+      } else if (action === 'status_update') {
+        const statusEl = document.getElementById('system-status');
+        if (statusEl) statusEl.innerText = data.msg || '';
+        if ((data.msg || '').includes('Ready') || (data.msg || '').includes('Complete')) {
+          const statusLight = document.getElementById('bridge-status');
+          const statusLabel = document.getElementById('bridge-label');
+          if (statusLight) statusLight.style.background = 'var(--good)';
+          if (statusLabel) statusLabel.innerText = 'BRIDGE LIVE';
+        }
+      } else if (action === 'selection_result') {
+        if (data.success) {
+          setFaceSelectionState('selected', data.name, data.count);
+        } else {
+          setFaceSelectionState('idle');
+        }
+      } else if (action === 'response') {
+        console.log('[BRIDGE] Fusion ACK received');
+      } else {
+        console.log('[BRIDGE] Unhandled action from Python:', action);
+      }
+
+      return "OK";
+    }
+
+    // adsk.fusion.receive is an alternative entry point on some Fusion builds.
+    // Set it now if adsk is already available; setupBridgeListener handles the deferred case.
+    function handleMessageFromFusion(action, data) { return _dispatchFromPython(action, data); }
+    if (typeof adsk !== 'undefined' && adsk.fusion) {
+      adsk.fusion.receive = function(action, data) { return _dispatchFromPython(action, data); };
+    }
+
+    // Flag to ensure we only attach our receive handler once
+    let _bridgeHooked = false;
+
+    function setupBridgeListener() {
+      if (typeof adsk === 'undefined' || !adsk.fusion) {
+        console.log('[BRIDGE] adsk not ready yet. typeof adsk =', typeof adsk);
+        return false;
+      }
+
+      if (_bridgeHooked) {
+        console.log('[BRIDGE] Already hooked (flag set).');
+        return true;
+      }
+
+      // Route adsk.fusion.receive to the unified dispatcher
+      console.log('[BRIDGE] Attaching adsk.fusion.receive → _dispatchFromPython');
+      adsk.fusion.receive = function(action, dataString) { _dispatchFromPython(action, dataString); };
+
+      _bridgeHooked = true;
+      console.log('[BRIDGE] adsk.fusion.receive hooked successfully.');
+      return true;
+    }
+    setupBridgeListener();
+
+    function notifyFusion(action, data) {
+      const statusEl = document.getElementById('system-status');
+      const logEl = document.getElementById('fusion-log');
+      const payloadText = JSON.stringify(data);
+
+      // Re-attempt hook in case adsk wasn't ready at load time
+      if (!_bridgeHooked) setupBridgeListener();
+
+      // Detailed bridge state log for every outgoing call
+      const hasPostMessage   = (typeof adsk !== 'undefined' && adsk.fusion && typeof adsk.fusion.postMessage === 'function');
+      const hasFusionSend    = (typeof adsk !== 'undefined' && typeof adsk.fusionSendData === 'function');
+      console.log(`[BRIDGE] notifyFusion(${action}) | postMessage:${hasPostMessage} | fusionSendData:${hasFusionSend} | adsk:${typeof adsk}`);
+
+      if (hasPostMessage) {
+        if (logEl) logEl.innerText = `[UI→Fusion] ${action}`;
+        adsk.fusion.postMessage(action, JSON.stringify(data));
+
+      } else if (hasFusionSend) {
+        // Fallback for Fusion versions that use adsk.fusionSendData
+        if (logEl) logEl.innerText = `[UI→Fusion-fallback] ${action}`;
+        console.warn('[BRIDGE] Using fusionSendData fallback for:', action);
+        adsk.fusionSendData(action, JSON.stringify(data));
+
+      } else {
+        const adskKeys = (typeof adsk !== 'undefined') ? Object.keys(adsk).join(',') : 'adsk-undefined';
+        const fusionKeys = (typeof adsk !== 'undefined' && adsk.fusion) ? Object.keys(adsk.fusion).join(',') : 'fusion-undefined';
+        console.error(`[BRIDGE] MISSING - action:${action} | adsk keys:[${adskKeys}] | adsk.fusion keys:[${fusionKeys}]`);
+        if (logEl) logEl.innerText = `[ERR] BRIDGE MISSING - ${action} | adsk.fusion:[${fusionKeys}]`;
+        if (statusEl) {
+          statusEl.innerText = 'BRIDGE DISCONNECTED - RESTART ADD-IN';
+          statusEl.style.color = 'var(--bad)';
+        }
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const statusLight = document.getElementById('bridge-status');
+      const statusEl = document.getElementById('system-status');
+
+      function bridgeCanSend() {
+        return (typeof adsk !== 'undefined') && (
+          (adsk.fusion && typeof adsk.fusion.postMessage === 'function') ||
+          (typeof adsk.fusionSendData === 'function')
+        );
+      }
+
+      function tryHandshake() {
+        // Hook the receive side as soon as adsk.fusion exists (postMessage path)
+        if (typeof adsk !== 'undefined' && adsk.fusion) setupBridgeListener();
+
+        // Bridge is ready if we can SEND via either mechanism.
+        // adsk.fusion is NOT required — fusionSendData works standalone on some Fusion builds.
+        const adskReady = bridgeCanSend();
+        if (adskReady) {
+          if (statusLight) statusLight.style.background = 'var(--good)';
+          const statusLabel = document.getElementById('bridge-label');
+          if (statusLabel) statusLabel.innerText = 'BRIDGE LIVE';
+          
+          if (statusEl) statusEl.innerText = 'Synchronizing with Engine...';
+          console.log('[BRIDGE] Handshake successful — firing change_template');
+          notifyFusion('change_template', { template: 'Template 1' });
+          return true;
+        }
+        console.log('[BRIDGE] tryHandshake: adskReady=' + adskReady + ' canSend=' + bridgeCanSend());
+        return false;
+      }
+
+      // Initial buffer for Fusion 360 to settle
+      setTimeout(() => {
+          if (!tryHandshake()) {
+            console.log('[BRIDGE] Fusion missing or busy. Starting retry heartbeat...');
+            if (statusLight) statusLight.style.background = 'var(--bad)';
+            const statusLabel = document.getElementById('bridge-label');
+            if (statusLabel) statusLabel.innerText = 'CONNECTING...';
+            
+            if (statusEl) statusEl.innerText = 'Waiting for Fusion 360...';
+
+          let retryCount = 0;
+          const heartbeat = setInterval(() => {
+            retryCount++;
+            if (tryHandshake()) {
+              console.log('[BRIDGE] Handshake successful after ' + retryCount + ' retries.');
+              clearInterval(heartbeat);
+            }
+          }, 1000);
+        }
+      }, 500);
+    });
+  </script>
+
+  <!-- Hidden element kept for internal bridge logging; not visible to user -->
+  <span id="fusion-log" style="display:none;">...</span>
+
+  <footer id="bottomStatusBar"
+    style="position: fixed; bottom: 0; left: 0; width: 100%; height: 36px; padding: 0 12px; background: #111; border-top: 1px solid #1a3a5c; display: flex !important; align-items: center; gap: 10px; font-size: 0.7rem; color: #eee; z-index: 9999;">
+    <div id="bridge-status"
+      style="width: 8px; height: 8px; border-radius: 50%; background: var(--bad); flex-shrink: 0;"></div>
+    <span id="bridge-label" style="font-weight: 700; color: #ccc; white-space: nowrap; letter-spacing: 0.02em;">DISCONNECTED</span>
+    <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1); margin: 0 2px;"></div>
+    <span id="system-status" style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: #4a9eff;">Ready</span>
+    <button id="copy-btn" onclick="copyLogs(event)"
+      style="padding: 3px 10px; background: #1a3a5c; color: #aac8f0; border: 1px solid #2a5a8c; border-radius: 3px; cursor: pointer; font-size: 0.65rem; height: 22px; flex-shrink: 0; transition: all 0.2s;">
+      COPY
+    </button>
+  </footer>
+
+  <script>
+    function copyLogs(event) {
+      const status = document.getElementById('system-status').innerText;
+      const textArea = document.createElement("textarea");
+      textArea.value = status;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        const btn = event.currentTarget;
+        const oldText = btn.innerText;
+        btn.innerText = 'OK!';
+        btn.style.background = 'var(--good)';
+        setTimeout(() => { btn.innerText = oldText; btn.style.background = '#1a3a5c'; }, 1000);
+      } catch (err) {
+        console.error('Copy failed', err);
+      }
+      document.body.removeChild(textArea);
+    }
+  </script>
+</body>
+
+</html>

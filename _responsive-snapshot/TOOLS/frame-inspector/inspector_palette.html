@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Frame Inspector</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #f4f4f4;
+            color: #222;
+            margin: 0;
+            padding: 10px;
+            min-width: 300px;
+        }
+        #pulse-box {
+            background: #eee;
+            border: 1px solid #ccc;
+            padding: 4px 8px;
+            font-size: 0.8em;
+            color: #0077c8;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        #debug {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 4px 8px;
+            font-size: 0.7em;
+            color: #856404;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            word-break: break-all;
+            max-height: 80px;
+            overflow-y: auto;
+        }
+        h2 {
+            font-size: 1.1em;
+            color: #0077c8;
+            margin: 12px 0 6px 0;
+            border-bottom: 2px solid #0077c8;
+            padding-bottom: 2px;
+        }
+        .main-feature { font-weight: bold; font-size: 1.1em; margin: 15px 0 2px 0; color: #222; }
+        .coord { color: #666; font-size: 0.95em; margin-bottom: 8px; }
+        .linked-label { margin: 12px 0 4px 0; font-weight: 600; color: #0077c8; font-size: 0.9em; text-transform: uppercase; }
+        .linked-list { margin: 0 0 10px 10px; padding: 0; font-size: 0.95em; }
+        .linked-list li { margin-bottom: 2px; list-style: decimal inside; }
+        .meta { color: #888; font-size: 0.85em; margin-top: 15px; font-family: 'Consolas', monospace; border-top: 1px solid #ddd; padding-top: 8px; }
+        #copy-btn, #copy-short-btn {
+            display: inline-block;
+            width: 48%;
+            margin-top: 12px;
+            padding: 8px 0;
+            background: #0077c8;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.02em;
+        }
+        #copy-btn:hover, #copy-short-btn:hover { background: #005fa3; }
+        #copy-btn.ok, #copy-short-btn.ok { background: #388E3C; }
+        #copy-btn.err, #copy-short-btn.err { background: #c0392b; }
+        
+        .btn-container { display: flex; justify-content: space-between; gap: 4%; }
+    </style>
+</head>
+<body>
+    <div id="pulse-box">Bridge: WAITING...</div>
+    <div id="debug">JS init...</div>
+    <div id="main-feature" class="main-feature">Select geometry...</div>
+    <div id="coord" class="coord"></div>
+    <div id="linked-root" style="display:none;">
+        <div class="linked-label" id="list-label">Connections</div>
+        <ul id="linked-list" class="linked-list"></ul>
+    </div>
+    <div class="meta">
+        <span id="meta-text"></span>
+    </div>
+    
+    <div class="btn-container">
+        <button id="copy-btn" onclick="copyToClipboard()" title="Copy everything">Full Copy</button>
+        <button id="copy-short-btn" onclick="copyShort()" title="Copy Name & Coords only">Copy Name</button>
+    </div>
+
+    <script>
+        var dbg = document.getElementById('debug');
+        var updateCount = 0;
+        var pollCount = 0;
+        var debugLines = [];
+
+        function dlog(msg) {
+            debugLines.push(msg);
+            if (debugLines.length > 8) debugLines.shift();
+            if (dbg) dbg.textContent = debugLines.join(' | ');
+        }
+
+        function applyData(dataStr, source) {
+            updateCount++;
+            document.getElementById('pulse-box').textContent = 'Bridge: LIVE (' + updateCount + ') [' + source + ']';
+            document.getElementById('pulse-box').style.color = '#388E3C';
+            document.getElementById('pulse-box').style.background = '#E8F5E9';
+            try {
+                var d = (typeof dataStr === 'string') ? JSON.parse(dataStr) : dataStr;
+                currentData = d;
+                document.getElementById('main-feature').textContent = d.mainFeature || 'Entity';
+                document.getElementById('coord').textContent = d.coord || '';
+                
+                var listLabel = document.getElementById('list-label');
+                if (listLabel) listLabel.textContent = d.listLabel || 'Connections';
+
+                var list = document.getElementById('linked-list');
+                var root = document.getElementById('linked-root');
+                if (list) list.innerHTML = '';
+                if (d.linked && d.linked.length > 0) {
+                    if (root) root.style.display = 'block';
+                    for (var i = 0; i < d.linked.length; i++) {
+                        var li = document.createElement('li');
+                        li.textContent = d.linked[i];
+                        list.appendChild(li);
+                    }
+                } else {
+                    if (root) root.style.display = 'none';
+                }
+                document.getElementById('meta-text').textContent = d.meta || '';
+            } catch(e) {
+                dlog('PARSE ERR: ' + e.message);
+            }
+        }
+
+        // Channel A: Python pushes via sendInfoToHTML
+        window.fusionJavaScriptHandler = function(action, data) {
+            dlog('PUSH:' + action);
+            if (action === 'update' && data) applyData(data, 'PUSH');
+        };
+
+        // Channel B: JS polls Python via fusionSendData (returns Promise)
+        function poll() {
+            pollCount++;
+            try {
+                if (typeof adsk === 'undefined') {
+                    if (pollCount <= 3) dlog('POLL#' + pollCount + ' adsk not ready');
+                    return;
+                }
+                var result = adsk.fusionSendData('poll', 'ping');
+
+                // Result is a Promise — handle async
+                if (result && typeof result.then === 'function') {
+                    if (pollCount === 1) dlog('fusionSendData returns Promise!');
+                    result.then(function(data) {
+                        if (pollCount <= 5 || (pollCount % 50 === 0)) {
+                            dlog('POLL#' + pollCount + ' resolved=' + (typeof data) + ' len=' + (data ? data.length : 0));
+                        }
+                        if (data && data.length > 5) {
+                            applyData(data, 'POLL');
+                        }
+                    }).catch(function(err) {
+                        if (pollCount <= 5) dlog('POLL reject: ' + err);
+                    });
+                } else if (typeof result === 'string' && result.length > 5) {
+                    // Synchronous string return (older Fusion?)
+                    applyData(result, 'POLL');
+                } else {
+                    if (pollCount <= 3) dlog('POLL#' + pollCount + ' ret=' + (typeof result));
+                }
+            } catch(e) {
+                if (pollCount <= 5) dlog('POLL err: ' + e.message);
+            }
+        }
+
+        var currentData = null;
+
+        function copyShort() {
+            var btn = document.getElementById('copy-short-btn');
+            if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
+            
+            var text = "";
+            if (currentData.count > 1 && currentData.linked) {
+                // Batch Mode: Copy just the names for the whole list
+                var names = [];
+                for (var i = 0; i < currentData.linked.length; i++) {
+                    var str = currentData.linked[i];
+                    // Extract name before the ' | ' separator
+                    var name = str.split(' | ')[0];
+                    names.push(name);
+                }
+                text = names.join('\n');
+            } else {
+                // Single Mode
+                text = currentData.mainFeature || 'Entity';
+            }
+            performCopy(text, btn);
+        }
+
+        function copyToClipboard() {
+            var btn = document.getElementById('copy-btn');
+            if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
+
+            // Build plain text
+            var lines = [];
+            if (currentData.count > 1 && currentData.linked) {
+                // Batch Mode: Copy the full detailed list
+                lines.push(currentData.mainFeature);
+                for (var i = 0; i < currentData.linked.length; i++) lines.push(currentData.linked[i]);
+            } else {
+                // Single Mode
+                lines.push(currentData.mainFeature || '');
+                if (currentData.coord) lines.push(currentData.coord);
+                if (currentData.linked && currentData.linked.length > 0) {
+                    lines.push('Connections:');
+                    for (var j = 0; j < currentData.linked.length; j++) lines.push('  ' + currentData.linked[j]);
+                }
+            }
+            if (currentData.meta) lines.push(currentData.meta);
+            var text = lines.join('\n');
+            
+            performCopy(text, btn);
+        }
+
+        function performCopy(text, btn) {
+            var originalText = btn.textContent;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(function() {
+                    flashBtn(btn, 'Copied!', true, originalText);
+                }).catch(function() { copyViaPython(text, btn, originalText); });
+            } else {
+                copyViaPython(text, btn, originalText);
+            }
+        }
+
+        function flashBtn(btn, msg, success, originalText) {
+            var old = originalText || btn.textContent;
+            btn.textContent = msg;
+            btn.className = success ? 'ok' : 'err';
+            setTimeout(function(){ btn.textContent = old; btn.className = ''; }, 1500);
+        }
+
+        function copyViaPython(text, btn, originalText) {
+            adsk.fusionSendData('copy', text).then(function(result) {
+                if (result === 'ok') {
+                    flashBtn(btn, 'Copied!', true, originalText);
+                } else {
+                    flashBtn(btn, 'Error', false, originalText);
+                }
+            }).catch(function() {
+                flashBtn(btn, 'Error', false, originalText);
+            });
+        }
+
+        dlog('JS ready. adsk=' + (typeof adsk));
+        if (typeof adsk !== 'undefined') {
+            // Dump ALL properties of the adsk object
+            var keys = [];
+            for (var k in adsk) { keys.push(k + '=' + (typeof adsk[k])); }
+            dlog('adsk keys: ' + (keys.length > 0 ? keys.join(', ') : 'NONE'));
+            // Also check adsk.fusion if it exists
+            if (typeof adsk.fusion !== 'undefined') {
+                var fkeys = [];
+                for (var fk in adsk.fusion) { fkeys.push(fk + '=' + (typeof adsk.fusion[fk])); }
+                dlog('adsk.fusion keys: ' + (fkeys.length > 0 ? fkeys.join(', ') : 'NONE'));
+            }
+        }
+
+        setInterval(poll, 300);
+    </script>
+</body>
+</html>

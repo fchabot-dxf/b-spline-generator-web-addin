@@ -1,0 +1,14 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "bspline-frame-builder",
+    "author": "danse",
+    "description": {
+        "": "Unified add-in: Frame Builder, Symmetric B-Spline Generator, and (third command TBD) for Fusion 360."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true,
+    "entry": "bspline-frame-builder.py"
+}

@@ -1137,7 +1137,10 @@ header {
 }
 
 .cad-input:hover {
-    border: 1.5px solid #a0a0a0;
+    /* color-only — the previous shorthand also bumped border-width from
+       1px to 1.5px, causing a 1.33px layout shift at fractional DPR (4K)
+       that retriggered native <select> popup raster every cycle. */
+    border-color: #a0a0a0;
 }
 
 .cad-textarea {
@@ -1168,7 +1171,7 @@ header {
 }
 
 .cad-select-wrap:hover {
-    border: 1.5px solid #a0a0a0;
+    border-color: #a0a0a0;
 }
 
 .cad-select-icon {
@@ -1223,7 +1226,7 @@ header {
 }
 
 .cad-nested-input:hover {
-    border: 1.5px solid #a0a0a0;
+    border-color: #a0a0a0;
 }
 
 .cad-nested-input.disabled {
@@ -1328,7 +1331,7 @@ header {
 }
 
 .cad-btn:hover {
-    border: 1.5px solid #a0a0a0;
+    border-color: #a0a0a0;
     background: #ffffff;
 }
 
@@ -1341,7 +1344,7 @@ header {
 
 .cad-btn-primary:hover {
     background: #058ac7;
-    border: 1.5px solid #5db0e5;
+    border-color: #5db0e5;
 }
 
 .cad-btn.disabled {

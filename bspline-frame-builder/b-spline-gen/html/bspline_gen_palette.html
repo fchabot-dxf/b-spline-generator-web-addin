@@ -139,6 +139,48 @@
       -webkit-appearance: none;
       margin: 0;
     }
+
+    /* Generate New Seed — primary seed action. Higher specificity than
+       .cad-btn:hover so the green doesn't get overridden on hover. */
+    #btnRandomSeed:hover {
+      background: #43a047;
+      border-color: #2e7d32;
+    }
+
+    /* Header icon-only buttons — uniform 32×32 squares. !important
+       needed because layout-app.css used to ID-target these buttons
+       with their own !important rules; even after removing those, the
+       .cad-btn rules in base.css still set min-width:75px which we
+       have to beat. */
+    .cad-navbar .cad-nav-btn {
+      /* No !important on display: JS sets style.display='none' to hide
+         the Add-In button in Fusion mode, and inline style without
+         !important loses to a stylesheet !important. Plain `display:
+         flex` still wins over base.css's `display: inline-flex` via
+         specificity (.cad-navbar .cad-nav-btn = 0,2,0 vs .cad-btn = 0,1,0). */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box !important;
+      width: 32px !important;
+      min-width: 32px !important;
+      max-width: 32px !important;
+      height: 32px !important;
+      min-height: 32px !important;
+      max-height: 32px !important;
+      padding: 0 !important;
+      flex: 0 0 32px !important;
+    }
+
+    /* Force the colorful emoji presentation on header icons. Without
+       this, characters like ⬇ and 🧩 can fall back to a monochrome
+       glyph from Segoe UI / Tahoma instead of the color emoji form. */
+    .cad-nav-btn > span {
+      font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji",
+                   "Segoe UI Symbol", sans-serif;
+      font-variant-emoji: emoji;
+      line-height: 1;
+    }
   </style>
 </head>
 
@@ -158,19 +200,21 @@
            set: silent overwrite. When not set: opens the Project Manager
            and starts a Save prompt. Label updates to show the active
            file name so the user always sees what they're editing. -->
-      <button class="cad-btn cad-btn-secondary" id="btnQuickSave"
-              title="Save (no file associated yet)"
-              style="display:flex; align-items:center; gap:4px; min-height:32px; max-width:220px;">
-        <span class="material-symbols-outlined" style="font-size:16px;">save</span>
-        <span id="btnQuickSaveLabel" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Save…</span>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnQuickSave"
+              title="Save (no file associated yet)">
+        <span style="font-size:18px; line-height:1;">💾</span>
+        <span id="btnQuickSaveLabel" style="display:none;">Save…</span>
       </button>
-      <button class="cad-btn cad-btn-secondary" id="btnOpenProjectManager" title="Open Project Manager" style="display:flex; align-items:center; gap:4px; min-height:32px;">
-        <span class="material-symbols-outlined" style="font-size:16px;">folder_open</span>
-        <span>Projects</span>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnOpenProjectManager" title="Open Project Manager">
+        <span style="font-size:18px; line-height:1;">📁</span>
       </button>
-      <button class="cad-btn cad-btn-secondary" id="btnDownloadAddin">Add-In</button>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnDownloadAddin" title="Download Fusion add-in">
+        <span style="font-size:18px; line-height:1;">🧩</span>
+      </button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
-      <span class="material-symbols-outlined cad-nav-icon" id="settings-btn" style="cursor:pointer;">settings</span>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="settings-btn" title="Settings">
+        <span style="font-size:18px; line-height:1;">⚙️</span>
+      </button>
     </div>
   </header>
 
@@ -179,7 +223,8 @@
       <!-- 0. Sticky Header Actions — pinned to top of sidebar scroll viewport -->
       <div class="cad-panel-section"
         style="padding: 12px; background: #fdfdfd; border-bottom: 1px solid var(--cad-border-color); position: sticky; top: 0; z-index: 20; box-shadow: 0 4px 6px -4px rgba(0,0,0,0.18);">
-        <button class="cad-btn cad-btn-secondary" id="btnRandomSeed" style="width:100%; height:32px;">🎲 Generate New
+        <button class="cad-btn" id="btnRandomSeed"
+          style="width:100%; height:32px; background:#4caf50; color:#ffffff; border:1px solid #388e3c; font-weight:600;">🎲 Generate New
           Seed</button>
         <div style="display:flex; gap:8px; margin-top:8px;">
           <button class="cad-btn cad-btn-secondary" id="btnGlobalUndo" style="flex:1; height:28px;"
@@ -194,7 +239,7 @@
         <div class="panel-body" style="padding:10px 12px;">
           <button class="cad-btn cad-btn-secondary" data-open-projects
             style="width:100%; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
-            <span class="material-symbols-outlined" style="font-size:15px;">folder_open</span>
+            <span style="font-size:15px;">📁</span>
             Projects
           </button>
         </div>
@@ -1597,7 +1642,7 @@
 
       <!-- Title bar with view toggle -->
       <div class="pm-header">
-        <span class="material-symbols-outlined" style="font-size:20px;">folder_open</span>
+        <span style="font-size:20px;">📁</span>
         <span class="pm-header-title">PROJECTS</span>
         <div class="pm-view-toggle" role="tablist" aria-label="View mode">
           <button id="fmViewToggleTiles" class="active" role="tab" aria-selected="true" title="Tile view">
@@ -1649,7 +1694,7 @@
         <div class="pm-selbar-actions">
           <button id="fmBtnLoad" class="pm-selbar-btn pm-selbar-btn-primary" disabled
                   title="Load the selected project (or double-click)">
-            <span class="material-symbols-outlined" style="font-size:14px;">folder_open</span>
+            <span style="font-size:14px;">📁</span>
             Load
           </button>
           <button id="fmBtnRename" class="pm-selbar-btn" disabled title="Rename selected">

@@ -1,0 +1,16 @@
+{
+  "name": "stepgenerator",
+  "version": "1.1.0",
+  "description": "Unified dashboard for Fusion 360 procedural terrain generation tools.",
+  "scripts": {
+    "start": "python -m http.server 8080",
+    "serve": "npx serve -l 8080 ."
+  },
+  "keywords": ["fusion360", "terrain", "step", "cnc", "b-spline"],
+  "author": "Frédéric",
+  "license": "MIT",
+  "dependencies": {
+    "opentype.js": "^1.3.4",
+    "clipper-lib": "^6.4.2"
+  }
+}

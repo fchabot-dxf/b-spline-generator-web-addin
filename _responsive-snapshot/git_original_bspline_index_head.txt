@@ -1,0 +1,260 @@
+001: <!DOCTYPE html>
+002: <html lang="en">
+003: 
+004: <head>
+005:   <meta charset="UTF-8">
+006:   <meta name="viewport"
+007:     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+008:   <title>Symmetric B-Spline Generator \u2764\ufe0f</title>
+009:   <link rel="icon"
+010:     href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><polygon points=%2250,5 95,25 95,75 50,95 5,75 5,25%22 fill=%22%234f8ef7%22/></svg>">
+011:   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+012:   <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
+013:   <!-- canvg v4 loaded dynamically inside stamp.js -->
+014:   <style>
+015:     /* \u2500\u2500 Self-hosted fonts \u2014 no network needed \u2500\u2500 */
+016:     @font-face { font-family: 'Arial';              font-weight: 400; src: url('fonts/arial.ttf'); }
+017:     @font-face { font-family: 'Arial';              font-weight: 700; src: url('fonts/arial-bold.ttf'); }
+018:     @font-face { font-family: 'Tahoma';             font-weight: 400; src: url('fonts/tahoma.ttf'); }
+019:     @font-face { font-family: 'Tahoma';             font-weight: 700; src: url('fonts/tahoma-bold.ttf'); }
+020:     @font-face { font-family: 'Verdana';            font-weight: 400; src: url('fonts/verdana.ttf'); }
+021:     @font-face { font-family: 'Verdana';            font-weight: 700; src: url('fonts/verdana-bold.ttf'); }
+022:     @font-face { font-family: 'Bahnschrift';        font-weight: 400; src: url('fonts/bahnschrift.ttf'); }
+023:     @font-face { font-family: 'Impact';             font-weight: 400; src: url('fonts/impact.ttf'); }
+024:     @font-face { font-family: 'Georgia';            font-weight: 400; src: url('fonts/georgia.ttf'); }
+025:     @font-face { font-family: 'Georgia';            font-weight: 700; src: url('fonts/georgia-bold.ttf'); }
+026:     @font-face { font-family: 'Times New Roman';    font-weight: 400; src: url('fonts/times.ttf'); }
+027:     @font-face { font-family: 'Times New Roman';    font-weight: 700; src: url('fonts/times-bold.ttf'); }
+028:     @font-face { font-family: 'Courier New';        font-weight: 400; src: url('fonts/courier.ttf'); }
+029:     @font-face { font-family: 'Courier New';        font-weight: 700; src: url('fonts/courier-bold.ttf'); }
+030:     @font-face { font-family: 'Cascadia Code';      font-weight: 400; src: url('fonts/CascadiaCode-Regular.ttf'); }
+031:     @font-face { font-family: 'Cascadia Code';      font-weight: 700; src: url('fonts/CascadiaCode-Bold.ttf'); }
+032:     @font-face { font-family: 'Cascadia Mono';      font-weight: 400; src: url('fonts/CascadiaMono-Regular.ttf'); }
+033:     @font-face { font-family: 'Cascadia Mono';      font-weight: 700; src: url('fonts/CascadiaMono-Bold.ttf'); }
+034:     @font-face { font-family: 'Marlett';            font-weight: 400; src: url('fonts/marlett.ttf'); }
+035:     @font-face { font-family: 'Segoe Fluent Icons'; font-weight: 400; src: url('fonts/segoe-fluent-icons.ttf'); }
+036:     @font-face { font-family: 'Segoe MDL2 Assets';  font-weight: 400; src: url('fonts/segoe-mdl2.ttf'); }
+037:     @font-face { font-family: 'Segoe UI Emoji';     font-weight: 400; src: url('fonts/segoe-emoji.ttf'); }
+038:     @font-face { font-family: 'Segoe UI Symbol';    font-weight: 400; src: url('fonts/segoe-symbols.ttf'); }
+039:     @font-face { font-family: 'Symbol';             font-weight: 400; src: url('fonts/symbol.ttf'); }
+040:     @font-face { font-family: 'Webdings';           font-weight: 400; src: url('fonts/webdings.ttf'); }
+041:     @font-face { font-family: 'Wingdings';          font-weight: 400; src: url('fonts/wingdings.ttf'); }
+042:   </style>
+043:   <style>
+044:     *,
+045:     *::before,
+046:     *::after {
+047:       box-sizing: border-box;
+048:       margin: 0;
+049:       padding: 0;
+050:     }
+051: 
+052:     html,
+053:     body {
+054:       margin: 0;
+055:       padding: 0;
+056:       width: 100%;
+057:       height: 100%;
+058:       overflow: hidden;
+059:       touch-action: none;
+060:       /* Prevent browser handling of touch gestures */
+061:       -webkit-overflow-scrolling: touch;
+062:     }
+063: 
+064:     :root {
+065:       --bg: #f3f3f3;
+066:       --surface: #ffffff;
+067:       --surface2: #e8e8e8;
+068:       --border: #d1d1d1;
+069:       --accent: #0066cc;
+070:       --accent2: #5a30e8;
+071:       --text: #222222;
+072:       --muted: #555555;
+073:       --good: #208a4f;
+074:       --gap: 12px;
+075:       --r: 8px;
+076:       --primary: #2563eb;
+077:       --primary-hover: #1d4ed8;
+078:       --surface-mid: #f8fafc;
+079:       --text-dim: #64748b;
+080:     }
+081: 
+082: 
+083: 
+084:     /* Settings Panel */
+085:     .settings-panel {
+086:       position: fixed;
+087:       top: 0;
+088:       right: -320px;
+089:       width: 320px;
+090:       height: 100vh;
+091:       background: var(--surface);
+092:       box-shadow: -4px 0 15px rgba(0, 0, 0, 0.1);
+093:       transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+094:       z-index: 2002;
+095:       display: flex;
+096:       flex-direction: column;
+097:     }
+098: 
+099:     .settings-panel:not(.hidden) {
+100:       right: 0;
+101:     }
+102: 
+103:     .settings-header {
+104:       padding: 16px 20px;
+105:       border-bottom: 1px solid var(--border);
+106:       display: flex;
+107:       justify-content: space-between;
+108:       align-items: center;
+109:       background: var(--surface-mid);
+110:     }
+111: 
+112:     .settings-header h3 {
+113:       margin: 0;
+114:       font-size: 16px;
+115:     }
+116: 
+117:     .settings-body {
+118:       padding: 20px;
+119:       flex: 1;
+120:       overflow-y: auto;
+121:     }
+122: 
+123:     .setting-row {
+124:       display: flex;
+125:       justify-content: space-between;
+126:       align-items: center;
+127:       margin-bottom: 20px;
+128:     }
+129: 
+130:     .setting-row label {
+131:       font-size: 13px;
+132:       color: var(--text);
+133:       font-weight: 500;
+134:     }
+135: 
+136:     .setting-row input {
+137:       padding: 4px 8px;
+138:       border: 1px solid var(--border);
+139:       border-radius: 4px;
+140:       width: 60px;
+141:       text-align: right;
+142:     }
+143: 
+144:     .settings-overlay {
+145:       position: fixed;
+146:       top: 0;
+147:       left: 0;
+148:       width: 100vw;
+149:       height: 100vh;
+150:       background: rgba(0, 0, 0, 0.3);
+151:       backdrop-filter: blur(2px);
+152:       z-index: 2001;
+153:       opacity: 1;
+154:       transition: opacity 0.3s ease;
+155:     }
+156: 
+157:     .settings-overlay.hidden {
+158:       opacity: 0;
+159:       pointer-events: none;
+160:     }
+161: 
+162:     .hidden {
+163:       display: none !important;
+164:     }
+165: 
+166:     html,
+167:     body {
+168:       margin: 0;
+169:       padding: 0;
+170:       width: 100%;
+171:       height: 100%;
+172:       overflow: hidden;
+173:       background: var(--bg);
+174:       color: var(--text);
+175:       font: 13px/1.5 'Segoe UI', sans-serif;
+176:     }
+177: 
+178:     /* Stepper UI for Plunge Depth */
+179:     .stepper-container {
+180:       display: flex;
+181:       align-items: center;
+182:       background: var(--surface2);
+183:       border: 1px solid var(--border);
+184:       border-radius: 4px;
+185:       overflow: hidden;
+186:       height: 28px;
+187:     }
+188: 
+189:     .stepper-container input {
+190:       border: none !important;
+191:       min-width: 50px !important;
+192:       flex: 1;
+193:       text-align: center;
+194:       background: transparent !important;
+195:       padding: 0 6px !important;
+196:       margin: 0 !important;
+197:       font-weight: 600;
+198:       -moz-appearance: textfield;
+199:       appearance: none;
+200:     }
+201: 
+202:     .stepper-container input::-webkit-outer-spin-button,
+203:     .stepper-container input::-webkit-inner-spin-button {
+204:       -webkit-appearance: none;
+205:       margin: 0;
+206:     }
+207: 
+208:     .stepper-btn {
+209:       background: var(--surface);
+210:       border: none;
+211:       width: 24px;
+212:       height: 100%;
+213:       cursor: pointer;
+214:       font-size: 16px;
+215:       font-weight: bold;
+216:       display: flex;
+217:       align-items: center;
+218:       justify-content: center;
+219:       color: var(--accent);
+220:       transition: background 0.2s;
+221:     }
+222: 
+223:     .stepper-btn:hover {
+224:       background: #e0e0e0;
+225:     }
+226: 
+227:     .stepper-btn:active {
+228:       background: #d0d0d0;
+229:     }
+230: 
+231:     /* Update the main app grid to use 3 columns on desktop */
+232:     .app {
+233:       --sidebar-width: 320px;
+234:       --preview-height: 50vh;
+235:       display: grid;
+236:       grid-template-columns: var(--sidebar-width) 8px 1fr;
+237:       /* 8px for the resizer */
+238:       grid-template-rows: auto 1fr auto auto;
+239:       width: 100%;
+240:       height: 100%;
+241:       overflow: hidden;
+242:     }
+243: 
+244:     /* Base positions for Desktop */
+245:     header {
+246:       grid-column: 1 / -1;
+247:       background: var(--surface);
+248:       border-bottom: 1px solid var(--border);
+249:       padding: 10px 18px;
+250:       display: flex;
+251:       align-items: center;
+252:       gap: 14px;
+253:     }
+254: 
+255:     .logo {
+256:       font-size: 15px;
+257:       font-weight: 700;
+258:       color: var(--accent);
+259:       letter-spacing: 0.04em;
+260:     }
