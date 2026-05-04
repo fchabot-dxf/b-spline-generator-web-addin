@@ -30,10 +30,18 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
     const tStart = performance.now();
     const statusBar = document.getElementById('bottomStatusBar');
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-    
+
     await yieldToMain();
 
-    if (preDelta === null || nx !== lastNx || nz !== lastNz) {
+    // If the deltas already match the target grid size (e.g. just loaded from a
+    // snapshot whose grid differs from the prior render's), trust them as-is.
+    // Without this short-circuit, lastNx/lastNz from the prior render would
+    // make the resampleDelta path read out of bounds and scramble the values.
+    const preMatches  = preDelta  && preDelta.length  === nx * nz;
+    const postMatches = postDelta && postDelta.length === nx * nz;
+    if (preMatches && postMatches) {
+        if (nx !== lastNx || nz !== lastNz) setLastGridSize(nx, nz);
+    } else if (preDelta === null || nx !== lastNx || nz !== lastNz) {
         if (preDelta && (nx !== lastNx || nz !== lastNz)) {
             if (lastNx > 0 && lastNz > 0) {
                 setPreDelta(resampleDelta(preDelta, lastNx, lastNz, nx, nz));

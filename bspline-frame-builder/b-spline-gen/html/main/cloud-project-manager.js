@@ -209,6 +209,12 @@ function openModal() {
 
 function closeModal() {
   if (_modal) {
+    // Blur any descendant that still has focus before marking the modal
+    // hidden from assistive tech — otherwise the browser warns that a
+    // focused element is being hidden via aria-hidden on an ancestor.
+    if (_modal.contains(document.activeElement) && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
     _modal.style.display = 'none';
     _modal.setAttribute('aria-hidden', 'true');
   }
@@ -791,6 +797,8 @@ async function _saveTo(fullName) {
     });
     if (!r.ok) throw new Error((await safeJson(r)).error || `HTTP ${r.status}`);
     setMsg(`✓ Saved "${fullName}"`, 'ok');
+    showToast(`✓ Saved "${fullName}"`);
+    closeModal();
     // Optimistic UI update first — KV's eventual consistency means an
     // immediate refreshList() may return the pre-write list. Mutate
     // locally so the user sees the new entry instantly, then kick off a
@@ -1169,6 +1177,27 @@ function setMsg(text, type = '') {
   _msgEl.textContent  = text;
   _msgEl.style.color  = { ok: '#2a7', warn: '#a60', error: '#c00' }[type] || '#666';
   if (type === 'ok') setTimeout(() => { if (_msgEl?.textContent === text) _msgEl.textContent = ''; }, 3000);
+}
+
+/** Lightweight non-modal confirmation toast (bottom-right corner). */
+function showToast(text, type = 'ok') {
+  let host = document.getElementById('cpmToastHost');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'cpmToastHost';
+    host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+    document.body.appendChild(host);
+  }
+  const colors = { ok: '#2a7', warn: '#a60', error: '#c00' };
+  const el = document.createElement('div');
+  el.style.cssText = `background:${colors[type] || '#444'};color:#fff;padding:10px 16px;border-radius:6px;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.25);opacity:0;transition:opacity 200ms ease;pointer-events:auto;max-width:320px;`;
+  el.textContent = text;
+  host.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; });
+  setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 250);
+  }, 2200);
 }
 
 async function safeJson(r) { try { return await r.json(); } catch { return {}; } }

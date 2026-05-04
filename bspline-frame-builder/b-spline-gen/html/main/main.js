@@ -227,6 +227,14 @@ function bindHeaderAndSettings() {
         }
     });
 
+    const btnWizardExport = document.getElementById('btnWizardExport');
+    if (btnWizardExport) btnWizardExport.addEventListener('click', () => {
+        executeExport();
+    });
+
+    const btnWizardCancel = document.getElementById('btnWizardCancel');
+    if (btnWizardCancel) btnWizardCancel.addEventListener('click', closeWizard);
+
     const btnDownloadAddin = document.getElementById('btnDownloadAddin');
     if (btnDownloadAddin) {
         btnDownloadAddin.addEventListener('click', () => {
