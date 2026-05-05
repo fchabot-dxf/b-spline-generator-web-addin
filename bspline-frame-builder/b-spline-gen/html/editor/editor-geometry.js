@@ -334,23 +334,35 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
                     console.log(`[EXPAND] Starting: "${fontFamily}"`);
                     const opentypeMod = await import('https://esm.sh/opentype.js');
                     const opentype = opentypeMod.default || opentypeMod;
-                    
-                    // Promise wrapper for opentype.load
-                    const font = await new Promise((resolve, reject) => {
-                        opentype.load(`../fonts/${fontFile}`, (err, f) => {
-                            if (err) reject(err); else resolve(f);
-                        });
-                    });
+
+                    // opentype.load() is deprecated in newer opentype.js
+                    // builds and the callback no longer fires reliably,
+                    // which makes expand hang silently. Fetch the font
+                    // ourselves and feed the buffer to opentype.parse —
+                    // the supported path. URL is resolved against THIS
+                    // module so it survives different host page locations.
+                    const fontUrl = new URL(`../fonts/${fontFile}`, import.meta.url).href;
+                    const fontResp = await fetch(fontUrl);
+                    if (!fontResp.ok) throw new Error(`Font fetch failed: ${fontResp.status} ${fontUrl}`);
+                    const fontBuffer = await fontResp.arrayBuffer();
+                    const font = opentype.parse(fontBuffer);
 
                     if (font) {
-                        // v53: Precise "Hanging" Baseline Alignment
-                        // Browsers typically use HHEA ascender or font.ascender for the 'hanging' baseline.
-                        // If it shifts UP, it means our shift-down value (ascender) is too small.
+                        // Baseline mode depends on which convention the <text>
+                        // was placed under:
+                        //   - new (alphabetic): el.y() is already the baseline
+                        //     → opentype generates path with baseline at y=0,
+                        //     translation by el.y() lands the baseline at the
+                        //     same world y as the live render and the stamp.
+                        //   - legacy (hanging): el.y() is the visual top, so
+                        //     opentype keeps the historical +ascender shift.
                         const ascentUnits = font.tables.hhea?.ascender || font.ascender || font.tables.os2?.sTypoAscender || 0;
                         const scaleFactor = (1 / font.unitsPerEm) * fontSize;
                         const ascender = ascentUnits * scaleFactor;
+                        const isLegacyHanging = el.attr('dominant-baseline') === 'hanging';
+                        const baselineYOffset = isLegacyHanging ? ascender : 0;
 
-                        
+
                         // v48: PUA Mapping for Symbol fonts
                         let processedContent = rawContent;
                         const isSymbolic = ["Symbol", "Wingdings", "Webdings"].includes(fontFamily);
@@ -365,10 +377,11 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
                         // We combine the transform matrix with the x/y attributes manually.
                         const m = el.matrix().translate(el.x(), el.y());
 
-                        
+
                         try {
-                            // Generate at (0, 0) locally (with baseline adjust)
-                            const pathObj = font.getPath(processedContent, 0, ascender, fontSize);
+                            // Use the baseline mode picked above (0 for new
+                            // alphabetic-y texts, +ascender for legacy hanging).
+                            const pathObj = font.getPath(processedContent, 0, baselineYOffset, fontSize);
                             let d = pathObj.toPathData(2); 
 
                             const expanded = editor._sketchLayer.path(d)

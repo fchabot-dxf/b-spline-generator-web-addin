@@ -219,11 +219,16 @@ export function saveLastSession() {
         if (P_physical.points && Array.isArray(P_physical.points)) {
             P_physical.points = P_physical.points.map(pt => {
                 const phys = COORD_SYSTEM.toPhysical(pt[0], pt[1]);
-                if (window && window.console) {
-                    console.log(`[COORD_STD] saveLastSession: UI (${pt[0]},${pt[1]}) -> Physical (${phys.x},${phys.y})`);
-                }
                 return [phys.x, phys.y];
             });
+        }
+        // Strip mask Float32Arrays from each stamp layer before serializing.
+        // JSON.stringify turns a Float32Array into {"0":v,"1":v,...} (an
+        // object, not an array), bloating localStorage by ~10× and producing
+        // an unusable shape on reload. Masks are cheap to regenerate from
+        // the stored SVG, so we drop them here.
+        if (Array.isArray(P_physical.stampLayers)) {
+            P_physical.stampLayers = P_physical.stampLayers.map(layer => ({ ...layer, mask: null }));
         }
         const session = {
             P: P_physical,
@@ -231,8 +236,6 @@ export function saveLastSession() {
             postDelta: postDelta ? Array.from(postDelta) : null,
             extraThickenThinMask: extraThickenThinMask ? Array.from(extraThickenThinMask) : null,
         };
-        // Log session JSON for audit
-        console.log('[COORD_STD] saveLastSession: Saving session JSON:', JSON.stringify(session, null, 2));
         localStorage.setItem('splineGenLastSession', JSON.stringify(session));
         // Automatically send session JSON to Fusion log file if running inside Fusion
         if (window.adsk && typeof adsk.fusionSendData === 'function') {
@@ -241,9 +244,6 @@ export function saveLastSession() {
             } catch (err) {
                 if (window.console) console.warn('Fusion log send failed:', err);
             }
-        }
-        if (window && window.console) {
-            console.log('[COORD_STD] Saved session JSON:', session);
         }
     } catch (e) {
         console.warn('saveLastSession failed:', e);
@@ -317,6 +317,12 @@ export function updateP(key, value) {
     if (key === 'peakShape') {
         // applyContrast does pow(|x|, 1/strength); strength→0 = divide-by-zero.
         value = Math.max(0.1, parseFloat(value));
+    }
+    if (key === 'stampVBitAngle') {
+        // vSlope = 1/tan(angle/2). Angle→0 → Infinity, angle→180 → 0.
+        // Clamp to a sane working range so the rasterizer can't divide by
+        // zero or produce a zero-slope (invisible) profile.
+        value = Math.max(10, Math.min(170, parseFloat(value) || 90));
     }
 
     if (stringParams.includes(key)) {

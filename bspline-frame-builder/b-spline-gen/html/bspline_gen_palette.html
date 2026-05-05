@@ -504,17 +504,21 @@
           <div id="vBitAngleContainer" style="display:none;">
             <label class="cad-label">V-Bit Angle</label>
             <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-              <input type="number" id="stampVBitAngle" value="90">
+              <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
             </div>
           </div>
 
           <label class="cad-label">Active Layer</label>
-          <div class="cad-nested-input" style="width:100%; margin-bottom:12px;">
-            <select id="stampActiveLayer" style="width:100%; border:none; background:transparent; font-size:11px;">
-              <option value="0">Layer 1</option>
-              <option value="1">Layer 2</option>
-              <option value="2">Layer 3</option>
-            </select>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
+            <div class="cad-nested-input" style="flex:1;">
+              <select id="stampActiveLayer" style="width:100%; border:none; background:transparent; font-size:11px;">
+                <!-- options populated from P.stampLayers at init -->
+              </select>
+            </div>
+            <label style="display:flex; align-items:center; gap:4px; font-size:11px; user-select:none; cursor:pointer;" title="Enable / disable this stamp layer">
+              <input type="checkbox" id="stampLayerEnabled" style="margin:0;">
+              On
+            </label>
           </div>
 
           <label class="cad-label">SVG Blueprint</label>
@@ -527,17 +531,17 @@
 
           <label class="cad-label">Blur Radius</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampBlurSlider" class="cad-slider" min="0" max="50" step="1" value="0">
+            <input type="range" id="stampBlurSlider" class="cad-slider" min="0" max="10" step="1" value="0">
             <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampBlur" value="0">
+              <input type="number" id="stampBlur" value="0" min="0" max="10" step="1">
             </div>
           </div>
 
           <label class="cad-label">Smoothing</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampSmoothingRadiusSlider" class="cad-slider" min="0" max="100" step="1" value="15">
+            <input type="range" id="stampSmoothingRadiusSlider" class="cad-slider" min="0" max="30" step="1" value="15">
             <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampSmoothingRadius" value="15">
+              <input type="number" id="stampSmoothingRadius" value="15" min="0" max="30" step="1">
             </div>
           </div>
 
@@ -551,9 +555,17 @@
 
           <label class="cad-label">Edge Fillet</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="stampEdgeFilletRadiusSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+            <input type="range" id="stampEdgeFilletRadiusSlider" class="cad-slider" min="0" max="0.2" step="0.005" value="0">
             <div class="cad-stepper" style="width:75px;">
-              <input type="number" id="stampEdgeFilletRadius" value="0">
+              <input type="number" id="stampEdgeFilletRadius" value="0" min="0" max="0.2" step="0.005">
+            </div>
+          </div>
+
+          <label class="cad-label">Fillet Sharpness</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="stampFilletPowerSlider" class="cad-slider" min="1.2" max="4" step="0.1" value="2.2">
+            <div class="cad-stepper" style="width:75px;">
+              <input type="number" id="stampFilletPower" value="2.2" min="1.2" max="4" step="0.1">
             </div>
           </div>
         </div>

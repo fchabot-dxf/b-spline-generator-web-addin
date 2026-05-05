@@ -472,7 +472,27 @@ function selectFolder(folderName) {
   _selectedKind = 'folder';
   updateButtons();
   setSelbarInfo();
-  renderList();
+  applySelectionStyles();
+}
+
+/**
+ * Update only the `fm-selected` CSS class on the existing tiles/rows in
+ * place — no innerHTML rewrite. This keeps the original DOM nodes alive
+ * so the browser's dblclick can fire reliably (it requires both clicks
+ * to land on related/same nodes; a full re-render between them swaps
+ * the node out from under the second click).
+ */
+function applySelectionStyles() {
+  if (!_fmList) return;
+  _fmList.querySelectorAll('.pm-tile, .pm-row').forEach((el) => {
+    let isSelected = false;
+    if (el.dataset.folderPath !== undefined) {
+      isSelected = (_selectedKind === 'folder' && _selected === el.dataset.folderPath);
+    } else if (el.dataset.name !== undefined) {
+      isSelected = (_selectedKind === 'project' && _selected === el.dataset.name);
+    }
+    el.classList.toggle('fm-selected', isSelected);
+  });
 }
 
 function renderBreadcrumb() {
@@ -688,7 +708,7 @@ function selectProject(name) {
   if (_fmName) _fmName.value = name;
   updateButtons();
   setSelbarInfo();
-  renderList();
+  applySelectionStyles();
 }
 
 function updateButtons() {

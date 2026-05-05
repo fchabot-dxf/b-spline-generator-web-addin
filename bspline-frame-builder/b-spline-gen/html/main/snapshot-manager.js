@@ -1,4 +1,4 @@
-import { P, setPreDelta, setPostDelta, setExtraThickenThinMask } from '../core/state.js';
+import { P, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -15,18 +15,29 @@ export async function applySnapshot(snap, preview) {
     syncUItoParam(k, P[k]);
   });
   AppState.isInitializing = false;
-  if (snap.preDelta) setPreDelta(new Float32Array(snap.preDelta));
-  if (snap.postDelta) setPostDelta(new Float32Array(snap.postDelta));
-  // extraThickenThinMask is written by takeSnapshot (history.js) and the
-  // preset save path. Restoring it here keeps undo/redo and preset load
-  // consistent with the in-memory state at snapshot time. If absent or
-  // null, clear the current mask so we don't carry over a stale one from
-  // a previous state.
+
+  // Always (re)set preDelta and postDelta — including to null when the
+  // snapshot doesn't have one. Previously we only assigned when truthy,
+  // which let a STALE delta from the previous project leak across loads.
+  // If that previous delta's length didn't match the new grid, rebuild's
+  // `cleanHeights[k] += preDelta[k]` read past the end and produced NaN
+  // heights — the "broken model on first load" symptom. The user "fixed"
+  // it by loading again (often masking the issue once the second load
+  // got the previous-load-induced state into a consistent shape).
+  setPreDelta(snap.preDelta ? new Float32Array(snap.preDelta) : null);
+  setPostDelta(snap.postDelta ? new Float32Array(snap.postDelta) : null);
   if (snap.extraThickenThinMask) {
     setExtraThickenThinMask(new Float32Array(snap.extraThickenThinMask));
   } else {
     setExtraThickenThinMask(null);
   }
+
+  // strokeCache is the in-progress sculpt-stroke fast-path cache. If a
+  // stroke ended in a non-clean way before the load, rebuild will short
+  // out to the cached `baseStamped` heights from the OLD project and
+  // never touch the freshly-loaded P. Clear it on every load.
+  setStrokeCache(null);
+
   if (snap.stampSvgText !== undefined && P.stampLayers && P.stampLayers[0]) {
     P.stampLayers[0].svg = snap.stampSvgText;
   }
@@ -41,15 +52,21 @@ export async function applySnapshot(snap, preview) {
   //   if (layer && layer.svg && layer.mask && layer.mask.length === nx*nz)
   // so without regen, the SVG is loaded but never imprinted.
   // Regenerate masks here before scheduling the rebuild.
+  const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
   const hasStampSvg = (P.stampLayers || []).some(L => L && L.svg && L.enabled !== false);
   if (hasStampSvg) {
     try {
-      const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
       await updateStampMasks(nx, nz);
     } catch (e) {
       console.warn('[applySnapshot] stamp mask regen failed:', e);
     }
   }
+
+  // Sync the param-manager's grid-change tracker so the NEXT slider
+  // tweak doesn't see "(nx, nz) differs from last applyParam" and fire
+  // a redundant full-mask refresh on top of the load.
+  AppState.lastNx = nx;
+  AppState.lastNz = nz;
 
   scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
 }

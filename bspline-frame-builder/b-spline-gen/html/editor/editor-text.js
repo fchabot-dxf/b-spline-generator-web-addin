@@ -6,10 +6,60 @@
  *   [0] = the actual user text  (updated ONLY by the input handler)
  *   [1] = the cursor character  (toggled ONLY by the blink interval)
  * This eliminates race conditions between the two writers.
+ *
+ * Baseline convention: text uses alphabetic baseline (the SVG default) and
+ * stores the user's intended visual top in `data-anchor-y`. The element's
+ * `y` attribute is `anchor-y + ascender` so glyph tops land at anchor-y.
+ *
+ * Why not `dominant-baseline="hanging"`? It's honored by the browser's
+ * live SVG renderer (the editor canvas) but NOT by the same SVG rendered
+ * via <img> to a canvas — which is exactly what stamp.js does. That path
+ * falls back to alphabetic baseline, so hanging-baseline text renders at
+ * a different y in the stamp than in the editor. Using alphabetic
+ * everywhere + a manual ascender offset keeps live render, stamp
+ * rasterization, and opentype expand all aligned to the same visual top.
  */
 
 
 import { COORD_SYSTEM } from '../core/coords.js';
+
+/**
+ * Returns the font's ascender in user units (treating user units as px
+ * for measurement). Uses the browser's font metrics via canvas
+ * measureText — same metrics the SVG renderer uses, so the offset
+ * applied here matches the actual rendered baseline.
+ *
+ * Falls back to 0.8 * size for the rare browser without
+ * actualBoundingBoxAscent (Firefox <74).
+ */
+const _measureCanvas = (typeof document !== 'undefined') ? document.createElement('canvas') : null;
+const _measureCtx = _measureCanvas ? _measureCanvas.getContext('2d') : null;
+export function getAscenderForFont(family, size) {
+    if (!_measureCtx || !(size > 0)) return (size || 0) * 0.8;
+    const cleaned = String(family || 'Arial').replace(/['"]/g, '').trim();
+    _measureCtx.font = `${size}px "${cleaned}", Arial, sans-serif`;
+    const m = _measureCtx.measureText('Mg');
+    if (typeof m.actualBoundingBoxAscent === 'number' && m.actualBoundingBoxAscent > 0) {
+        return m.actualBoundingBoxAscent;
+    }
+    return size * 0.8;
+}
+
+/**
+ * Re-anchor a <text> element after a font/size change so its visual top
+ * stays at `data-anchor-y`. Updates both the parent <text> y and the
+ * inner text-content tspan (when present during an edit session).
+ */
+function _reanchorTextY(textEl, family, size) {
+    const anchorY = parseFloat(textEl.attr('data-anchor-y'));
+    if (!Number.isFinite(anchorY)) return;
+    const newY = anchorY + getAscenderForFont(family, size);
+    textEl.attr('y', newY);
+    const inner = textEl.node.childNodes && textEl.node.childNodes[0];
+    if (inner && inner.tagName && inner.tagName.toLowerCase() === 'tspan' && inner.hasAttribute('y')) {
+        inner.setAttribute('y', newY);
+    }
+}
 
 /** Helper: rebuild the two-tspan structure inside a <text> element. */
 function _buildTspans(textEl, textContent, x, y) {
@@ -39,18 +89,26 @@ export function startTextAt(editor, pt, pointerEvent) {
     console.log(`[TEXT-DBG] startTextAt: pt=(${pt.x.toFixed(1)},${pt.y.toFixed(1)}) hadEditingText=${!!editor._editingTextEl} ptrEvtType=${pointerEvent?.type}`);
     // Commit any active text session before starting a new one
     if (editor._editingTextEl) commitText(editor);
+
+    // Place text using alphabetic baseline (SVG default). The user clicked
+    // at pt.y expecting the text top to land there, so push the baseline
+    // down by the font's ascender. data-anchor-y remembers the visual top
+    // so font/size changes can reflow without drifting.
+    const ascender = getAscenderForFont(editor._fontFamily, editor._fontSize);
+    const baselineY = pt.y + ascender;
+
     editor._editingTextEl = editor._sketchLayer.text('')
         .font({ family: editor._fontFamily, size: editor._fontSize, anchor: 'start' })
         .fill(editor._strokeColor)
         .attr({
             'data-layer': document.getElementById('editorLayerSelect')?.value || "0",
-            'dominant-baseline': 'hanging'
+            'data-anchor-y': pt.y
         })
         .css({ cursor: 'text', 'user-select': 'none' });
 
-    editor._editingTextEl.attr({ x: pt.x, y: pt.y });
+    editor._editingTextEl.attr({ x: pt.x, y: baselineY });
     editor._currentText = '';
-    _buildTspans(editor._editingTextEl, '', pt.x, pt.y);
+    _buildTspans(editor._editingTextEl, '', pt.x, baselineY);
     // pointerEvent: {clientX, clientY} for mobile input placement
     let pointer = undefined;
     if (pointerEvent) {
@@ -71,10 +129,30 @@ export function beginTextEdit(editor, el) {
     editor._currentText = el.text().replace(/\|$/, '');
     editor._editingTextEl.css({ cursor: 'text' });
 
+    // Migrate legacy texts to the alphabetic-baseline + data-anchor-y
+    // convention. Two cases worth handling:
+    //   1. dominant-baseline="hanging" (old format) — the old `y` was the
+    //      visual top, so anchor-y = old y, new baseline y = old y + ascender.
+    //   2. No data-anchor-y at all (e.g., text imported from elsewhere) —
+    //      assume `y` is already the alphabetic baseline and back-fill
+    //      anchor-y = y - ascender.
+    const fontFamily = (el.attr('font-family') || editor._fontFamily || 'Arial').replace(/['"]/g, '').trim();
+    const fontSize = parseFloat(el.attr('font-size')) || editor._fontSize;
+    const ascender = getAscenderForFont(fontFamily, fontSize);
+    if (el.attr('dominant-baseline') === 'hanging') {
+        const oldY = Number(el.attr('y') || 0);
+        el.attr('data-anchor-y', oldY);
+        el.attr('dominant-baseline', null);
+        el.attr('y', oldY + ascender);
+    } else if (el.attr('data-anchor-y') == null) {
+        const curY = Number(el.attr('y') || 0);
+        el.attr('data-anchor-y', curY - ascender);
+    }
+
     const x = Number(el.attr('x') || 0);
     const y = Number(el.attr('y') || 0);
     if (window && window.console) {
-        console.log(`[COORD_STD] beginTextEdit: editing text at UI (${x},${y})`);
+        console.log(`[COORD_STD] beginTextEdit: editing text at UI (${x},${y}) anchor-y=${el.attr('data-anchor-y')}`);
     }
     _buildTspans(editor._editingTextEl, editor._currentText, x, y);
     initTextSession(editor);
@@ -287,9 +365,13 @@ export function setFontFamily(editor, family) {
     editor._fontFamily = family;
     if (editor._editingTextEl) {
         editor._editingTextEl.font({ family });
+        const size = parseFloat(editor._editingTextEl.attr('font-size')) || editor._fontSize;
+        _reanchorTextY(editor._editingTextEl, family, size);
     }
     if (editor._selectedElement && editor._selectedElement.type === 'text') {
         editor._selectedElement.font({ family });
+        const size = parseFloat(editor._selectedElement.attr('font-size')) || editor._fontSize;
+        _reanchorTextY(editor._selectedElement, family, size);
         if (typeof editor.pushState === 'function') editor.pushState();
         if (editor._onChange) editor._onChange();
     }
@@ -299,9 +381,13 @@ export function setFontSize(editor, size) {
     editor._fontSize = size;
     if (editor._editingTextEl) {
         editor._editingTextEl.font({ size });
+        const family = (editor._editingTextEl.attr('font-family') || editor._fontFamily).replace(/['"]/g, '').trim();
+        _reanchorTextY(editor._editingTextEl, family, size);
     }
     if (editor._selectedElement && editor._selectedElement.type === 'text') {
         editor._selectedElement.font({ size });
+        const family = (editor._selectedElement.attr('font-family') || editor._fontFamily).replace(/['"]/g, '').trim();
+        _reanchorTextY(editor._selectedElement, family, size);
         if (typeof editor.pushState === 'function') editor.pushState();
         if (editor._onChange) editor._onChange();
     }

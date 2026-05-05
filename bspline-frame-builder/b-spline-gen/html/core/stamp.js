@@ -231,11 +231,51 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
             const sdf = computeSDF(imageData.data, bufferW, bufferH);
             const inchPerPx = widthIn / bufferW;
             const alphaMask = new Float32Array(nx * nz);
-    
+
             const maxDepth = Math.abs(stampDepth);
             const angleRad = (stampVBitAngle || 90) * Math.PI / 180;
             const vSlope = 1.0 / Math.tan(angleRad / 2);
-            const filletRadiusIn = Math.max(0, edgeFilletRadius || 0);
+
+            // Inscribed-circle radius of the stamp footprint, in inches.
+            // This is the largest distance from any interior point to the
+            // nearest boundary — i.e., the half-thickness of the widest
+            // feature. Used by ballnose to draw a true half-sphere across
+            // the geometry (instead of plateauing at the tool radius), and
+            // by edge fillet to clamp its reach so it can't extend past
+            // the feature.
+            let maxSdfInsidePx = 0;
+            for (let k = 0; k < sdf.length; k++) {
+                if (sdf[k] > maxSdfInsidePx) maxSdfInsidePx = sdf[k];
+            }
+            const maxSdfInsideIn = maxSdfInsidePx * inchPerPx;
+
+            // Cap the requested fillet radius at the inscribed radius. Past
+            // that point the fillet ramp would extend beyond the geometry's
+            // own thickness, which is what looked like "too much range".
+            const requestedFillet = Math.max(0, edgeFilletRadius || 0);
+            const filletRadiusIn = (maxSdfInsideIn > 0)
+                ? Math.min(requestedFillet, maxSdfInsideIn)
+                : requestedFillet;
+
+            // Pre-compute the bias used by the fillet blend; same for every
+            // pixel, no point recomputing it 40k times in the inner loop.
+            //
+            // Bias depends on the profile's actual wall slope so the fillet
+            // matches the geometry it's smoothing:
+            //   - flat/ballnose: vertical wall (or no wall) → bias = 1
+            //     (fillet entirely outside the boundary).
+            //   - vbit: wall slope set by stampVBitAngle.
+            //   - adaptive: wall slope HARDCODED at 75° (matches adaptSlope
+            //     = 1/tan(75°/2)). Previously this used angleRad (the
+            //     V-bit slider), which was wrong — the V-bit angle has no
+            //     effect on adaptive's actual ramp.
+            const ADAPTIVE_ANGLE_RAD = 75 * Math.PI / 180;
+            const profileAngleRad = stampProfile === 'adaptive' ? ADAPTIVE_ANGLE_RAD : angleRad;
+            const filletBias = (stampProfile === 'flat' || stampProfile === 'ballnose')
+                ? 1.0
+                : Math.cos(profileAngleRad / 2);
+            const filletOutR = filletRadiusIn * (1.0 + filletBias);
+            const filletInR  = filletRadiusIn * (1.0 - filletBias);
 
             for (let j = 0; j < nz; j++) {
                 // Flip Y: j=0 is -Y (bottom in 3D) but top in canvas, so invert
@@ -257,11 +297,24 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
                     } else if (stampProfile === 'vbit') {
                         Z_p = distIn > 0 ? Math.min(distIn * vSlope, maxDepth) : 0;
                     } else if (stampProfile === 'ballnose') {
-                        // Dynamically use maxDepth as the radius if not otherwise specified
-                        const R = maxDepth; 
+                        // True half-sphere across the stamp footprint, peak
+                        // capped to match the geometry depth limit of a
+                        // 90° vbit so ballnose and vbit reach the same
+                        // physical depth on the same stamp. Without the
+                        // cap, ballnose was always plunging the full
+                        // maxDepth (because it scales the curve to the
+                        // inscribed radius), which made it sit ~3× taller
+                        // than vbit on narrow features.
+                        //
+                        // Reachable peak = min(maxDepth, R_eff). The curve
+                        // still spans the full inscribed radius — it just
+                        // tops out lower so it matches vbit's depth.
+                        const R_eff = Math.max(1e-6, maxSdfInsideIn);
+                        const reachable = Math.min(maxDepth, R_eff);
                         if (distIn > 0) {
-                            Z_p = distIn >= R ? R : Math.sqrt(Math.max(0, R*R - Math.pow(R - distIn, 2)));
-                            Z_p = Math.min(Z_p, maxDepth);
+                            const t = Math.min(1, distIn / R_eff);
+                            const u = 1 - t;
+                            Z_p = reachable * Math.sqrt(Math.max(0, 1 - u * u));
                         }
                     } else if (stampProfile === 'adaptive') {
                         // Adaptive: Flat at full depth inside the boundary,
@@ -283,23 +336,33 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
                     let Z_base = Z_p;
                     let filletAlpha = 1.0;
 
-                    // 2. Fixed-Proportion Adaptive Fillet Blend
+                    // 2. Fillet blend — profile-aware tangent transition.
+                    //
+                    // Each profile starts at a different height at the
+                    // boundary (Z_p(0)), so the fillet's outer ramp height
+                    // has to match that to avoid a step:
+                    //
+                    //   - flat:    Z_p(0) = maxDepth → ramp from maxDepth.
+                    //              Smooth cliff-to-terrain transition.
+                    //   - adaptive: same — already at maxDepth at the
+                    //              boundary, fillet replaces the natural
+                    //              75° outer ramp with a softer powerStep.
+                    //   - vbit / ballnose: Z_p(0) = 0 (profile already
+                    //              tangent to terrain). Use the historical
+                    //              rampPhysicalHeight cap (≈ 2·filletRadius)
+                    //              so the fillet still produces a small
+                    //              corner-rounding bump and outR isn't
+                    //              wasted — clamped to maxDepth so it
+                    //              never exceeds the stamp's own depth.
                     if (filletRadiusIn > 0) {
-                        let bias = (stampProfile === 'flat' || stampProfile === 'ballnose') 
-                            ? 1.0 
-                            : Math.cos(angleRad / 2);
-
-                        const outR = filletRadiusIn * (1.0 + bias);
-                        const inR  = filletRadiusIn * (1.0 - bias);
-
-                        filletAlpha = powerStep(-outR, inR, distIn, filletPower);
-                
-                        // FIX: Decouple the fillet height from the plunge depth!
-                        // Limit the curve height to match its physical width so it doesn't warp.
+                        filletAlpha = powerStep(-filletOutR, filletInR, distIn, filletPower);
                         if (distIn < 0) {
-                            const rampPhysicalHeight = Math.min(outR + inR, maxDepth);
-                            Z_base = rampPhysicalHeight; 
-                        } 
+                            if (stampProfile === 'flat' || stampProfile === 'adaptive') {
+                                Z_base = maxDepth;
+                            } else {
+                                Z_base = Math.min(filletOutR + filletInR, maxDepth);
+                            }
+                        }
                     }
 
                     // Calculate final depth natively (No more softAlpha clipping!)

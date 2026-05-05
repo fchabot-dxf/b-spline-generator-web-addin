@@ -170,6 +170,37 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     return svgString;
 }
 
+/**
+ * Migrate legacy <text> elements that were saved with
+ * dominant-baseline="hanging" + y == visual top. The hanging baseline is
+ * honored in the live SVG renderer but ignored when the same SVG is
+ * rasterized via <img> in the stamp pipeline, which causes the stamp to
+ * appear offset from the editor display. We rewrite to the alphabetic
+ * baseline convention (y == anchor-y + ascender) so all renderers agree.
+ */
+function _migrateHangingBaselineTexts(sketchLayer, defaultFontSize) {
+    if (typeof document === 'undefined' || !document.createElement) return;
+    const measureCanvas = document.createElement('canvas');
+    const ctx = measureCanvas.getContext('2d');
+    if (!ctx) return;
+    sketchLayer.children().forEach(ch => {
+        if (ch.type !== 'text') return;
+        if (ch.attr('dominant-baseline') !== 'hanging') return;
+        if (ch.attr('data-anchor-y') != null) return;
+        const family = (ch.attr('font-family') || 'Arial').replace(/['"]/g, '').trim();
+        const size = parseFloat(ch.attr('font-size')) || defaultFontSize || 3;
+        ctx.font = `${size}px "${family}", Arial, sans-serif`;
+        const m = ctx.measureText('Mg');
+        const ascender = (typeof m.actualBoundingBoxAscent === 'number' && m.actualBoundingBoxAscent > 0)
+            ? m.actualBoundingBoxAscent
+            : size * 0.8;
+        const oldY = Number(ch.attr('y') || 0);
+        ch.attr('data-anchor-y', oldY);
+        ch.attr('dominant-baseline', null);
+        ch.attr('y', oldY + ascender);
+    });
+}
+
 export function open(editor, svgString, w, h) {
     editor.setModelMetrics(w, h);
     editor._sketchLayer.clear();
@@ -189,6 +220,8 @@ export function open(editor, svgString, w, h) {
                 ch.attr('transform', null);
                 ch.css('cursor', ch.type === 'text' ? 'text' : 'pointer');
             });
+
+            _migrateHangingBaselineTexts(editor._sketchLayer, editor._fontSize);
 
             if (typeof editor.setActiveLayer === 'function') {
                 editor.setActiveLayer(editor._activeLayer || '0');

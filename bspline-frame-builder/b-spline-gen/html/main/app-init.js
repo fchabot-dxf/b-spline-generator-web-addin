@@ -1,4 +1,4 @@
-import { P, loadLastSession, lastResult, setStampLayerSvg } from '../core/state.js';
+import { P, loadLastSession, lastResult, setStampLayerSvg, setStampLayerMask } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
@@ -7,6 +7,12 @@ import { updateGlobalButtons } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
+
+// Snapshot of the active stamp layer captured when the SVG editor modal
+// opens. The Cancel button restores from this so closing without applying
+// genuinely undoes the in-flight edits (instead of silently keeping them
+// because onChange already wrote to the layer during typing).
+export const SvgEditorSnapshot = { active: false, layerIdx: -1, svg: null, mask: null, enabled: false };
 
 export async function initApp(preview, wireGlobalEvents) {
   AppState.isInitializing = true;
@@ -58,17 +64,33 @@ export function initSvgEditor(preview) {
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }
     },
-    // onCommit — same rationale: re-build with embedded fonts so the
-    // committed stamp matches the on-screen rendering.
+    // onCommit — fires from Apply (svg=truthy) or Cancel (svg=null).
+    // Apply: rebuild with font-embedded SVG and close.
+    // Cancel: restore the snapshot we captured when the modal opened so
+    // the in-flight edits (already written by onChange while typing)
+    // really go away — otherwise "Cancel" silently keeps changes.
     async (svg) => {
       if (svg === 'push') return;
-      // Ignore the sync svg arg; rebuild with embedded fonts for the stamp.
-      const fontEmbeddedSvg = svg ? await window.svgEditor.saveForRasterization() : null;
-      if (fontEmbeddedSvg) {
-        setStampLayerSvg(P.activeLayerIdx, fontEmbeddedSvg);
+      if (svg) {
+        // Apply path
+        const fontEmbeddedSvg = await window.svgEditor.saveForRasterization();
+        if (fontEmbeddedSvg) {
+          setStampLayerSvg(P.activeLayerIdx, fontEmbeddedSvg);
+          const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+          refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+        }
+      } else if (SvgEditorSnapshot.active && SvgEditorSnapshot.layerIdx >= 0) {
+        // Cancel path — restore pre-edit state for the layer that was being edited.
+        const idx = SvgEditorSnapshot.layerIdx;
+        if (P.stampLayers[idx]) {
+          P.stampLayers[idx].svg = SvgEditorSnapshot.svg;
+          P.stampLayers[idx].mask = SvgEditorSnapshot.mask;
+          P.stampLayers[idx].enabled = SvgEditorSnapshot.enabled;
+        }
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }
+      SvgEditorSnapshot.active = false;
       const modal = document.getElementById('svgEditorModal');
       if (modal) modal.style.display = 'none';
     }

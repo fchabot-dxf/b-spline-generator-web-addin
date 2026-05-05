@@ -49,8 +49,9 @@ export function updateToolbarVisibility(editor, mode, el) {
     if (symbolToggle) symbolToggle.classList.toggle('hidden', !isTextMode);
     if (divider) divider.classList.toggle('hidden', !isTextMode && !isExpandMode);
     
-    // Hide stroke group in expand mode for space
-    if (strokeGroup) strokeGroup.classList.toggle('hidden', isExpandMode);
+    // Hide stroke group in expand mode (no room) and text mode (text uses
+    // fill, not stroke — the stroke input doesn't apply).
+    if (strokeGroup) strokeGroup.classList.toggle('hidden', isExpandMode || isTextMode);
     
     const selectPanel = getEl('editorSelectPanel');
     

@@ -17,11 +17,37 @@ const immediateRebuildParams = [
   'isolateSkeleton'
 ];
 
+// Params that change the rasterized mask itself (require re-rasterize).
+// stampDepth IS here despite the "depth-independent mask" comment in stamp.js
+// — that comment is true only for flat/ballnose. vbit's slope cap is at
+// distIn = maxDepth/vSlope, adaptive's outer ramp width = maxDepth/1.3032,
+// and the fillet's rampPhysicalHeight clamp uses maxDepth — so changing
+// the depth slider actually changes the mask SHAPE for those profiles.
+// stampSmoothingRadius is NOT here — it's only consumed by engine.js when
+// blending stamped pixels with smoothed terrain; the mask itself is
+// independent of it.
 const stampMaskParams = [
-  'stampBlur', 'stampSmoothingRadius',
+  'stampBlur',
   'stampEdgeFilletRadius', 'stampFilletPower',
-  'stampProfile', 'stampVBitAngle'
+  'stampProfile', 'stampVBitAngle', 'stampDepth'
 ];
+
+// Params where the mask SHAPE is depth-dependent (vbit/adaptive/fillet),
+// but where it's far better UX to repaint immediately with the existing
+// mask scaled by the new depth and re-rasterize only after the slider
+// settles. Without this, dragging the depth slider feels jumpy because
+// each tick triggers a 50–100ms rasterize and intermediate ticks get
+// dropped by the in-flight cancellation. Adaptive feels worst because
+// its outer ramp width also scales with depth — each "skipped" frame
+// is a visibly bigger jump than for flat/vbit.
+const debouncedMaskParams = new Set(['stampDepth']);
+let _debouncedMaskTimer = null;
+function scheduleDebouncedMaskRefresh(nx, nz) {
+  clearTimeout(_debouncedMaskTimer);
+  _debouncedMaskTimer = setTimeout(() => {
+    refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
+  }, 180);
+}
 
 export function updateSculptToolButtons() {
   const ids = [
@@ -78,7 +104,15 @@ export function applyParam(key, value) {
   const delay = immediateRebuildParams.includes(key) ? 0 : 200;
   if (!AppState.isInitializing) {
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-    if (nx !== AppState.lastNx || nz !== AppState.lastNz || stampMaskParams.includes(key)) {
+    const gridChanged = nx !== AppState.lastNx || nz !== AppState.lastNz;
+    if (debouncedMaskParams.has(key) && !gridChanged) {
+      // Fast path: repaint immediately with the existing mask scaled by
+      // the new depth (engine multiplies normVal by layerDepth, so even
+      // a stale mask scales proportionally and looks smooth). Re-rasterize
+      // for an accurate mask shape only after the user stops dragging.
+      scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), 0);
+      scheduleDebouncedMaskRefresh(nx, nz);
+    } else if (gridChanged || stampMaskParams.includes(key)) {
       refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
     } else {
       scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), delay);
