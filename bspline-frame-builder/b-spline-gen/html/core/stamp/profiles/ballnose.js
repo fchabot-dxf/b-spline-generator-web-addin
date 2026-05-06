@@ -1,13 +1,14 @@
 /**
  * Ballnose profile — true half-sphere across the stamp footprint.
  *
- * Z_p curve: maxDepth × sqrt(1 − (1 − distIn / R_eff)²), capped at the
- * geometry depth limit `min(maxDepth, R_eff)` so ballnose and a 90°
- * vbit reach the same physical depth on the same stamp. Without the
- * cap, ballnose was always plunging the full maxDepth on narrow
- * features — sat ~3× taller than vbit.
+ * Z_p curve: maxDepth × sqrt(1 − (1 − distIn / R_eff)²). The half-
+ * sphere always reaches maxDepth at the deepest interior point, so
+ * the depth slider is responsive across its whole range on any
+ * geometry (matches the new vbit "scale-to-fit" behavior — both
+ * profiles reach the same depth on the same stamp).
  *
- * R_eff is the inscribed-circle radius (passed via ctx).
+ * R_eff is the inscribed-circle radius (passed via ctx); it sets the
+ * curve's horizontal extent, not its peak.
  */
 export const ballnose = {
   id: 'ballnose',
@@ -16,10 +17,9 @@ export const ballnose = {
   Zp(ctx) {
     if (ctx.distIn <= 0) return 0;
     const R_eff = Math.max(1e-6, ctx.R_eff);
-    const reachable = Math.min(ctx.maxDepth, R_eff);
     const t = Math.min(1, ctx.distIn / R_eff);
     const u = 1 - t;
-    return reachable * Math.sqrt(Math.max(0, 1 - u * u));
+    return ctx.maxDepth * Math.sqrt(Math.max(0, 1 - u * u));
   },
 
   // Effectively no wall (curve is tangent to terrain at the boundary)

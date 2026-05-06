@@ -1,9 +1,18 @@
 /**
- * V-Bit profile — linear ramp from 0 (boundary) to maxDepth, slope set
- * by the V-bit angle. Caps at maxDepth at distIn = maxDepth/vSlope.
+ * V-Bit profile — linear ramp from 0 (boundary) to maxDepth.
  *
- * For narrow features where R_eff < maxDepth/vSlope, the profile never
- * reaches maxDepth — physical depth limit of a real V-tool.
+ * The slope is the user's vSlope by default, but auto-steepens when
+ * the geometry is too narrow to reach maxDepth at that slope —
+ * effective slope = max(vSlope_user, maxDepth / R_eff). This keeps
+ * the depth slider responsive across its whole range on narrow
+ * stamps (otherwise vbit caps at R_eff × vSlope and most of the
+ * slider feels binary). Trade-off: on narrow geometry the rendered
+ * "angle" is steeper than the slider asks for — but the slider's
+ * visible effect tracks the user's intent at every value.
+ *
+ * On wide geometry (R_eff × vSlope ≥ maxDepth) the user's vSlope is
+ * used as-is — the cap kicks in naturally at maxDepth, identical to
+ * the original physical V-tool behavior.
  */
 export const vbit = {
   id: 'vbit',
@@ -11,7 +20,12 @@ export const vbit = {
 
   Zp(ctx) {
     if (ctx.distIn <= 0) return 0;
-    return Math.min(ctx.distIn * ctx.vSlope, ctx.maxDepth);
+    const R_eff = Math.max(1e-6, ctx.R_eff);
+    // Auto-steepen so the slider always reaches maxDepth at the
+    // deepest interior point, even on narrow geometry.
+    const minSlopeForFullDepth = ctx.maxDepth / R_eff;
+    const effectiveSlope = Math.max(ctx.vSlope, minSlopeForFullDepth);
+    return Math.min(ctx.distIn * effectiveSlope, ctx.maxDepth);
   },
 
   // Sloped wall — fillet straddles the boundary.
