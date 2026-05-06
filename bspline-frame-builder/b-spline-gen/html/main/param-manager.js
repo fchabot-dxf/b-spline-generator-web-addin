@@ -106,10 +106,12 @@ export function applyParam(key, value) {
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
     const gridChanged = nx !== AppState.lastNx || nz !== AppState.lastNz;
     if (debouncedMaskParams.has(key) && !gridChanged) {
-      // Fast path: repaint immediately with the existing mask scaled by
-      // the new depth (engine multiplies normVal by layerDepth, so even
-      // a stale mask scales proportionally and looks smooth). Re-rasterize
-      // for an accurate mask shape only after the user stops dragging.
+      // Fast path: instant rebuild scales the existing mask by the new
+      // layerDepth, then debounce a re-rasterize for accurate body
+      // shape (vbit's slope cap, adaptive's plateau). The two-channel
+      // mask makes the fillet contribution depth-independent, so we no
+      // longer need a per-tick re-rasterize when fillet is active —
+      // the fillet stays stable through the drag.
       scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), 0);
       scheduleDebouncedMaskRefresh(nx, nz);
     } else if (gridChanged || stampMaskParams.includes(key)) {

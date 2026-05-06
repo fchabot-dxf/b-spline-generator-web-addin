@@ -127,24 +127,41 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
     let stampedHeights = new Float32Array(cleanHeights);
     if (P.stampLayers && Array.isArray(P.stampLayers)) {
         P.stampLayers.forEach((layer, layerIdx) => {
-            if (layer && layer.enabled && layer.svg && layer.mask && layer.mask.length === nx * nz) {
-                console.log(`[STAMP DEBUG] Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
-                const suppressStrength = (typeof layer.suppression === 'number') ? layer.suppression : 0;
-                const blurRadius = layer.smoothing || 0;
-                const smoothedTerrain = suppressStrength > 0
-                    ? getSmoothedHeights(cleanHeights, nx, nz, blurRadius)
-                    : null;
-                const layerDepth = layer.depth ?? P.stampDepth ?? 0;
-                for (let k = 0; k < nx * nz; k++) {
-                    const normVal = layer.mask[k];
-                    if (normVal < 1e-6) continue;
-                    const depthInches = normVal * layerDepth;
-                    if (suppressStrength > 0) {
-                        stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
-                                          + (smoothedTerrain[k] * suppressStrength);
-                    }
-                    stampedHeights[k] += depthInches;
+            if (!layer || !layer.enabled || !layer.svg || !layer.mask) return;
+
+            // The mask is now a two-channel object { body, fillet, isStamped }.
+            // Older single-Float32Array masks (any in-flight from before
+            // the refactor) are still accepted as a body-only mask.
+            const m = layer.mask;
+            const body = ArrayBuffer.isView(m) ? m : m.body;
+            const fillet = ArrayBuffer.isView(m) ? null : m.fillet;
+            const isStamped = ArrayBuffer.isView(m) ? null : m.isStamped;
+            if (!body || body.length !== nx * nz) return;
+            if (fillet && fillet.length !== nx * nz) return;
+
+            console.log(`[STAMP DEBUG] Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
+            const suppressStrength = (typeof layer.suppression === 'number') ? layer.suppression : 0;
+            const blurRadius = layer.smoothing || 0;
+            const smoothedTerrain = suppressStrength > 0
+                ? getSmoothedHeights(cleanHeights, nx, nz, blurRadius)
+                : null;
+            const layerDepth = layer.depth ?? P.stampDepth ?? 0;
+            const layerSign = layerDepth >= 0 ? 1 : -1;
+            // Fillet contribution amplitude — depth-independent in the
+            // mask, so the slider can move without the fillet wobbling.
+            const filletRadius = layer.edgeFilletRadius ?? P.stampEdgeFilletRadius ?? 0;
+            const filletAmplitude = layerSign * Math.min(filletRadius, Math.abs(layerDepth));
+
+            for (let k = 0; k < nx * nz; k++) {
+                const bodyVal = body[k];
+                const filletVal = fillet ? fillet[k] : 0;
+                const stamped = isStamped ? isStamped[k] : (bodyVal > 1e-6);
+                if (!stamped && bodyVal < 1e-6 && filletVal < 1e-6) continue;
+                if (suppressStrength > 0) {
+                    stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
+                                      + (smoothedTerrain[k] * suppressStrength);
                 }
+                stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
             }
         });
     }
