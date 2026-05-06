@@ -32,22 +32,15 @@ const stampMaskParams = [
   'stampProfile', 'stampVBitAngle', 'stampDepth'
 ];
 
-// Params where the mask SHAPE is depth-dependent (vbit/adaptive/fillet),
-// but where it's far better UX to repaint immediately with the existing
-// mask scaled by the new depth and re-rasterize only after the slider
-// settles. Without this, dragging the depth slider feels jumpy because
-// each tick triggers a 50–100ms rasterize and intermediate ticks get
-// dropped by the in-flight cancellation. Adaptive feels worst because
-// its outer ramp width also scales with depth — each "skipped" frame
-// is a visibly bigger jump than for flat/vbit.
-const debouncedMaskParams = new Set(['stampDepth']);
-let _debouncedMaskTimer = null;
-function scheduleDebouncedMaskRefresh(nx, nz) {
-  clearTimeout(_debouncedMaskTimer);
-  _debouncedMaskTimer = setTimeout(() => {
-    refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
-  }, 180);
-}
+// (Previously had a fast-path "scale stale mask by new layerDepth"
+// approach for stampDepth. It produced visible overshoot on vbit and
+// adaptive because their body-mask shape is depth-dependent: at
+// rasterize-time depth=0.8 a vbit pixel at distIn=0.4 has Z_norm=0.5;
+// scaled by new layerDepth=2 that's a 1.0″ contribution, but the
+// physically-correct vbit at depth=2 with R_eff=0.4 caps at 0.4″.
+// User saw this as "drag to max → stamp briefly grows huge → snaps
+// back to default-looking depth", which read like a reset.
+// Per-tick re-rasterize is slower but stable.)
 
 export function updateSculptToolButtons() {
   const ids = [
@@ -105,16 +98,7 @@ export function applyParam(key, value) {
   if (!AppState.isInitializing) {
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
     const gridChanged = nx !== AppState.lastNx || nz !== AppState.lastNz;
-    if (debouncedMaskParams.has(key) && !gridChanged) {
-      // Fast path: instant rebuild scales the existing mask by the new
-      // layerDepth, then debounce a re-rasterize for accurate body
-      // shape (vbit's slope cap, adaptive's plateau). The two-channel
-      // mask makes the fillet contribution depth-independent, so we no
-      // longer need a per-tick re-rasterize when fillet is active —
-      // the fillet stays stable through the drag.
-      scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), 0);
-      scheduleDebouncedMaskRefresh(nx, nz);
-    } else if (gridChanged || stampMaskParams.includes(key)) {
+    if (gridChanged || stampMaskParams.includes(key)) {
       refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
     } else {
       scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), delay);

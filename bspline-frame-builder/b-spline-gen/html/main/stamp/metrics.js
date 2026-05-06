@@ -30,9 +30,20 @@ function render(metrics) {
   }
   const lines = [];
   lines.push(`Profile: <b>${metrics.profileId}</b> · inscribed radius <b>${fmt(metrics.inscribedRadiusIn)}″</b>`);
+
+  // Depth-cap warning: if the geometry won't let the profile reach the
+  // user's set depth, say so loudly. This is what makes the depth
+  // slider "stop working" past a certain value on narrow vbit/ballnose
+  // features — it's a tool-geometry limit, not a bug.
+  if (metrics.depthCapped) {
+    lines.push(`<span style="color:#d97706;">⚠ Depth capped: reaching <b>${fmt(metrics.depthReachedIn)}″</b> of <b>${fmt(metrics.maxDepth)}″</b> set (limited by inscribed radius — the tool can't fit deeper)</span>`);
+  } else {
+    lines.push(`Depth reached: ${fmt(metrics.depthReachedIn)}″`);
+  }
+
   if (metrics.requestedFilletIn > 0) {
     if (metrics.filletRadiusCapped) {
-      lines.push(`Fillet capped: requested ${fmt(metrics.requestedFilletIn)}″, using ${fmt(metrics.effectiveFilletIn)}″ (limited by inscribed radius)`);
+      lines.push(`<span style="color:#d97706;">⚠ Fillet capped: requested ${fmt(metrics.requestedFilletIn)}″, using ${fmt(metrics.effectiveFilletIn)}″ (limited by inscribed radius)</span>`);
     } else {
       lines.push(`Fillet ${fmt(metrics.effectiveFilletIn)}″ · outer reach ${fmt(metrics.filletOuterReachIn)}″`);
     }

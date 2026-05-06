@@ -191,10 +191,24 @@ export async function rasterizeSvg(
             }
 
             // Diagnostic metrics so the UI can show users what's actually
-            // happening (inscribed radius, capped fillet, max body height
-            // they'll see at the current depth, etc.).
+            // happening — particularly the geometry-driven depth cap that
+            // vbit/ballnose hit on narrow features (and which looks like
+            // "the depth slider stopped working" past that point).
             const cappedFillet = filletRadiusIn !== requestedFillet;
-            const profileBoundary = profile.boundaryDepth(ctx);   // Z_p at distIn=0+
+            const profileBoundary = profile.boundaryDepth(ctx);
+
+            // Walk the body mask once to find the deepest body value on
+            // the grid. body[k] is normalized 0..1; multiplying by maxDepth
+            // gives the actual depth the user will see at that pixel.
+            // (The engine multiplies body by layerDepth at apply time — so
+            // depthReachedIn is what they'd see if layerDepth = maxDepth.)
+            let bodyMax = 0;
+            for (let k = 0; k < N; k++) {
+                if (bodyMask[k] > bodyMax) bodyMax = bodyMask[k];
+            }
+            const depthReachedIn = bodyMax * maxDepth;
+            const depthCapped = depthReachedIn < maxDepth - 1e-6;
+
             const metrics = {
                 profileId: profile.id,
                 inscribedRadiusIn: R_eff,
@@ -202,8 +216,10 @@ export async function rasterizeSvg(
                 effectiveFilletIn: filletRadiusIn,
                 filletRadiusCapped: cappedFillet,
                 maxDepth,
-                bodyAtBoundary: profileBoundary,        // 0 for vbit/ballnose, maxDepth for flat/adaptive
-                filletOuterReachIn: filletOutR,          // how far the fillet extends past boundary
+                depthReachedIn,
+                depthCapped,
+                bodyAtBoundary: profileBoundary,
+                filletOuterReachIn: filletOutR,
             };
 
             resolve({ body: bodyMask, fillet: filletMask, isStamped: isStampedMask, metrics });
