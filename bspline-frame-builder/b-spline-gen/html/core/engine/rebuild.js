@@ -127,7 +127,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
     let stampedHeights = new Float32Array(cleanHeights);
     if (P.stampLayers && Array.isArray(P.stampLayers)) {
         P.stampLayers.forEach((layer, layerIdx) => {
-            if (layer && layer.svg && layer.mask && layer.mask.length === nx * nz) {
+            if (layer && layer.enabled && layer.svg && layer.mask && layer.mask.length === nx * nz) {
                 console.log(`[STAMP DEBUG] Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
                 const suppressStrength = (typeof layer.suppression === 'number') ? layer.suppression : 0;
                 const blurRadius = layer.smoothing || 0;

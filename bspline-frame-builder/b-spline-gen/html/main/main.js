@@ -431,35 +431,46 @@ function onFusionApply() {
 function normalizeSvgForCarving(svgText) {
     if (!svgText) return svgText;
     try {
-        const viewBoxMatch = svgText.match(/viewBox="([^"]+)"/i);
-        let height = null;
-        let viewBox = null;
-        if (viewBoxMatch) {
-            viewBox = viewBoxMatch[1];
-            const parts = viewBox.trim().split(/\s+/).map(v => parseFloat(v));
-            if (parts.length === 4 && !Number.isNaN(parts[3])) {
-                height = parts[3];
+        if (typeof DOMParser !== 'undefined' && typeof XMLSerializer !== 'undefined') {
+            const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+            const svg = doc.querySelector('svg');
+            if (svg) {
+                let height = NaN;
+                const viewBox = svg.getAttribute('viewBox');
+                if (viewBox) {
+                    const parts = viewBox.trim().split(/\s+/).map(v => parseFloat(v));
+                    if (parts.length === 4 && !Number.isNaN(parts[3])) {
+                        height = parts[3];
+                    }
+                }
+                if ((!height || height <= 0) && svg.hasAttribute('height')) {
+                    height = parseFloat(svg.getAttribute('height'));
+                }
+                if (!height || height <= 0) return svgText;
+
+                const flipTransform = `translate(0 ${height}) scale(1 -1)`;
+                const firstChild = svg.firstElementChild;
+                if (firstChild && firstChild.tagName.toLowerCase() === 'g' && firstChild.getAttribute('transform') === flipTransform) {
+                    console.log('[SVG DEBUG] normalizeSvgForCarving already flipped; returning original');
+                    return svgText;
+                }
+
+                const wrapper = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+                wrapper.setAttribute('transform', flipTransform);
+                while (svg.firstChild) wrapper.appendChild(svg.firstChild);
+                svg.appendChild(wrapper);
+                if (!svg.hasAttribute('preserveAspectRatio')) {
+                    svg.setAttribute('preserveAspectRatio', 'none');
+                }
+                const result = new XMLSerializer().serializeToString(svg);
+                console.log('[SVG DEBUG] normalizeSvgForCarving applied flip transform');
+                return result;
             }
         }
-        if ((height === null || height <= 0) && svgText.match(/\bheight="([\d.]+)"/i)) {
-            height = parseFloat(svgText.match(/\bheight="([\d.]+)"/i)[1]);
-        }
-        console.log('[SVG DEBUG] normalizeSvgForCarving viewBox=', viewBox, 'height=', height, 'hasTransform=', /transform="translate\(0 [^\)]+\) scale\(1 -1\)"/.test(svgText));
-        if (!height || height <= 0) return svgText;
-
-        const flipTransform = `translate(0 ${height}) scale(1 -1)`;
-        if (svgText.includes(flipTransform)) {
-            console.log('[SVG DEBUG] normalizeSvgForCarving already flipped; returning original');
-            return svgText;
-        }
-
-        const transformed = svgText.replace(/<svg([^>]*)>/i, `<svg$1><g transform="${flipTransform}">`).replace(/<\/svg>/i, '</g></svg>');
-        console.log('[SVG DEBUG] normalizeSvgForCarving applied flip transform');
-        return transformed;
     } catch (e) {
         console.warn('normalizeSvgForCarving failed:', e);
-        return svgText;
     }
+    return svgText;
 }
 
 async function executeExport(options = null, isAppend = false, filename_hint = null) {

@@ -25,6 +25,28 @@ const stampCtx = stampCanvas.getContext('2d', { willReadFrequently: true });
 // Renders the SVG string via a Blob URL → <img> → canvas drawImage.
 // This uses the browser's own SVG engine so fonts, styles, and text are
 // rendered exactly as they appear in the editor — no canvg font fallback issues.
+function _prepareSvgForRaster(svgString, bufferW, bufferH) {
+    if (typeof DOMParser !== 'undefined' && typeof XMLSerializer !== 'undefined') {
+        try {
+            const doc = new DOMParser().parseFromString(svgString, 'image/svg+xml');
+            const svg = doc.querySelector('svg');
+            if (svg) {
+                svg.setAttribute('width', String(bufferW));
+                svg.setAttribute('height', String(bufferH));
+                svg.setAttribute('preserveAspectRatio', 'none');
+                return new XMLSerializer().serializeToString(svg);
+            }
+        } catch (e) {
+            console.warn('[SVG DEBUG] _prepareSvgForRaster failed:', e);
+        }
+    }
+    return svgString
+        .replace(/width="[^"]+"/i, `width="${bufferW}"`)
+        .replace(/height="[^"]+"/i, `height="${bufferH}"`)
+        .replace(/preserveAspectRatio="[^"]*"/gi, '')
+        .replace(/<svg\b/i, `<svg preserveAspectRatio="none"`);
+}
+
 function _renderSvgNative(ctx, svgString, w, h) {
     return new Promise((resolve, reject) => {
         const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
@@ -138,13 +160,10 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
     console.log(`[STAMP DEBUG] Rasterizing for grid: ${nx}x${nz}. Stock: ${widthIn}x${heightIn}`);
     
     return new Promise(async (resolve) => {
-        // Strip <style> blocks but PRESERVE any @font-face rules inside
-        // them. The strip is intended to remove svg.js styling that
-        // interferes with rasterization; @font-face is required so the
-        // detached SVG render context (data: URL → Image → canvas) can
-        // resolve Symbol/Wingdings/Webdings/etc. on iOS, where those
-        // fonts are not installed at the OS level.
+        // Strip only svg.js runtime style metadata while preserving
+        // regular SVG style blocks and embedded font-face rules.
         let processedSvg = svgText.replace(/<style[\s\S]*?<\/style>/gi, (match) => {
+            if (!/svgjs/i.test(match)) return match;
             const fontFaceRules = match.match(/@font-face\s*\{[^}]*\}/g);
             if (!fontFaceRules || fontFaceRules.length === 0) return '';
             return `<style type="text/css">${fontFaceRules.join('\n')}</style>`;
@@ -175,11 +194,7 @@ export async function rasterizeSvg(svgText, nx, nz, blurIn, widthIn, heightIn, s
         stampCanvas.width = bufferW; 
         stampCanvas.height = bufferH;
 
-        const safeSvgText = processedSvg
-            .replace(/width="[^"]+"/, `width="${bufferW}"`)
-            .replace(/height="[^"]+"/, `height="${bufferH}"`)
-            .replace(/preserveAspectRatio="[^"]*"/g, '')
-            .replace(/<svg/, '<svg preserveAspectRatio="none"');
+        const safeSvgText = _prepareSvgForRaster(processedSvg, bufferW, bufferH);
 
         if (window && window.console) {
             console.log('[STAMP DEBUG] rasterizeSvg: bufferW=', bufferW, 'bufferH=', bufferH);
