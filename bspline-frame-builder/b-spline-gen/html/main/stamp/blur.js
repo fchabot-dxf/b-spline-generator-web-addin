@@ -4,9 +4,7 @@
  * Unit: canvas pixels.
  */
 export function initBlur(ctx) {
-  const sync = ctx.bindNumberSlider('stampBlur', 'stampBlurSlider', 'blur');
-  return ctx.registerModule({
-    id: 'blur',
-    syncFromLayer: sync,
-  });
+  return ctx.registerSyncs('blur',
+    ctx.bindNumberSlider('stampBlur', 'stampBlurSlider', 'blur'),
+  );
 }

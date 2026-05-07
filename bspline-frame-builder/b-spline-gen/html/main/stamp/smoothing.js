@@ -6,9 +6,7 @@
  * does NOT need a re-rasterize. Unit: grid cells.
  */
 export function initSmoothing(ctx) {
-  const sync = ctx.bindNumberSlider('stampSmoothingRadius', 'stampSmoothingRadiusSlider', 'smoothing');
-  return ctx.registerModule({
-    id: 'smoothing',
-    syncFromLayer: sync,
-  });
+  return ctx.registerSyncs('smoothing',
+    ctx.bindNumberSlider('stampSmoothingRadius', 'stampSmoothingRadiusSlider', 'smoothing'),
+  );
 }

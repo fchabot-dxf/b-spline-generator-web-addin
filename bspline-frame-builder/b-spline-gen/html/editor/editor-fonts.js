@@ -2,7 +2,7 @@
  * editor-fonts.js — Single source of truth for the editor's bundled fonts.
  *
  * The .ttf files under b-spline-gen/html/fonts/ are used in two places:
- *   1) opentype.js loads them in editor-geometry.js to convert text into
+ *   1) opentype.js loads them in editor-expand.js to convert text into
  *      SVG paths during stamp/export.
  *   2) The on-screen Symbol Keyboard (.symbol-key buttons) renders glyphs
  *      in those families. Windows ships Symbol/Wingdings/Webdings/Segoe UI

@@ -50,6 +50,19 @@ export function createStampCtx(preview) {
       return mod;
     },
 
+    /** Convenience wrapper for the common case: a module whose only job
+     *  is to combine a few bind* sync fns. Composes them into a single
+     *  syncFromLayer and registers. Use registerModule directly if the
+     *  module needs extra fields (e.g., layer.js exposes syncEnabled). */
+    registerSyncs(id, ...syncs) {
+      return ctx.registerModule({
+        id,
+        syncFromLayer(layer) {
+          for (const s of syncs) if (s) s(layer);
+        },
+      });
+    },
+
     /** Push the active layer's values out to every registered module's UI. */
     broadcastSyncFromLayer() {
       const layer = ctx.activeLayer();

@@ -6,7 +6,7 @@
  * new layer's values out to every other module's UI in one shot, via
  * ctx.broadcastSyncFromLayer().
  */
-import { P, updateP } from '../../core/state.js';
+import { P, updateP, setStampLayerEnabled } from '../../core/state.js';
 import { scheduleRebuild, rebuild } from '../../core/engine.js';
 import { updateStampMasks } from '../stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../../core/sculpt-interaction.js';
@@ -70,7 +70,7 @@ export function initLayer(ctx) {
     enabledCb.addEventListener('change', () => {
       const layer = ctx.activeLayer();
       if (!layer) return;
-      layer.enabled = enabledCb.checked;
+      setStampLayerEnabled(P.activeLayerIdx, enabledCb.checked);
       scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);
     });
   }

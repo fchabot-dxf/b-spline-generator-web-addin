@@ -1,4 +1,4 @@
-import { P, loadLastSession, lastResult, setStampLayerSvg, setStampLayerMask } from '../core/state.js';
+import { P, loadLastSession, lastResult, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
@@ -83,9 +83,12 @@ export function initSvgEditor(preview) {
         // Cancel path — restore pre-edit state for the layer that was being edited.
         const idx = SvgEditorSnapshot.layerIdx;
         if (P.stampLayers[idx]) {
+          // Restore raw fields directly: setStampLayerSvg auto-enables the
+          // layer when svg is non-null, which we don't want here — we're
+          // restoring whatever enabled state existed pre-edit.
           P.stampLayers[idx].svg = SvgEditorSnapshot.svg;
           P.stampLayers[idx].mask = SvgEditorSnapshot.mask;
-          P.stampLayers[idx].enabled = SvgEditorSnapshot.enabled;
+          setStampLayerEnabled(idx, SvgEditorSnapshot.enabled);
         }
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);

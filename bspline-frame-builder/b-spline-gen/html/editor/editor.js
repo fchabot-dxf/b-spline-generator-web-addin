@@ -5,7 +5,8 @@
 
 import { initIO, save, saveWithTextCopies, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { initText, commitText, cancelText, setFontFamily, setFontSize } from './editor-text.js';
-import { getDynamicTolerance, getNodes, fitCurve, getHybridBezierPath, expandCurrent, getNearbyElement } from './editor-geometry.js';
+import { fitCurve, getHybridBezierPath } from './editor-curves.js';
+import { getDynamicTolerance, getNodes, getNearbyElement } from './editor-hit.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
 import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
@@ -77,15 +78,7 @@ export class VectorEditor {
     }
 
 
-    async expandAction() {
-        this._commitText();
-        await expandCurrent(this, this._expandDetail, this._expandSimplify, this._expandAccuracy, true);
-        if (this._onChange) this._onChange();
-    }
-
-
-
-    save(dpi = 96) { 
+    save(dpi = 96) {
         this._commitText();
         return save(this, dpi); 
     }

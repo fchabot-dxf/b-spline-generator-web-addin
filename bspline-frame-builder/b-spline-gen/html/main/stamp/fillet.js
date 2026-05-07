@@ -8,13 +8,8 @@
  * in core/stamp/profiles/* — this UI module just owns the two inputs.
  */
 export function initFillet(ctx) {
-  const syncRadius = ctx.bindNumberSlider('stampEdgeFilletRadius', 'stampEdgeFilletRadiusSlider', 'edgeFilletRadius');
-  const syncPower  = ctx.bindNumberSlider('stampFilletPower',      'stampFilletPowerSlider',      'filletPower');
-  return ctx.registerModule({
-    id: 'fillet',
-    syncFromLayer(layer) {
-      syncRadius(layer);
-      syncPower(layer);
-    },
-  });
+  return ctx.registerSyncs('fillet',
+    ctx.bindNumberSlider('stampEdgeFilletRadius', 'stampEdgeFilletRadiusSlider', 'edgeFilletRadius'),
+    ctx.bindNumberSlider('stampFilletPower',      'stampFilletPowerSlider',      'filletPower'),
+  );
 }

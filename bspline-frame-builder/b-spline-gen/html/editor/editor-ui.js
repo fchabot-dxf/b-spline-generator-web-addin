@@ -98,41 +98,53 @@ export function updateNodeCountUI(editor, data) {
     ui.textContent = `Nodes: ${count} / X: ${x} Y: ${y}`;
 }
 
-export function updateSelectionHighlight(editor) {
-    if (editor._selectionHighlight) { 
-        editor._selectionHighlight.remove(); 
-        editor._selectionHighlight = null; 
-    }
-    if (!editor._selectedElement || !editor._draw || !editor._highlightLayer) return;
-
-    // Restore: Hide selection glow in Node Edit mode for clearer point selection
-    if (editor._currentMode === 'node') return;
-
-    const el = editor._selectedElement;
+/**
+ * Both selection and hover highlights have the same shape: text gets a
+ * filled rounded-rect behind the bbox; everything else gets a translucent
+ * stroke clone of itself. The variants differ only in colors, opacities,
+ * and whether the highlight goes behind the original (selection only).
+ */
+function _renderHighlight(editor, el, color, opts) {
+    if (!el || !editor._draw || !editor._highlightLayer) return null;
+    const { textFillOpacity, textStrokeOpacity, lineStrokeOpacity, back } = opts;
+    let shape;
     if (el.type === 'text') {
         const b = el.bbox();
-        editor._selectionHighlight = editor._highlightLayer.rect(b.w + 0.1, b.h + 0.04)
+        shape = editor._highlightLayer.rect(b.w + 0.1, b.h + 0.04)
             .move(b.x - 0.05, b.y - 0.02)
-            .fill({ color: '#ffcc00', opacity: 0.1 })
-            .stroke({ color: '#ffcc00', width: 0.02, opacity: 0.5 })
-            .radius(0.04)
-            .back();
+            .fill({ color, opacity: textFillOpacity })
+            .radius(0.04);
+        if (textStrokeOpacity) shape.stroke({ color, width: 0.02, opacity: textStrokeOpacity });
     } else {
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth;
         const tol5px = editor._getDynamicTolerance(5);
-        editor._selectionHighlight = el.clone()
+        shape = el.clone()
             .fill('none')
-            .stroke({ 
-                color: '#ffcc00', 
-                width: sw + (tol5px * 2), 
-                opacity: 0.4 
-            })
+            .stroke({ color, width: sw + (tol5px * 2), opacity: lineStrokeOpacity })
             .removeClass('svg-selected')
             .removeClass('svg-hover')
             .attr('pointer-events', 'none');
-        editor._highlightLayer.add(editor._selectionHighlight);
-        editor._selectionHighlight.back();
+        editor._highlightLayer.add(shape);
     }
+    if (back) shape.back();
+    return shape;
+}
+
+export function updateSelectionHighlight(editor) {
+    if (editor._selectionHighlight) {
+        editor._selectionHighlight.remove();
+        editor._selectionHighlight = null;
+    }
+    if (!editor._selectedElement) return;
+    // Hide selection glow in Node Edit mode for clearer point selection.
+    if (editor._currentMode === 'node') return;
+
+    editor._selectionHighlight = _renderHighlight(editor, editor._selectedElement, '#ffcc00', {
+        textFillOpacity: 0.1,
+        textStrokeOpacity: 0.5,
+        lineStrokeOpacity: 0.4,
+        back: true,
+    });
 }
 
 export function select(editor, selectedEl) {
@@ -177,37 +189,25 @@ export function select(editor, selectedEl) {
 
 export function setHover(editor, el) {
     if (editor._hoveredElement === el) return;
-    
-    if (editor._hoverHighlight) { 
-        editor._hoverHighlight.remove(); 
-        editor._hoverHighlight = null; 
+
+    if (editor._hoverHighlight) {
+        editor._hoverHighlight.remove();
+        editor._hoverHighlight = null;
     }
     if (editor._hoveredElement) editor._hoveredElement.removeClass('svg-hover');
-    
+
     editor._hoveredElement = el;
     if (!el || el === editor._selectedElement) return;
 
-    if (el.type === 'text') {
-        const b = el.bbox();
-        editor._hoverHighlight = editor._highlightLayer.rect(b.w + 0.1, b.h + 0.04)
-            .move(b.x - 0.05, b.y - 0.02)
-            .fill({ color: '#0066cc', opacity: 0.15 })
-            .radius(0.04)
-            .attr('pointer-events', 'none');
-    } else {
-        const tol5px = editor._getDynamicTolerance(5);
-        editor._hoverHighlight = el.clone()
-            .fill('none') 
-            .stroke({ 
-                color: '#0066cc', 
-                width: (parseFloat(el.attr('stroke-width')) || editor._strokeWidth) + (tol5px * 2),
-                opacity: 0.8 
-            })
-            .removeClass('svg-selected')
-            .removeClass('svg-hover')
-            .attr('pointer-events', 'none');
-        
-        editor._highlightLayer.add(editor._hoverHighlight);
+    editor._hoverHighlight = _renderHighlight(editor, el, '#0066cc', {
+        textFillOpacity: 0.15,
+        textStrokeOpacity: 0,
+        lineStrokeOpacity: 0.8,
+        back: false,
+    });
+    if (el.type === 'text' && editor._hoverHighlight) {
+        editor._hoverHighlight.attr('pointer-events', 'none');
+    } else if (editor._hoveredElement) {
         editor._hoveredElement.addClass('svg-hover');
     }
 }

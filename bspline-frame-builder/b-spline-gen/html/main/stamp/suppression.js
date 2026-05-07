@@ -5,9 +5,7 @@
  * re-rasterize needed.
  */
 export function initSuppression(ctx) {
-  const sync = ctx.bindNumberSlider('stampTextureSuppression', 'stampTextureSuppressionSlider', 'suppression');
-  return ctx.registerModule({
-    id: 'suppression',
-    syncFromLayer: sync,
-  });
+  return ctx.registerSyncs('suppression',
+    ctx.bindNumberSlider('stampTextureSuppression', 'stampTextureSuppressionSlider', 'suppression'),
+  );
 }

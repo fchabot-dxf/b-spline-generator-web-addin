@@ -207,6 +207,11 @@ export function setStampLayerMask(idx, mask) {
         // suppression is a UI scalar (0–1) stored on the layer — never overwrite it here
     }
 }
+export function setStampLayerEnabled(idx, enabled) {
+    if (P.stampLayers[idx]) {
+        P.stampLayers[idx].enabled = !!enabled;
+    }
+}
 
 export function setSuppressionMask(val) { suppressionMask = val; }
 

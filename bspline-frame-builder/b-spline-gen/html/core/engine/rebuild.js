@@ -147,9 +147,16 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                 : null;
             const layerDepth = layer.depth ?? P.stampDepth ?? 0;
             const layerSign = layerDepth >= 0 ? 1 : -1;
-            // Fillet contribution amplitude — depth-independent in the
-            // mask, so the slider can move without the fillet wobbling.
-            const filletRadius = layer.edgeFilletRadius ?? P.stampEdgeFilletRadius ?? 0;
+            // Fillet amplitude must match the value the rasterizer baked
+            // into the fillet channel. The rasterizer clamps the slider
+            // to the inscribed radius and stores the result in
+            // mask.metrics.effectiveFilletIn — using the unclamped
+            // slider value here would scale the fillet height larger
+            // than what the channel was normalized for (visible as a
+            // big lip on stamps where the fillet was clamped).
+            const filletRadius = (m && m.metrics && Number.isFinite(m.metrics.effectiveFilletIn))
+                ? m.metrics.effectiveFilletIn
+                : (layer.edgeFilletRadius ?? P.stampEdgeFilletRadius ?? 0);
             const filletAmplitude = layerSign * Math.min(filletRadius, Math.abs(layerDepth));
 
             for (let k = 0; k < nx * nz; k++) {

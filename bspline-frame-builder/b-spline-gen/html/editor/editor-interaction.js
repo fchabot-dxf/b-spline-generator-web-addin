@@ -2,7 +2,7 @@
  * editor-interaction.js - Selection, handles, and mouse/touch logic for VectorEditor. 
  * Includes restored drawing lifecycle for Freehand, Line, Rect, and Circle.
  */
-import { fitCurve, ramerDouglasPeucker } from './editor-geometry.js';
+import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text.js';
 import { getActiveLayer } from './layers.js';
 
@@ -43,17 +43,31 @@ function handleStart(editor, e) {
     // Apply snapping at start of interaction
     pt = editor._snap(pt);
 
-    // Check for node hit if in node mode
-    if (editor._currentMode === 'node' && editor._selectedElement) {
-        const nodes = editor._getNodes(editor._selectedElement);
-        const tol = editor._getDynamicTolerance(15);
-        const hitIdx = nodes.findIndex(n => Math.hypot(n.x - pt.x, n.y - pt.y) < tol);
-        if (hitIdx !== -1) {
-            editor._isDragging = true;
-            editor._dragNodeIndex = hitIdx;
-            editor._lastDragPt = pt;
-            return;
+    // Node mode owns its own click flow: nodes first, then path-body to
+    // (re-)select an element, never element-translate, never deselect on
+    // empty-space click. This keeps the node-edit context stable while
+    // the user works on a path.
+    if (editor._currentMode === 'node') {
+        if (editor._selectedElement) {
+            const nodes = editor._getNodes(editor._selectedElement);
+            const tol = editor._getDynamicTolerance(15);
+            const hitIdx = nodes.findIndex(n => Math.hypot(n.x - pt.x, n.y - pt.y) < tol);
+            if (hitIdx !== -1) {
+                editor._isDragging = true;
+                editor._dragNodeIndex = hitIdx;
+                editor._lastDragPt = pt;
+                return;
+            }
         }
+        // Missed all nodes — try to (re-)select the path under the cursor.
+        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        if (hit && hit !== editor._selectedElement) {
+            editor._select(hit);
+        }
+        // Whether we hit a path or empty space, do NOT initiate an
+        // element-translate drag and do NOT deselect — node mode preserves
+        // the current selection so the user can keep working on its nodes.
+        return;
     }
 
     const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
@@ -106,9 +120,11 @@ function handleMove(editor, e) {
 
     // Hover logic
     if (!editor._isDragging) {
-        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
-        editor._setHover(hit);
-
+        // In node mode with a selection, prioritize node-hover (so the
+        // diamond lights up) and suppress the element-hover halo unless
+        // we're hovering over a different element that the user might
+        // want to switch to. Without this, the bright element halo over
+        // the selected path drowns out the subtle node hover.
         if (editor._currentMode === 'node' && editor._selectedElement) {
             const nodes = editor._getNodes(editor._selectedElement);
             const tol = editor._getDynamicTolerance(15);
@@ -117,7 +133,20 @@ function handleMove(editor, e) {
                 editor._hoverNodeIndex = hitIdx;
                 editor._updateHandles();
             }
+            // Only run element-hover if the cursor isn't on a node AND the
+            // path under the cursor is a different element (potential
+            // re-select target).
+            if (hitIdx === -1) {
+                const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+                editor._setHover(hit && hit !== editor._selectedElement ? hit : null);
+            } else {
+                editor._setHover(null);
+            }
+            return;
         }
+
+        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        editor._setHover(hit);
         return;
     }
 
@@ -260,14 +289,6 @@ function finishDrawing(editor, pt) {
 }
 
 
-export function getDynamicTolerance(editor, px = 15) {
-    if (!editor._draw) return 0.1;
-    const svgEl = editor._draw.node;
-    if (!svgEl || svgEl.clientWidth === 0) return 0.1;
-    const scale = editor._mW / svgEl.clientWidth;
-    return px * scale;
-}
-
 export function updateHandles(editor) {
     if (!editor._handleLayer) return;
     editor._handleLayer.clear();
@@ -275,17 +296,31 @@ export function updateHandles(editor) {
     if (editor._currentMode !== 'node') return;
 
     const nodes = editor._getNodes(editor._selectedElement);
-    const r = editor._getDynamicTolerance(5); 
-    
-    nodes.forEach((pt, i) => {
+    const validNodes = nodes.filter(pt => Number.isFinite(pt.x) && Number.isFinite(pt.y));
+    if (validNodes.length === 0) return;
+
+    // Diamond size: dynamic-tolerance baseline with a model-space floor so
+    // they don't shrink to invisibility on tall/wide viewboxes. The floor
+    // is ~1.5% of the smaller viewport dimension, which is comfortably
+    // clickable on any reasonable canvas size.
+    const r = editor._getDynamicTolerance(5);
+    const view = editor._draw && editor._draw.viewbox ? editor._draw.viewbox() : null;
+    const minR = view ? Math.min(view.width, view.height) * 0.008 : 0;
+    const baseR = Math.max(r, minR);
+
+    validNodes.forEach((pt, i) => {
         const isDragging = (editor._dragNodeIndex === i);
         const isHovered = (editor._hoverNodeIndex === i);
-        
-        const rad = (isDragging || isHovered) ? r * 2.5 : r * 2;
-        const hR = rad * 0.7; 
-        const fillStr = isDragging ? '#ffffff' : (isHovered ? '#aaffff' : '#00ffff');
-        const strokeW = (isDragging || isHovered) ? r * 0.8 : r * 0.4;
-        const strokeC = isDragging ? '#ff3300' : '#0066cc';
+
+        // Hover/drag states get bigger handles AND a strong color shift
+        // so the user can tell at a glance which node they're about to
+        // grab. Idle state uses cyan; hover flips to yellow; drag goes
+        // bright red.
+        const rad = isDragging ? baseR * 3.2 : (isHovered ? baseR * 2.8 : baseR * 2);
+        const hR = rad * 0.7;
+        const fillStr = isDragging ? '#ff3300' : (isHovered ? '#ffcc00' : '#00ffff');
+        const strokeW = (isDragging || isHovered) ? baseR * 0.9 : baseR * 0.4;
+        const strokeC = isDragging ? '#ffffff' : (isHovered ? '#a06b00' : '#0066cc');
 
         editor._handleLayer.polygon([
             [pt.x, pt.y - hR],
@@ -295,6 +330,6 @@ export function updateHandles(editor) {
         ])
         .fill(fillStr)
         .stroke({ color: strokeC, width: strokeW, linejoin: 'round' })
-        .attr('pointer-events', 'none'); 
+        .attr('pointer-events', 'none');
     });
 }

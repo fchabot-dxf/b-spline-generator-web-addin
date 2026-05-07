@@ -9,9 +9,7 @@
  * active.
  */
 export function initDepth(ctx) {
-  const sync = ctx.bindNumberSlider('stampDepth', 'stampDepthSlider', 'depth');
-  return ctx.registerModule({
-    id: 'depth',
-    syncFromLayer: sync,
-  });
+  return ctx.registerSyncs('depth',
+    ctx.bindNumberSlider('stampDepth', 'stampDepthSlider', 'depth'),
+  );
 }

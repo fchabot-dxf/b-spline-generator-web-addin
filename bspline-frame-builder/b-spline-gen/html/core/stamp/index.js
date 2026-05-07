@@ -29,6 +29,39 @@ import { getProfile } from './profiles/index.js';
 const stampCanvas = document.createElement('canvas');
 const stampCtx = stampCanvas.getContext('2d', { willReadFrequently: true });
 
+// SDF cache: keyed on (svg + blur + buffer dimensions), which is
+// everything that determines the SDF. Profile / depth / fillet changes
+// don't invalidate this — the per-pixel loop just re-runs with the
+// cached SDF, skipping the ~30-50ms SVG render + Danielsson sweep.
+// LRU bounded so multi-layer projects don't grow the cache unbounded.
+const SDF_CACHE_MAX = 8;
+const sdfCache = new Map();
+
+function quickHash(str) {
+    let h = 0;
+    for (let i = 0, n = str.length; i < n; i++) {
+        h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    }
+    return h;
+}
+
+function getCachedSdf(key) {
+    if (!sdfCache.has(key)) return null;
+    // LRU: re-insert to mark as most-recent.
+    const v = sdfCache.get(key);
+    sdfCache.delete(key);
+    sdfCache.set(key, v);
+    return v;
+}
+
+function setCachedSdf(key, value) {
+    sdfCache.set(key, value);
+    while (sdfCache.size > SDF_CACHE_MAX) {
+        const oldestKey = sdfCache.keys().next().value;
+        sdfCache.delete(oldestKey);
+    }
+}
+
 /** Empty two-channel mask, returned on rasterizer failure paths so the
  *  engine's mask consumer always sees the same shape. */
 function emptyMask(nx, nz) {
@@ -63,6 +96,18 @@ export async function rasterizeSvg(
         stampCanvas.height = bufferH;
         const safeSvgText = prepareSvgForRaster(processedSvg, bufferW, bufferH);
 
+        // Cache key — anything that affects the SDF must be in here.
+        // Profile / depth / fillet are NOT in the key: they don't change
+        // the SDF, only the per-pixel loop's output, so they reuse the
+        // cache freely. This is the main slider-responsiveness win.
+        const cacheKey = `${quickHash(safeSvgText)}_${blurIn}_${bufferW}x${bufferH}`;
+        const cached = getCachedSdf(cacheKey);
+        if (cached) {
+            console.log('[STAMP DEBUG] SDF cache hit — skipping render + SDF compute.');
+            finishRaster(cached.sdf, cached.maxSdfInsidePx);
+            return;
+        }
+
         if (window && window.console) {
             const viewBoxMatch = safeSvgText.match(/viewBox="([^"]+)"/i);
             console.log('[STAMP DEBUG] rasterizeSvg: bufferW=', bufferW, 'bufferH=', bufferH, 'viewBox=', viewBoxMatch ? viewBoxMatch[1] : 'none');
@@ -84,7 +129,7 @@ export async function rasterizeSvg(
         if (nativeOk) {
             const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
             console.log('[STAMP DEBUG] Rasterization complete (native). Mask generated.');
-            finishRaster(imageData);
+            startSdfFromImageData(imageData);
             return;
         }
 
@@ -97,18 +142,29 @@ export async function rasterizeSvg(
                 await instance.render();
                 const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
                 console.log('[STAMP DEBUG] Rasterization complete (canvg fallback). Mask generated.');
-                finishRaster(imageData);
+                startSdfFromImageData(imageData);
             } catch (err) {
                 console.error('[SVG DEBUG] rasterizeSvg: canvg render also failed:', err);
                 resolve(emptyMask(nx, nz));
             }
         } else {
             console.error('[SVG DEBUG] rasterizeSvg: no renderer available — stamp mask will be empty');
-            resolve(new Float32Array(nx * nz));
+            resolve(emptyMask(nx, nz));
         }
 
-        function finishRaster(imageData) {
+        // Step that computes SDF from canvas pixels and caches it before
+        // handing off to the per-pixel mask-build loop.
+        function startSdfFromImageData(imageData) {
             const sdf = computeSDF(imageData.data, bufferW, bufferH);
+            let maxSdfInsidePx = 0;
+            for (let k = 0; k < sdf.length; k++) {
+                if (sdf[k] > maxSdfInsidePx) maxSdfInsidePx = sdf[k];
+            }
+            setCachedSdf(cacheKey, { sdf, maxSdfInsidePx });
+            finishRaster(sdf, maxSdfInsidePx);
+        }
+
+        function finishRaster(sdf, maxSdfInsidePx) {
             const inchPerPx = widthIn / bufferW;
 
             // Two-channel mask:
@@ -129,22 +185,46 @@ export async function rasterizeSvg(
             // Resolve the active profile module (no string tests below).
             const profile = getProfile(stampProfile);
 
-            // Inscribed-circle radius: half-thickness of widest feature.
-            let maxSdfInsidePx = 0;
-            for (let k = 0; k < sdf.length; k++) {
-                if (sdf[k] > maxSdfInsidePx) maxSdfInsidePx = sdf[k];
-            }
+            // maxSdfInsidePx (inscribed-circle radius in pixels) is now
+            // computed once when the SDF is built and cached alongside it
+            // in setCachedSdf — passed in as a parameter to this fn.
             const R_eff = maxSdfInsidePx * inchPerPx;
 
             const requestedFillet = Math.max(0, edgeFilletRadius || 0);
             const filletRadiusIn = (R_eff > 0) ? Math.min(requestedFillet, R_eff) : requestedFillet;
 
-            const ctx = { distIn: 0, maxDepth, R_eff, vSlope, angleRad };
+            // ctx is read by profile modules. filletRadiusIn is the
+            // clamped (to inscribed radius) value, which is what
+            // filletPart needs to compute peak heights that match the
+            // wall at +inR.
+            const ctx = { distIn: 0, maxDepth, R_eff, vSlope, angleRad, filletRadiusIn };
 
-            const filletBias = profile.hasVerticalWall
-                ? 1.0
-                : Math.cos(profile.effectiveAngleRad(ctx) / 2);
-            const filletOutR = filletRadiusIn * (1.0 + filletBias);
+            // Fillet sizing.
+            //
+            // Vertical-walled profiles (flat, ballnose) keep the
+            // legacy `outR = 2R` baseline that the user confirmed
+            // looks "beautiful" — wide gentle ramp, fully outside
+            // the boundary.
+            //
+            // Sloped-walled profiles (vbit, adaptive) use a scaled
+            // tangent arc with `outR = R` so the slider's visible
+            // effect tracks its value. The pure geometric
+            // `R · tan(wall/2)` collapses to sub-pixel sizes on
+            // typical buffer resolutions, which made the fillet feel
+            // binary on vbit.
+            const wallAngleRad = profile.wallAngleRad
+                ? profile.wallAngleRad(ctx)
+                : Math.PI / 2;
+            const filletOutR = filletRadiusIn * (profile.hasVerticalWall ? 2.0 : 1.0);
+            const filletInR  = filletRadiusIn * Math.cos(wallAngleRad);
+
+            // For sloped-wall profiles (vbit, adaptive) the fillet has
+            // to span both sides of the boundary to actually round the
+            // corner. For flat/ballnose (vertical wall) the fillet
+            // stays outside-only — extending it inside would just eat
+            // into the plateau pointlessly.
+            const filletExtendsInside = !!profile.filletExtendsInside;
+            const filletInnerExtent = filletExtendsInside ? filletInR : 0;
 
             const profileOutsideExtent = profile.outsideExtent(ctx);
             const sentinelOutsideReach = Math.max(0.05, profileOutsideExtent);
@@ -164,18 +244,33 @@ export async function rasterizeSvg(
                     let bodyN = 0;
                     let filletN = 0;
 
-                    if (distIn >= 0) {
-                        // Inside the boundary: pure profile, normalized by maxDepth.
-                        const Z_p = profile.Zp(ctx);
-                        bodyN = maxDepth > 0 ? Z_p / maxDepth : 0;
-                    } else if (filletRadiusIn > 0 && distIn > -filletOutR) {
-                        // In the fillet zone outside the boundary. Profile
-                        // decides how much goes in body vs fillet channel.
-                        const filletAlpha = powerStep(-filletOutR, 0, distIn, filletPower);
-                        const part = profile.filletPart(ctx, filletAlpha);
+                    // Decide which path this pixel falls into:
+                    //   - Inside fillet zone: spans [-outR, +innerExtent].
+                    //     Profile's filletPart determines the curve.
+                    //   - Inside boundary, past fillet zone: natural Z_p
+                    //     (the wall / plateau).
+                    //   - Outside boundary, past fillet zone: zero.
+                    const inFilletZone = filletRadiusIn > 0
+                        && distIn > -filletOutR
+                        && distIn < filletInnerExtent;
+
+                    if (inFilletZone) {
+                        // Profile decides its own fillet curve (powerStep
+                        // S-curve, geometric tangent arc, etc.) given
+                        // the zone bounds and distIn. This lets vbit use
+                        // a true circular arc (slope-continuous with
+                        // the wall at +inR, no ridge at the join) while
+                        // flat keeps the simpler powerStep S-curve.
+                        const part = profile.filletPart(ctx, distIn, filletOutR, filletInR, filletPower);
                         bodyN = part.bodyN;
                         filletN = part.filletN;
+                    } else if (distIn >= 0) {
+                        // Inside the boundary, past the fillet zone:
+                        // pure profile, normalized by maxDepth.
+                        const Z_p = profile.Zp(ctx);
+                        bodyN = maxDepth > 0 ? Z_p / maxDepth : 0;
                     }
+                    // (else: distIn < -outR → terrain, both channels 0)
 
                     bodyMask[k] = bodyN;
                     filletMask[k] = filletN;

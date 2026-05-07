@@ -1,4 +1,4 @@
-import { expandCurrent } from './editor-geometry.js';
+import { expandCurrent } from './editor-expand.js';
 
 export async function performExpand(editor) {
   editor._commitText();

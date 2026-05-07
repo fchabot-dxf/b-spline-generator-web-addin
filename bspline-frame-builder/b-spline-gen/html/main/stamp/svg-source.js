@@ -3,7 +3,7 @@
  * the active layer's `svg` field, plus the filename label and the
  * editor-modal Cancel-snapshot.
  */
-import { P, setStampLayerSvg, setStampLayerMask } from '../../core/state.js';
+import { P, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '../../core/state.js';
 import { scheduleRebuild, rebuild } from '../../core/engine.js';
 import { updateStampMasks } from '../stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../../core/sculpt-interaction.js';
@@ -66,7 +66,7 @@ export function initSvgSource(ctx, layerModule) {
     btnClear.addEventListener('click', () => {
       setStampLayerSvg(P.activeLayerIdx, null);
       setStampLayerMask(P.activeLayerIdx, null);
-      if (P.stampLayers[P.activeLayerIdx]) P.stampLayers[P.activeLayerIdx].enabled = false;
+      setStampLayerEnabled(P.activeLayerIdx, false);
       if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
       if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
       scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);

@@ -1,3 +1,5 @@
+import { powerStep } from '../sdf.js';
+
 /**
  * Ballnose profile — true half-sphere across the stamp footprint.
  *
@@ -27,6 +29,8 @@ export const ballnose = {
   // fillet sits entirely outside.
   hasVerticalWall: true,
   effectiveAngleRad(_ctx) { return Math.PI; },   // unused when hasVerticalWall
+  // Half-sphere is vertically tangent at the boundary → wall angle 90°.
+  wallAngleRad(_ctx) { return Math.PI / 2; },
 
   boundaryDepth(_ctx) { return 0; },             // Z_p(0) = 0
 
@@ -34,8 +38,12 @@ export const ballnose = {
 
   outsideExtent(_ctx) { return 0; },
 
-  // Same as flat: small rounded foot outside, height bounded by filletRadius.
-  filletPart(_ctx, alpha) {
+  // Ballnose is vertically-tangent at the boundary (the half-sphere
+  // has infinite slope at distIn=0), so it's geometrically equivalent
+  // to flat for fillet purposes — outside-only S-curve.
+  filletExtendsInside: false,
+  filletPart(_ctx, distIn, outR, _inR, filletPower) {
+    const alpha = powerStep(-outR, 0, distIn, filletPower);
     return { bodyN: 0, filletN: alpha };
   },
 

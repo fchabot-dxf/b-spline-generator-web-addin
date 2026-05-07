@@ -1,16 +1,10 @@
 import { el } from './dom.js';
+import { performExpand } from './expand.js';
 
 export function initExpandProperties(editor) {
-    // 1. Sidebar Tool Toggle
-    const toolExpand = el('toolExpand');
-    if (toolExpand) {
-        toolExpand.addEventListener('click', () => {
-             // In the new organization, clicking the sidebar tool just switches the UI mode
-             editor.setMode('expand');
-        });
-    }
+    // The #toolExpand sidebar button is bound by tools/expand-tool.js; this
+    // module owns only the property-row controls inside the Expand mode.
 
-    // 2. Header Property Controls
     const detailIn = el('editorExpandDetail');
     const smoothIn = el('editorExpandSmooth');
     const runBtn = el('editorRunExpand');
@@ -26,10 +20,9 @@ export function initExpandProperties(editor) {
         });
     }
 
-    // 3. Execution Action
     if (runBtn) {
         runBtn.addEventListener('click', () => {
-            editor.expandAction();
+            performExpand(editor);
         });
     }
 

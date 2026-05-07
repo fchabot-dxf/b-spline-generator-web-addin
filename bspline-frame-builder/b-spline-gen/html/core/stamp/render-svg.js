@@ -7,6 +7,7 @@
  * Plus the SVG preprocessing (font-family substitution, dimension
  * override) needed to make the SVG safe to rasterize.
  */
+import { stripSvgjsAttributes } from '../svg-utils.js';
 
 const KNOWN_FONTS = [
     // Sans-serif
@@ -38,7 +39,7 @@ export function sanitizeSvgForRaster(svgText) {
         if (!fontFaceRules || fontFaceRules.length === 0) return '';
         return `<style type="text/css">${fontFaceRules.join('\n')}</style>`;
     });
-    out = out.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+    out = stripSvgjsAttributes(out);
     out = out.replace(/(<text[^>]*?)font-family=(["'])([^"']*?)\2/gi, (_match, pre, quote, fams) => {
         const found = KNOWN_FONTS.find((f) => fams.toLowerCase().includes(f.toLowerCase()));
         return pre + 'font-family=' + quote + (found || 'Arial') + quote;

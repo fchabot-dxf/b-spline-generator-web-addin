@@ -1,7 +1,9 @@
 /**
- * editor-io.js - persistence logic for VectorEditor. 
+ * editor-io.js - persistence logic for VectorEditor.
  * Handles SVG serialization and re-import.
  */
+
+import { stripSvgjsAttributes } from '../core/svg-utils.js';
 
 export function initIO(editor) {
     editor.logEditorEvent = (msg, data) => {
@@ -12,7 +14,7 @@ export function initIO(editor) {
 export function save(editor, dpi = 96) {
     if (!editor._draw) return "";
     const rawContent = editor._sketchLayer.node.innerHTML;
-    const content = rawContent.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+    const content = stripSvgjsAttributes(rawContent);
     const wPx = editor._mW * dpi;
     const hPx = editor._mH * dpi;
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${content}</svg>`;
@@ -97,7 +99,7 @@ async function getEmbeddedFontCss(family) {
 export async function saveForRasterization(editor, dpi = 96) {
     if (!editor._draw) return "";
     const rawContent = editor._sketchLayer.node.innerHTML;
-    const content = rawContent.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+    const content = stripSvgjsAttributes(rawContent);
 
     // Collect every font-family referenced by a <text> in the content.
     // Parse via DOMParser so we work on real elements regardless of how
@@ -136,7 +138,7 @@ export async function saveForRasterization(editor, dpi = 96) {
 export async function saveWithTextCopies(editor, dpi = 96) {
     if (!editor._draw) return "";
     const rawContent = editor._sketchLayer.node.innerHTML;
-    const content = rawContent.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
+    const content = stripSvgjsAttributes(rawContent);
     const textCopies = [];
     const fontFamilies = new Set();
     editor._sketchLayer.children().forEach(ch => {

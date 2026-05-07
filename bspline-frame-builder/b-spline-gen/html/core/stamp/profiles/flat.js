@@ -1,3 +1,5 @@
+import { powerStep } from '../sdf.js';
+
 /**
  * Flat profile — vertical wall + flat plateau at maxDepth.
  *
@@ -18,6 +20,10 @@ export const flat = {
   // Vertical wall at the boundary → fillet sits entirely outside.
   hasVerticalWall: true,
   effectiveAngleRad(_ctx) { return Math.PI; },   // unused when hasVerticalWall
+  // Wall angle from horizontal — used by the rasterizer to compute
+  // geometric tangent-arc fillet extents (outR = R·tan(wall/2),
+  // inR = outR·cos(wall)). 90° = vertical = quarter-arc fillet.
+  wallAngleRad(_ctx) { return Math.PI / 2; },
 
   // Z_p evaluated at distIn = 0+, used for tangent matching.
   boundaryDepth(ctx) { return ctx.maxDepth; },
@@ -31,13 +37,12 @@ export const flat = {
   // the sentinel mask, not Z_p — flat doesn't extend outside on its own).
   outsideExtent(_ctx) { return 0; },
 
-  // For two-channel mask: how this profile's fillet contribution
-  // splits between the depth-scaling (body) channel and the absolute
-  // (fillet, scaled by min(filletRadius, |layerDepth|)) channel.
-  // Flat's outside fillet is a small rounded foot whose height is
-  // bounded by filletRadius — goes into the fillet channel so it
-  // stays stable when the depth slider moves.
-  filletPart(_ctx, alpha) {
+  // Fillet zone is OUTSIDE-only for flat — the wall is vertical, the
+  // S-curve only needs to bridge terrain → wall foot at the boundary.
+  // No interior fillet, so filletExtendsInside = false.
+  filletExtendsInside: false,
+  filletPart(_ctx, distIn, outR, _inR, filletPower) {
+    const alpha = powerStep(-outR, 0, distIn, filletPower);
     return { bodyN: 0, filletN: alpha };
   },
 

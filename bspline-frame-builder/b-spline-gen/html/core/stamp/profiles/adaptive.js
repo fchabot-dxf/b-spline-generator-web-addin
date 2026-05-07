@@ -1,3 +1,5 @@
+import { powerStep } from '../sdf.js';
+
 /**
  * Adaptive profile — flat plateau at maxDepth inside, fixed-angle 75°
  * tapered ramp outside. The 75° is the steepest a CNC tool can carve
@@ -22,6 +24,8 @@ export const adaptive = {
   // V-bit slider (the V-bit angle has no effect on adaptive's ramp).
   hasVerticalWall: false,
   effectiveAngleRad(_ctx) { return ADAPT_ANGLE_RAD; },
+  // Wall angle from horizontal: 75°.
+  wallAngleRad(_ctx) { return ADAPT_ANGLE_RAD; },
 
   boundaryDepth(ctx) { return ctx.maxDepth; },   // Z_p(0) = maxDepth
 
@@ -34,12 +38,19 @@ export const adaptive = {
   // sentinel uses this so terrain suppression covers the whole ramp.
   outsideExtent(ctx) { return ctx.maxDepth / ADAPT_SLOPE; },
 
-  // Adaptive's fillet REPLACES the natural ramp (Z_base outside =
-  // maxDepth, attenuated by alpha). So the fillet's contribution is
-  // depth-scaling — goes into the body channel as `alpha`. At apply
-  // time engine multiplies by layerDepth, giving the same scaling as
-  // the natural plateau.
-  filletPart(_ctx, alpha) {
+  // Adaptive's wall is the natural 75° ramp — same sloped-wall
+  // structure as vbit, so the fillet should extend inside the
+  // boundary. Without filletExtendsInside, the S-curve was pinned to
+  // the boundary and didn't actually round the corner.
+  filletExtendsInside: true,
+
+  // Adaptive's fillet REPLACES the natural ramp (the alpha-shaped
+  // body contribution fades the maxDepth plateau out into terrain).
+  // Goes in the body channel since adaptive's plateau is depth-
+  // scaling. At apply time the engine multiplies by layerDepth.
+  // S-curve spans [-outR, +inR] because filletExtendsInside = true.
+  filletPart(_ctx, distIn, outR, inR, filletPower) {
+    const alpha = powerStep(-outR, inR, distIn, filletPower);
     return { bodyN: alpha, filletN: 0 };
   },
 
