@@ -22,7 +22,7 @@
  */
 
 import { NoiseTweaks } from './index.js';
-import { P } from '../state.js';
+import { P, saveLastSession } from '../state.js';
 
 // Module-private references resolved by bindTweaksUI().
 let _panelEl       = null;
@@ -37,11 +37,15 @@ function readOverride(filterId, key) {
   return bucket ? bucket[key] : undefined;
 }
 
-/** Write a value into the live state and notify the host. */
+/** Write a value into the live state and notify the host. The
+ *  saveLastSession() call mirrors what updateP() does for top-level
+ *  params — without it, filter tweaks would only survive as long as
+ *  the current process. */
 function writeOverride(filterId, key, value) {
   if (!P.filterTweaks) P.filterTweaks = {};
   if (!P.filterTweaks[filterId]) P.filterTweaks[filterId] = {};
   P.filterTweaks[filterId][key] = value;
+  saveLastSession();
   if (_onChange) _onChange();
 }
 
@@ -52,6 +56,7 @@ export function resetOneTweak(filterId, key) {
   delete bucket[key];
   // If the bucket is empty, drop the parent key too — keeps state tidy.
   if (Object.keys(bucket).length === 0) delete P.filterTweaks[filterId];
+  saveLastSession();
   if (_onChange) _onChange();
 }
 
@@ -59,6 +64,7 @@ export function resetOneTweak(filterId, key) {
 export function resetAllTweaks(filterId) {
   if (!P.filterTweaks) return;
   delete P.filterTweaks[filterId];
+  saveLastSession();
   if (_onChange) _onChange();
 }
 

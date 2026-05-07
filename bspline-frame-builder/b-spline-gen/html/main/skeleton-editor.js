@@ -1,12 +1,16 @@
 /**
  * skeleton-editor.js — Fullscreen 2D editor for the SEED.
  *
- * NOTE: filename is historical. This is now the SEED editor — it visualizes
- * the raw coarse-field generator (the SEED panel's pick + offsets +
- * rotation), not the full skeleton pipeline. Skeleton transforms (peak
- * shape, density, clustering, smoothing, edge fade) are deliberately NOT
- * applied here: the editor's job is to let you see the seed's character
- * in isolation.
+ * Lives in main/ (not core/) because it's pure UI — modal lifecycle,
+ * canvas drawing, slider wiring. The actual seed sampling reaches into
+ * core/seed and core/noise but produces no shared state.
+ *
+ * NOTE: filename is historical. This is now the SEED editor — it
+ * visualizes the raw coarse-field generator (the SEED panel's pick +
+ * offsets + rotation), not the full skeleton pipeline. Skeleton
+ * transforms (peak shape, density, clustering, smoothing, edge fade)
+ * are deliberately NOT applied here: the editor's job is to let you see
+ * the seed's character in isolation.
  *
  * Render mode: marching-squares contour lines (iso-height) on a clean
  * background. Topo-map feel; the relief/model view was removed because
@@ -15,10 +19,10 @@
  *
  * Exposes window.skeletonEditor with open() / close() (kept for back-compat).
  */
-import { P } from './state.js';
-import { PerlinNoise } from './noise.js';
-import { SeedTypes, populateSeedDropdown } from './seed/index.js';
-import { applyParam } from '../main/param-manager.js';
+import { P } from '../core/state.js';
+import { PerlinNoise } from '../core/noise.js';
+import { SeedTypes, populateSeedDropdown } from '../core/seed/index.js';
+import { applyParam } from './param-manager.js';
 
 // Single shared instance.
 let _state = {
