@@ -1,4 +1,4 @@
-import { el } from './dom.js';
+import { el, on } from './dom.js';
 
 export function getElementLayer(el) {
   if (!el) return '0';
@@ -42,9 +42,7 @@ export function initLayerControls(editor) {
   const layerSel = el('editorLayerSelect');
   if (!layerSel) return;
 
-  layerSel.addEventListener('change', () => {
-    setActiveLayer(editor, layerSel.value);
-  });
+  on(layerSel, 'change', () => setActiveLayer(editor, layerSel.value));
 
   const initial = layerSel.value || '0';
   setActiveLayer(editor, initial);

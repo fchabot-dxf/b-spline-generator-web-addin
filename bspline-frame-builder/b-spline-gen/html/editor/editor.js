@@ -4,7 +4,8 @@
  */
 
 import { initIO, save, saveWithTextCopies, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
-import { initText, commitText, cancelText, setFontFamily, setFontSize } from './editor-text.js';
+import { commitText, cancelText } from './editor-text-session.js';
+import { initText, setFontFamily, setFontSize } from './editor-text-style.js';
 import { fitCurve, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance, getNodes, getNearbyElement } from './editor-hit.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';

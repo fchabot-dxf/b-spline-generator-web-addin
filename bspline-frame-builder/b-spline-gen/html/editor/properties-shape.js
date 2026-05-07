@@ -1,4 +1,4 @@
-import { el } from './dom.js';
+import { el, on } from './dom.js';
 
 export function initShapeProperties(editor) {
   const strokeNum = el('editorStrokeWidth');
@@ -14,7 +14,7 @@ export function initShapeProperties(editor) {
     editor.setStrokeWidth(clamped);
   };
 
-  strokeNum.addEventListener('input', () => syncStroke(strokeNum.value));
-  minusBtn?.addEventListener('click', () => syncStroke(parseFloat(strokeNum.value) - 0.1));
-  plusBtn?.addEventListener('click', () => syncStroke(parseFloat(strokeNum.value) + 0.1));
+  on(strokeNum, 'input', () => syncStroke(strokeNum.value));
+  on(minusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) - 0.1));
+  on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + 0.1));
 }

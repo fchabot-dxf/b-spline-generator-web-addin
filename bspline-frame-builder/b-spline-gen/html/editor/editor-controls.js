@@ -1,4 +1,4 @@
-import { el, query, addClass, removeClass } from './dom.js';
+import { el, query, addClass, removeClass, on } from './dom.js';
 import { initShapeProperties } from './properties-shape.js';
 import { initTextProperties } from './properties-text.js';
 import { initExpandProperties } from './properties-expand.js';
@@ -12,15 +12,12 @@ function setupEditorToolbar(editor) {
 
     const sidebarToggle = el('editorSidebarToggle');
     const sidebar = query('.editor-sidebar');
-    sidebarToggle?.addEventListener('click', () => {
+    on(sidebarToggle, 'click', () => {
         if (!sidebar) return;
         sidebar.classList.toggle('collapsed');
     });
 
-    const snapToggle = el('editorSnapToggle');
-    snapToggle?.addEventListener('click', () => {
-        editor.toggleSnapping();
-    });
+    on('editorSnapToggle', 'click', () => editor.toggleSnapping());
 }
 
 export { setupEditorToolbar };

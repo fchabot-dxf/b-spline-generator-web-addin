@@ -7,15 +7,16 @@
  */
 import { COORD_SYSTEM } from '../core/coords.js';
 import { add, sub, mul, dot, distSq, distBetween, normalize } from './editor-math.js';
+import { dbg, isDebugEnabled } from './debug.js';
 
 export function fitCurve(editor, points, error) {
     if (points.length < 2) return "";
-    if (window && window.console) {
-        console.log(`[COORD_STD] fitCurve: Converting ${points.length} points for export`);
+    if (isDebugEnabled()) {
+        dbg('COORD_STD', `fitCurve: Converting ${points.length} points for export`);
         points.forEach((p, i) => {
             const orig = { x: p[0], y: p[1] };
             const phys = COORD_SYSTEM.toPhysical(orig.x, orig.y);
-            console.log(`[COORD_STD] fitCurve: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
+            dbg('COORD_STD', `fitCurve: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
         });
     }
     const pts = points.map(p => ({ x: p[0], y: p[1] }));
@@ -151,11 +152,11 @@ function getPointLineDist(pt, a, b) {
 
 export function getHybridBezierPath(points, isClosed = false, cornerAngleThreshold = 95) {
     if (points.length < 2) return "";
-    if (window && window.console) {
+    if (isDebugEnabled()) {
         points.forEach((p, i) => {
             const orig = { x: p[0], y: p[1] };
             const phys = COORD_SYSTEM.toPhysical(orig.x, orig.y);
-            console.log(`[COORD_STD] getHybridBezierPath: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
+            dbg('COORD_STD', `getHybridBezierPath: pt${i} UI (${orig.x},${orig.y}) -> Physical (${phys.x},${phys.y})`);
         });
     }
     if (points.length === 2) {

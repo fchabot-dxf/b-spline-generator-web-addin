@@ -1,4 +1,4 @@
-import { el } from './dom.js';
+import { el, on } from './dom.js';
 import { performExpand } from './expand.js';
 
 export function initExpandProperties(editor) {
@@ -9,46 +9,33 @@ export function initExpandProperties(editor) {
     const smoothIn = el('editorExpandSmooth');
     const runBtn = el('editorRunExpand');
 
-    if (detailIn) {
-        detailIn.addEventListener('change', () => {
-            editor._expandDetail = parseFloat(detailIn.value) || 1.0;
-        });
-    }
-    if (smoothIn) {
-        smoothIn.addEventListener('change', () => {
-            editor._expandSimplify = parseInt(smoothIn.value) || 15;
-        });
-    }
+    on(detailIn, 'change', () => { editor._expandDetail = parseFloat(detailIn.value) || 1.0; });
+    on(smoothIn, 'change', () => { editor._expandSimplify = parseInt(smoothIn.value) || 15; });
+    on(runBtn, 'click', () => performExpand(editor));
 
-    if (runBtn) {
-        runBtn.addEventListener('click', () => {
-            performExpand(editor);
-        });
-    }
-
-    // 4. Steppers for Detail
+    // Steppers for Detail
     const dMinus = el('editorExpandDetailMinus');
     const dPlus = el('editorExpandDetailPlus');
     if (dMinus && dPlus && detailIn) {
-        dMinus.addEventListener('click', () => {
+        on(dMinus, 'click', () => {
             detailIn.value = (parseFloat(detailIn.value) - 0.2).toFixed(1);
             detailIn.dispatchEvent(new Event('change'));
         });
-        dPlus.addEventListener('click', () => {
+        on(dPlus, 'click', () => {
             detailIn.value = (parseFloat(detailIn.value) + 0.2).toFixed(1);
             detailIn.dispatchEvent(new Event('change'));
         });
     }
 
-    // 5. Steppers for Smoothness
+    // Steppers for Smoothness
     const sMinus = el('editorExpandSmoothMinus');
     const sPlus = el('editorExpandSmoothPlus');
     if (sMinus && sPlus && smoothIn) {
-        sMinus.addEventListener('click', () => {
+        on(sMinus, 'click', () => {
             smoothIn.value = parseInt(smoothIn.value) - 1;
             smoothIn.dispatchEvent(new Event('change'));
         });
-        sPlus.addEventListener('click', () => {
+        on(sPlus, 'click', () => {
             smoothIn.value = parseInt(smoothIn.value) + 1;
             smoothIn.dispatchEvent(new Event('change'));
         });
