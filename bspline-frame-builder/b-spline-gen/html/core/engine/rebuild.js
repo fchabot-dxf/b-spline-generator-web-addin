@@ -13,6 +13,7 @@ import {
 import { checkPreBounds, countPostIntersections, resampleDelta } from '../sculpt.js';
 import { fusLog, sendFusionMeshPreview } from '../fusion-bridge.js';
 import { COORD_SYSTEM } from '../coords.js';
+import { dbg } from '../debug.js';
 import { getSmoothedHeights } from './utils.js';
 import { scheduleRebuild } from './scheduler.js';
 
@@ -139,7 +140,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
             if (!body || body.length !== nx * nz) return;
             if (fillet && fillet.length !== nx * nz) return;
 
-            console.log(`[STAMP DEBUG] Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
+            dbg('STAMP DEBUG', `Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
             const suppressStrength = (typeof layer.suppression === 'number') ? layer.suppression : 0;
             const blurRadius = layer.smoothing || 0;
             const smoothedTerrain = suppressStrength > 0

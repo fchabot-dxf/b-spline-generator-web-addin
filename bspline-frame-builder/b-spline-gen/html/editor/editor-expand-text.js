@@ -15,6 +15,7 @@
  */
 import { FONT_MAP } from './editor-fonts.js';
 import { dbg } from './debug.js';
+import { localAnchor } from './editor-coords.js';
 
 export async function expandText(editor, el, { commit = true } = {}) {
     if (el.type !== 'text') return false;
@@ -80,14 +81,10 @@ export async function expandText(editor, el, { commit = true } = {}) {
             }).join('');
         }
 
-        // Combine the element's transform matrix with the raw x/y
-        // attribute. IMPORTANT: read x/y via attr(), NOT via el.x()/
-        // el.y() — those return the rendered bbox position, which
-        // already includes the transform translation. Using them here
-        // would double-count the transform and displace the expanded
-        // path by the same amount as any prior drag.
-        const ax = parseFloat(el.attr('x')) || 0;
-        const ay = parseFloat(el.attr('y')) || 0;
+        // localAnchor reads the raw x/y attrs (NOT el.x() / el.y(),
+        // which would return bbox.x/y with the transform already baked
+        // in — using those here would double-count any prior drag).
+        const { x: ax, y: ay } = localAnchor(el);
         const m = el.matrix().translate(ax, ay);
 
         try {

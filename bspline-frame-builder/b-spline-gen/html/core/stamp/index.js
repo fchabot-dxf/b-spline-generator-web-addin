@@ -14,6 +14,7 @@
  * new profile means dropping in a file, not editing this loop.
  */
 import { COORD_SYSTEM } from '../coords.js';
+import { dbg } from '../debug.js';
 import { computeSDF, sampleSDF, powerStep } from './sdf.js';
 import {
     sanitizeSvgForRaster,
@@ -87,7 +88,7 @@ export async function rasterizeSvg(
     edgeFilletRadius = 0,
     filletPower = 2.2,
 ) {
-    console.log(`[STAMP DEBUG] Rasterizing for grid: ${nx}x${nz}. Stock: ${widthIn}x${heightIn}`);
+    dbg('STAMP DEBUG', `Rasterizing for grid: ${nx}x${nz}. Stock: ${widthIn}x${heightIn}`);
 
     return new Promise(async (resolve) => {
         const processedSvg = sanitizeSvgForRaster(svgText);
@@ -103,15 +104,13 @@ export async function rasterizeSvg(
         const cacheKey = `${quickHash(safeSvgText)}_${blurIn}_${bufferW}x${bufferH}`;
         const cached = getCachedSdf(cacheKey);
         if (cached) {
-            console.log('[STAMP DEBUG] SDF cache hit — skipping render + SDF compute.');
+            dbg('STAMP DEBUG', 'SDF cache hit — skipping render + SDF compute.');
             finishRaster(cached.sdf, cached.maxSdfInsidePx);
             return;
         }
 
-        if (window && window.console) {
-            const viewBoxMatch = safeSvgText.match(/viewBox="([^"]+)"/i);
-            console.log('[STAMP DEBUG] rasterizeSvg: bufferW=', bufferW, 'bufferH=', bufferH, 'viewBox=', viewBoxMatch ? viewBoxMatch[1] : 'none');
-        }
+        const viewBoxMatch = safeSvgText.match(/viewBox="([^"]+)"/i);
+        dbg('STAMP DEBUG', 'rasterizeSvg: bufferW=', bufferW, 'bufferH=', bufferH, 'viewBox=', viewBoxMatch ? viewBoxMatch[1] : 'none');
 
         // --- Step 1: native browser SVG render (correct fonts, no canvg quirks) ---
         stampCtx.clearRect(0, 0, bufferW, bufferH);
@@ -121,14 +120,14 @@ export async function rasterizeSvg(
         try {
             await renderSvgNative(stampCtx, safeSvgText, bufferW, bufferH);
             nativeOk = true;
-            console.log('[STAMP DEBUG] Native SVG render succeeded.');
+            dbg('STAMP DEBUG', 'Native SVG render succeeded.');
         } catch (nativeErr) {
             console.warn('[SVG DEBUG] Native render failed, falling back to canvg:', nativeErr);
         }
 
         if (nativeOk) {
             const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
-            console.log('[STAMP DEBUG] Rasterization complete (native). Mask generated.');
+            dbg('STAMP DEBUG', 'Rasterization complete (native). Mask generated.');
             startSdfFromImageData(imageData);
             return;
         }
@@ -141,7 +140,7 @@ export async function rasterizeSvg(
                 const instance = await Canvg.fromString(stampCtx, safeSvgText, { ignoreAnimation: true, ignoreMouse: true });
                 await instance.render();
                 const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
-                console.log('[STAMP DEBUG] Rasterization complete (canvg fallback). Mask generated.');
+                dbg('STAMP DEBUG', 'Rasterization complete (canvg fallback). Mask generated.');
                 startSdfFromImageData(imageData);
             } catch (err) {
                 console.error('[SVG DEBUG] rasterizeSvg: canvg render also failed:', err);
@@ -231,8 +230,8 @@ export async function rasterizeSvg(
 
             for (let j = 0; j < nz; j++) {
                 const fy = COORD_SYSTEM.gridRowToRasterY(j, nz, bufferH);
-                if (window && window.console && (j === 0 || j === nz - 1)) {
-                    console.log(`[STAMP DEBUG] gridRowToRasterY: j=${j}/${nz - 1} -> fy=${fy}`);
+                if (j === 0 || j === nz - 1) {
+                    dbg('STAMP DEBUG', `gridRowToRasterY: j=${j}/${nz - 1} -> fy=${fy}`);
                 }
 
                 for (let i = 0; i < nx; i++) {

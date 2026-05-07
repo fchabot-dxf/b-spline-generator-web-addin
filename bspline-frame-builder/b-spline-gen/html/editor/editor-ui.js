@@ -2,6 +2,7 @@
  * editor-ui.js - Mode management, toolbar sync, and selection highlights for VectorEditor.
  */
 import { el as getEl, queryAll, query } from './dom.js';
+import { worldBbox } from './editor-coords.js';
 
 export function setMode(editor, mode) {
     if (editor._editingTextEl) editor._commitText();
@@ -109,7 +110,10 @@ function _renderHighlight(editor, el, color, opts) {
     const { textFillOpacity, textStrokeOpacity, lineStrokeOpacity, back } = opts;
     let shape;
     if (el.type === 'text') {
-        const b = el.bbox();
+        // worldBbox bakes the element's transform into the bbox so the
+        // highlight follows drag-translated text instead of staying at
+        // the local x/y attrs.
+        const b = worldBbox(el);
         shape = editor._highlightLayer.rect(b.w + 0.1, b.h + 0.04)
             .move(b.x - 0.05, b.y - 0.02)
             .fill({ color, opacity: textFillOpacity })

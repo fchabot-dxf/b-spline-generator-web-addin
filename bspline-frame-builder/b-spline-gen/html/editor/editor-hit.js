@@ -9,6 +9,7 @@
  *     filtered to the active layer.
  */
 import { isEditableByLayer } from './layers.js';
+import { worldPoint } from './editor-coords.js';
 
 export function getDynamicTolerance(editor, px = 5) {
     if (!editor._draw) return 0.1;
@@ -17,30 +18,6 @@ export function getDynamicTolerance(editor, px = 5) {
     if (!svgEl) return 0.1;
     const screenWidth = svgEl.clientWidth || 800;
     return (px * view.width) / screenWidth;
-}
-
-/**
- * Apply only the element's own transform attribute to a local-space
- * point. Earlier versions used `el.node.getCTM()`, which returns the
- * cumulative matrix all the way to the SVG viewport (i.e., screen
- * pixels) — that scaled node positions to ~600× the click coords and
- * broke the node hit-test on every path. SVG.js's `matrix()` returns
- * just the element's transform attribute, which is what we want: the
- * sketch group itself has no transform, so the element's matrix maps
- * local space directly into the user/model space the click point uses.
- */
-function _transformPoint(el, pt) {
-    if (!el || typeof el.matrix !== 'function') return pt;
-    try {
-        const m = el.matrix();
-        if (!m) return pt;
-        return {
-            x: m.a * pt.x + m.c * pt.y + m.e,
-            y: m.b * pt.x + m.d * pt.y + m.f,
-        };
-    } catch (err) {
-        return pt;
-    }
 }
 
 export function getNodes(el) {
@@ -70,7 +47,7 @@ export function getNodes(el) {
     } else if (el.type === 'circle' || el.type === 'ellipse') {
         pts.push({ x: el.attr('cx'), y: el.attr('cy') });
     }
-    return pts.map(pt => _transformPoint(el, pt));
+    return pts.map(pt => worldPoint(el, pt));
 }
 
 export function getNearbyElement(editor, pt, tol = 0.1) {

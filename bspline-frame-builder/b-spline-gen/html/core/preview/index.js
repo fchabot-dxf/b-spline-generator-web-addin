@@ -13,6 +13,7 @@
 import { clampedKnots, evalBSplineSurface } from '../bspline-math.js';
 import { P } from '../state.js';
 import { COORD_SYSTEM } from '../coords.js';
+import { dbg } from '../debug.js';
 import { ViewCube } from './view-cube.js';
 
 export class TerrainPreview {
@@ -424,19 +425,11 @@ export class TerrainPreview {
     if (showSolid) {
         // Always use the liveBrushColours (with highlight) for the top surface if present
         const topColours = liveBrushColours || meshColours;
-        if (liveBrushColours) {
-          console.log('[VertexColor] liveBrushColours sample:', Array.from(liveBrushColours.slice(0, 12)));
-        }
-        if (meshColours) {
-          console.log('[VertexColor] meshColours sample:', Array.from(meshColours.slice(0, 12)));
-        }
-        if (botColours) {
-          console.log('[VertexColor] botColours sample:', Array.from(botColours.slice(0, 12)));
-        }
-        if (liveBrushColours) {
-          console.log('[VertexColor] Blending liveBrushColours highlight into top surface.');
-        }
-        console.log('[VertexColor] showSolid=true, calling _buildSolidMesh with topColours:', topColours && topColours.length, 'botColours:', botColours && botColours.length);
+        if (liveBrushColours) dbg('VertexColor', 'liveBrushColours sample:', Array.from(liveBrushColours.slice(0, 12)));
+        if (meshColours)      dbg('VertexColor', 'meshColours sample:', Array.from(meshColours.slice(0, 12)));
+        if (botColours)       dbg('VertexColor', 'botColours sample:', Array.from(botColours.slice(0, 12)));
+        if (liveBrushColours) dbg('VertexColor', 'Blending liveBrushColours highlight into top surface.');
+        dbg('VertexColor', 'showSolid=true, calling _buildSolidMesh with topColours:', topColours && topColours.length, 'botColours:', botColours && botColours.length);
         this._buildSolidMesh(offsetPts, pos, nx, nz, topColours, THREE, botColours, flatShading);
     } else {
         // Non-solid mode: render only the top spline surface.
@@ -1011,12 +1004,11 @@ export class TerrainPreview {
 
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     if (useColours) {
-      // Log a sample of meshColours and botColours
-      console.log('[VertexColor] meshColours sample:', meshColours.slice(0, 12));
-      if (botColours) console.log('[VertexColor] botColours sample:', botColours.slice(0, 12));
+      dbg('VertexColor', 'meshColours sample:', meshColours.slice(0, 12));
+      if (botColours) dbg('VertexColor', 'botColours sample:', botColours.slice(0, 12));
       geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
     } else {
-      console.log('[VertexColor] _buildSolidMesh: Not using vertex colors. useColours:', useColours);
+      dbg('VertexColor', '_buildSolidMesh: Not using vertex colors. useColours:', useColours);
     }
 
     // Sanity check: avoid NaN/Inf geometry from propagating into Raycaster/Three.js computeBoundingSphere
@@ -1065,7 +1057,7 @@ export class TerrainPreview {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1
     });
-    console.log('[VertexColor] _buildSolidMesh: Created MeshPhongMaterial with vertexColors:', useColours);
+    dbg('VertexColor', '_buildSolidMesh: Created MeshPhongMaterial with vertexColors:', useColours);
 
     this._mesh = new THREE.Mesh(geometry, mat);
     this._mesh.visible = !this._curvesVisible;

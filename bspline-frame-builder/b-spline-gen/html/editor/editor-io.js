@@ -204,7 +204,11 @@ export function open(editor, svgString, w, h) {
             editor._sketchLayer.svg(svgEl.innerHTML);
             editor._sketchLayer.children().forEach(ch => {
                 if (ch.hasClass('calib-anchor')) ch.remove();
-                ch.attr('transform', null);
+                // DO NOT strip transform here. The select-mode drag
+                // writes its offset as transform="translate(dx, dy)" on
+                // the element (SVG.js's translate() helper). Wiping that
+                // on reopen sends every dragged element back to its
+                // original x/y attrs.
                 ch.css('cursor', ch.type === 'text' ? 'text' : 'pointer');
             });
 
