@@ -55,8 +55,16 @@ export function syncUItoParam(key, value) {
     const inputId = INPUT_PAIRS[key] || key;
     const input = document.getElementById(inputId);
     if (input) {
-        if (input.type === 'checkbox') input.checked = !!value;
-        else input.value = value;
+        if (input.type === 'checkbox') {
+            input.checked = !!value;
+            // Programmatic .checked = … doesn't fire 'change'. Listeners
+            // registered in bindTogglePanel rely on 'change' to keep
+            // dependent panels in sync; dispatch one explicitly so the
+            // initial sync from P state matches user-toggle behaviour.
+            input.dispatchEvent(new Event('change'));
+        } else {
+            input.value = value;
+        }
     }
     const sliderId = SLIDER_PAIRS[key];
     if (sliderId) {
