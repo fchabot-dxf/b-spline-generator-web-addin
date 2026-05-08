@@ -117,6 +117,14 @@ export const DEFAULT = {
 
 export let P = { ...DEFAULT };
 
+// For params whose <input> element id differs from the param name itself.
+// (`thickness` lives in `thickenOffset` after the Apr 2026 UI rename.)
+// Both bindControls and syncUItoParam consult this map before falling back
+// to `getElementById(paramName)`.
+export const INPUT_PAIRS = {
+    thickness: 'thickenOffset',
+};
+
 export const SLIDER_PAIRS = {
     scale: 'scaleSlider',
     macroScale: 'macroSlider',
@@ -133,7 +141,7 @@ export const SLIDER_PAIRS = {
     seedRotation: 'seedRotationSlider',
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
-    thickness: 'thicknessSlider',
+    thickness: 'thickenOffsetSlider',
     warpIntensity: 'warpIntensitySlider',
     sculptTopRadius: 'sculptTopRadiusSlider',
     sculptTopStrength: 'sculptTopStrengthSlider',

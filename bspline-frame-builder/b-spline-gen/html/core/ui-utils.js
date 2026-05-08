@@ -2,7 +2,7 @@
  * ui-utils.js — DOM binding and synchronization.
  */
 
-import { SLIDER_PAIRS, RESOLUTIONS } from './state.js';
+import { INPUT_PAIRS, SLIDER_PAIRS, RESOLUTIONS } from './state.js';
 import { resolveGrid } from './terrain.js';
 
 /**
@@ -52,7 +52,8 @@ export function syncPair(numId, sldId, desc = '') {
  * Syncs current State value to the UI (used for Undo/Redo/Init)
  */
 export function syncUItoParam(key, value) {
-    const input = document.getElementById(key);
+    const inputId = INPUT_PAIRS[key] || key;
+    const input = document.getElementById(inputId);
     if (input) {
         if (input.type === 'checkbox') input.checked = !!value;
         else input.value = value;

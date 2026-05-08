@@ -1,4 +1,4 @@
-import { P, SLIDER_PAIRS, lastResult } from '../core/state.js';
+import { P, INPUT_PAIRS, SLIDER_PAIRS, lastResult } from '../core/state.js';
 import { bind, syncPair } from '../core/ui-utils.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { applyParam, updateSculptToolButtons } from './param-manager.js';
@@ -9,7 +9,8 @@ import { initStampPanel } from './stamp/index.js';
 
 export function bindControls(preview) {
   Object.keys(P).forEach(key => {
-    const el = document.getElementById(key);
+    const inputId = INPUT_PAIRS[key] || key;
+    const el = document.getElementById(inputId);
     if (!el) return;
 
     let type = 'number';
@@ -17,7 +18,7 @@ export function bindControls(preview) {
     if (el.type === 'checkbox') type = 'checkbox';
     if (el.type === 'text') type = 'string';
 
-    bind(key, type, v => applyParam(key, v));
+    bind(inputId, type, v => applyParam(key, v));
   });
 
   Object.keys(SLIDER_PAIRS).forEach(key => {
