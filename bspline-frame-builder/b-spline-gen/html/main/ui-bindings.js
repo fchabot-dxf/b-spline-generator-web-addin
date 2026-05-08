@@ -22,7 +22,7 @@ export function bindControls(preview) {
   });
 
   Object.keys(SLIDER_PAIRS).forEach(key => {
-    syncPair(key, SLIDER_PAIRS[key]);
+    syncPair(INPUT_PAIRS[key] || key, SLIDER_PAIRS[key]);
   });
 
   const bindTogglePanel = (id, targetId) => {
