@@ -85,5 +85,13 @@ export const COORD_SYSTEM = {
         };
         COORD_SYSTEM.log(`[COORD_STD] toUI: Physical (${x},${y}) -> UI (${result.x},${result.y})`);
         return result;
+    },
+
+    // Transform a 3D point between Z-up (native) and Y-up orientations.
+    // Used by stepWriter and preview.getMeshData so both encode orientation
+    // identically.
+    transformPoint: (x, y, z, orientation = 'z-up') => {
+        if (orientation === 'y-up') return [x, z, -y];
+        return [x, y, z];
     }
 };
