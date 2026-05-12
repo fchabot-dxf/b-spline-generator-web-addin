@@ -1226,6 +1226,188 @@ def _is_surface_body_name(bn):
     return False
 
 
+# ---------------------------------------------------------------------------
+# Generic mode -- one MM per component
+# ---------------------------------------------------------------------------
+
+def build_mms_from_components(cam, design, component_names, logger=None):
+    """Generic mode: build one MM per component name.
+
+    Each MM is a full snapshot of the Design with every component EXCEPT
+    the target deleted. The document wrapper occurrence is preserved
+    (it's not in ``component_names`` so the filter keeps it automatically).
+
+    Parameters
+    ----------
+    cam : adsk.cam.CAM
+    design : adsk.fusion.Design
+        Source design (used for user-parameter propagation).
+    component_names : list[str]
+        Top-level component names to build MMs for, as returned by the
+        palette's SCAN action (``root.occurrences[i].component.name``).
+
+    Returns
+    -------
+    dict[str, ManufacturingModel]
+        ``{component_name: ManufacturingModel}`` for each successfully
+        built MM.
+    """
+    _ensure_cam_builder_user_parameters(design, logger)
+
+    app = adsk.core.Application.get()
+    original_active = None
+    try:
+        des = get_design(app, logger)
+        if des:
+            original_active = des.activeEditObject
+    except Exception:
+        pass
+
+    out = {}
+    for comp_name in component_names:
+        mm = _build_mm_for_component(cam, design, comp_name, component_names, logger)
+        if mm:
+            out[comp_name] = mm
+
+    if original_active is not None:
+        try:
+            original_active.activate()
+        except Exception as e:
+            _log(logger, f"MM BUILD GENERIC: restore activeEditObject failed: {e}", "DEBUG")
+
+    return out
+
+
+def _build_mm_for_component(cam, design, comp_name, all_comp_names, logger=None):
+    """Build one MM that contains only the occurrence for ``comp_name``."""
+    if cam is None:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): cam is None", "ERROR")
+        return None
+
+    try:
+        mm_input = cam.manufacturingModels.createInput()
+        mm_input.name = f'MM - {comp_name}'
+        mm = cam.manufacturingModels.add(mm_input)
+    except Exception as e:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): manufacturingModels.add raised: {e}", "ERROR")
+        return None
+
+    if mm is None:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): manufacturingModels.add returned None", "ERROR")
+        return None
+
+    _log(logger, f"MM BUILD GENERIC ({comp_name}): created '{mm.name}'")
+
+    try:
+        kept, deleted, failed = _apply_generic_filter(mm, comp_name, all_comp_names, logger)
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): filter -> kept={kept} deleted={deleted} failed={failed}")
+    except Exception as e:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): filter raised: {e}", "WARNING")
+
+    try:
+        _propagate_user_parameters_to_mm(mm, design, logger)
+    except Exception as e:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): param propagation raised: {e}", "WARNING")
+
+    return mm
+
+
+def _apply_generic_filter(mm, target_comp_name, all_comp_names, logger):
+    """Keep only the target component; delete every other known component.
+
+    Uses ``all_comp_names`` to distinguish "sibling component to delete"
+    from "document wrapper to keep": any occurrence whose component name
+    is in ``all_comp_names`` but is NOT the target → delete. Occurrences
+    whose name is NOT in ``all_comp_names`` are the document wrapper
+    (named after the document, not after any component) → keep.
+
+    Empirically verified on ``canoe_plus_paddle v3``:
+      allOccurrences inside an MM built from that design contains:
+        - 'Canoe_grab'                (component → keep if target, else delete)
+        - 'Part4^canoe_plus_paddle'   (component → keep if target, else delete)
+        - 'canoe_plus_paddle v2 (1)'  (document wrapper → NOT in all_comp_names → keep)
+    """
+    target_lower = target_comp_name.lower()
+    all_lower = {n.lower() for n in all_comp_names}
+
+    try:
+        comp = mm.occurrence.component
+    except Exception as e:
+        _log(logger, f"GENERIC FILTER ({target_comp_name}): mm.occurrence.component failed: {e}", "ERROR")
+        return (0, 0, 0)
+
+    try:
+        all_occs = [comp.allOccurrences.item(i) for i in range(comp.allOccurrences.count)]
+    except Exception as e:
+        _log(logger, f"GENERIC FILTER ({target_comp_name}): enumerate allOccurrences failed: {e}", "ERROR")
+        return (0, 0, 0)
+
+    kept = 0
+    to_delete = []
+    for occ in all_occs:
+        try:
+            occ_comp_name = (occ.component.name or '').lower()
+        except Exception:
+            occ_comp_name = ''
+
+        if occ_comp_name == target_lower:
+            kept += 1
+            _log(logger, f"GENERIC FILTER ({target_comp_name}): KEEP '{occ.component.name}' (target)", "DEBUG")
+        elif occ_comp_name in all_lower:
+            # Known sibling component → delete
+            to_delete.append((occ, occ.component.name))
+            _log(logger, f"GENERIC FILTER ({target_comp_name}): queue DEL '{occ.component.name}' (sibling)", "DEBUG")
+        else:
+            # Not a known component name → document wrapper → keep
+            kept += 1
+            _log(logger, f"GENERIC FILTER ({target_comp_name}): KEEP '{occ.component.name}' (wrapper)", "DEBUG")
+
+    # Deepest-first so parent deletions don't orphan child deleteMe() calls
+    def _depth(t):
+        try:
+            return -len(t[0].fullPathName or '')
+        except Exception:
+            return 0
+    to_delete.sort(key=_depth)
+
+    # Wrap in a BaseFeature so the deletions collapse to one timeline entry
+    base_feat = None
+    try:
+        base_feat = comp.features.baseFeatures.add()
+        base_feat.startEdit()
+    except Exception as e:
+        _log(logger, f"GENERIC FILTER ({target_comp_name}): BaseFeature wrap unavailable: {e}", "DEBUG")
+        base_feat = None
+
+    deleted = 0
+    failed = 0
+    try:
+        for occ, occ_name in to_delete:
+            try:
+                if not occ.isValid:
+                    deleted += 1
+                    continue
+                ok = occ.deleteMe()
+                if ok:
+                    deleted += 1
+                    _log(logger, f"GENERIC FILTER ({target_comp_name}): DEL '{occ_name}'", "DEBUG")
+                else:
+                    failed += 1
+                    _log(logger, f"GENERIC FILTER ({target_comp_name}): deleteMe returned False for '{occ_name}'", "WARNING")
+            except Exception as e:
+                failed += 1
+                _log(logger, f"GENERIC FILTER ({target_comp_name}): deleteMe raised for '{occ_name}': {e}", "WARNING")
+    finally:
+        if base_feat is not None:
+            try:
+                base_feat.finishEdit()
+                _log(logger, f"GENERIC FILTER ({target_comp_name}): collapsed {deleted} deletions into 1 BaseFeature entry", "DEBUG")
+            except Exception as e:
+                _log(logger, f"GENERIC FILTER ({target_comp_name}): BaseFeature.finishEdit failed: {e}", "WARNING")
+
+    return (kept, deleted, failed)
+
+
 def _mm_display_name(rule):
     return {
         'stock':        'MM - Stock (raw blank)',

@@ -21,8 +21,21 @@ import adsk.fusion
 from . import cam_workspace, mm_builder, setup_builder
 
 
-def run(classifier, app=None, logger=None):
+def run(classifier, app=None, logger=None, mode='bspline', component_names=None):
     """Run the full pipeline.
+
+    Parameters
+    ----------
+    classifier : callable
+        Body-classifier function ``(BRepBody) -> str``. Used only in
+        B-spline mode; ignored in generic mode.
+    mode : str
+        ``'bspline'`` (default) — hardcoded 3-MM / 4-setup B-spline
+        pipeline. ``'generic'`` — one MM + Setup per component name in
+        ``component_names``.
+    component_names : list[str] or None
+        Required when ``mode='generic'``. Top-level component names to
+        build MMs for (from the palette's SCAN result).
 
     Returns
     -------
@@ -31,14 +44,16 @@ def run(classifier, app=None, logger=None):
 
             {
               'ok': bool,
+              'mode': str,
               'cam_acquired': bool,
-              'mms': {rule: bool, ...},   # True == built
+              'mms': {name: bool, ...},
               'setups': [{'name': str, 'ok': bool}, ...],
               'errors': [str, ...],
             }
     """
     report = {
         'ok': False,
+        'mode': mode,
         'cam_acquired': False,
         'mms': {},
         'setups': [],
@@ -95,22 +110,55 @@ def run(classifier, app=None, logger=None):
         )
         return report
 
-    mms = mm_builder.build_all_mms(cam, design, classifier, logger)
-    for rule in mm_builder.MM_RULES:
-        report['mms'][rule] = (rule in mms)
-        if rule not in mms:
-            report['errors'].append(f"MM '{rule}' was not built.")
+    if mode == 'generic':
+        # ── Generic: one MM + Setup per selected component ──────────────────
+        if not component_names:
+            report['errors'].append(
+                "Generic mode requires component_names. "
+                "Use SCAN in the palette to discover components first."
+            )
+            return report
 
-    setups = setup_builder.build_all_setups(cam, mms, logger)
-    built_names = {s.name for s in setups}
-    for spec in setup_builder.SETUP_SPECS:
-        report['setups'].append({
-            'name': spec['name'],
-            'ok':   spec['name'] in built_names,
-        })
+        mms = mm_builder.build_mms_from_components(cam, design, component_names, logger)
+        for name in component_names:
+            report['mms'][name] = (name in mms)
+            if name not in mms:
+                report['errors'].append(f"MM for '{name}' was not built.")
 
-    report['ok'] = (
-        len(mms) == len(mm_builder.MM_RULES)
-        and len(setups) == len(setup_builder.SETUP_SPECS)
-    )
+        setup_results = setup_builder.build_setups_generic(cam, mms, logger)
+        built_names = {n for n, _ in setup_results}
+        for name in component_names:
+            report['setups'].append({
+                'name': name,
+                'ok':   name in built_names,
+            })
+            if name not in built_names:
+                report['errors'].append(f"Setup for '{name}' was not built.")
+
+        report['ok'] = (
+            len(mms) == len(component_names)
+            and len(setup_results) == len(component_names)
+        )
+
+    else:
+        # ── B-spline: hardcoded 3-MM / 4-setup pipeline ──────────────────────
+        mms = mm_builder.build_all_mms(cam, design, classifier, logger)
+        for rule in mm_builder.MM_RULES:
+            report['mms'][rule] = (rule in mms)
+            if rule not in mms:
+                report['errors'].append(f"MM '{rule}' was not built.")
+
+        setups = setup_builder.build_all_setups(cam, mms, logger)
+        built_names = {s.name for s in setups}
+        for spec in setup_builder.SETUP_SPECS:
+            report['setups'].append({
+                'name': spec['name'],
+                'ok':   spec['name'] in built_names,
+            })
+
+        report['ok'] = (
+            len(mms) == len(mm_builder.MM_RULES)
+            and len(setups) == len(setup_builder.SETUP_SPECS)
+        )
+
     return report

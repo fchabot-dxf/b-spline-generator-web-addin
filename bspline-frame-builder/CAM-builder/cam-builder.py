@@ -214,9 +214,11 @@ class _HtmlEventHandler(adsk.core.HTMLEventHandler):
             data = json.loads(args.data) if args.data else {}
             action = data.get('action')
             if action == 'generate':
-                _do_generate()
+                _do_generate(data)
             elif action == 'preview':
                 _do_preview()
+            elif action == 'scan':
+                _do_scan()
             else:
                 _log(f"unknown HTML action: {action!r}", "WARNING")
         except Exception:
@@ -297,8 +299,60 @@ def _do_preview():
     })
 
 
-def _do_generate():
-    """Pass 1: build 3 MMs (no body filter) + 4 Setups."""
+def _do_scan():
+    """Enumerate top-level component names in the active design.
+
+    Uses ``root.occurrences`` (top-level only) so the document wrapper
+    occurrence inside an MM snapshot is never included. Result is sent
+    back to the palette as ``scan_result``.
+    """
+    app = adsk.core.Application.get()
+    design = None
+    try:
+        from cam_utils.get_design import get_design as _get_design
+        design = _get_design(app, logger=_logger)
+    except Exception:
+        design = adsk.fusion.Design.cast(app.activeProduct)
+
+    if not design:
+        _send_to_html('scan_result', {
+            'ok': False,
+            'msg': 'No active Design product. Open a design and try again.',
+        })
+        return
+
+    components = []
+    try:
+        root = design.rootComponent
+        for i in range(root.occurrences.count):
+            try:
+                occ = root.occurrences.item(i)
+                name = occ.component.name if occ.component else None
+                if name and name not in components:
+                    components.append(name)
+            except Exception as e:
+                _log(f"SCAN: occurrence[{i}] read failed: {e}", "WARNING")
+    except Exception as e:
+        _log_error("_do_scan: root walk failed\n" + traceback.format_exc())
+        _send_to_html('scan_result', {
+            'ok': False,
+            'msg': f'Scan failed: {e}',
+        })
+        return
+
+    _log(f"SCAN: found {len(components)} component(s): {components}")
+    _send_to_html('scan_result', {
+        'ok': True,
+        'components': components,
+    })
+
+
+def _do_generate(data=None):
+    """Build MMs + Setups. Supports both B-spline and generic modes."""
+    data = data or {}
+    mode = data.get('mode', 'bspline')
+    component_names = data.get('components', [])
+
     # Always reload the engine on each generate so iterative edits to
     # cam_engine.* (mm_builder, setup_builder, etc.) pick up without an
     # addin Stop/Start. The cost is a handful of imports, negligible
@@ -309,16 +363,23 @@ def _do_generate():
         _log_error("engine load failed\n" + traceback.format_exc())
         _send_to_html('report', {
             'ok': False,
+            'mode': mode,
             'errors': ['Engine load failed -- see log.']
         })
         return
 
     try:
-        report = _engine.run(classifier=_classify_body, logger=_logger)
+        report = _engine.run(
+            classifier=_classify_body,
+            logger=_logger,
+            mode=mode,
+            component_names=component_names,
+        )
     except Exception:
         _log_error("engine.run failed\n" + traceback.format_exc())
         _send_to_html('report', {
             'ok': False,
+            'mode': mode,
             'errors': ['Engine.run raised -- see log.']
         })
         return

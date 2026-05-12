@@ -61,9 +61,11 @@
     .cam-mm-stock   { background: #e8f1ff; color: #0066cc; }
     .cam-mm-bspline { background: #f3e8ff; color: #7b3fbf; }
     .cam-mm-frame   { background: #e8f6ee; color: #208a4f; }
+    .cam-mm-generic { background: #f5f5f5; color: #555; }
     .cam-row {
       display: flex;
       justify-content: space-between;
+      align-items: center;
       font-size: 11px;
     }
     .cam-row .k { color: var(--cad-text-muted); }
@@ -104,9 +106,159 @@
       border-radius: 50%;
       background: #ccc;
       display: inline-block;
+      flex-shrink: 0;
     }
     .cam-dot.ok   { background: var(--cad-accent-green); }
     .cam-dot.fail { background: #b00020; }
+
+    /* ── Mode toggle bar ── */
+    .cam-mode-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: #f0f0f0;
+      border-bottom: 1px solid var(--cad-border-soft);
+    }
+    .cam-mode-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--cad-text-muted);
+      letter-spacing: 0.06em;
+    }
+    .cam-mode-toggle {
+      display: flex;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .cam-mode-btn {
+      border: none;
+      background: transparent;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 4px 10px;
+      cursor: pointer;
+      color: var(--cad-text-muted);
+      transition: background 0.1s, color 0.1s;
+    }
+    .cam-mode-btn:first-child { border-right: 1px solid var(--cad-border-standard); }
+    .cam-mode-btn.active {
+      background: var(--cad-accent-blue);
+      color: #fff;
+    }
+    .cam-mode-btn:not(.active):hover {
+      background: #f0f0f0;
+      color: var(--cad-text-main);
+    }
+
+    /* ── Profile card ── */
+    .profile-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .profile-row select,
+    .profile-row input[type=text],
+    .profile-row input[type=number] {
+      flex: 1;
+      font-size: 11px;
+      font-family: inherit;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: 4px;
+      padding: 3px 6px;
+      color: var(--cad-text-main);
+      background: #fff;
+    }
+    .profile-row input[type=number] { flex: 0 0 64px; }
+    .profile-row select:focus,
+    .profile-row input:focus { outline: 1px solid var(--cad-accent-blue); }
+    .profile-row .k { font-size: 10px; color: var(--cad-text-muted); white-space: nowrap; }
+
+    /* ── Operations list ── */
+    .op-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 6px;
+      background: #f8f8f8;
+      border: 1px solid var(--cad-border-soft);
+      border-radius: 4px;
+      font-size: 10px;
+      flex-wrap: wrap;
+    }
+    .op-row select, .op-row input[type=number], .op-row input[type=text] {
+      font-size: 10px;
+      font-family: inherit;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: 3px;
+      padding: 2px 4px;
+      background: #fff;
+      color: var(--cad-text-main);
+    }
+    .op-row .op-label {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--cad-text-muted);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .op-remove-btn {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: #b00020;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0 2px;
+      flex-shrink: 0;
+    }
+    .op-remove-btn:hover { opacity: 0.7; }
+    .settings-divider {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--cad-text-muted);
+      margin: 4px 0 2px;
+    }
+
+    /* ── Generic section ── */
+    .comp-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 3px 0;
+    }
+    .comp-row label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
+    .comp-row input[type=checkbox] {
+      margin: 0;
+      cursor: pointer;
+      accent-color: var(--cad-accent-blue);
+    }
+    .comp-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--cad-text-muted);
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      min-width: 40px;
+      justify-content: flex-end;
+    }
+    .scan-empty {
+      font-size: 11px;
+      color: var(--cad-text-muted);
+      padding: 4px 0;
+    }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -124,69 +276,175 @@
       </div>
     </header>
 
+    <!-- Mode toggle -->
+    <div class="cam-mode-bar">
+      <span class="cam-mode-label">MODE</span>
+      <div class="cam-mode-toggle">
+        <button class="cam-mode-btn active" id="mode-bspline" type="button" onclick="setMode('bspline')">B-SPLINE</button>
+        <button class="cam-mode-btn" id="mode-generic" type="button" onclick="setMode('generic')">GENERIC</button>
+      </div>
+    </div>
+
     <main class="cam-scroll">
 
-      <div class="cam-card" data-setup="stock">
-        <div class="cam-card-head">
-          <div class="cam-card-title">Setup 1 &mdash; Stock</div>
-          <span class="cam-mm-tag cam-mm-stock">MM: stock</span>
-        </div>
-        <div class="cam-card-blurb">Raw stock blank &mdash; pre-machining state</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v warn">remove all</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v">Origin + Z up</span></div>
-        <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-stock"></span><span id="state-stock">pending</span></span>
-        </div>
-      </div>
+      <!-- ── B-SPLINE section (existing hardcoded pipeline) ── -->
+      <div id="bspline-section">
 
-      <div class="cam-card" data-setup="bspline_back">
-        <div class="cam-card-head">
-          <div class="cam-card-title">Setup 2 &mdash; B-spline Back</div>
-          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
+        <div class="cam-card" data-setup="stock">
+          <div class="cam-card-head">
+            <div class="cam-card-title">Setup 1 &mdash; Stock</div>
+            <span class="cam-mm-tag cam-mm-stock">MM: stock</span>
+          </div>
+          <div class="cam-card-blurb">Raw stock blank &mdash; pre-machining state</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v warn">remove all</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v">Origin + Z up</span></div>
+          <div class="cam-row"><span class="k">Status</span>
+            <span class="cam-status-row"><span class="cam-dot" id="dot-stock"></span><span id="state-stock">pending</span></span>
+          </div>
         </div>
-        <div class="cam-card-blurb">Back-side surfacing of the b-spline panel</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v">Box back, axes X/Y</span></div>
-        <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_back"></span><span id="state-bspline_back">pending</span></span>
-        </div>
-      </div>
 
-      <div class="cam-card" data-setup="bspline_top">
-        <div class="cam-card-head">
-          <div class="cam-card-title">Setup 3 &mdash; B-spline Top</div>
-          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
+        <div class="cam-card" data-setup="bspline_back">
+          <div class="cam-card-head">
+            <div class="cam-card-title">Setup 2 &mdash; B-spline Back</div>
+            <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
+          </div>
+          <div class="cam-card-blurb">Back-side surfacing of the b-spline panel</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v">Box back, axes X/Y</span></div>
+          <div class="cam-row"><span class="k">Status</span>
+            <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_back"></span><span id="state-bspline_back">pending</span></span>
+          </div>
         </div>
-        <div class="cam-card-blurb">Top-side surfacing &mdash; flip Y after Setup 2</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From Setup 2 IPV</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v action">Box top, axes X/Y (flip Y)</span></div>
-        <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
-        </div>
-      </div>
 
-      <div class="cam-card" data-setup="frame">
-        <div class="cam-card-head">
-          <div class="cam-card-title">Setup 4 &mdash; Frame</div>
-          <span class="cam-mm-tag cam-mm-frame">MM: frame</span>
+        <div class="cam-card" data-setup="bspline_top">
+          <div class="cam-card-head">
+            <div class="cam-card-title">Setup 3 &mdash; B-spline Top</div>
+            <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
+          </div>
+          <div class="cam-card-blurb">Top-side surfacing &mdash; flip Y after Setup 2</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From Setup 2 IPV</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v action">Box top, axes X/Y (flip Y)</span></div>
+          <div class="cam-row"><span class="k">Status</span>
+            <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
+          </div>
         </div>
-        <div class="cam-card-blurb">Frame profile cut &mdash; reorient flat</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove panel</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v action">Reoriented frame top</span></div>
-        <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-frame"></span><span id="state-frame">pending</span></span>
-        </div>
-      </div>
 
-      <div class="cam-pipeline">
-        <strong>Pipeline:</strong>
-        Build 3 Manufacturing Models &rarr; attach 4 Setups.
-        Operations stay empty &mdash; toolpath templates added later.
-      </div>
+        <div class="cam-card" data-setup="frame">
+          <div class="cam-card-head">
+            <div class="cam-card-title">Setup 4 &mdash; Frame</div>
+            <span class="cam-mm-tag cam-mm-frame">MM: frame</span>
+          </div>
+          <div class="cam-card-blurb">Frame profile cut &mdash; reorient flat</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove panel</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v action">Reoriented frame top</span></div>
+          <div class="cam-row"><span class="k">Status</span>
+            <span class="cam-status-row"><span class="cam-dot" id="dot-frame"></span><span id="state-frame">pending</span></span>
+          </div>
+        </div>
+
+        <div class="cam-pipeline">
+          <strong>Pipeline:</strong>
+          Build 3 Manufacturing Models &rarr; attach 4 Setups.
+          Operations stay empty &mdash; toolpath templates added later.
+        </div>
+
+      </div><!-- /#bspline-section -->
+
+      <!-- ── GENERIC section (one MM per component) ── -->
+      <div id="generic-section" class="hidden">
+
+        <div class="cam-card" id="scan-card">
+          <div class="cam-card-head">
+            <div class="cam-card-title">Design Components</div>
+            <button class="cad-btn" type="button" style="font-size:10px;padding:3px 8px;" onclick="runScan()">SCAN</button>
+          </div>
+          <div id="scan-empty" class="scan-empty">Click SCAN to discover top-level components in the active design.</div>
+          <div id="component-list" class="hidden"></div>
+        </div>
+
+        <!-- ── Profile manager card ── -->
+        <div class="cam-card" id="profile-card">
+          <div class="cam-card-head">
+            <div class="cam-card-title">CAM Profile</div>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <span id="profile-status" style="font-size:9px;color:var(--cad-text-muted);"></span>
+              <button class="cad-btn" type="button" style="font-size:10px;padding:3px 7px;color:#b00020;" onclick="deleteProfile()">DEL</button>
+            </div>
+          </div>
+          <!-- Select existing -->
+          <div class="profile-row">
+            <select id="profile-select" style="flex:1;" onchange="onProfileSelectChange()">
+              <option value="">— select profile —</option>
+            </select>
+            <button class="cad-btn" type="button" style="font-size:10px;padding:3px 8px;" onclick="loadProfile()">LOAD</button>
+          </div>
+          <!-- Save new / overwrite -->
+          <div class="profile-row">
+            <input type="text" id="profile-name" placeholder="profile name…" style="flex:1;" />
+            <button class="cad-btn cad-btn-primary" type="button" style="font-size:10px;padding:3px 8px;" onclick="saveProfile()">SAVE</button>
+          </div>
+        </div>
+
+        <!-- ── Setup settings card ── -->
+        <div class="cam-card" id="settings-card">
+          <div class="cam-card-title" style="margin-bottom:4px;">Setup Settings</div>
+
+          <!-- Stock mode -->
+          <div class="settings-divider">STOCK</div>
+          <div class="profile-row">
+            <span class="k">Mode</span>
+            <select id="s-stock-mode" style="flex:1;">
+              <option value="auto_bbox">Auto bounding box</option>
+              <option value="fixed_size">Fixed size</option>
+              <option value="from_solid">From solid</option>
+              <option value="relative">Relative to model</option>
+            </select>
+          </div>
+          <div class="profile-row">
+            <span class="k">Clearance ht (mm)</span>
+            <input type="number" id="s-clearance" value="5" step="0.5" min="0" style="flex:0 0 64px;" />
+            <span class="k" style="margin-left:8px;">Retract ht (mm)</span>
+            <input type="number" id="s-retract" value="4" step="0.5" min="0" style="flex:0 0 64px;" />
+          </div>
+
+          <!-- WCS -->
+          <div class="settings-divider">WCS</div>
+          <div class="profile-row">
+            <span class="k">Box point</span>
+            <select id="s-box-point" style="flex:0 0 100px;">
+              <option value="1">Top-left</option>
+              <option value="2" selected>Top-centre</option>
+              <option value="3">Top-right</option>
+              <option value="4">Mid-left</option>
+              <option value="5">Mid-centre</option>
+              <option value="6">Mid-right</option>
+              <option value="7">Bot-left</option>
+              <option value="8">Bot-centre</option>
+              <option value="9">Bot-right</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:5px;margin-left:10px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="s-flip-y" style="margin:0;accent-color:var(--cad-accent-blue);" />
+              <span class="k">Flip Y</span>
+            </label>
+          </div>
+
+          <!-- Operations -->
+          <div class="settings-divider" style="margin-top:6px;">OPERATIONS</div>
+          <div id="ops-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
+          <button class="cad-btn" type="button" style="font-size:10px;padding:3px 10px;align-self:flex-start;" onclick="addOperation()">+ ADD OPERATION</button>
+        </div>
+
+        <div class="cam-pipeline">
+          <strong>Generic:</strong>
+          One Manufacturing Model + Setup per selected component.
+          Profile settings applied on generate — tune toolpaths in CAM workspace.
+        </div>
+
+      </div><!-- /#generic-section -->
 
     </main>
 
@@ -194,8 +452,14 @@
   </div>
 
 <script>
+  // ── State ──────────────────────────────────────────────────────────────────
   const SETUP_KEYS = ['stock', 'bspline_back', 'bspline_top', 'frame'];
 
+  let currentMode = 'bspline';
+  let scannedComponents = [];        // full list from last scan
+  let selectedComponents = new Set(); // checked subset
+
+  // ── Transport ──────────────────────────────────────────────────────────────
   function send(action, payload) {
     const data = JSON.stringify(Object.assign({ action }, payload || {}));
     if (window.adsk && window.adsk.fusionSendData) {
@@ -203,6 +467,7 @@
     }
   }
 
+  // ── Status bar ─────────────────────────────────────────────────────────────
   function setStatus(msg, cls) {
     const bar = document.getElementById('status-bar');
     if (!bar) return;
@@ -210,6 +475,42 @@
     bar.className = 'cam-status' + (cls ? ' ' + cls : '');
   }
 
+  // ── Header summary ─────────────────────────────────────────────────────────
+  function updateStatusSummary() {
+    const el = document.getElementById('status-summary');
+    if (!el) return;
+    if (currentMode === 'bspline') {
+      el.textContent = '3 MMs · 4 SETUPS · READY';
+    } else {
+      const n = selectedComponents.size;
+      el.textContent = n + ' COMPONENT' + (n !== 1 ? 'S' : '') + ' · ' + n + ' MMs · GENERIC';
+    }
+  }
+
+  // ── Mode toggle ────────────────────────────────────────────────────────────
+  function setMode(mode) {
+    currentMode = mode;
+
+    document.getElementById('mode-bspline').classList.toggle('active', mode === 'bspline');
+    document.getElementById('mode-generic').classList.toggle('active', mode === 'generic');
+    document.getElementById('bspline-section').classList.toggle('hidden', mode !== 'bspline');
+    document.getElementById('generic-section').classList.toggle('hidden', mode !== 'generic');
+    document.getElementById('preview-btn').classList.toggle('hidden', mode !== 'bspline');
+
+    updateStatusSummary();
+
+    // Auto-scan when switching to generic for the first time
+    if (mode === 'generic' && scannedComponents.length === 0) {
+      runScan();
+    }
+    // Fetch profile list on first switch to generic
+    if (mode === 'generic' && !profilesFetched) {
+      profilesFetched = true;
+      fetchProfileList();
+    }
+  }
+
+  // ── B-spline setup state dots ──────────────────────────────────────────────
   function setSetupState(key, state) {
     const dot = document.getElementById('dot-' + key);
     const lbl = document.getElementById('state-' + key);
@@ -221,33 +522,328 @@
     if (lbl) lbl.textContent = state;
   }
 
-  function runGenerate() {
-    SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
-    setStatus('generating...');
-    send('generate');
+  // ── Generic component state dots ───────────────────────────────────────────
+  function setComponentState(name, state) {
+    const rows = document.querySelectorAll('#component-list .comp-row');
+    rows.forEach(row => {
+      if (row.dataset.compName !== name) return;
+      let stateEl = row.querySelector('.comp-state');
+      if (!stateEl) {
+        stateEl = document.createElement('span');
+        stateEl.className = 'comp-state';
+        row.appendChild(stateEl);
+      }
+      stateEl.innerHTML = '';
+      const dot = document.createElement('span');
+      dot.className = 'cam-dot' + (state === 'ok' ? ' ok' : state === 'fail' ? ' fail' : '');
+      stateEl.appendChild(dot);
+      stateEl.appendChild(document.createTextNode(' ' + state));
+    });
   }
 
+  // ── Scan ───────────────────────────────────────────────────────────────────
+  function runScan() {
+    setStatus('scanning design components...');
+    send('scan');
+  }
+
+  function renderComponentList(components) {
+    scannedComponents = components;
+    selectedComponents = new Set(components); // all selected by default
+
+    const list = document.getElementById('component-list');
+    const empty = document.getElementById('scan-empty');
+
+    if (!components.length) {
+      empty.textContent = 'No top-level components found in the active design.';
+      empty.classList.remove('hidden');
+      list.classList.add('hidden');
+      updateStatusSummary();
+      return;
+    }
+
+    empty.classList.add('hidden');
+    list.innerHTML = '';
+    list.classList.remove('hidden');
+
+    components.forEach(name => {
+      const row = document.createElement('div');
+      row.className = 'comp-row';
+      row.dataset.compName = name;
+
+      const label = document.createElement('label');
+
+      const inp = document.createElement('input');
+      inp.type = 'checkbox';
+      inp.checked = true;
+      inp.addEventListener('change', () => {
+        if (inp.checked) selectedComponents.add(name);
+        else             selectedComponents.delete(name);
+        updateStatusSummary();
+      });
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'v';
+      nameSpan.textContent = name;
+
+      label.appendChild(inp);
+      label.appendChild(nameSpan);
+      row.appendChild(label);
+      list.appendChild(row);
+    });
+
+    updateStatusSummary();
+  }
+
+  // ── Preview (B-spline only) ────────────────────────────────────────────────
   function runPreview() {
     setStatus('preview · classifying bodies...');
     send('preview');
   }
 
-  // Receives messages from Python via palette.sendInfoToHTML(action, json).
+  // ── Generate ───────────────────────────────────────────────────────────────
+  function runGenerate() {
+    if (currentMode === 'bspline') {
+      SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
+      setStatus('generating...');
+      send('generate', { mode: 'bspline' });
+    } else {
+      const comps = Array.from(selectedComponents);
+      if (!comps.length) {
+        setStatus('no components selected — check at least one', 'warn');
+        return;
+      }
+      // Reset state dots
+      comps.forEach(name => setComponentState(name, 'pending'));
+      setStatus('generating ' + comps.length + ' MM(s)...');
+      const profileSettings = getProfileSettings();
+      send('generate', { mode: 'generic', components: comps, profile: profileSettings });
+    }
+  }
+
+  // ── Profile system ─────────────────────────────────────────────────────────
+  const WORKER = 'https://bspline-presets.dansemur.workers.dev';
+  let profileNames = [];  // cached list from worker
+
+  function setProfileStatus(msg, color) {
+    const el = document.getElementById('profile-status');
+    if (el) { el.textContent = msg; el.style.color = color || 'var(--cad-text-muted)'; }
+  }
+
+  async function fetchProfileList() {
+    try {
+      const r = await fetch(WORKER + '/cam-profiles');
+      const d = await r.json();
+      profileNames = d.names || [];
+      const sel = document.getElementById('profile-select');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— select profile —</option>';
+      profileNames.forEach(n => {
+        const o = document.createElement('option');
+        o.value = n; o.textContent = n;
+        if (n === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    } catch (e) {
+      setProfileStatus('worker unreachable', '#b00020');
+    }
+  }
+
+  function onProfileSelectChange() {
+    const name = document.getElementById('profile-select').value;
+    if (name) document.getElementById('profile-name').value = name;
+  }
+
+  async function loadProfile() {
+    const name = document.getElementById('profile-select').value;
+    if (!name) { setProfileStatus('select a profile first', '#b76b00'); return; }
+    try {
+      const r = await fetch(WORKER + '/cam-profiles/' + encodeURIComponent(name));
+      if (!r.ok) { setProfileStatus('not found', '#b00020'); return; }
+      const data = await r.json();
+      applyProfileSettings(data);
+      document.getElementById('profile-name').value = name;
+      setProfileStatus('loaded: ' + name, 'var(--cad-accent-green)');
+    } catch (e) {
+      setProfileStatus('load failed: ' + e.message, '#b00020');
+    }
+  }
+
+  async function saveProfile() {
+    const name = (document.getElementById('profile-name').value || '').trim();
+    if (!name) { setProfileStatus('enter a profile name', '#b76b00'); return; }
+    const data = getProfileSettings();
+    try {
+      const r = await fetch(WORKER + '/cam-profiles/' + encodeURIComponent(name), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) { setProfileStatus('save failed (' + r.status + ')', '#b00020'); return; }
+      setProfileStatus('saved: ' + name, 'var(--cad-accent-green)');
+      await fetchProfileList();
+      // Select the saved profile in dropdown
+      document.getElementById('profile-select').value = name;
+    } catch (e) {
+      setProfileStatus('save error: ' + e.message, '#b00020');
+    }
+  }
+
+  async function deleteProfile() {
+    const name = document.getElementById('profile-select').value
+               || document.getElementById('profile-name').value.trim();
+    if (!name) { setProfileStatus('select a profile to delete', '#b76b00'); return; }
+    if (!confirm('Delete profile "' + name + '"?')) return;
+    try {
+      await fetch(WORKER + '/cam-profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+      setProfileStatus('deleted: ' + name, 'var(--cad-text-muted)');
+      document.getElementById('profile-name').value = '';
+      await fetchProfileList();
+    } catch (e) {
+      setProfileStatus('delete error: ' + e.message, '#b00020');
+    }
+  }
+
+  // ── Profile settings serialisation ────────────────────────────────────────
+  function getProfileSettings() {
+    return {
+      stockMode:       document.getElementById('s-stock-mode').value,
+      clearanceHeight: parseFloat(document.getElementById('s-clearance').value) || 5,
+      retractHeight:   parseFloat(document.getElementById('s-retract').value)   || 4,
+      boxPoint:        parseInt(document.getElementById('s-box-point').value, 10) || 2,
+      flipY:           document.getElementById('s-flip-y').checked,
+      operations:      collectOperations(),
+    };
+  }
+
+  function applyProfileSettings(d) {
+    if (d.stockMode)       document.getElementById('s-stock-mode').value = d.stockMode;
+    if (d.clearanceHeight != null) document.getElementById('s-clearance').value = d.clearanceHeight;
+    if (d.retractHeight != null)   document.getElementById('s-retract').value   = d.retractHeight;
+    if (d.boxPoint != null)        document.getElementById('s-box-point').value  = d.boxPoint;
+    document.getElementById('s-flip-y').checked = !!d.flipY;
+
+    const list = document.getElementById('ops-list');
+    list.innerHTML = '';
+    (d.operations || []).forEach(op => addOperation(op));
+  }
+
+  // ── Operations builder ────────────────────────────────────────────────────
+  let opCounter = 0;
+
+  function addOperation(defaults) {
+    const id = 'op-' + (++opCounter);
+    const d = defaults || {};
+    const row = document.createElement('div');
+    row.className = 'op-row';
+    row.id = id;
+
+    const type    = d.type         || 'pocket_clearing';
+    const tool    = d.tool         || '3/8 ball';
+    const feed    = d.feedrate     || 600;
+    const rpm     = d.spindleSpeed || 14000;
+    const step    = d.stepdown     || 0.11;
+    const over    = d.stepover     || 60;
+    const leave   = d.stockLeave   || 0.1;
+    const ramp    = d.rampType     || 'helix';
+
+    row.innerHTML = `
+      <button class="op-remove-btn" type="button" onclick="document.getElementById('${id}').remove()">×</button>
+      <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span class="op-label">TYPE</span>
+          <select data-f="type" style="flex:1;">
+            <option value="pocket_clearing" ${type==='pocket_clearing'?'selected':''}>Pocket Clearing</option>
+            <option value="morphed_spiral"  ${type==='morphed_spiral' ?'selected':''}>Morphed Spiral</option>
+            <option value="adaptive"        ${type==='adaptive'       ?'selected':''}>Adaptive</option>
+            <option value="contour"         ${type==='contour'        ?'selected':''}>Contour</option>
+          </select>
+          <span class="op-label">TOOL</span>
+          <input type="text" data-f="tool" value="${tool}" style="width:80px;" />
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span class="op-label">FEED</span>
+          <input type="number" data-f="feedrate"     value="${feed}"  step="10"   style="width:52px;" />
+          <span class="op-label">RPM</span>
+          <input type="number" data-f="spindleSpeed" value="${rpm}"   step="100"  style="width:56px;" />
+          <span class="op-label">↓</span>
+          <input type="number" data-f="stepdown"     value="${step}"  step="0.01" style="width:44px;" />
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span class="op-label">OVER%</span>
+          <input type="number" data-f="stepover"    value="${over}"  step="5"    style="width:40px;" />
+          <span class="op-label">LEAVE</span>
+          <input type="number" data-f="stockLeave"  value="${leave}" step="0.01" style="width:44px;" />
+          <span class="op-label">RAMP</span>
+          <select data-f="rampType" style="width:60px;">
+            <option value="helix"  ${ramp==='helix' ?'selected':''}>helix</option>
+            <option value="zigzag" ${ramp==='zigzag'?'selected':''}>zigzag</option>
+            <option value="plunge" ${ramp==='plunge'?'selected':''}>plunge</option>
+          </select>
+        </div>
+      </div>`;
+
+    document.getElementById('ops-list').appendChild(row);
+  }
+
+  function collectOperations() {
+    return Array.from(document.querySelectorAll('#ops-list .op-row')).map(row => {
+      const get = f => {
+        const el = row.querySelector('[data-f="' + f + '"]');
+        if (!el) return undefined;
+        if (el.type === 'number') return parseFloat(el.value) || 0;
+        return el.value;
+      };
+      return {
+        type:         get('type'),
+        tool:         get('tool'),
+        feedrate:     get('feedrate'),
+        spindleSpeed: get('spindleSpeed'),
+        stepdown:     get('stepdown'),
+        stepover:     get('stepover'),
+        stockLeave:   get('stockLeave'),
+        rampType:     get('rampType'),
+      };
+    });
+  }
+
+  // Auto-fetch profile list when generic section is first shown
+  let profilesFetched = false;
+  const _origSetMode = typeof setMode === 'undefined' ? null : setMode;
+
+  // ── Fusion → HTML messages ─────────────────────────────────────────────────
   window.fusionJavaScriptHandler = {
     handle: function(action, data) {
       try {
         const payload = data ? JSON.parse(data) : {};
+
         if (action === 'report') {
-          (payload.setups || []).forEach(s => {
-            const key = s.name.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '');
-            const matched = SETUP_KEYS.find(k => key.includes(k.replace('_', ''))) || key;
-            setSetupState(matched, s.ok ? 'ok' : 'fail');
-          });
-          if (payload.ok) {
-            setStatus('done · 3 MMs · 4 setups', 'ok');
+          const mode = payload.mode || 'bspline';
+
+          if (mode === 'generic') {
+            // Update component state dots
+            (payload.setups || []).forEach(s => {
+              setComponentState(s.name, s.ok ? 'ok' : 'fail');
+            });
+            if (payload.ok) {
+              setStatus('done · ' + (payload.setups || []).length + ' MM(s) built', 'ok');
+            } else {
+              setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
+            }
           } else {
-            setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
+            // B-spline mode: update setup cards
+            (payload.setups || []).forEach(s => {
+              const key = s.name.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '');
+              const matched = SETUP_KEYS.find(k => key.includes(k.replace('_', ''))) || key;
+              setSetupState(matched, s.ok ? 'ok' : 'fail');
+            });
+            if (payload.ok) {
+              setStatus('done · 3 MMs · 4 setups', 'ok');
+            } else {
+              setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
+            }
           }
+
         } else if (action === 'preview') {
           if (!payload.ok) {
             setStatus('preview failed — ' + (payload.msg || 'unknown'), 'fail');
@@ -266,7 +862,17 @@
               'ok'
             );
           }
+
+        } else if (action === 'scan_result') {
+          if (!payload.ok) {
+            setStatus('scan failed — ' + (payload.msg || 'unknown'), 'fail');
+          } else {
+            renderComponentList(payload.components || []);
+            const n = (payload.components || []).length;
+            setStatus('scan complete · ' + n + ' component' + (n !== 1 ? 's' : '') + ' found', 'ok');
+          }
         }
+
       } catch (e) {
         setStatus('parse error: ' + e.message, 'fail');
       }

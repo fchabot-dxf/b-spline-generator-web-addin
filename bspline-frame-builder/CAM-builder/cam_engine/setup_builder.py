@@ -608,6 +608,129 @@ def _set_expr_param(params, name, expr, setup_name, logger):
         return False
 
 
+# ---------------------------------------------------------------------------
+# Generic mode -- one Setup per MM
+# ---------------------------------------------------------------------------
+
+def build_setups_generic(cam, mms_dict, logger=None):
+    """Generic mode: build one milling Setup per MM with sensible defaults.
+
+    WCS defaults: box_point origin at 'top 1', axesXY orientation, no
+    flipY. Stock: auto_bbox. The user tunes toolpaths in the CAM
+    workspace after generation.
+
+    Parameters
+    ----------
+    cam : adsk.cam.CAM
+    mms_dict : dict[str, ManufacturingModel]
+        ``{component_name: ManufacturingModel}`` from
+        :func:`cam_engine.mm_builder.build_mms_from_components`.
+
+    Returns
+    -------
+    list[tuple[str, adsk.cam.Setup]]
+        ``[(component_name, Setup), ...]`` for each successfully built
+        Setup. Missing entries indicate build failures (logged).
+    """
+    results = []
+    for comp_name, mm in mms_dict.items():
+        spec = {
+            'name':         comp_name,
+            'stock_intent': 'auto_bbox',
+            'wcs_origin':   'box_point',
+            'wcs_orient':   'select_x_y',
+            'box_point':    'top 1',
+            'flip_y':       False,
+        }
+        setup = _build_setup_for_mm(cam, mm, spec, logger)
+        if setup:
+            results.append((comp_name, setup))
+        else:
+            _log(logger, f"SETUP BUILD GENERIC ({comp_name}): build returned None", "WARNING")
+    return results
+
+
+def _build_setup_for_mm(cam, mm, spec, logger=None):
+    """Build one milling Setup bound to a specific MM.
+
+    Mirrors the logic of :func:`build_setup` but takes an MM directly
+    instead of looking it up from a rule dict. Used by generic mode.
+    """
+    setup_name = spec.get('name', '<unnamed>')
+
+    try:
+        setup_input = cam.setups.createInput(adsk.cam.OperationTypes.MillingOperation)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): createInput raised: {e}", "ERROR")
+        return None
+
+    if setup_input is None:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): createInput returned None", "ERROR")
+        return None
+
+    try:
+        bodies = _collect_bodies(mm)
+        if bodies:
+            setup_input.models = bodies
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): bound {len(bodies)} bodies", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): models bind failed: {e}", "WARNING")
+
+    try:
+        setup = cam.setups.add(setup_input)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): setups.add raised: {e}", "ERROR")
+        return None
+
+    if setup is None:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): setups.add returned None", "ERROR")
+        return None
+
+    try:
+        setup.name = setup_name
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): name set failed: {e}", "WARNING")
+
+    try:
+        _set_stock_mode(setup, spec['stock_intent'], setup_name, logger)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): stockMode raised: {e}", "WARNING")
+
+    # WCS: same write order as build_setup (mode → orientation → axes → flipY → boxPoint)
+    try:
+        pi.set_choice(setup.parameters, 'wcs_origin_mode',
+                      pi.WCS_ORIGIN_MODE_CANDIDATES[spec['wcs_origin']], logger)
+        pi.set_choice(setup.parameters, 'wcs_orientation_mode',
+                      pi.WCS_ORIENTATION_CANDIDATES[spec['wcs_orient']], logger)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): WCS mode set raised: {e}", "WARNING")
+
+    if spec.get('wcs_orient') == 'select_x_y':
+        x_axis, y_axis = _get_origin_axes(logger)
+        if y_axis is not None:
+            _set_entity_param(setup.parameters, 'wcs_orientation_axisX',
+                              y_axis, setup_name, logger)
+        if x_axis is not None:
+            _set_entity_param(setup.parameters, 'wcs_orientation_axisY',
+                              x_axis, setup_name, logger)
+
+    if spec.get('flip_y'):
+        _set_bool_param(setup.parameters, 'wcs_orientation_flipY', True,
+                        setup_name, logger)
+
+    if spec.get('box_point'):
+        pt = spec['box_point']
+        pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
+                      [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
+
+    try:
+        mm_name = mm.name
+    except Exception:
+        mm_name = '<unknown>'
+    _log(logger, f"SETUP BUILD GENERIC ({setup_name}): created -> MM '{mm_name}'")
+    return setup
+
+
 def _log(logger, msg, level="INFO"):
     if logger is None:
         return
