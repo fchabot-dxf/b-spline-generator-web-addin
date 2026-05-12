@@ -21,7 +21,7 @@ import adsk.fusion
 from . import cam_workspace, mm_builder, setup_builder
 
 
-def run(classifier, app=None, logger=None, mode='bspline', component_names=None):
+def run(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None):
     """Run the full pipeline.
 
     Parameters
@@ -125,7 +125,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None)
             if name not in mms:
                 report['errors'].append(f"MM for '{name}' was not built.")
 
-        setup_results = setup_builder.build_setups_generic(cam, mms, logger)
+        setup_results = setup_builder.build_setups_generic(cam, mms, logger, profile=profile)
         built_names = {n for n, _ in setup_results}
         for name in component_names:
             report['setups'].append({

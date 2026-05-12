@@ -290,8 +290,17 @@ def build_setup(cam, mms, spec, logger=None):
 _STOCK_MODE_ENUM_NAMES = {
     'auto_bbox':       'RelativeBoxStock',
     'fixed_box':       'FixedBoxStock',
+    'fixed_size':      'FixedBoxStock',    # alias used by profile extractor
     'from_solid':      'FromSolidStock',
     'from_prev_setup': 'FromPreviousSetup',
+}
+
+# Integer box-point (1-9) that the profile stores → Fusion expression string.
+# Layout: row(top/center/bottom) × col(left/centre/right).
+_INT_TO_BOX_POINT = {
+    1: 'top 1', 2: 'top 2', 3: 'top 3',
+    4: 'center 1', 5: 'center 2', 6: 'center 3',
+    7: 'bottom 1', 8: 'bottom 2', 9: 'bottom 3',
 }
 
 
@@ -612,12 +621,22 @@ def _set_expr_param(params, name, expr, setup_name, logger):
 # Generic mode -- one Setup per MM
 # ---------------------------------------------------------------------------
 
-def build_setups_generic(cam, mms_dict, logger=None):
-    """Generic mode: build one milling Setup per MM with sensible defaults.
+def build_setups_generic(cam, mms_dict, logger=None, profile=None):
+    """Generic mode: build one milling Setup per MM.
 
-    WCS defaults: box_point origin at 'top 1', axesXY orientation, no
-    flipY. Stock: auto_bbox. The user tunes toolpaths in the CAM
-    workspace after generation.
+    When ``profile`` is supplied (a dict from the CAM Studio palette or
+    the Cloudflare worker), its settings override the defaults below:
+
+    * ``stockMode``       → stock intent (auto_bbox / fixed_size / …)
+    * ``boxPoint``        → int 1-9 → Fusion box-point string
+    * ``flipY``           → bool, WCS flip-Y toggle
+    * ``clearanceHeight`` → mm, applied as ``clearanceHeight_offset``
+    * ``retractHeight``   → mm, applied as ``retractHeight_offset``
+
+    Operations in the profile are stored for reference; Fusion CAM
+    operations require a resolved Tool object from the tool library and
+    cannot be created purely from metadata here. Toolpaths are added by
+    the user in the CAM workspace after generation.
 
     Parameters
     ----------
@@ -625,6 +644,9 @@ def build_setups_generic(cam, mms_dict, logger=None):
     mms_dict : dict[str, ManufacturingModel]
         ``{component_name: ManufacturingModel}`` from
         :func:`cam_engine.mm_builder.build_mms_from_components`.
+    profile : dict or None
+        Optional profile dict from the palette. Keys that are absent or
+        None fall back to sensible defaults.
 
     Returns
     -------
@@ -632,16 +654,44 @@ def build_setups_generic(cam, mms_dict, logger=None):
         ``[(component_name, Setup), ...]`` for each successfully built
         Setup. Missing entries indicate build failures (logged).
     """
+    p = profile or {}
+
+    # Resolve stock intent (profile uses 'auto_bbox' / 'fixed_size' etc.)
+    stock_intent = p.get('stockMode') or 'auto_bbox'
+
+    # Convert integer box-point to Fusion expression string.
+    # Falls back to 'top 1' (top-left corner) if absent or unrecognised.
+    box_int = p.get('boxPoint')
+    box_point = _INT_TO_BOX_POINT.get(int(box_int), 'top 1') if box_int else 'top 1'
+
+    flip_y = bool(p.get('flipY', False))
+
+    # Heights in mm; None means "leave at Fusion default".
+    clearance_mm = p.get('clearanceHeight')  # float or None
+    retract_mm   = p.get('retractHeight')    # float or None
+
+    _log(logger,
+         f"SETUP BUILD GENERIC: profile → stock={stock_intent!r}  "
+         f"box={box_point!r}  flipY={flip_y}  "
+         f"clearance={clearance_mm} mm  retract={retract_mm} mm",
+         "INFO")
+
     results = []
     for comp_name, mm in mms_dict.items():
         spec = {
             'name':         comp_name,
-            'stock_intent': 'auto_bbox',
+            'stock_intent': stock_intent,
             'wcs_origin':   'box_point',
             'wcs_orient':   'select_x_y',
-            'box_point':    'top 1',
-            'flip_y':       False,
+            'box_point':    box_point,
+            'flip_y':       flip_y,
         }
+        # Pass heights so _build_setup_for_mm can apply them
+        if clearance_mm is not None:
+            spec['clearance_mm'] = float(clearance_mm)
+        if retract_mm is not None:
+            spec['retract_mm'] = float(retract_mm)
+
         setup = _build_setup_for_mm(cam, mm, spec, logger)
         if setup:
             results.append((comp_name, setup))
@@ -722,6 +772,22 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
         pt = spec['box_point']
         pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
                       [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
+
+    # Clearance / retract heights from profile (mm → Fusion expression string).
+    # Written last so WCS is fully resolved first. The parameter names are
+    # operation-level in some Fusion builds; we try setup-level first and
+    # fall back silently.  Expressed as '5 mm' to avoid unit-ambiguity.
+    if spec.get('clearance_mm') is not None:
+        cl_expr = f"{spec['clearance_mm']} mm"
+        for pname in ('clearanceHeight_offset', 'job_clearanceHeight'):
+            if _set_expr_param(setup.parameters, pname, cl_expr, setup_name, logger):
+                break
+
+    if spec.get('retract_mm') is not None:
+        rt_expr = f"{spec['retract_mm']} mm"
+        for pname in ('retractHeight_offset', 'job_retractHeight'):
+            if _set_expr_param(setup.parameters, pname, rt_expr, setup_name, logger):
+                break
 
     try:
         mm_name = mm.name

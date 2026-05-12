@@ -1,12 +1,12 @@
 {
     "autodeskProduct": "Fusion360",
     "type": "addin",
-    "id": "cam-builder",
+    "id": "cam-studio",
     "author": "danse",
     "description": {
-        "": "CAM Builder -- 3 Manufacturing Models + 4 Setups scaffold for the Ultimate Bee CNC."
+        "": "CAM Studio — B-spline CAM scaffold + generic profile-driven CAM setup for the Ultimate Bee CNC."
     },
-    "version": "0.1.0",
+    "version": "0.2.0",
     "runOnStartup": false,
     "supportedOS": "windows|mac",
     "editEnabled": true,
