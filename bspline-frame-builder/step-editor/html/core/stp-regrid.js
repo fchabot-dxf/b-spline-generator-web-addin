@@ -50,43 +50,90 @@ import { parseBSplineSurface } from './stp-tessellate.js';
  * ──────────────────────────────────────────────────────────────────── */
 
 /**
- * Regrid every B-spline surface in `bodyId`'s sub-graph to a uniform
+ * Enumerate every B-spline surface (plain or rational) reachable from
+ * the given body root. Used by the UI to populate the regrid panel's
+ * "Surface" dropdown so the user can target one surface at a time.
+ *
+ * @returns {Array<{id:number, nu:number|null, nv:number|null, rational:boolean}>}
+ *   one entry per surface, sorted by entity id.
+ */
+export function listBSplineSurfaces(parsed, bodyId) {
+  if (!parsed || !parsed.entities) return [];
+  const out = [];
+  for (const id of reachableEntities(parsed, bodyId)) {
+    const e = parsed.entities.get(id);
+    if (!e || !isBSplineSurfaceEntity(e)) continue;
+    const surf = parseBSplineSurface(parsed, e);
+    out.push({
+      id,
+      nu: surf ? surf.nu : null,
+      nv: surf ? surf.nv : null,
+      rational: !!(surf && surf.rational),
+    });
+  }
+  return out.sort((a, b) => a.id - b.id);
+}
+
+
+/**
+ * Regrid B-spline surfaces in `bodyId`'s sub-graph to a uniform
  * `targetNu × targetNv` CP grid.
  *
  * @param {import('./stp-parser.js').ParsedStep} parsed
  * @param {number} bodyId
  * @param {object} [opts]
- * @param {number} [opts.targetNu=8]   target CPs in U
- * @param {number} [opts.targetNv=8]   target CPs in V
- * @param {number} [opts.sampleRes=32] sampleRes × sampleRes evaluation grid
+ * @param {number} [opts.targetNu=8]    target CPs in U
+ * @param {number} [opts.targetNv=8]    target CPs in V
+ * @param {number} [opts.sampleRes=32]  sampleRes × sampleRes evaluation grid
+ * @param {number|null} [opts.targetSurfaceId=null]
+ *        Restrict the operation to a single surface (entity id of the
+ *        B_SPLINE_SURFACE_WITH_KNOTS or compound RATIONAL_B_SPLINE_SURFACE).
+ *        When null/undefined, all B-spline surfaces reachable from the
+ *        body are regridded (legacy behaviour).
+ * @param {'uniform'|'chord'|'centripetal'|'periodic'} [opts.knotMode='uniform']
+ *        How to parameterize the sample points and build the new knot
+ *        vector. 'uniform' (default) is clamped uniform; 'chord' /
+ *        'centripetal' use sample-spacing-aware parameterisation
+ *        (better for non-uniform source shapes); 'periodic' emits a
+ *        non-clamped uniform knot vector for closed surfaces.
  * @returns {{ surfaces:number, skipped:number, newPoints:number }}
  */
 export function regridBody(parsed, bodyId, opts = {}) {
-  const targetNu  = Math.max(2, opts.targetNu  | 0 || 8);
-  const targetNv  = Math.max(2, opts.targetNv  | 0 || 8);
-  const sampleRes = Math.max(targetNu + 4, Math.max(targetNv + 4, opts.sampleRes | 0 || 32));
+  const targetNu        = Math.max(2, opts.targetNu  | 0 || 8);
+  const targetNv        = Math.max(2, opts.targetNv  | 0 || 8);
+  const sampleRes       = Math.max(targetNu + 4, Math.max(targetNv + 4, opts.sampleRes | 0 || 32));
+  const targetSurfaceId = opts.targetSurfaceId ?? null;
+  const knotMode        = opts.knotMode || 'uniform';
 
-  const reachable = reachableEntities(parsed, bodyId);
+  // Pre-validate the knot mode so a typo gets caught at the top.
+  if (!['uniform', 'chord', 'centripetal', 'periodic'].includes(knotMode)) {
+    return { surfaces: 0, skipped: 0, newPoints: 0, error: `unknown knotMode ${knotMode}` };
+  }
 
-  // Allocate fresh IDs above the current max so new CARTESIAN_POINTs
-  // never collide with existing ones.
+  // ID allocation for new CARTESIAN_POINTs.
   let nextId = 0;
   for (const id of parsed.entities.keys()) if (id > nextId) nextId = id;
   nextId += 1;
 
   let surfaces = 0, skipped = 0, newPoints = 0;
 
-  for (const id of reachable) {
+  // Pick the candidate entity set: a single target id, or every
+  // surface reachable from the body root.
+  const candidates = targetSurfaceId != null
+    ? [targetSurfaceId]
+    : [...reachableEntities(parsed, bodyId)];
+
+  for (const id of candidates) {
     const e = parsed.entities.get(id);
-    if (!e || e.type !== 'B_SPLINE_SURFACE_WITH_KNOTS') continue;
+    if (!e) continue;
+    if (!isBSplineSurfaceEntity(e)) continue;
 
     const surf = parseBSplineSurface(parsed, e);
     if (!surf) { skipped++; continue; }
 
-    // Skip degenerate request: target grid not bigger than degree.
     if (targetNu <= surf.degU || targetNv <= surf.degV) { skipped++; continue; }
 
-    const newCps = fitTensorBSpline(surf, targetNu, targetNv, sampleRes);
+    const newCps = fitTensorBSpline(surf, targetNu, targetNv, sampleRes, knotMode);
     if (!newCps) { skipped++; continue; }
 
     // Mint new CARTESIAN_POINT entities for the freshly-fit CPs.
@@ -106,21 +153,16 @@ export function regridBody(parsed, bodyId, opts = {}) {
       }
     }
 
-    // Rewrite the surface's args: control point grid, knot multiplicities,
-    // knot vectors. Other args (name, degrees, closed flags, knot spec)
-    // stay as-is.
+    // Build the new arg strings.
     const cpGridArg = '(' + newIds.map(row =>
       '(' + row.map(id => `#${id}`).join(',') + ')'
     ).join(',') + ')';
+    const { multStr: multU, knotStr: knotU } = knotStringsFor(knotMode, targetNu, surf.degU);
+    const { multStr: multV, knotStr: knotV } = knotStringsFor(knotMode, targetNv, surf.degV);
 
-    const { multStr: multU, knotStr: knotU } = uniformKnotStrings(targetNu, surf.degU);
-    const { multStr: multV, knotStr: knotV } = uniformKnotStrings(targetNv, surf.degV);
-
-    e.args[3]  = cpGridArg;
-    e.args[8]  = multU;
-    e.args[9]  = multV;
-    e.args[10] = knotU;
-    e.args[11] = knotV;
+    // Rewrite into either the simple or compound entity form so the
+    // emitted file matches the source's surface kind.
+    rewriteSurfaceEntity(e, surf, cpGridArg, multU, multV, knotU, knotV, targetNu, targetNv);
 
     surfaces++;
   }
@@ -129,19 +171,82 @@ export function regridBody(parsed, bodyId, opts = {}) {
 }
 
 /* ────────────────────────────────────────────────────────────────────
+ * Private — entity recognition + rewriting
+ *
+ * Both forms of B-spline surface are recognised:
+ *   - Simple:   #N=B_SPLINE_SURFACE_WITH_KNOTS(...)
+ *   - Compound: #N=(B_SPLINE_SURFACE(...) B_SPLINE_SURFACE_WITH_KNOTS(...)
+ *                   RATIONAL_B_SPLINE_SURFACE(...) ...)
+ *
+ * After regrid, the entity is rewritten in place so its outer shape
+ * (simple vs compound, rational vs not) is preserved. Rational
+ * surfaces keep their compound structure but their weights are set
+ * to 1 — least-squares fitting on a uniform basis doesn't naturally
+ * produce weights, and treating w=1 across the new grid is the
+ * standard NURBS-to-B-spline conversion convention.
+ * ──────────────────────────────────────────────────────────────────── */
+
+function isBSplineSurfaceEntity(e) {
+  if (e.type === 'B_SPLINE_SURFACE_WITH_KNOTS') return true;
+  if (e.compound && e.compound.length) {
+    for (const p of e.compound) if (p.type === 'B_SPLINE_SURFACE_WITH_KNOTS') return true;
+  }
+  return false;
+}
+
+function rewriteSurfaceEntity(entity, surf, cpGridArg, multU, multV, knotU, knotV, nu, nv) {
+  if (entity.type === 'B_SPLINE_SURFACE_WITH_KNOTS') {
+    // Simple form: rewrite args[3] (CP grid), args[8..11] (knot info).
+    entity.args[3]  = cpGridArg;
+    entity.args[8]  = multU;
+    entity.args[9]  = multV;
+    entity.args[10] = knotU;
+    entity.args[11] = knotV;
+    return;
+  }
+  // Compound form: rewrite the matching inner part's args.
+  for (const part of entity.compound) {
+    if (part.type === 'B_SPLINE_SURFACE') {
+      // args: [degU, degV, cpGrid, surfaceForm, uClosed, vClosed, selfIntersect]
+      part.args[2] = cpGridArg;
+    } else if (part.type === 'B_SPLINE_SURFACE_WITH_KNOTS') {
+      // args: [uMults, vMults, uKnots, vKnots, knotSpec]
+      part.args[0] = multU;
+      part.args[1] = multV;
+      part.args[2] = knotU;
+      part.args[3] = knotV;
+    } else if (part.type === 'RATIONAL_B_SPLINE_SURFACE') {
+      // Reset weights to 1.0 over the new (nu × nv) grid.
+      const rows = [];
+      for (let i = 0; i < nu; i++) {
+        const row = [];
+        for (let j = 0; j < nv; j++) row.push('1.');
+        rows.push('(' + row.join(',') + ')');
+      }
+      part.args[0] = '(' + rows.join(',') + ')';
+    }
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
  * Private — fitting
  * ──────────────────────────────────────────────────────────────────── */
 
 /**
- * Fit a uniform `Nu × Nv` B-spline surface to a sampled version of
- * `surf` by tensor-product least squares. Returns a flat Float64Array
- * (length Nu*Nv*3) of new control point coordinates.
+ * Fit a `Nu × Nv` B-spline surface to a sampled version of `surf` by
+ * tensor-product least squares.  Returns a flat Float64Array (length
+ * Nu*Nv*3) of new control point coordinates.
+ *
+ * @param {object} surf            output of parseBSplineSurface()
+ * @param {number} Nu, Nv          target CP grid dimensions
+ * @param {number} sampleRes       Nrows = Ncols of source samples
+ * @param {string} knotMode        'uniform' | 'chord' | 'centripetal' | 'periodic'
  */
-function fitTensorBSpline(surf, Nu, Nv, sampleRes) {
+function fitTensorBSpline(surf, Nu, Nv, sampleRes, knotMode) {
   const { degU, degV } = surf;
 
-  // 1. Sample the source surface at sampleRes × sampleRes points.
-  //    Parameters span the active knot range of each direction.
+  // 1. Sample the source surface at sampleRes × sampleRes points,
+  //    walking uniform positions across its native parametric domain.
   const uMin = surf.knotsU[degU];
   const uMax = surf.knotsU[surf.nu];
   const vMin = surf.knotsV[degV];
@@ -157,18 +262,21 @@ function fitTensorBSpline(surf, Nu, Nv, sampleRes) {
     }
   }
 
-  // 2. Target uniform clamped knot vectors.
-  const knotsU = uniformKnotVector(Nu, degU);
-  const knotsV = uniformKnotVector(Nv, degV);
+  // 2. Target knot vectors. 'periodic' switches to unclamped uniform;
+  //    everything else stays clamped uniform.  Sample-aware knot
+  //    vectors (de Boor averaging from chord params) would tighten the
+  //    fit a few percent on highly non-uniform surfaces but cost more
+  //    code than the gain is worth on the canoe-class fixtures we're
+  //    targeting — uniform clamped + chord-length sample params is
+  //    the documented "good enough" compromise (Piegl/Tiller §9.4.4).
+  const knotsU = (knotMode === 'periodic') ? periodicKnotVector(Nu, degU) : uniformKnotVector(Nu, degU);
+  const knotsV = (knotMode === 'periodic') ? periodicKnotVector(Nv, degV) : uniformKnotVector(Nv, degV);
 
-  // 3. Sample parameter values (uniform spacing across the new domain).
-  //    Domain is [0, 1] for the new uniform surface.
-  const paramU = new Float64Array(sampleRes);
-  const paramV = new Float64Array(sampleRes);
-  for (let i = 0; i < sampleRes; i++) {
-    paramU[i] = i / (sampleRes - 1);
-    paramV[i] = i / (sampleRes - 1);
-  }
+  // 3. Sample parameter values. 'uniform'/'periodic' use evenly spaced
+  //    params; 'chord' and 'centripetal' derive params from the actual
+  //    sample spacing along a representative row/column of the source.
+  const paramU = computeSampleParams(S, sampleRes, /*axis=*/ 0, knotMode);
+  const paramV = computeSampleParams(S, sampleRes, /*axis=*/ 1, knotMode);
 
   // 4. Basis matrices: B_u (sampleRes × Nu), B_v (sampleRes × Nv).
   const Bu = buildBasisMatrix(paramU, degU, knotsU, Nu);
@@ -260,7 +368,9 @@ function evalSurface(surf, u, v) {
  * Private — uniform knot vector helpers
  * ──────────────────────────────────────────────────────────────────── */
 
-/** Build a clamped uniform knot vector for `n` CPs at degree `deg`. */
+/** Build a clamped uniform knot vector for `n` CPs at degree `deg`.
+ *  Total length = n + deg + 1.  First and last `deg+1` knots are
+ *  pinned to 0 / 1 so the surface passes through corner CPs. */
 function uniformKnotVector(n, deg) {
   const interior = n - deg - 1;   // count of interior knots
   const total = n + deg + 1;
@@ -271,19 +381,101 @@ function uniformKnotVector(n, deg) {
   return out;
 }
 
+/** Build an unclamped uniform knot vector — every knot evenly spaced,
+ *  no endpoint clamping.  Used for closed/periodic surfaces.  Knot
+ *  values run from -deg/(n-deg) to (n)/(n-deg) so the active range
+ *  [knots[deg], knots[n]] still maps to [0, 1]. */
+function periodicKnotVector(n, deg) {
+  const total = n + deg + 1;
+  const out = new Float64Array(total);
+  const step = 1 / (n - deg);
+  for (let i = 0; i < total; i++) out[i] = (i - deg) * step;
+  return out;
+}
+
 /** STEP-syntax strings for a uniform clamped knot vector at degree
  *  `deg` with `n` CPs. */
 function uniformKnotStrings(n, deg) {
-  const distinct = n - deg + 1;  // count of distinct knot values
+  const distinct = n - deg + 1;
   const mult = new Array(distinct);
   const knot = new Array(distinct);
   mult[0] = deg + 1;
   mult[distinct - 1] = deg + 1;
   for (let i = 1; i < distinct - 1; i++) mult[i] = 1;
   for (let i = 0; i < distinct; i++) knot[i] = i / (distinct - 1);
-  const multStr = '(' + mult.join(',') + ')';
-  const knotStr = '(' + knot.map(fmt).join(',') + ')';
-  return { multStr, knotStr };
+  return {
+    multStr: '(' + mult.join(',') + ')',
+    knotStr: '(' + knot.map(fmt).join(',') + ')',
+  };
+}
+
+/** STEP-syntax strings for an unclamped (periodic) uniform knot vector.
+ *  Multiplicities are all 1, knot values evenly spaced and matching
+ *  what periodicKnotVector() emits.  Total knot count = n + deg + 1. */
+function periodicKnotStrings(n, deg) {
+  const total = n + deg + 1;
+  const step = 1 / (n - deg);
+  const mults = new Array(total).fill(1);
+  const knots = new Array(total);
+  for (let i = 0; i < total; i++) knots[i] = (i - deg) * step;
+  return {
+    multStr: '(' + mults.join(',') + ')',
+    knotStr: '(' + knots.map(fmt).join(',') + ')',
+  };
+}
+
+/** Dispatch from a knot-mode label to the right knot-string emitter. */
+function knotStringsFor(mode, n, deg) {
+  return (mode === 'periodic') ? periodicKnotStrings(n, deg) : uniformKnotStrings(n, deg);
+}
+
+/**
+ * Compute sample parameter values for the least-squares fit.
+ *
+ * 'uniform' / 'periodic': evenly spaced in [0, 1].
+ * 'chord' / 'centripetal': cumulative chord lengths (raw or sqrt'd)
+ * along a representative row (axis=0 → row j=0, varying i) or
+ * column (axis=1 → column i=0, varying j).  Normalised to [0, 1].
+ */
+function computeSampleParams(S, sampleRes, axis, mode) {
+  const params = new Float64Array(sampleRes);
+  params[0] = 0;
+  if (mode === 'uniform' || mode === 'periodic') {
+    for (let i = 1; i < sampleRes; i++) params[i] = i / (sampleRes - 1);
+    return params;
+  }
+  const expon = (mode === 'centripetal') ? 0.5 : 1.0;
+  const dists = new Float64Array(sampleRes);
+  for (let i = 1; i < sampleRes; i++) {
+    let pPrev, pCurr;
+    if (axis === 0) {
+      // Vary i, fix j=0 (top edge in V).
+      pPrev = ((i - 1) * sampleRes + 0) * 3;
+      pCurr = (i        * sampleRes + 0) * 3;
+    } else {
+      // Vary j, fix i=0 (left edge in U).
+      pPrev = (0 * sampleRes + (i - 1)) * 3;
+      pCurr = (0 * sampleRes + i      ) * 3;
+    }
+    const dx = S[pCurr]     - S[pPrev];
+    const dy = S[pCurr + 1] - S[pPrev + 1];
+    const dz = S[pCurr + 2] - S[pPrev + 2];
+    const d  = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    dists[i] = Math.pow(d, expon);
+  }
+  let total = 0;
+  for (let i = 1; i < sampleRes; i++) {
+    total += dists[i];
+    params[i] = total;
+  }
+  if (total > 0) {
+    for (let i = 1; i < sampleRes; i++) params[i] /= total;
+  } else {
+    // Degenerate (all samples identical): fall back to uniform.
+    for (let i = 1; i < sampleRes; i++) params[i] = i / (sampleRes - 1);
+  }
+  params[sampleRes - 1] = 1;  // pin to defeat float drift
+  return params;
 }
 
 /* ────────────────────────────────────────────────────────────────────

@@ -19,7 +19,7 @@ import {
   findBodies, scaleBody, scaleBodyAxes, translateBody, getBounds,
   rotateBody, mirrorBody, resizeBody, getBodyBounds,
 } from '../core/stp-bodies.js';
-import { regridBody } from '../core/stp-regrid.js';
+import { regridBody, listBSplineSurfaces } from '../core/stp-regrid.js';
 import { listFonts, loadFont, layoutText } from '../core/text-glyphs.js';
 import { setText as setTextPreview, clear as clearTextPreview } from '../core/three-text.js';
 import { tessellate as occtTessellate, isAvailable as occtAvailable } from '../core/occt-bridge.js';
@@ -277,7 +277,45 @@ function selectBody(state, bodyId) {
   // body's current dimensions before they type a target.
   updateResizeCurrent(state);
 
+  // Refresh the Regrid surface dropdown so it lists this body's
+  // B-spline surfaces.  Empty (no surfaces) collapses to the
+  // "All surfaces" entry only.
+  populateRegridSurfaces(state);
+
   setStatus(body ? `Selected body "${body.name}".` : 'Body selection cleared.');
+}
+
+/** Fill the Regrid panel's Surface dropdown with this body's B-spline
+ *  surfaces. The first option stays "All surfaces in this body" so
+ *  the legacy bulk behaviour remains the default click. */
+function populateRegridSurfaces(state) {
+  const sel = document.getElementById('regridSurface');
+  if (!sel) return;
+  // Remember whatever the user had picked so we can restore it.
+  const prior = sel.value;
+  sel.innerHTML = '';
+
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.textContent = 'All B-spline surfaces in this body';
+  sel.appendChild(allOpt);
+
+  if (!state.parsed || !state.selectedBodyId) return;
+
+  const surfaces = listBSplineSurfaces(state.parsed, state.selectedBodyId);
+  for (const s of surfaces) {
+    const opt = document.createElement('option');
+    opt.value = String(s.id);
+    const dims = (s.nu != null && s.nv != null) ? ` (${s.nu}×${s.nv})` : '';
+    const rat = s.rational ? ' [NURBS]' : '';
+    opt.textContent = `Surface #${s.id}${dims}${rat}`;
+    sel.appendChild(opt);
+  }
+  // Restore prior selection if it's still present (otherwise default
+  // to "All").
+  if (prior && [...sel.options].some(o => o.value === prior)) {
+    sel.value = prior;
+  }
 }
 
 /** Update the "Current: …" readout in the Resize panel from the
@@ -446,21 +484,39 @@ async function handleApplyResize(state) {
 
 async function handleApplyRegrid(state) {
   if (!requireSelectedBody(state)) return;
-  const nu = readNumber('regridNu', 8) | 0;
-  const nv = readNumber('regridNv', 8) | 0;
-  const sample = readNumber('regridSample', 32) | 0;
+  const nu        = readNumber('regridNu', 8) | 0;
+  const nv        = readNumber('regridNv', 8) | 0;
+  const sample    = readNumber('regridSample', 32) | 0;
+  const surfRaw   = (document.getElementById('regridSurface') || {}).value || '';
+  const knotMode  = (document.getElementById('regridKnotMode') || {}).value || 'uniform';
   if (nu < 2 || nv < 2) { setStatus('Nu and Nv must be ≥ 2.'); return; }
 
-  await applyAndRefresh(state, `Regridding to ${nu}×${nv}…`, () =>
-    regridBody(state.parsed, state.selectedBodyId, { targetNu: nu, targetNv: nv, sampleRes: sample }),
+  // Empty string → bulk mode (current default behaviour). Anything
+  // else parses to an entity id pointing at a single B-spline surface.
+  const targetSurfaceId = surfRaw === '' ? null : Number(surfRaw);
+  const scopeLabel = targetSurfaceId == null
+    ? `all surfaces in "${currentBodyName(state)}"`
+    : `surface #${targetSurfaceId}`;
+
+  await applyAndRefresh(state, `Regridding ${scopeLabel} to ${nu}×${nv} (${knotMode})…`, () =>
+    regridBody(state.parsed, state.selectedBodyId, {
+      targetNu: nu, targetNv: nv, sampleRes: sample,
+      targetSurfaceId, knotMode,
+    }),
     (res) => {
+      if (res.error) return `Regrid failed: ${res.error}`;
       if (!res.surfaces) {
-        return `Regrid: no B-spline surfaces in "${currentBodyName(state)}" (${res.skipped} skipped).`;
+        return `Regrid: no matching B-spline surface in ${scopeLabel} (${res.skipped} skipped).`;
       }
-      return `Regridded "${currentBodyName(state)}" — ${res.surfaces} surface(s) to ${nu}×${nv} ` +
-             `(${res.newPoints.toLocaleString()} new points, ${res.skipped} skipped).`;
+      return `Regridded ${scopeLabel} — ${res.surfaces} surface(s) to ${nu}×${nv} ` +
+             `via ${knotMode} (${res.newPoints.toLocaleString()} new points, ${res.skipped} skipped).`;
     }
   );
+
+  // Surface ids change for some entities after regrid (the surface
+  // itself keeps its id, but the dropdown should reflect the updated
+  // Nu × Nv labels). Repopulate so the user sees the new dimensions.
+  populateRegridSurfaces(state);
 }
 
 /** Run a transform fn, yield to the event loop so the status updates,

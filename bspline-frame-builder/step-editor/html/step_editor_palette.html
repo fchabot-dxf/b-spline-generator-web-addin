@@ -194,10 +194,26 @@
         <div class="panel-section tool-panel" id="regridSection" hidden>
           <h2>Regrid <span class="tool-target" id="regridBodyName"></span></h2>
           <p class="tool-help">
-            Re-parameterize every B-spline surface in this body to a
-            uniform N&times;M control-point grid. Slight shape drift is
-            normal — least-squares fit, not exact.
+            Re-parameterize B-spline surface(s) in this body to a uniform
+            N&times;M control-point grid. Slight shape drift is normal —
+            least-squares fit, not exact. Rational (NURBS) surfaces are
+            supported; weights collapse to 1 on the new grid.
           </p>
+          <div class="tool-row tool-row-block">
+            <label>Surface</label>
+            <select id="regridSurface">
+              <option value="">All B-spline surfaces in this body</option>
+            </select>
+          </div>
+          <div class="tool-row tool-row-block">
+            <label>Knot vector</label>
+            <select id="regridKnotMode">
+              <option value="uniform" selected>Uniform clamped (default)</option>
+              <option value="chord">Chord-length parameterised</option>
+              <option value="centripetal">Centripetal parameterised</option>
+              <option value="periodic">Periodic (closed surfaces)</option>
+            </select>
+          </div>
           <div class="tool-row">
             <label>Nu</label><input id="regridNu" type="number" min="2" step="1" value="8">
             <label>Nv</label><input id="regridNv" type="number" min="2" step="1" value="8">
