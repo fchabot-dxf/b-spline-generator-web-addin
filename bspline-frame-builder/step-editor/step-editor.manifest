@@ -1,0 +1,14 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "step-editor",
+    "author": "danse",
+    "description": {
+        "": "STEP (.stp) file editor palette — view/edit/merge/split STEP geometry. Mirrors the b-spline-gen add-in pattern; same HTML can run standalone at step-editor.pages.dev."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true,
+    "entry": "step-editor.py"
+}

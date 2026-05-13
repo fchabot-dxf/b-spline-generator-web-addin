@@ -1,0 +1,39 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('STEP AP214 sample fixture for step-editor parser tests'),'2;1');
+FILE_NAME('sample.stp','2026-05-13T00:00:00',('danse'),(''),
+  'step-editor v0.1.0 scaffold','',
+  '');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));
+ENDSEC;
+DATA;
+/* ----- Unit definitions ----- */
+#1 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
+#2 = DIMENSIONAL_EXPONENTS(1.,0.,0.,0.,0.,0.,0.);
+#3 = LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(25.4),#1);
+#4 = ( CONVERSION_BASED_UNIT('inch',#3) LENGTH_UNIT() NAMED_UNIT(#2) );
+#5 = ( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) );
+#6 = ( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() );
+#7 = UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-7),#4,'distance_accuracy_value','confusion accuracy');
+#8 = ( GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#7)) GLOBAL_UNIT_ASSIGNED_CONTEXT((#4,#5,#6)) REPRESENTATION_CONTEXT('Sample','3D') );
+
+/* ----- 4 points outlining a unit square in the XY plane ----- */
+#10 = CARTESIAN_POINT('',(0.,0.,0.));
+#11 = CARTESIAN_POINT('',(1.,0.,0.));
+#12 = CARTESIAN_POINT('',(1.,1.,0.));
+#13 = CARTESIAN_POINT('',(0.,1.,0.));
+
+/* ----- Directions and a placement at the origin ----- */
+#20 = DIRECTION('',(0.,0.,1.));
+#21 = DIRECTION('',(1.,0.,0.));
+#22 = AXIS2_PLACEMENT_3D('',#10,#20,#21);
+
+/* ----- A trivial 1x1 degree-1 B-spline surface for sculpt-mode tests ----- */
+#30 = CARTESIAN_POINT('',(0.,0.,0.));
+#31 = CARTESIAN_POINT('',(1.,0.,0.));
+#32 = CARTESIAN_POINT('',(0.,1.,0.));
+#33 = CARTESIAN_POINT('',(1.,1.,0.));
+#34 = B_SPLINE_SURFACE_WITH_KNOTS('mini-surface',1,1,((#30,#31),(#32,#33)),.UNSPECIFIED.,.F.,.F.,.F.,(2,2),(2,2),(0.,1.),(0.,1.),.UNSPECIFIED.);
+
+ENDSEC;
+END-ISO-10303-21;

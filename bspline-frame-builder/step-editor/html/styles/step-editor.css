@@ -1,0 +1,468 @@
+/* Step Editor — base styles.
+   Extracted from inline <style> so it's reusable when the same HTML
+   is served from step-editor.pages.dev (the Pages deployment can bundle
+   this file alongside the script modules). */
+
+:root {
+  /* Light theme — matches Fusion's native palette chrome. Accent stays
+     amber for brand consistency with the STP-EDITOR icon. Swap --bg,
+     --panel, --border, --text, --text-dim back to the dark values
+     (commented below) for the original look. */
+  --bg:        #f5f5f5;    /* outer fill (viewport behind everything) */
+  --panel:     #ffffff;    /* sidebar / header / footer */
+  --panel-hi:  #f3f3f3;    /* panel-header tinted-white strip */
+  --border:    #d4d4d8;    /* subtle dividers everywhere */
+  --text:      #1f2024;    /* primary type */
+  --text-dim:  #6b7280;    /* labels, captions, secondary type */
+  --accent:    #f59e0b;    /* primary buttons, selected body, icon */
+  --danger:    #dc2626;    /* warning band */
+  --canvas-bg: #e8eaed;    /* 3D viewport background */
+  --btn-bg:    #f3f4f6;    /* default button fill */
+  --btn-hover: #e5e7eb;    /* default button hover fill */
+  --input-bg:  #ffffff;    /* text/number inputs */
+}
+
+* { box-sizing: border-box; }
+
+/* HTML's `hidden` attribute is supposed to give every element
+   `display: none`, but a class selector with `display: flex` (or any
+   explicit display) wins on specificity. `[hidden]` with !important
+   guarantees the attribute behaves like an off-switch regardless of
+   what the class rule says. Without this the placeholder text stays
+   visible behind the stats panel after Open. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg); color: var(--text);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+header h1 {
+  margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+}
+
+/* Filename suffix in the header — written by updateHeader() in
+   ui-bindings.js whenever a file is loaded or cleared. Sits next to
+   the "STEP Editor ▲" title in a lighter, slightly smaller weight so
+   the title still reads as the app name and the filename reads as
+   context. */
+.header-filename {
+  margin-left: 8px;
+  font-weight: 500;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.header-filename::before {
+  content: '— ';
+  color: var(--border);
+}
+.header-filename:empty,
+.header-filename:empty::before {
+  display: none;
+}
+
+.runtime-badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 3px;
+  background: #444; color: var(--text-dim);
+}
+.runtime-badge.fusion { background: #0078d4; color: #fff; }
+.runtime-badge.web    { background: #16a34a; color: #fff; }
+
+main {
+  flex: 1; display: grid; grid-template-columns: 280px 1fr;
+  min-height: 0;
+}
+
+aside.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.panel-section { margin-bottom: 16px; }
+.panel-section h2 {
+  margin: 0 0 6px 0; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+button {
+  display: block; width: 100%;
+  padding: 6px 10px; margin-bottom: 4px;
+  background: var(--btn-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  font: inherit; cursor: pointer;
+  text-align: left;
+}
+button:hover  { background: var(--btn-hover); }
+button:disabled {
+  opacity: 0.5; cursor: not-allowed;
+  background: #e9ecef; color: var(--text-dim);
+}
+button.primary {
+  background: var(--accent); color: #1a1a1a;
+  font-weight: 600;
+  border-color: #d97706;
+}
+button.primary:hover { background: #fbbf24; }
+
+#viewport {
+  position: relative;
+  background: var(--canvas-bg);
+  overflow: hidden;
+}
+#viewportCanvas {
+  width: 100%; height: 100%; display: block;
+}
+
+.placeholder {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--text-dim);
+  pointer-events: none;
+  text-align: center; padding: 20px;
+}
+.placeholder svg { opacity: 0.4; margin-bottom: 12px; }
+.placeholder h3  { margin: 0 0 4px 0; color: var(--text); font-weight: 500; }
+.placeholder p   { margin: 0; max-width: 360px; }
+
+/* Stats panel — shown after a file is parsed. Sits as a translucent
+   corner overlay on top of the Three.js viewer canvas so you see both
+   the geometry and the file metadata side by side. */
+.stats-panel {
+  position: absolute;
+  top: 12px; right: 12px; bottom: 12px;
+  width: 320px; max-width: 40%;
+  padding: 16px 18px;
+  overflow-y: auto;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(4px);
+  z-index: 5;
+  font-size: 12px;
+}
+.stats-panel h3 {
+  margin: 0 0 8px 0; font-size: 14px; color: var(--accent);
+  word-break: break-all;
+}
+.stats-panel h4 {
+  margin: 24px 0 8px 0; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);
+}
+.stats-grid {
+  display: grid; grid-template-columns: 140px 1fr;
+  gap: 4px 12px; margin: 0; font-size: 12px;
+}
+.stats-grid dt { color: var(--text-dim); }
+.stats-grid dd { margin: 0; color: var(--text); }
+.stats-types {
+  width: 100%; max-width: 480px;
+  border-collapse: collapse; font-size: 12px;
+}
+.stats-types td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.stats-types td:first-child { color: var(--text-dim); }
+.stats-types td:last-child  { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-warnings {
+  margin-top: 16px; padding: 8px 12px;
+  background: rgba(220, 38, 38, 0.06);
+  border-left: 3px solid var(--danger);
+  font-size: 11px; color: #991b1b;
+  white-space: pre-wrap; word-break: break-word;
+  max-width: 600px;
+}
+
+/* Body list in the sidebar — populated by populateBodyList() after Open. */
+.body-list {
+  list-style: none;
+  margin: 0; padding: 0;
+  max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: #fafafa;
+}
+.body-list li {
+  padding: 5px 10px;
+  font-size: 12px; color: var(--text);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.body-list li:last-child { border-bottom: none; }
+.body-list li:hover     { background: #f0f0f0; }
+.body-list li.selected  {
+  background: rgba(245, 158, 11, 0.18);
+  color: #92400e;
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  font-weight: 600;
+}
+.body-list .body-type {
+  font-size: 10px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toolbar — sits inside the sidebar's "Tools" section. Flex-wrap so
+   the buttons reflow when the sidebar is narrow, equal-ish flex basis
+   so each row stays tidy. Active button gets the accent treatment. */
+.toolbar {
+  display: flex; flex-wrap: wrap;
+  gap: 4px;
+}
+.tool-btn {
+  flex: 1 1 calc(50% - 4px);  /* two per row at the default sidebar width */
+  margin-bottom: 0;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 12px;
+}
+.tool-btn.active {
+  background: var(--accent);
+  color: #1a1a1a;
+  border-color: #d97706;
+  font-weight: 600;
+}
+.tool-btn.active:hover { background: #fbbf24; }
+
+/* Tool input panel — revealed by activateTool(). Inherits .panel-section
+   styling but adds a tighter top connection to the toolbar above it
+   (visually nests the inputs under the active tool button). */
+.tool-panel h2 .tool-target {
+  margin-left: 6px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.tool-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 6px;
+}
+.tool-row label {
+  font-size: 11px; color: var(--text-dim);
+  min-width: 14px; flex-shrink: 0;
+}
+.tool-row input[type="number"] {
+  flex: 1; min-width: 0;
+  padding: 4px 6px;
+  background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: inherit; font-size: 12px;
+}
+.tool-row input[type="number"]:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+.tool-row button {
+  flex: 0 0 auto; width: auto;
+  padding: 4px 12px; margin: 0;
+}
+.tool-help {
+  margin: 0 0 8px 0;
+  font-size: 11px; color: var(--text-dim);
+  line-height: 1.4;
+}
+.tool-help.current-size {
+  margin: 4px 0 8px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dropdowns in tool panels — match the number-input look so the
+   form reads as a single row. */
+.tool-row select {
+  flex: 1; min-width: 0;
+  padding: 3px 6px;
+  background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: inherit; font-size: 12px;
+}
+.tool-row select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+/* Preset-button row — quick-set buttons that pre-fill the panel's
+   inputs and trigger Apply.  Currently used by Regrid (simplify
+   presets) but the styling is generic for any tool that wants
+   shortcut buttons. */
+.tool-row.presets-row {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.preset-btn {
+  flex: 1 1 calc(33% - 4px);
+  width: auto; margin: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ── Text tool ─────────────────────────────────────────────────────── */
+
+/* Per-font @font-face declarations so the symbol-picker buttons can
+   render each glyph in its native typeface.  The .ttf paths are
+   relative to this stylesheet, which lives in step-editor/html/styles/,
+   so ../fonts/foo.ttf resolves into step-editor/html/fonts/. */
+@font-face { font-family: 'SE Wingdings';   src: url('../fonts/wingdings.ttf')          format('truetype'); }
+@font-face { font-family: 'SE Webdings';    src: url('../fonts/webdings.ttf')           format('truetype'); }
+@font-face { font-family: 'SE Symbol';      src: url('../fonts/symbol.ttf')             format('truetype'); }
+@font-face { font-family: 'SE Bahnschrift'; src: url('../fonts/bahnschrift.ttf')        format('truetype'); }
+@font-face { font-family: 'SE Impact';      src: url('../fonts/impact.ttf')             format('truetype'); }
+@font-face { font-family: 'SE Cascadia Code';        src: url('../fonts/CascadiaCode-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'SE Cascadia Code'; font-weight: bold; src: url('../fonts/CascadiaCode-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'SE Cascadia Mono';        src: url('../fonts/CascadiaMono-Regular.ttf') format('truetype'); }
+@font-face { font-family: 'SE Cascadia Mono'; font-weight: bold; src: url('../fonts/CascadiaMono-Bold.ttf') format('truetype'); }
+@font-face { font-family: 'SE Georgia';     src: url('../fonts/georgia.ttf')            format('truetype'); }
+@font-face { font-family: 'SE Georgia';     font-weight: bold; src: url('../fonts/georgia-bold.ttf')  format('truetype'); }
+@font-face { font-family: 'SE Verdana';     src: url('../fonts/verdana.ttf')            format('truetype'); }
+@font-face { font-family: 'SE Verdana';     font-weight: bold; src: url('../fonts/verdana-bold.ttf')  format('truetype'); }
+@font-face { font-family: 'SE Tahoma';      src: url('../fonts/tahoma.ttf')             format('truetype'); }
+@font-face { font-family: 'SE Tahoma';      font-weight: bold; src: url('../fonts/tahoma-bold.ttf')   format('truetype'); }
+
+/* Multi-line text input. Mirrors the .tool-row number-input styling
+   but takes the whole row width. */
+.tool-row-block { flex-direction: column; align-items: stretch; }
+.tool-row-block textarea {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font: inherit; font-size: 13px;
+  resize: vertical;
+}
+.tool-row-block textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+
+/* Symbol-picker toggle button (the Σ next to the font dropdown). */
+.symbol-toggle {
+  flex: 0 0 28px; width: 28px; padding: 4px 0; margin: 0;
+  text-align: center; font-weight: 600;
+}
+
+/* Symbol-picker popover panel — opens below the toggle, sized to the
+   sidebar. 16-column grid of glyph buttons.  Each button gets its
+   font assigned at render time via inline style so the same grid
+   element can switch fonts when the user changes the dropdown. */
+.symbol-panel {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  max-height: 240px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.symbol-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 8px;
+  background: var(--panel-hi);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim);
+}
+.symbol-panel-head button {
+  flex: 0 0 auto; width: 20px; height: 20px; margin: 0;
+  padding: 0; line-height: 16px;
+  font-size: 14px; text-align: center;
+  background: transparent; border: 1px solid transparent;
+}
+.symbol-panel-head button:hover {
+  background: var(--btn-hover); border-color: var(--border);
+}
+.symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 6px;
+  overflow-y: auto;
+}
+.symbol-grid button {
+  width: 100%; height: 28px; margin: 0;
+  padding: 0;
+  font-size: 16px;
+  text-align: center;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  /* font-family set inline per-button by the populator */
+}
+.symbol-grid button:hover {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: var(--accent);
+}
+
+/* Older transform-target class retained for any in-flight references —
+   harmless if unused. */
+.transform-target { color: var(--accent); font-weight: 600; }
+
+.xform-label {
+  display: block; margin: 4px 0 2px 0;
+  font-size: 11px; color: var(--text-dim);
+}
+.xform-row {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 6px;
+}
+.xform-row label {
+  font-size: 11px; color: var(--text-dim); width: 14px;
+}
+.xform-row input[type="number"] {
+  flex: 1; min-width: 0;
+  padding: 4px 6px;
+  background: var(--input-bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: inherit; font-size: 12px;
+}
+.xform-row input[type="number"]:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+}
+.xform-row button {
+  flex: 0 0 auto; width: auto;
+  padding: 4px 12px; margin: 0;
+}
+.xform-advanced {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.xform-advanced summary {
+  font-size: 11px; color: var(--text-dim);
+  cursor: pointer; padding: 2px 0;
+  list-style: revert;
+}
+.xform-advanced summary:hover { color: var(--text); }
+.xform-help {
+  font-size: 11px; color: var(--text-dim);
+  margin: 8px 0 0 0; line-height: 1.4;
+}
+
+/* Runtime-aware visibility toggles. main.js stamps the matching class
+   onto <body> based on whether we're inside Fusion or in a browser. */
+.fusion-only { display: none; }
+body.runtime-fusion .fusion-only { display: block; }
+body.runtime-web    .web-only    { display: block; }
+.web-only { display: none; }
+
+footer {
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex; justify-content: space-between;
+}

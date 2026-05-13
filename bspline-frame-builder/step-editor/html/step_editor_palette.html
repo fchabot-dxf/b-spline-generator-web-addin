@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>STEP Editor</title>
+  <!-- Multi-size favicon set. Fusion's docked-palette tab and any other
+       chrome that asks the webview for an icon picks the closest match.
+       Paths are relative to this HTML file, which lives at:
+         step-editor/html/step_editor_palette.html
+       …so '../ressources/...' resolves to step-editor/ressources/. -->
+  <link rel="icon" type="image/png" sizes="16x16" href="../ressources/16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="../ressources/32x32.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="../ressources/64x64.png">
+
+  <!-- Cloud STP-file sync: set window.STEP_EDITOR_API_URL to the deployed
+       Worker URL to enable. When unset, the cloud buttons disable themselves
+       and the rest of the palette keeps working. Same convention used by
+       b-spline-gen via BSPLINE_PRESETS_API_URL. -->
+  <script>
+    window.STEP_EDITOR_API_URL = '';  // e.g. 'https://step-editor-files.dansemur.workers.dev'
+  </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- occt-import-js: WASM port of OpenCascade's STEP reader. Loaded
+       from jsDelivr by default; override window.OCCT_BASE_URL above to
+       vendor it locally. The matching .wasm is fetched on first use,
+       so the palette boots quickly and only pays the WASM cost when
+       a STEP file is opened. -->
+  <script src="https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/occt-import-js.js"></script>
+
+  <!-- opentype.js: parses .ttf / .otf files and exposes glyph outlines.
+       Used by the Text tool to convert typed strings into 2D contours
+       that get extruded to 3D and emitted as STEP geometry. -->
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+
+  <link rel="stylesheet" href="styles/step-editor.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>
+        STEP Editor <span style="color:var(--accent)">▲</span>
+        <span id="headerFilename" class="header-filename"></span>
+      </h1>
+    </header>
+
+    <main>
+      <aside class="sidebar">
+        <div class="panel-section">
+          <h2>File</h2>
+          <button id="btnOpen">Open .stp…</button>
+          <button id="btnSave">Save .stp…</button>
+          <button id="btnNew">New (empty)</button>
+        </div>
+
+        <div class="panel-section" id="bodiesSection" hidden>
+          <h2>Bodies</h2>
+          <ul id="bodyList" class="body-list"></ul>
+        </div>
+
+        <!-- Toolbar — click a tool to activate its panel.  Only one
+             tool active at a time; clicking the active tool again
+             deactivates it.  Disabled buttons are placeholders for
+             upcoming features.  Wired by activateTool() in
+             ui-bindings.js. -->
+        <div class="panel-section" id="toolsSection" hidden>
+          <h2>Tools</h2>
+          <div class="toolbar" role="toolbar" aria-label="Editor tools">
+            <button class="tool-btn"          data-tool="scale"     title="Uniform or per-axis scale">Scale</button>
+            <button class="tool-btn"          data-tool="translate" title="Move along X/Y/Z">Move</button>
+            <button class="tool-btn"          data-tool="rotate"    title="Rotate around X/Y/Z axis">Rotate</button>
+            <button class="tool-btn"          data-tool="mirror"    title="Mirror across XY/YZ/XZ plane">Mirror</button>
+            <button class="tool-btn"          data-tool="resize"    title="Resize to target bounding-box dimensions">Resize</button>
+            <button class="tool-btn"          data-tool="regrid"    title="Re-parameterize B-spline surfaces to a uniform N×M CP grid">Regrid</button>
+            <button class="tool-btn" disabled data-tool="pattern"   title="Linear array of N copies (coming)">Pattern</button>
+            <button class="tool-btn"          data-tool="text"      title="3D text — engrave or emboss on a body">Text</button>
+            <button class="tool-btn" disabled data-tool="numeric"   title="Numeric editor (coming)">Numeric</button>
+            <button class="tool-btn" disabled data-tool="sculpt"    title="Sculpt mode (coming)">Sculpt</button>
+            <button class="tool-btn" disabled data-tool="merge"     title="Merge with another .stp (coming)">Merge</button>
+            <button class="tool-btn" disabled data-tool="split"     title="Split bodies (coming)">Split</button>
+            <button class="tool-btn"          data-tool="verify"    title="Verify parser round-trip">Verify</button>
+          </div>
+        </div>
+
+        <!-- Tool input panels.  Hidden by default; activateTool()
+             reveals one at a time. -->
+
+
+        <div class="panel-section tool-panel" id="scaleSection" hidden>
+          <h2>Scale <span class="tool-target" id="scaleBodyName"></span></h2>
+          <div class="tool-row">
+            <label>Uniform</label>
+            <input id="xformUniform" type="number" step="0.1" value="1.0">
+            <button id="btnApplyUniform" class="primary">Apply</button>
+          </div>
+          <div class="tool-row">
+            <label>X</label><input id="xformSX" type="number" step="0.1" value="1.0">
+            <label>Y</label><input id="xformSY" type="number" step="0.1" value="1.0">
+            <label>Z</label><input id="xformSZ" type="number" step="0.1" value="1.0">
+          </div>
+          <button id="btnApplyAxes">Apply per-axis</button>
+        </div>
+
+        <div class="panel-section tool-panel" id="translateSection" hidden>
+          <h2>Move <span class="tool-target" id="translateBodyName"></span></h2>
+          <div class="tool-row">
+            <label>X</label><input id="xformTX" type="number" step="1" value="0">
+            <label>Y</label><input id="xformTY" type="number" step="1" value="0">
+            <label>Z</label><input id="xformTZ" type="number" step="1" value="0">
+          </div>
+          <button id="btnApplyTranslate" class="primary">Apply</button>
+        </div>
+
+        <div class="panel-section tool-panel" id="rotateSection" hidden>
+          <h2>Rotate <span class="tool-target" id="rotateBodyName"></span></h2>
+          <div class="tool-row">
+            <label>Axis</label>
+            <select id="rotateAxis">
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z" selected>Z</option>
+            </select>
+            <label title="degrees, right-handed">°</label>
+            <input id="rotateAngle" type="number" step="15" value="90">
+          </div>
+          <button id="btnApplyRotate" class="primary">Apply</button>
+        </div>
+
+        <div class="panel-section tool-panel" id="mirrorSection" hidden>
+          <h2>Mirror <span class="tool-target" id="mirrorBodyName"></span></h2>
+          <div class="tool-row">
+            <label>Plane</label>
+            <select id="mirrorPlane">
+              <option value="xy">XY (flip Z)</option>
+              <option value="yz">YZ (flip X)</option>
+              <option value="xz">XZ (flip Y)</option>
+            </select>
+          </div>
+          <button id="btnApplyMirror" class="primary">Apply</button>
+        </div>
+
+        <div class="panel-section tool-panel" id="resizeSection" hidden>
+          <h2>Resize <span class="tool-target" id="resizeBodyName"></span></h2>
+          <p class="tool-help">
+            Target bounding-box dimensions (in source units).
+            Leave 0 to preserve current size on that axis.
+            Centre stays put.
+          </p>
+          <div class="tool-row">
+            <label>X</label><input id="resizeX" type="number" min="0" step="1" value="0">
+            <label>Y</label><input id="resizeY" type="number" min="0" step="1" value="0">
+            <label>Z</label><input id="resizeZ" type="number" min="0" step="1" value="0">
+          </div>
+          <p class="tool-help current-size" id="resizeCurrent">Current: —</p>
+          <button id="btnApplyResize" class="primary">Apply</button>
+        </div>
+
+        <div class="panel-section tool-panel" id="textSection" hidden>
+          <h2>Text <span class="tool-target" id="textBodyName"></span></h2>
+          <p class="tool-help">
+            Milestone A: type, pick a font, see the outlines previewed
+            on the floor of the 3D scene. STEP body emission lands in
+            milestone B — for now this is preview-only.
+          </p>
+          <div class="tool-row tool-row-block">
+            <textarea id="textInput" rows="2" placeholder="Type text here…" spellcheck="false">STEP</textarea>
+          </div>
+          <div class="tool-row">
+            <button id="btnTextSymbols" class="symbol-toggle" title="Insert a symbol from the current font">Σ</button>
+            <select id="textFont"></select>
+          </div>
+          <div class="tool-row">
+            <label>Size</label><input id="textSize" type="number" min="0.1" step="0.5" value="10">
+            <label title="Positive = emboss, negative = engrave (milestone B)">Depth</label>
+            <input id="textDepth" type="number" step="0.5" value="2">
+          </div>
+          <button id="btnApplyText" class="primary">Update preview</button>
+
+          <!-- Floating symbol-keyboard panel. Stays inside the sidebar
+               so docking/resizing doesn't strand it. Hidden until the
+               Σ button toggles it. -->
+          <div id="textSymbolPanel" class="symbol-panel" hidden>
+            <div class="symbol-panel-head">
+              <span>Symbols — <span id="textSymbolFontLabel">font</span></span>
+              <button id="textSymbolClose" title="Close symbol picker">×</button>
+            </div>
+            <div id="textSymbolGrid" class="symbol-grid"></div>
+          </div>
+        </div>
+
+        <div class="panel-section tool-panel" id="regridSection" hidden>
+          <h2>Regrid <span class="tool-target" id="regridBodyName"></span></h2>
+          <p class="tool-help">
+            Re-parameterize every B-spline surface in this body to a
+            uniform N&times;M control-point grid. Slight shape drift is
+            normal — least-squares fit, not exact.
+          </p>
+          <div class="tool-row">
+            <label>Nu</label><input id="regridNu" type="number" min="2" step="1" value="8">
+            <label>Nv</label><input id="regridNv" type="number" min="2" step="1" value="8">
+          </div>
+          <div class="tool-row">
+            <label title="Samples per axis for the least-squares fit">Smp</label>
+            <input id="regridSample" type="number" min="8" step="4" value="32">
+          </div>
+          <!-- Simplify presets — one click drops Nu/Nv to a common size
+               then triggers Apply.  Smaller = simpler / smaller file. -->
+          <div class="tool-row presets-row">
+            <button class="preset-btn" data-regrid-preset="4">Simplify 4×4</button>
+            <button class="preset-btn" data-regrid-preset="8">Standard 8×8</button>
+            <button class="preset-btn" data-regrid-preset="16">Detailed 16×16</button>
+          </div>
+          <button id="btnApplyRegrid" class="primary">Apply regrid</button>
+        </div>
+
+        <div class="panel-section">
+          <h2>Cloud</h2>
+          <button id="btnCloudList">My saved files…</button>
+          <button id="btnCloudSave" disabled>Save to cloud</button>
+        </div>
+
+        <div class="panel-section">
+          <h2>Fusion</h2>
+          <button id="btnSendToFusion" class="primary" disabled>Send to Fusion</button>
+          <button id="btnCancel">Close palette</button>
+        </div>
+      </aside>
+
+      <div id="viewport">
+        <canvas id="viewportCanvas"></canvas>
+        <div class="placeholder" id="placeholder">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 2 2 7l10 5 10-5-10-5Z"/>
+            <path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>
+          </svg>
+          <h3>No STEP file loaded</h3>
+          <p>Open a .stp file to start editing.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <span id="statusLine">Ready.</span>
+      <span id="versionLine">step-editor v0.1.0 (scaffold)</span>
+    </footer>
+  </div>
+
+  <!-- ES module entry so every helper stays exportable / testable. -->
+  <script type="module" src="main/main.js"></script>
+</body>
+</html>
