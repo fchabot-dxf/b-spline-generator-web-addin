@@ -48,6 +48,9 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
               'cam_acquired': bool,
               'mms': {name: bool, ...},
               'setups': [{'name': str, 'ok': bool}, ...],
+              # Indexed-mode extras (generic mode only):
+              'setups_built': int,      # total Setups created (= comps × sides)
+              'setups_expected': int,   # total Setups expected to be created
               'errors': [str, ...],
             }
     """
@@ -126,18 +129,31 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
                 report['errors'].append(f"MM for '{name}' was not built.")
 
         setup_results = setup_builder.build_setups_generic(cam, mms, logger, profile=profile)
-        built_names = {n for n, _ in setup_results}
+        # build_setups_generic returns one (comp_name, Setup) tuple per side
+        # per component, so a multi-side run will have N×M entries. We
+        # collapse to a per-component set for the row-status check and
+        # count setups separately so the report stays meaningful.
+        built_comps = {n for n, _ in setup_results}
         for name in component_names:
             report['setups'].append({
                 'name': name,
-                'ok':   name in built_names,
+                'ok':   name in built_comps,
             })
-            if name not in built_names:
+            if name not in built_comps:
                 report['errors'].append(f"Setup for '{name}' was not built.")
+
+        # Track per-side counts for transparency in the UI / logs. The
+        # number of sides comes from the profile (defaults to 1 when
+        # absent), so the expected total is comps × sides.
+        sides = (profile or {}).get('sides') or [{'name': 'A', 'axis': 'Z', 'angleDeg': 0}]
+        expected_setups = len(component_names) * max(1, len(sides))
+        report['setups_built']    = len(setup_results)
+        report['setups_expected'] = expected_setups
 
         report['ok'] = (
             len(mms) == len(component_names)
-            and len(setup_results) == len(component_names)
+            and built_comps == set(component_names)
+            and len(setup_results) == expected_setups
         )
 
     else:

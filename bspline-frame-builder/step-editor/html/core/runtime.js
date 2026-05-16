@@ -20,7 +20,20 @@
  * the `runtime-fusion` / `runtime-web` body classes.
  */
 export function isFusion() {
-  return !!(typeof window !== 'undefined' && window.adsk && window.adsk.fusionSendData);
+  // IMPORTANT: Fusion's `adsk` binding is injected as a GLOBAL but is NOT
+  // always attached to `window` (verified empirically — `window.adsk` can
+  // be defined while `adsk` is the bridge function-holder, OR `window.adsk`
+  // can be a stub while bare `adsk` works). The pattern that's known to
+  // work in production is the bare-identifier reference used by
+  // b-spline-gen/html/core/fusion-bridge.js. We mirror it here with a
+  // typeof guard so the standalone web build (no Fusion = no `adsk`
+  // global) still loads without a ReferenceError.
+  try {
+    // eslint-disable-next-line no-undef
+    return typeof adsk !== 'undefined' && !!adsk && typeof adsk.fusionSendData === 'function';
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
@@ -32,7 +45,10 @@ export function isFusion() {
 export function sendToPython(action, data) {
   if (!isFusion()) return;
   try {
-    window.adsk.fusionSendData(action, JSON.stringify(data || {}));
+    // Bare `adsk` global — see the comment in isFusion() for why this
+    // works while `window.adsk.fusionSendData` silently no-ops.
+    // eslint-disable-next-line no-undef
+    adsk.fusionSendData(action, JSON.stringify(data || {}));
   } catch (e) {
     // Swallow — the bridge can throw transient errors during palette
     // teardown that aren't actionable from JS.

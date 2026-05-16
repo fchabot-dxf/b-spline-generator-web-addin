@@ -69,19 +69,46 @@ SETUP_SPECS = [
         'wcs_orient':   'select_x_y',         # axesXY -- pick X & Y axes from model
         'box_point':    'top 1',              # verified from audit JSON
         'flip_y':       False,
+        # Cloud toolpath templates dropped into this setup at build time so
+        # the user doesn't have to wire up "Pocket back" and "Morphed Spiral"
+        # by hand every project. Each entry is the leaf filename of a
+        # CAMTemplate in the user's cloud library (cloud:// URL space).
+        # See `_apply_cloud_templates` below.
+        'cloud_templates': [
+            'Pocket back.f3dhsm-template',
+            'Morphed Spiral.f3dhsm-template',
+        ],
     },
     {
         'name':         'B-spline Top',
         'mm_rule':      'bspline_set',
-        'stock_intent': 'fixed_box',
+        # 'from_prev_setup' tells Fusion to inherit the stock state from
+        # the previous setup's IPV (in-process view) — i.e. the material
+        # left behind after B-spline Back has cut its pocket. Combined
+        # with continue_machining=True below, this gives the user
+        # automatic rest machining: Top only cuts what Back didn't reach.
+        # Resolves to adsk.cam.SetupStockModes.FromPreviousSetup at build.
+        'stock_intent': 'from_prev_setup',
         'wcs_origin':   'box_point',          # corner of stock bbox (flipY handles second side)
         'wcs_orient':   'select_x_y',         # axesXY -- same axes as Back, flipped Y
         'box_point':    'top 1',              # verified from audit JSON -- same corner
         'flip_y':       True,
-        # Rest machining flag retained so the user can switch Top back
-        # to from_prev_setup later without re-editing the spec. With
-        # fixed_box it's a harmless no-op (no previous setup to chain).
+        # Rest machining: Fusion subtracts the prior setup's removed
+        # material so Top's toolpaths skip already-machined regions.
         'continue_machining': True,
+        # B-spline Top default templates. "Front" in the cloud library's
+        # naming maps to the panel's top-side (the face that becomes the
+        # visible/top after the flipY between Back and Top setups), so
+        # 'Pocket front FRED' is the top-side analogue of 'Pocket back'.
+        # 'Pocket front deloge FRED' runs LAST as a finishing/cleanup
+        # pass that dislodges remaining stock the earlier ops left
+        # behind — must come after both the main pocket and the morphed
+        # spiral so the IPV it sees is the fully-roughed-out state.
+        'cloud_templates': [
+            'Pocket front FRED.f3dhsm-template',
+            'Morphed Spiral.f3dhsm-template',
+            'Pocket front deloge FRED.f3dhsm-template',
+        ],
     },
     {
         'name':         'Frame',
@@ -91,6 +118,12 @@ SETUP_SPECS = [
         'wcs_orient':   'select_x_y',         # axesXY -- same axes swap as Stock/Back/Top
         'box_point':    'top 1',
         'flip_y':       True,                 # Z up to match Stock and B-spline Top
+        # Frame templates: the user's two 'cadre' presets (French for frame).
+        # They're cloud-stored and tuned for the frame's flat profile cut.
+        'cloud_templates': [
+            'cadre Pocket 4.f3dhsm-template',
+            'cadre Morphed Spiral 3.f3dhsm-template',
+        ],
     },
 ]
 
@@ -274,12 +307,153 @@ def build_setup(cam, mms, spec, logger=None):
     except Exception:
         mm_name = '<unknown>'
     _log(logger, f"SETUP BUILD ({spec['name']}): created -> MM '{mm_name}'")
+
+    # Apply cloud toolpath templates declared in the spec (e.g. 'Pocket back',
+    # 'Morphed Spiral' for B-spline Back), or the user's per-project override
+    # if they edited the list via the template-browser UI. Best-effort:
+    # a template that's missing from the cloud library logs WARNING but
+    # doesn't fail the whole setup build.
+    try:
+        from . import template_assignments as _tpl_overrides
+        design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
+        cloud_templates = _tpl_overrides.resolve_templates(
+            design, spec['name'], spec.get('cloud_templates') or [])
+    except Exception as e:
+        _log(logger,
+             f"SETUP BUILD ({spec['name']}): override lookup failed ({e}); using spec defaults",
+             "WARNING")
+        cloud_templates = spec.get('cloud_templates') or []
+    if cloud_templates:
+        _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
+
     return setup
 
 
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
+
+
+def _rename_created_operations(results, base_name, setup_name, logger):
+    """Rename every Operation in ``results`` to ``base_name`` (or
+    ``base_name (N)`` if Fusion balks at a duplicate). Folders and
+    patterns are left alone — their rename behaviour is inconsistent
+    across builds and the user usually wants those as containers anyway.
+
+    Returns the count successfully renamed.
+
+    Why per-op rather than per-template: a template can stamp out more
+    than one operation in one shot. Each gets the same base name with
+    an incrementing suffix so they stay grouped visually in the tree.
+    """
+    if not results:
+        return 0
+    # Lazy import to avoid a circular at module-load (adsk.cam touches
+    # heavy types). adsk is already in scope at the module level via the
+    # earlier `import adsk.cam`, but the isinstance check needs the type.
+    OperationType = getattr(adsk.cam, 'Operation', None)
+    renamed = 0
+    used_suffix = 0
+    for entry in results:
+        if OperationType is None or not isinstance(entry, OperationType):
+            continue
+        # Fusion is picky: assigning a name that already exists in the
+        # setup throws "Name conflict". Walk up suffixes until we land
+        # one that doesn't collide.
+        candidate = base_name if used_suffix == 0 else f'{base_name} ({used_suffix})'
+        while True:
+            try:
+                entry.name = candidate
+                renamed += 1
+                used_suffix += 1
+                break
+            except Exception as e:
+                # Most likely a name collision; bump suffix and retry. Cap at
+                # 50 attempts so a Fusion-side bug can't loop forever.
+                used_suffix += 1
+                candidate = f'{base_name} ({used_suffix})'
+                if used_suffix > 50:
+                    _log(logger,
+                         f"SETUP BUILD ({setup_name}): rename gave up after 50 attempts "
+                         f"for {base_name!r}: {e}",
+                         "WARNING")
+                    break
+    return renamed
+
+
+def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger):
+    """Pull each named template from the user's cloud CAM library and stamp
+    its operations into ``setup`` via Setup.createFromCAMTemplate.
+
+    ``template_leaf_names`` is a list of leaf filenames as they appear in
+    Fusion's CAM cloud library (the ``cloud://`` URL space — same names
+    the user sees in the Templates dropdown of the CAM workspace). Each
+    must end in ``.f3dhsm-template``; we don't add it automatically so
+    typos surface as missing-template warnings rather than silent skips.
+    Missing templates log WARNING and are skipped; the rest still apply.
+
+    Returns the count of templates successfully applied."""
+    if not template_leaf_names:
+        return 0
+    try:
+        cam_mgr = adsk.cam.CAMManager.get()
+        tpl_lib = cam_mgr.libraryManager.templateLibrary
+        cloud_root = tpl_lib.urlByLocation(adsk.cam.LibraryLocations.CloudLibraryLocation)
+    except Exception as e:
+        _log(logger,
+             f"SETUP BUILD ({setup_name}): cloud library unavailable ({e}); "
+             f"skipping {len(template_leaf_names)} template(s)",
+             "WARNING")
+        return 0
+    if not cloud_root:
+        _log(logger,
+             f"SETUP BUILD ({setup_name}): no cloud library configured; "
+             f"skipping {len(template_leaf_names)} template(s)",
+             "WARNING")
+        return 0
+
+    # Index the cloud library's child assets by leaf name once so we don't
+    # walk the URL list per-template.
+    try:
+        cloud_assets = {url.leafName: url for url in tpl_lib.childAssetURLs(cloud_root)}
+    except Exception as e:
+        _log(logger, f"SETUP BUILD ({setup_name}): childAssetURLs failed: {e}", "WARNING")
+        return 0
+
+    applied = 0
+    for leaf in template_leaf_names:
+        url = cloud_assets.get(leaf)
+        if not url:
+            _log(logger,
+                 f"SETUP BUILD ({setup_name}): cloud template {leaf!r} not found "
+                 f"(available: {sorted(cloud_assets.keys())[:5]}...) — skipping",
+                 "WARNING")
+            continue
+        try:
+            tpl = tpl_lib.templateAtURL(url)
+            results = setup.createFromCAMTemplate(tpl)
+            # Fusion names each created Operation from whatever the template
+            # author saved it with — usually lowercase boilerplate like
+            # "pocket back" or auto-suffixed re-uses like "Morphed Spiral2 (2)".
+            # Rename to the template's leaf filename (sans .f3dhsm-template)
+            # so the user immediately sees which template created the op
+            # and the names stay consistent across projects. If a folder
+            # / pattern slips through it just keeps its Fusion-given name
+            # (rename API isn't reliable on those types).
+            base_name = leaf[:-len('.f3dhsm-template')] if leaf.endswith('.f3dhsm-template') else leaf
+            renamed = _rename_created_operations(results, base_name, setup_name, logger)
+            _log(logger,
+                 f"SETUP BUILD ({setup_name}): applied {leaf!r} -> "
+                 f"{len(results)} item(s); renamed {renamed} -> {base_name!r}")
+            applied += 1
+        except Exception as e:
+            _log(logger,
+                 f"SETUP BUILD ({setup_name}): createFromCAMTemplate({leaf!r}) failed: {e}",
+                 "WARNING")
+    return applied
+
+
+
 
 # Intent -> typed enum on `adsk.cam.SetupStockModes`. Prefer this over the
 # `job_stockMode` parameter dictionary because the parameter strings are
@@ -618,95 +792,236 @@ def _set_expr_param(params, name, expr, setup_name, logger):
 
 
 # ---------------------------------------------------------------------------
-# Generic mode -- one Setup per MM
+# Generic mode — N-sided indexed machining workflow
+# ---------------------------------------------------------------------------
+#
+# An "indexed" job machines one component from multiple orientations by
+# physically rotating the part on the table between Setups. Each side
+# carries an axis (X/Y/Z) and an angle in degrees; the dispatcher fans
+# out one Setup per (MM × side) and applies the rotation to the WCS.
+#
+# Side A at 0° is the default; missing/empty 'sides' falls back to a
+# single-side run that's behaviourally identical to the pre-refactor
+# one-Setup-per-MM flow.
+#
+# Rotation support, by axis:
+#   • Z (vertical, around the table)  — fully supported, any angle.
+#       Implemented by creating two perpendicular sketch lines at the
+#       desired angle in a hidden rotation sketch, then binding them
+#       as wcs_orientation_axisX / axisY. The most common case for
+#       indexed work on a 3-axis machine (Ultimate Bee + fixturing).
+#   • X / Y axis, 180°                — supported via flipX/flipY/flipZ
+#       combos on the WCS orientation. Useful for "flip the part over".
+#   • X / Y axis, arbitrary angle     — not yet expressible via the
+#       parameter-driven WCS alone. The Setup is still created (with
+#       no rotation) and a WARNING is logged; the user can then re-
+#       orient that Setup interactively in the CAM dialog.
 # ---------------------------------------------------------------------------
 
+# Default sides list when the profile omits 'sides' entirely. One side at
+# 0° = behaviourally identical to the pre-refactor one-Setup-per-MM flow.
+_DEFAULT_SIDES = [{'name': 'A', 'axis': 'Z', 'angleDeg': 0.0}]
+
+
 def build_setups_generic(cam, mms_dict, logger=None, profile=None):
-    """Generic mode: build one milling Setup per MM.
+    """Generic mode: for each MM, build one Setup per side.
 
-    When ``profile`` is supplied (a dict from the CAM Studio palette or
-    the Cloudflare worker), its settings override the defaults below:
+    Indexed machining workflow — a single component can be machined from
+    multiple orientations by physically rotating the part on the table.
+    Each side in the profile produces one Setup bound to the (shared) MM
+    of that component.
 
-    * ``stockMode``       → stock intent (auto_bbox / fixed_size / …)
-    * ``boxPoint``        → int 1-9 → Fusion box-point string
-    * ``flipY``           → bool, WCS flip-Y toggle
-    * ``clearanceHeight`` → mm, applied as ``clearanceHeight_offset``
-    * ``retractHeight``   → mm, applied as ``retractHeight_offset``
+    Profile keys
+    ------------
+    stockMode        : str   — 'auto_bbox' / 'fixed_size' / etc. Applied
+                                to the FIRST side only; subsequent sides
+                                auto-cascade to 'from_prev_setup'.
+    boxPoint         : int   — 1-9 stock-box corner (see _INT_TO_BOX_POINT)
+    flipY            : bool  — applied to every side (independent of rotation)
+    clearanceHeight  : float — mm, applied as clearanceHeight_offset
+    retractHeight    : float — mm, applied as retractHeight_offset
+    sides            : list  — [{name, axis, angleDeg, ...}, ...]; defaults
+                                to a single Side A at 0° when absent/empty.
+                                Each side may also carry optional overrides:
+                                  'stockMode'         (str) — pin this side's
+                                                              stock intent
+                                  'continueMachining' (bool) — override the
+                                                              rest-machining
+                                                              auto-cascade
+    operations       : list  — stored for reference; toolpaths still
+                                added manually by the user.
 
-    Operations in the profile are stored for reference; Fusion CAM
-    operations require a resolved Tool object from the tool library and
-    cannot be created purely from metadata here. Toolpaths are added by
-    the user in the CAM workspace after generation.
+    Stock auto-cascade
+    ------------------
+    Indexed jobs want each successive orientation to pick up where the
+    previous one stopped — only cutting the material the prior setup
+    left behind. The dispatcher auto-applies that pattern:
 
-    Parameters
-    ----------
-    cam : adsk.cam.CAM
-    mms_dict : dict[str, ManufacturingModel]
-        ``{component_name: ManufacturingModel}`` from
-        :func:`cam_engine.mm_builder.build_mms_from_components`.
-    profile : dict or None
-        Optional profile dict from the palette. Keys that are absent or
-        None fall back to sensible defaults.
+        Side index 0      → stockMode  = profile.stockMode
+                            continueMachining = False
+        Side index ≥ 1    → stockMode  = 'from_prev_setup'
+                            continueMachining = True
+
+    Either field can be overridden per-side via the side dict's
+    'stockMode' / 'continueMachining' keys.
 
     Returns
     -------
     list[tuple[str, adsk.cam.Setup]]
-        ``[(component_name, Setup), ...]`` for each successfully built
-        Setup. Missing entries indicate build failures (logged).
+        ``[(comp_name, Setup), ...]`` — one entry per built Setup. A
+        component with N sides appears N times. ``comp_name`` is the
+        bare component name (NOT the formatted Setup name with the
+        side suffix) so the coordinator's per-component success check
+        (``name in built_names``) keeps working unchanged. The Setup's
+        actual display name lives on ``setup.name`` and is built by
+        :func:`_format_setup_name`.
     """
     p = profile or {}
 
-    # Resolve stock intent (profile uses 'auto_bbox' / 'fixed_size' etc.)
     stock_intent = p.get('stockMode') or 'auto_bbox'
 
-    # Convert integer box-point to Fusion expression string.
-    # Falls back to 'top 1' (top-left corner) if absent or unrecognised.
     box_int = p.get('boxPoint')
     box_point = _INT_TO_BOX_POINT.get(int(box_int), 'top 1') if box_int else 'top 1'
 
     flip_y = bool(p.get('flipY', False))
 
-    # Heights in mm; None means "leave at Fusion default".
     clearance_mm = p.get('clearanceHeight')  # float or None
     retract_mm   = p.get('retractHeight')    # float or None
+
+    sides_raw = p.get('sides') or _DEFAULT_SIDES
+    sides = [_normalise_side(s, i) for i, s in enumerate(sides_raw)]
 
     _log(logger,
          f"SETUP BUILD GENERIC: profile → stock={stock_intent!r}  "
          f"box={box_point!r}  flipY={flip_y}  "
-         f"clearance={clearance_mm} mm  retract={retract_mm} mm",
+         f"clearance={clearance_mm} mm  retract={retract_mm} mm  "
+         f"sides={len(sides)} "
+         f"({', '.join(_side_label(s) for s in sides)})",
          "INFO")
 
     results = []
     for comp_name, mm in mms_dict.items():
-        spec = {
-            'name':         comp_name,
-            'stock_intent': stock_intent,
-            'wcs_origin':   'box_point',
-            'wcs_orient':   'select_x_y',
-            'box_point':    box_point,
-            'flip_y':       flip_y,
-        }
-        # Pass heights so _build_setup_for_mm can apply them
-        if clearance_mm is not None:
-            spec['clearance_mm'] = float(clearance_mm)
-        if retract_mm is not None:
-            spec['retract_mm'] = float(retract_mm)
+        for side_idx, side in enumerate(sides):
+            setup_name = _format_setup_name(comp_name, side, len(sides))
 
-        setup = _build_setup_for_mm(cam, mm, spec, logger)
-        if setup:
-            results.append((comp_name, setup))
-        else:
-            _log(logger, f"SETUP BUILD GENERIC ({comp_name}): build returned None", "WARNING")
+            # Auto-cascade stock for indexed runs:
+            #   Side 0 (first)    → profile.stockMode  (start from the raw
+            #                       blank, fixed_size or auto_bbox etc.)
+            #   Side ≥1 (others)  → from_prev_setup + continueMachining=True
+            #                       (each side picks up where the previous
+            #                       one left off and only cuts the rest of
+            #                       the material).
+            # A side dict can override either field with its own
+            # 'stockMode' / 'continueMachining' for the rare case where
+            # auto-cascade doesn't fit.
+            side_stock_override = side.get('stockMode')
+            if side_stock_override:
+                side_stock_intent = side_stock_override
+            elif side_idx == 0:
+                side_stock_intent = stock_intent
+            else:
+                side_stock_intent = 'from_prev_setup'
+
+            side_rest_override = side.get('continueMachining')
+            if side_rest_override is None:
+                # Default: every side after the first does rest machining.
+                side_continue_machining = (side_idx > 0)
+            else:
+                side_continue_machining = bool(side_rest_override)
+
+            spec = {
+                'name':               setup_name,
+                'comp_name':          comp_name,
+                'side':               side,
+                'side_idx':           side_idx,
+                'stock_intent':       side_stock_intent,
+                'continue_machining': side_continue_machining,
+                'wcs_origin':         'box_point',
+                'wcs_orient':         'select_x_y',
+                'box_point':          box_point,
+                'flip_y':             flip_y,
+            }
+            if clearance_mm is not None:
+                spec['clearance_mm'] = float(clearance_mm)
+            if retract_mm is not None:
+                spec['retract_mm'] = float(retract_mm)
+
+            setup = _build_setup_for_mm(cam, mm, spec, logger)
+            if setup:
+                # Return comp_name (NOT setup_name) so the coordinator's
+                # per-component success check `name in built_names` still
+                # works for multi-side runs. The displayed Setup name
+                # lives on setup.name (set inside _build_setup_for_mm).
+                results.append((comp_name, setup))
+            else:
+                _log(logger,
+                     f"SETUP BUILD GENERIC ({setup_name}): build returned None",
+                     "WARNING")
     return results
 
 
-def _build_setup_for_mm(cam, mm, spec, logger=None):
-    """Build one milling Setup bound to a specific MM.
+def _normalise_side(side, index):
+    """Coerce a side dict from the palette/profile into canonical form
+    ``{'name': str, 'axis': 'X'|'Y'|'Z', 'angleDeg': float}``.
 
-    Mirrors the logic of :func:`build_setup` but takes an MM directly
-    instead of looking it up from a rule dict. Used by generic mode.
+    Fills in safe defaults so a malformed entry doesn't blow up the
+    dispatch loop:
+      * missing name → 'A' / 'B' / 'C' by index (A=0, B=1, …)
+      * missing or unrecognised axis → 'Z'
+      * non-numeric angle → 0.0
+    """
+    if not isinstance(side, dict):
+        side = {}
+    name = str(side.get('name') or chr(ord('A') + (index % 26)))
+    axis_raw = str(side.get('axis') or 'Z').upper()
+    axis = axis_raw if axis_raw in ('X', 'Y', 'Z') else 'Z'
+    try:
+        angle = float(side.get('angleDeg', 0.0))
+    except (TypeError, ValueError):
+        angle = 0.0
+    return {'name': name, 'axis': axis, 'angleDeg': angle}
+
+
+def _side_label(side):
+    """Compact label for logging: ``'A'`` (no rotation) or ``'B@30°Z'``."""
+    angle = side.get('angleDeg', 0.0)
+    if angle == 0.0:
+        return side['name']
+    return f"{side['name']}@{angle:g}°{side['axis']}"
+
+
+def _format_setup_name(comp_name, side, total_sides):
+    """Format the Setup name shown in the CAM tree.
+
+    Single-side runs preserve the bare component name (back-compat with
+    the pre-refactor one-Setup-per-MM flow). Multi-side runs encode the
+    side name and any non-zero rotation::
+
+        BPanel               (1 side, 0°)
+        BPanel · A           (multi-side, 0°)
+        BPanel · B 30°Z      (multi-side, rotated)
+    """
+    if total_sides <= 1 and side.get('angleDeg', 0.0) == 0.0:
+        return comp_name
+    name = side['name']
+    angle = side.get('angleDeg', 0.0)
+    if angle == 0.0:
+        return f"{comp_name} · {name}"
+    axis = side.get('axis', 'Z')
+    return f"{comp_name} · {name} {angle:g}°{axis}"
+
+
+def _build_setup_for_mm(cam, mm, spec, logger=None):
+    """Build one milling Setup bound to a specific MM, for one side.
+
+    The MM is shared across all sides of the same component — every side
+    binds to the same body list, the same parametric updates, the same
+    stock. What varies is the WCS orientation: the side's rotation is
+    applied via ``_resolve_side_axes`` (axis bindings) and
+    ``_apply_side_axis_flips`` (180° flips for X/Y indexing).
     """
     setup_name = spec.get('name', '<unnamed>')
+    side = spec.get('side') or dict(_DEFAULT_SIDES[0])
 
     try:
         setup_input = cam.setups.createInput(adsk.cam.OperationTypes.MillingOperation)
@@ -746,7 +1061,11 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
     except Exception as e:
         _log(logger, f"SETUP BUILD GENERIC ({setup_name}): stockMode raised: {e}", "WARNING")
 
-    # WCS: same write order as build_setup (mode → orientation → axes → flipY → boxPoint)
+    # WCS write order (same as build_setup): mode → orientation → axes
+    # → flipY → boxPoint. The per-side rotation slots in BETWEEN axes
+    # and box-point — the axes bind to rotated sketch lines (Z-axis
+    # rotation) and the flips happen via _apply_side_axis_flips
+    # (180° about X or Y).
     try:
         pi.set_choice(setup.parameters, 'wcs_origin_mode',
                       pi.WCS_ORIGIN_MODE_CANDIDATES[spec['wcs_origin']], logger)
@@ -755,8 +1074,11 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
     except Exception as e:
         _log(logger, f"SETUP BUILD GENERIC ({setup_name}): WCS mode set raised: {e}", "WARNING")
 
+    # Bind X/Y axes — rotated for Z-axis indexing, default origin axes
+    # otherwise. The X/Y param swap (yAxis → axisX, xAxis → axisY)
+    # matches the Fusion-quirk binding used by the hardcoded path.
     if spec.get('wcs_orient') == 'select_x_y':
-        x_axis, y_axis = _get_origin_axes(logger)
+        x_axis, y_axis = _resolve_side_axes(side, setup_name, logger)
         if y_axis is not None:
             _set_entity_param(setup.parameters, 'wcs_orientation_axisX',
                               y_axis, setup_name, logger)
@@ -764,19 +1086,38 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
             _set_entity_param(setup.parameters, 'wcs_orientation_axisY',
                               x_axis, setup_name, logger)
 
+    # Profile-level flipY — applied to every side equally (independent
+    # of the per-side rotation). Lets the user say "I always want Z
+    # pointing down for this job" without baking it into each side.
     if spec.get('flip_y'):
         _set_bool_param(setup.parameters, 'wcs_orientation_flipY', True,
                         setup_name, logger)
+
+    # Side-specific 180° rotations that can't be encoded in axis
+    # bindings alone (flipX/flipZ combos for X/Y indexing). Z-axis
+    # rotation is fully handled by the rotated axis bindings above
+    # and is a no-op here.
+    _apply_side_axis_flips(setup, side, setup_name, logger)
 
     if spec.get('box_point'):
         pt = spec['box_point']
         pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
                       [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
 
-    # Clearance / retract heights from profile (mm → Fusion expression string).
-    # Written last so WCS is fully resolved first. The parameter names are
-    # operation-level in some Fusion builds; we try setup-level first and
-    # fall back silently.  Expressed as '5 mm' to avoid unit-ambiguity.
+    # Continue rest machining — when True, the setup only cuts material
+    # left over by the previous setup instead of re-cutting solved volume.
+    # In indexed mode this is auto-enabled for every side after the first
+    # (see build_setups_generic auto-cascade) so each rotated orientation
+    # picks up exactly where the previous one left off.
+    if spec.get('continue_machining') is not None:
+        _set_bool_param(setup.parameters, 'job_continueMachining',
+                        bool(spec['continue_machining']),
+                        setup_name, logger)
+
+    # Clearance / retract heights from profile (mm → Fusion expression
+    # string). Written last so WCS is fully resolved first. Parameter
+    # names are operation-level in some Fusion builds; try setup-level
+    # first and fall back silently.
     if spec.get('clearance_mm') is not None:
         cl_expr = f"{spec['clearance_mm']} mm"
         for pname in ('clearanceHeight_offset', 'job_clearanceHeight'):
@@ -793,8 +1134,194 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
         mm_name = mm.name
     except Exception:
         mm_name = '<unknown>'
-    _log(logger, f"SETUP BUILD GENERIC ({setup_name}): created -> MM '{mm_name}'")
+    _log(logger,
+         f"SETUP BUILD GENERIC ({setup_name}): created -> MM '{mm_name}' "
+         f"side={_side_label(side)} "
+         f"stock={spec['stock_intent']} "
+         f"rest={bool(spec.get('continue_machining'))}")
     return setup
+
+
+# ---------------------------------------------------------------------------
+# Side rotation primitives
+# ---------------------------------------------------------------------------
+
+def _resolve_side_axes(side, setup_name, logger):
+    """Return ``(xAxis, yAxis)`` reference entities for this side's WCS.
+
+    For a side with angle 0° or with axis ∈ {X, Y} (those use 180°
+    flips, see :func:`_apply_side_axis_flips`), returns the root
+    component's default origin xAxis / yAxis (ConstructionAxis).
+
+    For a Z-axis rotation of ``angleDeg``, finds-or-creates a hidden
+    sketch ``__cam_idx_rot_{angle}Z`` in the root component holding two
+    perpendicular sketch lines at the rotated angles. Returns those
+    SketchLines for the WCS axesXY orientation to bind to, which
+    physically rotates the WCS about Z by the desired angle.
+
+    Sketch geometry is preferred over rotated ConstructionAxis here
+    because ``ConstructionAxisInput.setByTwoPoints`` expects anchored
+    point entities (Vertex / SketchPoint / ConstructionPoint), not
+    bare ``Point3D`` instances — sketch lines side-step that whole
+    plumbing.
+    """
+    angle = float(side.get('angleDeg', 0.0))
+    axis_kind = str(side.get('axis', 'Z')).upper()
+
+    # No rotation, or X/Y rotation (handled later via flips) → default axes
+    if angle == 0.0 or axis_kind != 'Z':
+        return _get_origin_axes(logger)
+
+    try:
+        design = get_design(logger=logger)
+        if design is None:
+            _log(logger,
+                 f"SETUP BUILD GENERIC ({setup_name}): no Design for side "
+                 f"rotation; falling back to origin axes",
+                 "WARNING")
+            return _get_origin_axes(logger)
+        root = design.rootComponent
+
+        x_line, y_line = _find_or_create_rotation_sketch(
+            root, angle, setup_name, logger)
+        if x_line is None or y_line is None:
+            _log(logger,
+                 f"SETUP BUILD GENERIC ({setup_name}): rotation sketch "
+                 f"creation failed; falling back to origin axes",
+                 "WARNING")
+            return _get_origin_axes(logger)
+        return (x_line, y_line)
+    except Exception as e:
+        _log(logger,
+             f"SETUP BUILD GENERIC ({setup_name}): _resolve_side_axes "
+             f"raised: {e}; falling back to origin axes",
+             "WARNING")
+        return _get_origin_axes(logger)
+
+
+def _find_or_create_rotation_sketch(root, angle_deg, setup_name, logger):
+    """Find (or create) a hidden sketch on the XY plane carrying two
+    perpendicular reference lines for a Z-axis indexed rotation.
+
+    The sketch is named ``__cam_idx_rot_{angle}Z`` (idempotent — repeat
+    runs of the CAM Builder reuse it). It contains:
+
+      * Line 1: from (0,0) at angle ``angle_deg`` from +X (length 10 cm)
+      * Line 2: from (0,0) at angle ``angle_deg + 90°`` (length 10 cm)
+
+    Both lines are returned as ``(xLine, yLine)``. They serve as the
+    rotated-X and rotated-Y direction references for the WCS axesXY
+    orientation. Sketch visibility is toggled off where supported so
+    the rotation references don't clutter the design view.
+    """
+    import math
+    sketch_name = f"__cam_idx_rot_{angle_deg:g}Z"
+
+    # Look for an existing rotation sketch
+    target = None
+    try:
+        for s in root.sketches:
+            if s.name == sketch_name:
+                target = s
+                break
+    except Exception:
+        pass
+
+    if target is not None:
+        # Reuse: assume the first two sketchLines are our X' and Y'.
+        # This is safe because the sketch is __cam_-prefixed and we own it.
+        try:
+            lines = list(target.sketchCurves.sketchLines)
+            if len(lines) >= 2:
+                return (lines[0], lines[1])
+        except Exception as e:
+            _log(logger,
+                 f"SETUP BUILD GENERIC ({setup_name}): reuse rotation "
+                 f"sketch '{sketch_name}' failed: {e}",
+                 "WARNING")
+        # If the existing sketch is malformed, fall through and try
+        # creating a fresh one (with a slightly different name to
+        # avoid Fusion's duplicate-name rejection).
+        sketch_name = f"{sketch_name}_v2"
+
+    try:
+        sk = root.sketches.add(root.xYConstructionPlane)
+        try:
+            sk.name = sketch_name
+        except Exception:
+            pass
+
+        theta = math.radians(angle_deg)
+        origin = adsk.core.Point3D.create(0.0, 0.0, 0.0)
+        # 10cm length — long enough that Fusion clearly resolves the
+        # direction; short enough to stay out of the way visually
+        # (sketch is hidden anyway, but defensive).
+        x_end = adsk.core.Point3D.create(math.cos(theta) * 10.0,
+                                          math.sin(theta) * 10.0, 0.0)
+        y_end = adsk.core.Point3D.create(-math.sin(theta) * 10.0,
+                                          math.cos(theta) * 10.0, 0.0)
+        x_line = sk.sketchCurves.sketchLines.addByTwoPoints(origin, x_end)
+        y_line = sk.sketchCurves.sketchLines.addByTwoPoints(origin, y_end)
+        try:
+            sk.isVisible = False
+        except Exception:
+            pass
+
+        _log(logger,
+             f"SETUP BUILD GENERIC ({setup_name}): created rotation sketch "
+             f"'{sketch_name}' @ {angle_deg:g}°Z",
+             "DEBUG")
+        return (x_line, y_line)
+    except Exception as e:
+        _log(logger,
+             f"SETUP BUILD GENERIC ({setup_name}): rotation sketch create "
+             f"raised: {e}",
+             "WARNING")
+        return (None, None)
+
+
+def _apply_side_axis_flips(setup, side, setup_name, logger):
+    """Apply X / Y axis rotations via the WCS flip parameters.
+
+    180° rotations about X or Y map cleanly to flipX/flipY/flipZ combos
+    on the WCS orientation:
+
+      * 180° about X  → flipY + flipZ  (Y → -Y, Z → -Z)
+      * 180° about Y  → flipX + flipZ  (X → -X, Z → -Z)
+
+    Other angles about X or Y aren't expressible via the parameter-
+    driven WCS alone — they need a tilted construction plane and a
+    custom orientation mode. For now we log a WARNING and create the
+    Setup unrotated; the user can re-orient it interactively in the
+    CAM dialog (or rotate about Z, which IS fully supported).
+
+    Z-axis rotation is handled by :func:`_resolve_side_axes` (rotated
+    sketch lines) and is a no-op here.
+    """
+    angle = float(side.get('angleDeg', 0.0))
+    axis_kind = str(side.get('axis', 'Z')).upper()
+
+    if axis_kind == 'Z' or angle == 0.0:
+        return  # handled in _resolve_side_axes, or no-op
+
+    if abs(angle - 180.0) < 1e-6:
+        if axis_kind == 'X':
+            _set_bool_param(setup.parameters, 'wcs_orientation_flipY', True,
+                            setup_name, logger)
+            _set_bool_param(setup.parameters, 'wcs_orientation_flipZ', True,
+                            setup_name, logger)
+        elif axis_kind == 'Y':
+            _set_bool_param(setup.parameters, 'wcs_orientation_flipX', True,
+                            setup_name, logger)
+            _set_bool_param(setup.parameters, 'wcs_orientation_flipZ', True,
+                            setup_name, logger)
+        return
+
+    _log(logger,
+         f"SETUP BUILD GENERIC ({setup_name}): {angle:g}°{axis_kind} rotation "
+         f"not expressible via WCS flips; Setup created unrotated. Either "
+         f"re-orient in the CAM dialog, or rotate about Z (fully supported).",
+         "WARNING")
 
 
 def _log(logger, msg, level="INFO"):

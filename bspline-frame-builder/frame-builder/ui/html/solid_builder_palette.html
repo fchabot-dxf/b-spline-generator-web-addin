@@ -217,6 +217,21 @@
 
     /* ── STARTUP HANDSHAKE ────────────────────────────────────────────────── */
 
+    // Auto-trigger the Fusion face-picker as soon as the palette finishes
+    // booting so the user lands directly in select mode — no extra click on
+    // the "Select Face" button needed. The pickFace() call updates the
+    // palette UI state (showing 'waiting') AND fires the pick_face action
+    // to Python, which then calls ui.selectEntity(...). Kept inside the
+    // 500ms bridge-ready timeout so it doesn't race the adsk shim.
+    function autoStartFaceSelection() {
+      try {
+        pickFace();
+      } catch (e) {
+        const statusEl = document.getElementById('system-status');
+        if (statusEl) statusEl.innerText = 'PICK FAILED — CLICK MANUALLY';
+      }
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => {
         const adskReady = (typeof adsk !== 'undefined' && adsk.fusionSendData);
@@ -232,11 +247,15 @@
           const statusEl = document.getElementById('system-status');
           if (statusEl) statusEl.innerText = 'READY';
           notifyFusion('ping', {});
+          // Small extra delay so the pong returns and the UI is fully
+          // painted before Fusion's modal-ish face picker grabs focus.
+          setTimeout(autoStartFaceSelection, 250);
         } else {
           const heartbeat = setInterval(() => {
             if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
               notifyFusion('ping', {});
               clearInterval(heartbeat);
+              setTimeout(autoStartFaceSelection, 250);
             }
           }, 1000);
         }

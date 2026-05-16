@@ -239,6 +239,12 @@
             </label>
           </div>
 
+          <div class="settings-divider" style="margin-top:8px;">SIDES (INDEXED)</div>
+          <div id="sides-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
+          <button class="cad-btn" type="button"
+                  style="font-size:10px;padding:3px 10px;align-self:flex-start;margin-bottom:4px;"
+                  onclick="addSide()">+ ADD SIDE</button>
+
           <div class="settings-divider" style="margin-top:8px;">OPERATIONS</div>
           <div id="ops-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
           <button class="cad-btn" type="button"
@@ -248,8 +254,10 @@
       </div>
 
       <div class="cam-pipeline">
-        <strong>CAM Studio:</strong> One Manufacturing Model + Setup per selected component.
-        Load or import a profile, then hit <strong>GENERATE</strong>.
+        <strong>CAM Studio:</strong> One Manufacturing Model per component, then one
+        Setup per (component &times; side) &mdash; rotate the part on the table between
+        Setups for indexed machining. Load or import a profile, add sides, then hit
+        <strong>GENERATE</strong>.
       </div>
 
     </main>
@@ -312,6 +320,19 @@
     const cl   = (prof.clearanceHeight != null ? prof.clearanceHeight : '?') + '/' +
                  (prof.retractHeight   != null ? prof.retractHeight   : '?') + ' mm';
     const ops  = (prof.operations || []).length;
+    // Sides chip — compact summary of indexed orientations. "1 side" when
+    // the profile is a single-orientation job; "B@30°Z, C@60°Z" when it's
+    // a multi-side indexed job (only non-zero rotations spelled out).
+    const sides = prof.sides || [];
+    let sidesLabel;
+    if (!sides.length) {
+      sidesLabel = '1 side';
+    } else {
+      const rotated = sides.filter(s => s.angleDeg && s.angleDeg !== 0)
+        .map(s => (s.name || '?') + '@' + s.angleDeg + '°' + (s.axis || 'Z'));
+      sidesLabel = sides.length + ' side' + (sides.length !== 1 ? 's' : '')
+        + (rotated.length ? ' · ' + rotated.join(', ') : '');
+    }
 
     strip.innerHTML = '';
     if (source) {
@@ -319,7 +340,7 @@
       fc.className = 'ps-chip from'; fc.textContent = source;
       strip.appendChild(fc);
     }
-    [[sm, ''], [bp, 'wcs'], [fy, 'wcs'],
+    [[sm, ''], [bp, 'wcs'], [fy, 'wcs'], [sidesLabel, 'wcs'],
      [cl, ''], [ops + ' op' + (ops !== 1 ? 's' : ''), 'ops']].forEach(([t, cls]) => {
       const c = document.createElement('span');
       c.className = 'ps-chip' + (cls ? ' ' + cls : '');
@@ -493,12 +514,17 @@
 
   // ── Profile form <-> dict ─────────────────────────────────────────────────
   function getProfileFromForm() {
+    // Sides may be empty if the user removed every row. The Python side
+    // falls back to a single Side A @ 0° on empty/missing 'sides', so an
+    // empty list is harmless — but we send `[]` rather than omit the key
+    // so the worker / saved-profile JSON faithfully reflects user intent.
     return {
       stockMode:       document.getElementById('s-stock-mode').value,
       clearanceHeight: parseFloat(document.getElementById('s-clearance').value) || 5,
       retractHeight:   parseFloat(document.getElementById('s-retract').value)   || 4,
       boxPoint:        parseInt(document.getElementById('s-box-point').value, 10) || 2,
       flipY:           document.getElementById('s-flip-y').checked,
+      sides:           collectSides(),
       operations:      collectOperations(),
     };
   }
@@ -509,8 +535,73 @@
     if (d.retractHeight   != null)  document.getElementById('s-retract').value      = d.retractHeight;
     if (d.boxPoint        != null)  document.getElementById('s-box-point').value    = d.boxPoint;
     document.getElementById('s-flip-y').checked = !!d.flipY;
+    // Sides — default to one Side A @ 0°Z when the profile is sides-less
+    // (covers older saved profiles and imports from the legacy one-Setup-
+    // per-MM path). The default matches the Python _DEFAULT_SIDES.
+    document.getElementById('sides-list').innerHTML = '';
+    const sides = (d.sides && d.sides.length)
+      ? d.sides
+      : [{ name: 'A', axis: 'Z', angleDeg: 0 }];
+    sides.forEach(s => addSide(s));
     document.getElementById('ops-list').innerHTML = '';
     (d.operations || []).forEach(op => addOperation(op));
+  }
+
+  // ── Sides builder (indexed machining) ──────────────────────────────────────
+  // Each side is one Setup orientation per MM. The dispatch in
+  // setup_builder.build_setups_generic fans out (component × side) → Setup.
+  // Rotations are about the named axis (X / Y / Z) by angleDeg. Z rotations
+  // are fully supported on the Python side via a hidden rotation sketch;
+  // 180° X/Y rotations map to WCS flips; other X/Y angles log a warning and
+  // create the Setup unrotated (user re-orients in the dialog).
+  let sideCounter = 0;
+
+  function nextSideName() {
+    const n = document.querySelectorAll('#sides-list .side-row').length;
+    return String.fromCharCode(65 + (n % 26));  // 'A' / 'B' / 'C' / … wraps after 'Z'
+  }
+
+  function addSide(defaults) {
+    const id = 'side-' + (++sideCounter);
+    const d  = defaults || {};
+    const name  = d.name != null ? d.name : nextSideName();
+    const axis  = (d.axis || 'Z').toUpperCase();
+    const angle = (d.angleDeg != null) ? d.angleDeg : 0;
+    const sel   = (val, opt) => opt === val ? ' selected' : '';
+
+    const row = document.createElement('div');
+    row.className = 'side-row op-row';   // reuse op-row styling
+    row.id = id;
+    row.innerHTML = `
+      <button class="op-remove-btn" type="button" onclick="document.getElementById('${id}').remove()">×</button>
+      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;width:100%;">
+        <span class="op-label">NAME</span>
+        <input type="text" data-f="name" value="${name}" style="width:40px;" />
+        <span class="op-label">AXIS</span>
+        <select data-f="axis" style="width:48px;">
+          <option value="Z"${sel(axis,'Z')}>Z</option>
+          <option value="X"${sel(axis,'X')}>X</option>
+          <option value="Y"${sel(axis,'Y')}>Y</option>
+        </select>
+        <span class="op-label">ANGLE&deg;</span>
+        <input type="number" data-f="angleDeg" value="${angle}" step="5" style="width:60px;" />
+      </div>`;
+    document.getElementById('sides-list').appendChild(row);
+  }
+
+  function collectSides() {
+    return Array.from(document.querySelectorAll('#sides-list .side-row')).map(row => {
+      const get = f => {
+        const el = row.querySelector('[data-f="' + f + '"]');
+        if (!el) return undefined;
+        return el.type === 'number' ? (parseFloat(el.value) || 0) : el.value;
+      };
+      return {
+        name:     (get('name') || 'A').toString(),
+        axis:     (get('axis') || 'Z').toString().toUpperCase(),
+        angleDeg: get('angleDeg') || 0,
+      };
+    });
   }
 
   // ── Operations builder ─────────────────────────────────────────────────────
@@ -646,7 +737,13 @@
         } else if (action === 'report') {
           (payload.setups || []).forEach(s => setComponentState(s.name, s.ok ? 'ok' : 'fail'));
           if (payload.ok) {
-            setStatus('done · ' + (payload.setups || []).length + ' setup(s) built', 'ok');
+            // Prefer setups_built when the coordinator reports it
+            // (indexed multi-side mode). Otherwise fall back to the
+            // per-component setup count (older / single-side behaviour).
+            const built = (payload.setups_built != null)
+              ? payload.setups_built
+              : (payload.setups || []).length;
+            setStatus('done · ' + built + ' setup(s) built', 'ok');
           } else {
             setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
           }
@@ -662,6 +759,12 @@
   // ── Auto-init on open ──────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
     fetchProfileList();       // populate saved-profiles dropdown
+    // Seed one default Side A @ 0° so the user opens to a usable
+    // single-orientation form. Adding more sides triggers indexed mode;
+    // removing all sides falls back to the Python default (Side A @ 0°).
+    if (!document.querySelectorAll('#sides-list .side-row').length) {
+      addSide({ name: 'A', axis: 'Z', angleDeg: 0 });
+    }
     send('init');             // ask Python to scan components + CAM setups
   });
 </script>

@@ -547,6 +547,87 @@ function parseTuple(text) {
   return out;
 }
 
+/* ────────────────────────────────────────────────────────────────────
+ * arrayBody — linear copy array (Pattern tool)
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Duplicate a body `count-1` extra times (so total = count) along an axis.
+ *
+ * @param {object} parsed  — ParsedStep result from stp-parser.js
+ * @param {string} bodyName — body name as returned by findBodies()
+ * @param {'x'|'y'|'z'} axis — array direction
+ * @param {number} count    — total copies (≥ 2)
+ * @param {number} spacing  — distance between copies in model units (mm)
+ * @returns {object} mutated `parsed` with extra bodies added, or `parsed` unchanged if body not found
+ */
+export function arrayBody(parsed, bodyName, axis, count, spacing) {
+  if (!parsed || count < 2 || spacing === 0) return parsed;
+
+  const bodies = findBodies(parsed);
+  const bodyInfo = bodies.find(b => b.name === bodyName);
+  if (!bodyInfo) {
+    console.warn('[arrayBody] body not found:', bodyName);
+    return parsed;
+  }
+
+  // Axis offset vector
+  const dx = axis === 'x' ? spacing : 0;
+  const dy = axis === 'y' ? spacing : 0;
+  const dz = axis === 'z' ? spacing : 0;
+
+  // Find the highest existing entity ID so we can allocate fresh ones.
+  let maxId = 0;
+  for (const id of parsed.entities.keys()) if (id > maxId) maxId = id;
+
+  for (let copy = 1; copy < count; copy++) {
+    const offsetX = dx * copy;
+    const offsetY = dy * copy;
+    const offsetZ = dz * copy;
+
+    // Deep-clone the body's entire subgraph with new IDs.
+    const subgraph = reachableEntities(parsed, bodyInfo.id);
+    const idMap = new Map();  // old id → new id
+
+    // First pass: allocate new IDs for every entity in the subgraph.
+    for (const oldId of subgraph) {
+      idMap.set(oldId, ++maxId);
+    }
+
+    // Second pass: clone and add entities with remapped references.
+    for (const oldId of subgraph) {
+      const orig  = parsed.entities.get(oldId);
+      const newId = idMap.get(oldId);
+      const clone = cloneEntity(orig, newId);
+      rewriteEntityRefs(clone, idMap);
+      parsed.entities.set(newId, clone);
+    }
+
+    // Third pass: translate all CARTESIAN_POINTs in the cloned subgraph.
+    for (const [, newId] of idMap) {
+      const e = parsed.entities.get(newId);
+      if (!e) continue;
+      const type = e.type || (e.compound && e.compound[0] && e.compound[0].type);
+      if (type !== 'CARTESIAN_POINT') continue;
+      const args = e.args || (e.compound && e.compound[0] && e.compound[0].args) || [];
+      if (args.length < 2) continue;
+      const coords = parseTuple(args[1]);
+      if (!coords || coords.length < 3) continue;
+      coords[0] += offsetX;
+      coords[1] += offsetY;
+      coords[2] += offsetZ;
+      const newTuple = `(${coords.map(formatNum).join(',')})`;
+      if (e.args) {
+        e.args[1] = newTuple;
+      } else if (e.compound && e.compound[0]) {
+        e.compound[0].args[1] = newTuple;
+      }
+    }
+  }
+
+  return parsed;
+}
+
 /**
  * Format a JS number for STEP output. STEP requires every float to have
  * an explicit decimal point (`0.` not `0`), and scientific notation

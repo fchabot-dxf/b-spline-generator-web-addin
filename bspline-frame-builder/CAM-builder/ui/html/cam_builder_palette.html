@@ -107,6 +107,70 @@
     }
     .cam-dot.ok   { background: var(--cad-accent-green); }
     .cam-dot.fail { background: #b00020; }
+
+    /* ── Template browser — inline section per cam-card ──────────────
+       Each setup card gets a collapsible 'Templates' subsection so
+       the user can drop arbitrary cloud-library templates into that
+       setup. Defaults live in Python (SETUP_SPECS.cloud_templates);
+       per-project overrides are persisted as Design attributes (see
+       cam_engine/template_assignments.py).                          */
+    .cam-tpl-section { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--cad-border-soft); }
+    .cam-tpl-head {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; user-select: none;
+      font-size: 11px; font-weight: 600; color: var(--cad-text-main);
+    }
+    .cam-tpl-head .cam-tpl-toggle { color: var(--cad-text-muted); font-size: 10px; }
+    .cam-tpl-head .cam-tpl-count {
+      font-size: 10px; color: var(--cad-text-muted);
+      background: #eef2f7; border-radius: 10px; padding: 1px 7px;
+    }
+    .cam-tpl-body { margin-top: 6px; display: none; flex-direction: column; gap: 4px; }
+    .cam-tpl-section.open .cam-tpl-body { display: flex; }
+    .cam-tpl-section.open .cam-tpl-toggle::before { content: '▾ '; }
+    .cam-tpl-section:not(.open) .cam-tpl-toggle::before { content: '▸ '; }
+    .cam-tpl-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 3px 6px; border-radius: 4px;
+      background: #f6f8fb; font-size: 11px;
+    }
+    .cam-tpl-item .cam-tpl-leaf { color: var(--cad-text-main); }
+    .cam-tpl-item.is-default .cam-tpl-leaf::after {
+      content: ' (default)'; color: var(--cad-text-muted); font-size: 10px;
+    }
+    .cam-tpl-x {
+      width: 16px; height: 16px; border: none; cursor: pointer;
+      background: transparent; color: var(--cad-text-muted);
+      font-size: 14px; line-height: 1;
+    }
+    .cam-tpl-x:hover { color: #b00020; }
+    .cam-tpl-empty { font-size: 10px; color: var(--cad-text-muted); font-style: italic; }
+    .cam-tpl-add {
+      align-self: flex-start;
+      font-size: 11px; padding: 3px 8px;
+      background: #fff; border: 1px dashed var(--cad-border-standard);
+      border-radius: 4px; cursor: pointer;
+    }
+    .cam-tpl-add:hover { background: #f0f7ff; border-color: var(--cad-accent-blue); }
+    .cam-tpl-picker {
+      margin-top: 4px; padding: 6px;
+      background: #fafbfd; border: 1px solid var(--cad-border-soft); border-radius: 4px;
+      max-height: 220px; overflow-y: auto;
+      display: none; flex-direction: column; gap: 2px;
+    }
+    .cam-tpl-picker.open { display: flex; }
+    .cam-tpl-picker-search {
+      width: 100%; padding: 4px 6px; font-size: 11px;
+      border: 1px solid var(--cad-border-standard); border-radius: 3px;
+      margin-bottom: 4px;
+    }
+    .cam-tpl-picker-group { font-size: 9px; text-transform: uppercase; color: var(--cad-text-muted); letter-spacing: 0.06em; margin: 4px 0 2px; }
+    .cam-tpl-picker-row {
+      padding: 3px 6px; font-size: 11px; cursor: pointer; border-radius: 3px;
+    }
+    .cam-tpl-picker-row:hover { background: #e8f1ff; }
+    .cam-tpl-picker-row.disabled { color: var(--cad-text-muted); cursor: not-allowed; }
+    .cam-tpl-picker-row.disabled:hover { background: transparent; }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -126,7 +190,14 @@
 
     <main class="cam-scroll">
 
-      <div class="cam-card" data-setup="stock">
+      <!-- Each card carries:
+           - data-setup: short key used by the existing status JS (stock,
+             bspline_back, …)
+           - data-setup-name: the canonical name from SETUP_SPECS (Stock,
+             B-spline Back, …) used by the template browser to address
+             the Python side and persist overrides. -->
+
+      <div class="cam-card" data-setup="stock" data-setup-name="Stock">
         <div class="cam-card-head">
           <div class="cam-card-title">Setup 1 &mdash; Stock</div>
           <span class="cam-mm-tag cam-mm-stock">MM: stock</span>
@@ -138,9 +209,16 @@
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-stock"></span><span id="state-stock">pending</span></span>
         </div>
+        <div class="cam-tpl-section open" data-tpl-setup="Stock">
+          <div class="cam-tpl-head" onclick="toggleTpl(this)">
+            <span><span class="cam-tpl-toggle"></span>Templates</span>
+            <span class="cam-tpl-count">0</span>
+          </div>
+          <div class="cam-tpl-body"></div>
+        </div>
       </div>
 
-      <div class="cam-card" data-setup="bspline_back">
+      <div class="cam-card" data-setup="bspline_back" data-setup-name="B-spline Back">
         <div class="cam-card-head">
           <div class="cam-card-title">Setup 2 &mdash; B-spline Back</div>
           <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
@@ -152,9 +230,16 @@
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_back"></span><span id="state-bspline_back">pending</span></span>
         </div>
+        <div class="cam-tpl-section" data-tpl-setup="B-spline Back">
+          <div class="cam-tpl-head" onclick="toggleTpl(this)">
+            <span><span class="cam-tpl-toggle"></span>Templates</span>
+            <span class="cam-tpl-count">0</span>
+          </div>
+          <div class="cam-tpl-body"></div>
+        </div>
       </div>
 
-      <div class="cam-card" data-setup="bspline_top">
+      <div class="cam-card" data-setup="bspline_top" data-setup-name="B-spline Top">
         <div class="cam-card-head">
           <div class="cam-card-title">Setup 3 &mdash; B-spline Top</div>
           <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
@@ -166,9 +251,16 @@
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
         </div>
+        <div class="cam-tpl-section" data-tpl-setup="B-spline Top">
+          <div class="cam-tpl-head" onclick="toggleTpl(this)">
+            <span><span class="cam-tpl-toggle"></span>Templates</span>
+            <span class="cam-tpl-count">0</span>
+          </div>
+          <div class="cam-tpl-body"></div>
+        </div>
       </div>
 
-      <div class="cam-card" data-setup="frame">
+      <div class="cam-card" data-setup="frame" data-setup-name="Frame">
         <div class="cam-card-head">
           <div class="cam-card-title">Setup 4 &mdash; Frame</div>
           <span class="cam-mm-tag cam-mm-frame">MM: frame</span>
@@ -179,6 +271,13 @@
         <div class="cam-row"><span class="k">WCS</span><span class="v action">Reoriented frame top</span></div>
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-frame"></span><span id="state-frame">pending</span></span>
+        </div>
+        <div class="cam-tpl-section" data-tpl-setup="Frame">
+          <div class="cam-tpl-head" onclick="toggleTpl(this)">
+            <span><span class="cam-tpl-toggle"></span>Templates</span>
+            <span class="cam-tpl-count">0</span>
+          </div>
+          <div class="cam-tpl-body"></div>
         </div>
       </div>
 
@@ -259,6 +358,11 @@
               ' · unknown=' + (c.unknown || 0), 'ok'
             );
           }
+        } else if (action === 'templates_list') {
+          // Python pushed the cloud/local/system inventory.
+          window.__camTemplateInventory = payload;
+        } else if (action === 'template_assignments') {
+          renderAssignments(payload.setups || []);
         }
 
       } catch (e) {
@@ -267,6 +371,145 @@
       return 'ok';
     }
   };
+
+  /* ───────────────────────── Template browser ─────────────────────────
+     Per-setup [+ Add template] / [× remove] UI. State is held by the
+     Python side (Design attributes via cam_engine/template_assignments).
+     The JS just renders whatever Python sends in template_assignments.
+
+     Wire on boot: request the cloud-library inventory and the current
+     per-setup assignments. Re-request after any save so the UI re-renders. */
+  function toggleTpl(headEl) {
+    const sec = headEl.closest('.cam-tpl-section');
+    if (sec) sec.classList.toggle('open');
+  }
+
+  function renderAssignments(setups) {
+    for (const entry of setups) {
+      const sec = document.querySelector(
+        `.cam-tpl-section[data-tpl-setup="${cssEscape(entry.setup)}"]`);
+      if (!sec) continue;
+      const body = sec.querySelector('.cam-tpl-body');
+      const countSpan = sec.querySelector('.cam-tpl-count');
+      const templates = entry.templates || [];
+      const defaultSet = new Set(entry.default || []);
+      const isOverride = !!entry.is_override;
+      countSpan.textContent = String(templates.length);
+
+      body.innerHTML = '';
+      if (templates.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'cam-tpl-empty';
+        empty.textContent = 'No templates assigned.';
+        body.appendChild(empty);
+      } else {
+        for (const leaf of templates) {
+          const row = document.createElement('div');
+          row.className = 'cam-tpl-item';
+          // 'is-default' tag the row only when no override exists AND the
+          // leaf came from the spec default. After the user edits, all rows
+          // are part of the user's list so the default badge drops away.
+          if (!isOverride && defaultSet.has(leaf)) row.classList.add('is-default');
+          const span = document.createElement('span');
+          span.className = 'cam-tpl-leaf';
+          span.textContent = leaf;
+          const x = document.createElement('button');
+          x.className = 'cam-tpl-x';
+          x.title = 'Remove';
+          x.textContent = '×';
+          x.onclick = () => removeTemplate(entry.setup, leaf, templates);
+          row.appendChild(span);
+          row.appendChild(x);
+          body.appendChild(row);
+        }
+      }
+      // Always-visible add button + slide-out picker. Picker contents are
+      // rendered fresh each open so the search field & disabled-rows
+      // (already-attached templates) stay in sync with current state.
+      const addBtn = document.createElement('button');
+      addBtn.className = 'cam-tpl-add';
+      addBtn.type = 'button';
+      addBtn.textContent = '+ Add template';
+      addBtn.onclick = () => openPicker(sec, entry.setup, templates);
+      body.appendChild(addBtn);
+
+      const picker = document.createElement('div');
+      picker.className = 'cam-tpl-picker';
+      body.appendChild(picker);
+    }
+  }
+
+  function openPicker(sec, setupName, currentTemplates) {
+    const picker = sec.querySelector('.cam-tpl-picker');
+    if (!picker) return;
+    if (picker.classList.contains('open')) {
+      picker.classList.remove('open');
+      return;
+    }
+    const inv = window.__camTemplateInventory || {};
+    picker.innerHTML = '';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'cam-tpl-picker-search';
+    search.placeholder = 'Filter…';
+    search.oninput = () => filterPicker(picker, search.value);
+    picker.appendChild(search);
+
+    const taken = new Set(currentTemplates);
+    const groups = [['cloud', 'Cloud'], ['local', 'Local'], ['system', 'System']];
+    for (const [key, label] of groups) {
+      const items = inv[key] || [];
+      if (!items.length) continue;
+      const heading = document.createElement('div');
+      heading.className = 'cam-tpl-picker-group';
+      heading.textContent = label + ' (' + items.length + ')';
+      picker.appendChild(heading);
+      for (const t of items) {
+        const row = document.createElement('div');
+        row.className = 'cam-tpl-picker-row';
+        row.dataset.leaf = t.leaf.toLowerCase();
+        row.textContent = t.leaf;
+        if (taken.has(t.leaf)) {
+          row.classList.add('disabled');
+          row.title = 'Already attached to this setup';
+        } else {
+          row.onclick = () => addTemplate(setupName, t.leaf, currentTemplates);
+        }
+        picker.appendChild(row);
+      }
+    }
+    picker.classList.add('open');
+    search.focus();
+  }
+
+  function filterPicker(picker, query) {
+    const q = (query || '').toLowerCase();
+    for (const row of picker.querySelectorAll('.cam-tpl-picker-row')) {
+      const hit = !q || row.dataset.leaf.includes(q);
+      row.style.display = hit ? '' : 'none';
+    }
+  }
+
+  function addTemplate(setupName, leaf, currentList) {
+    const next = currentList.slice();
+    if (next.indexOf(leaf) >= 0) return;
+    next.push(leaf);
+    send('set_template_assignments', { setup: setupName, templates: next });
+  }
+
+  function removeTemplate(setupName, leaf, currentList) {
+    const next = currentList.filter(x => x !== leaf);
+    send('set_template_assignments', { setup: setupName, templates: next });
+  }
+
+  // CSS.escape polyfill — old Chromium-in-Fusion builds don't ship CSS.escape.
+  function cssEscape(s) {
+    return String(s).replace(/(["\\])/g, '\\$1');
+  }
+
+  // Boot: pull inventory + current assignments so each card renders.
+  send('list_cam_templates');
+  send('get_template_assignments');
 </script>
 </body>
 </html>

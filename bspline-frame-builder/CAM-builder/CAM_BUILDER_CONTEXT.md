@@ -87,7 +87,7 @@ command handler: `cam-builder.py` (palette UI lives in `ui/html/`).
 
 ---
 
-## Setup table (point of truth)
+## Setup table — B-spline mode (point of truth)
 
 | Setup           | MM rule       | Stock intent | WCS origin   | WCS orient | Box point | flipY | Rest mach. |
 |-----------------|---------------|--------------|--------------|------------|-----------|-------|------------|
@@ -101,6 +101,104 @@ inherits from Back) and `flipY`. Same MM, same corner, same axes.
 
 `SETUP_SPECS` in `cam_engine/setup_builder.py` is the single source of
 truth — declarative table, edit there to add/change setups.
+
+---
+
+## Generic mode — N-sided indexed machining
+
+The generic dispatch (`build_setups_generic` in `setup_builder.py`,
+called by `cam_coordinator.run(mode='generic')`) is the user-facing
+path driven by the CAM Studio palette. It builds one Manufacturing
+Model per selected component, then fans out **one Setup per (MM ×
+side)** for indexed machining: the part is physically rotated on the
+table between Setups, with each Setup carrying a WCS that matches the
+intended physical orientation.
+
+**Profile contract** (`profile` dict from the palette / saved JSON):
+
+```
+{
+  stockMode:       'auto_bbox' | 'fixed_size' | 'from_solid' | 'from_prev_setup',
+  boxPoint:        int 1-9       (corner of stock bbox — see _INT_TO_BOX_POINT),
+  flipY:           bool          (applied to every side equally),
+  clearanceHeight: float (mm),
+  retractHeight:   float (mm),
+  sides: [
+    { name: 'A', axis: 'Z', angleDeg: 0 },                     ← Side A: no rotation
+    { name: 'B', axis: 'Z', angleDeg: 30 },                    ← rotated 30° about Z
+    { name: 'C', axis: 'X', angleDeg: 180 },                   ← flipped end-over-end
+    { name: 'D', axis: 'Z', angleDeg: 60, stockMode: 'auto_bbox' },  ← per-side override
+    ...
+  ],
+  operations: [ ... ]   ← reference only; toolpaths still added manually
+}
+```
+
+Missing or empty `sides` falls back to `[{name: 'A', axis: 'Z', angleDeg: 0}]`
+which is behaviourally identical to the pre-refactor one-Setup-per-MM
+flow.
+
+**Stock auto-cascade**. Indexed jobs want each successive orientation
+to pick up where the prior setup stopped — only cutting the material
+the previous setup left behind. The dispatcher auto-applies that:
+
+| Side index | stockMode applied        | continueMachining |
+|------------|--------------------------|-------------------|
+| 0 (first)  | profile.stockMode        | false             |
+| ≥1         | `from_prev_setup`        | true              |
+
+Per-side overrides via the side dict's `stockMode` / `continueMachining`
+keys take precedence over the auto-cascade. Useful when, say, Side C is
+a separate operation on a different stock blank (you'd pin `stockMode:
+'fixed_size'` on that side and the cascade resumes from there).
+
+**Setup naming**:
+
+| Sides | Side defn       | Setup.name           |
+|-------|-----------------|----------------------|
+| 1     | A @ 0°          | `BPanel`             |
+| ≥2    | A @ 0°          | `BPanel · A`         |
+| ≥2    | B @ 30°Z        | `BPanel · B 30°Z`    |
+| ≥2    | C @ 180°X       | `BPanel · C 180°X`   |
+
+**Rotation support matrix**:
+
+| Axis | Angle      | How it's applied                                     | Status |
+|------|------------|------------------------------------------------------|--------|
+| Z    | any        | Hidden sketch `__cam_idx_rot_{angle}Z` with two perpendicular lines → bound as `wcs_orientation_axisX/Y` | full  |
+| X    | 180°       | `wcs_orientation_flipY` + `flipZ`                    | full   |
+| Y    | 180°       | `wcs_orientation_flipX` + `flipZ`                    | full   |
+| X / Y | any other | WARNING logged, Setup created unrotated; user re-orients in CAM dialog | manual |
+
+The Z-axis case is the dominant one for indexed work on a 3-axis CNC
+(Ultimate Bee) — fixturing or a manual turntable provides the rotation.
+X / Y 180° covers "flip the part over" workflows. Tilted X / Y at
+non-180° angles aren't expressible via the parameter-driven WCS and
+need a tilted construction plane + custom orientation mode (TODO).
+
+**Return shape of `build_setups_generic`**:
+
+```python
+[(comp_name, Setup), ...]
+```
+
+One tuple per built Setup. A multi-side component appears N times (N =
+sides built). The bare `comp_name` (not the formatted Setup name) is
+returned so the coordinator's per-component success check keeps working
+unchanged. The displayed Setup name lives on `setup.name`.
+
+**Coordinator extras** (`report` dict, generic mode only):
+
+```
+{
+  ...,
+  'setups_built':    int,   # total Setups created (= comps × sides)
+  'setups_expected': int,   # expected total
+}
+```
+
+The palette uses `setups_built` to show the right count in the done
+message ("done · 6 setup(s) built" for 2 comps × 3 sides).
 
 ---
 
@@ -243,6 +341,20 @@ Fusion builds.
 - **Operations not generated**. By design — user adds them manually.
   Future work could template common operations (3D Adaptive on the
   curved face, parallel finish, contour around the frame).
+
+- **Indexed rotation, X/Y non-180° angles**. Z-axis rotation works
+  end-to-end via the rotated sketch lines (see "Generic mode — N-sided
+  indexed machining" above). X/Y at 180° works via WCS flips. Other
+  X/Y angles aren't expressible via parameter-driven WCS — Setup is
+  created unrotated with a WARNING. Future fix: build a tilted
+  construction plane parametrically and bind it as a custom
+  orientation reference.
+
+- **Rotation sketch cleanup**. Each unique Z-angle creates one
+  `__cam_idx_rot_{angle}Z` sketch in the root component. Repeat runs
+  reuse the sketch (idempotent by name). They never get cleaned up —
+  the user can delete them by hand if they accumulate. Future: add a
+  "purge rotation sketches" action.
 
 ---
 

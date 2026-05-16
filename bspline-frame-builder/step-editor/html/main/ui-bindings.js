@@ -9,7 +9,7 @@
  * re-parses the writer's output and checks counts.
  */
 
-import { sendToPython, pyLog } from '../core/runtime.js';
+import { sendToPython, pyLog, isFusion } from '../core/runtime.js';
 import {
   parseStep, writeStep, emptyHeader, countByType,
 } from '../core/stp-parser.js';
@@ -17,13 +17,15 @@ import { isCloudEnabled, listFiles, saveFile } from '../core/cloud-sync.js';
 import { sendStepToFusion } from '../core/fusion-bridge.js';
 import {
   findBodies, scaleBody, scaleBodyAxes, translateBody, getBounds,
-  rotateBody, mirrorBody, resizeBody, getBodyBounds,
+  rotateBody, mirrorBody, resizeBody, getBodyBounds, arrayBody,
 } from '../core/stp-bodies.js';
 import { regridBody, listBSplineSurfaces } from '../core/stp-regrid.js';
 import { listFonts, loadFont, layoutText } from '../core/text-glyphs.js';
 import { setText as setTextPreview, clear as clearTextPreview } from '../core/three-text.js';
-import { tessellate as occtTessellate, isAvailable as occtAvailable } from '../core/occt-bridge.js';
-import { setMeshes, highlightByName } from '../core/three-viewer.js';
+import { tessellate as occtTessellate, isAvailable as occtAvailable,
+         tessellateViaFusion, isFusionTessAvailable } from '../core/occt-bridge.js';
+import { attachScrubAll } from '../core/scrub.js';
+import { setMeshes, highlightByName, previewByName, enableFaceSelectMode, disableFaceSelectMode, getScene } from '../core/three-viewer.js';
 
 /** Show a one-line message in the footer. Safe if the element is missing. */
 export function setStatus(msg) {
@@ -88,6 +90,7 @@ export function wireButtons(state) {
   on('btnApplyMirror',    () => handleApplyMirror(state));
   on('btnApplyResize',    () => handleApplyResize(state));
   on('btnApplyRegrid',    () => handleApplyRegrid(state));
+  on('btnApplyPattern',   () => handleApplyPattern(state));
 
   // Regrid simplify presets: one click pre-fills Nu/Nv with the
   // preset value, then triggers Apply.  The Smp (sample density)
@@ -129,6 +132,25 @@ export function wireButtons(state) {
       activateTool(state, id);
     });
   }
+
+  // ── SVG Fill tool wiring ───────────────────────────────────────────
+  initSvgFillPanel(state);
+
+  // ── Live preview wiring ────────────────────────────────────────────
+  // Each transform input drives a delta-applier that mutates state.parsed
+  // and debounce-retessellates. Baselines are reset per-tool-activation
+  // in activateTool() below.
+  wireLivePreview(state);
+
+  // ── Deselection: Esc anywhere in the palette clears the active body.
+  // Use keydown on the document so it fires regardless of which input
+  // currently has focus. We deliberately don't preventDefault so the
+  // browser's native Esc-to-blur on a focused input still runs.
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && state.selectedBodyId != null) {
+      selectBody(state, null);
+    }
+  });
 }
 
 function on(id, fn) {
@@ -143,44 +165,58 @@ function on(id, fn) {
 async function handleOpen(state) {
   const picked = await pickFile();
   if (!picked) return;
+  await loadStepText(state, picked.name, picked.text);
+}
 
-  setStatus(`Parsing "${picked.name}" (${formatBytes(picked.text.length)})…`);
-  // Yield once so the UI repaints the status before a multi-second parse.
+/**
+ * Parse a STEP-text payload (already in memory) into state.parsed, populate
+ * the body list, and kick a tessellation. Same effect as picking the file
+ * through the dialog; exported so:
+ *   - main.js can react to a 'preload_step' route from Python (used for
+ *     dropping sample files in without a dialog round-trip),
+ *   - tests / harnesses can drive the editor without simulating clicks.
+ *
+ * Returns a Promise that resolves when parsing+populate finish; tessellation
+ * runs in the background after the resolve.
+ *
+ * @param {object} state
+ * @param {string} name   filename for status + state.filename
+ * @param {string} text   raw STEP text
+ */
+export async function loadStepText(state, name, text) {
+  setStatus(`Parsing "${name}" (${formatBytes(text.length)})…`);
   await microtaskTick();
 
   const t0 = performance.now();
   let parsed;
   try {
-    parsed = parseStep(picked.text);
+    parsed = parseStep(text);
   } catch (e) {
     setStatus(`Parse failed: ${e.message}`);
-    pyLog(`parse fail ${picked.name}: ${e.message}`);
+    pyLog(`parse fail ${name}: ${e.message}`);
     return;
   }
   const dtMs = performance.now() - t0;
 
-  state.filename = picked.name;
+  state.filename = name;
   state.parsed   = parsed;
   state.selectedBodyId = null;
-  state.originalText   = picked.text;  // cached so re-tessellation after edit is straightforward
+  state.originalText   = text;
 
-  renderStats(state, { parseMs: dtMs, sourceBytes: picked.text.length });
+  renderStats(state, { parseMs: dtMs, sourceBytes: text.length });
   populateBodyList(state);
   enableLoadedButtons(true);
 
-  // Kick off tessellation in the background. Open returns as soon as
-  // parsing is done; the viewer fills in when occt finishes (typically
-  // ~1-3 s on a 14 MB canoe). Status line updates during the wait.
-  retessellate(state, picked.text).catch((e) => {
+  retessellate(state, text).catch((e) => {
     setStatus(`Viewer: ${e.message}`);
     pyLog(`viewer fail: ${e.message}`);
   });
 
   setStatus(
-    `Loaded "${picked.name}" — ${parsed.entities.size.toLocaleString()} entities, `
+    `Loaded "${name}" — ${parsed.entities.size.toLocaleString()} entities, `
     + `${dtMs.toFixed(0)} ms parse, ${parsed.warnings.length} warning(s).`
   );
-  pyLog(`opened ${picked.name}: ${parsed.entities.size} entities in ${dtMs.toFixed(0)}ms`);
+  pyLog(`opened ${name}: ${parsed.entities.size} entities in ${dtMs.toFixed(0)}ms`);
 }
 
 function handleNew(state) {
@@ -196,6 +232,33 @@ function handleNew(state) {
 /* ────────────────────────────────────────────────────────────────────
  * Bodies — list + selection + transforms
  * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Reset the transform tool panel state. Called when no body is selected
+ * (e.g. fresh file load with no bodies, or selection cleared). Was
+ * previously a missing reference — every call site below passes `null`
+ * to mean "no active body", which is the only invocation pattern in use.
+ *
+ * Best-effort: hide every `.tool-panel` block, drop any active
+ * `.tool-btn[aria-pressed]` state, clear the per-tool body-name target.
+ * Silent if the DOM nodes aren't there yet (e.g. during a hot reload
+ * before the sidebar is built).
+ */
+function showTransformPanel(/* unused — kept for the legacy call sites */) {
+  try {
+    for (const panel of document.querySelectorAll('.tool-panel')) {
+      panel.hidden = true;
+    }
+    for (const btn of document.querySelectorAll('.tool-btn[aria-pressed="true"]')) {
+      btn.setAttribute('aria-pressed', 'false');
+    }
+    for (const t of document.querySelectorAll('.tool-target')) {
+      t.textContent = '';
+    }
+  } catch (_) {
+    // DOM not ready / element missing — non-fatal, ignore.
+  }
+}
 
 /**
  * Scan the parsed graph for body roots and render them into the
@@ -236,7 +299,19 @@ export function populateBodyList(state) {
 
     li.appendChild(nameSpan);
     li.appendChild(typeSpan);
-    li.addEventListener('click', () => selectBody(state, b.id));
+    // Clicking the already-selected row toggles selection off. This pairs
+    // with the Esc shortcut so users have a discoverable deselect path.
+    li.addEventListener('click', () => {
+      const next = (state.selectedBodyId === b.id) ? null : b.id;
+      selectBody(state, next);
+    });
+    // Hover preview — soft emissive boost on the matching 3D mesh so the
+    // user can see what they're about to select before committing. Clears
+    // on leave; the *selected* highlight (outline + colour) overrides.
+    li.addEventListener('mouseenter', () => {
+      if (state.selectedBodyId !== b.id) previewByName(b.name);
+    });
+    li.addEventListener('mouseleave', () => previewByName(null));
     ul.appendChild(li);
   }
 
@@ -251,16 +326,30 @@ export function populateBodyList(state) {
 }
 
 /** Mark a body as selected, mirror its name into every tool panel
- *  header, and highlight the matching mesh in the 3D viewer. */
+ *  header, highlight the matching mesh in the 3D viewer, and push a
+ *  compact selection summary (name + bbox size) into the status line.
+ *
+ *  Pass `bodyId = null` to clear the selection entirely — used by the
+ *  Esc shortcut and the click-on-already-selected-row toggle. */
 function selectBody(state, bodyId) {
   state.selectedBodyId = bodyId;
   const ul = document.getElementById('bodyList');
   if (ul) {
+    let selectedLi = null;
     for (const li of ul.children) {
-      li.classList.toggle('selected', Number(li.dataset.bodyId) === bodyId);
+      const isSel = bodyId != null && Number(li.dataset.bodyId) === bodyId;
+      li.classList.toggle('selected', isSel);
+      if (isSel) selectedLi = li;
+    }
+    // Make sure the selected row is visible — long body lists scroll, and
+    // a click-elsewhere selection (e.g. from the 3D picker) shouldn't
+    // leave the user hunting for the active row.
+    if (selectedLi && typeof selectedLi.scrollIntoView === 'function') {
+      try { selectedLi.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+      catch (_) {}
     }
   }
-  const body = (state._bodies || []).find(b => b.id === bodyId);
+  const body = bodyId == null ? null : (state._bodies || []).find(b => b.id === bodyId);
 
   // Each tool panel has a `<span class="tool-target">` we stamp with
   // the selected body's name so the user sees what they're editing.
@@ -273,6 +362,24 @@ function selectBody(state, bodyId) {
   // SHELL_BASED_SURFACE_MODEL — they overlap often but not always.
   highlightByName(body ? body.name : null);
 
+  // Compact selection summary into the status line. Done last so it
+  // doesn't get clobbered by transient retessellate messages.
+  if (body && state.parsed) {
+    try {
+      const bb = getBodyBounds(state.parsed, body.id);
+      if (bb) {
+        const w = Math.round(bb.size[0]);
+        const h = Math.round(bb.size[1]);
+        const d = Math.round(bb.size[2]);
+        setStatus(`◆ Selected: ${body.name} — ${w} × ${h} × ${d} mm`);
+      } else {
+        setStatus(`◆ Selected: ${body.name}`);
+      }
+    } catch (_) {
+      setStatus(`◆ Selected: ${body.name}`);
+    }
+  }
+
   // Refresh the Resize panel's "Current:" line so the user sees the
   // body's current dimensions before they type a target.
   updateResizeCurrent(state);
@@ -282,7 +389,10 @@ function selectBody(state, bodyId) {
   // "All surfaces" entry only.
   populateRegridSurfaces(state);
 
-  setStatus(body ? `Selected body "${body.name}".` : 'Body selection cleared.');
+  // Note: an earlier version of this function ended with a redundant
+  // setStatus('Selected body "Body1".') here, which clobbered the
+  // richer "◆ Selected: name — W×H×D mm" message we set above. Removed.
+  if (!body) setStatus('Body selection cleared.');
 }
 
 /** Fill the Regrid panel's Surface dropdown with this body's B-spline
@@ -360,6 +470,17 @@ export function activateTool(state, toolId) {
   for (const panel of document.querySelectorAll('.tool-panel')) {
     panel.hidden = (panel.id !== toolPanelId(state.activeTool));
   }
+
+  // Newly-revealed panels may contain <input type="number"> elements that
+  // haven't been seen yet — wire drag-to-scrub on them now. attachScrubAll
+  // is idempotent so it's safe to call every time.
+  attachScrubAll(document);
+
+  // Re-anchor live-preview baselines so the current input values become
+  // the new "unit" point. Without this the next scrub of e.g. xformUniform
+  // (which still shows 1.0 after we last left it at 1.5) would treat
+  // 1.0→1.2 as a 1.2× delta from 1.5, doubling-up the scale.
+  resetLiveBaselines(state);
 }
 
 /** Map a tool id to its panel element id. */
@@ -372,6 +493,8 @@ function toolPanelId(toolId) {
     case 'resize':    return 'resizeSection';
     case 'regrid':    return 'regridSection';
     case 'text':      return 'textSection';
+    case 'pattern':   return 'patternSection';
+    case 'svgfill':   return 'svgFillSection';
     default:          return null;
   }
 }
@@ -519,6 +642,124 @@ async function handleApplyRegrid(state) {
   populateRegridSurfaces(state);
 }
 
+/* ────────────────────────────────────────────────────────────────────
+ * Live preview — scrub a number input and see the model update without
+ * clicking Apply. Each input is bound to a delta-applier: it reads the
+ * current value, compares to `state.lastApplied[inputId]`, computes the
+ * delta (ratio for scale, difference for translate/rotate), applies it
+ * in place to state.parsed, and debounces a retessellate.
+ *
+ * Baseline is reset every time a tool panel opens — see activateTool —
+ * so the user always knows what "1.0 / 0.0" means in the current panel.
+ * ──────────────────────────────────────────────────────────────────── */
+
+const LIVE_RETESS_DEBOUNCE_MS = 180;
+let _liveRetessTimer = null;
+
+/** Debounced retessellate for live preview — coalesces a burst of scrub
+ *  events into a single re-tessellation.
+ *
+ *  IMPORTANT: forces the WASM/OCCT path (`forceWasm: true`) so each scrub
+ *  doesn't pop a temp document open in Fusion's main canvas. The
+ *  Fusion-native path stays for the initial file load and any explicit
+ *  Apply, where the doc-switch cost is paid once and the speedup is real.
+ *
+ *  Trade-off: WASM is slower per call (1–3 s on a 14 MB STEP), so on
+ *  very large files the preview will lag a frame or two. For scale-of-a-
+ *  rectangle workloads it feels instant. A future iteration could
+ *  bypass tessellation entirely during scrub by transforming the Three.js
+ *  buffer-geometry in place — sufficient for affine transforms, but a
+ *  bigger refactor than we want right now. */
+function retessellateLive(state) {
+  clearTimeout(_liveRetessTimer);
+  _liveRetessTimer = setTimeout(() => {
+    retessellate(state, null, { forceWasm: true })
+      .catch((e) => setStatus(`Preview: ${e.message}`));
+  }, LIVE_RETESS_DEBOUNCE_MS);
+}
+
+/** Bind delta-style live preview to a single number input.
+ *
+ * @param {object} state
+ * @param {string} inputId          DOM element id of the <input type="number">
+ * @param {'mul'|'add'} kind        'mul' for scale (delta = cur/last),
+ *                                  'add' for translate/rotate (delta = cur-last)
+ * @param {(s:object, delta:number)=>void} applyDelta
+ *     Mutates state.parsed in place with the supplied delta. Caller is
+ *     responsible for the bodyId / axis lookups.
+ */
+function bindLivePreview(state, inputId, kind, applyDelta) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const ident = kind === 'mul' ? 1 : 0;
+  state.lastApplied = state.lastApplied || {};
+  if (state.lastApplied[inputId] === undefined) {
+    state.lastApplied[inputId] = parseFloat(input.value) || ident;
+  }
+  input.addEventListener('input', () => {
+    if (!state.parsed || !state.selectedBodyId) return;
+    const cur  = parseFloat(input.value);
+    if (!Number.isFinite(cur)) return;
+    const last = state.lastApplied[inputId] ?? ident;
+    const delta = kind === 'mul' ? (cur / last) : (cur - last);
+    const isNoOp = kind === 'mul' ? Math.abs(delta - 1) < 1e-9 : Math.abs(delta) < 1e-9;
+    if (isNoOp) return;
+    try {
+      applyDelta(state, delta);
+    } catch (e) {
+      setStatus(`Preview failed: ${e.message}`);
+      return;
+    }
+    state.lastApplied[inputId] = cur;
+    retessellateLive(state);
+  });
+}
+
+/** Reset every tool's baseline tracking to the current values shown in
+ *  the inputs. Called by activateTool so each newly-opened tool's
+ *  baseline is anchored at whatever's in the field at that moment. */
+function resetLiveBaselines(state) {
+  state.lastApplied = state.lastApplied || {};
+  const ids = [
+    'xformUniform', 'xformSX', 'xformSY', 'xformSZ',
+    'xformTX', 'xformTY', 'xformTZ',
+    'rotateAngle',
+  ];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const v = parseFloat(el.value);
+    state.lastApplied[id] = Number.isFinite(v) ? v : (id === 'xformUniform' || id.startsWith('xformS') ? 1 : 0);
+  }
+}
+
+/** Install live-preview listeners on every supported tool input.
+ *  Called once during boot. */
+function wireLivePreview(state) {
+  // Scale — uniform and per-axis. Multiplicative delta.
+  bindLivePreview(state, 'xformUniform', 'mul', (s, k) =>
+    scaleBody(s.parsed, s.selectedBodyId, k));
+  bindLivePreview(state, 'xformSX', 'mul', (s, k) =>
+    scaleBodyAxes(s.parsed, s.selectedBodyId, { x: k, y: 1, z: 1 }));
+  bindLivePreview(state, 'xformSY', 'mul', (s, k) =>
+    scaleBodyAxes(s.parsed, s.selectedBodyId, { x: 1, y: k, z: 1 }));
+  bindLivePreview(state, 'xformSZ', 'mul', (s, k) =>
+    scaleBodyAxes(s.parsed, s.selectedBodyId, { x: 1, y: 1, z: k }));
+  // Translate — additive delta on a single axis at a time.
+  bindLivePreview(state, 'xformTX', 'add', (s, d) =>
+    translateBody(s.parsed, s.selectedBodyId, { x: d, y: 0, z: 0 }));
+  bindLivePreview(state, 'xformTY', 'add', (s, d) =>
+    translateBody(s.parsed, s.selectedBodyId, { x: 0, y: d, z: 0 }));
+  bindLivePreview(state, 'xformTZ', 'add', (s, d) =>
+    translateBody(s.parsed, s.selectedBodyId, { x: 0, y: 0, z: d }));
+  // Rotate — additive degrees around the currently-selected axis.
+  bindLivePreview(state, 'rotateAngle', 'add', (s, dDeg) => {
+    const axis = (document.getElementById('rotateAxis') || {}).value || 'z';
+    rotateBody(s.parsed, s.selectedBodyId, axis, dDeg);
+  });
+}
+
+
 /** Run a transform fn, yield to the event loop so the status updates,
  *  then refresh the stats panel + body list + 3D viewer. */
 async function applyAndRefresh(state, pendingMsg, op, successFn) {
@@ -558,34 +799,55 @@ async function applyAndRefresh(state, pendingMsg, op, successFn) {
  * cost). Otherwise serialize state.parsed first. Updates the status
  * line during the long occt call.
  */
-async function retessellate(state, sourceText) {
-  pyLog(`retessellate: occtAvailable=${occtAvailable()}, hasParsed=${!!state.parsed}`);
+async function retessellate(state, sourceText, options = {}) {
+  // `forceWasm` skips the Fusion-native path. Used by live preview to
+  // avoid opening/closing a temp document on every scrub move (which
+  // briefly flashes the main Fusion canvas). The Fusion-native path
+  // stays for initial file load + Apply, where the doc-switch is paid
+  // once and the speedup is real.
+  const fusionFast = !options.forceWasm && isFusionTessAvailable();
+  pyLog(`retessellate: fusionFast=${fusionFast}, occtAvailable=${occtAvailable()}, hasParsed=${!!state.parsed}`);
 
-  if (!occtAvailable()) {
-    setStatus('Viewer disabled — occt-import-js not loaded (network/CDN issue?).');
-    pyLog('retessellate: occtAvailable=false — window.occtimportjs not defined');
+  // Bail only when BOTH paths are unavailable (e.g. standalone web page
+  // that failed to load the WASM module).
+  if (!fusionFast && !occtAvailable()) {
+    setStatus('Viewer disabled — neither Fusion bridge nor occt-import-js available.');
+    pyLog('retessellate: no tessellator available');
     return;
   }
+
   setStatus('Tessellating geometry…');
   await microtaskTick();
 
   const text = sourceText != null ? sourceText : writeStep(state.parsed);
-  pyLog(`retessellate: payload ${text.length} bytes, kicking occt`);
+  pyLog(`retessellate: payload ${text.length} bytes, path=${fusionFast ? 'fusion-native' : 'wasm-occt'}`);
 
   const t0 = performance.now();
   let result;
   try {
-    result = await occtTessellate(text);
+    if (fusionFast) {
+      result = await tessellateViaFusion(text, ({ msg }) => setStatus(msg));
+      // Fall back to WASM if the Fusion path failed (e.g. Python add-in
+      // not running, or temp-doc import threw for this particular STEP).
+      if (!result.success && occtAvailable()) {
+        pyLog(`fusion-native failed: ${result.message} — falling back to WASM`);
+        setStatus(`Fusion path failed (${result.message}). Falling back to WASM…`);
+        await microtaskTick();
+        result = await occtTessellate(text);
+      }
+    } else {
+      result = await occtTessellate(text);
+    }
   } catch (e) {
     setStatus(`Tessellation failed: ${e.message}`);
-    pyLog(`occt threw: ${e.message}`);
+    pyLog(`tessellate threw: ${e.message}`);
     return;
   }
   const dt = performance.now() - t0;
 
   if (!result.success) {
     setStatus(`Tessellation failed: ${result.message || 'unknown'}`);
-    pyLog(`occt unsuccess: ${result.message || 'unknown'}`);
+    pyLog(`tessellate unsuccess: ${result.message || 'unknown'}`);
     return;
   }
 
@@ -593,8 +855,56 @@ async function retessellate(state, sourceText) {
   const sel = state._bodies?.find(b => b.id === state.selectedBodyId);
   if (sel) highlightByName(sel.name);
 
-  setStatus(`Viewer: ${result.meshes.length} mesh(es) tessellated in ${dt.toFixed(0)} ms.`);
-  pyLog(`occt ok: ${result.meshes.length} meshes in ${dt.toFixed(0)}ms`);
+  const pathLabel = fusionFast ? 'Fusion native' : 'WASM OCCT';
+  setStatus(`Viewer: ${result.meshes.length} mesh(es) tessellated in ${dt.toFixed(0)} ms (${pathLabel}).`);
+  pyLog(`tessellate ok: ${result.meshes.length} meshes in ${dt.toFixed(0)}ms via ${pathLabel}`);
+
+  // ── CustomGraphics ghost preview in Fusion's main canvas ──────────
+  // After every retessellate, also push the merged mesh to Python so it
+  // can draw a transient CustomGraphics group on the active design's
+  // root component. Mirrors b-spline-gen — gives the user a preview in
+  // Fusion's canvas without creating real BRep until Send-to-Fusion.
+  // Skipped when not in Fusion (standalone web build).
+  try {
+    if (typeof sendToPython === 'function') sendPreviewMeshToFusion(result.meshes);
+  } catch (e) {
+    pyLog(`preview_mesh push failed: ${e.message}`);
+  }
+}
+
+/* Merge all visible meshes into one flat verts+indices payload and ship
+ * it as a `preview_mesh` action. Heavy meshes are dropped — a million
+ * triangles through sendToPython would jam the bridge. Mesh positions
+ * are in millimetres (Three.js scene units); CustomGraphicsCoordinates
+ * expects centimetres (Fusion internal), so we divide by 10. */
+function sendPreviewMeshToFusion(meshes) {
+  if (!meshes || !meshes.length) {
+    sendToPython('preview_clear', {});
+    return;
+  }
+  const MM_TO_CM = 0.1;
+  const MAX_TRIS_FOR_PREVIEW = 80000;   // ~240 K verts × 8 bytes = 2 MB, well under the bridge ceiling
+  const verts = [];
+  const indices = [];
+  const normals = [];
+  let totalTris = 0;
+  let vertOffset = 0;
+  for (const m of meshes) {
+    if (!m || !m.position || !m.index) continue;
+    totalTris += m.index.length / 3;
+    if (totalTris > MAX_TRIS_FOR_PREVIEW) {
+      pyLog(`preview_mesh: skipping remaining meshes (>${MAX_TRIS_FOR_PREVIEW} tris cap)`);
+      break;
+    }
+    const vcount = m.position.length / 3;
+    for (let i = 0; i < m.position.length; i++) verts.push(m.position[i] * MM_TO_CM);
+    if (m.normal && m.normal.length === m.position.length) {
+      for (let i = 0; i < m.normal.length; i++) normals.push(m.normal[i]);
+    }
+    for (let i = 0; i < m.index.length; i++) indices.push(m.index[i] + vertOffset);
+    vertOffset += vcount;
+  }
+  sendToPython('preview_mesh', { verts, indices, normals });
 }
 
 function requireSelectedBody(state) {
@@ -899,6 +1209,378 @@ function insertIntoTextInput(ch) {
   ta.value = newVal;
   ta.selectionStart = ta.selectionEnd = start + ch.length;
   ta.focus();
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * Pattern tool
+ * ──────────────────────────────────────────────────────────────────── */
+
+async function handleApplyPattern(state) {
+  if (!requireSelectedBody(state)) return;
+
+  const axis    = (document.getElementById('patternAxis')    || {}).value || 'z';
+  const count   = readNumber('patternCount', 3) | 0;
+  const spacing = readNumber('patternSpacing', 50);
+
+  if (count < 2) { setStatus('Count must be ≥ 2.'); return; }
+  if (spacing === 0) { setStatus('Spacing must be non-zero.'); return; }
+
+  const bodyName = currentBodyName(state);
+
+  setStatus(`Arraying "${bodyName}" × ${count} along ${axis.toUpperCase()} at ${spacing} mm…`);
+  await microtaskTick();
+
+  const t0 = performance.now();
+  try {
+    arrayBody(state.parsed, bodyName, axis, count, spacing);
+  } catch (e) {
+    setStatus(`Pattern failed: ${e.message}`);
+    return;
+  }
+  const dt = performance.now() - t0;
+
+  renderStats(state, { parseMs: 0, sourceBytes: state.parsed.rawText.length });
+  populateBodyList(state);
+  setStatus(`Pattern: ${count} copies of "${bodyName}" along ${axis.toUpperCase()}, spacing ${spacing} mm (${dt.toFixed(0)} ms).`);
+  pyLog(`pattern: ${count} copies along ${axis} spacing ${spacing}`);
+
+  retessellate(state, null).catch((e) => {
+    setStatus(`Viewer refresh failed: ${e.message}`);
+  });
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * SVG Fill tool
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * State for the SVG fill workflow:
+ *   _svgFillState.motifSvg   — current motif SVG string (from editor or file load)
+ *   _svgFillState.surfaceHit — last face-raycast result from three-viewer
+ *   _svgFillState.editor     — MotifEditor instance
+ */
+const _svgFillState = {
+  motifSvg:   null,
+  surfaceHit: null,
+  editor:     null,
+};
+
+function initSvgFillPanel(/* state */) {
+  // ── Motif editor overlay ─────────────────────────────────────────
+  const overlay    = document.getElementById('motifEditorOverlay');
+  const canvas     = document.getElementById('viewportCanvas');
+  const editorDiv  = document.getElementById('motifEditorCanvas');
+
+  if (!overlay || !editorDiv) return;
+
+  // Instantiate the editor lazily on first Draw click.
+  function ensureEditor() {
+    if (_svgFillState.editor) return;
+    const ed = new window.MotifEditor();
+    const w = editorDiv.clientWidth  || 500;
+    const h = editorDiv.clientHeight || 400;
+    ed.mount(editorDiv, { width: w, height: h });
+    ed.setTool('pen');
+    ed.setOnChange((svg) => {
+      _svgFillState.motifSvg = svg;
+      updateMotifThumb(svg);
+      updateFillApplyBtn();
+    });
+    _svgFillState.editor = ed;
+  }
+
+  // "Draw motif…" button — show overlay, hide 3D canvas.
+  on('btnDrawMotif', () => {
+    ensureEditor();
+    overlay.classList.add('visible');
+    if (canvas) canvas.style.visibility = 'hidden';
+  });
+
+  // "Done" button — hide overlay, restore 3D canvas.
+  on('motifDone', () => {
+    overlay.classList.remove('visible');
+    if (canvas) canvas.style.visibility = '';
+    // Save whatever's in the editor.
+    if (_svgFillState.editor) {
+      _svgFillState.motifSvg = _svgFillState.editor.save();
+      updateMotifThumb(_svgFillState.motifSvg);
+      updateFillApplyBtn();
+    }
+  });
+
+  // Motif tool buttons inside the overlay toolbar.
+  for (const btn of document.querySelectorAll('.motif-tool-btn')) {
+    btn.addEventListener('click', () => {
+      ensureEditor();
+      const toolName = btn.dataset.motifTool;
+      _svgFillState.editor.setTool(toolName);
+      document.querySelectorAll('.motif-tool-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  }
+
+  // Stroke color / width controls.
+  const colorIn = document.getElementById('motifStrokeColor');
+  const widthIn = document.getElementById('motifStrokeWidth');
+  if (colorIn) colorIn.addEventListener('input', () => {
+    ensureEditor();
+    _svgFillState.editor.setStrokeColor(colorIn.value);
+  });
+  if (widthIn) widthIn.addEventListener('input', () => {
+    ensureEditor();
+    _svgFillState.editor.setStrokeWidth(Number(widthIn.value) || 2);
+  });
+
+  // Undo / Redo / Delete / Clear.
+  on('motifUndo',   () => _svgFillState.editor && _svgFillState.editor.undo());
+  on('motifRedo',   () => _svgFillState.editor && _svgFillState.editor.redo());
+  on('motifDelete', () => _svgFillState.editor && _svgFillState.editor.deleteSelected());
+  on('motifClear',  () => {
+    if (_svgFillState.editor) _svgFillState.editor.clear();
+    _svgFillState.motifSvg = null;
+    updateMotifThumb(null);
+    updateFillApplyBtn();
+  });
+
+  // ── Browse / load SVG ────────────────────────────────────────────
+  const fileInput = document.getElementById('inputMotifSvgFile');
+  on('btnBrowseMotifSvg', () => fileInput && fileInput.click());
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        const svg = String(r.result || '');
+        _svgFillState.motifSvg = svg;
+        ensureEditor();
+        _svgFillState.editor.load(svg);
+        updateMotifThumb(svg);
+        updateFillApplyBtn();
+      };
+      r.readAsText(f);
+      fileInput.value = '';  // reset so same file can be re-picked
+    });
+  }
+
+  // ── Pick surface ─────────────────────────────────────────────────
+  on('btnPickSurface', () => {
+    const btn = document.getElementById('btnPickSurface');
+    if (btn) btn.textContent = 'Click a surface in 3D view…';
+    enableFaceSelectMode((hit) => {
+      _svgFillState.surfaceHit = hit;
+      disableFaceSelectMode();
+      if (btn) btn.textContent = 'Pick surface…';
+      const info = document.getElementById('svgFillSurfaceInfo');
+      if (info) {
+        const n = hit.normal;
+        const p = hit.point;
+        const dom = dominantAxis(n);
+        info.textContent =
+          `Body: ${hit.meshName} | Normal: ${dom.toUpperCase()} ` +
+          `(${n.x.toFixed(2)}, ${n.y.toFixed(2)}, ${n.z.toFixed(2)}) | ` +
+          `Hit: (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}) mm`;
+      }
+      updateFillApplyBtn();
+    });
+  });
+
+  // ── Apply fill → send to Fusion ──────────────────────────────────
+  on('btnApplySvgFill', () => handleApplySvgFill());
+
+  // ── 3D Extrude ────────────────────────────────────────────────────
+  on('btnPreviewExtrude',    () => handlePreviewExtrude());
+  on('btnClearExtrude',      () => handleClearExtrude());
+  on('btnSendExtrude',       () => handleSendExtrude());
+  on('btnExportStepExtrude', () => handleExportStepExtrude());
+}
+
+/** Dominant axis from a normal vector — returns 'x', 'y', or 'z'. */
+function dominantAxis(n) {
+  const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+  if (ax >= ay && ax >= az) return 'x';
+  if (ay >= ax && ay >= az) return 'y';
+  return 'z';
+}
+
+/** Update the small thumbnail inside the SVG Fill panel. */
+function updateMotifThumb(svgString) {
+  const thumb = document.getElementById('svgFillMotifThumb');
+  if (!thumb) return;
+  if (!svgString) {
+    thumb.style.display = 'none';
+    thumb.innerHTML = '';
+    return;
+  }
+  thumb.style.display = '';
+  // Sanitise: no scripts.
+  const clean = svgString.replace(/<script[\s\S]*?<\/script>/gi, '');
+  thumb.innerHTML = clean;
+  // Force the SVG to fill the container.
+  const svg = thumb.querySelector('svg');
+  if (svg) { svg.style.width = '100%'; svg.style.height = '100%'; }
+}
+
+/** Enable / disable the Apply Fill and Extrude buttons based on current state. */
+function updateFillApplyBtn() {
+  const hasSvg  = !!_svgFillState.motifSvg;
+  const hasSurf = !!_svgFillState.surfaceHit;
+
+  const btnFill    = document.getElementById('btnApplySvgFill');
+  const btnPrev    = document.getElementById('btnPreviewExtrude');
+  const btnSend    = document.getElementById('btnSendExtrude');
+  const btnExport  = document.getElementById('btnExportStepExtrude');
+
+  if (btnFill)   btnFill.disabled   = !(hasSvg && hasSurf);
+  if (btnPrev)   btnPrev.disabled   = !hasSvg;
+  if (btnSend)   btnSend.disabled   = !(hasSvg && hasSurf);
+  if (btnExport) btnExport.disabled = !hasSvg;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+ * 3D Extrude handlers
+ * ──────────────────────────────────────────────────────────────────── */
+
+function handlePreviewExtrude() {
+  const motifSvg = _svgFillState.motifSvg;
+  if (!motifSvg) { setStatus('Draw or load a motif first.'); return; }
+
+  const depth   = readNumber('svgExtrudeDepth', 3);
+  const mmW     = readNumber('svgFillW', 100);
+  const mmH     = readNumber('svgFillH', 100);
+  const hit     = _svgFillState.surfaceHit;
+  const scene   = getScene();
+
+  try {
+    window.showExtrudePreview({
+      svgString:  motifSvg,
+      depth,
+      mmW,
+      mmH,
+      hitPoint:   hit ? hit.point  : null,
+      hitNormal:  hit ? hit.normal : null,
+      scene,
+    });
+    setStatus(`3D extrude preview: depth ${depth} mm, motif ${mmW}×${mmH} mm.`);
+  } catch (e) {
+    setStatus(`Preview failed: ${e.message}`);
+    pyLog(`preview extrude fail: ${e.message}`);
+  }
+}
+
+function handleClearExtrude() {
+  const scene = getScene();
+  window.clearExtrudePreview && window.clearExtrudePreview(scene);
+  setStatus('Extrude preview cleared.');
+}
+
+function handleExportStepExtrude() {
+  const motifSvg = _svgFillState.motifSvg;
+  if (!motifSvg) { setStatus('Draw or load a motif first.'); return; }
+
+  const depth = readNumber('svgExtrudeDepth', 3);
+  const mmW   = readNumber('svgFillW', 100);
+  const mmH   = readNumber('svgFillH', 100);
+
+  setStatus('Generating STEP…');
+  try {
+    const profiles  = window.svgToProfiles(motifSvg, mmW, mmH);
+    if (!profiles.length) { setStatus('No closed profiles found in motif SVG.'); return; }
+    const stepText  = window.profilesToStep(profiles, depth);
+    downloadText('extruded_motif.stp', stepText);
+    setStatus(`Exported extruded motif as STEP (${profiles.length} profile(s), depth ${depth} mm).`);
+    pyLog(`step export: ${profiles.length} profiles, depth ${depth}`);
+  } catch (e) {
+    setStatus(`STEP export failed: ${e.message}`);
+    pyLog(`step export fail: ${e.message}`);
+  }
+}
+
+async function handleSendExtrude() {
+  const motifSvg = _svgFillState.motifSvg;
+  const hit      = _svgFillState.surfaceHit;
+  if (!motifSvg || !hit) {
+    setStatus('Draw or load a motif and pick a surface first.');
+    return;
+  }
+
+  const depth   = readNumber('svgExtrudeDepth', 3);
+  const mmW     = readNumber('svgFillW', 100);
+  const mmH     = readNumber('svgFillH', 100);
+
+  const payload = {
+    svg:       motifSvg,
+    depth,
+    mmW,
+    mmH,
+    hitPoint:  hit.point,
+    hitNormal: hit.normal,
+    meshName:  hit.meshName,
+  };
+
+  setStatus(`Sending SVG extrusion to Fusion (depth ${depth} mm)…`);
+  try {
+    await sendToPython('svg_extrude', payload);
+    setStatus(`SVG extrusion sent — solid body created in Fusion at selected surface.`);
+    pyLog(`svg_extrude sent: ${mmW}×${mmH} mm, depth ${depth}`);
+  } catch (e) {
+    setStatus(`Extrude send failed: ${e.message}`);
+    pyLog(`svg_extrude fail: ${e.message}`);
+  }
+}
+
+async function handleApplySvgFill() {
+  const motifSvg  = _svgFillState.motifSvg;
+  const hit       = _svgFillState.surfaceHit;
+  if (!motifSvg || !hit) {
+    setStatus('Draw or load a motif and pick a surface first.');
+    return;
+  }
+
+  const fillW     = readNumber('svgFillW', 100);
+  const fillH     = readNumber('svgFillH', 100);
+  const spacingX  = readNumber('svgSpacingX', 20);
+  const spacingY  = readNumber('svgSpacingY', 20);
+  const scale     = readNumber('svgFillScale', 1);
+  const rotation  = readNumber('svgFillRotation', 0);
+  const offsetX   = readNumber('svgOffsetX', 0);
+  const offsetY   = readNumber('svgOffsetY', 0);
+  const brickOff  = (document.getElementById('svgBrickOffset') || {}).checked || false;
+
+  setStatus('Generating tiled SVG…');
+  await microtaskTick();
+
+  let tiledSvg;
+  try {
+    tiledSvg = window.generateTiledSvg(motifSvg, fillW, fillH, {
+      spacingX, spacingY, scale, rotation, offsetX, offsetY,
+      brickOffset: brickOff,
+    });
+  } catch (e) {
+    setStatus(`Tiling failed: ${e.message}`);
+    return;
+  }
+
+  const payload = {
+    svg:      tiledSvg,
+    fillW,
+    fillH,
+    hitPoint:  hit.point,
+    hitNormal: hit.normal,
+    meshName:  hit.meshName,
+    boxMin:    hit.boxMin,
+    boxMax:    hit.boxMax,
+  };
+
+  setStatus('Sending SVG fill to Fusion…');
+  try {
+    await sendToPython('svg_fill', payload);
+    setStatus('SVG fill sent to Fusion — sketch created on construction plane.');
+    pyLog(`svg_fill sent: ${fillW}×${fillH} mm, ${tiledSvg.length} bytes`);
+  } catch (e) {
+    setStatus(`SVG fill send failed: ${e.message}`);
+    pyLog(`svg_fill fail: ${e.message}`);
+  }
 }
 
 /** Parse the user's input through opentype.js, build the layout, and

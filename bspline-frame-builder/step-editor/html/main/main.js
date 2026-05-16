@@ -13,9 +13,10 @@
  */
 
 import { sendToPython, pyLog, registerPythonRoutes } from '../core/runtime.js';
-import { wireButtons, setStatus } from './ui-bindings.js';
+import { wireButtons, setStatus, loadStepText } from './ui-bindings.js';
 import { init as initViewer, getScene } from '../core/three-viewer.js';
 import { attachToScene as attachTextPreview } from '../core/three-text.js';
+import { attachScrubAll } from '../core/scrub.js';
 
 /** Shared editor state — passed by reference into UI bindings so handlers
  *  can mutate it without dragging in a global. Promote to a class if it
@@ -31,6 +32,16 @@ function boot() {
   registerPythonRoutes({
     pong:     () => { /* health-check round-trip OK */ },
     reset_ui: () => setStatus('Ready.'),
+    // Drop a pre-fetched STEP file straight into the editor — no file
+    // dialog round-trip. Used by Python to push the bundled sample
+    // (samples/rectangle.step) for autonomous testing, and available
+    // for any other "load by content" workflow.
+    preload_step: (data) => {
+      const text = (data && data.text) || '';
+      const name = (data && data.name) || 'preloaded.stp';
+      if (!text) return;
+      loadStepText(state, name, text).catch((e) => setStatus(`Preload failed: ${e.message}`));
+    },
   });
 
   // Initialise the Three.js viewer on the viewport canvas. Fails
@@ -43,6 +54,11 @@ function boot() {
     // attach its group as a sibling of the body meshes.
     attachTextPreview(getScene());
   }
+
+  // Drag-to-scrub on every <input type="number"> currently in the DOM.
+  // Tool panels that get revealed later (Scale, Move, etc.) re-run this
+  // via ui-bindings.activateTool so newly-visible inputs also pick it up.
+  attachScrubAll(document);
 
   sendToPython('ping');
   pyLog('palette HTML loaded');

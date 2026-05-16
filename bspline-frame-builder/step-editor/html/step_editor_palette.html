@@ -75,8 +75,9 @@
             <button class="tool-btn"          data-tool="mirror"    title="Mirror across XY/YZ/XZ plane">Mirror</button>
             <button class="tool-btn"          data-tool="resize"    title="Resize to target bounding-box dimensions">Resize</button>
             <button class="tool-btn"          data-tool="regrid"    title="Re-parameterize B-spline surfaces to a uniform N×M CP grid">Regrid</button>
-            <button class="tool-btn" disabled data-tool="pattern"   title="Linear array of N copies (coming)">Pattern</button>
+            <button class="tool-btn"          data-tool="pattern"   title="Linear array of N copies along an axis">Pattern</button>
             <button class="tool-btn"          data-tool="text"      title="3D text — engrave or emboss on a body">Text</button>
+            <button class="tool-btn"          data-tool="svgfill"   title="Tile an SVG motif across a selected body surface">SVG Fill</button>
             <button class="tool-btn" disabled data-tool="numeric"   title="Numeric editor (coming)">Numeric</button>
             <button class="tool-btn" disabled data-tool="sculpt"    title="Sculpt mode (coming)">Sculpt</button>
             <button class="tool-btn" disabled data-tool="merge"     title="Merge with another .stp (coming)">Merge</button>
@@ -89,19 +90,22 @@
              reveals one at a time. -->
 
 
+        <!-- Scale/Move/Rotate panels have NO Apply button — every input
+             is wired to live preview (see ui-bindings.wireLivePreview).
+             Scrub or type and the body updates immediately. The "Send to
+             Fusion" button below is the final commit. -->
         <div class="panel-section tool-panel" id="scaleSection" hidden>
           <h2>Scale <span class="tool-target" id="scaleBodyName"></span></h2>
           <div class="tool-row">
             <label>Uniform</label>
             <input id="xformUniform" type="number" step="0.1" value="1.0">
-            <button id="btnApplyUniform" class="primary">Apply</button>
           </div>
           <div class="tool-row">
             <label>X</label><input id="xformSX" type="number" step="0.1" value="1.0">
             <label>Y</label><input id="xformSY" type="number" step="0.1" value="1.0">
             <label>Z</label><input id="xformSZ" type="number" step="0.1" value="1.0">
           </div>
-          <button id="btnApplyAxes">Apply per-axis</button>
+          <p class="hint">Drag horizontally on a number to scrub. Shift = 10×, Alt = 0.1×, Ctrl snaps.</p>
         </div>
 
         <div class="panel-section tool-panel" id="translateSection" hidden>
@@ -111,7 +115,7 @@
             <label>Y</label><input id="xformTY" type="number" step="1" value="0">
             <label>Z</label><input id="xformTZ" type="number" step="1" value="0">
           </div>
-          <button id="btnApplyTranslate" class="primary">Apply</button>
+          <p class="hint">Drag horizontally on a number to scrub. Shift = 10×, Alt = 0.1×, Ctrl snaps.</p>
         </div>
 
         <div class="panel-section tool-panel" id="rotateSection" hidden>
@@ -126,7 +130,7 @@
             <label title="degrees, right-handed">°</label>
             <input id="rotateAngle" type="number" step="15" value="90">
           </div>
-          <button id="btnApplyRotate" class="primary">Apply</button>
+          <p class="hint">Drag the angle to scrub. Switching the Axis dropdown resets the live-preview baseline.</p>
         </div>
 
         <div class="panel-section tool-panel" id="mirrorSection" hidden>
@@ -232,6 +236,113 @@
           <button id="btnApplyRegrid" class="primary">Apply regrid</button>
         </div>
 
+        <!-- ── Pattern tool panel ─────────────────────────────────────── -->
+        <div class="panel-section tool-panel" id="patternSection" hidden>
+          <h2>Pattern <span class="tool-target" id="patternBodyName"></span></h2>
+          <p class="tool-help">Linear array — duplicate the selected body N times along an axis.</p>
+          <div class="tool-row">
+            <label>Axis</label>
+            <select id="patternAxis">
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z" selected>Z</option>
+            </select>
+          </div>
+          <div class="tool-row">
+            <label>Count</label>
+            <input id="patternCount" type="number" min="2" max="100" step="1" value="3">
+          </div>
+          <div class="tool-row">
+            <label>Spacing (mm)</label>
+            <input id="patternSpacing" type="number" step="1" value="50">
+          </div>
+          <button id="btnApplyPattern" class="primary">Apply pattern</button>
+        </div>
+
+        <!-- ── SVG Fill tool panel ────────────────────────────────────── -->
+        <div class="panel-section tool-panel" id="svgFillSection" hidden>
+          <h2>SVG Fill</h2>
+          <p class="tool-help">
+            Pick a body surface in the 3D view, draw or load a motif, then tile it across the surface.
+          </p>
+
+          <!-- Surface selection -->
+          <div class="tool-row tool-row-block">
+            <button id="btnPickSurface" class="primary">Pick surface…</button>
+            <span id="svgFillSurfaceInfo" class="tool-help" style="margin-top:4px"></span>
+          </div>
+
+          <!-- Motif source -->
+          <div class="tool-row tool-row-block">
+            <button id="btnDrawMotif">Draw motif…</button>
+            <button id="btnBrowseMotifSvg">Load SVG…</button>
+            <input id="inputMotifSvgFile" type="file" accept=".svg,image/svg+xml" hidden>
+          </div>
+          <div id="svgFillMotifThumb" style="display:none;margin:4px 0;border:1px solid var(--border);border-radius:4px;overflow:hidden;height:80px;background:#1e1e1e"></div>
+
+          <!-- Fill area -->
+          <div class="tool-row">
+            <label>Fill W (mm)</label>
+            <input id="svgFillW" type="number" min="1" step="5" value="100">
+          </div>
+          <div class="tool-row">
+            <label>Fill H (mm)</label>
+            <input id="svgFillH" type="number" min="1" step="5" value="100">
+          </div>
+
+          <!-- Tiling parameters -->
+          <details open>
+            <summary style="cursor:pointer;margin:6px 0 4px;font-size:0.8em;color:var(--text-muted)">Tiling options</summary>
+            <div class="tool-row">
+              <label>Spacing X (mm)</label>
+              <input id="svgSpacingX" type="number" min="0.1" step="1" value="20">
+            </div>
+            <div class="tool-row">
+              <label>Spacing Y (mm)</label>
+              <input id="svgSpacingY" type="number" min="0.1" step="1" value="20">
+            </div>
+            <div class="tool-row">
+              <label>Scale</label>
+              <input id="svgFillScale" type="number" min="0.01" step="0.1" value="1">
+            </div>
+            <div class="tool-row">
+              <label>Rotation (°)</label>
+              <input id="svgFillRotation" type="number" step="5" value="0">
+            </div>
+            <div class="tool-row">
+              <label>Offset X (mm)</label>
+              <input id="svgOffsetX" type="number" step="1" value="0">
+            </div>
+            <div class="tool-row">
+              <label>Offset Y (mm)</label>
+              <input id="svgOffsetY" type="number" step="1" value="0">
+            </div>
+            <div class="tool-row">
+              <label><input type="checkbox" id="svgBrickOffset"> Brick offset</label>
+            </div>
+          </details>
+
+          <button id="btnApplySvgFill" class="primary" disabled>Send fill to Fusion (sketch)</button>
+
+          <!-- ── 3D Extrude sub-section ──────────────────────────────────── -->
+          <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
+          <p class="tool-help" style="margin:0 0 6px">
+            <strong>3D Extrude</strong> — extrude the motif into a solid body.
+          </p>
+          <div class="tool-row">
+            <label>Depth (mm)</label>
+            <input id="svgExtrudeDepth" type="number" min="0.1" step="0.5" value="3">
+          </div>
+          <div class="tool-row" style="gap:4px">
+            <button id="btnPreviewExtrude"   disabled style="flex:1" title="Show extruded solid in 3D viewport">Preview 3D</button>
+            <button id="btnClearExtrude"              style="flex:0 0 auto" title="Remove extrude preview from viewport">Clear</button>
+          </div>
+          <div class="tool-row" style="gap:4px;margin-top:2px">
+            <button id="btnSendExtrude"      class="primary" disabled style="flex:1">Send to Fusion (solid)</button>
+            <button id="btnExportStepExtrude"           disabled style="flex:0 0 auto" title="Download .stp of the extruded motif">↓ .stp</button>
+          </div>
+        </div>
+
         <div class="panel-section">
           <h2>Cloud</h2>
           <button id="btnCloudList">My saved files…</button>
@@ -247,6 +358,38 @@
 
       <div id="viewport">
         <canvas id="viewportCanvas"></canvas>
+
+        <!-- ── Motif editor overlay ──────────────────────────────────────
+             Shown when the user clicks "Draw motif…" in the SVG Fill panel.
+             Sits in the same flex container as viewportCanvas so it fills the
+             same area. Hidden by default; ui-bindings.js toggles display. -->
+        <div id="motifEditorOverlay" style="display:none;position:absolute;inset:0;flex-direction:column;background:#1a1a1a;z-index:10">
+          <!-- Toolbar -->
+          <div id="motifToolbar" style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#222;border-bottom:1px solid #444;flex-shrink:0;flex-wrap:wrap">
+            <span style="color:#aaa;font-size:0.75em;margin-right:4px">Draw motif</span>
+            <button class="motif-tool-btn active" data-motif-tool="pen"     title="Freehand pen">✏️</button>
+            <button class="motif-tool-btn"        data-motif-tool="line"    title="Straight line">╱</button>
+            <button class="motif-tool-btn"        data-motif-tool="rect"    title="Rectangle">▭</button>
+            <button class="motif-tool-btn"        data-motif-tool="ellipse" title="Ellipse">⬭</button>
+            <button class="motif-tool-btn"        data-motif-tool="select"  title="Select / move">↖</button>
+            <span style="width:1px;height:20px;background:#444;margin:0 2px"></span>
+            <label style="color:#aaa;font-size:0.75em" title="Stroke color">Color
+              <input type="color" id="motifStrokeColor" value="#ffffff" style="width:32px;height:22px;border:none;padding:0;background:none;cursor:pointer">
+            </label>
+            <label style="color:#aaa;font-size:0.75em" title="Stroke width (px)">Width
+              <input type="number" id="motifStrokeWidth" min="0.5" max="20" step="0.5" value="2" style="width:40px">
+            </label>
+            <span style="width:1px;height:20px;background:#444;margin:0 2px"></span>
+            <button id="motifUndo"   title="Undo">↩</button>
+            <button id="motifRedo"   title="Redo">↪</button>
+            <button id="motifDelete" title="Delete selected">🗑</button>
+            <button id="motifClear"  title="Clear all">Clear</button>
+            <button id="motifDone"   style="margin-left:auto;background:var(--accent);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer">Done</button>
+          </div>
+          <!-- SVG canvas area -->
+          <div id="motifEditorCanvas" style="flex:1;overflow:hidden;position:relative"></div>
+        </div>
+
         <div class="placeholder" id="placeholder">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M12 2 2 7l10 5 10-5-10-5Z"/>
@@ -264,7 +407,20 @@
     </footer>
   </div>
 
-  <!-- ES module entry so every helper stays exportable / testable. -->
-  <script type="module" src="main/main.js"></script>
+  <!-- SVG motif editor and tile generator (plain scripts — no module
+       bundling needed; they export to window.*). -->
+  <script src="core/svg-motif-editor.js"></script>
+  <script src="core/svg-fill.js"></script>
+  <script src="core/svg-extrude.js"></script>
+
+  <!-- ES module entry so every helper stays exportable / testable.
+       Cache-bust marker (?v=…) — bump this version any time JS or CSS
+       changes need to land in the Fusion palette webview without
+       restarting Fusion. Mirrors the pattern bspline_gen_palette.html
+       uses on its own main.js. Chromium's module loader re-walks the
+       full import graph from a new entry URL, so changing this single
+       query string is sufficient to force a fresh fetch of every
+       module transitively imported under core/ + main/. -->
+  <script type="module" src="main/main.js?v=20260515_zup01"></script>
 </body>
 </html>

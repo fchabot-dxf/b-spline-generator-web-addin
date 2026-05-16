@@ -125,6 +125,49 @@ button.primary:hover { background: #fbbf24; }
   width: 100%; height: 100%; display: block;
 }
 
+/* ── Motif editor overlay ──────────────────────────────────────────── */
+#motifEditorOverlay {
+  display: none;
+  flex-direction: column;
+}
+#motifEditorOverlay.visible {
+  display: flex !important;
+}
+#motifEditorCanvas {
+  flex: 1;
+  overflow: hidden;
+  cursor: crosshair;
+}
+.motif-tool-btn {
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 2px 7px;
+  cursor: pointer;
+  font-size: 0.85em;
+  min-width: 26px;
+}
+.motif-tool-btn.active,
+.motif-tool-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+/* SVG fill surface indicator */
+#svgFillSurfaceInfo {
+  font-size: 0.75em;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+/* Motif thumbnail */
+#svgFillMotifThumb svg {
+  width: 100%; height: 100%;
+  object-fit: contain;
+}
+
 .placeholder {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
@@ -204,13 +247,54 @@ button.primary:hover { background: #fbbf24; }
   display: flex; justify-content: space-between; align-items: center;
 }
 .body-list li:last-child { border-bottom: none; }
-.body-list li:hover     { background: #f0f0f0; }
+.body-list li:hover     {
+  background: #f0f0f0;
+  /* Subtle pre-selection hint — the row that's about to be clicked
+     also visually nudges (via JS) the matching mesh in the viewport. */
+  box-shadow: inset 2px 0 0 rgba(245, 158, 11, 0.4);
+}
 .body-list li.selected  {
-  background: rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.22);
   color: #92400e;
-  border-left: 2px solid var(--accent);
-  padding-left: 8px;
+  border-left: 4px solid var(--accent);
+  padding-left: 6px;            /* compensate for thicker border so text doesn't shift */
   font-weight: 600;
+  position: relative;
+  /* Animated entry — gentle pulse so a click reads as "OK got it". */
+  animation: bodySelectPulse 220ms ease-out;
+}
+.body-list li.selected::before {
+  content: '●';
+  color: var(--accent);
+  font-size: 8px;
+  position: absolute;
+  right: 10px;
+  top: 50%; transform: translateY(-50%);
+}
+@keyframes bodySelectPulse {
+  0%   { background: rgba(245, 158, 11, 0.45); }
+  100% { background: rgba(245, 158, 11, 0.22); }
+}
+
+/* Drag-to-scrub cursor — attachScrub() in core/scrub.js inlines this
+   on each input it touches; the rule below ensures the cursor stays
+   stable when an input is focused (the inline style alone gets
+   overridden by browser :focus defaults on some Chromium builds). */
+input[type="number"] {
+  cursor: ew-resize;
+}
+input[type="number"]:focus {
+  cursor: text;
+}
+
+/* Tool-panel hint text — explains scrubbing in a small, low-emphasis
+   line. Appears at the bottom of every live-preview tool panel. */
+.tool-panel .hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.35;
+  font-style: italic;
 }
 .body-list .body-type {
   font-size: 10px; color: var(--text-dim);

@@ -227,10 +227,126 @@ class _HtmlEventHandler(adsk.core.HTMLEventHandler):
                 _do_generate()
             elif action == 'preview':
                 _do_preview()
+            elif action == 'list_cam_templates':
+                _do_list_cam_templates()
+            elif action == 'get_template_assignments':
+                _do_get_template_assignments()
+            elif action == 'set_template_assignments':
+                _do_set_template_assignments(data)
             else:
                 _log(f"unknown HTML action: {action!r}", "WARNING")
         except Exception:
             _log_error("HtmlEvent\n" + traceback.format_exc())
+
+
+# ---------------------------------------------------------------------------
+# Template browser handlers
+# ---------------------------------------------------------------------------
+
+def _do_list_cam_templates():
+    """Send the cloud / local / system template inventory to JS."""
+    try:
+        import adsk.cam
+        cam_mgr = adsk.cam.CAMManager.get()
+        tpl_lib = cam_mgr.libraryManager.templateLibrary
+        payload = {'cloud': [], 'local': [], 'system': []}
+        for key, loc_enum in (
+            ('cloud',  adsk.cam.LibraryLocations.CloudLibraryLocation),
+            ('local',  adsk.cam.LibraryLocations.LocalLibraryLocation),
+            ('system', adsk.cam.LibraryLocations.Fusion360LibraryLocation),
+        ):
+            try:
+                root = tpl_lib.urlByLocation(loc_enum)
+                if not root:
+                    continue
+                for asset in tpl_lib.childAssetURLs(root):
+                    payload[key].append({
+                        'leaf':    asset.leafName,
+                        'url':     asset.toString(),
+                    })
+            except Exception:
+                # Empty / unreachable libraries are normal — skip silently.
+                continue
+        _palette_send('templates_list', payload)
+    except Exception:
+        _log_error("list_cam_templates\n" + traceback.format_exc())
+
+
+def _ensure_engine_path():
+    """Put _addin_dir on sys.path so `from cam_engine import …` works
+    BEFORE the user has ever clicked Generate. Without this the import
+    silently fails — caught by the handler's try/except, but JS never
+    sees a response and the palette counts stay at the HTML default 0.
+    Idempotent (no-op when already present). Mirrors the sys.path
+    setup in _load_engine without re-importing the engine itself."""
+    if _addin_dir not in sys.path:
+        sys.path.insert(0, _addin_dir)
+
+
+def _do_get_template_assignments():
+    """Send current per-setup template lists (overrides if any, otherwise
+    the SETUP_SPECS defaults) to JS."""
+    try:
+        _ensure_engine_path()
+        from cam_engine import setup_builder as _sb
+        from cam_engine import template_assignments as _ta
+        # Active design (may be None outside the Manufacture workspace).
+        app = adsk.core.Application.get()
+        design = None
+        try:
+            design = adsk.fusion.Design.cast(
+                app.activeDocument.products.itemByProductType('DesignProductType'))
+        except Exception:
+            pass
+        out = []
+        for spec in _sb.SETUP_SPECS:
+            name = spec['name']
+            override = _ta.load_for_setup(design, name)
+            default = spec.get('cloud_templates') or []
+            out.append({
+                'setup':       name,
+                'templates':   override if override is not None else default,
+                'is_override': override is not None,
+                'default':     default,
+            })
+        _palette_send('template_assignments', {'setups': out})
+    except Exception:
+        _log_error("get_template_assignments\n" + traceback.format_exc())
+
+
+def _do_set_template_assignments(data):
+    """JS sends { setup, templates: [leafName,...] }; we persist as a
+    Design attribute (via template_assignments). Pass templates: null to
+    clear the override and fall back to defaults."""
+    try:
+        _ensure_engine_path()
+        from cam_engine import template_assignments as _ta
+        setup_name = data.get('setup')
+        leaves     = data.get('templates')   # list, [] (== "no templates"), or None
+        if not setup_name:
+            return
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(
+            app.activeDocument.products.itemByProductType('DesignProductType'))
+        if leaves is None:
+            _ta.clear_for_setup(design, setup_name)
+        else:
+            _ta.save_for_setup(design, setup_name, list(leaves))
+        # Echo the new state so JS re-renders.
+        _do_get_template_assignments()
+    except Exception:
+        _log_error("set_template_assignments\n" + traceback.format_exc())
+
+
+def _palette_send(action, payload):
+    """Tiny helper — send a typed message to the CAM Builder palette JS."""
+    try:
+        app = adsk.core.Application.get()
+        pal = app.userInterface.palettes.itemById(PALETTE_ID)
+        if pal:
+            pal.sendInfoToHTML(action, json.dumps(payload))
+    except Exception:
+        pass
 
 
 def _show_palette():
@@ -568,12 +684,17 @@ def _extract_profile_from_setup(setup):
         op_data['rampType'] = ramp
         operations.append(op_data)
 
+    # 'sides' is the indexed-machining list — N orientations per MM. An
+    # import always reflects ONE existing Setup, so we emit a single
+    # Side A @ 0°Z. The user can add more sides in the palette after
+    # import if they want to extend it into an indexed workflow.
     return {
         'stockMode':       stock_mode,
         'clearanceHeight': clearance_h,
         'retractHeight':   retract_h,
         'boxPoint':        box_pt,
         'flipY':           flip_y,
+        'sides':           [{'name': 'A', 'axis': 'Z', 'angleDeg': 0}],
         'operations':      operations,
     }
 
@@ -611,6 +732,12 @@ def _do_studio_generate(data=None):
         })
         return
 
+    # Kick off toolpath generation for every operation the engine just
+    # stamped out. Same helper as B-spline mode; runs async in the
+    # CAM workspace, so we don't block the palette response.
+    if report.get('ok'):
+        _kick_off_toolpath_generation(report)
+
     _send_to_studio_html('report', report)
 
     if report.get('ok'):
@@ -621,6 +748,42 @@ def _do_studio_generate(data=None):
                 palette.isVisible = False
         except Exception:
             pass
+
+
+def _kick_off_toolpath_generation(report):
+    """Fire ``cam.generateAllToolpaths(skipValid=True)`` so every operation
+    the engine just stamped (template-applied ones land empty / invalid)
+    gets a toolpath produced.
+
+    ``skipValid=True`` is intentional: it tells Fusion to skip operations
+    that are ALREADY up-to-date and only regenerate the invalid ones —
+    which is exactly the new ones the template machinery just dropped in,
+    plus any existing operations that have gone stale since their last
+    edit. Operations the user is happy with don't get rebuilt.
+
+    The call returns a ``GenerateToolpathFuture`` (async). We don't poll
+    or block on it — Fusion shows its own progress dialog in the
+    Manufacture workspace, so the user sees what's happening without the
+    palette needing to babysit. Errors are logged but never raised:
+    the setup-build report already succeeded; if toolpath generation
+    later trips on, say, an unset tool, the user fixes that in the CAM
+    workspace, not by us tearing down the setups."""
+    try:
+        app = adsk.core.Application.get()
+        cam = app.activeDocument.products.itemByProductType('CAMProductType')
+        if not cam:
+            _log("toolpath generation skipped — no CAM product in active doc", "WARNING")
+            return
+        future = cam.generateAllToolpaths(True)
+        # Counting newly-created operations from the report so the JS can
+        # show "Generating toolpaths for N ops" without re-walking setups.
+        op_count = 0
+        for setup_report in (report.get('setups') or []):
+            op_count += int(setup_report.get('ops_created', 0) or 0)
+        _log(f"generateAllToolpaths(skipValid=True) kicked off "
+             f"({op_count} newly-stamped op(s); future={future})")
+    except Exception:
+        _log_error("generateAllToolpaths failed\n" + traceback.format_exc())
 
 
 def _send_to_html(action, payload):
@@ -699,6 +862,13 @@ def _do_generate():
             'errors': ['Engine.run raised — see log.'],
         })
         return
+
+    # Kick off toolpath generation for every operation Fusion was just
+    # handed (template-stamped ops land empty). Fires before we hide the
+    # palette so the user sees the report and the progress bar at the
+    # same time.
+    if report.get('ok'):
+        _kick_off_toolpath_generation(report)
 
     _send_to_html('report', report)
 
