@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stamp Editor</title>
+
+  <!-- SVG.js (used by the vector editor) and Three.js (some editor modules
+       reference it for background sync — harmless to include even if we
+       don't use the 3D background). -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/svg.js/3.2.0/svg.min.js"></script>
+
+  <!-- Shared CAD stylesheet stack (lives at <addin>/styles/ in the deploy
+       tree, alongside every consuming add-in). The editor.css file styles
+       #svgEditorModal, .tool-btn, .cad-symbol-keyboard, etc. -->
+  <link rel="stylesheet" href="../../styles/base.css">
+  <link rel="stylesheet" href="../../styles/layout-app.css">
+  <link rel="stylesheet" href="../../styles/editor.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
+
+  <!-- Stamp-editor's own dark-themed palette skin. Loaded last so its rules
+       win over base.css's CAD light theme inside the palette body. The
+       editor modal is exempt — it uses its own light-themed layout via
+       editor.css since it overlays full-screen. -->
+  <link rel="stylesheet" href="styles/stamp-editor.css">
+</head>
+<body>
+  <div id="app">
+
+    <header class="topbar">
+      <h1>Stamp Editor</h1>
+      <span id="statusLine" class="status">Boot…</span>
+    </header>
+
+    <section class="panel">
+      <!-- Empty / pick state. Always shows the live face-count from the
+           Fusion canvas selection and a button to capture it. -->
+      <div id="pickState" class="empty-state">
+        <p>
+          Stamp Editor deforms a Fusion face with one or more SVG motifs.
+          Each layer carries its own depth + tool profile and can be edited
+          in the built-in vector editor. Select one or more faces on any
+          body in the canvas (Ctrl-click to add).
+        </p>
+        <div id="selectionStatus" class="selection-status">
+          <span id="selCount">0</span> face(s) selected in canvas
+        </div>
+        <button id="btnPickFace" class="primary" disabled>Use selected face(s)</button>
+      </div>
+
+      <!-- Captured state: shown once one or more faces have been
+           snapshot via "Use selected face(s)". -->
+      <div id="faceState" class="face-state" hidden>
+        <h2 id="faceStateHeading">Picked face</h2>
+        <div id="faceList" class="face-list"></div>
+        <button id="btnRepickFace">Re-pick…</button>
+
+        <hr>
+
+        <h2>Stamp layers</h2>
+        <p class="hint">
+          Each layer is an independent SVG with its own depth and tool
+          profile. Click <em>Edit</em> to open the vector editor.
+        </p>
+        <div id="layerList" class="layer-list"></div>
+        <button id="btnAddLayer" class="layer-add">+ Add layer</button>
+
+        <p id="engineStatus" class="hint" style="margin-top:8px"></p>
+      </div>
+    </section>
+
+    <footer class="actions">
+      <button id="btnCancel">Close palette</button>
+      <button id="btnCommit" class="primary" disabled>Send to Fusion</button>
+    </footer>
+
+  </div>
+
+  <!-- ─────────────────────────────────────────────────────────────────
+       SVG Editor Modal — mirrored from b-spline-gen's palette. The
+       VectorEditor binds to these specific element ids, so do not
+       rename them. The header layer-select (#editorLayerSelect) is
+       repurposed: stamp-editor manages the outer layer list itself,
+       so we keep the dropdown hidden via inline style. The editor
+       still reads/writes its `_activeLayer` to "0" internally.
+       ───────────────────────────────────────────────────────────── -->
+  <div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
+    <div class="cad-modal-window overhauled" style="width: 100vw; height: 100vh; max-width: none; max-height: none; display: flex; flex-direction: column; overflow: hidden; position: relative; border-radius: 0;">
+
+      <!-- Header -->
+      <div class="cad-modal-header" id="svgEditorHeader" style="flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: #f3f3f3; border-bottom: 1px solid var(--cad-border-standard);">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span id="editorLayerName" style="font-size:12px; font-weight:700; color:#333;">Layer</span>
+          <!-- Hidden: stamp-editor manages outer layers; editor stays on internal layer "0". -->
+          <select id="editorLayerSelect" style="display:none;">
+            <option value="0" selected>1</option>
+          </select>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="editorClear"  class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Clear</button>
+          <button id="editorCancel" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Cancel</button>
+          <button id="editorApply"  class="cad-btn cad-btn-primary"   style="font-size:11px; padding: 4px 14px;">Apply</button>
+        </div>
+      </div>
+
+      <!-- Properties bar -->
+      <div class="editor-toolbar-top" style="height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; gap: 16px; flex-shrink: 0; overflow: hidden;">
+        <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
+          <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Stroke</span>
+          <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
+            <button type="button" id="editorStrokeWidthMinus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">−</button>
+            <input type="number" id="editorStrokeWidth" value="0.5" step="0.1" style="width:40px; border:none; background:transparent; font-size:11px; text-align:center; outline:none;">
+            <button type="button" id="editorStrokeWidthPlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
+          </div>
+        </div>
+
+        <div id="editorFontGroup" class="property-group hidden" style="display:flex; align-items:center; gap:16px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Font</span>
+            <select id="editorFontFamily" style="background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; font-size:11px; width:110px; outline:none;">
+              <option value="Arial" selected>Arial</option>
+              <option value="Tahoma">Tahoma</option>
+              <option value="Verdana">Verdana</option>
+            </select>
+          </div>
+          <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
+            <button type="button" id="editorFontSizeMinus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">−</button>
+            <input type="number" id="editorFontSize" value="3.0" step="0.2" style="width:40px; border:none; background:transparent; font-size:11px; text-align:center; outline:none;">
+            <button type="button" id="editorFontSizePlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
+          </div>
+          <button id="editorSymbolKeyboardToggle" class="cad-btn cad-btn-secondary" style="height:24px; padding:0 8px; font-size:10px; font-weight:700;">Symbols</button>
+        </div>
+
+        <div id="editorExpandGroup" class="property-group hidden" style="display:flex; align-items:center; gap:16px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Detail</span>
+            <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
+              <button type="button" id="editorExpandDetailMinus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">−</button>
+              <input type="number" id="editorExpandDetail" value="1.0" step="0.2" style="width:40px; border:none; background:transparent; font-size:11px; text-align:center; outline:none;">
+              <button type="button" id="editorExpandDetailPlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
+            </div>
+          </div>
+          <button id="editorRunExpand" class="cad-btn cad-btn-secondary" style="height:24px; padding:0 12px; font-size:11px; font-weight:700;">EXPAND</button>
+        </div>
+        <div style="flex:1;"></div>
+      </div>
+
+      <!-- Main workspace -->
+      <div class="cad-modal-body" style="display:flex; flex:1; overflow:hidden; position:relative;">
+        <aside class="editor-sidebar" style="width:44px; background:#fdfdfd; border-right:1px solid var(--cad-border-standard); display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:8px; z-index:10;">
+          <button id="toolSelect" class="tool-btn active" title="Select (V)"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+          <button id="toolNode" class="tool-btn" title="Nodes (A)"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+          <button id="toolDraw" class="tool-btn" title="Pen (P)"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m12 3 7 7L7 22H3v-4L12 3z"/><path d="m19 10-6-6"/></svg></button>
+          <button id="toolText" class="tool-btn" title="Text (T)"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" x2="12" y1="4" y2="20" /></svg></button>
+          <button id="toolLine" class="tool-btn" title="Line (L)"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
+          <button id="toolRect" class="tool-btn" title="Rectangle (R)"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
+          <button id="toolExpand" class="tool-btn" title="Expand" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
+          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+          <button id="toolDelete" class="tool-btn" title="Delete" style="color:#d32f2f;"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg></button>
+          <div style="flex:1;"></div>
+          <button id="editorUndo" class="tool-btn" title="Undo"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5"/></svg></button>
+          <button id="editorRedo" class="tool-btn" title="Redo"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5"/></svg></button>
+        </aside>
+
+        <!-- Canvas -->
+        <div style="flex:1; background:#ececec; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;" id="editorCanvasContainer">
+          <div class="canvas-grid" style="position:absolute; top:0; left:0; right:0; bottom:0; background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px); background-size: 20px 20px; opacity:0.7;"></div>
+          <div id="editorSVGContainer" style="position:relative; z-index:2; width:100%; height:100%;"></div>
+        </div>
+
+        <!-- Symbol keyboard (docked) -->
+        <div id="editorSymbolKeyboard" class="cad-symbol-keyboard hidden" style="position:absolute; bottom:0; left:0; right:0; height:200px; background:white; border-top:1px solid var(--cad-border-standard); box-shadow:0 -2px 10px rgba(0,0,0,0.08); z-index:100; display:flex; flex-direction:column;">
+          <div class="editor-symbol-keyboard-grip" title="Drag to resize keyboard" style="height:12px; cursor:ns-resize; background:#eee; border-top:1px solid #ddd; border-bottom:1px solid #ddd; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+            <div style="width:60px; height:2px; background:#888; border-radius:2px;"></div>
+          </div>
+          <div class="cad-modal-header" style="height:32px; padding:0 8px; background:#fcfcfc; display:flex; align-items:center; flex-shrink:0;">
+            <span style="font-size:9px; font-weight:700; color:#666; text-transform:uppercase;">Glyphs</span>
+            <div style="flex:1;"></div>
+            <button id="editorSymbolKeyboardClose" class="cad-icon-btn small">✕</button>
+          </div>
+
+          <div style="padding:8px; border-bottom:1px solid #eee; flex-shrink:0;">
+            <select id="editorSymbolFamily" onchange="if(window.svgEditor && window.populateSymbolKeyboard) window.populateSymbolKeyboard(window.svgEditor, this.value)" style="width:100%; height:24px; font-size:11px; outline:none; border:1px solid #ccc; border-radius:3px; background:#fff;">
+              <option value="Symbol" selected>Symbol</option>
+              <option value="Webdings">Webdings</option>
+              <option value="Wingdings">Wingdings</option>
+              <option value="Segoe UI Symbol">Segoe UI Symbol</option>
+            </select>
+          </div>
+
+          <div id="editorSymbolKeyboardGrid" style="flex:1; overflow-y:auto; display:grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap:1px; padding:4px; background:#fafafa;"></div>
+        </div>
+
+        <!-- Hidden text-editing input. MUST live outside #editorSymbolKeyboard
+             so it stays focusable when the keyboard is hidden. -->
+        <input type="text" id="editorHiddenInput" style="position:absolute; left:-10000px; opacity:0;">
+      </div>
+
+      <!-- JS-only nodes -->
+      <button id="editorSnapToggle" style="display:none;"></button>
+      <div id="editorNodeCountUI" style="display:none;"></div>
+      <canvas id="svgEditorTopView" style="display:none;"></canvas>
+    </div>
+  </div>
+
+  <!-- Boot — bridge + UI bindings. Cache-bust query strings are written
+       by Python on every palette open so changes pick up without
+       restarting Fusion. -->
+  <script type="module" src="main/main.js?v=20260516"></script>
+</body>
+</html>

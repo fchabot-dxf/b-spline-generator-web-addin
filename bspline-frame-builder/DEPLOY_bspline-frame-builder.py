@@ -200,6 +200,14 @@ VERIFY_FILES = [
     "step-editor/html/core/runtime.js",
     "step-editor/html/core/stp-parser.js",
     "step-editor/html/core/fusion-bridge.js",
+    # stamp-editor — sibling add-in for surface-deformation stamping.
+    "stamp-editor/stamp-editor.py",
+    "stamp-editor/stamp-editor.manifest",
+    "stamp-editor/html/index.html",
+    "stamp-editor/html/main/main.js",
+    "stamp-editor/html/main/ui-bindings.js",
+    "stamp-editor/html/core/runtime.js",
+    "stamp-editor/html/styles/stamp-editor.css",
 ]
 
 # Folders / patterns to SKIP in both local deploy and ZIP
@@ -344,6 +352,17 @@ def deploy_local():
         print(f"ERROR: source directory not found: {SRC_DIR}")
         sys.exit(1)
 
+    # Sync b-spline-gen's stamp module + deps into step-editor's tree
+    # so step-editor's source code can import them from its own path
+    # (./core/stamp/) without reaching across add-in folders.
+    # The deploy copies the bundle just-in-time so the canonical source
+    # of truth remains b-spline-gen/html/core/stamp/.
+    try:
+        from sync_stamp_bundle import sync_stamp_bundle
+        sync_stamp_bundle(Path(__file__).resolve().parent)
+    except Exception as e:
+        print(f"  WARNING: stamp bundle sync failed: {e}")
+
     # Snapshot source hashes BEFORE touching anything
     src_hashes = {}
     for rel in VERIFY_FILES:
@@ -382,6 +401,7 @@ def deploy_local():
     _write_cam_handshake()
     _write_bspline_handshake()
     _write_step_editor_handshake()
+    _write_stamp_editor_handshake()
 
     # Verify
     print("  Verifying key files...")
@@ -510,6 +530,25 @@ def _write_step_editor_handshake():
         print(f"  Step Editor Handshake written: {src_path}")
     except Exception as e:
         print(f"  WARNING: could not write step-editor handshake: {e}")
+
+
+def _write_stamp_editor_handshake():
+    """Same idea as the step-editor handshake — routes stamp-editor's
+    log file back to the source workspace so the dev tree's
+    stamp_editor_log.txt is the source of truth, not the one inside
+    %APPDATA%\\AddIns\\."""
+    try:
+        st_dest = DEST_DIR / "stamp-editor"
+        if not st_dest.exists():
+            return
+        src_path = (SRC_DIR / "stamp-editor").resolve()
+        config    = {"workspace_root": str(src_path)}
+        handshake = st_dest / "workspace_link.json"
+        with open(handshake, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+        print(f"  Stamp Editor Handshake written: {src_path}")
+    except Exception as e:
+        print(f"  WARNING: could not write stamp-editor handshake: {e}")
 
 
 # ---------------------------------------------------------------------------

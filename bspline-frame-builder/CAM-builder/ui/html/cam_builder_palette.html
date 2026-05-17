@@ -508,8 +508,42 @@
   }
 
   // Boot: pull inventory + current assignments so each card renders.
-  send('list_cam_templates');
-  send('get_template_assignments');
+  //
+  // Fusion injects `window.adsk` asynchronously — it's NOT available
+  // synchronously when this <script> tag executes, even on subsequent
+  // palette opens. The original calls (`send('list_cam_templates');
+  // send('get_template_assignments');`) ran immediately and silently
+  // no-op'd inside send()'s `if (window.adsk && window.adsk.fusionSendData)`
+  // guard. Net symptom: the template count chips stayed at the HTML
+  // default 0 forever, because Python never saw the request.
+  //
+  // Wait for the bridge in the same way other palettes in this addin do
+  // (cf. step-editor / solid_builder_palette.html): poll until the
+  // bridge appears, then fire the boot pair once.
+  (function bootTemplateBrowser() {
+    let booted = false;
+    function fire() {
+      if (booted) return;
+      if (!(window.adsk && window.adsk.fusionSendData)) return;
+      booted = true;
+      send('list_cam_templates');
+      send('get_template_assignments');
+    }
+    if (window.adsk && window.adsk.fusionSendData) {
+      fire();
+      return;
+    }
+    const handle = setInterval(() => {
+      if (booted) { clearInterval(handle); return; }
+      fire();
+      if (booted) clearInterval(handle);
+    }, 250);
+    // Belt-and-suspenders: also try once on DOMContentLoaded in case the
+    // poll loop somehow misses the bridge-injection moment.
+    document.addEventListener('DOMContentLoaded', fire);
+    // And one more 2s safety try, so a slow Fusion build still wakes up.
+    setTimeout(fire, 2000);
+  })();
 </script>
 </body>
 </html>

@@ -356,8 +356,152 @@ export function tessellateBSplineSurface(surf, resolution = DEFAULT_RES) {
 }
 
 /* ────────────────────────────────────────────────────────────────────
+ * Public — evaluate B-spline surface at a single (u,v) with derivatives
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Evaluate a parsed B-spline (or rational B-spline) surface at the given
+ * (u, v) parameters and return position + first partial derivatives.
+ *
+ * The (u, v) inputs are clamped to the surface's parameter domain
+ * [knotsU[degU] .. knotsU[nu], knotsV[degV] .. knotsV[nv]].
+ *
+ * Returns `{ p: [x,y,z], du: [x,y,z], dv: [x,y,z] }`, or `null` if the
+ * surface input is malformed. The surface normal at (u, v) is
+ * `normalise(cross(du, dv))`.
+ *
+ * For rational surfaces, the standard quotient-rule derivative of the
+ * homogeneous representation is used so weights are accounted for.
+ */
+export function evalBSplineSurfaceAt(surf, u, v) {
+  if (!surf) return null;
+  const { degU, degV, nu, nv, cps, knotsU, knotsV, weights } = surf;
+  const uMin = knotsU[degU], uMax = knotsU[nu];
+  const vMin = knotsV[degV], vMax = knotsV[nv];
+  if (!(uMax > uMin) || !(vMax > vMin)) return null;
+  // Clamp to domain — sample-rounding by callers can leave us a hair
+  // outside, which would otherwise NaN through findKnotSpan.
+  const uu = Math.min(uMax, Math.max(uMin, u));
+  const vv = Math.min(vMax, Math.max(vMin, v));
+
+  const basisU = computeBasisWithDerivs(uu, degU, knotsU);
+  const basisV = computeBasisWithDerivs(vv, degV, knotsV);
+
+  // Accumulate the homogeneous-coordinate sums:
+  //   A   = Σ N(u)·M(v)·w·P    (length-3 in xyz)
+  //   wsum = Σ N(u)·M(v)·w     (scalar)
+  // plus their u- and v-partials. For non-rational w ≡ 1.
+  let Ax = 0, Ay = 0, Az = 0, W = 0;
+  let Aux = 0, Auy = 0, Auz = 0, Wu = 0;
+  let Avx = 0, Avy = 0, Avz = 0, Wv = 0;
+
+  // basisU.values / basisU.derivs are length (degU+1); they hold the
+  // non-zero basis values for control points i = span-deg .. span.
+  for (let ii = 0; ii <= degU; ii++) {
+    const i  = basisU.span - degU + ii;
+    const bu = basisU.values[ii];
+    const buD = basisU.derivs[ii];
+    for (let jj = 0; jj <= degV; jj++) {
+      const j  = basisV.span - degV + jj;
+      const bv = basisV.values[jj];
+      const bvD = basisV.derivs[jj];
+      const k = (i * nv + j) * 3;
+      const w = weights ? weights[i * nv + j] : 1;
+      const px = cps[k] * w, py = cps[k + 1] * w, pz = cps[k + 2] * w;
+
+      const nm   = bu  * bv;
+      const dNu  = buD * bv;
+      const dNv  = bu  * bvD;
+
+      Ax  += nm  * px;  Ay  += nm  * py;  Az  += nm  * pz;
+      Aux += dNu * px;  Auy += dNu * py;  Auz += dNu * pz;
+      Avx += dNv * px;  Avy += dNv * py;  Avz += dNv * pz;
+
+      W  += nm  * w;
+      Wu += dNu * w;
+      Wv += dNv * w;
+    }
+  }
+
+  // Non-rational case: W ≡ 1, Wu = Wv = 0, so the quotient rule collapses
+  // to plain Σ N·M·P. Rational case uses the full derivative formula.
+  let p, du, dv;
+  if (W === 0) return null;
+  const invW  = 1 / W;
+  const invW2 = invW * invW;
+  p  = [Ax  * invW, Ay  * invW, Az  * invW];
+  du = [(Aux - Ax * Wu * invW) * invW,
+        (Auy - Ay * Wu * invW) * invW,
+        (Auz - Az * Wu * invW) * invW];
+  dv = [(Avx - Ax * Wv * invW) * invW,
+        (Avy - Ay * Wv * invW) * invW,
+        (Avz - Az * Wv * invW) * invW];
+  return { p, du, dv };
+}
+
+/** Return the surface UV parameter domain — useful for callers that
+ *  need to tile in UV space without poking at knot arrays directly. */
+export function bSplineSurfaceDomain(surf) {
+  if (!surf) return null;
+  return {
+    uMin: surf.knotsU[surf.degU],
+    uMax: surf.knotsU[surf.nu],
+    vMin: surf.knotsV[surf.degV],
+    vMax: surf.knotsV[surf.nv],
+  };
+}
+
+/* ────────────────────────────────────────────────────────────────────
  * Private — B-spline basis evaluation (Cox-de Boor)
  * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * Compute basis values AND first derivatives at parameter u. Returns
+ * `{ span, values, derivs }`, each of length (deg+1). The derivative
+ * formula is Piegl & Tiller A2.5 specialised for k = 1.
+ *
+ * For deg = 0 the derivatives are zero (a degree-0 B-spline is
+ * piecewise constant and its derivative is the zero distribution
+ * everywhere except at knot crossings, which we don't sample at).
+ */
+function computeBasisWithDerivs(u, deg, knots) {
+  const span = findKnotSpan(u, deg, knots);
+  const values = new Float64Array(deg + 1);
+  const derivs = new Float64Array(deg + 1);
+  if (deg === 0) { values[0] = 1; return { span, values, derivs }; }
+
+  // ndu[j][r] = lower-degree basis values during the Cox-de Boor recursion;
+  // we reuse it to compute the first derivative below.
+  const ndu  = new Array(deg + 1);
+  for (let i = 0; i <= deg; i++) ndu[i] = new Float64Array(deg + 1);
+  const left  = new Float64Array(deg + 1);
+  const right = new Float64Array(deg + 1);
+
+  ndu[0][0] = 1;
+  for (let j = 1; j <= deg; j++) {
+    left[j]  = u - knots[span + 1 - j];
+    right[j] = knots[span + j] - u;
+    let saved = 0;
+    for (let r = 0; r < j; r++) {
+      ndu[j][r] = right[r + 1] + left[j - r];
+      const temp = ndu[j][r] !== 0 ? ndu[r][j - 1] / ndu[j][r] : 0;
+      ndu[r][j] = saved + right[r + 1] * temp;
+      saved     = left[j - r] * temp;
+    }
+    ndu[j][j] = saved;
+  }
+  for (let i = 0; i <= deg; i++) values[i] = ndu[i][deg];
+
+  // First derivative — Piegl & Tiller A2.5 with k = 1.
+  for (let r = 0; r <= deg; r++) {
+    // d/du N_{r,deg}(u) = deg · [ N_{r,deg-1}/(knot[r+deg]-knot[r])
+    //                            − N_{r+1,deg-1}/(knot[r+deg+1]-knot[r+1]) ]
+    const a0 = (r >= 1) ? ndu[r - 1][deg - 1] / ndu[deg][r - 1] : 0;
+    const a1 = (r <= deg - 1) ? ndu[r][deg - 1] / ndu[deg][r]   : 0;
+    derivs[r] = deg * (a0 - a1);
+  }
+  return { span, values, derivs };
+}
 
 /**
  * Compute the non-zero B-spline basis values N_{i,p}(u) at parameter u.

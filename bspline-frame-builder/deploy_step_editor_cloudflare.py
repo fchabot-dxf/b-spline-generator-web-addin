@@ -82,6 +82,15 @@ if not source_dir.is_dir():
     print(f"Error: source folder not found: {source_dir}")
     sys.exit(1)
 
+# Refresh step-editor's stamp bundle from b-spline-gen's canonical
+# copy. Same call the local Fusion deploy uses — keeps the published
+# site in lock-step with the in-Fusion build.
+try:
+    from sync_stamp_bundle import sync_stamp_bundle
+    sync_stamp_bundle(this_dir)
+except Exception as e:
+    print(f"Warning: stamp bundle sync failed: {e}")
+
 # Wrangler resolution — try PATH then known npm globals.
 if sys.platform == 'win32':
     os.environ['PATH'] = os.pathsep.join([
@@ -145,6 +154,21 @@ if samples_src.is_dir():
         if f.suffix.lower() in ('.step', '.stp') and f.stat().st_size < 5 * 1024 * 1024:
             shutil.copy2(f, samples_dst / f.name)
             copied += 1
+
+# Cloudflare Pages serves the root URL from `index.html`. Our in-Fusion
+# build calls it `step_editor_palette.html` (matching what Fusion's
+# palette code expects). Copy it to `index.html` in the dist so a
+# visitor hitting https://step-editor.pages.dev/ lands on the editor
+# immediately, rather than getting a 404.
+src_palette = deploy_dist / 'step_editor_palette.html'
+dst_index   = deploy_dist / 'index.html'
+if src_palette.is_file():
+    shutil.copy2(src_palette, dst_index)
+    copied += 1
+    print(f"Aliased step_editor_palette.html → index.html for Pages root.")
+else:
+    print("Warning: step_editor_palette.html not found in dist — "
+          "Pages root URL will 404.")
 
 print(f"Copied {copied} file(s).")
 

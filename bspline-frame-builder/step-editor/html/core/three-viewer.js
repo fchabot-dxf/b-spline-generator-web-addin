@@ -235,6 +235,60 @@ export function setMeshes(meshes) {
   refitCamera(totalBox.isEmpty() ? null : totalBox);
 }
 
+/* ────────────────────────────────────────────────────────────────────
+ * Stamp / V-carve preview overlay.
+ *
+ * A separate Three.js Mesh that lives ABOVE the body meshes in the
+ * scene graph but is owned by the same renderer. Tools that produce
+ * an in-progress geometry preview (Stamp, future Text/Draw) push their
+ * mesh here; clearing returns the scene to body-only.
+ *
+ * Mesh shape matches the wire format used elsewhere in the app:
+ *   { positions: Float32Array, normals: Float32Array, indices: Uint32Array }
+ *
+ * Positions must already be in mm (Three.js scene units). The CG-bound
+ * ship-to-Fusion path scales separately for Fusion's internal cm.
+ * ──────────────────────────────────────────────────────────────────── */
+
+let stampMeshObject = null;
+const STAMP_COLOR    = 0xff7a1a;   // warm amber so it reads over light bodies
+const STAMP_OPACITY  = 0.85;
+
+export function setStampPreview(mesh) {
+  if (!scene || !T) return;
+  clearStampPreview();
+  if (!mesh || !mesh.positions || !mesh.indices) return;
+
+  const geom = new T.BufferGeometry();
+  geom.setAttribute('position', new T.BufferAttribute(mesh.positions, 3));
+  if (mesh.normals && mesh.normals.length === mesh.positions.length) {
+    geom.setAttribute('normal', new T.BufferAttribute(mesh.normals, 3));
+  }
+  geom.setIndex(new T.BufferAttribute(mesh.indices, 1));
+  if (!mesh.normals) geom.computeVertexNormals();
+
+  const mat = new T.MeshPhongMaterial({
+    color:        STAMP_COLOR,
+    transparent:  true,
+    opacity:      STAMP_OPACITY,
+    depthWrite:   false,            // render over the body without z-fighting
+    side:         T.DoubleSide,
+  });
+
+  const m = new T.Mesh(geom, mat);
+  m.userData._stampPreview = true;
+  scene.add(m);
+  stampMeshObject = m;
+}
+
+export function clearStampPreview() {
+  if (!scene || !stampMeshObject) return;
+  scene.remove(stampMeshObject);
+  if (stampMeshObject.geometry) stampMeshObject.geometry.dispose();
+  if (stampMeshObject.material) stampMeshObject.material.dispose();
+  stampMeshObject = null;
+}
+
 /**
  * Enter surface-selection mode. While active, clicking the viewport calls
  * `cb` with { point, normal, meshName, boxMin, boxMax } (all in Three.js
@@ -255,54 +309,44 @@ export function disableFaceSelectMode() {
 /**
  * Visually emphasise a mesh by name. Pass `null` to clear emphasis.
  *
- * Selected: full opacity + a back-face outline mesh (scaled 1.04× with
- * BackSide material so the silhouette shows through neighbours).
- * Non-selected: dimmed and translucent so the selected one pops.
- *
- * The outline approach is intentionally low-tech (no post-process pass,
- * no EffectComposer) so it works in the Fusion palette webview without
- * fancy WebGL extensions. Costs one extra draw call per selected mesh.
+ * Behaviour (simplified per user feedback — the earlier outline + dim
+ * combo read as "weird"):
+ *   - Selected mesh: its surface colour is swapped for the accent orange.
+ *   - All other meshes: keep their normal light-grey body colour.
+ *   - No outline pass, no opacity dim, no scale.
  *
  * @param {string|null} name
  */
 export function highlightByName(name) {
-  // Tolerant name resolution: the upstream "name" can come from the STEP
-  // parser (MANIFOLD_SOLID_BREP labels) while mesh names come from Fusion
-  // body names or OCCT PRODUCT labels — they overlap often but not always.
-  // If the supplied name matches no mesh, fall back to:
-  //   - the single mesh (when there's only one), OR
-  //   - the first mesh (assumed selected) when state has a non-null pick.
-  // Otherwise unselect everything (true "no selection" case = name===null).
+  // Tolerant name resolution: see earlier comment — names can come from
+  // either the STEP parser or Fusion's body naming. If we can't match a
+  // supplied name, treat the single mesh as selected so the user isn't
+  // left wondering why nothing changed.
   let resolved = name;
   if (name) {
     const hit = meshObjects.find(m => m.name === name);
-    if (!hit) {
-      if (meshObjects.length === 1) {
-        resolved = meshObjects[0].name;
-      } else if (meshObjects.length > 1) {
-        // Multi-body but name unresolvable — prefer the first mesh over
-        // dimming everything (avoids the "whole scene goes gray after a
-        // live-preview retessellate" UX bug).
-        resolved = meshObjects[0].name;
-      }
+    if (!hit && meshObjects.length >= 1) {
+      resolved = meshObjects[0].name;
     }
   }
   for (const m of meshObjects) {
     const sel = resolved && m.name === resolved;
+    // Drop any outline carried over from earlier renderer behaviour.
+    _detachOutline(m);
     if (sel) {
-      m.mesh.material.color.copy(m.baseColor);
-      m.mesh.material.opacity = 1.0;
-      m.mesh.material.transparent = false;
-      _attachOutline(m);
+      m.mesh.material.color.setHex(SELECTION_COLOR);
     } else {
-      m.mesh.material.color.copy(m.baseColor).multiplyScalar(0.35);
-      m.mesh.material.opacity = resolved ? 0.45 : 1.0;
-      m.mesh.material.transparent = !!resolved;
-      _detachOutline(m);
+      m.mesh.material.color.copy(m.baseColor);
     }
+    m.mesh.material.opacity = 1.0;
+    m.mesh.material.transparent = false;
     m.mesh.material.needsUpdate = true;
   }
 }
+
+// Accent orange used for selection — matches --accent in step-editor.css
+// so the palette UI and the 3D viewer agree on what "selected" looks like.
+const SELECTION_COLOR = 0xf59e0b;
 
 /**
  * Visually preview a hover-target by name — used for pre-selection
@@ -435,16 +479,89 @@ const onMove = (e) => {
   orbit.polar    = Math.max(0.01, Math.min(Math.PI - 0.01, orbit.polar - dy * 0.005));
   applyOrbit();
 };
-const onUp = () => { drag.active = false; };
+const onUp = () => { drag.active = false; pan.active = false; };
+
+/* Wheel zoom anchored on the cursor.
+ *
+ * When zooming in (deltaY < 0), shift the orbit target toward the world
+ * point under the cursor so the geometry under the cursor stays put.
+ * When zooming out (deltaY > 0), drift the target gently back toward the
+ * scene origin so we don't end up looking off into empty space.
+ *
+ * Math: the target is moved along the camera's right/up axes by a
+ * fraction proportional to (oldDist − newDist) and the cursor's
+ * normalised-device-coordinate offset from screen centre. Half-FOV
+ * tangent converts NDC offset into world-space units at the target
+ * depth, so the cursor-anchored point stays exactly under the cursor
+ * for orthogonal-ish viewing angles. Matches b-spline-gen.
+ */
 const onWheel = (e) => {
+  if (!camera || !canvas) return;
   e.preventDefault();
   const k = Math.exp(e.deltaY * 0.001);
-  orbit.distance = Math.max(0.1, orbit.distance * k);
-  if (camera) {
-    camera.near = Math.max(orbit.distance / 1000, 0.1);
-    camera.far  = orbit.distance * 100;
-    camera.updateProjectionMatrix();
+  const oldDist = orbit.distance;
+  const newDist = Math.max(0.1, oldDist * k);
+  orbit.distance = newDist;
+
+  const rect = canvas.getBoundingClientRect();
+  const ndcX =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  const ndcY = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+
+  if (e.deltaY < 0) {
+    // Zooming in — anchor on the cursor by shifting the orbit target
+    // toward the world point under the cursor.
+    const halfH = Math.tan((camera.fov * Math.PI / 180) * 0.5);
+    const aspect = rect.width / rect.height;
+    const dDist = oldDist - newDist;   // positive when zooming in
+    // Camera right/up in world space at current orientation.
+    const right = new T.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    const up    = new T.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    orbit.target
+      .addScaledVector(right, ndcX * aspect * halfH * dDist)
+      .addScaledVector(up,    ndcY * halfH * dDist);
+  } else {
+    // Zooming out — pull the target back toward (0, 0, target.z) so we
+    // don't drift off-scene. Gentle: 60% per wheel-tick max.
+    const pull = Math.min(0.6, (k - 1) * 1.0);
+    orbit.target.x *= (1 - pull);
+    orbit.target.y *= (1 - pull);
   }
+
+  camera.near = Math.max(orbit.distance / 1000, 0.1);
+  camera.far  = orbit.distance * 100;
+  camera.updateProjectionMatrix();
+  applyOrbit();
+};
+
+/* Middle-mouse / right-mouse drag pans the orbit target across the
+ * camera-tangent plane at the current target depth. Pan speed scales
+ * with orbit distance so the world feels glued to the cursor regardless
+ * of how zoomed-in you are. */
+const pan = { active: false, lastX: 0, lastY: 0 };
+
+const onPanDown = (e) => {
+  if (faceSelectCallback) return;
+  if (e.button !== 1 && e.button !== 2) return;
+  e.preventDefault();
+  pan.active = true;
+  pan.lastX = e.clientX;
+  pan.lastY = e.clientY;
+};
+
+const onPanMove = (e) => {
+  if (!pan.active || !camera) return;
+  const dx = e.clientX - pan.lastX;
+  const dy = e.clientY - pan.lastY;
+  pan.lastX = e.clientX;
+  pan.lastY = e.clientY;
+
+  // World-space camera right/up at current orientation.
+  const right = new T.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+  const up    = new T.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+  const speed = orbit.distance * 0.0015;
+  orbit.target
+    .addScaledVector(right, -dx * speed)
+    .addScaledVector(up,     dy * speed);
   applyOrbit();
 };
 
@@ -499,19 +616,29 @@ function doFaceRaycast(e) {
   return result;
 }
 
+/* Suppress the browser's context menu so right-drag pan works on the
+ * canvas. Left as a separate handler so detach can remove it cleanly. */
+const onContextMenu = (e) => { e.preventDefault(); };
+
 function attachMouseControls() {
   if (!canvas) return;
-  canvas.addEventListener('mousedown', onDown);
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup',   onUp);
-  canvas.addEventListener('wheel',     onWheel, { passive: false });
+  canvas.addEventListener('mousedown',   onDown);
+  canvas.addEventListener('mousedown',   onPanDown);
+  canvas.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('mousemove',   onMove);
+  window.addEventListener('mousemove',   onPanMove);
+  window.addEventListener('mouseup',     onUp);
+  canvas.addEventListener('wheel',       onWheel, { passive: false });
 }
 
 function detachMouseControls() {
   if (canvas) {
-    canvas.removeEventListener('mousedown', onDown);
-    canvas.removeEventListener('wheel',     onWheel);
+    canvas.removeEventListener('mousedown',   onDown);
+    canvas.removeEventListener('mousedown',   onPanDown);
+    canvas.removeEventListener('contextmenu', onContextMenu);
+    canvas.removeEventListener('wheel',       onWheel);
   }
   window.removeEventListener('mousemove', onMove);
+  window.removeEventListener('mousemove', onPanMove);
   window.removeEventListener('mouseup',   onUp);
 }

@@ -89,33 +89,50 @@ importing_done = False
 chunk_buffer   = []
 expected_chunks = 0    # set by generate_start; sanity-checked at finish
 
-# CustomGraphics state — a single group held in the active design's root
-# component. Cleared and rebuilt on every preview_mesh from the palette so
-# scrubbing doesn't pile up garbage. Cleared again on cancel/close.
-custom_graphics_group = None
+# CustomGraphics state — one group held in the active design's root
+# component for the body's tessellation ghost. Cleared and rebuilt on
+# every preview_mesh from the palette so scrubbing doesn't pile up
+# garbage; cleared again on cancel/close.
+custom_graphics_group = None   # body tessellation ghost (preview_mesh)
+
+
+def _clear_body_graphics():
+    """Remove just the body's tessellation-ghost group. Leaves any stamp
+    group alone. Safe to call when nothing is drawn."""
+    global custom_graphics_group
+    try:
+        if custom_graphics_group:
+            try:
+                if custom_graphics_group.isValid:
+                    custom_graphics_group.deleteMe()
+            except Exception:
+                pass
+        custom_graphics_group = None
+    except Exception as e:
+        _log(f'_clear_body_graphics failed: {e}')
+
+
 
 
 def _clear_custom_graphics():
-    """Remove the live-preview CustomGraphics group from the active design.
-    Safe to call when nothing is drawn yet. Mirrors b-spline-gen.py
-    `_clear_custom_graphics`. Iterates over a snapshot of the groups
-    collection so the parallel deleteMe() doesn't trip the live-iteration
-    Fusion API bug."""
-    global custom_graphics_group
+    """Wipe BOTH CG groups (body + stamp). Used on palette close /
+    add-in stop / explicit full-reset. Iterates over a snapshot of the
+    groups collection so the parallel deleteMe() doesn't trip the
+    live-iteration Fusion API bug."""
     try:
         des = adsk.fusion.Design.cast(app.activeProduct)
         if not des:
             return
-        # Snapshot first — deleteMe shrinks the live collection mid-walk.
         for grp in list(des.rootComponent.customGraphicsGroups):
             try:
                 if grp.isValid:
                     grp.deleteMe()
             except Exception:
                 pass
-        custom_graphics_group = None
     except Exception as e:
         _log(f'_clear_custom_graphics failed: {e}')
+    global custom_graphics_group
+    custom_graphics_group = None
 
 
 def _draw_preview_mesh(verts, indices, normals=None):
@@ -123,13 +140,14 @@ def _draw_preview_mesh(verts, indices, normals=None):
     built from the supplied flat vertex/index/normal lists.
 
     verts:   flat list of x,y,z floats (length = 3 * vertexCount). The
-             JS side ships them in CENTIMETERS (mm × 0.1). We rescale
-             them here into the active design's CURRENT display unit
-             before handing them to CustomGraphicsCoordinates, because
-             that API interprets its input in DISPLAY units (not the
-             internal cm convention you'd expect from the rest of the
-             Fusion API). Verified empirically: in an inch-unit doc,
-             sending raw cm makes the ghost mesh render 2.54× too big.
+             JS side ships them in CENTIMETERS (mm × 0.1), which is
+             exactly what CustomGraphicsCoordinates.create() wants —
+             Fusion's internal length unit is always cm regardless of
+             the document's *display* unit. We feed them straight
+             through. (Earlier comments here claimed the API uses
+             display units; that was wrong — verified by reading the
+             CG group's boundingBox after creation and comparing to
+             the source BRep.)
     indices: flat list of triangle vertex indices (length = 3 * triCount).
     normals: optional flat list of normal vectors. If None, leaves the
              normalVectors parameter empty so Fusion computes shading.
@@ -141,27 +159,10 @@ def _draw_preview_mesh(verts, indices, normals=None):
         if not des:
             _log('preview_mesh: no active Fusion Design — skipping')
             return None
-        # Always rebuild — the alternative (mutating the existing group's
-        # mesh) is fiddly enough that a fresh draw is simpler and still
-        # fast for the typical body sizes (rectangle ~24 verts; canoe ~12 K).
-        _clear_custom_graphics()
+        _clear_body_graphics()
         custom_graphics_group = des.rootComponent.customGraphicsGroups.add()
-        # Convert JS-side cm into the doc's display unit.
-        #   um.convert(1, 'cm', display_unit) returns how many display-units
-        #   one cm represents (e.g. 0.3937 for inches, 10 for mm).
-        # Multiplying each cm coordinate by this factor produces the
-        # value CustomGraphicsCoordinates wants.
-        try:
-            um = des.unitsManager
-            display_unit = um.defaultLengthUnits   # 'in', 'mm', 'cm', 'm', ...
-            scale_to_display = um.convert(1.0, 'cm', display_unit)
-        except Exception as e:
-            _log(f'preview_mesh: unit conversion lookup failed ({e}); falling through with scale=1.0')
-            display_unit = '?'
-            scale_to_display = 1.0
-        if abs(scale_to_display - 1.0) > 1e-9:
-            verts = [v * scale_to_display for v in verts]
-            _log(f'preview_mesh: doc unit "{display_unit}" — scaling verts by {scale_to_display:.6f}')
+        # No conversion: JS already shipped centimetres, and CG also
+        # consumes centimetres (Fusion's universal internal unit).
         coords = adsk.fusion.CustomGraphicsCoordinates.create(verts)
         idx_list = [int(i) for i in indices]
         nrm_list = [float(v) for v in (normals or [])]
@@ -190,6 +191,8 @@ def _draw_preview_mesh(verts, indices, normals=None):
         tb = traceback.format_exc()
         _log(f'_draw_preview_mesh EXCEPTION:\n{tb}')
         return None
+
+
 
 
 def _send_progress(msg):
@@ -330,35 +333,16 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 indices = data.get('indices', [])
                 normals = data.get('normals')   # may be None or []
                 if not verts or not indices:
-                    _log('preview_mesh: empty verts or indices, clearing')
-                    _clear_custom_graphics()
+                    _log('preview_mesh: empty verts or indices, clearing body ghost')
+                    _clear_body_graphics()
                     return
                 _draw_preview_mesh(verts, indices, normals)
                 return
 
-            # ── preview_clear: explicit removal of the ghost preview ─────
+            # ── preview_clear: drop the body's tessellation ghost only.
+            #    Stamp ghost (if any) is preserved.
             if action == 'preview_clear':
-                _clear_custom_graphics()
-                return
-
-            # ── SVG extrude: create solid body from SVG + depth ──────────
-            if action == 'svg_extrude':
-                try:
-                    data = json.loads(htmlArgs.data) if htmlArgs.data else {}
-                except Exception as e:
-                    _send_import_error(f'svg_extrude: bad JSON: {e}')
-                    return
-                self._handle_svg_extrude(data)
-                return
-
-            # ── SVG fill: receive tiled SVG, create sketch in Fusion ─────
-            if action == 'svg_fill':
-                try:
-                    data = json.loads(htmlArgs.data) if htmlArgs.data else {}
-                except Exception as e:
-                    _send_import_error(f'svg_fill: bad JSON: {e}')
-                    return
-                self._handle_svg_fill(data)
+                _clear_body_graphics()
                 return
 
             # Close palette without saving anything.
@@ -405,9 +389,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 _send_import_error('No active Fusion design — open a design first.')
                 return
 
-            # 1. Write the temp file. Use NamedTemporaryFile to avoid filename
-            #    collisions when the same file is sent multiple times in one
-            #    session.
+            # 1. Write the temp file. NO pre-scaling — Fusion's importer
+            #    handles the file's declared unit + doc display unit
+            #    correctly together, landing the BRep at the user's
+            #    intended physical size. Earlier "pre-scale" code was
+            #    based on a wrong premise (treating values as mm when
+            #    the user authored them in inches).
             _send_progress('Writing temp file…')
             safe_filename = ''.join(c for c in filename if c.isalnum() or c in '._-') or 'edited.stp'
             tmp_path = os.path.join(tempfile.gettempdir(), f'step_editor_{os.getpid()}_{safe_filename}')
@@ -419,36 +406,42 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 _send_import_error(f'failed to write temp file: {e}')
                 return
 
-            # 2. Create a wrapper occurrence so the imported bodies are
-            #    grouped under one node in the design tree. Mirrors the
-            #    "B-Spline Set" pattern from b-spline-gen.
-            root_comp = des.rootComponent
-            group_occ = None
-            try:
-                group_occ = root_comp.occurrences.addNewComponent(adsk.core.Matrix3D.create())
-                group_occ.component.name = group_name
-            except Exception as e:
-                _send_import_error(f'failed to create import group "{group_name}": {e}')
-                return
-
-            # 3. Run the import.
+            # 2. Run the import directly into the root component.
+            #    importToTarget creates ONE wrapper occurrence around the
+            #    imported bodies; we rename that occurrence's component to
+            #    `group_name` so it shows up cleanly in the tree as a single
+            #    node containing the bodies. (Previous version added our own
+            #    addNewComponent wrapper as well, which caused the tree to
+            #    show "rectangle:1 > (Unsaved):1 > Body1" — double nesting.)
             _send_progress('Importing into Fusion…')
+            root_comp    = des.rootComponent
             import_mgr   = app.importManager
             step_options = import_mgr.createSTEPImportOptions(tmp_path)
             step_options.isViewFit = False
 
+            # Snapshot existing occurrences so we can identify the new one.
+            pre_occ_ids = {occ.entityToken for occ in root_comp.occurrences}
+
             ok = False
             try:
-                ok = import_mgr.importToTarget(step_options, group_occ.component)
+                ok = import_mgr.importToTarget(step_options, root_comp)
             except Exception as e:
                 _send_import_error(f'importToTarget threw: {e}')
-                _safe_delete_occurrence(group_occ)
                 return
 
             if not ok:
                 _send_import_error('importToTarget returned False')
-                _safe_delete_occurrence(group_occ)
                 return
+
+            # Find the freshly-created occurrence and rename it.
+            new_occs = [occ for occ in root_comp.occurrences if occ.entityToken not in pre_occ_ids]
+            if new_occs:
+                try:
+                    new_occs[-1].component.name = group_name
+                except Exception as e:
+                    _log(f'rename of imported occurrence to "{group_name}" failed: {e}')
+            else:
+                _log('WARN: no new occurrence detected after importToTarget — group_name not applied')
 
             # 4. Clean up the temp file on success. Keep it on failure
             #    (paths from the log block above stay valid for debugging).
@@ -550,7 +543,22 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             _log(f'tessellate: {len(bodies)} body(ies) found')
 
-            # 5. Tessellate each body at LowQuality. Pack each into
+            # 5a. Convert mesh.nodeCoordinatesAsFloat (Fusion-internal cm)
+            # into the JS scene's expected unit (mm). Fusion's STEP importer
+            # respects the file's own length-unit declaration AND the active
+            # doc's display unit — whatever physical size the body ends up
+            # as is what the user expects to see in the palette viewer AND
+            # the Fusion canvas CustomGraphics ghost.
+            #
+            # No file-vs-imported scaling here: any earlier "correction" was
+            # based on the wrong premise that the file's mm declaration
+            # mismatched the user's intent. In practice users' files are
+            # already in the unit they want (inches in this workflow) and
+            # Fusion's importer lands them at the right physical size.
+            scale_correction = 10.0   # cm → mm
+            _log(f'tessellate: mesh scale = cm→mm = {scale_correction}')
+
+            # 5b. Tessellate each body at LowQuality. Pack each into
             #    {name, coords_b64, normals_b64, indices_b64, vertexCount, triCount}.
             _send_progress(f'Tessellating {len(bodies)} body(ies)…')
             t0 = time.time()
@@ -571,6 +579,15 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     coords  = mesh.nodeCoordinatesAsFloat
                     normals = mesh.normalVectorsAsFloat
                     indices = mesh.nodeIndices
+
+                    # Apply the doc-unit scale correction computed above. The
+                    # mesh comes out of Fusion in internal cm but possibly
+                    # multiplied by the inch-mishandling factor; ratio brings
+                    # the coords back to true file-declared physical size.
+                    # Normals are direction vectors — scale-invariant — so
+                    # we leave them alone.
+                    if abs(scale_correction - 1.0) > 1e-9:
+                        coords = tuple(c * scale_correction for c in coords)
 
                     # 'f' is always single-precision float (4 bytes) — guaranteed.
                     # For indices we want explicit uint32 LE so the JS side can read
@@ -680,278 +697,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             except Exception:
                 pass
 
-
-    def _handle_svg_fill(self, data):
-        """Receive a pre-tiled SVG from the JS side and import it as a sketch
-        onto a construction plane that faces the selected surface's normal.
-
-        data keys:
-            svg        — SVG markup string (already in Fusion px units, 96 dpi)
-            fillW      — fill width  (mm, for logging)
-            fillH      — fill height (mm, for logging)
-            hitPoint   — {x, y, z} in Three.js / Fusion world coords (mm)
-            hitNormal  — {x, y, z} face normal (world space)
-            meshName   — body name (for status)
-            boxMin/Max — body bounding box (unused for now)
-        """
-        try:
-            svg_text  = data.get('svg', '') or ''
-            fill_w    = float(data.get('fillW', 100))
-            fill_h    = float(data.get('fillH', 100))
-            hit_pt    = data.get('hitPoint',  {})
-            hit_nrm   = data.get('hitNormal', {})
-            mesh_name = data.get('meshName', '?')
-
-            if not svg_text:
-                _send_import_error('svg_fill: empty svg')
-                return
-
-            des = adsk.fusion.Design.cast(app.activeProduct)
-            if not des:
-                _send_import_error('svg_fill: no active Fusion design')
-                return
-
-            root = des.rootComponent
-
-            # ── Determine construction plane ──────────────────────────────
-            # Choose the XY / XZ / YZ plane based on which component of the
-            # face normal has the largest magnitude, then offset that plane
-            # to the hit point's coordinate on that axis.
-            nx = abs(float(hit_nrm.get('x', 0)))
-            ny = abs(float(hit_nrm.get('y', 0)))
-            nz = abs(float(hit_nrm.get('z', 0)))
-
-            px = float(hit_pt.get('x', 0))
-            py = float(hit_pt.get('y', 0))
-            pz = float(hit_pt.get('z', 0))
-
-            # Fusion uses cm internally; the STEP / Three.js world is in mm.
-            # Divide by 10 to convert mm → cm for offset values.
-            CM = 0.1
-
-            if nx >= ny and nx >= nz:
-                base_plane  = root.xZConstructionPlane
-                offset_val  = py * CM          # normal along X → offset YZ-like plane at Y
-                plane_label = f'X-normal @ Y={py:.1f} mm'
-            elif ny >= nx and ny >= nz:
-                base_plane  = root.xYConstructionPlane
-                offset_val  = pz * CM          # normal along Y → offset XY plane at Z
-                plane_label = f'Y-normal @ Z={pz:.1f} mm'
-            else:
-                base_plane  = root.xYConstructionPlane
-                offset_val  = pz * CM          # normal along Z → offset XY plane at Z
-                plane_label = f'Z-normal @ Z={pz:.1f} mm'
-
-            _log(f'svg_fill: dominant plane {plane_label}, offset {offset_val:.3f} cm')
-
-            # Create the offset construction plane.
-            cp_input = root.constructionPlanes.createInput()
-            cp_input.setByOffset(base_plane, adsk.core.ValueInput.createByReal(offset_val))
-            cplane   = root.constructionPlanes.add(cp_input)
-            cplane.name = f'SVG Fill — {mesh_name}'
-
-            # ── Write the SVG to a temp file ──────────────────────────────
-            _send_progress('Writing SVG temp file…')
-            tmp_svg = os.path.join(
-                tempfile.gettempdir(),
-                f'step_editor_svgfill_{os.getpid()}.svg'
-            )
-            try:
-                with open(tmp_svg, 'w', encoding='utf-8') as f:
-                    f.write(svg_text)
-                _log(f'svg_fill: wrote {len(svg_text)} chars to {tmp_svg}')
-            except Exception as e:
-                _send_import_error(f'svg_fill: failed to write SVG temp file: {e}')
-                return
-
-            # ── Create a sketch on the construction plane and import SVG ──
-            _send_progress('Importing SVG into sketch…')
-            try:
-                sketch = root.sketches.add(cplane)
-                sketch.name = f'SVG Fill — {mesh_name} ({fill_w:.0f}×{fill_h:.0f} mm)'
-
-                import_mgr  = app.importManager
-                svg_options = import_mgr.createSVGImportOptions(tmp_svg)
-                import_mgr.importToTarget(svg_options, sketch)
-                _log(f'svg_fill: imported SVG into sketch "{sketch.name}"')
-            except Exception as e:
-                _send_import_error(f'svg_fill: SVG import failed: {e}')
-                return
-            finally:
-                try:
-                    os.remove(tmp_svg)
-                except Exception:
-                    pass
-
-            # ── Notify JS side ────────────────────────────────────────────
-            try:
-                pal = app.userInterface.palettes.itemById(PALETTE_ID)
-                if pal:
-                    pal.sendInfoToHTML('import_success', '{}')
-            except Exception:
-                pass
-
-            _log(f'svg_fill: done — {fill_w}×{fill_h} mm on "{mesh_name}"')
-
-        except Exception:
-            tb = traceback.format_exc()
-            _log(f'_handle_svg_fill EXCEPTION:\n{tb}')
-            _send_import_error('svg_fill: internal error — see step_editor_log.txt')
-
-
-    def _handle_svg_extrude(self, data):
-        """Import an SVG motif into a sketch on a construction plane aligned to
-        the selected surface, then extrude it to create real solid body geometry
-        in the active Fusion 360 design.
-
-        data keys (same as svg_fill plus):
-            depth  — extrusion depth in mm (positive = along surface normal)
-            mmW    — motif physical width  (mm) — passed for logging only
-            mmH    — motif physical height (mm)
-        """
-        try:
-            svg_text   = data.get('svg', '') or ''
-            depth_mm   = float(data.get('depth', 3))
-            mmW        = float(data.get('mmW', 100))
-            mmH        = float(data.get('mmH', 100))
-            hit_pt     = data.get('hitPoint',  {})
-            hit_nrm    = data.get('hitNormal', {})
-            mesh_name  = data.get('meshName', '?')
-
-            if not svg_text:
-                _send_import_error('svg_extrude: empty svg')
-                return
-
-            des = adsk.fusion.Design.cast(app.activeProduct)
-            if not des:
-                _send_import_error('svg_extrude: no active Fusion design')
-                return
-
-            root = des.rootComponent
-
-            # ── Construction plane (same dominant-axis logic as svg_fill) ──
-            nx = abs(float(hit_nrm.get('x', 0)))
-            ny = abs(float(hit_nrm.get('y', 0)))
-            nz = abs(float(hit_nrm.get('z', 0)))
-
-            px = float(hit_pt.get('x', 0))
-            py = float(hit_pt.get('y', 0))
-            pz = float(hit_pt.get('z', 0))
-
-            CM = 0.1   # mm → cm
-
-            if nx >= ny and nx >= nz:
-                base_plane  = root.xZConstructionPlane
-                offset_val  = py * CM
-                plane_label = f'X-normal @ Y={py:.1f} mm'
-            elif ny >= nx and ny >= nz:
-                base_plane  = root.xYConstructionPlane
-                offset_val  = pz * CM
-                plane_label = f'Y-normal @ Z={pz:.1f} mm'
-            else:
-                base_plane  = root.xYConstructionPlane
-                offset_val  = pz * CM
-                plane_label = f'Z-normal @ Z={pz:.1f} mm'
-
-            _log(f'svg_extrude: plane {plane_label}, depth {depth_mm} mm, motif {mmW}×{mmH} mm')
-
-            cp_input = root.constructionPlanes.createInput()
-            cp_input.setByOffset(base_plane, adsk.core.ValueInput.createByReal(offset_val))
-            cplane   = root.constructionPlanes.add(cp_input)
-            cplane.name = f'SVG Extrude — {mesh_name}'
-
-            # ── Write SVG temp file ────────────────────────────────────────
-            _send_progress('Writing SVG temp file…')
-            tmp_svg = os.path.join(
-                tempfile.gettempdir(),
-                f'step_editor_extrude_{os.getpid()}.svg'
-            )
-            try:
-                with open(tmp_svg, 'w', encoding='utf-8') as f:
-                    f.write(svg_text)
-                _log(f'svg_extrude: wrote {len(svg_text)} chars to {tmp_svg}')
-            except Exception as e:
-                _send_import_error(f'svg_extrude: failed to write SVG: {e}')
-                return
-
-            # ── Create sketch and import SVG ───────────────────────────────
-            _send_progress('Creating sketch…')
-            try:
-                sketch = root.sketches.add(cplane)
-                sketch.name = f'SVG Extrude — {mesh_name}'
-
-                import_mgr  = app.importManager
-                svg_options = import_mgr.createSVGImportOptions(tmp_svg)
-                import_mgr.importToTarget(svg_options, sketch)
-                _log(f'svg_extrude: imported SVG into sketch "{sketch.name}"')
-            except Exception as e:
-                _send_import_error(f'svg_extrude: SVG sketch import failed: {e}')
-                return
-            finally:
-                try:
-                    os.remove(tmp_svg)
-                except Exception:
-                    pass
-
-            # ── Find closed profiles and extrude ──────────────────────────
-            _send_progress('Extruding profiles…')
-            profile_count = sketch.profiles.count
-            if profile_count == 0:
-                _send_import_error(
-                    'svg_extrude: no closed profiles found. '
-                    'Draw closed shapes (rect, ellipse, closed polyline) in the motif editor.'
-                )
-                return
-
-            _log(f'svg_extrude: {profile_count} profile(s) found, extruding {depth_mm} mm')
-
-            depth_cm  = depth_mm * CM   # Fusion internal units = cm
-            dist_val  = adsk.core.ValueInput.createByReal(depth_cm)
-            ext_feats = root.features.extrudeFeatures
-            bodies_created = 0
-
-            for i in range(profile_count):
-                profile = sketch.profiles.item(i)
-                try:
-                    ext_input = ext_feats.createInput(
-                        profile,
-                        adsk.fusion.FeatureOperations.NewBodyFeatureOperation
-                    )
-                    extent = adsk.fusion.DistanceExtentDefinition.create(dist_val)
-                    ext_input.setOneSideExtent(
-                        extent,
-                        adsk.fusion.ExtentDirections.PositiveExtentDirection
-                    )
-                    feat = ext_feats.add(ext_input)
-                    if feat and feat.bodies.count > 0:
-                        feat.bodies.item(0).name = f'SVG Extrude {i+1} — {mesh_name}'
-                    bodies_created += 1
-                    _log(f'svg_extrude: profile {i+1} extruded OK')
-                except Exception as e:
-                    _log(f'svg_extrude: profile {i+1} extrude failed: {e}')
-                    # Continue with remaining profiles.
-
-            if bodies_created == 0:
-                _send_import_error(
-                    'svg_extrude: all extrude attempts failed. '
-                    'Profiles may be self-intersecting or too small.'
-                )
-                return
-
-            # ── Success ───────────────────────────────────────────────────
-            try:
-                pal = app.userInterface.palettes.itemById(PALETTE_ID)
-                if pal:
-                    pal.sendInfoToHTML('import_success', '{}')
-            except Exception:
-                pass
-
-            _log(f'svg_extrude: done — {bodies_created}/{profile_count} bodies on "{mesh_name}"')
-
-        except Exception:
-            tb = traceback.format_exc()
-            _log(f'_handle_svg_extrude EXCEPTION:\n{tb}')
-            _send_import_error('svg_extrude: internal error — see step_editor_log.txt')
 
 
 def _safe_delete_occurrence(occ):

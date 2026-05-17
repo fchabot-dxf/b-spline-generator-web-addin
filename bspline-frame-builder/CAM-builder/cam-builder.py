@@ -221,8 +221,19 @@ class _CmdCreatedHandler(adsk.core.CommandCreatedEventHandler):
 class _HtmlEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         try:
-            data = json.loads(args.data) if args.data else {}
-            action = data.get('action')
+            # IMPORTANT: cast args to HTMLEventArgs first. Without it,
+            # `args.action` / `args.data` come back empty on some Fusion
+            # builds, which causes data.get('action') to silently return
+            # None and the dispatch falls into the 'unknown' branch.
+            # Verified via live tracer 2026-05-15 — the boot pair
+            # (list_cam_templates / get_template_assignments) hit this
+            # exact path. Reading the first arg directly via ea.action is
+            # the canonical way (mirrors step-editor.py); ea.data is
+            # the second arg as a JSON string. We keep the JSON fallback
+            # so callers that ONLY put the action inside data still work.
+            ea = adsk.core.HTMLEventArgs.cast(args)
+            data = json.loads(ea.data) if ea.data else {}
+            action = ea.action or data.get('action')
             if action == 'generate':
                 _do_generate()
             elif action == 'preview':
@@ -394,8 +405,12 @@ class _StudioCmdCreatedHandler(adsk.core.CommandCreatedEventHandler):
 class _StudioHtmlEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         try:
-            data = json.loads(args.data) if args.data else {}
-            action = data.get('action')
+            # Same cast-first pattern as _HtmlEventHandler — see the long
+            # comment there. Some Fusion builds return empty args.action/
+            # args.data unless we cast through HTMLEventArgs first.
+            ea = adsk.core.HTMLEventArgs.cast(args)
+            data = json.loads(ea.data) if ea.data else {}
+            action = ea.action or data.get('action')
             if   action == 'generate':      _do_studio_generate(data)
             elif action == 'init':          _do_studio_init()
             elif action == 'import_setup':  _do_import_setup(data)

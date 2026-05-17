@@ -75,13 +75,6 @@
             <button class="tool-btn"          data-tool="mirror"    title="Mirror across XY/YZ/XZ plane">Mirror</button>
             <button class="tool-btn"          data-tool="resize"    title="Resize to target bounding-box dimensions">Resize</button>
             <button class="tool-btn"          data-tool="regrid"    title="Re-parameterize B-spline surfaces to a uniform N×M CP grid">Regrid</button>
-            <button class="tool-btn"          data-tool="pattern"   title="Linear array of N copies along an axis">Pattern</button>
-            <button class="tool-btn"          data-tool="text"      title="3D text — engrave or emboss on a body">Text</button>
-            <button class="tool-btn"          data-tool="svgfill"   title="Tile an SVG motif across a selected body surface">SVG Fill</button>
-            <button class="tool-btn" disabled data-tool="numeric"   title="Numeric editor (coming)">Numeric</button>
-            <button class="tool-btn" disabled data-tool="sculpt"    title="Sculpt mode (coming)">Sculpt</button>
-            <button class="tool-btn" disabled data-tool="merge"     title="Merge with another .stp (coming)">Merge</button>
-            <button class="tool-btn" disabled data-tool="split"     title="Split bodies (coming)">Split</button>
             <button class="tool-btn"          data-tool="verify"    title="Verify parser round-trip">Verify</button>
           </div>
         </div>
@@ -138,12 +131,13 @@
           <div class="tool-row">
             <label>Plane</label>
             <select id="mirrorPlane">
+              <option value="" selected>— pick a plane —</option>
               <option value="xy">XY (flip Z)</option>
               <option value="yz">YZ (flip X)</option>
               <option value="xz">XZ (flip Y)</option>
             </select>
           </div>
-          <button id="btnApplyMirror" class="primary">Apply</button>
+          <p class="hint">Picking a plane mirrors immediately. Pick the same plane again to mirror back.</p>
         </div>
 
         <div class="panel-section tool-panel" id="resizeSection" hidden>
@@ -159,41 +153,11 @@
             <label>Z</label><input id="resizeZ" type="number" min="0" step="1" value="0">
           </div>
           <p class="tool-help current-size" id="resizeCurrent">Current: —</p>
-          <button id="btnApplyResize" class="primary">Apply</button>
+          <p class="hint">Drag a number to scrub; preview updates live. A field at 0 preserves its current axis.</p>
         </div>
 
-        <div class="panel-section tool-panel" id="textSection" hidden>
-          <h2>Text <span class="tool-target" id="textBodyName"></span></h2>
-          <p class="tool-help">
-            Milestone A: type, pick a font, see the outlines previewed
-            on the floor of the 3D scene. STEP body emission lands in
-            milestone B — for now this is preview-only.
-          </p>
-          <div class="tool-row tool-row-block">
-            <textarea id="textInput" rows="2" placeholder="Type text here…" spellcheck="false">STEP</textarea>
-          </div>
-          <div class="tool-row">
-            <button id="btnTextSymbols" class="symbol-toggle" title="Insert a symbol from the current font">Σ</button>
-            <select id="textFont"></select>
-          </div>
-          <div class="tool-row">
-            <label>Size</label><input id="textSize" type="number" min="0.1" step="0.5" value="10">
-            <label title="Positive = emboss, negative = engrave (milestone B)">Depth</label>
-            <input id="textDepth" type="number" step="0.5" value="2">
-          </div>
-          <button id="btnApplyText" class="primary">Update preview</button>
-
-          <!-- Floating symbol-keyboard panel. Stays inside the sidebar
-               so docking/resizing doesn't strand it. Hidden until the
-               Σ button toggles it. -->
-          <div id="textSymbolPanel" class="symbol-panel" hidden>
-            <div class="symbol-panel-head">
-              <span>Symbols — <span id="textSymbolFontLabel">font</span></span>
-              <button id="textSymbolClose" title="Close symbol picker">×</button>
-            </div>
-            <div id="textSymbolGrid" class="symbol-grid"></div>
-          </div>
-        </div>
+        <!-- Text tool removed — text-on-surface workflow moved to the
+             stamp-editor add-in. -->
 
         <div class="panel-section tool-panel" id="regridSection" hidden>
           <h2>Regrid <span class="tool-target" id="regridBodyName"></span></h2>
@@ -226,122 +190,23 @@
             <label title="Samples per axis for the least-squares fit">Smp</label>
             <input id="regridSample" type="number" min="8" step="4" value="32">
           </div>
-          <!-- Simplify presets — one click drops Nu/Nv to a common size
-               then triggers Apply.  Smaller = simpler / smaller file. -->
+          <!-- Simplify presets — one click sets Nu/Nv to a common size and
+               immediately triggers a regrid.  Smaller = simpler / smaller file. -->
           <div class="tool-row presets-row">
             <button class="preset-btn" data-regrid-preset="4">Simplify 4×4</button>
             <button class="preset-btn" data-regrid-preset="8">Standard 8×8</button>
             <button class="preset-btn" data-regrid-preset="16">Detailed 16×16</button>
           </div>
-          <button id="btnApplyRegrid" class="primary">Apply regrid</button>
+          <p class="hint">Regrid runs live as Nu / Nv / Smp change. Heavy bodies may take a beat.</p>
         </div>
 
-        <!-- ── Pattern tool panel ─────────────────────────────────────── -->
-        <div class="panel-section tool-panel" id="patternSection" hidden>
-          <h2>Pattern <span class="tool-target" id="patternBodyName"></span></h2>
-          <p class="tool-help">Linear array — duplicate the selected body N times along an axis.</p>
-          <div class="tool-row">
-            <label>Axis</label>
-            <select id="patternAxis">
-              <option value="x">X</option>
-              <option value="y">Y</option>
-              <option value="z" selected>Z</option>
-            </select>
-          </div>
-          <div class="tool-row">
-            <label>Count</label>
-            <input id="patternCount" type="number" min="2" max="100" step="1" value="3">
-          </div>
-          <div class="tool-row">
-            <label>Spacing (mm)</label>
-            <input id="patternSpacing" type="number" step="1" value="50">
-          </div>
-          <button id="btnApplyPattern" class="primary">Apply pattern</button>
-        </div>
+        <!-- Pattern tool was removed (the linear-array semantic wasn't useful).
+             The underlying arrayBody helper in core/stp-bodies.js is left in
+             place so a future surface/grid/radial Pattern tool can call it
+             without re-implementing the geometry math. -->
 
-        <!-- ── SVG Fill tool panel ────────────────────────────────────── -->
-        <div class="panel-section tool-panel" id="svgFillSection" hidden>
-          <h2>SVG Fill</h2>
-          <p class="tool-help">
-            Pick a body surface in the 3D view, draw or load a motif, then tile it across the surface.
-          </p>
-
-          <!-- Surface selection -->
-          <div class="tool-row tool-row-block">
-            <button id="btnPickSurface" class="primary">Pick surface…</button>
-            <span id="svgFillSurfaceInfo" class="tool-help" style="margin-top:4px"></span>
-          </div>
-
-          <!-- Motif source -->
-          <div class="tool-row tool-row-block">
-            <button id="btnDrawMotif">Draw motif…</button>
-            <button id="btnBrowseMotifSvg">Load SVG…</button>
-            <input id="inputMotifSvgFile" type="file" accept=".svg,image/svg+xml" hidden>
-          </div>
-          <div id="svgFillMotifThumb" style="display:none;margin:4px 0;border:1px solid var(--border);border-radius:4px;overflow:hidden;height:80px;background:#1e1e1e"></div>
-
-          <!-- Fill area -->
-          <div class="tool-row">
-            <label>Fill W (mm)</label>
-            <input id="svgFillW" type="number" min="1" step="5" value="100">
-          </div>
-          <div class="tool-row">
-            <label>Fill H (mm)</label>
-            <input id="svgFillH" type="number" min="1" step="5" value="100">
-          </div>
-
-          <!-- Tiling parameters -->
-          <details open>
-            <summary style="cursor:pointer;margin:6px 0 4px;font-size:0.8em;color:var(--text-muted)">Tiling options</summary>
-            <div class="tool-row">
-              <label>Spacing X (mm)</label>
-              <input id="svgSpacingX" type="number" min="0.1" step="1" value="20">
-            </div>
-            <div class="tool-row">
-              <label>Spacing Y (mm)</label>
-              <input id="svgSpacingY" type="number" min="0.1" step="1" value="20">
-            </div>
-            <div class="tool-row">
-              <label>Scale</label>
-              <input id="svgFillScale" type="number" min="0.01" step="0.1" value="1">
-            </div>
-            <div class="tool-row">
-              <label>Rotation (°)</label>
-              <input id="svgFillRotation" type="number" step="5" value="0">
-            </div>
-            <div class="tool-row">
-              <label>Offset X (mm)</label>
-              <input id="svgOffsetX" type="number" step="1" value="0">
-            </div>
-            <div class="tool-row">
-              <label>Offset Y (mm)</label>
-              <input id="svgOffsetY" type="number" step="1" value="0">
-            </div>
-            <div class="tool-row">
-              <label><input type="checkbox" id="svgBrickOffset"> Brick offset</label>
-            </div>
-          </details>
-
-          <button id="btnApplySvgFill" class="primary" disabled>Send fill to Fusion (sketch)</button>
-
-          <!-- ── 3D Extrude sub-section ──────────────────────────────────── -->
-          <hr style="border:none;border-top:1px solid var(--border);margin:10px 0">
-          <p class="tool-help" style="margin:0 0 6px">
-            <strong>3D Extrude</strong> — extrude the motif into a solid body.
-          </p>
-          <div class="tool-row">
-            <label>Depth (mm)</label>
-            <input id="svgExtrudeDepth" type="number" min="0.1" step="0.5" value="3">
-          </div>
-          <div class="tool-row" style="gap:4px">
-            <button id="btnPreviewExtrude"   disabled style="flex:1" title="Show extruded solid in 3D viewport">Preview 3D</button>
-            <button id="btnClearExtrude"              style="flex:0 0 auto" title="Remove extrude preview from viewport">Clear</button>
-          </div>
-          <div class="tool-row" style="gap:4px;margin-top:2px">
-            <button id="btnSendExtrude"      class="primary" disabled style="flex:1">Send to Fusion (solid)</button>
-            <button id="btnExportStepExtrude"           disabled style="flex:0 0 auto" title="Download .stp of the extruded motif">↓ .stp</button>
-          </div>
-        </div>
+        <!-- Stamp / SVG-fill panels removed — moved to the dedicated
+             stamp-editor add-in. Step-editor is now transforms-only. -->
 
         <div class="panel-section">
           <h2>Cloud</h2>
@@ -421,6 +286,6 @@
        full import graph from a new entry URL, so changing this single
        query string is sufficient to force a fresh fetch of every
        module transitively imported under core/ + main/. -->
-  <script type="module" src="main/main.js?v=20260515_zup01"></script>
+  <script type="module" src="main/main.js?v=20260515_live02"></script>
 </body>
 </html>

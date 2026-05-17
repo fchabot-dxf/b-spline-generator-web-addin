@@ -20,8 +20,6 @@ import {
   rotateBody, mirrorBody, resizeBody, getBodyBounds, arrayBody,
 } from '../core/stp-bodies.js';
 import { regridBody, listBSplineSurfaces } from '../core/stp-regrid.js';
-import { listFonts, loadFont, layoutText } from '../core/text-glyphs.js';
-import { setText as setTextPreview, clear as clearTextPreview } from '../core/three-text.js';
 import { tessellate as occtTessellate, isAvailable as occtAvailable,
          tessellateViaFusion, isFusionTessAvailable } from '../core/occt-bridge.js';
 import { attachScrubAll } from '../core/scrub.js';
@@ -81,44 +79,27 @@ export function wireButtons(state) {
   const saveBtn = document.getElementById('btnCloudSave');
   if (saveBtn && !isCloudEnabled()) saveBtn.title = 'Set window.STEP_EDITOR_API_URL';
 
-  // Transform-panel apply buttons. These mutate state.parsed in place
-  // and trigger a re-tessellate so the viewer follows along.
-  on('btnApplyUniform',   () => handleApplyUniform(state));
-  on('btnApplyAxes',      () => handleApplyAxes(state));
-  on('btnApplyTranslate', () => handleApplyTranslate(state));
-  on('btnApplyRotate',    () => handleApplyRotate(state));
-  on('btnApplyMirror',    () => handleApplyMirror(state));
-  on('btnApplyResize',    () => handleApplyResize(state));
-  on('btnApplyRegrid',    () => handleApplyRegrid(state));
-  on('btnApplyPattern',   () => handleApplyPattern(state));
+  // Transform-panel Apply buttons used to live here. They were removed
+  // for every tool — every panel now drives live preview from its inputs
+  // (see wireLivePreview below, plus the per-tool change wirings in
+  // wireLiveExtras: Mirror runs on plane select, Resize/Regrid live-
+  // scrub their fields, Text auto-re-renders on text/font/size/depth
+  // change). The handleApply* functions are retained as private commit
+  // primitives that the live-preview pipeline calls.
+  // Pattern tool was removed from the palette entirely.
 
-  // Regrid simplify presets: one click pre-fills Nu/Nv with the
-  // preset value, then triggers Apply.  The Smp (sample density)
-  // input stays where the user left it.
+  // Regrid simplify presets: clicking a preset stamps Nu/Nv with the
+  // common value, then the live-preview input listener (wireLiveExtras)
+  // re-runs regrid as those fields change.
   for (const btn of document.querySelectorAll('.preset-btn[data-regrid-preset]')) {
     btn.addEventListener('click', () => {
       const n = Number(btn.dataset.regridPreset) | 0;
       const nu = document.getElementById('regridNu');
       const nv = document.getElementById('regridNv');
-      if (nu) nu.value = String(n);
-      if (nv) nv.value = String(n);
-      handleApplyRegrid(state);
+      if (nu) { nu.value = String(n); nu.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (nv) { nv.value = String(n); nv.dispatchEvent(new Event('input', { bubbles: true })); }
     });
   }
-
-  // Text tool — populate the font dropdown once at boot, then wire the
-  // Apply / Symbols / Close handlers.
-  populateFontDropdown();
-  on('btnApplyText',     () => handleApplyText(state));
-  on('btnTextSymbols',   () => toggleSymbolPanel());
-  on('textSymbolClose',  () => toggleSymbolPanel(false));
-
-  // Re-populate the symbol grid when the font changes.
-  const fontSelect = document.getElementById('textFont');
-  if (fontSelect) fontSelect.addEventListener('change', () => {
-    const panel = document.getElementById('textSymbolPanel');
-    if (panel && !panel.hidden) populateSymbolGrid();
-  });
 
   // Toolbar — each .tool-btn carries its tool ID in data-tool.  Click
   // routes through activateTool() which manages the active state and
@@ -134,13 +115,17 @@ export function wireButtons(state) {
   }
 
   // ── SVG Fill tool wiring ───────────────────────────────────────────
-  initSvgFillPanel(state);
+  // Stamp moved to its own add-in (stamp-editor). Step-editor is
+  // transforms-only now.
 
   // ── Live preview wiring ────────────────────────────────────────────
   // Each transform input drives a delta-applier that mutates state.parsed
   // and debounce-retessellates. Baselines are reset per-tool-activation
   // in activateTool() below.
   wireLivePreview(state);
+  // Mirror / Resize / Regrid / Text — no Apply button, drive their
+  // commit handler off DOM events with a short debounce.
+  wireLiveExtras(state);
 
   // ── Deselection: Esc anywhere in the palette clears the active body.
   // Use keydown on the document so it fires regardless of which input
@@ -368,9 +353,14 @@ function selectBody(state, bodyId) {
     try {
       const bb = getBodyBounds(state.parsed, body.id);
       if (bb) {
-        const w = Math.round(bb.size[0]);
-        const h = Math.round(bb.size[1]);
-        const d = Math.round(bb.size[2]);
+        // getBodyBounds returns file units (which can mean inches even
+        // when the header declares mm — see retessellate's unitScale
+        // capture). Multiply through so the displayed mm match
+        // Fusion's imported physical size.
+        const scale = Number.isFinite(state.unitScale) ? state.unitScale : 1;
+        const w = Math.round(bb.size[0] * scale);
+        const h = Math.round(bb.size[1] * scale);
+        const d = Math.round(bb.size[2] * scale);
         setStatus(`◆ Selected: ${body.name} — ${w} × ${h} × ${d} mm`);
       } else {
         setStatus(`◆ Selected: ${body.name}`);
@@ -492,9 +482,9 @@ function toolPanelId(toolId) {
     case 'mirror':    return 'mirrorSection';
     case 'resize':    return 'resizeSection';
     case 'regrid':    return 'regridSection';
-    case 'text':      return 'textSection';
-    case 'pattern':   return 'patternSection';
-    case 'svgfill':   return 'svgFillSection';
+// case 'pattern' — Pattern tool removed (linear-array semantic unhelpful).
+    //   The patternSection HTML is gone; this branch left commented as a
+    //   marker so the dispatcher's structure is still readable.
     default:          return null;
   }
 }
@@ -760,6 +750,67 @@ function wireLivePreview(state) {
 }
 
 
+/** Live-preview wiring for the panels that don't use the delta-based
+ *  scrub pattern (Scale/Move/Rotate). Each of these tools either has a
+ *  discrete trigger (Mirror's plane select) or absolute-value inputs
+ *  (Resize target dims, Regrid Nu/Nv, Text string/size). They reuse
+ *  the existing handleApply* commit functions; the only thing this
+ *  function adds is a DOM-event → debounced-commit wiring. */
+function wireLiveExtras(state) {
+  // ── Mirror: re-run on plane select ────────────────────────────────
+  // The plane dropdown starts on an empty option so the very first
+  // tool-panel open doesn't immediately mirror. Pick a plane and the
+  // mirror fires. Picking the same plane twice un-mirrors (Fusion's
+  // mirror is involutive). Selecting the empty option is a no-op.
+  const mirrorSelect = document.getElementById('mirrorPlane');
+  if (mirrorSelect) {
+    mirrorSelect.addEventListener('change', () => {
+      if (!mirrorSelect.value) return;
+      handleApplyMirror(state);
+    });
+  }
+
+  // ── Resize: live-scrub W/H/D inputs ───────────────────────────────
+  // Resize is an ABSOLUTE-value op (target bbox dimension), not a
+  // delta. To keep live preview sane:
+  //   - on first input event, snapshot the body's pre-resize bbox into
+  //     state.resizeBaseline (a dict per body id).
+  //   - each move resets state.parsed from the baseline (re-resize at
+  //     the new target) so successive scrubs don't compound.
+  //
+  // We don't have a cheap "restore body shape" primitive, so the easier
+  // path: call handleApplyResize on a short debounce — it reads the
+  // current input values and resizes the body to them. The body's stored
+  // bbox in state.parsed gets larger on each call, but resizeBody scales
+  // to ABSOLUTE target — so the second call is "resize-to-100" rather
+  // than "double-then-double" so it works correctly.
+  const debounce = (fn, ms) => {
+    let t = null;
+    return () => {
+      clearTimeout(t);
+      t = setTimeout(fn, ms);
+    };
+  };
+  for (const id of ('resizeX resizeY resizeZ').split(' ')) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const trigger = debounce(() => handleApplyResize(state), 220);
+    el.addEventListener('input', trigger);
+  }
+
+  // ── Regrid: live-run on Nu/Nv/Smp/surface/knot change ─────────────
+  // Heavier op (B-spline least-squares fit) so we debounce more.
+  const regridIds = ['regridNu', 'regridNv', 'regridSample', 'regridSurface', 'regridKnotMode'];
+  const regridTrigger = debounce(() => handleApplyRegrid(state), 350);
+  for (const id of regridIds) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener('input',  regridTrigger);
+    el.addEventListener('change', regridTrigger);
+  }
+}
+
+
 /** Run a transform fn, yield to the event loop so the status updates,
  *  then refresh the stats panel + body list + 3D viewer. */
 async function applyAndRefresh(state, pendingMsg, op, successFn) {
@@ -858,6 +909,15 @@ async function retessellate(state, sourceText, options = {}) {
   const pathLabel = fusionFast ? 'Fusion native' : 'WASM OCCT';
   setStatus(`Viewer: ${result.meshes.length} mesh(es) tessellated in ${dt.toFixed(0)} ms (${pathLabel}).`);
   pyLog(`tessellate ok: ${result.meshes.length} meshes in ${dt.toFixed(0)}ms via ${pathLabel}`);
+
+  // Compute the file-unit → physical-mm scale by comparing the parsed
+  // STEP's body bbox (file units) to the tessellated mesh's bbox
+  // (already in mm — Fusion-native delivers mm, WASM-OCCT likewise).
+  // Stamp / V-carve / future tools use state.unitScale to ship their
+  // mesh in physical mm regardless of whether the file was authored
+  // in inches but declared mm (or any similar mismatch).
+  state.unitScale = computeFileToPhysicalScale(state, result.meshes);
+  pyLog(`unit scale (file → physical mm) = ${state.unitScale.toFixed(4)}`);
 
   // ── CustomGraphics ghost preview in Fusion's main canvas ──────────
   // After every retessellate, also push the merged mesh to Python so it
@@ -1129,87 +1189,7 @@ function microtaskTick() { return new Promise((r) => setTimeout(r, 0)); }
 // names we declared in step-editor.css. Lets the symbol-grid buttons
 // render each glyph in the right typeface. Falls back to the system
 // default when an entry is missing.
-const HTML_FONT_FAMILY = {
-  'Cascadia Code': 'SE Cascadia Code',
-  'Cascadia Mono': 'SE Cascadia Mono',
-  'Wingdings':     'SE Wingdings',
-  'Webdings':      'SE Webdings',
-  'Symbol':        'SE Symbol',
-  'Bahnschrift':   'SE Bahnschrift',
-  'Impact':        'SE Impact',
-  'Georgia':       'SE Georgia',
-  'Verdana':       'SE Verdana',
-  'Tahoma':        'SE Tahoma',
-};
 
-/** Fill the `#textFont` <select> from the static font catalogue. Called
- *  once during wireButtons. The first family becomes the default. */
-function populateFontDropdown() {
-  const sel = document.getElementById('textFont');
-  if (!sel) return;
-  sel.innerHTML = '';
-  for (const f of listFonts()) {
-    const opt = document.createElement('option');
-    opt.value = f.file;
-    opt.textContent = f.label;
-    opt.dataset.family = f.family;
-    sel.appendChild(opt);
-  }
-}
-
-/** Toggle the symbol-picker popover. With no argument it flips the
- *  current state; pass `false` to force-close. */
-function toggleSymbolPanel(show) {
-  const panel = document.getElementById('textSymbolPanel');
-  if (!panel) return;
-  const willShow = (show === undefined) ? panel.hidden : !!show;
-  panel.hidden = !willShow;
-  if (willShow) populateSymbolGrid();
-}
-
-/** Fill the symbol grid with one button per ASCII printable in the
- *  current font.  For symbol fonts (Wingdings/Webdings/Symbol) those
- *  codepoints render as icons; for regular fonts they're just the
- *  ASCII alphabet — also useful as a one-click insert. */
-function populateSymbolGrid() {
-  const grid  = document.getElementById('textSymbolGrid');
-  const label = document.getElementById('textSymbolFontLabel');
-  const sel   = document.getElementById('textFont');
-  if (!grid || !sel) return;
-
-  const opt    = sel.options[sel.selectedIndex];
-  const family = opt && opt.dataset.family || 'Arial';
-  const htmlFam = HTML_FONT_FAMILY[family] || family;
-
-  if (label) label.textContent = opt ? opt.textContent : family;
-
-  grid.innerHTML = '';
-  // Range: printable ASCII. Some symbol fonts only fill part of this
-  // range — empty cells just render a blank button, which is fine.
-  for (let code = 33; code <= 126; code++) {
-    const ch  = String.fromCharCode(code);
-    const btn = document.createElement('button');
-    btn.type  = 'button';
-    btn.title = `U+${code.toString(16).toUpperCase().padStart(4, '0')}`;
-    btn.textContent = ch;
-    btn.style.fontFamily = `'${htmlFam}', sans-serif`;
-    btn.addEventListener('click', () => insertIntoTextInput(ch));
-    grid.appendChild(btn);
-  }
-}
-
-/** Append a character to the active text input. Cursor placement
- *  respects whatever the user had highlighted (replace selection). */
-function insertIntoTextInput(ch) {
-  const ta = document.getElementById('textInput');
-  if (!ta) return;
-  const start = ta.selectionStart ?? ta.value.length;
-  const end   = ta.selectionEnd   ?? ta.value.length;
-  const newVal = ta.value.slice(0, start) + ch + ta.value.slice(end);
-  ta.value = newVal;
-  ta.selectionStart = ta.selectionEnd = start + ch.length;
-  ta.focus();
-}
 
 /* ────────────────────────────────────────────────────────────────────
  * Pattern tool
@@ -1249,380 +1229,8 @@ async function handleApplyPattern(state) {
   });
 }
 
-/* ────────────────────────────────────────────────────────────────────
- * SVG Fill tool
- * ──────────────────────────────────────────────────────────────────── */
+/* Stamp tool & legacy SVG-fill removed — both moved to the new
+ * stamp-editor add-in (sibling under bspline-frame-builder/).
+ * Step-editor is transforms-only from here on. */
 
-/**
- * State for the SVG fill workflow:
- *   _svgFillState.motifSvg   — current motif SVG string (from editor or file load)
- *   _svgFillState.surfaceHit — last face-raycast result from three-viewer
- *   _svgFillState.editor     — MotifEditor instance
- */
-const _svgFillState = {
-  motifSvg:   null,
-  surfaceHit: null,
-  editor:     null,
-};
 
-function initSvgFillPanel(/* state */) {
-  // ── Motif editor overlay ─────────────────────────────────────────
-  const overlay    = document.getElementById('motifEditorOverlay');
-  const canvas     = document.getElementById('viewportCanvas');
-  const editorDiv  = document.getElementById('motifEditorCanvas');
-
-  if (!overlay || !editorDiv) return;
-
-  // Instantiate the editor lazily on first Draw click.
-  function ensureEditor() {
-    if (_svgFillState.editor) return;
-    const ed = new window.MotifEditor();
-    const w = editorDiv.clientWidth  || 500;
-    const h = editorDiv.clientHeight || 400;
-    ed.mount(editorDiv, { width: w, height: h });
-    ed.setTool('pen');
-    ed.setOnChange((svg) => {
-      _svgFillState.motifSvg = svg;
-      updateMotifThumb(svg);
-      updateFillApplyBtn();
-    });
-    _svgFillState.editor = ed;
-  }
-
-  // "Draw motif…" button — show overlay, hide 3D canvas.
-  on('btnDrawMotif', () => {
-    ensureEditor();
-    overlay.classList.add('visible');
-    if (canvas) canvas.style.visibility = 'hidden';
-  });
-
-  // "Done" button — hide overlay, restore 3D canvas.
-  on('motifDone', () => {
-    overlay.classList.remove('visible');
-    if (canvas) canvas.style.visibility = '';
-    // Save whatever's in the editor.
-    if (_svgFillState.editor) {
-      _svgFillState.motifSvg = _svgFillState.editor.save();
-      updateMotifThumb(_svgFillState.motifSvg);
-      updateFillApplyBtn();
-    }
-  });
-
-  // Motif tool buttons inside the overlay toolbar.
-  for (const btn of document.querySelectorAll('.motif-tool-btn')) {
-    btn.addEventListener('click', () => {
-      ensureEditor();
-      const toolName = btn.dataset.motifTool;
-      _svgFillState.editor.setTool(toolName);
-      document.querySelectorAll('.motif-tool-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-  }
-
-  // Stroke color / width controls.
-  const colorIn = document.getElementById('motifStrokeColor');
-  const widthIn = document.getElementById('motifStrokeWidth');
-  if (colorIn) colorIn.addEventListener('input', () => {
-    ensureEditor();
-    _svgFillState.editor.setStrokeColor(colorIn.value);
-  });
-  if (widthIn) widthIn.addEventListener('input', () => {
-    ensureEditor();
-    _svgFillState.editor.setStrokeWidth(Number(widthIn.value) || 2);
-  });
-
-  // Undo / Redo / Delete / Clear.
-  on('motifUndo',   () => _svgFillState.editor && _svgFillState.editor.undo());
-  on('motifRedo',   () => _svgFillState.editor && _svgFillState.editor.redo());
-  on('motifDelete', () => _svgFillState.editor && _svgFillState.editor.deleteSelected());
-  on('motifClear',  () => {
-    if (_svgFillState.editor) _svgFillState.editor.clear();
-    _svgFillState.motifSvg = null;
-    updateMotifThumb(null);
-    updateFillApplyBtn();
-  });
-
-  // ── Browse / load SVG ────────────────────────────────────────────
-  const fileInput = document.getElementById('inputMotifSvgFile');
-  on('btnBrowseMotifSvg', () => fileInput && fileInput.click());
-  if (fileInput) {
-    fileInput.addEventListener('change', () => {
-      const f = fileInput.files && fileInput.files[0];
-      if (!f) return;
-      const r = new FileReader();
-      r.onload = () => {
-        const svg = String(r.result || '');
-        _svgFillState.motifSvg = svg;
-        ensureEditor();
-        _svgFillState.editor.load(svg);
-        updateMotifThumb(svg);
-        updateFillApplyBtn();
-      };
-      r.readAsText(f);
-      fileInput.value = '';  // reset so same file can be re-picked
-    });
-  }
-
-  // ── Pick surface ─────────────────────────────────────────────────
-  on('btnPickSurface', () => {
-    const btn = document.getElementById('btnPickSurface');
-    if (btn) btn.textContent = 'Click a surface in 3D view…';
-    enableFaceSelectMode((hit) => {
-      _svgFillState.surfaceHit = hit;
-      disableFaceSelectMode();
-      if (btn) btn.textContent = 'Pick surface…';
-      const info = document.getElementById('svgFillSurfaceInfo');
-      if (info) {
-        const n = hit.normal;
-        const p = hit.point;
-        const dom = dominantAxis(n);
-        info.textContent =
-          `Body: ${hit.meshName} | Normal: ${dom.toUpperCase()} ` +
-          `(${n.x.toFixed(2)}, ${n.y.toFixed(2)}, ${n.z.toFixed(2)}) | ` +
-          `Hit: (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)}) mm`;
-      }
-      updateFillApplyBtn();
-    });
-  });
-
-  // ── Apply fill → send to Fusion ──────────────────────────────────
-  on('btnApplySvgFill', () => handleApplySvgFill());
-
-  // ── 3D Extrude ────────────────────────────────────────────────────
-  on('btnPreviewExtrude',    () => handlePreviewExtrude());
-  on('btnClearExtrude',      () => handleClearExtrude());
-  on('btnSendExtrude',       () => handleSendExtrude());
-  on('btnExportStepExtrude', () => handleExportStepExtrude());
-}
-
-/** Dominant axis from a normal vector — returns 'x', 'y', or 'z'. */
-function dominantAxis(n) {
-  const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
-  if (ax >= ay && ax >= az) return 'x';
-  if (ay >= ax && ay >= az) return 'y';
-  return 'z';
-}
-
-/** Update the small thumbnail inside the SVG Fill panel. */
-function updateMotifThumb(svgString) {
-  const thumb = document.getElementById('svgFillMotifThumb');
-  if (!thumb) return;
-  if (!svgString) {
-    thumb.style.display = 'none';
-    thumb.innerHTML = '';
-    return;
-  }
-  thumb.style.display = '';
-  // Sanitise: no scripts.
-  const clean = svgString.replace(/<script[\s\S]*?<\/script>/gi, '');
-  thumb.innerHTML = clean;
-  // Force the SVG to fill the container.
-  const svg = thumb.querySelector('svg');
-  if (svg) { svg.style.width = '100%'; svg.style.height = '100%'; }
-}
-
-/** Enable / disable the Apply Fill and Extrude buttons based on current state. */
-function updateFillApplyBtn() {
-  const hasSvg  = !!_svgFillState.motifSvg;
-  const hasSurf = !!_svgFillState.surfaceHit;
-
-  const btnFill    = document.getElementById('btnApplySvgFill');
-  const btnPrev    = document.getElementById('btnPreviewExtrude');
-  const btnSend    = document.getElementById('btnSendExtrude');
-  const btnExport  = document.getElementById('btnExportStepExtrude');
-
-  if (btnFill)   btnFill.disabled   = !(hasSvg && hasSurf);
-  if (btnPrev)   btnPrev.disabled   = !hasSvg;
-  if (btnSend)   btnSend.disabled   = !(hasSvg && hasSurf);
-  if (btnExport) btnExport.disabled = !hasSvg;
-}
-
-/* ────────────────────────────────────────────────────────────────────
- * 3D Extrude handlers
- * ──────────────────────────────────────────────────────────────────── */
-
-function handlePreviewExtrude() {
-  const motifSvg = _svgFillState.motifSvg;
-  if (!motifSvg) { setStatus('Draw or load a motif first.'); return; }
-
-  const depth   = readNumber('svgExtrudeDepth', 3);
-  const mmW     = readNumber('svgFillW', 100);
-  const mmH     = readNumber('svgFillH', 100);
-  const hit     = _svgFillState.surfaceHit;
-  const scene   = getScene();
-
-  try {
-    window.showExtrudePreview({
-      svgString:  motifSvg,
-      depth,
-      mmW,
-      mmH,
-      hitPoint:   hit ? hit.point  : null,
-      hitNormal:  hit ? hit.normal : null,
-      scene,
-    });
-    setStatus(`3D extrude preview: depth ${depth} mm, motif ${mmW}×${mmH} mm.`);
-  } catch (e) {
-    setStatus(`Preview failed: ${e.message}`);
-    pyLog(`preview extrude fail: ${e.message}`);
-  }
-}
-
-function handleClearExtrude() {
-  const scene = getScene();
-  window.clearExtrudePreview && window.clearExtrudePreview(scene);
-  setStatus('Extrude preview cleared.');
-}
-
-function handleExportStepExtrude() {
-  const motifSvg = _svgFillState.motifSvg;
-  if (!motifSvg) { setStatus('Draw or load a motif first.'); return; }
-
-  const depth = readNumber('svgExtrudeDepth', 3);
-  const mmW   = readNumber('svgFillW', 100);
-  const mmH   = readNumber('svgFillH', 100);
-
-  setStatus('Generating STEP…');
-  try {
-    const profiles  = window.svgToProfiles(motifSvg, mmW, mmH);
-    if (!profiles.length) { setStatus('No closed profiles found in motif SVG.'); return; }
-    const stepText  = window.profilesToStep(profiles, depth);
-    downloadText('extruded_motif.stp', stepText);
-    setStatus(`Exported extruded motif as STEP (${profiles.length} profile(s), depth ${depth} mm).`);
-    pyLog(`step export: ${profiles.length} profiles, depth ${depth}`);
-  } catch (e) {
-    setStatus(`STEP export failed: ${e.message}`);
-    pyLog(`step export fail: ${e.message}`);
-  }
-}
-
-async function handleSendExtrude() {
-  const motifSvg = _svgFillState.motifSvg;
-  const hit      = _svgFillState.surfaceHit;
-  if (!motifSvg || !hit) {
-    setStatus('Draw or load a motif and pick a surface first.');
-    return;
-  }
-
-  const depth   = readNumber('svgExtrudeDepth', 3);
-  const mmW     = readNumber('svgFillW', 100);
-  const mmH     = readNumber('svgFillH', 100);
-
-  const payload = {
-    svg:       motifSvg,
-    depth,
-    mmW,
-    mmH,
-    hitPoint:  hit.point,
-    hitNormal: hit.normal,
-    meshName:  hit.meshName,
-  };
-
-  setStatus(`Sending SVG extrusion to Fusion (depth ${depth} mm)…`);
-  try {
-    await sendToPython('svg_extrude', payload);
-    setStatus(`SVG extrusion sent — solid body created in Fusion at selected surface.`);
-    pyLog(`svg_extrude sent: ${mmW}×${mmH} mm, depth ${depth}`);
-  } catch (e) {
-    setStatus(`Extrude send failed: ${e.message}`);
-    pyLog(`svg_extrude fail: ${e.message}`);
-  }
-}
-
-async function handleApplySvgFill() {
-  const motifSvg  = _svgFillState.motifSvg;
-  const hit       = _svgFillState.surfaceHit;
-  if (!motifSvg || !hit) {
-    setStatus('Draw or load a motif and pick a surface first.');
-    return;
-  }
-
-  const fillW     = readNumber('svgFillW', 100);
-  const fillH     = readNumber('svgFillH', 100);
-  const spacingX  = readNumber('svgSpacingX', 20);
-  const spacingY  = readNumber('svgSpacingY', 20);
-  const scale     = readNumber('svgFillScale', 1);
-  const rotation  = readNumber('svgFillRotation', 0);
-  const offsetX   = readNumber('svgOffsetX', 0);
-  const offsetY   = readNumber('svgOffsetY', 0);
-  const brickOff  = (document.getElementById('svgBrickOffset') || {}).checked || false;
-
-  setStatus('Generating tiled SVG…');
-  await microtaskTick();
-
-  let tiledSvg;
-  try {
-    tiledSvg = window.generateTiledSvg(motifSvg, fillW, fillH, {
-      spacingX, spacingY, scale, rotation, offsetX, offsetY,
-      brickOffset: brickOff,
-    });
-  } catch (e) {
-    setStatus(`Tiling failed: ${e.message}`);
-    return;
-  }
-
-  const payload = {
-    svg:      tiledSvg,
-    fillW,
-    fillH,
-    hitPoint:  hit.point,
-    hitNormal: hit.normal,
-    meshName:  hit.meshName,
-    boxMin:    hit.boxMin,
-    boxMax:    hit.boxMax,
-  };
-
-  setStatus('Sending SVG fill to Fusion…');
-  try {
-    await sendToPython('svg_fill', payload);
-    setStatus('SVG fill sent to Fusion — sketch created on construction plane.');
-    pyLog(`svg_fill sent: ${fillW}×${fillH} mm, ${tiledSvg.length} bytes`);
-  } catch (e) {
-    setStatus(`SVG fill send failed: ${e.message}`);
-    pyLog(`svg_fill fail: ${e.message}`);
-  }
-}
-
-/** Parse the user's input through opentype.js, build the layout, and
- *  push the preview into the Three.js scene. Async because the font
- *  fetch + parse is non-blocking — show a status while it works. */
-async function handleApplyText(/* state */) {
-  const ta    = document.getElementById('textInput');
-  const sel   = document.getElementById('textFont');
-  const sizeI = document.getElementById('textSize');
-  const depthI = document.getElementById('textDepth');
-  if (!ta || !sel) { setStatus('Text panel not loaded.'); return; }
-
-  const text  = ta.value;
-  const file  = sel.value;
-  const size  = Number(sizeI && sizeI.value) || 10;
-  const depth = Number(depthI && depthI.value) || 0;
-
-  if (!text.trim()) {
-    clearTextPreview();
-    setStatus('Text empty — preview cleared.');
-    return;
-  }
-
-  setStatus(`Rendering "${text}" in ${sel.options[sel.selectedIndex]?.textContent}…`);
-  await microtaskTick();
-
-  let font;
-  try {
-    font = await loadFont(file);
-  } catch (e) {
-    setStatus(`Font load failed: ${e.message}`);
-    pyLog(`text font fail: ${file}: ${e.message}`);
-    return;
-  }
-
-  const t0 = performance.now();
-  const layout = layoutText(text, font, { size, flatness: Math.max(size / 80, 0.05) });
-  setTextPreview(layout, depth);
-  const dt = performance.now() - t0;
-
-  const w = layout.bbox.max[0] - layout.bbox.min[0];
-  const h = layout.bbox.max[1] - layout.bbox.min[1];
-  setStatus(`Text preview: ${layout.glyphs.length} glyph(s), ${w.toFixed(1)} × ${h.toFixed(1)} units (${dt.toFixed(0)} ms). STEP emission lands in milestone B.`);
-  pyLog(`text preview: ${text.length} chars, ${layout.glyphs.length} glyphs, ${dt.toFixed(0)}ms`);
-}
