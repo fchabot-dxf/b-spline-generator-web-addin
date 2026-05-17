@@ -446,10 +446,12 @@ def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger):
                  f"SETUP BUILD ({setup_name}): applied {leaf!r} -> "
                  f"{len(results)} item(s); renamed {renamed} -> {base_name!r}")
             applied += 1
+            _log(logger, f"APPLY TEMPLATES CKPT: post-apply, continuing loop ({setup_name})", "DEBUG")
         except Exception as e:
             _log(logger,
                  f"SETUP BUILD ({setup_name}): createFromCAMTemplate({leaf!r}) failed: {e}",
                  "WARNING")
+    _log(logger, f"APPLY TEMPLATES CKPT: function returning applied={applied} ({setup_name})", "DEBUG")
     return applied
 
 

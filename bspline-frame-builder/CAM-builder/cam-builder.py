@@ -39,6 +39,7 @@ CMD_ID            = 'CamBuilder_Command'
 PALETTE_ID        = 'CamBuilder_Palette'
 PANEL_ID          = 'bsplinePanel'    # shared with the rest of the suite
 REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
+TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
 
 PALETTE_NAME      = 'B-spline CAM'
 PALETTE_WIDTH     = 460
@@ -732,6 +733,7 @@ def _do_studio_generate(data=None):
         return
 
     try:
+        _log("CKPT STUDIO 1: about to call _engine.run(mode=generic)")
         report = _engine.run(
             classifier=_classify_body,
             logger=_logger,
@@ -739,6 +741,7 @@ def _do_studio_generate(data=None):
             component_names=component_names,
             profile=profile,
         )
+        _log(f"CKPT STUDIO 2: _engine.run returned (report.ok={report.get('ok')})")
     except Exception:
         _log_error("Studio engine.run failed\n" + traceback.format_exc())
         _send_to_studio_html('report', {
@@ -751,9 +754,13 @@ def _do_studio_generate(data=None):
     # stamped out. Same helper as B-spline mode; runs async in the
     # CAM workspace, so we don't block the palette response.
     if report.get('ok'):
+        _log("CKPT STUDIO 3: calling _kick_off_toolpath_generation")
         _kick_off_toolpath_generation(report)
+        _log("CKPT STUDIO 4: _kick_off_toolpath_generation returned")
 
+    _log("CKPT STUDIO 5: sending report to HTML")
     _send_to_studio_html('report', report)
+    _log("CKPT STUDIO 6: report sent")
 
     if report.get('ok'):
         try:
@@ -784,21 +791,15 @@ def _kick_off_toolpath_generation(report):
     later trips on, say, an unset tool, the user fixes that in the CAM
     workspace, not by us tearing down the setups."""
     try:
+        _log("CKPT TPGEN A: firing deferred TPGen event (runs in main loop, not HTML handler context)")
         app = adsk.core.Application.get()
-        cam = app.activeDocument.products.itemByProductType('CAMProductType')
-        if not cam:
-            _log("toolpath generation skipped — no CAM product in active doc", "WARNING")
+        if not app:
+            _log("toolpath generation skipped — no app", "WARNING")
             return
-        future = cam.generateAllToolpaths(True)
-        # Counting newly-created operations from the report so the JS can
-        # show "Generating toolpaths for N ops" without re-walking setups.
-        op_count = 0
-        for setup_report in (report.get('setups') or []):
-            op_count += int(setup_report.get('ops_created', 0) or 0)
-        _log(f"generateAllToolpaths(skipValid=True) kicked off "
-             f"({op_count} newly-stamped op(s); future={future})")
+        app.fireCustomEvent(TPGEN_EVENT_ID, '{}')
+        _log("CKPT TPGEN A: event fired; handler will run on next Fusion tick")
     except Exception:
-        _log_error("generateAllToolpaths failed\n" + traceback.format_exc())
+        _log_error("fire deferred TPGen failed\n" + traceback.format_exc())
 
 
 def _send_to_html(action, payload):
@@ -865,11 +866,13 @@ def _do_generate():
         return
 
     try:
+        _log("CKPT DOGEN 1: about to call _engine.run(mode=bspline)")
         report = _engine.run(
             classifier=_classify_body,
             logger=_logger,
             mode='bspline',
         )
+        _log(f"CKPT DOGEN 2: _engine.run returned (report.ok={report.get('ok')})")
     except Exception:
         _log_error("B-spline engine.run failed\n" + traceback.format_exc())
         _send_to_html('report', {
@@ -883,9 +886,13 @@ def _do_generate():
     # palette so the user sees the report and the progress bar at the
     # same time.
     if report.get('ok'):
+        _log("CKPT DOGEN 3: calling _kick_off_toolpath_generation")
         _kick_off_toolpath_generation(report)
+        _log("CKPT DOGEN 4: _kick_off_toolpath_generation returned")
 
+    _log("CKPT DOGEN 5: sending report to HTML")
     _send_to_html('report', report)
+    _log("CKPT DOGEN 6: report sent")
 
     # Auto-hide on success: the user is now in the Manufacture workspace
     # with the new MMs + Setups visible. On failure we leave it open so
@@ -913,6 +920,124 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
             _log_error("deferred refresh\n" + traceback.format_exc())
 
 
+class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
+    """Run toolpath generation in Fusion's main event loop context.
+
+    Calling cam.generateToolpath() from inside an HTML palette event handler
+    crashes Fusion. Firing a CustomEvent first lets the HTML handler return
+    cleanly; this notify() then runs in the same context as right-click ->
+    Generate (which works), so per-op generation succeeds.
+
+    Each future is awaited before the next op starts. Rest-machining ops
+    depend on the previous op's toolpath being computed first; firing them
+    all async in parallel gives the rest-machining ops nothing to subtract
+    from and produces wrong / empty toolpaths. Sequential await fixes that.
+    """
+    def notify(self, args):
+        import time
+        try:
+            _log("DEFERRED TPGEN: handler notify() entered")
+            app = adsk.core.Application.get()
+            cam = app.activeDocument.products.itemByProductType('CAMProductType')
+            if not cam:
+                _log("DEFERRED TPGEN: no CAM product", "WARNING")
+                return
+
+            # WARMUP: Fusion's CAM calculator needs to be "awake" before the
+            # first generateToolpath call. After fresh MM/Setup creation it
+            # appears to be in a partial state — the first call crashes the
+            # calculator subsystem. Workarounds that mimic what right-click
+            # does:
+            #   1. Switch to Manufacture workspace (matches what user does
+            #      before right-clicking an op)
+            #   2. Pump the event loop for a beat so any pending background
+            #      work from the just-finished MM/Setup build can settle.
+            try:
+                ui = app.userInterface
+                for k in range(ui.workspaces.count):
+                    ws = ui.workspaces.item(k)
+                    if ws.id == 'CAMEnvironment':
+                        if ui.activeWorkspace.id != 'CAMEnvironment':
+                            ws.activate()
+                            _log("DEFERRED TPGEN: switched to Manufacture workspace for warmup")
+                        break
+            except Exception as e:
+                _log(f"DEFERRED TPGEN: workspace switch failed (non-fatal): {e}", "WARNING")
+
+            _log("DEFERRED TPGEN: warmup wait (settling CAM engine state)")
+            t_warmup_end = time.time() + 1.5
+            while time.time() < t_warmup_end:
+                adsk.doEvents()
+                time.sleep(0.05)
+            _log("DEFERRED TPGEN: warmup done, starting generation loop")
+
+            # BULK GENERATION inside deferred context.
+            # cam.generateAllToolpaths(False) handles rest-machining
+            # sequencing internally — same call Fusion's "Generate All"
+            # menu uses. Running it inside the deferred CustomEvent
+            # context avoids the full-Fusion crash that happens when
+            # the same call is made from inside the HTML palette handler.
+            try:
+                _log("DEFERRED TPGEN: calling cam.generateAllToolpaths(False) [bulk]")
+                t_start = time.time()
+                future = cam.generateAllToolpaths(False)
+                _log(f"DEFERRED TPGEN: bulk future obtained, awaiting completion (n_ops={getattr(future, 'numberOfOperations', '?')})")
+
+                # Wait for the bulk job to complete. doEvents() pumps the UI
+                # so the progress bar updates and we don't freeze Fusion.
+                timeout = 1800.0  # 30 min cap for entire bulk run
+                last_progress_log = 0
+                while True:
+                    try:
+                        if future.isGenerationCompleted:
+                            break
+                    except Exception:
+                        break
+                    adsk.doEvents()
+                    time.sleep(0.1)
+                    elapsed = time.time() - t_start
+                    # Periodic progress log every ~5s
+                    if elapsed - last_progress_log > 5.0:
+                        try:
+                            done = getattr(future, 'numberOfCompleted', '?')
+                            total = getattr(future, 'numberOfOperations', '?')
+                            _log(f"DEFERRED TPGEN: bulk progress {done}/{total} ({elapsed:.0f}s)")
+                        except Exception:
+                            pass
+                        last_progress_log = elapsed
+                    if elapsed > timeout:
+                        _log(f"DEFERRED TPGEN: bulk timed out after {timeout:.0f}s", "WARNING")
+                        break
+
+                elapsed = time.time() - t_start
+                _log(f"DEFERRED TPGEN: bulk completed in {elapsed:.1f}s")
+            except Exception as e:
+                _log(f"DEFERRED TPGEN: bulk generation raised: {e}", "WARNING")
+                _log_error(traceback.format_exc())
+
+            # Post-state audit: walk every op and report which ones got
+            # a toolpath vs which didn't. This tells us which (if any)
+            # individual ops the bulk call rejected.
+            dispatched = 0
+            errors = 0
+            for i in range(cam.setups.count):
+                setup = cam.setups.item(i)
+                for j in range(setup.operations.count):
+                    op = setup.operations.item(j)
+                    try:
+                        if getattr(op, 'hasToolpath', False):
+                            dispatched += 1
+                            _log(f"DEFERRED TPGEN AUDIT: ✓ '{op.name}' in '{setup.name}' has toolpath", "DEBUG")
+                        else:
+                            errors += 1
+                            _log(f"DEFERRED TPGEN AUDIT: ✗ '{op.name}' in '{setup.name}' MISSING toolpath", "WARNING")
+                    except Exception as e:
+                        _log(f"DEFERRED TPGEN AUDIT: '{op.name}' check failed: {e}", "WARNING")
+            _log(f"DEFERRED TPGEN: post-audit ok={dispatched} missing={errors}")
+        except Exception:
+            _log_error("deferred TPGen\n" + traceback.format_exc())
+
+
 def _register_refresh_event():
     """Register the deferred-refresh CustomEvent. Always unregisters any
     pre-existing event by the same id first so a previous addin lifecycle
@@ -932,6 +1057,20 @@ def _register_refresh_event():
         h = _DeferredRefreshHandler()
         _refresh_event.add(h)
         _refresh_handlers.append(h)
+
+        # Also register the deferred toolpath-gen event. Same lifecycle as
+        # the refresh event; handler runs in main loop context so per-op
+        # generateToolpath() doesn't crash the way it does from HTML
+        # palette event handlers.
+        try:
+            app.unregisterCustomEvent(TPGEN_EVENT_ID)
+        except Exception:
+            pass
+        _tpgen_event = app.registerCustomEvent(TPGEN_EVENT_ID)
+        h_tp = _DeferredTPGenHandler()
+        _tpgen_event.add(h_tp)
+        _refresh_handlers.append(h_tp)
+
         _refresh_registered = True
     except Exception:
         _refresh_registered = False

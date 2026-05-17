@@ -107,11 +107,15 @@ def build_all_mms(cam, design, classifier, logger=None):
             out[rule] = mm
 
     if original_active is not None:
+        _log(logger, f"MM BUILD CKPT 1: about to restore activeEditObject (type={type(original_active).__name__})", "DEBUG")
         try:
             original_active.activate()
+            _log(logger, "MM BUILD CKPT 1: restore succeeded", "DEBUG")
         except Exception as e:
             _log(logger, f"MM BUILD: restore activeEditObject failed: {e}", "DEBUG")
-
+    else:
+        _log(logger, "MM BUILD CKPT 1: no original_active to restore", "DEBUG")
+    _log(logger, f"MM BUILD CKPT 2: returning out (size={len(out)})", "DEBUG")
     return out
 
 
@@ -974,7 +978,34 @@ def _apply_occurrence_filter(mm, rule, classifier, logger):
             occ_name = '<unnamed>'
         cls = _classify_occurrence(occ)
 
-        if cls in delete:
+        # Surface-only occurrences are filtered out of CAM MMs. Per user
+        # requirement: MMs should contain only solid bodies. If b-spline
+        # ops need surface geometry, the template/operation needs to
+        # source it from somewhere else (e.g., extract solid from surface
+        # in the source design before MM build).
+        surface_only = False
+        try:
+            comp_for_bodies = occ.component
+            bodies = comp_for_bodies.bRepBodies
+            if bodies.count > 0:
+                has_solid = False
+                for bi in range(bodies.count):
+                    b = bodies.item(bi)
+                    try:
+                        if b.isSolid:
+                            has_solid = True
+                            break
+                    except Exception:
+                        has_solid = True
+                        break
+                surface_only = not has_solid
+        except Exception:
+            surface_only = False
+
+        if surface_only:
+            to_delete.append((occ, occ_name, f"{cls}+surface_only"))
+            _log(logger, f"MM FILTER ({rule}): DEL surface-only occ '{occ_name}' (class={cls})", "DEBUG")
+        elif cls in delete:
             to_delete.append((occ, occ_name, cls))
         else:
             kept += 1
@@ -1270,11 +1301,15 @@ def build_mms_from_components(cam, design, component_names, logger=None):
             out[comp_name] = mm
 
     if original_active is not None:
+        _log(logger, f"MM BUILD GENERIC CKPT 1: about to restore activeEditObject (type={type(original_active).__name__})", "DEBUG")
         try:
             original_active.activate()
+            _log(logger, "MM BUILD GENERIC CKPT 1: restore succeeded", "DEBUG")
         except Exception as e:
             _log(logger, f"MM BUILD GENERIC: restore activeEditObject failed: {e}", "DEBUG")
-
+    else:
+        _log(logger, "MM BUILD GENERIC CKPT 1: no original_active to restore", "DEBUG")
+    _log(logger, f"MM BUILD GENERIC CKPT 2: returning out (size={len(out)})", "DEBUG")
     return out
 
 
