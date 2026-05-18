@@ -250,25 +250,6 @@ if result.returncode != 0:
 print("Cloudflare Pages deployment complete.")
 
 
-# 3b. Also deploy the step-editor palette to its own Pages project so
-# https://step-editor.pages.dev/ stays in sync with the in-Fusion build.
-# This step is best-effort: a failed step-editor push must NOT poison
-# the b-spline-gen deploy that already succeeded.
-print()
-print("=" * 60)
-print("Deploying step-editor to Cloudflare Pages (separate project)…")
-print("=" * 60)
-step_editor_deploy = os.path.join(os.path.dirname(__file__), 'deploy_step_editor_cloudflare.py')
-if os.path.isfile(step_editor_deploy):
-    se_result = subprocess.run([sys.executable, step_editor_deploy], cwd=workspace_dir)
-    if se_result.returncode != 0:
-        print(f"Warning: step-editor deploy exited {se_result.returncode}. b-spline-gen deploy is still live.")
-    else:
-        print("step-editor.pages.dev refreshed.")
-else:
-    print(f"Warning: {step_editor_deploy} not found — skipping step-editor deploy.")
-
-
 # 4. Upload distribution ZIP to the GitHub `latest` release so the website's
 # download button (ADDIN_RELEASE_URL in main/main.js) gets the freshest bits.
 GH_CMD = shutil.which("gh") or shutil.which("gh.cmd")

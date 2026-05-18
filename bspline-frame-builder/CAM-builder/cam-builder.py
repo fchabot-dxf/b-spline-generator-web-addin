@@ -40,6 +40,14 @@ PALETTE_ID        = 'CamBuilder_Palette'
 PANEL_ID          = 'bsplinePanel'    # shared with the rest of the suite
 REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
 TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
+SELORIG_EVENT_ID  = 'CamBuilder_DeferredSelectOrigin'
+
+# Flag set by _do_select_origin_impl right before invoking IronSetup;
+# the commandCreated listener below checks it to know whether THIS
+# IronSetup open should auto-activate the Part Position tab. Cleared
+# after one use so a manual Edit Setup from the user doesn't get
+# the tab forced.
+_force_part_position_tab = False
 
 PALETTE_NAME      = 'B-spline CAM'
 PALETTE_WIDTH     = 460
@@ -235,8 +243,17 @@ class _HtmlEventHandler(adsk.core.HTMLEventHandler):
             ea = adsk.core.HTMLEventArgs.cast(args)
             data = json.loads(ea.data) if ea.data else {}
             action = ea.action or data.get('action')
-            if action == 'generate':
+            # 'generate' = legacy single-button; treat as alias for 'build'
+            # so existing callers don't break. New palette uses 'build'
+            # and 'apply_toolpaths' as separate actions.
+            if action == 'generate' or action == 'build':
                 _do_generate()
+            elif action == 'apply_toolpaths':
+                _do_apply_toolpaths()
+            elif action == 'add_machine':
+                _do_add_machine()
+            elif action == 'select_origin':
+                _do_select_origin()
             elif action == 'preview':
                 _do_preview()
             elif action == 'list_cam_templates':
@@ -865,12 +882,17 @@ def _do_generate():
         })
         return
 
+    # Phase: build only — no templates, no machine, no toolpath gen.
+    # User attaches machine via ADD MACHINE button, picks origin via
+    # SELECT ORIGIN, then runs APPLY TOOLPATHS to finish.
     try:
-        _log("CKPT DOGEN 1: about to call _engine.run(mode=bspline)")
+        _log("CKPT DOGEN 1: about to call _engine.run(mode=bspline, skip_templates=True, skip_machine=True)")
         report = _engine.run(
             classifier=_classify_body,
             logger=_logger,
             mode='bspline',
+            skip_templates=True,
+            skip_machine=True,
         )
         _log(f"CKPT DOGEN 2: _engine.run returned (report.ok={report.get('ok')})")
     except Exception:
@@ -881,30 +903,277 @@ def _do_generate():
         })
         return
 
-    # Kick off toolpath generation for every operation Fusion was just
-    # handed (template-stamped ops land empty). Fires before we hide the
-    # palette so the user sees the report and the progress bar at the
-    # same time.
-    if report.get('ok'):
-        _log("CKPT DOGEN 3: calling _kick_off_toolpath_generation")
-        _kick_off_toolpath_generation(report)
-        _log("CKPT DOGEN 4: _kick_off_toolpath_generation returned")
+    # NO toolpath generation here — that's now the APPLY TOOLPATHS button.
+    # User pauses between BUILD and APPLY TOOLPATHS to click Origin in
+    # the Part Position panel of one setup (the only manual step).
 
-    _log("CKPT DOGEN 5: sending report to HTML")
+    # Friendly completion message for the palette status bar.
+    n_mms = sum(1 for v in report.get('mms', {}).values() if v)
+    n_setups = sum(1 for s in report.get('setups', []) if s.get('ok'))
+    report['msg'] = f"BUILD complete — {n_mms} MM(s), {n_setups} setup(s) created."
+    _log("CKPT DOGEN 5: sending build-phase report to HTML")
     _send_to_html('report', report)
     _log("CKPT DOGEN 6: report sent")
 
-    # Auto-hide on success: the user is now in the Manufacture workspace
-    # with the new MMs + Setups visible. On failure we leave it open so
-    # the error state is still readable.
-    if report.get('ok'):
+    # Don't auto-hide the palette — user still needs to click Origin
+    # in Part Position, then click APPLY TOOLPATHS to finish.
+
+
+def _do_add_machine():
+    """Assign the default machine (Ultimate Bee 3 axis) to every Setup.
+
+    Triggered by the ADD MACHINE button in the palette. Separated from
+    BUILD so the user can build setups without a machine, then attach
+    one explicitly when ready (or skip it for non-machine projects).
+    """
+    try:
+        app = adsk.core.Application.get()
+        doc = app.activeDocument
+        if not doc:
+            _send_to_html('report', {'ok': False, 'msg': 'No active document.'})
+            return
+        cam = doc.products.itemByProductType('CAMProductType')
+        if not cam:
+            _send_to_html('report', {'ok': False, 'msg': 'No CAM product — open Manufacture workspace.'})
+            return
+        if cam.setups.count == 0:
+            _send_to_html('report', {'ok': False, 'msg': 'No setups — click BUILD SETUPS first.'})
+            return
+
+        from cam_engine import setup_builder as _sb
+        _log(f"ADD MACHINE: assigning to {cam.setups.count} setups")
+        n_ok = 0
+        n_fail = 0
+        for i in range(cam.setups.count):
+            s = cam.setups.item(i)
+            ok = _sb._assign_default_machine(s, s.name, _logger)
+            if ok:
+                n_ok += 1
+            else:
+                n_fail += 1
+        _log(f"ADD MACHINE: done ok={n_ok} fail={n_fail} of {cam.setups.count}")
+        _send_to_html('report', {
+            'ok': n_ok > 0,
+            'msg': f'Machine attached to {n_ok}/{cam.setups.count} setups.',
+        })
+    except Exception:
+        _log_error("_do_add_machine\n" + traceback.format_exc())
+        _send_to_html('report', {'ok': False, 'msg': 'Add machine raised — see log.'})
+
+
+def _do_select_origin():
+    """Fire the deferred SelectOrigin event so the actual ui.selectEntity
+    call runs in the main event loop. Inside the HTML handler context,
+    selectEntity doesn't render the CAM machine geometry (user reports
+    machine becomes invisible during pick). The CustomEvent deferral
+    pattern matches what _kick_off_toolpath_generation does for the same
+    reason.
+    """
+    try:
+        app = adsk.core.Application.get()
+        _log("CKPT SELORIG A: firing deferred select-origin event")
+        app.fireCustomEvent(SELORIG_EVENT_ID, '{}')
+        _log("CKPT SELORIG A: event fired; handler will run on next Fusion tick")
+        # No immediate report — the handler will send one when done.
+    except Exception:
+        _log_error("_do_select_origin\n" + traceback.format_exc())
+        _send_to_html('report', {'ok': False, 'msg': 'Select origin (kickoff) raised — see log.'})
+
+
+def _do_select_origin_impl():
+    """Actual selectEntity + binding logic. Runs from the deferred
+    handler so the CAM machine geometry is rendered properly during
+    the viewport pick. Don't call this directly from HTML handlers.
+    """
+    try:
+        app = adsk.core.Application.get()
+        ui = app.userInterface
+
+        doc = app.activeDocument
+        if not doc:
+            _send_to_html('report', {'ok': False, 'msg': 'No active document.'})
+            return
+        cam = doc.products.itemByProductType('CAMProductType')
+        if not cam:
+            _send_to_html('report', {'ok': False, 'msg': 'No CAM product — open Manufacture workspace.'})
+            return
+        if cam.setups.count == 0:
+            _send_to_html('report', {'ok': False, 'msg': 'No setups — click BUILD first.'})
+            return
+
+        # Ensure CAM workspace is active so the machine is rendered in the
+        # viewport when selectEntity prompts. Some filter strings cause
+        # selectEntity to switch active product / hide non-matching
+        # geometry, which would make the machine invisible right when
+        # the user needs to click on it.
         try:
-            ui      = adsk.core.Application.get().userInterface
-            palette = ui.palettes.itemById(PALETTE_ID)
-            if palette:
-                palette.isVisible = False
-        except Exception:
-            _log_error("B-spline auto-hide failed\n" + traceback.format_exc())
+            for k in range(ui.workspaces.count):
+                ws = ui.workspaces.item(k)
+                if ws.id == 'CAMEnvironment':
+                    if ui.activeWorkspace.id != 'CAMEnvironment':
+                        ws.activate()
+                        _log("SELECT ORIGIN: activated CAM workspace before prompt")
+                    break
+        except Exception as e:
+            _log(f"SELECT ORIGIN: workspace switch failed (non-fatal): {e}", "WARNING")
+
+        # Make sure ALL setups have their machine light-bulbs on so the
+        # machine geometry stays visible during the picking prompt. Also
+        # nudge the active setup forward (some Fusion builds dim non-
+        # active setup geometry).
+        for i in range(cam.setups.count):
+            s = cam.setups.item(i)
+            try:
+                if hasattr(s, 'isLightBulbOn'):
+                    s.isLightBulbOn = True
+            except Exception:
+                pass
+
+        # Activate the first setup with a machine. setup.activate() puts
+        # it in active state in the CAM tree, which makes Fusion render
+        # the attached machine geometry — necessary for selectEntity to
+        # offer vertices on the machine.
+        target = None
+        for i in range(cam.setups.count):
+            s = cam.setups.item(i)
+            if s.machine is not None:
+                target = s
+                break
+        if target is None and cam.setups.count > 0:
+            target = cam.setups.item(0)
+        if target is not None:
+            try:
+                target.activate()
+                adsk.doEvents()
+                _log(f"SELECT ORIGIN: activated setup '{target.name}' for machine visibility")
+            except Exception as e:
+                _log(f"SELECT ORIGIN: setup.activate() failed (non-fatal): {type(e).__name__}: {e}", "WARNING")
+
+        # Prompt the user to click on the machine in the viewport.
+        # IronSetup as Edit Setup is NOT reachable from the public API,
+        # so we use selectEntity with the machine made visible by the
+        # setup.activate() above. If the machine still isn't visible,
+        # fallback: user opens Edit Setup manually via browser double-
+        # click and sets Part Position there, then clicks APPLY TOOLPATHS.
+        _log("SELECT ORIGIN: prompting user via selectEntity")
+        try:
+            sel = ui.selectEntity(
+                "Click the origin / fence vertex on the machine — if the machine isn't visible, double-click the setup in the CAM tree → Edit Setup → Part Position → Table Attach Point → click vertex → OK, then click APPLY TOOLPATHS.",
+                "Vertices,ConstructionPoints,SketchPoints,Edges,Faces",
+            )
+        except Exception as e:
+            _log(f"SELECT ORIGIN: selectEntity raised: {type(e).__name__}: {e}", "WARNING")
+            _send_to_html('report', {'ok': False, 'msg': f'Selection cancelled or failed: {e}'})
+            return
+
+        if not sel or not sel.entity:
+            _send_to_html('report', {'ok': False, 'msg': 'Selection cancelled.'})
+            return
+
+        ent = sel.entity
+        _log(f"SELECT ORIGIN: got entity type={type(ent).__name__}")
+
+        # Bind to every setup
+        n_ok = 0
+        n_fail = 0
+        for i in range(cam.setups.count):
+            s = cam.setups.item(i)
+            try:
+                p = s.parameters.itemByName('job_positionAttach')
+                if p is None:
+                    n_fail += 1
+                    continue
+                p.value.value = [ent]
+                if p.value.value.size() > 0:
+                    n_ok += 1
+                else:
+                    n_fail += 1
+            except Exception:
+                n_fail += 1
+
+        # Persist the token
+        try:
+            from cam_engine import setup_builder as _sb
+            _sb._save_part_attach_token(ent.entityToken, _logger)
+        except Exception as e:
+            _log(f"SELECT ORIGIN: token save failed: {e}", "WARNING")
+
+        _log(f"SELECT ORIGIN: done — ok={n_ok} fail={n_fail}")
+        _send_to_html('report', {
+            'ok': n_ok > 0,
+            'msg': f'Attach Point bound on {n_ok}/{cam.setups.count} setups.' + (f' {n_fail} failed.' if n_fail else ''),
+        })
+
+    except Exception:
+        _log_error("_do_select_origin\n" + traceback.format_exc())
+        _send_to_html('report', {'ok': False, 'msg': 'Select origin raised — see log.'})
+
+
+def _do_apply_toolpaths():
+    """Phase 2 of the split flow: apply templates + run toolpath gen.
+
+    Triggered by the APPLY TOOLPATHS button. Assumes BUILD ran first
+    and the user has clicked Origin in Part Position → Table Attach
+    Point on one setup. This function:
+      1. Applies cloud templates to all existing setups (per SETUP_SPECS)
+      2. Fires the deferred TPGen event which:
+         - Captures/replays the Table Attach Point token
+         - Forces all tool numbers to 1
+         - Runs cam.generateAllToolpaths(False)
+    """
+    try:
+        _load_engine()
+    except Exception:
+        _log_error("B-spline engine load failed\n" + traceback.format_exc())
+        _send_to_html('report', {'ok': False, 'msg': 'Engine load failed — see log.'})
+        return
+
+    app = adsk.core.Application.get()
+    doc = app.activeDocument
+    if not doc:
+        _log("APPLY TOOLPATHS: no active doc", "WARNING")
+        _send_to_html('report', {'ok': False, 'msg': 'No active document.'})
+        return
+
+    cam = doc.products.itemByProductType('CAMProductType')
+    if not cam:
+        _log("APPLY TOOLPATHS: no CAM product", "WARNING")
+        _send_to_html('report', {'ok': False, 'msg': 'No CAM product.'})
+        return
+
+    if cam.setups.count == 0:
+        _log("APPLY TOOLPATHS: no setups (click BUILD first)", "WARNING")
+        _send_to_html('report', {
+            'ok': False,
+            'msg': 'No setups in this document — click BUILD first.',
+        })
+        return
+
+    try:
+        from cam_engine import setup_builder as _sb
+        _log("APPLY TOOLPATHS: applying templates to existing setups")
+        n = _sb.apply_templates_to_existing_setups(cam, logger=_logger)
+        _log(f"APPLY TOOLPATHS: templates applied to {n} setup(s)")
+    except Exception:
+        _log_error("APPLY TOOLPATHS: template apply raised\n" + traceback.format_exc())
+        _send_to_html('report', {'ok': False, 'msg': 'Template apply raised — see log.'})
+        return
+
+    # Kick off deferred toolpath generation (also handles Table Attach
+    # token capture/replay + tool renumber via the existing handler).
+    _log("APPLY TOOLPATHS: kicking off deferred toolpath generation")
+    fake_report = {
+        'ok': True,
+        'mode': 'bspline',
+        'setups': [{'name': cam.setups.item(i).name, 'ok': True}
+                   for i in range(cam.setups.count)],
+    }
+    _kick_off_toolpath_generation(fake_report)
+
+    _send_to_html('report', {
+        'ok': True,
+        'msg': f'Templates applied to {n} setup(s). Toolpath generation in progress.',
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -918,6 +1187,68 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
             run(None)
         except Exception:
             _log_error("deferred refresh\n" + traceback.format_exc())
+
+
+class _IronSetupCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    """Activates the Part Position tab on the Edit Setup dialog when our
+    SELECT ATTACH POINT button triggered the open (flag-gated so manual
+    Edit Setup from the browser stays untouched).
+
+    Tab IDs and labels vary across Fusion builds, so the handler scans
+    every TabCommandInput on the command and activates the one whose id
+    or name matches 'partposition' / 'positioning' / 'part position'.
+    First match wins.
+    """
+    def notify(self, args):
+        global _force_part_position_tab
+        if not _force_part_position_tab:
+            return
+        # Consume the flag — only one auto-activation per button click.
+        _force_part_position_tab = False
+        try:
+            cmd = args.command
+            inputs = cmd.commandInputs
+            _log(f"PART POS TAB: scanning {inputs.count} command inputs on IronSetup")
+            target = None
+            for i in range(inputs.count):
+                inp = inputs.item(i)
+                # TabCommandInput is the type Fusion uses for tab bars
+                if type(inp).__name__ != 'TabCommandInput':
+                    continue
+                tid = (inp.id or '').lower()
+                tname = (getattr(inp, 'name', '') or '').lower()
+                _log(f"  TabInput id={inp.id!r} name={getattr(inp,'name','')!r}")
+                if 'partposition' in tid or 'position' in tid or 'part position' in tname or 'position' in tname:
+                    target = inp
+                    break
+            if target is not None:
+                try:
+                    target.activate()
+                    _log(f"PART POS TAB: activated tab id={target.id!r}")
+                except Exception as e:
+                    _log(f"PART POS TAB: activate failed: {type(e).__name__}: {e}", "WARNING")
+            else:
+                _log("PART POS TAB: no Part Position tab found in IronSetup inputs", "WARNING")
+        except Exception:
+            _log_error("PART POS TAB handler\n" + traceback.format_exc())
+
+
+class _DeferredSelectOriginHandler(adsk.core.CustomEventHandler):
+    """Run the SELECT ATTACH POINT pick in the main event loop.
+
+    selectEntity called from inside an HTML palette event handler
+    leaves the CAM machine geometry hidden — user can't click on the
+    machine to set Table Attach Point. Deferring via CustomEvent puts
+    the call in the same context as a right-click → Edit Setup, where
+    the machine renders properly.
+    """
+    def notify(self, args):
+        try:
+            _log("DEFERRED SELORIG: handler notify() entered")
+            _do_select_origin_impl()
+            _log("DEFERRED SELORIG: handler complete")
+        except Exception:
+            _log_error("deferred select-origin\n" + traceback.format_exc())
 
 
 class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
@@ -971,21 +1302,56 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                 time.sleep(0.05)
             _log("DEFERRED TPGEN: warmup done, starting generation loop")
 
-            # BULK GENERATION inside deferred context.
-            # cam.generateAllToolpaths(False) handles rest-machining
-            # sequencing internally — same call Fusion's "Generate All"
-            # menu uses. Running it inside the deferred CustomEvent
-            # context avoids the full-Fusion crash that happens when
-            # the same call is made from inside the HTML palette handler.
+            # POSITION DIAGNOSTICS — heavy logging of every relevant
+            # coordinate so we can correlate .mch table_0 values with
+            # where the workpiece actually lands. Runs unconditionally
+            # (cheap; just reads + logs).
             try:
-                _log("DEFERRED TPGEN: calling cam.generateAllToolpaths(False) [bulk]")
-                t_start = time.time()
-                future = cam.generateAllToolpaths(False)
-                _log(f"DEFERRED TPGEN: bulk future obtained, awaiting completion (n_ops={getattr(future, 'numberOfOperations', '?')})")
+                from cam_engine import setup_builder as _sb
+                _sb.log_position_diagnostics(cam, logger=_logger)
+            except Exception as _e:
+                _log(f"DEFERRED TPGEN: pos diag raised: {type(_e).__name__}: {_e}", "WARNING")
 
-                # Wait for the bulk job to complete. doEvents() pumps the UI
-                # so the progress bar updates and we don't freeze Fusion.
-                timeout = 1800.0  # 30 min cap for entire bulk run
+            # PART POSITION — bind Table Attach Point on every setup,
+            # AFTER warmup, BEFORE toolpath generation. Done in this
+            # deferred context (not during build_setup) because the CAM
+            # engine isn't stable enough mid-build to accept the
+            # cross-doc proxy assignment.
+            try:
+                _log("DEFERRED TPGEN: applying Table Attach Point to all setups")
+                # Pass the cam-builder logger so PART ATTACH log lines
+                # go to the same debug file as everything else.
+                _sb.apply_table_attach_to_all_setups(cam, logger=_logger)
+            except Exception as _e:
+                _log(f"DEFERRED TPGEN: table attach apply raised: {type(_e).__name__}: {_e}", "WARNING")
+
+            # TOOL RENUMBER — force every op's tool_number to 1. The
+            # templates bake in T1/T2 from their original authoring; the
+            # user runs a single-tool change workflow so every op is T1.
+            try:
+                _log("DEFERRED TPGEN: forcing all tool numbers to 1")
+                _sb.force_all_tool_numbers_to_one(cam, logger=_logger)
+            except Exception as _e:
+                _log(f"DEFERRED TPGEN: tool renumber raised: {type(_e).__name__}: {_e}", "WARNING")
+
+            # BULK GENERATION via cam.generateAllToolpaths(False).
+            # Sequential per-op generation (which we tried) returned
+            # 'no toolpath' for the Morphed Spiral ops in 1s — they
+            # rely on intermediate stock state that doesn't propagate
+            # synchronously through the per-op API. Bulk lets Fusion
+            # internally manage the cascade, same as right-click →
+            # 'Generate All' in the UI.
+            t_start = time.time()
+            n_ops_total = 0
+            n_ops_ok = 0
+            n_ops_failed = 0
+            for i in range(cam.setups.count):
+                n_ops_total += cam.setups.item(i).operations.count
+            try:
+                _log(f"DEFERRED TPGEN: starting BULK generation of {n_ops_total} ops")
+                future = cam.generateAllToolpaths(False)
+                # Wait for completion
+                bulk_timeout = 1800.0
                 last_progress_log = 0
                 while True:
                     try:
@@ -996,7 +1362,6 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                     adsk.doEvents()
                     time.sleep(0.1)
                     elapsed = time.time() - t_start
-                    # Periodic progress log every ~5s
                     if elapsed - last_progress_log > 5.0:
                         try:
                             done = getattr(future, 'numberOfCompleted', '?')
@@ -1005,15 +1370,17 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                         except Exception:
                             pass
                         last_progress_log = elapsed
-                    if elapsed > timeout:
-                        _log(f"DEFERRED TPGEN: bulk timed out after {timeout:.0f}s", "WARNING")
+                    if elapsed > bulk_timeout:
+                        _log(f"DEFERRED TPGEN: bulk timed out after {bulk_timeout:.0f}s", "WARNING")
                         break
-
-                elapsed = time.time() - t_start
-                _log(f"DEFERRED TPGEN: bulk completed in {elapsed:.1f}s")
+                _log(f"DEFERRED TPGEN: bulk completed in {time.time()-t_start:.1f}s")
             except Exception as e:
                 _log(f"DEFERRED TPGEN: bulk generation raised: {e}", "WARNING")
                 _log_error(traceback.format_exc())
+            # (Old sequential per-op generation removed — bulk via
+            # cam.generateAllToolpaths(False) above handles rest-machining
+            # cascade internally. Sequential per-op returned empty
+            # toolpaths for ops dependent on intermediate stock state.)
 
             # Post-state audit: walk every op and report which ones got
             # a toolpath vs which didn't. This tells us which (if any)
@@ -1034,6 +1401,16 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                     except Exception as e:
                         _log(f"DEFERRED TPGEN AUDIT: '{op.name}' check failed: {e}", "WARNING")
             _log(f"DEFERRED TPGEN: post-audit ok={dispatched} missing={errors}")
+
+            # Final completion notification to the palette
+            try:
+                _send_to_html('report', {
+                    'ok': errors == 0,
+                    'msg': f"TOOLPATHS complete — {dispatched} ops ok"
+                           + (f", {errors} missing" if errors else ""),
+                })
+            except Exception:
+                pass
         except Exception:
             _log_error("deferred TPGen\n" + traceback.format_exc())
 
@@ -1070,6 +1447,35 @@ def _register_refresh_event():
         h_tp = _DeferredTPGenHandler()
         _tpgen_event.add(h_tp)
         _refresh_handlers.append(h_tp)
+
+        # Deferred select-origin event. Same pattern: ui.selectEntity called
+        # from inside an HTML palette handler runs in a context where the
+        # CAM machine isn't visible. Deferring to main loop lets the
+        # machine render properly during the pick.
+        try:
+            app.unregisterCustomEvent(SELORIG_EVENT_ID)
+        except Exception:
+            pass
+        _selorig_event = app.registerCustomEvent(SELORIG_EVENT_ID)
+        h_so = _DeferredSelectOriginHandler()
+        _selorig_event.add(h_so)
+        _refresh_handlers.append(h_so)
+
+        # IronSetup commandCreated handler: when the SELECT ATTACH POINT
+        # button opens the Edit Setup dialog, auto-activate the Part
+        # Position tab so the user can immediately pick Table Attach
+        # Point without hunting tabs. Only fires when our button set
+        # _force_part_position_tab=True — manual Edit Setup from the
+        # user's own browser double-click stays at whatever tab Fusion
+        # remembers.
+        try:
+            iron_setup_cd = app.userInterface.commandDefinitions.itemById('IronSetup')
+            if iron_setup_cd is not None:
+                h_iscc = _IronSetupCommandCreatedHandler()
+                iron_setup_cd.commandCreated.add(h_iscc)
+                _refresh_handlers.append(h_iscc)
+        except Exception as e:
+            _log_error(f"_register IronSetup commandCreated\n{traceback.format_exc()}")
 
         _refresh_registered = True
     except Exception:
@@ -1315,3 +1721,4 @@ def _log(msg, level="INFO"):
 
 def _log_error(msg):
     _log("ERROR: " + msg, "ERROR")
+

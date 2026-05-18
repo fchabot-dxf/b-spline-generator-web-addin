@@ -334,21 +334,47 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
     # 4. Write each snapshot entry. Skip names that already exist (the
     #    MM may already carry the param if this is a re-run, or if the
     #    user has hand-authored one in MM scope).
+    #
+    # Heavy per-iteration logging: this loop has shown a hard crash in
+    # the field where the log line for one successful add() is partially
+    # written and Fusion dies before the next iteration's add() returns.
+    # We log BEFORE and AFTER each add() with the full entry contents so
+    # the last line on disk identifies exactly which parameter triggered
+    # the crash. _log writes are independent file open/append/close calls
+    # in fb_logger, so each one flushes to disk before returning.
     copied = 0
     skipped = 0
     failed = 0
-    for entry in snapshot:
+    _log(logger,
+         f"PARAM PROP ({mm.name}): entering write loop, {len(snapshot)} entries",
+         "DEBUG")
+    for idx, entry in enumerate(snapshot):
         name = entry['name']
+        _log(logger,
+             f"PARAM PROP CKPT 1 [{idx}/{len(snapshot)}] ({mm.name}): about to look up existing param '{name}'",
+             "DEBUG")
         try:
             existing = mm_user_params.itemByName(name)
         except Exception:
             existing = None
         if existing:
             skipped += 1
+            _log(logger,
+                 f"PARAM PROP CKPT 2 [{idx}/{len(snapshot)}] ({mm.name}): '{name}' already exists, skipping",
+                 "DEBUG")
             continue
+        _log(logger,
+             f"PARAM PROP CKPT 3 [{idx}/{len(snapshot)}] ({mm.name}): about to add '{name}' expr={entry['expression']!r} unit={entry['unit']!r}",
+             "DEBUG")
         try:
             value = adsk.core.ValueInput.createByString(entry['expression'])
+            _log(logger,
+                 f"PARAM PROP CKPT 4 [{idx}/{len(snapshot)}] ({mm.name}): ValueInput created for '{name}', calling mm_user_params.add()",
+                 "DEBUG")
             param = mm_user_params.add(name, value, entry['unit'], entry['comment'])
+            _log(logger,
+                 f"PARAM PROP CKPT 5 [{idx}/{len(snapshot)}] ({mm.name}): mm_user_params.add('{name}') returned {'<param>' if param else 'None'}",
+                 "DEBUG")
             if param:
                 copied += 1
                 _log(logger,
@@ -359,8 +385,11 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
                 _log(logger, f"PARAM PROP ({mm.name}): add returned None for '{name}'", "WARNING")
         except Exception as e:
             failed += 1
-            _log(logger, f"PARAM PROP ({mm.name}): add '{name}' raised: {e}", "WARNING")
+            _log(logger, f"PARAM PROP ({mm.name}): add '{name}' raised: {type(e).__name__}: {e}", "WARNING")
 
+    _log(logger,
+         f"PARAM PROP CKPT END ({mm.name}): exited write loop, copied={copied} skipped={skipped} failed={failed} of {len(snapshot)} source params",
+         "DEBUG")
     _log(logger, f"PARAM PROP ({mm.name}): copied={copied} skipped={skipped} failed={failed} of {len(snapshot)} source params")
     return copied
 

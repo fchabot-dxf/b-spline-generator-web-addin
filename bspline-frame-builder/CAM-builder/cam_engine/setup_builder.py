@@ -20,12 +20,705 @@ Reference: see ``CAM_API_NOTES.md`` -- "Setup creation", "WCS
 programmatically", "Stock", "Empty Setups".
 """
 
+import os
+import json
+
 import adsk.core
 import adsk.cam
 import adsk.fusion
 
 from . import parameter_introspect as pi
 from cam_utils import get_design
+
+
+# Settings file for the Table Attach Point entity token. Lives in the
+# addin source folder so it persists across projects (same machine, same
+# origin point — one captured token works for every project that uses the
+# Ultimate Bee). The file is JSON: {'table_attach_token': '...'}.
+_PART_ATTACH_SETTINGS_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    'part_attach_token.json',
+)
+
+
+# Default machine assigned to every Setup created by this engine.
+DEFAULT_SETUP_MACHINE_URL = "cloud://Ultimate Bee 3 axis.mch"
+
+
+def _assign_default_machine(setup, setup_name, logger):
+    """Assign the project default machine to a freshly-created Setup.
+
+    Heavy logging at every step so we can see exactly where this
+    fails when it does. Non-fatal: any failure logs and continues
+    without an attached machine.
+    """
+    # Step A: function entry — proves the call site executed
+    _log(logger, f"SETUP MACHINE ({setup_name}): A — function entry", "DEBUG")
+
+    # Step B: setup validity
+    try:
+        _log(logger, f"SETUP MACHINE ({setup_name}): B — setup type={type(setup).__name__} isValid={getattr(setup, 'isValid', '?')}", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): B — could not introspect setup: {e}", "DEBUG")
+
+    # Step C: machine.before — what's currently on the setup
+    try:
+        before = setup.machine
+        if before is None:
+            _log(logger, f"SETUP MACHINE ({setup_name}): C — setup.machine before = None", "DEBUG")
+        else:
+            _log(logger, f"SETUP MACHINE ({setup_name}): C — setup.machine before = {before.vendor!r}/{before.model!r}", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): C — read setup.machine raised: {e}", "WARNING")
+
+    # Step D: get CAM manager & library
+    try:
+        cam_mgr = adsk.cam.CAMManager.get()
+        ml = cam_mgr.libraryManager.machineLibrary
+        _log(logger, f"SETUP MACHINE ({setup_name}): D — got machineLibrary", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): D — CAMManager/library access failed: {e}", "WARNING")
+        return False
+
+    # Step E: build URL
+    try:
+        url = adsk.core.URL.create(DEFAULT_SETUP_MACHINE_URL)
+        _log(logger, f"SETUP MACHINE ({setup_name}): E — URL.create({DEFAULT_SETUP_MACHINE_URL!r}) -> {url.toString()!r}", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): E — URL.create failed: {e}", "WARNING")
+        return False
+
+    # Step F: load machine via machineAtURL
+    machine = None
+    try:
+        machine = ml.machineAtURL(url)
+        _log(logger, f"SETUP MACHINE ({setup_name}): F — machineAtURL returned {'<None>' if machine is None else f'{machine.vendor!r}/{machine.model!r}'}", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): F — machineAtURL raised: {e}", "WARNING")
+        return False
+    if machine is None:
+        _log(logger, f"SETUP MACHINE ({setup_name}): F — machine is None; aborting", "WARNING")
+        return False
+
+    # Step G: try setup.machine = machine
+    g_success = False
+    try:
+        setup.machine = machine
+        g_success = True
+        _log(logger, f"SETUP MACHINE ({setup_name}): G — setup.machine = machine OK (no exception)", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): G — setup.machine = machine raised: {type(e).__name__}: {e}", "WARNING")
+
+    # Step H: try setup.machineDefinitionURL = url (alternate path)
+    h_success = False
+    if not g_success:
+        try:
+            setup.machineDefinitionURL = DEFAULT_SETUP_MACHINE_URL
+            h_success = True
+            _log(logger, f"SETUP MACHINE ({setup_name}): H — setup.machineDefinitionURL = URL OK", "DEBUG")
+        except Exception as e:
+            _log(logger, f"SETUP MACHINE ({setup_name}): H — setup.machineDefinitionURL raised: {type(e).__name__}: {e}", "WARNING")
+
+    # Step I: verify by reading back
+    try:
+        after = setup.machine
+        if after is None:
+            _log(logger, f"SETUP MACHINE ({setup_name}): I — setup.machine AFTER assignment is STILL None — write silently failed", "WARNING")
+        else:
+            _log(logger, f"SETUP MACHINE ({setup_name}): I — setup.machine AFTER = {after.vendor!r}/{after.model!r} ✓")
+    except Exception as e:
+        _log(logger, f"SETUP MACHINE ({setup_name}): I — read after-assignment failed: {e}", "WARNING")
+
+    return g_success or h_success
+
+
+# Default Part Position corner. 'bottom 1' empirically anchors the stock's
+# back-right-bottom corner to the Ultimate Bee's fence inside corner. Per-
+# spec override via spec['part_position_corner'].
+DEFAULT_PART_POSITION_CORNER = 'bottom 1'
+
+
+def _load_part_attach_token(logger):
+    """Read the saved Table Attach Point entity token from settings file."""
+    try:
+        if not os.path.exists(_PART_ATTACH_SETTINGS_FILE):
+            _log(logger, f"PART ATTACH: settings file does not exist at {_PART_ATTACH_SETTINGS_FILE}", "DEBUG")
+            return None
+        with open(_PART_ATTACH_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        token = data.get('table_attach_token')
+        _log(logger, f"PART ATTACH: loaded token from settings (len={len(token) if token else 0})", "DEBUG")
+        return token
+    except Exception as e:
+        _log(logger, f"PART ATTACH: load token failed: {type(e).__name__}: {e}", "WARNING")
+        return None
+
+
+def _save_part_attach_token(token, logger):
+    """Persist the Table Attach Point entity token to settings file."""
+    try:
+        data = {'table_attach_token': token}
+        with open(_PART_ATTACH_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        _log(logger, f"PART ATTACH: saved token to {_PART_ATTACH_SETTINGS_FILE}", "DEBUG")
+        return True
+    except Exception as e:
+        _log(logger, f"PART ATTACH: save token failed: {type(e).__name__}: {e}", "WARNING")
+        return False
+
+
+def _get_active_design(logger):
+    """Helper to fetch the active design product, or None."""
+    app = adsk.core.Application.get()
+    doc = app.activeDocument
+    if doc is None:
+        return None
+    for i in range(doc.products.count):
+        p = doc.products.item(i)
+        if isinstance(p, adsk.fusion.Design):
+            return p
+    return None
+
+
+def _resolve_or_capture_table_attach_entity(cam, logger):
+    """Return a usable Table Attach Point proxy entity, or None.
+
+    Self-healing strategy that handles the mis-click case:
+
+      1. Load the saved entity token from settings (if any).
+      2. Scan every setup for ``job_positionAttach`` bindings, collect
+         (setup, entity, token) for each setup that has one.
+      3. Decision tree:
+         a) Any setup has a token that DIFFERS from the saved token →
+            the user has edited a binding (presumably fixing a mis-click).
+            Use that differing entity. Save its token as the new truth.
+         b) All setups match the saved token (or there's no saved token
+            yet and exactly one token exists) → use that. If unsaved,
+            save it now.
+         c) No setups have bindings → try resolving the saved token via
+            ``design.findEntityByToken``. If that succeeds, use it.
+         d) No saved token + no bindings anywhere → return None.
+
+    First-run UX: user clicks Origin on one setup. Next build (a) saves
+    the token and (b) propagates to all setups. From then on it's
+    zero-click — except if user re-clicks any setup with a different
+    vertex/point, the next build auto-adopts the new one.
+
+    Manual reset path: delete ``part_attach_token.json`` from the addin
+    folder, then clear bindings on all setups before next build.
+    """
+    saved_token = _load_part_attach_token(logger)
+
+    # Scan setups for current bindings
+    bindings = []  # list of (setup_name, entity, token)
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        try:
+            p = s.parameters.itemByName('job_positionAttach')
+            if p is None:
+                continue
+            vec = p.value.value
+            n = vec.size() if hasattr(vec, 'size') else 0
+            if n > 0:
+                ent = vec[0]
+                bindings.append((s.name, ent, ent.entityToken))
+        except Exception as e:
+            _log(logger, f"PART ATTACH SCAN ({s.name}): {type(e).__name__}: {e}", "DEBUG")
+            continue
+
+    _log(logger,
+         f"PART ATTACH: found {len(bindings)} setups with binding; saved_token={'<set>' if saved_token else '<none>'}",
+         "DEBUG")
+
+    if bindings:
+        # Prefer a binding whose token DIFFERS from saved — that's the user
+        # editing (e.g. fixing a mis-click). The corrected vertex becomes
+        # the new truth.
+        if saved_token:
+            for name, ent, tok in bindings:
+                if tok != saved_token:
+                    _log(logger,
+                         f"PART ATTACH: setup '{name}' has token != saved — adopting user's edit as new truth",
+                         "INFO")
+                    _save_part_attach_token(tok, logger)
+                    return ent
+
+        # No differing binding (all match saved, or no saved). Use the
+        # first one and save its token (idempotent if already saved).
+        name, ent, tok = bindings[0]
+        if saved_token != tok:
+            _log(logger, f"PART ATTACH: captured token from setup '{name}'", "INFO")
+            _save_part_attach_token(tok, logger)
+        else:
+            _log(logger, f"PART ATTACH: setups already match saved token, reusing", "DEBUG")
+        return ent
+
+    # No bindings on any setup — fall back to saved token via findEntityByToken
+    if saved_token:
+        design = _get_active_design(logger)
+        if design is not None:
+            try:
+                found = design.findEntityByToken(saved_token)
+                if found and found.size() > 0:
+                    ent = found[0]
+                    _log(logger, f"PART ATTACH: resolved saved token via findEntityByToken to {type(ent).__name__} ✓", "DEBUG")
+                    return ent
+                _log(logger, "PART ATTACH: saved token resolved to 0 entities (machine maybe not attached yet)", "WARNING")
+            except Exception as e:
+                _log(logger, f"PART ATTACH: findEntityByToken raised: {type(e).__name__}: {e}", "WARNING")
+        else:
+            _log(logger, "PART ATTACH: no active design to resolve saved token", "WARNING")
+
+    _log(logger,
+         "PART ATTACH: no usable entity (no bindings, no resolvable saved token) — Table Attach Point left unset",
+         "WARNING")
+    return None
+
+
+def apply_templates_to_existing_setups(cam, logger=None):
+    """Apply cloud templates to every setup whose name matches SETUP_SPECS.
+
+    Iterates SETUP_SPECS to find each spec's declared ``cloud_templates``
+    list, then finds the live setup with the matching name and calls
+    ``_apply_cloud_templates`` on it. Honors per-project overrides via
+    template_assignments.resolve_templates so the user's UI edits still
+    take effect.
+
+    Used by the APPLY TOOLPATHS button in the palette flow split:
+    BUILD creates setups without templates, then APPLY TOOLPATHS stamps
+    them in. Lets the user click Origin on Table Attach Point between
+    the two phases.
+
+    Returns the count of setups successfully processed.
+    """
+    if cam is None:
+        return 0
+    # Build a name → setup index
+    live_by_name = {}
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        try:
+            live_by_name[s.name] = s
+        except Exception:
+            continue
+
+    n_processed = 0
+    for spec in SETUP_SPECS:
+        name = spec['name']
+        setup = live_by_name.get(name)
+        if setup is None:
+            _log(logger, f"APPLY TEMPLATES: setup '{name}' not in CAM tree, skipping", "DEBUG")
+            continue
+        try:
+            from . import template_assignments as _tpl_overrides
+            design = adsk.fusion.Design.cast(
+                cam.parentDocument.products.itemByProductType('DesignProductType'))
+            cloud_templates = _tpl_overrides.resolve_templates(
+                design, name, spec.get('cloud_templates') or [])
+        except Exception as e:
+            _log(logger, f"APPLY TEMPLATES ({name}): override lookup failed ({e}); using spec defaults", "WARNING")
+            cloud_templates = spec.get('cloud_templates') or []
+        if not cloud_templates:
+            _log(logger, f"APPLY TEMPLATES ({name}): no templates declared, skipping", "DEBUG")
+            continue
+        try:
+            _apply_cloud_templates(setup, cloud_templates, name, logger)
+            n_processed += 1
+        except Exception as e:
+            _log(logger, f"APPLY TEMPLATES ({name}): raised {type(e).__name__}: {e}", "WARNING")
+    _log(logger, f"APPLY TEMPLATES: processed {n_processed} setup(s)", "INFO")
+    return n_processed
+
+
+def log_position_diagnostics(cam, logger=None):
+    """Heavy diagnostic dump of every relevant coordinate for table_0 tuning.
+
+    Logs (in cm unless stated):
+      - For each setup: WCS Matrix3D translation, stockMode, stock bbox
+      - For each setup model: world-coord bbox (CAD position)
+      - For the loaded Ultimate Bee sim model:
+        * static_0 occurrence transform translation
+        * MDF spoilboard + fence body world bboxes
+        * fence inside-corner-bottom vertex world position
+      - The .mch's current table_0.attach_frame.point + x_direction + z_direction
+
+    The goal is to correlate (a) where the workpiece ends up vs (b) what
+    table_0 is set to vs (c) where the sim model fence corner is — across
+    several .mch table_0 values — until we know the exact mapping.
+
+    Call after BUILD finishes, before APPLY TOOLPATHS, with logger=_logger.
+    Output prefix: 'POS DIAG:' so it greps easily.
+    """
+    if cam is None:
+        _log(logger, "POS DIAG: cam is None", "WARNING")
+        return
+
+    _log(logger, "POS DIAG: ============= START =============", "INFO")
+
+    # 1. .mch table_0 snapshot
+    try:
+        import json, os
+        for mch_path in [
+            r"C:\Users\danse\AppData\Roaming\Autodesk\CAM360\machines\Ultimate Bee 3 axis.mch",
+        ]:
+            if not os.path.exists(mch_path):
+                continue
+            with open(mch_path, 'r', encoding='utf-8') as f:
+                mch = json.load(f)
+            try:
+                t0 = mch['kinematics']['default']['parts'][0]['parts'][0]
+                pt = t0['attach_frame']['point']
+                xd = t0['attach_frame']['x_direction']
+                zd = t0['attach_frame']['z_direction']
+                model_urn = mch['fusion']['default']['model_urn']
+                _log(logger, f"POS DIAG: .mch model_urn = {model_urn}", "INFO")
+                _log(logger, f"POS DIAG: .mch table_0.attach_frame.point = {pt} (mm)", "INFO")
+                _log(logger, f"POS DIAG: .mch table_0.attach_frame.x_direction = {xd}", "INFO")
+                _log(logger, f"POS DIAG: .mch table_0.attach_frame.z_direction = {zd}", "INFO")
+            except Exception as e:
+                _log(logger, f"POS DIAG: .mch table_0 read failed: {e}", "WARNING")
+    except Exception as e:
+        _log(logger, f"POS DIAG: .mch read raised: {type(e).__name__}: {e}", "WARNING")
+
+    # 2. Sim model state
+    try:
+        app = adsk.core.Application.get()
+        sim_doc = None
+        for i in range(app.documents.count):
+            d = app.documents.item(i)
+            if 'Ultimate Bee 3 axis' in d.name:
+                sim_doc = d
+                break
+        if sim_doc is None:
+            _log(logger, "POS DIAG: no Ultimate Bee sim doc loaded", "WARNING")
+        else:
+            _log(logger, f"POS DIAG: sim doc: '{sim_doc.name}'", "INFO")
+            sim_design = None
+            for i in range(sim_doc.products.count):
+                p = sim_doc.products.item(i)
+                if isinstance(p, adsk.fusion.Design):
+                    sim_design = p; break
+            if sim_design:
+                root = sim_design.rootComponent
+                for i in range(root.occurrences.count):
+                    o = root.occurrences.item(i)
+                    if o.component and o.component.name == 'static_0':
+                        t = o.transform2.translation
+                        _log(logger, f"POS DIAG: static_0 occurrence translation = ({t.x:.3f}, {t.y:.3f}, {t.z:.3f}) cm", "INFO")
+                        bb = o.boundingBox
+                        _log(logger, f"POS DIAG: static_0 world bbox = ({bb.minPoint.x:.3f},{bb.minPoint.y:.3f},{bb.minPoint.z:.3f}) → ({bb.maxPoint.x:.3f},{bb.maxPoint.y:.3f},{bb.maxPoint.z:.3f}) cm", "INFO")
+                        break
+                # Find MDF/fence body
+                def find_mdf(occ):
+                    if occ.component and occ.component.name == 'MDF':
+                        return occ
+                    for k in range(occ.childOccurrences.count):
+                        r = find_mdf(occ.childOccurrences.item(k))
+                        if r: return r
+                    return None
+                mdf = None
+                for i in range(root.occurrences.count):
+                    r = find_mdf(root.occurrences.item(i))
+                    if r: mdf = r; break
+                if mdf:
+                    for k in range(mdf.bRepBodies.count):
+                        b = mdf.bRepBodies.item(k)
+                        bb = b.boundingBox
+                        _log(logger, f"POS DIAG: MDF body '{b.name}' world bbox = ({bb.minPoint.x:.3f},{bb.minPoint.y:.3f},{bb.minPoint.z:.3f}) → ({bb.maxPoint.x:.3f},{bb.maxPoint.y:.3f},{bb.maxPoint.z:.3f}) cm", "INFO")
+                        if b.name == 'fence':
+                            for vi in range(b.vertices.count):
+                                v = b.vertices.item(vi)
+                                p = v.geometry
+                                if abs(p.x) < 0.01 and abs(p.y) < 0.01 and abs(p.z) < 0.01:
+                                    _log(logger, f"POS DIAG: fence inside-corner-bottom vertex at design world ({p.x:.3f}, {p.y:.3f}, {p.z:.3f}) cm", "INFO")
+                                    break
+    except Exception as e:
+        _log(logger, f"POS DIAG: sim model probe raised: {type(e).__name__}: {e}", "WARNING")
+
+    # 2b. Full machine kinematic chain
+    try:
+        app = adsk.core.Application.get()
+        camMgr = adsk.cam.CAMManager.get()
+        lib = camMgr.libraryManager.machineLibrary
+        cloud_url = adsk.core.URL.create("cloud://Ultimate Bee 3 axis.mch")
+        machine = lib.machineAtURL(cloud_url)
+        if machine:
+            _log(logger, f"POS DIAG: machine resolved: {machine.vendor}/{machine.model}", "INFO")
+            _log(logger, f"POS DIAG: machine id: {machine.id}", "INFO")
+            kin = machine.kinematics
+            def walk_kin(part, depth=0):
+                indent = "  " * depth
+                _log(logger, f"POS DIAG: kin {indent}part id='{part.id}'", "INFO")
+                for a in ('axis', 'spindle', 'toolStation', 'partType'):
+                    if hasattr(part, a):
+                        try:
+                            v = getattr(part, a)
+                            if v is not None and not callable(v):
+                                _log(logger, f"POS DIAG: kin {indent}  {a} = {v}", "INFO")
+                        except Exception: pass
+                # Children
+                try:
+                    for k in range(part.children.count):
+                        walk_kin(part.children.item(k), depth+1)
+                except Exception:
+                    pass
+            for k in range(kin.parts.count):
+                walk_kin(kin.parts.item(k))
+    except Exception as e:
+        _log(logger, f"POS DIAG: kinematic walk raised: {type(e).__name__}: {e}", "WARNING")
+
+    # 3. Per-setup state — WCS + stock + model bboxes
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        _log(logger, f"POS DIAG: --- Setup '{s.name}' ---", "INFO")
+        try:
+            wcs = s.workCoordinateSystem
+            t = wcs.translation
+            _log(logger, f"POS DIAG: {s.name} WCS translation = ({t.x:.3f}, {t.y:.3f}, {t.z:.3f}) cm", "INFO")
+            # Full Matrix3D — extract axis vectors
+            try:
+                arr = wcs.asArray()
+                # Standard 4x4: rows are [x_axis | y_axis | z_axis | translation]
+                _log(logger, f"POS DIAG: {s.name} WCS Matrix3D asArray = {[f'{v:.4f}' for v in arr]}", "INFO")
+            except Exception as e:
+                _log(logger, f"POS DIAG: {s.name} Matrix3D.asArray failed: {e}", "WARNING")
+            # Origin + axes via accessors
+            try:
+                ox = wcs.getCell(0, 3)
+                oy = wcs.getCell(1, 3)
+                oz = wcs.getCell(2, 3)
+                _log(logger, f"POS DIAG: {s.name} WCS getCell origin = ({ox:.3f}, {oy:.3f}, {oz:.3f})", "INFO")
+                # X axis = col 0
+                xa = (wcs.getCell(0,0), wcs.getCell(1,0), wcs.getCell(2,0))
+                ya = (wcs.getCell(0,1), wcs.getCell(1,1), wcs.getCell(2,1))
+                za = (wcs.getCell(0,2), wcs.getCell(1,2), wcs.getCell(2,2))
+                _log(logger, f"POS DIAG: {s.name} WCS xAxis = {xa}", "INFO")
+                _log(logger, f"POS DIAG: {s.name} WCS yAxis = {ya}", "INFO")
+                _log(logger, f"POS DIAG: {s.name} WCS zAxis = {za}", "INFO")
+            except Exception as e:
+                _log(logger, f"POS DIAG: {s.name} getCell failed: {e}", "WARNING")
+        except Exception as e:
+            _log(logger, f"POS DIAG: {s.name} WCS read raised: {e}", "WARNING")
+        # Stock dims
+        for pn in ['stockXLow','stockXHigh','stockYLow','stockYHigh','stockZLow','stockZHigh','stockMode']:
+            try:
+                pp = s.parameters.itemByName(pn)
+                if pp:
+                    _log(logger, f"POS DIAG: {s.name} {pn} = {pp.expression}", "INFO")
+            except Exception:
+                pass
+        # job_positionAttach state
+        try:
+            p = s.parameters.itemByName('job_positionAttach')
+            if p:
+                n = p.value.value.size()
+                _log(logger, f"POS DIAG: {s.name} job_positionAttach entities = {n}", "INFO")
+                if n > 0:
+                    ent = p.value.value[0]
+                    if hasattr(ent, 'geometry'):
+                        g = ent.geometry
+                        _log(logger, f"POS DIAG: {s.name} attach entity type={type(ent).__name__} at ({g.x:.3f}, {g.y:.3f}, {g.z:.3f}) cm", "INFO")
+        except Exception as e:
+            _log(logger, f"POS DIAG: {s.name} job_positionAttach raised: {e}", "WARNING")
+        # Models in setup
+        try:
+            for mi in range(s.models.count):
+                m = s.models.item(mi)
+                bb = m.boundingBox
+                _log(logger, f"POS DIAG: {s.name} model[{mi}] world bbox = ({bb.minPoint.x:.3f},{bb.minPoint.y:.3f},{bb.minPoint.z:.3f}) → ({bb.maxPoint.x:.3f},{bb.maxPoint.y:.3f},{bb.maxPoint.z:.3f}) cm", "INFO")
+        except Exception as e:
+            _log(logger, f"POS DIAG: {s.name} models read raised: {e}", "WARNING")
+
+        # Derived: where Fusion is REALLY placing the stock 'bottom 1'
+        # corner in design world. This IS the fixture point location for
+        # this setup. We compute it from the WCS translation + WCS axes +
+        # stock dims (since 'top 1' is at WCS origin and stock extends
+        # from top to bottom along setup-Z = WCS-Z direction).
+        try:
+            wcs = s.workCoordinateSystem
+            o = wcs.translation
+            # Get WCS Z direction (col 2)
+            zx, zy, zz = wcs.getCell(0,2), wcs.getCell(1,2), wcs.getCell(2,2)
+            sxLow = s.parameters.itemByName('stockXLow').value.value
+            sxHigh = s.parameters.itemByName('stockXHigh').value.value
+            syLow = s.parameters.itemByName('stockYLow').value.value
+            syHigh = s.parameters.itemByName('stockYHigh').value.value
+            szLow = s.parameters.itemByName('stockZLow').value.value
+            szHigh = s.parameters.itemByName('stockZHigh').value.value
+            # Note: stock dims are in MM internally even though the
+            # itemByName returns floats. WCS translation is in CM. We
+            # need consistent units to add. Convert stock to CM (/10).
+            # Actually .value.value for stock params returns mm-scaled
+            # floats (we saw 254 for 254mm). Let me convert to cm.
+            stock_zspan_mm = szHigh - szLow  # 76.2 for stock
+            stock_zspan_cm = stock_zspan_mm / 10.0
+            # 'top 1' = WCS translation. 'bottom 1' = WCS - stock_zspan in WCS Z direction
+            bx = o.x - zx * stock_zspan_cm
+            by = o.y - zy * stock_zspan_cm
+            bz = o.z - zz * stock_zspan_cm
+            _log(logger, f"POS DIAG: {s.name} derived stock 'bottom 1' (fixture point) at design world = ({bx:.3f}, {by:.3f}, {bz:.3f}) cm", "INFO")
+            _log(logger, f"POS DIAG: {s.name} offset from fence corner (0,0,0) = ({bx:.3f}, {by:.3f}, {bz:.3f}) cm", "INFO")
+            # If we want bottom 1 to be at fence corner = (0,0,0), table_0
+            # would need to shift by -(bx, by, bz) in DESIGN coords.
+            # In .mch coords that becomes... unknown until we test.
+            _log(logger, f"POS DIAG: {s.name} TO MOVE TO FENCE: shift design coords by ({-bx:.3f}, {-by:.3f}, {-bz:.3f}) cm", "INFO")
+        except Exception as e:
+            _log(logger, f"POS DIAG: {s.name} derived bottom 1 failed: {type(e).__name__}: {e}", "WARNING")
+
+    _log(logger, "POS DIAG: ============= END =============", "INFO")
+
+
+def force_all_tool_numbers_to_one(cam, logger=None):
+    """Set every operation's ``tool_number`` parameter to 1 across all setups.
+
+    Per the user's workflow: single-tool change, every op uses T1. The
+    templates have their own baked-in tool numbers (e.g. Morphed Spiral
+    comes in at T2), which this helper overrides on every build to keep
+    the G-code single-toolchange.
+
+    Call AFTER all templates have been applied (so the templates' tools
+    exist on the operations), and BEFORE toolpath generation (so the
+    generated G-code uses the corrected numbers).
+
+    Best-effort: failures per-op log WARNING and continue.
+    """
+    if cam is None:
+        return 0
+    n_op_changed = 0
+    n_tool_changed = 0
+    n_total = 0
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        for j in range(s.operations.count):
+            op = s.operations.item(j)
+            n_total += 1
+            # Operation's tool_number override (controls G-code T-line)
+            try:
+                tn = op.parameters.itemByName('tool_number')
+                if tn is not None and tn.expression != '1':
+                    tn.expression = '1'
+                    n_op_changed += 1
+                    _log(logger, f"TOOL RENUMBER OP ({s.name} / {op.name}): op.tool_number -> T1", "DEBUG")
+            except Exception as e:
+                _log(logger, f"TOOL RENUMBER OP ({s.name} / {op.name}): failed {type(e).__name__}: {e}", "WARNING")
+            # Tool definition's own number (controls what shows in CAM tree
+            # under Tools — the visible 'T2' label that confused us).
+            try:
+                if op.tool is not None:
+                    ttn = op.tool.parameters.itemByName('tool_number')
+                    if ttn is not None and ttn.expression != '1':
+                        ttn.expression = '1'
+                        n_tool_changed += 1
+                        _log(logger, f"TOOL RENUMBER TOOL ({s.name} / {op.name}): tool.tool_number -> T1", "DEBUG")
+            except Exception as e:
+                _log(logger, f"TOOL RENUMBER TOOL ({s.name} / {op.name}): failed {type(e).__name__}: {e}", "WARNING")
+    _log(logger, f"TOOL RENUMBER: ops_changed={n_op_changed} tool_defs_changed={n_tool_changed} of {n_total} operations", "INFO")
+    return n_op_changed
+
+
+def apply_table_attach_to_all_setups(cam, logger=None):
+    """Bind the Table Attach Point on every setup in this CAM tree.
+
+    Call this AFTER all setups are built and AFTER any per-setup config
+    has been applied. Designed to run from
+    ``_DeferredTPGenHandler.notify()`` in cam-builder.py, in the same
+    deferred CustomEvent context where toolpath generation runs (so the
+    CAM engine is in a stable state, not mid-build).
+
+    No-op if the entity can't be resolved (first-run case before user
+    clicks Origin manually). Logs INFO summary so the user can see how
+    many setups got bound.
+    """
+    if cam is None or cam.setups.count == 0:
+        _log(logger, "PART ATTACH APPLY: no setups, skipping", "DEBUG")
+        return
+    ent = _resolve_or_capture_table_attach_entity(cam, logger)
+    if ent is None:
+        return
+    n_bound = 0
+    n_skipped = 0
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        try:
+            p = s.parameters.itemByName('job_positionAttach')
+            if p is None:
+                continue
+            existing = p.value.value.size() if hasattr(p.value.value, 'size') else 0
+            if existing > 0:
+                n_skipped += 1
+                _log(logger, f"PART ATTACH APPLY ({s.name}): already bound ({existing} entities), skipping", "DEBUG")
+                continue
+            p.value.value = [ent]
+            new_n = p.value.value.size()
+            if new_n > 0:
+                n_bound += 1
+                _log(logger, f"PART ATTACH APPLY ({s.name}): bound ✓", "DEBUG")
+            else:
+                _log(logger, f"PART ATTACH APPLY ({s.name}): bind silently rejected (count stayed 0)", "WARNING")
+        except Exception as e:
+            _log(logger, f"PART ATTACH APPLY ({s.name}): raised {type(e).__name__}: {e}", "WARNING")
+    _log(logger, f"PART ATTACH APPLY: bound={n_bound} skipped={n_skipped} of {cam.setups.count} setups", "INFO")
+
+
+def _set_part_position(setup, spec, logger):
+    """Configure the Setup's Part Position panel.
+
+    Sets:
+      - Part Attach Point  = Stock Box Point at `spec['part_position_corner']`
+        (default 'bottom 1')
+      - X/Y/Z Distance     = 0 (no manual nudge)
+      - Table Attach Point = the fence inside-corner-bottom vertex on the
+        Ultimate Bee sim model (found via _find_fence_inside_corner_vertex).
+        Falls back to the .mch's table_0 default if the vertex can't be
+        located (sim model not loaded, fence missing, etc.).
+
+    Per-spec override: set ``spec['part_position_corner']`` to one of
+    'top 1'..'top 4', 'bottom 1'..'bottom 4', or any other valid box-point
+    choice for that particular setup.
+
+    Non-fatal: any failure logs WARNING and continues.
+    """
+    setup_name = spec.get('name', '?')
+    corner = spec.get('part_position_corner', DEFAULT_PART_POSITION_CORNER)
+
+    _log(logger, f"SETUP PARTPOS ({setup_name}): corner={corner!r}", "DEBUG")
+
+    # Mode: 'stockPoint' so the position reference resolves against the stock
+    # bbox corner picked in origin_boxPoint.
+    try:
+        pi.set_choice(setup.parameters, 'job_positionReference_origin_mode',
+                      ['stockPoint'], logger)
+    except Exception as e:
+        _log(logger, f"SETUP PARTPOS ({setup_name}): origin_mode set failed: {e}", "WARNING")
+
+    # Corner of stock bbox
+    try:
+        pi.set_choice(setup.parameters, 'job_positionReference_origin_boxPoint',
+                      [corner, corner.replace(' ', '')], logger)
+    except Exception as e:
+        _log(logger, f"SETUP PARTPOS ({setup_name}): boxPoint set failed: {e}", "WARNING")
+
+    # Table Attach Point binding is deferred — see
+    # apply_table_attach_to_all_setups() called from
+    # _DeferredTPGenHandler.notify() in cam-builder.py. The API can't
+    # resolve the machine's hidden assembly tree on a fresh build, so
+    # binding here would fail with InternalValidationError. The deferred
+    # path uses a saved entity token (or captures one from a setup the
+    # user manually bound) to do all bindings in a single pass after
+    # build completes.
+
+    # Zero out the manual X/Y/Z distance offsets so position is fully
+    # determined by (corner, table_attach_point). Any per-spec offset can
+    # go in spec['part_position_offset_x' / 'part_position_offset_y' / '..z'].
+    for axis, key in [('X', 'part_position_offset_x'),
+                      ('Y', 'part_position_offset_y'),
+                      ('Z', 'part_position_offset_z')]:
+        val = spec.get(key, '0 mm')
+        try:
+            _set_expr_param(setup.parameters, f'job_position{axis}Offset',
+                            val, setup_name, logger)
+        except Exception as e:
+            _log(logger, f"SETUP PARTPOS ({setup_name}): {axis}Offset set failed: {e}", "WARNING")
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +821,7 @@ SETUP_SPECS = [
 ]
 
 
-def build_all_setups(cam, mms, logger=None):
+def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=False):
     """Build all four Setups. Returns ``[Setup, Setup, Setup, Setup]``.
 
     Parameters
@@ -138,17 +831,32 @@ def build_all_setups(cam, mms, logger=None):
         Output of :func:`cam_engine.mm_builder.build_all_mms`. If a
         required rule is missing we skip that Setup with a WARNING --
         the rest of the pipeline can still run.
+    skip_templates : bool
+        When True, build setups WITHOUT applying their declared cloud
+        templates. Use this for the BUILD phase of the split flow.
+    skip_machine : bool
+        When True, build setups WITHOUT assigning the default machine.
+        Use this when the user wants to attach a machine separately
+        via the ADD MACHINE button (or skip it entirely).
     """
     setups = []
     for spec in SETUP_SPECS:
-        setup = build_setup(cam, mms, spec, logger)
+        setup = build_setup(cam, mms, spec, logger,
+                            skip_templates=skip_templates,
+                            skip_machine=skip_machine)
         if setup:
             setups.append(setup)
     return setups
 
 
-def build_setup(cam, mms, spec, logger=None):
-    """Build one Setup from a spec. Returns the Setup or ``None``."""
+def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=False):
+    """Build one Setup from a spec. Returns the Setup or ``None``.
+
+    When ``skip_templates`` is True, the setup is created but its
+    declared cloud templates are NOT applied.
+    When ``skip_machine`` is True, the default machine is NOT attached
+    (user can attach via the ADD MACHINE button later, or skip).
+    """
     mm = mms.get(spec['mm_rule'])
     if mm is None:
         _log(logger,
@@ -198,6 +906,13 @@ def build_setup(cam, mms, spec, logger=None):
         setup.name = spec['name']
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): name set failed: {e}", "WARNING")
+
+    # Assign default machine — SKIPPED when skip_machine=True. The user
+    # then attaches it via the ADD MACHINE button in the palette.
+    if not skip_machine:
+        _assign_default_machine(setup, spec['name'], logger)
+    else:
+        _log(logger, f"SETUP BUILD ({spec['name']}): skip_machine=True, machine deferred", "DEBUG")
 
     # Stock mode via the TYPED enum (Autodesk sample
     # `CreateSetupsFromHoleRecognition` uses this idiom:
@@ -295,6 +1010,11 @@ def build_setup(cam, mms, spec, logger=None):
         _set_expr_param(setup.parameters, 'job_stockOffsetBottom',
                         spec['stock_offset_bottom'], spec['name'], logger)
 
+    # Part Position is DEFERRED to after the toolpath-generation warmup,
+    # see apply_part_position_to_all_setups() called from cam-builder.py's
+    # _DeferredTPGenHandler. Setting fixture_point during fresh setup
+    # creation crashes the CAM engine on some builds.
+
     # Read-back log: dump what Fusion actually has on the live setup AFTER
     # all writes. Catches the silent-reject case where set_choice falls
     # back to a default without raising. If the WCS dialog later shows a
@@ -308,23 +1028,24 @@ def build_setup(cam, mms, spec, logger=None):
         mm_name = '<unknown>'
     _log(logger, f"SETUP BUILD ({spec['name']}): created -> MM '{mm_name}'")
 
-    # Apply cloud toolpath templates declared in the spec (e.g. 'Pocket back',
-    # 'Morphed Spiral' for B-spline Back), or the user's per-project override
-    # if they edited the list via the template-browser UI. Best-effort:
-    # a template that's missing from the cloud library logs WARNING but
-    # doesn't fail the whole setup build.
-    try:
-        from . import template_assignments as _tpl_overrides
-        design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
-        cloud_templates = _tpl_overrides.resolve_templates(
-            design, spec['name'], spec.get('cloud_templates') or [])
-    except Exception as e:
-        _log(logger,
-             f"SETUP BUILD ({spec['name']}): override lookup failed ({e}); using spec defaults",
-             "WARNING")
-        cloud_templates = spec.get('cloud_templates') or []
-    if cloud_templates:
-        _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
+    # Apply cloud toolpath templates — SKIPPED when skip_templates=True
+    # (BUILD phase of the split flow; APPLY TOOLPATHS handles templates
+    # later via apply_templates_to_existing_setups()).
+    if not skip_templates:
+        try:
+            from . import template_assignments as _tpl_overrides
+            design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
+            cloud_templates = _tpl_overrides.resolve_templates(
+                design, spec['name'], spec.get('cloud_templates') or [])
+        except Exception as e:
+            _log(logger,
+                 f"SETUP BUILD ({spec['name']}): override lookup failed ({e}); using spec defaults",
+                 "WARNING")
+            cloud_templates = spec.get('cloud_templates') or []
+        if cloud_templates:
+            _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
+    else:
+        _log(logger, f"SETUP BUILD ({spec['name']}): skip_templates=True, templates deferred", "DEBUG")
 
     return setup
 
@@ -1058,6 +1779,9 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
     except Exception as e:
         _log(logger, f"SETUP BUILD GENERIC ({setup_name}): name set failed: {e}", "WARNING")
 
+    # Assign default machine for this project (Ultimate Bee 3 axis).
+    _assign_default_machine(setup, setup_name, logger)
+
     try:
         _set_stock_mode(setup, spec['stock_intent'], setup_name, logger)
     except Exception as e:
@@ -1115,6 +1839,12 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
         _set_bool_param(setup.parameters, 'job_continueMachining',
                         bool(spec['continue_machining']),
                         setup_name, logger)
+
+    # Part Position — anchors the stock bbox corner to the machine's fixture
+    # point (Ultimate Bee fence inside corner per .mch table_0 + v31 sim).
+    # Same defaults as the hardcoded build_setup path; see _set_part_position
+    # docstring for per-spec override fields.
+    _set_part_position(setup, spec, logger)
 
     # Clearance / retract heights from profile (mm → Fusion expression
     # string). Written last so WCS is fully resolved first. Parameter

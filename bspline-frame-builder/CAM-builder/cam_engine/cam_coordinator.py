@@ -21,7 +21,82 @@ import adsk.fusion
 from . import cam_workspace, mm_builder, setup_builder
 
 
-def run(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None):
+# Names of MMs and Setups this addin creates. Used by _cleanup_previous_build
+# to identify and delete the prior run's artifacts before a fresh build.
+_ADDIN_MM_NAMES = frozenset([
+    'MM - Stock (raw blank)',
+    'MM - B-spline set',
+    'MM - Frame (lay-flat)',
+])
+_ADDIN_SETUP_NAMES = frozenset([
+    'Stock',
+    'B-spline Back',
+    'B-spline Top',
+    'Frame',
+])
+
+
+def _cleanup_previous_build(cam, logger):
+    """Delete any prior build's Setups and MMs that match our known names.
+
+    Setups must be deleted before MMs because Setups reference bodies
+    inside MMs (an MM with a dangling Setup reference can leave Fusion's
+    CAM tree in an inconsistent state on the next build attempt).
+
+    Best-effort: failures log WARNING but don't abort the build. The
+    subsequent ``build_all_mms`` / ``build_all_setups`` will produce
+    NEW items even if some old ones survive (you'll just end up with
+    duplicates, same as before this cleanup existed).
+    """
+    n_setups_deleted = 0
+    n_mms_deleted = 0
+
+    # Pass 1: delete Setups with matching names. Iterate backward because
+    # cam.setups is a live collection and deleteMe() mutates it.
+    try:
+        n = cam.setups.count
+        _log(logger, f"CLEANUP: scanning {n} existing setup(s)", "DEBUG")
+        for i in range(n - 1, -1, -1):
+            s = cam.setups.item(i)
+            try:
+                if s.name in _ADDIN_SETUP_NAMES:
+                    _log(logger, f"CLEANUP: deleting Setup '{s.name}'", "DEBUG")
+                    s.deleteMe()
+                    n_setups_deleted += 1
+            except Exception as e:
+                _log(logger, f"CLEANUP: deleteMe Setup at [{i}] raised: {type(e).__name__}: {e}", "WARNING")
+    except Exception as e:
+        _log(logger, f"CLEANUP: setup scan raised: {type(e).__name__}: {e}", "WARNING")
+
+    # Pass 2: delete MMs with matching names.
+    try:
+        n = cam.manufacturingModels.count
+        _log(logger, f"CLEANUP: scanning {n} existing MM(s)", "DEBUG")
+        for i in range(n - 1, -1, -1):
+            mm = cam.manufacturingModels.item(i)
+            try:
+                if mm.name in _ADDIN_MM_NAMES:
+                    _log(logger, f"CLEANUP: deleting MM '{mm.name}'", "DEBUG")
+                    mm.deleteMe()
+                    n_mms_deleted += 1
+            except Exception as e:
+                _log(logger, f"CLEANUP: deleteMe MM at [{i}] raised: {type(e).__name__}: {e}", "WARNING")
+    except Exception as e:
+        _log(logger, f"CLEANUP: MM scan raised: {type(e).__name__}: {e}", "WARNING")
+
+    _log(logger, f"CLEANUP: deleted {n_setups_deleted} setup(s) and {n_mms_deleted} MM(s) from prior build", "INFO")
+
+
+def _log(logger, msg, level="INFO"):
+    if logger is None:
+        return
+    try:
+        logger.log(msg, level)
+    except Exception:
+        pass
+
+
+def run(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None, skip_templates=False, skip_machine=False):
     """Run the full pipeline.
 
     Parameters
@@ -158,13 +233,26 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
 
     else:
         # ── B-spline: hardcoded 3-MM / 4-setup pipeline ──────────────────────
+
+        # Auto-cleanup: delete any prior build's Setups and MMs with our
+        # known names so a re-run REPLACES instead of DOUBLING.
+        _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
+        try:
+            _cleanup_previous_build(cam, logger)
+            _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
+        except Exception as e:
+            import traceback as _tb
+            _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
+
         mms = mm_builder.build_all_mms(cam, design, classifier, logger)
         for rule in mm_builder.MM_RULES:
             report['mms'][rule] = (rule in mms)
             if rule not in mms:
                 report['errors'].append(f"MM '{rule}' was not built.")
 
-        setups = setup_builder.build_all_setups(cam, mms, logger)
+        setups = setup_builder.build_all_setups(cam, mms, logger,
+                                                skip_templates=skip_templates,
+                                                skip_machine=skip_machine)
         built_names = {s.name for s in setups}
         for spec in setup_builder.SETUP_SPECS:
             report['setups'].append({

@@ -33,7 +33,6 @@ _tm               = None     # template-maker module (reloaded every run)
 _fi               = None     # fusion-inspector module (reloaded every run)
 _fe               = None     # fusion-exporter module (reloaded every run)
 _cam              = None     # cam-builder module (reloaded every run)
-_se               = None     # step-editor module (reloaded every run)
 _st               = None     # stamp-editor module (reloaded every run)
 _diag_logger      = None     # DebugLogger (re-created every run)
 _refresh_event    = None     # Registered once per Fusion session
@@ -130,7 +129,6 @@ def _find_related_addin_modules():
         os.path.normcase(os.path.normpath(os.path.join('frame-inspector', 'fusion-inspector.py'))),
         os.path.normcase(os.path.normpath(os.path.join('fusion-exporter', 'fusion-exporter.py'))),
         os.path.normcase(os.path.normpath(os.path.join('template-maker', 'template-maker.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('step-editor',    'step-editor.py'))),
     ]
 
     for mod in list(sys.modules.values()):
@@ -173,7 +171,7 @@ def _run_related_addins(modules):
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
-    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _se, _st, _diag_logger
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _st, _diag_logger
 
     # --- Logger ---
     _utils_path = os.path.join(_addin_root, 'frame-builder', 'fb_utils')
@@ -282,17 +280,6 @@ def _bootstrap():
         _log_error('cam-builder submodule load failed\n' + traceback.format_exc())
         _cam = None
 
-    # step-editor is fully self-contained — its parser, runtime helpers,
-    # and palette HTML live entirely under step-editor/ and don't touch
-    # any shared project names. Still call _force_wipe with an empty list
-    # for symmetry / future-proofing in case it grows shared deps later.
-    _force_wipe([])
-    try:
-        _se = _load_submodule('step_editor_mod', 'step-editor', 'step-editor.py')
-    except Exception:
-        _log_error('step-editor submodule load failed\n' + traceback.format_exc())
-        _se = None
-
     # stamp-editor — sibling add-in for surface-deformation stamping via
     # SVG/text/draw motifs through b-spline-gen's rasterize → SDF →
     # modulate-control-points pipeline. Self-contained; no shared
@@ -310,7 +297,7 @@ def _bootstrap():
 # ── Submodule teardown (called from stop) ─────────────────────────────────────
 def _teardown_submodules():
     """Release resources held by loaded sub-modules before we drop our refs."""
-    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _se, _st
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _st
 
     app = None
     try:
@@ -362,7 +349,6 @@ def _teardown_submodules():
     #    Stop in REVERSE of the run order so late-bound resources (palettes,
     #    selection handlers) release before earlier commands.
     for _sub_label, _sub_mod in (('stamp-editor',     _st),
-                                 ('step-editor',      _se),
                                  ('cam-builder',      _cam),
                                  ('template-maker',   _tm),
                                  ('fusion-inspector', _fi),
@@ -385,7 +371,6 @@ def _teardown_submodules():
     _fi = None
     _fe = None
     _cam = None
-    _se = None
     _st = None
 
 
@@ -641,7 +626,6 @@ def run(context):
                                      ('fusion-inspector', _fi),
                                      ('template-maker',   _tm),
                                      ('cam-builder',      _cam),
-                                     ('step-editor',      _se),
                                      ('stamp-editor',     _st)):
             if _sub_mod is None:
                 continue

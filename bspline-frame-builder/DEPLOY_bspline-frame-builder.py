@@ -188,18 +188,6 @@ VERIFY_FILES = [
     "frame-builder/ui/html/solid_builder_palette.html",
     "b-spline-gen/b-spline-gen.py",
     "b-spline-gen/html/index.html",
-    # step-editor: scaffold + parser + Send-to-Fusion wiring. Verify the
-    # entry point, the manifest, the palette HTML, and the core JS
-    # modules so a botched copy gets flagged loudly instead of silently
-    # leaving Fusion to load half an add-in.
-    "step-editor/step-editor.py",
-    "step-editor/step-editor.manifest",
-    "step-editor/html/step_editor_palette.html",
-    "step-editor/html/main/main.js",
-    "step-editor/html/main/ui-bindings.js",
-    "step-editor/html/core/runtime.js",
-    "step-editor/html/core/stp-parser.js",
-    "step-editor/html/core/fusion-bridge.js",
     # stamp-editor — sibling add-in for surface-deformation stamping.
     "stamp-editor/stamp-editor.py",
     "stamp-editor/stamp-editor.manifest",
@@ -260,7 +248,7 @@ def _should_skip(name: str) -> bool:
 
 def ignore_for_copy(src_path: str, names: list) -> list:
     """shutil.copytree ignore callback. Also drops any cache-busting
-    folders the step-editor leaves behind in its own directory between
+    folders a sub-addin leaves behind in its own directory between
     sessions (named `_palette_<timestamp>_<pid>`)."""
     return [n for n in names if _should_skip(n) or n.startswith('_palette_')]
 
@@ -352,8 +340,8 @@ def deploy_local():
         print(f"ERROR: source directory not found: {SRC_DIR}")
         sys.exit(1)
 
-    # Sync b-spline-gen's stamp module + deps into step-editor's tree
-    # so step-editor's source code can import them from its own path
+    # Sync b-spline-gen's stamp module + deps into stamp-editor's tree
+    # so stamp-editor's source code can import them from its own path
     # (./core/stamp/) without reaching across add-in folders.
     # The deploy copies the bundle just-in-time so the canonical source
     # of truth remains b-spline-gen/html/core/stamp/.
@@ -400,7 +388,6 @@ def deploy_local():
     _write_fb_handshake()
     _write_cam_handshake()
     _write_bspline_handshake()
-    _write_step_editor_handshake()
     _write_stamp_editor_handshake()
 
     # Verify
@@ -507,33 +494,8 @@ def _write_bspline_handshake():
         print(f"  WARNING: could not write b-spline-gen handshake: {e}")
 
 
-def _write_step_editor_handshake():
-    """
-    Write workspace_link.json into the deployed step-editor sub-folder
-    so its ``get_log_path()`` routes step_editor_log.txt back to the
-    source workspace instead of dumping it inside %APPDATA%\\AddIns\\.
-
-    Mirrors _write_bspline_handshake exactly — same filename
-    (workspace_link.json), same key (workspace_root), same absolute-path
-    convention. step-editor.py's get_log_path() uses the same logic as
-    b-spline-gen's, so this handshake is interchangeable.
-    """
-    try:
-        se_dest = DEST_DIR / "step-editor"
-        if not se_dest.exists():
-            return
-        src_path = (SRC_DIR / "step-editor").resolve()
-        config    = {"workspace_root": str(src_path)}
-        handshake = se_dest / "workspace_link.json"
-        with open(handshake, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4)
-        print(f"  Step Editor Handshake written: {src_path}")
-    except Exception as e:
-        print(f"  WARNING: could not write step-editor handshake: {e}")
-
-
 def _write_stamp_editor_handshake():
-    """Same idea as the step-editor handshake — routes stamp-editor's
+    """Same idea as the b-spline-gen handshake — routes stamp-editor's
     log file back to the source workspace so the dev tree's
     stamp_editor_log.txt is the source of truth, not the one inside
     %APPDATA%\\AddIns\\."""

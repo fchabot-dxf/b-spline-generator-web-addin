@@ -156,22 +156,22 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             except Exception:
                 pass
 
+            # selectEntity raises RuntimeError on user-cancel (Escape) on
+            # some Fusion builds instead of returning None. Treat any
+            # exception here as cancel and bail out cleanly — retrying
+            # selectEntity while Fusion is mid-teardown of its prior
+            # selection prompt yields
+            # 'InternalValidationError: selections.size() > 0' and can
+            # leave the UI in a state where downstream addins (e.g.
+            # STEP Editor) fail to boot because their workspace product
+            # binding hasn't settled yet.
             sel = None
             try:
                 sel = ui.selectEntity('Select a face for extrusion', 'Faces')
             except Exception as e1:
-                if self.diag_logger: self.diag_logger.log_error(f"Face selection first attempt failed: {e1}")
-                try:
-                    if hasattr(ui, 'activeSelections') and ui.activeSelections.count > 0:
-                        ui.activeSelections.clear()
-                except Exception:
-                    pass
-                try:
-                    sel = ui.selectEntity('Select a face for extrusion', 'Faces')
-                except Exception as e2:
-                    if self.diag_logger: self.diag_logger.log_error(f"Face selection retry failed: {e2}")
-                    self._send_palette_message(pal, 'status_update', {'msg': f'Selection attempt failed: {str(e2)}'})
-                    raise
+                if self.diag_logger:
+                    self.diag_logger.log(f"Face selection cancelled or failed (treated as cancel): {e1}")
+                sel = None
 
             if sel:
                 self.selected_face = adsk.fusion.BRepFace.cast(sel.entity)

@@ -46,6 +46,57 @@
       color: var(--cad-text-main);
       letter-spacing: 0.02em;
     }
+    .cam-action-section {
+      background: #fff;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: var(--cad-radius-md);
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .cam-action-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--cad-text-muted);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .cam-action-body {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .cam-action-body .cad-btn {
+      font-size: 11px;
+      padding: 5px 10px;
+    }
+    .cam-card-details {
+      font-size: 10px;
+      color: var(--cad-text-muted);
+    }
+    .cam-card-details > summary {
+      cursor: pointer;
+      list-style: none;
+      color: var(--cad-text-muted);
+      font-size: 10px;
+      padding: 2px 0;
+      user-select: none;
+      opacity: 0.7;
+    }
+    .cam-card-details > summary::-webkit-details-marker { display: none; }
+    .cam-card-details > summary::before {
+      content: '▸ ';
+      display: inline-block;
+      transition: transform 0.1s;
+    }
+    .cam-card-details[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .cam-card-details > summary:hover { opacity: 1; }
+    .cam-card-details[open] {
+      padding-bottom: 4px;
+    }
     .cam-card-blurb {
       font-size: 11px;
       color: var(--cad-text-muted);
@@ -184,7 +235,6 @@
       <div style="display:flex;gap:8px;align-items:center;">
         <span id="status-summary" style="font-size:10px;font-weight:600;color:var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
         <button class="cad-btn" id="preview-btn" type="button" onclick="runPreview()" style="font-size:11px;padding:5px 10px;">PREVIEW</button>
-        <button class="cad-btn cad-btn-primary" type="button" onclick="runGenerate()">GENERATE</button>
       </div>
     </header>
 
@@ -202,10 +252,13 @@
           <div class="cam-card-title">Setup 1 &mdash; Stock</div>
           <span class="cam-mm-tag cam-mm-stock">MM: stock</span>
         </div>
-        <div class="cam-card-blurb">Raw stock blank &mdash; pre-machining state</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v warn">remove all</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v">Origin + Z up</span></div>
+        <details class="cam-card-details">
+          <summary class="cam-card-summary">details</summary>
+          <div class="cam-card-blurb">Raw stock blank &mdash; pre-machining state</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v warn">remove all</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v">Origin + Z up</span></div>
+        </details>
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-stock"></span><span id="state-stock">pending</span></span>
         </div>
@@ -223,14 +276,17 @@
           <div class="cam-card-title">Setup 2 &mdash; B-spline Back</div>
           <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
         </div>
-        <div class="cam-card-blurb">Back-side surfacing of the b-spline panel</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v">Box back, axes X/Y</span></div>
+        <details class="cam-card-details">
+          <summary class="cam-card-summary">details</summary>
+          <div class="cam-card-blurb">Back-side surfacing of the b-spline panel</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v">Box back, axes X/Y</span></div>
+        </details>
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_back"></span><span id="state-bspline_back">pending</span></span>
         </div>
-        <div class="cam-tpl-section" data-tpl-setup="B-spline Back">
+        <div class="cam-tpl-section open" data-tpl-setup="B-spline Back">
           <div class="cam-tpl-head" onclick="toggleTpl(this)">
             <span><span class="cam-tpl-toggle"></span>Templates</span>
             <span class="cam-tpl-count">0</span>
@@ -244,14 +300,17 @@
           <div class="cam-card-title">Setup 3 &mdash; B-spline Top</div>
           <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
         </div>
-        <div class="cam-card-blurb">Top-side surfacing &mdash; flip Y after Setup 2</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From Setup 2 IPV</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v action">Box top, axes X/Y (flip Y)</span></div>
+        <details class="cam-card-details">
+          <summary class="cam-card-summary">details</summary>
+          <div class="cam-card-blurb">Top-side surfacing &mdash; flip Y after Setup 2</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From Setup 2 IPV</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v action">Box top, axes X/Y (flip Y)</span></div>
+        </details>
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_top"></span><span id="state-bspline_top">pending</span></span>
         </div>
-        <div class="cam-tpl-section" data-tpl-setup="B-spline Top">
+        <div class="cam-tpl-section open" data-tpl-setup="B-spline Top">
           <div class="cam-tpl-head" onclick="toggleTpl(this)">
             <span><span class="cam-tpl-toggle"></span>Templates</span>
             <span class="cam-tpl-count">0</span>
@@ -265,19 +324,44 @@
           <div class="cam-card-title">Setup 4 &mdash; Frame</div>
           <span class="cam-mm-tag cam-mm-frame">MM: frame</span>
         </div>
-        <div class="cam-card-blurb">Frame profile cut &mdash; reorient flat</div>
-        <div class="cam-row"><span class="k">Body filter</span><span class="v">remove panel</span></div>
-        <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
-        <div class="cam-row"><span class="k">WCS</span><span class="v action">Reoriented frame top</span></div>
+        <details class="cam-card-details">
+          <summary class="cam-card-summary">details</summary>
+          <div class="cam-card-blurb">Frame profile cut &mdash; reorient flat</div>
+          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove panel</span></div>
+          <div class="cam-row"><span class="k">Stock def</span><span class="v">From box (auto)</span></div>
+          <div class="cam-row"><span class="k">WCS</span><span class="v action">Reoriented frame top</span></div>
+        </details>
         <div class="cam-row"><span class="k">Status</span>
           <span class="cam-status-row"><span class="cam-dot" id="dot-frame"></span><span id="state-frame">pending</span></span>
         </div>
-        <div class="cam-tpl-section" data-tpl-setup="Frame">
+        <div class="cam-tpl-section open" data-tpl-setup="Frame">
           <div class="cam-tpl-head" onclick="toggleTpl(this)">
             <span><span class="cam-tpl-toggle"></span>Templates</span>
             <span class="cam-tpl-count">0</span>
           </div>
           <div class="cam-tpl-body"></div>
+        </div>
+      </div>
+
+      <div class="cam-action-section">
+        <div class="cam-action-label">1. Setups</div>
+        <div class="cam-action-body">
+          <button class="cad-btn cad-btn-primary" id="build-btn" type="button" onclick="runBuild()" title="Build 3 Manufacturing Models + 4 Setups (no machine, no templates).">BUILD SETUPS</button>
+        </div>
+      </div>
+
+      <div class="cam-action-section">
+        <div class="cam-action-label">2. Machine</div>
+        <div class="cam-action-body">
+          <button class="cad-btn" id="add-machine-btn" type="button" onclick="runAddMachine()" title="Attach the default machine (Ultimate Bee 3 axis) to every Setup.">ADD MACHINE</button>
+          <button class="cad-btn" id="select-origin-btn" type="button" onclick="runSelectOrigin()" title="Pick a point in the viewport to bind as Table Attach Point on every Setup.">SELECT ATTACH POINT</button>
+        </div>
+      </div>
+
+      <div class="cam-action-section">
+        <div class="cam-action-label">3. Toolpaths</div>
+        <div class="cam-action-body">
+          <button class="cad-btn cad-btn-primary" id="apply-toolpaths-btn" type="button" onclick="runApplyToolpaths()" title="Apply cloud templates to setups and run toolpath generation.">APPLY TOOLPATHS</button>
         </div>
       </div>
 
@@ -324,10 +408,25 @@
     send('preview');
   }
 
-  function runGenerate() {
+  function runBuild() {
     SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
-    setStatus('generating...');
-    send('generate', { mode: 'bspline' });
+    setStatus('building setups...');
+    send('build', { mode: 'bspline' });
+  }
+
+  function runAddMachine() {
+    setStatus('attaching machine to setups...');
+    send('add_machine');
+  }
+
+  function runSelectOrigin() {
+    setStatus('click a point in the viewport...');
+    send('select_origin');
+  }
+
+  function runApplyToolpaths() {
+    setStatus('applying templates + generating toolpaths...');
+    send('apply_toolpaths', { mode: 'bspline' });
   }
 
   window.fusionJavaScriptHandler = {
@@ -335,6 +434,15 @@
       try {
         const payload = data ? JSON.parse(data) : {};
 
+        // Treat short status messages from any phase as a friendly toast
+        // in the status bar (e.g. "BUILD complete", "Machine attached…").
+        if (action === 'report' && payload.msg) {
+          // payload.msg already comes in for ADD MACHINE / SELECT ORIGIN /
+          // APPLY TOOLPATHS. Show it as the status; if it indicates
+          // success, prefix with ✓.
+          const ok = payload.ok !== false;
+          setStatus((ok ? '✓ ' : '✗ ') + payload.msg);
+        }
         if (action === 'report') {
           (payload.setups || []).forEach(s => {
             const key = s.name.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '');
