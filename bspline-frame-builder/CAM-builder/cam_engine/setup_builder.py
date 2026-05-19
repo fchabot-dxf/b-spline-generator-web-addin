@@ -20,25 +20,12 @@ Reference: see ``CAM_API_NOTES.md`` -- "Setup creation", "WCS
 programmatically", "Stock", "Empty Setups".
 """
 
-import os
-import json
-
 import adsk.core
 import adsk.cam
 import adsk.fusion
 
 from . import parameter_introspect as pi
 from cam_utils import get_design
-
-
-# Settings file for the Table Attach Point entity token. Lives in the
-# addin source folder so it persists across projects (same machine, same
-# origin point — one captured token works for every project that uses the
-# Ultimate Bee). The file is JSON: {'table_attach_token': '...'}.
-_PART_ATTACH_SETTINGS_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'part_attach_token.json',
-)
 
 
 # Default machine assigned to every Setup created by this engine.
@@ -130,149 +117,6 @@ def _assign_default_machine(setup, setup_name, logger):
         _log(logger, f"SETUP MACHINE ({setup_name}): I — read after-assignment failed: {e}", "WARNING")
 
     return g_success or h_success
-
-
-# Default Part Position corner. 'bottom 1' empirically anchors the stock's
-# back-right-bottom corner to the Ultimate Bee's fence inside corner. Per-
-# spec override via spec['part_position_corner'].
-DEFAULT_PART_POSITION_CORNER = 'bottom 1'
-
-
-def _load_part_attach_token(logger):
-    """Read the saved Table Attach Point entity token from settings file."""
-    try:
-        if not os.path.exists(_PART_ATTACH_SETTINGS_FILE):
-            _log(logger, f"PART ATTACH: settings file does not exist at {_PART_ATTACH_SETTINGS_FILE}", "DEBUG")
-            return None
-        with open(_PART_ATTACH_SETTINGS_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        token = data.get('table_attach_token')
-        _log(logger, f"PART ATTACH: loaded token from settings (len={len(token) if token else 0})", "DEBUG")
-        return token
-    except Exception as e:
-        _log(logger, f"PART ATTACH: load token failed: {type(e).__name__}: {e}", "WARNING")
-        return None
-
-
-def _save_part_attach_token(token, logger):
-    """Persist the Table Attach Point entity token to settings file."""
-    try:
-        data = {'table_attach_token': token}
-        with open(_PART_ATTACH_SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-        _log(logger, f"PART ATTACH: saved token to {_PART_ATTACH_SETTINGS_FILE}", "DEBUG")
-        return True
-    except Exception as e:
-        _log(logger, f"PART ATTACH: save token failed: {type(e).__name__}: {e}", "WARNING")
-        return False
-
-
-def _get_active_design(logger):
-    """Helper to fetch the active design product, or None."""
-    app = adsk.core.Application.get()
-    doc = app.activeDocument
-    if doc is None:
-        return None
-    for i in range(doc.products.count):
-        p = doc.products.item(i)
-        if isinstance(p, adsk.fusion.Design):
-            return p
-    return None
-
-
-def _resolve_or_capture_table_attach_entity(cam, logger):
-    """Return a usable Table Attach Point proxy entity, or None.
-
-    Self-healing strategy that handles the mis-click case:
-
-      1. Load the saved entity token from settings (if any).
-      2. Scan every setup for ``job_positionAttach`` bindings, collect
-         (setup, entity, token) for each setup that has one.
-      3. Decision tree:
-         a) Any setup has a token that DIFFERS from the saved token →
-            the user has edited a binding (presumably fixing a mis-click).
-            Use that differing entity. Save its token as the new truth.
-         b) All setups match the saved token (or there's no saved token
-            yet and exactly one token exists) → use that. If unsaved,
-            save it now.
-         c) No setups have bindings → try resolving the saved token via
-            ``design.findEntityByToken``. If that succeeds, use it.
-         d) No saved token + no bindings anywhere → return None.
-
-    First-run UX: user clicks Origin on one setup. Next build (a) saves
-    the token and (b) propagates to all setups. From then on it's
-    zero-click — except if user re-clicks any setup with a different
-    vertex/point, the next build auto-adopts the new one.
-
-    Manual reset path: delete ``part_attach_token.json`` from the addin
-    folder, then clear bindings on all setups before next build.
-    """
-    saved_token = _load_part_attach_token(logger)
-
-    # Scan setups for current bindings
-    bindings = []  # list of (setup_name, entity, token)
-    for i in range(cam.setups.count):
-        s = cam.setups.item(i)
-        try:
-            p = s.parameters.itemByName('job_positionAttach')
-            if p is None:
-                continue
-            vec = p.value.value
-            n = vec.size() if hasattr(vec, 'size') else 0
-            if n > 0:
-                ent = vec[0]
-                bindings.append((s.name, ent, ent.entityToken))
-        except Exception as e:
-            _log(logger, f"PART ATTACH SCAN ({s.name}): {type(e).__name__}: {e}", "DEBUG")
-            continue
-
-    _log(logger,
-         f"PART ATTACH: found {len(bindings)} setups with binding; saved_token={'<set>' if saved_token else '<none>'}",
-         "DEBUG")
-
-    if bindings:
-        # Prefer a binding whose token DIFFERS from saved — that's the user
-        # editing (e.g. fixing a mis-click). The corrected vertex becomes
-        # the new truth.
-        if saved_token:
-            for name, ent, tok in bindings:
-                if tok != saved_token:
-                    _log(logger,
-                         f"PART ATTACH: setup '{name}' has token != saved — adopting user's edit as new truth",
-                         "INFO")
-                    _save_part_attach_token(tok, logger)
-                    return ent
-
-        # No differing binding (all match saved, or no saved). Use the
-        # first one and save its token (idempotent if already saved).
-        name, ent, tok = bindings[0]
-        if saved_token != tok:
-            _log(logger, f"PART ATTACH: captured token from setup '{name}'", "INFO")
-            _save_part_attach_token(tok, logger)
-        else:
-            _log(logger, f"PART ATTACH: setups already match saved token, reusing", "DEBUG")
-        return ent
-
-    # No bindings on any setup — fall back to saved token via findEntityByToken
-    if saved_token:
-        design = _get_active_design(logger)
-        if design is not None:
-            try:
-                found = design.findEntityByToken(saved_token)
-                if found and found.size() > 0:
-                    ent = found[0]
-                    _log(logger, f"PART ATTACH: resolved saved token via findEntityByToken to {type(ent).__name__} ✓", "DEBUG")
-                    return ent
-                _log(logger, "PART ATTACH: saved token resolved to 0 entities (machine maybe not attached yet)", "WARNING")
-            except Exception as e:
-                _log(logger, f"PART ATTACH: findEntityByToken raised: {type(e).__name__}: {e}", "WARNING")
-        else:
-            _log(logger, "PART ATTACH: no active design to resolve saved token", "WARNING")
-
-    _log(logger,
-         "PART ATTACH: no usable entity (no bindings, no resolvable saved token) — Table Attach Point left unset",
-         "WARNING")
-    return None
 
 
 def apply_templates_to_existing_setups(cam, logger=None):
@@ -616,109 +460,178 @@ def force_all_tool_numbers_to_one(cam, logger=None):
     return n_op_changed
 
 
-def apply_table_attach_to_all_setups(cam, logger=None):
-    """Bind the Table Attach Point on every setup in this CAM tree.
+# ---------------------------------------------------------------------------
+# Part Position propagation
+# ---------------------------------------------------------------------------
+#
+# job_positionAttach (Table Attach Point in the Setup dialog) requires
+# entities from the CAM-side proxy chain ``Machines:1+...`` — these
+# proxies aren't reachable from any documented entry point in the public
+# API. The ONLY way to obtain one is either:
+#   1. User clicks via ui.selectEntity once in the CAM environment, OR
+#   2. Walk .assemblyContext on an entity already bound on some setup.
+#
+# Therefore: the addin auto-PROPAGATES existing bindings. If at least one
+# setup has its Part Position configured (via user manual edit or the
+# SELECT ATTACH POINT palette button), the propagation pass takes that
+# entity and writes it to every other setup, plus sets the part-side
+# reference fields (stockPoint + 'bottom 1' corner). After the user's
+# one-time click per project, every future BUILD on the saved document
+# auto-propagates with no manual step.
+#
+# See CAM_BUILDER_CONTEXT.md "Part Position propagation" for the full
+# history and the API limitation that forced this design.
 
-    Call this AFTER all setups are built and AFTER any per-setup config
-    has been applied. Designed to run from
-    ``_DeferredTPGenHandler.notify()`` in cam-builder.py, in the same
-    deferred CustomEvent context where toolpath generation runs (so the
-    CAM engine is in a stable state, not mid-build).
 
-    No-op if the entity can't be resolved (first-run case before user
-    clicks Origin manually). Logs INFO summary so the user can see how
-    many setups got bound.
+# Part-side reference defaults. The stock's bottom-back corner ('bottom 1')
+# is the corner that lands ON the fence, so workpiece registration in
+# simulation matches the physical setup on the table. Per-spec override
+# via spec['part_position_corner'] is supported by build_setup.
+DEFAULT_PART_POSITION_CORNER = 'bottom 1'
+
+
+def _find_existing_part_attach_entity(setups, logger):
+    """Scan ``setups`` for any existing ``job_positionAttach`` binding.
+
+    Returns the first usable entity found, or ``None`` if no setup has
+    one yet. The returned entity carries the CAM-side proxy chain
+    (``Machines:1+...``) needed for writes to succeed on other setups
+    — that proxy is what makes propagation work where direct
+    machine-doc references fail.
     """
-    if cam is None or cam.setups.count == 0:
-        _log(logger, "PART ATTACH APPLY: no setups, skipping", "DEBUG")
-        return
-    ent = _resolve_or_capture_table_attach_entity(cam, logger)
-    if ent is None:
-        return
-    n_bound = 0
-    n_skipped = 0
-    for i in range(cam.setups.count):
-        s = cam.setups.item(i)
+    for setup in setups:
         try:
-            p = s.parameters.itemByName('job_positionAttach')
+            p = setup.parameters.itemByName('job_positionAttach')
             if p is None:
                 continue
-            existing = p.value.value.size() if hasattr(p.value.value, 'size') else 0
-            if existing > 0:
-                n_skipped += 1
-                _log(logger, f"PART ATTACH APPLY ({s.name}): already bound ({existing} entities), skipping", "DEBUG")
-                continue
-            p.value.value = [ent]
-            new_n = p.value.value.size()
-            if new_n > 0:
-                n_bound += 1
-                _log(logger, f"PART ATTACH APPLY ({s.name}): bound ✓", "DEBUG")
-            else:
-                _log(logger, f"PART ATTACH APPLY ({s.name}): bind silently rejected (count stayed 0)", "WARNING")
+            vec = p.value.value
+            n = vec.size() if hasattr(vec, 'size') else 0
+            if n > 0:
+                ent = vec[0]
+                _log(logger,
+                     f"PART POS: found existing binding on setup '{setup.name}' "
+                     f"({type(ent).__name__})",
+                     "DEBUG")
+                return ent
         except Exception as e:
-            _log(logger, f"PART ATTACH APPLY ({s.name}): raised {type(e).__name__}: {e}", "WARNING")
-    _log(logger, f"PART ATTACH APPLY: bound={n_bound} skipped={n_skipped} of {cam.setups.count} setups", "INFO")
+            _log(logger,
+                 f"PART POS: scan '{getattr(setup,'name','?')}' raised: {e}",
+                 "DEBUG")
+    return None
 
 
-def _set_part_position(setup, spec, logger):
-    """Configure the Setup's Part Position panel.
+def _bind_part_position(setup, attach_entity, corner, logger):
+    """Configure one Setup's Part Position panel.
 
-    Sets:
-      - Part Attach Point  = Stock Box Point at `spec['part_position_corner']`
-        (default 'bottom 1')
-      - X/Y/Z Distance     = 0 (no manual nudge)
-      - Table Attach Point = the fence inside-corner-bottom vertex on the
-        Ultimate Bee sim model (found via _find_fence_inside_corner_vertex).
-        Falls back to the .mch's table_0 default if the vertex can't be
-        located (sim model not loaded, fence missing, etc.).
+    Writes:
+      - ``job_positionReference_origin_mode`` → ``'stockPoint'``
+      - ``job_positionReference_origin_boxPoint`` → ``corner``
+      - ``job_positionAttach.value.value`` → ``[attach_entity]``
 
-    Per-spec override: set ``spec['part_position_corner']`` to one of
-    'top 1'..'top 4', 'bottom 1'..'bottom 4', or any other valid box-point
-    choice for that particular setup.
-
-    Non-fatal: any failure logs WARNING and continues.
+    Skips the write if the entity has changed length=0 on read-back
+    (silent reject — usually means the entity isn't a CAM-side proxy).
+    Returns True on success.
     """
-    setup_name = spec.get('name', '?')
-    corner = spec.get('part_position_corner', DEFAULT_PART_POSITION_CORNER)
+    name = getattr(setup, 'name', '<?>')
 
-    _log(logger, f"SETUP PARTPOS ({setup_name}): corner={corner!r}", "DEBUG")
-
-    # Mode: 'stockPoint' so the position reference resolves against the stock
-    # bbox corner picked in origin_boxPoint.
+    # Part Attach Point side: stock bounding box, specific corner
     try:
         pi.set_choice(setup.parameters, 'job_positionReference_origin_mode',
                       ['stockPoint'], logger)
     except Exception as e:
-        _log(logger, f"SETUP PARTPOS ({setup_name}): origin_mode set failed: {e}", "WARNING")
-
-    # Corner of stock bbox
+        _log(logger,
+             f"PART POS ({name}): origin_mode set failed: {e}",
+             "WARNING")
     try:
         pi.set_choice(setup.parameters, 'job_positionReference_origin_boxPoint',
-                      [corner, corner.replace(' ', '')], logger)
+                      [corner, corner.replace(' ', ''), corner.replace(' ', '_')], logger)
     except Exception as e:
-        _log(logger, f"SETUP PARTPOS ({setup_name}): boxPoint set failed: {e}", "WARNING")
+        _log(logger,
+             f"PART POS ({name}): boxPoint set failed: {e}",
+             "WARNING")
 
-    # Table Attach Point binding is deferred — see
-    # apply_table_attach_to_all_setups() called from
-    # _DeferredTPGenHandler.notify() in cam-builder.py. The API can't
-    # resolve the machine's hidden assembly tree on a fresh build, so
-    # binding here would fail with InternalValidationError. The deferred
-    # path uses a saved entity token (or captures one from a setup the
-    # user manually bound) to do all bindings in a single pass after
-    # build completes.
+    # Table Attach Point binding
+    try:
+        p = setup.parameters.itemByName('job_positionAttach')
+        before = p.value.value.size() if hasattr(p.value.value, 'size') else 0
+        p.value.value = [attach_entity]
+        after = p.value.value.size()
+        if after == 0:
+            _log(logger,
+                 f"PART POS ({name}): job_positionAttach silently rejected "
+                 f"(was {before}, after write 0) — entity may not be a CAM proxy",
+                 "WARNING")
+            return False
+        if before > 0 and after > 0:
+            _log(logger,
+                 f"PART POS ({name}): job_positionAttach already bound, kept",
+                 "DEBUG")
+        else:
+            _log(logger,
+                 f"PART POS ({name}): job_positionAttach bound (count {before}→{after})",
+                 "DEBUG")
+        return True
+    except Exception as e:
+        _log(logger,
+             f"PART POS ({name}): job_positionAttach write raised: {e}",
+             "WARNING")
+        return False
 
-    # Zero out the manual X/Y/Z distance offsets so position is fully
-    # determined by (corner, table_attach_point). Any per-spec offset can
-    # go in spec['part_position_offset_x' / 'part_position_offset_y' / '..z'].
-    for axis, key in [('X', 'part_position_offset_x'),
-                      ('Y', 'part_position_offset_y'),
-                      ('Z', 'part_position_offset_z')]:
-        val = spec.get(key, '0 mm')
+
+def _propagate_part_position_pass(setups, logger):
+    """Pass-2 helper: auto-propagate Part Position to every Setup.
+
+    1. Scan ``setups`` for any setup with an existing
+       ``job_positionAttach`` binding (manual UI config, or a prior
+       SELECT ATTACH POINT button click).
+    2. If found: write that entity + the part-side reference fields
+       to every setup that doesn't already have a binding.
+    3. If none found: log INFO so the palette can surface a prompt.
+
+    Returns a tuple ``(n_bound, source_setup_name)`` where ``n_bound``
+    is the count of setups newly bound this pass, and source is the
+    setup whose binding seeded the propagation (or empty if none).
+    """
+    if not setups:
+        return 0, ''
+    seed = _find_existing_part_attach_entity(setups, logger)
+    if seed is None:
+        _log(logger,
+             f"PART POS: no setup has a Part Position binding yet — "
+             f"click SELECT ATTACH POINT in the palette once to seed",
+             "INFO")
+        return 0, ''
+    src = ''
+    for setup in setups:
         try:
-            _set_expr_param(setup.parameters, f'job_position{axis}Offset',
-                            val, setup_name, logger)
-        except Exception as e:
-            _log(logger, f"SETUP PARTPOS ({setup_name}): {axis}Offset set failed: {e}", "WARNING")
+            p = setup.parameters.itemByName('job_positionAttach')
+            existing = p.value.value.size() if (p and hasattr(p.value.value, 'size')) else 0
+            if existing > 0:
+                if not src:
+                    src = setup.name
+                continue  # already bound, skip
+        except Exception:
+            pass
+    n_bound = 0
+    for setup in setups:
+        try:
+            p = setup.parameters.itemByName('job_positionAttach')
+            if p is None:
+                continue
+            existing = p.value.value.size() if hasattr(p.value.value, 'size') else 0
+            if existing > 0:
+                continue  # don't overwrite — user may have customized
+        except Exception:
+            continue
+        # Resolve corner override per-setup if spec stores one (best-effort)
+        corner = DEFAULT_PART_POSITION_CORNER
+        if _bind_part_position(setup, seed, corner, logger):
+            n_bound += 1
+    _log(logger,
+         f"PART POS: propagated to {n_bound} setup(s) "
+         f"(seeded from '{src}')",
+         "INFO")
+    return n_bound, src
 
 
 # ---------------------------------------------------------------------------
@@ -824,6 +737,11 @@ SETUP_SPECS = [
 def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=False):
     """Build all four Setups. Returns ``[Setup, Setup, Setup, Setup]``.
 
+    Resolves the Ultimate Bee Fence component once before the loop so
+    every Setup binds its WCS origin to the same physical reference
+    point (the fence inside corner) and gets the fence body as a
+    fixture for CAM simulation collision-checking.
+
     Parameters
     ----------
     cam : adsk.cam.CAM
@@ -839,6 +757,11 @@ def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=F
         Use this when the user wants to attach a machine separately
         via the ADD MACHINE button (or skip it entirely).
     """
+    # Pass 1: build every Setup with its spec-derived WCS. Each
+    # build_setup calls _assign_default_machine, which is what triggers
+    # Fusion to load the Ultimate Bee machine sim doc. On a cold start
+    # the sim doc isn't loaded yet when build_all_setups is entered,
+    # which is why we don't attempt fence resolution here.
     setups = []
     for spec in SETUP_SPECS:
         setup = build_setup(cam, mms, spec, logger,
@@ -846,6 +769,16 @@ def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=F
                             skip_machine=skip_machine)
         if setup:
             setups.append(setup)
+
+    # Pass 2: now that every Setup has a machine attached, propagate
+    # the Part Position binding (Table Attach Point + reference fields)
+    # from any setup the user has manually configured. On first BUILD
+    # in a fresh project this is a no-op (no binding exists yet); user
+    # configures one setup via Fusion's Edit Setup dialog, then a
+    # subsequent BUILD picks it up and propagates to every other setup.
+    # See CAM_BUILDER_CONTEXT.md "Part Position propagation".
+    _propagate_part_position_pass(setups, logger)
+
     return setups
 
 
@@ -856,6 +789,13 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     declared cloud templates are NOT applied.
     When ``skip_machine`` is True, the default machine is NOT attached
     (user can attach via the ADD MACHINE button later, or skip).
+
+    WCS is configured from the spec only (stock-derived).
+    ``job_positionAttach`` (Part Position → Table Attach Point) is NOT
+    written here. It's auto-propagated in pass 2 by
+    :func:`_propagate_part_position_pass` if the user has configured
+    one setup manually. See module docstring on Part Position
+    propagation.
     """
     mm = mms.get(spec['mm_rule'])
     if mm is None:
@@ -885,6 +825,11 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         _log(logger, f"SETUP BUILD ({spec['name']}): bound {len(bodies)} bodies", "DEBUG")
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): models bind failed: {e}", "WARNING")
+
+    # The fence-anchored WCS binding doesn't happen here — it's done
+    # in a second pass after every Setup has had a machine attached,
+    # because that's the event that triggers Fusion to load the
+    # machine sim doc (where the fence body lives).
 
     # Add the setup FIRST. Choice parameters on a SetupInput don't expose
     # their `choices` enum until the Setup is materialised in the CAM tree
@@ -982,10 +927,19 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # corner that the WCS lands on matches what the spec asked for.
     # set_choice will try a couple of casings since older Fusion builds
     # use 'top1' (no space).
+    #
+    # Written even when the fence path will override origin_mode below
+    # — keeps the boxPoint value sensible for any debugging that flips
+    # mode back to stockPoint, and avoids a half-set state if the fence
+    # bind itself fails.
     if spec.get('box_point'):
         pt = spec['box_point']
         pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
                       [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
+
+    # NOTE: WCS stays at the spec-defined stock corner (g-code zero).
+    # The fence is bound separately via ``job_positionAttach`` in
+    # :func:`_propagate_part_position_pass` after the build pass.
 
     # Continue rest machining — when True, the setup only cuts material
     # left over by the previous setup instead of re-cutting solved volume.
@@ -1010,10 +964,12 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         _set_expr_param(setup.parameters, 'job_stockOffsetBottom',
                         spec['stock_offset_bottom'], spec['name'], logger)
 
-    # Part Position is DEFERRED to after the toolpath-generation warmup,
-    # see apply_part_position_to_all_setups() called from cam-builder.py's
-    # _DeferredTPGenHandler. Setting fixture_point during fresh setup
-    # creation crashes the CAM engine on some builds.
+    # Part Position binding is now handled inline by the fence-fixture
+    # flow (above): the fence is attached as a CAM fixture on the
+    # SetupInput, and the WCS origin binds to the fence's inside-corner
+    # ConstructionPoint. No deferred Table-Attach-Point machinery is
+    # needed — see CAM_BUILDER_CONTEXT.md "Fence-anchored WCS" and the
+    # historical context in MACHINE_POSITION_CONTEXT.md.
 
     # Read-back log: dump what Fusion actually has on the live setup AFTER
     # all writes. Catches the silent-reject case where set_choice falls
@@ -1622,6 +1578,10 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
          f"({', '.join(_side_label(s) for s in sides)})",
          "INFO")
 
+    # Pass 1 (loop below) builds each Setup with its spec-derived WCS.
+    # Part Position propagation happens in pass 2 after the loop — see
+    # _propagate_part_position_pass for why a separate pass is needed.
+
     results = []
     for comp_name, mm in mms_dict.items():
         for side_idx, side in enumerate(sides):
@@ -1680,6 +1640,12 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
                 _log(logger,
                      f"SETUP BUILD GENERIC ({setup_name}): build returned None",
                      "WARNING")
+
+    # Pass 2: propagate Part Position binding to all setups. No-op
+    # until the user has configured one setup's Part Position via the
+    # Edit Setup dialog. See CAM_BUILDER_CONTEXT.md.
+    _propagate_part_position_pass([s for _, s in results], logger)
+
     return results
 
 
@@ -1742,6 +1708,10 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
     stock. What varies is the WCS orientation: the side's rotation is
     applied via ``_resolve_side_axes`` (axis bindings) and
     ``_apply_side_axis_flips`` (180° flips for X/Y indexing).
+
+    WCS is configured from the spec only (stock-derived). Part Position
+    auto-propagation happens in pass 2 via
+    :func:`_propagate_part_position_pass`.
     """
     setup_name = spec.get('name', '<unnamed>')
     side = spec.get('side') or dict(_DEFAULT_SIDES[0])
@@ -1763,6 +1733,9 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
         _log(logger, f"SETUP BUILD GENERIC ({setup_name}): bound {len(bodies)} bodies", "DEBUG")
     except Exception as e:
         _log(logger, f"SETUP BUILD GENERIC ({setup_name}): models bind failed: {e}", "WARNING")
+
+    # Note: machine-doc fence body can't be a fixture (cross-doc). WCS
+    # binding via the fence vertex (after add) is what anchors the WCS.
 
     try:
         setup = cam.setups.add(setup_input)
@@ -1830,6 +1803,10 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
         pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
                       [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
 
+    # Part Position propagation runs in pass 2 via
+    # :func:`_propagate_part_position_pass` after all setups in this
+    # generic batch are built. WCS stays stock-derived per spec.
+
     # Continue rest machining — when True, the setup only cuts material
     # left over by the previous setup instead of re-cutting solved volume.
     # In indexed mode this is auto-enabled for every side after the first
@@ -1840,11 +1817,8 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
                         bool(spec['continue_machining']),
                         setup_name, logger)
 
-    # Part Position — anchors the stock bbox corner to the machine's fixture
-    # point (Ultimate Bee fence inside corner per .mch table_0 + v31 sim).
-    # Same defaults as the hardcoded build_setup path; see _set_part_position
-    # docstring for per-spec override fields.
-    _set_part_position(setup, spec, logger)
+    # Part Position binding is now handled inline by the fence-fixture
+    # flow above. No deferred Table-Attach-Point machinery needed.
 
     # Clearance / retract heights from profile (mm → Fusion expression
     # string). Written last so WCS is fully resolved first. Parameter
@@ -2050,7 +2024,7 @@ def _apply_side_axis_flips(setup, side, setup_name, logger):
         return
 
     _log(logger,
-         f"SETUP BUILD GENERIC ({setup_name}): {angle:g}°{axis_kind} rotation "
+         f"SETUP BUILD GENERIC ({setup_name}): {angle:g}deg{axis_kind} rotation "
          f"not expressible via WCS flips; Setup created unrotated. Either "
          f"re-orient in the CAM dialog, or rotate about Z (fully supported).",
          "WARNING")

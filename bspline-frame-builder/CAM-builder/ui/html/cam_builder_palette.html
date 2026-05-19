@@ -354,7 +354,7 @@
         <div class="cam-action-label">2. Machine</div>
         <div class="cam-action-body">
           <button class="cad-btn" id="add-machine-btn" type="button" onclick="runAddMachine()" title="Attach the default machine (Ultimate Bee 3 axis) to every Setup.">ADD MACHINE</button>
-          <button class="cad-btn" id="select-origin-btn" type="button" onclick="runSelectOrigin()" title="Pick a point in the viewport to bind as Table Attach Point on every Setup.">SELECT ATTACH POINT</button>
+          <button class="cad-btn" id="sync-attach-btn" type="button" onclick="runSyncAttach()" title="Sync Table Attach Point from one manually-configured Setup to all others.">SYNC TABLE ATTACH</button>
         </div>
       </div>
 
@@ -419,9 +419,9 @@
     send('add_machine');
   }
 
-  function runSelectOrigin() {
-    setStatus('click a point in the viewport...');
-    send('select_origin');
+  function runSyncAttach() {
+    setStatus('syncing table attach point...');
+    send('sync_table_attach');
   }
 
   function runApplyToolpaths() {
@@ -437,7 +437,7 @@
         // Treat short status messages from any phase as a friendly toast
         // in the status bar (e.g. "BUILD complete", "Machine attached…").
         if (action === 'report' && payload.msg) {
-          // payload.msg already comes in for ADD MACHINE / SELECT ORIGIN /
+          // payload.msg already comes in for ADD MACHINE /
           // APPLY TOOLPATHS. Show it as the status; if it indicates
           // success, prefix with ✓.
           const ok = payload.ok !== false;

@@ -8,6 +8,9 @@ context to a new LLM session.
 Companion docs:
 - `CAM_API_NOTES.md` — verified Fusion CAM API patterns (timing, enum
   strings, post-add idiom)
+- `MACHINE_POSITION_CONTEXT.md` — historical context on the workpiece
+  anchoring problem (largely resolved by the fence-vertex anchor
+  documented below; retained for reference)
 - Runtime audits of real Fusion documents live in `cam-builder-cam-debug.log`
 
 ---
@@ -222,6 +225,70 @@ The **stock** rule is the exception — it nukes the wrapper too, then
 
 ---
 
+## Fence-anchored WCS (the big win)
+
+Every Setup the addin builds has its WCS origin bound to the
+**inside-corner vertex of the fence body in the Ultimate Bee machine
+sim doc**. Result: Stock / B-spline Back / B-spline Top / Frame all
+land at the same physical world position — the fence corner on the
+table — instead of scattering by 100+ inches as they did when each
+setup derived its origin from its own stock bounding box.
+
+**Where the fence lives**
+
+- Document: `Ultimate Bee 3 axis v31` (loaded automatically when any
+  Setup has `machine` assigned via the cloud `.mch`)
+- Path: `static_0:1+MDF:1` (sibling of `spoilboard` body inside the
+  `MDF` component)
+- Body: name = `'fence'`, 12 vertices forming an L footprint
+- Inside-corner vertex: at machine-doc world `(0, 0, 0)` cm
+
+**How the addin uses it**
+
+`cam_engine/fence_builder.py` exposes `find_machine_fence(logger)` →
+returns a `MachineFence` carrying `origin_vertex`, `body`, `occurrence`,
+and `machine_doc` references. The `setup_builder` calls it once per
+build, then writes::
+
+    setup.parameters['wcs_origin_mode'].expression = "'point'"
+    setup.parameters['wcs_origin_point'].value.value = [fence_vertex]
+
+on every Setup, AFTER `cam.setups.add()`. The vertex is a **live
+cross-doc entity reference**; saved `entityToken` round-trips fail
+cross-doc with the same `InternalValidationError` that broke the old
+token-replay workaround.
+
+**Cross-doc gotchas**
+
+- `wcs_origin_point` accepts the cross-doc vertex (verified).
+- `job_positionAttach` (Part Position attach point) silently rejects
+  the cross-doc vertex on current builds. That's OK — `wcs_origin_point`
+  controls g-code zero, which is the goal.
+- `setupInput.fixtures` requires entities in the user's own design;
+  the machine-doc fence body can't be passed as a fixture. We rely
+  on simulation collision detection that comes from the machine sim
+  geometry being present at render time, not from `setup.fixtures`.
+
+**Fallback behaviour**
+
+If the machine sim doc isn't loaded yet (no Setup has had a machine
+assigned), `find_machine_fence` returns `None` and Setups fall back
+to the stock-derived origin (pre-fence behaviour). Re-running BUILD
+after ADD MACHINE picks up the fence on the second pass.
+
+**Why this works where the prior workaround failed**
+
+The old approach saved an entity token captured via `ui.selectEntity`
+in the project document, then replayed via `Design.findEntityByToken`
+on subsequent builds. That path was broken cross-doc:
+`InternalValidationError` on ConstructionPoint resolution from a
+non-matching root component. The new path navigates `app.documents`
+each build and grabs the **live** vertex reference — never goes
+through token serialization. Verified with both the spike (one-off
+script) and the integrated addin flow.
+
+---
+
 ## Verified API patterns (the gotchas)
 
 ### Timing: parameters AFTER add()
@@ -391,6 +458,7 @@ CAM-builder/
 ├── project_path.json
 ├── CAM_API_NOTES.md           ← verified API patterns reference
 ├── CAM_BUILDER_CONTEXT.md     ← this file
+├── MACHINE_POSITION_CONTEXT.md ← historical anchoring debug context
 ├── cam-builder-cam-debug.log  ← runtime logs
 ├── cam_engine/
 │   ├── __init__.py
@@ -398,10 +466,13 @@ CAM-builder/
 │   ├── cam_workspace.py       ← workspace switching
 │   ├── mm_builder.py          ← Manufacturing Model creation + body filter
 │   ├── setup_builder.py       ← Setup creation + WCS + stock mode
+│   ├── fence_builder.py       ← locates fence body in loaded machine sim doc
+│   ├── template_assignments.py← per-project template override storage
 │   └── parameter_introspect.py← parameter resolver, candidate-list shims
 ├── cam_utils/
 │   ├── __init__.py
-│   └── cam_logger.py          ← logging shim
+│   ├── cam_logger.py          ← logging shim
+│   └── get_design.py          ← CAM-workspace-safe Design accessor
 ├── ui/
 │   └── html/
 │       └── cam_builder_palette.html
