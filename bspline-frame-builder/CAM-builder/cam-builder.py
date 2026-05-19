@@ -1149,53 +1149,66 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
             except Exception as _e:
                 _log(f"DEFERRED TPGEN: tool renumber raised: {type(_e).__name__}: {_e}", "WARNING")
 
-            # BULK GENERATION via cam.generateAllToolpaths(False).
-            # Sequential per-op generation (which we tried) returned
-            # 'no toolpath' for the Morphed Spiral ops in 1s — they
-            # rely on intermediate stock state that doesn't propagate
-            # synchronously through the per-op API. Bulk lets Fusion
-            # internally manage the cascade, same as right-click →
-            # 'Generate All' in the UI.
+            # STAGGERED GENERATION:
+            # We trigger generation sequentially with a 1-second delay between each.
+            # This ensures they stack in Fusion's background queue in the correct order,
+            # avoiding race conditions where a rest-machining operation (e.g. Morphed Spiral)
+            # fails because the preceding pocket operation hasn't finished evaluating its stock yet.
             t_start = time.time()
             n_ops_total = 0
-            n_ops_ok = 0
-            n_ops_failed = 0
+            all_ops = []
             for i in range(cam.setups.count):
-                n_ops_total += cam.setups.item(i).operations.count
+                setup = cam.setups.item(i)
+                n_ops_total += setup.operations.count
+                for j in range(setup.operations.count):
+                    all_ops.append(setup.operations.item(j))
+            
+            futures = []
             try:
-                _log(f"DEFERRED TPGEN: starting BULK generation of {n_ops_total} ops")
-                future = cam.generateAllToolpaths(False)
-                # Wait for completion
+                _log(f"DEFERRED TPGEN: starting STAGGERED generation of {n_ops_total} ops")
+                for op in all_ops:
+                    _log(f"DEFERRED TPGEN: enqueueing '{op.name}'")
+                    f = cam.generateToolpath(op)
+                    futures.append(f)
+                    adsk.doEvents()
+                    time.sleep(1.0)
+                
+                # Wait for all to complete
+                _log("DEFERRED TPGEN: all ops enqueued, waiting for background generation to finish")
                 bulk_timeout = 1800.0
                 last_progress_log = 0
                 while True:
-                    try:
-                        if future.isGenerationCompleted:
-                            break
-                    except Exception:
-                        break
                     adsk.doEvents()
-                    time.sleep(0.1)
+                    time.sleep(0.5)
+                    
+                    all_done = True
+                    done_count = 0
+                    for f in futures:
+                        try:
+                            if f.isGenerationCompleted:
+                                done_count += 1
+                            else:
+                                all_done = False
+                        except Exception:
+                            # if future is invalid, consider it done
+                            done_count += 1
+                            
+                    if all_done:
+                        break
+                        
                     elapsed = time.time() - t_start
                     if elapsed - last_progress_log > 5.0:
-                        try:
-                            done = getattr(future, 'numberOfCompleted', '?')
-                            total = getattr(future, 'numberOfOperations', '?')
-                            _log(f"DEFERRED TPGEN: bulk progress {done}/{total} ({elapsed:.0f}s)")
-                        except Exception:
-                            pass
+                        _log(f"DEFERRED TPGEN: progress {done_count}/{n_ops_total} ({elapsed:.0f}s)")
                         last_progress_log = elapsed
+                        
                     if elapsed > bulk_timeout:
-                        _log(f"DEFERRED TPGEN: bulk timed out after {bulk_timeout:.0f}s", "WARNING")
+                        _log(f"DEFERRED TPGEN: timed out after {bulk_timeout:.0f}s", "WARNING")
                         break
-                _log(f"DEFERRED TPGEN: bulk completed in {time.time()-t_start:.1f}s")
+                        
+                _log(f"DEFERRED TPGEN: staggered generation completed in {time.time()-t_start:.1f}s")
             except Exception as e:
-                _log(f"DEFERRED TPGEN: bulk generation raised: {e}", "WARNING")
+                _log(f"DEFERRED TPGEN: staggered generation raised: {e}", "WARNING")
                 _log_error(traceback.format_exc())
-            # (Old sequential per-op generation removed — bulk via
-            # cam.generateAllToolpaths(False) above handles rest-machining
-            # cascade internally. Sequential per-op returned empty
-            # toolpaths for ops dependent on intermediate stock state.)
 
             # Post-state audit: walk every op and report which ones got
             # a toolpath vs which didn't. This tells us which (if any)

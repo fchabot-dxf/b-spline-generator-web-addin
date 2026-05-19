@@ -9,6 +9,9 @@
 > cleanly** — the historical breakage was specific to the saved-token
 > path (`Design.findEntityByToken`), which is no longer used.
 >
+> **STATUS — Spindle Simulation Alignment UNRESOLVED.**
+> The machine simulation still shows the spindle incorrectly aligned with the tool. Attempts to fix this by zeroing or modifying the `head.attach_frame.point` in the `.mch` file have not fully resolved the visual offset (though X-axis centering was achieved with X=0).
+> 
 > The `ui.selectEntity` button, the deferred SELORIG event handler,
 > the `IronSetup` commandCreated tab-activator, and the
 > `part_attach_token.json` settings file have all been **removed**
@@ -250,9 +253,9 @@ generator.
 
 | Approach | Result |
 |----------|--------|
-| Sequential per-op `cam.generateToolpath(op)`                       | 5 of 7 ops succeed; both Morphed Spirals fail in 1 s |
-| Per-op + 500 ms `adsk.doEvents()` settle between ops              | Same failure — settle delay doesn't trigger IPV recompute |
-| `cam.generateAllToolpaths(False)` (bulk, `skipValid=False`)        | All 7 ops produce toolpaths — **used today** |
+| Sequential per-op `cam.generateToolpath(op)`                       | Historically failed, but **currently observed to work** for completing incomplete toolpaths. |
+| Per-op + 500 ms `adsk.doEvents()` settle between ops              | Settle delay doesn't trigger IPV recompute |
+| `cam.generateAllToolpaths(False)` (bulk, `skipValid=False`)        | Used to work, but **currently observed to leave toolpaths incomplete** (orange warning icons). |
 | `future.isGenerationCompleted` polling with 1800 s timeout         | Works as the completion gate for bulk |
 
 ### Current implementation
@@ -352,10 +355,12 @@ If you need progress UI, poll `future.numberOfCompleted` /
 **Closed (don't re-explore):**
 - `.mch table_0` is *not* the workpiece anchor. Don't edit it expecting
   the workpiece to move.
-- Sequential per-op generation is *not* a viable workaround for
-  rest-machining timing — bulk is the right answer.
 - `IronSetup.execute()` is *not* an Edit Setup entry point.
 - Hardcoded per-setup offsets are off-limits.
+
+**New Issues (Active):**
+- **Spindle Attachment Offset:** Changing `head.attach_frame` coordinates in the `.mch` file aligns the X-axis (when X=0) but leaves Y/Z offsets incorrect during simulation. The root cause of the visual displacement between the spindle and the tool during machine sim remains elusive.
+- **Bulk Toolpath Generation Incomplete:** `cam.generateAllToolpaths()` leaves toolpaths incomplete (showing orange warning icons), but generating them separately/sequentially succeeds. This contradicts earlier behavior where bulk was the only reliable method for rest-machining.
 
 **Open (worth re-trying with new info):**
 1. **`setup.parameters['job_positionAttach']` direct binding without
