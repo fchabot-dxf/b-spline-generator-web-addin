@@ -371,6 +371,74 @@ Fusion builds.
 
 ---
 
+## Toolpath generation API — collection-of-ops vs per-setup (2026-05-20)
+
+**Symptom:** B-spline Back / Pocket back came back orange "out of date"
+(`state=1`, `isToolpathValid=False`, `hasToolpath=True`) on every BUILD
++ APPLY TOOLPATHS, even after templates were re-saved clean. The other
+Pockets ended up green. Manual Edit+OK on Pocket back then Generate
+made it green. The CAM kernel msglog said `"Generation completed
+successfully"`, but `op.toolpath` was None on the failing op.
+
+**Root cause (verified empirically):** the addin was using
+`cam.generateToolpath(ObjectCollection of all ops)` to dispatch the
+whole batch in one async call. Fusion's batch scheduler for collections
+appears to pre-invalidate certain ops mid-batch (notably Pocket back,
+the first op in a setup that other setups inherit stock from via
+`stockMode=7 / from_prev_setup`). The kernel still runs and produces a
+toolpath, but the op stays at `state=1` because the new toolpath isn't
+attached to the (now-invalidated) op.
+
+**Verification:** with the same clean templates, calling
+`cam.generateToolpath(setup)` per setup and awaiting each future before
+moving on produces all ops at `state=0` (green check). The cross-setup
+IPV chain (B-spline Top reading B-spline Back) is honored because
+B-spline Back fully completes before B-spline Top starts.
+
+**Proposed fix (not yet wired):** in `_DeferredTPGenHandler.notify()`
+replace the `cam.generateToolpath(op_collection)` block with a
+per-setup loop:
+
+```python
+for i in range(cam.setups.count):
+    setup = cam.setups.item(i)
+    if setup.operations.count == 0:
+        continue
+    f = cam.generateToolpath(setup)
+    while not f.isGenerationCompleted:
+        adsk.doEvents()
+        time.sleep(0.2)
+```
+
+The PRE-GEN / POST-GEN / OP EXT / WATCH / TRANSITION / IRONJOB /
+CAMKERNEL diagnostic blocks all stay — they're orthogonal to the
+generation strategy and useful for future debugging.
+
+**Related: template re-save hygiene.** When re-saving a cloud template
+from a live op (`CAMTemplate.createFromOperations` +
+`updateTemplate`), the template captures the op's current state INCLUDING
+any baked toolpath. If the source op is `state=1` (stale) at save time,
+the saved template will create stale ops on every future apply. Always
+verify the source op is `state=0` (green check) before saving as a
+template. The cleanest UI workflow is Edit → OK → Store as Template;
+the Edit+OK cycle is what guarantees the op is in a clean state before
+the save captures it.
+
+**API quirks discovered along the way:**
+- `op.tool_number` cannot be set via the API — value silently reverts
+  to the template's baked number. Only `op.tool.tool_number` (the tool
+  definition) accepts edits.
+- `lib.updateMachine(url=..., machine=...)` — kwarg order is critical
+  (the C++ signature has args in a different order than the Python
+  docstring suggests).
+- `Machine.createFromFile(location, filePath)` requires a
+  `LibraryLocations` enum as first arg (use
+  `adsk.cam.LibraryLocations.LocalLibraryLocation` for a file on disk).
+- `cam.generateAllToolpaths(False)` was observed to hang
+  indefinitely in earlier runs; per-setup loop is the reliable path.
+
+---
+
 ## Open issues / regressions
 
 - **Frame MM ends up bodiless** — confirmed via 2026-04-28 18:31 run.

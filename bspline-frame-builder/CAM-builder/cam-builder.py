@@ -1086,8 +1086,18 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
     from and produces wrong / empty toolpaths. Sequential await fixes that.
     """
     def notify(self, args):
-        import time
+        import time, os as _os
         try:
+            # Truncate the log file at the start of each APPLY TOOLPATHS
+            # run so each session starts clean. Keeps log focused on the
+            # current run for easier diagnostic comparison.
+            try:
+                for _lp in getattr(_logger, 'log_paths', []) or []:
+                    if _os.path.exists(_lp):
+                        with open(_lp, 'w', encoding='utf-8') as _f:
+                            _f.write('')
+            except Exception:
+                pass
             _log("DEFERRED TPGEN: handler notify() entered")
             app = adsk.core.Application.get()
             cam = app.activeDocument.products.itemByProductType('CAMProductType')
@@ -1140,75 +1150,464 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
             # here — every Setup already has its WCS anchored to the
             # fence corner before this handler runs.
 
-            # TOOL RENUMBER — force every op's tool_number to 1. The
-            # templates bake in T1/T2 from their original authoring; the
-            # user runs a single-tool change workflow so every op is T1.
-            try:
-                _log("DEFERRED TPGEN: forcing all tool numbers to 1")
-                _sb.force_all_tool_numbers_to_one(cam, logger=_logger)
-            except Exception as _e:
-                _log(f"DEFERRED TPGEN: tool renumber raised: {type(_e).__name__}: {_e}", "WARNING")
+            # Runtime overrides removed — templates now ship with correct
+            # tool_number=1 and useRestMachining=false baked in. The
+            # force_first_op_rest_machining_off helper has been deleted;
+            # force_all_tool_numbers_to_one is kept in setup_builder.py
+            # as a safety hook but no longer wired in. The op-level
+            # tool_number override silently reverts via the API, so the
+            # renumber helper was only useful for tool.tool_number — both
+            # are now correct in the templates themselves.
 
-            # STAGGERED GENERATION:
-            # We trigger generation sequentially with a 1-second delay between each.
-            # This ensures they stack in Fusion's background queue in the correct order,
-            # avoiding race conditions where a rest-machining operation (e.g. Morphed Spiral)
-            # fails because the preceding pocket operation hasn't finished evaluating its stock yet.
+            # PER-SETUP SEQUENTIAL GENERATION:
+            # cam.generateToolpath(setup) lets Fusion manage IPV / stock-state
+            # propagation between ops within the setup internally. The previous
+            # per-op cam.generateToolpath(op) loop left rest-machining and
+            # Morphed Spiral ops with stale IPV input and they fast-failed in
+            # ~0.4s with hasToolpath=False. Empirically verified: per-setup
+            # generation makes both B-spline Morphed Spirals succeed with
+            # boundaryOffset at its template default (0). Each setup's future
+            # is awaited fully before the next setup starts so cross-setup
+            # IPV (B-spline Top inherits from B-spline Back) is correct.
             t_start = time.time()
-            n_ops_total = 0
-            all_ops = []
+            n_setups_total = cam.setups.count
+            n_ops_total = sum(cam.setups.item(i).operations.count
+                              for i in range(n_setups_total))
+
+            # Diagnostic helper — dumps op state + key params in one line per
+            # op. Called PRE-GEN (before cam.generateToolpath(setup)) and
+            # POST-GEN (after the future completes). Compare PRE vs POST to
+            # see what Fusion did to the op during gen. Compare working ops
+            # vs failing ops (same setup or across setups) to find the
+            # differentiating param. Failing-fast Morphed Spirals tend to
+            # show identical PRE and POST except for hasToolpath staying
+            # False.
+            def _diag_op(op, phase):
+                # Param names worth comparing for boundary / silhouette /
+                # stock / surface failures. Each access is guarded — an op
+                # type that lacks the param just gets skipped.
+                keys = (
+                    'boundaryMode', 'boundaryOffset', 'machiningBoundaryOffset',
+                    'boundaryContainment', 'boundaryConfineTool',
+                    'useSilhouetteAsMachiningBoundary', 'silhouetteAperture',
+                    'minimumSilhouetteArea', 'machiningBoundarySel',
+                    'useRestMachining', 'restMaterialSource',
+                    'restMaterialFromJob', 'restMaterialPrevious',
+                    'includeSetupModel', 'overrideModel', 'useCheckSurface',
+                    'stockToLeave', 'verticalStockToLeave', 'useStockToLeave',
+                    'tool_diameter', 'tolerance',
+                    'surfaceXLow', 'surfaceXHigh',
+                    'surfaceYLow', 'surfaceYHigh',
+                    'surfaceZLow', 'surfaceZHigh',
+                    'stockXLow', 'stockXHigh',
+                    'stockYLow', 'stockYHigh',
+                    'stockZLow', 'stockZHigh',
+                )
+                try:
+                    head = (f"strategy={op.strategy} "
+                            f"state={op.operationState} "
+                            f"hasTP={op.hasToolpath}")
+                except Exception as e:
+                    head = f"<head read err: {e}>"
+                parts = [head]
+                for k in keys:
+                    try:
+                        p = op.parameters.itemByName(k)
+                        if p is None:
+                            continue
+                        try:
+                            raw = p.value
+                            v = raw.value if hasattr(raw, 'value') else raw
+                            # collapse opaque vector/proxy reprs
+                            vs = str(v)
+                            if len(vs) > 60 or 'Swig' in vs or 'BaseVector' in vs:
+                                # try to summarize collection-like values
+                                try:
+                                    n = int(v.count) if hasattr(v, 'count') else None
+                                    vs = f"<vec n={n}>" if n is not None else "<obj>"
+                                except Exception:
+                                    vs = "<obj>"
+                        except Exception as ve:
+                            vs = f"<val err:{ve}>"
+                        try:
+                            expr = p.expression
+                        except Exception:
+                            expr = "?"
+                        parts.append(f"{k}={vs}|{expr!r}")
+                    except Exception:
+                        pass
+                _log(f"OP DIAG [{phase}] '{op.name}': " + " || ".join(parts), "DEBUG")
+
+            def _diag_future(f, setup_name):
+                # Probe whatever properties the future exposes — we don't
+                # know all the API surface, so dump everything non-callable.
+                try:
+                    for fattr in dir(f):
+                        if fattr.startswith('_') or fattr in ('thisown',):
+                            continue
+                        try:
+                            fv = getattr(f, fattr)
+                            if callable(fv):
+                                continue
+                            _log(f"FUTURE DIAG '{setup_name}' future.{fattr} = {fv}", "DEBUG")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            # COLLECTION-OF-OPERATIONS SINGLE-CALL GENERATION:
+            # Per Autodesk's CAM API docs, cam.generateToolpath() accepts
+            # an ObjectCollection of Operations and returns ONE future for
+            # the whole batch. Fusion's batch scheduler then handles BOTH
+            # dependency chains in one shot:
+            #   - intra-setup IPV (rest machining within a setup)
+            #   - inter-setup stock-from-preceding-setup propagation
+            # Ordering of the collection is the natural template-applied
+            # order (Pocket -> Morphed Spiral within each setup; setups
+            # in cam.setups order). This is what the per-op and per-setup
+            # loops couldn't deliver: Fusion never saw the full dependency
+            # graph in one call, so IPV state didn't propagate.
+            t_start = time.time()
+            op_collection = adsk.core.ObjectCollection.create()
+            ordered_op_log = []
             for i in range(cam.setups.count):
                 setup = cam.setups.item(i)
-                n_ops_total += setup.operations.count
                 for j in range(setup.operations.count):
-                    all_ops.append(setup.operations.item(j))
-            
-            futures = []
+                    op = setup.operations.item(j)
+                    op_collection.add(op)
+                    ordered_op_log.append(f"{setup.name}/{op.name}")
+            n_ops_total = op_collection.count
+            _log(f"DEFERRED TPGEN: starting COLLECTION gen of {n_ops_total} ops in template order:")
+            for entry in ordered_op_log:
+                _log(f"DEFERRED TPGEN:   - {entry}")
+
+            # PRE-GEN: dump every op's state + params right before the
+            # single generateToolpath call. Compare PRE vs POST per op
+            # to see what Fusion did.
+            for i in range(cam.setups.count):
+                for j in range(cam.setups.item(i).operations.count):
+                    _diag_op(cam.setups.item(i).operations.item(j), 'PRE-GEN')
+
             try:
-                _log(f"DEFERRED TPGEN: starting STAGGERED generation of {n_ops_total} ops")
-                for op in all_ops:
-                    _log(f"DEFERRED TPGEN: enqueueing '{op.name}'")
-                    f = cam.generateToolpath(op)
-                    futures.append(f)
-                    adsk.doEvents()
-                    time.sleep(1.0)
-                
-                # Wait for all to complete
-                _log("DEFERRED TPGEN: all ops enqueued, waiting for background generation to finish")
+                f = cam.generateToolpath(op_collection)
+            except Exception as e:
+                _log(f"DEFERRED TPGEN: collection generateToolpath raised: "
+                     f"{type(e).__name__}: {e}", "WARNING")
+                _log_error(traceback.format_exc())
+                f = None
+
+            if f is not None:
                 bulk_timeout = 1800.0
                 last_progress_log = 0
-                while True:
-                    adsk.doEvents()
-                    time.sleep(0.5)
-                    
-                    all_done = True
-                    done_count = 0
-                    for f in futures:
+                last_watch_log = 0
+
+                # --- WATCH helpers (per-op state + transition tracking) ---
+                # Per-op state tuple: (hasToolpath, isToolpathValid,
+                # operationState, hasError, hasWarning). Compact tag
+                # encodes the first three for inline log readability:
+                #   V = hasTP & isToolpathValid  (green check)
+                #   S = hasTP & !isToolpathValid (out-of-date)
+                #   N = no toolpath
+                def _op_state(oo):
+                    try:
+                        return (
+                            bool(oo.hasToolpath),
+                            bool(oo.isToolpathValid),
+                            int(oo.operationState),
+                            bool(oo.hasError),
+                            bool(oo.hasWarning),
+                        )
+                    except Exception:
+                        return None
+
+                def _op_tag(st):
+                    if st is None: return '?'
+                    hasTP, valid, _, _, _ = st
+                    if not hasTP: return 'N'
+                    return 'V' if valid else 'S'
+
+                def _op_label(oo, st):
+                    if st is None:
+                        return f"{oo.name}=?"
+                    _, _, opstate, herr, hwarn = st
+                    extras = ''
+                    if herr: extras += 'E'
+                    if hwarn: extras += 'W'
+                    return f"{oo.name}={_op_tag(st)}/{opstate}{('!'+extras) if extras else ''}"
+
+                # Setup-level stock-state snapshot — capture per-setup
+                # stock so we can correlate IPV-consumption events with
+                # Pocket back's invalidation.
+                def _setup_state(ss):
+                    try:
+                        sm = ss.stockMode if hasattr(ss, 'stockMode') else None
+                        sm_s = str(sm) if sm is not None else 'n/a'
+                    except Exception:
+                        sm_s = 'err'
+                    try:
+                        stock_obj = ss.stock if hasattr(ss, 'stock') else None
+                        stock_s = type(stock_obj).__name__ if stock_obj else 'None'
+                    except Exception:
+                        stock_s = 'err'
+                    return f"{ss.name}[stockMode={sm_s} stock={stock_s}]"
+
+                # Track previous per-op state so we log only TRANSITIONS
+                # (not the full snapshot every poll — too noisy).
+                prev_states = {}  # op_id -> state tuple
+                op_keys = []      # (setup_name, op, op_id) preserves order
+
+                def _collect_ops():
+                    op_keys.clear()
+                    for ii in range(cam.setups.count):
+                        ss = cam.setups.item(ii)
+                        for jj in range(ss.operations.count):
+                            oo = ss.operations.item(jj)
+                            op_keys.append((ss.name, oo, f"{ss.name}/{oo.name}"))
+                _collect_ops()
+
+                def _full_snapshot(elapsed, label='WATCH'):
+                    parts = [_op_label(oo, _op_state(oo))
+                             for _, oo, _ in op_keys]
+                    _log(f"{label} t={elapsed:.1f}s | " + " ".join(parts), "DEBUG")
+                    # Also log setup-level state for IPV correlation
+                    setup_parts = [_setup_state(cam.setups.item(ii))
+                                   for ii in range(cam.setups.count)]
+                    _log(f"{label} t={elapsed:.1f}s SETUPS | "
+                         + " ".join(setup_parts), "DEBUG")
+
+                def _scan_transitions(elapsed):
+                    for setup_name, oo, op_id in op_keys:
+                        cur = _op_state(oo)
+                        prev = prev_states.get(op_id)
+                        if cur != prev:
+                            _log(f"TRANSITION t={elapsed:.1f}s "
+                                 f"'{op_id}' {_op_tag(prev)}/{prev[2] if prev else '?'} "
+                                 f"-> {_op_tag(cur)}/{cur[2] if cur else '?'}"
+                                 + (f" (err={cur[3]} warn={cur[4]})"
+                                    if cur and (cur[3] or cur[4]) else ''),
+                                 "DEBUG")
+                            prev_states[op_id] = cur
+
+                # --- ironjob file dump (Fusion writes per-op job specs
+                # to %TEMP%\Fusion360CAM\<pid>\operation*.ironjob). The
+                # contents include the input model/stock hashes and op
+                # parameters as Fusion saw them at gen time. Differences
+                # between Pocket back's ironjob and a working op's
+                # ironjob may reveal the trigger.
+                import os as _os
+                import glob as _glob
+                def _ironjob_dir():
+                    base = _os.path.join(_os.environ.get('LOCALAPPDATA', ''),
+                                         'Temp', 'Fusion360CAM')
+                    if not _os.path.isdir(base):
+                        base = _os.path.join(_os.environ.get('TEMP', ''),
+                                             'Fusion360CAM')
+                    if _os.path.isdir(base):
+                        # Find the most recently modified subdir
+                        subs = [_os.path.join(base, d) for d in _os.listdir(base)
+                                if _os.path.isdir(_os.path.join(base, d))]
+                        if subs:
+                            return max(subs, key=_os.path.getmtime)
+                    return None
+
+                def _dump_ironjobs(label):
+                    d = _ironjob_dir()
+                    if not d:
+                        _log(f"{label}: no Fusion360CAM temp dir found", "DEBUG")
+                        return
+                    files = sorted(_glob.glob(_os.path.join(d, 'operation*.ironjob')),
+                                   key=_os.path.getmtime)
+                    _log(f"{label}: {len(files)} ironjob file(s) in {d}", "DEBUG")
+                    for fp in files[-10:]:  # last 10 by mtime
                         try:
-                            if f.isGenerationCompleted:
-                                done_count += 1
-                            else:
-                                all_done = False
-                        except Exception:
-                            # if future is invalid, consider it done
-                            done_count += 1
-                            
-                    if all_done:
-                        break
-                        
+                            sz = _os.path.getsize(fp)
+                            mt = _os.path.getmtime(fp)
+                            _log(f"{label}:   {_os.path.basename(fp)} size={sz} mtime={mt:.1f}",
+                                 "DEBUG")
+                        except Exception as e:
+                            _log(f"{label}:   {fp} stat err: {e}", "DEBUG")
+
+                # --- camkernel.exe process tracking ---
+                import subprocess as _sub
+                def _camkernels_running():
+                    try:
+                        r = _sub.run(
+                            ['tasklist', '/FI', 'IMAGENAME eq camkernel.exe', '/FO', 'CSV', '/NH'],
+                            capture_output=True, text=True, timeout=2)
+                        out = (r.stdout or '').strip()
+                        if not out or 'INFO:' in out:
+                            return 0
+                        return len([l for l in out.splitlines() if 'camkernel.exe' in l.lower()])
+                    except Exception:
+                        return -1
+
+                # === PRE-batch baseline ===
+                _full_snapshot(0.0, label='BASELINE')
+                _dump_ironjobs('IRONJOB-PRE')
+                _log(f"CAMKERNEL-PRE: {_camkernels_running()} camkernel.exe running", "DEBUG")
+                # Seed prev_states with baseline so TRANSITION fires on first change
+                for setup_name, oo, op_id in op_keys:
+                    prev_states[op_id] = _op_state(oo)
+
+                while not f.isGenerationCompleted:
+                    adsk.doEvents()
+                    time.sleep(0.2)
                     elapsed = time.time() - t_start
+                    # Transition scan every poll — catches sub-second changes
+                    _scan_transitions(elapsed)
                     if elapsed - last_progress_log > 5.0:
-                        _log(f"DEFERRED TPGEN: progress {done_count}/{n_ops_total} ({elapsed:.0f}s)")
+                        try:
+                            done = getattr(f, 'numberOfCompleted', '?')
+                            total = getattr(f, 'numberOfOperations', '?')
+                            tasks_done = getattr(f, 'numberOfCompletedTasks', '?')
+                            tasks_total = getattr(f, 'numberOfTasks', '?')
+                            ck = _camkernels_running()
+                            _log(f"DEFERRED TPGEN: collection progress "
+                                 f"ops={done}/{total} tasks={tasks_done}/{tasks_total} "
+                                 f"camkernel={ck} ({elapsed:.0f}s)")
+                        except Exception:
+                            _log(f"DEFERRED TPGEN: collection still running ({elapsed:.0f}s)")
                         last_progress_log = elapsed
-                        
+                    # Full snapshot every 5s as a periodic ground truth
+                    if elapsed - last_watch_log > 5.0:
+                        _full_snapshot(elapsed)
+                        last_watch_log = elapsed
                     if elapsed > bulk_timeout:
-                        _log(f"DEFERRED TPGEN: timed out after {bulk_timeout:.0f}s", "WARNING")
+                        _log(f"DEFERRED TPGEN: collection timed out after "
+                             f"{bulk_timeout:.0f}s", "WARNING")
                         break
-                        
-                _log(f"DEFERRED TPGEN: staggered generation completed in {time.time()-t_start:.1f}s")
-            except Exception as e:
-                _log(f"DEFERRED TPGEN: staggered generation raised: {e}", "WARNING")
-                _log_error(traceback.format_exc())
+                # === POST-batch final state ===
+                _scan_transitions(time.time() - t_start)
+                _full_snapshot(time.time() - t_start, label='FINAL')
+                _dump_ironjobs('IRONJOB-POST')
+                _log(f"CAMKERNEL-POST: {_camkernels_running()} camkernel.exe running", "DEBUG")
+                _log(f"DEFERRED TPGEN: collection gen done in "
+                     f"{time.time()-t_start:.1f}s")
+                _diag_future(f, 'collection')
+
+            # POST-GEN: dump every op's state again. Failing ops will
+            # show hasTP=False / state=3; compare PRE param values to
+            # see what Fusion changed during the batch run.
+            for i in range(cam.setups.count):
+                for j in range(cam.setups.item(i).operations.count):
+                    _diag_op(cam.setups.item(i).operations.item(j), 'POST-GEN')
+
+            # POST-GEN EXTENDED: per-op deep diagnostics for any op that
+            # came back with state != 0 (Valid). These probe Fusion's
+            # internal messageLog, generatedDataCollection, toolpath
+            # stats, and stock-vs-surface overlap — surfaces that the
+            # public hasError/hasWarning fields don't expose. Only runs
+            # for non-Valid ops to keep the log focused.
+            def _diag_op_extended(op, setup):
+                _log(f"OP EXT [{setup.name}/{op.name}]: ===", "DEBUG")
+                # 1. isToolpathValid — often diverges from hasToolpath
+                try:
+                    _log(f"OP EXT   isToolpathValid={op.isToolpathValid} "
+                         f"hasToolpath={op.hasToolpath} "
+                         f"hasError={op.hasError} hasWarning={op.hasWarning} "
+                         f"state={op.operationState}", "DEBUG")
+                except Exception as e:
+                    _log(f"OP EXT   state read err: {e}", "DEBUG")
+                # 2. error/warning string fields (often empty but check)
+                try:
+                    err = (op.error or '').strip()
+                    warn = (op.warning or '').strip()
+                    if err:
+                        _log(f"OP EXT   error: {err!r}", "DEBUG")
+                    if warn:
+                        _log(f"OP EXT   warning: {warn!r}", "DEBUG")
+                except Exception as e:
+                    _log(f"OP EXT   error/warning read err: {e}", "DEBUG")
+                # 3. messageLog tail — last ~2500 chars usually contains
+                # the actual failure reason Fusion logs internally
+                try:
+                    ml = op.messageLog or ''
+                    tail = ml[-2500:] if len(ml) > 2500 else ml
+                    # Replace embedded \r\n / \n with explicit markers for one-line readability
+                    for line in tail.split('\n'):
+                        line = line.rstrip('\r')
+                        if line.strip():
+                            _log(f"OP EXT   msglog: {line}", "DEBUG")
+                except Exception as e:
+                    _log(f"OP EXT   messageLog read err: {e}", "DEBUG")
+                # 4. generatedDataCollection — per-generation artifacts
+                try:
+                    gdc = op.generatedDataCollection
+                    n = gdc.count
+                    _log(f"OP EXT   generatedDataCollection.count={n}", "DEBUG")
+                    for k in range(n):
+                        gd = gdc.item(k)
+                        # Probe what's on each gen-data entry
+                        try:
+                            _log(f"OP EXT   genData[{k}]: {gd!r}", "DEBUG")
+                            for a in ('name', 'description', 'type', 'category',
+                                      'isValid', 'severity', 'message', 'text'):
+                                try:
+                                    v = getattr(gd, a, None)
+                                    if v is not None and not callable(v):
+                                        _log(f"OP EXT     genData[{k}].{a} = {v}", "DEBUG")
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            _log(f"OP EXT   genData[{k}] err: {e}", "DEBUG")
+                except Exception as e:
+                    _log(f"OP EXT   generatedDataCollection err: {e}", "DEBUG")
+                # 5. Toolpath stats — segments, length. Empty toolpath
+                # often explains state=1 with hasToolpath=True.
+                try:
+                    tp = op.toolpath if hasattr(op, 'toolpath') else None
+                    if tp is None:
+                        _log(f"OP EXT   op.toolpath: None", "DEBUG")
+                    else:
+                        for a in ('numberOfMoves', 'numberOfSegments',
+                                  'totalLength', 'rapidLength', 'cuttingLength',
+                                  'cuttingTime', 'rapidTime', 'totalTime',
+                                  'isValid', 'isGenerated'):
+                            try:
+                                v = getattr(tp, a, None)
+                                if v is not None and not callable(v):
+                                    _log(f"OP EXT   toolpath.{a} = {v}", "DEBUG")
+                            except Exception:
+                                pass
+                except Exception as e:
+                    _log(f"OP EXT   toolpath probe err: {e}", "DEBUG")
+                # 6. Stock vs surface bbox overlap — empty intersection
+                # produces empty toolpath without raising an error.
+                try:
+                    sx_lo = op.parameters.itemByName('surfaceXLow').value.value
+                    sx_hi = op.parameters.itemByName('surfaceXHigh').value.value
+                    sy_lo = op.parameters.itemByName('surfaceYLow').value.value
+                    sy_hi = op.parameters.itemByName('surfaceYHigh').value.value
+                    sz_lo = op.parameters.itemByName('surfaceZLow').value.value
+                    sz_hi = op.parameters.itemByName('surfaceZHigh').value.value
+                    tx_lo = op.parameters.itemByName('stockXLow').value.value
+                    tx_hi = op.parameters.itemByName('stockXHigh').value.value
+                    ty_lo = op.parameters.itemByName('stockYLow').value.value
+                    ty_hi = op.parameters.itemByName('stockYHigh').value.value
+                    tz_lo = op.parameters.itemByName('stockZLow').value.value
+                    tz_hi = op.parameters.itemByName('stockZHigh').value.value
+                    overlap_x = max(0, min(sx_hi, tx_hi) - max(sx_lo, tx_lo))
+                    overlap_y = max(0, min(sy_hi, ty_hi) - max(sy_lo, ty_lo))
+                    overlap_z = max(0, min(sz_hi, tz_hi) - max(sz_lo, tz_lo))
+                    _log(f"OP EXT   surface bbox=[{sx_lo:.2f},{sx_hi:.2f}] x "
+                         f"[{sy_lo:.2f},{sy_hi:.2f}] x [{sz_lo:.2f},{sz_hi:.2f}] (cm)", "DEBUG")
+                    _log(f"OP EXT   stock   bbox=[{tx_lo:.2f},{tx_hi:.2f}] x "
+                         f"[{ty_lo:.2f},{ty_hi:.2f}] x [{tz_lo:.2f},{tz_hi:.2f}] (cm)", "DEBUG")
+                    _log(f"OP EXT   overlap (cm): X={overlap_x:.2f} Y={overlap_y:.2f} Z={overlap_z:.2f} "
+                         f"=> {'NONEMPTY' if (overlap_x*overlap_y*overlap_z>0) else 'EMPTY'}", "DEBUG")
+                except Exception as e:
+                    _log(f"OP EXT   bbox overlap probe err: {e}", "DEBUG")
+                _log(f"OP EXT [{setup.name}/{op.name}]: ===END===", "DEBUG")
+
+            for i in range(cam.setups.count):
+                s = cam.setups.item(i)
+                for j in range(s.operations.count):
+                    op = s.operations.item(j)
+                    try:
+                        if op.operationState != 0:
+                            _diag_op_extended(op, s)
+                    except Exception as _e:
+                        _log(f"OP EXT dispatch err on '{s.name}/{op.name}': {_e}", "WARNING")
 
             # Post-state audit: walk every op and report which ones got
             # a toolpath vs which didn't. This tells us which (if any)
