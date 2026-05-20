@@ -490,6 +490,150 @@ def force_all_tool_numbers_to_one(cam, logger=None):
 DEFAULT_PART_POSITION_CORNER = 'bottom 1'
 
 
+# ---------------------------------------------------------------------------
+# Position attach offsets — cancel the machine's static_0 placement
+# ---------------------------------------------------------------------------
+#
+# When Fusion renders the project workpiece inside the Ultimate Bee
+# machine simulation, it places the workpiece relative to the machine's
+# ``static_0`` occurrence in the sim doc. In this project, that
+# occurrence is *deliberately translated* so the fence inside-corner
+# lands on the sim doc's design origin (0, 0, 0) — see
+# CAM_BUILDER_CONTEXT.md "Fence-anchored WCS".
+#
+# That deliberate translation shifts the workpiece away from the fence
+# corner by exactly the same amount, so we cancel it via the three
+# ``job_position{X,Y,Z}Offset`` parameters. The cancellation is the
+# same for every setup (it's a property of the machine doc, not of any
+# setup's WCS), with one Y/Z axis swap because Fusion design coords use
+# Y as vertical but CNC convention uses Z as vertical:
+#
+#   offset.x = static_0.translation.x      # machine X
+#   offset.y = static_0.translation.z      # design Z → machine Y
+#   offset.z = static_0.translation.y      # design Y → machine Z (vertical)
+#
+# The offsets STACK additively with the ``job_positionAttach`` entity.
+# When attach is bound to the fence vertex (the Sync Table Attach
+# workflow), both attach and offset target the same fence corner, so
+# the workpiece lands there. When attach is NOT bound (fresh build),
+# the offsets alone bring it home — no manual click required for the
+# part to render at the right spot in the simulation.
+#
+# wcs_origin_point binds g-code zero independently to the fence corner,
+# unaffected by either mechanism.
+
+
+def _read_machine_static_offset_cm(logger):
+    """Read the Ultimate Bee machine's ``static_0`` occurrence
+    translation from the loaded sim doc.
+
+    Returns ``(x, y, z)`` in centimetres — already in design-world
+    coords. Returns ``None`` if the sim doc isn't loaded or
+    ``static_0`` can't be found, so the caller can fall back to a
+    no-op write.
+
+    The translation reflects the user's deliberate placement of the
+    machine model so the fence inside-corner sits at design origin;
+    cancelling it via job_position{X,Y,Z}Offset is what lands the
+    workpiece on the fence corner in machine simulation.
+    """
+    try:
+        import adsk.core, adsk.fusion
+        app = adsk.core.Application.get()
+        sim_doc = None
+        for i in range(app.documents.count):
+            d = app.documents.item(i)
+            if d.name and 'Ultimate Bee' in d.name:
+                sim_doc = d
+                break
+        if sim_doc is None:
+            _log(logger,
+                 "PART POS: Ultimate Bee sim doc not loaded — cannot derive "
+                 "static_0 offset; will write 0/0/0 to position params",
+                 "INFO")
+            return None
+        sim_design = None
+        for i in range(sim_doc.products.count):
+            p = sim_doc.products.item(i)
+            if isinstance(p, adsk.fusion.Design):
+                sim_design = p
+                break
+        if sim_design is None:
+            _log(logger,
+                 "PART POS: sim doc has no Design product — cannot find static_0",
+                 "WARNING")
+            return None
+        root = sim_design.rootComponent
+        for i in range(root.occurrences.count):
+            o = root.occurrences.item(i)
+            if o.component and o.component.name == 'static_0':
+                t = o.transform2.translation
+                return (t.x, t.y, t.z)
+        _log(logger,
+             "PART POS: 'static_0' occurrence not found in sim doc",
+             "WARNING")
+        return None
+    except Exception as e:
+        _log(logger,
+             f"PART POS: static_0 lookup raised: {type(e).__name__}: {e}",
+             "WARNING")
+        return None
+
+
+def _apply_part_position_offsets(setup, static_offset_cm, logger):
+    """Write the three job_position{X,Y,Z}Offset params on one Setup
+    so the workpiece lands on the fence inside-corner in the machine
+    simulation, regardless of whether ``job_positionAttach`` is bound.
+
+    ``static_offset_cm`` is the ``static_0`` occurrence translation
+    in cm (from :func:`_read_machine_static_offset_cm`). The axis
+    swap (design Y↔Z → machine Z↔Y) is applied here. Pass ``None``
+    to fall back to writing ``0 mm`` on every axis (sim doc not loaded).
+
+    Returns the count of params successfully written (0-3).
+    """
+    name = getattr(setup, 'name', '<?>')
+
+    if static_offset_cm is None:
+        # Fallback: no sim doc loaded yet, write zeros so any prior
+        # values get cleared. The Sync Table Attach workflow will still
+        # position the part correctly via the attach entity.
+        n_ok = 0
+        for pname in ('job_positionXOffset',
+                      'job_positionYOffset',
+                      'job_positionZOffset'):
+            if _set_expr_param(setup.parameters, pname, '0 mm', name, logger):
+                n_ok += 1
+        _log(logger,
+             f"PART POS ({name}): position offsets zeroed ({n_ok}/3 written) "
+             f"— static_0 unavailable, attach entity must drive positioning",
+             "INFO")
+        return n_ok
+
+    # Apply axis swap: machine X = design X, machine Y = design Z,
+    # machine Z = design Y. Values stay in cm here, convert to mm
+    # for the expression string.
+    sx, sy, sz = static_offset_cm
+    ox_mm = sx * 10.0
+    oy_mm = sz * 10.0      # design Z → machine Y
+    oz_mm = sy * 10.0      # design Y → machine Z (vertical)
+
+    n_ok = 0
+    for pname, expr in (
+        ('job_positionXOffset', f'{ox_mm:.4f} mm'),
+        ('job_positionYOffset', f'{oy_mm:.4f} mm'),
+        ('job_positionZOffset', f'{oz_mm:.4f} mm'),
+    ):
+        if _set_expr_param(setup.parameters, pname, expr, name, logger):
+            n_ok += 1
+    _log(logger,
+         f"PART POS ({name}): position offsets "
+         f"X={ox_mm:.3f}mm Y={oy_mm:.3f}mm Z={oz_mm:.3f}mm "
+         f"(from static_0 cancellation, {n_ok}/3 written)",
+         "INFO")
+    return n_ok
+
+
 def _find_existing_part_attach_entity(setups, logger):
     """Scan ``setups`` for any existing ``job_positionAttach`` binding.
 
@@ -578,7 +722,7 @@ def _bind_part_position(setup, attach_entity, corner, logger):
         return False
 
 
-def _propagate_part_position_pass(setups, logger):
+def _propagate_part_position_pass(setups, logger, cam=None):
     """Pass-2 helper: auto-propagate Part Position to every Setup.
 
     1. Scan ``setups`` for any setup with an existing
@@ -588,12 +732,47 @@ def _propagate_part_position_pass(setups, logger):
        to every setup that doesn't already have a binding.
     3. If none found: log INFO so the palette can surface a prompt.
 
+    When ``cam`` is supplied, the function also runs
+    :func:`log_position_diagnostics` so the BUILD log captures every
+    relevant coordinate (attach-entity world position, stock bbox, WCS
+    translation, fence vertex). The diagnostic runs unconditionally,
+    even when no manual attach seed exists yet.
+
     Returns a tuple ``(n_bound, source_setup_name)`` where ``n_bound``
     is the count of setups newly bound this pass, and source is the
     setup whose binding seeded the propagation (or empty if none).
     """
     if not setups:
         return 0, ''
+
+    # Apply position offsets unconditionally. These are independent of
+    # the attach-entity propagation below: they cancel the machine's
+    # static_0 placement in the sim doc so the workpiece lands on the
+    # fence inside-corner with or without an attach seed. Same value
+    # for every setup — it's a property of the machine doc, not of the
+    # setup's WCS. Read once, write to all.
+    static_offset_cm = _read_machine_static_offset_cm(logger)
+    if static_offset_cm is not None:
+        _log(logger,
+             f"PART POS: static_0 translation = "
+             f"({static_offset_cm[0]:.3f}, {static_offset_cm[1]:.3f}, "
+             f"{static_offset_cm[2]:.3f}) cm — applying to all setups",
+             "INFO")
+    for setup in setups:
+        _apply_part_position_offsets(setup, static_offset_cm, logger)
+
+    # Position diagnostics — runs whether or not an attach seed exists,
+    # so a fresh project (no manual attach yet) still gets the POS DIAG
+    # block in the BUILD log. Placed BEFORE the seed early-return so it
+    # always fires when cam is supplied.
+    if cam is not None:
+        try:
+            log_position_diagnostics(cam, logger=logger)
+        except Exception as e:
+            _log(logger,
+                 f"PART POS: log_position_diagnostics raised: {type(e).__name__}: {e}",
+                 "WARNING")
+
     seed = _find_existing_part_attach_entity(setups, logger)
     if seed is None:
         _log(logger,
@@ -631,6 +810,7 @@ def _propagate_part_position_pass(setups, logger):
          f"PART POS: propagated to {n_bound} setup(s) "
          f"(seeded from '{src}')",
          "INFO")
+
     return n_bound, src
 
 
@@ -777,7 +957,9 @@ def build_all_setups(cam, mms, logger=None, skip_templates=False, skip_machine=F
     # configures one setup via Fusion's Edit Setup dialog, then a
     # subsequent BUILD picks it up and propagates to every other setup.
     # See CAM_BUILDER_CONTEXT.md "Part Position propagation".
-    _propagate_part_position_pass(setups, logger)
+    # Pass cam so position diagnostics also run as part of BUILD
+    # (raw material for verifying the per-setup fence offsets).
+    _propagate_part_position_pass(setups, logger, cam=cam)
 
     return setups
 
@@ -1644,7 +1826,9 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
     # Pass 2: propagate Part Position binding to all setups. No-op
     # until the user has configured one setup's Part Position via the
     # Edit Setup dialog. See CAM_BUILDER_CONTEXT.md.
-    _propagate_part_position_pass([s for _, s in results], logger)
+    # Pass cam so position diagnostics also run as part of BUILD
+    # (raw material for verifying the per-setup fence offsets).
+    _propagate_part_position_pass([s for _, s in results], logger, cam=cam)
 
     return results
 
