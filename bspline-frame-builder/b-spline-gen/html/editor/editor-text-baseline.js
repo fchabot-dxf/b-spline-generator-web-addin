@@ -65,27 +65,89 @@ export function reanchorTextY(textEl, family, size) {
 }
 
 /**
- * Rebuild the two-tspan structure inside a <text> element:
- *   tspan[0] = the actual user text  (updated ONLY by the input handler)
- *   tspan[1] = the cursor character  (toggled ONLY by the blink interval)
- * Splitting writes between two children eliminates the race where the
- * cursor blink would clobber an in-flight input update.
+ * Rebuild the inner structure of a <text> element to hold multi-line
+ * content. Output is one <tspan> per line, plus a final cursor <tspan>
+ * positioned at `caretPos` (character offset into the full text). The
+ * cursor tspan carries class "editor-caret" so the blink interval can
+ * find it without relying on a brittle child-index.
+ *
+ *   Each text line tspan: x=lineStartX, dy=lineHeight (0 for first line)
+ *   Cursor tspan: standalone "|" placed at the caret's (x, y), opacity
+ *                 toggled by the blink loop.
+ *
+ * lineHeight is approximated as 1.2× the font size — same heuristic
+ * used by the rest of the layout.
+ *
+ * Caller responsibilities:
+ *   - pass `caretPos = currentText.length` when not actively editing
+ *   - call again after every text mutation OR selectionStart change so
+ *     the cursor position stays in sync with the textarea's caret.
  */
-export function buildTspans(textEl, textContent, x, y) {
+export function buildTspans(textEl, textContent, x, y, caretPos) {
     const node = textEl.node;
     while (node.firstChild) node.removeChild(node.firstChild);
 
-    dbg('COORD_STD', `_buildTspans: placing UI text at (${x},${y})`);
+    const family = (textEl.attr('font-family') || 'Arial').replace(/['"]/g, '').trim();
+    const size = parseFloat(textEl.attr('font-size')) || 3;
+    const lineHeight = size * 1.2;
 
-    const tText = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-    tText.setAttribute('x', x);
-    tText.setAttribute('y', y);
-    tText.textContent = textContent;
+    const lines = String(textContent || '').split('\n');
+    const hasCaret = caretPos != null;
+    if (!hasCaret) caretPos = lines.join('\n').length;
+
+    dbg('COORD_STD', `_buildTspans: placing UI text at (${x},${y}) lines=${lines.length} caret=${hasCaret ? caretPos : 'none'}`);
+
+    lines.forEach((line, i) => {
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+        t.setAttribute('x', x);
+        if (i === 0) t.setAttribute('y', y);
+        else         t.setAttribute('dy', lineHeight);
+        // Use an empty space for empty lines so the tspan still occupies
+        // a line. SVG.js / DOM collapses empty text content otherwise,
+        // shrinking the line into the previous one.
+        t.textContent = line.length ? line : ' ';
+        node.appendChild(t);
+    });
+
+    if (!hasCaret) return;  // post-commit render — no caret tspan
+
+    // Compute caret position from caretPos within the multi-line content.
+    // Walk lines, counting characters, to find which line the caret sits
+    // on and at what column.
+    let remaining = caretPos;
+    let caretLine = 0;
+    for (let i = 0; i < lines.length; i++) {
+        if (remaining <= lines[i].length) { caretLine = i; break; }
+        remaining -= lines[i].length + 1; // +1 for the \n consumed
+        caretLine = i + 1;
+    }
+    if (caretLine >= lines.length) {
+        caretLine = lines.length - 1;
+        remaining = lines[caretLine].length;
+    }
+    const caretCol = Math.max(0, Math.min(remaining, lines[caretLine].length));
+
+    // Measure the caret's x by measuring the line's prefix width with
+    // the same font we're rendering. _measureCtx is the shared canvas
+    // context defined above for ascender measurement.
+    const prefix = lines[caretLine].slice(0, caretCol);
+    let caretX = x;
+    if (_measureCtx) {
+        _measureCtx.font = `${size}px "${family}", Arial, sans-serif`;
+        caretX = x + _measureCtx.measureText(prefix).width / size * size;
+        // Note: the measureText width is in CSS pixels at this font px
+        // size — and we're treating SVG user units == px for measure
+        // purposes (the same convention getAscenderForFont uses). So
+        // adding `width` directly to x in user units is consistent.
+        caretX = x + _measureCtx.measureText(prefix).width;
+    }
+    const caretY = y + caretLine * lineHeight;
 
     const tCursor = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    tCursor.setAttribute('class', 'editor-caret');
+    tCursor.setAttribute('x', caretX);
+    tCursor.setAttribute('y', caretY);
     tCursor.textContent = '|';
-
-    node.appendChild(tText);
     node.appendChild(tCursor);
 }
 

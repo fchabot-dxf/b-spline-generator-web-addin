@@ -16,23 +16,42 @@
  * Returns true if it produced a path and replaced the original element,
  * false otherwise (orchestrator falls through to the trace strategy).
  */
+import { fusLog } from '../core/fusion-bridge.js';
 
 const OPEN_SHAPES = ['path', 'polyline', 'line'];
 const CLOSED_SHAPES = ['rect', 'circle', 'ellipse', 'polygon'];
 
+/** Unconditional expand diagnostic. Remove once line/other-tool bugs are fixed. */
+function _xLog(msg) {
+    try { console.log(`[EXPAND-SHAPE] ${msg}`); } catch (_) {}
+    try { fusLog(`[EXPAND-SHAPE] ${msg}`); } catch (_) {}
+}
+
 export function expandShape(editor, el, { commit = true } = {}) {
-    if (!OPEN_SHAPES.includes(el.type) && !CLOSED_SHAPES.includes(el.type)) return false;
+    _xLog(`entry  type=${el?.type}  data-layer="${el?.attr?.('data-layer')}"`);
+    if (!OPEN_SHAPES.includes(el.type) && !CLOSED_SHAPES.includes(el.type)) {
+        _xLog(`skip: type "${el.type}" not in OPEN/CLOSED sets`);
+        return false;
+    }
 
     const fill = (el.attr('fill') || '').toLowerCase();
     const isFilled = fill && fill !== 'none' && fill !== 'transparent';
-    if (isFilled) return false;
+    if (isFilled) {
+        _xLog(`skip: filled (fill="${fill}") -> trace fallback`);
+        return false;
+    }
 
     const sw = parseFloat(el.attr('stroke-width')) || 0.5;
     const matrix = el.matrix();
     const isClosed = CLOSED_SHAPES.includes(el.type) ||
         (el.type === 'path' && /[zZ]\s*$/.test(el.attr('d') || ''));
+    _xLog(`computing geoD  sw=${sw}  isClosed=${isClosed}`);
     const geoD = expandGeometric(editor, el, sw, matrix, isClosed);
-    if (!geoD) return false;
+    if (!geoD) {
+        _xLog('geoD returned null -> trace fallback');
+        return false;
+    }
+    _xLog(`geoD OK  len=${geoD.length}`);
 
     const layer = el.attr('data-layer') || "0";
     const expanded = editor._sketchLayer.path(geoD)
@@ -66,20 +85,38 @@ export function expandShape(editor, el, { commit = true } = {}) {
  */
 function expandGeometric(editor, el, strokeWidth, matrix, isClosed = false) {
     const pathNode = el.node;
-    if (typeof pathNode.getTotalLength !== 'function') return null;
+    if (typeof pathNode.getTotalLength !== 'function') {
+        _xLog(`expandGeometric: no getTotalLength on <${pathNode?.tagName}> -> null`);
+        return null;
+    }
     const length = pathNode.getTotalLength();
-    if (length <= 0) return null;
+    if (length <= 0) {
+        _xLog(`expandGeometric: length=${length} (<=0) -> null`);
+        return null;
+    }
 
     // Sampling rate: high resolution (approx every 0.02 units).
     const step = 0.02;
     const numSamples = Math.max(2, Math.ceil(length / step));
+    _xLog(`expandGeometric: length=${length.toFixed(3)}  samples=${numSamples}`);
 
     const pts = [];
+    // Cache an "is matrix non-identity?" check once — applying the
+    // matrix per-point is the only place that historically used
+    // `new editor._draw.point(...)` (a non-standard svg.js call that
+    // worked by accident for some elements and threw silently for
+    // <line>). Now use the canonical SVG.Point constructor like
+    // expand-text.js does, gated on the matrix actually being a
+    // non-identity transform.
+    const hasTransform = matrix && typeof matrix.a === 'number' && !(
+        matrix.a === 1 && matrix.b === 0 && matrix.c === 0 &&
+        matrix.d === 1 && matrix.e === 0 && matrix.f === 0
+    );
     for (let i = 0; i <= numSamples; i++) {
         const t = (i / numSamples) * length;
         let pt = pathNode.getPointAtLength(t);
-        if (matrix) {
-            const worldPt = new editor._draw.point(pt.x, pt.y).transform(matrix);
+        if (hasTransform && typeof SVG !== 'undefined' && SVG.Point) {
+            const worldPt = new SVG.Point(pt.x, pt.y).transform(matrix);
             pt = { x: worldPt.x, y: worldPt.y };
         }
         pts.push(pt);

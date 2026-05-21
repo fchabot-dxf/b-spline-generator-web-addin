@@ -15,6 +15,7 @@
 import { getAscenderForFont, buildTspans, migrateTextElement } from './editor-text-baseline.js';
 import { on } from './dom.js';
 import { dbg } from './debug.js';
+import { ensureActiveLayer } from './layers.js';
 
 const HIDDEN_INPUT_ID = 'editorHiddenInput';
 const CURSOR_BLINK_MS = 530;
@@ -30,11 +31,15 @@ export function startTextAt(editor, pt, pointerEvent) {
     const ascender = getAscenderForFont(editor._fontFamily, editor._fontSize);
     const baselineY = pt.y + ascender;
 
+    // First-draw auto-create: spin up "Layer 1" if the user clicks to
+    // place text on an editor that hasn't been given any layer yet.
+    const activeLayerId = ensureActiveLayer(editor);
+
     editor._editingTextEl = editor._sketchLayer.text('')
         .font({ family: editor._fontFamily, size: editor._fontSize, anchor: 'start' })
         .fill(editor._strokeColor)
         .attr({
-            'data-layer': document.getElementById('editorLayerSelect')?.value || "0",
+            'data-layer': activeLayerId,
             'data-anchor-y': pt.y,
         })
         .css({ cursor: 'text', 'user-select': 'none' });

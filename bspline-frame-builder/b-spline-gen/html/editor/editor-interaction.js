@@ -14,7 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { on } from './dom.js';
 import { dbg } from './debug.js';
 
@@ -87,12 +87,18 @@ function handleEnd(editor, e) {
     }
     if (editor._isDragging) {
         editor._isDragging = false;
-        if (editor._dragNodeIndex !== -1) {
-            editor._dragNodeIndex = -1;
-            editor.pushState();
-        } else if (editor._selectedElement) {
+        const wasNodeDrag = editor._dragNodeIndex !== -1;
+        if (wasNodeDrag) editor._dragNodeIndex = -1;
+        // Only push state if the drag actually moved something. A plain
+        // click (mousedown→mouseup with no intervening movement) used to
+        // emit a noop snapshot every time, padding the undo stack with
+        // identical entries and making Ctrl+Z feel like it took multiple
+        // presses to undo one stroke. _dragMoved is set true the first
+        // time dragNode/translateSelection mutates the element.
+        if (editor._dragMoved) {
             editor.pushState();
         }
+        editor._dragMoved = false;
     }
 }
 
@@ -103,6 +109,7 @@ const selectHandler = {
     start(editor, pt) {
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
         dbg('TEXT-DBG', `handleStart hit-test: ${hit ? `HIT type=${hit.type}` : 'no hit'}`);
+        editor._dragMoved = false;
         if (hit) {
             editor._isDragging = true;
             editor._lastDragPt = pt;
@@ -244,6 +251,7 @@ function findNodeAt(editor, pt) {
 function dragNode(editor, pt) {
     const el = editor._selectedElement;
     const idx = editor._dragNodeIndex;
+    editor._dragMoved = true;
     if (el.type === 'line') {
         if (idx === 0) el.attr({ x1: pt.x, y1: pt.y });
         else el.attr({ x2: pt.x, y2: pt.y });
@@ -268,6 +276,7 @@ function dragNode(editor, pt) {
 function translateSelection(editor, pt) {
     const dx = pt.x - editor._lastDragPt.x;
     const dy = pt.y - editor._lastDragPt.y;
+    if (dx !== 0 || dy !== 0) editor._dragMoved = true;
     editor._selectedElement.translate(dx, dy);
     editor._updateHandles();
     editor._updateSelectionHighlight();
@@ -279,7 +288,11 @@ function translateSelection(editor, pt) {
 // ─── Drawing primitives ────────────────────────────────────────────
 
 function createDrawingShape(editor, modeId, pt) {
-    const layer = getActiveLayer(editor);
+    // First-draw auto-create: if the user starts drawing on a session
+    // with no layers yet (the default "none on open" state), spin up
+    // "Layer 1" and make it active so the new element has somewhere
+    // to live. Bundled into the next pushState so undo = one click.
+    const layer = ensureActiveLayer(editor);
     const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
     if (modeId === 'draw') {
         return editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)

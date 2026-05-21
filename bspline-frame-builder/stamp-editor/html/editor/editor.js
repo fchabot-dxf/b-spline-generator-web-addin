@@ -11,8 +11,39 @@ import { getDynamicTolerance, getNodes, getNearbyElement } from './editor-hit.js
 import { initInteraction, updateHandles } from './editor-interaction.js';
 import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
-import { initLayerControls, setActiveLayer } from './layers.js';
+import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
+import { dbg } from './debug.js';
+import { fusLog } from '../core/fusion-bridge.js';
+
+/** UNDO diagnostic helper. Logs unconditionally to BOTH the browser
+ *  console and the Fusion log file (b_spline_gen_log.txt) so the
+ *  granularity bug is observable either way without flipping any flag.
+ *  Remove the console.log when the investigation is done. */
+function _undoLog(msg) {
+    try { console.log(`[UNDO] ${msg}`); } catch (_) {}
+    try { fusLog(`[UNDO] ${msg}`); } catch (_) {}
+}
+
+/** Pull the calling function name out of a fresh stack trace so the
+ *  UNDO log can attribute each pushState to who fired it. Best-effort —
+ *  returns '?' if the runtime obscures the stack (e.g. some bundlers). */
+function _shortCaller() {
+    try {
+        const stack = new Error().stack || '';
+        const lines = stack.split('\n').slice(2, 6); // skip _shortCaller + pushState frames
+        for (const line of lines) {
+            // Match "at <fnName>" or "<fnName>@" — works for V8 + WebKit.
+            const m = line.match(/at\s+([\w$.<>]+)\s/) || line.match(/^\s*([\w$.<>]+)@/);
+            if (m && m[1] && m[1] !== 'Object' && !m[1].endsWith('.pushState')) {
+                return m[1];
+            }
+        }
+        return lines[0]?.trim().slice(0, 60) || '?';
+    } catch {
+        return '?';
+    }
+}
 
 export class VectorEditor {
     constructor() {
@@ -136,30 +167,80 @@ export class VectorEditor {
 
     setActiveLayer(layerId) { return setActiveLayer(this, layerId); }
 
+    /**
+     * Capture a full snapshot: sketch-layer markup PLUS the layer roster
+     * and active layer. Saving the sketch alone (the pre-layer-refactor
+     * behavior) left dangling inactive-layer classes and orphaned
+     * data-layer attributes after restore, so the editor would appear
+     * frozen / wrong-dim after Ctrl+Z. The snapshot is a plain object
+     * to keep restore back-compatible: if a string sneaks in from
+     * legacy code it's treated as the bare sketch SVG.
+     */
     pushState() {
-        const state = this._sketchLayer.children().map(el => el.svg()).join('');
+        // Caller trace lets us see WHO is pushing (finishDrawing,
+        // setStrokeColor, ensureActiveLayer, etc.) so we can spot
+        // spurious snapshots that are erroneously grouping strokes.
+        const caller = _shortCaller();
+        const childCount = this._sketchLayer.children().toArray().length;
+        const state = {
+            svg: this._sketchLayer.children().map(el => el.svg()).join(''),
+            layers: Array.isArray(this._layers)
+                ? this._layers.map(l => ({ ...l }))
+                : [],
+            activeLayer: this._activeLayer,
+        };
         this._redoStack.length = 0;
         this._undoStack.push(state);
         if (this._undoStack.length > this._maxUndo) this._undoStack.shift();
+        _undoLog( `pushState  caller=${caller}  children=${childCount}  stack=${this._undoStack.length}  redo=${this._redoStack.length}  svgLen=${state.svg.length}`);
         if (this._onCommit) this._onCommit('push');
     }
 
     undo() {
-        if (this._undoStack.length < 2) return;
+        if (this._undoStack.length < 2) {
+            _undoLog( `undo  noop  stack=${this._undoStack.length}  (need >=2)`);
+            return;
+        }
         const current = this._undoStack.pop();
         this._redoStack.push(current);
         const prev = this._undoStack[this._undoStack.length - 1];
-        this._sketchLayer.clear();
-        this._sketchLayer.svg(prev);
-        if (this._onChange) this._onChange();
+        _undoLog( `undo  popped  stack(after)=${this._undoStack.length}  redo=${this._redoStack.length}  restoringChildren=${(prev.svg||'').match(/<(path|line|rect|circle|polyline|polygon|text|g)\b/g)?.length ?? 0}`);
+        this._restoreState(prev);
     }
 
     redo() {
-        if (!this._redoStack.length) return;
+        if (!this._redoStack.length) {
+            _undoLog( `redo  noop  redo=0`);
+            return;
+        }
         const next = this._redoStack.pop();
         this._undoStack.push(next);
+        _undoLog( `redo  popped  stack=${this._undoStack.length}  redo(after)=${this._redoStack.length}`);
+        this._restoreState(next);
+    }
+
+    /** Rehydrate the editor from a snapshot object (or legacy SVG string).
+     *  Order matters: layers/active must land BEFORE applyLayerState so
+     *  the dim/hide pass sees the right active id; renderLayersPanel
+     *  redraws the right sidebar so add/remove undo is visible. */
+    _restoreState(state) {
+        const isObj = state && typeof state === 'object';
+        const svg = isObj ? (state.svg || '') : String(state || '');
+
+        if (this._selectedElement) this._deselect();
         this._sketchLayer.clear();
-        this._sketchLayer.svg(next);
+        if (svg) this._sketchLayer.svg(svg);
+
+        if (isObj && Array.isArray(state.layers)) {
+            this._layers = state.layers.map(l => ({ ...l }));
+        }
+        if (isObj && 'activeLayer' in state) {
+            this._activeLayer = state.activeLayer;
+        }
+
+        applyLayerState(this);
+        renderLayersPanel(this);
+        _undoLog( `restoreState done  children=${this._sketchLayer.children().toArray().length}  layers=${(this._layers||[]).length}  active=${this._activeLayer}`);
         if (this._onChange) this._onChange();
     }
 

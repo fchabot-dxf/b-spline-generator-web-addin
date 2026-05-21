@@ -4,22 +4,46 @@
  * Run after initApp / initSvgEditor — the sculpt buttons and editor-undo
  * targets need to exist in the DOM by the time we bind them.
  */
-import { unifiedUndo, unifiedRedo } from '../core/history.js';
+import { unifiedUndo, unifiedRedo, isEditorOpen } from '../core/history.js';
 import { sculptClear, updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
 
+/** Is the user typing into a text field where the browser's native
+ *  undo should be in charge (rename inputs, project manager forms, the
+ *  SVG editor's hidden text-editing input, etc.)? Skip our shortcuts so
+ *  preventDefault doesn't swallow the native input/textarea undo. */
+function _isTypingTarget(target) {
+    if (!target) return false;
+    const tag = target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
+    if (target.isContentEditable) return true;
+    return false;
+}
+
 export function wireGlobalEvents(preview) {
     window.addEventListener('keydown', e => {
         if (!(e.ctrlKey || e.metaKey)) return;
-        if (e.key === 'z') {
+        if (_isTypingTarget(e.target)) return;
+
+        // Ctrl+Z = undo. Ctrl+Y or Ctrl+Shift+Z = redo. When the SVG
+        // editor modal is open, route to its private undo stack
+        // (window.svgEditor.undo/redo) — unifiedUndo/Redo already
+        // early-out via isEditorOpen() so they don't double-fire.
+        const editorOpen = isEditorOpen();
+
+        if (e.key === 'z' && !e.shiftKey) {
             e.preventDefault();
-            unifiedUndo(snap => applySnapshot(snap, preview));
+            if (editorOpen) window.svgEditor?.undo();
+            else unifiedUndo(snap => applySnapshot(snap, preview));
+            return;
         }
-        if (e.key === 'y' || (e.key === 'Z' && e.shiftKey)) {
+        if (e.key === 'y' || (e.key === 'Z' && e.shiftKey) || (e.key === 'z' && e.shiftKey)) {
             e.preventDefault();
-            unifiedRedo(snap => applySnapshot(snap, preview));
+            if (editorOpen) window.svgEditor?.redo();
+            else unifiedRedo(snap => applySnapshot(snap, preview));
+            return;
         }
     });
 

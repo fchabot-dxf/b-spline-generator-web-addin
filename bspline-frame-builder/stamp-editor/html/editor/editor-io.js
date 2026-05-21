@@ -5,6 +5,14 @@
 
 import { stripSvgjsAttributes } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
+import { fusLog } from '../core/fusion-bridge.js';
+
+/** Unconditional editor-IO diagnostic logging: browser console + Fusion
+ *  log file. Strip when the layer-reload bug is closed. */
+function _ioLog(msg) {
+    try { console.log(`[EDITOR-IO] ${msg}`); } catch (_) {}
+    try { fusLog(`[EDITOR-IO] ${msg}`); } catch (_) {}
+}
 
 export function initIO(editor) {
     editor.logEditorEvent = (msg, data) => {
@@ -188,11 +196,96 @@ function _migrateHangingBaselineTexts(sketchLayer, defaultFontSize) {
     sketchLayer.children().forEach(ch => migrateTextElement(ch, defaultFontSize));
 }
 
+/**
+ * Reconstitute the layers panel from data-layer attributes on the
+ * loaded SVG so the invariant "every element is on a layer" survives a
+ * round trip. Walk every child:
+ *   - if it carries a data-layer id, make sure that id exists in
+ *     editor._layers (create a Layer N entry if not)
+ *   - if it carries no data-layer at all (legacy SVG / pasted markup),
+ *     stamp it onto the first reconciled layer
+ * Returns the id of the layer we picked as active, or null if the
+ * sketch was empty (in which case the user's first draw will trigger
+ * ensureActiveLayer).
+ */
+function _reconcileLayersFromSvg(editor) {
+    if (!editor._sketchLayer) {
+        _ioLog('reconcile: no _sketchLayer, bail');
+        return null;
+    }
+    const children = editor._sketchLayer.children().toArray();
+    _ioLog(`reconcile: childCount=${children.length}`);
+    if (children.length === 0) return null;
+
+    // Reset the runtime roster — we trust the SVG as the source of truth.
+    editor._layers = [];
+
+    const seen = new Map(); // id (string) -> layer object
+    const orphans = [];     // children with no data-layer
+
+    children.forEach((ch, i) => {
+        const raw = ch.attr('data-layer');
+        const tag = ch.node?.tagName || '?';
+        const cls = ch.node?.getAttribute?.('class') || '';
+        if (i < 5) _ioLog(`  child[${i}] tag=${tag} data-layer="${raw}" class="${cls}"`);
+        if (raw == null || raw === '') {
+            orphans.push(ch);
+            return;
+        }
+        const id = String(raw);
+        if (!seen.has(id)) {
+            const layer = { id, name: `Layer ${seen.size + 1}`, visible: true };
+            editor._layers.push(layer);
+            seen.set(id, layer);
+        }
+    });
+
+    // If we found orphans (or zero data-layer'd elements), ensure we
+    // have at least one layer to anchor them to.
+    let anchor = editor._layers[0];
+    if (!anchor) {
+        anchor = { id: '0', name: 'Layer 1', visible: true };
+        editor._layers.push(anchor);
+    }
+    if (orphans.length > 0) {
+        _ioLog(`reconcile: ${orphans.length} orphan(s) -> anchored to layer ${anchor.id}`);
+        orphans.forEach(ch => ch.attr('data-layer', anchor.id));
+    }
+
+    // Keep _nextLayerId ahead of the highest numeric id we've seen so
+    // future addLayer() calls don't collide.
+    const numericIds = editor._layers
+        .map(l => Number(l.id))
+        .filter(n => !isNaN(n));
+    editor._nextLayerId = numericIds.length ? Math.max(...numericIds) + 1 : 0;
+
+    _ioLog(`reconcile done: layers=${editor._layers.map(l => l.id).join(',')}  anchor=${anchor.id}  nextId=${editor._nextLayerId}`);
+    return anchor.id;
+}
+
 export function open(editor, svgString, w, h) {
+    _ioLog(`open() called  svgLen=${(svgString || '').length}  w=${w} h=${h}`);
     editor.setModelMetrics(w, h);
     editor._sketchLayer.clear();
     sync3DBackground(editor);
-    if (!svgString) return;
+
+    // Fresh editor session: wipe any leftover undo history from a previous
+    // session so the user can't Ctrl+Z back into someone else's design.
+    // We push an initial snapshot at the end (whether content was loaded
+    // or not) so the very first user action — including the very first
+    // stroke in an empty session — is undoable.
+    editor._undoStack = [];
+    editor._redoStack = [];
+    // Reset the layer roster too so it can't bleed across sessions.
+    // _reconcileLayersFromSvg below will rebuild it from the loaded SVG.
+    editor._layers = [];
+    editor._activeLayer = null;
+
+    if (!svgString) {
+        _ioLog('open: no svgString -> empty editor');
+        if (typeof editor.pushState === 'function') editor.pushState();
+        return;
+    }
     try {
         const svgEl = new DOMParser().parseFromString(svgString, 'image/svg+xml').querySelector('svg');
         if (svgEl) {
@@ -214,11 +307,20 @@ export function open(editor, svgString, w, h) {
 
             _migrateHangingBaselineTexts(editor._sketchLayer, editor._fontSize);
 
+            // Rebuild the layer roster from the loaded elements, then
+            // make the first reconciled layer active. This is what
+            // keeps "every element is on a layer" true after a reload.
+            const firstLayerId = _reconcileLayersFromSvg(editor);
             if (typeof editor.setActiveLayer === 'function') {
-                editor.setActiveLayer(editor._activeLayer || '0');
+                editor.setActiveLayer(firstLayerId);
             }
         }
     } catch (err) { console.error('[SVG EDITOR] Re-import failure:', err); }
+
+    // Capture the post-load state as the baseline. The first user edit
+    // pushes state #2, and Ctrl+Z restores #1 (this freshly-loaded state)
+    // — so even an edit applied to the very first stroke is reversible.
+    if (typeof editor.pushState === 'function') editor.pushState();
 }
 
 export function sync3DBackground(editor) {

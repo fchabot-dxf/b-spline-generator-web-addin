@@ -423,3 +423,166 @@
         border-radius: 10px;
     }
 }
+
+/* =========================================================================
+   Layers Panel (right sidebar inside .cad-modal-body of the SVG editor)
+   Sibling of .editor-sidebar (left) and #editorCanvasContainer.
+   Replaces the legacy LYR <select> dropdown — supports unlimited layers,
+   add/remove/rename, visibility toggle, drag-to-reorder. The data model
+   lives in editor/layers.js (editor._layers array).
+   ========================================================================= */
+.editor-layers-panel {
+    width: 220px;
+    flex-shrink: 0;
+    background: #fdfdfd;
+    border-left: 1px solid var(--cad-border-standard);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+    min-height: 0;
+}
+
+.editor-layers-panel .layers-header {
+    height: 32px;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f3f3f3;
+    border-bottom: 1px solid var(--cad-border-standard);
+    font-size: 10px;
+    font-weight: 700;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+}
+
+.editor-layers-panel .layers-add-btn {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--cad-accent, #1e6fea);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+.editor-layers-panel .layers-add-btn:hover { background: #e7eefe; }
+
+.editor-layers-panel .layers-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.editor-layers-panel .layers-empty {
+    color: #999;
+    font-size: 11px;
+    padding: 18px 12px;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.editor-layers-panel .layer-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 4px 0 2px;
+    border-radius: 3px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 11px;
+    color: #333;
+}
+.editor-layers-panel .layer-row:hover { background: #f3f3f3; }
+.editor-layers-panel .layer-row.active {
+    background: #e0ecff;
+    outline: 1px solid #b6d0f5;
+}
+.editor-layers-panel .layer-row.dragging { opacity: 0.4; }
+.editor-layers-panel .layer-row.drop-before { box-shadow: inset 0 2px 0 var(--cad-accent, #1e6fea); }
+.editor-layers-panel .layer-row.drop-after  { box-shadow: inset 0 -2px 0 var(--cad-accent, #1e6fea); }
+
+.editor-layers-panel .layer-handle {
+    width: 14px;
+    flex-shrink: 0;
+    text-align: center;
+    color: #bbb;
+    font-size: 12px;
+    cursor: grab;
+    line-height: 1;
+}
+.editor-layers-panel .layer-handle:active { cursor: grabbing; }
+
+.editor-layers-panel .layer-visibility {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #555;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+}
+.editor-layers-panel .layer-visibility:hover { background: #e6e6e6; }
+.editor-layers-panel .layer-visibility.is-hidden { color: #c8c8c8; }
+.editor-layers-panel .layer-visibility svg { width: 14px; height: 14px; }
+
+.editor-layers-panel .layer-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 2px;
+}
+
+.editor-layers-panel .layer-name-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--cad-accent, #1e6fea);
+    border-radius: 2px;
+    font-size: 11px;
+    padding: 2px 4px;
+    outline: none;
+    font-family: inherit;
+}
+
+.editor-layers-panel .layer-delete {
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #d32f2f;
+    font-size: 13px;
+    line-height: 1;
+    border-radius: 3px;
+    visibility: hidden;
+    padding: 0;
+    flex-shrink: 0;
+}
+.editor-layers-panel .layer-row:hover .layer-delete { visibility: visible; }
+.editor-layers-panel .layer-delete:hover { background: #fde7e7; }
+
+/* When a layer is hidden, dim and hide its SVG elements in the editor view.
+   The expand-time geometry filter (task 4) makes sure hidden layers are
+   also excluded from the stamp output. */
+#editorSVGContainer .layer-hidden { display: none; }
+
+/* Mobile: narrower panel; on very narrow viewports the panel hides behind
+   a toggle. For now keep it visible but slimmer. */
+@media (max-width: 700px) {
+    .editor-layers-panel { width: 170px; }
+}

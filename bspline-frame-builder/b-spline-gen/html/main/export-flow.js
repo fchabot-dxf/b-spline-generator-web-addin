@@ -95,7 +95,7 @@ export function onGenerate(preview) {
     if (svgCb) {
         const hasAnySvg = exportableStampLayers().length > 0;
         svgCb.disabled = !hasAnySvg;
-        if (!hasAnySvg) svgCb.checked = false;
+        svgCb.checked = hasAnySvg;  // default-on when available, off otherwise
     }
 }
 
@@ -127,7 +127,12 @@ export function onFusionApply(preview) {
     // 'Stamped') into separate PRODUCTs so Fusion imports them as two
     // components with two bodies each ('panel' + 'surface'). No cross-
     // component body merge ever needs to happen.
-    const includeSVG = hasStamp && !!document.getElementById('includeSVG')?.checked;
+    // Fusion-mode "OK" bypasses the export wizard, so there is no
+    // checkbox in the DOM to read. Always ship the SVG when any stamp
+    // layer carries one — the user already designed it, there's no
+    // reason to silently drop it. (The wizard download path still
+    // honours the explicit `includeSVG` checkbox via readWizardOptions.)
+    const includeSVG = hasStamp && exportableStampLayers().length > 0;
     const options = { ...defaultExportOptions(hasThicken, hasStamp, includeSVG), isVisible: true };
 
     if (isFusionMode) {

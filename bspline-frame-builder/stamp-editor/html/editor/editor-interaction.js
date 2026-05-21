@@ -14,7 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { on } from './dom.js';
 import { dbg } from './debug.js';
 
@@ -279,7 +279,11 @@ function translateSelection(editor, pt) {
 // ─── Drawing primitives ────────────────────────────────────────────
 
 function createDrawingShape(editor, modeId, pt) {
-    const layer = getActiveLayer(editor);
+    // First-draw auto-create: if the user starts drawing on a session
+    // with no layers yet (the default "none on open" state), spin up
+    // "Layer 1" and make it active so the new element has somewhere
+    // to live. Bundled into the next pushState so undo = one click.
+    const layer = ensureActiveLayer(editor);
     const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
     if (modeId === 'draw') {
         return editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)
