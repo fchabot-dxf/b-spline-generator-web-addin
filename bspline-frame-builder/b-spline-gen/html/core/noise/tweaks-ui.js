@@ -22,7 +22,19 @@
  */
 
 import { NoiseTweaks } from './index.js';
-import { P, saveLastSession } from '../state.js';
+import { P, DEFAULT, saveLastSession, updateP } from '../state.js';
+import { syncUItoParam } from '../ui-utils.js';
+
+// Top-level FILTER-panel knobs that live OUTSIDE the per-filter tweaks schema
+// (their controls are hardcoded HTML in the outer .panel-body, not in the
+// dynamic Edit-Filter sub-panel). Reset-all should also revert these or the
+// user is left with stale values after clicking "Reset all". See BUG-03.
+const OUTER_FILTER_KEYS = [
+  'scale',
+  'detailDensity',
+  'detailStrength',
+  'detailDensityRespectSymmetry',
+];
 
 // Module-private references resolved by bindTweaksUI().
 let _panelEl       = null;
@@ -60,10 +72,24 @@ export function resetOneTweak(filterId, key) {
   if (_onChange) _onChange();
 }
 
-/** Drop every override for a filter (revert all to schema defaults). */
+/** Drop every override for a filter (revert all to schema defaults).
+ *  Also resets the outer-panel "Fine Scale / Detail Coverage / Empty Zone
+ *  Detail / Detail Respects Symmetry" controls, which the user reasonably
+ *  expects "Reset all" to cover even though they're hardcoded outside the
+ *  dynamic Edit-Filter rows. See BUG-03. */
 export function resetAllTweaks(filterId) {
-  if (!P.filterTweaks) return;
-  delete P.filterTweaks[filterId];
+  // Reset the per-filter overrides (Edit-Filter sub-panel rows).
+  if (P.filterTweaks) delete P.filterTweaks[filterId];
+
+  // Reset outer-panel FILTER knobs to their DEFAULT values, and push the
+  // change through to both state and DOM controls so the UI reflects it.
+  for (const key of OUTER_FILTER_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(DEFAULT, key)) continue;
+    const def = DEFAULT[key];
+    updateP(key, def);
+    syncUItoParam(key, def);
+  }
+
   saveLastSession();
   if (_onChange) _onChange();
 }

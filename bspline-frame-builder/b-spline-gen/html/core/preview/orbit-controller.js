@@ -214,7 +214,11 @@ export class OrbitController {
    * e.deltaY > 0 zooms out (gently re-center on scene XY origin).
    */
   handleWheel(e) {
-    e.preventDefault();
+    // Listener is registered with { passive: true } in preview/index.js to
+    // unblock the compositor under high-frequency trackpad scroll (BUG-08).
+    // preventDefault() can no longer be called here — that's fine because
+    // the canvas has no native scroll, and `overscroll-behavior: contain`
+    // on the canvas prevents the chain from leaking to the document.
     const THREE = this._THREE;
     // Ground every wheel event in the currently *rendered* state so rapid
     // events don't compound drift while the lerp is still catching up.

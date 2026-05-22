@@ -17,6 +17,15 @@ import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { on } from './dom.js';
 import { dbg } from './debug.js';
+import { fusLog } from '../core/fusion-bridge.js';
+
+/** STROKE diagnostic helper — traces the drawing lifecycle so we can see
+ *  which paths drop a pushState. Dual-pipes to Fusion log file so it
+ *  shows up in b_spline_gen_log.txt regardless of window.__editorDebug. */
+function _strokeLog(msg) {
+    dbg('STROKE', msg);
+    try { fusLog(`[STROKE] ${msg}`); } catch (_) {}
+}
 
 
 export function initInteraction(editor) {
@@ -34,6 +43,13 @@ export function initInteraction(editor) {
 }
 
 function handleDblClick(editor, e) {
+    // In anchor mode, the second click of a double-click commits the path.
+    if (editor._anchorMode && editor._currentMode === 'draw') {
+        e.preventDefault();
+        e.stopPropagation();
+        _commitAnchorPath(editor);
+        return;
+    }
     const pt = editor._getMousePoint(e);
     const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
     if (hit && hit.type === 'text') {
@@ -82,17 +98,25 @@ function handleMove(editor, e) {
 function handleEnd(editor, e) {
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
+        _strokeLog(`handleEnd  isDrawing=true  mode=${editor._currentMode}  hasFinish=${!!handler.finish}  hasCurrentPath=${!!editor._currentPath}`);
         if (handler.finish) handler.finish(editor);
+        else _strokeLog(`handleEnd  WARNING: no finish handler for mode=${editor._currentMode} — stroke may be orphaned (path stays in DOM, no pushState fires)`);
         return;
     }
     if (editor._isDragging) {
         editor._isDragging = false;
-        if (editor._dragNodeIndex !== -1) {
-            editor._dragNodeIndex = -1;
-            editor.pushState();
-        } else if (editor._selectedElement) {
+        const wasNodeDrag = editor._dragNodeIndex !== -1;
+        if (wasNodeDrag) editor._dragNodeIndex = -1;
+        // Only push state if the drag actually moved something. A plain
+        // click (mousedown→mouseup with no intervening movement) used to
+        // emit a noop snapshot every time, padding the undo stack with
+        // identical entries and making Ctrl+Z feel like it took multiple
+        // presses to undo one stroke. _dragMoved is set true the first
+        // time dragNode/translateSelection mutates the element.
+        if (editor._dragMoved) {
             editor.pushState();
         }
+        editor._dragMoved = false;
     }
 }
 
@@ -103,6 +127,7 @@ const selectHandler = {
     start(editor, pt) {
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
         dbg('TEXT-DBG', `handleStart hit-test: ${hit ? `HIT type=${hit.type}` : 'no hit'}`);
+        editor._dragMoved = false;
         if (hit) {
             editor._isDragging = true;
             editor._lastDragPt = pt;
@@ -207,6 +232,7 @@ function makeDrawingHandler(modeId) {
             editor._isDrawing = true;
             editor._points = [[pt.x, pt.y]];
             editor._currentPath = createDrawingShape(editor, modeId, pt);
+            _strokeLog(`handler.start  modeId=${modeId}  pt=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})  pathCreated=${!!editor._currentPath}  sketchChildren=${editor._sketchLayer.children().toArray().length}`);
         },
         update(editor, pt) {
             updateDrawingShape(editor, modeId, pt);
@@ -217,11 +243,205 @@ function makeDrawingHandler(modeId) {
     };
 }
 
+/**
+ * Anchor-click pen handler for 'draw' mode.
+ *
+ * Intent detection (per gesture):
+ *   • Click (mouse barely moves < threshold) → place anchor point.
+ *     First click enters anchor mode; subsequent clicks add anchors.
+ *     Double-click or Enter key commits the path; Escape cancels.
+ *   • Drag (mouse moves beyond threshold before mouseup) → freehand
+ *     stroke, exactly like the previous behaviour.
+ *
+ * Anchor state lives on the editor instance:
+ *   _anchorMode        {boolean}  true while collecting anchor points
+ *   _anchorPts         {Array}    [[x,y], …]
+ *   _anchorDownPt      {{x,y}}    position of the most-recent mousedown
+ *   _anchorFreehand    {boolean}  true once drag threshold is exceeded
+ *   _anchorPreviewLine {SVG.Line} dashed rubberband from last anchor
+ *   _anchorKeyHandler  {Function} keydown listener ref (for removal)
+ */
+const drawHandler = {
+    start(editor, pt, e) {
+        // Clean up orphaned anchor state (e.g. mode was switched mid-path
+        // via a keyboard shortcut that bypassed _cancelDrawing).
+        if (editor._anchorPreviewLine || editor._anchorKeyHandler) {
+            _cleanupAnchorMode(editor);
+            editor._currentPath = null;
+            editor._anchorPts   = [];
+        }
+
+        if (editor._anchorMode) {
+            // Already collecting anchors — record where mousedown fired.
+            editor._anchorDownPt = pt;
+            return;
+        }
+
+        // Fresh start: create the live path; decide freehand vs anchor on mouseup.
+        editor._deselect();
+        editor._isDrawing      = true;
+        editor._anchorDownPt   = pt;
+        editor._anchorFreehand = false;
+        editor._points         = [[pt.x, pt.y]];
+        editor._currentPath    = createDrawingShape(editor, 'draw', pt);
+        _strokeLog(`drawHandler.start  pt=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})  pathCreated=${!!editor._currentPath}`);
+    },
+    update(editor, pt) {
+        if (editor._anchorMode) {
+            _updateAnchorPreview(editor, pt);
+            return;
+        }
+        if (!editor._anchorFreehand) {
+            const dp = editor._anchorDownPt;
+            if (dp) {
+                const dist = Math.hypot(pt.x - dp.x, pt.y - dp.y);
+                if (dist > editor._getDynamicTolerance(3)) {
+                    editor._anchorFreehand = true;
+                }
+            }
+        }
+        if (editor._anchorFreehand) {
+            updateDrawingShape(editor, 'draw', pt);
+        }
+    },
+    finish(editor) {
+        if (editor._anchorMode) {
+            // Mouse-up in anchor mode → place anchor at the mousedown position.
+            const pt = editor._anchorDownPt;
+            if (pt) _addAnchorPoint(editor, pt);
+            // Keep _isDrawing = true so subsequent events keep routing here.
+            return;
+        }
+        if (editor._anchorFreehand) {
+            // User dragged — commit as a normal freehand stroke.
+            editor._anchorFreehand = false;
+            finishDrawing(editor, 'draw');
+        } else {
+            // Short click — enter anchor mode with the first anchor point.
+            editor._anchorFreehand = false;
+            _startAnchorMode(editor, editor._anchorDownPt);
+        }
+    },
+};
+
+function _startAnchorMode(editor, pt) {
+    editor._anchorMode = true;
+    editor._anchorPts  = [[pt.x, pt.y]];
+    if (editor._currentPath) editor._currentPath.attr('d', `M ${pt.x} ${pt.y}`);
+    _ensureAnchorPreview(editor, pt);
+    _installAnchorKeyHandler(editor);
+    _strokeLog(`_startAnchorMode  firstAnchor=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})`);
+}
+
+function _addAnchorPoint(editor, pt) {
+    editor._anchorPts.push([pt.x, pt.y]);
+    if (editor._currentPath) {
+        const d = editor._currentPath.attr('d') + ` L ${pt.x} ${pt.y}`;
+        editor._currentPath.attr('d', d);
+    }
+    // Move the rubberband origin to the new anchor.
+    if (editor._anchorPreviewLine) {
+        editor._anchorPreviewLine.attr({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+    }
+    _strokeLog(`_addAnchorPoint  pt=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})  total=${editor._anchorPts.length}`);
+}
+
+function _ensureAnchorPreview(editor, fromPt) {
+    if (editor._anchorPreviewLine) {
+        editor._anchorPreviewLine.attr({ x1: fromPt.x, y1: fromPt.y, x2: fromPt.x, y2: fromPt.y });
+        return;
+    }
+    const color = editor._strokeColor || '#888888';
+    const width = editor._strokeWidth  || 1;
+    editor._anchorPreviewLine = editor._sketchLayer
+        .line(fromPt.x, fromPt.y, fromPt.x, fromPt.y)
+        .stroke({ color, width, dasharray: '5 4', opacity: 0.55 })
+        .attr('pointer-events', 'none');
+}
+
+function _updateAnchorPreview(editor, toPt) {
+    if (!editor._anchorPreviewLine) return;
+    const pts = editor._anchorPts;
+    if (!pts || pts.length === 0) return;
+    const last = pts[pts.length - 1];
+    editor._anchorPreviewLine.attr({ x1: last[0], y1: last[1], x2: toPt.x, y2: toPt.y });
+}
+
+function _commitAnchorPath(editor) {
+    if (!editor._anchorMode) return;
+    _strokeLog(`_commitAnchorPath  pts=${editor._anchorPts?.length}`);
+    _cleanupAnchorMode(editor);
+
+    if (!editor._currentPath || !editor._anchorPts || editor._anchorPts.length < 2) {
+        if (editor._currentPath) editor._currentPath.remove();
+        editor._currentPath = null;
+        editor._anchorPts   = [];
+        editor._points      = [];
+        editor._isDrawing   = false;
+        return;
+    }
+
+    // Smooth through the anchor points with fitCurve for a clean bezier result.
+    const tol    = editor._getDynamicTolerance(2);
+    const fitted = fitCurve(editor, editor._anchorPts, tol * 1.5);
+    if (fitted) editor._currentPath.attr('d', fitted);
+
+    const finalPath     = editor._currentPath;
+    editor._currentPath = null;
+    editor._anchorPts   = [];
+    editor._points      = [];
+    editor._isDrawing   = false;
+    editor._select(finalPath);
+    _strokeLog(`_commitAnchorPath  COMMIT  about to pushState`);
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (editor._onChange) editor._onChange();
+}
+
+function _cancelAnchorMode(editor) {
+    _strokeLog(`_cancelAnchorMode`);
+    _cleanupAnchorMode(editor);
+    if (editor._currentPath) { editor._currentPath.remove(); editor._currentPath = null; }
+    editor._anchorPts = [];
+    editor._points    = [];
+    editor._isDrawing = false;
+}
+
+function _cleanupAnchorMode(editor) {
+    editor._anchorMode = false;
+    if (editor._anchorPreviewLine) {
+        editor._anchorPreviewLine.remove();
+        editor._anchorPreviewLine = null;
+    }
+    if (editor._anchorKeyHandler) {
+        window.removeEventListener('keydown', editor._anchorKeyHandler);
+        editor._anchorKeyHandler = null;
+    }
+}
+
+function _installAnchorKeyHandler(editor) {
+    if (editor._anchorKeyHandler) return;
+    editor._anchorKeyHandler = (e) => {
+        if (!editor._anchorMode || editor._currentMode !== 'draw') {
+            window.removeEventListener('keydown', editor._anchorKeyHandler);
+            editor._anchorKeyHandler = null;
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            _commitAnchorPath(editor);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            _cancelAnchorMode(editor);
+        }
+    };
+    window.addEventListener('keydown', editor._anchorKeyHandler);
+}
+
 const modeHandlers = {
     select: selectHandler,
     node:   nodeHandler,
     text:   textHandler,
-    draw:   makeDrawingHandler('draw'),
+    draw:   drawHandler,
     line:   makeDrawingHandler('line'),
     rect:   makeDrawingHandler('rect'),
     circle: makeDrawingHandler('circle'),
@@ -244,6 +464,7 @@ function findNodeAt(editor, pt) {
 function dragNode(editor, pt) {
     const el = editor._selectedElement;
     const idx = editor._dragNodeIndex;
+    editor._dragMoved = true;
     if (el.type === 'line') {
         if (idx === 0) el.attr({ x1: pt.x, y1: pt.y });
         else el.attr({ x2: pt.x, y2: pt.y });
@@ -268,6 +489,7 @@ function dragNode(editor, pt) {
 function translateSelection(editor, pt) {
     const dx = pt.x - editor._lastDragPt.x;
     const dy = pt.y - editor._lastDragPt.y;
+    if (dx !== 0 || dy !== 0) editor._dragMoved = true;
     editor._selectedElement.translate(dx, dy);
     editor._updateHandles();
     editor._updateSelectionHighlight();
@@ -336,8 +558,12 @@ function updateDrawingShape(editor, modeId, pt) {
 }
 
 function finishDrawing(editor, modeId) {
+    _strokeLog(`finishDrawing  ENTER  modeId=${modeId}  hasCurrentPath=${!!editor._currentPath}  pointsLen=${editor._points.length}`);
     editor._isDrawing = false;
-    if (!editor._currentPath) return;
+    if (!editor._currentPath) {
+        _strokeLog(`finishDrawing  EARLY-RETURN  reason=no-currentPath  (NO pushState)`);
+        return;
+    }
 
     if (modeId === 'draw') {
         if (editor._points.length > 2) {
@@ -347,6 +573,7 @@ function finishDrawing(editor, modeId) {
             if (fitted) editor._currentPath.attr('d', fitted);
         } else {
             // Just a dot or tiny line — discard.
+            _strokeLog(`finishDrawing  DISCARD  modeId=draw  pointsLen=${editor._points.length}  (path removed, NO pushState)`);
             editor._currentPath.remove();
             editor._currentPath = null;
             return;
@@ -357,6 +584,7 @@ function finishDrawing(editor, modeId) {
     editor._currentPath = null;
     editor._points = [];
     editor._select(finalPath);
+    _strokeLog(`finishDrawing  COMMIT  modeId=${modeId}  about to pushState  sketchChildren=${editor._sketchLayer.children().toArray().length}`);
     if (typeof editor.pushState === 'function') editor.pushState();
     if (editor._onChange) editor._onChange();
 }

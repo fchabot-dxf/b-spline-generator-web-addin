@@ -3,8 +3,93 @@
  */
 import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
+import { fusLog } from '../core/fusion-bridge.js';
+
+// Per-mode help text shown in the floating status hint at the bottom of the
+// editor canvas. Keeps the lessons-learned messages out of the toolbar so the
+// affordance is visible without hover. See BUG-02 and BUG-06.
+const MODE_HINTS = {
+  select: 'Select — click a shape to pick it up, drag to move. Hold Shift for additional…',
+  node:   'Nodes — click a shape to edit its anchor points. Drag the diamond handles to reshape.',
+  draw:   'Pen — Click to place anchors (double-click or Enter to commit, Esc to cancel). Or drag to freehand.',
+  text:   'Text — click on the canvas to start typing. Drag the text to move it.',
+  line:   'Line — drag from start to end. Hold Shift to constrain angles.',
+  rect:   'Rectangle — drag from one corner to the opposite corner.',
+  circle: 'Circle — drag from center outward.',
+  expand: 'Expand — use the Detail input + EXPAND button in the top bar to offset/outline your paths.',
+};
+
+// Anchor-mode hint replaces the pen mode hint while the user is actively
+// placing anchor points; toggled from editor-interaction.js.
+export const ANCHOR_HINT = 'Pen (anchor mode) — keep clicking to add points • Double-click or Enter to commit • Esc to cancel';
+
+/** Restore the default hint for the editor's current mode. Useful when
+ *  the pen tool exits anchor mode (cancel/commit) but stays in 'draw'. */
+export function restoreModeHint(editor) {
+  setEditorStatusHint(MODE_HINTS[editor._currentMode] || '');
+}
+
+// ─── Expand onboarding callout (BUG-06) ────────────────────────────────
+//
+// Shows a one-time pointer at the Expand tool after the user finishes
+// drawing their first shape. Dismissal (either explicit via the "Got it"
+// button OR implicit when the user enters Expand mode) is persisted in
+// localStorage so it never re-appears for that browser profile.
+
+const EXPAND_CALLOUT_KEY = 'bspline.editor.expandCalloutDismissed';
+
+function _isExpandCalloutDismissed() {
+  try { return localStorage.getItem(EXPAND_CALLOUT_KEY) === '1'; }
+  catch (_) { return false; }
+}
+
+function _markExpandCalloutDismissed() {
+  try { localStorage.setItem(EXPAND_CALLOUT_KEY, '1'); } catch (_) {}
+}
+
+/** Hide the Expand-tool onboarding callout, optionally persisting the
+ *  dismissal so it won't show again in future sessions. */
+export function dismissExpandCallout({ persist = true } = {}) {
+  const el = document.getElementById('editorExpandCallout');
+  if (el) el.style.display = 'none';
+  if (persist) _markExpandCalloutDismissed();
+}
+
+/** Show the Expand-tool onboarding callout once, after the user finishes
+ *  their first stroke. No-op if the user has dismissed it before, or if
+ *  they're already in expand mode (where it would just be redundant). */
+export function maybeShowExpandCallout(editor) {
+  if (_isExpandCalloutDismissed()) return;
+  if (editor && editor._currentMode === 'expand') return;
+  const el = document.getElementById('editorExpandCallout');
+  if (!el) return;
+  el.style.display = 'block';
+  // Wire dismiss button once (idempotent — we re-look-up the button
+  // each call but only attach the listener the first time via a marker).
+  const btn = document.getElementById('editorExpandCalloutDismiss');
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', () => dismissExpandCallout({ persist: true }));
+  }
+}
+
+/** Set the editor status-hint text. Called by setMode + anchor-mode helpers. */
+export function setEditorStatusHint(text) {
+  const hint = document.getElementById('editorStatusHint');
+  if (!hint) return;
+  if (text == null || text === '') {
+    hint.style.display = 'none';
+    hint.textContent = '';
+  } else {
+    hint.style.display = 'block';
+    hint.textContent = text;
+  }
+}
 
 export function setMode(editor, mode) {
+    const wasDrawing = !!editor._isDrawing;
+    const wasEditingText = !!editor._editingTextEl;
+    try { fusLog(`[STROKE] setMode  from=${editor._currentMode}  to=${mode}  wasDrawing=${wasDrawing}  wasEditingText=${wasEditingText}  hasCurrentPath=${!!editor._currentPath}`); } catch (_) {}
     if (editor._editingTextEl) editor._commitText();
     if (editor._isDrawing) editor._cancelDrawing();
     
@@ -32,6 +117,15 @@ export function setMode(editor, mode) {
     // Restore handles refresh on mode switch
     editor._updateHandles();
     editor._updateSelectionHighlight();
+
+    // Update the floating status hint at the bottom of the canvas so users
+    // can see what the current tool does without hunting for tooltips.
+    setEditorStatusHint(MODE_HINTS[mode] || '');
+
+    // If the user just entered Expand mode, the Expand-discovery callout
+    // (BUG-06) has served its purpose — hide it and persist the dismissal
+    // so we don't shove it back at them next time they draw a shape.
+    if (mode === 'expand') dismissExpandCallout({ persist: true });
 }
 
 export function updateToolbarVisibility(editor, mode, el) {

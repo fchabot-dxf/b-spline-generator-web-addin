@@ -383,7 +383,14 @@ export class TerrainPreview {
       this._orbit.handleWindowMouseup();
     });
 
-    el.addEventListener('wheel', e => this._orbit.handleWheel(e), { passive: false });
+    // Wheel is registered passive so modern browsers can keep
+    // compositing while high-frequency wheel/trackpad events fire (BUG-08).
+    // The page wouldn't scroll over the canvas anyway — the canvas has
+    // no scrollable content — but if the surrounding layout ever does,
+    // CSS `overscroll-behavior: contain` on the canvas keeps the chain
+    // from bubbling up to the document.
+    try { el.style.overscrollBehavior = 'contain'; } catch (_) {}
+    el.addEventListener('wheel', e => this._orbit.handleWheel(e), { passive: true });
 
     // Touch.
     el.addEventListener('touchstart', e => {

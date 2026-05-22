@@ -7,11 +7,44 @@ import { stripSvgjsAttributes } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
-/** Unconditional editor-IO diagnostic logging: browser console + Fusion
- *  log file. Strip when the layer-reload bug is closed. */
+/** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
+ *  layer-restore regressions stay observable. Console output is quiet by
+ *  default; flip window.__editorDebug = 'EDITOR-IO' in devtools to enable. */
 function _ioLog(msg) {
-    try { console.log(`[EDITOR-IO] ${msg}`); } catch (_) {}
+    if (typeof window !== 'undefined' && window.__editorDebug === 'EDITOR-IO') {
+        try { console.log(`[EDITOR-IO] ${msg}`); } catch (_) {}
+    }
     try { fusLog(`[EDITOR-IO] ${msg}`); } catch (_) {}
+}
+
+/** Build the sketch-layer content string with elements on hidden layers
+ *  filtered out. The visibility flag is meant to affect both the live
+ *  view (CSS) AND the stamp geometry sent to Fusion, so save() needs to
+ *  drop those elements rather than carrying them through. Returns the
+ *  stripped innerHTML. If no hidden layers exist, returns the raw
+ *  innerHTML unchanged. */
+function _visibleContent(editor) {
+    const layers = Array.isArray(editor._layers) ? editor._layers : [];
+    const hidden = new Set(layers.filter(l => l.visible === false).map(l => l.id));
+    const raw = editor._sketchLayer.node.innerHTML;
+    if (hidden.size === 0) return stripSvgjsAttributes(raw);
+
+    // Walk a parsed copy and drop hidden-layer elements before
+    // serializing. Using DOMParser keeps quoting/entities sane.
+    const wrapper = `<svg xmlns="http://www.w3.org/2000/svg">${raw}</svg>`;
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(wrapper, 'image/svg+xml');
+    } catch {
+        return stripSvgjsAttributes(raw);
+    }
+    const root = doc.documentElement;
+    if (!root) return stripSvgjsAttributes(raw);
+    Array.from(root.children).forEach(ch => {
+        const lid = ch.getAttribute('data-layer');
+        if (lid != null && hidden.has(String(lid))) ch.remove();
+    });
+    return stripSvgjsAttributes(root.innerHTML);
 }
 
 export function initIO(editor) {
@@ -20,13 +53,40 @@ export function initIO(editor) {
     };
 }
 
+/** Serialize the layer roster as a string attribute we can stamp onto
+ *  the root <svg>. Empty layers (no elements yet) and per-layer state
+ *  (name, visibility) would otherwise be lost on save→load — the
+ *  data-layer attrs on children alone only tell us about layers that
+ *  hold content. Returns "" if there's nothing to write. */
+function _serializeLayersAttr(editor) {
+    const layers = Array.isArray(editor._layers) ? editor._layers : [];
+    if (!layers.length) return '';
+    try {
+        const minimal = layers.map(l => ({
+            id: String(l.id),
+            name: l.name || '',
+            visible: l.visible !== false,
+        }));
+        // JSON quotes need HTML entity encoding so they survive being an
+        // attribute value. Single-quote the attr so we only escape ".
+        return JSON.stringify(minimal).replace(/"/g, '&quot;');
+    } catch (e) {
+        console.warn('[editor-io] _serializeLayersAttr failed', e);
+        return '';
+    }
+}
+
 export function save(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const rawContent = editor._sketchLayer.node.innerHTML;
-    const content = stripSvgjsAttributes(rawContent);
+    // _visibleContent drops elements on hidden layers so stamp output
+    // matches what the user sees. stripSvgjsAttributes is folded in.
+    const content = _visibleContent(editor);
     const wPx = editor._mW * dpi;
     const hPx = editor._mH * dpi;
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${content}</svg>`;
+    const layersAttr = _serializeLayersAttr(editor);
+    const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
+    const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${content}</svg>`;
     editor.lastSvg = svgString;
     return svgString;
 }
@@ -107,8 +167,7 @@ async function getEmbeddedFontCss(family) {
  */
 export async function saveForRasterization(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const rawContent = editor._sketchLayer.node.innerHTML;
-    const content = stripSvgjsAttributes(rawContent);
+    const content = _visibleContent(editor);
 
     // Collect every font-family referenced by a <text> in the content.
     // Parse via DOMParser so we work on real elements regardless of how
@@ -139,15 +198,17 @@ export async function saveForRasterization(editor, dpi = 96) {
     const styleBlock = fontCss.length
         ? `<defs class="rasterization-fonts"><style type="text/css">${fontCss.join('\n')}</style></defs>`
         : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${content}</svg>`;
+    const layersAttr = _serializeLayersAttr(editor);
+    const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
+    const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}</svg>`;
     editor.lastSvg = svgString;
     return svgString;
 }
 
 export async function saveWithTextCopies(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const rawContent = editor._sketchLayer.node.innerHTML;
-    const content = stripSvgjsAttributes(rawContent);
+    const content = _visibleContent(editor);
     const textCopies = [];
     const fontFamilies = new Set();
     editor._sketchLayer.children().forEach(ch => {
@@ -174,9 +235,12 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     // v49: Seal text copies in a proper <defs> block to ensure they never render.
     const textContent = textCopies.length ? `<defs class="editor-metadata">${textCopies.join('')}</defs>` : '';
 
-    
+
     const styleBlock = fontCss.length ? `<defs><style type="text/css">${fontCss.join('\n')}</style></defs>` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${content}${textContent}</svg>`;
+    const layersAttr = _serializeLayersAttr(editor);
+    const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
+    const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}${textContent}</svg>`;
     editor.lastSvg = svgString;
     return svgString;
 }
@@ -294,6 +358,21 @@ export function open(editor, svgString, w, h) {
             const metadata = svgEl.querySelector('.editor-metadata');
             if (metadata) metadata.remove();
 
+            // Pull persisted layer metadata BEFORE injecting innerHTML — once
+            // we hand the markup to svg.js the root attrs are gone.
+            const layersJson = svgEl.getAttribute('data-editor-layers');
+            const persistedActive = svgEl.getAttribute('data-editor-active-layer');
+            let persistedLayers = null;
+            if (layersJson) {
+                try {
+                    persistedLayers = JSON.parse(layersJson);
+                    _ioLog(`open: found data-editor-layers (${persistedLayers.length} layer(s)), active="${persistedActive}"`);
+                } catch (e) {
+                    _ioLog(`open: data-editor-layers JSON parse failed (${e.message}) — falling back to reconcile`);
+                    persistedLayers = null;
+                }
+            }
+
             editor._sketchLayer.svg(svgEl.innerHTML);
             editor._sketchLayer.children().forEach(ch => {
                 if (ch.hasClass('calib-anchor')) ch.remove();
@@ -307,10 +386,31 @@ export function open(editor, svgString, w, h) {
 
             _migrateHangingBaselineTexts(editor._sketchLayer, editor._fontSize);
 
-            // Rebuild the layer roster from the loaded elements, then
-            // make the first reconciled layer active. This is what
-            // keeps "every element is on a layer" true after a reload.
-            const firstLayerId = _reconcileLayersFromSvg(editor);
+            // Layer-roster restore: prefer the persisted roster (preserves
+            // empty layers, names, visibility). Fall back to reconciling
+            // from data-layer attrs for legacy / imported SVGs that don't
+            // carry the metadata.
+            let firstLayerId = null;
+            if (Array.isArray(persistedLayers) && persistedLayers.length > 0) {
+                editor._layers = persistedLayers.map(l => ({
+                    id: String(l.id),
+                    name: l.name || `Layer`,
+                    visible: l.visible !== false,
+                }));
+                // Bump _nextLayerId past any numeric id we just restored.
+                const numericIds = editor._layers
+                    .map(l => Number(l.id))
+                    .filter(n => !isNaN(n));
+                editor._nextLayerId = numericIds.length ? Math.max(...numericIds) + 1 : 0;
+                // Active: persisted choice if it still exists, else first.
+                firstLayerId = (persistedActive != null && editor._layers.some(l => l.id === String(persistedActive)))
+                    ? String(persistedActive)
+                    : editor._layers[0].id;
+                _ioLog(`open: restored roster from attr  layers=[${editor._layers.map(l => l.id).join(',')}]  active=${firstLayerId}`);
+            } else {
+                firstLayerId = _reconcileLayersFromSvg(editor);
+                _ioLog(`open: reconciled (no persisted attr)  firstLayer=${firstLayerId}`);
+            }
             if (typeof editor.setActiveLayer === 'function') {
                 editor.setActiveLayer(firstLayerId);
             }

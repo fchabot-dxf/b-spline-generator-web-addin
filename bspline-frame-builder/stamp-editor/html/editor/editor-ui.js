@@ -3,8 +3,12 @@
  */
 import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
+import { fusLog } from '../core/fusion-bridge.js';
 
 export function setMode(editor, mode) {
+    const wasDrawing = !!editor._isDrawing;
+    const wasEditingText = !!editor._editingTextEl;
+    try { fusLog(`[STROKE] setMode  from=${editor._currentMode}  to=${mode}  wasDrawing=${wasDrawing}  wasEditingText=${wasEditingText}  hasCurrentPath=${!!editor._currentPath}`); } catch (_) {}
     if (editor._editingTextEl) editor._commitText();
     if (editor._isDrawing) editor._cancelDrawing();
     

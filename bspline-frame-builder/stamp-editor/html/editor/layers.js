@@ -117,6 +117,48 @@ export function renameLayer(editor, id, newName) {
   if (typeof editor.pushState === 'function') editor.pushState();
 }
 
+/** Move sourceId to be just before/after targetId in render order. The
+ *  display list shows _layers in reverse (top of list = on top of
+ *  z-stack). 'before' in display terms means HIGHER in z-order =
+ *  AFTER in the array. 'after' = LOWER = BEFORE in the array. */
+export function reorderLayer(editor, sourceId, targetId, displaySide /* 'before' | 'after' */) {
+  if (!Array.isArray(editor._layers)) return;
+  const sIdx = editor._layers.findIndex(l => l.id === String(sourceId));
+  const tIdx = editor._layers.findIndex(l => l.id === String(targetId));
+  if (sIdx === -1 || tIdx === -1 || sIdx === tIdx) return;
+
+  const [moved] = editor._layers.splice(sIdx, 1);
+  // After removing source, the target's index may have shifted by -1 if
+  // source was before target. Recompute.
+  const newTIdx = editor._layers.findIndex(l => l.id === String(targetId));
+  // displaySide='before' means moved should appear ABOVE target in the
+  // panel = AFTER target in the array. 'after' = BELOW in panel =
+  // BEFORE target in the array.
+  const insertAt = displaySide === 'before' ? newTIdx + 1 : newTIdx;
+  editor._layers.splice(insertAt, 0, moved);
+
+  // Sync SVG DOM z-order: re-append children in the new layer order so
+  // earlier layers in _layers render first (bottom of z-stack).
+  if (editor._sketchLayer) {
+    const sketchNode = editor._sketchLayer.node;
+    const byLayer = new Map(editor._layers.map(l => [l.id, []]));
+    editor._sketchLayer.children().toArray().forEach(ch => {
+      const lid = getElementLayer(ch);
+      if (byLayer.has(lid)) byLayer.get(lid).push(ch);
+      // children with a layer id not in the roster stay where they are
+      // (orphans; shouldn't happen post-reconcile, but defend against it)
+    });
+    editor._layers.forEach(layer => {
+      byLayer.get(layer.id).forEach(ch => sketchNode.appendChild(ch.node));
+    });
+  }
+
+  renderLayersPanel(editor);
+  applyLayerState(editor);
+  if (typeof editor.pushState === 'function') editor.pushState();
+  if (editor._onChange) editor._onChange();
+}
+
 export function setLayerVisible(editor, id, visible) {
   if (!Array.isArray(editor._layers)) return;
   const layer = editor._layers.find(l => String(l.id) === String(id));
@@ -164,8 +206,18 @@ export function applyLayerState(editor) {
     const isActive = layerId === activeLayer;
     const isVisible = visById.has(layerId) ? visById.get(layerId) : true;
 
-    child.toggleClass('inactive-layer', !isActive);
-    child.toggleClass('layer-hidden', !isVisible);
+    // NOTE: do NOT use svg.js's toggleClass(name, force) here. In this
+    // version of svg.js the second argument is ignored — the class just
+    // gets flipped, so calling applyLayerState twice undoes the previous
+    // call. That blew up undo (B1): after _restoreState injected SVG
+    // markup that already carried the layer classes, applyLayerState
+    // would flip them off when they should stay on, hiding every
+    // restored child. Use explicit add/remove so the final class state
+    // matches the data regardless of what was serialized.
+    if (!isActive) child.addClass('inactive-layer');
+    else           child.removeClass('inactive-layer');
+    if (!isVisible) child.addClass('layer-hidden');
+    else            child.removeClass('layer-hidden');
   });
 
   if (editor._selectedElement && !isEditableByLayer(editor, editor._selectedElement)) {
@@ -218,7 +270,44 @@ function _makeLayerRow(editor, layer, isActive) {
   const row = document.createElement('div');
   row.className = 'layer-row' + (isActive ? ' active' : '');
   row.dataset.layerId = layer.id;
-  row.draggable = true; // task 3 will fully wire drag-reorder
+  row.draggable = true;
+
+  // Drag-to-reorder. Top of the list = top of z-order = rendered last in
+  // the SVG (which renders later children on top). _layers stores layers
+  // in render order (first = bottom), so the display list reverses it.
+  // A drag from display position D_from to D_to maps to array indices
+  // (n-1-D_from) and (n-1-D_to).
+  row.addEventListener('dragstart', (e) => {
+    row.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(layer.id));
+  });
+  row.addEventListener('dragend', () => {
+    row.classList.remove('dragging');
+    document.querySelectorAll('.layer-row.drop-before, .layer-row.drop-after')
+      .forEach(r => r.classList.remove('drop-before', 'drop-after'));
+  });
+  row.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = row.getBoundingClientRect();
+    const isAbove = (e.clientY - rect.top) < rect.height / 2;
+    row.classList.toggle('drop-before', isAbove);
+    row.classList.toggle('drop-after', !isAbove);
+  });
+  row.addEventListener('dragleave', () => {
+    row.classList.remove('drop-before', 'drop-after');
+  });
+  row.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData('text/plain');
+    const rect = row.getBoundingClientRect();
+    const isAbove = (e.clientY - rect.top) < rect.height / 2;
+    row.classList.remove('drop-before', 'drop-after');
+    if (sourceId && sourceId !== String(layer.id)) {
+      reorderLayer(editor, sourceId, layer.id, isAbove ? 'before' : 'after');
+    }
+  });
 
   const handle = document.createElement('span');
   handle.className = 'layer-handle';

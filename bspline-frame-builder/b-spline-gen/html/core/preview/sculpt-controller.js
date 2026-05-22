@@ -441,11 +441,24 @@ export class SculptController {
       const zBot = offsetPts[idx + 2];
       if (refs.botRow)   refs.botRow.style.display = 'block';
       if (refs.thickRow) refs.thickRow.style.display = 'block';
-      if (refs.botVal)   refs.botVal.textContent = zBot.toFixed(3);
+      if (refs.botVal) {
+        refs.botVal.textContent = zBot.toFixed(3);
+        if (zBot < 0) {
+          refs.botVal.style.color = '#ff3b30';
+          refs.botVal.title = 'Bit will plunge below stock — risk of cutting spoilboard';
+        } else {
+          refs.botVal.style.color = '#4488ff';
+          refs.botVal.title = '';
+        }
+      }
+      if (refs.warnRow) {
+        refs.warnRow.style.display = (zBot < 0) ? 'block' : 'none';
+      }
       if (refs.thickVal) refs.thickVal.textContent = Math.abs(rc.wz - zBot).toFixed(3);
     } else {
       if (refs.botRow)   refs.botRow.style.display = 'none';
       if (refs.thickRow) refs.thickRow.style.display = 'none';
+      if (refs.warnRow)  refs.warnRow.style.display = 'none';
     }
 
     if (this._sculpt && !this._sculptDrag && !this._hasOrbitDrag()) {
@@ -473,6 +486,7 @@ export class SculptController {
       thickVal:  document.getElementById('heightThick'),
       botRow:    document.getElementById('inspectorBotRow'),
       thickRow:  document.getElementById('inspectorThickRow'),
+      warnRow:   document.getElementById('inspectorWarnRow'),
     };
     return this._inspectorRefs;
   }

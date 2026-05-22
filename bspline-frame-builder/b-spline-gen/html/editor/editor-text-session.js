@@ -46,7 +46,11 @@ export function startTextAt(editor, pt, pointerEvent) {
 
     editor._editingTextEl.attr({ x: pt.x, y: baselineY });
     editor._currentText = '';
-    buildTspans(editor._editingTextEl, '', pt.x, baselineY);
+    // Pass caretPos=0 so buildTspans emits the editor-caret tspan even for
+    // empty text. Without the explicit caretPos, buildTspans treats the call
+    // as a post-commit render and skips the caret, leaving _startCursorBlink
+    // with nothing to toggle until the user types a character.
+    buildTspans(editor._editingTextEl, '', pt.x, baselineY, 0);
 
     initTextSession(editor, _eventToPointer(pointerEvent));
 }

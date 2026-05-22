@@ -173,18 +173,46 @@ function expandGeometric(editor, el, strokeWidth, matrix, isClosed = false) {
         rightBank.push({ x: pts[i].x - nx * halfWidth, y: pts[i].y - ny * halfWidth });
     }
 
+    // Cap endpoints must line up with the bank endpoints so the assembled
+    // path doesn't self-intersect. The assembly order below is:
+    //   startCap → leftBank (forward) → endCap → rightBank (reversed) → Z
+    //
+    // Banks (for a stroke going right; nx=-dy/mag, ny=dx/mag):
+    //   leftBank[0]    = startP + (0,+hw)  → BOTTOM of startP (CW side)
+    //   rightBank[0]   = startP + (0,-hw)  → TOP of startP    (CCW side)
+    //   leftBank[M-1]  = endP   + (0,+hw)  → BOTTOM of endP   (CW side)
+    //   rightBank[M-1] = endP   + (0,-hw)  → TOP of endP      (CCW side)
+    //
+    // For the path to walk without bow-tie crossings:
+    //   - startCap must enter at rightBank[0] (TOP) and leave at leftBank[0] (BOTTOM),
+    //     bulging OPPOSITE to stroke direction (away from where the stroke is going).
+    //   - endCap must enter at leftBank[M-1] (BOTTOM) and leave at rightBank[M-1] (TOP),
+    //     bulging IN the stroke direction (continuing forward).
+    //
+    // Previously the startCap loop ran backwards (bottom→top, then jumped
+    // back to leftBank[0] at bottom — bow-tie #1) and the endCap formula
+    // bulged the wrong way and connected top→bottom against the bank
+    // walk — bow-tie #2. With fill-rule=evenodd the crossings carved out
+    // exactly the outward arcs, so the caps looked inward. Fixed:
     const startCap = [];
     const startP = pts[0]; const startNext = pts[1];
     const baseAngle = Math.atan2(startNext.y - startP.y, startNext.x - startP.x);
-    for (let a = Math.PI; a >= 0; a -= Math.PI / 8) {
+    // a: 0→π. ang starts at baseAngle-π/2 (TOP/rightBank side), passes
+    // through baseAngle-π (bulge OPPOSITE to stroke direction), ends at
+    // baseAngle-3π/2 = baseAngle+π/2 (BOTTOM/leftBank side).
+    for (let a = 0; a <= Math.PI; a += Math.PI / 8) {
         const ang = baseAngle - Math.PI / 2 - a;
         startCap.push({ x: startP.x + Math.cos(ang) * halfWidth, y: startP.y + Math.sin(ang) * halfWidth });
     }
     const endCap = [];
     const endP = pts[pts.length - 1]; const endPrev = pts[pts.length - 2];
     const endAngle = Math.atan2(endP.y - endPrev.y, endP.x - endPrev.x);
+    // a: 0→π. ang starts at endAngle+π/2 (BOTTOM/leftBank side), passes
+    // through endAngle (bulge IN stroke direction), ends at endAngle-π/2
+    // (TOP/rightBank side). Note +π/2 vs the startCap's -π/2 — that's
+    // the sign flip that makes the end cap point forward instead of back.
     for (let a = 0; a <= Math.PI; a += Math.PI / 8) {
-        const ang = endAngle - Math.PI / 2 - a;
+        const ang = endAngle + Math.PI / 2 - a;
         endCap.push({ x: endP.x + Math.cos(ang) * halfWidth, y: endP.y + Math.sin(ang) * halfWidth });
     }
 

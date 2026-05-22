@@ -214,7 +214,11 @@ SKIP_FILES_EXACT = {
     "deploy-frame-builder.py",
     "deploy_bspline_addin.py",
     "DEPLOY_cloudflare.py",
-    "workspace_link.json",
+    # NOTE: "workspace_link.json" intentionally NOT skipped. When present in
+    # b-spline-gen/, it tells the running addin to write its log file into
+    # the dev workspace folder instead of AppData. Skipping it from deploy
+    # would defeat that purpose. The addin treats the file as optional dev
+    # metadata; a missing/invalid path falls back to AppData logging.
     "project_path.json",
     "b_spline_log_path.json",
     "b_spline_gen_log.txt",

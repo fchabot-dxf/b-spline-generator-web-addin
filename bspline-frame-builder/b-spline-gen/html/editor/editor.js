@@ -229,7 +229,24 @@ export class VectorEditor {
 
         if (this._selectedElement) this._deselect();
         this._sketchLayer.clear();
+        _undoLog(`restoreState  after clear()  children=${this._sketchLayer.children().toArray().length}  svgLen=${svg.length}`);
         if (svg) this._sketchLayer.svg(svg);
+        // Snapshot of post-injection state — confirms svg.js actually
+        // materialized the snapshot's children. If this says 0, the bug
+        // is .svg(string) not parsing/inserting; if it says N and the
+        // user sees 0, the bug is downstream (hiding class, transform,
+        // or CSS).
+        const postInject = this._sketchLayer.children().toArray();
+        _undoLog(`restoreState  after .svg(snapshot)  children=${postInject.length}`);
+        postInject.slice(0, 5).forEach((ch, i) => {
+            const node = ch.node;
+            const cls = node?.getAttribute('class') || '';
+            const dl = node?.getAttribute('data-layer');
+            const tag = node?.tagName;
+            const stroke = node?.getAttribute('stroke') || '(none)';
+            const display = node ? window.getComputedStyle(node).display : '?';
+            _undoLog(`restoreState  child[${i}] tag=${tag} data-layer="${dl}" class="${cls}" stroke=${stroke} computedDisplay=${display}`);
+        });
 
         if (isObj && Array.isArray(state.layers)) {
             this._layers = state.layers.map(l => ({ ...l }));
@@ -237,9 +254,21 @@ export class VectorEditor {
         if (isObj && 'activeLayer' in state) {
             this._activeLayer = state.activeLayer;
         }
+        _undoLog(`restoreState  layers/active set  layers=[${(this._layers||[]).map(l=>l.id).join(',')}]  active=${this._activeLayer}`);
 
         applyLayerState(this);
         renderLayersPanel(this);
+        // After applyLayerState, re-check each child's class + computed
+        // display to see whether toggleClass actually cleared the hiding
+        // class (B2 hypothesis #5 from BUGS_OPEN.md). If display=none
+        // here, that's the smoking gun.
+        const postApply = this._sketchLayer.children().toArray();
+        postApply.slice(0, 5).forEach((ch, i) => {
+            const node = ch.node;
+            const cls = node?.getAttribute('class') || '';
+            const display = node ? window.getComputedStyle(node).display : '?';
+            _undoLog(`restoreState  POST-applyLayerState  child[${i}] class="${cls}" computedDisplay=${display}`);
+        });
         _undoLog( `restoreState done  children=${this._sketchLayer.children().toArray().length}  layers=${(this._layers||[]).length}  active=${this._activeLayer}`);
         if (this._onChange) this._onChange();
     }
@@ -255,7 +284,11 @@ export class VectorEditor {
     _select(el) { return select(this, el); }
     _setHover(el) { return setHover(this, el); }
     _commitText() { return commitText(this); }
-    _cancelDrawing() { if(this._currentPath) this._currentPath.remove(); this._isDrawing = false; }
+    _cancelDrawing() {
+        try { fusLog(`[STROKE] _cancelDrawing  isDrawing=${this._isDrawing}  hadPath=${!!this._currentPath}  (path removed if present, NO pushState)`); } catch (_) {}
+        if(this._currentPath) this._currentPath.remove();
+        this._isDrawing = false;
+    }
 
     setModelMetrics(w, h) {
         if (!this._draw) return;

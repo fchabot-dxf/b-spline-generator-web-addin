@@ -1,0 +1,4 @@
+{
+  "workspace_root": "C:\\Users\\danse\\APPS\\b-spline-generator-web-addin\\bspline-frame-builder\\b-spline-gen",
+  "_comment": "When this file is present next to b-spline-gen.py in the deployed addin folder, the addin writes b_spline_gen_log.txt to workspace_root instead of the deployed AppData folder. Lets the dev (and Claude) read the live log from the workspace."
+}
