@@ -1,5 +1,6 @@
 import { P, setStampLayerMask } from '../core/state.js';
 import { rasterizeSvg } from '../core/stamp.js';
+import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
@@ -20,8 +21,20 @@ export async function updateStampMasks(nx, nz) {
     const stampVBitAngle = layer.angle ?? P.stampVBitAngle;
     const edgeFilletRadius = layer.edgeFilletRadius ?? P.stampEdgeFilletRadius ?? 0;
     const filletPower = layer.filletPower ?? P.stampFilletPower ?? 2.2;
+    // Apply the layer's per-layer transform (tx/ty/rotation/scale/
+    // mirror) before rasterization. Falls through to the original SVG
+    // when the transform is identity.
+    const layerTransform = {
+      tx: layer.tx ?? 0,
+      ty: layer.ty ?? 0,
+      rotation: layer.rotation ?? 0,
+      scale: layer.scale ?? 1,
+      mirrorX: !!layer.mirrorX,
+      mirrorY: !!layer.mirrorY,
+    };
+    const transformedSvg = applyLayerTransform(layer.svg, layerTransform, P.widthIn, P.heightIn);
     const result = await rasterizeSvg(
-      layer.svg,
+      transformedSvg,
       nx,
       nz,
       blurIn,
@@ -50,6 +63,11 @@ export async function refreshAllStampMasks(nx, nz, preview, updatePreviewSculptM
     const isLatest = await updateStampMasks(nx, nz);
     if (!isLatest) return;
     scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode));
+    // Notify any UI that wants to read the per-layer mask.metrics now
+    // that they're freshly computed (e.g. the panel's metrics readout).
+    if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('stampMaskUpdated'));
+    }
   } catch (e) {
     console.error('Failed to refresh stamp masks:', e);
   }

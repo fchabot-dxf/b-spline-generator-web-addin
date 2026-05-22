@@ -587,7 +587,9 @@ function renderTable(folderArr, projects) {
     const leafName = p.name.split('/').pop();
     const dateShort = p.savedAt ? formatRelativeDate(p.savedAt) : '—';
     const m = _metaCache.get(p.name) || {};
-    const stock = (m.stockW != null && m.stockH != null) ? `${m.stockW}×${m.stockH}` : '…';
+    const stock = (m.stockW != null && m.stockH != null)
+      ? `${formatStockDim(m.stockW)}×${formatStockDim(m.stockH)}`
+      : '…';
     const res   = m.resolution != null ? String(m.resolution) : '…';
     const stamps = m.hasStamps == null ? '…' : (m.hasStamps ? '<span class="pm-col-yes">yes</span>' : '<span class="pm-col-no">no</span>');
     const noise = m.noiseType ? escapeText(m.noiseType) : (m.noiseType === '' ? '—' : '…');
@@ -740,7 +742,7 @@ function setSelbarInfo() {
   const parts = [`<span class="pm-selbar-info-name">${escapeText(leafName)}</span>`];
   if (m && !m.loading && !m.error) {
     if (m.sizeBytes != null) parts.push(formatBytes(m.sizeBytes));
-    if (m.stockW != null && m.stockH != null) parts.push(`${m.stockW}×${m.stockH}`);
+    if (m.stockW != null && m.stockH != null) parts.push(`${formatStockDim(m.stockW)}×${formatStockDim(m.stockH)}`);
     if (m.noiseType) parts.push(escapeText(m.noiseType));
     if (m.hasStamps) parts.push('stamps');
   }
@@ -751,6 +753,19 @@ function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Format a stock dimension (inches) for display. Avoids exposing IEEE-754
+ * float noise like "6.500000000000001" by rounding to 3 decimals and
+ * trimming trailing zeros. See BUG-09.
+ */
+function formatStockDim(v) {
+  if (v == null) return '';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  // Round to 3 dp, then strip trailing zeros and a trailing dot.
+  return n.toFixed(3).replace(/\.?0+$/, '');
 }
 
 // ─── Save / Save As ──────────────────────────────────────────────────────────

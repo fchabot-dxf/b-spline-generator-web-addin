@@ -8,6 +8,9 @@ context to a new LLM session.
 Companion docs:
 - `CAM_API_NOTES.md` — verified Fusion CAM API patterns (timing, enum
   strings, post-add idiom)
+- `MACHINE_POSITION_CONTEXT.md` — historical context on the workpiece
+  anchoring problem (largely resolved by the fence-vertex anchor
+  documented below; retained for reference)
 - Runtime audits of real Fusion documents live in `cam-builder-cam-debug.log`
 
 ---
@@ -87,7 +90,7 @@ command handler: `cam-builder.py` (palette UI lives in `ui/html/`).
 
 ---
 
-## Setup table (point of truth)
+## Setup table — B-spline mode (point of truth)
 
 | Setup           | MM rule       | Stock intent | WCS origin   | WCS orient | Box point | flipY | Rest mach. |
 |-----------------|---------------|--------------|--------------|------------|-----------|-------|------------|
@@ -101,6 +104,104 @@ inherits from Back) and `flipY`. Same MM, same corner, same axes.
 
 `SETUP_SPECS` in `cam_engine/setup_builder.py` is the single source of
 truth — declarative table, edit there to add/change setups.
+
+---
+
+## Generic mode — N-sided indexed machining
+
+The generic dispatch (`build_setups_generic` in `setup_builder.py`,
+called by `cam_coordinator.run(mode='generic')`) is the user-facing
+path driven by the CAM Studio palette. It builds one Manufacturing
+Model per selected component, then fans out **one Setup per (MM ×
+side)** for indexed machining: the part is physically rotated on the
+table between Setups, with each Setup carrying a WCS that matches the
+intended physical orientation.
+
+**Profile contract** (`profile` dict from the palette / saved JSON):
+
+```
+{
+  stockMode:       'auto_bbox' | 'fixed_size' | 'from_solid' | 'from_prev_setup',
+  boxPoint:        int 1-9       (corner of stock bbox — see _INT_TO_BOX_POINT),
+  flipY:           bool          (applied to every side equally),
+  clearanceHeight: float (mm),
+  retractHeight:   float (mm),
+  sides: [
+    { name: 'A', axis: 'Z', angleDeg: 0 },                     ← Side A: no rotation
+    { name: 'B', axis: 'Z', angleDeg: 30 },                    ← rotated 30° about Z
+    { name: 'C', axis: 'X', angleDeg: 180 },                   ← flipped end-over-end
+    { name: 'D', axis: 'Z', angleDeg: 60, stockMode: 'auto_bbox' },  ← per-side override
+    ...
+  ],
+  operations: [ ... ]   ← reference only; toolpaths still added manually
+}
+```
+
+Missing or empty `sides` falls back to `[{name: 'A', axis: 'Z', angleDeg: 0}]`
+which is behaviourally identical to the pre-refactor one-Setup-per-MM
+flow.
+
+**Stock auto-cascade**. Indexed jobs want each successive orientation
+to pick up where the prior setup stopped — only cutting the material
+the previous setup left behind. The dispatcher auto-applies that:
+
+| Side index | stockMode applied        | continueMachining |
+|------------|--------------------------|-------------------|
+| 0 (first)  | profile.stockMode        | false             |
+| ≥1         | `from_prev_setup`        | true              |
+
+Per-side overrides via the side dict's `stockMode` / `continueMachining`
+keys take precedence over the auto-cascade. Useful when, say, Side C is
+a separate operation on a different stock blank (you'd pin `stockMode:
+'fixed_size'` on that side and the cascade resumes from there).
+
+**Setup naming**:
+
+| Sides | Side defn       | Setup.name           |
+|-------|-----------------|----------------------|
+| 1     | A @ 0°          | `BPanel`             |
+| ≥2    | A @ 0°          | `BPanel · A`         |
+| ≥2    | B @ 30°Z        | `BPanel · B 30°Z`    |
+| ≥2    | C @ 180°X       | `BPanel · C 180°X`   |
+
+**Rotation support matrix**:
+
+| Axis | Angle      | How it's applied                                     | Status |
+|------|------------|------------------------------------------------------|--------|
+| Z    | any        | Hidden sketch `__cam_idx_rot_{angle}Z` with two perpendicular lines → bound as `wcs_orientation_axisX/Y` | full  |
+| X    | 180°       | `wcs_orientation_flipY` + `flipZ`                    | full   |
+| Y    | 180°       | `wcs_orientation_flipX` + `flipZ`                    | full   |
+| X / Y | any other | WARNING logged, Setup created unrotated; user re-orients in CAM dialog | manual |
+
+The Z-axis case is the dominant one for indexed work on a 3-axis CNC
+(Ultimate Bee) — fixturing or a manual turntable provides the rotation.
+X / Y 180° covers "flip the part over" workflows. Tilted X / Y at
+non-180° angles aren't expressible via the parameter-driven WCS and
+need a tilted construction plane + custom orientation mode (TODO).
+
+**Return shape of `build_setups_generic`**:
+
+```python
+[(comp_name, Setup), ...]
+```
+
+One tuple per built Setup. A multi-side component appears N times (N =
+sides built). The bare `comp_name` (not the formatted Setup name) is
+returned so the coordinator's per-component success check keeps working
+unchanged. The displayed Setup name lives on `setup.name`.
+
+**Coordinator extras** (`report` dict, generic mode only):
+
+```
+{
+  ...,
+  'setups_built':    int,   # total Setups created (= comps × sides)
+  'setups_expected': int,   # expected total
+}
+```
+
+The palette uses `setups_built` to show the right count in the done
+message ("done · 6 setup(s) built" for 2 comps × 3 sides).
 
 ---
 
@@ -121,6 +222,70 @@ all the descendants with it. DELETE rules let the wrapper ride along.
 
 The **stock** rule is the exception — it nukes the wrapper too, then
 `_populate_stock_placeholder` builds a fresh parametric box.
+
+---
+
+## Fence-anchored WCS (the big win)
+
+Every Setup the addin builds has its WCS origin bound to the
+**inside-corner vertex of the fence body in the Ultimate Bee machine
+sim doc**. Result: Stock / B-spline Back / B-spline Top / Frame all
+land at the same physical world position — the fence corner on the
+table — instead of scattering by 100+ inches as they did when each
+setup derived its origin from its own stock bounding box.
+
+**Where the fence lives**
+
+- Document: `Ultimate Bee 3 axis v31` (loaded automatically when any
+  Setup has `machine` assigned via the cloud `.mch`)
+- Path: `static_0:1+MDF:1` (sibling of `spoilboard` body inside the
+  `MDF` component)
+- Body: name = `'fence'`, 12 vertices forming an L footprint
+- Inside-corner vertex: at machine-doc world `(0, 0, 0)` cm
+
+**How the addin uses it**
+
+`cam_engine/fence_builder.py` exposes `find_machine_fence(logger)` →
+returns a `MachineFence` carrying `origin_vertex`, `body`, `occurrence`,
+and `machine_doc` references. The `setup_builder` calls it once per
+build, then writes::
+
+    setup.parameters['wcs_origin_mode'].expression = "'point'"
+    setup.parameters['wcs_origin_point'].value.value = [fence_vertex]
+
+on every Setup, AFTER `cam.setups.add()`. The vertex is a **live
+cross-doc entity reference**; saved `entityToken` round-trips fail
+cross-doc with the same `InternalValidationError` that broke the old
+token-replay workaround.
+
+**Cross-doc gotchas**
+
+- `wcs_origin_point` accepts the cross-doc vertex (verified).
+- `job_positionAttach` (Part Position attach point) silently rejects
+  the cross-doc vertex on current builds. That's OK — `wcs_origin_point`
+  controls g-code zero, which is the goal.
+- `setupInput.fixtures` requires entities in the user's own design;
+  the machine-doc fence body can't be passed as a fixture. We rely
+  on simulation collision detection that comes from the machine sim
+  geometry being present at render time, not from `setup.fixtures`.
+
+**Fallback behaviour**
+
+If the machine sim doc isn't loaded yet (no Setup has had a machine
+assigned), `find_machine_fence` returns `None` and Setups fall back
+to the stock-derived origin (pre-fence behaviour). Re-running BUILD
+after ADD MACHINE picks up the fence on the second pass.
+
+**Why this works where the prior workaround failed**
+
+The old approach saved an entity token captured via `ui.selectEntity`
+in the project document, then replayed via `Design.findEntityByToken`
+on subsequent builds. That path was broken cross-doc:
+`InternalValidationError` on ConstructionPoint resolution from a
+non-matching root component. The new path navigates `app.documents`
+each build and grabs the **live** vertex reference — never goes
+through token serialization. Verified with both the spike (one-off
+script) and the integrated addin flow.
 
 ---
 
@@ -206,6 +371,74 @@ Fusion builds.
 
 ---
 
+## Toolpath generation API — collection-of-ops vs per-setup (2026-05-20)
+
+**Symptom:** B-spline Back / Pocket back came back orange "out of date"
+(`state=1`, `isToolpathValid=False`, `hasToolpath=True`) on every BUILD
++ APPLY TOOLPATHS, even after templates were re-saved clean. The other
+Pockets ended up green. Manual Edit+OK on Pocket back then Generate
+made it green. The CAM kernel msglog said `"Generation completed
+successfully"`, but `op.toolpath` was None on the failing op.
+
+**Root cause (verified empirically):** the addin was using
+`cam.generateToolpath(ObjectCollection of all ops)` to dispatch the
+whole batch in one async call. Fusion's batch scheduler for collections
+appears to pre-invalidate certain ops mid-batch (notably Pocket back,
+the first op in a setup that other setups inherit stock from via
+`stockMode=7 / from_prev_setup`). The kernel still runs and produces a
+toolpath, but the op stays at `state=1` because the new toolpath isn't
+attached to the (now-invalidated) op.
+
+**Verification:** with the same clean templates, calling
+`cam.generateToolpath(setup)` per setup and awaiting each future before
+moving on produces all ops at `state=0` (green check). The cross-setup
+IPV chain (B-spline Top reading B-spline Back) is honored because
+B-spline Back fully completes before B-spline Top starts.
+
+**Proposed fix (not yet wired):** in `_DeferredTPGenHandler.notify()`
+replace the `cam.generateToolpath(op_collection)` block with a
+per-setup loop:
+
+```python
+for i in range(cam.setups.count):
+    setup = cam.setups.item(i)
+    if setup.operations.count == 0:
+        continue
+    f = cam.generateToolpath(setup)
+    while not f.isGenerationCompleted:
+        adsk.doEvents()
+        time.sleep(0.2)
+```
+
+The PRE-GEN / POST-GEN / OP EXT / WATCH / TRANSITION / IRONJOB /
+CAMKERNEL diagnostic blocks all stay — they're orthogonal to the
+generation strategy and useful for future debugging.
+
+**Related: template re-save hygiene.** When re-saving a cloud template
+from a live op (`CAMTemplate.createFromOperations` +
+`updateTemplate`), the template captures the op's current state INCLUDING
+any baked toolpath. If the source op is `state=1` (stale) at save time,
+the saved template will create stale ops on every future apply. Always
+verify the source op is `state=0` (green check) before saving as a
+template. The cleanest UI workflow is Edit → OK → Store as Template;
+the Edit+OK cycle is what guarantees the op is in a clean state before
+the save captures it.
+
+**API quirks discovered along the way:**
+- `op.tool_number` cannot be set via the API — value silently reverts
+  to the template's baked number. Only `op.tool.tool_number` (the tool
+  definition) accepts edits.
+- `lib.updateMachine(url=..., machine=...)` — kwarg order is critical
+  (the C++ signature has args in a different order than the Python
+  docstring suggests).
+- `Machine.createFromFile(location, filePath)` requires a
+  `LibraryLocations` enum as first arg (use
+  `adsk.cam.LibraryLocations.LocalLibraryLocation` for a file on disk).
+- `cam.generateAllToolpaths(False)` was observed to hang
+  indefinitely in earlier runs; per-setup loop is the reliable path.
+
+---
+
 ## Open issues / regressions
 
 - **Frame MM ends up bodiless** — confirmed via 2026-04-28 18:31 run.
@@ -244,6 +477,20 @@ Fusion builds.
   Future work could template common operations (3D Adaptive on the
   curved face, parallel finish, contour around the frame).
 
+- **Indexed rotation, X/Y non-180° angles**. Z-axis rotation works
+  end-to-end via the rotated sketch lines (see "Generic mode — N-sided
+  indexed machining" above). X/Y at 180° works via WCS flips. Other
+  X/Y angles aren't expressible via parameter-driven WCS — Setup is
+  created unrotated with a WARNING. Future fix: build a tilted
+  construction plane parametrically and bind it as a custom
+  orientation reference.
+
+- **Rotation sketch cleanup**. Each unique Z-angle creates one
+  `__cam_idx_rot_{angle}Z` sketch in the root component. Repeat runs
+  reuse the sketch (idempotent by name). They never get cleaned up —
+  the user can delete them by hand if they accumulate. Future: add a
+  "purge rotation sketches" action.
+
 ---
 
 ## Refactor surface (ranked, deferred)
@@ -279,6 +526,7 @@ CAM-builder/
 ├── project_path.json
 ├── CAM_API_NOTES.md           ← verified API patterns reference
 ├── CAM_BUILDER_CONTEXT.md     ← this file
+├── MACHINE_POSITION_CONTEXT.md ← historical anchoring debug context
 ├── cam-builder-cam-debug.log  ← runtime logs
 ├── cam_engine/
 │   ├── __init__.py
@@ -286,10 +534,13 @@ CAM-builder/
 │   ├── cam_workspace.py       ← workspace switching
 │   ├── mm_builder.py          ← Manufacturing Model creation + body filter
 │   ├── setup_builder.py       ← Setup creation + WCS + stock mode
+│   ├── fence_builder.py       ← locates fence body in loaded machine sim doc
+│   ├── template_assignments.py← per-project template override storage
 │   └── parameter_introspect.py← parameter resolver, candidate-list shims
 ├── cam_utils/
 │   ├── __init__.py
-│   └── cam_logger.py          ← logging shim
+│   ├── cam_logger.py          ← logging shim
+│   └── get_design.py          ← CAM-workspace-safe Design accessor
 ├── ui/
 │   └── html/
 │       └── cam_builder_palette.html

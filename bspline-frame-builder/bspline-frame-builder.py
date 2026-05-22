@@ -33,6 +33,7 @@ _tm               = None     # template-maker module (reloaded every run)
 _fi               = None     # fusion-inspector module (reloaded every run)
 _fe               = None     # fusion-exporter module (reloaded every run)
 _cam              = None     # cam-builder module (reloaded every run)
+_st               = None     # stamp-editor module (reloaded every run)
 _diag_logger      = None     # DebugLogger (re-created every run)
 _refresh_event    = None     # Registered once per Fusion session
 _refresh_registered = False
@@ -170,7 +171,7 @@ def _run_related_addins(modules):
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
-    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _diag_logger
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _st, _diag_logger
 
     # --- Logger ---
     _utils_path = os.path.join(_addin_root, 'frame-builder', 'fb_utils')
@@ -279,13 +280,24 @@ def _bootstrap():
         _log_error('cam-builder submodule load failed\n' + traceback.format_exc())
         _cam = None
 
+    # stamp-editor — sibling add-in for surface-deformation stamping via
+    # SVG/text/draw motifs through b-spline-gen's rasterize → SDF →
+    # modulate-control-points pipeline. Self-contained; no shared
+    # globals to scrub.
+    _force_wipe([])
+    try:
+        _st = _load_submodule('stamp_editor_mod', 'stamp-editor', 'stamp-editor.py')
+    except Exception:
+        _log_error('stamp-editor submodule load failed\n' + traceback.format_exc())
+        _st = None
+
     _diag_logger.log('BOOTSTRAP: sub-modules loaded (fresh from disk)')
 
 
 # ── Submodule teardown (called from stop) ─────────────────────────────────────
 def _teardown_submodules():
     """Release resources held by loaded sub-modules before we drop our refs."""
-    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam
+    global _bs, _fb_sketch, _fb_solid, _engine, _tm, _fi, _fe, _cam, _st
 
     app = None
     try:
@@ -336,7 +348,8 @@ def _teardown_submodules():
     #    command defs, palettes, event subscriptions, and panel buttons.
     #    Stop in REVERSE of the run order so late-bound resources (palettes,
     #    selection handlers) release before earlier commands.
-    for _sub_label, _sub_mod in (('cam-builder',      _cam),
+    for _sub_label, _sub_mod in (('stamp-editor',     _st),
+                                 ('cam-builder',      _cam),
                                  ('template-maker',   _tm),
                                  ('fusion-inspector', _fi),
                                  ('fusion-exporter',  _fe)):
@@ -358,6 +371,7 @@ def _teardown_submodules():
     _fi = None
     _fe = None
     _cam = None
+    _st = None
 
 
 # ── Deferred refresh via CustomEvent ──────────────────────────────────────────
@@ -611,7 +625,8 @@ def run(context):
         for _sub_label, _sub_mod in (('fusion-exporter',  _fe),
                                      ('fusion-inspector', _fi),
                                      ('template-maker',   _tm),
-                                     ('cam-builder',      _cam)):
+                                     ('cam-builder',      _cam),
+                                     ('stamp-editor',     _st)):
             if _sub_mod is None:
                 continue
             _sub_run = getattr(_sub_mod, 'run', None)

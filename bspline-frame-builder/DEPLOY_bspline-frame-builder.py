@@ -188,6 +188,14 @@ VERIFY_FILES = [
     "frame-builder/ui/html/solid_builder_palette.html",
     "b-spline-gen/b-spline-gen.py",
     "b-spline-gen/html/index.html",
+    # stamp-editor — sibling add-in for surface-deformation stamping.
+    "stamp-editor/stamp-editor.py",
+    "stamp-editor/stamp-editor.manifest",
+    "stamp-editor/html/index.html",
+    "stamp-editor/html/main/main.js",
+    "stamp-editor/html/main/ui-bindings.js",
+    "stamp-editor/html/core/runtime.js",
+    "stamp-editor/html/styles/stamp-editor.css",
 ]
 
 # Folders / patterns to SKIP in both local deploy and ZIP
@@ -206,7 +214,11 @@ SKIP_FILES_EXACT = {
     "deploy-frame-builder.py",
     "deploy_bspline_addin.py",
     "DEPLOY_cloudflare.py",
-    "workspace_link.json",
+    # NOTE: "workspace_link.json" intentionally NOT skipped. When present in
+    # b-spline-gen/, it tells the running addin to write its log file into
+    # the dev workspace folder instead of AppData. Skipping it from deploy
+    # would defeat that purpose. The addin treats the file as optional dev
+    # metadata; a missing/invalid path falls back to AppData logging.
     "project_path.json",
     "b_spline_log_path.json",
     "b_spline_gen_log.txt",
@@ -239,8 +251,10 @@ def _should_skip(name: str) -> bool:
 
 
 def ignore_for_copy(src_path: str, names: list) -> list:
-    """shutil.copytree ignore callback."""
-    return [n for n in names if _should_skip(n)]
+    """shutil.copytree ignore callback. Also drops any cache-busting
+    folders a sub-addin leaves behind in its own directory between
+    sessions (named `_palette_<timestamp>_<pid>`)."""
+    return [n for n in names if _should_skip(n) or n.startswith('_palette_')]
 
 
 def clean_dir(path: Path, retries: int = 2, verbose: bool = True):
@@ -330,6 +344,17 @@ def deploy_local():
         print(f"ERROR: source directory not found: {SRC_DIR}")
         sys.exit(1)
 
+    # Sync b-spline-gen's stamp module + deps into stamp-editor's tree
+    # so stamp-editor's source code can import them from its own path
+    # (./core/stamp/) without reaching across add-in folders.
+    # The deploy copies the bundle just-in-time so the canonical source
+    # of truth remains b-spline-gen/html/core/stamp/.
+    try:
+        from sync_stamp_bundle import sync_stamp_bundle
+        sync_stamp_bundle(Path(__file__).resolve().parent)
+    except Exception as e:
+        print(f"  WARNING: stamp bundle sync failed: {e}")
+
     # Snapshot source hashes BEFORE touching anything
     src_hashes = {}
     for rel in VERIFY_FILES:
@@ -367,6 +392,7 @@ def deploy_local():
     _write_fb_handshake()
     _write_cam_handshake()
     _write_bspline_handshake()
+    _write_stamp_editor_handshake()
 
     # Verify
     print("  Verifying key files...")
@@ -470,6 +496,25 @@ def _write_bspline_handshake():
         print(f"  B-Spline Handshake written: {src_path}")
     except Exception as e:
         print(f"  WARNING: could not write b-spline-gen handshake: {e}")
+
+
+def _write_stamp_editor_handshake():
+    """Same idea as the b-spline-gen handshake — routes stamp-editor's
+    log file back to the source workspace so the dev tree's
+    stamp_editor_log.txt is the source of truth, not the one inside
+    %APPDATA%\\AddIns\\."""
+    try:
+        st_dest = DEST_DIR / "stamp-editor"
+        if not st_dest.exists():
+            return
+        src_path = (SRC_DIR / "stamp-editor").resolve()
+        config    = {"workspace_root": str(src_path)}
+        handshake = st_dest / "workspace_link.json"
+        with open(handshake, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+        print(f"  Stamp Editor Handshake written: {src_path}")
+    except Exception as e:
+        print(f"  WARNING: could not write stamp-editor handshake: {e}")
 
 
 # ---------------------------------------------------------------------------

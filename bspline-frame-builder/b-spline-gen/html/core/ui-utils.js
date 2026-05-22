@@ -2,7 +2,7 @@
  * ui-utils.js — DOM binding and synchronization.
  */
 
-import { SLIDER_PAIRS, RESOLUTIONS } from './state.js';
+import { INPUT_PAIRS, SLIDER_PAIRS, RESOLUTIONS } from './state.js';
 import { resolveGrid } from './terrain.js';
 
 /**
@@ -52,10 +52,19 @@ export function syncPair(numId, sldId, desc = '') {
  * Syncs current State value to the UI (used for Undo/Redo/Init)
  */
 export function syncUItoParam(key, value) {
-    const input = document.getElementById(key);
+    const inputId = INPUT_PAIRS[key] || key;
+    const input = document.getElementById(inputId);
     if (input) {
-        if (input.type === 'checkbox') input.checked = !!value;
-        else input.value = value;
+        if (input.type === 'checkbox') {
+            input.checked = !!value;
+            // Programmatic .checked = … doesn't fire 'change'. Listeners
+            // registered in bindTogglePanel rely on 'change' to keep
+            // dependent panels in sync; dispatch one explicitly so the
+            // initial sync from P state matches user-toggle behaviour.
+            input.dispatchEvent(new Event('change'));
+        } else {
+            input.value = value;
+        }
     }
     const sliderId = SLIDER_PAIRS[key];
     if (sliderId) {

@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAM Studio &middot; Native CAD</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../../../styles/base.css">
+  <style>
+    body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
+    .hidden { display: none !important; }
+
+    .cam-shell { display: flex; flex-direction: column; height: 100vh; background: #f5f5f5; }
+    .cam-scroll {
+      flex: 1; overflow-y: auto; background: #fdfdfd;
+      padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .cam-card {
+      background: #fff;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: var(--cad-radius-md);
+      padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .cam-card-head { display: flex; align-items: center; justify-content: space-between; }
+    .cam-card-title { font-size: 12px; font-weight: 600; color: var(--cad-text-main); letter-spacing: 0.02em; }
+
+    /* Status bar */
+    .cam-status {
+      padding: 6px 10px; background: #f7f7f7;
+      border-top: 1px solid var(--cad-border-soft);
+      font-size: 10px; color: var(--cad-text-muted);
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      flex-shrink: 0;
+    }
+    .cam-status.ok   { color: var(--cad-accent-green); }
+    .cam-status.fail { color: #b00020; }
+    .cam-status.warn { color: #b76b00; }
+
+    /* Status dots */
+    .cam-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #ccc; display: inline-block; flex-shrink: 0;
+    }
+    .cam-dot.ok   { background: var(--cad-accent-green); }
+    .cam-dot.fail { background: #b00020; }
+
+    /* Component rows */
+    .comp-row {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 11px; padding: 2px 0;
+    }
+    .comp-row label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+    .comp-row input[type=checkbox] { margin: 0; cursor: pointer; accent-color: var(--cad-accent-blue); }
+    .comp-state {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; color: var(--cad-text-muted);
+      font-family: ui-monospace, "SF Mono", Consolas, monospace;
+      min-width: 44px; justify-content: flex-end;
+    }
+    .scan-msg { font-size: 11px; color: var(--cad-text-muted); padding: 2px 0; }
+
+    /* Profile rows */
+    .profile-row {
+      display: flex; align-items: center; gap: 6px; margin-top: 2px;
+    }
+    .profile-row select,
+    .profile-row input[type=text],
+    .profile-row input[type=number] {
+      flex: 1; font-size: 11px; font-family: inherit;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: 4px; padding: 3px 6px;
+      color: var(--cad-text-main); background: #fff;
+      min-width: 0;
+    }
+    .profile-row input[type=number] { flex: 0 0 60px; }
+    .profile-row select:focus, .profile-row input:focus { outline: 1px solid var(--cad-accent-blue); }
+    .profile-row .k { font-size: 10px; color: var(--cad-text-muted); white-space: nowrap; }
+
+    /* Profile summary chip strip */
+    .profile-summary {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+    }
+    .ps-chip {
+      font-size: 10px; padding: 2px 7px;
+      border-radius: 10px; font-weight: 600; letter-spacing: 0.01em;
+      background: #edf4ff; color: #0055bb;
+    }
+    .ps-chip.ops  { background: #f3e8ff; color: #7b3fbf; }
+    .ps-chip.wcs  { background: #e8f6ee; color: #208a4f; }
+    .ps-chip.from { background: #fff3e8; color: #b76b00; }
+
+    /* Edit toggle button */
+    .edit-toggle {
+      display: flex; align-items: center; gap: 5px; cursor: pointer;
+      background: none; border: none; padding: 0;
+      font-size: 10px; font-weight: 600; color: var(--cad-accent-blue);
+      font-family: inherit; letter-spacing: 0.03em; margin-top: 2px;
+    }
+    .edit-toggle:hover { opacity: 0.75; }
+    .edit-arrow { font-size: 9px; transition: transform 0.15s; display: inline-block; }
+    .edit-arrow.open { transform: rotate(90deg); }
+
+    /* Settings divider */
+    .settings-divider {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+      color: var(--cad-text-muted); margin: 6px 0 2px;
+    }
+
+    /* Operations */
+    .op-row {
+      display: flex; align-items: flex-start; gap: 4px;
+      padding: 5px 6px;
+      background: #f8f8f8; border: 1px solid var(--cad-border-soft);
+      border-radius: 4px; font-size: 10px; flex-wrap: wrap;
+    }
+    .op-row select, .op-row input[type=number], .op-row input[type=text] {
+      font-size: 10px; font-family: inherit;
+      border: 1px solid var(--cad-border-standard);
+      border-radius: 3px; padding: 2px 4px; background: #fff; color: var(--cad-text-main);
+    }
+    .op-label { font-size: 9px; font-weight: 600; color: var(--cad-text-muted); letter-spacing: 0.04em; white-space: nowrap; }
+    .op-remove-btn {
+      border: none; background: transparent; cursor: pointer;
+      color: #b00020; font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+    }
+    .op-remove-btn:hover { opacity: 0.7; }
+
+    /* Info blurb */
+    .cam-pipeline {
+      padding: 8px 10px;
+      background: #f0f7ff; border: 1px solid #cfe4ff;
+      border-radius: var(--cad-radius-md);
+      font-size: 11px; color: #0a4280;
+    }
+  </style>
+</head>
+<body class="cad-app-layout">
+  <div class="cam-shell">
+
+    <header class="cad-navbar">
+      <div class="cad-nav-group">
+        <span style="font-size:11px;font-weight:800;color:#444;letter-spacing:0.05em;">CAM STUDIO</span>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span id="status-summary" style="font-size:10px;font-weight:600;color:var(--cad-accent-blue);">…</span>
+        <button class="cad-btn cad-btn-primary" type="button" onclick="runGenerate()">GENERATE</button>
+      </div>
+    </header>
+
+    <main class="cam-scroll">
+
+      <!-- ── Components card ───────────────────────────────────────────── -->
+      <div class="cam-card">
+        <div class="cam-card-head">
+          <div class="cam-card-title">Design Components</div>
+          <span id="comp-count" style="font-size:10px;color:var(--cad-text-muted);"></span>
+        </div>
+        <div id="scan-msg" class="scan-msg">Scanning design&hellip;</div>
+        <div id="component-list" class="hidden"></div>
+      </div>
+
+      <!-- ── Profile card ──────────────────────────────────────────────── -->
+      <div class="cam-card">
+        <div class="cam-card-head">
+          <div class="cam-card-title">CAM Profile</div>
+          <span id="profile-msg" style="font-size:9px;color:var(--cad-text-muted);"></span>
+        </div>
+
+        <!-- saved profiles row -->
+        <div class="profile-row">
+          <select id="profile-select" style="flex:1;">
+            <option value="">— saved profiles —</option>
+          </select>
+          <button class="cad-btn" type="button" style="font-size:10px;padding:3px 8px;" onclick="loadSavedProfile()">LOAD</button>
+          <button class="cad-btn" type="button" style="font-size:10px;padding:3px 7px;color:#b00020;" onclick="deleteSavedProfile()" title="Delete selected profile">DEL</button>
+        </div>
+
+        <!-- import from existing CAM setup row -->
+        <div class="profile-row">
+          <select id="setup-select" style="flex:1;">
+            <option value="">— import from setup —</option>
+          </select>
+          <button class="cad-btn" type="button" style="font-size:10px;padding:3px 8px;" onclick="importFromSetup()">IMPORT</button>
+        </div>
+
+        <!-- summary strip — shown after any profile is loaded -->
+        <div id="profile-summary" class="profile-summary hidden"></div>
+
+        <!-- save row — shown after edit is open -->
+        <div id="save-row" class="profile-row hidden" style="margin-top:4px;">
+          <input type="text" id="profile-name" placeholder="profile name…" />
+          <button class="cad-btn cad-btn-primary" type="button" style="font-size:10px;padding:3px 8px;" onclick="saveProfile()">SAVE</button>
+        </div>
+
+        <!-- edit toggle -->
+        <button class="edit-toggle" type="button" id="edit-toggle-btn" onclick="toggleEdit()">
+          <span class="edit-arrow" id="edit-arrow">▶</span> EDIT SETTINGS
+        </button>
+
+        <!-- collapsible settings form -->
+        <div id="edit-section" class="hidden" style="display:flex;flex-direction:column;gap:0;">
+
+          <div class="settings-divider">STOCK</div>
+          <div class="profile-row">
+            <span class="k">Mode</span>
+            <select id="s-stock-mode">
+              <option value="auto_bbox">Auto bounding box</option>
+              <option value="fixed_size">Fixed size</option>
+              <option value="from_solid">From solid</option>
+              <option value="from_prev_setup">From previous setup</option>
+            </select>
+          </div>
+          <div class="profile-row">
+            <span class="k">Clearance (mm)</span>
+            <input type="number" id="s-clearance" value="5" step="0.5" min="0" />
+            <span class="k" style="margin-left:4px;">Retract (mm)</span>
+            <input type="number" id="s-retract" value="4" step="0.5" min="0" />
+          </div>
+
+          <div class="settings-divider">WCS</div>
+          <div class="profile-row">
+            <span class="k">Box point</span>
+            <select id="s-box-point" style="flex:0 0 108px;">
+              <option value="1">Top-left (1)</option>
+              <option value="2" selected>Top-centre (2)</option>
+              <option value="3">Top-right (3)</option>
+              <option value="4">Mid-left (4)</option>
+              <option value="5">Mid-centre (5)</option>
+              <option value="6">Mid-right (6)</option>
+              <option value="7">Bot-left (7)</option>
+              <option value="8">Bot-centre (8)</option>
+              <option value="9">Bot-right (9)</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:5px;margin-left:10px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="s-flip-y" style="margin:0;accent-color:var(--cad-accent-blue);" />
+              <span class="k">Flip Y</span>
+            </label>
+          </div>
+
+          <div class="settings-divider" style="margin-top:8px;">SIDES (INDEXED)</div>
+          <div id="sides-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
+          <button class="cad-btn" type="button"
+                  style="font-size:10px;padding:3px 10px;align-self:flex-start;margin-bottom:4px;"
+                  onclick="addSide()">+ ADD SIDE</button>
+
+          <div class="settings-divider" style="margin-top:8px;">OPERATIONS</div>
+          <div id="ops-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
+          <button class="cad-btn" type="button"
+                  style="font-size:10px;padding:3px 10px;align-self:flex-start;margin-bottom:4px;"
+                  onclick="addOperation()">+ ADD OPERATION</button>
+        </div>
+      </div>
+
+      <div class="cam-pipeline">
+        <strong>CAM Studio:</strong> One Manufacturing Model per component, then one
+        Setup per (component &times; side) &mdash; rotate the part on the table between
+        Setups for indexed machining. Load or import a profile, add sides, then hit
+        <strong>GENERATE</strong>.
+      </div>
+
+    </main>
+
+    <div class="cam-status" id="status-bar">status &mdash; initialising&hellip;</div>
+  </div><!-- .cam-shell -->
+
+<script>
+  // ── Constants ──────────────────────────────────────────────────────────────
+  const WORKER = 'https://bspline-presets.dansemur.workers.dev';
+
+  // Box point int → display label
+  const BOX_LABELS = {
+    1:'top-L', 2:'top-C', 3:'top-R',
+    4:'mid-L', 5:'mid-C', 6:'mid-R',
+    7:'bot-L', 8:'bot-C', 9:'bot-R',
+  };
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let selectedComponents = new Set();
+  let loadedProfile      = null;   // the last profile loaded / imported
+  let editOpen           = false;
+
+  // ── Utility ────────────────────────────────────────────────────────────────
+  function send(action, payload) {
+    const data = JSON.stringify(Object.assign({ action }, payload || {}));
+    if (window.adsk && window.adsk.fusionSendData)
+      window.adsk.fusionSendData(action, data);
+  }
+
+  function setStatus(msg, cls) {
+    const bar = document.getElementById('status-bar');
+    if (!bar) return;
+    bar.textContent = 'status — ' + msg;
+    bar.className = 'cam-status' + (cls ? ' ' + cls : '');
+  }
+
+  function setProfileMsg(msg, color) {
+    const el = document.getElementById('profile-msg');
+    if (el) { el.textContent = msg; el.style.color = color || 'var(--cad-text-muted)'; }
+  }
+
+  function updateHeaderSummary() {
+    const n   = selectedComponents.size;
+    const ops = loadedProfile ? (loadedProfile.operations || []).length : 0;
+    const el  = document.getElementById('status-summary');
+    if (!el) return;
+    el.textContent = n + ' COMP' + (n !== 1 ? 'S' : '')
+      + (loadedProfile ? ' · ' + ops + ' OP' + (ops !== 1 ? 'S' : '') : '');
+  }
+
+  // ── Profile summary strip ──────────────────────────────────────────────────
+  function renderProfileSummary(prof, source) {
+    const strip = document.getElementById('profile-summary');
+    if (!strip) return;
+
+    const sm   = prof.stockMode      || '?';
+    const bp   = BOX_LABELS[prof.boxPoint] || ('box-' + prof.boxPoint);
+    const fy   = prof.flipY ? 'flipY' : 'no-flip';
+    const cl   = (prof.clearanceHeight != null ? prof.clearanceHeight : '?') + '/' +
+                 (prof.retractHeight   != null ? prof.retractHeight   : '?') + ' mm';
+    const ops  = (prof.operations || []).length;
+    // Sides chip — compact summary of indexed orientations. "1 side" when
+    // the profile is a single-orientation job; "B@30°Z, C@60°Z" when it's
+    // a multi-side indexed job (only non-zero rotations spelled out).
+    const sides = prof.sides || [];
+    let sidesLabel;
+    if (!sides.length) {
+      sidesLabel = '1 side';
+    } else {
+      const rotated = sides.filter(s => s.angleDeg && s.angleDeg !== 0)
+        .map(s => (s.name || '?') + '@' + s.angleDeg + '°' + (s.axis || 'Z'));
+      sidesLabel = sides.length + ' side' + (sides.length !== 1 ? 's' : '')
+        + (rotated.length ? ' · ' + rotated.join(', ') : '');
+    }
+
+    strip.innerHTML = '';
+    if (source) {
+      const fc = document.createElement('span');
+      fc.className = 'ps-chip from'; fc.textContent = source;
+      strip.appendChild(fc);
+    }
+    [[sm, ''], [bp, 'wcs'], [fy, 'wcs'], [sidesLabel, 'wcs'],
+     [cl, ''], [ops + ' op' + (ops !== 1 ? 's' : ''), 'ops']].forEach(([t, cls]) => {
+      const c = document.createElement('span');
+      c.className = 'ps-chip' + (cls ? ' ' + cls : '');
+      c.textContent = t;
+      strip.appendChild(c);
+    });
+    strip.classList.remove('hidden');
+  }
+
+  // ── Edit toggle ────────────────────────────────────────────────────────────
+  function toggleEdit() {
+    editOpen = !editOpen;
+    document.getElementById('edit-section').classList.toggle('hidden', !editOpen);
+    document.getElementById('save-row').classList.toggle('hidden', !editOpen);
+    const arrow = document.getElementById('edit-arrow');
+    if (arrow) arrow.classList.toggle('open', editOpen);
+  }
+
+  // ── Component list ────────────────────────────────────────────────────────
+  function renderComponentList(components) {
+    const list  = document.getElementById('component-list');
+    const msg   = document.getElementById('scan-msg');
+    const count = document.getElementById('comp-count');
+
+    selectedComponents = new Set(components);
+
+    if (!components.length) {
+      msg.textContent = 'No top-level components found.';
+      msg.classList.remove('hidden');
+      list.classList.add('hidden');
+      if (count) count.textContent = '';
+      updateHeaderSummary();
+      return;
+    }
+
+    msg.classList.add('hidden');
+    list.innerHTML = '';
+    list.classList.remove('hidden');
+
+    components.forEach(name => {
+      const row = document.createElement('div');
+      row.className = 'comp-row';
+      row.dataset.compName = name;
+
+      const label = document.createElement('label');
+      const inp   = document.createElement('input');
+      inp.type = 'checkbox'; inp.checked = true;
+      inp.addEventListener('change', () => {
+        if (inp.checked) selectedComponents.add(name);
+        else             selectedComponents.delete(name);
+        updateHeaderSummary();
+      });
+      const span = document.createElement('span');
+      span.textContent = name;
+      span.style.cssText = 'color:var(--cad-text-main);font-weight:500;';
+      label.appendChild(inp); label.appendChild(span);
+      row.appendChild(label);
+      list.appendChild(row);
+    });
+
+    if (count) count.textContent = components.length + ' found';
+    updateHeaderSummary();
+  }
+
+  function setComponentState(name, state) {
+    document.querySelectorAll('#component-list .comp-row').forEach(row => {
+      if (row.dataset.compName !== name) return;
+      let el = row.querySelector('.comp-state');
+      if (!el) { el = document.createElement('span'); el.className = 'comp-state'; row.appendChild(el); }
+      el.innerHTML = '';
+      const dot = document.createElement('span');
+      dot.className = 'cam-dot' + (state === 'ok' ? ' ok' : state === 'fail' ? ' fail' : '');
+      el.appendChild(dot);
+      el.appendChild(document.createTextNode(' ' + state));
+    });
+  }
+
+  // ── Setup dropdown ─────────────────────────────────────────────────────────
+  function renderSetupDropdown(setups) {
+    const sel = document.getElementById('setup-select');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— import from setup —</option>';
+    (setups || []).forEach(name => {
+      const o = document.createElement('option');
+      o.value = name; o.textContent = name;
+      if (name === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  // ── Saved profiles (worker) ────────────────────────────────────────────────
+  async function fetchProfileList() {
+    try {
+      const r = await fetch(WORKER + '/cam-profiles');
+      const d = await r.json();
+      const sel = document.getElementById('profile-select');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— saved profiles —</option>';
+      (d.names || []).forEach(n => {
+        const o = document.createElement('option');
+        o.value = n; o.textContent = n;
+        if (n === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    } catch (_) {
+      setProfileMsg('worker unreachable', '#b00020');
+    }
+  }
+
+  async function loadSavedProfile() {
+    const name = document.getElementById('profile-select').value;
+    if (!name) { setProfileMsg('select a profile first', '#b76b00'); return; }
+    try {
+      const r = await fetch(WORKER + '/cam-profiles/' + encodeURIComponent(name));
+      if (!r.ok) { setProfileMsg('not found', '#b00020'); return; }
+      const prof = await r.json();
+      applyProfileToForm(prof);
+      loadedProfile = prof;
+      renderProfileSummary(prof, name);
+      if (!editOpen) document.getElementById('profile-name').value = name;
+      document.getElementById('save-row').classList.remove('hidden');
+      document.getElementById('profile-name').value = name;
+      setProfileMsg('loaded', 'var(--cad-accent-green)');
+      updateHeaderSummary();
+      setStatus('profile loaded: ' + name, 'ok');
+    } catch (e) {
+      setProfileMsg('load error: ' + e.message, '#b00020');
+    }
+  }
+
+  async function saveProfile() {
+    const name = (document.getElementById('profile-name').value || '').trim();
+    if (!name) { setProfileMsg('enter a profile name', '#b76b00'); return; }
+    try {
+      const r = await fetch(WORKER + '/cam-profiles/' + encodeURIComponent(name), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(getProfileFromForm()),
+      });
+      if (!r.ok) { setProfileMsg('save failed (' + r.status + ')', '#b00020'); return; }
+      setProfileMsg('saved: ' + name, 'var(--cad-accent-green)');
+      setStatus('profile saved: ' + name, 'ok');
+      await fetchProfileList();
+      document.getElementById('profile-select').value = name;
+    } catch (e) {
+      setProfileMsg('save error: ' + e.message, '#b00020');
+    }
+  }
+
+  async function deleteSavedProfile() {
+    const name = document.getElementById('profile-select').value;
+    if (!name) { setProfileMsg('select a profile to delete', '#b76b00'); return; }
+    if (!confirm('Delete profile "' + name + '"?')) return;
+    try {
+      await fetch(WORKER + '/cam-profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+      setProfileMsg('deleted: ' + name, 'var(--cad-text-muted)');
+      await fetchProfileList();
+    } catch (e) {
+      setProfileMsg('delete error: ' + e.message, '#b00020');
+    }
+  }
+
+  // ── Import from existing Fusion CAM setup ──────────────────────────────────
+  function importFromSetup() {
+    const name = document.getElementById('setup-select').value;
+    if (!name) { setProfileMsg('select a setup first', '#b76b00'); return; }
+    setStatus('importing from setup: ' + name + '…');
+    send('import_setup', { setup_name: name });
+  }
+
+  // ── Profile form <-> dict ─────────────────────────────────────────────────
+  function getProfileFromForm() {
+    // Sides may be empty if the user removed every row. The Python side
+    // falls back to a single Side A @ 0° on empty/missing 'sides', so an
+    // empty list is harmless — but we send `[]` rather than omit the key
+    // so the worker / saved-profile JSON faithfully reflects user intent.
+    return {
+      stockMode:       document.getElementById('s-stock-mode').value,
+      clearanceHeight: parseFloat(document.getElementById('s-clearance').value) || 5,
+      retractHeight:   parseFloat(document.getElementById('s-retract').value)   || 4,
+      boxPoint:        parseInt(document.getElementById('s-box-point').value, 10) || 2,
+      flipY:           document.getElementById('s-flip-y').checked,
+      sides:           collectSides(),
+      operations:      collectOperations(),
+    };
+  }
+
+  function applyProfileToForm(d) {
+    if (d.stockMode)                document.getElementById('s-stock-mode').value   = d.stockMode;
+    if (d.clearanceHeight != null)  document.getElementById('s-clearance').value    = d.clearanceHeight;
+    if (d.retractHeight   != null)  document.getElementById('s-retract').value      = d.retractHeight;
+    if (d.boxPoint        != null)  document.getElementById('s-box-point').value    = d.boxPoint;
+    document.getElementById('s-flip-y').checked = !!d.flipY;
+    // Sides — default to one Side A @ 0°Z when the profile is sides-less
+    // (covers older saved profiles and imports from the legacy one-Setup-
+    // per-MM path). The default matches the Python _DEFAULT_SIDES.
+    document.getElementById('sides-list').innerHTML = '';
+    const sides = (d.sides && d.sides.length)
+      ? d.sides
+      : [{ name: 'A', axis: 'Z', angleDeg: 0 }];
+    sides.forEach(s => addSide(s));
+    document.getElementById('ops-list').innerHTML = '';
+    (d.operations || []).forEach(op => addOperation(op));
+  }
+
+  // ── Sides builder (indexed machining) ──────────────────────────────────────
+  // Each side is one Setup orientation per MM. The dispatch in
+  // setup_builder.build_setups_generic fans out (component × side) → Setup.
+  // Rotations are about the named axis (X / Y / Z) by angleDeg. Z rotations
+  // are fully supported on the Python side via a hidden rotation sketch;
+  // 180° X/Y rotations map to WCS flips; other X/Y angles log a warning and
+  // create the Setup unrotated (user re-orients in the dialog).
+  let sideCounter = 0;
+
+  function nextSideName() {
+    const n = document.querySelectorAll('#sides-list .side-row').length;
+    return String.fromCharCode(65 + (n % 26));  // 'A' / 'B' / 'C' / … wraps after 'Z'
+  }
+
+  function addSide(defaults) {
+    const id = 'side-' + (++sideCounter);
+    const d  = defaults || {};
+    const name  = d.name != null ? d.name : nextSideName();
+    const axis  = (d.axis || 'Z').toUpperCase();
+    const angle = (d.angleDeg != null) ? d.angleDeg : 0;
+    const sel   = (val, opt) => opt === val ? ' selected' : '';
+
+    const row = document.createElement('div');
+    row.className = 'side-row op-row';   // reuse op-row styling
+    row.id = id;
+    row.innerHTML = `
+      <button class="op-remove-btn" type="button" onclick="document.getElementById('${id}').remove()">×</button>
+      <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;width:100%;">
+        <span class="op-label">NAME</span>
+        <input type="text" data-f="name" value="${name}" style="width:40px;" />
+        <span class="op-label">AXIS</span>
+        <select data-f="axis" style="width:48px;">
+          <option value="Z"${sel(axis,'Z')}>Z</option>
+          <option value="X"${sel(axis,'X')}>X</option>
+          <option value="Y"${sel(axis,'Y')}>Y</option>
+        </select>
+        <span class="op-label">ANGLE&deg;</span>
+        <input type="number" data-f="angleDeg" value="${angle}" step="5" style="width:60px;" />
+      </div>`;
+    document.getElementById('sides-list').appendChild(row);
+  }
+
+  function collectSides() {
+    return Array.from(document.querySelectorAll('#sides-list .side-row')).map(row => {
+      const get = f => {
+        const el = row.querySelector('[data-f="' + f + '"]');
+        if (!el) return undefined;
+        return el.type === 'number' ? (parseFloat(el.value) || 0) : el.value;
+      };
+      return {
+        name:     (get('name') || 'A').toString(),
+        axis:     (get('axis') || 'Z').toString().toUpperCase(),
+        angleDeg: get('angleDeg') || 0,
+      };
+    });
+  }
+
+  // ── Operations builder ─────────────────────────────────────────────────────
+  let opCounter = 0;
+
+  function addOperation(defaults) {
+    const id = 'op-' + (++opCounter);
+    const d  = defaults || {};
+    const type  = d.type         || 'pocket_clearing';
+    const tool  = d.tool         || '';
+    const feed  = d.feedrate     || 600;
+    const rpm   = d.spindleSpeed || 14000;
+    const step  = d.stepdown     || 0.11;
+    const over  = d.stepover     || 60;
+    const leave = d.stockLeave   || 0.1;
+    const ramp  = d.rampType     || 'helix';
+
+    const sel = (val, opt) => opt === val ? ' selected' : '';
+
+    const row = document.createElement('div');
+    row.className = 'op-row'; row.id = id;
+    row.innerHTML = `
+      <button class="op-remove-btn" type="button" onclick="document.getElementById('${id}').remove()">×</button>
+      <div style="display:flex;flex-direction:column;gap:3px;width:100%;">
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <span class="op-label">TYPE</span>
+          <select data-f="type" style="flex:1;min-width:110px;">
+            <option value="pocket_clearing"${sel(type,'pocket_clearing')}>Pocket Clearing</option>
+            <option value="morphed_spiral" ${sel(type,'morphed_spiral')} >Morphed Spiral</option>
+            <option value="adaptive"       ${sel(type,'adaptive')}       >Adaptive</option>
+            <option value="contour"        ${sel(type,'contour')}        >Contour</option>
+          </select>
+          <span class="op-label">TOOL</span>
+          <input type="text" data-f="tool" value="${tool}" style="width:86px;" />
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <span class="op-label">FEED</span>
+          <input type="number" data-f="feedrate"     value="${feed}"  step="10"   style="width:52px;" />
+          <span class="op-label">RPM</span>
+          <input type="number" data-f="spindleSpeed" value="${rpm}"   step="100"  style="width:58px;" />
+          <span class="op-label">↓STEP</span>
+          <input type="number" data-f="stepdown"     value="${step}"  step="0.01" style="width:44px;" />
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <span class="op-label">OVER%</span>
+          <input type="number" data-f="stepover"   value="${over}"  step="5"    style="width:40px;" />
+          <span class="op-label">LEAVE</span>
+          <input type="number" data-f="stockLeave" value="${leave}" step="0.01" style="width:44px;" />
+          <span class="op-label">RAMP</span>
+          <select data-f="rampType" style="width:64px;">
+            <option value="helix" ${sel(ramp,'helix')} >helix</option>
+            <option value="zigzag"${sel(ramp,'zigzag')}>zigzag</option>
+            <option value="plunge"${sel(ramp,'plunge')}>plunge</option>
+          </select>
+        </div>
+      </div>`;
+    document.getElementById('ops-list').appendChild(row);
+  }
+
+  function collectOperations() {
+    return Array.from(document.querySelectorAll('#ops-list .op-row')).map(row => {
+      const get = f => {
+        const el = row.querySelector('[data-f="' + f + '"]');
+        if (!el) return undefined;
+        return el.type === 'number' ? (parseFloat(el.value) || 0) : el.value;
+      };
+      return {
+        type: get('type'), tool: get('tool'),
+        feedrate: get('feedrate'), spindleSpeed: get('spindleSpeed'),
+        stepdown: get('stepdown'), stepover: get('stepover'),
+        stockLeave: get('stockLeave'), rampType: get('rampType'),
+      };
+    });
+  }
+
+  // ── Generate ───────────────────────────────────────────────────────────────
+  function runGenerate() {
+    const comps = Array.from(selectedComponents);
+    if (!comps.length) {
+      setStatus('no components selected', 'warn');
+      return;
+    }
+    // Always build profile from the form (form is the source of truth,
+    // whether it was filled manually or via applyProfileToForm)
+    const profile = getProfileFromForm();
+    loadedProfile = profile;
+
+    comps.forEach(name => setComponentState(name, 'pending'));
+    setStatus('generating ' + comps.length + ' setup(s)…');
+    send('generate', { mode: 'generic', components: comps, profile });
+  }
+
+  // ── Fusion → HTML message handler ─────────────────────────────────────────
+  window.fusionJavaScriptHandler = {
+    handle: function(action, data) {
+      try {
+        const payload = data ? JSON.parse(data) : {};
+
+        // ── init_result: design scan complete ──────────────────────────────
+        if (action === 'init_result') {
+          if (!payload.ok) {
+            document.getElementById('scan-msg').textContent = 'Scan failed — see Fusion log.';
+            setStatus('init failed', 'fail');
+          } else {
+            renderComponentList(payload.components || []);
+            renderSetupDropdown(payload.setups     || []);
+            const nc = (payload.components || []).length;
+            const ns = (payload.setups     || []).length;
+            setStatus(
+              nc + ' component' + (nc !== 1 ? 's' : '') + ' · ' +
+              ns + ' setup' + (ns !== 1 ? 's' : '') + ' found', 'ok'
+            );
+          }
+
+        // ── import_result: profile extracted from existing setup ───────────
+        } else if (action === 'import_result') {
+          if (!payload.ok) {
+            setProfileMsg('import failed: ' + (payload.msg || '?'), '#b00020');
+            setStatus('import failed', 'fail');
+          } else {
+            const prof = payload.profile || {};
+            applyProfileToForm(prof);
+            loadedProfile = prof;
+            renderProfileSummary(prof, payload.setup || 'setup');
+            document.getElementById('save-row').classList.remove('hidden');
+            document.getElementById('profile-name').value = payload.setup || '';
+            setProfileMsg('imported', 'var(--cad-accent-green)');
+            setStatus('imported from: ' + (payload.setup || '?'), 'ok');
+            updateHeaderSummary();
+          }
+
+        // ── report: generate complete ──────────────────────────────────────
+        } else if (action === 'report') {
+          (payload.setups || []).forEach(s => setComponentState(s.name, s.ok ? 'ok' : 'fail'));
+          if (payload.ok) {
+            // Prefer setups_built when the coordinator reports it
+            // (indexed multi-side mode). Otherwise fall back to the
+            // per-component setup count (older / single-side behaviour).
+            const built = (payload.setups_built != null)
+              ? payload.setups_built
+              : (payload.setups || []).length;
+            setStatus('done · ' + built + ' setup(s) built', 'ok');
+          } else {
+            setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
+          }
+        }
+
+      } catch (e) {
+        setStatus('parse error: ' + e.message, 'fail');
+      }
+      return 'ok';
+    }
+  };
+
+  // ── Auto-init on open ──────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchProfileList();       // populate saved-profiles dropdown
+    // Seed one default Side A @ 0° so the user opens to a usable
+    // single-orientation form. Adding more sides triggers indexed mode;
+    // removing all sides falls back to the Python default (Side A @ 0°).
+    if (!document.querySelectorAll('#sides-list .side-row').length) {
+      addSide({ name: 'A', axis: 'Z', angleDeg: 0 });
+    }
+    send('init');             // ask Python to scan components + CAM setups
+  });
+</script>
+</body>
+</html>

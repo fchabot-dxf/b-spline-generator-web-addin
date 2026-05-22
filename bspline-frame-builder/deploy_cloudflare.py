@@ -71,6 +71,20 @@ if sys.platform == "win32":
 # prefer looking in PATH (wrangler or wrangler.cmd on Windows)
 WRANGLER_CMD = shutil.which("wrangler") or shutil.which("wrangler.cmd")
 
+# shutil.which is broken for .cmd files on Python 3.12+ / Windows — fall back
+# to direct file-existence checks when it returns nothing.
+if WRANGLER_CMD is None and sys.platform == "win32":
+    _wrangler_candidates = [
+        # workspace wrapper (wrangler.cmd placed next to this file's parent)
+        os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "wrangler.cmd")),
+        os.path.expandvars(r"%APPDATA%\npm\wrangler.cmd"),
+        os.path.expandvars(r"%USERPROFILE%\AppData\Roaming\npm\wrangler.cmd"),
+    ]
+    for _c in _wrangler_candidates:
+        if os.path.isfile(_c):
+            WRANGLER_CMD = _c
+            break
+
 if WRANGLER_CMD is None:
     # fall back to known npm global paths if not in PATH
     if sys.platform == "win32":

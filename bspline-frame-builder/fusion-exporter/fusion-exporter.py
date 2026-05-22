@@ -97,8 +97,15 @@ def run(context):
                     if cmd_def:
                         new_cntrl = panel.controls.addCommand(cmd_def)
                         try:
-                            new_cntrl.isPromoted = True
-                            new_cntrl.isPromotedByDefault = True
+                            # Un-promoted: Fusion Exporter lives in the
+                            # B-Spline Builder dropdown menu only. It used
+                            # to occupy a slot in the always-visible row,
+                            # but it's rarely needed mid-workflow so the
+                            # toolbar real estate is better spent on the
+                            # heavier commands. Still discoverable via the
+                            # dropdown.
+                            new_cntrl.isPromoted = False
+                            new_cntrl.isPromotedByDefault = False
                         except:
                             pass
 

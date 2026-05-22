@@ -1,4 +1,5 @@
 import { clampedKnots } from './bspline-math.js';
+import { COORD_SYSTEM } from './coords.js';
 
 class StepBuilder {
   constructor() {
@@ -37,10 +38,7 @@ function ints(arr) { return `(${arr.join(',')})`; }
  */
 export function generateStep(heights, params) {
   const { widthIn, heightIn, nx, nz, orientation = 'z-up', name = 'Terrain Surface' } = params;
-  function mapPt(x, y, z) {
-    if (orientation === 'y-up') return [x, z, -y];
-    return [x, y, z];
-  }
+  const mapPt = (x, y, z) => COORD_SYSTEM.transformPoint(x, y, z, orientation);
   const b = new StepBuilder();
   const W = widthIn, H = heightIn;
 
@@ -146,10 +144,7 @@ export function generateThickenedStep(heights, offsetPts, params, unstampedHeigh
   const { widthIn, heightIn, nx, nz, orientation = 'z-up', name = 'Terrain', options = {} } = params;
   const W = widthIn, Ht = heightIn;
 
-  function mapPt(x, y, z) {
-    if (orientation === 'y-up') return [x, z, -y];
-    return [x, y, z];
-  }
+  const mapPt = (x, y, z) => COORD_SYSTEM.transformPoint(x, y, z, orientation);
   const fmt = (v) => v.toFixed(6);
 
   // 1. Units, Header & Contexts

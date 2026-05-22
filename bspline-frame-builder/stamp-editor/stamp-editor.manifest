@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion",
+    "type": "addin",
+    "id": "stamp-editor-bspline-frame-builder",
+    "author": "B-Spline Frame Builder",
+    "description": {
+        "": "Stamp Editor — deform a Fusion face with a motif and tool profile (V-bit, flat, ballnose). Sibling to STEP Editor under the B-Spline Builder panel."
+    },
+    "version": "0.1.0",
+    "runOnStartup": false,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}

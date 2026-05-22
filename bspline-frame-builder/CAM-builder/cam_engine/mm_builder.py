@@ -107,11 +107,15 @@ def build_all_mms(cam, design, classifier, logger=None):
             out[rule] = mm
 
     if original_active is not None:
+        _log(logger, f"MM BUILD CKPT 1: about to restore activeEditObject (type={type(original_active).__name__})", "DEBUG")
         try:
             original_active.activate()
+            _log(logger, "MM BUILD CKPT 1: restore succeeded", "DEBUG")
         except Exception as e:
             _log(logger, f"MM BUILD: restore activeEditObject failed: {e}", "DEBUG")
-
+    else:
+        _log(logger, "MM BUILD CKPT 1: no original_active to restore", "DEBUG")
+    _log(logger, f"MM BUILD CKPT 2: returning out (size={len(out)})", "DEBUG")
     return out
 
 
@@ -330,21 +334,47 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
     # 4. Write each snapshot entry. Skip names that already exist (the
     #    MM may already carry the param if this is a re-run, or if the
     #    user has hand-authored one in MM scope).
+    #
+    # Heavy per-iteration logging: this loop has shown a hard crash in
+    # the field where the log line for one successful add() is partially
+    # written and Fusion dies before the next iteration's add() returns.
+    # We log BEFORE and AFTER each add() with the full entry contents so
+    # the last line on disk identifies exactly which parameter triggered
+    # the crash. _log writes are independent file open/append/close calls
+    # in fb_logger, so each one flushes to disk before returning.
     copied = 0
     skipped = 0
     failed = 0
-    for entry in snapshot:
+    _log(logger,
+         f"PARAM PROP ({mm.name}): entering write loop, {len(snapshot)} entries",
+         "DEBUG")
+    for idx, entry in enumerate(snapshot):
         name = entry['name']
+        _log(logger,
+             f"PARAM PROP CKPT 1 [{idx}/{len(snapshot)}] ({mm.name}): about to look up existing param '{name}'",
+             "DEBUG")
         try:
             existing = mm_user_params.itemByName(name)
         except Exception:
             existing = None
         if existing:
             skipped += 1
+            _log(logger,
+                 f"PARAM PROP CKPT 2 [{idx}/{len(snapshot)}] ({mm.name}): '{name}' already exists, skipping",
+                 "DEBUG")
             continue
+        _log(logger,
+             f"PARAM PROP CKPT 3 [{idx}/{len(snapshot)}] ({mm.name}): about to add '{name}' expr={entry['expression']!r} unit={entry['unit']!r}",
+             "DEBUG")
         try:
             value = adsk.core.ValueInput.createByString(entry['expression'])
+            _log(logger,
+                 f"PARAM PROP CKPT 4 [{idx}/{len(snapshot)}] ({mm.name}): ValueInput created for '{name}', calling mm_user_params.add()",
+                 "DEBUG")
             param = mm_user_params.add(name, value, entry['unit'], entry['comment'])
+            _log(logger,
+                 f"PARAM PROP CKPT 5 [{idx}/{len(snapshot)}] ({mm.name}): mm_user_params.add('{name}') returned {'<param>' if param else 'None'}",
+                 "DEBUG")
             if param:
                 copied += 1
                 _log(logger,
@@ -355,8 +385,11 @@ def _propagate_user_parameters_to_mm(mm, source_design, logger):
                 _log(logger, f"PARAM PROP ({mm.name}): add returned None for '{name}'", "WARNING")
         except Exception as e:
             failed += 1
-            _log(logger, f"PARAM PROP ({mm.name}): add '{name}' raised: {e}", "WARNING")
+            _log(logger, f"PARAM PROP ({mm.name}): add '{name}' raised: {type(e).__name__}: {e}", "WARNING")
 
+    _log(logger,
+         f"PARAM PROP CKPT END ({mm.name}): exited write loop, copied={copied} skipped={skipped} failed={failed} of {len(snapshot)} source params",
+         "DEBUG")
     _log(logger, f"PARAM PROP ({mm.name}): copied={copied} skipped={skipped} failed={failed} of {len(snapshot)} source params")
     return copied
 
@@ -974,7 +1007,34 @@ def _apply_occurrence_filter(mm, rule, classifier, logger):
             occ_name = '<unnamed>'
         cls = _classify_occurrence(occ)
 
-        if cls in delete:
+        # Surface-only occurrences are filtered out of CAM MMs. Per user
+        # requirement: MMs should contain only solid bodies. If b-spline
+        # ops need surface geometry, the template/operation needs to
+        # source it from somewhere else (e.g., extract solid from surface
+        # in the source design before MM build).
+        surface_only = False
+        try:
+            comp_for_bodies = occ.component
+            bodies = comp_for_bodies.bRepBodies
+            if bodies.count > 0:
+                has_solid = False
+                for bi in range(bodies.count):
+                    b = bodies.item(bi)
+                    try:
+                        if b.isSolid:
+                            has_solid = True
+                            break
+                    except Exception:
+                        has_solid = True
+                        break
+                surface_only = not has_solid
+        except Exception:
+            surface_only = False
+
+        if surface_only:
+            to_delete.append((occ, occ_name, f"{cls}+surface_only"))
+            _log(logger, f"MM FILTER ({rule}): DEL surface-only occ '{occ_name}' (class={cls})", "DEBUG")
+        elif cls in delete:
             to_delete.append((occ, occ_name, cls))
         else:
             kept += 1
@@ -1224,6 +1284,192 @@ def _is_surface_body_name(bn):
     if bn.startswith('surface (') and bn.endswith(')'):
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Generic mode -- one MM per component
+# ---------------------------------------------------------------------------
+
+def build_mms_from_components(cam, design, component_names, logger=None):
+    """Generic mode: build one MM per component name.
+
+    Each MM is a full snapshot of the Design with every component EXCEPT
+    the target deleted. The document wrapper occurrence is preserved
+    (it's not in ``component_names`` so the filter keeps it automatically).
+
+    Parameters
+    ----------
+    cam : adsk.cam.CAM
+    design : adsk.fusion.Design
+        Source design (used for user-parameter propagation).
+    component_names : list[str]
+        Top-level component names to build MMs for, as returned by the
+        palette's SCAN action (``root.occurrences[i].component.name``).
+
+    Returns
+    -------
+    dict[str, ManufacturingModel]
+        ``{component_name: ManufacturingModel}`` for each successfully
+        built MM.
+    """
+    _ensure_cam_builder_user_parameters(design, logger)
+
+    app = adsk.core.Application.get()
+    original_active = None
+    try:
+        des = get_design(app, logger)
+        if des:
+            original_active = des.activeEditObject
+    except Exception:
+        pass
+
+    out = {}
+    for comp_name in component_names:
+        mm = _build_mm_for_component(cam, design, comp_name, component_names, logger)
+        if mm:
+            out[comp_name] = mm
+
+    if original_active is not None:
+        _log(logger, f"MM BUILD GENERIC CKPT 1: about to restore activeEditObject (type={type(original_active).__name__})", "DEBUG")
+        try:
+            original_active.activate()
+            _log(logger, "MM BUILD GENERIC CKPT 1: restore succeeded", "DEBUG")
+        except Exception as e:
+            _log(logger, f"MM BUILD GENERIC: restore activeEditObject failed: {e}", "DEBUG")
+    else:
+        _log(logger, "MM BUILD GENERIC CKPT 1: no original_active to restore", "DEBUG")
+    _log(logger, f"MM BUILD GENERIC CKPT 2: returning out (size={len(out)})", "DEBUG")
+    return out
+
+
+def _build_mm_for_component(cam, design, comp_name, all_comp_names, logger=None):
+    """Build one MM that contains only the occurrence for ``comp_name``."""
+    if cam is None:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): cam is None", "ERROR")
+        return None
+
+    try:
+        mm_input = cam.manufacturingModels.createInput()
+        mm_input.name = f'MM - {comp_name}'
+        mm = cam.manufacturingModels.add(mm_input)
+    except Exception as e:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): manufacturingModels.add raised: {e}", "ERROR")
+        return None
+
+    if mm is None:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): manufacturingModels.add returned None", "ERROR")
+        return None
+
+    _log(logger, f"MM BUILD GENERIC ({comp_name}): created '{mm.name}'")
+
+    try:
+        kept, deleted, failed = _apply_generic_filter(mm, comp_name, all_comp_names, logger)
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): filter -> kept={kept} deleted={deleted} failed={failed}")
+    except Exception as e:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): filter raised: {e}", "WARNING")
+
+    try:
+        _propagate_user_parameters_to_mm(mm, design, logger)
+    except Exception as e:
+        _log(logger, f"MM BUILD GENERIC ({comp_name}): param propagation raised: {e}", "WARNING")
+
+    return mm
+
+
+def _apply_generic_filter(mm, target_comp_name, all_comp_names, logger):
+    """Keep only the target component; delete every other known component.
+
+    Uses ``all_comp_names`` to distinguish "sibling component to delete"
+    from "document wrapper to keep": any occurrence whose component name
+    is in ``all_comp_names`` but is NOT the target → delete. Occurrences
+    whose name is NOT in ``all_comp_names`` are the document wrapper
+    (named after the document, not after any component) → keep.
+
+    Empirically verified on ``canoe_plus_paddle v3``:
+      allOccurrences inside an MM built from that design contains:
+        - 'Canoe_grab'                (component → keep if target, else delete)
+        - 'Part4^canoe_plus_paddle'   (component → keep if target, else delete)
+        - 'canoe_plus_paddle v2 (1)'  (document wrapper → NOT in all_comp_names → keep)
+    """
+    target_lower = target_comp_name.lower()
+    all_lower = {n.lower() for n in all_comp_names}
+
+    try:
+        comp = mm.occurrence.component
+    except Exception as e:
+        _log(logger, f"GENERIC FILTER ({target_comp_name}): mm.occurrence.component failed: {e}", "ERROR")
+        return (0, 0, 0)
+
+    try:
+        all_occs = [comp.allOccurrences.item(i) for i in range(comp.allOccurrences.count)]
+    except Exception as e:
+        _log(logger, f"GENERIC FILTER ({target_comp_name}): enumerate allOccurrences failed: {e}", "ERROR")
+        return (0, 0, 0)
+
+    kept = 0
+    to_delete = []
+    for occ in all_occs:
+        try:
+            occ_comp_name = (occ.component.name or '').lower()
+        except Exception:
+            occ_comp_name = ''
+
+        if occ_comp_name == target_lower:
+            kept += 1
+            _log(logger, f"GENERIC FILTER ({target_comp_name}): KEEP '{occ.component.name}' (target)", "DEBUG")
+        elif occ_comp_name in all_lower:
+            # Known sibling component → delete
+            to_delete.append((occ, occ.component.name))
+            _log(logger, f"GENERIC FILTER ({target_comp_name}): queue DEL '{occ.component.name}' (sibling)", "DEBUG")
+        else:
+            # Not a known component name → document wrapper → keep
+            kept += 1
+            _log(logger, f"GENERIC FILTER ({target_comp_name}): KEEP '{occ.component.name}' (wrapper)", "DEBUG")
+
+    # Deepest-first so parent deletions don't orphan child deleteMe() calls
+    def _depth(t):
+        try:
+            return -len(t[0].fullPathName or '')
+        except Exception:
+            return 0
+    to_delete.sort(key=_depth)
+
+    # Wrap in a BaseFeature so the deletions collapse to one timeline entry
+    base_feat = None
+    try:
+        base_feat = comp.features.baseFeatures.add()
+        base_feat.startEdit()
+    except Exception as e:
+        _log(logger, f"GENERIC FILTER ({target_comp_name}): BaseFeature wrap unavailable: {e}", "DEBUG")
+        base_feat = None
+
+    deleted = 0
+    failed = 0
+    try:
+        for occ, occ_name in to_delete:
+            try:
+                if not occ.isValid:
+                    deleted += 1
+                    continue
+                ok = occ.deleteMe()
+                if ok:
+                    deleted += 1
+                    _log(logger, f"GENERIC FILTER ({target_comp_name}): DEL '{occ_name}'", "DEBUG")
+                else:
+                    failed += 1
+                    _log(logger, f"GENERIC FILTER ({target_comp_name}): deleteMe returned False for '{occ_name}'", "WARNING")
+            except Exception as e:
+                failed += 1
+                _log(logger, f"GENERIC FILTER ({target_comp_name}): deleteMe raised for '{occ_name}': {e}", "WARNING")
+    finally:
+        if base_feat is not None:
+            try:
+                base_feat.finishEdit()
+                _log(logger, f"GENERIC FILTER ({target_comp_name}): collapsed {deleted} deletions into 1 BaseFeature entry", "DEBUG")
+            except Exception as e:
+                _log(logger, f"GENERIC FILTER ({target_comp_name}): BaseFeature.finishEdit failed: {e}", "WARNING")
+
+    return (kept, deleted, failed)
 
 
 def _mm_display_name(rule):

@@ -1,4 +1,5 @@
 import { COORD_SYSTEM } from './coords.js';
+import { dbg } from './debug.js';
 /**
  * state.js — Application state and persistence logic.
  */
@@ -7,7 +8,7 @@ export const DEFAULT = {
     stampSmoothingRadius: 15, // px
     stampFilletPower: 2.2, // Default "In-Between" setting
     stampEdgeFilletRadius: 0, // inches
-    stampDepth: 0.8,
+    stampDepth: 0.25,
     stampProfile: 'vbit',
     stampVBitAngle: 90,
     stampBlur: 0,
@@ -103,15 +104,26 @@ export const DEFAULT = {
     edgeMarginIn: 0,
     // Vector Stamping (Multi-Layer Support)
     stampLayers: [
-        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: 0.8, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2 },
-        { id: 'layer1', name: 'Layer 2', svg: null, mask: null, depth: -0.5, profile: 'ballnose', angle: 90, blur: 0, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2 },
-        { id: 'layer2', name: 'Layer 3', svg: null, mask: null, depth: 0.75, profile: 'flat', angle: 90, blur: 0, enabled: false, smoothing: 5, suppression: 0.05, edgeFilletRadius: 0, filletPower: 2.2 }
+        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: 0.25, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2,
+          tx: 0, ty: 0, rotation: 0, scale: 1, mirrorX: false, mirrorY: false },
+        { id: 'layer1', name: 'Layer 2', svg: null, mask: null, depth: -0.5, profile: 'ballnose', angle: 90, blur: 0, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2,
+          tx: 0, ty: 0, rotation: 0, scale: 1, mirrorX: false, mirrorY: false },
+        { id: 'layer2', name: 'Layer 3', svg: null, mask: null, depth: 0.75, profile: 'flat', angle: 90, blur: 0, enabled: false, smoothing: 5, suppression: 0.05, edgeFilletRadius: 0, filletPower: 2.2,
+          tx: 0, ty: 0, rotation: 0, scale: 1, mirrorX: false, mirrorY: false }
     ],
     activeLayerIdx: 0,
     thickenYellowOffset: 0.01,
 };
 
 export let P = { ...DEFAULT };
+
+// For params whose <input> element id differs from the param name itself.
+// (`thickness` lives in `thickenOffset` after the Apr 2026 UI rename.)
+// Both bindControls and syncUItoParam consult this map before falling back
+// to `getElementById(paramName)`.
+export const INPUT_PAIRS = {
+    thickness: 'thickenOffset',
+};
 
 export const SLIDER_PAIRS = {
     scale: 'scaleSlider',
@@ -129,7 +141,7 @@ export const SLIDER_PAIRS = {
     seedRotation: 'seedRotationSlider',
     symOffsetX: 'symOffsetXSlider',
     symOffsetY: 'symOffsetYSlider',
-    thickness: 'thicknessSlider',
+    thickness: 'thickenOffsetSlider',
     warpIntensity: 'warpIntensitySlider',
     sculptTopRadius: 'sculptTopRadiusSlider',
     sculptTopStrength: 'sculptTopStrengthSlider',
@@ -204,6 +216,11 @@ export function setStampLayerMask(idx, mask) {
         // suppression is a UI scalar (0–1) stored on the layer — never overwrite it here
     }
 }
+export function setStampLayerEnabled(idx, enabled) {
+    if (P.stampLayers[idx]) {
+        P.stampLayers[idx].enabled = !!enabled;
+    }
+}
 
 export function setSuppressionMask(val) { suppressionMask = val; }
 
@@ -264,9 +281,7 @@ export function loadLastSession() {
                 if (k === 'points' && Array.isArray(val)) {
                     val = val.map(pt => {
                         const ui = COORD_SYSTEM.toUI(pt[0], pt[1]);
-                        if (window && window.console) {
-                            console.log(`[COORD_STD] loadLastSession: Physical (${pt[0]},${pt[1]}) -> UI (${ui.x},${ui.y})`);
-                        }
+                        dbg('COORD_STD', `loadLastSession: Physical (${pt[0]},${pt[1]}) -> UI (${ui.x},${ui.y})`);
                         return [ui.x, ui.y];
                     });
                 }

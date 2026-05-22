@@ -16,7 +16,6 @@ import {
 } from './sculpt/index.js';
 
 let _sculptStrokeDirty = false;
-let _lastSculptRebuildTime = 0;
 
 /**
  * Compute all grid positions that should receive a stroke given a primary
