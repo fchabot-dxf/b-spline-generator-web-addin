@@ -14,6 +14,7 @@
 import { stripSvgjsAttributes } from '../core/svg-utils.js';
 import { fitCurve, ramerDouglasPeucker, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance } from './editor-hit.js';
+import { commitExpandedPath } from './editor-expand-commit.js';
 
 // Lazy-load canvg v3 so the editor's main bundle isn't bloated by it.
 let _CanvgClass = null;
@@ -113,23 +114,12 @@ export async function expandTrace(editor, el, { commit = true } = {}) {
 
         if (!pathData) return false;
 
-        const layer = el.attr('data-layer') || "0";
-        const expanded = editor._sketchLayer.path(pathData)
-            .fill('#000000')
-            .stroke('none')
-            .attr('fill-rule', 'evenodd')
-            .attr('data-layer', layer);
-
-        if (el.attr('data-original-text-svg')) expanded.attr('data-original-text-svg', el.attr('data-original-text-svg'));
-        if (el.attr('data-original-svg')) expanded.attr('data-original-svg', el.attr('data-original-svg'));
-        if (!expanded.attr('data-original-svg') && !expanded.attr('data-original-text-svg')) {
-            expanded.attr('data-original-svg', el.svg());
-        }
-
-        el.remove();
-        editor._select(expanded);
-        if (commit && editor.pushState) editor.pushState();
-        return true;
+        // Trace strategy can ingest either text or non-text sources via
+        // the orchestrator's fall-through. Detect which to inform the
+        // commit helper which sentinel attr to write on first expand.
+        const isText = el.type === 'text' || !!el.attr('data-original-text-svg');
+        const expanded = commitExpandedPath(editor, el, pathData, { commit, isText });
+        return !!expanded;
     } catch (err) {
         console.error("[EXPAND] Trace failure:", err);
         return false;

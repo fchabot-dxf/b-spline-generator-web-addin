@@ -1,47 +1,66 @@
 /**
  * Expand strategy 2: geometric stroke offset for vector shapes.
  *
- *   - Open shapes (path / polyline / line) get a stroke offset with
- *     round start/end caps. Result: one filled path tracing the stroke
- *     with rounded ends.
- *   - Closed shapes (rect / circle / ellipse / polygon, or a <path>
- *     whose d ends in Z) skip the caps and emit two concentric loops
- *     with even-odd fill — the natural ring representation of a
- *     stroked closed shape.
+ * Open shapes (path / polyline / line) get a stroke offset with round
+ * start/end caps, then a polygon-clipping union pass to dissolve any
+ * self-intersections from a self-crossing input stroke.
  *
- * Filled shapes (fill !== "none") fall through to the trace strategy,
- * which handles the silhouette correctly. The geometric offset here is
- * for stroke-to-fill conversion only.
+ * Closed shapes (rect / circle / ellipse / polygon, or a path whose d
+ * ends in Z) build inner + outer offsets, then a polygon-clipping
+ * difference produces a clean annular ring.
+ *
+ * Filled shapes (fill not equal to none) fall through to the trace
+ * strategy. The geometric offset here is for stroke-to-fill conversion.
  *
  * Returns true if it produced a path and replaced the original element,
  * false otherwise (orchestrator falls through to the trace strategy).
+ *
+ * If polygon-clipping fails to load, the function falls back to
+ * emitting the raw even-odd path so the editor stays useful.
  */
 import { fusLog } from '../core/fusion-bridge.js';
+import { commitExpandedPath } from './editor-expand-commit.js';
+
+// Dynamic-loaded so a missing editor-expand-union.js cannot break the
+// editor module chain at panel boot. The first expand call resolves
+// the import; subsequent calls hit the cached promise.
+let _unionMod = null;
+let _unionModPromise = null;
+function _loadUnionMod() {
+    if (_unionMod) return _unionMod;
+    if (_unionModPromise) return _unionModPromise;
+    _unionModPromise = import('./editor-expand-union.js')
+        .then(function (mod) { _unionMod = mod; return mod; })
+        .catch(function (e) {
+            try { fusLog('[EXPAND-SHAPE] union module load failed: ' + e.message); } catch (_) {}
+            return null;
+        });
+    return _unionModPromise;
+}
 
 const OPEN_SHAPES = ['path', 'polyline', 'line'];
 const CLOSED_SHAPES = ['rect', 'circle', 'ellipse', 'polygon'];
 
-/** Expand-shape diagnostic. fusLog-only by default so the Fusion log
- *  retains the trace for line/other-tool regressions; console branch
- *  enabled by window.__editorDebug = 'EXPAND-SHAPE'. */
 function _xLog(msg) {
     if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-SHAPE') {
-        try { console.log(`[EXPAND-SHAPE] ${msg}`); } catch (_) {}
+        try { console.log('[EXPAND-SHAPE] ' + msg); } catch (_) {}
     }
-    try { fusLog(`[EXPAND-SHAPE] ${msg}`); } catch (_) {}
+    try { fusLog('[EXPAND-SHAPE] ' + msg); } catch (_) {}
 }
 
-export function expandShape(editor, el, { commit = true } = {}) {
-    _xLog(`entry  type=${el?.type}  data-layer="${el?.attr?.('data-layer')}"`);
+export async function expandShape(editor, el, options) {
+    const opts = options || {};
+    const commit = opts.commit !== false;
+    _xLog('entry  type=' + (el && el.type) + '  data-layer="' + (el && el.attr && el.attr('data-layer')) + '"');
     if (!OPEN_SHAPES.includes(el.type) && !CLOSED_SHAPES.includes(el.type)) {
-        _xLog(`skip: type "${el.type}" not in OPEN/CLOSED sets`);
+        _xLog('skip: type not in OPEN or CLOSED sets');
         return false;
     }
 
     const fill = (el.attr('fill') || '').toLowerCase();
     const isFilled = fill && fill !== 'none' && fill !== 'transparent';
     if (isFilled) {
-        _xLog(`skip: filled (fill="${fill}") -> trace fallback`);
+        _xLog('skip: filled -> trace fallback');
         return false;
     }
 
@@ -49,69 +68,96 @@ export function expandShape(editor, el, { commit = true } = {}) {
     const matrix = el.matrix();
     const isClosed = CLOSED_SHAPES.includes(el.type) ||
         (el.type === 'path' && /[zZ]\s*$/.test(el.attr('d') || ''));
-    _xLog(`computing geoD  sw=${sw}  isClosed=${isClosed}`);
-    const geoD = expandGeometric(editor, el, sw, matrix, isClosed);
-    if (!geoD) {
-        _xLog('geoD returned null -> trace fallback');
+    _xLog('computing offsets  sw=' + sw + '  isClosed=' + isClosed);
+
+    const offsets = expandGeometric(editor, el, sw, matrix, isClosed);
+    if (!offsets) {
+        _xLog('offsets returned null -> trace fallback');
         return false;
     }
-    _xLog(`geoD OK  len=${geoD.length}`);
+    _xLog('offsets kind=' + offsets.kind +
+          ' loopPts=' + (offsets.loop ? offsets.loop.length : 'N/A') +
+          ' outerPts=' + (offsets.outer ? offsets.outer.length : 'N/A') +
+          ' innerPts=' + (offsets.inner ? offsets.inner.length : 'N/A'));
 
-    const layer = el.attr('data-layer') || "0";
-    const expanded = editor._sketchLayer.path(geoD)
-        .fill('#000000')
-        .stroke('none')
-        .attr('fill-rule', 'evenodd')
-        .attr('data-layer', layer);
+    // Snapshot sketch-layer children BEFORE we modify anything so we can
+    // tell whether something else wipes the layer during our async waits.
+    const childrenBefore = editor._sketchLayer.children().toArray().length;
+    _xLog('await unionMod ... childrenBefore=' + childrenBefore);
 
-    // Clear transform — it's now baked into geoD.
-    expanded.attr('transform', null);
-    expanded.attr('data-original-svg', el.svg());
-    el.remove();
-    editor._select(expanded);
-    if (commit && editor.pushState) editor.pushState();
+    const unionMod = await _loadUnionMod();
+    _xLog('unionMod loaded=' + (!!unionMod) +
+          ' hasUnion=' + !!(unionMod && unionMod.unionSelfIntersecting) +
+          ' hasDiff=' + !!(unionMod && unionMod.differenceForAnnulus) +
+          ' childrenAfterAwait=' + editor._sketchLayer.children().toArray().length +
+          ' elStillInDom=' + (el.node && el.node.parentNode ? 'yes' : 'no'));
+
+    let geoD = null;
+    let geoDSource = 'none';
+    if (offsets.kind === 'open') {
+        if (unionMod && unionMod.unionSelfIntersecting) {
+            geoD = await unionMod.unionSelfIntersecting(offsets.loop);
+            if (geoD) geoDSource = 'open-union';
+            _xLog('open-union returned dLen=' + (geoD ? geoD.length : 'null'));
+        }
+        if (!geoD) {
+            geoD = ringToPathData(offsets.loop);
+            geoDSource = 'open-fallback';
+            _xLog('open-fallback ringToPathData dLen=' + geoD.length);
+        }
+    } else if (offsets.kind === 'closed') {
+        if (unionMod && unionMod.differenceForAnnulus) {
+            geoD = await unionMod.differenceForAnnulus(offsets.outer, offsets.inner);
+            if (geoD) geoDSource = 'closed-diff';
+            _xLog('closed-diff returned dLen=' + (geoD ? geoD.length : 'null'));
+        }
+        if (!geoD) {
+            geoD = ringToPathData(offsets.outer) + ' ' + ringToPathData(offsets.inner);
+            geoDSource = 'closed-fallback';
+            _xLog('closed-fallback two-loop dLen=' + geoD.length);
+        }
+    }
+
+    if (!geoD || !geoD.trim()) {
+        _xLog('geoD empty after both paths -> return false');
+        return false;
+    }
+    _xLog('geoD OK  source=' + geoDSource + '  len=' + geoD.length);
+
+    const expanded = commitExpandedPath(editor, el, geoD, { commit, isText: false });
+    if (!expanded) {
+        _xLog('commitExpandedPath returned null -> return false');
+        return false;
+    }
     return true;
 }
 
-/**
- * Geometric Offset (smart stroke-to-fill). Samples the element's
- * outline at high resolution via getPointAtLength, then builds parallel
- * offset banks at ±strokeWidth/2.
- *
- * For closed shapes, emits two concentric loops with even-odd fill —
- * fills the annular ring and leaves the inside as a hole. For open
- * shapes, assembles startCap → outer → endCap → inner reversed → close
- * into one filled path with rounded ends.
- *
- * Sampled points have the element's transform baked into them, so the
- * resulting `d` is in user/model space and the caller clears the
- * transform attribute on the new <path> after plotting.
- */
-function expandGeometric(editor, el, strokeWidth, matrix, isClosed = false) {
+function ringToPathData(points) {
+    if (!points || points.length < 3) return '';
+    let d = 'M ' + points[0].x.toFixed(3) + ' ' + points[0].y.toFixed(3);
+    for (let i = 1; i < points.length; i++) {
+        d += ' L ' + points[i].x.toFixed(3) + ' ' + points[i].y.toFixed(3);
+    }
+    return d + ' Z';
+}
+
+function expandGeometric(editor, el, strokeWidth, matrix, isClosed) {
     const pathNode = el.node;
     if (typeof pathNode.getTotalLength !== 'function') {
-        _xLog(`expandGeometric: no getTotalLength on <${pathNode?.tagName}> -> null`);
+        _xLog('expandGeometric: no getTotalLength -> null');
         return null;
     }
     const length = pathNode.getTotalLength();
     if (length <= 0) {
-        _xLog(`expandGeometric: length=${length} (<=0) -> null`);
+        _xLog('expandGeometric: length non-positive -> null');
         return null;
     }
 
-    // Sampling rate: high resolution (approx every 0.02 units).
     const step = 0.02;
     const numSamples = Math.max(2, Math.ceil(length / step));
-    _xLog(`expandGeometric: length=${length.toFixed(3)}  samples=${numSamples}`);
+    _xLog('expandGeometric: length=' + length.toFixed(3) + '  samples=' + numSamples);
 
     const pts = [];
-    // Cache an "is matrix non-identity?" check once — applying the
-    // matrix per-point is the only place that historically used
-    // `new editor._draw.point(...)` (a non-standard svg.js call that
-    // worked by accident for some elements and threw silently for
-    // <line>). Now use the canonical SVG.Point constructor like
-    // expand-text.js does, gated on the matrix actually being a
-    // non-identity transform.
     const hasTransform = matrix && typeof matrix.a === 'number' && !(
         matrix.a === 1 && matrix.b === 0 && matrix.c === 0 &&
         matrix.d === 1 && matrix.e === 0 && matrix.f === 0
@@ -129,9 +175,6 @@ function expandGeometric(editor, el, strokeWidth, matrix, isClosed = false) {
     const halfWidth = strokeWidth / 2;
 
     if (isClosed) {
-        // Closed shape: drop the trailing duplicate point if
-        // getPointAtLength returned start==end, then compute normals
-        // using circular neighbor lookup so the offset wraps cleanly.
         const last = pts[pts.length - 1];
         const first = pts[0];
         if (Math.hypot(last.x - first.x, last.y - first.y) < step) pts.pop();
@@ -145,21 +188,15 @@ function expandGeometric(editor, el, strokeWidth, matrix, isClosed = false) {
             const dx = next.x - prev.x;
             const dy = next.y - prev.y;
             const mag = Math.hypot(dx, dy) || 1;
-            const nx = -dy / mag, ny = dx / mag;
+            const nx = -dy / mag;
+            const ny = dx / mag;
             outer.push({ x: pts[i].x + nx * halfWidth, y: pts[i].y + ny * halfWidth });
             inner.push({ x: pts[i].x - nx * halfWidth, y: pts[i].y - ny * halfWidth });
         }
 
-        let d = `M ${outer[0].x.toFixed(3)} ${outer[0].y.toFixed(3)}`;
-        for (let i = 1; i < outer.length; i++) d += ` L ${outer[i].x.toFixed(3)} ${outer[i].y.toFixed(3)}`;
-        d += ' Z';
-        d += ` M ${inner[0].x.toFixed(3)} ${inner[0].y.toFixed(3)}`;
-        for (let i = 1; i < inner.length; i++) d += ` L ${inner[i].x.toFixed(3)} ${inner[i].y.toFixed(3)}`;
-        d += ' Z';
-        return d;
+        return { kind: 'closed', outer: outer, inner: inner };
     }
 
-    // Open shape: outer bank + inner bank with round end caps at start/end.
     const leftBank = [];
     const rightBank = [];
     for (let i = 0; i < pts.length; i++) {
@@ -168,59 +205,33 @@ function expandGeometric(editor, el, strokeWidth, matrix, isClosed = false) {
         else if (i === pts.length - 1) { dx = pts[i].x - pts[i-1].x; dy = pts[i].y - pts[i-1].y; }
         else { dx = pts[i+1].x - pts[i-1].x; dy = pts[i+1].y - pts[i-1].y; }
         const mag = Math.hypot(dx, dy) || 1;
-        const nx = -dy / mag; const ny = dx / mag;
+        const nx = -dy / mag;
+        const ny = dx / mag;
         leftBank.push({ x: pts[i].x + nx * halfWidth, y: pts[i].y + ny * halfWidth });
         rightBank.push({ x: pts[i].x - nx * halfWidth, y: pts[i].y - ny * halfWidth });
     }
 
-    // Cap endpoints must line up with the bank endpoints so the assembled
-    // path doesn't self-intersect. The assembly order below is:
-    //   startCap → leftBank (forward) → endCap → rightBank (reversed) → Z
-    //
-    // Banks (for a stroke going right; nx=-dy/mag, ny=dx/mag):
-    //   leftBank[0]    = startP + (0,+hw)  → BOTTOM of startP (CW side)
-    //   rightBank[0]   = startP + (0,-hw)  → TOP of startP    (CCW side)
-    //   leftBank[M-1]  = endP   + (0,+hw)  → BOTTOM of endP   (CW side)
-    //   rightBank[M-1] = endP   + (0,-hw)  → TOP of endP      (CCW side)
-    //
-    // For the path to walk without bow-tie crossings:
-    //   - startCap must enter at rightBank[0] (TOP) and leave at leftBank[0] (BOTTOM),
-    //     bulging OPPOSITE to stroke direction (away from where the stroke is going).
-    //   - endCap must enter at leftBank[M-1] (BOTTOM) and leave at rightBank[M-1] (TOP),
-    //     bulging IN the stroke direction (continuing forward).
-    //
-    // Previously the startCap loop ran backwards (bottom→top, then jumped
-    // back to leftBank[0] at bottom — bow-tie #1) and the endCap formula
-    // bulged the wrong way and connected top→bottom against the bank
-    // walk — bow-tie #2. With fill-rule=evenodd the crossings carved out
-    // exactly the outward arcs, so the caps looked inward. Fixed:
     const startCap = [];
-    const startP = pts[0]; const startNext = pts[1];
+    const startP = pts[0];
+    const startNext = pts[1];
     const baseAngle = Math.atan2(startNext.y - startP.y, startNext.x - startP.x);
-    // a: 0→π. ang starts at baseAngle-π/2 (TOP/rightBank side), passes
-    // through baseAngle-π (bulge OPPOSITE to stroke direction), ends at
-    // baseAngle-3π/2 = baseAngle+π/2 (BOTTOM/leftBank side).
     for (let a = 0; a <= Math.PI; a += Math.PI / 8) {
         const ang = baseAngle - Math.PI / 2 - a;
         startCap.push({ x: startP.x + Math.cos(ang) * halfWidth, y: startP.y + Math.sin(ang) * halfWidth });
     }
     const endCap = [];
-    const endP = pts[pts.length - 1]; const endPrev = pts[pts.length - 2];
+    const endP = pts[pts.length - 1];
+    const endPrev = pts[pts.length - 2];
     const endAngle = Math.atan2(endP.y - endPrev.y, endP.x - endPrev.x);
-    // a: 0→π. ang starts at endAngle+π/2 (BOTTOM/leftBank side), passes
-    // through endAngle (bulge IN stroke direction), ends at endAngle-π/2
-    // (TOP/rightBank side). Note +π/2 vs the startCap's -π/2 — that's
-    // the sign flip that makes the end cap point forward instead of back.
     for (let a = 0; a <= Math.PI; a += Math.PI / 8) {
         const ang = endAngle + Math.PI / 2 - a;
         endCap.push({ x: endP.x + Math.cos(ang) * halfWidth, y: endP.y + Math.sin(ang) * halfWidth });
     }
 
-    let d = `M ${startCap[0].x.toFixed(3)} ${startCap[0].y.toFixed(3)}`;
-    for (let i = 1; i < startCap.length; i++) d += ` L ${startCap[i].x.toFixed(3)} ${startCap[i].y.toFixed(3)}`;
-    for (const p of leftBank) d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
-    for (const p of endCap) d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
-    for (let i = rightBank.length - 1; i >= 0; i--) d += ` L ${rightBank[i].x.toFixed(3)} ${rightBank[i].y.toFixed(3)}`;
-    d += " Z";
-    return d;
+    const loop = [];
+    for (const p of startCap)  loop.push(p);
+    for (const p of leftBank)  loop.push(p);
+    for (const p of endCap)    loop.push(p);
+    for (let i = rightBank.length - 1; i >= 0; i--) loop.push(rightBank[i]);
+    return { kind: 'open', loop: loop };
 }

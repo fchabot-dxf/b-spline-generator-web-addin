@@ -15,6 +15,7 @@
  */
 import { COORD_SYSTEM } from './coords.js';
 import { dbg } from './debug.js';
+import { fusLog } from '../fusion-bridge.js';
 import { computeSDF, sampleSDF, powerStep } from './sdf.js';
 import {
     sanitizeSvgForRaster,
@@ -75,6 +76,13 @@ function emptyMask(nx, nz) {
     };
 }
 
+function _sLog(msg) {
+    if (typeof window !== 'undefined' && window.__editorDebug === 'STAMP-RASTER') {
+        try { console.log('[STAMP-RASTER] ' + msg); } catch (_) {}
+    }
+    try { fusLog('[STAMP-RASTER] ' + msg); } catch (_) {}
+}
+
 export async function rasterizeSvg(
     svgText,
     nx,
@@ -88,6 +96,30 @@ export async function rasterizeSvg(
     edgeFilletRadius = 0,
     filletPower = 2.2,
 ) {
+    _sLog('rasterizeSvg called  grid=' + nx + 'x' + nz +
+          '  stock=' + widthIn.toFixed(2) + 'x' + heightIn.toFixed(2) +
+          '  depth=' + stampDepth +
+          '  svgLen=' + (svgText ? svgText.length : 'null') +
+          '  blurIn=' + blurIn);
+    if (svgText) {
+        // Sample what's in the SVG so we can see whether the expanded path
+        // is actually arriving here (look for fill-rule="nonzero" or the
+        // characteristic geoD length around 5500+).
+        const pathMatches = (svgText.match(/<path[^>]*>/g) || []);
+        _sLog('svg contains  pathCount=' + pathMatches.length +
+              '  hasNonzero=' + svgText.includes('fill-rule="nonzero"') +
+              '  hasEvenodd=' + svgText.includes('fill-rule="evenodd"'));
+        for (let i = 0; i < Math.min(pathMatches.length, 5); i++) {
+            const m = pathMatches[i];
+            const dMatch = m.match(/d="([^"]*)"/);
+            const dLen = dMatch ? dMatch[1].length : 0;
+            const fillMatch = m.match(/fill="([^"]*)"/);
+            const strokeMatch = m.match(/stroke="([^"]*)"/);
+            _sLog('  path[' + i + ']  fill=' + (fillMatch && fillMatch[1]) +
+                  '  stroke=' + (strokeMatch && strokeMatch[1]) +
+                  '  dLen=' + dLen);
+        }
+    }
     dbg('STAMP DEBUG', `Rasterizing for grid: ${nx}x${nz}. Stock: ${widthIn}x${heightIn}`);
 
     return new Promise(async (resolve) => {
@@ -127,10 +159,20 @@ export async function rasterizeSvg(
 
         if (nativeOk) {
             const imageData = stampCtx.getImageData(0, 0, bufferW, bufferH);
+            // Count opaque pixels (alpha > 127) so we can tell when the
+            // SVG rendered but produced nothing visible.
+            let opaque = 0;
+            for (let i = 3; i < imageData.data.length; i += 4) {
+                if (imageData.data[i] > 127) opaque++;
+            }
+            const totalPx = bufferW * bufferH;
+            _sLog('native render OK  opaquePx=' + opaque + '/' + totalPx +
+                  '  (' + ((opaque/totalPx)*100).toFixed(2) + '%)');
             dbg('STAMP DEBUG', 'Rasterization complete (native). Mask generated.');
             startSdfFromImageData(imageData);
             return;
         }
+        _sLog('native render FAILED -> trying canvg fallback');
 
         // --- Step 2: canvg v3 fallback ---
         const Canvg = await loadCanvg();

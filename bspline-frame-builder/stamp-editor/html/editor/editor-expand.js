@@ -1,26 +1,38 @@
 /**
  * "Expand" turns a selected element into a filled outline path. Three
  * strategies are tried in order; the first one that handles the element
- * wins. Each strategy lives in its own file:
- *
- *   1. editor-expand-text.js  — text via opentype.js fast path.
- *   2. editor-expand-shape.js — geometric stroke offset for vector shapes.
- *   3. editor-expand-trace.js — canvg trace fallback for everything else.
- *
- * Each `expandX(editor, el, opts)` returns true if it handled the
- * element (success, original removed, replacement selected) and false
- * if the orchestrator should fall through to the next strategy.
+ * wins.
  */
 import { expandText } from './editor-expand-text.js';
 import { expandShape } from './editor-expand-shape.js';
 import { expandTrace } from './editor-expand-trace.js';
+import { fusLog } from '../core/fusion-bridge.js';
+
+function _oLog(msg) {
+    if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-ORCH') {
+        try { console.log('[EXPAND-ORCH] ' + msg); } catch (_) {}
+    }
+    try { fusLog('[EXPAND-ORCH] ' + msg); } catch (_) {}
+}
 
 export async function expandCurrent(editor, detail = 1.0, simplify = 15, accuracy = 1.0, commit = true) {
-    if (!editor._selectedElement) return;
+    if (!editor._selectedElement) {
+        _oLog('no selection -> abort');
+        return;
+    }
     const el = editor._selectedElement;
     const opts = { detail, simplify, accuracy, commit };
+    _oLog('begin  selType=' + el.type + '  children=' + editor._sketchLayer.children().toArray().length);
 
-    if (await expandText(editor, el, opts)) return;
-    if (expandShape(editor, el, opts)) return;
-    await expandTrace(editor, el, opts);
+    const r1 = await expandText(editor, el, opts);
+    _oLog('expandText returned ' + r1 + '  children=' + editor._sketchLayer.children().toArray().length);
+    if (r1) return;
+
+    const r2 = await expandShape(editor, el, opts);
+    _oLog('expandShape returned ' + r2 + '  children=' + editor._sketchLayer.children().toArray().length);
+    if (r2) return;
+
+    _oLog('falling through to expandTrace');
+    const r3 = await expandTrace(editor, el, opts);
+    _oLog('expandTrace returned ' + r3 + '  children=' + editor._sketchLayer.children().toArray().length);
 }

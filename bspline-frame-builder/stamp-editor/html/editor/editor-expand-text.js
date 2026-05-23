@@ -1,8 +1,9 @@
 /**
  * Expand strategy 1: <text> via opentype.js. Loads the bundled .ttf for
  * the element's font-family, generates a glyph-outline path, bakes the
- * element's transform + (x, y) anchor into the path data, and replaces
- * the <text> with a <path>.
+ * element's transform + (x, y) anchor into the path data, then hands
+ * off to the shared commitExpandedPath helper (fill, stroke, layer,
+ * snapshot, select, pushState).
  *
  * Returns true if it handled the element (success or expected skip),
  * false if the orchestrator should fall through to the next strategy.
@@ -16,6 +17,7 @@
 import { FONT_MAP } from './editor-fonts.js';
 import { dbg } from './debug.js';
 import { localAnchor } from './editor-coords.js';
+import { commitExpandedPath } from './editor-expand-commit.js';
 
 export async function expandText(editor, el, { commit = true } = {}) {
     if (el.type !== 'text') return false;
@@ -87,53 +89,30 @@ export async function expandText(editor, el, { commit = true } = {}) {
         const { x: ax, y: ay } = localAnchor(el);
         const m = el.matrix().translate(ax, ay);
 
-        try {
-            const pathObj = font.getPath(processedContent, 0, baselineYOffset, fontSize);
-            const d = pathObj.toPathData(2);
+        const pathObj = font.getPath(processedContent, 0, baselineYOffset, fontSize);
+        const rawD = pathObj.toPathData(2);
 
-            const expanded = editor._sketchLayer.path(d)
-                .fill('#000000')
-                .stroke('none')
-                .attr('fill-rule', 'evenodd')
-                .attr('data-layer', el.attr('data-layer') || "0");
-
-            // Manually transform every point in the path segment list.
-            // SVG.js's .transform() API failed to bake transforms
-            // reliably here in earlier versions, so we walk the segments
-            // directly and apply the matrix to each coord pair.
-            const pArray = new SVG.PathArray(d);
-            pArray.forEach(seg => {
-                // Segments: [Type, x1, y1, x2, y2, ...] or [Type, x, y].
-                for (let i = 1; i < seg.length; i += 2) {
-                    if (typeof seg[i] === 'number' && typeof seg[i + 1] === 'number') {
-                        const pt = new SVG.Point(seg[i], seg[i + 1]).transform(m);
-                        seg[i] = pt.x;
-                        seg[i + 1] = pt.y;
-                    }
+        // Bake the element's transform into every coord in the path.
+        // SVG.js's .transform() API has historically failed to bake
+        // transforms reliably for path elements, so walk the segments
+        // manually and apply the matrix to each coord pair.
+        const pArray = new SVG.PathArray(rawD);
+        pArray.forEach(seg => {
+            for (let i = 1; i < seg.length; i += 2) {
+                if (typeof seg[i] === 'number' && typeof seg[i + 1] === 'number') {
+                    const pt = new SVG.Point(seg[i], seg[i + 1]).transform(m);
+                    seg[i] = pt.x;
+                    seg[i + 1] = pt.y;
                 }
-            });
+            }
+        });
+        const bakedD = pArray.toString();
 
-            expanded.plot(pArray.toString());
-            expanded.attr('transform', null);
-
-            // Metadata backup for re-editing. SVG.js's clone() inserts
-            // the clone into the parent by default — we only want the
-            // markup, so build a temp clone, pull its serialized SVG,
-            // then remove it. Without the explicit remove(), this clone
-            // leaked into the sketch layer on every expand, leaving a
-            // ghost text behind the new expanded path.
-            const tmp = el.clone();
-            tmp.removeClass('svg-selected').removeClass('svg-hover');
-            const textCopy = tmp.svg();
-            tmp.remove();
-            expanded.attr('data-original-text-svg', el.attr('data-original-text-svg') || textCopy);
-
-            editor._select(expanded);
-        } finally {
-            // Ensure the original text is always removed.
-            el.remove();
-        }
-        if (commit && editor.pushState) editor.pushState();
+        const expanded = commitExpandedPath(editor, el, bakedD, {
+            commit,
+            isText: true,
+        });
+        if (!expanded) return false;
         return true;
     } catch (e) {
         console.error("[EXPAND] Opentype logic failed:", e);

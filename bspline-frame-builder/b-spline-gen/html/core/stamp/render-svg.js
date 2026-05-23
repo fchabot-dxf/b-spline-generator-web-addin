@@ -40,6 +40,18 @@ export function sanitizeSvgForRaster(svgText) {
         return `<style type="text/css">${fontFaceRules.join('\n')}</style>`;
     });
     out = stripSvgjsAttributes(out);
+    // Strip data-original-svg / data-original-text-svg metadata attrs.
+    // These hold the pre-expand element as a raw SVG snippet for the
+    // editor's re-edit flow. The HTML innerHTML serializer doesn't
+    // escape `<` / `>` inside attribute values (HTML is lenient), so
+    // when the result hits the rasterizer's DOMParser in strict
+    // image/svg+xml mode, those raw `<`s inside an attribute look like
+    // a new element opening and the parser silently drops the whole
+    // element. Result: any expanded path (which all carry one of these
+    // attrs) vanishes from the rasterized SVG and never carves the
+    // stamp. Strip them here — the rasterizer doesn't need them.
+    out = out.replace(/\s+data-original-svg="[^"]*"/g, '');
+    out = out.replace(/\s+data-original-text-svg="[^"]*"/g, '');
     out = out.replace(/(<text[^>]*?)font-family=(["'])([^"']*?)\2/gi, (_match, pre, quote, fams) => {
         const found = KNOWN_FONTS.find((f) => fams.toLowerCase().includes(f.toLowerCase()));
         return pre + 'font-family=' + quote + (found || 'Arial') + quote;

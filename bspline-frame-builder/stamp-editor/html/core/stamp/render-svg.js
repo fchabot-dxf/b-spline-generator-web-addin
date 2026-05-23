@@ -40,6 +40,13 @@ export function sanitizeSvgForRaster(svgText) {
         return `<style type="text/css">${fontFaceRules.join('\n')}</style>`;
     });
     out = stripSvgjsAttributes(out);
+    // Strip data-original-svg / data-original-text-svg metadata attrs.
+    // Their HTML-serialized values contain raw `<` and `>` (svg.js's
+    // innerHTML doesn't escape them in attribute values), which breaks
+    // strict XML parsing in prepareSvgForRaster and silently drops the
+    // host element. Editor doesn't need these for rasterization.
+    out = out.replace(/\s+data-original-svg="[^"]*"/g, '');
+    out = out.replace(/\s+data-original-text-svg="[^"]*"/g, '');
     out = out.replace(/(<text[^>]*?)font-family=(["'])([^"']*?)\2/gi, (_match, pre, quote, fams) => {
         const found = KNOWN_FONTS.find((f) => fams.toLowerCase().includes(f.toLowerCase()));
         return pre + 'font-family=' + quote + (found || 'Arial') + quote;
