@@ -7,6 +7,13 @@ export function registerActionTools(editor) {
   bind('editorUndo', () => editor.undo());
   bind('editorRedo', () => editor.redo());
 
+  // Transform attribute management (paired with the on-canvas rotate
+  // and scale handles in select mode). Both no-op when nothing's
+  // selected; flatten silently no-ops for element types it can't
+  // represent (e.g. <text>) — user can Expand text first then flatten.
+  bind('toolResetTransform',   () => editor.resetSelectionTransform());
+  bind('toolFlattenTransform', () => editor.flattenSelectionTransform());
+
   bind('toolClear', () => {
     if (confirm('Clear all?')) {
       editor._sketchLayer.clear();
@@ -33,21 +40,4 @@ export function registerActionTools(editor) {
     if (typeof saveAs === 'function') {
       saveAs(blob, name);
     } else {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = name;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  });
-
-  bind('editorApply', () => {
-    editor._commitText();
-    if (editor._onCommit) editor._onCommit(editor.save());
-  });
-
-  bind('editorCancel', () => {
-    if (editor._onCommit) editor._onCommit(null);
-  });
-}
+      const link = document.cre

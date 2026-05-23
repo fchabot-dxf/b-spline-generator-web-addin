@@ -21,11 +21,29 @@ export function bind(id, type, handler, immediate = false, desc = '') {
             val = e.target.checked;
         } else if (type === 'number') {
             val = parseFloat(e.target.value);
+            // Intermediate states like "" or "." parse to NaN — the user
+            // is mid-edit. Don't propagate NaN to P (it'd echo back
+            // "NaN" into the field via syncUItoParam and wreck the UI).
+            if (Number.isNaN(val)) return;
         } else {
             val = e.target.value;
         }
         handler(val);
     });
+
+    // For number inputs, ALSO listen on 'change' (fires on blur / commit).
+    // syncUItoParam skips writeback while the input is focused, so any
+    // clamping done in the handler (e.g. widthIn capped to 96) is invisible
+    // until the user leaves the field. By re-firing the handler on blur —
+    // when activeElement has moved off the input — syncUItoParam writes
+    // the clamped value back and the field snaps from "200" → "96".
+    if (type === 'number') {
+        el.addEventListener('change', e => {
+            const val = parseFloat(e.target.value);
+            if (Number.isNaN(val)) return;
+            handler(val);
+        });
+    }
     if (immediate) {
         let val = el.value;
         if (type === 'number') val = parseFloat(val);
@@ -63,7 +81,15 @@ export function syncUItoParam(key, value) {
             // initial sync from P state matches user-toggle behaviour.
             input.dispatchEvent(new Event('change'));
         } else {
-            input.value = value;
+            // Do NOT overwrite the input the user is actively typing in.
+            // Otherwise, typing "7." on a number input echoes back
+            // parseFloat("7.")===7, the dot disappears, and the caret
+            // ends up one digit to the left of where the user dropped it.
+            // For sliders / programmatic updates the input is not
+            // focused, so the writeback still happens normally.
+            if (document.activeElement !== input) {
+                input.value = value;
+            }
         }
     }
     const sliderId = SLIDER_PAIRS[key];
@@ -137,45 +163,3 @@ export function initResizer(preview) {
             const aside = document.querySelector('aside');
             startSize = aside ? aside.getBoundingClientRect().width : 0;
         }
-
-        document.body.style.userSelect = 'none';
-        document.body.style.cursor = isMobile ? 'row-resize' : 'col-resize';
-        resizer.setPointerCapture(e.pointerId);
-    });
-
-    resizer.addEventListener('pointermove', (e) => {
-        if (!isResizing) return;
-
-        if (isMobile) {
-            const deltaY = e.clientY - startPos;
-            const newHeight = Math.max(100, Math.min(startSize + deltaY, window.innerHeight - 150));
-            app.style.setProperty('--preview-height', `${newHeight}px`);
-        } else {
-            const deltaX = e.clientX - startPos;
-            const newWidth = Math.max(200, Math.min(startSize + deltaX, window.innerWidth - 200));
-            app.style.setProperty('--sidebar-width', `${newWidth}px`);
-        }
-
-        if (preview) preview._resize();
-    });
-
-    resizer.addEventListener('pointerup', (e) => {
-        isResizing = false;
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        resizer.releasePointerCapture(e.pointerId);
-        if (preview) preview._resize();
-    });
-}
-
-/**
- * Injects mobile-specific viewport fixes (iOS notch/Safari height).
- */
-export function setupMobileViewportHandling() {
-  const fix = () => {
-    const vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', `${vh}px`);
-  };
-  window.addEventListener('resize', fix);
-  fix();
-}

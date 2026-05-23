@@ -203,6 +203,7 @@
       }
     }
   </style>
+  <script src="/fred-host.js" defer></script>
 </head>
 
 
@@ -274,13 +275,16 @@
             <div style="flex:1;">
               <label class="cad-label">Width <span style="color:#ff3b30;font-weight:600;">(X)</span></label>
               <div class="cad-stepper">
-                <input type="number" id="widthIn" value="7" step="any">
+                <!-- min/max match the Ultimate Bee 96"×96" envelope.
+                     step="any" so the browser doesn't reject "7.5";
+                     clamping to [0.1, 96] happens in applyParam(). -->
+                <input type="number" id="widthIn" value="7" step="any" min="0.1" max="96">
               </div>
             </div>
             <div style="flex:1;">
               <label class="cad-label">Height <span style="color:#34c759;font-weight:600;">(Y)</span></label>
               <div class="cad-stepper">
-                <input type="number" id="heightIn" value="9" step="any">
+                <input type="number" id="heightIn" value="9" step="any" min="0.1" max="96">
               </div>
             </div>
           </div>
@@ -1210,6 +1214,23 @@
           <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
           <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
           <button id="toolDelete" class="tool-btn" title="Delete" style="color:#d32f2f;"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg></button>
+          <!-- Reset / Flatten transform — operate on the selection's
+               transform attribute set by the rotate/scale handles.
+               Reset clears it (snaps back to identity); Flatten bakes
+               it into the geometry (d, points, x/y) and then clears
+               the attribute. -->
+          <button id="toolResetTransform" class="tool-btn" title="Reset transform — clear rotation/scale on the selection (back to identity)">
+            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+              <path d="M3 12a9 9 0 1 0 3-6.7"/>
+              <polyline points="3 4 3 9 8 9"/>
+            </svg>
+          </button>
+          <button id="toolFlattenTransform" class="tool-btn" title="Flatten transform — bake rotation/scale into the geometry and clear the transform attribute">
+            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+              <rect x="4" y="4" width="16" height="16" rx="1"/>
+              <path d="M4 12h16M12 4v16"/>
+            </svg>
+          </button>
           <div style="flex:1;"></div>
           <button id="editorUndo" class="tool-btn" title="Undo"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5"/></svg></button>
           <button id="editorRedo" class="tool-btn" title="Redo"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5"/></svg></button>
@@ -1839,40 +1860,3 @@
           <div>Loading...</div>
         </div>
       </div>
-
-      <!-- Bottom selection bar -->
-      <div class="pm-selbar">
-        <div id="fmSelbarInfo" class="pm-selbar-info">No selection</div>
-        <div class="pm-selbar-actions">
-          <button id="fmBtnLoad" class="pm-selbar-btn pm-selbar-btn-primary" disabled
-                  title="Load the selected project (or double-click)">
-            <span style="font-size:14px;">📁</span>
-            Load
-          </button>
-          <button id="fmBtnRename" class="pm-selbar-btn" disabled title="Rename selected">
-            <span class="material-symbols-outlined" style="font-size:14px;">edit</span>
-            Rename
-          </button>
-          <button id="fmBtnDelete" class="pm-selbar-btn pm-selbar-btn-danger" disabled
-                  title="Delete selected (no undo)">
-            <span class="material-symbols-outlined" style="font-size:14px;">delete</span>
-            Delete
-          </button>
-        </div>
-      </div>
-
-      <!-- Status bar -->
-      <div class="pm-status-bar">
-        <span id="fmProjectStatus">--</span>
-        <span id="fmProjectMsg" aria-live="polite"></span>
-      </div>
-
-      <!-- Hidden — the JS still reads this for save/rename name. We populate
-           it via prompts now that the modal toolbar replaced the visible input. -->
-      <input type="hidden" id="fmProjectName">
-    </div>
-  </div>
-
-</body>
-
-</html>

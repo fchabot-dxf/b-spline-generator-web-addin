@@ -229,83 +229,82 @@ function _renderHighlight(editor, el, color, opts) {
 }
 
 export function updateSelectionHighlight(editor) {
+    // Tear down the legacy single-handle if anything still uses it.
     if (editor._selectionHighlight) {
         editor._selectionHighlight.remove();
         editor._selectionHighlight = null;
     }
-    if (!editor._selectedElement) return;
+    if (editor._selectionHighlights) {
+        for (const h of editor._selectionHighlights) {
+            try { h.remove(); } catch (_) {}
+        }
+    }
+    editor._selectionHighlights = [];
+
+    const sel = editor._selectedElements || [];
+    if (!sel.length) return;
     // Hide selection glow in Node Edit mode for clearer point selection.
     if (editor._currentMode === 'node') return;
 
-    editor._selectionHighlight = _renderHighlight(editor, editor._selectedElement, '#ffcc00', {
-        textFillOpacity: 0.1,
-        textStrokeOpacity: 0.5,
-        lineStrokeOpacity: 0.4,
-        back: true,
-    });
+    // Render a yellow halo for each selected element so the user sees
+    // exactly which shapes are in the set (in addition to the combined
+    // bbox + transform handles drawn by updateHandles).
+    for (const el of sel) {
+        const h = _renderHighlight(editor, el, '#ffcc00', {
+            textFillOpacity: 0.1,
+            textStrokeOpacity: 0.5,
+            lineStrokeOpacity: 0.4,
+            back: true,
+        });
+        if (h) editor._selectionHighlights.push(h);
+    }
+    // Keep _selectionHighlight pointing at the primary's halo for any
+    // legacy code that reads it (e.g. updateSelectionHighlight callers
+    // that .remove() it directly).
+    editor._selectionHighlight =
+        editor._selectionHighlights[editor._selectionHighlights.length - 1] || null;
 }
 
 export function select(editor, selectedEl) {
-    if (editor._selectedElement === selectedEl) return;
+    if (!selectedEl) return;
+    const cur = editor._selectedElements || [];
+    if (cur.length === 1 && cur[0] === selectedEl) return;  // idempotent
     editor._deselect();
-    editor._selectedElement = selectedEl;
-
-    if (selectedEl) {
-        const layerSel = getEl('editorLayerSelect');
-        if (layerSel) layerSel.value = selectedEl.attr('data-layer') || "0";
-
-        if (selectedEl.type === 'text') {
-            const f = selectedEl.font();
-            editor._fontFamily = f.family || editor._fontFamily;
-            // font size comes back as a string from SVG.js; force it to a number
-            const parsedSize = parseFloat(f.size);
-            if (!isNaN(parsedSize) && parsedSize > 0) editor._fontSize = parsedSize;
-            // Sync the toolbar inputs so the displayed values match the selected element
-            const ffEl = getEl('editorFontFamily');
-            const fsEl = getEl('editorFontSize');
-            if (ffEl && Array.from(ffEl.options).some(o => o.value === editor._fontFamily)) {
-                ffEl.value = editor._fontFamily;
-            }
-            if (fsEl) fsEl.value = editor._fontSize;
-        } else {
-            editor._strokeWidth = parseFloat(selectedEl.attr('stroke-width')) || editor._strokeWidth;
-        }
-    }
-    
-    if (editor._hoverHighlight) { 
-        editor._hoverHighlight.remove(); 
-        editor._hoverHighlight = null; 
-    }
-    if (editor._hoveredElement) editor._hoveredElement.removeClass('svg-hover');
-    
-    selectedEl.addClass('svg-selected');
-    editor._updateHandles(); 
-    editor._updateSelectionHighlight(); 
-    updateToolbarVisibility(editor);
-    if (editor._onSelect) editor._onSelect(selectedEl);
+    editor._selectedElements = [selectedEl];
+    _afterSelectionChange(editor, selectedEl);
 }
 
-export function setHover(editor, el) {
-    if (editor._hoveredElement === el) return;
-
-    if (editor._hoverHighlight) {
-        editor._hoverHighlight.remove();
-        editor._hoverHighlight = null;
+/** Add `el` to the multi-selection, or remove it if it's already in
+ *  there (shift-click toggle). The most recently added element is
+ *  treated as the primary — toolbar inputs read from it per the
+ *  user's "last clicked wins" preference. */
+export function selectAdd(editor, el) {
+    if (!el) return;
+    const cur = (editor._selectedElements || []).slice();
+    const idx = cur.indexOf(el);
+    if (idx >= 0) {
+        try { el.removeClass('svg-selected'); } catch (_) {}
+        cur.splice(idx, 1);
+        editor._selectedElements = cur;
+        _afterSelectionChange(editor, cur[cur.length - 1] || null);
+        return;
     }
-    if (editor._hoveredElement) editor._hoveredElement.removeClass('svg-hover');
-
-    editor._hoveredElement = el;
-    if (!el || el === editor._selectedElement) return;
-
-    editor._hoverHighlight = _renderHighlight(editor, el, '#0066cc', {
-        textFillOpacity: 0.15,
-        textStrokeOpacity: 0,
-        lineStrokeOpacity: 0.8,
-        back: false,
-    });
-    if (el.type === 'text' && editor._hoverHighlight) {
-        editor._hoverHighlight.attr('pointer-events', 'none');
-    } else if (editor._hoveredElement) {
-        editor._hoveredElement.addClass('svg-hover');
-    }
+    cur.push(el);
+    editor._selectedElements = cur;
+    _afterSelectionChange(editor, el);
 }
+
+/** Replace the selection with a fresh set (marquee finalize). */
+export function selectMany(editor, els) {
+    editor._deselect();
+    const arr = (els || []).filter(Boolean);
+    editor._selectedElements = arr;
+    _afterSelectionChange(editor, arr[arr.length - 1] || null);
+}
+
+/** Shared "after the selection set changed" tail. */
+function _afterSelectionChange(editor, primary) {
+    if (primary) {
+        // Ensure the 'svg-selected' class is on every element in the
+        // set (callers don't have to remember).
+   

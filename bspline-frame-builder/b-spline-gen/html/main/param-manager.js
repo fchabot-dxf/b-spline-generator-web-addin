@@ -56,8 +56,25 @@ export function updateSculptToolButtons() {
   document.getElementById(activeId)?.classList.add('active');
 }
 
+// Hard cap on stock dimensions — matches Ultimate Bee 96"×96" envelope.
+// (Lower bound 0.1 prevents degenerate / divide-by-zero rebuilds.)
+const STOCK_MIN_IN = 0.1;
+const STOCK_MAX_IN = 96;
+
 export function applyParam(key, value) {
   console.log(`[DEBUG] applyParam called: key=${key}, value=${value}`);
+
+  // Clamp stock dimensions BEFORE writing P / echoing UI. Doing this
+  // here (not in the input handler) lets the user freely type "7." or
+  // "0.5" without the clamp ever fighting them mid-keystroke — values
+  // greater than 96 only snap back when the user blurs / commits, at
+  // which point syncUItoParam writes the clamped value.
+  if (key === 'widthIn' || key === 'heightIn') {
+    if (Number.isFinite(value)) {
+      value = Math.min(STOCK_MAX_IN, Math.max(STOCK_MIN_IN, value));
+    }
+  }
+
   updateP(key, value);
   syncUItoParam(key, value);
 
@@ -90,20 +107,4 @@ export function applyParam(key, value) {
   }
 
   if (key === 'stampProfile') {
-    const vBitExtra = document.getElementById('vBitAngleContainer');
-    if (vBitExtra) vBitExtra.style.display = (value === 'vbit' || value === 'adaptive') ? 'block' : 'none';
-  }
-
-  const delay = immediateRebuildParams.includes(key) ? 0 : 200;
-  if (!AppState.isInitializing) {
-    const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-    const gridChanged = nx !== AppState.lastNx || nz !== AppState.lastNz;
-    if (gridChanged || stampMaskParams.includes(key)) {
-      refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
-    } else {
-      scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), delay);
-    }
-    AppState.lastNx = nx;
-    AppState.lastNz = nz;
-  }
-}
+    const vBitExtra = document.getElement

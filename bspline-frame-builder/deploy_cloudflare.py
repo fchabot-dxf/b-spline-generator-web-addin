@@ -101,12 +101,33 @@ if WRANGLER_CMD is None:
                 WRANGLER_CMD = p
                 break
 
-# verify cli exists
+# verify cli exists AND actually runs
+if WRANGLER_CMD is None:
+    print("wrangler CLI could not be located on PATH or in known npm-global paths.")
+    print("Install it with: npm install -g wrangler")
+    exit(1)
+
 try:
-    if WRANGLER_CMD is None: raise Exception("Wrangler not found")
-    subprocess.run([WRANGLER_CMD, "--version"], check=True, capture_output=True)
-except Exception:
-    print("wrangler CLI could not be found. Install it with: npm install -g wrangler")
+    _probe = subprocess.run([WRANGLER_CMD, "--version"],
+                            check=True, capture_output=True, text=True)
+    print(f"Using wrangler at: {WRANGLER_CMD}")
+    print(f"  version: {_probe.stdout.strip() or _probe.stderr.strip()}")
+except subprocess.CalledProcessError as e:
+    print(f"wrangler shim was found at {WRANGLER_CMD} but failed to execute.")
+    print(f"  exit code: {e.returncode}")
+    if e.stdout: print(f"  stdout: {e.stdout.strip()}")
+    if e.stderr: print(f"  stderr: {e.stderr.strip()}")
+    print("  This usually means the wrangler.js path inside the shim is stale")
+    print("  (npm global moved, NVM switched Node versions, or wrangler was uninstalled).")
+    print("  Try: npm install -g wrangler")
+    exit(1)
+except FileNotFoundError as e:
+    print(f"wrangler shim at {WRANGLER_CMD} could not be launched: {e}")
+    print("  The interpreter (node.exe) referenced by the shim is missing.")
+    print("  Check that Node is installed and on PATH (or that NVM points at a valid version).")
+    exit(1)
+except Exception as e:
+    print(f"Unexpected error invoking wrangler at {WRANGLER_CMD}: {e!r}")
     exit(1)
 
 

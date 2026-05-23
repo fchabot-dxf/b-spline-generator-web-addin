@@ -20,6 +20,11 @@ import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallo
 import { on } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import {
+    renderTransformHandles, hitTestHandle,
+    beginTransform, applyTransformDrag,
+} from './editor-transform-handles.js';
+import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 
 /** STROKE diagnostic helper — traces the drawing lifecycle so we can see
  *  which paths drop a pushState. Dual-pipes to Fusion log file so it
@@ -84,11 +89,19 @@ function handleMove(editor, e) {
         return;
     }
 
-    // Drag in progress: node-drag if a node was grabbed, otherwise
-    // element-translate.
+    // Drag in progress:
+    //   transform-handle  > node-drag  > marquee  > element-translate.
     if (editor._isDragging) {
-        if (editor._dragNodeIndex !== -1) dragNode(editor, pt);
-        else if (editor._selectedElement) translateSelection(editor, pt);
+        if (editor._transformState) {
+            applyTransformDrag(editor, editor._transformState, pt, {
+                shift: !!e.shiftKey,
+            });
+            if (editor._transformState.moved) editor._dragMoved = true;
+            return;
+        }
+        if (editor._dragNodeIndex !== -1) { dragNode(editor, pt); return; }
+        if (editor._marqueeStart) { updateMarquee(editor, pt); return; }
+        if ((editor._selectedElements || []).length) translateSelection(editor, pt);
         return;
     }
 
@@ -107,18 +120,34 @@ function handleEnd(editor, e) {
     }
     if (editor._isDragging) {
         editor._isDragging = false;
-        const wasNodeDrag = editor._dragNodeIndex !== -1;
+        const wasNodeDrag  = editor._dragNodeIndex !== -1;
+        const wasTransform = !!editor._transformState;
+        const wasMarquee   = !!editor._marqueeStart;
         if (wasNodeDrag) editor._dragNodeIndex = -1;
+        if (wasTransform) editor._transformState = null;
+
+        if (wasMarquee) {
+            // Pick everything the marquee touched (or no-op for a
+            // click that never moved); never a stroke commit, so no
+            // pushState.
+            finalizeMarquee(editor);
+            editor._dragMoved = false;
+            return;
+        }
+
         // Only push state if the drag actually moved something. A plain
         // click (mousedown→mouseup with no intervening movement) used to
         // emit a noop snapshot every time, padding the undo stack with
         // identical entries and making Ctrl+Z feel like it took multiple
         // presses to undo one stroke. _dragMoved is set true the first
-        // time dragNode/translateSelection mutates the element.
+        // time dragNode/translateSelection/applyTransformDrag mutates an
+        // element.
         if (editor._dragMoved) {
             editor.pushState();
         }
         editor._dragMoved = false;
+        // Re-render handles so they snap to the new bbox post-transform.
+        if (wasTransform) editor._updateHandles();
     }
 }
 
@@ -126,21 +155,62 @@ function handleEnd(editor, e) {
 // ─── Mode handlers ──────────────────────────────────────────────────
 
 const selectHandler = {
-    start(editor, pt) {
+    start(editor, pt, e) {
+        const shift = !!(e && e.shiftKey);
+
+        // Transform handles win over element pick — clicking ON a
+        // handle starts a scale/rotate drag, never a translate. Only
+        // active when there's already a selection (handles aren't drawn
+        // otherwise). beginTransform captures m0 per element.
+        if ((editor._selectedElements || []).length) {
+            const grabbed = hitTestHandle(editor._transformHandles, pt);
+            if (grabbed) {
+                editor._dragMoved = false;
+                editor._isDragging = true;
+                editor._transformState = beginTransform(editor, grabbed, pt);
+                editor._lastDragPt = pt;
+                return;
+            }
+        }
+
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
-        dbg('TEXT-DBG', `handleStart hit-test: ${hit ? `HIT type=${hit.type}` : 'no hit'}`);
+        dbg('TEXT-DBG', `handleStart hit-test: ${hit ? `HIT type=${hit.type}` : 'no hit'}  shift=${shift}`);
         editor._dragMoved = false;
+
         if (hit) {
             editor._isDragging = true;
             editor._lastDragPt = pt;
-            if (editor._selectedElement !== hit) editor._select(hit);
-        } else {
-            editor._deselect();
-            editor._isDragging = true;
-            editor._lastDragPt = pt;
+            if (shift) {
+                // Shift-click toggles the hit element in/out of the set;
+                // hit becomes the primary if it wasn't already in there.
+                editor._selectAdd(hit);
+            } else if (!(editor._selectedElements || []).includes(hit)) {
+                // Plain click on a NEW element replaces the selection.
+                // Clicking inside an already-multiselected group keeps
+                // the group intact so the user can drag the whole thing.
+                editor._select(hit);
+            }
+            return;
         }
+
+        // Empty-canvas click. Shift-click keeps the selection (no-op).
+        // Plain click deselects AND begins a marquee drag — releasing
+        // selects every element whose bbox intersects the marquee rect.
+        if (!shift) editor._deselect();
+        editor._isDragging   = true;
+        editor._lastDragPt   = pt;
+        editor._marqueeStart = { x: pt.x, y: pt.y };
+        editor._marqueeAdditive = shift;   // shift-marquee adds to existing selection
+        editor._marqueeRect  = null;       // created on first move
     },
     hover(editor, pt) {
+        // Suppress element-hover halo while the cursor is on a handle —
+        // avoids two competing visual cues.
+        if ((editor._selectedElements || []).length
+            && hitTestHandle(editor._transformHandles, pt)) {
+            editor._setHover(null);
+            return;
+        }
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
         editor._setHover(hit);
     },
@@ -504,7 +574,12 @@ function translateSelection(editor, pt) {
     const dx = pt.x - editor._lastDragPt.x;
     const dy = pt.y - editor._lastDragPt.y;
     if (dx !== 0 || dy !== 0) editor._dragMoved = true;
-    editor._selectedElement.translate(dx, dy);
+    // Move every element in the multi-selection by the same delta.
+    // SVG.js's .translate composes with the existing transform attr,
+    // so this works correctly on rotated / scaled elements too.
+    for (const el of (editor._selectedElements || [])) {
+        el.translate(dx, dy);
+    }
     editor._updateHandles();
     editor._updateSelectionHighlight();
     editor._lastDragPt = pt;
@@ -600,75 +675,4 @@ function finishDrawing(editor, modeId) {
     editor._select(finalPath);
     // Apply layer state so the newly-appended element picks up the
     // layer-hidden / inactive-layer classes if its layer is toggled off.
-    // Without this, shapes drawn while a layer's visibility is off would
-    // still render. See BUG-04.
-    applyLayerState(editor);
-    _strokeLog(`finishDrawing  COMMIT  modeId=${modeId}  about to pushState  sketchChildren=${editor._sketchLayer.children().toArray().length}`);
-    if (typeof editor.pushState === 'function') editor.pushState();
-    if (editor._onChange) editor._onChange();
-    // First-shape onboarding pointer at the Expand tool (BUG-06).
-    try { maybeShowExpandCallout(editor); } catch (_) {}
-}
-
-
-// ─── Selection handles (node mode) ─────────────────────────────────
-
-export function updateHandles(editor) {
-    if (!editor._handleLayer) return;
-    editor._handleLayer.clear();
-    if (!editor._selectedElement) return;
-    // 'node' mode → diamond handles per anchor. 'select' mode → simple
-    // bounding box so the user can see WHAT is selected (BUG-05).
-    // Any other mode shows nothing.
-    if (editor._currentMode !== 'node' && editor._currentMode !== 'select') return;
-
-    // ── Select mode: draw an axis-aligned bounding box around the element.
-    if (editor._currentMode === 'select') {
-        try {
-            const bb = worldBbox(editor._selectedElement);
-            if (!bb || !Number.isFinite(bb.w) || !Number.isFinite(bb.h)) return;
-            const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
-            const strokeW = view ? Math.max(view.width, view.height) * 0.0025 : 1;
-            editor._handleLayer.rect(bb.w, bb.h)
-                .move(bb.x, bb.y)
-                .fill('none')
-                .stroke({ color: '#ffcc00', width: strokeW, dasharray: `${strokeW * 4},${strokeW * 2}` })
-                .attr('pointer-events', 'none');
-        } catch (_) { /* element gone / no bbox available — leave empty */ }
-        return;
-    }
-
-    const nodes = editor._getNodes(editor._selectedElement);
-    const validNodes = nodes.filter(pt => Number.isFinite(pt.x) && Number.isFinite(pt.y));
-    if (validNodes.length === 0) return;
-
-    // Diamond size: dynamic-tolerance baseline with a model-space floor
-    // so they stay visible on tall/wide viewboxes. The floor is ~1.5%
-    // of the smaller viewport dimension.
-    const r = editor._getDynamicTolerance(5);
-    const view = editor._draw && editor._draw.viewbox ? editor._draw.viewbox() : null;
-    const minR = view ? Math.min(view.width, view.height) * 0.008 : 0;
-    const baseR = Math.max(r, minR);
-
-    validNodes.forEach((pt, i) => {
-        const isDragging = (editor._dragNodeIndex === i);
-        const isHovered = (editor._hoverNodeIndex === i);
-
-        // Idle = cyan, hover = yellow (bigger), drag = red (biggest).
-        const rad = isDragging ? baseR * 3.2 : (isHovered ? baseR * 2.8 : baseR * 2);
-        const hR = rad * 0.7;
-        const fillStr = isDragging ? '#ff3300' : (isHovered ? '#ffcc00' : '#00ffff');
-        const strokeW = (isDragging || isHovered) ? baseR * 0.9 : baseR * 0.4;
-        const strokeC = isDragging ? '#ffffff' : (isHovered ? '#a06b00' : '#0066cc');
-
-        editor._handleLayer.polygon([
-            [pt.x, pt.y - hR],
-            [pt.x + hR, pt.y],
-            [pt.x, pt.y + hR],
-            [pt.x - hR, pt.y],
-        ])
-        .fill(fillStr)
-        .stroke({ color: strokeC, width: strokeW, linejoin: 'round' })
-        .attr('pointer-events', 'none');
-    });
-}
+    // Without this, shapes drawn 

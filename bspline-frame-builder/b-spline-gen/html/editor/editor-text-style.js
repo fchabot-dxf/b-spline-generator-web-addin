@@ -25,10 +25,15 @@ export function setFontFamily(editor, family) {
         const size = parseFloat(editor._editingTextEl.attr('font-size')) || editor._fontSize;
         reanchorTextY(editor._editingTextEl, family, size);
     }
-    if (editor._selectedElement && editor._selectedElement.type === 'text') {
-        editor._selectedElement.font({ family });
-        const size = parseFloat(editor._selectedElement.attr('font-size')) || editor._fontSize;
-        reanchorTextY(editor._selectedElement, family, size);
+    // Fan out across every selected <text>. Non-text elements in the
+    // selection are silently skipped — font props don't apply to them.
+    const texts = (editor._selectedElements || []).filter(el => el && el.type === 'text');
+    if (texts.length) {
+        for (const el of texts) {
+            el.font({ family });
+            const size = parseFloat(el.attr('font-size')) || editor._fontSize;
+            reanchorTextY(el, family, size);
+        }
         if (typeof editor.pushState === 'function') editor.pushState();
         if (editor._onChange) editor._onChange();
     }
@@ -41,10 +46,13 @@ export function setFontSize(editor, size) {
         const family = (editor._editingTextEl.attr('font-family') || editor._fontFamily).replace(/['"]/g, '').trim();
         reanchorTextY(editor._editingTextEl, family, size);
     }
-    if (editor._selectedElement && editor._selectedElement.type === 'text') {
-        editor._selectedElement.font({ size });
-        const family = (editor._selectedElement.attr('font-family') || editor._fontFamily).replace(/['"]/g, '').trim();
-        reanchorTextY(editor._selectedElement, family, size);
+    const texts = (editor._selectedElements || []).filter(el => el && el.type === 'text');
+    if (texts.length) {
+        for (const el of texts) {
+            el.font({ size });
+            const family = (el.attr('font-family') || editor._fontFamily).replace(/['"]/g, '').trim();
+            reanchorTextY(el, family, size);
+        }
         if (typeof editor.pushState === 'function') editor.pushState();
         if (editor._onChange) editor._onChange();
     }
@@ -79,10 +87,4 @@ export function insertSymbol(editor, symbol, fontFamily) {
     const value = input.value || '';
     const start = typeof input.selectionStart === 'number' ? input.selectionStart : value.length;
     const end = typeof input.selectionEnd === 'number' ? input.selectionEnd : start;
-    const nextValue = value.slice(0, start) + symbol + value.slice(end);
-    input.value = nextValue;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    const cursor = start + symbol.length;
-    input.setSelectionRange(cursor, cursor);
-    input.focus();
-}
+    const nextValue = value.slice(0, start) + symbol + value.slice(en
