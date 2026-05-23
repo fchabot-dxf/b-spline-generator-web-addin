@@ -14,7 +14,9 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer, ensureActiveLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer, applyLayerState } from './layers.js';
+import { worldBbox } from './editor-coords.js';
+import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
 import { on } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -330,6 +332,9 @@ function _startAnchorMode(editor, pt) {
     if (editor._currentPath) editor._currentPath.attr('d', `M ${pt.x} ${pt.y}`);
     _ensureAnchorPreview(editor, pt);
     _installAnchorKeyHandler(editor);
+    // Swap the status-hint banner so the user sees the commit/cancel
+    // instructions while in anchor mode. See BUG-02.
+    setEditorStatusHint(ANCHOR_HINT);
     _strokeLog(`_startAnchorMode  firstAnchor=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})`);
 }
 
@@ -392,9 +397,14 @@ function _commitAnchorPath(editor) {
     editor._points      = [];
     editor._isDrawing   = false;
     editor._select(finalPath);
+    // Newly-appended anchor path needs the same layer-class treatment
+    // freehand strokes get in finishDrawing (BUG-04 parity).
+    applyLayerState(editor);
     _strokeLog(`_commitAnchorPath  COMMIT  about to pushState`);
     if (typeof editor.pushState === 'function') editor.pushState();
     if (editor._onChange) editor._onChange();
+    // First-shape onboarding pointer at the Expand tool (BUG-06).
+    try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 
 function _cancelAnchorMode(editor) {
@@ -416,6 +426,10 @@ function _cleanupAnchorMode(editor) {
         window.removeEventListener('keydown', editor._anchorKeyHandler);
         editor._anchorKeyHandler = null;
     }
+    // Restore the regular per-mode hint (usually 'draw' since the user
+    // is still on the pen tool — but defer to the editor's current mode
+    // in case anything switched it out from under us).
+    try { restoreModeHint(editor); } catch (_) {}
 }
 
 function _installAnchorKeyHandler(editor) {
@@ -584,9 +598,16 @@ function finishDrawing(editor, modeId) {
     editor._currentPath = null;
     editor._points = [];
     editor._select(finalPath);
+    // Apply layer state so the newly-appended element picks up the
+    // layer-hidden / inactive-layer classes if its layer is toggled off.
+    // Without this, shapes drawn while a layer's visibility is off would
+    // still render. See BUG-04.
+    applyLayerState(editor);
     _strokeLog(`finishDrawing  COMMIT  modeId=${modeId}  about to pushState  sketchChildren=${editor._sketchLayer.children().toArray().length}`);
     if (typeof editor.pushState === 'function') editor.pushState();
     if (editor._onChange) editor._onChange();
+    // First-shape onboarding pointer at the Expand tool (BUG-06).
+    try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 
 
@@ -596,7 +617,26 @@ export function updateHandles(editor) {
     if (!editor._handleLayer) return;
     editor._handleLayer.clear();
     if (!editor._selectedElement) return;
-    if (editor._currentMode !== 'node') return;
+    // 'node' mode → diamond handles per anchor. 'select' mode → simple
+    // bounding box so the user can see WHAT is selected (BUG-05).
+    // Any other mode shows nothing.
+    if (editor._currentMode !== 'node' && editor._currentMode !== 'select') return;
+
+    // ── Select mode: draw an axis-aligned bounding box around the element.
+    if (editor._currentMode === 'select') {
+        try {
+            const bb = worldBbox(editor._selectedElement);
+            if (!bb || !Number.isFinite(bb.w) || !Number.isFinite(bb.h)) return;
+            const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
+            const strokeW = view ? Math.max(view.width, view.height) * 0.0025 : 1;
+            editor._handleLayer.rect(bb.w, bb.h)
+                .move(bb.x, bb.y)
+                .fill('none')
+                .stroke({ color: '#ffcc00', width: strokeW, dasharray: `${strokeW * 4},${strokeW * 2}` })
+                .attr('pointer-events', 'none');
+        } catch (_) { /* element gone / no bbox available — leave empty */ }
+        return;
+    }
 
     const nodes = editor._getNodes(editor._selectedElement);
     const validNodes = nodes.filter(pt => Number.isFinite(pt.x) && Number.isFinite(pt.y));

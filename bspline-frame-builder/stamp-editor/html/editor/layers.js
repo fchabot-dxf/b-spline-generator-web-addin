@@ -333,9 +333,21 @@ function _makeLayerRow(editor, layer, isActive) {
   del.type = 'button';
   del.className = 'layer-delete';
   del.textContent = '×';
-  del.title = 'Delete layer';
+  // Disable delete when this is the only layer — removing the last layer
+  // would leave the editor in an invalid state with no editable target
+  // until the user manually adds one back. See BUG-12.
+  const isOnlyLayer = (Array.isArray(editor._layers) && editor._layers.length <= 1);
+  if (isOnlyLayer) {
+    del.disabled = true;
+    del.title = 'Cannot delete the only remaining layer';
+    del.style.opacity = '0.4';
+    del.style.cursor = 'not-allowed';
+  } else {
+    del.title = 'Delete layer';
+  }
   del.addEventListener('click', (e) => {
     e.stopPropagation();
+    if (del.disabled) return;
     _confirmAndRemove(editor, layer);
   });
 
@@ -434,11 +446,25 @@ function _syncActiveLabel(editor) {
 // ----------- Init -----------
 
 export function initLayerControls(editor) {
-  // Start with an empty roster — first draw action will auto-add Layer 1
-  // (wired in task 2). Until then, the "+ Add Layer" button is the
-  // explicit way to start.
   if (!Array.isArray(editor._layers)) editor._layers = [];
   if (editor._activeLayer === undefined) editor._activeLayer = null;
+
+  // Pre-create "Layer 1" synchronously so the legacy <select
+  // id="editorLayerSelect"> has an option from the moment the editor
+  // opens. Without this, callers (incl. external tooling) that read
+  // .options on the first DOM tick saw an empty list — the previous
+  // design lazily added Layer 1 on first draw via ensureActiveLayer().
+  // See BUG-10.
+  //
+  // Safe alongside open()/restore: editor-io.js explicitly resets
+  // `_layers = []` and rebuilds the roster from the loaded SVG, so this
+  // placeholder is simply replaced when a saved project is opened.
+  // skipUndo:true prevents the auto-create from polluting the undo stack
+  // with a noop snapshot before the user has done anything.
+  if (editor._layers.length === 0) {
+    const layer = addLayer(editor, { skipUndo: true });
+    editor._activeLayer = layer.id;
+  }
 
   const addBtn = document.getElementById('editorAddLayer');
   if (addBtn) {
