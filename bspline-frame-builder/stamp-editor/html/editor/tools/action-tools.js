@@ -7,6 +7,11 @@ export function registerActionTools(editor) {
   bind('editorUndo', () => editor.undo());
   bind('editorRedo', () => editor.redo());
 
+  // Transform attribute helpers (paired with the on-canvas rotate/scale
+  // handles). Both no-op when nothing's selected.
+  bind('toolResetTransform',   () => editor.resetSelectionTransform());
+  bind('toolFlattenTransform', () => editor.flattenSelectionTransform());
+
   bind('toolClear', () => {
     if (confirm('Clear all?')) {
       editor._sketchLayer.clear();

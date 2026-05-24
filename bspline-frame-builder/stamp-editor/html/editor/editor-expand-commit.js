@@ -39,6 +39,11 @@ function _cLog(msg) {
     try { fusLog('[EXPAND-COMMIT] ' + msg); } catch (_) {}
 }
 
+/** Snapshot a sketch element as an SVG markup string, with transient
+ *  selection / hover classes removed. Uses clone() so the original
+ *  isn't mutated. svg.js's clone() inserts the clone into the parent
+ *  by default — the explicit remove() prevents a ghost from leaking
+ *  into the sketch layer. */
 function _snapshotMarkup(el) {
     let tmp;
     try { tmp = el.clone(); } catch (_) { return el.svg(); }
@@ -50,6 +55,28 @@ function _snapshotMarkup(el) {
     return s;
 }
 
+/**
+ * Commit an expanded path. Returns the new svg.js element on success,
+ * null on failure (caller should typically `return false` to let the
+ * orchestrator fall through to the next strategy).
+ *
+ * Options:
+ *   - commit       (default true): call editor.pushState() at the end.
+ *   - isText       (default false): if true, prefer data-original-text-svg
+ *                  over data-original-svg (text-expanded re-edit needs the
+ *                  sentinel to know the source was a <text>).
+ *   - extraAttrs   (object, optional): extra attributes to set on the new
+ *                  path before the original is removed (e.g. for debugging).
+ *
+ * Metadata preservation rules:
+ *   1. If the original already carries data-original-text-svg or
+ *      data-original-svg (i.e. we're re-expanding an already-expanded
+ *      element), pass that through unchanged.
+ *   2. Otherwise, snapshot the original via clone() (with selection /
+ *      hover classes stripped) and store it as
+ *      data-original-text-svg for text expansions,
+ *      data-original-svg for everything else.
+ */
 export function commitExpandedPath(editor, originalEl, d, options) {
     const opts = options || {};
     const commit = opts.commit !== false;
@@ -73,8 +100,12 @@ export function commitExpandedPath(editor, originalEl, d, options) {
         return null;
     }
 
+    // Clear transform — it's been baked into the path's d coords.
     expanded.attr('transform', null);
 
+    // Carry forward existing metadata if the original came from a
+    // previous expansion. Otherwise snapshot fresh, picking the
+    // attribute that matches this strategy's input type.
     const carriedText = originalEl.attr('data-original-text-svg');
     const carriedSvg  = originalEl.attr('data-original-svg');
     if (carriedText) {

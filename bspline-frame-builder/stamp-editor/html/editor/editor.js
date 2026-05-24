@@ -9,7 +9,8 @@ import { initText, setFontFamily, setFontSize } from './editor-text-style.js';
 import { fitCurve, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance, getNodes, getNearbyElement } from './editor-hit.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
-import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select } from './editor-ui.js';
+import { resetTransform, flattenTransform } from './editor-transform-handles.js';
+import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select, selectAdd, selectMany } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
@@ -67,7 +68,12 @@ export class VectorEditor {
         this._pendingExpandRefresh = false;
         this._expandRefreshTimer = null;
 
-        this._selectedElement = null;
+        // Multi-selection is the source of truth. _selectedElement is
+        // a getter/setter alias (primary = LAST clicked, matching the
+        // 'last clicked wins' UX). All legacy `editor._selectedElement = X`
+        // writes funnel through the setter and replace the selection;
+        // multi-aware code uses editor._selectAdd / editor._selectMany.
+        this._selectedElements = [];
         this._hoveredElement = null;
         this._isDrawing = false;
         this._currentPath = null;
@@ -81,9 +87,27 @@ export class VectorEditor {
         this._isClickMode = false;
         this._dragDist = 0;
         this._activeLayer = '0';
+
+        // Transform handles state: records produced by renderTransform-
+        // Handles each updateHandles cycle, and per-drag capture on grab.
+        this._transformHandles = [];
+        this._transformState = null;
         
         this._isSnapping = false;
         this._snapSize = 2.0;
+    }
+
+    /** Primary selection — the most-recently clicked element. Legacy
+     *  reads of editor._selectedElement keep working via this getter. */
+    get _selectedElement() {
+        const arr = this._selectedElements;
+        return (arr && arr.length) ? arr[arr.length - 1] : null;
+    }
+    /** Setter is the 'replace selection' path used by every legacy
+     *  call site. Multi-aware code should call _selectAdd / _selectMany. */
+    set _selectedElement(el) {
+        if (el === null || el === undefined) this._selectedElements = [];
+        else this._selectedElements = [el];
     }
 
     initEditor(containerId, backgroundCanvasId, onChange, onCommit, onSelect) {
@@ -133,20 +157,22 @@ export class VectorEditor {
     sync3DBackground() { return sync3DBackground(this); }
     
     setMode(mode) { return setMode(this, mode); }
-    setStrokeColor(color) { 
+    setStrokeColor(color) {
         this._strokeColor = color;
-        if (this._selectedElement) {
-            this._selectedElement.stroke({ color });
-            if (this._selectedElement.type === 'text') this._selectedElement.fill(color);
-            this.pushState();
+        const sel = this._selectedElements;
+        if (!sel || !sel.length) return;
+        for (const el of sel) {
+            el.stroke({ color });
+            if (el.type === 'text') el.fill(color);
         }
+        this.pushState();
     }
-    setStrokeWidth(w) { 
+    setStrokeWidth(w) {
         this._strokeWidth = w;
-        if (this._selectedElement) {
-            this._selectedElement.stroke({ width: w });
-            this._updateSelectionHighlight();
-        }
+        const sel = this._selectedElements;
+        if (!sel || !sel.length) return;
+        for (const el of sel) el.stroke({ width: w });
+        this._updateSelectionHighlight();
     }
     setFontFamily(f) { return setFontFamily(this, f); }
     setFontSize(s) { return setFontSize(this, s); }
@@ -155,6 +181,42 @@ export class VectorEditor {
         this._isSnapping = !this._isSnapping;
         updateToolbarVisibility(this); // Refresh status bar styles
         return this._isSnapping;
+    }
+
+    /** Clear the transform attribute on every selected element. */
+    resetSelectionTransform() {
+        const sel = this._selectedElements;
+        if (!sel || !sel.length) return false;
+        let changedAny = false;
+        for (const el of sel) { if (resetTransform(el)) changedAny = true; }
+        if (changedAny) {
+            this._updateHandles();
+            this._updateSelectionHighlight();
+            this.pushState();
+            if (this._onChange) this._onChange();
+        }
+        return changedAny;
+    }
+
+    /** Bake every selected element's transform into its geometry. */
+    flattenSelectionTransform() {
+        const sel = this._selectedElements;
+        if (!sel || !sel.length) return false;
+        let anyPromoted = false, anyFlat = false;
+        for (const el of sel) {
+            const wasType = el.type;
+            const ok = flattenTransform(el);
+            if (!ok) continue;
+            anyFlat = true;
+            if (wasType === 'rect' || wasType === 'circle' || wasType === 'ellipse') anyPromoted = true;
+        }
+        if (!anyFlat) return false;
+        if (anyPromoted) this._deselect();
+        this._updateHandles();
+        this._updateSelectionHighlight();
+        this.pushState();
+        if (this._onChange) this._onChange();
+        return true;
     }
 
     _snap(pt) {

@@ -80,7 +80,17 @@ export async function expandShape(editor, el, options) {
           ' outerPts=' + (offsets.outer ? offsets.outer.length : 'N/A') +
           ' innerPts=' + (offsets.inner ? offsets.inner.length : 'N/A'));
 
+    // Snapshot sketch-layer children BEFORE we modify anything so we can
+    // tell whether something else wipes the layer during our async waits.
+    const childrenBefore = editor._sketchLayer.children().toArray().length;
+    _xLog('await unionMod ... childrenBefore=' + childrenBefore);
+
     const unionMod = await _loadUnionMod();
+    _xLog('unionMod loaded=' + (!!unionMod) +
+          ' hasUnion=' + !!(unionMod && unionMod.unionSelfIntersecting) +
+          ' hasDiff=' + !!(unionMod && unionMod.differenceForAnnulus) +
+          ' childrenAfterAwait=' + editor._sketchLayer.children().toArray().length +
+          ' elStillInDom=' + (el.node && el.node.parentNode ? 'yes' : 'no'));
 
     let geoD = null;
     let geoDSource = 'none';
@@ -88,19 +98,23 @@ export async function expandShape(editor, el, options) {
         if (unionMod && unionMod.unionSelfIntersecting) {
             geoD = await unionMod.unionSelfIntersecting(offsets.loop);
             if (geoD) geoDSource = 'open-union';
+            _xLog('open-union returned dLen=' + (geoD ? geoD.length : 'null'));
         }
         if (!geoD) {
             geoD = ringToPathData(offsets.loop);
             geoDSource = 'open-fallback';
+            _xLog('open-fallback ringToPathData dLen=' + geoD.length);
         }
     } else if (offsets.kind === 'closed') {
         if (unionMod && unionMod.differenceForAnnulus) {
             geoD = await unionMod.differenceForAnnulus(offsets.outer, offsets.inner);
             if (geoD) geoDSource = 'closed-diff';
+            _xLog('closed-diff returned dLen=' + (geoD ? geoD.length : 'null'));
         }
         if (!geoD) {
             geoD = ringToPathData(offsets.outer) + ' ' + ringToPathData(offsets.inner);
             geoDSource = 'closed-fallback';
+            _xLog('closed-fallback two-loop dLen=' + geoD.length);
         }
     }
 

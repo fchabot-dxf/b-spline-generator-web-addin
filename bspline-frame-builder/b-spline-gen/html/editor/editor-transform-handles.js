@@ -357,4 +357,60 @@ function _bakeMatrixIntoPath(pathEl, m) {
     const arr = new SVG.PathArray(pathEl.attr('d'));
     arr.forEach(seg => {
         for (let i = 1; i < seg.length; i += 2) {
-            if (typeof seg[i]
+            if (typeof seg[i] === 'number' && typeof seg[i + 1] === 'number') {
+                const p = _xform(m, seg[i], seg[i + 1]);
+                seg[i] = p.x;
+                seg[i + 1] = p.y;
+            }
+        }
+    });
+    pathEl.attr('d', arr.toString());
+}
+
+/**
+ * Convert a rect / circle / ellipse to a path `d` string. Used by
+ * flattenTransform before baking a non-identity matrix — primitives
+ * can't carry rotation/skew in their native attributes, so we promote
+ * them to a path first and then bake the matrix into the d.
+ *
+ * Circle and ellipse become two half-arcs (sweep=0) to close cleanly.
+ * Returns '' if the geometry would be degenerate (zero size) or the
+ * element type isn't a supported primitive.
+ */
+function _primitiveToPathData(el) {
+    if (!el || typeof el.attr !== 'function') return '';
+    const type = el.type;
+
+    if (type === 'rect') {
+        const x = +el.attr('x') || 0;
+        const y = +el.attr('y') || 0;
+        const w = +el.attr('width')  || 0;
+        const h = +el.attr('height') || 0;
+        if (w <= 0 || h <= 0) return '';
+        return 'M ' + x + ' ' + y
+             + ' L ' + (x + w) + ' ' + y
+             + ' L ' + (x + w) + ' ' + (y + h)
+             + ' L ' + x + ' ' + (y + h) + ' Z';
+    }
+
+    if (type === 'circle') {
+        const cx = +el.attr('cx') || 0;
+        const cy = +el.attr('cy') || 0;
+        const r  = +el.attr('r')  || 0;
+        if (r <= 0) return '';
+        return 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 1 0 ' + (cx + r) + ' ' + cy
+             + ' A ' + r + ' ' + r + ' 0 1 0 ' + (cx - r) + ' ' + cy + ' Z';
+    }
+
+    if (type === 'ellipse') {
+        const cx = +el.attr('cx') || 0;
+        const cy = +el.attr('cy') || 0;
+        const rx = +el.attr('rx') || 0;
+        const ry = +el.attr('ry') || 0;
+        if (rx <= 0 || ry <= 0) return '';
+        return 'M ' + (cx - rx) + ' ' + cy + ' A ' + rx + ' ' + ry + ' 0 1 0 ' + (cx + rx) + ' ' + cy
+             + ' A ' + rx + ' ' + ry + ' 0 1 0 ' + (cx - rx) + ' ' + cy + ' Z';
+    }
+
+    return '';
+}
