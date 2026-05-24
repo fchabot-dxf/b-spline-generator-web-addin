@@ -17,6 +17,7 @@ const MODE_HINTS = {
   rect:   'Rectangle — drag from one corner to the opposite corner.',
   circle: 'Circle — drag from center outward.',
   expand: 'Expand — use the Detail input + EXPAND button in the top bar to offset/outline your paths.',
+  erase:  'Eraser — drag through shapes to cut them. Filled shapes get clipped; open strokes split at the cut (endcaps preserved). Width follows the stroke width.',
 };
 
 // Anchor-mode hint replaces the pen mode hint while the user is actively
@@ -302,9 +303,70 @@ export function selectMany(editor, els) {
     _afterSelectionChange(editor, arr[arr.length - 1] || null);
 }
 
-/** Shared "after the selection set changed" tail. */
+/** Shared "after the selection set changed" tail. Syncs toolbar to
+ *  the primary, re-renders highlights + handles, fires onSelect. */
 function _afterSelectionChange(editor, primary) {
     if (primary) {
         // Ensure the 'svg-selected' class is on every element in the
         // set (callers don't have to remember).
-   
+        for (const el of editor._selectedElements) {
+            try { el.addClass('svg-selected'); } catch (_) {}
+        }
+        const layerSel = getEl('editorLayerSelect');
+        if (layerSel) layerSel.value = primary.attr('data-layer') || "0";
+
+        if (primary.type === 'text') {
+            const f = primary.font();
+            editor._fontFamily = f.family || editor._fontFamily;
+            const parsedSize = parseFloat(f.size);
+            if (!isNaN(parsedSize) && parsedSize > 0) editor._fontSize = parsedSize;
+            const ffEl = getEl('editorFontFamily');
+            const fsEl = getEl('editorFontSize');
+            if (ffEl && Array.from(ffEl.options).some(o => o.value === editor._fontFamily)) {
+                ffEl.value = editor._fontFamily;
+            }
+            if (fsEl) fsEl.value = editor._fontSize;
+        } else {
+            editor._strokeWidth = parseFloat(primary.attr('stroke-width')) || editor._strokeWidth;
+        }
+    }
+
+    if (editor._hoverHighlight) {
+        editor._hoverHighlight.remove();
+        editor._hoverHighlight = null;
+    }
+    if (editor._hoveredElement) editor._hoveredElement.removeClass('svg-hover');
+
+    editor._updateHandles();
+    editor._updateSelectionHighlight();
+    updateToolbarVisibility(editor);
+    if (editor._onSelect) editor._onSelect(primary);
+}
+
+export function setHover(editor, el) {
+    if (editor._hoveredElement === el) return;
+
+    if (editor._hoverHighlight) {
+        editor._hoverHighlight.remove();
+        editor._hoverHighlight = null;
+    }
+    if (editor._hoveredElement) editor._hoveredElement.removeClass('svg-hover');
+
+    editor._hoveredElement = el;
+    // Suppress hover halo over any element already in the selection —
+    // not just the primary — so the cyan ring doesn't stack on top of
+    // the yellow halo for every other shape in a multi-select.
+    if (!el || (editor._selectedElements || []).includes(el)) return;
+
+    editor._hoverHighlight = _renderHighlight(editor, el, '#0066cc', {
+        textFillOpacity: 0.15,
+        textStrokeOpacity: 0,
+        lineStrokeOpacity: 0.8,
+        back: false,
+    });
+    if (el.type === 'text' && editor._hoverHighlight) {
+        editor._hoverHighlight.attr('pointer-events', 'none');
+    } else if (editor._hoveredElement) {
+        editor._hoveredElement.addClass('svg-hover');
+    }
+}

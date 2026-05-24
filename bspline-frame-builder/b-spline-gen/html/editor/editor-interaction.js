@@ -25,10 +25,8 @@ import {
     beginTransform, applyTransformDrag,
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
+import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 
-/** STROKE diagnostic helper — traces the drawing lifecycle so we can see
- *  which paths drop a pushState. Dual-pipes to Fusion log file so it
- *  shows up in b_spline_gen_log.txt regardless of window.__editorDebug. */
 function _strokeLog(msg) {
     dbg('STROKE', msg);
     try { fusLog(`[STROKE] ${msg}`); } catch (_) {}
@@ -37,31 +35,24 @@ function _strokeLog(msg) {
 
 export function initInteraction(editor) {
     const svgNode = editor._draw.node;
-
     on(svgNode, 'mousedown', (e) => handleStart(editor, e));
     on(window,  'mousemove', (e) => handleMove(editor, e));
     on(window,  'mouseup',   (e) => handleEnd(editor, e));
-    // Double-click on a text element opens it for editing (any mode).
     on(svgNode, 'dblclick',  (e) => handleDblClick(editor, e));
-
     on(svgNode, 'touchstart', (e) => handleStart(editor, e), { passive: false });
     on(window,  'touchmove',  (e) => handleMove(editor, e),  { passive: false });
     on(window,  'touchend',   (e) => handleEnd(editor, e));
 }
 
 function handleDblClick(editor, e) {
-    // In anchor mode, the second click of a double-click commits the path.
     if (editor._anchorMode && editor._currentMode === 'draw') {
-        e.preventDefault();
-        e.stopPropagation();
-        _commitAnchorPath(editor);
-        return;
+        e.preventDefault(); e.stopPropagation();
+        _commitAnchorPath(editor); return;
     }
     const pt = editor._getMousePoint(e);
     const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
     if (hit && hit.type === 'text') {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         if (editor._currentMode !== 'text') editor.setMode('text');
         beginTextEdit(editor, hit);
     }
@@ -69,10 +60,7 @@ function handleDblClick(editor, e) {
 
 function handleStart(editor, e) {
     dbg('TEXT-DBG', `handleStart fired: type=${e.type} mode=${editor._currentMode} hasEditingText=${!!editor._editingTextEl} ts=${Math.round(e.timeStamp)} target=<${e.target?.tagName}>`);
-    if (e.type === 'touchstart' && e.touches.length > 1) {
-        dbg('TEXT-DBG', 'handleStart: multi-touch, returning');
-        return;
-    }
+    if (e.type === 'touchstart' && e.touches.length > 1) return;
     const pt = editor._snap(editor._getMousePoint(e));
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
@@ -80,22 +68,14 @@ function handleStart(editor, e) {
 
 function handleMove(editor, e) {
     const pt = editor._snap(editor._getMousePoint(e));
-
-    // Drawing in progress: stay in update-mode regardless of which tool
-    // the user clicked since the drag began.
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         if (handler.update) handler.update(editor, pt);
         return;
     }
-
-    // Drag in progress:
-    //   transform-handle  > node-drag  > marquee  > element-translate.
     if (editor._isDragging) {
         if (editor._transformState) {
-            applyTransformDrag(editor, editor._transformState, pt, {
-                shift: !!e.shiftKey,
-            });
+            applyTransformDrag(editor, editor._transformState, pt, { shift: !!e.shiftKey });
             if (editor._transformState.moved) editor._dragMoved = true;
             return;
         }
@@ -104,8 +84,6 @@ function handleMove(editor, e) {
         if ((editor._selectedElements || []).length) translateSelection(editor, pt);
         return;
     }
-
-    // Idle hover.
     const handler = getModeHandler(editor._currentMode);
     if (handler.hover) handler.hover(editor, pt);
 }
@@ -113,9 +91,8 @@ function handleMove(editor, e) {
 function handleEnd(editor, e) {
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
-        _strokeLog(`handleEnd  isDrawing=true  mode=${editor._currentMode}  hasFinish=${!!handler.finish}  hasCurrentPath=${!!editor._currentPath}`);
+        _strokeLog(`handleEnd  isDrawing=true  mode=${editor._currentMode}  hasFinish=${!!handler.finish}`);
         if (handler.finish) handler.finish(editor);
-        else _strokeLog(`handleEnd  WARNING: no finish handler for mode=${editor._currentMode} — stroke may be orphaned (path stays in DOM, no pushState fires)`);
         return;
     }
     if (editor._isDragging) {
@@ -125,28 +102,13 @@ function handleEnd(editor, e) {
         const wasMarquee   = !!editor._marqueeStart;
         if (wasNodeDrag) editor._dragNodeIndex = -1;
         if (wasTransform) editor._transformState = null;
-
         if (wasMarquee) {
-            // Pick everything the marquee touched (or no-op for a
-            // click that never moved); never a stroke commit, so no
-            // pushState.
             finalizeMarquee(editor);
             editor._dragMoved = false;
             return;
         }
-
-        // Only push state if the drag actually moved something. A plain
-        // click (mousedown→mouseup with no intervening movement) used to
-        // emit a noop snapshot every time, padding the undo stack with
-        // identical entries and making Ctrl+Z feel like it took multiple
-        // presses to undo one stroke. _dragMoved is set true the first
-        // time dragNode/translateSelection/applyTransformDrag mutates an
-        // element.
-        if (editor._dragMoved) {
-            editor.pushState();
-        }
+        if (editor._dragMoved) editor.pushState();
         editor._dragMoved = false;
-        // Re-render handles so they snap to the new bbox post-transform.
         if (wasTransform) editor._updateHandles();
     }
 }
@@ -157,11 +119,6 @@ function handleEnd(editor, e) {
 const selectHandler = {
     start(editor, pt, e) {
         const shift = !!(e && e.shiftKey);
-
-        // Transform handles win over element pick — clicking ON a
-        // handle starts a scale/rotate drag, never a translate. Only
-        // active when there's already a selection (handles aren't drawn
-        // otherwise). beginTransform captures m0 per element.
         if ((editor._selectedElements || []).length) {
             const grabbed = hitTestHandle(editor._transformHandles, pt);
             if (grabbed) {
@@ -172,56 +129,32 @@ const selectHandler = {
                 return;
             }
         }
-
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
-        dbg('TEXT-DBG', `handleStart hit-test: ${hit ? `HIT type=${hit.type}` : 'no hit'}  shift=${shift}`);
         editor._dragMoved = false;
-
         if (hit) {
             editor._isDragging = true;
             editor._lastDragPt = pt;
-            if (shift) {
-                // Shift-click toggles the hit element in/out of the set;
-                // hit becomes the primary if it wasn't already in there.
-                editor._selectAdd(hit);
-            } else if (!(editor._selectedElements || []).includes(hit)) {
-                // Plain click on a NEW element replaces the selection.
-                // Clicking inside an already-multiselected group keeps
-                // the group intact so the user can drag the whole thing.
-                editor._select(hit);
-            }
+            if (shift) editor._selectAdd(hit);
+            else if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
             return;
         }
-
-        // Empty-canvas click. Shift-click keeps the selection (no-op).
-        // Plain click deselects AND begins a marquee drag — releasing
-        // selects every element whose bbox intersects the marquee rect.
         if (!shift) editor._deselect();
-        editor._isDragging   = true;
-        editor._lastDragPt   = pt;
-        editor._marqueeStart = { x: pt.x, y: pt.y };
-        editor._marqueeAdditive = shift;   // shift-marquee adds to existing selection
-        editor._marqueeRect  = null;       // created on first move
+        editor._isDragging      = true;
+        editor._lastDragPt      = pt;
+        editor._marqueeStart    = { x: pt.x, y: pt.y };
+        editor._marqueeAdditive = shift;
+        editor._marqueeRect     = null;
     },
     hover(editor, pt) {
-        // Suppress element-hover halo while the cursor is on a handle —
-        // avoids two competing visual cues.
         if ((editor._selectedElements || []).length
             && hitTestHandle(editor._transformHandles, pt)) {
-            editor._setHover(null);
-            return;
+            editor._setHover(null); return;
         }
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
         editor._setHover(hit);
     },
 };
 
-/**
- * Node mode owns its own click flow: nodes first, then path-body to
- * (re-)select an element, never element-translate, never deselect on
- * empty-space click. This keeps the node-edit context stable while the
- * user works on a path.
- */
 const nodeHandler = {
     start(editor, pt) {
         if (editor._selectedElement) {
@@ -233,56 +166,31 @@ const nodeHandler = {
                 return;
             }
         }
-        // Missed all nodes — try to (re-)select the path under the cursor.
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
         if (hit && hit !== editor._selectedElement) editor._select(hit);
-        // Whether we hit a path or empty space, do NOT initiate an
-        // element-translate drag and do NOT deselect.
     },
     hover(editor, pt) {
-        // Without a selection, fall back to the standard element-hover
-        // halo so the user can see what they're about to pick.
         if (!editor._selectedElement) {
             const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
-            editor._setHover(hit);
-            return;
+            editor._setHover(hit); return;
         }
-        // With a selection: prioritize node hit-test (so the diamond
-        // lights up), suppress element-hover on the selected path.
         const hitIdx = findNodeAt(editor, pt);
         if (editor._hoverNodeIndex !== hitIdx) {
             editor._hoverNodeIndex = hitIdx;
             editor._updateHandles();
         }
         if (hitIdx === -1) {
-            // Off all nodes — show element-hover for OTHER elements
-            // (re-select hint) but not the selected one.
             const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
             editor._setHover(hit && hit !== editor._selectedElement ? hit : null);
-        } else {
-            editor._setHover(null);
-        }
+        } else editor._setHover(null);
     },
 };
 
-/**
- * Text mode: clicking an existing text picks it up for editing,
- * everything else places a new text at the click point.
- */
 const textHandler = {
     start(editor, pt, e) {
         const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
-        if (hit && hit.type === 'text') {
-            dbg('TEXT-DBG', 'text-mode start: hit text → beginTextEdit');
-            beginTextEdit(editor, hit);
-            return;
-        }
-        if (hit) {
-            dbg('TEXT-DBG', 'text-mode start: hit non-text → startTextAt');
-            editor._deselect();
-        } else {
-            dbg('TEXT-DBG', 'text-mode start: no hit → startTextAt');
-        }
+        if (hit && hit.type === 'text') { beginTextEdit(editor, hit); return; }
+        if (hit) editor._deselect();
         startTextAt(editor, pt, e);
     },
     hover(editor, pt) {
@@ -291,12 +199,6 @@ const textHandler = {
     },
 };
 
-/**
- * Drawing tools (freehand pen, line, rect, circle) all share a
- * start→update→finish lifecycle; the difference is just the SVG.js
- * primitive used and how the live-preview shape responds to mouse
- * movement.
- */
 function makeDrawingHandler(modeId) {
     return {
         start(editor, pt) {
@@ -304,92 +206,48 @@ function makeDrawingHandler(modeId) {
             editor._isDrawing = true;
             editor._points = [[pt.x, pt.y]];
             editor._currentPath = createDrawingShape(editor, modeId, pt);
-            _strokeLog(`handler.start  modeId=${modeId}  pt=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})  pathCreated=${!!editor._currentPath}  sketchChildren=${editor._sketchLayer.children().toArray().length}`);
         },
-        update(editor, pt) {
-            updateDrawingShape(editor, modeId, pt);
-        },
-        finish(editor) {
-            finishDrawing(editor, modeId);
-        },
+        update(editor, pt) { updateDrawingShape(editor, modeId, pt); },
+        finish(editor) { finishDrawing(editor, modeId); },
     };
 }
 
-/**
- * Anchor-click pen handler for 'draw' mode.
- *
- * Intent detection (per gesture):
- *   • Click (mouse barely moves < threshold) → place anchor point.
- *     First click enters anchor mode; subsequent clicks add anchors.
- *     Double-click or Enter key commits the path; Escape cancels.
- *   • Drag (mouse moves beyond threshold before mouseup) → freehand
- *     stroke, exactly like the previous behaviour.
- *
- * Anchor state lives on the editor instance:
- *   _anchorMode        {boolean}  true while collecting anchor points
- *   _anchorPts         {Array}    [[x,y], …]
- *   _anchorDownPt      {{x,y}}    position of the most-recent mousedown
- *   _anchorFreehand    {boolean}  true once drag threshold is exceeded
- *   _anchorPreviewLine {SVG.Line} dashed rubberband from last anchor
- *   _anchorKeyHandler  {Function} keydown listener ref (for removal)
- */
 const drawHandler = {
     start(editor, pt, e) {
-        // Clean up orphaned anchor state (e.g. mode was switched mid-path
-        // via a keyboard shortcut that bypassed _cancelDrawing).
         if (editor._anchorPreviewLine || editor._anchorKeyHandler) {
             _cleanupAnchorMode(editor);
             editor._currentPath = null;
             editor._anchorPts   = [];
         }
-
-        if (editor._anchorMode) {
-            // Already collecting anchors — record where mousedown fired.
-            editor._anchorDownPt = pt;
-            return;
-        }
-
-        // Fresh start: create the live path; decide freehand vs anchor on mouseup.
+        if (editor._anchorMode) { editor._anchorDownPt = pt; return; }
         editor._deselect();
         editor._isDrawing      = true;
         editor._anchorDownPt   = pt;
         editor._anchorFreehand = false;
         editor._points         = [[pt.x, pt.y]];
         editor._currentPath    = createDrawingShape(editor, 'draw', pt);
-        _strokeLog(`drawHandler.start  pt=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})  pathCreated=${!!editor._currentPath}`);
     },
     update(editor, pt) {
-        if (editor._anchorMode) {
-            _updateAnchorPreview(editor, pt);
-            return;
-        }
+        if (editor._anchorMode) { _updateAnchorPreview(editor, pt); return; }
         if (!editor._anchorFreehand) {
             const dp = editor._anchorDownPt;
             if (dp) {
                 const dist = Math.hypot(pt.x - dp.x, pt.y - dp.y);
-                if (dist > editor._getDynamicTolerance(3)) {
-                    editor._anchorFreehand = true;
-                }
+                if (dist > editor._getDynamicTolerance(3)) editor._anchorFreehand = true;
             }
         }
-        if (editor._anchorFreehand) {
-            updateDrawingShape(editor, 'draw', pt);
-        }
+        if (editor._anchorFreehand) updateDrawingShape(editor, 'draw', pt);
     },
     finish(editor) {
         if (editor._anchorMode) {
-            // Mouse-up in anchor mode → place anchor at the mousedown position.
             const pt = editor._anchorDownPt;
             if (pt) _addAnchorPoint(editor, pt);
-            // Keep _isDrawing = true so subsequent events keep routing here.
             return;
         }
         if (editor._anchorFreehand) {
-            // User dragged — commit as a normal freehand stroke.
             editor._anchorFreehand = false;
             finishDrawing(editor, 'draw');
         } else {
-            // Short click — enter anchor mode with the first anchor point.
             editor._anchorFreehand = false;
             _startAnchorMode(editor, editor._anchorDownPt);
         }
@@ -402,10 +260,7 @@ function _startAnchorMode(editor, pt) {
     if (editor._currentPath) editor._currentPath.attr('d', `M ${pt.x} ${pt.y}`);
     _ensureAnchorPreview(editor, pt);
     _installAnchorKeyHandler(editor);
-    // Swap the status-hint banner so the user sees the commit/cancel
-    // instructions while in anchor mode. See BUG-02.
     setEditorStatusHint(ANCHOR_HINT);
-    _strokeLog(`_startAnchorMode  firstAnchor=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})`);
 }
 
 function _addAnchorPoint(editor, pt) {
@@ -414,11 +269,9 @@ function _addAnchorPoint(editor, pt) {
         const d = editor._currentPath.attr('d') + ` L ${pt.x} ${pt.y}`;
         editor._currentPath.attr('d', d);
     }
-    // Move the rubberband origin to the new anchor.
     if (editor._anchorPreviewLine) {
         editor._anchorPreviewLine.attr({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
     }
-    _strokeLog(`_addAnchorPoint  pt=(${pt.x.toFixed(2)},${pt.y.toFixed(2)})  total=${editor._anchorPts.length}`);
 }
 
 function _ensureAnchorPreview(editor, fromPt) {
@@ -444,9 +297,7 @@ function _updateAnchorPreview(editor, toPt) {
 
 function _commitAnchorPath(editor) {
     if (!editor._anchorMode) return;
-    _strokeLog(`_commitAnchorPath  pts=${editor._anchorPts?.length}`);
     _cleanupAnchorMode(editor);
-
     if (!editor._currentPath || !editor._anchorPts || editor._anchorPts.length < 2) {
         if (editor._currentPath) editor._currentPath.remove();
         editor._currentPath = null;
@@ -455,30 +306,22 @@ function _commitAnchorPath(editor) {
         editor._isDrawing   = false;
         return;
     }
-
-    // Smooth through the anchor points with fitCurve for a clean bezier result.
     const tol    = editor._getDynamicTolerance(2);
     const fitted = fitCurve(editor, editor._anchorPts, tol * 1.5);
     if (fitted) editor._currentPath.attr('d', fitted);
-
     const finalPath     = editor._currentPath;
     editor._currentPath = null;
     editor._anchorPts   = [];
     editor._points      = [];
     editor._isDrawing   = false;
     editor._select(finalPath);
-    // Newly-appended anchor path needs the same layer-class treatment
-    // freehand strokes get in finishDrawing (BUG-04 parity).
     applyLayerState(editor);
-    _strokeLog(`_commitAnchorPath  COMMIT  about to pushState`);
     if (typeof editor.pushState === 'function') editor.pushState();
     if (editor._onChange) editor._onChange();
-    // First-shape onboarding pointer at the Expand tool (BUG-06).
     try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 
 function _cancelAnchorMode(editor) {
-    _strokeLog(`_cancelAnchorMode`);
     _cleanupAnchorMode(editor);
     if (editor._currentPath) { editor._currentPath.remove(); editor._currentPath = null; }
     editor._anchorPts = [];
@@ -496,9 +339,6 @@ function _cleanupAnchorMode(editor) {
         window.removeEventListener('keydown', editor._anchorKeyHandler);
         editor._anchorKeyHandler = null;
     }
-    // Restore the regular per-mode hint (usually 'draw' since the user
-    // is still on the pen tool — but defer to the editor's current mode
-    // in case anything switched it out from under us).
     try { restoreModeHint(editor); } catch (_) {}
 }
 
@@ -510,16 +350,23 @@ function _installAnchorKeyHandler(editor) {
             editor._anchorKeyHandler = null;
             return;
         }
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            _commitAnchorPath(editor);
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            _cancelAnchorMode(editor);
-        }
+        if (e.key === 'Enter')      { e.preventDefault(); _commitAnchorPath(editor); }
+        else if (e.key === 'Escape') { e.preventDefault(); _cancelAnchorMode(editor); }
     };
     window.addEventListener('keydown', editor._anchorKeyHandler);
 }
+
+const eraseHandler = {
+    start(editor, pt) {
+        editor._deselect();
+        editor._isDrawing = true;
+        startEraserStroke(editor, pt);
+    },
+    update(editor, pt) { updateEraserStroke(editor, pt); },
+    finish(editor) {
+        finishEraserStroke(editor).catch(e => _strokeLog(`eraser finish threw: ${e.message}`));
+    },
+};
 
 const modeHandlers = {
     select: selectHandler,
@@ -529,11 +376,10 @@ const modeHandlers = {
     line:   makeDrawingHandler('line'),
     rect:   makeDrawingHandler('rect'),
     circle: makeDrawingHandler('circle'),
+    erase:  eraseHandler,
 };
 
-function getModeHandler(mode) {
-    return modeHandlers[mode] || selectHandler;
-}
+function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
 
 
 // ─── Shared helpers ────────────────────────────────────────────────
@@ -574,9 +420,6 @@ function translateSelection(editor, pt) {
     const dx = pt.x - editor._lastDragPt.x;
     const dy = pt.y - editor._lastDragPt.y;
     if (dx !== 0 || dy !== 0) editor._dragMoved = true;
-    // Move every element in the multi-selection by the same delta.
-    // SVG.js's .translate composes with the existing transform attr,
-    // so this works correctly on rotated / scaled elements too.
     for (const el of (editor._selectedElements || [])) {
         el.translate(dx, dy);
     }
@@ -590,10 +433,6 @@ function translateSelection(editor, pt) {
 // ─── Drawing primitives ────────────────────────────────────────────
 
 function createDrawingShape(editor, modeId, pt) {
-    // First-draw auto-create: if the user starts drawing on a session
-    // with no layers yet (the default "none on open" state), spin up
-    // "Layer 1" and make it active so the new element has somewhere
-    // to live. Bundled into the next pushState so undo = one click.
     const layer = ensureActiveLayer(editor);
     const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
     if (modeId === 'draw') {
@@ -629,7 +468,6 @@ function updateDrawingShape(editor, modeId, pt) {
     const start = editor._points[0];
     if (modeId === 'draw') {
         editor._points.push([pt.x, pt.y]);
-        // Live preview of the freehand stroke. Refit happens on finish.
         const d = editor._currentPath.attr('d') + ` L ${pt.x} ${pt.y}`;
         editor._currentPath.attr('d', d);
     } else if (modeId === 'line') {
@@ -650,10 +488,9 @@ function finishDrawing(editor, modeId) {
     _strokeLog(`finishDrawing  ENTER  modeId=${modeId}  hasCurrentPath=${!!editor._currentPath}  pointsLen=${editor._points.length}`);
     editor._isDrawing = false;
     if (!editor._currentPath) {
-        _strokeLog(`finishDrawing  EARLY-RETURN  reason=no-currentPath  (NO pushState)`);
+        _strokeLog(`finishDrawing  EARLY-RETURN  reason=no-currentPath`);
         return;
     }
-
     if (modeId === 'draw') {
         if (editor._points.length > 2) {
             const tol = editor._getDynamicTolerance(2);
@@ -661,18 +498,84 @@ function finishDrawing(editor, modeId) {
             const fitted = fitCurve(editor, simplified, tol * 1.5);
             if (fitted) editor._currentPath.attr('d', fitted);
         } else {
-            // Just a dot or tiny line — discard.
-            _strokeLog(`finishDrawing  DISCARD  modeId=draw  pointsLen=${editor._points.length}  (path removed, NO pushState)`);
             editor._currentPath.remove();
             editor._currentPath = null;
             return;
         }
     }
-
     const finalPath = editor._currentPath;
     editor._currentPath = null;
     editor._points = [];
     editor._select(finalPath);
-    // Apply layer state so the newly-appended element picks up the
-    // layer-hidden / inactive-layer classes if its layer is toggled off.
-    // Without this, shapes drawn 
+    applyLayerState(editor);
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (editor._onChange) editor._onChange();
+    try { maybeShowExpandCallout(editor); } catch (_) {}
+}
+
+
+// ─── Selection handles ─────────────────────────────────────────────
+
+export function updateHandles(editor) {
+    if (!editor._handleLayer) return;
+    editor._handleLayer.clear();
+    editor._transformHandles = [];
+    const sel = editor._selectedElements || [];
+    if (!sel.length) return;
+    if (editor._currentMode !== 'node' && editor._currentMode !== 'select') return;
+
+    if (editor._currentMode === 'select') {
+        try {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            let any = false;
+            for (const el of sel) {
+                const b = worldBbox(el);
+                if (!b || !Number.isFinite(b.w) || !Number.isFinite(b.h)) continue;
+                any = true;
+                if (b.x  < minX) minX = b.x;
+                if (b.y  < minY) minY = b.y;
+                if (b.x2 > maxX) maxX = b.x2;
+                if (b.y2 > maxY) maxY = b.y2;
+            }
+            if (!any) return;
+            const bb = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+            const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
+            const strokeW = view ? Math.max(view.width, view.height) * 0.0025 : 1;
+            editor._handleLayer.rect(bb.w, bb.h)
+                .move(bb.x, bb.y)
+                .fill('none')
+                .stroke({ color: '#ffcc00', width: strokeW, dasharray: `${strokeW * 4},${strokeW * 2}` })
+                .attr('pointer-events', 'none');
+            editor._transformHandles = renderTransformHandles(editor);
+        } catch (_) {}
+        return;
+    }
+
+    const nodes = editor._getNodes(editor._selectedElement);
+    const validNodes = nodes.filter(pt => Number.isFinite(pt.x) && Number.isFinite(pt.y));
+    if (validNodes.length === 0) return;
+
+    const r = editor._getDynamicTolerance(5);
+    const view = editor._draw && editor._draw.viewbox ? editor._draw.viewbox() : null;
+    const minR = view ? Math.min(view.width, view.height) * 0.008 : 0;
+    const baseR = Math.max(r, minR);
+
+    validNodes.forEach((pt, i) => {
+        const isDragging = (editor._dragNodeIndex === i);
+        const isHovered = (editor._hoverNodeIndex === i);
+        const rad = isDragging ? baseR * 3.2 : (isHovered ? baseR * 2.8 : baseR * 2);
+        const hR = rad * 0.7;
+        const fillStr = isDragging ? '#ff3300' : (isHovered ? '#ffcc00' : '#00ffff');
+        const strokeW = (isDragging || isHovered) ? baseR * 0.9 : baseR * 0.4;
+        const strokeC = isDragging ? '#ffffff' : (isHovered ? '#a06b00' : '#0066cc');
+        editor._handleLayer.polygon([
+            [pt.x, pt.y - hR],
+            [pt.x + hR, pt.y],
+            [pt.x, pt.y + hR],
+            [pt.x - hR, pt.y],
+        ])
+        .fill(fillStr)
+        .stroke({ color: strokeC, width: strokeW, linejoin: 'round' })
+        .attr('pointer-events', 'none');
+    });
+}

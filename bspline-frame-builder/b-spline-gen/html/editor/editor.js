@@ -69,12 +69,10 @@ export class VectorEditor {
         this._expandRefreshTimer = null;
 
         // Multi-selection is the source of truth. _selectedElement is
-        // kept as a getter/setter alias (returns the primary = the
-        // LAST element added/clicked, so toolbar inputs reflect the
-        // most recently picked shape — per the user's UX choice). All
-        // pre-existing `editor._selectedElement = X` writes funnel
-        // through the setter and replace the whole selection; use
-        // editor._selectAdd / editor._selectMany for multi.
+        // a getter/setter alias (primary = LAST clicked, matching the
+        // 'last clicked wins' UX). All legacy `editor._selectedElement = X`
+        // writes funnel through the setter and replace the selection;
+        // multi-aware code uses editor._selectAdd / editor._selectMany.
         this._selectedElements = [];
         this._hoveredElement = null;
         this._isDrawing = false;
@@ -90,34 +88,26 @@ export class VectorEditor {
         this._dragDist = 0;
         this._activeLayer = '0';
 
-        // Transform handles: records produced by renderTransformHandles
-        // each updateHandles cycle, and the per-drag state captured on
-        // grab. Both empty/null when nothing's selected or we're not in
-        // select mode.
+        // Transform handles state: records produced by renderTransform-
+        // Handles each updateHandles cycle, and per-drag capture on grab.
         this._transformHandles = [];
         this._transformState = null;
-
+        
         this._isSnapping = false;
         this._snapSize = 2.0;
     }
 
-    /** Primary selection — the most-recently clicked element, or null
-     *  when nothing's selected. All legacy reads through
-     *  editor._selectedElement keep working unchanged. */
+    /** Primary selection — the most-recently clicked element. Legacy
+     *  reads of editor._selectedElement keep working via this getter. */
     get _selectedElement() {
         const arr = this._selectedElements;
         return (arr && arr.length) ? arr[arr.length - 1] : null;
     }
-
-    /** Setter is the "replace selection" path used by every legacy
-     *  call site (editor._selectedElement = hit / = null). Multi-aware
-     *  code should call _selectAdd or _selectMany instead. */
+    /** Setter is the 'replace selection' path used by every legacy
+     *  call site. Multi-aware code should call _selectAdd / _selectMany. */
     set _selectedElement(el) {
-        if (el === null || el === undefined) {
-            this._selectedElements = [];
-        } else {
-            this._selectedElements = [el];
-        }
+        if (el === null || el === undefined) this._selectedElements = [];
+        else this._selectedElements = [el];
     }
 
     initEditor(containerId, backgroundCanvasId, onChange, onCommit, onSelect) {
@@ -169,8 +159,6 @@ export class VectorEditor {
     setMode(mode) { return setMode(this, mode); }
     setStrokeColor(color) {
         this._strokeColor = color;
-        // Fan-out: when multiple elements are selected, the color
-        // applies to all of them, normalising the group's appearance.
         const sel = this._selectedElements;
         if (!sel || !sel.length) return;
         for (const el of sel) {
@@ -200,9 +188,7 @@ export class VectorEditor {
         const sel = this._selectedElements;
         if (!sel || !sel.length) return false;
         let changedAny = false;
-        for (const el of sel) {
-            if (resetTransform(el)) changedAny = true;
-        }
+        for (const el of sel) { if (resetTransform(el)) changedAny = true; }
         if (changedAny) {
             this._updateHandles();
             this._updateSelectionHighlight();
@@ -212,27 +198,19 @@ export class VectorEditor {
         return changedAny;
     }
 
-    /** Bake every selected element's transform into its geometry,
-     *  then drop the transform attribute. For rect/circle/ellipse the
-     *  element is promoted to a path (handle is detached) so the
-     *  selection is cleared rather than dangling on a removed node. */
+    /** Bake every selected element's transform into its geometry. */
     flattenSelectionTransform() {
         const sel = this._selectedElements;
         if (!sel || !sel.length) return false;
-        let anyPromoted = false;
-        let anyFlat = false;
+        let anyPromoted = false, anyFlat = false;
         for (const el of sel) {
             const wasType = el.type;
             const ok = flattenTransform(el);
             if (!ok) continue;
             anyFlat = true;
-            if (wasType === 'rect' || wasType === 'circle' || wasType === 'ellipse') {
-                anyPromoted = true;
-            }
+            if (wasType === 'rect' || wasType === 'circle' || wasType === 'ellipse') anyPromoted = true;
         }
         if (!anyFlat) return false;
-        // Promoted elements were swapped out from under us — clear the
-        // dangling references rather than trying to re-resolve them.
         if (anyPromoted) this._deselect();
         this._updateHandles();
         this._updateSelectionHighlight();
@@ -324,4 +302,79 @@ export class VectorEditor {
         _undoLog(`restoreState  after .svg(snapshot)  children=${postInject.length}`);
         postInject.slice(0, 5).forEach((ch, i) => {
             const node = ch.node;
-            const cls 
+            const cls = node?.getAttribute('class') || '';
+            const dl = node?.getAttribute('data-layer');
+            const tag = node?.tagName;
+            const stroke = node?.getAttribute('stroke') || '(none)';
+            const display = node ? window.getComputedStyle(node).display : '?';
+            _undoLog(`restoreState  child[${i}] tag=${tag} data-layer="${dl}" class="${cls}" stroke=${stroke} computedDisplay=${display}`);
+        });
+
+        if (isObj && Array.isArray(state.layers)) {
+            this._layers = state.layers.map(l => ({ ...l }));
+        }
+        if (isObj && 'activeLayer' in state) {
+            this._activeLayer = state.activeLayer;
+        }
+        _undoLog(`restoreState  layers/active set  layers=[${(this._layers||[]).map(l=>l.id).join(',')}]  active=${this._activeLayer}`);
+
+        applyLayerState(this);
+        renderLayersPanel(this);
+        // After applyLayerState, re-check each child's class + computed
+        // display to see whether toggleClass actually cleared the hiding
+        // class (B2 hypothesis #5 from BUGS_OPEN.md). If display=none
+        // here, that's the smoking gun.
+        const postApply = this._sketchLayer.children().toArray();
+        postApply.slice(0, 5).forEach((ch, i) => {
+            const node = ch.node;
+            const cls = node?.getAttribute('class') || '';
+            const display = node ? window.getComputedStyle(node).display : '?';
+            _undoLog(`restoreState  POST-applyLayerState  child[${i}] class="${cls}" computedDisplay=${display}`);
+        });
+        _undoLog( `restoreState done  children=${this._sketchLayer.children().toArray().length}  layers=${(this._layers||[]).length}  active=${this._activeLayer}`);
+        if (this._onChange) this._onChange();
+    }
+
+    // Delegation Helpers
+    _getDynamicTolerance(px) { return getDynamicTolerance(this, px); }
+    _getNodes(el) { return getNodes(el); }
+    _getNearbyElement(pt, tol) { return getNearbyElement(this, pt, tol); }
+    _getMousePoint(e) { return getPointerPos(this, e); }
+    _updateHandles() { return updateHandles(this); }
+    _updateSelectionHighlight() { return updateSelectionHighlight(this); }
+    _updateNodeCountUI(data) { return updateNodeCountUI(this, data); }
+    _select(el) { return select(this, el); }
+    _setHover(el) { return setHover(this, el); }
+    _commitText() { return commitText(this); }
+    _cancelDrawing() {
+        try { fusLog(`[STROKE] _cancelDrawing  isDrawing=${this._isDrawing}  hadPath=${!!this._currentPath}  (path removed if present, NO pushState)`); } catch (_) {}
+        if(this._currentPath) this._currentPath.remove();
+        this._isDrawing = false;
+    }
+
+    setModelMetrics(w, h) {
+        if (!this._draw) return;
+        this._mW = w; this._mH = h;
+        this._draw.viewbox(0, 0, w, h);
+        this._bgLayer.clear();
+        // Remove the grey viewbox background rectangle so the preview is not clipped by it.
+        this.sync3DBackground();
+    }
+
+    deleteSelected() {
+        if (this._selectedElement) {
+            this._selectedElement.remove();
+            this._deselect();
+            this.pushState();
+            if (this._onChange) this._onChange();
+        }
+    }
+
+    _deselect() {
+        if (this._selectedElement) this._selectedElement.removeClass('svg-selected');
+        this._selectedElement = null;
+        if (this._handleLayer) this._handleLayer.clear();
+        if (this._selectionHighlight) { this._selectionHighlight.remove(); this._selectionHighlight = null; }
+        updateToolbarVisibility(this);
+    }
+}

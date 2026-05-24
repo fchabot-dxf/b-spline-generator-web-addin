@@ -163,3 +163,45 @@ export function initResizer(preview) {
             const aside = document.querySelector('aside');
             startSize = aside ? aside.getBoundingClientRect().width : 0;
         }
+
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = isMobile ? 'row-resize' : 'col-resize';
+        resizer.setPointerCapture(e.pointerId);
+    });
+
+    resizer.addEventListener('pointermove', (e) => {
+        if (!isResizing) return;
+
+        if (isMobile) {
+            const deltaY = e.clientY - startPos;
+            const newHeight = Math.max(100, Math.min(startSize + deltaY, window.innerHeight - 150));
+            app.style.setProperty('--preview-height', `${newHeight}px`);
+        } else {
+            const deltaX = e.clientX - startPos;
+            const newWidth = Math.max(200, Math.min(startSize + deltaX, window.innerWidth - 200));
+            app.style.setProperty('--sidebar-width', `${newWidth}px`);
+        }
+
+        if (preview) preview._resize();
+    });
+
+    resizer.addEventListener('pointerup', (e) => {
+        isResizing = false;
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        resizer.releasePointerCapture(e.pointerId);
+        if (preview) preview._resize();
+    });
+}
+
+/**
+ * Injects mobile-specific viewport fixes (iOS notch/Safari height).
+ */
+export function setupMobileViewportHandling() {
+  const fix = () => {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+  };
+  window.addEventListener('resize', fix);
+  fix();
+}

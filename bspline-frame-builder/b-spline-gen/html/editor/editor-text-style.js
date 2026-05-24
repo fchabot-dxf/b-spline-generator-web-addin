@@ -87,4 +87,10 @@ export function insertSymbol(editor, symbol, fontFamily) {
     const value = input.value || '';
     const start = typeof input.selectionStart === 'number' ? input.selectionStart : value.length;
     const end = typeof input.selectionEnd === 'number' ? input.selectionEnd : start;
-    const nextValue = value.slice(0, start) + symbol + value.slice(en
+    const nextValue = value.slice(0, start) + symbol + value.slice(end);
+    input.value = nextValue;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    const cursor = start + symbol.length;
+    input.setSelectionRange(cursor, cursor);
+    input.focus();
+}

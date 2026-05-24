@@ -107,4 +107,20 @@ export function applyParam(key, value) {
   }
 
   if (key === 'stampProfile') {
-    const vBitExtra = document.getElement
+    const vBitExtra = document.getElementById('vBitAngleContainer');
+    if (vBitExtra) vBitExtra.style.display = (value === 'vbit' || value === 'adaptive') ? 'block' : 'none';
+  }
+
+  const delay = immediateRebuildParams.includes(key) ? 0 : 200;
+  if (!AppState.isInitializing) {
+    const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+    const gridChanged = nx !== AppState.lastNx || nz !== AppState.lastNz;
+    if (gridChanged || stampMaskParams.includes(key)) {
+      refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
+    } else {
+      scheduleRebuild(() => rebuild(AppState.preview, updateStampMasks, updatePreviewSculptMode), delay);
+    }
+    AppState.lastNx = nx;
+    AppState.lastNz = nz;
+  }
+}
