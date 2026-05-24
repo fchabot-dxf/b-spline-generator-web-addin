@@ -6,6 +6,7 @@
 import { stripSvgjsAttributes } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -53,20 +54,38 @@ export function initIO(editor) {
     };
 }
 
+/** Layer fields persisted on the root <svg> via data-editor-layers.
+ *  Identity fields (id/name/visible) plus the per-pass CNC tooling so a
+ *  saved drawing round-trips its full carving spec. Kept in lockstep
+ *  with TOOLING_DEFAULTS in editor/layers.js — adding a new tooling
+ *  field there means adding it here too. */
+const _PERSISTED_LAYER_FIELDS = [
+    'id', 'name', 'visible',
+    'depth', 'profile', 'angle',
+    'tx', 'ty', 'rotation', 'scale', 'mirrorX', 'mirrorY',
+    'blur', 'smoothing', 'suppression',
+    'edgeFilletRadius', 'filletPower',
+];
+
 /** Serialize the layer roster as a string attribute we can stamp onto
  *  the root <svg>. Empty layers (no elements yet) and per-layer state
- *  (name, visibility) would otherwise be lost on save→load — the
- *  data-layer attrs on children alone only tell us about layers that
- *  hold content. Returns "" if there's nothing to write. */
+ *  (name, visibility, tooling) would otherwise be lost on save→load —
+ *  the data-layer attrs on children alone only tell us about layers
+ *  that hold content. Returns "" if there's nothing to write. */
 function _serializeLayersAttr(editor) {
     const layers = Array.isArray(editor._layers) ? editor._layers : [];
     if (!layers.length) return '';
     try {
-        const minimal = layers.map(l => ({
-            id: String(l.id),
-            name: l.name || '',
-            visible: l.visible !== false,
-        }));
+        const minimal = layers.map(l => {
+            const out = {};
+            for (const field of _PERSISTED_LAYER_FIELDS) {
+                if (field === 'id')      out.id      = String(l.id);
+                else if (field === 'name')    out.name    = l.name || '';
+                else if (field === 'visible') out.visible = l.visible !== false;
+                else if (l[field] !== undefined) out[field] = l[field];
+            }
+            return out;
+        });
         // JSON quotes need HTML entity encoding so they survive being an
         // attribute value. Single-quote the attr so we only escape ".
         return JSON.stringify(minimal).replace(/"/g, '&quot;');
@@ -74,6 +93,48 @@ function _serializeLayersAttr(editor) {
         console.warn('[editor-io] _serializeLayersAttr failed', e);
         return '';
     }
+}
+
+/**
+ * Build a self-contained SVG string that contains ONLY the children of
+ * the editor's sketch layer that carry `data-layer="<layerId>"`. Used
+ * by the rasterizer-compositor pipeline to produce one stamp pass per
+ * editor layer (Step 3 of the stamp-layer → editor-layer unification).
+ *
+ * Returns "" if the editor isn't drawn yet, or if the layer has no
+ * matching children — the caller is expected to treat empty content as
+ * "skip this pass" rather than rasterize a blank mask.
+ */
+export function getLayerSvg(editor, layerId, dpi = 96) {
+    if (!editor || !editor._draw || !editor._sketchLayer) return "";
+    const targetId = String(layerId);
+    const raw = editor._sketchLayer.node.innerHTML;
+    if (!raw) return "";
+
+    // Walk a parsed copy and keep only children whose data-layer matches.
+    // Using DOMParser keeps the original markup's quoting/entities intact.
+    const wrapper = `<svg xmlns="http://www.w3.org/2000/svg">${raw}</svg>`;
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(wrapper, 'image/svg+xml');
+    } catch {
+        return "";
+    }
+    const root = doc.documentElement;
+    if (!root) return "";
+
+    let kept = 0;
+    Array.from(root.children).forEach(ch => {
+        const lid = ch.getAttribute('data-layer');
+        if (lid == null || String(lid) !== targetId) ch.remove();
+        else kept++;
+    });
+    if (kept === 0) return "";
+
+    const wPx = editor._mW * dpi;
+    const hPx = editor._mH * dpi;
+    const inner = stripSvgjsAttributes(root.innerHTML);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${inner}</svg>`;
 }
 
 export function save(editor, dpi = 96) {
@@ -279,7 +340,16 @@ function _reconcileLayersFromSvg(editor) {
     }
     const children = editor._sketchLayer.children().toArray();
     _ioLog(`reconcile: childCount=${children.length}`);
-    if (children.length === 0) return null;
+    if (children.length === 0) {
+        // No children to reconcile, but still create a Layer 1 so the
+        // layer panel isn't empty when the user opens an SVG that
+        // happens to have no shapes (e.g. just <defs> from font embed).
+        // Matches the BUG-10 fix's auto-create behavior on init.
+        const anchor = applyToolingDefaults({ id: '0', name: 'Layer 1', visible: true });
+        editor._layers = [anchor];
+        editor._nextLayerId = 1;
+        return anchor.id;
+    }
 
     // Reset the runtime roster — we trust the SVG as the source of truth.
     editor._layers = [];
@@ -298,7 +368,9 @@ function _reconcileLayersFromSvg(editor) {
         }
         const id = String(raw);
         if (!seen.has(id)) {
-            const layer = { id, name: `Layer ${seen.size + 1}`, visible: true };
+            // applyToolingDefaults so reconciled-from-legacy-SVG layers
+            // carry the same per-pass CNC fields that addLayer() seeds.
+            const layer = applyToolingDefaults({ id, name: `Layer ${seen.size + 1}`, visible: true });
             editor._layers.push(layer);
             seen.set(id, layer);
         }
@@ -308,7 +380,7 @@ function _reconcileLayersFromSvg(editor) {
     // have at least one layer to anchor them to.
     let anchor = editor._layers[0];
     if (!anchor) {
-        anchor = { id: '0', name: 'Layer 1', visible: true };
+        anchor = applyToolingDefaults({ id: '0', name: 'Layer 1', visible: true });
         editor._layers.push(anchor);
     }
     if (orphans.length > 0) {
@@ -347,6 +419,12 @@ export function open(editor, svgString, w, h) {
 
     if (!svgString) {
         _ioLog('open: no svgString -> empty editor');
+        // Same auto-create as initLayerControls (BUG-10) so a fresh
+        // editor session always has a Layer 1 ready to go, instead of
+        // showing an empty layers list and the user wondering where to
+        // draw. skipUndo so this doesn't pollute the undo stack.
+        const layer = addLayer(editor, { skipUndo: true });
+        setActiveLayer(editor, layer.id);
         if (typeof editor.pushState === 'function') editor.pushState();
         return;
     }
@@ -387,16 +465,24 @@ export function open(editor, svgString, w, h) {
             _migrateHangingBaselineTexts(editor._sketchLayer, editor._fontSize);
 
             // Layer-roster restore: prefer the persisted roster (preserves
-            // empty layers, names, visibility). Fall back to reconciling
-            // from data-layer attrs for legacy / imported SVGs that don't
-            // carry the metadata.
+            // empty layers, names, visibility, tooling). Fall back to
+            // reconciling from data-layer attrs for legacy / imported
+            // SVGs that don't carry the metadata.
+            //
+            // applyToolingDefaults fills in any tooling field the saved
+            // roster doesn't carry — backward-compat for SVGs saved
+            // before the tooling fields were persisted.
             let firstLayerId = null;
             if (Array.isArray(persistedLayers) && persistedLayers.length > 0) {
-                editor._layers = persistedLayers.map(l => ({
-                    id: String(l.id),
-                    name: l.name || `Layer`,
-                    visible: l.visible !== false,
-                }));
+                editor._layers = persistedLayers.map(l => {
+                    const restored = {
+                        ...l,                           // tooling fields first
+                        id: String(l.id),                // identity overrides
+                        name: l.name || `Layer`,
+                        visible: l.visible !== false,
+                    };
+                    return applyToolingDefaults(restored);
+                });
                 // Bump _nextLayerId past any numeric id we just restored.
                 const numericIds = editor._layers
                     .map(l => Number(l.id))

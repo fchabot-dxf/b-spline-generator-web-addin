@@ -1,4 +1,4 @@
-import { P, loadLastSession, lastResult, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '../core/state.js';
+import { P, loadLastSession, saveLastSession, lastResult, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
@@ -59,7 +59,14 @@ export function initSvgEditor(preview) {
     async () => {
       const svg = await window.svgEditor.saveForRasterization();
       if (svg) {
+        // Step 3 unification: the editor's full document is the source
+        // of truth. Persist to P.editorSvg so a page reload restores it.
+        P.editorSvg = svg;
+        // Legacy: also mirror to P.stampLayers[active].svg so any code
+        // path still consulting it (Cancel-snapshot restore, etc.) sees
+        // a consistent value during the transition.
         setStampLayerSvg(P.activeLayerIdx, svg);
+        saveLastSession();
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }
@@ -75,7 +82,10 @@ export function initSvgEditor(preview) {
         // Apply path
         const fontEmbeddedSvg = await window.svgEditor.saveForRasterization();
         if (fontEmbeddedSvg) {
+          // Step 3 unification: editor is source of truth.
+          P.editorSvg = fontEmbeddedSvg;
           setStampLayerSvg(P.activeLayerIdx, fontEmbeddedSvg);
+          saveLastSession();
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
         }
@@ -98,4 +108,19 @@ export function initSvgEditor(preview) {
       if (modal) modal.style.display = 'none';
     }
   );
+
+  // Step 3 unification: restore the saved editor SVG so a reload picks
+  // up the in-flight drawing instead of a blank canvas. Falls back to
+  // P.stampLayers[0].svg as a one-time migration aid for sessions saved
+  // before P.editorSvg existed.
+  try {
+    const restoreSvg = P.editorSvg
+      || (P.stampLayers && P.stampLayers.find && P.stampLayers.find(l => l && l.svg)?.svg)
+      || null;
+    if (restoreSvg) {
+      window.svgEditor.open(restoreSvg, P.widthIn, P.heightIn);
+    }
+  } catch (e) {
+    console.warn('[initSvgEditor] editor SVG restore failed:', e);
+  }
 }

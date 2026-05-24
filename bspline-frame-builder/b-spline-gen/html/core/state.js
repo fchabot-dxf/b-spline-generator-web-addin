@@ -113,6 +113,12 @@ export const DEFAULT = {
     ],
     activeLayerIdx: 0,
     thickenYellowOffset: 0.01,
+    // Step 3 of the stamp-layer → editor-layer unification: the SVG
+    // editor's full document. Each editor layer carries its own CNC
+    // tooling (see TOOLING_DEFAULTS in editor/layers.js). Replaces the
+    // per-stamp-layer P.stampLayers[i].svg model. Saved to localStorage
+    // on every editor change so reload restores the in-flight drawing.
+    editorSvg: null,
 };
 
 export let P = { ...DEFAULT };
@@ -361,6 +367,17 @@ export function updateP(key, value) {
     };
     if (layerSpecific[key] && P.stampLayers && P.stampLayers[P.activeLayerIdx]) {
         P.stampLayers[P.activeLayerIdx][layerSpecific[key]] = P[key];
+        // Mirror to the matching editor layer so the rasterizer/compositor
+        // see the change immediately when they read from editor._layers
+        // (the new source of truth post-unification). Position-based
+        // mapping until each stamp pass formally points at an editor
+        // layer id. See Step 2 of the stamp-layer → editor-layer
+        // unification.
+        try {
+            const editorLayer = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers))
+                ? window.svgEditor._layers[P.activeLayerIdx] : null;
+            if (editorLayer) editorLayer[layerSpecific[key]] = P[key];
+        } catch (_) { /* defensive: state.js must not crash on editor access */ }
     }
 
     saveLastSession();

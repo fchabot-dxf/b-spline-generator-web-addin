@@ -28,6 +28,15 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   const stampedHeights = new Float32Array(cleanHeights);
   if (!Array.isArray(layers)) return stampedHeights;
 
+  // Step 2 unification: prefer tooling values from the matching editor
+  // layer when one exists. Position-based mapping. Falls through to the
+  // stamp layer's own field, then the global default.
+  const editorLayers = (typeof window !== 'undefined'
+                        && window.svgEditor
+                        && Array.isArray(window.svgEditor._layers))
+    ? window.svgEditor._layers : null;
+  const editorAt = (idx) => (editorLayers ? (editorLayers[idx] || null) : null);
+
   layers.forEach((layer, layerIdx) => {
     if (!layer || !layer.enabled || !layer.svg || !layer.mask) return;
 
@@ -38,19 +47,27 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     if (!body || body.length !== nx * nz) return;
     if (fillet && fillet.length !== nx * nz) return;
 
-    dbg('STAMP DEBUG', `Applying stamp layer ${layerIdx} name=${layer.name} depth=${layer.depth} profile=${layer.profile} suppress=${layer.suppression}`);
+    const eLayer = editorAt(layerIdx) || {};
+    const effectiveDepth = eLayer.depth ?? layer.depth ?? stampDepth;
+    const effectiveSuppression = (typeof eLayer.suppression === 'number')
+      ? eLayer.suppression
+      : ((typeof layer.suppression === 'number') ? layer.suppression : 0);
+    const effectiveSmoothing = eLayer.smoothing ?? layer.smoothing ?? 0;
+    const effectiveProfile = eLayer.profile ?? layer.profile;
 
-    const suppressStrength = (typeof layer.suppression === 'number') ? layer.suppression : 0;
-    const blurRadius = layer.smoothing || 0;
+    dbg('STAMP DEBUG', `Applying stamp layer ${layerIdx} name=${layer.name} depth=${effectiveDepth} profile=${effectiveProfile} suppress=${effectiveSuppression}`);
+
+    const suppressStrength = effectiveSuppression;
+    const blurRadius = effectiveSmoothing || 0;
     const smoothedTerrain = suppressStrength > 0
       ? gaussianSmooth(cleanHeights, nx, nz, blurRadius)
       : null;
 
-    const layerDepth = layer.depth ?? stampDepth;
+    const layerDepth = effectiveDepth;
     const layerSign  = layerDepth >= 0 ? 1 : -1;
     const filletRadius = (m && m.metrics && Number.isFinite(m.metrics.effectiveFilletIn))
       ? m.metrics.effectiveFilletIn
-      : (layer.edgeFilletRadius ?? stampEdgeFilletRadius);
+      : (eLayer.edgeFilletRadius ?? layer.edgeFilletRadius ?? stampEdgeFilletRadius);
     const filletAmplitude = layerSign * Math.min(filletRadius, Math.abs(layerDepth));
 
     for (let k = 0; k < nx * nz; k++) {

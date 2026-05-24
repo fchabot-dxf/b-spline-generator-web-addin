@@ -21,7 +21,23 @@ export function createStampCtx(preview) {
   const modules = [];   // each: { syncFromLayer?: (layer) => void }
 
   // ─── State accessors ──────────────────────────────────────────────
-  const activeLayer = () => (P.stampLayers ? P.stampLayers[P.activeLayerIdx] : undefined);
+  // Step 3 unification: the active layer is the editor's active layer
+  // when the editor has a roster; falls back to the legacy P.stampLayers
+  // model for code paths that fire before the editor is loaded (e.g.
+  // very early init) and for sessions with only legacy uploaded svgs.
+  const activeEditorLayer = () => {
+    try {
+      if (typeof window === 'undefined' || !window.svgEditor) return null;
+      const layers = window.svgEditor._layers;
+      if (!Array.isArray(layers) || layers.length === 0) return null;
+      return layers[P.activeLayerIdx] || null;
+    } catch (_) { return null; }
+  };
+  const activeLayer = () => {
+    const e = activeEditorLayer();
+    if (e) return e;
+    return (P.stampLayers ? P.stampLayers[P.activeLayerIdx] : undefined);
+  };
   const grid = () => resolveGrid(P.widthIn, P.heightIn, P.spacing);
   const isFilletActive = () => {
     if ((P.stampEdgeFilletRadius || 0) > 0) return true;
@@ -31,7 +47,7 @@ export function createStampCtx(preview) {
 
   // ─── Composed behaviour ───────────────────────────────────────────
   const scheduler = createUpdateScheduler({ preview, grid, isFilletActive });
-  const binders = createDomBinders({ activeLayer, requestRemask: scheduler.requestRemask });
+  const binders = createDomBinders({ activeLayer, activeEditorLayer, requestRemask: scheduler.requestRemask });
 
   // ─── Registry ─────────────────────────────────────────────────────
   const registerModule = (mod) => {

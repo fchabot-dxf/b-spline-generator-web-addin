@@ -8,6 +8,7 @@ import { scheduleRebuild, rebuild } from '../../core/engine.js';
 import { updateStampMasks } from '../stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../../core/sculpt-interaction.js';
 import { SvgEditorSnapshot } from '../app-init.js';
+import { addLayer, setActiveLayer } from '../../editor/layers.js';
 
 /**
  * Lightweight SVG validation: parses the upload and checks that the
@@ -38,8 +39,9 @@ export function initSvgSource(ctx, layerModule) {
   const btnClear = document.getElementById('btnStampClear');
   const btnEdit = document.getElementById('btnStampEdit');
 
-  // Browse → file picker → read → validate → assign to layer.svg →
-  // re-rasterize. setStampLayerSvg auto-enables the layer.
+  // Browse → file picker → read → validate → import into the active
+  // editor layer (Step 3 of the unification). Falls back to the legacy
+  // per-stamp-layer svg field when the editor isn't loaded.
   if (btnChoose && upload) {
     btnChoose.addEventListener('click', () => upload.click());
     upload.addEventListener('change', async (e) => {
@@ -55,9 +57,15 @@ export function initSvgSource(ctx, layerModule) {
         return;
       }
       if (fileNameSpan) fileNameSpan.textContent = file.name;
-      setStampLayerSvg(P.activeLayerIdx, text);
-      if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
-      ctx.requestRemask();
+
+      const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
+      const imported = editor ? _importSvgIntoEditor(editor, text) : false;
+      if (!imported) {
+        // Legacy fallback path.
+        setStampLayerSvg(P.activeLayerIdx, text);
+        if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
+        ctx.requestRemask();
+      }
     });
   }
 
@@ -102,4 +110,55 @@ export function initSvgSource(ctx, layerModule) {
       }
     },
   });
+}
+
+/**
+ * Import the children of an uploaded SVG into the editor's active layer.
+ * Sets data-layer on each imported child so it belongs to that layer,
+ * then triggers the editor's onChange to persist + remask. Returns true
+ * if the import succeeded.
+ *
+ * Step 3 of the stamp-layer → editor-layer unification: replaces the
+ * old "each stamp layer has its own svg" model with "everything lives
+ * in the editor, layers partition it."
+ */
+function _importSvgIntoEditor(editor, svgText) {
+  try {
+    if (!editor || !editor._sketchLayer) return false;
+    const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+    const root = parsed.documentElement;
+    if (!root || root.nodeName.toLowerCase() !== 'svg') return false;
+
+    // Drop any editor-metadata defs so they don't clutter the sketch.
+    const metadata = root.querySelector('.editor-metadata');
+    if (metadata) metadata.remove();
+
+    // Make sure the editor has an active layer; create Layer 1 if not.
+    let activeId = editor._activeLayer;
+    if (activeId == null || !Array.isArray(editor._layers) || editor._layers.length === 0) {
+      const newLayer = addLayer(editor, { skipUndo: true });
+      setActiveLayer(editor, newLayer.id);
+      activeId = newLayer.id;
+    }
+    const targetId = String(activeId);
+
+    // Append each child to the sketch layer with data-layer set.
+    const sketchNode = editor._sketchLayer.node;
+    Array.from(root.children).forEach((ch) => {
+      ch.setAttribute('data-layer', targetId);
+      sketchNode.appendChild(ch);
+    });
+
+    // Trigger persistence + remask via the editor's onChange callback.
+    if (typeof editor._onChange === 'function') {
+      try { editor._onChange(); } catch (_) {}
+    }
+    if (typeof editor.pushState === 'function') {
+      try { editor.pushState(); } catch (_) {}
+    }
+    return true;
+  } catch (e) {
+    console.warn('[STAMP] _importSvgIntoEditor failed:', e);
+    return false;
+  }
 }

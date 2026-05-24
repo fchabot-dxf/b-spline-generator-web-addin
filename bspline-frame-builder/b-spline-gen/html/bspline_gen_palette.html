@@ -1167,6 +1167,26 @@
             <button type="button" id="editorStrokeWidthPlus" class="cad-icon-btn small" style="width:20px; border:none; background:transparent;">+</button>
           </div>
         </div>
+
+        <!--
+          Fill / Stroke / Both toggle (BUG-27). Applies to new shapes drawn
+          by Pen / Rect / Circle. "Fill" auto-closes pen paths with Z so
+          the rasterizer can carve the enclosed area; "Line" tool is
+          unaffected (lines have no interior). Re-applies to current
+          selection when you change it.
+        -->
+        <div id="editorFillModeGroup" style="display:flex; align-items:center; gap:6px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Style</span>
+          <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+            <button type="button" id="editorFillModeStroke" class="cad-icon-btn small editor-fillmode-btn active"
+                    title="Stroke only — outline" style="border:none; background:#e8f0ff; color:#1a55b8; padding:0 8px; font-size:10px; font-weight:700;">STROKE</button>
+            <button type="button" id="editorFillModeFill" class="cad-icon-btn small editor-fillmode-btn"
+                    title="Fill only — solid interior" style="border:none; background:transparent; color:#555; padding:0 8px; font-size:10px; font-weight:700; border-left:1px solid #ddd;">FILL</button>
+            <button type="button" id="editorFillModeBoth" class="cad-icon-btn small editor-fillmode-btn"
+                    title="Both — fill + outline" style="border:none; background:transparent; color:#555; padding:0 8px; font-size:10px; font-weight:700; border-left:1px solid #ddd;">BOTH</button>
+          </div>
+        </div>
         
         <div id="editorFontGroup" class="property-group hidden" style="display:flex; align-items:center; gap:16px;">
           <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>

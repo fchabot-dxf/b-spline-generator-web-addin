@@ -1,11 +1,21 @@
 /**
  * Layers — unlimited layers panel for the SVG editor.
  *
- * Data model: editor._layers is an array of { id, name, visible }.
+ * Data model: editor._layers is an array of layer objects. The minimal
+ * shape is { id, name, visible }; every layer also carries a set of
+ * per-pass CNC tooling fields (see TOOLING_DEFAULTS below). These came
+ * from the old P.stampLayers model and now live on editor layers so the
+ * two layer systems can collapse into one (each editor layer = one
+ * stamp pass). See Step 1 of the stamp-layer → editor-layer unification.
+ *
  *   - id: stable string used as data-layer on SVG elements
  *   - name: user-editable display name (defaults to "Layer N")
  *   - visible: bool; hidden layers are dimmed via CSS and excluded
  *              from the stamp expand pipeline (task 4)
+ *   - depth, profile, angle: tool + plunge for this pass
+ *   - tx/ty/rotation/scale/mirrorX/mirrorY: per-pass transform
+ *   - blur, smoothing, suppression, edgeFilletRadius, filletPower:
+ *     rasterizer knobs
  *
  * editor._activeLayer is the id of the active (editable) layer.
  *
@@ -14,6 +24,43 @@
  * that still read/write .value. Migrating those is task 2.
  */
 import { el, on } from './dom.js';
+
+/**
+ * Default per-pass CNC tooling values applied to every new editor layer.
+ * Mirrors the historical P.stampLayers[0] defaults from state.js so
+ * existing behavior is preserved while the new model is rolled out.
+ *
+ * Each field here MUST stay in sync with what the rasterizer + apply-
+ * stamp-layers pipeline reads. When migrating those readers from
+ * P.stampLayers to editor._layers, update both sides together.
+ */
+export const TOOLING_DEFAULTS = Object.freeze({
+  depth: 0.25,
+  profile: 'vbit',
+  angle: 90,
+  tx: 0,
+  ty: 0,
+  rotation: 0,
+  scale: 1,
+  mirrorX: false,
+  mirrorY: false,
+  blur: 0,
+  smoothing: 15,
+  suppression: 0.15,
+  edgeFilletRadius: 0,
+  filletPower: 2.2,
+});
+
+/** Apply TOOLING_DEFAULTS to a partial layer object — fills only the
+ *  fields that aren't already set. Lets the caller pass in overrides
+ *  (e.g. when restoring a saved layer that had its own depth/profile)
+ *  without losing them. Returns the same object for chaining. */
+export function applyToolingDefaults(layer) {
+  for (const key in TOOLING_DEFAULTS) {
+    if (layer[key] === undefined) layer[key] = TOOLING_DEFAULTS[key];
+  }
+  return layer;
+}
 
 // ----------- Public read helpers (used elsewhere) -----------
 
@@ -70,7 +117,15 @@ export function addLayer(editor, opts = {}) {
   const id = opts.id != null ? String(opts.id) : _nextLayerId(editor);
   const name = opts.name || `Layer ${editor._layers.length + 1}`;
   const visible = opts.visible !== false;
+  // Build the layer with identity fields first, then layer-in any
+  // caller-supplied tooling overrides, then fill in unspecified tooling
+  // fields from TOOLING_DEFAULTS. This lets future call sites override
+  // depth/profile/etc. via opts without us having to enumerate them.
   const layer = { id, name, visible };
+  for (const key in TOOLING_DEFAULTS) {
+    if (Object.prototype.hasOwnProperty.call(opts, key)) layer[key] = opts[key];
+  }
+  applyToolingDefaults(layer);
   editor._layers.push(layer);
   if (!editor._activeLayer) editor._activeLayer = id;
   renderLayersPanel(editor);
@@ -264,6 +319,21 @@ export function renderLayersPanel(editor) {
 
   _syncLegacySelect(editor);
   _syncActiveLabel(editor);
+
+  // Notify other UI (e.g. the Vector Stamping panel's "Active Layer"
+  // dropdown) that the layer roster changed. Step 3 of the
+  // stamp-layer → editor-layer unification.
+  try {
+    if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('editorLayersChanged', {
+        detail: {
+          editor,
+          layers: editor._layers,
+          activeId: editor._activeLayer,
+        },
+      }));
+    }
+  } catch (_) { /* defensive: rendering must not crash if listeners throw */ }
 }
 
 function _makeLayerRow(editor, layer, isActive) {

@@ -1,10 +1,17 @@
 /**
- * Active Layer + Enabled checkbox — which stamp layer the panel is
- * currently editing, and whether that layer participates in the rebuild.
+ * Active Layer + Enabled checkbox — which layer the Vector Stamping
+ * panel is currently editing, and whether that layer participates in
+ * the rebuild.
  *
- * The active-layer change handler is the orchestrator that pushes the
- * new layer's values out to every other module's UI in one shot, via
- * ctx.broadcastSyncFromLayer().
+ * Step 3 of the stamp-layer → editor-layer unification: the dropdown
+ * now reads its options from the SVG editor's layer roster
+ * (window.svgEditor._layers) instead of P.stampLayers. Selecting an
+ * option sets editor._activeLayer (the source of truth) and mirrors
+ * P.activeLayerIdx for any legacy code path that still consults it.
+ *
+ * The dropdown refreshes whenever the editor dispatches its
+ * `editorLayersChanged` CustomEvent (fired by renderLayersPanel after
+ * any add/remove/rename/reorder/visibility change).
  */
 import { P, updateP, setStampLayerEnabled } from '../../core/state.js';
 import { scheduleRebuild, rebuild } from '../../core/engine.js';
@@ -17,32 +24,96 @@ export function initLayer(ctx) {
   const fileNameSpan = document.getElementById('stampFileName');
   const vBitAngleContainer = document.getElementById('vBitAngleContainer');
 
-  // Populate dropdown from layer names (data-driven so adding a layer
-  // in state.js doesn't require touching HTML).
-  if (sel && Array.isArray(P.stampLayers)) {
+  // Helpers -----------------------------------------------------------
+
+  /** Read the editor's layer roster, or null if the editor isn't ready. */
+  const editorLayers = () => {
+    const ed = (typeof window !== 'undefined') ? window.svgEditor : null;
+    return (ed && Array.isArray(ed._layers)) ? ed._layers : null;
+  };
+
+  /** Map an editor layer id → index in editor._layers, or -1. */
+  const idxOfEditorLayer = (id) => {
+    const layers = editorLayers();
+    if (!layers) return -1;
+    return layers.findIndex((L) => String(L.id) === String(id));
+  };
+
+  /** Build the dropdown options from the current source of truth.
+   *  Falls back to P.stampLayers when the editor hasn't loaded yet
+   *  (very early init). Stays a no-op if the <select> element is
+   *  missing (defensive for headless tests). */
+  const populateDropdown = () => {
+    if (!sel) return;
+    const layers = editorLayers();
+    const useEditor = Array.isArray(layers) && layers.length > 0;
+    const source = useEditor ? layers : (P.stampLayers || []);
+
+    const prevValue = sel.value;
     sel.innerHTML = '';
-    P.stampLayers.forEach((layer, i) => {
+    source.forEach((layer, i) => {
       const opt = document.createElement('option');
       opt.value = String(i);
       opt.textContent = layer.name || `Layer ${i + 1}`;
       sel.appendChild(opt);
     });
-    sel.value = String(P.activeLayerIdx || 0);
+
+    // Sync the displayed value to the canonical active layer.
+    let activeIdx = 0;
+    if (useEditor) {
+      const editor = window.svgEditor;
+      const activeId = editor._activeLayer;
+      const found = activeId != null ? idxOfEditorLayer(activeId) : -1;
+      activeIdx = found >= 0 ? found : 0;
+    } else {
+      activeIdx = P.activeLayerIdx || 0;
+    }
+    if (activeIdx >= 0 && activeIdx < source.length) {
+      sel.value = String(activeIdx);
+    } else if (prevValue && source[Number(prevValue)]) {
+      // Preserve user's previous choice when possible.
+      sel.value = prevValue;
+    }
+  };
+
+  // Initial paint ------------------------------------------------------
+
+  populateDropdown();
+
+  // Refresh whenever the editor's layer roster changes (add/remove/
+  // rename/reorder/visibility). The editor's renderLayersPanel
+  // dispatches the event after every change.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('editorLayersChanged', populateDropdown);
   }
 
   const syncEnabledCheckbox = () => {
     if (!enabledCb) return;
-    const layer = ctx.activeLayer();
-    enabledCb.checked = !!(layer && layer.enabled);
+    const layers = editorLayers();
+    if (Array.isArray(layers) && layers.length > 0) {
+      const idx = parseInt(sel?.value, 10) || 0;
+      const layer = layers[idx];
+      enabledCb.checked = !!(layer && layer.visible !== false);
+    } else {
+      const layer = ctx.activeLayer();
+      enabledCb.checked = !!(layer && layer.enabled);
+    }
   };
 
-  // Active-layer change: read layer values into ALL modules' UIs.
+  // Active-layer change: set editor's active layer (canonical) AND
+  // mirror P.activeLayerIdx so any legacy reader still works.
   if (sel) {
     sel.addEventListener('change', () => {
       const idx = parseInt(sel.value, 10);
+      if (Number.isNaN(idx)) return;
       updateP('activeLayerIdx', idx);
-      const layer = P.stampLayers[idx];
-      if (!layer) return;
+
+      // Set the editor's active layer (source of truth).
+      const layers = editorLayers();
+      if (Array.isArray(layers) && layers[idx] && window.svgEditor) {
+        try { window.svgEditor.setActiveLayer(layers[idx].id); }
+        catch (_) { /* setActiveLayer is defined on VectorEditor — defensive */ }
+      }
 
       // Broadcast to all per-control modules so they refresh from this
       // layer's values. Each module's syncFromLayer handles its own
@@ -51,27 +122,59 @@ export function initLayer(ctx) {
 
       // Layer-level UI bits this module owns:
       syncEnabledCheckbox();
-      if (vBitAngleContainer) {
-        vBitAngleContainer.style.display = (layer.profile === 'vbit' || layer.profile === 'adaptive')
+      const activeLayer = (Array.isArray(layers) && layers[idx])
+        ? layers[idx]
+        : P.stampLayers?.[idx];
+      if (activeLayer && vBitAngleContainer) {
+        vBitAngleContainer.style.display = (activeLayer.profile === 'vbit' || activeLayer.profile === 'adaptive')
           ? 'block' : 'none';
       }
-      if (fileNameSpan) fileNameSpan.textContent = layer.svg ? 'Loaded' : 'No file chosen';
-
-      // Reload the SVG editor's content for the new layer (if it's open).
-      if (window.svgEditor) {
-        window.svgEditor.open(layer.svg || '', P.widthIn, P.heightIn);
+      // The "file chosen" label is meaningful only for the legacy
+      // per-layer SVG model. In the unified model the editor owns all
+      // content, so we just show whether the editor's active layer has
+      // any shapes.
+      if (fileNameSpan) {
+        const editor = window.svgEditor;
+        if (editor && editor._sketchLayer && layers && layers[idx]) {
+          const layerId = String(layers[idx].id);
+          const hasContent = editor._sketchLayer.children().toArray()
+            .some((ch) => String(ch.attr('data-layer')) === layerId);
+          fileNameSpan.textContent = hasContent ? 'In editor' : 'Empty';
+        } else if (activeLayer?.svg) {
+          fileNameSpan.textContent = 'Loaded';
+        } else {
+          fileNameSpan.textContent = 'No file chosen';
+        }
       }
     });
   }
 
-  // Enabled checkbox: just flips the layer flag and rebuilds (no remask
-  // — engine reads .enabled directly when applying the existing mask).
+  // Enabled checkbox: flips the active layer's enabled/visible flag.
+  // For editor layers, this maps to `visible` and goes through the
+  // editor's setLayerVisible so the layers panel + canvas stay in sync.
+  // For legacy stamp layers (no editor coverage), keeps the old
+  // setStampLayerEnabled path.
   if (enabledCb) {
     enabledCb.addEventListener('change', () => {
-      const layer = ctx.activeLayer();
-      if (!layer) return;
-      setStampLayerEnabled(P.activeLayerIdx, enabledCb.checked);
-      scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);
+      const idx = parseInt(sel?.value, 10) || 0;
+      const layers = editorLayers();
+      if (Array.isArray(layers) && layers[idx]) {
+        const editor = window.svgEditor;
+        const layer = layers[idx];
+        layer.visible = enabledCb.checked;
+        // Re-render the editor's layers panel so the eye-icon stays
+        // consistent with what the stamp panel just toggled.
+        if (editor && typeof editor._updateHandles === 'function') {
+          try { editor._updateHandles(); } catch (_) {}
+        }
+        // Trigger a rebuild — visibility affects which passes are applied.
+        scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);
+      } else {
+        const layer = ctx.activeLayer();
+        if (!layer) return;
+        setStampLayerEnabled(P.activeLayerIdx, enabledCb.checked);
+        scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);
+      }
     });
   }
 
@@ -81,9 +184,9 @@ export function initLayer(ctx) {
   return ctx.registerModule({
     id: 'layer',
     syncFromLayer(_layer) {
-      // We're the orchestrator, not orchestrated; nothing to do.
-      // (We DO sync our own enabled-checkbox, separately, in the
-      //  active-layer change handler above.)
+      // We're the orchestrator, not orchestrated. The enabled-checkbox
+      // sync happens in the active-layer change handler above; we also
+      // re-sync it whenever the editor layer roster changes.
     },
     /** Public so other modules (svg-source) can poke this when they
      *  flip the layer's `enabled` flag indirectly (Browse/Clear). */

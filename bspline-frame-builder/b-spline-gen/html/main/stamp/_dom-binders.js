@@ -16,7 +16,10 @@
  *     on change.
  */
 
-export function createDomBinders({ activeLayer, requestRemask }) {
+export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask }) {
+  // Defensive default so older callers that don't supply activeEditorLayer
+  // still work (returns null = "no editor layer to mirror into").
+  const _editorLayer = typeof activeEditorLayer === 'function' ? activeEditorLayer : () => null;
   return {
     bindNumberSlider(inputId, sliderId, layerField) {
       const num = document.getElementById(inputId);
@@ -52,7 +55,13 @@ export function createDomBinders({ activeLayer, requestRemask }) {
       const triggerRemask = opts.triggerRemask !== false;
       const writeAndRefresh = (v) => {
         const layer = activeLayer();
-        if (layer) layer[layerField] = Number.isFinite(v) ? v : 0;
+        const value = Number.isFinite(v) ? v : 0;
+        if (layer) layer[layerField] = value;
+        // Mirror to the matching editor layer so the rasterizer/compositor
+        // see the change immediately when they read from editor._layers
+        // (Step 2 of stamp-layer → editor-layer unification).
+        const eLayer = _editorLayer();
+        if (eLayer) eLayer[layerField] = value;
         if (triggerRemask) requestRemask();
       };
       if (num) {
@@ -82,6 +91,9 @@ export function createDomBinders({ activeLayer, requestRemask }) {
         cb.addEventListener('change', () => {
           const layer = activeLayer();
           if (layer) layer[layerField] = cb.checked;
+          // Mirror to editor layer (Step 2 unification).
+          const eLayer = _editorLayer();
+          if (eLayer) eLayer[layerField] = cb.checked;
           if (triggerRemask) requestRemask();
         });
       }

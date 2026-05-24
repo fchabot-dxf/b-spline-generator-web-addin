@@ -180,12 +180,68 @@ function buildHeights(nx, nz) {
         for (let k = 0; k < nx * nz; k++) cleanHeights[k] += preDelta[k];
     }
 
-    const heights = applyStampLayers(cleanHeights, P.stampLayers, nx, nz, {
+    // Step 3 unification: build the pass list from editor layers when
+    // available, falling back to (or merging in) legacy P.stampLayers.
+    const passes = _collectStampPasses();
+    const heights = applyStampLayers(cleanHeights, passes, nx, nz, {
         stampDepth:            P.stampDepth,
         stampEdgeFilletRadius: P.stampEdgeFilletRadius,
     });
 
     return { heights, cleanHeights, baseHeights: generated.heights, generated };
+}
+
+/**
+ * Produce a unified list of stamp passes, one per editor layer (when the
+ * editor is loaded), plus any legacy P.stampLayers entries with svg+mask
+ * that don't already correspond to an editor layer (so Browse uploads
+ * predating Step 3 still produce a pass).
+ *
+ * The returned shape matches what applyStampLayers expects:
+ *   { enabled, svg, mask, depth, profile, suppression, smoothing,
+ *     edgeFilletRadius, filletPower, name? }
+ */
+function _collectStampPasses() {
+    const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
+    const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : null;
+    const passes = [];
+    const coveredIdx = new Set();
+
+    if (editorLayers) {
+        editorLayers.forEach((layer, idx) => {
+            if (!layer) return;
+            if (layer.visible === false) return;
+            const mask = layer._mask || (P.stampLayers?.[idx]?.mask) || null;
+            if (!mask) return;
+            // Build a stamp-pass-shape view of the editor layer. We keep
+            // a non-empty svg marker so the applyStampLayers guard
+            // `!layer.svg` doesn't reject the pass — the rasterizer has
+            // already consumed the real svg into `mask` by this point.
+            passes.push({
+                name: layer.name,
+                enabled: true,
+                svg: '1',
+                mask,
+                depth: layer.depth,
+                profile: layer.profile,
+                suppression: layer.suppression,
+                smoothing: layer.smoothing,
+                edgeFilletRadius: layer.edgeFilletRadius,
+                filletPower: layer.filletPower,
+            });
+            coveredIdx.add(idx);
+        });
+    }
+
+    if (Array.isArray(P.stampLayers)) {
+        P.stampLayers.forEach((layer, idx) => {
+            if (!layer || !layer.svg || !layer.mask || !layer.enabled) return;
+            if (coveredIdx.has(idx)) return;
+            passes.push(layer);
+        });
+    }
+
+    return passes;
 }
 
 // ── Phase 6: sculpt notices ─────────────────────────────────────────────────

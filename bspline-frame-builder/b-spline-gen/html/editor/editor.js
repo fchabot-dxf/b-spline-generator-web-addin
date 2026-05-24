@@ -59,6 +59,11 @@ export class VectorEditor {
         this._currentMode = 'draw';
         this._strokeWidth = 0.5;
         this._strokeColor = '#000000';
+        // Step 27: fill mode for new shapes. 'stroke' = outline only (legacy
+        // behavior, default), 'fill' = solid interior, 'both' = outline +
+        // interior. Pen-anchor paths auto-close with Z when fill is active.
+        this._fillMode = 'stroke';
+        this._fillColor = '#000000';
         this._fontFamily = "Arial";
         this._fontSize = 3.0;
         this._expandDetail = 1.0;
