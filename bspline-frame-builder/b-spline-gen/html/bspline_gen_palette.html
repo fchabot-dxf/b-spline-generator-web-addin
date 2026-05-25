@@ -1152,6 +1152,15 @@
         </div>
         <div style="display:flex; gap:8px;">
           <button id="editorClear" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Clear</button>
+          <!--
+            Send-to-Fusion (BUG-23): pipe the current editor SVG to Fusion
+            as one sketch per editor layer. Only visible when the page is
+            running inside Fusion 360 (window.adsk + isFusionMode).
+            Toggled at runtime by initSvgEditor.
+          -->
+          <button id="editorSendToFusion" class="cad-btn cad-btn-secondary"
+                  style="font-size:11px; padding: 4px 12px; display:none;"
+                  title="Send each editor layer to the active Fusion component as its own sketch">🧩 Send to Fusion</button>
           <button id="editorCancel" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Cancel</button>
           <button id="editorApply" class="cad-btn cad-btn-primary" style="font-size:11px; padding: 4px 14px;">Apply Stencils</button>
         </div>

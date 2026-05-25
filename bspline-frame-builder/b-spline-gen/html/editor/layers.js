@@ -275,7 +275,12 @@ export function applyLayerState(editor) {
     else            child.removeClass('layer-hidden');
   });
 
-  if (editor._selectedElement && !isEditableByLayer(editor, editor._selectedElement)) {
+  // BUG-28 cross-layer multi-select: only deselect when the selection is
+  // a SINGLE non-editable element. Multi-selection across layers is now
+  // a legitimate state (shift-click / marquee can pick from any visible
+  // layer), so we don't auto-strip it on layer changes.
+  const selArr = editor._selectedElements || [];
+  if (selArr.length === 1 && !isEditableByLayer(editor, selArr[0])) {
     editor._deselect();
   }
 }

@@ -367,12 +367,17 @@ export class VectorEditor {
     }
 
     deleteSelected() {
-        if (this._selectedElement) {
-            this._selectedElement.remove();
-            this._deselect();
-            this.pushState();
-            if (this._onChange) this._onChange();
+        // BUG-28 multi-select: remove every selected element, not just
+        // the primary. Snapshot the array first because .remove() mutates
+        // the DOM and the getter/array shifts under us otherwise.
+        const sel = (this._selectedElements || []).slice();
+        if (sel.length === 0) return;
+        for (const el of sel) {
+            try { el.remove(); } catch (_) {}
         }
+        this._deselect();
+        this.pushState();
+        if (this._onChange) this._onChange();
     }
 
     _deselect() {

@@ -42,6 +42,107 @@ export function initInteraction(editor) {
     on(svgNode, 'touchstart', (e) => handleStart(editor, e), { passive: false });
     on(window,  'touchmove',  (e) => handleMove(editor, e),  { passive: false });
     on(window,  'touchend',   (e) => handleEnd(editor, e));
+    // BUG-28: global keyboard shortcuts for the editor — Delete /
+    // Backspace removes the whole multi-selection, Ctrl/Cmd+C copies it
+    // onto editor._clipboard, Ctrl/Cmd+V pastes (with a small offset so
+    // duplicates are visible) onto the active editor layer.
+    on(window, 'keydown', (e) => _handleEditorKeydown(editor, e));
+}
+
+function _isEditorActive(editor) {
+    // Only react to keyboard shortcuts when the editor modal is open AND
+    // the user isn't typing in another input (text shapes, the layer-
+    // name inline-rename input, etc.).
+    const modal = document.getElementById('svgEditorModal');
+    if (!modal || modal.style.display === 'none') return false;
+    const a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return false;
+    if (editor._editingTextEl) return false;
+    return true;
+}
+
+function _handleEditorKeydown(editor, e) {
+    if (!_isEditorActive(editor)) return;
+    const sel = (editor._selectedElements || []);
+
+    // Delete / Backspace — remove all selected.
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length > 0) {
+        e.preventDefault();
+        editor.deleteSelected();
+        return;
+    }
+
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (!ctrl) return;
+
+    // Ctrl/Cmd + C — copy selection.
+    if (e.key === 'c' || e.key === 'C') {
+        if (sel.length === 0) return;
+        e.preventDefault();
+        editor._clipboard = sel.map((el) => ({
+            // Capture each element's outer SVG markup + its data-layer
+            // so paste can put it back on the same layer (or rewrite to
+            // active on cross-layer paste).
+            outerSvg: el.node ? el.node.outerHTML : '',
+            layer: el.attr ? (el.attr('data-layer') || null) : null,
+        })).filter((c) => c.outerSvg);
+        return;
+    }
+
+    // Ctrl/Cmd + V — paste clipboard onto the active layer.
+    if (e.key === 'v' || e.key === 'V') {
+        const clip = editor._clipboard;
+        if (!Array.isArray(clip) || clip.length === 0) return;
+        e.preventDefault();
+        _pasteFromClipboard(editor, clip);
+        return;
+    }
+
+    // Ctrl/Cmd + A — select every visible shape across all visible layers.
+    if (e.key === 'a' || e.key === 'A') {
+        if (!editor._sketchLayer) return;
+        e.preventDefault();
+        const all = editor._sketchLayer.children().toArray().filter((el) => {
+            if (!el || !el.node) return false;
+            const cls = el.node.getAttribute('class') || '';
+            return !cls.includes('layer-hidden');
+        });
+        if (typeof editor._selectMany === 'function') editor._selectMany(all);
+    }
+}
+
+function _pasteFromClipboard(editor, clip) {
+    if (!editor._sketchLayer) return;
+    const sketchNode = editor._sketchLayer.node;
+    const activeLayer = ensureActiveLayer(editor);
+    // Small offset so the pasted copy doesn't sit exactly on top.
+    const dx = editor._getDynamicTolerance ? editor._getDynamicTolerance(8) : 0.2;
+    const dy = dx;
+
+    const newEls = [];
+    for (const entry of clip) {
+        try {
+            const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            wrapper.innerHTML = entry.outerSvg;
+            const node = wrapper.firstElementChild;
+            if (!node) continue;
+            node.setAttribute('data-layer', String(activeLayer));
+            sketchNode.appendChild(node);
+            // Wrap in svg.js so translate() works.
+            const adopted = window.SVG && window.SVG.adopt ? window.SVG.adopt(node) : null;
+            if (adopted && typeof adopted.translate === 'function') {
+                try { adopted.translate(dx, dy); } catch (_) {}
+                newEls.push(adopted);
+            }
+        } catch (_) { /* skip malformed clipboard entries */ }
+    }
+    if (newEls.length && typeof editor._selectMany === 'function') {
+        editor._selectMany(newEls);
+    }
+    if (typeof editor.pushState === 'function') {
+        try { editor.pushState(); } catch (_) {}
+    }
+    if (editor._onChange) { try { editor._onChange(); } catch (_) {} }
 }
 
 function handleDblClick(editor, e) {
