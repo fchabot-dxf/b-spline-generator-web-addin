@@ -308,7 +308,15 @@ function _commitAnchorPath(editor) {
     }
     const tol    = editor._getDynamicTolerance(2);
     const fitted = fitCurve(editor, editor._anchorPts, tol * 1.5);
-    if (fitted) editor._currentPath.attr('d', fitted);
+    if (fitted) {
+        // BUG-27 parity with finishDrawing: close anchor-mode paths
+        // with Z when in fill / both mode so they rasterize as regions.
+        const mode = editor._fillMode || 'stroke';
+        const d = (mode === 'fill' || mode === 'both') && !fitted.trim().endsWith('Z')
+            ? `${fitted} Z`
+            : fitted;
+        editor._currentPath.attr('d', d);
+    }
     const finalPath     = editor._currentPath;
     editor._currentPath = null;
     editor._anchorPts   = [];
@@ -435,13 +443,24 @@ function translateSelection(editor, pt) {
 function createDrawingShape(editor, modeId, pt) {
     const layer = ensureActiveLayer(editor);
     const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
+    // BUG-27 fill mode: pick fill + stroke based on the user's choice in
+    // the editor toolbar. Lines never get filled (no interior). Pen
+    // paths in 'fill' mode are auto-closed with Z at commit time so the
+    // rasterizer treats the enclosed area as a region.
+    const mode = editor._fillMode || 'stroke';
+    const fillColor = editor._fillColor || editor._strokeColor || '#000000';
+    const fillForShape = (mode === 'stroke') ? 'none' : fillColor;
+    const strokeForShape = (mode === 'fill')
+        ? { color: 'none', width: 0 }
+        : stroke;
     if (modeId === 'draw') {
         return editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)
-            .fill('none')
-            .stroke({ ...stroke, linecap: 'round', linejoin: 'round' })
+            .fill(fillForShape)
+            .stroke({ ...strokeForShape, linecap: 'round', linejoin: 'round' })
             .attr('data-layer', layer);
     }
     if (modeId === 'line') {
+        // Lines are stroke-only by nature.
         return editor._sketchLayer.line(pt.x, pt.y, pt.x, pt.y)
             .stroke({ ...stroke, linecap: 'round' })
             .attr('data-layer', layer);
@@ -449,15 +468,15 @@ function createDrawingShape(editor, modeId, pt) {
     if (modeId === 'rect') {
         return editor._sketchLayer.rect(0, 0)
             .move(pt.x, pt.y)
-            .fill('none')
-            .stroke(stroke)
+            .fill(fillForShape)
+            .stroke(strokeForShape)
             .attr('data-layer', layer);
     }
     if (modeId === 'circle') {
         return editor._sketchLayer.circle(0)
             .center(pt.x, pt.y)
-            .fill('none')
-            .stroke(stroke)
+            .fill(fillForShape)
+            .stroke(strokeForShape)
             .attr('data-layer', layer);
     }
     return null;
@@ -496,7 +515,15 @@ function finishDrawing(editor, modeId) {
             const tol = editor._getDynamicTolerance(2);
             const simplified = ramerDouglasPeucker(editor._points, tol);
             const fitted = fitCurve(editor, simplified, tol * 1.5);
-            if (fitted) editor._currentPath.attr('d', fitted);
+            if (fitted) {
+                // BUG-27: in fill / both mode, auto-close the path with Z
+                // so the rasterizer treats the enclosed region as a fill.
+                const mode = editor._fillMode || 'stroke';
+                const d = (mode === 'fill' || mode === 'both') && !fitted.trim().endsWith('Z')
+                    ? `${fitted} Z`
+                    : fitted;
+                editor._currentPath.attr('d', d);
+            }
         } else {
             editor._currentPath.remove();
             editor._currentPath = null;
