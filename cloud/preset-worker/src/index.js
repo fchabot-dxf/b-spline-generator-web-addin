@@ -132,7 +132,7 @@ async function handleBspline(request, env, method) {
   // Health check
   if (path === '/' && method === 'GET') {
     return json({
-      service: 'fred-projects',
+      service: 'projects-dansemur',
       apps: ['bspline', 'connery', 'cam-studio', 'penplotter'],
       endpoints: {
         bspline: {
