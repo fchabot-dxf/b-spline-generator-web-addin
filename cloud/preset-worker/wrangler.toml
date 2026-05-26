@@ -1,8 +1,14 @@
-name = "bspline-presets"
+name = "fred-projects"
 main = "src/index.js"
 compatibility_date = "2024-09-01"
 account_id = "014e18b89793d634a95538e7910dce19"
 
+# Bspline / Connery / CAM Studio projects (name-keyed, no auth)
 [[kv_namespaces]]
 binding = "PRESETS"
 id = "7c5a9da610ff46d98209265d5c270818"
+
+# Pen Plotter projects + palettes (UUID-keyed, API key auth)
+[[kv_namespaces]]
+binding = "PENPLOTTER"
+id = "db051a143b2744a2b69eda07b609e48e"
