@@ -581,6 +581,14 @@
    also excluded from the stamp output. */
 #editorSVGContainer .layer-hidden { display: none; }
 
+/* Elements on non-active layers are dimmed and non-interactive so the user
+   can clearly see which layer is currently editable. The class is applied
+   by applyLayerState() in editor/layers.js. */
+#editorSVGContainer .inactive-layer {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
 /* Mobile: narrower panel; on very narrow viewports the panel hides behind
    a toggle. For now keep it visible but slimmer. */
 @media (max-width: 700px) {

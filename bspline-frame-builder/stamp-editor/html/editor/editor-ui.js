@@ -312,8 +312,10 @@ function _afterSelectionChange(editor, primary) {
         for (const el of editor._selectedElements) {
             try { el.addClass('svg-selected'); } catch (_) {}
         }
-        const layerSel = getEl('editorLayerSelect');
-        if (layerSel) layerSel.value = primary.attr('data-layer') || "0";
+        // NOTE: _setActiveLayer (called above) already calls _syncLegacySelect,
+        // which keeps the hidden #editorLayerSelect in sync. A redundant direct
+        // write here was removed — it used the wrong "0" fallback and bypassed
+        // the shim's proper sync logic. (Bug-5 / legacy-select migration task.)
 
         if (primary.type === 'text') {
             const f = primary.font();

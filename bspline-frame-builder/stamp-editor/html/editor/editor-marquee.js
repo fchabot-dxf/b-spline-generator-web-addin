@@ -82,7 +82,7 @@ export function finalizeMarquee(editor) {
         // Ignore hidden / transient helpers (anchor preview, etc.).
         if (!el || !el.node || !el.node.parentNode) continue;
         const cls = el.node.getAttribute('class') || '';
-        if (cls.includes('layer-hidden') || cls.includes('layer-inactive')) continue;
+        if (cls.includes('layer-hidden') || cls.includes('inactive-layer')) continue;
         // Don't pick the marquee rect itself (defensive — it lives in
         // _handleLayer, not _sketchLayer, but cheap to guard).
         if (el === r) continue;

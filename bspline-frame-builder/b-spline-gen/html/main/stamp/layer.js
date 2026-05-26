@@ -14,6 +14,7 @@
  * any add/remove/rename/reorder/visibility change).
  */
 import { P, updateP, setStampLayerEnabled } from '../../core/state.js';
+import { setLayerVisible } from '../../editor/layers.js';
 import { scheduleRebuild, rebuild } from '../../core/engine.js';
 import { updateStampMasks } from '../stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../../core/sculpt-interaction.js';
@@ -161,11 +162,15 @@ export function initLayer(ctx) {
       if (Array.isArray(layers) && layers[idx]) {
         const editor = window.svgEditor;
         const layer = layers[idx];
-        layer.visible = enabledCb.checked;
-        // Re-render the editor's layers panel so the eye-icon stays
-        // consistent with what the stamp panel just toggled.
-        if (editor && typeof editor._updateHandles === 'function') {
-          try { editor._updateHandles(); } catch (_) {}
+        // Route through the canonical setLayerVisible so the eye icon
+        // in the layers panel AND the layer-hidden / inactive-layer CSS
+        // classes on SVG elements are properly updated (applyLayerState).
+        if (editor) {
+          try { setLayerVisible(editor, layer.id, enabledCb.checked); } catch (_) {}
+        } else {
+          // No editor yet — just mutate the flag so the stamp rebuild
+          // picks up the new value; the panel will sync when it opens.
+          layer.visible = enabledCb.checked;
         }
         // Trigger a rebuild — visibility affects which passes are applied.
         scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);
