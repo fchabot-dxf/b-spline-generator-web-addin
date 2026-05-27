@@ -23,6 +23,12 @@
 //   PUT    /{projects|palettes}/:id    -> overwrite or rename
 //   DELETE /{projects|palettes}/:id    -> delete
 //
+// ── Loader (no auth) ────────────────────────────────────────────────────────
+//   Uses env.LOADER_APPS KV. Single document under key "registry".
+//
+//   GET    /loader/apps                -> { apps: [...] } | { apps: [] } if unset
+//   PUT    /loader/apps                -> body: { apps: [...] } | 200 { ok, savedAt, count }
+//
 // CORS open for all origins (Fusion file:// and web).
 // Body size cap: 10 MB.
 
@@ -133,7 +139,7 @@ async function handleBspline(request, env, method) {
   if (path === '/' && method === 'GET') {
     return json({
       service: 'projects-dansemur',
-      apps: ['bspline', 'connery', 'cam-studio', 'penplotter'],
+      apps: ['bspline', 'connery', 'cam-studio', 'penplotter', 'loader'],
       endpoints: {
         bspline: {
           list:        'GET /projects',
@@ -151,8 +157,38 @@ async function handleBspline(request, env, method) {
           remove: 'DELETE /{projects|palettes}/:id',
           note:   'Requires X-API-Key header.',
         },
+        loader: {
+          load: 'GET /loader/apps',
+          save: 'PUT /loader/apps',
+          note: 'Single document { apps: [...] }. No auth.',
+        },
       },
     });
+  }
+
+  // ── Loader: single-document registry ──────────────────────────────────────
+  if (path === '/loader/apps') {
+    if (method === 'GET') {
+      const value = await env.LOADER_APPS.get('registry');
+      if (value === null) return json({ apps: [] });
+      return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
+    }
+    if (method === 'PUT') {
+      const body = await request.text();
+      if (body.length === 0)            return json({ error: 'empty body' }, 400);
+      if (body.length > MAX_BODY_BYTES) return json({ error: 'body too large', maxBytes: MAX_BODY_BYTES }, 413);
+      let parsed;
+      try { parsed = JSON.parse(body); } catch { return json({ error: 'invalid JSON' }, 400); }
+      if (!parsed || !Array.isArray(parsed.apps)) {
+        return json({ error: 'expected { apps: [...] }' }, 400);
+      }
+      const savedAt = Date.now();
+      await env.LOADER_APPS.put('registry', body, {
+        metadata: { savedAt, size: body.length, count: parsed.apps.length },
+      });
+      return json({ ok: true, savedAt, count: parsed.apps.length });
+    }
+    return json({ error: 'method not allowed' }, 405);
   }
 
   // List: GET /projects or /presets
