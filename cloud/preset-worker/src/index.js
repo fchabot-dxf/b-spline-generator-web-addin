@@ -39,6 +39,12 @@ export default {
     const method = request.method.toUpperCase();
     if (method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
 
+    // Appreciation Arts Plastiques: commits straight to GitHub (separate auth).
+    const url = new URL(request.url);
+    if (url.pathname.startsWith('/appreciation-arts-plastiques/')) {
+      return handleArt(request, env, method, url);
+    }
+
     // Dispatch: penplotter routes require the API key, bspline routes don't.
     if (request.headers.get('X-API-Key')) {
       return handlePenplotter(request, env, method);
@@ -290,4 +296,259 @@ function corsHeaders() {
     'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
     'Access-Control-Max-Age':       '86400',
   };
+}
+
+// ── Appreciation Arts Plastiques (commit via GitHub) ────────────────────────
+// No auth — same pattern as bspline / loader. The GITHUB_PAT lives only as a
+// worker secret, never reaches the browser. Uses the Git Data API so multi-
+// file commits (data.json + new image) are one atomic commit.
+
+const ART_GH_OWNER  = 'fchabot-dxf';
+const ART_GH_REPO   = 'appreciation-arts-plastiques';
+const ART_GH_BRANCH = 'main';
+
+async function handleArt(request, env, method, url) {
+  // No auth on this route, matching the bspline / loader / cam-profile pattern.
+  // If abuse ever shows up, add an origin check or X-API-Key gate here; the
+  // GITHUB_PAT secret stays server-side regardless.
+  if (!env.GITHUB_PAT) {
+    return json({ error: 'GITHUB_PAT not configured on worker' }, 500);
+  }
+
+  const path = url.pathname;
+
+  // Resolve a dataset slug to its repo file. 'main' (or none) = the original data.json.
+  const datasetPath = (set) => {
+    if (!set || set === 'main') return 'html/core/data.json';
+    const slug = String(set).toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40);
+    return slug ? `html/core/datasets/${slug}.json` : 'html/core/data.json';
+  };
+
+  // GET /appreciation-arts-plastiques/datasets → manifest of available datasets
+  if (path === '/appreciation-arts-plastiques/datasets' && method === 'GET') {
+    try {
+      const raw = await ghReadFile(env.GITHUB_PAT, 'html/core/datasets/index.json');
+      return new Response(raw, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
+    } catch (e) {
+      return json([{ slug: 'main', title: 'Collection principale' }]);
+    }
+  }
+
+  // GET /appreciation-arts-plastiques/data?set=<slug> → that dataset's JSON (live from GitHub main)
+  if (path === '/appreciation-arts-plastiques/data' && method === 'GET') {
+    try {
+      const raw = await ghReadFile(env.GITHUB_PAT, datasetPath(url.searchParams.get('set')));
+      return new Response(raw, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
+    } catch (e) {
+      // A not-yet-created dataset reads as an empty collection.
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
+    }
+  }
+
+  // POST /appreciation-arts-plastiques/commit
+  // Body: { dataJson?: <stringified JSON>, set?: <slug>, manifest?: <stringified JSON>, image?: { name, base64 }, message? }
+  if (path === '/appreciation-arts-plastiques/commit' && method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'invalid JSON body' }, 400); }
+
+    const files = [];
+    if (typeof body.dataJson === 'string') {
+      try { JSON.parse(body.dataJson); } catch { return json({ error: 'dataJson must be valid JSON' }, 400); }
+      files.push({ path: datasetPath(body.set), content: body.dataJson });
+    }
+    if (typeof body.manifest === 'string') {
+      try { JSON.parse(body.manifest); } catch { return json({ error: 'manifest must be valid JSON' }, 400); }
+      files.push({ path: 'html/core/datasets/index.json', content: body.manifest });
+    }
+
+    if (body.image) {
+      const { name, base64 } = body.image;
+      if (typeof name !== 'string' || typeof base64 !== 'string') {
+        return json({ error: 'image.name and image.base64 required' }, 400);
+      }
+      if (!/^[A-Za-z0-9._-]+\.(png|jpg|jpeg|webp|gif)$/i.test(name)) {
+        return json({ error: 'image.name must be a simple filename ending in .png/.jpg/.jpeg/.webp/.gif' }, 400);
+      }
+      files.push({ path: `html/assets/images/${name}`, contentBase64: base64 });
+    }
+
+    if (!files.length) return json({ error: 'nothing to commit (dataJson, manifest, or image required)' }, 400);
+    const message = (typeof body.message === 'string' && body.message.trim())
+      ? body.message.trim().slice(0, 200)
+      : (body.image ? `tracer: add ${body.image.name}` : ('tracer: update ' + (body.set || 'main')));
+
+    try {
+      const result = await ghCommitFiles(env.GITHUB_PAT, message, files);
+      return json({ ok: true, ...result, files: files.map(f => f.path) });
+    } catch (e) {
+      return json({ error: 'github commit failed', detail: String(e.message || e) }, 502);
+    }
+  }
+
+  // GET /appreciation-arts-plastiques/freesound-search?q=...&page=...
+  // Proxies Freesound search through the worker so the API key stays server-side.
+  // Filtered to Creative Commons 0 (public domain) — no attribution required.
+  if (path === '/appreciation-arts-plastiques/freesound-search' && method === 'GET') {
+    if (!env.FREESOUND_API_KEY) return json({ error: 'FREESOUND_API_KEY not configured on worker' }, 500);
+    const q = url.searchParams.get('q');
+    if (!q) return json({ error: 'q (query) required' }, 400);
+    const page = url.searchParams.get('page') || '1';
+
+    const fsUrl = new URL('https://freesound.org/apiv2/search/text/');
+    fsUrl.searchParams.set('query', q);
+    fsUrl.searchParams.set('page', page);
+    fsUrl.searchParams.set('page_size', '20');
+    fsUrl.searchParams.set('filter', 'license:"Creative Commons 0"');
+    fsUrl.searchParams.set('fields', 'id,name,previews,duration,license,username');
+    fsUrl.searchParams.set('token', env.FREESOUND_API_KEY);
+
+    try {
+      const r = await fetch(fsUrl.toString());
+      if (!r.ok) return json({ error: 'freesound search failed', status: r.status, body: (await r.text()).slice(0, 500) }, 502);
+      const data = await r.json();
+      return json(data);
+    } catch (e) {
+      return json({ error: 'freesound fetch error', detail: String(e.message || e) }, 502);
+    }
+  }
+
+  // POST /appreciation-arts-plastiques/sound-import  { freesound_id }
+  // Fetches the high-quality preview mp3 from Freesound and commits it to
+  // html/assets/sounds/{id}-{slug}.mp3 via the Git Data API. Returns the
+  // sound_path the tracer should set on the concept (and the commit SHA).
+  if (path === '/appreciation-arts-plastiques/sound-import' && method === 'POST') {
+    if (!env.FREESOUND_API_KEY) return json({ error: 'FREESOUND_API_KEY not configured on worker' }, 500);
+
+    let body;
+    try { body = await request.json(); } catch { return json({ error: 'invalid JSON body' }, 400); }
+    const id = body.freesound_id;
+    if (!id || !/^\d+$/.test(String(id))) return json({ error: 'freesound_id (numeric) required' }, 400);
+
+    try {
+      // 1. Sound details (to get the preview URL + name for the filename)
+      const detailsUrl = `https://freesound.org/apiv2/sounds/${id}/?fields=id,name,previews,license,username&token=${env.FREESOUND_API_KEY}`;
+      const dr = await fetch(detailsUrl);
+      if (!dr.ok) return json({ error: 'freesound details failed', status: dr.status }, 502);
+      const details = await dr.json();
+
+      const previewUrl = details.previews && (details.previews['preview-hq-mp3'] || details.previews['preview-lq-mp3']);
+      if (!previewUrl) return json({ error: 'no preview available' }, 502);
+
+      // 2. Fetch the audio bytes
+      const ar = await fetch(previewUrl);
+      if (!ar.ok) return json({ error: 'preview fetch failed', status: ar.status }, 502);
+      const audioBytes = await ar.arrayBuffer();
+      const base64 = arrayBufferToBase64(audioBytes);
+
+      // 3. Slugified filename
+      const slug = String(details.name || 'sound')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'sound';
+      const filename = `${id}-${slug}.mp3`;
+      const targetPath = `html/assets/sounds/${filename}`;
+
+      // 4. Commit
+      const result = await ghCommitFiles(
+        env.GITHUB_PAT,
+        `tracer: import sound "${details.name}" (Freesound #${id})`,
+        [{ path: targetPath, contentBase64: base64 }],
+      );
+
+      return json({
+        ok: true,
+        commit: result.commit,
+        filename,
+        sound_path: `assets/sounds/${filename}`,
+        attribution: details.username,
+        name: details.name,
+      });
+    } catch (e) {
+      return json({ error: 'sound import failed', detail: String(e.message || e) }, 502);
+    }
+  }
+
+  return json({ error: 'not found', path }, 404);
+}
+
+// Convert an ArrayBuffer of binary data to a base64 string (no btoa newlines).
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 0x8000;
+  let s = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(s);
+}
+
+// Read a file from the GitHub repo at the configured branch (returns raw text).
+async function ghReadFile(pat, filePath) {
+  const u = `https://api.github.com/repos/${ART_GH_OWNER}/${ART_GH_REPO}/contents/${filePath}?ref=${ART_GH_BRANCH}`;
+  const r = await fetch(u, {
+    headers: {
+      'Authorization': `Bearer ${pat}`,
+      'Accept': 'application/vnd.github.raw',
+      'User-Agent': 'projects-dansemur-worker',
+    },
+  });
+  if (!r.ok) throw new Error(`GET ${filePath}: ${r.status} ${await r.text()}`);
+  return await r.text();
+}
+
+// Commit multiple files in a single commit via the Git Data API.
+// files: [{ path, content? (utf8 string), contentBase64? }]
+async function ghCommitFiles(pat, message, files) {
+  const api = `https://api.github.com/repos/${ART_GH_OWNER}/${ART_GH_REPO}`;
+  const h = {
+    'Authorization': `Bearer ${pat}`,
+    'Accept': 'application/vnd.github+json',
+    'User-Agent': 'projects-dansemur-worker',
+    'Content-Type': 'application/json',
+  };
+  const gh = async (subpath, init = {}) => {
+    const r = await fetch(api + subpath, { ...init, headers: { ...h, ...(init.headers || {}) } });
+    if (!r.ok) throw new Error(`${init.method || 'GET'} ${subpath}: ${r.status} ${await r.text()}`);
+    return r.json();
+  };
+
+  // 1) current HEAD of branch
+  const ref = await gh(`/git/refs/heads/${ART_GH_BRANCH}`);
+  const parentSha = ref.object.sha;
+
+  // 2) tree SHA of that commit
+  const parentCommit = await gh(`/git/commits/${parentSha}`);
+  const baseTreeSha = parentCommit.tree.sha;
+
+  // 3) create a blob per file (sequential — small file count)
+  const treeItems = [];
+  for (const f of files) {
+    const body = f.contentBase64 !== undefined
+      ? { content: f.contentBase64, encoding: 'base64' }
+      : { content: f.content, encoding: 'utf-8' };
+    const blob = await gh('/git/blobs', { method: 'POST', body: JSON.stringify(body) });
+    treeItems.push({ path: f.path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+
+  // 4) new tree on top of the base tree
+  const newTree = await gh('/git/trees', {
+    method: 'POST',
+    body: JSON.stringify({ base_tree: baseTreeSha, tree: treeItems }),
+  });
+
+  // 5) new commit
+  const newCommit = await gh('/git/commits', {
+    method: 'POST',
+    body: JSON.stringify({ message, tree: newTree.sha, parents: [parentSha] }),
+  });
+
+  // 6) move the branch ref to the new commit
+  await gh(`/git/refs/heads/${ART_GH_BRANCH}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ sha: newCommit.sha }),
+  });
+
+  return { commit: newCommit.sha };
 }
