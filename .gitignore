@@ -48,6 +48,7 @@ frame-builder - Copy/
 bspline-frame-builder/dist/
 bspline-frame-builder/deploy_dist/
 bspline-frame-builder/deploy_dist_*/
+bspline-frame-builder/bspline-frame-builder.zip
 *.step
 *.dxf
 *.svg
