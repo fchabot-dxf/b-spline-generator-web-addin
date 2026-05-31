@@ -4,6 +4,7 @@
 import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { getElementLayer, setActiveLayer as _setActiveLayer } from './layers.js';
 
 // Per-mode help text shown in the floating status hint at the bottom of the
 // editor canvas. Keeps the lessons-learned messages out of the toolbar so the
@@ -312,6 +313,18 @@ function _afterSelectionChange(editor, primary) {
         for (const el of editor._selectedElements) {
             try { el.addClass('svg-selected'); } catch (_) {}
         }
+        // BUG-26: clicking an asset switches the editor's active layer
+        // to that asset's layer — so the user can immediately edit it
+        // without having to manually pick its layer in the panel first.
+        // applyLayerState's deselect-on-mismatch rule no longer fires
+        // because the active layer is now in sync with the selection.
+        try {
+            const elemLayer = getElementLayer(primary);
+            if (elemLayer != null && String(elemLayer) !== String(editor._activeLayer)) {
+                _setActiveLayer(editor, elemLayer);
+            }
+        } catch (_) { /* defensive: selection sync must not crash on bad markup */ }
+
         // NOTE: _setActiveLayer (called above) already calls _syncLegacySelect,
         // which keeps the hidden #editorLayerSelect in sync. A redundant direct
         // write here was removed — it used the wrong "0" fallback and bypassed

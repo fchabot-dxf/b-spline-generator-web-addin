@@ -34,7 +34,6 @@ export async function expandCurrent(editor, detail = 1.0, simplify = 15, accurac
             return;
         }
     }
-
     const opts = { detail, simplify, accuracy, commit };
     _oLog('begin  selType=' + el.type + '  children=' + editor._sketchLayer.children().toArray().length);
 

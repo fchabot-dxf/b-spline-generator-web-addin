@@ -275,7 +275,12 @@ export function applyLayerState(editor) {
     else            child.removeClass('layer-hidden');
   });
 
-  if (editor._selectedElement && !isEditableByLayer(editor, editor._selectedElement)) {
+  // BUG-28 cross-layer multi-select: only deselect when the selection is
+  // a SINGLE non-editable element. Multi-selection across layers is now
+  // a legitimate state (shift-click / marquee can pick from any visible
+  // layer), so we don't auto-strip it on layer changes.
+  const selArr = editor._selectedElements || [];
+  if (selArr.length === 1 && !isEditableByLayer(editor, selArr[0])) {
     editor._deselect();
   }
 }
@@ -319,6 +324,21 @@ export function renderLayersPanel(editor) {
 
   _syncLegacySelect(editor);
   _syncActiveLabel(editor);
+
+  // Notify other UI (e.g. the Vector Stamping panel's "Active Layer"
+  // dropdown) that the layer roster changed. Step 3 of the
+  // stamp-layer → editor-layer unification.
+  try {
+    if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('editorLayersChanged', {
+        detail: {
+          editor,
+          layers: editor._layers,
+          activeId: editor._activeLayer,
+        },
+      }));
+    }
+  } catch (_) { /* defensive: rendering must not crash if listeners throw */ }
 }
 
 function _makeLayerRow(editor, layer, isActive) {

@@ -6,7 +6,7 @@
 import { stripSvgjsAttributes } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults } from './layers.js';
+import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -93,6 +93,48 @@ function _serializeLayersAttr(editor) {
         console.warn('[editor-io] _serializeLayersAttr failed', e);
         return '';
     }
+}
+
+/**
+ * Build a self-contained SVG string that contains ONLY the children of
+ * the editor's sketch layer that carry `data-layer="<layerId>"`. Used
+ * by the rasterizer-compositor pipeline to produce one stamp pass per
+ * editor layer (Step 3 of the stamp-layer → editor-layer unification).
+ *
+ * Returns "" if the editor isn't drawn yet, or if the layer has no
+ * matching children — the caller is expected to treat empty content as
+ * "skip this pass" rather than rasterize a blank mask.
+ */
+export function getLayerSvg(editor, layerId, dpi = 96) {
+    if (!editor || !editor._draw || !editor._sketchLayer) return "";
+    const targetId = String(layerId);
+    const raw = editor._sketchLayer.node.innerHTML;
+    if (!raw) return "";
+
+    // Walk a parsed copy and keep only children whose data-layer matches.
+    // Using DOMParser keeps the original markup's quoting/entities intact.
+    const wrapper = `<svg xmlns="http://www.w3.org/2000/svg">${raw}</svg>`;
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(wrapper, 'image/svg+xml');
+    } catch {
+        return "";
+    }
+    const root = doc.documentElement;
+    if (!root) return "";
+
+    let kept = 0;
+    Array.from(root.children).forEach(ch => {
+        const lid = ch.getAttribute('data-layer');
+        if (lid == null || String(lid) !== targetId) ch.remove();
+        else kept++;
+    });
+    if (kept === 0) return "";
+
+    const wPx = editor._mW * dpi;
+    const hPx = editor._mH * dpi;
+    const inner = stripSvgjsAttributes(root.innerHTML);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${inner}</svg>`;
 }
 
 export function save(editor, dpi = 96) {
@@ -298,7 +340,16 @@ function _reconcileLayersFromSvg(editor) {
     }
     const children = editor._sketchLayer.children().toArray();
     _ioLog(`reconcile: childCount=${children.length}`);
-    if (children.length === 0) return null;
+    if (children.length === 0) {
+        // No children to reconcile, but still create a Layer 1 so the
+        // layer panel isn't empty when the user opens an SVG that
+        // happens to have no shapes (e.g. just <defs> from font embed).
+        // Matches the BUG-10 fix's auto-create behavior on init.
+        const anchor = applyToolingDefaults({ id: '0', name: 'Layer 1', visible: true });
+        editor._layers = [anchor];
+        editor._nextLayerId = 1;
+        return anchor.id;
+    }
 
     // Reset the runtime roster — we trust the SVG as the source of truth.
     editor._layers = [];
@@ -368,6 +419,12 @@ export function open(editor, svgString, w, h) {
 
     if (!svgString) {
         _ioLog('open: no svgString -> empty editor');
+        // Same auto-create as initLayerControls (BUG-10) so a fresh
+        // editor session always has a Layer 1 ready to go, instead of
+        // showing an empty layers list and the user wondering where to
+        // draw. skipUndo so this doesn't pollute the undo stack.
+        const layer = addLayer(editor, { skipUndo: true });
+        setActiveLayer(editor, layer.id);
         if (typeof editor.pushState === 'function') editor.pushState();
         return;
     }

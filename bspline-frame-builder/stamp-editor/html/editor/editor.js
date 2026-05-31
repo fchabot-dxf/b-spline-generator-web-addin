@@ -59,6 +59,11 @@ export class VectorEditor {
         this._currentMode = 'draw';
         this._strokeWidth = 0.5;
         this._strokeColor = '#000000';
+        // Step 27: fill mode for new shapes. 'stroke' = outline only (legacy
+        // behavior, default), 'fill' = solid interior, 'both' = outline +
+        // interior. Pen-anchor paths auto-close with Z when fill is active.
+        this._fillMode = 'stroke';
+        this._fillColor = '#000000';
         this._fontFamily = "Arial";
         this._fontSize = 3.0;
         this._expandDetail = 1.0;
@@ -362,12 +367,17 @@ export class VectorEditor {
     }
 
     deleteSelected() {
-        if (this._selectedElement) {
-            this._selectedElement.remove();
-            this._deselect();
-            this.pushState();
-            if (this._onChange) this._onChange();
+        // BUG-28 multi-select: remove every selected element, not just
+        // the primary. Snapshot the array first because .remove() mutates
+        // the DOM and the getter/array shifts under us otherwise.
+        const sel = (this._selectedElements || []).slice();
+        if (sel.length === 0) return;
+        for (const el of sel) {
+            try { el.remove(); } catch (_) {}
         }
+        this._deselect();
+        this.pushState();
+        if (this._onChange) this._onChange();
     }
 
     _deselect() {

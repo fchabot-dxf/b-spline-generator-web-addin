@@ -42,6 +42,107 @@ export function initInteraction(editor) {
     on(svgNode, 'touchstart', (e) => handleStart(editor, e), { passive: false });
     on(window,  'touchmove',  (e) => handleMove(editor, e),  { passive: false });
     on(window,  'touchend',   (e) => handleEnd(editor, e));
+    // BUG-28: global keyboard shortcuts for the editor — Delete /
+    // Backspace removes the whole multi-selection, Ctrl/Cmd+C copies it
+    // onto editor._clipboard, Ctrl/Cmd+V pastes (with a small offset so
+    // duplicates are visible) onto the active editor layer.
+    on(window, 'keydown', (e) => _handleEditorKeydown(editor, e));
+}
+
+function _isEditorActive(editor) {
+    // Only react to keyboard shortcuts when the editor modal is open AND
+    // the user isn't typing in another input (text shapes, the layer-
+    // name inline-rename input, etc.).
+    const modal = document.getElementById('svgEditorModal');
+    if (!modal || modal.style.display === 'none') return false;
+    const a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return false;
+    if (editor._editingTextEl) return false;
+    return true;
+}
+
+function _handleEditorKeydown(editor, e) {
+    if (!_isEditorActive(editor)) return;
+    const sel = (editor._selectedElements || []);
+
+    // Delete / Backspace — remove all selected.
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length > 0) {
+        e.preventDefault();
+        editor.deleteSelected();
+        return;
+    }
+
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (!ctrl) return;
+
+    // Ctrl/Cmd + C — copy selection.
+    if (e.key === 'c' || e.key === 'C') {
+        if (sel.length === 0) return;
+        e.preventDefault();
+        editor._clipboard = sel.map((el) => ({
+            // Capture each element's outer SVG markup + its data-layer
+            // so paste can put it back on the same layer (or rewrite to
+            // active on cross-layer paste).
+            outerSvg: el.node ? el.node.outerHTML : '',
+            layer: el.attr ? (el.attr('data-layer') || null) : null,
+        })).filter((c) => c.outerSvg);
+        return;
+    }
+
+    // Ctrl/Cmd + V — paste clipboard onto the active layer.
+    if (e.key === 'v' || e.key === 'V') {
+        const clip = editor._clipboard;
+        if (!Array.isArray(clip) || clip.length === 0) return;
+        e.preventDefault();
+        _pasteFromClipboard(editor, clip);
+        return;
+    }
+
+    // Ctrl/Cmd + A — select every visible shape across all visible layers.
+    if (e.key === 'a' || e.key === 'A') {
+        if (!editor._sketchLayer) return;
+        e.preventDefault();
+        const all = editor._sketchLayer.children().toArray().filter((el) => {
+            if (!el || !el.node) return false;
+            const cls = el.node.getAttribute('class') || '';
+            return !cls.includes('layer-hidden');
+        });
+        if (typeof editor._selectMany === 'function') editor._selectMany(all);
+    }
+}
+
+function _pasteFromClipboard(editor, clip) {
+    if (!editor._sketchLayer) return;
+    const sketchNode = editor._sketchLayer.node;
+    const activeLayer = ensureActiveLayer(editor);
+    // Small offset so the pasted copy doesn't sit exactly on top.
+    const dx = editor._getDynamicTolerance ? editor._getDynamicTolerance(8) : 0.2;
+    const dy = dx;
+
+    const newEls = [];
+    for (const entry of clip) {
+        try {
+            const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            wrapper.innerHTML = entry.outerSvg;
+            const node = wrapper.firstElementChild;
+            if (!node) continue;
+            node.setAttribute('data-layer', String(activeLayer));
+            sketchNode.appendChild(node);
+            // Wrap in svg.js so translate() works.
+            const adopted = window.SVG && window.SVG.adopt ? window.SVG.adopt(node) : null;
+            if (adopted && typeof adopted.translate === 'function') {
+                try { adopted.translate(dx, dy); } catch (_) {}
+                newEls.push(adopted);
+            }
+        } catch (_) { /* skip malformed clipboard entries */ }
+    }
+    if (newEls.length && typeof editor._selectMany === 'function') {
+        editor._selectMany(newEls);
+    }
+    if (typeof editor.pushState === 'function') {
+        try { editor.pushState(); } catch (_) {}
+    }
+    if (editor._onChange) { try { editor._onChange(); } catch (_) {} }
 }
 
 function handleDblClick(editor, e) {
@@ -308,7 +409,15 @@ function _commitAnchorPath(editor) {
     }
     const tol    = editor._getDynamicTolerance(2);
     const fitted = fitCurve(editor, editor._anchorPts, tol * 1.5);
-    if (fitted) editor._currentPath.attr('d', fitted);
+    if (fitted) {
+        // BUG-27 parity with finishDrawing: close anchor-mode paths
+        // with Z when in fill / both mode so they rasterize as regions.
+        const mode = editor._fillMode || 'stroke';
+        const d = (mode === 'fill' || mode === 'both') && !fitted.trim().endsWith('Z')
+            ? `${fitted} Z`
+            : fitted;
+        editor._currentPath.attr('d', d);
+    }
     const finalPath     = editor._currentPath;
     editor._currentPath = null;
     editor._anchorPts   = [];
@@ -435,13 +544,24 @@ function translateSelection(editor, pt) {
 function createDrawingShape(editor, modeId, pt) {
     const layer = ensureActiveLayer(editor);
     const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
+    // BUG-27 fill mode: pick fill + stroke based on the user's choice in
+    // the editor toolbar. Lines never get filled (no interior). Pen
+    // paths in 'fill' mode are auto-closed with Z at commit time so the
+    // rasterizer treats the enclosed area as a region.
+    const mode = editor._fillMode || 'stroke';
+    const fillColor = editor._fillColor || editor._strokeColor || '#000000';
+    const fillForShape = (mode === 'stroke') ? 'none' : fillColor;
+    const strokeForShape = (mode === 'fill')
+        ? { color: 'none', width: 0 }
+        : stroke;
     if (modeId === 'draw') {
         return editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)
-            .fill('none')
-            .stroke({ ...stroke, linecap: 'round', linejoin: 'round' })
+            .fill(fillForShape)
+            .stroke({ ...strokeForShape, linecap: 'round', linejoin: 'round' })
             .attr('data-layer', layer);
     }
     if (modeId === 'line') {
+        // Lines are stroke-only by nature.
         return editor._sketchLayer.line(pt.x, pt.y, pt.x, pt.y)
             .stroke({ ...stroke, linecap: 'round' })
             .attr('data-layer', layer);
@@ -449,15 +569,15 @@ function createDrawingShape(editor, modeId, pt) {
     if (modeId === 'rect') {
         return editor._sketchLayer.rect(0, 0)
             .move(pt.x, pt.y)
-            .fill('none')
-            .stroke(stroke)
+            .fill(fillForShape)
+            .stroke(strokeForShape)
             .attr('data-layer', layer);
     }
     if (modeId === 'circle') {
         return editor._sketchLayer.circle(0)
             .center(pt.x, pt.y)
-            .fill('none')
-            .stroke(stroke)
+            .fill(fillForShape)
+            .stroke(strokeForShape)
             .attr('data-layer', layer);
     }
     return null;
@@ -496,7 +616,15 @@ function finishDrawing(editor, modeId) {
             const tol = editor._getDynamicTolerance(2);
             const simplified = ramerDouglasPeucker(editor._points, tol);
             const fitted = fitCurve(editor, simplified, tol * 1.5);
-            if (fitted) editor._currentPath.attr('d', fitted);
+            if (fitted) {
+                // BUG-27: in fill / both mode, auto-close the path with Z
+                // so the rasterizer treats the enclosed region as a fill.
+                const mode = editor._fillMode || 'stroke';
+                const d = (mode === 'fill' || mode === 'both') && !fitted.trim().endsWith('Z')
+                    ? `${fitted} Z`
+                    : fitted;
+                editor._currentPath.attr('d', d);
+            }
         } else {
             editor._currentPath.remove();
             editor._currentPath = null;
