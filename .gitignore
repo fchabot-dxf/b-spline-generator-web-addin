@@ -45,6 +45,9 @@ desktop.ini
 *-log_path.json
 *_log_path.json
 frame-builder - Copy/
+bspline-frame-builder/dist/
+bspline-frame-builder/deploy_dist/
+bspline-frame-builder/deploy_dist_*/
 *.step
 *.dxf
 *.svg

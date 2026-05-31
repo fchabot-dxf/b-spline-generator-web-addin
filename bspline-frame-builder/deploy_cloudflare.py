@@ -8,6 +8,11 @@ from datetime import datetime
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
+# `--build-only` produces the static-site folder (dist/) and exits. Used by
+# the GitHub-connected Cloudflare Pages build, where CLOUDFLARE_* env vars,
+# wrangler, gh, and the local Fusion refresh aren't applicable.
+BUILD_ONLY = "--build-only" in sys.argv
+
 def clean_dir(path):
     """Robustly deletes a directory, handling read-only files and temporary OS locks."""
     if not os.path.exists(path):
@@ -49,11 +54,12 @@ if os.path.exists(env_path):
                 key, val = line.split("=", 1)
                 os.environ[key.strip()] = val.strip()
 
-# Validate required env vars
-for var in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
-    if not os.environ.get(var):
-        print(f"Error: {var} is not set. Add it to .env or set it as an environment variable.")
-        exit(1)
+# Validate required env vars (not needed in --build-only mode)
+if not BUILD_ONLY:
+    for var in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
+        if not os.environ.get(var):
+            print(f"Error: {var} is not set. Add it to .env or set it as an environment variable.")
+            exit(1)
 
 # Always deploy to the known Pages project and avoid prompting for a stale project name.
 PROJECT_NAME = os.getenv("CLOUDFLARE_PROJECT", "symmetric-b-spline-gen")
@@ -101,42 +107,46 @@ if WRANGLER_CMD is None:
                 WRANGLER_CMD = p
                 break
 
-# verify cli exists AND actually runs
-if WRANGLER_CMD is None:
-    print("wrangler CLI could not be located on PATH or in known npm-global paths.")
-    print("Install it with: npm install -g wrangler")
-    exit(1)
+# verify cli exists AND actually runs (skipped in --build-only mode — the
+# Cloudflare Pages build container does the deploy itself, no wrangler needed)
+if not BUILD_ONLY:
+    if WRANGLER_CMD is None:
+        print("wrangler CLI could not be located on PATH or in known npm-global paths.")
+        print("Install it with: npm install -g wrangler")
+        exit(1)
 
-try:
-    _probe = subprocess.run([WRANGLER_CMD, "--version"],
-                            check=True, capture_output=True, text=True)
-    print(f"Using wrangler at: {WRANGLER_CMD}")
-    print(f"  version: {_probe.stdout.strip() or _probe.stderr.strip()}")
-except subprocess.CalledProcessError as e:
-    print(f"wrangler shim was found at {WRANGLER_CMD} but failed to execute.")
-    print(f"  exit code: {e.returncode}")
-    if e.stdout: print(f"  stdout: {e.stdout.strip()}")
-    if e.stderr: print(f"  stderr: {e.stderr.strip()}")
-    print("  This usually means the wrangler.js path inside the shim is stale")
-    print("  (npm global moved, NVM switched Node versions, or wrangler was uninstalled).")
-    print("  Try: npm install -g wrangler")
-    exit(1)
-except FileNotFoundError as e:
-    print(f"wrangler shim at {WRANGLER_CMD} could not be launched: {e}")
-    print("  The interpreter (node.exe) referenced by the shim is missing.")
-    print("  Check that Node is installed and on PATH (or that NVM points at a valid version).")
-    exit(1)
-except Exception as e:
-    print(f"Unexpected error invoking wrangler at {WRANGLER_CMD}: {e!r}")
-    exit(1)
+    try:
+        _probe = subprocess.run([WRANGLER_CMD, "--version"],
+                                check=True, capture_output=True, text=True)
+        print(f"Using wrangler at: {WRANGLER_CMD}")
+        print(f"  version: {_probe.stdout.strip() or _probe.stderr.strip()}")
+    except subprocess.CalledProcessError as e:
+        print(f"wrangler shim was found at {WRANGLER_CMD} but failed to execute.")
+        print(f"  exit code: {e.returncode}")
+        if e.stdout: print(f"  stdout: {e.stdout.strip()}")
+        if e.stderr: print(f"  stderr: {e.stderr.strip()}")
+        print("  This usually means the wrangler.js path inside the shim is stale")
+        print("  (npm global moved, NVM switched Node versions, or wrangler was uninstalled).")
+        print("  Try: npm install -g wrangler")
+        exit(1)
+    except FileNotFoundError as e:
+        print(f"wrangler shim at {WRANGLER_CMD} could not be launched: {e}")
+        print("  The interpreter (node.exe) referenced by the shim is missing.")
+        print("  Check that Node is installed and on PATH (or that NVM points at a valid version).")
+        exit(1)
+    except Exception as e:
+        print(f"Unexpected error invoking wrangler at {WRANGLER_CMD}: {e!r}")
+        exit(1)
 
 
 workspace_dir = os.path.dirname(__file__) or "."
 source_dir    = os.path.join(workspace_dir, "b-spline-gen", "html")
 
-# Create a unique, timestamped deployment folder to bypass file locks on Google Drive/Windows
+# In --build-only mode use a stable name (dist/) so the Pages output-dir
+# setting can point at a known path. Otherwise use a timestamped folder to
+# bypass file locks on Google Drive/Windows during local manual deploys.
 timestamp     = datetime.now().strftime("%Y%m%d_%H%M%S")
-deploy_dist   = os.path.normpath(os.path.join(workspace_dir, f"deploy_dist_{timestamp}"))
+deploy_dist   = os.path.normpath(os.path.join(workspace_dir, "dist" if BUILD_ONLY else f"deploy_dist_{timestamp}"))
 
 # 0. Clean up previous deployment folders (if they are not locked)
 for d in os.listdir(workspace_dir):
@@ -193,6 +203,12 @@ for html_name in os.listdir(deploy_dist):
         with open(html_path, 'w', encoding='utf-8') as f:
             f.write(rewritten)
         print(f"  Rewrote stylesheet hrefs in {html_name}")
+
+
+if BUILD_ONLY:
+    print(f"--build-only: produced {deploy_dist}. "
+          "Skipping zip build, Fusion refresh, wrangler deploy, and gh release upload.")
+    sys.exit(0)
 
 
 # 2. Build the Fusion add-in distribution ZIP NEXT TO this script (NOT inside
