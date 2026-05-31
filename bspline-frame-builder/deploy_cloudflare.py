@@ -41,11 +41,16 @@ def clean_dir(path):
             print(f"Warning: Error during cleanup of {path}: {e}")
             break
 
-from dotenv import load_dotenv
 from pathlib import Path
-# Always load .env from the workspace root
-env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+# Always load .env from the workspace root. dotenv is only used for local
+# manual deploys; the Cloudflare Pages build container doesn't have it (and
+# doesn't need it — there's no .env to load there).
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent / '.env'
+    load_dotenv(dotenv_path=env_path)
+except ImportError:
+    env_path = Path(__file__).parent.parent / '.env'
 if os.path.exists(env_path):
     with open(env_path, encoding='utf-8') as f:
         for line in f:
