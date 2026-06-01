@@ -1746,6 +1746,11 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
 
     flip_y = bool(p.get('flipY', False))
 
+    # Machine assignment is OPTIONAL and OFF by default. Only attach the
+    # Ultimate Bee machine (and trigger the sim-doc load + fence-anchored WCS)
+    # when the profile explicitly opts in via 'assignMachine'.
+    assign_machine = bool(p.get('assignMachine', False))
+
     clearance_mm = p.get('clearanceHeight')  # float or None
     retract_mm   = p.get('retractHeight')    # float or None
 
@@ -1805,6 +1810,7 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
                 'wcs_orient':         'select_x_y',
                 'box_point':          box_point,
                 'flip_y':             flip_y,
+                'assign_machine':     assign_machine,
             }
             if clearance_mm is not None:
                 spec['clearance_mm'] = float(clearance_mm)
@@ -1936,8 +1942,17 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
     except Exception as e:
         _log(logger, f"SETUP BUILD GENERIC ({setup_name}): name set failed: {e}", "WARNING")
 
-    # Assign default machine for this project (Ultimate Bee 3 axis).
-    _assign_default_machine(setup, setup_name, logger)
+    # Assign default machine for this project (Ultimate Bee 3 axis) — only
+    # when the profile opts in. Machine assignment is OPTIONAL: it auto-loads
+    # the machine sim doc and anchors the WCS to the fence, which the user
+    # doesn't always want. Default is OFF; the palette's "Assign machine"
+    # toggle (profile key 'assignMachine') turns it on. Without a machine the
+    # WCS falls back to the stock-derived origin (see CAM_BUILDER_CONTEXT).
+    if spec.get('assign_machine'):
+        _assign_default_machine(setup, setup_name, logger)
+    else:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): machine assignment "
+                     f"skipped (assignMachine off)", "DEBUG")
 
     try:
         _set_stock_mode(setup, spec['stock_intent'], setup_name, logger)
@@ -2058,8 +2073,8 @@ def _resolve_side_axes(side, setup_name, logger):
     angle = float(side.get('angleDeg', 0.0))
     axis_kind = str(side.get('axis', 'Z')).upper()
 
-    # No rotation, or X/Y rotation (handled later via flips) → default axes
-    if angle == 0.0 or axis_kind != 'Z':
+    # No rotation → default origin axes.
+    if angle == 0.0:
         return _get_origin_axes(logger)
 
     try:
@@ -2072,11 +2087,22 @@ def _resolve_side_axes(side, setup_name, logger):
             return _get_origin_axes(logger)
         root = design.rootComponent
 
-        x_line, y_line = _find_or_create_rotation_sketch(
-            root, angle, setup_name, logger)
+        if axis_kind == 'Z':
+            # Z-axis indexing: two perpendicular lines in a flat hidden
+            # sketch on the XY plane.
+            x_line, y_line = _find_or_create_rotation_sketch(
+                root, angle, setup_name, logger)
+        else:
+            # X / Y rotary indexing at ANY angle: a tilted construction
+            # plane carrying the rotated reference lines. (Construction
+            # AXES can't be added from the Manufacture environment, but
+            # construction PLANES and sketches can — verified.)
+            x_line, y_line = _make_tilted_rotation_axes(
+                root, axis_kind, angle, setup_name, logger)
+
         if x_line is None or y_line is None:
             _log(logger,
-                 f"SETUP BUILD GENERIC ({setup_name}): rotation sketch "
+                 f"SETUP BUILD GENERIC ({setup_name}): rotation geometry "
                  f"creation failed; falling back to origin axes",
                  "WARNING")
             return _get_origin_axes(logger)
@@ -2170,48 +2196,119 @@ def _find_or_create_rotation_sketch(root, angle_deg, setup_name, logger):
         return (None, None)
 
 
-def _apply_side_axis_flips(setup, side, setup_name, logger):
-    """Apply X / Y axis rotations via the WCS flip parameters.
+def _make_tilted_rotation_axes(root, axis_kind, angle_deg, setup_name, logger):
+    """Build two perpendicular reference lines for an X- or Y-axis indexed
+    rotation of ``angle_deg``, returned as ``(xLine, yLine)`` for the WCS
+    axesXY orientation to bind. Generalises the Z-axis rotation trick to
+    true rotary (about X) and tilt (about Y) indexing at ANY angle.
 
-    180° rotations about X or Y map cleanly to flipX/flipY/flipZ combos
-    on the WCS orientation:
+    Why a construction plane and not a construction axis: from the
+    Manufacture environment ``constructionAxes.add`` raises
+    "Environment is not supported", but construction PLANES and sketches
+    add fine (verified empirically via the bridge). So we tilt the XY plane
+    about the chosen origin axis by ``angle_deg`` — the plane that contains
+    the rotated X' and Y' — sketch on it, and draw lines along the
+    analytically-correct rotated directions, projected onto the sketch's
+    own basis so the in-plane orientation is exact (not whatever Fusion
+    happens to pick for the tilted sketch's local axes).
 
-      * 180° about X  → flipY + flipZ  (Y → -Y, Z → -Z)
-      * 180° about Y  → flipX + flipZ  (X → -X, Z → -Z)
+    Frames (right-hand rule, angle θ):
+      * about X → X'=(1,0,0),         Y'=(0, cosθ,  sinθ)
+      * about Y → X'=(cosθ, 0, -sinθ), Y'=(0, 1, 0)
 
-    Other angles about X or Y aren't expressible via the parameter-
-    driven WCS alone — they need a tilted construction plane and a
-    custom orientation mode. For now we log a WARNING and create the
-    Setup unrotated; the user can re-orient it interactively in the
-    CAM dialog (or rotate about Z, which IS fully supported).
-
-    Z-axis rotation is handled by :func:`_resolve_side_axes` (rotated
-    sketch lines) and is a no-op here.
+    Idempotent: reuses a sketch named ``__cam_idx_rot_{angle}{axis}``.
+    Returns ``(None, None)`` on failure so the caller falls back to the
+    unrotated origin axes.
     """
-    angle = float(side.get('angleDeg', 0.0))
-    axis_kind = str(side.get('axis', 'Z')).upper()
+    import math
+    angle_deg = float(angle_deg)
+    axis_kind = str(axis_kind).upper()
+    th = math.radians(angle_deg)
+    c, s = math.cos(th), math.sin(th)
 
-    if axis_kind == 'Z' or angle == 0.0:
-        return  # handled in _resolve_side_axes, or no-op
+    if axis_kind == 'X':
+        x_dir = (1.0, 0.0, 0.0)
+        y_dir = (0.0, c, s)
+        origin_axis = root.xConstructionAxis
+    elif axis_kind == 'Y':
+        x_dir = (c, 0.0, -s)
+        y_dir = (0.0, 1.0, 0.0)
+        origin_axis = root.yConstructionAxis
+    else:
+        return (None, None)
 
-    if abs(angle - 180.0) < 1e-6:
-        if axis_kind == 'X':
-            _set_bool_param(setup.parameters, 'wcs_orientation_flipY', True,
-                            setup_name, logger)
-            _set_bool_param(setup.parameters, 'wcs_orientation_flipZ', True,
-                            setup_name, logger)
-        elif axis_kind == 'Y':
-            _set_bool_param(setup.parameters, 'wcs_orientation_flipX', True,
-                            setup_name, logger)
-            _set_bool_param(setup.parameters, 'wcs_orientation_flipZ', True,
-                            setup_name, logger)
-        return
+    sketch_name = f"__cam_idx_rot_{angle_deg:g}{axis_kind}"
 
-    _log(logger,
-         f"SETUP BUILD GENERIC ({setup_name}): {angle:g}deg{axis_kind} rotation "
-         f"not expressible via WCS flips; Setup created unrotated. Either "
-         f"re-orient in the CAM dialog, or rotate about Z (fully supported).",
-         "WARNING")
+    # Reuse an existing rotation sketch (idempotent across re-builds).
+    try:
+        for sk in root.sketches:
+            if sk.name == sketch_name:
+                lines = list(sk.sketchCurves.sketchLines)
+                if len(lines) >= 2:
+                    return (lines[0], lines[1])
+    except Exception:
+        pass
+
+    try:
+        plane_input = root.constructionPlanes.createInput()
+        plane_input.setByAngle(origin_axis,
+                               adsk.core.ValueInput.createByReal(th),
+                               root.xYConstructionPlane)
+        plane = root.constructionPlanes.add(plane_input)
+        try:
+            plane.name = f"__cam_idx_pl_{angle_deg:g}{axis_kind}"
+        except Exception:
+            pass
+
+        sk = root.sketches.add(plane)
+        try:
+            sk.name = sketch_name
+        except Exception:
+            pass
+
+        # Project the desired WORLD directions onto the sketch's own basis
+        # so the lines land exactly along X' / Y' regardless of how Fusion
+        # oriented the sketch's local axes on the tilted plane.
+        xd = sk.xDirection
+        yd = sk.yDirection
+
+        def _proj(d):
+            v = adsk.core.Vector3D.create(d[0], d[1], d[2])
+            return adsk.core.Point3D.create(v.dotProduct(xd) * 10.0,
+                                            v.dotProduct(yd) * 10.0, 0.0)
+
+        o = adsk.core.Point3D.create(0.0, 0.0, 0.0)
+        x_line = sk.sketchCurves.sketchLines.addByTwoPoints(o, _proj(x_dir))
+        y_line = sk.sketchCurves.sketchLines.addByTwoPoints(o, _proj(y_dir))
+        try:
+            sk.isVisible = False
+        except Exception:
+            pass
+
+        _log(logger,
+             f"SETUP BUILD GENERIC ({setup_name}): created tilted rotation "
+             f"axes '{sketch_name}' @ {angle_deg:g}°{axis_kind}",
+             "DEBUG")
+        return (x_line, y_line)
+    except Exception as e:
+        _log(logger,
+             f"SETUP BUILD GENERIC ({setup_name}): tilted rotation axes "
+             f"create raised: {e}",
+             "WARNING")
+        return (None, None)
+
+
+def _apply_side_axis_flips(setup, side, setup_name, logger):
+    """Deprecated no-op, retained for call-site compatibility.
+
+    X / Y / Z rotations at ANY angle are now fully encoded by the rotated
+    axis references from :func:`_resolve_side_axes` (Z via a flat XY-plane
+    sketch; X / Y via :func:`_make_tilted_rotation_axes`) and bound to
+    ``wcs_orientation_axisX/Y`` in :func:`_build_setup_for_mm`. The old
+    180°-only flipX/flipY/flipZ path would now double-apply on top of the
+    rotated axes, so it has been removed.
+    """
+    return
 
 
 def _log(logger, msg, level="INFO"):

@@ -237,6 +237,10 @@
               <input type="checkbox" id="s-flip-y" style="margin:0;accent-color:var(--cad-accent-blue);" />
               <span class="k">Flip Y</span>
             </label>
+            <label style="display:flex;align-items:center;gap:5px;margin-left:10px;font-size:11px;cursor:pointer;" title="Attach the Ultimate Bee machine (loads the machine sim doc and anchors the WCS to the fence). Off = stock-derived WCS, no machine.">
+              <input type="checkbox" id="s-assign-machine" style="margin:0;accent-color:var(--cad-accent-blue);" />
+              <span class="k">Assign machine</span>
+            </label>
           </div>
 
           <div class="settings-divider" style="margin-top:8px;">SIDES (INDEXED)</div>
@@ -524,6 +528,7 @@
       retractHeight:   parseFloat(document.getElementById('s-retract').value)   || 4,
       boxPoint:        parseInt(document.getElementById('s-box-point').value, 10) || 2,
       flipY:           document.getElementById('s-flip-y').checked,
+      assignMachine:   document.getElementById('s-assign-machine').checked,
       sides:           collectSides(),
       operations:      collectOperations(),
     };
@@ -535,6 +540,7 @@
     if (d.retractHeight   != null)  document.getElementById('s-retract').value      = d.retractHeight;
     if (d.boxPoint        != null)  document.getElementById('s-box-point').value    = d.boxPoint;
     document.getElementById('s-flip-y').checked = !!d.flipY;
+    document.getElementById('s-assign-machine').checked = !!d.assignMachine;
     // Sides — default to one Side A @ 0°Z when the profile is sides-less
     // (covers older saved profiles and imports from the legacy one-Setup-
     // per-MM path). The default matches the Python _DEFAULT_SIDES.
