@@ -758,15 +758,44 @@
 
   // ── Auto-init on open ──────────────────────────────────────────────────────
   document.addEventListener('DOMContentLoaded', () => {
-    fetchProfileList();       // populate saved-profiles dropdown
+    fetchProfileList();       // populate saved-profiles dropdown (worker fetch)
     // Seed one default Side A @ 0° so the user opens to a usable
     // single-orientation form. Adding more sides triggers indexed mode;
     // removing all sides falls back to the Python default (Side A @ 0°).
     if (!document.querySelectorAll('#sides-list .side-row').length) {
       addSide({ name: 'A', axis: 'Z', angleDeg: 0 });
     }
-    send('init');             // ask Python to scan components + CAM setups
   });
+
+  // Ask Python to scan components + CAM setups.
+  //
+  // Fusion injects `window.adsk` ASYNCHRONOUSLY — it is NOT available when
+  // this <script> runs, and not reliably even at DOMContentLoaded. A bare
+  // `send('init')` gets silently dropped by send()'s
+  // `if (window.adsk && window.adsk.fusionSendData)` guard, so Python never
+  // scans and the palette stays stuck on "Scanning design…" forever (and
+  // GENERATE then bails with "no components selected" because the component
+  // list never rendered). Poll until the bridge appears, then fire init
+  // exactly once — the same boot pattern the CAM Builder palette uses.
+  (function bootStudioInit() {
+    let booted = false;
+    function fire() {
+      if (booted) return;
+      if (!(window.adsk && window.adsk.fusionSendData)) return;
+      booted = true;
+      send('init');
+    }
+    if (window.adsk && window.adsk.fusionSendData) { fire(); return; }
+    const handle = setInterval(() => {
+      if (booted) { clearInterval(handle); return; }
+      fire();
+      if (booted) clearInterval(handle);
+    }, 250);
+    // Belt-and-suspenders: also try on DOMContentLoaded and once more after
+    // a 2s delay, so a slow Fusion build still wakes the scan up.
+    document.addEventListener('DOMContentLoaded', fire);
+    setTimeout(fire, 2000);
+  })();
 </script>
 </body>
 </html>
