@@ -487,6 +487,15 @@ def _do_studio_init():
                         components.append(root.occurrences.item(i).component.name)
                     except Exception:
                         pass
+                # Fallback: a doc with loose bodies in the root component and
+                # NO sub-component occurrences (a quick single-body part) has
+                # nothing to SCAN. Offer the root component itself so the
+                # generic build still runs — _collect_bodies pulls the root
+                # bodies and the MM filter keeps everything (no siblings to
+                # strip). Without this the component list comes back empty and
+                # BUILD fails with "requires component_names".
+                if not components and root.bRepBodies.count > 0:
+                    components.append(root.name)
         except Exception:
             pass
 
