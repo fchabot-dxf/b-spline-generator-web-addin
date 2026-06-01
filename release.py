@@ -231,55 +231,39 @@ else:
 
 
 # ----- step 4: refresh local Fusion 360 AddIns folder --------------------
-# Best-effort: mirrors deploy_cloudflare.py's refresh logic. Adjust the
-# source path below if your Fusion AddIn lives elsewhere in the repo.
-print(f"\n[4/4] Refreshing local Fusion 360 add-in...")
+# Deploy EVERY add-in in the suite by delegating to the canonical local
+# installer, DEPLOY_bspline-frame-builder.py. Its `all` target runs
+# deploy_local(), which mirrors the whole bspline-frame-builder tree into
+# AddIns\bspline-frame-builder. That single bundle contains the main
+# add-in PLUS every sub-add-in (CAM-builder, frame-inspector,
+# fusion-exporter, stamp-editor, template-maker, b-spline-gen), so this one
+# call updates them all — not just bspline + CAM Builder.
+#
+# Reusing that script keeps a single source of truth for the ignore rules,
+# locked-file (overlay-copy) tolerance, and the dev-workspace handshake
+# files, instead of duplicating that logic here.
+print(f"\n[4/4] Refreshing local Fusion 360 add-ins...")
 
-def _rmtree_onerror(func, path, exc_info):
-    if not os.access(path, os.W_OK):
-        os.chmod(path, stat.S_IWUSR)
-        func(path)
-    else:
-        raise
-
-if sys.platform == "win32":
-    fusion_dest = os.path.join(os.environ.get('APPDATA', ''),
-                               'Autodesk', 'Autodesk Fusion 360',
-                               'API', 'AddIns', 'b-spline-generator-web-addin')
-elif sys.platform == "darwin":
-    fusion_dest = os.path.expanduser(
-        '~/Library/Application Support/Autodesk/Autodesk Fusion 360'
-        '/API/AddIns/b-spline-generator-web-addin')
+_deploy_script = os.path.join(ADDIN_ROOT, "DEPLOY_bspline-frame-builder.py")
+if not os.path.exists(_deploy_script):
+    print(f"      Deploy script not found at {_deploy_script}; skipping.")
+    fusion_summary = "skipped (DEPLOY_bspline-frame-builder.py not found)"
 else:
-    fusion_dest = None
-
-if not fusion_dest:
-    print(f"      Unsupported OS ({sys.platform}); skipping.")
-    fusion_summary = f"skipped (unsupported OS: {sys.platform})"
-elif not os.path.exists(os.path.dirname(fusion_dest)):
-    print(f"      Fusion AddIns dir not found at {os.path.dirname(fusion_dest)}; skipping.")
-    fusion_summary = "skipped (Fusion AddIns dir not found)"
-else:
-    # Candidate sources in priority order.
-    candidates = [
-        os.path.join(ADDIN_ROOT, "b-spline-gen"),
-        os.path.join(REPO_ROOT, "b-spline-gen"),
-        os.path.join(REPO_ROOT, "b-spline-generator-web-addin"),
-    ]
-    source_dir = next((p for p in candidates if os.path.exists(p)), None)
-    if source_dir is None:
-        print(f"      No add-in source found in any of: {candidates}. Skipping.")
-        fusion_summary = "skipped (no add-in source found)"
-    else:
-        try:
-            if os.path.exists(fusion_dest):
-                shutil.rmtree(fusion_dest, onerror=_rmtree_onerror)
-            shutil.copytree(source_dir, fusion_dest)
-            print(f"      Copied {source_dir} -> {fusion_dest}")
-            fusion_summary = f"refreshed from {os.path.basename(source_dir)}"
-        except Exception as e:
-            print(f"      Warning: could not refresh local add-in: {e}")
-            fusion_summary = f"failed ({e})"
+    try:
+        # Stream the installer's own output live so a locked file or a
+        # missing sub-add-in is visible right here in the release run.
+        result = subprocess.run(
+            [sys.executable, _deploy_script, "all"],
+            cwd=ADDIN_ROOT,
+        )
+        if result.returncode == 0:
+            fusion_summary = "deployed all add-ins (DEPLOY_bspline-frame-builder.py all)"
+        else:
+            print(f"      Deploy script exited with code {result.returncode}.")
+            fusion_summary = f"failed (deploy script exit {result.returncode})"
+    except Exception as e:
+        print(f"      Warning: could not run deploy script: {e}")
+        fusion_summary = f"failed ({e})"
 
 
 # ----- summary ----------------------------------------------------------
