@@ -61,8 +61,9 @@ SKETCH_3_PARAMETERS = [
         "Max": 1.5,
         "Expose": True,
     },
-    # frame_depth is owned by the solid builder, not this palette - see
-    # template_1's copy of this section for the rationale.
+    # NOTE: the solid builder's Z extrusion depth is driven by the
+    # 'frame_height_offset' user parameter (see template_1's copy). No
+    # depth parameter is declared here.
 ]
 
 

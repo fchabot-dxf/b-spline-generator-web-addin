@@ -74,12 +74,11 @@ SKETCH_3_PARAMETERS = [
         "Max": 1.5,
         "Expose": True,
     },
-    # frame_depth is owned by the solid builder, not the sketch builder
-    # - it only drives the Z extrusion and has no effect on sketch
-    # geometry. The Fusion UserParameter is still created from
-    # fb_value_resolver's defaults (0.75 in) so the extrude can read
-    # it; users who want a different depth set it via Fusion's
-    # parameter dialog or in the solid builder UI.
+    # NOTE: the solid builder's Z extrusion depth is driven by the
+    # 'frame_height_offset' user parameter, created/updated on each build
+    # from the Solid Builder palette's Start Offset field. It has no effect
+    # on sketch geometry, so no parameter is declared here. (The old
+    # 'frame_depth' param and its unused extrude path were removed.)
 ]
 
 
