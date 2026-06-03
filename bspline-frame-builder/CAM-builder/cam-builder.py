@@ -514,10 +514,44 @@ def _do_studio_init():
         except Exception:
             pass
 
+        # Model bounding-box dimensions (mm), so the palette can pre-fill the
+        # fixed-size stock inputs with the part size. Combine every body's box.
+        model_dims = None
+        try:
+            ds = doc.products.itemByProductType('DesignProductType')
+            design = adsk.fusion.Design.cast(ds)
+            if design:
+                root = design.rootComponent
+                bb = None
+                bodies = list(root.bRepBodies)
+                for occ in root.allOccurrences:
+                    try:
+                        bodies.extend(list(occ.component.bRepBodies))
+                    except Exception:
+                        pass
+                for b in bodies:
+                    try:
+                        box = b.boundingBox
+                        if bb is None:
+                            bb = adsk.core.BoundingBox3D.create(box.minPoint, box.maxPoint)
+                        else:
+                            bb.combine(box)
+                    except Exception:
+                        pass
+                if bb:
+                    model_dims = {
+                        'x': round((bb.maxPoint.x - bb.minPoint.x) * 10.0, 2),
+                        'y': round((bb.maxPoint.y - bb.minPoint.y) * 10.0, 2),
+                        'z': round((bb.maxPoint.z - bb.minPoint.z) * 10.0, 2),
+                    }
+        except Exception:
+            model_dims = None
+
         _send_to_studio_html('init_result', {
             'ok': True,
             'components': components,
             'setups': setups,
+            'modelDims': model_dims,
         })
     except Exception:
         _log_error("_do_studio_init\n" + traceback.format_exc())

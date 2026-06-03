@@ -1339,6 +1339,61 @@ _INT_TO_BOX_POINT = {
 }
 
 
+def _set_fixed_stock_dims(setup, stock_dims, setup_name, logger):
+    """Set FixedBox stock X/Y/Z dimensions.
+
+    Explicit per-axis dims (mm) from the profile win; any axis left unset
+    falls back to the model's bounding-box span for that axis (so a
+    Fixed-size stock comes out model-sized by default, matching Fusion's
+    interactive pre-fill). Dims live in the setup's current WCS frame, so
+    call this AFTER the WCS orientation is written. Best-effort, non-fatal.
+
+    ``stock_dims`` is an optional dict ``{'x': mm, 'y': mm, 'z': mm}`` (any
+    subset). Fusion params are cm, so mm values are divided by 10.
+    """
+    try:
+        p = setup.parameters
+
+        def _g(n):
+            try:
+                return p.itemByName(n).value.value
+            except Exception:
+                return None
+
+        model = {
+            'x': (_g('surfaceXHigh'), _g('surfaceXLow')),
+            'y': (_g('surfaceYHigh'), _g('surfaceYLow')),
+            'z': (_g('surfaceZHigh'), _g('surfaceZLow')),
+        }
+        sd = stock_dims or {}
+        targets = {
+            'job_stockFixedX': ('x', sd.get('x')),
+            'job_stockFixedY': ('y', sd.get('y')),
+            'job_stockFixedZ': ('z', sd.get('z')),
+        }
+        for name, (axis, explicit_mm) in targets.items():
+            if explicit_mm is not None:
+                try:
+                    val_cm = float(explicit_mm) / 10.0    # mm → cm
+                except (TypeError, ValueError):
+                    continue
+            else:
+                hi, lo = model[axis]
+                if hi is None or lo is None:
+                    continue
+                val_cm = hi - lo
+            try:
+                p.itemByName(name).value.value = val_cm
+            except Exception as e:
+                _log(logger, f"SETUP BUILD GENERIC ({setup_name}): set {name} "
+                             f"failed: {e}", "DEBUG")
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): fixed stock dims set "
+                     f"({'explicit' if stock_dims else 'model bbox'})", "DEBUG")
+    except Exception as e:
+        _log(logger, f"SETUP BUILD GENERIC ({setup_name}): fixed-stock dims "
+                     f"raised: {e}", "WARNING")
+
+
 def _set_stock_mode(setup, intent, setup_name, logger):
     """Set ``setup.stockMode`` via the typed enum, with a parameter-dict
     fallback for older builds or unmapped intents.
@@ -1785,6 +1840,11 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
     clearance_mm = p.get('clearanceHeight')  # float or None
     retract_mm   = p.get('retractHeight')    # float or None
 
+    # Optional explicit fixed-stock dimensions (mm) from the palette inputs:
+    # {'x': mm, 'y': mm, 'z': mm}. None / missing axes fall back to the model
+    # bounding box. Only consumed when the stock mode is fixed_size.
+    stock_dims = p.get('stockDims')
+
     sides_raw = p.get('sides') or _DEFAULT_SIDES
     sides = [_normalise_side(s, i) for i, s in enumerate(sides_raw)]
 
@@ -1842,6 +1902,7 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
                 'box_point':          box_point,
                 'flip_y':             flip_y,
                 'assign_machine':     assign_machine,
+                'stock_dims':         stock_dims,
             }
             if clearance_mm is not None:
                 spec['clearance_mm'] = float(clearance_mm)
@@ -2065,6 +2126,16 @@ def _build_setup_for_mm(cam, mm, spec, logger=None):
         for pname in ('retractHeight_offset', 'job_retractHeight'):
             if _set_expr_param(setup.parameters, pname, rt_expr, setup_name, logger):
                 break
+
+    # Fixed-box stock dimensions. Done LAST — after the WCS orientation is
+    # fully written — because the stock dims live in the WCS frame, and the
+    # 'select_x_y' axis swap (and any rotation) changes which model extent
+    # maps to X/Y/Z. Explicit per-axis dims from the profile win; otherwise
+    # default to the model bounding box (mirrors Fusion's interactive
+    # Fixed-size pre-fill). Reading surface{X,Y,Z} now gives the model
+    # extents in the FINAL frame, so stock and model stay aligned.
+    if spec.get('stock_intent') in ('fixed_size', 'fixed_box'):
+        _set_fixed_stock_dims(setup, spec.get('stock_dims'), setup_name, logger)
 
     try:
         mm_name = mm.name

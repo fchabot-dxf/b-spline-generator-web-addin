@@ -206,11 +206,18 @@
           <div class="profile-row">
             <span class="k">Mode</span>
             <select id="s-stock-mode">
+              <option value="fixed_size" selected>Fixed size</option>
               <option value="auto_bbox">Auto bounding box</option>
-              <option value="fixed_size">Fixed size</option>
               <option value="from_solid">From solid</option>
               <option value="from_prev_setup">From previous setup</option>
             </select>
+          </div>
+          <div class="profile-row" id="stock-dims-row" title="Fixed-size stock dimensions (mm). Pre-filled with the model size; edit to grow the stock (e.g. a longer rotary bar). Blank = use model size.">
+            <span class="k">Stock mm</span>
+            <input type="number" id="s-stock-x" placeholder="X" step="1" min="0" style="flex:0 0 56px;" />
+            <input type="number" id="s-stock-y" placeholder="Y" step="1" min="0" style="flex:0 0 56px;" />
+            <input type="number" id="s-stock-z" placeholder="Z" step="1" min="0" style="flex:0 0 56px;" />
+            <button class="cad-btn" type="button" style="font-size:9px;padding:2px 6px;" onclick="resetStockDimsToModel()" title="Reset to model size">model</button>
           </div>
           <div class="profile-row">
             <span class="k">Clearance (mm)</span>
@@ -298,6 +305,23 @@
   let selectedComponents = new Set();
   let loadedProfile      = null;   // the last profile loaded / imported
   let editOpen           = false;
+  let modelDims          = null;   // {x,y,z} mm from the scan, for stock prefill
+
+  // Pre-fill the fixed-size stock inputs with the scanned model dimensions,
+  // but only when they're empty so we never clobber a value the user typed.
+  function prefillStockDims() {
+    if (!modelDims) return;
+    [['s-stock-x','x'],['s-stock-y','y'],['s-stock-z','z']].forEach(([id,k]) => {
+      const el = document.getElementById(id);
+      if (el && el.value === '') el.value = modelDims[k];
+    });
+  }
+  function resetStockDimsToModel() {
+    if (!modelDims) return;
+    document.getElementById('s-stock-x').value = modelDims.x;
+    document.getElementById('s-stock-y').value = modelDims.y;
+    document.getElementById('s-stock-z').value = modelDims.z;
+  }
 
   // ── Utility ────────────────────────────────────────────────────────────────
   function send(action, payload) {
@@ -545,6 +569,15 @@
       assignMachine:   document.getElementById('s-assign-machine').checked,
       rotary:          document.getElementById('s-rotary').checked,
       rotaryCenterline: document.getElementById('s-rotary-centerline').value,
+      stockDims:       (function () {
+        const v = id => {
+          const e = document.getElementById(id);
+          const n = parseFloat(e.value);
+          return (e.value !== '' && !isNaN(n)) ? n : null;
+        };
+        const x = v('s-stock-x'), y = v('s-stock-y'), z = v('s-stock-z');
+        return (x == null && y == null && z == null) ? null : { x, y, z };
+      })(),
       sides:           collectSides(),
       operations:      collectOperations(),
     };
@@ -746,6 +779,8 @@
           } else {
             renderComponentList(payload.components || []);
             renderSetupDropdown(payload.setups     || []);
+            modelDims = payload.modelDims || null;
+            prefillStockDims();
             const nc = (payload.components || []).length;
             const ns = (payload.setups     || []).length;
             setStatus(
