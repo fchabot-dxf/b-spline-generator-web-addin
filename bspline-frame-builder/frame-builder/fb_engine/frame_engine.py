@@ -189,19 +189,6 @@ class FrameBuilder:
             builder = parametric_engine.ParametricSketchBuilder(frame_comp, self.design, self.logger, prefix=prefix, ui_data=ui_data, resolver=self.resolver)
             builder.build_template(template)
             
-            sketch = None
-            for i in range(frame_comp.sketches.count):
-                sk = frame_comp.sketches.item(i)
-                sk_name = (sk.name or '').lower()
-                if 'frame' in sk_name and ('3_' in sk_name or 'enclos' in sk_name or 'frame' in sk_name):
-                    sketch = sk
-                    self.logger.log(f"run_full_synthesis: selected sketch '{sk_name}' for extrusion")
-                    break
-            if not sketch:
-                sketch = frame_comp.sketches.itemByName(f"{prefix}_3_frame_enclosure")
-            if sketch:
-                self._extrude_jesmo_frame(sketch, target_body, frame_comp)
-                
             if target_body and frame_comp:
                 self._create_assembly_joints(target_body, frame_comp, joint_prefix)
         except Exception as e:
@@ -342,33 +329,3 @@ class FrameBuilder:
         working without code churn.
         """
         return self.discovery.find_aesthetic_core_body()
-
-    def _extrude_jesmo_frame(self, sketch, target_body, target_comp):
-        self.logger.log("Starting extrusion of frame sketch")
-        feats = target_comp.features
-        extrudes = feats.extrudeFeatures
-        thickness_val = self.design.userParameters.itemByName('frame_depth').name
-        taper_val = self.design.userParameters.itemByName('Skel_Frame_Taper').name
-
-        self.logger.log(f"Extrusion parameters: thickness={thickness_val}, taper={taper_val}")
-
-        for i in range(sketch.profiles.count):
-            prof = sketch.profiles.item(i)
-            try:
-                ext_input = extrudes.createInput(prof, adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-                dist = adsk.core.ValueInput.createByString(f"-{thickness_val}")
-                taper = adsk.core.ValueInput.createByString(taper_val)
-                ext_input.setDistanceExtent(False, dist)
-                ext_input.taperAngle = taper
-                feat = extrudes.add(ext_input)
-                
-                bbox = prof.boundingBox
-                cx = (bbox.minPoint.x + bbox.maxPoint.x) / 2
-                cy = (bbox.minPoint.y + bbox.maxPoint.y) / 2
-                side_info = ""
-            except Exception as e:
-                self.logger.log_error(f"FRAME EXTRUSION ERROR: {e}")
-                continue
-
-        self.logger.log("Frame extrusion completed")
-   

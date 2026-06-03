@@ -68,6 +68,35 @@ class SolidCoordinator:
             appearance_strategy = DefaultAppearanceStrategy(self.appearance_manager, self.log)
         self.appearance_strategy = appearance_strategy
 
+    def _sync_offset_param(self, expr):
+        """Create or update the 'frame_height_offset' user parameter from the
+        palette's Start Offset value, and return an expression the extrude can
+        bind to.
+
+        The box always wins: every build overwrites the parameter with the
+        typed value. Returns the parameter name so the extrude's start offset
+        references the variable, or '0 in' when the value is effectively zero
+        (so ExtrusionEngine's zero-skip path still applies).
+        """
+        name = "frame_height_offset"
+        expr = (expr or "0 in").strip()
+        try:
+            params = self.design.userParameters
+            p = params.itemByName(name)
+            if p is None:
+                p = params.add(
+                    name,
+                    adsk.core.ValueInput.createByReal(0.0),
+                    "in",
+                    "Solid Builder start offset (frame height offset)",
+                )
+            p.expression = expr
+            self.log.log(f"OFFSET PARAM: {name} = '{expr}' (value={p.value:.4f} cm)")
+            return name if abs(p.value) > 1e-6 else "0 in"
+        except Exception as e:
+            self.log.log(f"OFFSET PARAM SYNC FAILED ({e}); using literal '{expr}'", "WARNING")
+            return expr
+
     def run(self, comp_name):
         """
         The orchestrated sequence of frame synthesis.
@@ -101,8 +130,13 @@ class SolidCoordinator:
 
             # 3. GEOMETRY SYNTHESIS (Extrusion Engine)
             t_extrusion = time.time()
+            # Wire the palette's Start Offset to a persistent user parameter
+            # 'frame_height_offset' so the extrude's start offset is driven by
+            # a variable visible/editable in the Parameters table. The box
+            # wins: every build overwrites the parameter with the typed value.
+            start_expr = self._sync_offset_param(self.start_offset_expr)
             bodies = self.extrusion_engine.extrude_profiles(
-                comp, sketch, prefix, self.to_face, self.start_offset_expr, self.offset_expr
+                comp, sketch, prefix, self.to_face, start_expr, self.offset_expr
             )
             self.log.log(f"Extrusion Phase: {time.time() - t_extrusion:.2f}s | created {len(bodies)} bar bodies")
 
