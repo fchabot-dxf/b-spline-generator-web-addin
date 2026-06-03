@@ -243,6 +243,20 @@
             </label>
           </div>
 
+          <div class="settings-divider" style="margin-top:8px;">ROTARY (4TH AXIS)</div>
+          <div class="profile-row" style="align-items:center;">
+            <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;white-space:nowrap;" title="Rotary indexing: WCS origin sits on the X centerline (the rotary axis) and new sides default to rotating about X.">
+              <input type="checkbox" id="s-rotary" onchange="onRotaryToggle()" style="margin:0;accent-color:var(--cad-accent-blue);" />
+              <span class="k">Rotary mode</span>
+            </label>
+            <span class="k" style="margin-left:8px;">Centerline</span>
+            <select id="s-rotary-centerline" style="flex:1;" disabled>
+              <option value="model_origin">Model origin (on-axis)</option>
+              <option value="stock_end">Stock end-face centre</option>
+              <option value="pick">Pick centerline</option>
+            </select>
+          </div>
+
           <div class="settings-divider" style="margin-top:8px;">SIDES (INDEXED)</div>
           <div id="sides-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
           <button class="cad-btn" type="button"
@@ -529,6 +543,8 @@
       boxPoint:        parseInt(document.getElementById('s-box-point').value, 10) || 2,
       flipY:           document.getElementById('s-flip-y').checked,
       assignMachine:   document.getElementById('s-assign-machine').checked,
+      rotary:          document.getElementById('s-rotary').checked,
+      rotaryCenterline: document.getElementById('s-rotary-centerline').value,
       sides:           collectSides(),
       operations:      collectOperations(),
     };
@@ -541,6 +557,9 @@
     if (d.boxPoint        != null)  document.getElementById('s-box-point').value    = d.boxPoint;
     document.getElementById('s-flip-y').checked = !!d.flipY;
     document.getElementById('s-assign-machine').checked = !!d.assignMachine;
+    document.getElementById('s-rotary').checked = !!d.rotary;
+    if (d.rotaryCenterline) document.getElementById('s-rotary-centerline').value = d.rotaryCenterline;
+    document.getElementById('s-rotary-centerline').disabled = !d.rotary;
     // Sides — default to one Side A @ 0°Z when the profile is sides-less
     // (covers older saved profiles and imports from the legacy one-Setup-
     // per-MM path). The default matches the Python _DEFAULT_SIDES.
@@ -562,6 +581,17 @@
   // create the Setup unrotated (user re-orients in the dialog).
   let sideCounter = 0;
 
+  // Rotary toggle: enable the centerline picker and flip existing sides to
+  // rotate about X (the rotary axis) so the user doesn't re-pick each one.
+  function onRotaryToggle() {
+    const on = document.getElementById('s-rotary').checked;
+    document.getElementById('s-rotary-centerline').disabled = !on;
+    if (on) {
+      document.querySelectorAll('#sides-list .side-row [data-f="axis"]')
+        .forEach(sel => { sel.value = 'X'; });
+    }
+  }
+
   function nextSideName() {
     const n = document.querySelectorAll('#sides-list .side-row').length;
     return String.fromCharCode(65 + (n % 26));  // 'A' / 'B' / 'C' / … wraps after 'Z'
@@ -571,7 +601,9 @@
     const id = 'side-' + (++sideCounter);
     const d  = defaults || {};
     const name  = d.name != null ? d.name : nextSideName();
-    const axis  = (d.axis || 'Z').toUpperCase();
+    // In rotary mode new sides default to rotating about X (the rotary axis).
+    const rotaryOn = !!(document.getElementById('s-rotary') && document.getElementById('s-rotary').checked);
+    const axis  = (d.axis || (rotaryOn ? 'X' : 'Z')).toUpperCase();
     const angle = (d.angleDeg != null) ? d.angleDeg : 0;
     const sel   = (val, opt) => opt === val ? ' selected' : '';
 

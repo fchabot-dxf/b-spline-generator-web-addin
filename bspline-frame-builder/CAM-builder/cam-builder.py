@@ -740,6 +740,30 @@ def _do_studio_generate(data=None):
     component_names = data.get('components', [])
     profile         = data.get('profile', {})
 
+    # Begin a clean log session for THIS generate, so the build and the
+    # async toolpath generation that follows both land in one readable
+    # session. (The deferred TPGEN handler used to truncate on entry, which
+    # wiped the build's own MM/Setup/machine/rotation log lines before they
+    # could be read.)
+    try:
+        for _lp in getattr(_logger, 'log_paths', []) or []:
+            try:
+                with open(_lp, 'w', encoding='utf-8') as _f:
+                    _f.write('')
+            except Exception:
+                pass
+    except Exception:
+        pass
+    _log("================ CAM STUDIO GENERATE ================")
+    try:
+        _sides = profile.get('sides') or []
+        _summary = [(s.get('name'), s.get('axis'), s.get('angleDeg')) for s in _sides]
+        _log(f"GENERATE: components={component_names} "
+             f"assignMachine={profile.get('assignMachine')} "
+             f"boxPoint={profile.get('boxPoint')} sides={_summary}")
+    except Exception:
+        pass
+
     try:
         _load_engine()
     except Exception:
@@ -1097,16 +1121,11 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
     def notify(self, args):
         import time, os as _os
         try:
-            # Truncate the log file at the start of each APPLY TOOLPATHS
-            # run so each session starts clean. Keeps log focused on the
-            # current run for easier diagnostic comparison.
-            try:
-                for _lp in getattr(_logger, 'log_paths', []) or []:
-                    if _os.path.exists(_lp):
-                        with open(_lp, 'w', encoding='utf-8') as _f:
-                            _f.write('')
-            except Exception:
-                pass
+            # NOTE: do NOT truncate the log here. This handler runs async
+            # immediately after the Studio/bspline build, so truncating wiped
+            # the build's own MM/Setup/machine/rotation log lines before they
+            # could be read. The GENERATE entry point now owns the log-session
+            # reset, so the build and this toolpath pass share one session.
             _log("DEFERRED TPGEN: handler notify() entered")
             app = adsk.core.Application.get()
             cam = app.activeDocument.products.itemByProductType('CAMProductType')

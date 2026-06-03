@@ -1751,6 +1751,37 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
     # when the profile explicitly opts in via 'assignMachine'.
     assign_machine = bool(p.get('assignMachine', False))
 
+    # Rotary indexing mode. When ON, the WCS origin sits on the X centerline
+    # (the rotary axis) instead of a stock corner, so indexing about X keeps
+    # the part zero on the axis. Centerline source is user-selectable:
+    #   'model_origin' → component origin (exact if modelled on-axis)
+    #   'stock_end'    → X-end-face centre of the stock: Y/Z centred, X at the
+    #                    -X end. Empirically that's boxPoint 'middle side 4'.
+    #   'pick'         → interactive pick (not yet wired → model origin)
+    rotary = bool(p.get('rotary', False))
+    rotary_centerline = (p.get('rotaryCenterline') or 'model_origin')
+    if rotary:
+        if rotary_centerline == 'stock_end':
+            # X-end-face centre of the stock ('middle side 4'). NOTE: a stock
+            # box point is re-evaluated in the (rotated) WCS frame, so it walks
+            # OFF the axis once sides are rotated — only consistent for a single
+            # orientation. Verified: model_origin keeps the origin at (0,0,0) at
+            # every index, stock_end does not. So stock_end is offered but warned.
+            wcs_origin_kind = 'box_point'
+            box_point = 'middle side 4'
+            if any((s or {}).get('angleDeg') for s in (p.get('sides') or [])):
+                _log(logger, "SETUP BUILD GENERIC: rotaryCenterline='stock_end' "
+                             "moves off-axis under rotation; the origin won't be "
+                             "consistent across indexed sides. Prefer "
+                             "'model_origin' for true rotary.", "WARNING")
+        else:  # 'model_origin' (default) and 'pick' (until interactively wired)
+            wcs_origin_kind = 'model_origin'
+            if rotary_centerline == 'pick':
+                _log(logger, "SETUP BUILD GENERIC: rotaryCenterline='pick' not yet "
+                             "wired; using model origin", "WARNING")
+    else:
+        wcs_origin_kind = 'box_point'
+
     clearance_mm = p.get('clearanceHeight')  # float or None
     retract_mm   = p.get('retractHeight')    # float or None
 
@@ -1806,7 +1837,7 @@ def build_setups_generic(cam, mms_dict, logger=None, profile=None):
                 'side_idx':           side_idx,
                 'stock_intent':       side_stock_intent,
                 'continue_machining': side_continue_machining,
-                'wcs_origin':         'box_point',
+                'wcs_origin':         wcs_origin_kind,
                 'wcs_orient':         'select_x_y',
                 'box_point':          box_point,
                 'flip_y':             flip_y,
