@@ -514,6 +514,47 @@ def _clear_studio_preview():
         _log_error("_clear_studio_preview\n" + traceback.format_exc())
 
 
+def _resolve_token_dir(design, token):
+    """Return a (x,y,z) direction tuple (cm, un-normalised) for a picked
+    edge / line / construction axis token, or None. Used to orient the
+    preview triad along what the user picked."""
+    if not token or not design:
+        return None
+    try:
+        ents = design.findEntityByToken(token)
+        if not ents:
+            return None
+        ent = ents[0]
+        geo = None
+        try:
+            geo = ent.geometry
+        except Exception:
+            geo = None
+        if geo is None:
+            try:
+                geo = ent.worldGeometry
+            except Exception:
+                geo = None
+        if geo is None:
+            return None
+        # Line3D (edges/sketch lines) expose start/end; InfiniteLine3D and
+        # construction axes expose a direction.
+        try:
+            if getattr(geo, 'endPoint', None) is not None:
+                s, e = geo.startPoint, geo.endPoint
+                return (e.x - s.x, e.y - s.y, e.z - s.z)
+        except Exception:
+            pass
+        try:
+            d = geo.direction
+            return (d.x, d.y, d.z)
+        except Exception:
+            pass
+    except Exception:
+        return None
+    return None
+
+
 def _do_studio_preview(data=None):
     """Draw the stock-ghost + WCS triad for the current palette settings.
 
@@ -607,14 +648,38 @@ def _do_studio_preview(data=None):
                       (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]:
             _seg(C[a], C[b2], (120, 116, 60), 1)
 
-        # WCS triad at the world origin (X red, Y green, Z blue). Kept short
-        # (a fraction of the smallest half-dimension) so it reads as an axis
-        # marker, not a giant cross dominating the part.
+        # WCS triad — oriented along the PICKED X/Y axes (+ flips) so the user
+        # can see which way each axis points and judge whether to flip it.
+        # Falls back to world X/Y when nothing is picked yet. Kept short so it
+        # reads as a marker, not a giant cross.
+        import math as _m
+
+        def _norm(v):
+            n = _m.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+            return (v[0] / n, v[1] / n, v[2] / n) if n > 1e-9 else None
+
+        def _cross(a, b):
+            return (a[1] * b[2] - a[2] * b[1],
+                    a[2] * b[0] - a[0] * b[2],
+                    a[0] * b[1] - a[1] * b[0])
+
+        def _pickdir(key, flip, default):
+            v = _resolve_token_dir(design, _picked_axis_tokens.get(key))
+            v = _norm(v) if v else None
+            if v is None:
+                v = default
+            return (-v[0], -v[1], -v[2]) if flip else v
+
+        x_dir = _pickdir('x', bool(profile.get('wcsFlipX')), (1.0, 0.0, 0.0))
+        y_dir = _pickdir('y', bool(profile.get('wcsFlipY')), (0.0, 1.0, 0.0))
+        z_dir = _norm(_cross(x_dir, y_dir)) or (0.0, 0.0, 1.0)
+        y_dir = _norm(_cross(z_dir, x_dir)) or y_dir   # re-square Y
+
         L = min(hx, hy, hz) * 0.6 or 2.0
         O = (0.0, 0.0, 0.0)
-        _seg(O, (L, 0, 0), (220, 40, 40), 5)
-        _seg(O, (0, L, 0), (40, 180, 40), 5)
-        _seg(O, (0, 0, L), (60, 90, 230), 5)
+        _seg(O, (x_dir[0] * L, x_dir[1] * L, x_dir[2] * L), (220, 40, 40), 5)
+        _seg(O, (y_dir[0] * L, y_dir[1] * L, y_dir[2] * L), (40, 180, 40), 5)
+        _seg(O, (z_dir[0] * L, z_dir[1] * L, z_dir[2] * L), (60, 90, 230), 5)
 
         if app.activeViewport:
             app.activeViewport.refresh()

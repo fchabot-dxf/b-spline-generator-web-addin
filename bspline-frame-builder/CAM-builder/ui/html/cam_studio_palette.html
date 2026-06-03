@@ -633,6 +633,8 @@
       rotary:          document.getElementById('s-rotary').checked,
       rotaryCenterline: document.getElementById('s-rotary-centerline').value,
       xDir:            document.getElementById('s-xdir').value,
+      wcsFlipX:        document.getElementById('s-flip-x').checked,
+      wcsFlipY:        document.getElementById('s-wcs-flip-y').checked,
       stockDims:       (function () {
         const v = id => {
           const e = document.getElementById(id);
@@ -880,6 +882,7 @@
           setStatus(payload.ok
             ? (payload.axis.toUpperCase() + ' axis set: ' + (payload.name || ''))
             : 'axis pick failed', payload.ok ? 'ok' : 'fail');
+          if (payload.ok) sendPreview();   // redraw triad along the picked axis
 
         // ── import_result: profile extracted from existing setup ───────────
         } else if (action === 'import_result') {
