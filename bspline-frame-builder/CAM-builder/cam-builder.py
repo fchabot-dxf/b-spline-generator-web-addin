@@ -469,15 +469,18 @@ def _show_studio_palette():
         _studio_html_handler = _StudioHtmlEventHandler()
         palette.incomingFromHTML.add(_studio_html_handler)
         _handlers.append(_studio_html_handler)
-        # Clear the preview ghost when the palette is closed, so custom
-        # graphics never persist after the user dismisses the panel.
-        try:
-            global _studio_closed_handler
+    # Clear the preview ghost when the palette is closed, so custom graphics
+    # never persist after the user dismisses the panel. Attached here (not
+    # only on first creation) and guarded so a palette that survived a prior
+    # add-in lifecycle still gets the hook, exactly once per module load.
+    try:
+        global _studio_closed_handler
+        if _studio_closed_handler is None:
             _studio_closed_handler = _StudioPaletteClosedHandler()
             palette.closed.add(_studio_closed_handler)
             _handlers.append(_studio_closed_handler)
-        except Exception:
-            _log_error("studio palette closed-hook\n" + traceback.format_exc())
+    except Exception:
+        _log_error("studio palette closed-hook\n" + traceback.format_exc())
     palette.isVisible = True
 
 
@@ -498,16 +501,28 @@ _OCHRE = (204, 119, 34)
 
 
 def _clear_studio_preview():
-    """Delete the preview graphics group, if any, and refresh the viewport."""
+    """Delete ALL custom-graphics groups on the active design and refresh.
+
+    We clear every group (not just our tracked one) because a group drawn in
+    a different process/run isn't reachable through our module global, and the
+    user must never be left with a stuck ghost. This add-in is the only one
+    drawing preview graphics during CAM Studio use, so a blanket clear is safe.
+    """
     global _studio_preview_group
     try:
-        if _studio_preview_group is not None:
-            try:
-                _studio_preview_group.deleteMe()
-            except Exception:
-                pass
-            _studio_preview_group = None
+        _studio_preview_group = None
         app = adsk.core.Application.get()
+        doc = app.activeDocument if app else None
+        if doc:
+            ds = doc.products.itemByProductType('DesignProductType')
+            design = adsk.fusion.Design.cast(ds)
+            if design:
+                root = design.rootComponent
+                for i in range(root.customGraphicsGroups.count - 1, -1, -1):
+                    try:
+                        root.customGraphicsGroups.item(i).deleteMe()
+                    except Exception:
+                        pass
         if app and app.activeViewport:
             app.activeViewport.refresh()
     except Exception:
@@ -708,6 +723,10 @@ class _AxisPickHandler(adsk.core.CustomEventHandler):
                 f"Select an edge or line for the {axis.upper()} axis",
                 "LinearEdges,SketchLines,ConstructionLines")
             if not sel:
+                # Cancelled (Esc / no pick) — tell the palette so it can drop
+                # the button out of its "picking" state.
+                _send_to_studio_html('axis_picked',
+                                     {'axis': axis, 'ok': False, 'cancelled': True})
                 return
             ent = sel.entity
             try:

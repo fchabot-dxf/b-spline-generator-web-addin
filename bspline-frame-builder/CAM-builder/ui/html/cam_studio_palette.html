@@ -9,6 +9,13 @@
   <style>
     body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
     .hidden { display: none !important; }
+    .cad-btn.picking {
+      background: var(--cad-accent-blue) !important;
+      color: #fff !important;
+      border-color: var(--cad-accent-blue) !important;
+      animation: pickpulse 1s ease-in-out infinite;
+    }
+    @keyframes pickpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
 
     .cam-shell { display: flex; flex-direction: column; height: 100vh; background: #f5f5f5; }
     .cam-scroll {
@@ -266,7 +273,7 @@
 
           <div class="settings-divider" style="margin-top:8px;">WCS AXES (X &amp; Y)</div>
           <div class="profile-row" style="align-items:center;">
-            <button class="cad-btn" type="button" style="font-size:10px;padding:3px 10px;" onclick="pickAxis('x')">Select X</button>
+            <button class="cad-btn" id="btn-pick-x" type="button" style="font-size:10px;padding:3px 10px;" onclick="pickAxis('x')">Select X</button>
             <span id="x-axis-name" class="k" style="flex:1;color:var(--cad-text-muted);">&mdash; none &mdash;</span>
             <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
               <input type="checkbox" id="s-flip-x" style="margin:0;accent-color:var(--cad-accent-blue);" />
@@ -274,7 +281,7 @@
             </label>
           </div>
           <div class="profile-row" style="align-items:center;">
-            <button class="cad-btn" type="button" style="font-size:10px;padding:3px 10px;" onclick="pickAxis('y')">Select Y</button>
+            <button class="cad-btn" id="btn-pick-y" type="button" style="font-size:10px;padding:3px 10px;" onclick="pickAxis('y')">Select Y</button>
             <span id="y-axis-name" class="k" style="flex:1;color:var(--cad-text-muted);">&mdash; none &mdash;</span>
             <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
               <input type="checkbox" id="s-wcs-flip-y" style="margin:0;accent-color:var(--cad-accent-blue);" />
@@ -389,8 +396,14 @@
   // axis (mirrors the native WCS dialog's Select buttons). Python defers the
   // actual selectEntity so the palette doesn't freeze.
   function pickAxis(axis) {
-    setStatus('pick the ' + axis.toUpperCase() + ' axis in the viewport…');
+    const btn = document.getElementById('btn-pick-' + axis);
+    if (btn) { btn.textContent = 'Picking ' + axis.toUpperCase() + '…'; btn.classList.add('picking'); }
+    setStatus('pick the ' + axis.toUpperCase() + ' axis in the viewport…', 'warn');
     send(axis === 'y' ? 'select_y_axis' : 'select_x_axis');
+  }
+  function resetPickBtn(axis) {
+    const btn = document.getElementById('btn-pick-' + axis);
+    if (btn) { btn.textContent = 'Select ' + axis.toUpperCase(); btn.classList.remove('picking'); }
   }
 
   function setStatus(msg, cls) {
@@ -874,15 +887,21 @@
 
         // ── axis_picked: viewport pick came back for X or Y ────────────────
         } else if (action === 'axis_picked') {
-          const el = document.getElementById((payload.axis === 'y' ? 'y' : 'x') + '-axis-name');
-          if (el) {
-            el.textContent = payload.ok ? (payload.name || 'picked') : 'pick failed';
-            el.style.color = payload.ok ? 'var(--cad-accent-green)' : '#b00020';
+          const ax = (payload.axis === 'y' ? 'y' : 'x');
+          resetPickBtn(ax);   // drop the button out of its "picking" state
+          if (payload.cancelled) {
+            setStatus('axis pick cancelled');
+          } else {
+            const el = document.getElementById(ax + '-axis-name');
+            if (el) {
+              el.textContent = payload.ok ? (payload.name || 'picked') : 'pick failed';
+              el.style.color = payload.ok ? 'var(--cad-accent-green)' : '#b00020';
+            }
+            setStatus(payload.ok
+              ? (payload.axis.toUpperCase() + ' axis set: ' + (payload.name || ''))
+              : 'axis pick failed', payload.ok ? 'ok' : 'fail');
+            if (payload.ok) sendPreview();   // redraw triad along the picked axis
           }
-          setStatus(payload.ok
-            ? (payload.axis.toUpperCase() + ' axis set: ' + (payload.name || ''))
-            : 'axis pick failed', payload.ok ? 'ok' : 'fail');
-          if (payload.ok) sendPreview();   // redraw triad along the picked axis
 
         // ── import_result: profile extracted from existing setup ───────────
         } else if (action === 'import_result') {
@@ -939,6 +958,12 @@
       settings.addEventListener('change', sendPreview);
       settings.addEventListener('input', sendPreview);
     }
+  });
+
+  // Backup cleanup: if the palette gets hidden, ask Python to clear the ghost
+  // (in addition to the Python-side palette 'closed' hook).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && window.adsk && window.adsk.fusionSendData) send('preview_clear');
   });
 
   // Ask Python to scan components + CAM setups.
