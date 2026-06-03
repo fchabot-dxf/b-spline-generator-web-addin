@@ -424,6 +424,8 @@ class _StudioHtmlEventHandler(adsk.core.HTMLEventHandler):
             if   action == 'generate':      _do_studio_generate(data)
             elif action == 'init':          _do_studio_init()
             elif action == 'import_setup':  _do_import_setup(data)
+            elif action == 'preview':       _do_studio_preview(data)
+            elif action == 'preview_clear': _clear_studio_preview()
             else:
                 _log(f"Studio: unknown HTML action: {action!r}", "WARNING")
         except Exception:
@@ -455,7 +457,155 @@ def _show_studio_palette():
         _studio_html_handler = _StudioHtmlEventHandler()
         palette.incomingFromHTML.add(_studio_html_handler)
         _handlers.append(_studio_html_handler)
+        # Clear the preview ghost when the palette is closed, so custom
+        # graphics never persist after the user dismisses the panel.
+        try:
+            global _studio_closed_handler
+            _studio_closed_handler = _StudioPaletteClosedHandler()
+            palette.closed.add(_studio_closed_handler)
+            _handlers.append(_studio_closed_handler)
+        except Exception:
+            _log_error("studio palette closed-hook\n" + traceback.format_exc())
     palette.isVisible = True
+
+
+class _StudioPaletteClosedHandler(adsk.core.UserInterfaceGeneralEventHandler):
+    """Clears the live preview graphics when the CAM Studio palette closes."""
+    def notify(self, args):
+        try:
+            _clear_studio_preview()
+        except Exception:
+            _log_error("StudioPaletteClosed\n" + traceback.format_exc())
+
+
+# Live preview (custom graphics) — a yellow-ochre stock ghost + WCS triad the
+# palette can redraw as the user changes settings. Tracked in a module global
+# so we only ever own/clear our own graphics group, never another add-in's.
+_studio_preview_group = None
+_OCHRE = (204, 119, 34)
+
+
+def _clear_studio_preview():
+    """Delete the preview graphics group, if any, and refresh the viewport."""
+    global _studio_preview_group
+    try:
+        if _studio_preview_group is not None:
+            try:
+                _studio_preview_group.deleteMe()
+            except Exception:
+                pass
+            _studio_preview_group = None
+        app = adsk.core.Application.get()
+        if app and app.activeViewport:
+            app.activeViewport.refresh()
+    except Exception:
+        _log_error("_clear_studio_preview\n" + traceback.format_exc())
+
+
+def _do_studio_preview(data=None):
+    """Draw the stock-ghost + WCS triad for the current palette settings.
+
+    Stock size comes from the profile's stockDims (mm) or the model bounding
+    box; the box is centred on the model. The triad is drawn at the world
+    origin for now (X red, Y green, Z blue). Re-entrant: clears the prior
+    preview first so repeated calls just update in place.
+    """
+    global _studio_preview_group
+    try:
+        data = data or {}
+        profile = data.get('profile', {})
+        app = adsk.core.Application.get()
+        doc = app.activeDocument
+        ds = doc.products.itemByProductType('DesignProductType')
+        design = adsk.fusion.Design.cast(ds)
+        if not design:
+            return
+        root = design.rootComponent
+
+        _clear_studio_preview()
+        grp = root.customGraphicsGroups.add()
+        _studio_preview_group = grp
+
+        def _eff(r, g, b, a=255):
+            return adsk.fusion.CustomGraphicsSolidColorEffect.create(
+                adsk.core.Color.create(r, g, b, a))
+
+        def _seg(p0, p1, rgb, w=3):
+            c = adsk.fusion.CustomGraphicsCoordinates.create(
+                [p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]])
+            ln = grp.addLines(c, [0, 1], False)
+            ln.color = _eff(*rgb)
+            try:
+                ln.weight = w
+            except Exception:
+                pass
+
+        # Combined model bounding box (cm).
+        bb = None
+        bodies = list(root.bRepBodies)
+        for occ in root.allOccurrences:
+            try:
+                bodies.extend(list(occ.component.bRepBodies))
+            except Exception:
+                pass
+        for b in bodies:
+            try:
+                box = b.boundingBox
+                if bb is None:
+                    bb = adsk.core.BoundingBox3D.create(box.minPoint, box.maxPoint)
+                else:
+                    bb.combine(box)
+            except Exception:
+                pass
+        if not bb:
+            return
+        mn, mx = bb.minPoint, bb.maxPoint
+        cx, cy, cz = (mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2
+
+        sd = profile.get('stockDims') or {}
+
+        def _half(axis, lo, hi):
+            v = sd.get(axis)
+            try:
+                return (float(v) / 10.0) / 2 if v else (hi - lo) / 2
+            except (TypeError, ValueError):
+                return (hi - lo) / 2
+
+        hx = _half('x', mn.x, mx.x)
+        hy = _half('y', mn.y, mx.y)
+        hz = _half('z', mn.z, mx.z)
+
+        C = [(cx - hx, cy - hy, cz - hz), (cx + hx, cy - hy, cz - hz),
+             (cx + hx, cy + hy, cz - hz), (cx - hx, cy + hy, cz - hz),
+             (cx - hx, cy - hy, cz + hz), (cx + hx, cy - hy, cz + hz),
+             (cx + hx, cy + hy, cz + hz), (cx - hx, cy + hy, cz + hz)]
+
+        # Solid translucent stock box (like Fusion's native stock display):
+        # a filled mesh in pale yellow, with crisp edges drawn over it.
+        try:
+            flat = [v for p in C for v in p]
+            coords = adsk.fusion.CustomGraphicsCoordinates.create(flat)
+            tris = [0, 1, 2, 0, 2, 3,  4, 6, 5, 4, 7, 6,  0, 5, 1, 0, 4, 5,
+                    3, 2, 6, 3, 6, 7,  0, 3, 7, 0, 7, 4,  1, 6, 2, 1, 5, 6]
+            mesh = grp.addMesh(coords, tris, [], [])
+            mesh.color = _eff(228, 224, 150, 90)
+        except Exception:
+            pass
+        for a, b2 in [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6),
+                      (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]:
+            _seg(C[a], C[b2], (120, 116, 60), 1)
+
+        # WCS triad at the world origin (X red, Y green, Z blue).
+        L = max(hx, hy, hz) * 1.2 or 5.0
+        O = (0.0, 0.0, 0.0)
+        _seg(O, (L, 0, 0), (220, 40, 40), 5)
+        _seg(O, (0, L, 0), (40, 180, 40), 5)
+        _seg(O, (0, 0, L), (60, 90, 230), 5)
+
+        if app.activeViewport:
+            app.activeViewport.refresh()
+    except Exception:
+        _log_error("_do_studio_preview\n" + traceback.format_exc())
 
 
 def _send_to_studio_html(action, payload):

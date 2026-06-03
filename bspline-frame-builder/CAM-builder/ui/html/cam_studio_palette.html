@@ -356,6 +356,17 @@
       window.adsk.fusionSendData(action, data);
   }
 
+  // Live preview: debounced redraw of the stock ghost + WCS triad as settings
+  // change. The graphics are cleared Python-side when the palette closes.
+  let previewTimer = null;
+  function sendPreview() {
+    if (!(window.adsk && window.adsk.fusionSendData)) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      send('preview', { profile: getProfileFromForm() });
+    }, 200);
+  }
+
   function setStatus(msg, cls) {
     const bar = document.getElementById('status-bar');
     if (!bar) return;
@@ -655,6 +666,7 @@
       document.querySelectorAll('#sides-list .side-row [data-f="axis"]')
         .forEach(sel => { sel.value = 'X'; });
     }
+    sendPreview();
   }
 
   function nextSideName() {
@@ -823,6 +835,7 @@
             renderSetupDropdown(payload.setups     || []);
             modelDims = payload.modelDims || null;
             prefillStockDims();
+            sendPreview();
             const nc = (payload.components || []).length;
             const ns = (payload.setups     || []).length;
             setStatus(
@@ -879,6 +892,12 @@
     // removing all sides falls back to the Python default (Side A @ 0°).
     if (!document.querySelectorAll('#sides-list .side-row').length) {
       addSide({ name: 'A', axis: 'Z', angleDeg: 0 });
+    }
+    // Redraw the live preview whenever any setting changes.
+    const settings = document.getElementById('edit-section');
+    if (settings) {
+      settings.addEventListener('change', sendPreview);
+      settings.addEventListener('input', sendPreview);
     }
   });
 
