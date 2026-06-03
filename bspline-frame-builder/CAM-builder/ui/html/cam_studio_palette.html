@@ -264,11 +264,37 @@
             </select>
           </div>
 
-          <div class="settings-divider" style="margin-top:8px;">SIDES (INDEXED)</div>
-          <div id="sides-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
-          <button class="cad-btn" type="button"
-                  style="font-size:10px;padding:3px 10px;align-self:flex-start;margin-bottom:4px;"
-                  onclick="addSide()">+ ADD SIDE</button>
+          <!-- Non-rotary: two-sided face work (Top / Bottom). Shown when
+               Rotary mode is OFF. -->
+          <div id="faces-section">
+            <div class="settings-divider" style="margin-top:8px;">FACES (TOP / BOTTOM)</div>
+            <div class="profile-row" style="align-items:center;flex-wrap:wrap;">
+              <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;">
+                <input type="checkbox" id="s-face-top" checked style="margin:0;accent-color:var(--cad-accent-blue);" />
+                <span class="k">Top</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:5px;margin-left:10px;font-size:11px;cursor:pointer;" title="Flip the part over (180°) to machine the bottom face.">
+                <input type="checkbox" id="s-face-bottom" checked style="margin:0;accent-color:var(--cad-accent-blue);" />
+                <span class="k">Bottom (flip)</span>
+              </label>
+              <span class="k" style="margin-left:10px;" title="Which model direction becomes the work X axis.">X dir</span>
+              <select id="s-xdir" style="flex:0 0 64px;">
+                <option value="+x">+X</option>
+                <option value="+y">+Y</option>
+                <option value="-x">-X</option>
+                <option value="-y">-Y</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Rotary: angular indexed sides about X. Shown when Rotary ON. -->
+          <div id="sides-section" class="hidden">
+            <div class="settings-divider" style="margin-top:8px;">SIDES (INDEXED)</div>
+            <div id="sides-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
+            <button class="cad-btn" type="button"
+                    style="font-size:10px;padding:3px 10px;align-self:flex-start;margin-bottom:4px;"
+                    onclick="addSide()">+ ADD SIDE</button>
+          </div>
 
           <div class="settings-divider" style="margin-top:8px;">OPERATIONS</div>
           <div id="ops-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:4px;"></div>
@@ -569,6 +595,7 @@
       assignMachine:   document.getElementById('s-assign-machine').checked,
       rotary:          document.getElementById('s-rotary').checked,
       rotaryCenterline: document.getElementById('s-rotary-centerline').value,
+      xDir:            document.getElementById('s-xdir').value,
       stockDims:       (function () {
         const v = id => {
           const e = document.getElementById(id);
@@ -619,7 +646,12 @@
   function onRotaryToggle() {
     const on = document.getElementById('s-rotary').checked;
     document.getElementById('s-rotary-centerline').disabled = !on;
+    // Swap the side UI: rotary → angular indexed sides; non-rotary → Top/Bottom.
+    document.getElementById('sides-section').classList.toggle('hidden', !on);
+    document.getElementById('faces-section').classList.toggle('hidden', on);
     if (on) {
+      if (!document.querySelectorAll('#sides-list .side-row').length)
+        addSide({ name: 'A', axis: 'X', angleDeg: 0 });
       document.querySelectorAll('#sides-list .side-row [data-f="axis"]')
         .forEach(sel => { sel.value = 'X'; });
     }
@@ -661,6 +693,16 @@
   }
 
   function collectSides() {
+    // Non-rotary: Top / Bottom face work. Top = no flip; Bottom = flip the
+    // part over (180° about X). The engine turns each into one Setup.
+    if (!document.getElementById('s-rotary').checked) {
+      const faces = [];
+      if (document.getElementById('s-face-top').checked)
+        faces.push({ name: 'Top', axis: 'X', angleDeg: 0 });
+      if (document.getElementById('s-face-bottom').checked)
+        faces.push({ name: 'Bottom', axis: 'X', angleDeg: 180 });
+      return faces;
+    }
     return Array.from(document.querySelectorAll('#sides-list .side-row')).map(row => {
       const get = f => {
         const el = row.querySelector('[data-f="' + f + '"]');
