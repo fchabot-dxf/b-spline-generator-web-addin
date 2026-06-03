@@ -40,6 +40,7 @@ PALETTE_ID        = 'CamBuilder_Palette'
 PANEL_ID          = 'bsplinePanel'    # shared with the rest of the suite
 REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
 TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
+AXISPICK_EVENT_ID = 'CamStudio_AxisPick'   # deferred viewport pick for WCS X/Y
 
 PALETTE_NAME      = 'B-spline CAM'
 PALETTE_WIDTH     = 460
@@ -72,6 +73,13 @@ _engine = None          # cam_engine.cam_coordinator after load
 
 _refresh_event = None
 _refresh_registered = False
+
+# WCS axis picks from the viewport: 'x'/'y' -> entityToken (resolved at build
+# time via design.findEntityByToken). Kept module-level so they survive the
+# HTML round-trip and feed the next GENERATE.
+_picked_axis_tokens = {}
+_studio_closed_handler = None
+_axispick_event = None
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +434,10 @@ class _StudioHtmlEventHandler(adsk.core.HTMLEventHandler):
             elif action == 'import_setup':  _do_import_setup(data)
             elif action == 'preview':       _do_studio_preview(data)
             elif action == 'preview_clear': _clear_studio_preview()
+            elif action == 'select_x_axis':
+                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'x')
+            elif action == 'select_y_axis':
+                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'y')
             else:
                 _log(f"Studio: unknown HTML action: {action!r}", "WARNING")
         except Exception:
@@ -595,8 +607,10 @@ def _do_studio_preview(data=None):
                       (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]:
             _seg(C[a], C[b2], (120, 116, 60), 1)
 
-        # WCS triad at the world origin (X red, Y green, Z blue).
-        L = max(hx, hy, hz) * 1.2 or 5.0
+        # WCS triad at the world origin (X red, Y green, Z blue). Kept short
+        # (a fraction of the smallest half-dimension) so it reads as an axis
+        # marker, not a giant cross dominating the part.
+        L = min(hx, hy, hz) * 0.6 or 2.0
         O = (0.0, 0.0, 0.0)
         _seg(O, (L, 0, 0), (220, 40, 40), 5)
         _seg(O, (0, L, 0), (40, 180, 40), 5)
@@ -606,6 +620,45 @@ def _do_studio_preview(data=None):
             app.activeViewport.refresh()
     except Exception:
         _log_error("_do_studio_preview\n" + traceback.format_exc())
+
+
+class _AxisPickHandler(adsk.core.CustomEventHandler):
+    """Deferred viewport pick for a WCS axis.
+
+    Fired from the HTML event handler (via fireCustomEvent) so the palette
+    event returns cleanly before the blocking ``selectEntity`` runs — same
+    reason the toolpath-gen path is deferred. ``additionalInfo`` carries
+    'x' or 'y'. Stores the picked entity's token so GENERATE can bind it as
+    the setup's WCS X / Y axis, and echoes the pick back to the palette.
+    """
+    def notify(self, args):
+        global _picked_axis_tokens
+        try:
+            axis = (getattr(args, 'additionalInfo', '') or 'x').strip().lower()
+            if axis not in ('x', 'y'):
+                axis = 'x'
+            app = adsk.core.Application.get()
+            ui = app.userInterface
+            sel = ui.selectEntity(
+                f"Select an edge or line for the {axis.upper()} axis",
+                "LinearEdges,SketchLines,ConstructionLines")
+            if not sel:
+                return
+            ent = sel.entity
+            try:
+                token = ent.entityToken
+            except Exception:
+                token = None
+            _picked_axis_tokens[axis] = token
+            try:
+                name = ent.objectType.split('::')[-1]
+            except Exception:
+                name = 'entity'
+            _send_to_studio_html('axis_picked',
+                                 {'axis': axis, 'name': name, 'ok': token is not None})
+            _log(f"AXIS PICK: {axis} -> {name} token={'ok' if token else 'none'}")
+        except Exception:
+            _log_error("_AxisPickHandler\n" + traceback.format_exc())
 
 
 def _send_to_studio_html(action, payload):
@@ -1886,6 +1939,18 @@ def _register_refresh_event():
         h_tp = _DeferredTPGenHandler()
         _tpgen_event.add(h_tp)
         _refresh_handlers.append(h_tp)
+
+        # Deferred WCS axis pick (CAM Studio). Same lifecycle/context reason:
+        # selectEntity must not run inside the HTML palette event handler.
+        global _axispick_event
+        try:
+            app.unregisterCustomEvent(AXISPICK_EVENT_ID)
+        except Exception:
+            pass
+        _axispick_event = app.registerCustomEvent(AXISPICK_EVENT_ID)
+        h_pick = _AxisPickHandler()
+        _axispick_event.add(h_pick)
+        _refresh_handlers.append(h_pick)
 
         _refresh_registered = True
     except Exception:

@@ -264,6 +264,24 @@
             </select>
           </div>
 
+          <div class="settings-divider" style="margin-top:8px;">WCS AXES (X &amp; Y)</div>
+          <div class="profile-row" style="align-items:center;">
+            <button class="cad-btn" type="button" style="font-size:10px;padding:3px 10px;" onclick="pickAxis('x')">Select X</button>
+            <span id="x-axis-name" class="k" style="flex:1;color:var(--cad-text-muted);">&mdash; none &mdash;</span>
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="s-flip-x" style="margin:0;accent-color:var(--cad-accent-blue);" />
+              <span class="k">Flip X</span>
+            </label>
+          </div>
+          <div class="profile-row" style="align-items:center;">
+            <button class="cad-btn" type="button" style="font-size:10px;padding:3px 10px;" onclick="pickAxis('y')">Select Y</button>
+            <span id="y-axis-name" class="k" style="flex:1;color:var(--cad-text-muted);">&mdash; none &mdash;</span>
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;">
+              <input type="checkbox" id="s-wcs-flip-y" style="margin:0;accent-color:var(--cad-accent-blue);" />
+              <span class="k">Flip Y</span>
+            </label>
+          </div>
+
           <!-- Non-rotary: two-sided face work (Top / Bottom). Shown when
                Rotary mode is OFF. -->
           <div id="faces-section">
@@ -365,6 +383,14 @@
     previewTimer = setTimeout(() => {
       send('preview', { profile: getProfileFromForm() });
     }, 200);
+  }
+
+  // Hand off to Fusion to pick an edge/line in the viewport for the X or Y
+  // axis (mirrors the native WCS dialog's Select buttons). Python defers the
+  // actual selectEntity so the palette doesn't freeze.
+  function pickAxis(axis) {
+    setStatus('pick the ' + axis.toUpperCase() + ' axis in the viewport…');
+    send(axis === 'y' ? 'select_y_axis' : 'select_x_axis');
   }
 
   function setStatus(msg, cls) {
@@ -843,6 +869,17 @@
               ns + ' setup' + (ns !== 1 ? 's' : '') + ' found', 'ok'
             );
           }
+
+        // ── axis_picked: viewport pick came back for X or Y ────────────────
+        } else if (action === 'axis_picked') {
+          const el = document.getElementById((payload.axis === 'y' ? 'y' : 'x') + '-axis-name');
+          if (el) {
+            el.textContent = payload.ok ? (payload.name || 'picked') : 'pick failed';
+            el.style.color = payload.ok ? 'var(--cad-accent-green)' : '#b00020';
+          }
+          setStatus(payload.ok
+            ? (payload.axis.toUpperCase() + ' axis set: ' + (payload.name || ''))
+            : 'axis pick failed', payload.ok ? 'ok' : 'fail');
 
         // ── import_result: profile extracted from existing setup ───────────
         } else if (action === 'import_result') {
