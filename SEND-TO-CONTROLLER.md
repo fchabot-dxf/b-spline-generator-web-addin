@@ -354,10 +354,18 @@ def get_post_params(ncp):
     return out
 ```
 
-### Needs live verification before coding
+### Live verification results
 
-1. **`NCProgram.postProcess()` output path** — called it, got `True`, but found no output files. Need to find where it writes the NC.
-2. **`p.expression = value` setter** — does writing post parameters back through the API actually persist?
+1. **`p.expression` setter — ✓ works.** `ncp.postParameters.itemByName("safeZHeight").expression = "-2"` persists correctly.
+
+2. **`NCProgram.postProcess()` output path — writes to `nc_program_output_folder`** which in this document is `E:/` (the CNC disk directly). That's why no temp files were found — it bypasses the gateway entirely and writes straight to the controller share.
+
+   For the palette we use **`cam.postProcess(setup, PostProcessInput.create(tmp, cps_path, ...))`** instead — captures NC to a temp folder for beacon injection before gateway send. Already verified to produce `Frame.nc` correctly.
+
+   The NC program's post and setup are readable from `ncp.parameters`:
+   - Post: `nc_program_post` → `'cloud://fanuc_DDCS_m350.cps'` → resolve to `cam.genericPostFolder + '/fanuc_DDCS_m350.cps'`
+   - Output folder: `nc_program_output_folder` → `'E:/'` (for reference only — we use tmp instead)
+   - Filename: `nc_program_filename` → `'frame smsmsm'`
 
 ## Open questions
 
