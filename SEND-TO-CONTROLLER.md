@@ -16,6 +16,8 @@ Studio UI  →  POST /api/jobs {name, nc, map}  →  bridge gateway
 
 A sibling to Fusion's native post window. Two tabs: **Send** and **Beacons**.
 
+Three tabs: **Send**, **Beacons**, **Files**.
+
 ### Tab 1 — Send
 
 | Field | Behaviour |
@@ -61,6 +63,18 @@ Test plan:
 4. If stall detected: consider inserting beacons only at **full retracts to safe Z** (G0 Z[safe]) rather than all Z-ups, reducing frequency
 
 Until tested, the palette should default beacons to **off** for Fusion files (unlike Studio where they're on by default).
+
+### Tab 3 — Files
+
+CNCDISK file browser — see what's already on the controller before sending, preview G-code, clean up old jobs.
+
+| Control | Behaviour |
+|---|---|
+| **File list** | Table: name, size, date — populated from `GET /api/files` on tab open + refresh button |
+| **Preview** | Click a file → `GET /api/file?name=` → read-only G-code viewer inline |
+| **Delete** | Trash icon per row → `POST /api/files/delete {name}` → list refreshes |
+
+---
 
 ## Verified API path (live-tested in Fusion)
 
