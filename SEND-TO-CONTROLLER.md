@@ -76,25 +76,45 @@ CNCDISK file browser — see what's already on the controller before sending, pr
 
 ### Tab 4 — Post
 
-**Post properties form** — not a full code editor. Renders only the `scope: "post"` properties from the selected `.cps` as typed UI controls. The standard Fanuc boilerplate (`scope: "hidden"`) stays hidden.
+**Post properties form** — mirrors exactly what Fusion's native post dialog shows, using the same API. No `.cps` parsing, no file patching.
 
-The DDCS M350 post has these custom `scope: "post"` properties confirmed in the file:
+#### API path (live-tested)
 
-| Property | Type | What it controls |
+`ncp.postParameters` returns a `CAMParameters` collection — the same typed parameters Fusion renders in its own post dialog, already filtered to visible/editable entries:
+
+```python
+pp = ncp.postParameters
+for i in range(pp.count):
+    p = pp.item(i)
+    if p.isVisible and p.isEditable:
+        # render p.title as a form field based on type(p.value)
+```
+
+DDCS M350 post exposes these editable parameters (confirmed live):
+
+| `name` | Title | Type |
 |---|---|---|
-| **Safe Retracts** | enum | G53 (Safe Z Only) or G28 (Reference Point) |
-| **Safe Z Height** | number | Machine coordinate Z for safe retracts (e.g. `-1`) |
-| **End of Job Parking** | enum | Where the machine parks after the job finishes |
+| `useCoolant` | Spindle Water Pump (M8) | `BooleanParameterValue` |
+| `useM6` | Output Tool Change (M6) | `BooleanParameterValue` |
+| `safePositionMethod` | Safe Retracts | `ChoiceParameterValue` |
+| `safeZHeight` | Safe Z Height (machine) | `FloatParameterValue` |
+| `homePositionEnd` | End of Job Parking | `ChoiceParameterValue` |
 
-These are machine-specific, affect every cut, and are exactly what changes between machine setups. Fusion's native post dialog exposes them — but Post & Send bypasses that dialog, so this tab fills the gap.
+Plus built-in parameters (tolerance, circular radius limits, etc.) in a collapsible group.
 
-#### How it works
+Group headers (`isVisible=True, isEditable=False`) are used as section dividers in the form.
 
-1. On tab open: parse the selected `.cps` properties block, extract all `scope: "post"` entries
-2. Render each as a typed control: `boolean` → toggle, `enum` → dropdown, `number`/`integer` → number input, `string` → text field
-3. On Save: patch the current values back into the `.cps` file (update the `value:` line for each changed property)
+#### Rendering
 
-Patching is surgical — only `value:` lines for known properties are rewritten. The rest of the `.cps` is untouched. A `.bak` is written before saving.
+| Value type | Control |
+|---|---|
+| `BooleanParameterValue` | Toggle |
+| `ChoiceParameterValue` | Dropdown |
+| `FloatParameterValue` | Number input |
+
+#### Saving
+
+Values write back through the API via `p.expression` setter — persisted per NC program in the Fusion document, same as the native dialog. No file patching, no `.bak`.
 
 ---
 
