@@ -16,7 +16,7 @@ Studio UI  →  POST /api/jobs {name, nc, map}  →  bridge gateway
 
 A sibling to Fusion's native post window. Two tabs: **Send** and **Beacons**.
 
-Three tabs: **Send**, **Beacons**, **Files**.
+Four tabs: **Send**, **Beacons**, **Files**, **Post**.
 
 ### Tab 1 — Send
 
@@ -73,6 +73,28 @@ CNCDISK file browser — see what's already on the controller before sending, pr
 | **File list** | Table: name, size, date — populated from `GET /api/files` on tab open + refresh button |
 | **Preview** | Click a file → `GET /api/file?name=` → read-only G-code viewer inline |
 | **Delete** | Trash icon per row → `POST /api/files/delete {name}` → list refreshes |
+
+### Tab 4 — Post
+
+**Post properties form** — not a full code editor. Renders only the `scope: "post"` properties from the selected `.cps` as typed UI controls. The standard Fanuc boilerplate (`scope: "hidden"`) stays hidden.
+
+The DDCS M350 post has these custom `scope: "post"` properties confirmed in the file:
+
+| Property | Type | What it controls |
+|---|---|---|
+| **Safe Retracts** | enum | G53 (Safe Z Only) or G28 (Reference Point) |
+| **Safe Z Height** | number | Machine coordinate Z for safe retracts (e.g. `-1`) |
+| **End of Job Parking** | enum | Where the machine parks after the job finishes |
+
+These are machine-specific, affect every cut, and are exactly what changes between machine setups. Fusion's native post dialog exposes them — but Post & Send bypasses that dialog, so this tab fills the gap.
+
+#### How it works
+
+1. On tab open: parse the selected `.cps` properties block, extract all `scope: "post"` entries
+2. Render each as a typed control: `boolean` → toggle, `enum` → dropdown, `number`/`integer` → number input, `string` → text field
+3. On Save: patch the current values back into the `.cps` file (update the `value:` line for each changed property)
+
+Patching is surgical — only `value:` lines for known properties are rewritten. The rest of the `.cps` is untouched. A `.bak` is written before saving.
 
 ---
 
