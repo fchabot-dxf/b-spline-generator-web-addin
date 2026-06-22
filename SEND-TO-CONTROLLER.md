@@ -273,6 +273,92 @@ bspline-frame-builder/
 - **No bundled `.cps`**: uses Fusion's own cached post at `cam.genericPostFolder + '/fanuc_DDCS_m350.cps'`.
 - **Architecture (D)**: Fusion add-in and Studio are independent clients of the same gateway.
 
+## Implementation
+
+### Design decision — NC Program as the primary picker
+
+The Send tab picks an **NC program** (not a Setup). An NC program already has a setup + post configured — everything flows from it: `ncp.postProcess()` for sending, `ncp.postParameters` for the Post tab. Simpler than managing two separate pickers.
+
+The document already has 17 NC programs with the DDCS post configured. This is the natural unit of work.
+
+### File structure
+
+```
+bspline-frame-builder/
+  post-and-send/
+    post-and-send.py       ← add-in entry: registers command + palette
+    post-and-send.manifest
+    sender.py              ← gateway HTTP calls (send_to_gateway, gateway_status, file ops)
+    instrument.py          ← Python port of instrument.js (beacon injection + map builder)
+    html/
+      index.html           ← 4-tab palette UI
+      app.js               ← tab logic + fusionSendData calls
+```
+
+### Python data flow
+
+On palette show, push everything at once:
+
+```python
+def on_palette_show():
+    cam = get_cam()
+    palette.sendInfoToHTML("init", json.dumps({
+        "ncPrograms": list_nc_programs(cam),   # [{index, name, post}] — hasError=False only
+        "posts": list_posts(cam),              # [{name, path}] from genericPostFolder + personalPostFolder
+        "gatewayUrl": "http://localhost:8765",
+    }))
+    palette.sendInfoToHTML("gatewayStatus", json.dumps({"connected": gateway_status()}))
+```
+
+Message handlers:
+
+```python
+# User picks an NC program → push post params to Post tab
+if command_id == "selectNcProgram":
+    ncp = cam.ncPrograms.item(args["index"])
+    palette.sendInfoToHTML("postParams", json.dumps(get_post_params(ncp)))
+
+# Post & Send button
+if command_id == "postAndSend":
+    ncp = cam.ncPrograms.item(args["ncProgramIndex"])
+    opts = adsk.cam.NCProgramPostProcessOptions.create()
+    ncp.postProcess(opts)
+    nc = read_nc_output(...)          # output path TBD — needs verification
+    if args["beaconsEnabled"]:
+        nc, map_ = instrument(nc, args["beaconOpts"])
+    else:
+        map_ = None
+    result = send_to_gateway(nc, args["programName"], map_)
+    palette.sendInfoToHTML("sendResult", json.dumps(result))
+
+# Post tab — save a property value
+if command_id == "setPostParam":
+    ncp = cam.ncPrograms.item(args["ncProgramIndex"])
+    p = ncp.postParameters.itemByName(args["name"])
+    p.expression = args["value"]      # needs verification
+```
+
+### Post params helper
+
+```python
+def get_post_params(ncp):
+    out = []
+    for i in range(ncp.postParameters.count):
+        p = ncp.postParameters.item(i)
+        out.append({
+            "name": p.name, "title": p.title,
+            "visible": p.isVisible, "editable": p.isEditable,
+            "valueType": type(p.value).__name__,  # BooleanParameterValue / ChoiceParameterValue / FloatParameterValue
+            "expression": p.expression,
+        })
+    return out
+```
+
+### Needs live verification before coding
+
+1. **`NCProgram.postProcess()` output path** — called it, got `True`, but found no output files. Need to find where it writes the NC.
+2. **`p.expression = value` setter** — does writing post parameters back through the API actually persist?
+
 ## Open questions
 
 - Beacon injection: **done client-side in the add-in** (`sender.py`). Palette injects `(BEACON:id:label)` comments into the NC text at the right lines, builds the map, then sends `{ name, nc_already_beaconed, map }`. Gateway accepts a file that already has its map — it just tracks, doesn't inject.
