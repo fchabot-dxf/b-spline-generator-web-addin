@@ -1,165 +1,225 @@
-# Send to Controller — Integration Plan
+# Post & Send — Integration Plan
 
-Send a generated toolpath (`.nc` file) from the B-Spline / Frame Builder add-in directly to the DDCS controller via the bridge gateway, reusing the same transport layer DDCS Studio already uses.
+A custom **Post & Send** palette in the Fusion add-in that mirrors the native Post Process window but sends the result directly to the DDCS controller via the bridge gateway instead of saving to disk.
 
 ## How the existing transport works (Studio → Controller)
 
 ```
-Studio UI  →  POST /api/jobs {name, nc}  →  bridge gateway (fairy/server.py)
-                                          →  transfer.py: deliver(nc_bytes, name)
-                                          →  CNCDISK share / expert_dest folder
-                                          →  User presses Cycle Start
+Studio UI  →  POST /api/jobs {name, nc, map}  →  bridge gateway
+                                               →  transfer.py: deliver() → CNCDISK
+                                               →  User presses Cycle Start
 ```
 
-The gateway runs locally on the user's machine. No auth, no cloud required. `POST /api/jobs` accepts `{ name: string, nc: string }` and returns `{ jobId, name, tracked }`.
+`POST /api/jobs` accepts `{ name, nc, map? }`, returns `{ jobId, name, tracked }`. No auth, local only.
 
-## Plan
+## Palette UI
 
-### Step 1 — Export G-code from CAM-builder (already partly wired)
+A sibling to Fusion's native post window. Two tabs: **Send** and **Beacons**.
 
-`CAM-builder/cam-builder.py` can already scaffold Fusion CAM operations. The missing piece: run the Fusion post-processor and capture the `.nc` output bytes.
+### Tab 1 — Send
+
+| Field | Behaviour |
+|---|---|
+| **Setup** | Dropdown — all setups in the active document |
+| **Post processor** | Dropdown — all `.cps` from `genericPostFolder` + `personalPostFolder`, default = `fanuc_DDCS_m350` |
+| **Program name** | Text input, defaults to the selected setup name |
+| **Gateway** | Status chip — polls `GET /api/descriptor`, shows connected / offline |
+| **Post & Send** | Primary button — disabled when gateway offline |
+
+### Tab 2 — Beacons
+
+Same controls as the Studio Gateway → Send tab. Beacons are optional — the user can send deliver-only (no tracking) or tracked.
+
+| Control | Behaviour |
+|---|---|
+| **Enable beacons** | Toggle — off = deliver-only, on = tracked |
+| **Count** | Max beacons 1–255 (default 255) |
+| **Pacing** | `by time` (wall-clock estimate) or `by line count` |
+| **Advanced** | Collapsed by default: counter var (#250), marker var (#251), marker value (111) — rarely changed, the frame is proven on hardware |
+| **Preview** | After post-process: estimated job time + how many beacons will be inserted |
+
+#### How beacons work (from Studio `instrument.js`)
+
+Beacons are injected at **Z-up moves** (tool retracts) — not at operation boundaries. Three lines inserted per beacon:
+
+```
+#251 = 111                    ← marker flag (once, before first beacon)
+#250 = N                      ← beacon counter (increments per beacon)
+MSETDATA[250,1,0,2,16,300]   ← writes N to Modbus register; gateway reads it back
+```
+
+The gateway tracks progress by polling the Modbus register. The map records `{ n, line, op, cum_time_s, percent }` per beacon.
+
+#### Open hardware question — do beacons stall the motors?
+
+`MSETDATA` is a Modbus write. On complex Fusion toolpaths (morphed passes, adaptive clearing, smooth 3D surfaces) any lookahead-buffer flush or motion pause at a beacon would leave a mark. **This needs to be tested on the machine before enabling beacons by default for Fusion files.**
+
+Test plan:
+1. Generate a simple Fusion toolpath (flat pocket, known feedrate)
+2. Instrument it with 5–10 beacons
+3. Run on the machine and observe: any hesitation, mark on surface, or feedrate dip at beacon lines?
+4. If stall detected: consider inserting beacons only at **full retracts to safe Z** (G0 Z[safe]) rather than all Z-ups, reducing frequency
+
+Until tested, the palette should default beacons to **off** for Fusion files (unlike Studio where they're on by default).
+
+## Verified API path (live-tested in Fusion)
 
 ```python
-# cam-builder.py (add after setup_builder runs)
-import adsk.cam
+import adsk.cam, tempfile, os, urllib.request, json
 
-def post_and_capture(setup, post_config_path, output_path):
-    cam = adsk.cam.CAM.cast(adsk.core.Application.get().activeProduct)
+def get_cam():
+    for i in range(app.activeDocument.products.count):
+        c = adsk.cam.CAM.cast(app.activeDocument.products.item(i))
+        if c:
+            return c
+
+def list_setups(cam):
+    return [{"name": cam.setups.item(i).name, "index": i}
+            for i in range(cam.setups.count)]
+
+def list_posts(cam):
+    posts = []
+    for folder in [cam.genericPostFolder, cam.personalPostFolder]:
+        if folder and os.path.exists(folder):
+            for f in os.listdir(folder):
+                if f.endswith('.cps'):
+                    posts.append({"name": f[:-4], "path": folder + '/' + f})
+    return posts
+
+def post_and_capture(cam, setup_index, cps_path, program_name):
+    setup = cam.setups.item(setup_index)
+    tmp = tempfile.mkdtemp().replace('\\', '/')
     post_input = adsk.cam.PostProcessInput.create(
-        output_path, post_config_path, "nc", adsk.cam.PostProcessOutputUnitOptions.DocumentUnitsOutput
+        program_name,
+        cps_path,
+        tmp,
+        adsk.cam.PostOutputUnitOptions.DocumentUnitsOutput
     )
-    cam.postProcess(setup, post_input)
-    with open(output_path, "r") as f:
+    ok = cam.postProcess(setup, post_input)
+    if not ok:
+        raise RuntimeError("postProcess failed")
+    files = [f for f in os.listdir(tmp) if f.endswith('.nc')]
+    if not files:
+        raise RuntimeError("No .nc output generated")
+    with open(os.path.join(tmp, files[0]), 'r', errors='replace') as f:
         return f.read()
-```
 
-The post config (`.cps`) to use is the user's DDCS Expert post — ship a default one alongside the add-in, or let the user pick it in the palette UI.
+def gateway_status(url="http://localhost:8765"):
+    try:
+        with urllib.request.urlopen(f"{url}/api/descriptor", timeout=2) as r:
+            return json.loads(r.read()).get("controller_connected", False)
+    except Exception:
+        return False
 
-### Step 2 — Send to gateway from the Fusion palette (Python side)
-
-The Fusion add-in already has a Python↔JS bridge via `adsk.core.Palette`. After capturing the `.nc` string:
-
-```python
-import urllib.request, json
-
-def send_to_controller(nc_text: str, name: str, gateway_url: str = "http://localhost:8765"):
+def send_to_gateway(nc_text, name, url="http://localhost:8765"):
     payload = json.dumps({"name": name, "nc": nc_text}).encode()
-    req = urllib.request.Request(
-        f"{gateway_url}/api/jobs",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        return json.loads(resp.read())
+    req = urllib.request.Request(f"{url}/api/jobs", data=payload,
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())
 ```
 
-Call this after Step 1. No third-party dependencies — uses only stdlib `urllib`.
+**Key finding from live test**: `cam.genericPostFolder + '/fanuc_DDCS_m350.cps'` exists and works. The API enum is `adsk.cam.PostOutputUnitOptions.DocumentUnitsOutput` (not `PostProcessOutputUnitOptions`).
 
-### Step 3 — Setup picker + Send button in the CAM-builder palette
-
-The user manually picks a CAM Setup from a dropdown, then clicks **Send to Controller**.
-
-On palette open, Python enumerates all setups and pushes the list to the HTML:
-
-```python
-# cam-builder.py — on palette show / refresh
-import adsk.cam
-
-def list_setups():
-    cam = adsk.cam.CAM.cast(adsk.core.Application.get().activeProduct)
-    return [{"name": s.name, "index": i} for i, s in enumerate(cam.setups)]
-
-# push to palette
-palette.sendInfoToHTML("setups", json.dumps(list_setups()))
-```
-
-HTML palette renders a `<select>` populated from that list, plus a **Send to Controller** button:
+## Palette HTML (outline)
 
 ```html
-<!-- cam-builder/html/index.html -->
-<label>CAM Setup</label>
 <select id="setup-select"></select>
-<button id="btn-send">Send to Controller</button>
-<div id="send-status"></div>
+<select id="post-select"></select>
+<input id="program-name" type="text">
+<div id="gateway-chip">⬤ checking...</div>
+<button id="btn-send" disabled>Post & Send</button>
+<div id="status"></div>
 
 <script>
 window.fusionMessageReceived = ({ action, data }) => {
-  if (action === "setups") {
-    const setups = JSON.parse(data);
-    const sel = document.getElementById("setup-select");
-    sel.innerHTML = setups.map(s => `<option value="${s.index}">${s.name}</option>`).join("");
+  const d = JSON.parse(data);
+  if (action === "init") {
+    document.getElementById("setup-select").innerHTML =
+      d.setups.map(s => `<option value="${s.index}">${s.name}</option>`).join("");
+    document.getElementById("post-select").innerHTML =
+      d.posts.map(p => `<option value="${p.path}"${p.name.includes('DDCS') ? ' selected' : ''}>${p.name}</option>`).join("");
+    document.getElementById("program-name").value = d.setups[0]?.name ?? "";
+  }
+  if (action === "gatewayStatus") {
+    const ok = d.connected;
+    document.getElementById("gateway-chip").textContent = ok ? "⬤ Connected" : "⬤ Offline";
+    document.getElementById("btn-send").disabled = !ok;
   }
   if (action === "sendResult") {
-    document.getElementById("send-status").textContent =
-      JSON.parse(data).jobId ? "Sent — press Cycle Start at the machine." : "Send failed.";
+    document.getElementById("status").textContent =
+      d.jobId ? "Sent — press Cycle Start at the machine." : "Send failed.";
   }
 };
 
+document.getElementById("setup-select").addEventListener("change", e => {
+  document.getElementById("program-name").value =
+    e.target.options[e.target.selectedIndex].text;
+});
+
 document.getElementById("btn-send").addEventListener("click", () => {
-  const idx = document.getElementById("setup-select").value;
-  adsk.fusionSendData("sendToController", JSON.stringify({ setupIndex: parseInt(idx), gatewayUrl: "http://localhost:8765" }));
+  adsk.fusionSendData("postAndSend", JSON.stringify({
+    setupIndex: parseInt(document.getElementById("setup-select").value),
+    cpsPath: document.getElementById("post-select").value,
+    programName: document.getElementById("program-name").value,
+  }));
 });
 </script>
 ```
 
-Python handler receives `setupIndex`, retrieves that setup, posts, and captures the result:
+## Python event handler
 
 ```python
-# cam-builder.py — palette HTML event handler
-if command_id == "sendToController":
+# On palette open — push init data + start gateway poll
+cam = get_cam()
+palette.sendInfoToHTML("init", json.dumps({
+    "setups": list_setups(cam),
+    "posts": list_posts(cam),
+}))
+palette.sendInfoToHTML("gatewayStatus", json.dumps({
+    "connected": gateway_status()
+}))
+
+# On postAndSend message from HTML
+if command_id == "postAndSend":
     args = json.loads(data)
-    cam = adsk.cam.CAM.cast(adsk.core.Application.get().activeProduct)
-    setup = cam.setups[args["setupIndex"]]
-    nc = post_and_capture(setup, post_cps_path, tmp_nc_path)
-    result = send_to_controller(nc, setup.name, args["gatewayUrl"])
+    cam = get_cam()
+    nc = post_and_capture(cam, args["setupIndex"], args["cpsPath"], args["programName"])
+    # TODO: inject beacons here
+    result = send_to_gateway(nc, args["programName"])
     palette.sendInfoToHTML("sendResult", json.dumps(result))
 ```
 
-### Step 4 — Gateway URL configuration
-
-The gateway port (default `8765`) should be configurable. Options (pick one):
-
-- **Simplest**: hardcode `http://localhost:8765` with a small text field in the palette to override.
-- **Better**: read from a `.json` settings file next to the add-in manifest (same pattern Studio uses for bridge config).
-
-### Step 5 — Verify gateway is reachable before send
-
-Before sending, `GET /api/descriptor` and check `controller_connected`. Show a warning if the gateway is offline or the controller is disconnected — same guard Studio's `bridgeTransfer.js` uses.
-
-```python
-def gateway_status(gateway_url):
-    try:
-        with urllib.request.urlopen(f"{gateway_url}/api/descriptor", timeout=2) as r:
-            d = json.loads(r.read())
-            return d.get("controller_connected", False)
-    except Exception:
-        return False
-```
-
-## File layout (new/changed files)
+## File layout
 
 ```
 bspline-frame-builder/
-  CAM-builder/
-    cam-builder.py          ← add post_and_capture() + send_to_controller() + handler
-    cam_engine/
-      sender.py             ← new: isolated send_to_controller() + gateway_status()
+  post-and-send/               ← new standalone palette (sibling to CAM-builder)
+    post-and-send.py           ← add-in entry: registers command + palette
+    post-and-send.manifest
+    sender.py                  ← post_and_capture, send_to_gateway, gateway_status
     html/
-      index.html            ← add Send to Controller button + toast display
+      index.html               ← palette UI
 ```
 
 ## What stays unchanged
 
-- `bridge/` — gateway needs zero changes; `POST /api/jobs` already handles this.
-- `transfer.py` — unchanged.
-- DDCS Studio — unchanged.
-
-## Open questions
-
-- Which `.cps` post file to ship (Expert/Generic)? Probably ship the same post Studio's CAM builder uses.
-- Gateway port: hardcode `8765` for now or expose in palette settings?
+- `bridge/` — zero changes; `POST /api/jobs` already handles this.
+- DDCS Studio — zero changes.
 
 ## Decisions made
 
-- **Setup selection**: manual — user picks from a dropdown in the palette, not auto-detected.
+- **UX**: sibling to native Fusion post window — same mental model, destination is controller not disk.
+- **Setup selection**: manual dropdown.
+- **Post picker**: shows all `.cps` from both post folders, defaults to `fanuc_DDCS_m350`.
+- **Program name**: editable, auto-fills from selected setup name.
+- **Post & Send is one step**: `cam.postProcess()` runs silently to temp, output read, beacons injected, sent to gateway.
+- **No bundled `.cps`**: uses Fusion's own cached post at `cam.genericPostFolder + '/fanuc_DDCS_m350.cps'`.
+- **Architecture (D)**: Fusion add-in and Studio are independent clients of the same gateway.
+
+## Open questions
+
+- Beacon injection: **done client-side in the add-in** (`sender.py`). Palette injects `(BEACON:id:label)` comments into the NC text at the right lines, builds the map, then sends `{ name, nc_already_beaconed, map }`. Gateway accepts a file that already has its map — it just tracks, doesn't inject.
+- Anchor strategy: DDCS post emits `(OP_NAME)` comments — confirm these are consistent enough to be reliable beacon anchors across all setup types.
+- Gateway port: hardcode `8765` or expose as a settings field in the palette?
+- Should this live inside the existing `b-spline-generator-web-addin` or as a standalone add-in?
