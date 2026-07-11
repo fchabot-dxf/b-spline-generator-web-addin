@@ -1196,3 +1196,83 @@ radius) and the send path can't be verified without Fusion. Need from advisor:
   3. If SENT: likely `normalizeSvgForCarving` flip-Y height/space — needs a Fusion round-trip to
      verify; recommend a human/Fusion check of the exact offset (= mH? = a constant?).
 Landing the verified expand-micro fix now; holding the normal-offset for this synthesis.
+
+---
+
+## Turn 45 — SC1: TRACE + PROPOSE the send-to-Fusion carve-path (micro+flip+offset) — GATE (no code)
+
+Traced ONE point (editor svg coords x=1, y=2; 7x9 board; scale=96) through each carve-path stage by
+RUNNING the real `_prescale_svg` (pure string fn — copied verbatim, no repo edit) + reading the JS
+send wiring. NO code changed. Findings refine the advisor's "two flips" hypothesis: the DOMINANT
+root is not the flips — it's a regex that misses the coordinate format editor SVGs actually use.
+
+### The two carve paths
+- **Path A — editor "Send to Fusion" button** (`app-init.js:175` initSendToFusionButton →
+  `import_svg_sketches`): sends RAW `getLayerSvg` (inch units, Y-normal, viewBox "0 0 7 9", NO
+  normalize) → Python `_import_single_layer_svg:1400` → `_prescale_svg` (flip+scale+center). ONE flip.
+- **Path B — STEP export "OK" with stamp** (`export-flow.js:250`): `normalizeSvgForCarving(l.svg)`
+  (JS flip via `<g translate(0 H) scale(1 -1)>` group wrapper) → payload → Python
+  `_import_all_svg_layers:1388 → _import_single_layer_svg → _prescale_svg` (flip again). TWO flips.
+
+### THREE pinned roots (evidence = the table below, from running _prescale_svg)
+1. **MICRO (dominant) — `_prescale_svg` coord regex is COMMA-only, editor `d` is SPACE-separated.**
+   `scale_d`/`scale_pts` use `re.sub(r'([-\d.]+),([-\d.]+)', ...)`. getLayerSvg/svg.js emit
+   `d="M1 2 L6 2"` (spaces) — measured (turn 43/45). So `<path>` coords are NEVER scaled/flipped/
+   centered:
+     - space `d="M1 2 L6 2"`   -> `_prescale_svg` -> `d="M1 2 L6 2"` (UNCHANGED)
+     - comma `d="M1,2 L6,2"`    -> `d="M-240.0,192.0 L240.0,192.0"` (correct)
+   Untransformed inch-unit path coords (0..7) reach Fusion, which reads them as raw pixels
+   (1 unit = 1/96 in). Result = **1/96 scale (micro) + not flipped + not centered (corner)** — i.e.
+   micro+flip+offset ALL from one bug, hitting every `<path>` (all expanded shapes + drawn strokes).
+   This is the "expand-specific micro" on the send path (expanded shapes are always `<path>`), and it
+   is SEPARATE from the EX1 editor micro (SVG.Point) already fixed — that one made `d` micro in the
+   editor; THIS one fails to scale a CORRECT `d` on the send.
+2. **OFFSET DOWN — the `-(0.5*scale)` fudge (lines 42, 55).** For coords that DO transform
+   (rects/text x/y, comma-paths): expected cad_y for svg_y=2 is +2.5in (+240px); `_prescale_svg`
+   yields +2.0in (192px) = **0.5 inch LOW**. The "to fix drift" constant is itself the offset-down.
+3. **DOUBLE / DEAD FLIP — two flip sites.** Path B applies `normalizeSvgForCarving`'s
+   `<g scale(1 -1)>` group flip AND `_prescale_svg`'s coord flip. `_prescale_svg` never touches
+   `transform=` attrs, so the `<g>` wrapper survives into the file. Net effect depends on whether
+   Fusion's importer honors group transforms (its own comment says it ignores viewBox/width/height/
+   scale, reading "raw pixels" — so it likely IGNORES the group flip too, making normalizeSvgForCarving
+   DEAD CODE on Path B; if it DOES honor it, Path B double-flips = upside down). Either way: redundant/
+   wrong. NEEDS a Fusion probe to confirm (see gate).
+
+### PROPOSAL — the single correct transform (editor svg-space -> Fusion px-space)
+One affine, applied ONCE, to ALL geometry, with element transforms baked first, NO fudge, ONE flip:
+    cad_x = svg_x * 96 - half_w
+    cad_y = half_h - svg_y * 96          (NO -0.5*scale)
+(half_w=w_in*96/2, half_h=h_in*96/2). For (1,2): (-240, +240)px = (-2.5, +2.5)in — right-side-up,
+centered. Two implementation options (advisor picks — this is the gate):
+- **Option A (RECOMMENDED): bake in JS, make Python a no-op.** In the send path, flatten every
+  element's transform (editor already has `flattenTransform`) then apply the single affine to the
+  geometry using a REAL SVG engine (browser) — reuse `editor-coords.transformPoint` (the EX1 helper)
+  — emitting an SVG whose coords are already Fusion px-space. Remove `normalizeSvgForCarving` from
+  export-flow AND the transform work from `_prescale_svg` (it becomes pass-through). Kills all three
+  roots at once: no regex (real path handling), one flip, one scale, no fudge, transforms baked.
+- **Option B: keep it in Python, but robustly.** Replace the comma-only regexes with a real
+  path/points parser that handles space AND comma AND relative commands; bake element `transform=`
+  attrs; drop the 0.5 fudge; remove the JS `normalizeSvgForCarving` so there's a single flip.
+  More fragile (hand-rolling an SVG path parser in regex/Python) — hence A preferred.
+
+### TEST PLAN (proposed; implement after the approach is blessed)
+- **Python unit test (pure, no Fusion):** `_prescale_svg`/replacement on a shape with SPACE-separated
+  `d` -> assert coords ARE transformed (currently FAILS — the guard for root 1), scale ×96 exact,
+  right-side-up (flip), centered, and y has NO 0.5" offset (root 2). Table-drive svg(1,2)->(-240,+240).
+- **JS unit test (happy-dom):** the JS bake produces Fusion-space coords for a known shape; assert one
+  flip, transforms baked (a scaled/dragged element lands at its VISIBLE position, not local), no
+  leftover `<g scale(1 -1)>` / element `transform=` (root 3).
+- **End-to-end coord assertion:** editor (1,2) -> final SVG coord == (-240,+240)px through the chosen
+  pipeline; a scaled-x3 shape lands 3x (not micro).
+- **Fusion round-trip (MCP/manual, gated):** import a known SVG, read the sketch's point coords in the
+  design, assert right-side-up + correct scale + centered. Also settles the "does Fusion honor
+  <g transform>" question for root 3.
+
+### GATE — need from advisor before ANY carve-path edit
+1. Approve Option A (JS bake, Python pass-through) vs Option B (robust Python).
+2. Confirm which path the user's "send to Fusion" is (editor button = Path A single-flip, or STEP
+   export = Path B double-flip) — both share the comma-regex micro, so root 1 is common, but the
+   flip fix differs by path.
+3. OK to run a one-shot Fusion MCP probe (import a tiny known SVG into a scratch sketch) to settle
+   whether Fusion honors `<g transform>` — or does the advisor already know? That decides root-3 scope.
+No code touched this turn (trace/propose only, per SC1). WORK-LOG only.
