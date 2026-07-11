@@ -1476,3 +1476,45 @@ the one `transformPoint` — no `SVG.Point.transform` fragility anywhere in the 
 - git status: ONLY the 2 b-spline-gen editor files changed — the stamp-editor copies are
   ignored/regenerated (the de-fork win: no hand-mirror). Did NOT touch carveMatrix or edit
   stamp-editor directly, as directed.
+
+---
+
+## Turn 57 — C3a: narrow bare excepts in exporter.py — DONE (narrowing) + GATE (logs)
+
+Behavior-preserving error-handling cleanup on `bspline-frame-builder/fusion-exporter/exporter.py`
+(single file, not forked). Read all 706 lines + classified every except before touching anything.
+
+**DONE — narrowed all bare excepts (behavior-preserving):**
+- `except:` → `except Exception:` × **36** (BEFORE 36 bare → AFTER 0; `except Exception:` 14→50).
+- Diff is EXACTLY 36 removals + 36 additions, **0 other changed lines** (no control-flow / return /
+  try-body / except-body touched). py_compile OK.
+- Safe: every one wraps Fusion API calls that raise regular Exceptions (RuntimeError etc.), not
+  BaseException — no reliance on catching KeyboardInterrupt/SystemExit in a synchronous Fusion export.
+  Even the outer wrapper (:211) only ever saw regular Exceptions in practice.
+
+**GATE — did NOT add logs (the "add a log via the file's existing logger" half). Broken premise:**
+1. **No logger exists.** exporter.py has only `ui.messageBox` (blocking USER modals — inappropriate
+   for per-except logging, would spam dialogs) and a metadata-traceback pattern
+   (`context[...]["Metadata"][key] = traceback.format_exc()`, :503). There is no `_log`/logging/print.
+2. **~33 of 36 are defensive optional-Fusion-attribute PROBES** — the file's deliberate "aggressive
+   safety" idiom (its own comments: "Aggressive safety for the .entity property", "Brute Force
+   Edition") for the flaky Fusion API: `try: meta["Token"]=ent.entityToken except: pass`. These are
+   expected-optional, NOT business-logic error paths; logging each = noise. Per "leave cleanup/probe
+   excepts (just narrow)", they're correctly narrow-only.
+3. **The genuine error paths ALREADY surface errors:** main wrapper :211 → messageBox+traceback;
+   model loop :501 → metadata-traceback; several set fallback values (:70 design=None, :110
+   output_dir=default, :246 ent_type="Ghost/Internal") — not silent.
+4. **Only ~2-3 are business-logic loop-body catch-alls** that silently SKIP a whole item on failure:
+   `:656` (per-setup), `:705` (per-NC-program), maybe `:440` (products deep-scan). These are the ONLY
+   sites where a log would add value — and `context` is in scope at :656/:705, so the file's OWN
+   metadata-traceback pattern (:503 precedent) could record the skip WITHOUT introducing a new logger.
+
+**Recommendation / options for the advisor:**
+- **(A, done + recommended):** narrow-only. Behavior-preserving, matches the file's defensive-probe
+  idiom, no log noise. This is what I committed.
+- **(B):** additionally, for the 2-3 loop catch-alls (:656/:705/:440), replace `pass` with the
+  file's metadata-traceback pattern so a skipped setup/NC-program is recorded (no new logger). I'll
+  do this in a follow-up if blessed — flagging rather than guessing which sites + mechanism.
+- **(C):** introduce a real logger (module-level `_log` to a file / Python logging) and log the
+  business-logic sites — but that's beyond "behavior-preserving / existing logger", so gated.
+No new logger added, no messageBox spam. Committed the narrowing + this log.

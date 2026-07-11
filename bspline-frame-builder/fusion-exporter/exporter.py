@@ -12,7 +12,7 @@ def _collect_attrs(ent):
         for i in range(attrs.count):
             a = attrs.item(i)
             out.append({"Group": a.groupName, "Name": a.name, "Value": a.value})
-    except:
+    except Exception:
         pass
     return out
 
@@ -32,22 +32,22 @@ def _entity_meta(ent):
         meta["Type"] = ent.objectType
         try:
             meta["Token"] = ent.entityToken
-        except:
+        except Exception:
             pass
         try:
             meta["Name"] = ent.name
-        except:
+        except Exception:
             pass
         try:
             meta["IsReference"] = bool(ent.isReference)
-        except:
+        except Exception:
             pass
         try:
             meta["IsConstruction"] = bool(ent.isConstruction)
-        except:
+        except Exception:
             pass
         meta["Attributes"] = _collect_attrs(ent)
-    except:
+    except Exception:
         pass
     return meta
 
@@ -67,7 +67,7 @@ def export_data_logic(config=None):
             ds = doc.products.itemByProductType('DesignProductType')
             if ds:
                 design = adsk.fusion.Design.cast(ds)
-    except:
+    except Exception:
         design = None
 
     # Fallback for completeness: if products lookup didn't work for some
@@ -90,7 +90,7 @@ def export_data_logic(config=None):
     try:
         if not os.path.exists(default_output_dir):
             os.makedirs(default_output_dir)
-    except:
+    except Exception:
         pass
     output_dir = default_output_dir
     try:
@@ -98,7 +98,7 @@ def export_data_logic(config=None):
         folder_dlg.title = 'Select Export Folder for Fusion-IO JSON Audit'
         try:
             folder_dlg.initialDirectory = default_output_dir
-        except:
+        except Exception:
             pass
         dlg_result = folder_dlg.showDialog()
         if dlg_result == adsk.core.DialogResults.DialogOK:
@@ -107,7 +107,7 @@ def export_data_logic(config=None):
         else:
             ui.messageBox('Export cancelled: no folder selected.', 'Fusion Export')
             return
-    except:
+    except Exception:
         # Fallback to default if picker fails unexpectedly.
         output_dir = default_output_dir
 
@@ -123,7 +123,7 @@ def export_data_logic(config=None):
             if design_ws: 
                 design_ws.activate()
                 adsk.doEvents()
-        except: pass
+        except Exception: pass
 
         doc_name = app.activeDocument.name
         progressDialog = ui.createProgressDialog()
@@ -167,7 +167,7 @@ def export_data_logic(config=None):
         # --- GLOBAL DIAGNOSTICS ---
         try:
             context["portfolio"]["STRUCTURE"]["Metadata"]["GlobalProducts"] = [p.productType for p in app.activeDocument.products]
-        except: pass
+        except Exception: pass
 
         # --- PHASE 1: Main Design ---
         portfolio["PARAMETERS"]["User"], portfolio["PARAMETERS"]["Model"] = audit_global_parameters(design, config)
@@ -183,7 +183,7 @@ def export_data_logic(config=None):
                     adsk.doEvents()
                     import time
                     time.sleep(0.5)
-            except: pass
+            except Exception: pass
 
             # Deep Manufacturing Models
             mfg_models = audit_mfg_models_recursive(design, context)
@@ -208,7 +208,7 @@ def export_data_logic(config=None):
         msg += f"Models: {len(mfg_models) if config.get('mfg') else 0}, Setups: {len(cam_setups) if config.get('mfg') else 0}"
         ui.messageBox(msg, "Fusion-IO Portfolio")
 
-    except: 
+    except Exception: 
         ui.messageBox(f"Export Failed:\n{traceback.format_exc()}")
         if original_workspace: original_workspace.activate()
     finally:
@@ -235,7 +235,7 @@ def audit_timeline(design):
         
         try:
             item_name = obj.name
-        except: pass
+        except Exception: pass
         
         # 2. Aggressive safety for the .entity property
         # Wrapping the property access itself to catch the RuntimeError 3
@@ -243,7 +243,7 @@ def audit_timeline(design):
             ent = obj.entity
             if ent:
                 ent_type = ent.objectType
-        except:
+        except Exception:
             ent_type = "Ghost/Internal"
             
         tl.append({
@@ -286,7 +286,7 @@ def audit_component_definition(comp, ref_id, context):
             try:
                 p = body.getPhysicalProperties(adsk.fusion.CalculationAccuracy.MediumCalculationAccuracy)
                 b_data["Phys"] = {"Mass": p.mass, "Vol": p.volume, "COM": [p.centerOfMass.x, p.centerOfMass.y, p.centerOfMass.z]}
-            except: pass
+            except Exception: pass
 
         # Axis-aligned bbox (world coords). Cheap rotation-detection: if a
         # body was rotated 90° around Z, its AABB X and Y dimensions swap.
@@ -367,7 +367,7 @@ def audit_component_definition(comp, ref_id, context):
                     elif hasattr(geom, 'center'):
                         g["C"] = [geom.center.x, geom.center.y, geom.center.z]
                         if hasattr(geom, 'radius'): g["R"] = geom.radius
-                except: pass
+                except Exception: pass
                 sk_data["Geom"].append(g)
 
             # 1b. Capture all sketch points (critical for projected point diagnostics)
@@ -384,11 +384,11 @@ def audit_component_definition(comp, ref_id, context):
                         try:
                             for ce in sp.connectedEntities:
                                 conn.append(_entity_meta(ce))
-                        except:
+                        except Exception:
                             pass
                         p_data["Connected"] = conn
                         sk_data["RefPoints"].append(p_data)
-                except:
+                except Exception:
                     pass
                 
             # 2. Capture Relational Constraints
@@ -400,18 +400,18 @@ def audit_component_definition(comp, ref_id, context):
                         try:
                             item = getattr(gc, prop_name, None)
                             if item and item.entityToken in id_map: rel["Targets"].append(id_map[item.entityToken])
-                        except: pass
+                        except Exception: pass
                     if config.get('attr'):
                         rel["Meta"] = _entity_meta(gc)
                     if rel["Targets"]: sk_data["Relations"].append(rel)
-            except: pass
+            except Exception: pass
 
             # 3. Capture Dimensions
             try:
                 for d in sketch.sketchDimensions:
                     d_data = {"Name": d.parameter.name if d.parameter else "N/A", "Value": d.parameter.value if d.parameter else 0}
                     sk_data["Dimensions"].append(d_data)
-            except: pass
+            except Exception: pass
         portfolio["SKETCHES"]["Sketches"].append(sk_data)
         
     for feat in comp.features:
@@ -421,7 +421,7 @@ def audit_component_definition(comp, ref_id, context):
                 if hasattr(feat, 'operation'):
                     op_map = {0: "Join", 1: "Cut", 2: "Intersect", 3: "NewBody", 4: "NewComponent"}
                     f_data["Settings"]["Op"] = op_map.get(feat.operation, str(feat.operation))
-            except: pass
+            except Exception: pass
             if hasattr(feat, 'parameters') and feat.parameters.count > 0:
                 for p in feat.parameters: f_data["Params"].append({"Name": p.name, "Expr": p.expression, "Val": p.value})
             portfolio["PARAMETERS"]["Features"].append(f_data)
@@ -437,7 +437,7 @@ def audit_mfg_models_recursive(design, context):
         doc = adsk.core.Application.get().activeDocument
         for p in doc.products:
             if 'Model' in p.productType: models.append(p)
-    except: pass
+    except Exception: pass
 
     for i, p in enumerate(models):
         try:
@@ -445,14 +445,14 @@ def audit_mfg_models_recursive(design, context):
             # 1. Stable Diagnostic
             try:
                 context["portfolio"]["STRUCTURE"]["Metadata"][f"Dbg_{i}_{m_type}_Valid"] = True
-            except: pass
+            except Exception: pass
 
             # 2. Extract Name & Prep Folders
             m_name = f"Model_{i+1}"
             try: 
                 if hasattr(p, 'name'): m_name = p.name
                 elif hasattr(p, 'workingModel') and hasattr(p.workingModel, 'name'): m_name = p.workingModel.name
-            except: pass
+            except Exception: pass
             
             safe_name = "".join([c for c in m_name if c.isalnum() or c in (' ', '.', '_')]).rstrip()
             m_dir = os.path.join(context["cam_folder"], "mfgmodel", safe_name)
@@ -477,7 +477,7 @@ def audit_mfg_models_recursive(design, context):
                 try:
                     as_design = adsk.fusion.Design.cast(p)
                     if as_design and as_design.rootComponent: comp = as_design.rootComponent
-                except: pass
+                except Exception: pass
                 
                 if not comp:
                     # Path B: Linked Working Model
@@ -487,7 +487,7 @@ def audit_mfg_models_recursive(design, context):
                     elif hasattr(p, 'rootComponent'): comp = p.rootComponent
                     # Path D: Legacy Occurrence
                     elif hasattr(p, 'occurrence') and p.occurrence: comp = p.occurrence.component
-            except: pass
+            except Exception: pass
             
             if comp:
                 sub_portfolio["STRUCTURE"]["DesignTree"] = audit_occurrence(comp, sub_context)
@@ -498,7 +498,7 @@ def audit_mfg_models_recursive(design, context):
                 index.append({"Name": m_name, "Path": f"CAM/mfgmodel/{safe_name}"})
             else:
                 context["portfolio"]["STRUCTURE"]["Metadata"][f"{m_name}_Skip"] = "Component Root not found (Brute Force failed)"
-        except:
+        except Exception:
             import traceback
             context["portfolio"]["STRUCTURE"]["Metadata"][f"Model_{i}_Error"] = traceback.format_exc()
     return index
@@ -645,15 +645,15 @@ def audit_cam_setups_granular(app, context):
                             val = p.expression
                             if not val and hasattr(p, 'value'): val = str(p.value.value)
                             if val: op_data["Params"][p.name] = val
-                        except: pass
-                except: pass
+                        except Exception: pass
+                except Exception: pass
                 s_data["Ops"].append(op_data)
 
             f_name = f"SETUP_{i+1:02d}_{s.name}.json"
             f_path = os.path.join(context["cam_folder"], "setups", f_name)
             with open(f_path, 'w', encoding='utf-8') as f: json.dump(s_data, f, indent=4)
             index.append({"Name": s.name, "File": f"CAM/setups/{f_name}"})
-        except: pass
+        except Exception: pass
 
     # Also write the MM index alongside setups for one-stop reference.
     if mm_index:
@@ -687,7 +687,7 @@ def audit_nc_programs_granular(app, context):
                 elif hasattr(nc, 'setups'):
                     for s in nc.setups:
                          for o in s.allOperations: nc_data["Operations"].append(o.name)
-            except: pass
+            except Exception: pass
             
             # 2. Write Metadata
             f_name = f"NC_PROG_{i+1:02d}_{nc.name}.json"
@@ -701,6 +701,6 @@ def audit_nc_programs_granular(app, context):
                     import shutil
                     nc_ext = os.path.splitext(nc_data["OutputFile"])[1] or ".nc"
                     shutil.copy(nc_data["OutputFile"], os.path.join(context["cam_folder"], "setups", f"NC_CODE_{i+1:02d}_{nc.name}{nc_ext}"))
-            except: pass
-        except: pass
+            except Exception: pass
+        except Exception: pass
     return index
