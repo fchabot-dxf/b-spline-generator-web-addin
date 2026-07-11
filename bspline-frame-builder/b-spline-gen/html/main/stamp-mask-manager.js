@@ -61,9 +61,16 @@ export async function updateStampMasks(nx, nz) {
   if (Array.isArray(P.stampLayers)) {
     P.stampLayers.forEach((layer, idx) => {
       if (!layer || !layer.svg || !layer.enabled) return;
-      // Skip if this position is already covered by an editor-layer pass.
+      // Skip if this position is already covered by an editor-layer pass, OR
+      // if the editor layer at this index is HIDDEN. A hidden editor layer's
+      // full-doc mirror lives in P.stampLayers[idx] (written by
+      // saveForRasterization — full content since the B6 fix), and must NOT
+      // resurrect here as a stamp pass (that was the post-B6 hidden-active-stamp
+      // regression). The broader "editor owns idx" skip for the pre-existing
+      // VISIBLE double-stamp is deferred (Cancel-restore safety).
       const alreadyCovered = work.some(w => w.source === 'editor' && w.idx === idx);
-      if (alreadyCovered) return;
+      const editorLayerHidden = _editorLayerAt(idx)?.visible === false;
+      if (alreadyCovered || editorLayerHidden) return;
       work.push({ source: 'legacy', idx, layer, svg: layer.svg });
     });
   }

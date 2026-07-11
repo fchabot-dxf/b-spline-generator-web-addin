@@ -528,3 +528,53 @@ if (alreadyCovered || editorOwnsIdx) return;   // editor is source of truth for 
 
 **Ask:** confirm **A** (or B). Then I implement + write manual Cancel/double-stamp repro.
 **No app-code edits this turn** — only this log.
+
+---
+
+## Turn 21 — F-new v2 (decision: Option B, hidden-only skip) — DONE
+
+Advisor chose **B** (zero Cancel risk; broader visible double-stamp deferred).
+
+**Change (b-spline-gen only, `main/stamp-mask-manager.js` legacy fallback `:64-66`):** added
+one guard so the fallback also skips a P.stampLayers entry whose editor layer at that idx
+is HIDDEN:
+```
+const editorLayerHidden = _editorLayerAt(idx)?.visible === false;
+if (alreadyCovered || editorLayerHidden) return;
+```
+(`_editorLayerAt` already defined in-file at `:18`; no import added.)
+
+**Why it fixes the post-B6 residual (logic — no Fusion UI):** since the B6 fix,
+`saveForRasterization` mirrors the FULL document (incl. hidden) into
+`P.stampLayers[activeLayerIdx].svg` (`app-init.js:70,89`). When the active editor layer is
+HIDDEN, the editor pass loop skips it (`:51`), so the legacy fallback previously rasterized
+that full-doc mirror → hidden geometry stamped. The new `editorLayerHidden` guard skips it →
+hidden layers no longer stamp via the mirror.
+
+**Why zero Cancel risk (the reason B was chosen):** the guard fires ONLY when an editor
+layer at idx is explicitly `visible === false`.
+- Cancel-restore at an editor-covered VISIBLE idx → handled by `alreadyCovered` (unchanged).
+- Cancel-restore at an idx with NO editor layer → `_editorLayerAt(idx)` is null →
+  `null?.visible === false` is `false` → NOT skipped → fallback still fires → Cancel-restore
+  preserved.
+- Only a HIDDEN editor layer's fallback entry is skipped — and hidden layers must not stamp.
+
+**Invariants preserved:** editor-io.js untouched → **B6 stays fixed**; editor passes
+(`getLayerSvg` per visible layer) untouched → **primary stamp path intact**; b-spline-gen
+only (no stamp-editor copy of this file exists); no new host coupling / no declaration
+hand-rolled. Broader "editor owns idx" visible double-stamp skip intentionally **deferred**.
+
+**Verify:** `node --check` (via .mjs) → syntax OK; diff is the single guard addition;
+scope confirmed b-spline-gen only.
+
+### MANUAL REPRO for the human (needs Fusion + palette)
+1. Open the SVG editor. Draw on **Layer 1** (circle). Add **Layer 2**, draw a **square** on it.
+2. Make **Layer 2 the ACTIVE layer**, then **hide it** (eye toggle).
+3. **Apply Stencils**; look at the 3D preview stamp.
+   - ✅ FIXED: the square does **NOT** carve the terrain (hidden layer doesn't stamp).
+   - ❌ post-B6 regression (pre-this-fix): the square stamped despite being hidden.
+4. Toggle **Layer 2 visible** → the square's stamp now appears (visible path still works).
+5. Cancel sanity: Edit a layer, make a change, **Cancel** → the stamp reverts to pre-edit
+   exactly as before (this fix does not alter the Cancel path).
+
+**Scope:** `main/stamp-mask-manager.js` (b-spline-gen) only.
