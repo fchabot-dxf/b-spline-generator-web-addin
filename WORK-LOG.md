@@ -106,3 +106,51 @@ stale-reload.
 **Parked for T3:** systematic duplication audit (B8 is one instance), cloud
 identity drift, unprovisioned/README-only cloud infra, README doc-drift, test
 coverage, dead code. **No application-code edits.** Only `BUGS_OPEN.md` + this log.
+
+---
+
+## Turn 5 — T3: Engineering-standards audit (read-only) — DONE
+
+**Deliverable:** `STANDARDS-AUDIT.md` (new, repo root) — 6 dimensions, quantified
+with `diff`/`grep`/`git`, severity-ranked, each gap with `file:line` + fix direction.
+
+**Method / why.** Did the mechanical quantification (dims 1/3/4 — duplication,
+dead infra, error-handling counts) MYSELF via commands so the numbers are real,
+not hand-waved (the task said "actually enumerated, not hand-waved"). Delegated the
+read-and-judge dims (2 tests, 5 deploy internals, 6 deps/secrets) to one Explore
+subagent. Then re-verified every high-severity / load-bearing claim against source
+before committing it to a durable doc.
+
+**What I quantified (headline numbers):**
+- **Duplication:** forked editor tree = 33 files, **22 identical / 11 drifted**;
+  the 5 files carrying T2's B1/B3/B6 are byte-identical → fixes land twice. Python
+  shared-module dup = only 2 modules (`expression_coords`, `entity_helpers`) but
+  **both heavily drifted** (399 / 276 diff-lines) — divergent impls, not copies.
+  `dist/` is a healthy gitignored file-copy (0 tracked).
+- **Error handling:** **253** `except…: pass` / 43 files, **156 bare `except:`**
+  (worst `exporter.py`=36); **98** JS empty `catch{}`. Split noted: legit Fusion
+  teardown vs masking business logic (sampled `cam-builder.py:915`, `exporter.py`).
+- **Tests:** 16 files (template-maker deep, frame-builder light); JS frontend,
+  lifecycle, 4/6 palettes, both workers = ZERO; no pytest config, **no CI**.
+- **Deploy:** preset-worker 3-way name drift confirmed — `bspline-presets`
+  (`deploy_worker.py`) is a stale orphan that also under-binds KV; step-editor-worker
+  non-reproducible; 5 hardcoded machine paths.
+- **Deps:** both npm deps (opentype.js, clipper-lib) orphaned/caret-ranged; runtime
+  libs via un-pinned CDNs, no SRI.
+
+**Surprising / worth flagging:**
+- ⚠️ **A 36 MB build artifact (`bspline-frame-builder.zip`) is committed to git**
+  — biggest hygiene issue; plus 6 tracked log/diff/tmp/.bak cruft files.
+- 🔐 **`.env` holds LIVE `CLOUDFLARE_API_TOKEN` + `GITHUB_TOKEN`.** VERIFIED it is
+  git-ignored, untracked, and has **0 commits in history** — so NOT a repo leak,
+  on-disk material only. I did NOT write the token values into any file. Flagged in
+  audit §6 by key-name only; human may wish to rotate if this tree was ever shared.
+
+**Verification caught an error:** the subagent said `clipper-lib` is unused; my grep
+found 108 `clipper` hits (looked contradictory). Ran it down — the hits are a local
+var named `clipper` (= CDN polygon-clipping) + comments + `dist/` copies; zero
+npm-`clipper-lib` imports. Subagent was right; avoided writing a false contradiction.
+
+**Scoping:** referenced T2's B7/B8 as the bug-facets, quantified the standards-facets
+here — didn't re-litigate. **No application-code edits.** Only `STANDARDS-AUDIT.md`
+(new) + this log. Sets up T4 (prioritized fix backlog).
