@@ -4,13 +4,24 @@
   "description": "Unified dashboard for Fusion 360 procedural terrain generation tools.",
   "scripts": {
     "start": "python -m http.server 8080",
-    "serve": "npx serve -l 8080 ."
+    "serve": "npx serve -l 8080 .",
+    "test": "vitest run"
   },
-  "keywords": ["fusion360", "terrain", "step", "cnc", "b-spline"],
+  "keywords": [
+    "fusion360",
+    "terrain",
+    "step",
+    "cnc",
+    "b-spline"
+  ],
   "author": "Frédéric",
   "license": "MIT",
   "dependencies": {
-    "opentype.js": "^1.3.4",
-    "clipper-lib": "^6.4.2"
+    "clipper-lib": "^6.4.2",
+    "opentype.js": "^1.3.4"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.10.6",
+    "vitest": "^4.1.10"
   }
 }

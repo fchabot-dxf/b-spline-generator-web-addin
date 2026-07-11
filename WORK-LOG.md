@@ -978,3 +978,56 @@ the repo); called out so it isn't a surprise in the diff.
 - `git diff --cached --stat` = exactly the 9 intended changes (.gitignore + 8 removals); advisor's
   `NEXT-SESSION.md`/`ROADMAP.md` left untracked, NOT committed.
 - No processes spawned this turn (pure git/fs).
+
+---
+
+## Turn 39 — F11a: persistent vitest suite locking in EDM2/3/3b — DONE
+
+Stood up a real JS test runner (vitest + happy-dom) and 15 tests that pin the editor
+SVG-serialization fixes so they can't silently regress. Editor→B4 stays Fusion-test-gated;
+this is the safe verifiable slice.
+
+**What landed (test infra only):**
+- `package.json`: `+ "test": "vitest run"`, devDeps `vitest ^4.1.10` + `happy-dom ^20.10.6`
+  (+ `package-lock.json`).
+- `vitest.config.js`: minimal, `environment: 'happy-dom'`, `include: tests/**/*.test.js`.
+- `tests/editor-serialization.test.js`: 15 tests importing the SHIPPING b-spline-gen modules.
+- `README.md`: one-line Testing note (`npm test`).
+
+**Key design decisions (the WHY):**
+- **happy-dom DOES strict-parse `image/svg+xml`.** The whole EDM2 bug needs a strict parser
+  (raw `<` in an attribute → parsererror → element dropped). I did NOT assume happy-dom would
+  do this — wrote a throwaway probe first: POISON → `hasParsererror:true, pathPresent:false`;
+  base64 → `parsererror:false, fill="#000000"`. Confirmed → kept happy-dom (advisor's pick),
+  no jsdom needed. Probe deleted before commit.
+- **`serializeEditor` is NOT exported** (module-internal). Rather than reach into a private, I
+  lock its `forRaster` behavior through its two public callers: `save()` (forRaster:false →
+  keeps base64 `data-original-*`) and `getLayerSvg()` (forRaster:true → strips it). Tests
+  observable behavior, which is stronger.
+- **Mock editor, no real svg.js.** `save`/`getLayerSvg` read only `_draw`,
+  `_sketchLayer.node.innerHTML`, `_mW`, `_mH` (and `_layers` [] → layers-attr no-op). A 6-field
+  stub drives them; importing `editor-io.js` (→ fusion-bridge/layers/text-baseline) loads clean
+  under happy-dom (none have import-time side effects; `fusLog`'s `adsk` ref is inside try/catch).
+- **Poison test uses the REAL `encodeSnapshot`** for the good path, a hand-built raw-markup attr
+  for the poison path — so a revert of the encoder breaks it.
+
+**Revert proof (task-required):** temporarily swapped `encodeSnapshot` → `return svgMarkup`
+(raw). `npm test` went RED: **4 failed** — incl. the core EDM2 test `base64 snapshot … preserves
+fill` and `encoded output is XML-attribute-safe`. Restored via `git checkout -- svg-utils.js`
+(confirmed clean); suite back to **15/15 green**. The guard is proven, not assumed.
+
+**FLAG — advisor app-code change found in the tree, left UNTOUCHED:**
+`bspline-frame-builder/stamp-editor/html/core/stamp/svg-utils.js` is modified (` M`, mtime
+11:23:51 = during advisor turn 38, before my turn 39 began) — it ADDS encodeSnapshot/
+decodeSnapshot/stripOriginalAttrs to a THIRD (drifted) svg-utils copy under `core/stamp/`. Not my
+work, it's app code, and my suite imports the b-spline-gen copy (unaffected). Per ownership +
+"don't touch what you didn't create," I did NOT stage or revert it — leaving it for the advisor.
+My commit `git add`s ONLY my files explicitly (package.json, package-lock.json, vitest.config.js,
+tests/, README.md, WORK-LOG.md); NEXT-SESSION.md/ROADMAP.md also left untracked.
+
+**Fork note:** the suite pins the b-spline-gen editor tree; the same EDM2/3/3b fixes live in the
+stamp-editor tree (kept in sync by sync_stamp_bundle.py). A follow-up could parametrize the suite
+over both copies — noted, not done (F11a scope = the JS core, one canonical copy).
+
+**Verify:** `npm test` → 15/15 green (exit 0); revert → 4 red (exit 1) → restore → 15 green.
+No app-code committed (staged set = test infra + docs only). Runner: vitest run (no watcher left).

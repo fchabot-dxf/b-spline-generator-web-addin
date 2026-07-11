@@ -43,5 +43,11 @@ This repository contains a unified dashboard and engine for advanced 3D modeling
 
 ---
 
+## 🧪 Testing
+
+Run the JS unit suite (vitest + happy-dom) with **`npm test`** — it locks in the editor SVG-serialization fixes (base64 snapshot encoding, `serializeEditor`, `getLayerSvg`); tests live in `tests/`.
+
+---
+
 ## 📄 License
 MIT
