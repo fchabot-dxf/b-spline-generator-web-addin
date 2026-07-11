@@ -35,6 +35,7 @@ import {
 } from './editor-expand-union.js';
 import { applyLayerState } from './layers.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { transformPoint } from './editor-coords.js';
 
 const PREVIEW_STROKE = '#ff3b30';     // iOS red — visually distinct from the pen tool
 const PREVIEW_OPACITY = 0.55;
@@ -340,14 +341,7 @@ function _sampleElement(el) {
         const t = (i / n) * len;
         let pt;
         try { pt = node.getPointAtLength(t); } catch (_) { return pts.length ? pts : null; }
-        if (hasT && typeof SVG !== 'undefined' && SVG.Point) {
-            const w = new SVG.Point(pt.x, pt.y).transform(m);
-            pts.push({ x: w.x, y: w.y });
-        } else if (hasT) {
-            pts.push({ x: m.a*pt.x + m.c*pt.y + m.e, y: m.b*pt.x + m.d*pt.y + m.f });
-        } else {
-            pts.push({ x: pt.x, y: pt.y });
-        }
+        pts.push(hasT ? transformPoint(m, pt) : { x: pt.x, y: pt.y });
     }
     return pts;
 }

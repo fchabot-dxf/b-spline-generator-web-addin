@@ -22,7 +22,7 @@
  * d (e.g. before export / rasterize); call resetTransform() to throw
  * the transform away.
  */
-import { worldBbox } from './editor-coords.js';
+import { worldBbox, transformPoint } from './editor-coords.js';
 
 // ── Handle layout: corner + side scale handles. hx/hy give the handle
 // position as a (0..1) fraction of the bbox; ax/ay give the anchor
@@ -294,8 +294,8 @@ export function bakeMatrixIntoElement(el, m) {
     }
 
     if (type === 'line') {
-        const p1 = _xform(m, +el.attr('x1') || 0, +el.attr('y1') || 0);
-        const p2 = _xform(m, +el.attr('x2') || 0, +el.attr('y2') || 0);
+        const p1 = transformPoint(m, { x: +el.attr('x1') || 0, y: +el.attr('y1') || 0 });
+        const p2 = transformPoint(m, { x: +el.attr('x2') || 0, y: +el.attr('y2') || 0 });
         el.attr({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
         el.attr('transform', null);
         return true;
@@ -303,7 +303,7 @@ export function bakeMatrixIntoElement(el, m) {
 
     if (type === 'polyline' || type === 'polygon') {
         const pts = el.array().map(p => {
-            const w = _xform(m, p[0], p[1]);
+            const w = transformPoint(m, { x: p[0], y: p[1] });
             return [w.x, w.y];
         });
         el.plot(pts);
@@ -344,16 +344,6 @@ export function bakeMatrixIntoElement(el, m) {
     return false;
 }
 
-/** Apply a SVG.Matrix to a (x,y) point and return a plain {x,y}. */
-function _xform(m, x, y) {
-    if (typeof SVG !== 'undefined' && SVG.Point) {
-        const p = new SVG.Point(x, y).transform(m);
-        return { x: p.x, y: p.y };
-    }
-    // Manual fallback — affine: [a c e; b d f; 0 0 1] · [x; y; 1]
-    return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f };
-}
-
 function _isIdentity(m) {
     return m && m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1 && m.e === 0 && m.f === 0;
 }
@@ -369,7 +359,7 @@ function _bakeMatrixIntoPath(pathEl, m) {
     arr.forEach(seg => {
         for (let i = 1; i < seg.length; i += 2) {
             if (typeof seg[i] === 'number' && typeof seg[i + 1] === 'number') {
-                const p = _xform(m, seg[i], seg[i + 1]);
+                const p = transformPoint(m, { x: seg[i], y: seg[i + 1] });
                 seg[i] = p.x;
                 seg[i + 1] = p.y;
             }

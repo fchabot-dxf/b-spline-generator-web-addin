@@ -1442,3 +1442,37 @@ tracked stamp-editor/html files against what sync writes:
 **Effect:** b-spline-gen is now the sole tracked copy of the shared modules; future edits need no
 hand-mirroring (the manual CRLF-copy dance from EX1/SC2/SC3 is retired) — just re-run sync. Left
 untouched otherwise; committed .gitignore + README + WORK-LOG + the 54 untrackings.
+
+---
+
+## Turn 55 — C2: migrate remaining SVG.Point.transform hand-rolls to transformPoint — DONE
+
+Declare-cleanup follow-up to EX1. After the C1 de-fork this is SINGLE-copy: edit b-spline-gen, run
+sync, and the stamp-editor copy regenerates (ignored) — no manual mirroring.
+
+**Migrated the two remaining `new SVG.Point(x,y).transform(m)` hand-rolls** (grep-found in
+b-spline-gen/html) to the declared `transformPoint(m, {x,y})` (editor-coords.js), removing their
+redundant manual affine fallbacks:
+- `editor-transform-handles.js`: ELIMINATED the private `_xform(m,x,y)` helper entirely (it was a
+  duplicate of transformPoint with an SVG.Point-first + manual fallback). Replaced its 4 call sites
+  (line branch x1/y1/x2/y2, polyline/polygon plot, and `_bakeMatrixIntoPath`) with
+  `transformPoint(m, {x,y})`. Imported transformPoint alongside worldBbox.
+- `editor-eraser.js`: the stroke-sampling loop's `if(SVG.Point){…} else if(hasT){manual} else{…}`
+  three-way collapsed to `pts.push(hasT ? transformPoint(m, pt) : {x:pt.x,y:pt.y})`. Imported
+  transformPoint.
+
+Now ALL editor transform-baking (expand-shape/text from EX1, transform-handles, eraser) goes through
+the one `transformPoint` — no `SVG.Point.transform` fragility anywhere in the editor.
+
+**Verify:**
+- grep: ZERO `new SVG.Point`/`SVG.Point.transform` hand-rolls left in b-spline-gen/html (only the
+  editor-coords doc + EX1 breadcrumb comments mention it). `_xform` fully removed.
+- `node --check` both files OK.
+- Behavioral: re-ran the carve browser check — `bakeSvgForCarving` (which drives the migrated
+  `_bakeMatrixIntoPath` + line/poly baking) still produces correct coords (plain `M-240 -240`, scaled
+  `M-201.6 -297.6` — SC3 Y-sign, values exact). Mathematically equivalent migration.
+- `python bspline-frame-builder/sync_stamp_bundle.py` regenerated the stamp copy (ignored).
+- **npm test 29/29 green.**
+- git status: ONLY the 2 b-spline-gen editor files changed — the stamp-editor copies are
+  ignored/regenerated (the de-fork win: no hand-mirror). Did NOT touch carveMatrix or edit
+  stamp-editor directly, as directed.
