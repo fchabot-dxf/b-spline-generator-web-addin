@@ -736,3 +736,95 @@ Fusion runtime-log writes from the human's testing — left unstaged (T3/F12 log
 
 **Scope:** `b-spline-gen.py` only (+ deleted a gitignored local orphan). Next up
 (advisor's note) = declare one editor source of truth — separate task.
+
+---
+
+## Turn 29 — EDM1: editor source-of-truth DESIGN (design only, no code) — DONE
+
+Diagnosed both symptoms from the runtime log + a full pipeline trace. No repo code touched.
+
+### Runtime-log evidence
+- Every `rasterizeSvg` call: `pathCount=1  hasNonzero=false  hasEvenodd=false`,
+  `path[0] fill=none stroke=#000000`, `opaquePx ≈ 6-8%` → the rasterizer only ever gets an
+  UNFILLED open stroke, never a filled/closed region.
+- `data-original` count in the log = **0** → in the logged session no Expand ran; the user
+  drew raw strokes, so `fill=none` there is "strokes aren't filled."
+- Reopen: `EDITOR-IO] open() called svgLen=0 … no svgString -> empty editor` → the reopen
+  source was EMPTY at init (one of two reopen-blank paths, below).
+
+### ROOT CAUSE (one bug, both symptoms)
+Expand writes a correct filled path — `editor-expand-commit.js:93-97`
+(`.fill('#000000').stroke('none').attr('fill-rule','evenodd')`) — but ALSO attaches
+`data-original-svg` = a raw-markup snapshot of the pre-expand stroke (`_snapshotMarkup`
+`:47-56`, set at `:117`). That value contains literal `<`/`>`. HTML `innerHTML`
+serialization escapes `"`→`&quot;` but leaves `<`/`>` raw → the serialized string is
+**invalid XML**. A strict `image/svg+xml` DOMParser then silently fails (returns a
+`<parsererror>` doc, does NOT throw).
+
+- **fill=none (TASK1) loss point = `editor-io.js:100`** — `getLayerSvg`'s strict DOMParser
+  chokes on the poison attr → the expanded (filled) element is dropped/mangled → only the
+  original stroke survives → `fill=none`. The ONLY sanitizer that strips the poison
+  (`render-svg.js:53-54`) runs **two hops later** inside `rasterizeSvg` — too late.
+- **reopen-blank (TASK2) break point = `editor-io.js:415`** — `open()` parses `P.editorSvg`
+  with the same strict DOMParser; poison → `querySelector('svg')` = null → the whole restore
+  block (`416-486`) is skipped → editor reopens blank. `open()` has NO sanitize before its
+  parse. (Second path: `:403` empty-`svgString` early-return — the logged `svgLen=0` case.)
+- B6 didn't help — it made the serializer KEEP all content, which faithfully preserves the
+  poison into `P.editorSvg`.
+
+### The ~5-copy editor-content tangle (why this keeps happening)
+| # | Copy | Produced by | Consumed by | Sanitized? |
+|---|------|-------------|-------------|-----------|
+| 1 | **live DOM** `_sketchLayer.node` | user edits | everything derives from it | n/a (source) |
+| 2 | `getLayerSvg()` per-layer | strict DOMParser (`editor-io.js:100`) | stamp masks | ❌ (poison breaks it) |
+| 3 | `P.editorSvg` | `saveForRasterization`→`_serializedContent` | reopen `open()` | ❌ (keeps poison) |
+| 4 | `P.stampLayers[idx].svg` | mirror of #3 + Browse + Cancel-snap | legacy stamp fallback | ❌ |
+| 5 | `editor.lastSvg` | save/saveForRaster/saveWithTextCopies | **nobody (dead)** | — |
+| 6 | `data-original-*` attrs | `_snapshotMarkup` per expanded el | re-edit | the poison itself |
+| 7 | `SvgEditorSnapshot.svg` | Edit-button snapshot | Cancel-restore | ❌ |
+| 8 | localStorage `splineGenLastSession` | `saveLastSession` | load; **cleared on every load** (`app-init.js:48`) | ❌ |
+THREE divergent serializers (`save` / `saveForRasterization` / `saveWithTextCopies`) and
+multiple strict parsers, each sanitizing (or not) differently → the same string is valid on
+one path and fatal on another.
+
+### DESIGN — ONE declared source of truth
+**Declare the live editor DOM (`_sketchLayer`) as THE source; every other form is a DERIVED
+VIEW produced by ONE canonical serializer, and there is exactly ONE persisted form.**
+1. **One serializer** `serializeEditor(editor, {forRaster})` — reads the live DOM, strips
+   `svgjs:*`, and **guarantees valid XML** (see EDM2 options). `forRaster:true` also strips
+   `data-original-*` + normalizes fonts (today's `sanitizeSvgForRaster` logic) BEFORE any
+   consumer parse; `forRaster:false` keeps `data-original-*` (valid-encoded) for re-edit.
+2. **getLayerSvg** = `serializeEditor(forRaster:true)` filtered by `data-layer` → the stamp
+   parse never sees poison (fixes fill=none).
+3. **Persistence = one form:** `P.editorSvg = serializeEditor(forRaster:false)` (valid XML,
+   round-trippable). Retire `save`/`saveWithTextCopies`/`editor.lastSvg` as separate forms;
+   make `P.stampLayers[].svg` a derived view (or drop the mirror per F-new-broad).
+4. **open()** parses that one valid-XML form → round-trips (fixes reopen-blank); add a
+   defensive sanitize before the parse for legacy poisoned saves.
+5. **Stamp** derives per-layer from #2 live — no mirror, no staleness.
+
+### Slice plan (EDM2+)
+- **EDM2 (unblock — highest impact, browser-verifiable).** Make `data-original-*`
+  round-trip-safe. Options: **(A)** base64-encode the snapshot when writing the attr
+  (`editor-expand-commit.js:117`) + decode on re-edit → the whole serialization is valid XML
+  everywhere (recommended — preserves re-edit); **(B)** strip `data-original-*` before the
+  DOMParser in BOTH `getLayerSvg` (`:100`) and `open()` (`:415`) (mirrors `render-svg.js:53`)
+  — fixes both symptoms immediately but loses re-edit of already-expanded elements. Verify
+  with headless Chromium (like SM1): expand a shape → stamp shows a FILLED region; close +
+  reopen → content restored.
+- **EDM3 (one serializer):** unify `save`/`saveForRasterization`/`saveWithTextCopies` into
+  `serializeEditor({forRaster})`; route getLayerSvg + open + persist + rasterize through it;
+  retire `editor.lastSvg`.
+- **EDM4 (one persisted form):** `P.editorSvg` sole editor-content store; `P.stampLayers[].svg`
+  becomes a derived view (or retire mirror). Decide the `app-init.js:48` clear-on-load (should
+  content survive a reload?).
+- **EDM5 (empty-source guard):** ensure onChange persisted before open; handle svgLen=0.
+
+### Open questions (advisor)
+1. EDM2 approach: **A (base64, keeps re-edit)** vs **B (strip before parse, drops re-edit)**?
+2. Should drawn strokes stamp as filled automatically, or is Expand always required? (The log
+   session was raw strokes — even a perfect pipeline won't "fill" an unexpanded open stroke.)
+3. Keep this design in WORK-LOG, or extract to `EDITOR-SOT-DESIGN.md` as the EDM substrate?
+
+**No repo code edits** — design/diagnosis only (+ ran a read-only pipeline-trace subagent).
+Only this log.
