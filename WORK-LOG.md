@@ -471,3 +471,60 @@ _Edge case to watch (residual, app-init mirror):_
 
 **Scope:** both `editor-io.js` copies only (identical). Did NOT touch `app-init.js`,
 `stamp-mask-manager.js`, or run a full sync.
+
+---
+
+## Turn 19 — F-new: stop P.stampLayers full-doc mirror double-stamp — ⛔ GATE (Cancel-restore unclear; NO code edits)
+
+Mapped mirror consumers first (as directed). Browse-legacy is safe for approach (b);
+**Cancel-restore safety is genuinely unclear**, which the dispatch said to GATE on.
+
+**Consumer map — writers of `P.stampLayers[idx].svg`:**
+1. **Editor mirror** — `main/app-init.js:70,89` `setStampLayerSvg(P.activeLayerIdx, <full-doc>)`
+   (auto-enables). Transitional mirror of the editor doc.
+2. **Browse upload** — `main/stamp/svg-source.js:65` `setStampLayerSvg(P.activeLayerIdx, text)`
+   — **but only in the `if (!imported)` branch, i.e. when the editor is NOT loaded**
+   (`:62-68`). With the editor loaded, Browse imports INTO the editor via
+   `_importSvgIntoEditor` (`:125-164`), so it becomes editor-layer content (stamped by the
+   editor pass), NOT a legacy P.stampLayers entry.
+3. **Cancel-restore** — `main/app-init.js:101` `P.stampLayers[idx].svg = SvgEditorSnapshot.svg`.
+4. **Snapshot restore** — `main/snapshot-manager.js:42` (`[0].svg`).
+
+**Legacy fallback** (`main/stamp-mask-manager.js:58-68`) rasterizes P.stampLayers[idx] with
+svg+enabled not covered by an editor pass. Its stated purpose (docstring `:31-34`): editor
+not loaded (early init) OR editor loaded-but-empty + legacy uploaded svgs.
+
+**Approach (b) I'd implement** — skip a legacy entry when an editor layer occupies that idx:
+```
+const editorOwnsIdx = editorLayers && editorLayers.length > 0 && !!_editorLayerAt(idx);
+if (alreadyCovered || editorOwnsIdx) return;   // editor is source of truth for that idx
+```
+- **Browse-legacy: SAFE.** When the editor is unloaded, `editorLayers` is null →
+  `editorOwnsIdx` false → the fallback still fires for genuine legacy uploads. When the
+  editor is loaded, the mirror at `activeLayerIdx` is skipped → fixes both the pre-existing
+  VISIBLE double-stamp and the post-B6 hidden-active-stamp.
+- **Cancel-restore: UNCLEAR.** On Cancel (`_onCommit(null)`), the code restores
+  `P.stampLayers[idx].svg` to the pre-edit snapshot but does NOT revert the editor's live
+  `_sketchLayer` content or `P.editorSvg` (`app-init.js:94-111`). So the restored snapshot
+  is rasterized by the legacy fallback ONLY at an idx the editor pass doesn't cover
+  (hidden/empty editor layer at that idx) — exactly the case (b) would newly skip. I can't
+  statically prove (b) preserves intended Cancel behavior; it's entangled with a
+  possibly-pre-existing Cancel inconsistency (live editor content isn't reverted on Cancel,
+  so the editor-pass path already stamps in-flight edits post-Cancel).
+
+**Options (pick one — I implement next turn, b-spline-gen only, preserving 4 invariants + B6):**
+- **A (approach b, recommended).** Add the `editorOwnsIdx` skip above. Fixes double-stamp +
+  hidden-active-stamp; Browse-safe. Cancel only diverges in the narrow "edit a hidden/empty
+  editor layer, then Cancel" case — where (b)'s behaviour (restored content does NOT stamp)
+  is arguably MORE correct (hidden layers shouldn't stamp). Pair with a manual Cancel repro
+  for the human to confirm before merge.
+- **B (narrower, approach C).** Skip the legacy entry ONLY when the editor layer at idx is
+  HIDDEN (`_editorLayerAt(idx)?.visible === false`). Fixes exactly the post-B6
+  hidden-active-stamp regression; leaves the pre-existing VISIBLE double-stamp for a
+  separate ticket. Lowest Cancel/legacy risk.
+- **C (touch the mirror, approach a).** Stop `app-init.js:70,89` writing the full-doc mirror
+  (or not auto-enabling it). Advisor deprioritised (a) vs (b); also risks the reopen
+  fallback that reads `P.stampLayers.find(l=>l.svg)` (`app-init.js:120`).
+
+**Ask:** confirm **A** (or B). Then I implement + write manual Cancel/double-stamp repro.
+**No app-code edits this turn** — only this log.
