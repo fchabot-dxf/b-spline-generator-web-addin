@@ -4,7 +4,6 @@
  *   - The export-wizard cancel/run buttons.
  *   - The "Download Add-in" link.
  *   - The app-refresh (cache-bust) button.
- *   - The Settings panel toggle.
  *   - The "Random seed" button.
  *
  * Takes onGenerate / onFusionApply as injected callbacks so the export
@@ -48,19 +47,11 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
         });
     }
 
-    const settingsBtn = document.getElementById('settings-btn');
-    const closeSettingsBtn = document.getElementById('close-settings-btn');
-    const settingsPanel = document.getElementById('settings-panel');
-    const settingsOverlay = document.getElementById('settings-overlay');
-
-    const toggleSettings = () => {
-        settingsPanel?.classList.toggle('hidden');
-        settingsOverlay?.classList.toggle('hidden');
-    };
-
-    settingsBtn?.addEventListener('click', toggleSettings);
-    closeSettingsBtn?.addEventListener('click', toggleSettings);
-    settingsOverlay?.addEventListener('click', toggleSettings);
+    // Settings-panel open/close is owned SOLELY by the inline handler in
+    // bspline_gen_palette.html (opens #settings-panel-overlay). A duplicate
+    // toggle here referenced a wrong id ('settings-overlay') and toggled
+    // `.hidden` onto #settings-panel, hiding the modal content (grey/empty
+    // modal). Removed [SM1].
 
     const btnRandomSeed = document.getElementById('btnRandomSeed');
     if (btnRandomSeed) {

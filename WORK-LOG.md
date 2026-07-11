@@ -578,3 +578,45 @@ scope confirmed b-spline-gen only.
    exactly as before (this fix does not alter the Cancel path).
 
 **Scope:** `main/stamp-mask-manager.js` (b-spline-gen) only.
+
+---
+
+## Turn 23 — SM1: settings modal grey/no-content (FIX, EDITS code, browser-verified) — DONE
+
+**Change (`main/header-controls.js`, b-spline-gen):** removed the duplicate settings-toggle
+block (old `:51-63`) inside `bindHeaderAndSettings`; left a breadcrumb comment + dropped the
+now-stale "Settings panel toggle" docstring line. Kept the rest of the function.
+
+**Root cause (confirmed):** two handlers fired on the same `#settings-btn` click. The inline
+handler in `bspline_gen_palette.html:1017-1031` (correct sole owner) opens
+`#settings-panel-overlay` (`display:flex`) and clears `.hidden` from `#settings-panel` once at
+load. The removed header-controls block toggled `.hidden` ONTO `#settings-panel` (the
+`cad-modal-window` content) and referenced a non-existent id `settings-overlay`. Since
+`.hidden { display:none !important }` (`styles/base.css:113`), the overlay opened but its
+content was hidden → grey/empty modal.
+
+**BROWSER VERIFICATION (headless Chromium via Playwright 1.61.1; served the raw source on
+127.0.0.1:8199, rooted at `bspline-frame-builder/` so `../../styles` resolves):**
+- **Fixed code, click `#settings-btn`:** overlay `display` none→**flex**, `#settings-panel`
+  `.hidden`=**false**, panelVisible=**true** → modal opens WITH content. Close button →
+  overlay back to `none`. **No page errors** (main.js + CDN modules loaded, so this is the
+  integrated behaviour, not just the inline handler).
+- **Causation control:** on a fresh load I re-injected exactly what the removed block did
+  (`panel.classList.toggle('hidden')` on the settings click) → overlay flex but panel
+  `display:none`, `.hidden`=true, visible=false → **reproduced the grey/empty bug**. So the
+  removed toggle was the cause; removing it is the fix.
+- Screenshots: `scratchpad/settings-open-FIXED.png` (content visible),
+  `settings-open-BROKEN-sim.png` (grey/empty).
+
+**Verify (other):** `node --check` syntax OK; no orphaned identifiers (only my breadcrumb
+mentions the old id); `#settings-btn` now bound solely by the inline HTML handler.
+
+**Process hygiene:** started a `python -m http.server 8199` for the test; **killed it**
+after (port 8199 now refuses; `proc_health watch` clean, 0 flagged).
+
+**Incidental (NOT my change, left unstaged):** `b-spline-gen/b_spline_gen_log.txt.old` shows
+a 1505-line append — a **Fusion runtime log write** (timestamps 09:19-09:20, before this turn)
+to a tracked `.old` log file (the T3/F12 log-cruft item). Committed only my two files.
+
+**Scope:** `main/header-controls.js` (b-spline-gen) only. Did not touch the HTML inline
+handler (kept as sole owner, as directed).
