@@ -212,7 +212,7 @@ for html_name in os.listdir(deploy_dist):
 
 if BUILD_ONLY:
     print(f"--build-only: produced {deploy_dist}. "
-          "Skipping zip build, Fusion refresh, wrangler deploy, and gh release upload.")
+          "Skipping zip build, wrangler deploy, and gh release upload.")
     sys.exit(0)
 
 
@@ -262,34 +262,10 @@ zip_size_mb = os.path.getsize(zip_target) / (1024 * 1024)
 print(f"  Packed {zip_file_count} files -> {os.path.basename(zip_target)} ({zip_size_mb:.1f} MiB)")
 
 
-# 3. Refresh local Fusion 360 Add-In (Developer Convenience)
-if sys.platform == "win32":
-    fusion_addin_dest = os.path.join(os.environ.get('APPDATA', ''), 'Autodesk', 'Autodesk Fusion 360', 'API', 'AddIns', 'b-spline-generator-web-addin')
-elif sys.platform == "darwin":
-    fusion_addin_dest = os.path.expanduser('~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/b-spline-generator-web-addin')
-else:
-    fusion_addin_dest = None
-
-if fusion_addin_dest and os.path.exists(os.path.dirname(fusion_addin_dest)):
-    print(f"Refreshing local Fusion 360 add-in at {fusion_addin_dest}...")
-    try:
-        clean_dir(fusion_addin_dest)
-
-        # Use a repo-relative path for the add-in source; this avoids the old invalid hardcoded path.
-        # Adjust this to the actual add-in folder in your repo if needed.
-        source_addin_dir = os.path.normpath(os.path.join(workspace_dir, "..", "b-spline-gen"))
-        if not os.path.exists(source_addin_dir):
-            source_addin_dir = os.path.normpath(os.path.join(workspace_dir, "..", "b-spline-generator-web-addin"))
-
-        shutil.copytree(source_addin_dir, fusion_addin_dest)
-        print("Local add-in refreshed.")
-    except Exception as e:
-        print(f"Warning: Could not refresh local add-in: {e}")
-elif fusion_addin_dest:
-    print(f"Fusion 360 Add-Ins directory not found at {os.path.dirname(fusion_addin_dest)}. Skipping local refresh.")
-else:
-    print(f"Unsupported OS ({sys.platform}) for local Fusion 360 refresh.")
-
+# 3. (Local Fusion refresh removed 2026-07-11 [DF1] — the old block was dead:
+#     it copied from a non-existent source path into a differently-named AddIns
+#     folder, so it only ever warned. Use DEPLOY_bspline-frame-builder.py to
+#     install the add-in locally.)
 print(f"Deploying clean folder to Cloudflare Pages ({PROJECT_NAME})...")
 
 result = subprocess.run([
