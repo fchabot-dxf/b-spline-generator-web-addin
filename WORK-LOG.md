@@ -914,3 +914,25 @@ could route it through `serializeEditor` and accept that (strictly-improving) be
 
 **Scope:** `editor-io.js` (both trees). Did NOT route getLayerSvg (flagged) and did NOT retire the
 P.stampLayers mirror (EDM4).
+
+---
+
+## Turn 35 — EDM3b: route getLayerSvg through the one serializer — DONE
+
+Advisor accepted the EDM3-flagged improvement. Routed getLayerSvg's raster content through
+`serializeEditor(editor, { forRaster: true })` (strips data-original-* + svg.js attrs before the
+strict parse), keeping getLayerSvg's own data-layer filter + `<svg>` wrapper. Both editor copies
+(mirrored identical).
+
+**Verify (browser + node):**
+- `noSvgjs_equal: true` → for real sketch content (no `svgjs:` attrs) getLayerSvg output is
+  **byte-identical** to before.
+- svgjs-edge: OLD returned `""` (empty stamp), routed now returns the content →
+  **latent empty-stamp bug fixed** (the one EDM3 flagged).
+- `node --check` both trees OK; `editor-io.js` identical across trees.
+- Palette loads headless: `pageErrors: []`, `window.svgEditor` ready.
+- Server tidied (port down); proc tree clean.
+
+**getLayerSvg now fully derives from the one `serializeEditor`** — save/saveForRasterization/
+saveWithTextCopies (EDM3) + getLayerSvg (EDM3b) all route through it. Did NOT touch the
+P.stampLayers mirror or the empty-source path (EDM4), as directed.

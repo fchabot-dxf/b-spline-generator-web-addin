@@ -97,17 +97,14 @@ function _serializeLayersAttr(editor) {
 export function getLayerSvg(editor, layerId, dpi = 96) {
     if (!editor || !editor._draw || !editor._sketchLayer) return "";
     const targetId = String(layerId);
-    // Strip data-original-* before the strict image/svg+xml parse below: legacy
-    // snapshots hold raw <>-markup (invalid XML) that would make the parser drop
-    // the expanded element (the fill=none cause). The raster path doesn't need
-    // that metadata. New (base64) snapshots are valid XML; this is a no-op there. (EDM2)
-    // NB (EDM3): intentionally NOT routed through serializeEditor. serializeEditor
-    // strips svg.js attrs BEFORE this parse; getLayerSvg strips them AFTER. When a
-    // child carries an undeclared `svgjs:` attr the strict parse errors, so the two
-    // orders diverge (this parse -> "" vs a clean parse -> content). Real sketch
-    // children carry no svgjs: attrs so it's equivalent in practice, but to keep
-    // output byte-identical we leave getLayerSvg's own order. (See WORK-LOG turn 33.)
-    const raw = stripOriginalAttrs(editor._sketchLayer.node.innerHTML);
+    // Route the raster content through the one serializer (EDM3b): forRaster:true
+    // strips data-original-* (legacy raw <>-markup would break the strict parse
+    // below — the fill=none cause, EDM2) AND svg.js attrs BEFORE the parse. We then
+    // filter to the requested layer. Stripping svgjs BEFORE the parse also fixes a
+    // latent bug: an undeclared `svgjs:` attr made this strict parse error and return
+    // "" (empty stamp); a clean parse now returns the content. Real sketch children
+    // carry no svgjs: attrs, so output stays byte-identical there.
+    const raw = serializeEditor(editor, { forRaster: true });
     if (!raw) return "";
 
     // Walk a parsed copy and keep only children whose data-layer matches.
