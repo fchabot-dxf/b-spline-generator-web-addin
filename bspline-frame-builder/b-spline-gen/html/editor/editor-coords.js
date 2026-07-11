@@ -46,12 +46,15 @@ export function transformPoint(m, pt) {
 }
 
 /**
- * The single affine that maps editor SVG space (inches, Y-down, origin at
- * the board's top-left) to Fusion import space (pixels at `dpi`, Y-up,
- * origin at the board CENTER):
+ * The single affine that maps editor SVG space (inches, origin at the
+ * board's top-left) to Fusion import space (pixels at `dpi`, origin at the
+ * board CENTER):
  *     cad_x = x*dpi - widthIn*dpi/2
- *     cad_y = heightIn*dpi/2 - y*dpi
- * ONE scale (×dpi), ONE flip (d = -dpi), ONE center — no per-axis fudge.
+ *     cad_y = y*dpi - heightIn*dpi/2
+ * ONE scale (×dpi), ONE center — no per-axis fudge, and NO Y inversion: an
+ * earlier flip (d = -dpi) imported the carve upside-down top-to-bottom
+ * (human-confirmed, SC3); Fusion's importer already yields the right
+ * orientation, so Y passes straight through (d = +dpi).
  *
  * Fusion's SVG importer reads raw pixel coords (1 unit = 1/dpi inch) and
  * ignores viewBox/scale/transforms, so this must be BAKED into the geometry
@@ -59,7 +62,7 @@ export function transformPoint(m, pt) {
  * {a,b,c,d,e,f} so transformPoint / SVG.Matrix can consume it.
  */
 export function carveMatrix(widthIn, heightIn, dpi = 96) {
-    return { a: dpi, b: 0, c: 0, d: -dpi, e: -(widthIn * dpi) / 2, f: (heightIn * dpi) / 2 };
+    return { a: dpi, b: 0, c: 0, d: dpi, e: -(widthIn * dpi) / 2, f: -(heightIn * dpi) / 2 };
 }
 
 /**

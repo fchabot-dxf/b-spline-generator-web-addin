@@ -18,22 +18,23 @@ import { carveMatrix, transformPoint } from '../bspline-frame-builder/b-spline-g
 const carve = (w, h, x, y, dpi = 96) => transformPoint(carveMatrix(w, h, dpi), { x, y });
 
 describe('SC2: carveMatrix (editor svg-space → Fusion px-space)', () => {
-  it('has the ONE-scale/ONE-flip/ONE-center shape (no fudge)', () => {
-    // 7x9 board, 96 dpi: a=96 (scale), d=-96 (flip Y), e=-336, f=+432 (center)
-    expect(carveMatrix(7, 9, 96)).toEqual({ a: 96, b: 0, c: 0, d: -96, e: -336, f: 432 });
+  it('has the ONE-scale/ONE-center shape (no fudge, no Y inversion)', () => {
+    // 7x9 board, 96 dpi: a=96 (scale), d=+96 (Y straight through), e=-336, f=-432 (center)
+    expect(carveMatrix(7, 9, 96)).toEqual({ a: 96, b: 0, c: 0, d: 96, e: -336, f: -432 });
   });
 
-  it('maps the board corners + center correctly (right-side-up, centered)', () => {
-    expect(carve(7, 9, 0, 0)).toEqual({ x: -336, y: 432 });   // top-left  → up-left
-    expect(carve(7, 9, 7, 9)).toEqual({ x: 336, y: -432 });   // bot-right → down-right
-    expect(carve(7, 9, 3.5, 4.5)).toEqual({ x: 0, y: 0 });    // center    → origin
+  it('maps the board corners + center correctly (centered)', () => {
+    expect(carve(7, 9, 0, 0)).toEqual({ x: -336, y: -432 });  // top-left
+    expect(carve(7, 9, 7, 9)).toEqual({ x: 336, y: 432 });    // bottom-right
+    expect(carve(7, 9, 3.5, 4.5)).toEqual({ x: 0, y: 0 });    // center → origin
   });
 
-  it('flips Y — a point near the top maps to POSITIVE (up) Fusion Y', () => {
-    // editor y=2 (near top, Y-down) → +2.5in up from center = +240px.
-    // Guards the OFFSET-DOWN bug: the old -(0.5*scale) fudge gave 192 (0.5in low).
-    expect(carve(7, 9, 1, 2)).toEqual({ x: -240, y: 240 });
-    expect(carve(7, 9, 1, 2).y).not.toBe(192);
+  it('does NOT invert Y — cad_y = y*dpi - half_h (upright in Fusion, SC3)', () => {
+    // The earlier Y-flip (d=-dpi) imported the carve upside-down top-to-bottom;
+    // human-confirmed the straight-through mapping is upright. y=2 → -240,
+    // NOT the flipped +240.
+    expect(carve(7, 9, 1, 2)).toEqual({ x: -240, y: -240 });
+    expect(carve(7, 9, 1, 2).y).not.toBe(240);
   });
 
   it('scales by dpi — a 1-inch shift is 96px (guards the micro bug)', () => {
@@ -43,8 +44,8 @@ describe('SC2: carveMatrix (editor svg-space → Fusion px-space)', () => {
   });
 
   it('honors board size (centering follows widthIn/heightIn)', () => {
-    // 10x5 board: half_w=480, half_h=240. (1,1) → (96-480, 240-96)
-    expect(carve(10, 5, 1, 1)).toEqual({ x: -384, y: 144 });
+    // 10x5 board: half_w=480, half_h=240. (1,1) → (96-480, 96-240)
+    expect(carve(10, 5, 1, 1)).toEqual({ x: -384, y: -144 });
     expect(carve(10, 5, 5, 2.5)).toEqual({ x: 0, y: 0 }); // center
   });
 

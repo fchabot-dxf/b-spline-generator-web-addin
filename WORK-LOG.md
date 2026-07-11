@@ -1340,3 +1340,26 @@ with relative/arc commands could bake wrong — same assumption the editor's fla
 (3) The gitignored `dist/` build still references the old normalizeSvgForCarving/_prescale — it's a
 build artifact, regenerated on deploy. (4) Still untouched: advisor's uncommitted
 stamp-editor/core/stamp/svg-utils.js (turn 38). Committed ONLY my 12 files.
+
+---
+
+## Turn 49 — SC3: carve was upside-down top-to-bottom — invert carveMatrix Y — DONE
+
+Human tested the SC2 carve in Fusion: correct scale/center but flipped TOP-BOTTOM. The SC2
+carveMatrix inverted Y (d=-dpi, f=+half_h → cad_y = half_h - y*dpi); Fusion's importer already gives
+the right orientation, so the flip made it upside-down. Fix = pass Y straight through.
+
+**Change (ONLY carveMatrix, both editor copies):** `editor-coords.js`
+    d: -dpi           → dpi
+    f: +(heightIn*dpi)/2 → -(heightIn*dpi)/2
+i.e. `cad_y = y*dpi - heightIn*dpi/2` (was `heightIn*dpi/2 - y*dpi`). x unchanged. Docstring updated
+to record the SC3 correction. Nothing else touched — bakeSvgForCarving/export-flow/_prescale all
+consume carveMatrix, so this one edit propagates.
+
+**Test:** `carve-transform.test.js` Y-expectations re-signed — matrix `d:96,f:-432`; corners
+(0,0)→(-336,-432), (7,9)→(336,432); y=2 → **-240** (not the flipped +240); 10x5 (1,1)→(-384,-144).
+Center still (0,0). **npm test 29/29 green.** node --check both trees; both editor-coords identical.
+
+**Human confirms upright in Fusion after redeploy** (no live Fusion this session). Left untouched:
+advisor's uncommitted stamp-editor/core/stamp/svg-utils.js. Committed only carveMatrix (both) + test
++ WORK-LOG.
