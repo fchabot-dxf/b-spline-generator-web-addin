@@ -348,3 +348,59 @@ unused `stat`/`time` imports alone (not my mess).
 called by `release.py --web` and the Pages CI; `DEPLOY_bspline-frame-builder.py` = local
 install; no orphan/duplicate deploy paths left. **Scope:** only `deploy_cloudflare.py`
 + `DEPLOY_*.py` docstring. Did NOT touch `release.py` or `sync_stamp_bundle.py`.
+
+---
+
+## Turn 15 — B6/F2: hidden-layer data loss — ⛔ GATE (plan vs. code mismatch; NO code edits)
+
+**I stopped and did NOT edit code.** Tracing the data flow shows the dispatched
+decomposition ("`save()` serializes ALL; stamp/rasterize path STILL drops hidden")
+does not match the actual code — following it literally would NOT fix B6. Flagging
+for a decision.
+
+**Evidence (b-spline-gen frontend):**
+1. **The reopen/persistence source is `saveForRasterization()`, NOT `save()`.**
+   `onChange`/`onCommit` set `P.editorSvg = await saveForRasterization()`
+   (`main/app-init.js:66,88`) and also `setStampLayerSvg(...)` with the same value
+   (`:70,89`). Reopen restores from `P.editorSvg` (`:119-123`). The `editor.save()`
+   result passed to `_onCommit` (`editor/tools/action-tools.js:52`) is used **only as
+   a truthy flag** and then replaced by `saveForRasterization()` (`app-init.js:81-93`).
+   → **Changing only `save()` (the literal directive) has ZERO effect on reopen — B6
+   stays broken.**
+2. **`_visibleContent`'s drop-hidden feeds NO stamp/rasterize path.** Its 3 callers are
+   `save()` (144), `saveForRasterization()` (231), `saveWithTextCopies()` (272). None of
+   their outputs is rasterized wholesale. The stamp masks are built per-layer by
+   `getLayerSvg` (`main/stamp-mask-manager.js:48-55`), which **skips
+   `layer.visible===false` at `:51`** and does NOT use `_visibleContent`. → The
+   "stamp/rasterize path" already excludes hidden **independently**; there is nothing in
+   `_visibleContent` to preserve for stamping, so "do not regress" is satisfied trivially
+   by keeping content.
+3. `editor.lastSvg` is set (3×) but **never read** (dead).
+
+**So `_visibleContent`'s drop-hidden currently causes ONLY data loss** (reopen via
+`P.editorSvg` and the `editorDownload` file both lose hidden-layer geometry), with no
+compensating stamp benefit.
+
+**Options (pick one — I implement next turn, BOTH editor-io.js copies identically):**
+- **A (recommended).** Make the persistence/export serializers keep ALL content: add
+  `_allContent(editor)` (stripped raw innerHTML, no drop) and use it in `save()`,
+  `saveForRasterization()`, AND `saveWithTextCopies()`. Leave the real stamp exclusion
+  (`getLayerSvg` per-visible-layer) untouched → B6 fixed for reopen + download, zero
+  stamp regression. **This DEVIATES from the literal directive** (it also changes
+  `saveForRasterization`, which the note said to keep dropping) — required, because
+  `saveForRasterization` IS the persistence source and its output is never rasterized
+  wholesale.
+- **B (literal directive).** Change only `save()` to keep-all; leave
+  `saveForRasterization()` dropping. → **Does NOT fix B6** (reopen uses
+  `saveForRasterization`/`P.editorSvg`). Not recommended.
+- **C.** Parameterize `_visibleContent(editor, dropHidden)`: persistence callers pass
+  `false`; a genuine wholesale-rasterize caller would pass `true`. No current caller
+  needs `true`, so this is future-proofing over A.
+
+**Open question for the advisor:** the stamp-editor copy's `main/` does NOT have the
+`P.editorSvg`/`saveForRasterization` flow (grep found none) — its editor-io.js is
+byte-identical but its consumers differ. Patching both copies identically (as asked)
+is fine for keeping them in sync, but the B6 symptom itself is a b-spline-gen concern.
+
+**Ask:** confirm **A** (or a synthesis). Next turn I implement it in BOTH `editor-io.js`
+copies + write the manual Fusion repro. **No app-code edits this turn** — only this log.
