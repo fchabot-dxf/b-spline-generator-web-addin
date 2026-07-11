@@ -5,8 +5,9 @@ Local-install only: copies the unified bspline-frame-builder add-in (B-Spline Ge
 Frame Builder, CAM Builder, Fusion Inspector, Fusion Exporter, Template Maker) 
 into Fusion 360's AddIns folder so you can immediately Stop/Run it inside Fusion.
 
-The public distribution ZIP and GitHub release are built and uploaded by
-deploy_cloudflare.py (the public-publish event), NOT by this script.
+The public distribution ZIP and GitHub 'latest' release are built and uploaded by
+release.py (`--addin` / `--all`), NOT by this script. deploy_cloudflare.py is
+web-only (it builds dist/ and deploys Cloudflare Pages).
 
 Usage:
     python DEPLOY_bspline-frame-builder.py

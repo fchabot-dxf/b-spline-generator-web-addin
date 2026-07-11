@@ -8,9 +8,14 @@ from datetime import datetime
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-# `--build-only` produces the static-site folder (dist/) and exits. Used by
-# the GitHub-connected Cloudflare Pages build, where CLOUDFLARE_* env vars,
-# wrangler, gh, and the local Fusion refresh aren't applicable.
+# deploy_cloudflare.py — WEB ONLY. Builds the static site (dist/) from
+# b-spline-gen/html + styles/, then deploys it to Cloudflare Pages via wrangler.
+# The Fusion add-in ZIP and its GitHub 'latest' release are NO LONGER built here —
+# they moved to release.py (`--addin` / `--all`) as of 2026-07-11 [DF3].
+#
+# `--build-only` produces dist/ and exits (no wrangler needed). Used by the
+# GitHub-connected Cloudflare Pages build, where CLOUDFLARE_* env vars and
+# wrangler aren't applicable.
 BUILD_ONLY = "--build-only" in sys.argv
 
 def clean_dir(path):
@@ -211,61 +216,13 @@ for html_name in os.listdir(deploy_dist):
 
 
 if BUILD_ONLY:
-    print(f"--build-only: produced {deploy_dist}. "
-          "Skipping zip build, wrangler deploy, and gh release upload.")
+    print(f"--build-only: produced {deploy_dist}. Skipping wrangler deploy.")
     sys.exit(0)
 
 
-# 2. Build the Fusion add-in distribution ZIP NEXT TO this script (NOT inside
-# deploy_dist — Cloudflare Pages caps individual files at 25 MiB and the zip
-# exceeds that). The website's download button at
-# b-spline-gen/html/main/main.js#ADDIN_RELEASE_URL points to the GitHub
-# release tagged `latest`, so we attach this zip there at the end of the
-# script via `gh release upload latest <zip> --clobber`.
-import zipfile
-
-zip_target = os.path.join(workspace_dir, "bspline-frame-builder.zip")
-print(f"Building distribution ZIP at {zip_target}...")
-
-# Files/dirs to exclude from the distribution archive
-zip_skip_names = {".git", ".gitignore", "__pycache__", ".venv", "venv",
-                  "node_modules", ".wrangler", "desktop.ini"}
-zip_skip_exts = {".log", ".old", ".pyc", ".zip"}  # also skip prior zips
-
-def _zip_should_skip(name):
-    if name in zip_skip_names:
-        return True
-    if os.path.splitext(name)[1].lower() in zip_skip_exts:
-        return True
-    if name.startswith('.'):
-        return True
-    return False
-
-# Archive paths look like "bspline-frame-builder/frame-builder/..." so the
-# zip extracts into a containing folder ready to drop into Fusion's AddIns.
-addin_root_name = os.path.basename(os.path.normpath(workspace_dir))
-zip_file_count = 0
-if os.path.exists(zip_target):
-    os.remove(zip_target)
-with zipfile.ZipFile(zip_target, 'w', zipfile.ZIP_DEFLATED) as zf:
-    for root, dirs, files in os.walk(workspace_dir):
-        dirs[:] = [d for d in dirs if not _zip_should_skip(d) and d != "deploy_dist" and not d.startswith("deploy_dist_")]
-        for f in files:
-            if _zip_should_skip(f):
-                continue
-            abs_path = os.path.join(root, f)
-            rel_inside = os.path.relpath(abs_path, workspace_dir)
-            arc_path = os.path.join(addin_root_name, rel_inside)
-            zf.write(abs_path, arc_path)
-            zip_file_count += 1
-zip_size_mb = os.path.getsize(zip_target) / (1024 * 1024)
-print(f"  Packed {zip_file_count} files -> {os.path.basename(zip_target)} ({zip_size_mb:.1f} MiB)")
-
-
-# 3. (Local Fusion refresh removed 2026-07-11 [DF1] — the old block was dead:
-#     it copied from a non-existent source path into a differently-named AddIns
-#     folder, so it only ever warned. Use DEPLOY_bspline-frame-builder.py to
-#     install the add-in locally.)
+# 2. Deploy the built site to Cloudflare Pages. (The add-in ZIP build + GitHub
+#    'latest' release that used to live here moved to release.py --addin [DF3];
+#    the local Fusion refresh was removed [DF1]. This script is web-only now.)
 print(f"Deploying clean folder to Cloudflare Pages ({PROJECT_NAME})...")
 
 result = subprocess.run([
@@ -280,42 +237,4 @@ if result.returncode != 0:
     sys.exit(result.returncode)
 
 print("Cloudflare Pages deployment complete.")
-
-
-# 4. Upload distribution ZIP to the GitHub `latest` release so the website's
-# download button (ADDIN_RELEASE_URL in main/main.js) gets the freshest bits.
-GH_CMD = shutil.which("gh") or shutil.which("gh.cmd")
-if GH_CMD is None:
-    print("Warning: 'gh' CLI not found on PATH. Skipping GitHub release upload.")
-    print(f"         To publish the zip manually, run:")
-    print(f"         gh release upload latest \"{zip_target}\" --clobber")
-    sys.exit(0)
-
-print("Uploading distribution ZIP to GitHub release 'latest'...")
-
-# Make sure a 'latest' release exists; create it as a prerelease if not.
-view_check = subprocess.run([GH_CMD, "release", "view", "latest"],
-                            cwd=workspace_dir, capture_output=True)
-if view_check.returncode != 0:
-    print("  No 'latest' release found — creating it as a prerelease.")
-    create = subprocess.run([
-        GH_CMD, "release", "create", "latest",
-        "--prerelease",
-        "--title", "Latest dev build",
-        "--notes", "Rolling release: the most recent bspline-frame-builder build. Overwritten on every Cloudflare deploy.",
-    ], cwd=workspace_dir)
-    if create.returncode != 0:
-        print(f"  Warning: could not create 'latest' release (exit {create.returncode}). Skipping upload.")
-        sys.exit(0)
-
-upload = subprocess.run([
-    GH_CMD, "release", "upload", "latest", zip_target, "--clobber"
-], cwd=workspace_dir)
-if upload.returncode == 0:
-    print("  GitHub release 'latest' updated with new bspline-frame-builder.zip.")
-else:
-    print(f"  Warning: gh release upload exited {upload.returncode}.")
-    print(f"           To publish the zip manually, run:")
-    print(f"           gh release upload latest \"{zip_target}\" --clobber")
-
 sys.exit(0)

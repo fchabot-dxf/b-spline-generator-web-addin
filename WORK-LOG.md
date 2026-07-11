@@ -305,3 +305,46 @@ is the whole point of DF2.
 **Scope:** `release.py` only (+209/−138, all wrapping+driver; no logic change — proven
 functionally). Did NOT touch `deploy_cloudflare.py`, `DEPLOY_bspline-frame-builder.py`,
 or `sync_stamp_bundle.py`.
+
+---
+
+## Turn 13 — DF3: deploy_cloudflare.py → web-only (FIX, EDITS CODE) — DONE
+
+**Deliverable:** `deploy_cloudflare.py` is now web-only (build `dist/` → deploy Pages).
+Removed the two actions that DF2 moved into `release.py --addin`.
+
+**Removed (now duplicated by `release.py --addin`):**
+- Step 2 — the add-in ZIP build (+ its `import zipfile`, `zip_target`, `_zip_should_skip`,
+  skip-sets, the walk/zip loop).
+- Step 4 — the entire `gh release upload latest` block (`GH_CMD`, view/create/upload).
+
+**Kept (untouched behaviour):** dist build (steps 0-1), the `--build-only` exit, and
+the `wrangler pages deploy` (the web publish).
+
+**Docs updated:**
+- deploy_cloudflare.py header rewritten to say WEB-ONLY + that the zip/GitHub release
+  moved to `release.py --addin/--all` [DF3].
+- `--build-only` message: "Skipping zip build, wrangler deploy, and gh release upload."
+  → "Skipping wrangler deploy." (the other two no longer exist here).
+- The DF1 step-3 breadcrumb folded into a clean "# 2. Deploy to Cloudflare Pages" note.
+- `DEPLOY_bspline-frame-builder.py` docstring fixed: the public ZIP + GitHub release are
+  built by **`release.py` (`--addin`/`--all`)**, not deploy_cloudflare.py (now web-only).
+  (DF3 explicitly authorised this docstring-ref fix.)
+
+**Orphan check (surgical):** my removal orphaned only `import zipfile` — removed with the
+block. `shutil` (clean_dir/which) and `subprocess` (wrangler) stay used. Left pre-existing
+unused `stat`/`time` imports alone (not my mess).
+
+**Verify (no publish; did NOT run full-mode):**
+- `ast.parse` OK for both edited files.
+- `grep` deploy_cloudflare.py for `zipfile|zip_target|GH_CMD|_zip_should_skip|gh release*`
+  → none (no dangling refs). File 321 → 240 lines.
+- `python deploy_cloudflare.py --build-only` → **exit 0**; `dist/` produced (palette HTML +
+  19 core JS, 0 `.py` leaked); message now correctly says "Skipping wrangler deploy."
+- Did NOT run full-mode (would invoke `wrangler pages deploy` = publish).
+
+**Deploy consolidation now complete (DF1→DF3):** `release.py` = single entry
+(`--web`/`--addin`/`--local`/`--all`); `deploy_cloudflare.py` = web build/deploy only,
+called by `release.py --web` and the Pages CI; `DEPLOY_bspline-frame-builder.py` = local
+install; no orphan/duplicate deploy paths left. **Scope:** only `deploy_cloudflare.py`
++ `DEPLOY_*.py` docstring. Did NOT touch `release.py` or `sync_stamp_bundle.py`.
