@@ -60,3 +60,49 @@ exist (`find`), frame-builder UI modules have no top-level `run/stop` (`grep`).
 
 **NOT done (out of scope for T1):** did not touch `BUGS_OPEN.md` / reconcile B1–B3
 — that's T2. No application-code edits. Only `ARCHITECTURE.md` (new) + this log.
+
+---
+
+## Turn 3 — T2: Bug & principle scout (read-only) — DONE
+
+**Deliverable:** `BUGS_OPEN.md` updated — dated verdicts appended to B1–B3
+(originals untouched), 8 new findings B4–B11 ranked most-severe first, plus a
+minor list and a T3-parked list.
+
+**Method / why.** Verified the one highest-stakes item myself first (the
+`import_svg_sketches` dead send). Then fanned out TWO read-only Explore subagents
+for the evidence-heavy sweeps — (1) B1–B3 reconciliation + editor findings,
+(2) Python hot-reload lifecycle (P2/P3) — instructing both to return EVIDENCE +
+`file:line`, not bare verdicts. Then I re-read every load-bearing claim against
+source before trusting it in a durable doc (the advisor spot-checks the diff):
+B1 fix comment at `layers.js:264-275`, B2 drop at `editor-io.js:44-47`, B3
+`OPEN_SHAPES` at `editor-expand-shape.js:41`, B5 leak at `fusion-inspector.py:661`
+vs `stop()`, B7 wipe-hole (grep + `find` confirmed `selection_items` is
+inspector-unique and absent from `_shared_project_names`), B8 duplicated tree
+(`diff -q` → byte-identical).
+
+**Verdicts reached:**
+- **B1 → likely-FIXED** (root cause = svg.js `toggleClass(force)` ignored, now
+  explicit add/remove; one push/stroke, one pop/press). Runtime confirm advised.
+- **B2 → original hypotheses RESOLVED; net CAN'T-TELL** — the real remaining
+  disappearance path is the hidden-layer drop, promoted to its own finding **B6**.
+- **B3 → likely-FIXED at dispatch** (`line` IS routed via `expandShape`); output
+  correctness for `<line>` is runtime-only (`getTotalLength` support + trace fallback).
+
+**New finds (headlines):** B4 dead-send (HIGH runtime bug — button logs false
+success), B5 fusion-inspector `activeSelectionChanged` leak (HIGH P2, accumulates
+per reload), B6 destructive hidden-layer save (data-loss), B7 `selection_items`
+stale-reload (P2, low blast radius), B8 duplicated 33-file editor tree (P1),
+B9 host calls bypassing the bridge seam (P1, guarded → erosion risk not live bug),
+B10 CAM-builder partial CustomEvent teardown (P2, masked by next run), B11 `fusLog`
+tripled (P4 — but forced by module layering; fix = extract a leaf module).
+
+**Refuted / de-escalated (kept honest):** the "no `line` branch" B3 hypothesis is
+FALSE. B9 host-leaks are `try/catch`-guarded + Fusion-gated, so NOT a live web
+crash — framed as seam erosion, not a bug. No cross-sub force-wipe collision hole
+exists (the two colliding names ARE wiped) — only the unique-name `selection_items`
+stale-reload.
+
+**Parked for T3:** systematic duplication audit (B8 is one instance), cloud
+identity drift, unprovisioned/README-only cloud infra, README doc-drift, test
+coverage, dead code. **No application-code edits.** Only `BUGS_OPEN.md` + this log.
