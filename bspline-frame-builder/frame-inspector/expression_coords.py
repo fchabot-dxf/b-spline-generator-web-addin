@@ -25,7 +25,7 @@ def _get_entity_key(ent):
         if hasattr(ent, 'tempId'):
             return ('tempId', ent.tempId)
         return ('id', id(ent))
-    except:
+    except Exception:
         return ('id', id(ent))
 
 
@@ -65,20 +65,20 @@ def _get_arc_midpoint(ent):
         mid_x = cp.x + r1 * math.cos(mid_angle)
         mid_y = cp.y + r1 * math.sin(mid_angle)
         return (mid_x, mid_y)
-    except:
+    except Exception:
         return None
 
 
 def _parse_numeric_value(value):
     try:
         return float(value)
-    except:
+    except Exception:
         try:
             text = str(value)
             m = re.search(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?', text)
             if m:
                 return float(m.group(0))
-        except:
+        except Exception:
             pass
     return None
 
@@ -178,12 +178,12 @@ def _format_point_expr(pt):
         if hasattr(pt, 'x'):
             try:
                 x_value = float(pt.x)
-            except:
+            except Exception:
                 x_value = None
         if hasattr(pt, 'y'):
             try:
                 y_value = float(pt.y)
-            except:
+            except Exception:
                 y_value = None
 
     x_expr = _infer_coord_expr(x_value, 'x') if x_value is not None else ''
@@ -230,7 +230,7 @@ def _build_entity_coord_expr_string(ent):
                     return f"{start_expr} -> {end_expr}".strip(' -> ')
 
         return ''
-    except:
+    except Exception:
         return ''
 
 
@@ -245,11 +245,11 @@ def get_entity_name(ent):
             a = ent.attributes.itemByName('FrameBuilder', 'name')
             if a and a.value:
                 return a.value.split('\n')[0]
-    except:
+    except Exception:
         pass
     try:
         return ent.objectType.split('::')[-1]
-    except:
+    except Exception:
         return 'Entity'
 
 
@@ -258,7 +258,7 @@ def _get_design():
         app = adsk.core.Application.get()
         if not app: return None
         return adsk.fusion.Design.cast(app.activeProduct)
-    except:
+    except Exception:
         return None
 
 
@@ -268,7 +268,7 @@ def _get_design_parameter(design, name):
         p = design.allParameters.itemByName(name)
         if p: return p
         return design.allParameters.itemByName(f'BSG_{name}')
-    except:
+    except Exception:
         return None
 
 
@@ -287,7 +287,7 @@ def get_design_params():
                     'value': getattr(p, 'value', None),
                     'unit': str(getattr(p, 'unit', ''))
                 }
-        except:
+        except Exception:
             continue
     return params
 

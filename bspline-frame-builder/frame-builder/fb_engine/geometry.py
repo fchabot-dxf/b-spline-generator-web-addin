@@ -27,7 +27,7 @@ def nudge_point_to_target(ctx, point, target, radius=0.01):
             if hasattr(point, 'parentSketchArcs') and point.parentSketchArcs.count > 0:
                 p_to_move = point.parentSketchArcs.item(0).startSketchPoint
                 is_center = True
-        except:
+        except Exception:
             pass
 
         # 2. Generate random offset
@@ -198,7 +198,7 @@ def _create_rectangle(ctx, sketch, curves, s_name, geom, geo_id):
         # Equality constraints help the solver stay square
         constrs.addEqual(l_top, l_bottom)
         constrs.addEqual(l_left, l_right)
-    except:
+    except Exception:
         pass
 
     # 5. Tag Vertices (TR, TL, BL, BR)

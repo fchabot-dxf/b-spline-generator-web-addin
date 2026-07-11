@@ -42,7 +42,7 @@ except Exception as e:
         logger = fb_logger.DebugLogger(addin_root)
         logger.log(f"CRITICAL: frame_engine failed imports: {e}", "ERROR")
         logger.log(traceback.format_exc(), "ERROR")
-    except:
+    except Exception:
         logger = None
     raise e
 

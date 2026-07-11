@@ -24,14 +24,14 @@ def _get_entity_key(ent):
         if hasattr(ent, 'tempId'):
             return ('tempId', ent.tempId)
         return ('id', id(ent))
-    except:
+    except Exception:
         return ('id', id(ent))
 
 
 def format_point(pt):
     try:
         return f"({round(pt.geometry.x,2)},{round(pt.geometry.y,2)})"
-    except:
+    except Exception:
         return ''
 
 
@@ -107,7 +107,7 @@ def _get_arc_midpoint_legacy(ent):
         mid_x = cp.x + r1 * math.cos(mid_angle)
         mid_y = cp.y + r1 * math.sin(mid_angle)
         return (mid_x, mid_y)
-    except:
+    except Exception:
         return None
 
 
@@ -130,7 +130,7 @@ def get_fb_name(ent):
                 return f"Vertex of {', '.join(parents)}"
 
         return ent.objectType.split('::')[-1]
-    except:
+    except Exception:
         return "Entity"
 
 
@@ -142,7 +142,7 @@ def get_fb_bridge(ent):
             if a:
                 lines = a.value.split('\n')
                 if len(lines) > 1: return lines[1]
-    except:
+    except Exception:
         pass
     return ""
 
@@ -153,7 +153,7 @@ def get_fb_plan(ent):
         if hasattr(ent, 'attributes'):
             a = ent.attributes.itemByName('FrameBuilder', 'plan')
             if a: return a.value
-    except:
+    except Exception:
         pass
     return ""
 
@@ -182,7 +182,7 @@ def get_fb_metadata(ent):
                 info.append(f"Bulge=({round(mid[0], 2)},{round(mid[1], 2)})")
 
         return ' | '.join(info)
-    except:
+    except Exception:
         return ''
 
 
@@ -194,7 +194,7 @@ def entity_fingerprint(ent):
         if hasattr(ent, 'tempId'):
             return f"{ent.objectType}_{ent.tempId}"
         return f"{ent.objectType}_{id(ent)}"
-    except:
+    except Exception:
         return str(id(ent))
 
 
@@ -226,6 +226,6 @@ def get_entity_coord(e):
             cx = round((bb.minPoint.x + bb.maxPoint.x) / 2, 2)
             cy = round((bb.minPoint.y + bb.maxPoint.y) / 2, 2)
             return f"Center: ({cx}, {cy})"
-    except:
+    except Exception:
         pass
     return ""

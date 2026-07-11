@@ -327,7 +327,7 @@ def scrub_source(base: Path):
             clean_dir(p)
         elif p.suffix.lower() in {".pyc", ".pyo"}:
             try: p.unlink()
-            except: pass
+            except Exception: pass
 
 
 # ---------------------------------------------------------------------------

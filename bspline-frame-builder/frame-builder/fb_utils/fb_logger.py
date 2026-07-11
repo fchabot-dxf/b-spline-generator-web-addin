@@ -37,7 +37,7 @@ class DebugLogger:
                             if src_log not in self.log_paths:
                                 self.log_paths.append(src_log)
                                 break # Found it
-        except:
+        except Exception:
             pass
 
         # Truncate every log file on addin start so each session begins
@@ -47,7 +47,7 @@ class DebugLogger:
         for path in self.log_paths:
             try:
                 open(path, 'w', encoding='utf-8').close()
-            except:
+            except Exception:
                 pass
 
         self.log(f"LOGGER INITIALIZED. ACTIVE PATHS: {len(self.log_paths)}")
@@ -65,8 +65,8 @@ class DebugLogger:
                     f.flush()
                     try:
                         os.fsync(f.fileno())
-                    except: pass
-            except:
+                    except Exception: pass
+            except Exception:
                 pass
 
     def _cap_log_file(self, path, max_lines=5000):
@@ -78,7 +78,7 @@ class DebugLogger:
             if len(lines) > max_lines:
                 with open(path, 'w', encoding='utf-8') as f:
                     f.writelines(lines[-max_lines:])
-        except:
+        except Exception:
             pass
 
     def log_error(self, message):

@@ -1564,3 +1564,50 @@ unambiguously defensive/cleanup.
 
 **Verify:** 59 bare-except -> 0 across the 4 files; py_compile OK each; diffs are narrowing-only
 (0 other changed lines). Single-copy files — no sync/mirror.
+
+---
+
+## Turn 61 — C3c: finish §4 — narrow ALL remaining bare excepts (repo-wide) — DONE
+
+Grep-found every remaining bare `except:` in TRACKED .py (git ls-files, so gitignored stamp-editor is
+excluded) minus the C3a/C3b files. 10 files, 61 bare excepts, none huge (max = b-spline-gen.py at 16).
+
+**DONE — narrowed all (behavior-preserving), per file:**
+| file | before -> after |
+|---|---|
+| b-spline-gen/b-spline-gen.py (central, extra care) | 16 -> 0 |
+| frame-inspector/expression_coords.py | 12 -> 0 |
+| frame-inspector/entity_helpers.py | 9 -> 0 |
+| CAM-builder/cam-builder.py | 8 -> 0 |
+| frame-builder/fb_utils/fb_logger.py | 5 -> 0 |
+| frame-builder/fb_engine/offsets.py | 4 -> 0 |
+| frame-inspector/selection_items.py | 3 -> 0 |
+| frame-builder/fb_engine/geometry.py | 2 -> 0 |
+| frame-builder/fb_engine/frame_engine.py | 1 -> 0 |
+| DEPLOY_bspline-frame-builder.py | 1 -> 0 |
+- Every diff is EXACTLY N `except:` -> N `except Exception:`, **0 other changed lines**. py_compile OK
+  on all 10. **REPO-WIDE tracked-.py bare-except count is now 0** (across C3a+C3b+C3c).
+
+**No new logs — narrow-only is correct (same finding as C3b):** classified every site.
+- b-spline-gen.py (read all 16 with care): all defensive — per-occurrence visibility toggles
+  (`occ.isLightBulbOn` :1097/1101/1106/1224/1227/1253), per-item renames (:978/1065), sibling/body
+  enum (:1083/1154), cleanup deleteMe (:178/194), cosmetic progress (:162), the log-rotation's own
+  fail-silent (:109), a logger-guard (:1260). The import/consolidate BUSINESS LOGIC already logs at
+  the OUTER `except Exception as e: _log(...)` levels (`[CONSOLIDATE]`/`[VISIBILITY]` :1183/1228/1261).
+- The other 9 (body-scanned): all `pass` / fallback `return X` / `continue` on defensive
+  attribute-readers (expression_coords, entity_helpers — mirror fusion-inspector), the logger's own
+  writes (fb_logger), math/engine guards (offsets, geometry — offsets already `ctx.logger.log_error`
+  on the crash path), retry flow (DEPLOY), fallbacks (selection_items, frame_engine `logger=None`).
+  cam-builder's business-logic handlers already `_log_error(...)`. So "log business-logic" is already
+  satisfied by existing code everywhere.
+
+**Process catch (fixed):** my bulk-narrow script (`open(...,newline="")`) FLIPPED CRLF->LF on the 2
+files git stores as CRLF (b-spline-gen.py, frame_engine.py) — the other 8 are LF so stayed clean.
+Caught it via a diff-line audit (b-spline-gen.py showed 3161 "other changed lines" = whole-file EOL
+flip burying the 16 real narrowings). Detected each file's git EOL (`git show HEAD:f | file -`),
+restored CRLF on the 2, re-verified all 10 diffs are narrowing-only. Lesson: match the file's
+existing EOL when bulk-rewriting (read+write in binary, or detect+preserve) — Python text-mode write
+normalizes newlines. No content lost; the narrowings are intact.
+
+**Verify:** 61 -> 0 across 10 files; py_compile OK each; all diffs narrowing-only (0 other lines);
+repo-wide tracked bare-except = 0. Not forked. C3a exporter.py log-gate still open for your synthesis.

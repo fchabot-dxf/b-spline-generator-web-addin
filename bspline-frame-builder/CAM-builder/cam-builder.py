@@ -890,7 +890,7 @@ def _extract_profile_from_setup(setup):
 
     def pget(name):
         try:   return sp.itemByName(name)
-        except: return None
+        except Exception: return None
 
     def pnum(name):
         """Numeric part of expression (preserves user units), fallback cm→mm."""
@@ -901,21 +901,21 @@ def _extract_profile_from_setup(setup):
             if m: return float(m.group(1))
         except Exception: pass
         try:   return round(p.value.value * 10, 4)
-        except: return None
+        except Exception: return None
 
     def pchoice(name):
         p = pget(name)
         if p is None: return None
         try:   return p.value.value
-        except: return None
+        except Exception: return None
 
     def pbool(name):
         p = pget(name)
         if p is None: return False
         try:   return p.expression.lower() in ('true', '1')
-        except:
+        except Exception:
             try:   return bool(p.value.value)
-            except: return False
+            except Exception: return False
 
     # ── Stock mode ──────────────────────────────────────────────────────────
     STOCK_MAP = {
@@ -993,7 +993,7 @@ def _extract_profile_from_setup(setup):
 
         def oget(name):
             try:   return opar.itemByName(name)
-            except: return None
+            except Exception: return None
 
         def onum(name):
             p = oget(name)
@@ -1003,13 +1003,13 @@ def _extract_profile_from_setup(setup):
                 if m: return float(m.group(1))
             except Exception: pass
             try:   return round(p.value.value * 10, 4)
-            except: return None
+            except Exception: return None
 
         def ochoice(name):
             p = oget(name)
             if p is None: return None
             try:   return p.value.value
-            except: return None
+            except Exception: return None
 
         raw_s    = (ochoice('strategy') or '').lower()
         strategy = STRATEGY_MAP.get(raw_s, raw_s or 'pocket_clearing')

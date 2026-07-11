@@ -106,7 +106,7 @@ def _log(msg):
         # Optional: Rotation logic to keep the file small
         if os.path.getsize(LOG_FILE) > 1024 * 512: # 512KB limit
             os.replace(LOG_FILE, LOG_FILE + ".old")
-    except:
+    except Exception:
         # Fail silently if the OS prevents file access
         pass
 
@@ -159,7 +159,7 @@ def _send_progress(msg):
         if pal:
             pal.sendInfoToHTML('import_progress', json.dumps({'msg': msg}))
             _log(f'[PROGRESS] {msg}')
-    except: pass
+    except Exception: pass
 
 
 def _clear_custom_graphics():
@@ -175,7 +175,7 @@ def _clear_custom_graphics():
                 if group.isValid:
                     group.deleteMe()
                     count += 1
-            except: pass
+            except Exception: pass
         if count > 0:
             _log(f'  _clear_custom_graphics: Removed {count} group(s)')
         custom_graphics_group = None
@@ -191,7 +191,7 @@ def _remove_last_import():
         try:
             if current_import_group.isValid:
                 current_import_group.deleteMe()
-        except: pass
+        except Exception: pass
         current_import_group = None
 
     if last_imported_occurrences:
@@ -975,7 +975,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                                     if any(kw in occ.component.name for kw in ('Component', 'Part')):
                                         occ.component.name = v_name
                                     newly_added.append(occ)
-                            except:
+                            except Exception:
                                 pass
 
                         _log(f'  Imported {len(newly_added)} occurrence(s) for "{v_name}".')
@@ -1062,7 +1062,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                                 if any(kw in occ.component.name for kw in ('Component', 'Part')):
                                     occ.component.name = comp_name
                                 newly_added.append(occ)
-                        except:
+                        except Exception:
                             pass
 
                     # v41: Fix append logic for single-step
@@ -1080,7 +1080,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             try:
                                 for b in occ.component.bRepBodies:
                                     name_parts.append(b.name.lower())
-                            except: pass
+                            except Exception: pass
                             nm = ' '.join(name_parts)
                             p  = 4 if ('stamped' in nm and 'solid' in nm) else \
                                  3 if  'stamped' in nm else \
@@ -1094,16 +1094,16 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             for occ in newly_added:
                                 # v41: Respect isVisible flag
                                 try: occ.isLightBulbOn = (occ == best_occ and is_visible)
-                                except: pass
+                                except Exception: pass
                         else:
                             for occ in newly_added:
                                 try: occ.isLightBulbOn = is_visible
-                                except: pass
+                                except Exception: pass
                     elif newly_added:
                         primary_imported_occurrence = newly_added[0]
                         for occ in newly_added:
                             try: occ.isLightBulbOn = is_visible
-                            except: pass
+                            except Exception: pass
 
                 except Exception as e:
                     _log(f'importToTarget failed: {e}')
@@ -1151,7 +1151,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                                     occ = kids.item(i)
                                     if occ and occ.isValid:
                                         all_siblings.append(occ)
-                                except: pass
+                                except Exception: pass
                         except Exception as e:
                             _log(f'[CONSOLIDATE] sibling enum failed: {e}')
 
@@ -1193,7 +1193,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             for occ in consolidated:
                                 try:
                                     nm = (occ.component.name or '').lower()
-                                except: nm = ''
+                                except Exception: nm = ''
                                 if 'stamped' in nm and _has_panel_body(occ):
                                     stamped_with_panel = occ
                                     break
@@ -1221,10 +1221,10 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                                         bn = (b.name or '').lower()
                                         if _is_panel_body_name(bn):
                                             try: b.isLightBulbOn = True
-                                            except: pass
+                                            except Exception: pass
                                         elif _is_surface_body_name(bn):
                                             try: b.isLightBulbOn = False
-                                            except: pass
+                                            except Exception: pass
                                 except Exception as e:
                                     _log(f'[VISIBILITY] body toggle failed: {e}')
 
@@ -1250,14 +1250,14 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             # ends up dark even though it should be primary.
                             for occ in consolidated:
                                 try: occ.isLightBulbOn = (occ is best)
-                                except: pass
+                                except Exception: pass
 
                             if stamped_with_panel is not None:
                                 _log('[VISIBILITY] Stamped panel is primary; Clean occurrence hidden. Surfaces hidden.')
                             elif best:
                                 try:
                                     _log(f'[VISIBILITY] Primary: "{best.component.name}" (only Clean). Surface hidden, panel visible.')
-                                except: pass
+                                except Exception: pass
                 except Exception as e:
                     _log(f'[CONSOLIDATE] post-import failed: {e}')
 

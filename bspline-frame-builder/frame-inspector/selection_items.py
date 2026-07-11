@@ -26,16 +26,16 @@ def build_selection_items(entities, coord_func, meta_func=None):
         meta = ''
         try:
             coord = coord_func(ent) or ''
-        except:
+        except Exception:
             coord = ''
         try:
             coord_expr = get_entity_coord_expr(ent) or ''
-        except:
+        except Exception:
             coord_expr = ''
         if meta_func:
             try:
                 meta = meta_func(ent) or ''
-            except:
+            except Exception:
                 meta = ''
         items.append({
             'name': name,

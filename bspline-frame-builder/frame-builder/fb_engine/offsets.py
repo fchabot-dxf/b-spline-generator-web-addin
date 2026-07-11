@@ -596,7 +596,7 @@ def _audit_loop_integrity(ctx, coll, s_name):
                     f"({min_type}) in {s_name}!", "WARNING")
             elif min_type != "E-S":
                 ctx.logger.log(f"  CONNECTION OK: Flipped junction ({min_type}) at seg {i}", "DEBUG")
-        except:
+        except Exception:
             pass
 
 def _reorder_to_chain(ctx, coll, s_name):
@@ -689,9 +689,9 @@ def _force_rename_offset_dim(sketch, p_name):
                         dim.parameter.name = p_name
                         # Force the expression to link to the variable name (parametric)
                         dim.parameter.expression = str(p_name)
-                    except:
+                    except Exception:
                         pass
-    except:
+    except Exception:
         pass
 
 
@@ -721,6 +721,6 @@ def _ensure_parameter_naming(ctx, sketch, target_name):
                     # We'll continue in case of complex offsets.
                 except Exception as e:
                     ctx.logger.log(f"SWEEP RENAME FAIL on {old_name}: {e}", "DEBUG")
-    except:
+    except Exception:
         pass
 
