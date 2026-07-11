@@ -3,7 +3,7 @@
  * Handles SVG serialization and re-import.
  */
 
-import { stripSvgjsAttributes } from '../core/svg-utils.js';
+import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
@@ -89,7 +89,11 @@ function _serializeLayersAttr(editor) {
 export function getLayerSvg(editor, layerId, dpi = 96) {
     if (!editor || !editor._draw || !editor._sketchLayer) return "";
     const targetId = String(layerId);
-    const raw = editor._sketchLayer.node.innerHTML;
+    // Strip data-original-* before the strict image/svg+xml parse below: legacy
+    // snapshots hold raw <>-markup (invalid XML) that would make the parser drop
+    // the expanded element (the fill=none cause). The raster path doesn't need
+    // that metadata. New (base64) snapshots are valid XML; this is a no-op there. (EDM2)
+    const raw = stripOriginalAttrs(editor._sketchLayer.node.innerHTML);
     if (!raw) return "";
 
     // Walk a parsed copy and keep only children whose data-layer matches.
@@ -256,7 +260,7 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     const textCopies = [];
     const fontFamilies = new Set();
     editor._sketchLayer.children().forEach(ch => {
-        const originalTextSvg = ch.attr('data-original-text-svg');
+        const originalTextSvg = decodeSnapshot(ch.attr('data-original-text-svg'));
         if (originalTextSvg) {
             textCopies.push(originalTextSvg);
             const tempEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -412,7 +416,18 @@ export function open(editor, svgString, w, h) {
         return;
     }
     try {
-        const svgEl = new DOMParser().parseFromString(svgString, 'image/svg+xml').querySelector('svg');
+        let svgEl = new DOMParser().parseFromString(svgString, 'image/svg+xml').querySelector('svg');
+        if (!svgEl) {
+            // Legacy poison: an old save whose data-original-* holds raw <>-markup
+            // (invalid XML) makes the strict parse fail (querySelector -> null),
+            // which used to reopen a BLANK editor. Strip those attrs and retry so
+            // the drawing still restores (re-edit metadata for those elements is
+            // lost, but the geometry survives). New saves are base64 = valid XML
+            // and parse on the first try. (EDM2)
+            const cleaned = stripOriginalAttrs(svgString);
+            svgEl = new DOMParser().parseFromString(cleaned, 'image/svg+xml').querySelector('svg');
+            if (svgEl) _ioLog('open: recovered from legacy data-original poison (stripped attrs)');
+        }
         if (svgEl) {
             // v47: Filter out metadata elements so they don't clutter the sketch layer
             // v49: Filter out Defs-based metadata so it doesn't clutter the sketch layer

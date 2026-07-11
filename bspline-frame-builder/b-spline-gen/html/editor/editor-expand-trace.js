@@ -11,7 +11,7 @@
  * strategies should catch most editor-drawn shapes; trace exists for
  * imported SVGs and complex content where there's no analytical path.
  */
-import { stripSvgjsAttributes } from '../core/svg-utils.js';
+import { stripSvgjsAttributes, decodeSnapshot } from '../core/svg-utils.js';
 import { fitCurve, ramerDouglasPeucker, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
@@ -43,7 +43,7 @@ export async function expandTrace(editor, el, { commit = true } = {}) {
 
     // Prepare isolated SVG for just this element. If the element has
     // been moved via transform, preserve that transform when tracing.
-    const rawSvg = el.attr('data-original-text-svg') || el.attr('data-original-svg') || el.svg();
+    const rawSvg = decodeSnapshot(el.attr('data-original-text-svg') || el.attr('data-original-svg')) || el.svg();
     const transformAttr = el.attr('transform');
     const svgContent = stripSvgjsAttributes(rawSvg);
     const transformedContent = transformAttr ? `<g transform="${transformAttr}">${svgContent}</g>` : svgContent;

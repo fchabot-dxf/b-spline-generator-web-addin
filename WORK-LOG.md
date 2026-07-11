@@ -828,3 +828,53 @@ VIEW produced by ONE canonical serializer, and there is exactly ONE persisted fo
 
 **No repo code edits** — design/diagnosis only (+ ran a read-only pipeline-trace subagent).
 Only this log.
+
+---
+
+## Turn 31 — EDM2: base64 the expand snapshot (FIX, browser-verified, both editor copies) — DONE
+
+**Scope-first (as directed):** the poison attr `data-original-*` has **1 WRITE**
+(fresh snapshot, `editor-expand-commit.js:117`; the two carry-forwards at `:112/114`
+pass already-encoded values through) and only **2 markup READ sites** that must decode
+(`editor-expand-trace.js:46` re-edit, `editor-io.js:259` saveWithTextCopies); the
+`editor-expand-trace.js:120` read is a presence check. Small → stayed with **Approach A**
+(base64), no gate to B.
+
+**Changes (both trees — `data-original-*` is now valid-XML base64):**
+- `core/svg-utils.js` (both copies): `encodeSnapshot` (Unicode-safe base64),
+  `decodeSnapshot` (legacy raw-markup passthrough), `stripOriginalAttrs`.
+- `editor-expand-commit.js:117`: `encodeSnapshot(_snapshotMarkup(...))` — the fresh
+  snapshot is base64 → no raw `<>` in the attribute → the containing SVG stays valid XML.
+- `editor-expand-trace.js:46`: `decodeSnapshot(...)` on the re-edit read.
+- `editor-io.js`: (a) **getLayerSvg** strips `data-original-*` before its strict parse
+  (raster doesn't need it) → fixes fill=none for legacy content too; (b) **open()**
+  now retries `stripOriginalAttrs`+reparse when the first strict parse yields no
+  `<svg>` → recovers legacy-poison saves instead of reopening blank; (c) saveWithTextCopies
+  read (`:259`) decodes.
+- Mirrored the 3 IDENTICAL editor/ files to stamp-editor (`cp`, `diff -q` clean); added
+  the same 3 helpers to stamp-editor's DRIFTED `svg-utils.js` (couldn't cp).
+
+**Legacy handling:** new saves = base64 (valid XML, parse first try, re-edit metadata
+preserved). Old poisoned saves: `decodeSnapshot` passes their raw markup through for
+re-edit, and getLayerSvg-strip / open-retry recover them (geometry restored; per-element
+re-edit metadata for those legacy elements is lost — acceptable).
+
+**Verify:**
+- Helper unit tests (real module, node): encode→decode round-trip ✓, Unicode ✓, legacy raw
+  passthrough ✓, empty ✓, `stripOriginalAttrs` removes the attr but keeps `fill="#000000"` ✓.
+- **Headless Chromium** (real `svg-utils.js` module + real DOMParser), simulating
+  commitExpandedPath output (a filled `fill="#000000" fill-rule="evenodd"` path carrying
+  `data-original-svg`):
+  - NEW base64 attr → strict parse OK, path **`fill=#000000` preserved** → stamp gets the
+    fill AND `open()`'s `querySelector('svg')` is non-null → content restores.
+  - OLD raw-poison attr → path **`fill=null`** (fill LOST — reproduces the bug).
+  - poison + `stripOriginalAttrs` → **`fill=#000000` recovered** (the open() fallback).
+  - `encHasAngle=false` (base64 = valid XML), decode round-trip ✓.
+  (The synthetic poison parsed leniently to svg:true/fill:null rather than a hard null-svg,
+  but the fill-loss vs fill-preserved contrast is decisive; the real end-to-end
+  draw→expand→apply→reopen UI drive was not scripted — verified the fix MECHANISM with real
+  module code in a real browser.)
+- All 8 files `node --check` OK; the 3 editor files byte-identical across trees.
+- Started/killed a local http.server for the test (port down; proc tree clean).
+
+**Scope:** both editor copies. Did NOT unify the serializers or retire the mirror (EDM3/EDM4).

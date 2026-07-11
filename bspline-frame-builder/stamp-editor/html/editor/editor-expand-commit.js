@@ -31,6 +31,7 @@
  * the rasterizer parses. Don't change that without also changing this.
  */
 import { fusLog } from '../core/fusion-bridge.js';
+import { encodeSnapshot } from '../core/svg-utils.js';
 
 function _cLog(msg) {
     if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-COMMIT') {
@@ -113,7 +114,9 @@ export function commitExpandedPath(editor, originalEl, d, options) {
     } else if (carriedSvg) {
         expanded.attr('data-original-svg', carriedSvg);
     } else {
-        const snap = _snapshotMarkup(originalEl);
+        // base64-encode so the raw <>-markup can't invalidate the containing
+        // SVG's XML (EDM2). carried* values (above) are already encoded.
+        const snap = encodeSnapshot(_snapshotMarkup(originalEl));
         expanded.attr(isText ? 'data-original-text-svg' : 'data-original-svg', snap);
     }
 
