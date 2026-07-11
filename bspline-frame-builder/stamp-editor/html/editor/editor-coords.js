@@ -27,6 +27,25 @@
  */
 
 /**
+ * Bake an explicit affine matrix into a single point — the manual
+ * [a c e; b d f] multiply. Use this instead of `new SVG.Point(x,y)
+ * .transform(m)`: SVG.js's Point.transform is historically unreliable for
+ * baking (and SVG.Point is absent in some host builds), which silently
+ * dropped the source scale in expand → micro-scale output (EX1). This has
+ * no SVG.js dependency, so it can't be skipped or misbehave.
+ *
+ * `m` is any {a,b,c,d,e,f} (an SVG.Matrix or a plain object); `pt` is any
+ * {x,y}. Returns a plain {x,y}.
+ */
+export function transformPoint(m, pt) {
+    if (!m) return { x: pt.x, y: pt.y };
+    return {
+        x: m.a * pt.x + m.c * pt.y + m.e,
+        y: m.b * pt.x + m.d * pt.y + m.f,
+    };
+}
+
+/**
  * Apply el.matrix() to a single local-space point. The "matrix" here is
  * just the element's own transform attribute — NOT the cumulative chain
  * to screen coords (use cases like hit-testing want user-space coords,
@@ -38,10 +57,7 @@ export function worldPoint(el, pt) {
     try {
         const m = el.matrix();
         if (!m) return { x: pt.x, y: pt.y };
-        return {
-            x: m.a * pt.x + m.c * pt.y + m.e,
-            y: m.b * pt.x + m.d * pt.y + m.f,
-        };
+        return transformPoint(m, pt);
     } catch {
         return { x: pt.x, y: pt.y };
     }

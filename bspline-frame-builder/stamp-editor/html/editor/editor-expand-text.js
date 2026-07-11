@@ -16,7 +16,7 @@
  */
 import { FONT_MAP } from './editor-fonts.js';
 import { dbg } from './debug.js';
-import { localAnchor } from './editor-coords.js';
+import { localAnchor, transformPoint } from './editor-coords.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
 
 export async function expandText(editor, el, { commit = true } = {}) {
@@ -100,7 +100,10 @@ export async function expandText(editor, el, { commit = true } = {}) {
         pArray.forEach(seg => {
             for (let i = 1; i < seg.length; i += 2) {
                 if (typeof seg[i] === 'number' && typeof seg[i + 1] === 'number') {
-                    const pt = new SVG.Point(seg[i], seg[i + 1]).transform(m);
+                    // Manual affine (transformPoint), not SVG.Point.transform —
+                    // the latter is unreliable/absent in some host builds and
+                    // silently dropped the scale → micro text (EX1).
+                    const pt = transformPoint(m, { x: seg[i], y: seg[i + 1] });
                     seg[i] = pt.x;
                     seg[i + 1] = pt.y;
                 }

@@ -1091,3 +1091,108 @@ persistence is robust regardless — but the Cancel/stamp-mirror path is a separ
 look. Also still in the tree, untouched by me: the advisor's uncommitted
 `stamp-editor/html/core/stamp/svg-utils.js` (from turn 38) and an untracked `.claude/` dir (not
 mine). I committed ONLY my 4 files.
+
+---
+
+## Turn 43 — EX1: expanded vectors emboss at MICRO scale — reproduce + fix (test-first) — DONE
+
+Reproduced the micro-scale expand in headless Chromium, root-caused it, fixed it in BOTH forked
+editor copies, locked the fix's math in `npm test`. b-spline-gen editor tree (forked → both copies).
+
+**The diagnostic journey (measurement, not assumption):**
+The advisor's hypothesis was "expand-commit.js:104 transform:null drops a source scale not baked
+into d." I MEASURED it (parse bbox from the `d` string; source WORLD bbox = source d × el.matrix()):
+- stroke no-transform (expandShape): ratio ~1.0 ✓
+- stroke SCALED x3 (expandShape): srcWorld w=3.9, expanded w=4.0, **ratio 1.026 ✓** — expandShape
+  DOES bake the transform (via getPointAtLength world-transform). Hypothesis REFUTED for shape/text
+  in this environment.
+- filled scaled (expandTrace): trace renders transformed content into a LOCAL-bbox viewBox →
+  content falls outside → empty, leaves original untouched (a real but separate defect, not micro).
+Key gotcha: the editor lives in a display:none modal, so el.bbox()/rbox() return 0 and canvg can't
+rasterize — I had to open the modal (display:flex) + set a real viewport before measurements worked.
+
+**Root cause (CONFIRMED by reproduction):** expand bakes the transform with
+`new SVG.Point(x,y).transform(m)`. `expandShape`/`expandGeometric` (editor-expand-shape.js:168)
+even GUARDS it behind `&& SVG.Point` and SILENTLY skips the transform when SVG.Point is missing;
+`expandText` (:103) uses it unguarded. SVG.js's Point.transform is "historically unreliable" (the
+code's OWN comments say so — expand-text.js:96, transform-handles.js:342 has a manual fallback for
+exactly this). Reproduced deterministically by stubbing `SVG.Point = undefined` (simulating that
+host build) and expanding a scaled-x3 stroke:
+- **with SVG.Point: ratio 1.026** (world coords `M 1.350 1.400…`)
+- **without SVG.Point: ratio 0.359 ≈ 1/3 = 1/scaleFactor — MICRO** (local coords `M 0.250 0.300…`)
+The offset ring is built in LOCAL space, then commit drops the transform → ~1/scale.
+
+**Fix (declare-over-hand-roll — the reusable concept already existed):** `editor-coords.js` header
+literally says it's "the ONE place we bake an element's transform into geometry… expand-text used
+el.x()… expand-shape used el.transform()… these helpers make the right answer the easy answer" —
+yet expand hand-rolled the fragile SVG.Point instead. Added a matrix-taking sibling
+`transformPoint(m, pt)` (pure manual affine `[a c e; b d f]`, no SVG.js dependency; worldPoint now
+delegates to it) and routed expand-shape (:168) + expand-text (:103) through it. Baking can no
+longer be skipped or misbehave. LOW risk: mathematically identical to Point.transform in the working
+case, correct in the failing case; same affine transform-handles/worldPoint already use. NOT gated.
+
+**Both forked copies:** the 3 files (editor-coords, expand-shape, expand-text) are byte-identical
+between b-spline-gen and stamp-editor EXCEPT line-endings (b-spline-gen LF, stamp-editor CRLF — not
+real drift). Mirrored by writing the edited content to stamp-editor with CRLF preserved (Python
+convert), so the stamp-editor diff is just my ~40 changed lines, not a whole-file EOL flip. Verified
+both trees byte-identical (content) + node --check both.
+
+**Verify:**
+- Headless repro: scaled stroke, SVG.Point stubbed → ratio 0.359 (micro) on old code, **1.026
+  (fixed)** after. Also confirmed with SVG.Point present stays 1.026 (no regression).
+- Guard PROVEN: reverted expand-shape to the SVG.Point version → measure5 micro (0.359) again;
+  restored → 1.026. (Reverted via Edit, not git checkout — the fix isn't committed; RO1 lesson.)
+- `tests/expand-transform.test.js` (5 tests) pins `transformPoint`: scale+translate, the EX1 3x
+  scenario (1.4 not micro 0.3), rotation/shear, identity/null, and works with SVG undefined.
+  **npm test 23/23 green** (18 + 5). node --check both trees OK.
+
+**Test-coverage note (honest):** the full expand pipeline needs real SVG geometry
+(getPointAtLength) which happy-dom lacks, so the committed CI guard is the transformPoint unit test
+(the fix's core math); the end-to-end integration guard (revert expand-shape → micro) is the
+Playwright measurement (scratchpad/ex1-measure5.cjs), documented here — same split RO1 used
+(happy-dom test committed, Playwright repro documented). A follow-up could add a devDep Playwright
+e2e if desired.
+
+**Also noted (NOT fixed — out of EX1 scope):** (1) expandTrace renders transformed content into a
+LOCAL-bbox viewBox → scaled filled shapes trace empty (silent no-op). Separate bug. (2) expand-text
+still uses `SVG.PathArray` to PARSE the glyph path (a different svg.js dependency than the
+point-transform I fixed); if that's also absent in the host build, text expand would throw→trace.
+(3) transform-handles.js:339 / editor-eraser.js:344 still hand-roll `SVG.Point.transform` — could
+also migrate to transformPoint for full robustness (declare-over-hand-roll), but left untouched
+(surgical scope). (4) Still untouched by me: advisor's uncommitted stamp-editor/core/stamp/
+svg-utils.js (turn 38). Committed ONLY my 7 files.
+
+### Turn 43 — AMENDMENT (normal vectors offset DOWN when sent/stamped) — investigated, GATED
+
+Advisor amended mid-task: NORMAL (non-expanded) vectors are offset DOWN when sent/stamped; measure
+position too; diagnose if it's the SAME root as expand-micro; fix both or gate if risky.
+
+**Measured (headless, modal visible):** drew a line at y=2, serialized via `getLayerSvg` (the stamp
+path). Output: `d="M1 2 L6 2"`, `viewBox="0 0 7 9"`, Y = 2 — **getLayerSvg preserves Y EXACTLY, no
+offset.** A dragged element (`transform="translate(0,1)"`) keeps its transform in the output too.
+
+**Diagnosis — NOT the same root as expand-micro, and NOT in the editor serialization:**
+- expand-micro = SVG.Point-dependent transform baking INSIDE the expand strategies (fixed above).
+  Normal vectors never go through expand, so that fix doesn't touch them.
+- getLayerSvg (the one editor→stamp seam I can test headless) is CORRECT (Y preserved). So the
+  "offset down" is DOWNSTREAM of the editor:
+    * STAMPED: getLayerSvg → `main/stamp-mask-manager.js:52` → `core/stamp/render-svg.js` rasterizes
+      to the terrain grid with a `layerTransform` (tx/ty/rotation/scale). A Y-flip/origin mismatch in
+      that viewBox→grid mapping would offset every stamp. (Broad subsystem — changing it affects ALL
+      stamps + terrain mapping.)
+    * SENT: `main/app-init.js:175` (send-to-Fusion, import_svg_sketches) and
+      `main/export-flow.js:250,286` which wrap `l.svg` in `normalizeSvgForCarving` — the flip-Y
+      `translate(0 height) scale(1 -1)`. If height is wrong / double-applied / applied to an already
+      world-space doc, a shape at y=2 in a height-9 space flips to y≈7 = "offset down." This path is
+      Fusion-only — NOT reproducible headless.
+
+**GATE (per the amendment's "gate if the coordinate fix is risky"):** the normal-offset is a
+separate, downstream coordinate bug in the rasterizer (render-svg terrain mapping) and/or the
+Fusion-send flip-Y — different root from expand-micro. Fixing it blind is risky (all-stamps blast
+radius) and the send path can't be verified without Fusion. Need from advisor:
+  1. Is the offset seen in the STAMP/terrain preview (headless-testable via render-svg) or ONLY when
+     SENT to Fusion? That decides where to dig.
+  2. If STAMP: I'll measure render-svg's viewBox→grid Y mapping next turn and fix + test there.
+  3. If SENT: likely `normalizeSvgForCarving` flip-Y height/space — needs a Fusion round-trip to
+     verify; recommend a human/Fusion check of the exact offset (= mH? = a constant?).
+Landing the verified expand-micro fix now; holding the normal-offset for this synthesis.

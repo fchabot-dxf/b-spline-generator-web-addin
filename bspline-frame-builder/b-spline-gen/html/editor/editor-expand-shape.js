@@ -20,6 +20,7 @@
  */
 import { fusLog } from '../core/fusion-bridge.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
+import { transformPoint } from './editor-coords.js';
 
 // Dynamic-loaded so a missing editor-expand-union.js cannot break the
 // editor module chain at panel boot. The first expand call resolves
@@ -165,10 +166,10 @@ function expandGeometric(editor, el, strokeWidth, matrix, isClosed) {
     for (let i = 0; i <= numSamples; i++) {
         const t = (i / numSamples) * length;
         let pt = pathNode.getPointAtLength(t);
-        if (hasTransform && typeof SVG !== 'undefined' && SVG.Point) {
-            const worldPt = new SVG.Point(pt.x, pt.y).transform(matrix);
-            pt = { x: worldPt.x, y: worldPt.y };
-        }
+        // Bake the element's transform into world space via the manual affine
+        // (transformPoint) — NOT SVG.Point.transform, which is absent/unreliable
+        // in some host builds and silently dropped the scale here → micro (EX1).
+        if (hasTransform) pt = transformPoint(matrix, pt);
         pts.push(pt);
     }
 
