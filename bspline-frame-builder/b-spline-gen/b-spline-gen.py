@@ -16,68 +16,25 @@ from datetime import datetime
 
 def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0):
     """
-    Pre-scale, pre-flip Y, and pre-center SVG coordinates for Fusion 360 import.
+    PASS-THROUGH (SC2). The board->Fusion carve transform (scale x{dpi}, flip Y,
+    center on origin) is now baked into the SVG coordinates on the JS side, in
+    ONE place -- editor-io.js `bakeSvgForCarving` (editor-coords.js `carveMatrix`)
+    -- before the SVG is sent. The SVG arrives Fusion-ready.
 
-    ROOT CAUSE: Fusion's SVG importer reads coordinates as raw pixels (1 unit = 1/96 inch),
-    ignoring width/height/viewBox and svg_options.scale entirely.
+    This used to re-do that transform with regexes and was the source of the
+    send-path bugs (SC1 trace):
+      - MICRO: its coord regex `([-\\d.]+),([-\\d.]+)` matched only COMMA-separated
+        pairs, but the editor/svg.js emit SPACE-separated path `d` -> <path> coords
+        passed through untransformed -> inch units read by Fusion as pixels ->
+        1/96 scale (micro), unflipped, uncentered.
+      - OFFSET DOWN: the `-(0.5 * scale)` "drift fix" was a constant 0.5-inch
+        downward shift.
+      - DOUBLE FLIP: it flipped Y here AND the (now removed) JS normalizeSvgForCarving
+        added a `<g scale(1 -1)>` flip.
 
-    This single transform bakes everything in so the sketch lands correctly with NO
-    sketch.move() required:
-      - Scale:   inch-units → pixel-units  (x96)
-      - Flip Y:  SVG Y goes down; negate so artwork is right-side-up in Fusion
-      - Center:  shift so board center lands on the world origin (0, 0)
-
-    Result after Fusion import:
-      x  in [-w_cm/2,  w_cm/2]   e.g. [-8.89,  +8.89] cm for a 7-inch wide board
-      y  in [-h_cm/2,  h_cm/2]   e.g. [-11.43, +11.43] cm for a 9-inch tall board
+    Kept as a no-op (not deleted) so the call site + any external callers stay
+    valid. `scale`, `width_in`, `height_in` are now unused.
     """
-    w_px   = width_in  * scale   # e.g. 7  * 96 = 672
-    h_px   = height_in * scale   # e.g. 9  * 96 = 864
-    half_w = w_px / 2            # 336
-    half_h = h_px / 2            # 432
-
-    def transform_coord(x_str, y_str):
-        new_x = float(x_str) * scale - half_w   # scale + center X
-        # FLIP + Shift: cad_y = (half_h - svg_y * scale) - 0.5 * scale (to fix drift)
-        new_y = (half_h - float(y_str) * scale) - (0.5 * scale)
-        return f'{new_x:.4f},{new_y:.4f}'
-
-    def scale_pair(m):
-        return transform_coord(m.group(1), m.group(2))
-
-    # 1. Transform positional attributes x, y, cx, cy (Bake centering + scaling)
-    def scale_x_attr(m):
-        return f'{m.group(1)}="{float(m.group(2)) * scale - half_w:.4f}"'
-    svg_text = re.sub(r'\b(x|cx)="([^"]+)"', scale_x_attr, svg_text)
-
-    def scale_y_attr(m):
-        # FLIP Y + Shift: cad_y = (half_h - svg_y * scale) - 0.5 * scale (to fix drift)
-        val = (half_h - float(m.group(2)) * scale) - (0.5 * scale)
-        return f'{m.group(1)}="{val:.4f}"'
-    svg_text = re.sub(r'\b(y|cy)="([^"]+)"', scale_y_attr, svg_text)
-
-    # 2. Transform scale-only attributes (width, height, r, rx, ry, font-size)
-    def scale_only_attr(m):
-        return f'{m.group(1)}="{float(m.group(2)) * scale:.4f}"'
-    svg_text = re.sub(r'\b(width|height|r|rx|ry|font-size)="([^"]+)"', scale_only_attr, svg_text)
-
-    # 3. Transform polyline/polygon points="x1,y1 x2,y2 ..."
-    def scale_pts(m):
-        return 'points="' + re.sub(r'([-\d.]+),([-\d.]+)', scale_pair, m.group(1)) + '"'
-    svg_text = re.sub(r'points="([^"]+)"', scale_pts, svg_text)
-
-    # 4. Transform path d="M x,y L x,y C x1,y1 x2,y2 x,y ..."
-    def scale_d(m):
-        return 'd="' + re.sub(r'([-\d.]+),([-\d.]+)', scale_pair, m.group(1)) + '"'
-    svg_text = re.sub(r'\bd="([^"]+)"', scale_d, svg_text)
-
-    # 5. Update viewBox to centered pixel coordinate space
-    svg_text = re.sub(
-        r'viewBox="[^"]+"',
-        f'viewBox="{-half_w:.0f} {-half_h:.0f} {w_px:.0f} {h_px:.0f}"',
-        svg_text
-    )
-
     return svg_text
 
 handlers = []

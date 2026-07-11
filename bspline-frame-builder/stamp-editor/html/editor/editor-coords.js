@@ -46,6 +46,23 @@ export function transformPoint(m, pt) {
 }
 
 /**
+ * The single affine that maps editor SVG space (inches, Y-down, origin at
+ * the board's top-left) to Fusion import space (pixels at `dpi`, Y-up,
+ * origin at the board CENTER):
+ *     cad_x = x*dpi - widthIn*dpi/2
+ *     cad_y = heightIn*dpi/2 - y*dpi
+ * ONE scale (×dpi), ONE flip (d = -dpi), ONE center — no per-axis fudge.
+ *
+ * Fusion's SVG importer reads raw pixel coords (1 unit = 1/dpi inch) and
+ * ignores viewBox/scale/transforms, so this must be BAKED into the geometry
+ * before import — see bakeSvgForCarving (editor-io.js). Returned as a plain
+ * {a,b,c,d,e,f} so transformPoint / SVG.Matrix can consume it.
+ */
+export function carveMatrix(widthIn, heightIn, dpi = 96) {
+    return { a: dpi, b: 0, c: 0, d: -dpi, e: -(widthIn * dpi) / 2, f: (heightIn * dpi) / 2 };
+}
+
+/**
  * Apply el.matrix() to a single local-space point. The "matrix" here is
  * just the element's own transform attribute — NOT the cumulative chain
  * to screen coords (use cases like hit-testing want user-space coords,

@@ -7,6 +7,8 @@ import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../cor
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
+import { carveMatrix, transformPoint } from './editor-coords.js';
+import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -131,6 +133,71 @@ export function getLayerSvg(editor, layerId, dpi = 96) {
     const hPx = editor._mH * dpi;
     const inner = stripSvgjsAttributes(root.innerHTML);
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${inner}</svg>`;
+}
+
+/**
+ * Bake the board→Fusion carve transform into every element's geometry and
+ * return a Fusion-ready SVG. This is THE single, authoritative carve
+ * transform (Option A): it replaces the old normalizeSvgForCarving `<g>`
+ * flip AND the Python _prescale_svg regex — which together double-flipped,
+ * and (comma-only) failed to scale the space-separated path `d` svg.js
+ * emits, so every path came through at 1/dpi (micro), unflipped, uncentered.
+ *
+ * Fusion's importer reads raw pixel coords (1 unit = 1/dpi inch) and ignores
+ * viewBox/scale/element transforms, so the mapping (carveMatrix: ×dpi, flip
+ * Y, center) MUST be baked into the coordinates. Each element bakes
+ * (carveMatrix × el.matrix()), folding in its own drag/scale transform.
+ * Uses svg.js (a real SVG engine) so all path syntaxes/curves bake
+ * correctly. Returns the input unchanged if svg.js is unavailable.
+ *
+ * NOTE: <text> is not matrix-baked (font geometry) — only its x/y anchor +
+ * font-size are carved so it lands in place; glyph orientation under the
+ * Y-flip is NOT handled (expand text to paths before carving).
+ */
+export function bakeSvgForCarving(svgText, widthIn, heightIn, dpi = 96) {
+    if (!svgText) return svgText;
+    if (typeof SVG === 'undefined' || !SVG.Matrix) return svgText;
+    try {
+        const carve = new SVG.Matrix(carveMatrix(widthIn, heightIn, dpi));
+        const root = SVG(svgText);
+        if (!root || typeof root.children !== 'function') return svgText;
+        _carveChildren(root, carve);
+        const halfW = widthIn * dpi / 2, halfH = heightIn * dpi / 2;
+        try { root.viewbox(-halfW, -halfH, widthIn * dpi, heightIn * dpi); } catch (_) {}
+        const out = root.svg();
+        try { root.remove(); } catch (_) {}
+        return out;
+    } catch (e) {
+        try { fusLog('[CARVE] bakeSvgForCarving failed: ' + e.message); } catch (_) {}
+        return svgText;
+    }
+}
+
+/** Bake carve into each geometry leaf, descending through <g> (composing the
+ *  group's own transform) so any wrapped content still bakes correctly. */
+function _carveChildren(container, carve) {
+    container.children().forEach(ch => {
+        const type = ch.type;
+        if (type === 'defs' || type === 'title' || type === 'desc' || type === 'style') return;
+        if (type === 'g') {
+            _carveChildren(ch, carve.multiply(ch.matrix()));
+            ch.attr('transform', null);   // the group's transform is now baked into its children
+            return;
+        }
+        const combined = carve.multiply(ch.matrix());
+        if (type === 'text') { _carveTextAnchor(ch, combined); return; }
+        bakeMatrixIntoElement(ch, combined);
+    });
+}
+
+/** <text> carve: position the anchor + scale font-size (no glyph flip). */
+function _carveTextAnchor(textEl, m) {
+    const p = transformPoint(m, { x: parseFloat(textEl.attr('x')) || 0, y: parseFloat(textEl.attr('y')) || 0 });
+    textEl.attr('x', p.x);
+    textEl.attr('y', p.y);
+    const fs = parseFloat(textEl.attr('font-size'));
+    if (fs) textEl.attr('font-size', fs * Math.abs(m.a));
+    textEl.attr('transform', null);
 }
 
 export function save(editor, dpi = 96) {

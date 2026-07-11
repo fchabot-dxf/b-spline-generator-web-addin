@@ -16,50 +16,11 @@ export function stripSvgjsAttributes(svgText) {
   return svgText.replace(/\s+svgjs:[^=]+="[^"]*"/g, '');
 }
 
-/**
- * Wrap the SVG content in a flip-Y group so the carving path renders with
- * the orientation Fusion's importer expects. Idempotent — recognizes the
- * wrapper from an earlier call and skips re-flipping.
- */
-export function normalizeSvgForCarving(svgText) {
-  if (!svgText) return svgText;
-  if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') return svgText;
-  try {
-    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
-    const svg = doc.querySelector('svg');
-    if (!svg) return svgText;
-
-    let height = NaN;
-    const viewBox = svg.getAttribute('viewBox');
-    if (viewBox) {
-      const parts = viewBox.trim().split(/\s+/).map(parseFloat);
-      if (parts.length === 4 && !Number.isNaN(parts[3])) height = parts[3];
-    }
-    if ((!height || height <= 0) && svg.hasAttribute('height')) {
-      height = parseFloat(svg.getAttribute('height'));
-    }
-    if (!height || height <= 0) return svgText;
-
-    const flipTransform = `translate(0 ${height}) scale(1 -1)`;
-    const firstChild = svg.firstElementChild;
-    if (firstChild && firstChild.tagName.toLowerCase() === 'g' &&
-        firstChild.getAttribute('transform') === flipTransform) {
-      return svgText;
-    }
-
-    const wrapper = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
-    wrapper.setAttribute('transform', flipTransform);
-    while (svg.firstChild) wrapper.appendChild(svg.firstChild);
-    svg.appendChild(wrapper);
-    if (!svg.hasAttribute('preserveAspectRatio')) {
-      svg.setAttribute('preserveAspectRatio', 'none');
-    }
-    return new XMLSerializer().serializeToString(svg);
-  } catch (e) {
-    console.warn('normalizeSvgForCarving failed:', e);
-    return svgText;
-  }
-}
+/* normalizeSvgForCarving (a flip-Y <g> wrapper) was removed with SC2: the
+ * board→Fusion carve transform is now baked into the coordinates in ONE
+ * place — editor-io.js bakeSvgForCarving (carveMatrix). The old wrapper was
+ * one of two competing Y-flips (the other being the Python _prescale_svg,
+ * now pass-through). */
 
 /**
  * Encode a raw SVG-markup snapshot (the pre-expand element, kept for the

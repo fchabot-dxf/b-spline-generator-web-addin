@@ -268,7 +268,18 @@ export function resetTransform(el) {
  */
 export function flattenTransform(el) {
     if (!el || typeof el.attr !== 'function') return false;
-    const m = el.matrix();
+    return bakeMatrixIntoElement(el, el.matrix());
+}
+
+/**
+ * Bake an EXPLICIT matrix `m` into the element's geometry (rather than the
+ * element's own transform). flattenTransform is the special case
+ * bakeMatrixIntoElement(el, el.matrix()); the carve export (bakeSvgForCarving)
+ * uses it with (carveMatrix × el.matrix()) to fold the board→Fusion mapping
+ * into the coordinates. Returns false for types we can't bake (text/image/g).
+ */
+export function bakeMatrixIntoElement(el, m) {
+    if (!el || typeof el.attr !== 'function') return false;
     if (!m || _isIdentity(m)) {
         el.attr('transform', null);
         return true;

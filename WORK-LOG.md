@@ -1276,3 +1276,67 @@ centered. Two implementation options (advisor picks — this is the gate):
 3. OK to run a one-shot Fusion MCP probe (import a tiny known SVG into a scratch sketch) to settle
    whether Fusion honors `<g transform>` — or does the advisor already know? That decides root-3 scope.
 No code touched this turn (trace/propose only, per SC1). WORK-LOG only.
+
+---
+
+## Turn 47 — SC2: implement Option A (single JS carve transform) — DONE (human-Fusion-confirm)
+
+Implemented the blessed Option A: bake the ONE board→Fusion carve transform into the SVG coordinates
+in JS, remove the JS flip wrapper, and make the Python transform pass-through — killing all three
+SC1 roots (micro / offset-down / double-flip). Editor tree = forked → both copies. No live Fusion
+(human read-only session); the coordinate math is unit-tested + browser-verified, human confirms the
+Fusion import.
+
+**Path A confirmed DEAD (gate condition not met → proceeded):** grep — NO Python handler for the
+`import_svg_sketches` channel the editor "Send to Fusion" button emits (app-init.js:201). So that
+button already does nothing; my changes don't touch its code (it still calls getLayerSvg, unchanged).
+The LIVE carve path is Path B: `export-flow.js:250` → STEP payload → Python
+`_import_all_svg_layers → _import_single_layer_svg → _prescale_svg`. (If Path A is ever revived, it
+must also route its getLayerSvg through bakeSvgForCarving — noted.)
+
+**What changed:**
+- `editor-coords.js` (both trees): `+ carveMatrix(widthIn, heightIn, dpi)` — the single affine
+  `{a:dpi, b:0, c:0, d:-dpi, e:-widthIn*dpi/2, f:heightIn*dpi/2}` (×dpi scale, ONE flip via d<0,
+  center; NO 0.5 fudge).
+- `editor-transform-handles.js` (both trees): generalized `flattenTransform(el)` → thin wrapper over
+  new `bakeMatrixIntoElement(el, m)` (bakes an EXPLICIT matrix). Behavior of flattenTransform
+  unchanged (= bakeMatrixIntoElement(el, el.matrix())).
+- `editor-io.js` (both trees): `+ bakeSvgForCarving(svgText, widthIn, heightIn, dpi)` — parses via
+  svg.js (real engine), bakes `carveMatrix × el.matrix()` into every element (folding in each
+  element's own drag/scale transform), descends through `<g>`, carves `<text>` anchor+font-size
+  (glyph flip NOT handled — expand text first), returns a Fusion-ready SVG. Reuses
+  bakeMatrixIntoElement + transformPoint (declare-over-hand-roll — no new path-baking code).
+- `export-flow.js` (single copy): both `normalizeSvgForCarving(l.svg)` sites →
+  `bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96)` (send payload + downloadable .svg).
+- `core/svg-utils.js` (both trees): removed `normalizeSvgForCarving` (the `<g scale(1 -1)>` flip) —
+  left a breadcrumb comment. It was dead after the export-flow swap.
+- `b-spline-gen.py`: `_prescale_svg` → PASS-THROUGH (`return svg_text`) — dropped the comma-only
+  regex (the micro root), the -(0.5*scale) fudge (offset-down root), and its Y-flip (half the
+  double-flip). Kept the def + call site valid.
+
+**Verified:**
+- Browser (real svg.js), the ACTUAL bakeSvgForCarving on known coords (7x9, dpi 96):
+    - path (1,2)→(6,2)      → `M-240 240 L240 240`   (right-side-up +2.5in, ×96, centered, NO offset)
+    - filled square (1..4)  → `M-240 336 L48 336 L48 48 L-240 48 Z`  (correct)
+    - rect primitive        → promoted to path, correct coords, fill/stroke preserved
+    - translate(0,1) path   → `M-240 144` (element transform folded → visible y=3)
+    - **scaled x3 (matrix)** → `M-201.6 297.6 L172.8 297.6` = VISIBLE size, **not micro** (scale
+      transform folded in — the send-path expand-micro is gone).
+    - palette loads headless with `pageErrors: []` (export-flow→editor-io import chain OK).
+- `tests/carve-transform.test.js` (6 tests) pins carveMatrix: corners/center, Y-flip (y=2→+240 NOT
+  the fudged 192), ×96 scale (guards micro), board-size centering, dpi default. **npm test 29/29
+  green.** node --check all touched JS; py_compile OK; both editor trees byte-identical (content).
+- Editor + terrain PREVIEW untouched (stamp mask path uses getLayerSvg directly, no normalize) — so
+  they stay correct, as expected.
+
+**Left for the human (as directed): confirm in Fusion** the STEP-export stamp lands right-side-up,
+correct scale, centered. My browser check proves the coords match the blessed formula; only the
+actual Fusion importToTarget behavior is unverifiable headless.
+
+**Edge cases FLAGGED (not blocking):** (1) `<text>` carve positions anchor+size but doesn't flip
+glyph orientation — expand text to paths before carving (bakeSvgForCarving notes this). (2) svg.js
+`SVG.PathArray` segment-walk assumes ABSOLUTE path commands (matches editor output; imported SVGs
+with relative/arc commands could bake wrong — same assumption the editor's flatten already makes).
+(3) The gitignored `dist/` build still references the old normalizeSvgForCarving/_prescale — it's a
+build artifact, regenerated on deploy. (4) Still untouched: advisor's uncommitted
+stamp-editor/core/stamp/svg-utils.js (turn 38). Committed ONLY my 12 files.

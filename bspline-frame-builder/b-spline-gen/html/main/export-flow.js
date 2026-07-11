@@ -25,7 +25,7 @@ import {
 } from '../core/fusion-bridge.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
-import { normalizeSvgForCarving } from '../core/svg-utils.js';
+import { bakeSvgForCarving } from '../editor/editor-io.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -247,7 +247,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             layers: options.includeSVG ? layersToExport.map((l, i) => ({
                 index: i + 1,
                 config: { profile: l.profile, depth: l.depth },
-                svg: normalizeSvgForCarving(l.svg),
+                svg: bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96),
             })) : [],
             dpi: 96,
         },
@@ -283,7 +283,7 @@ async function downloadFiles({ shared, heights, offsetPts, unstamped, selectedVa
         layersToExport.forEach((l, i) => {
             exportFiles.push({
                 name: `B-Spline-artwork-layer-${i + 1}.svg`,
-                blob: new Blob([normalizeSvgForCarving(l.svg)], { type: 'image/svg+xml' }),
+                blob: new Blob([bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96)], { type: 'image/svg+xml' }),
             });
         });
     }
