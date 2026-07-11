@@ -404,3 +404,70 @@ is fine for keeping them in sync, but the B6 symptom itself is a b-spline-gen co
 
 **Ask:** confirm **A** (or a synthesis). Next turn I implement it in BOTH `editor-io.js`
 copies + write the manual Fusion repro. **No app-code edits this turn** — only this log.
+
+---
+
+## Turn 17 — B6/F2 v2 (CORRECTED, EDITS CODE): fix hidden-layer data loss — DONE
+
+Advisor confirmed the gate (Option A). Implemented.
+
+**Change (both `editor-io.js` copies, byte-identical patch):** renamed
+`_visibleContent` → `_serializedContent` and **gutted the hidden-drop** — it now returns
+`stripSvgjsAttributes(editor._sketchLayer.node.innerHTML)` (ALL children, all layers).
+All 3 serializers (`save`, `saveForRasterization`, `saveWithTextCopies`) now keep full
+content. Updated the misleading docstring + `save()` comment. Stamp exclusion in
+`getLayerSvg` untouched. Mirrored the patched file to the stamp-editor copy (`cp`);
+`diff -q` → identical.
+
+**Why it fixes B6 (logic argument — can't drive Fusion UI):**
+- Reopen source is `P.editorSvg` = `saveForRasterization()` output (`main/app-init.js:66,88`),
+  restored via `open()` (`:119-123`). Before: `saveForRasterization` dropped hidden
+  children → `P.editorSvg` held visible-only → reopen lost hidden geometry. After: it
+  serializes all children → `P.editorSvg` holds everything; the `visible` flag is
+  persisted separately in `data-editor-layers` (`_serializeLayersAttr`), so `open()`
+  restores geometry AND roster, then `applyLayerState` re-applies `layer-hidden` (CSS) to
+  hidden layers. Net: geometry preserved, hidden state preserved. Same reasoning fixes the
+  `editorDownload` file (`saveWithTextCopies`).
+- **No stamp regression (primary path):** stamp masks come from `getLayerSvg` per layer,
+  skipping `layer.visible===false` (`main/stamp-mask-manager.js:48-55`); `getLayerSvg`
+  never used `_visibleContent`. So hidden exclusion for stamping is unaffected.
+
+**Re-confirm "no wholesale-rasterize consumer of saveForRasterization" (as asked):**
+Primary path is clean (P.editorSvg → reopen only; stamp uses per-layer getLayerSvg). BUT
+I found ONE narrow residual: the legacy fallback (`stamp-mask-manager.js:58-68`) rasterizes
+`P.stampLayers[idx].svg` for entries not covered by an editor pass, and `saveForRasterization`
+mirrors its full-doc output to `P.stampLayers[activeLayerIdx].svg` (`app-init.js:70,89`).
+**Trigger:** only if the ACTIVE layer is hidden at save time (so no editor pass covers its
+idx) — then the full-doc mirror (now incl. hidden) would rasterize. It is (a) narrow
+(active-layer-hidden-at-save), (b) pre-existing (the mirror already produced a spurious
+extra pass double-counting VISIBLE content; my change merely extends it to hidden), (c) in
+`app-init.js`, outside this task's `editor-io.js` scope. **Did NOT expand scope.**
+Recommend a follow-up (F-new): stop mirroring the full doc to `P.stampLayers`, or have the
+legacy fallback skip editor-sourced entries — this also fixes the pre-existing visible
+double-stamp.
+
+**Verify (no Fusion UI available):** `node --check` (via .mjs copy) → syntax OK on the
+patched file; `grep _visibleContent` → 0 refs left, 4 `_serializedContent` (def + 3
+callers); both copies `diff -q` identical. Logic argued above.
+
+### MANUAL REPRO for the human (needs Fusion + the palette)
+_Primary (B6 fix):_
+1. Open the B-Spline palette → open the SVG editor.
+2. Draw content on **Layer 1** (e.g. a circle). Add **Layer 2**, draw a distinct shape
+   (e.g. a square) on it.
+3. **Hide Layer 2** (eye toggle) so only Layer 1 shows.
+4. Click **Apply Stencils** (commit), close the editor.
+5. **Reopen** the editor.
+   - ✅ EXPECTED (fixed): Layer 2 still exists in the roster and still contains the square
+     (hidden). Toggle Layer 2 visible → the square reappears.
+   - ❌ OLD BUG: Layer 2 empty / square gone; toggling visible restores nothing.
+_Also check no stamp regression:_
+6. With Layer 2 hidden, look at the 3D preview stamp: the square must NOT carve the terrain
+   (hidden layers don't stamp). Toggle Layer 2 visible → the square's stamp appears.
+_Edge case to watch (residual, app-init mirror):_
+7. Make **Layer 2 the ACTIVE layer, hide it, then Apply**. If the hidden square's stamp
+   shows up in the preview, that's the documented `app-init.js` legacy-mirror edge case
+   (follow-up F-new), NOT this editor-io.js change.
+
+**Scope:** both `editor-io.js` copies only (identical). Did NOT touch `app-init.js`,
+`stamp-mask-manager.js`, or run a full sync.

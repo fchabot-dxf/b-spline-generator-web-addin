@@ -18,34 +18,15 @@ function _ioLog(msg) {
     try { fusLog(`[EDITOR-IO] ${msg}`); } catch (_) {}
 }
 
-/** Build the sketch-layer content string with elements on hidden layers
- *  filtered out. The visibility flag is meant to affect both the live
- *  view (CSS) AND the stamp geometry sent to Fusion, so save() needs to
- *  drop those elements rather than carrying them through. Returns the
- *  stripped innerHTML. If no hidden layers exist, returns the raw
- *  innerHTML unchanged. */
-function _visibleContent(editor) {
-    const layers = Array.isArray(editor._layers) ? editor._layers : [];
-    const hidden = new Set(layers.filter(l => l.visible === false).map(l => l.id));
-    const raw = editor._sketchLayer.node.innerHTML;
-    if (hidden.size === 0) return stripSvgjsAttributes(raw);
-
-    // Walk a parsed copy and drop hidden-layer elements before
-    // serializing. Using DOMParser keeps quoting/entities sane.
-    const wrapper = `<svg xmlns="http://www.w3.org/2000/svg">${raw}</svg>`;
-    let doc;
-    try {
-        doc = new DOMParser().parseFromString(wrapper, 'image/svg+xml');
-    } catch {
-        return stripSvgjsAttributes(raw);
-    }
-    const root = doc.documentElement;
-    if (!root) return stripSvgjsAttributes(raw);
-    Array.from(root.children).forEach(ch => {
-        const lid = ch.getAttribute('data-layer');
-        if (lid != null && hidden.has(String(lid))) ch.remove();
-    });
-    return stripSvgjsAttributes(root.innerHTML);
+/** Serialize the sketch-layer content — ALL children, ALL layers — with svg.js
+ *  bookkeeping attrs stripped. Hidden layers are intentionally KEPT: their
+ *  `visible` flag is persisted separately in data-editor-layers, so on reopen
+ *  applyLayerState re-hides them for the view. Dropping their geometry here
+ *  loses it permanently on save/reopen and on file download (B6). The
+ *  stamp/rasterize exclusion of hidden layers lives in getLayerSvg
+ *  (per-visible-layer, main/stamp-mask-manager.js), NOT here. */
+function _serializedContent(editor) {
+    return stripSvgjsAttributes(editor._sketchLayer.node.innerHTML);
 }
 
 export function initIO(editor) {
@@ -139,9 +120,11 @@ export function getLayerSvg(editor, layerId, dpi = 96) {
 
 export function save(editor, dpi = 96) {
     if (!editor._draw) return "";
-    // _visibleContent drops elements on hidden layers so stamp output
-    // matches what the user sees. stripSvgjsAttributes is folded in.
-    const content = _visibleContent(editor);
+    // Serialize the FULL document (all layers, incl. hidden). Hidden layers'
+    // visibility is persisted in data-editor-layers and re-applied on reopen,
+    // so their geometry must NOT be dropped here (B6). Stamp exclusion of
+    // hidden layers is handled in getLayerSvg, not here.
+    const content = _serializedContent(editor);
     const wPx = editor._mW * dpi;
     const hPx = editor._mH * dpi;
     const layersAttr = _serializeLayersAttr(editor);
@@ -228,7 +211,7 @@ async function getEmbeddedFontCss(family) {
  */
 export async function saveForRasterization(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const content = _visibleContent(editor);
+    const content = _serializedContent(editor);
 
     // Collect every font-family referenced by a <text> in the content.
     // Parse via DOMParser so we work on real elements regardless of how
@@ -269,7 +252,7 @@ export async function saveForRasterization(editor, dpi = 96) {
 
 export async function saveWithTextCopies(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const content = _visibleContent(editor);
+    const content = _serializedContent(editor);
     const textCopies = [];
     const fontFamilies = new Set();
     editor._sketchLayer.children().forEach(ch => {
