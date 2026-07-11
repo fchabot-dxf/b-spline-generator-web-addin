@@ -620,3 +620,79 @@ to a tracked `.old` log file (the T3/F12 log-cruft item). Committed only my two 
 
 **Scope:** `main/header-controls.js` (b-spline-gen) only. Did not touch the HTML inline
 handler (kept as sole owner, as directed).
+
+---
+
+## Turn 25 — B4a: import_svg_sketches DESIGN (design only, no code) — DONE
+
+Design for wiring the dead `import_svg_sketches` send (B4). Researched the Fusion API via
+the Autodesk Help MCP (not a live spike). No repo code touched.
+
+### 1. Send payload — `main/app-init.js:154-197`
+`#editorSendToFusion` (Fusion-mode only) builds `sketches[]`, **one per VISIBLE editor
+layer** (`:160` skips `visible===false`), each = `{id, name, depth, profile, tx, ty,
+rotation, scale, mirrorX, mirrorY, svg}` where `svg = getLayerSvg(editor, layer.id)` (a
+self-contained per-layer SVG: `width/height` in px@96dpi, `viewBox` in inches). Envelope:
+`{sketches, widthIn, heightIn}` → `adsk.fusionSendData('import_svg_sketches', payload)`.
+
+### 2. Receiver gap — `b-spline-gen.py`
+`PaletteHTMLEventHandler.notify` dispatch (`:666-872`) has **no** `import_svg_sketches`
+branch → dead send (B4). **Big reuse:** the add-in ALREADY imports SVG→sketch —
+`_import_single_layer_svg` (`:1368`) does `sketch_target.sketches.add(plane)` +
+`import_mgr.createSVGImportOptions(tmp)` + `importToTarget(opts, sketch)`, with
+`_prescale_svg` (`:1378`) for DPI→physical sizing. It runs from the HTML-event/import path
+(`_import_all_svg_layers` `:1319`), NOT a command event. B4 is a SIMPLER variant of this
+(no body/offset-plane/carve — just a base-plane sketch in the active component).
+
+### 3. SVG→sketch conversion (Autodesk Help, verified)
+Two documented APIs:
+- **(A) `sketch.importSVG(fullFilename, xPos, yPos, scale)`** (Aug 2014) — simplest:
+  X/Y offset **in cm** + uniform `scale`. NO rotation/mirror. Returns bool.
+- **(B) `ImportManager.createSVGImportOptions(path)` + `importToTarget(opts, sketch)`**
+  (Oct 2022) — `opts.transform` = **Matrix3D** (position, ROTATION, SCALE, MIRROR relative
+  to sketch coords), `opts.isViewFit=False` (avoid camera jump), `isHorizontal/VerticalFlip`.
+  Full per-layer transform. This is what the stamp path uses. (Note: SVGImportOptions has NO
+  documented `.scale` property — the stamp code's `svg_options.scale=1.0` is a no-op;
+  scaling is via `.transform`. Flag for cleanup.)
+- **Units:** Design internal = **cm**; SVG is px@96dpi → **must pre-scale** to physical size
+  (reuse `_prescale_svg` with `widthIn/heightIn`) so the sketch lands at the right size.
+- **⚠️ Limitation (docs):** `importToTarget` "cannot be used within any of the Command
+  related events." The existing stamp import runs from the **HTMLEvent** dispatch and works,
+  so B4 must import inside the `import_svg_sketches` HTMLEvent branch (NOT a command execute
+  handler). If it ever fails there, defer via `app.fireCustomEvent(...)`.
+- **Hidden sketch (`isLightBulbOn`) — verified:** `Sketch.isLightBulbOn` gets/sets the
+  browser light-bulb; `sketch.isLightBulbOn = False` hides the sketch (`isVisible` is
+  read-only, reflects parents too). So a hidden editor layer → a hidden sketch.
+
+### 4. v1 scope
+- Target: `design.activeComponent` (fallback rootComponent), one sketch per sent layer on the
+  **XY construction plane** (z=0), named from `layer.name`, pre-scaled to board size.
+- Import: recommend **(A) `sketch.importSVG`** for the first cut (position+scale only — the
+  payload's `tx/ty/scale`), then **(B)** when rotation/mirror is needed (`mirrorX/Y`,
+  `rotation`) via a Matrix3D.
+- Hidden layers: v1 keeps the frontend's visible-only send (simplest, already true). v1.5 =
+  send ALL layers + a `visible` flag (tiny `app-init.js` change: stop skipping hidden,
+  include `visible`) → receiver sets `isLightBulbOn=False` for hidden.
+- Feedback: replace the frontend's **false** `[SendToFusion] sent N` log (`app-init.js:188`)
+  with a real receiver signal — `pal.sendInfoToHTML('import_success'/'import_error', …)`.
+
+### 5. Slice plan (for B4b+)
+- **B4b — minimal receiver:** add `elif action == 'import_svg_sketches':` → parse payload →
+  per layer: `_prescale_svg` → temp `.svg` → `sk = comp.sketches.add(comp.xYConstructionPlane)`
+  → `sk.importSVG(tmp, 0, 0, 1.0)` → `sk.name = layer['name']` → cleanup temp. Verify ONE
+  visible layer lands as a correctly-sized sketch (human tests in Fusion).
+- **B4c — transform:** apply `tx/ty/scale` (cm), then `rotation`/`mirrorX/Y` via (B)'s
+  Matrix3D. Verify placement matches the editor.
+- **B4d — hidden layers:** frontend sends all + `visible`; receiver `isLightBulbOn=False` for
+  hidden. Verify hidden layers arrive as hidden sketches.
+- **B4e — feedback/grouping:** real success/error signal to the palette; optionally group the
+  sketches under a named component/occurrence.
+
+### Open questions (advisor/human)
+1. **(A) vs (B) for v1** — recommend (A) minimal first; (B) once rotation/mirror matters.
+2. **Target** — active component's XY plane at z=0? (vs a dedicated component / offset plane).
+3. **Hidden scope in v1** — visible-only (v1) vs all-layers+`isLightBulbOn` (v1.5)?
+4. Want this design as a standalone `B4-SEND-TO-FUSION-DESIGN.md` for B4b, or is this
+   WORK-LOG entry the reference?
+
+**No repo code edits** — design/research only. Only this log.
