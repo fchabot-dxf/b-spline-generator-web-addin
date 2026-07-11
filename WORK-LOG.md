@@ -878,3 +878,39 @@ re-edit metadata for those legacy elements is lost — acceptable).
 - Started/killed a local http.server for the test (port down; proc tree clean).
 
 **Scope:** both editor copies. Did NOT unify the serializers or retire the mirror (EDM3/EDM4).
+
+---
+
+## Turn 33 — EDM3: unify serializers (REFACTOR, behavior-preserving) — DONE (getLayerSvg flagged)
+
+**Changes (both editor copies, `editor-io.js`):**
+- Promoted `_serializedContent(editor)` → `serializeEditor(editor, { forRaster })`. `forRaster:false`
+  is byte-identical to the old `_serializedContent` (`stripSvgjsAttributes(innerHTML)`); `forRaster:true`
+  also strips `data-original-*` (raster doesn't need it).
+- Routed **save / saveForRasterization / saveWithTextCopies** through `serializeEditor(editor)`
+  (forRaster:false) — their font-embed / text-copy / layers-attr extras kept as caller logic.
+- Retired dead **`editor.lastSvg`** — 3 writes, **0 reads** (grep-confirmed) → removed the 3 assignments.
+
+**⚠️ FLAGGED — getLayerSvg NOT routed (kept byte-identical, per "outputs MUST stay equivalent"):**
+A headless-Chromium byte-compare of old-vs-new getLayerSvg found a **divergence**: routing it through
+`serializeEditor({forRaster:true})` strips svg.js attrs BEFORE getLayerSvg's strict `image/svg+xml`
+parse, whereas getLayerSvg strips them AFTER. An undeclared `svgjs:` attr makes the strict parse a
+`parsererror`, so the two orders differ — **OLD getLayerSvg returns `""` (empty stamp) when a child
+carries a `svgjs:` attr; the routed version returns the content.** For real sketch children (which carry
+NO `svgjs:` attrs — the browser test's `noSvgjs_equal:true`, and the working stamp/runtime log confirm it)
+they are equivalent. To honor the equivalence constraint I **left getLayerSvg's own strip order unchanged**
+(only added an explanatory NB comment). Net: this surfaces a **latent bug** — OLD getLayerSvg silently
+returns `""` (empty stamp) if svg.js ever writes a `svgjs:` attr onto a sketch child; a targeted follow-up
+could route it through `serializeEditor` and accept that (strictly-improving) behavior change.
+
+**Verify (browser + node):**
+- `node --check` both trees OK; `editor-io.js` mirrored identical across trees.
+- Browser equivalence (real `svg-utils` module + real DOMParser): `serializeEditor({forRaster:false})`
+  === old `_serializedContent` ✓; getLayerSvg old===new for real (no-svgjs) content ✓ (diverges only on
+  the svgjs-present case above).
+- Palette loads headless with **`pageErrors: []`**, `window.svgEditor` ready with working
+  `save`/`saveForRasterization` → the refactored module integrates cleanly.
+- Server tidied (port down); proc tree clean.
+
+**Scope:** `editor-io.js` (both trees). Did NOT route getLayerSvg (flagged) and did NOT retire the
+P.stampLayers mirror (EDM4).

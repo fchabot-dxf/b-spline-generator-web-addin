@@ -18,15 +18,23 @@ function _ioLog(msg) {
     try { fusLog(`[EDITOR-IO] ${msg}`); } catch (_) {}
 }
 
-/** Serialize the sketch-layer content — ALL children, ALL layers — with svg.js
- *  bookkeeping attrs stripped. Hidden layers are intentionally KEPT: their
- *  `visible` flag is persisted separately in data-editor-layers, so on reopen
- *  applyLayerState re-hides them for the view. Dropping their geometry here
- *  loses it permanently on save/reopen and on file download (B6). The
- *  stamp/rasterize exclusion of hidden layers lives in getLayerSvg
- *  (per-visible-layer, main/stamp-mask-manager.js), NOT here. */
-function _serializedContent(editor) {
-    return stripSvgjsAttributes(editor._sketchLayer.node.innerHTML);
+/** THE one editor-content serializer (EDM3). Serializes the sketch-layer content
+ *  — ALL children, ALL layers — with svg.js bookkeeping attrs stripped.
+ *
+ *  Hidden layers are intentionally KEPT: their `visible` flag is persisted
+ *  separately in data-editor-layers, so on reopen applyLayerState re-hides them
+ *  for the view. Dropping their geometry here loses it permanently on
+ *  save/reopen and on file download (B6). The stamp/rasterize exclusion of
+ *  hidden layers lives in getLayerSvg (per-visible-layer), NOT here.
+ *
+ *  opts.forRaster (default false): also strip data-original-* metadata — the
+ *  raster path doesn't need it, and legacy raw-markup snapshots would otherwise
+ *  break a strict image/svg+xml parse (EDM2). Persistence/re-edit callers pass
+ *  false so the (base64) re-edit metadata round-trips. */
+function serializeEditor(editor, { forRaster = false } = {}) {
+    let raw = editor._sketchLayer.node.innerHTML;
+    if (forRaster) raw = stripOriginalAttrs(raw);
+    return stripSvgjsAttributes(raw);
 }
 
 export function initIO(editor) {
@@ -93,6 +101,12 @@ export function getLayerSvg(editor, layerId, dpi = 96) {
     // snapshots hold raw <>-markup (invalid XML) that would make the parser drop
     // the expanded element (the fill=none cause). The raster path doesn't need
     // that metadata. New (base64) snapshots are valid XML; this is a no-op there. (EDM2)
+    // NB (EDM3): intentionally NOT routed through serializeEditor. serializeEditor
+    // strips svg.js attrs BEFORE this parse; getLayerSvg strips them AFTER. When a
+    // child carries an undeclared `svgjs:` attr the strict parse errors, so the two
+    // orders diverge (this parse -> "" vs a clean parse -> content). Real sketch
+    // children carry no svgjs: attrs so it's equivalent in practice, but to keep
+    // output byte-identical we leave getLayerSvg's own order. (See WORK-LOG turn 33.)
     const raw = stripOriginalAttrs(editor._sketchLayer.node.innerHTML);
     if (!raw) return "";
 
@@ -128,14 +142,13 @@ export function save(editor, dpi = 96) {
     // visibility is persisted in data-editor-layers and re-applied on reopen,
     // so their geometry must NOT be dropped here (B6). Stamp exclusion of
     // hidden layers is handled in getLayerSvg, not here.
-    const content = _serializedContent(editor);
+    const content = serializeEditor(editor);
     const wPx = editor._mW * dpi;
     const hPx = editor._mH * dpi;
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${content}</svg>`;
-    editor.lastSvg = svgString;
     return svgString;
 }
 
@@ -215,7 +228,7 @@ async function getEmbeddedFontCss(family) {
  */
 export async function saveForRasterization(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const content = _serializedContent(editor);
+    const content = serializeEditor(editor);
 
     // Collect every font-family referenced by a <text> in the content.
     // Parse via DOMParser so we work on real elements regardless of how
@@ -250,13 +263,12 @@ export async function saveForRasterization(editor, dpi = 96) {
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}</svg>`;
-    editor.lastSvg = svgString;
     return svgString;
 }
 
 export async function saveWithTextCopies(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const content = _serializedContent(editor);
+    const content = serializeEditor(editor);
     const textCopies = [];
     const fontFamilies = new Set();
     editor._sketchLayer.children().forEach(ch => {
@@ -289,7 +301,6 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}${textContent}</svg>`;
-    editor.lastSvg = svgString;
     return svgString;
 }
 
