@@ -1363,3 +1363,40 @@ Center still (0,0). **npm test 29/29 green.** node --check both trees; both edit
 **Human confirms upright in Fusion after redeploy** (no live Fusion this session). Left untouched:
 advisor's uncommitted stamp-editor/core/stamp/svg-utils.js. Committed only carveMatrix (both) + test
 + WORK-LOG.
+
+---
+
+## Turn 51 — RB4: remove the dead editor "Send to Fusion" feature (audit B4) — DONE
+
+The editor #editorSendToFusion button (Path A) was DEAD — it emitted an `import_svg_sketches` channel
+with NO Python receiver (confirmed SC2/turn 47) and logged a FALSE `[SendToFusion] sent …` success.
+Human doesn't use it. Removed by request (resolves audit B4 by removal). b-spline-gen only
+(bspline_gen_palette.html + main/app-init.js are not forked).
+
+**Removed:**
+- `bspline_gen_palette.html`: the `#editorSendToFusion` button + its BUG-23 comment block (-9 lines).
+- `main/app-init.js`: the `initSendToFusionButton()` call + its comment, and the entire
+  `initSendToFusionButton` function (the visibility poller, the click handler that built the
+  sketches payload, `adsk.fusionSendData('import_svg_sketches', …)`, and all `[SendToFusion]` logs)
+  (-72 lines).
+
+**Orphans my removal created — all cleaned (grep-confirmed):** the function was the ONLY user in
+app-init.js of three imports, so I removed them from app-init's import list:
+  - `getLayerSvg` (import line 10) — still exported by editor-io.js + used by stamp-mask-manager.js.
+  - `fusLog` (line 11) — still exported by fusion-bridge.js + used by many modules.
+  - `isFusionMode` (removed from the state.js destructuring on line 1) — still used by
+    core/engine/rebuild.js, fusion-bridge.js, state.js.
+None of the three is globally orphaned; only app-init's now-unused references were dropped. No
+residual `editorSendToFusion|initSendToFusion|import_svg_sketches|SendToFusion` anywhere in
+app-init.js. Python has no branch to remove (there was never an `import_svg_sketches` handler).
+
+**Verify:** `node --check main/app-init.js` OK; palette loads headless — `editorReady:true`,
+`sendBtnGone:true`, Apply/Cancel intact, real pageErrors `[]`; **npm test 29/29 green**.
+
+**Process hygiene note:** I started the verify server via bash `&` + `kill $PID` this time — the
+python child SURVIVED the kill (port stayed up, and proc_health didn't flag it since it wasn't in my
+tracked tree). Caught it via `git status` (port 200), killed the port-8199 listener directly
+(PID 26980) → port DOWN. Lesson: use the run_in_background tool + TaskStop for servers (as in prior
+turns), not bash `&`. Tree clean now.
+
+Left untouched: advisor's uncommitted stamp-editor/core/stamp/svg-utils.js. Committed only my 2 files.
