@@ -186,9 +186,29 @@
       line-height: 1;
     }
 
+    /* Title + version label. The version literal lives in the markup next
+       to the title; source of truth is root package.json "version". Small
+       and muted so it sits beside the title without crowding it. */
+    .cad-nav-titlebox {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .cad-nav-version {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--cad-text-muted);
+      letter-spacing: 0;
+    }
+
     /* Mobile: bump nav buttons to the 44x44 touch-target minimum
        (Apple HIG / WCAG 2.5.5). See BUG-13. */
     @media (max-width: 600px), (pointer: coarse) {
+      /* Tighten the title group's default 24px gap so the header row still
+         fits once the nav buttons grow to 44px. */
+      .cad-navbar .cad-nav-group {
+        gap: 8px;
+      }
       .cad-navbar .cad-nav-btn {
         width: 44px !important;
         min-width: 44px !important;
@@ -201,6 +221,26 @@
       .cad-nav-btn > span {
         font-size: 22px !important;
       }
+      /* Narrow/touch: shrink the STEP export button to the same 44×44
+         footprint as its neighbor nav buttons so the header row fits.
+         Same id/handler/label — only the size changes. The ID+class
+         selector plus !important beats layout-app.css's
+         #btnDownload { min-width: 84px !important }. overflow:hidden +
+         nowrap keep a longer label ("Send to Fusion") from widening the
+         box; "STEP" stays readable at 11px. */
+      .cad-navbar #btnDownload {
+        width: 44px !important;
+        min-width: 44px !important;
+        max-width: 44px !important;
+        height: 44px !important;
+        min-height: 44px !important;
+        max-height: 44px !important;
+        padding: 0 !important;
+        flex: 0 0 44px !important;
+        font-size: 11px !important;
+        white-space: nowrap;
+        overflow: hidden;
+      }
     }
   </style>
   <script src="https://apploader.pages.dev/fred-host.js" defer></script>
@@ -212,7 +252,13 @@
   <header class="cad-navbar">
     <div class="cad-nav-group">
       <span data-fred-home-mount></span>
-      <span class="cad-nav-title">B-SPLINE GENERATOR</span>
+      <span class="cad-nav-titlebox">
+        <span class="cad-nav-title">B-SPLINE GENERATOR</span>
+        <!-- Version. Source of truth: root package.json "version" (1.1.0).
+             No build step injects this — bump this literal and package.json
+             together. -->
+        <span class="cad-nav-version">v1.1.0</span>
+      </span>
     </div>
 
     <div style="flex:1;"></div>
