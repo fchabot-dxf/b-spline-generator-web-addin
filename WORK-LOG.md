@@ -696,3 +696,43 @@ Two documented APIs:
    WORK-LOG entry the reference?
 
 **No repo code edits** — design/research only. Only this log.
+
+---
+
+## Turn 27 — LOG1: harden the Python log path (FIX, b-spline-gen) — DONE
+
+**Change (`b-spline-gen.py:get_log_path`):** made the log path DERIVE from
+`__file__` as an always-valid default, and validate the optional override with a
+real write-probe:
+- `derived = dirname(realpath(__file__))/b_spline_gen_log.txt` — exists+writable in
+  BOTH the repo and the deployed AddIns folder.
+- New `_dir_writable(d)` helper: `isdir` **plus** an actual create/delete probe (a
+  path can exist but be read-only, or a moved workspace path won't exist — plain
+  `isdir` misses both).
+- Override = `workspace_link.json` `workspace_root`; used only if `_dir_writable`,
+  else **fall back to derived**. So a stale/invalid override can never send the log
+  to a dead folder.
+
+**Clarification (verified the real mechanism, not just the stated culprit):** the
+named `b_spline_log_path.json` is **NOT read by any code** — repo-wide grep found only
+`DEPLOY_bspline-frame-builder.py:224` (a copy SKIP-list). The live driver was already
+`workspace_link.json` + `__file__` fallback (using `isdir` only). So in the current
+repo the log wasn't actually landing in a dead folder — but the hardened version
+GUARANTEES it can't (invalid override → derived). Removed the dead
+`b_spline_log_path.json` orphan (it was git-ignored/local-only + wrong path:
+`...\b-spline-generator-web-addin\b-spline-gen\...`, missing the `bspline-frame-builder\`
+segment); the removal is cosmetic (not in the commit — gitignored).
+
+**Verify (a real test line lands — required):** replicated the new `get_log_path` +
+`_dir_writable` in a sandbox with actual file writes:
+- **A** valid override → logs to `workspace_root`, test line landed ✓
+- **B** invalid override (nonexistent dir) → **falls back to derived**, test line landed ✓
+- **C** no override → derived, test line landed ✓
+- Real `addin_dir` resolves to the correct repo path, parent writable ✓
+- `ast.parse` of the module OK.
+
+**Incidental (not mine):** `b_spline_gen_log.txt.old` / `b_spline_gen_log.txt` show
+Fusion runtime-log writes from the human's testing — left unstaged (T3/F12 log-cruft).
+
+**Scope:** `b-spline-gen.py` only (+ deleted a gitignored local orphan). Next up
+(advisor's note) = declare one editor source of truth — separate task.

@@ -88,28 +88,50 @@ if app:
 
 # ── Log file ──────────────────────────────────────────────────────────────────
 
-def get_log_path():
-    """
-    Returns the log file path, preferring the developer source folder.
+def _dir_writable(d):
+    """True only if directory `d` exists AND a file can actually be created in
+    it. A plain isdir() check isn't enough: a moved/renamed workspace path won't
+    exist, and an existing dir can still be read-only. Probing with a real write
+    is the only reliable test."""
+    try:
+        if not d or not os.path.isdir(d):
+            return False
+        probe = os.path.join(d, '.bs_log_write_test')
+        with open(probe, 'a', encoding='utf-8'):
+            pass
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
 
-    The deploy script writes workspace_link.json next to this .py file with the
-    absolute path to the source workspace root.  When that file is present the
-    log is written there so it stays in the dev tree for easy inspection.
-    Falls back to the directory next to this .py file if the link is missing.
+
+def get_log_path():
+    """Log file path, DERIVED from this .py file's own location so it always
+    resolves to a real, writable folder in BOTH the repo and the deployed Fusion
+    AddIns folder.
+
+    Optional override: the deploy handshake can redirect the log into the dev
+    workspace for easy inspection. If workspace_link.json (written next to this
+    file by DEPLOY_bspline-frame-builder.py) names a `workspace_root` that is a
+    valid, WRITABLE directory, the log goes there; otherwise we fall back to the
+    derived path — so a stale/invalid override never sends the log to a dead
+    folder. (b_spline_log_path.json is intentionally NOT read: it was a stale,
+    wrong-path orphan — git-ignored / local-only — never consulted here.
+    workspace_link.json is the sole override.)
     """
     addin_dir = os.path.dirname(os.path.realpath(__file__))
-    link_file  = os.path.join(addin_dir, 'workspace_link.json')
+    derived   = os.path.join(addin_dir, 'b_spline_gen_log.txt')  # always valid
     try:
+        link_file = os.path.join(addin_dir, 'workspace_link.json')
         if os.path.isfile(link_file):
             with open(link_file, 'r', encoding='utf-8') as f:
                 link = json.load(f)
-            workspace_root = link.get('workspace_root', '').replace('/', os.sep)
-            if workspace_root and os.path.isdir(workspace_root):
-                return os.path.join(workspace_root, 'b_spline_gen_log.txt')
+            root = (link.get('workspace_root') or '').replace('/', os.sep)
+            if _dir_writable(root):
+                return os.path.join(root, 'b_spline_gen_log.txt')
     except Exception:
         pass
-    # Fallback: log next to the deployed .py file
-    return os.path.join(addin_dir, 'b_spline_gen_log.txt')
+    return derived  # fallback: next to this .py (repo OR deployed AddIns)
 
 LOG_FILE = get_log_path()
 
