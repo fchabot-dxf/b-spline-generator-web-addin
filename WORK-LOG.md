@@ -1611,3 +1611,42 @@ normalizes newlines. No content lost; the narrowings are intact.
 
 **Verify:** 61 -> 0 across 10 files; py_compile OK each; all diffs narrowing-only (0 other lines);
 repo-wide tracked bare-except = 0. Not forked. C3a exporter.py log-gate still open for your synthesis.
+
+---
+
+## Turn 63 — C4-design/F8: module de-dup design doc — DONE (MAP+PROPOSE, no code)
+
+Produced `MODULE-DEDUP-DESIGN.md` (my C4 deliverable). No code, no Fusion — implementation waits
+for human Fusion Stop→Start (the collision + hot-reload behaviour only manifests in Fusion).
+
+**Confirmed dup surface:** `expression_coords.py` + `entity_helpers.py` each ship as DRIFTED copies
+under the same bare name in `frame-inspector/` AND `template-maker/core/` (426 + 291 diff lines).
+(`payload_builder` vs `template_payload_builder` are differently named → no collision.)
+
+**Key finding — the drift is STRUCTURAL, not cosmetic** (so "pick one canonical" won't work):
+- `expression_coords`: template-maker's evolved a `params`-threaded API (+ spline-fit, scalar-expr,
+  `get_entity_coord_expr(ent, params=None)` — backward-compat); frame-inspector's has
+  `get_entity_name`/`format_design_params`/`_get_design*` template-maker lacks.
+- `entity_helpers`: frame-inspector's has the RELIABLE evaluator arc-midpoint (+ legacy fallback +
+  bridge/plan/fingerprint); template-maker's is a 6-fn subset. **Semantic conflict flagged:**
+  arc-midpoint (evaluator vs angle-bisector) + the 3-4 truly-shared fn bodies (get_fb_name /
+  get_entity_coord / get_fb_metadata / get_design_params) need a function-by-function review — the
+  implementation must GATE there, not guess.
+
+**Proposal (in the doc):** ONE `fb_shared/` package (canonical merged copies), both palettes import
+package-QUALIFIED (`from fb_shared.entity_helpers import ...`) → the `sys.modules` key becomes
+`fb_shared.entity_helpers`, killing the bare-name collision. `entity_helpers` canonical ⟵
+frame-inspector base (evaluator); `expression_coords` canonical ⟵ template-maker base (params) +
+frame-inspector extras. template-maker's committed `tests/` are the ready-made regression bar.
+
+**`_force_wipe` delta it retires:** the 2 names leave `_shared_project_names`; a single
+`_force_wipe(['fb_shared'])` (cascades) replaces the 3×-per-bootstrap wipe of 20 names
+(bspline-frame-builder.py:243-266). `_addin_root` goes on sys.path once for `import fb_shared.*`.
+
+**Sliced Fusion-gated build plan (S1–S5):** create fb_shared + merge entity_helpers (gate the
+merge) → merge expression_coords (template-maker tests = acceptance) → switch+delete
+frame-inspector copies (human Stop→Start) → switch+delete template-maker copies (human Stop→Start,
+co-load ordering = the original collision) → cleanup the dead wipes. Each slice ends in a human
+Fusion smoke test; the risky function-merge is gated behind a reviewed diff.
+
+Design only — committed MODULE-DEDUP-DESIGN.md + this log. No app code touched.
