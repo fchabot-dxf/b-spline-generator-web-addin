@@ -61,3 +61,16 @@ comparative-audit/
 
 
 ~AppDataRoaming/
+
+# advisor/worker handoff machinery (local coordination state - not app code)
+HANDOFF.md
+.handoff/
+.proc/
+STOP
+
+# Backup / temp / stale-log cruft (F12: untracked, kept on disk, out of git)
+*.err
+diff_*.txt
+*.py.tmp
+*.old
+*.bak

@@ -936,3 +936,45 @@ strict parse), keeping getLayerSvg's own data-layer filter + `<svg>` wrapper. Bo
 **getLayerSvg now fully derives from the one `serializeEditor`** — save/saveForRasterization/
 saveWithTextCopies (EDM3) + getLayerSvg (EDM3b) all route through it. Did NOT touch the
 P.stampLayers mirror or the empty-source path (EDM4), as directed.
+
+---
+
+## Turn 37 — F12: untrack committed cruft + gitignore the patterns — DONE
+
+`git rm --cached` (kept on disk) the tracked log/diff/tmp/bak cruft, appended ignore patterns so
+they can't return. Editor thread stays Fusion-test-gated; this was the safe hygiene win.
+
+**What changed:**
+- Untracked 8 files (kept on disk): `debug_log.txt.err`, `pages_deploy_log.txt.err`,
+  `diff_check.txt`, `diff_current.txt`, `diff_state.txt`,
+  `bspline-frame-builder/sync_stamp_bundle.py.tmp`,
+  `bspline-frame-builder/b-spline-gen/b_spline_gen_log.txt.old`,
+  `cloud/preset-worker/src/index.js.bak`.
+- `.gitignore` += `*.err`, `diff_*.txt`, `*.py.tmp`, `*.old`, `*.bak` (advisor's exact patterns).
+
+**Deviation from the dispatched list (flagged for review — reversible):** NEXT-SESSION named **7**
+files; I untracked **8**. The extra is `pages_deploy_log.txt.err` — a deploy log in the *same
+`*.err` class* as the named `debug_log.txt.err`. The advisor's own step-2 verify grep
+(`\.(err|old|bak)$|diff_.*\.txt|\.py\.tmp$`) lists it too. Rationale: the durable declaration is the
+PATTERN (`*.err`); untracking only 7 would leave `pages_deploy_log.txt.err` **tracked-but-ignored**
+— a landmine that still churns `git status` and contradicts the pattern. So I made the tracked set
+consistent with the advisor's own declared ignore. Fully reversible (`git add` re-tracks; file is on
+disk). If the advisor wants it kept tracked, narrow `*.err` → the exact `debug_log.txt.err` and
+`git add pages_deploy_log.txt.err`.
+
+**`.gitignore` rider (noted):** the file already carried an uncommitted handoff-machinery ignore
+block (`HANDOFF.md`, `.handoff/`, `.proc/`, `STOP`) — coordination hygiene that's *already active*
+(it's why those don't show in `git status`). F12 authorizes committing `.gitignore`, so that block
+lands in this commit alongside the F12 patterns. Harmless/desirable (keeps coordination state out of
+the repo); called out so it isn't a surprise in the diff.
+
+**Verify (no Fusion):**
+- All 8 files still ON DISK (checked each).
+- `git ls-files | grep -E '\.err$|diff_.*\.txt$|\.py\.tmp$|\.old$|\.bak$'` → **empty** (none tracked).
+- `git check-ignore` returns all 8 → future modifications (incl. the live `*.old` log) suppressed →
+  **git-status churn gone** (no need to write to a live log to prove it — check-ignore is conclusive).
+- No real source newly ignored: only the 8 cruft files match across ALL tracked files; **zero**
+  untracked source matches the patterns (`git ls-files --others --exclude-standard | grep …` empty).
+- `git diff --cached --stat` = exactly the 9 intended changes (.gitignore + 8 removals); advisor's
+  `NEXT-SESSION.md`/`ROADMAP.md` left untracked, NOT committed.
+- No processes spawned this turn (pure git/fs).
