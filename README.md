@@ -32,6 +32,22 @@ This repository contains a unified dashboard and engine for advanced 3D modeling
 3. Open the **Scripts and Add-ins** dialog (`Alt+S`).
 4. Select `frame-builder` (or other components) and click **Run**.
 
+### Fresh-clone bootstrap — generate the stamp-editor bundle
+
+`b-spline-gen` is the single source of truth for the shared **editor** + **stamp** modules;
+the `stamp-editor` add-in ships its own generated copy of them. Those generated files are
+**NOT committed** (they'd otherwise double every edit + churn line-endings). After cloning —
+and after any edit to the shared b-spline-gen modules — regenerate them:
+
+```bash
+python bspline-frame-builder/sync_stamp_bundle.py
+```
+
+This writes `stamp-editor/html/{editor/, core/stamp/, core/{coords,svg-utils,debug,gaussian}.js}`
+from b-spline-gen. The stamp-editor's own files (`core/engine.js`, `core/runtime.js`, `main/`,
+`index.html`, `styles/`) are hand-written and stay in git. (`frame-builder` deploy scripts call
+`sync_stamp_bundle` automatically.)
+
 ---
 
 ## 🏗️ Tech Stack

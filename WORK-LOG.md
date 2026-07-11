@@ -1400,3 +1400,45 @@ tracked tree). Caught it via `git status` (port 200), killed the port-8199 liste
 turns), not bash `&`. Tree clean now.
 
 Left untouched: advisor's uncommitted stamp-editor/core/stamp/svg-utils.js. Committed only my 2 files.
+
+---
+
+## Turn 53 — C1/F7: de-fork stamp-editor (untrack the sync-generated copies) — DONE
+
+The stamp-editor's editor+stamp modules are GENERATED from b-spline-gen by sync_stamp_bundle.py, but
+were committed to git — so every b-spline-gen edit had to be hand-mirrored (this whole cycle) and the
+copies drifted line-endings (sync's Python write_text emits CRLF on Windows vs b-spline-gen LF).
+De-forked: untrack the generated copies, gitignore them precisely, regenerate via sync.
+
+**MAP-VERIFY first (sync = source of truth):** read sync_stamp_bundle.py and classified all 62
+tracked stamp-editor/html files against what sync writes:
+  - GENERATED (54): `editor/**` (37, whole tree wiped+recopied), `core/stamp/**` (13, wiped+recopied
+    incl. its coords/debug/svg-utils/gaussian + stamp files + profiles), and the 4 editor external
+    deps `core/{coords,svg-utils,debug,gaussian}.js`.
+  - UNIQUE / hand-written (8, KEEP tracked): `core/engine.js`, `core/runtime.js`, `index.html`,
+    `main/{editor-bridge,layers,main,ui-bindings}.js`, `styles/stamp-editor.css` — sync never writes
+    these (verified: _sync_one touches only core/stamp/, _sync_editor only editor/ + the 4 core deps).
+  Exactly matches the dispatched list — no ambiguity, proceeded.
+
+**Did:**
+- `git rm --cached -r` the 54 generated files (kept on disk).
+- `.gitignore` += the 6 PRECISE paths (editor/, core/stamp/, and the 4 named core deps — NOT
+  `core/*` so engine.js/runtime.js stay tracked) with a regenerate note.
+- Regenerated via `python bspline-frame-builder/sync_stamp_bundle.py` (wrote 54 files).
+- README: fresh-clone bootstrap note (run sync after clone / after editing shared modules).
+
+**Verify:**
+- `git check-ignore` returns the generated files (editor-io/stamp svg-utils/coords) → ignored;
+  `core/engine.js` NOT ignored → still tracked. Correct precision.
+- Regenerated content REPRODUCES b-spline-gen (modulo EOL): editor-coords/io/transform-handles all
+  MATCH; and `core/stamp/svg-utils.js` — which had been the advisor's uncommitted manual EDM2 edit
+  (turn 38) — now MATCHES the import-rewritten b-spline-gen source, i.e. that dangling manual edit is
+  RESOLVED into a clean generated artifact (the whole point of de-forking).
+- `git status`: only the 54 `D` removals + `.gitignore` + README + WORK-LOG; NO generated file shows
+  as untracked/modified (they're ignored) → EOL drift churn gone.
+- **npm test 29/29 green** (the suite imports b-spline-gen, unaffected).
+- Did NOT touch b-spline-gen source, and did NOT do the SVG.Point migration (C2), as directed.
+
+**Effect:** b-spline-gen is now the sole tracked copy of the shared modules; future edits need no
+hand-mirroring (the manual CRLF-copy dance from EX1/SC2/SC3 is retired) — just re-run sync. Left
+untouched otherwise; committed .gitignore + README + WORK-LOG + the 54 untrackings.

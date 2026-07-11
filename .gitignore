@@ -74,3 +74,15 @@ diff_*.txt
 *.py.tmp
 *.old
 *.bak
+
+# stamp-editor bundle: GENERATED from b-spline-gen by sync_stamp_bundle.py
+# (F7/C1 de-fork). Not committed — run `python bspline-frame-builder/sync_stamp_bundle.py`
+# to regenerate after cloning or after editing the b-spline-gen source.
+# The stamp-editor's OWN files (core/engine.js, core/runtime.js, main/, index.html,
+# styles/) are NOT generated and stay tracked — so this list is precise, not core/*.
+bspline-frame-builder/stamp-editor/html/editor/
+bspline-frame-builder/stamp-editor/html/core/stamp/
+bspline-frame-builder/stamp-editor/html/core/coords.js
+bspline-frame-builder/stamp-editor/html/core/svg-utils.js
+bspline-frame-builder/stamp-editor/html/core/debug.js
+bspline-frame-builder/stamp-editor/html/core/gaussian.js
