@@ -44,7 +44,7 @@ def _log(msg):
         ts = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         with open(_log_path, 'a', encoding='utf-8') as f:
             f.write(f"[{ts}] {msg}\n")
-    except: pass
+    except Exception: pass
 
 # ---------------------------------------------------------------------------
 # ATTRIBUTE READERS (Restored from Backup)
@@ -70,7 +70,7 @@ def get_fb_name(ent):
                 return f"Vertex of {', '.join(parents)}"
         
         return ent.objectType.split('::')[-1]
-    except: return "Entity"
+    except Exception: return "Entity"
 
 def get_fb_bridge(ent):
     try:
@@ -80,7 +80,7 @@ def get_fb_bridge(ent):
             if a:
                 lines = a.value.split('\n')
                 if len(lines) > 1: return lines[1]
-    except: pass
+    except Exception: pass
     return ""
 
 def get_fb_plan(ent):
@@ -89,7 +89,7 @@ def get_fb_plan(ent):
         if hasattr(ent, 'attributes'):
             a = ent.attributes.itemByName('FrameBuilder', 'plan')
             if a: return a.value
-    except: pass
+    except Exception: pass
     return ""
 
 
@@ -222,14 +222,14 @@ def _get_entity_key(ent):
         if hasattr(ent, 'tempId'):
             return ('tempId', ent.tempId)
         return ('id', id(ent))
-    except:
+    except Exception:
         return ('id', id(ent))
 
 
 def format_point(pt):
     try:
         return f"({round(pt.geometry.x,2)},{round(pt.geometry.y,2)})"
-    except:
+    except Exception:
         return ''
 
 
@@ -282,7 +282,7 @@ def get_design_dimensions():
         width = float(w_param.value) if w_param else None
         height = float(h_param.value) if h_param else None
         return width, height
-    except:
+    except Exception:
         return None, None
 
 
@@ -304,7 +304,7 @@ def format_expr_component(value, symbol, scale):
             term = f"{symbol} * {abs_coeff}"
 
         return f"-{term}" if coeff < 0 else term
-    except:
+    except Exception:
         return None
 
 
@@ -315,7 +315,7 @@ def format_point_expr(pt, width, height):
         if x_expr is None or y_expr is None:
             return ''
         return f"({x_expr}, {y_expr})"
-    except:
+    except Exception:
         return ''
 
 
@@ -325,7 +325,7 @@ def get_fb_attribute(ent, name):
             a = ent.attributes.itemByName('FrameBuilder', name)
             if a and a.value:
                 return a.value
-    except:
+    except Exception:
         pass
     return None
 
@@ -351,7 +351,7 @@ def get_fb_metadata(ent):
                 info.append(f"Bulge=({round(mid[0], 2)},{round(mid[1], 2)})")
 
         return ' | '.join(info)
-    except:
+    except Exception:
         return ''
 
 
@@ -360,7 +360,7 @@ def entity_fingerprint(ent):
         if hasattr(ent, 'entityToken') and ent.entityToken: return ent.entityToken
         if hasattr(ent, 'tempId'): return f"{ent.objectType}_{ent.tempId}"
         return f"{ent.objectType}_{id(ent)}"
-    except: return str(id(ent))
+    except Exception: return str(id(ent))
 
 def get_entity_coord(e):
     try:
@@ -390,7 +390,7 @@ def get_entity_coord(e):
             cx = round((bb.minPoint.x + bb.maxPoint.x) / 2, 2)
             cy = round((bb.minPoint.y + bb.maxPoint.y) / 2, 2)
             return f"Center: ({cx}, {cy})"
-    except: pass
+    except Exception: pass
     return ""
 
 
@@ -461,7 +461,7 @@ def get_entity_coord_expr(e):
             x_expr = format_expr_component(cx, 'widthIn', width)
             y_expr = format_expr_component(cy, 'heightIn', height)
             return f"Center: ({x_expr}, {y_expr})"
-    except: pass
+    except Exception: pass
     return ""
 
 # ---------------------------------------------------------------------------
@@ -471,7 +471,7 @@ def get_entity_coord_expr(e):
 class _SelectionChangedHandler(adsk.core.ActiveSelectionEventHandler):
     def notify(self, args):
         try: _push_selection_to_palette()
-        except: _log(traceback.format_exc())
+        except Exception: _log(traceback.format_exc())
 
 def _push_selection_to_palette():
     global _last_sel_ids, _latest_payload
@@ -492,7 +492,7 @@ def _push_selection_to_palette():
                 if ent:
                     entities.append(ent)
                     current_ids += entity_fingerprint(ent) + "|"
-            except: pass
+            except Exception: pass
 
     if current_ids == _last_sel_ids and _last_sel_ids != "": return
     _last_sel_ids = current_ids
@@ -662,7 +662,7 @@ def run(context):
         _handlers.append(sel_handler)
         
         _log("Fusion Inspector Standalone Start (Proper Registration)")
-    except:
+    except Exception:
         _log(traceback.format_exc())
 
 def stop(context):
@@ -701,4 +701,4 @@ def stop(context):
         if cmd_def: cmd_def.deleteMe()
             
         _log("Fusion Inspector Standalone Stop")
-    except: pass
+    except Exception: pass

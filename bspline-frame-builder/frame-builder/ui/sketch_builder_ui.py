@@ -20,7 +20,7 @@ _active_handler = None
 try:
     from fb_utils import fb_logger as logger
     diag_logger = logger.DebugLogger(parent_dir)
-except:
+except Exception:
     diag_logger = None
 
 PALETTE_ID = 'frameSketchBuilderPalette'
@@ -44,7 +44,7 @@ def _create_hidden_command(cmd_defs, cmd_id, name, handler_class):
         handler = handler_class()
         cmd_def.commandCreated.add(handler)
         handlers.append(handler)
-    except:
+    except Exception:
         pass
 
 
@@ -61,7 +61,7 @@ def _ensure_hidden_commands(ui):
             if existing:
                 try:
                     existing.deleteMe()
-                except:
+                except Exception:
                     pass
             _create_hidden_command(cmd_defs, cmd_id, cmd_name, handler_cls)
     except Exception:
@@ -83,7 +83,7 @@ def _schedule_hidden_build(data, style_id="Template 1"):
             cmd_def.execute()
         else:
             if diag_logger: diag_logger.log_error(f"DISPATCH ABORT: '{BUILD_SKETCH_CMD_ID}' not found")
-    except:
+    except Exception:
         if diag_logger: diag_logger.log_error(f"Sketch dispatch failed:\n{traceback.format_exc()}")
 
 
@@ -99,7 +99,7 @@ def _schedule_schema_push(style_id="Template 1"):
         cmd_def = app.userInterface.commandDefinitions.itemById(SCHEMA_PUSH_CMD_ID)
         if cmd_def:
             cmd_def.execute()
-    except:
+    except Exception:
         if diag_logger: diag_logger.log_error(f"_schedule_schema_push failed:\n{traceback.format_exc()}")
 
 
@@ -152,7 +152,7 @@ def _push_schema_direct(style_id="Template 1"):
                             p_live['Val'] = round(eval_val / h_in, 4) if h_in != 0 else 0.15
                         else:
                             p_live['Val'] = round(eval_val, 4)
-                    except:
+                    except Exception:
                         pass
 
                 for key in ['Min', 'Max']:
@@ -176,7 +176,7 @@ def _push_schema_direct(style_id="Template 1"):
                                 if target_unit == 'in':
                                     eval_val = eval_val / 2.54
                                 p_live[key] = round(eval_val, 4)
-                        except:
+                        except Exception:
                             pass
                 out.append(p_live)
             return out
@@ -247,7 +247,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             try:
                 data = json.loads(data_str)
-            except:
+            except Exception:
                 data = {}
 
             app = adsk.core.Application.get()
@@ -362,7 +362,7 @@ class HiddenBuildCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             self.on_execute = HiddenBuildCommandExecuteHandler()
             cmd.execute.add(self.on_execute)
             handlers.append(self.on_execute)
-        except:
+        except Exception:
             if diag_logger: diag_logger.log_error(f"SketchBuild CommandCreated CRASH:\n{traceback.format_exc()}")
 
 
@@ -393,7 +393,7 @@ class HiddenSchemaPushCommandCreatedHandler(adsk.core.CommandCreatedEventHandler
             h = HiddenSchemaPushExecuteHandler()
             cmd.execute.add(h)
             handlers.append(h)
-        except:
+        except Exception:
             if diag_logger: diag_logger.log_error(f"SketchSchemaPushCreated CRASH:\n{traceback.format_exc()}")
 
 
@@ -412,7 +412,7 @@ def _set_status(msg):
         app = adsk.core.Application.get()
         if app:
             app.userInterface.statusBarMessage = msg
-    except:
+    except Exception:
         pass
 
 
@@ -421,7 +421,7 @@ def _notify_status(msg):
         pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
         if pal:
             pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
-    except:
+    except Exception:
         pass
 
 
@@ -430,7 +430,7 @@ def _close_palette():
         pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
         if pal:
             pal.isVisible = False
-    except:
+    except Exception:
         pass
 
 
@@ -468,7 +468,7 @@ def _start_undo_transaction(name):
         app = adsk.core.Application.get()
         if app and hasattr(app, 'startTransaction'):
             return app.startTransaction(name)
-    except:
+    except Exception:
         pass
     return None
 
@@ -481,7 +481,7 @@ def _commit_undo_transaction(transaction):
             transaction.commit()
         elif hasattr(transaction, 'end'):
             transaction.end()
-    except:
+    except Exception:
         pass
 
 
@@ -493,7 +493,7 @@ def _abort_undo_transaction(transaction):
             transaction.abort()
         elif hasattr(transaction, 'rollback'):
             transaction.rollback()
-    except:
+    except Exception:
         pass
 
 

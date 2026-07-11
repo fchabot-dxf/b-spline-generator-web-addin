@@ -1518,3 +1518,49 @@ Behavior-preserving error-handling cleanup on `bspline-frame-builder/fusion-expo
 - **(C):** introduce a real logger (module-level `_log` to a file / Python logging) and log the
   business-logic sites — but that's beyond "behavior-preserving / existing logger", so gated.
 No new logger added, no messageBox spam. Committed the narrowing + this log.
+
+---
+
+## Turn 59 — C3b: narrow bare excepts across 4 Fusion files — DONE (narrow-all, no new logs needed)
+
+Same behavior-preserving rule as C3a, on 4 single-copy (not forked) Fusion files. Read all 4 in full
++ classified every except before touching anything.
+
+**DONE — narrowed all bare excepts (behavior-preserving):**
+| file | bare except before -> after |
+|---|---|
+| frame-inspector/fusion-inspector.py        | 18 -> 0 |
+| frame-builder/ui/sketch_builder_ui.py      | 16 -> 0 |
+| frame-builder/ui/solid_builder_ui.py       | 12 -> 0 |
+| fusion-exporter/fusion-exporter.py         | 13 -> 0 |
+- Each diff is EXACTLY N `except:` removals + N `except Exception:` additions, **0 other changed
+  lines** (no control-flow/return/try-body/except-body). py_compile OK on all 4.
+- Safe: all wrap Fusion API calls (regular Exceptions); no BaseException reliance in synchronous
+  Fusion handlers.
+
+**No new logs added — and that's correct here (KEY difference from C3a):**
+Unlike exporter.py (C3a, NO logger), THESE files HAVE loggers already wired on the business-logic
+paths:
+- `fusion-inspector.py`: `_log`; the selection handler (:474), run() (:665), HTML copy (:578),
+  sendInfoToHTML (:562) ALREADY `_log(...)` on failure.
+- `sketch_/solid_builder_ui.py`: `diag_logger.log_error`; every event handler + dispatch + build
+  (`CommandCreatedHandler`, HTML event, `_schedule_hidden_build`, `_run_*_build_direct`,
+  `run_palette`, doc-activated) ALREADY log.
+- `fusion-exporter.py`: `ui.messageBox` on the outer run/created/execute wrappers (like C3a).
+So "log business-logic paths" is ALREADY satisfied by the existing code. The bare-except sites I
+narrowed are all: the logger's own write (`_log` :47), defensive attribute-PROBES (`get_fb_*` etc.),
+graceful FALLBACKS (`return "Entity"/None/''/{}`), cosmetic status/palette messages, undo-transaction
+teardown, and command-registration cleanup — i.e. exactly the "cleanup/probe" class the rule says to
+"just narrow". Adding logs to those would be noise and would break each file's established idiom
+(outer handlers log, inner helpers stay quiet).
+
+**Borderline sites FLAGGED (narrow-only, not gated — could log if you want):** the inner
+`_create_hidden_command` in solid_builder_ui.py (:45) and sketch_builder_ui.py (:47) swallow a
+command-registration failure with `pass` BEFORE the `_ensure_hidden_commands` wrapper (which does
+log) can see it — so a failed hidden-command add is currently invisible. `diag_logger` is in scope,
+so a one-line `log_error` there would surface it. Left narrow-only to match the file idiom
+(inner-helper = quiet); flagging so you can bless adding those 2 logs if desired. Everything else is
+unambiguously defensive/cleanup.
+
+**Verify:** 59 bare-except -> 0 across the 4 files; py_compile OK each; diffs are narrowing-only
+(0 other changed lines). Single-copy files — no sync/mirror.

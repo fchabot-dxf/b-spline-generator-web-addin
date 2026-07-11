@@ -21,7 +21,7 @@ _active_handler = None
 try:
     from fb_utils import fb_logger as logger
     diag_logger = logger.DebugLogger(parent_dir)
-except:
+except Exception:
     diag_logger = None
 
 PALETTE_ID = 'frameSolidBuilderPalette'
@@ -42,7 +42,7 @@ def _create_hidden_command(cmd_defs, cmd_id, name):
         handler = HiddenBuildCommandCreatedHandler()
         cmd_def.commandCreated.add(handler)
         handlers.append(handler)
-    except:
+    except Exception:
         pass
 
 
@@ -54,7 +54,7 @@ def _ensure_hidden_commands(ui):
         if existing:
             try:
                 existing.deleteMe()
-            except:
+            except Exception:
                 pass
         _create_hidden_command(cmd_defs, BUILD_SOLID_CMD_ID, 'Build Solid Frame')
     except Exception:
@@ -76,7 +76,7 @@ def _schedule_hidden_build(data):
             cmd_def.execute()
         else:
             if diag_logger: diag_logger.log_error(f"DISPATCH ABORT: '{BUILD_SOLID_CMD_ID}' not found")
-    except:
+    except Exception:
         if diag_logger: diag_logger.log_error(f"Solid dispatch failed:\n{traceback.format_exc()}")
 
 
@@ -116,7 +116,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             try:
                 data = json.loads(data_str)
-            except:
+            except Exception:
                 data = {}
 
             app = adsk.core.Application.get()
@@ -218,7 +218,7 @@ class HiddenBuildCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             self.on_execute = HiddenBuildCommandExecuteHandler()
             cmd.execute.add(self.on_execute)
             handlers.append(self.on_execute)
-        except:
+        except Exception:
             if diag_logger: diag_logger.log_error(f"SolidBuild CommandCreated CRASH:\n{traceback.format_exc()}")
 
 
@@ -243,7 +243,7 @@ def _set_status(msg):
         app = adsk.core.Application.get()
         if app:
             app.userInterface.statusBarMessage = msg
-    except:
+    except Exception:
         pass
 
 
@@ -252,7 +252,7 @@ def _notify_status(msg):
         pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
         if pal:
             pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
-    except:
+    except Exception:
         pass
 
 
@@ -261,7 +261,7 @@ def _close_palette():
         pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
         if pal:
             pal.isVisible = False
-    except:
+    except Exception:
         pass
 
 
@@ -296,7 +296,7 @@ def _start_undo_transaction(name):
         app = adsk.core.Application.get()
         if app and hasattr(app, 'startTransaction'):
             return app.startTransaction(name)
-    except:
+    except Exception:
         pass
     return None
 
@@ -309,7 +309,7 @@ def _commit_undo_transaction(transaction):
             transaction.commit()
         elif hasattr(transaction, 'end'):
             transaction.end()
-    except:
+    except Exception:
         pass
 
 
@@ -321,7 +321,7 @@ def _abort_undo_transaction(transaction):
             transaction.abort()
         elif hasattr(transaction, 'rollback'):
             transaction.rollback()
-    except:
+    except Exception:
         pass
 
 

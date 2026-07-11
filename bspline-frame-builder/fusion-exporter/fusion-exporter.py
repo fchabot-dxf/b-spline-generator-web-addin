@@ -10,7 +10,7 @@ try:
     from . import exporter
     # Hot-reload modules during development if they are already in sys.modules
     importlib.reload(exporter)
-except:
+except Exception:
     # Handle first-time load or if relative import fails during certain start conditions
     import exporter
     importlib.reload(exporter)
@@ -50,14 +50,14 @@ def run(context):
                 try:
                     cntrl = panel.controls.itemById(cmd_id)
                     if cntrl: cntrl.deleteMe()
-                except:
+                except Exception:
                     pass
 
             # B. Defensive deletion of Command Definition
             try:
                 existing_def = cmd_defs.itemById(cmd_id)
                 if existing_def: existing_def.deleteMe()
-            except:
+            except Exception:
                 # If it fails, it means it's still "in use" somewhere. 
                 # We'll skip deletion and use the existing one.
                 pass
@@ -106,11 +106,11 @@ def run(context):
                             # dropdown.
                             new_cntrl.isPromoted = False
                             new_cntrl.isPromotedByDefault = False
-                        except:
+                        except Exception:
                             pass
 
 
-    except:
+    except Exception:
         if ui: ui.messageBox('Add-In Start Failed:\n{}'.format(traceback.format_exc()))
 
 def stop(context):
@@ -130,14 +130,14 @@ def stop(context):
                     cntrl = panel.controls.itemById(cmd_id)
                     if cntrl:
                         cntrl.deleteMe()
-                except:
+                except Exception:
                     pass
             
             # 2. Delete command definition
             try:
                 cdef = cmd_defs.itemById(cmd_id)
                 if cdef: cdef.deleteMe()
-            except:
+            except Exception:
                 pass
             
         # 3. Clean up the panels if they are empty
@@ -154,9 +154,9 @@ def stop(context):
 
                     if panel and panel.controls.count == 0:
                         panel.deleteMe()
-                except:
+                except Exception:
                     pass
-    except:
+    except Exception:
         pass
 
 def _get_audited_projects():
@@ -173,7 +173,7 @@ def _get_audited_projects():
                 clean_name = d.replace('_JSON_AUDIT', '').replace('_', ' ')
                 projects.append((clean_name, full_path))
         return sorted(projects, key=lambda x: x[0])
-    except:
+    except Exception:
         return []
 
 # --- Event Handler Classes ---
@@ -211,7 +211,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             on_execute = CommandExecuteHandler(self.action_func)
             cmd.execute.add(on_execute)
             handlers.append(on_execute)
-        except:
+        except Exception:
             app = adsk.core.Application.get()
             ui = app.userInterface
             if ui: ui.messageBox('Command Created Failed:\n{}'.format(traceback.format_exc()))
@@ -257,8 +257,8 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
                 # If no projects chosen or no config, just try calling as-is or fail
                 try: 
                     self.action_func()
-                except: pass
-        except:
+                except Exception: pass
+        except Exception:
             app = adsk.core.Application.get()
             ui = app.userInterface
             if ui: ui.messageBox('Command Failed:\n{}'.format(traceback.format_exc()))
