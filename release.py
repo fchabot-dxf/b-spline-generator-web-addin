@@ -3,16 +3,23 @@
 release.py — local release orchestrator for bspline-frame-builder.
 
 Usage:
-    python release.py                       # Claude CLI auto-generates a commit message from the diff
-    python release.py "commit message"      # explicit override
+    python release.py                       # everything (== --all); Claude CLI auto-generates a commit message
+    python release.py "commit message"      # everything, with an explicit commit message
+    python release.py --web                 # step 2 only: git add/commit/push (Cloudflare Pages rebuilds the web app)
+    python release.py --addin               # steps 1+3: build the add-in ZIP + upload it to the GitHub 'latest' release
+    python release.py --local               # step 4 only: refresh the local Fusion 360 AddIns folder
+    python release.py --all                 # explicit everything (identical to bare)
 
-Steps:
-  1. Build the Fusion add-in distribution ZIP (bspline-frame-builder.zip)
-  2. git add -A; (auto-generate message if none given); commit; push
+    Flags combine (e.g. `--addin --local`). A single non-flag argument is the
+    commit message. No flags (bare) == --all == the exact original behaviour.
+
+Steps (run in this order for --all / bare):
+  1. Build the Fusion add-in distribution ZIP (bspline-frame-builder.zip)   [--addin]
+  2. git add -A; (auto-generate message if none given); commit; push        [--web]
        (Cloudflare Pages auto-rebuilds the web app on push to main)
-  3. gh release upload latest <zip> --clobber
+  3. gh release upload latest <zip> --clobber                               [--addin]
        (updates the website's download button source)
-  4. Refresh local Fusion 360 AddIns folder
+  4. Refresh local Fusion 360 AddIns folder                                 [--local]
        (developer convenience; best-effort)
 
 Auto-generated commit messages shell out to the `claude` CLI (Claude Code)
@@ -41,7 +48,7 @@ push_summary = "(skipped)"
 release_summary = "(skipped)"
 fusion_summary = "(skipped)"
 
-commit_message = sys.argv[1].strip() if len(sys.argv) >= 2 else ""
+commit_message = ""
 
 
 def _generate_commit_message_via_claude_cli():
@@ -127,107 +134,114 @@ def _zip_should_skip(name):
         return True
     return False
 
-print(f"[1/4] Building distribution ZIP at {ZIP_TARGET}...")
-if os.path.exists(ZIP_TARGET):
-    os.remove(ZIP_TARGET)
-addin_root_name = os.path.basename(os.path.normpath(ADDIN_ROOT))
-zip_file_count = 0
-with zipfile.ZipFile(ZIP_TARGET, 'w', zipfile.ZIP_DEFLATED) as zf:
-    for root, dirs, files in os.walk(ADDIN_ROOT):
-        dirs[:] = [d for d in dirs
-                   if not _zip_should_skip(d)
-                   and d != "dist"
-                   and d != "deploy_dist"
-                   and not d.startswith("deploy_dist_")]
-        for f in files:
-            if _zip_should_skip(f):
-                continue
-            abs_path = os.path.join(root, f)
-            rel_inside = os.path.relpath(abs_path, ADDIN_ROOT)
-            arc_path = os.path.join(addin_root_name, rel_inside)
-            zf.write(abs_path, arc_path)
-            zip_file_count += 1
-zip_size_mb = os.path.getsize(ZIP_TARGET) / (1024 * 1024)
-zip_summary = f"{zip_file_count} files, {zip_size_mb:.1f} MiB"
-print(f"      Packed {zip_file_count} files -> {os.path.basename(ZIP_TARGET)} ({zip_size_mb:.1f} MiB)")
+
+def step_build_zip():
+    global zip_summary
+    print(f"[1/4] Building distribution ZIP at {ZIP_TARGET}...")
+    if os.path.exists(ZIP_TARGET):
+        os.remove(ZIP_TARGET)
+    addin_root_name = os.path.basename(os.path.normpath(ADDIN_ROOT))
+    zip_file_count = 0
+    with zipfile.ZipFile(ZIP_TARGET, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(ADDIN_ROOT):
+            dirs[:] = [d for d in dirs
+                       if not _zip_should_skip(d)
+                       and d != "dist"
+                       and d != "deploy_dist"
+                       and not d.startswith("deploy_dist_")]
+            for f in files:
+                if _zip_should_skip(f):
+                    continue
+                abs_path = os.path.join(root, f)
+                rel_inside = os.path.relpath(abs_path, ADDIN_ROOT)
+                arc_path = os.path.join(addin_root_name, rel_inside)
+                zf.write(abs_path, arc_path)
+                zip_file_count += 1
+    zip_size_mb = os.path.getsize(ZIP_TARGET) / (1024 * 1024)
+    zip_summary = f"{zip_file_count} files, {zip_size_mb:.1f} MiB"
+    print(f"      Packed {zip_file_count} files -> {os.path.basename(ZIP_TARGET)} ({zip_size_mb:.1f} MiB)")
 
 
 # ----- step 2: git add -A, commit, push ----------------------------------
-print(f"\n[2/4] Committing and pushing...")
-subprocess.run(["git", "add", "-A"], cwd=REPO_ROOT, check=True)
+def step_git_push():
+    global commit_message, commit_summary, commit_message_summary, push_summary
+    print(f"\n[2/4] Committing and pushing...")
+    subprocess.run(["git", "add", "-A"], cwd=REPO_ROOT, check=True)
 
-status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT,
-                        capture_output=True, text=True, check=True)
-if status.stdout.strip():
-    if not commit_message:
-        commit_message = _generate_commit_message_via_claude_cli()
-        if commit_message:
-            print(f"      Generated by Claude: {commit_message}")
-        else:
-            commit_message = _generate_fallback_message_from_diff()
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT,
+                            capture_output=True, text=True, check=True)
+    if status.stdout.strip():
+        if not commit_message:
+            commit_message = _generate_commit_message_via_claude_cli()
             if commit_message:
-                print(f"      Fallback (file list): {commit_message}")
+                print(f"      Generated by Claude: {commit_message}")
             else:
-                try:
-                    commit_message = input("      Enter commit message: ").strip()
-                except (EOFError, KeyboardInterrupt):
-                    commit_message = ""
-                if not commit_message:
-                    print("      No message provided; aborting.")
-                    sys.exit(1)
+                commit_message = _generate_fallback_message_from_diff()
+                if commit_message:
+                    print(f"      Fallback (file list): {commit_message}")
+                else:
+                    try:
+                        commit_message = input("      Enter commit message: ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        commit_message = ""
+                    if not commit_message:
+                        print("      No message provided; aborting.")
+                        sys.exit(1)
 
-    commit = subprocess.run(["git", "commit", "-m", commit_message], cwd=REPO_ROOT)
-    if commit.returncode != 0:
-        print(f"      git commit failed (exit {commit.returncode}). Aborting.")
-        sys.exit(commit.returncode)
-    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT,
-                         capture_output=True, text=True).stdout.strip()
-    commit_summary = sha
-    commit_message_summary = commit_message
-else:
-    print("      No staged changes; skipping commit.")
-    commit_summary = "(no-op, nothing to commit)"
-    commit_message_summary = "(none)"
+        commit = subprocess.run(["git", "commit", "-m", commit_message], cwd=REPO_ROOT)
+        if commit.returncode != 0:
+            print(f"      git commit failed (exit {commit.returncode}). Aborting.")
+            sys.exit(commit.returncode)
+        sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT,
+                             capture_output=True, text=True).stdout.strip()
+        commit_summary = sha
+        commit_message_summary = commit_message
+    else:
+        print("      No staged changes; skipping commit.")
+        commit_summary = "(no-op, nothing to commit)"
+        commit_message_summary = "(none)"
 
-push = subprocess.run(["git", "push"], cwd=REPO_ROOT)
-if push.returncode != 0:
-    print(f"      git push failed (exit {push.returncode}). Aborting.")
-    sys.exit(push.returncode)
-branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=REPO_ROOT,
-                        capture_output=True, text=True).stdout.strip()
-push_summary = f"{branch} -> origin/{branch}"
-print("      Pushed. Cloudflare Pages will auto-rebuild the web app.")
+    push = subprocess.run(["git", "push"], cwd=REPO_ROOT)
+    if push.returncode != 0:
+        print(f"      git push failed (exit {push.returncode}). Aborting.")
+        sys.exit(push.returncode)
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=REPO_ROOT,
+                            capture_output=True, text=True).stdout.strip()
+    push_summary = f"{branch} -> origin/{branch}"
+    print("      Pushed. Cloudflare Pages will auto-rebuild the web app.")
 
 
 # ----- step 3: upload zip to GitHub release ------------------------------
-print(f"\n[3/4] Uploading distribution ZIP to GitHub release 'latest'...")
-GH_CMD = shutil.which("gh") or shutil.which("gh.cmd")
-if GH_CMD is None:
-    print("      Warning: 'gh' CLI not found. Skipping.")
-    print(f"      Run manually: gh release upload latest \"{ZIP_TARGET}\" --clobber")
-    release_summary = "skipped (gh not installed)"
-else:
-    view_check = subprocess.run([GH_CMD, "release", "view", "latest"],
-                                cwd=REPO_ROOT, capture_output=True)
-    if view_check.returncode != 0:
-        print("      No 'latest' release found — creating it as a prerelease.")
-        create = subprocess.run([
-            GH_CMD, "release", "create", "latest", "--prerelease",
-            "--title", "Latest dev build",
-            "--notes", "Rolling release: the most recent bspline-frame-builder build.",
-        ], cwd=REPO_ROOT)
-        if create.returncode != 0:
-            print(f"      Warning: could not create 'latest' release (exit {create.returncode}).")
-    upload = subprocess.run([
-        GH_CMD, "release", "upload", "latest", ZIP_TARGET, "--clobber"
-    ], cwd=REPO_ROOT)
-    if upload.returncode == 0:
-        print("      GitHub release 'latest' updated.")
-        release_summary = "uploaded to 'latest'"
-    else:
-        print(f"      Warning: gh release upload exited {upload.returncode}.")
+def step_gh_release():
+    global release_summary
+    print(f"\n[3/4] Uploading distribution ZIP to GitHub release 'latest'...")
+    GH_CMD = shutil.which("gh") or shutil.which("gh.cmd")
+    if GH_CMD is None:
+        print("      Warning: 'gh' CLI not found. Skipping.")
         print(f"      Run manually: gh release upload latest \"{ZIP_TARGET}\" --clobber")
-        release_summary = f"failed (exit {upload.returncode})"
+        release_summary = "skipped (gh not installed)"
+    else:
+        view_check = subprocess.run([GH_CMD, "release", "view", "latest"],
+                                    cwd=REPO_ROOT, capture_output=True)
+        if view_check.returncode != 0:
+            print("      No 'latest' release found — creating it as a prerelease.")
+            create = subprocess.run([
+                GH_CMD, "release", "create", "latest", "--prerelease",
+                "--title", "Latest dev build",
+                "--notes", "Rolling release: the most recent bspline-frame-builder build.",
+            ], cwd=REPO_ROOT)
+            if create.returncode != 0:
+                print(f"      Warning: could not create 'latest' release (exit {create.returncode}).")
+        upload = subprocess.run([
+            GH_CMD, "release", "upload", "latest", ZIP_TARGET, "--clobber"
+        ], cwd=REPO_ROOT)
+        if upload.returncode == 0:
+            print("      GitHub release 'latest' updated.")
+            release_summary = "uploaded to 'latest'"
+        else:
+            print(f"      Warning: gh release upload exited {upload.returncode}.")
+            print(f"      Run manually: gh release upload latest \"{ZIP_TARGET}\" --clobber")
+            release_summary = f"failed (exit {upload.returncode})"
 
 
 # ----- step 4: refresh local Fusion 360 AddIns folder --------------------
@@ -242,40 +256,97 @@ else:
 # Reusing that script keeps a single source of truth for the ignore rules,
 # locked-file (overlay-copy) tolerance, and the dev-workspace handshake
 # files, instead of duplicating that logic here.
-print(f"\n[4/4] Refreshing local Fusion 360 add-ins...")
+def step_local_refresh():
+    global fusion_summary
+    print(f"\n[4/4] Refreshing local Fusion 360 add-ins...")
 
-_deploy_script = os.path.join(ADDIN_ROOT, "DEPLOY_bspline-frame-builder.py")
-if not os.path.exists(_deploy_script):
-    print(f"      Deploy script not found at {_deploy_script}; skipping.")
-    fusion_summary = "skipped (DEPLOY_bspline-frame-builder.py not found)"
-else:
-    try:
-        # Stream the installer's own output live so a locked file or a
-        # missing sub-add-in is visible right here in the release run.
-        result = subprocess.run(
-            [sys.executable, _deploy_script, "all"],
-            cwd=ADDIN_ROOT,
-        )
-        if result.returncode == 0:
-            fusion_summary = "deployed all add-ins (DEPLOY_bspline-frame-builder.py all)"
-        else:
-            print(f"      Deploy script exited with code {result.returncode}.")
-            fusion_summary = f"failed (deploy script exit {result.returncode})"
-    except Exception as e:
-        print(f"      Warning: could not run deploy script: {e}")
-        fusion_summary = f"failed ({e})"
+    _deploy_script = os.path.join(ADDIN_ROOT, "DEPLOY_bspline-frame-builder.py")
+    if not os.path.exists(_deploy_script):
+        print(f"      Deploy script not found at {_deploy_script}; skipping.")
+        fusion_summary = "skipped (DEPLOY_bspline-frame-builder.py not found)"
+    else:
+        try:
+            # Stream the installer's own output live so a locked file or a
+            # missing sub-add-in is visible right here in the release run.
+            result = subprocess.run(
+                [sys.executable, _deploy_script, "all"],
+                cwd=ADDIN_ROOT,
+            )
+            if result.returncode == 0:
+                fusion_summary = "deployed all add-ins (DEPLOY_bspline-frame-builder.py all)"
+            else:
+                print(f"      Deploy script exited with code {result.returncode}.")
+                fusion_summary = f"failed (deploy script exit {result.returncode})"
+        except Exception as e:
+            print(f"      Warning: could not run deploy script: {e}")
+            fusion_summary = f"failed ({e})"
 
 
-# ----- summary ----------------------------------------------------------
-print()
-print("=" * 64)
-print("  Release Summary")
-print("=" * 64)
-print(f"  Commit:     {commit_summary}")
-print(f"  Message:    {commit_message_summary}")
-print(f"  Push:       {push_summary}")
-print(f"  Zip:        {zip_summary}")
-print(f"  Web app:    {PAGES_URL}  (Cloudflare rebuilds on push)")
-print(f"  GH release: {release_summary}")
-print(f"  Fusion:     {fusion_summary}")
-print("=" * 64)
+# ----- step -> flag-group registry (declared, not hand-rolled) -----------
+# Each step is tagged with the flag-group that runs it. The driver iterates
+# this list IN ORDER, so --all/bare runs 1->2->3->4 exactly as before, and a
+# subset (e.g. --addin) runs only its tagged steps, preserving relative order.
+STEPS = [
+    ("addin", step_build_zip),      # [1/4]
+    ("web",   step_git_push),       # [2/4]
+    ("addin", step_gh_release),     # [3/4]
+    ("local", step_local_refresh),  # [4/4]
+]
+KNOWN_FLAGS = ("web", "addin", "local", "all")
+ALL_GROUPS = {"web", "addin", "local"}
+
+
+def _parse_args(argv):
+    """Return (selected_groups:set, commit_message:str).
+
+    No flags (bare) or --all => every group (exact original behaviour). A
+    single non-flag token is the commit message. Unknown --flag => usage + exit.
+    """
+    selected = set()
+    message = ""
+    for tok in argv:
+        if tok.startswith("--"):
+            name = tok[2:]
+            if name not in KNOWN_FLAGS:
+                print(f"Unknown flag: {tok}")
+                print("Valid flags: --web  --addin  --local  --all   "
+                      "(bare = --all; a non-flag argument is the commit message)")
+                sys.exit(2)
+            if name == "all":
+                selected |= ALL_GROUPS
+            else:
+                selected.add(name)
+        elif not message:
+            # first non-flag token is the commit message
+            message = tok.strip()
+    if not selected:
+        selected = set(ALL_GROUPS)
+    return selected, message
+
+
+def print_summary():
+    print()
+    print("=" * 64)
+    print("  Release Summary")
+    print("=" * 64)
+    print(f"  Commit:     {commit_summary}")
+    print(f"  Message:    {commit_message_summary}")
+    print(f"  Push:       {push_summary}")
+    print(f"  Zip:        {zip_summary}")
+    print(f"  Web app:    {PAGES_URL}  (Cloudflare rebuilds on push)")
+    print(f"  GH release: {release_summary}")
+    print(f"  Fusion:     {fusion_summary}")
+    print("=" * 64)
+
+
+def main():
+    global commit_message
+    selected, commit_message = _parse_args(sys.argv[1:])
+    for group, fn in STEPS:
+        if group in selected:
+            fn()
+    print_summary()
+
+
+if __name__ == "__main__":
+    main()

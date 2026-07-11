@@ -260,3 +260,48 @@ the single owner and update that docstring.
 deleted `run_deploy.py` + `deploy_worker.py`. Did NOT touch `release.py`'s 4 steps,
 `--build-only`, `DEPLOY_bspline-frame-builder.py`, or `sync_stamp_bundle.py`. Did NOT
 start the merge or add `--web/--addin` flags (DF2).
+
+---
+
+## Turn 11 — DF2: release.py → one flagged entry (FIX, EDITS CODE) — DONE
+
+**Deliverable:** refactored `release.py` into a single flag-gated entry
+(`--web`/`--addin`/`--local`/`--all`), `release.py` ONLY. `--all`/bare reproduces
+the exact original 4-step behaviour.
+
+**Design (declare-over-hand-roll).** Wrapped each of the 4 existing step bodies in a
+function **verbatim** (`step_build_zip`/`step_git_push`/`step_gh_release`/
+`step_local_refresh` — same prints, logic, `sys.exit` paths, `[n/4]` labels), then
+**DECLARED** the step→flag mapping as data instead of an if/elif tangle:
+```
+STEPS = [("addin", step_build_zip), ("web", step_git_push),
+         ("addin", step_gh_release), ("local", step_local_refresh)]
+```
+The driver iterates `STEPS` in order and runs a step if its group is selected, so
+`--all`/bare runs 1→2→3→4 exactly as before and any subset preserves relative order.
+Flag map: `--addin` = zip + gh-release (kept together — gh upload needs the zip),
+`--web` = commit/push (→ Pages auto-rebuild), `--local` = Fusion AddIns refresh.
+Guarded execution under `main()` / `if __name__=="__main__"` so the flag logic is
+unit-testable WITHOUT running/publishing (no importer of release.py exists → no
+regression). Kept the pre-existing unused `import stat` (not my mess — surgical).
+
+**Backward-compat preserved:** bare `python release.py` and `python release.py "msg"`
+behave identically to before (bare → all groups; a lone non-flag token is still the
+commit message). Only inputs starting with `--` change meaning (now flags) — which
+is the whole point of DF2.
+
+**Verify (WITHOUT PUBLISHING — no push/gh/wrangler run):**
+- `ast.parse` OK; `import release` clean (main() guarded, no steps ran).
+- `_parse_args` across 8 cases: bare→all, `--all`→all, `--web`/`--addin`/`--local`→
+  single group, `--addin --local`→both, `"msg"`→all+msg, `--web "msg"`→web+msg,
+  `--bogus`→usage + exit 2. All correct.
+- `step_build_zip()` in isolation (local, no publish): packed 592 files → 20.9 MiB,
+  zip still gitignored. Step-1 logic intact.
+- `python release.py --local` (advisor-sanctioned): printed **only `[4/4]`** (web+
+  addin steps correctly skipped), ran DEPLOY, summary showed Commit/Push/Zip/GH-release
+  = skipped, Fusion = deployed, exit 0. Routing confirmed.
+- Did NOT exercise `--web`/`--addin` gh-upload/`--all` (they publish).
+
+**Scope:** `release.py` only (+209/−138, all wrapping+driver; no logic change — proven
+functionally). Did NOT touch `deploy_cloudflare.py`, `DEPLOY_bspline-frame-builder.py`,
+or `sync_stamp_bundle.py`.
