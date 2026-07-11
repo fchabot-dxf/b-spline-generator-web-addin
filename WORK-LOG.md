@@ -154,3 +154,40 @@ npm-`clipper-lib` imports. Subagent was right; avoided writing a false contradic
 **Scoping:** referenced T2's B7/B8 as the bug-facets, quantified the standards-facets
 here — didn't re-litigate. **No application-code edits.** Only `STANDARDS-AUDIT.md`
 (new) + this log. Sets up T4 (prioritized fix backlog).
+
+---
+
+## Turn 7 — T4: Prioritized fix backlog (planning only) — DONE
+
+**Deliverables:** `FIX-BACKLOG.md` (new) — 16 fixes F1–F16 ranked effort×impact,
+sequenced P0→P3, each with a verifiable success criterion + source cross-ref.
+Plus a correction to `STANDARDS-AUDIT.md` §3 (advisor-flagged).
+
+**§3 correction (advisor was right — my T3 error).** T3 §3 said the 36 MB
+`bspline-frame-builder.zip` was "committed to git." Re-verified: it is **NOT**
+tracked in the current index and **IS** gitignored (`.gitignore:51`) — but history
+carries **14 commits** of it (multiple 20–36 MB blobs, largest object in history).
+So the accurate finding is **history bloat**, not a current commit. Root of my
+error: in T3 I misread an `ls -lh` "36M" line as tracking status (my own tracked-
+files loop had *not* listed the zip — I should have caught it then). Corrected both
+the §3 bullet and the roll-up row, dated inline. Fix reclassified to F15 (LOW,
+optional history rewrite).
+
+**Backlog synthesis.** Mapped every B1–B11 + audit dim to a fix (see the doc's
+cross-ref). Phasing: **P0** correctness/data-loss (F1 dead-send, F2 hidden-layer
+loss, F3 inspector leak, F4 selection_items wipe, F5 B1/B3 runtime confirm) →
+**P1** structural (F6 seam+fusLog, F7 editor de-fork, F8 Python de-dup) → **P2**
+standards (F9 except-hygiene, F10 CAM teardown, F11 tests+CI, F12 repo hygiene,
+F13 deploy, F14 deps) → **P3** optional (F15 zip history, F16 unbuilt cloud).
+
+**Fork surfaced (as asked): editor dedup vs fix-twice.** B1/B3/B6 live in the
+forked editor tree (B8); the bug files are byte-identical across both copies.
+Presented A (dedup first) vs B (fix first) with the tradeoff and **recommended B**
+— the fix-twice cost is trivial while the files are identical, whereas dedup (F7)
+must reconcile 11 drifted files first and would delay the urgent B6 data-loss fix.
+Flagged "advisor/human confirm A or B" — this is their sequencing call, not mine;
+the backlog is written under B with the A-branch delta noted. NOT treating it as a
+hard STOP gate since the task asked me to *surface it in the backlog*, which I did.
+
+**No application-code edits.** Only `FIX-BACKLOG.md` (new) + `STANDARDS-AUDIT.md`
+(§3 correction) + this log. This is the last audit task — advisor may `done` the batch.

@@ -14,7 +14,7 @@
 | 1 | Duplication | Forked 33-file editor tree (11 already drifted); 2 Python modules drifted 300–400 diff-lines | **H** |
 | 2 | Test coverage | Only template-maker + frame-builder engine tested; **entire JS frontend, lifecycle, 4/6 palettes, both workers untested; no CI** | **H** |
 | 5 | Deploy repro | preset-worker 3-way name drift (`bspline-presets` = mis-bound orphan); step-editor-worker non-reproducible; hardcoded machine paths | **M-H** |
-| 3 | Dead/incomplete infra | 36 MB build zip + 6 cruft files committed; 2 planned-but-unbuilt cloud pieces | **M** |
+| 3 | Dead/incomplete infra | 6 cruft files committed + 36 MB zip in **history** (not current tree); 2 planned-but-unbuilt cloud pieces | **M** |
 | 6 | Deps / secrets | Both npm deps orphaned; runtime libs from un-pinned CDNs (no SRI). **No secret in git**; `.env` holds live tokens on disk only | **M** (deps) / **H-material** (`.env`) |
 
 ---
@@ -108,10 +108,14 @@ ever executed).
   source it references don't exist. (T2 parked.)
 
 **Dead / committed cruft (should not be in VCS):**
-- **`bspline-frame-builder/bspline-frame-builder.zip` — a 36 MB build artifact
-  committed to git.** Biggest single hygiene issue; it's a release output (the
-  packaged add-in), not source. **Fix:** gitignore it, ship via `gh release` only
-  (which `release.py` already does).
+- **`bspline-frame-builder/bspline-frame-builder.zip` — 36 MB, git HISTORY bloat
+  (NOT a current commit).** [Corrected 2026-07-11 — T3 first stated "committed to
+  git"; that's wrong for the current tree.] It is **correctly git-ignored now**
+  (`.gitignore:51`) and **untracked** — but git history carries **14 commits** of
+  it across multiple 20–36 MB blobs (≈300 MB+ of permanent pack bloat; it's the
+  single largest object in history). Current-tree hygiene is fine; the debt is
+  historical. **Fix:** optional — a history rewrite (`git filter-repo` / BFG) if
+  clone size matters; it's already ignored going forward, so LOW urgency.
 - 6 tracked junk files: `debug_log.txt.err`, `diff_check.txt`, `diff_current.txt`,
   `diff_state.txt`, `bspline-frame-builder/sync_stamp_bundle.py.tmp`,
   `b-spline-gen/b_spline_gen_log.txt.old`, plus `cloud/preset-worker/src/index.js.bak`
