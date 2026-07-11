@@ -7,7 +7,7 @@ import { P, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '..
 import { scheduleRebuild, rebuild } from '../../core/engine.js';
 import { updateStampMasks } from '../stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../../core/sculpt-interaction.js';
-import { SvgEditorSnapshot } from '../app-init.js';
+import { SvgEditorSnapshot, editorRestoreSvg } from '../app-init.js';
 import { addLayer, setActiveLayer } from '../../editor/layers.js';
 
 /**
@@ -97,7 +97,10 @@ export function initSvgSource(ctx, layerModule) {
         SvgEditorSnapshot.enabled = !!currentLayer.enabled;
       }
       if (window.svgEditor && currentLayer) {
-        window.svgEditor.open(currentLayer.svg, P.widthIn, P.heightIn);
+        // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:
+        // in the unified model ctx.activeLayer() returns an EDITOR layer with no
+        // `.svg`, so the old code passed undefined and reopened blank (RO1).
+        window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
       }
     });
   }

@@ -16,6 +16,22 @@ import { fusLog } from '../core/fusion-bridge.js';
 // because onChange already wrote to the layer during typing).
 export const SvgEditorSnapshot = { active: false, layerIdx: -1, svg: null, mask: null, enabled: false };
 
+/**
+ * Resolve the SVG to restore the editor with: the unified source of truth
+ * P.editorSvg, falling back to any legacy per-stamp-layer svg (a one-time
+ * migration aid for sessions saved before P.editorSvg existed).
+ *
+ * Shared by BOTH the initial palette-load restore and the modal-reopen path
+ * so they can't drift. Reopen used to read `.svg` off ctx.activeLayer(),
+ * which in the unified model returns an EDITOR layer (id/name/tooling — no
+ * `.svg`), so it passed undefined to open() and reopened blank (RO1).
+ */
+export function editorRestoreSvg() {
+  return P.editorSvg
+    || (P.stampLayers && P.stampLayers.find && P.stampLayers.find(l => l && l.svg)?.svg)
+    || null;
+}
+
 export async function initApp(preview, wireGlobalEvents) {
   AppState.isInitializing = true;
   loadLastSession();
@@ -116,9 +132,7 @@ export function initSvgEditor(preview) {
   // P.stampLayers[0].svg as a one-time migration aid for sessions saved
   // before P.editorSvg existed.
   try {
-    const restoreSvg = P.editorSvg
-      || (P.stampLayers && P.stampLayers.find && P.stampLayers.find(l => l && l.svg)?.svg)
-      || null;
+    const restoreSvg = editorRestoreSvg();
     if (restoreSvg) {
       window.svgEditor.open(restoreSvg, P.widthIn, P.heightIn);
     }

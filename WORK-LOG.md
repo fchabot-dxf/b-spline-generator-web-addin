@@ -1031,3 +1031,63 @@ over both copies — noted, not done (F11a scope = the JS core, one canonical co
 
 **Verify:** `npm test` → 15/15 green (exit 0); revert → 4 red (exit 1) → restore → 15 green.
 No app-code committed (staged set = test infra + docs only). Runner: vitest run (no watcher left).
+
+---
+
+## Turn 41 — RO1: reproduce + fix editor reopen-persistence (test-first) — DONE
+
+THE priority (human-confirmed). Reproduced draw→apply→close→reopen going blank in headless
+Chromium FIRST, diagnosed the exact loss point, fixed it, and locked it with a regression test.
+b-spline-gen only; `main/` is single-copy (verified — no stamp-editor fork of main/stamp/).
+
+**Reproduced first (headless Chromium, real modal lifecycle), BUG confirmed:**
+Drove the REAL user cycle via `#btnStampEdit` (open) → draw a path on `_sketchLayer` + `_onChange`
+→ `#editorApply` (commit+close) → `#btnStampEdit` (reopen). Read the real `P` singleton via
+dynamic import. Result: `afterDraw` sketchChildren=1, `P.editorSvg`=707, stampLayer svg=707 (saved
+fine); **`afterReopen` sketchChildren=0 (BLANK)**, layer roster jumped `["1"]`→`["2"]`. That
+id-bump = `open()` took its empty-editor branch → it got a FALSY svg.
+
+**Root cause (verified, not assumed) — `main/stamp/_shared.js:28-40` + `svg-source.js:100`:**
+Intercepted `open()`'s argument at reopen → `{type:"undefined", len:0}`. Inspected what
+`ctx.activeLayer()` returns: an EDITOR layer whose keys are `[id,name,visible,depth,profile,angle,
+tx,ty,rotation,scale,mirrorX,mirrorY,blur,smoothing,suppression,edgeFilletRadius,filletPower,_mask]`
+— **no `.svg`**. The Step-3 unification migrated `ctx.activeLayer()` to return editor layers (which
+partition ONE document), but the reopen path still read `currentLayer.svg` as if it were the old
+per-stamp-layer model. Editor layers carry no `.svg`; the whole-document SVG lives in `P.editorSvg`.
+So reopen passed `undefined` → `open()` empty branch → blank + fresh layer id.
+
+**Fix (declare-over-hand-roll, minimal, NOT gated — fully verifiable headlessly):**
+The correct "what SVG restores the editor" rule already existed INLINE in `app-init.js:119`
+(`P.editorSvg || legacy stamp-svg fallback`). Rather than hand-roll a 2nd copy in the reopen path
+(the exact divergence that caused this bug), I extracted it once:
+`app-init.js` → `export function editorRestoreSvg()` (faithful extraction — app-init's initial
+restore now CALLS it; behavior identical, verified). `svg-source.js` reopen → imports it and calls
+`open(editorRestoreSvg(), …)` instead of `open(currentLayer.svg, …)`. Now both restore paths share
+one rule and can't drift. Guard against the legacy path preserved (P.editorSvg first, stamp-svg
+fallback).
+
+**Verified 3 ways:**
+- Live headless Chromium (real lifecycle): `BUG_reproduced:false`, reopen sketchChildren=1, roster
+  restored to `["1"]`, open() receives the 707-char doc.
+- happy-dom integration test `tests/editor-reopen.test.js` (3 tests): drives the REAL
+  `initSvgSource` reopen handler + REAL `ctx.activeLayer()` (createStampCtx) with a mocked
+  window.svgEditor — asserts reopen opens `P.editorSvg`, not undefined; documents the root cause
+  (activeLayer has no .svg); pins `editorRestoreSvg` precedence. Confirmed it's a real guard:
+  reverting `svg-source.js` to `open(currentLayer.svg)` turns that test RED (1 failed), restored →
+  green. **npm test 18/18 green** (15 existing + 3 new).
+- `node --check` both touched files OK.
+
+**Note on the revert-proof:** I proved the guard by temporarily reverting svg-source.js then
+`git checkout`-ing it — but the fix wasn't committed yet, so checkout dropped the WHOLE fix, not
+just the temp change. Caught it immediately (suite went red on the restore run), re-applied both
+edits via Edit, re-verified 18/18 + live repro green. Lesson logged: for uncommitted revert-proofs,
+restore via Edit, not git checkout.
+
+**FLAGGED (related, NOT fixed — surgical scope + needs own repro):** the Cancel-snapshot in the
+same handler (`svg-source.js:95`) also reads `SvgEditorSnapshot.svg = currentLayer.svg` → `undefined`
+in the unified model, so a Cancel after reopen would set `P.stampLayers[idx].svg = undefined`
+(stamp-mirror wipe). My fix makes reopen read `P.editorSvg` (untouched by that), so reopen-
+persistence is robust regardless — but the Cancel/stamp-mirror path is a separate follow-up worth a
+look. Also still in the tree, untouched by me: the advisor's uncommitted
+`stamp-editor/html/core/stamp/svg-utils.js` (from turn 38) and an untracked `.claude/` dir (not
+mine). I committed ONLY my 4 files.
