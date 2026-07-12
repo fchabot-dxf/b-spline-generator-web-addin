@@ -1808,3 +1808,38 @@ stay; S5 removes them. template-maker not touched.
 smoke-tests the Inspector (palette loads, selection → payload renders, expressions/arc coords correct;
 co-load with template-maker still fine since S5's wipe still covers TM's bare imports). Committed the
 A+B+C change; template-maker/_shared_project_names untouched.
+
+---
+
+## Turn 73 — C4-S4: switch template-maker to fb_shared (last consumer) — DONE (headless; FUSION-GATED)
+
+Switched template-maker — the LAST consumer — to the canonical fb_shared. Both palettes now consume
+fb_shared; no drifted copies remain. Human verifies via Stop→Start.
+
+**(A) 8 bare imports → fb_shared.* across 6 files** (byte-level replace, so CRLF + indentation
+preserved — all 6 are CRLF; diffs are import-only, 0 other changed lines):
+- dimension_hint.py:58 (INDENTED, inside a fn) · offset_hint.py:47 · relation_hints.py:31 ·
+  template_generator.py:2 · template_payload.py:1+2 · template_payload_builder.py:12+13.
+
+**(B) Deleted TM copies:** `git rm template-maker/core/{expression_coords,entity_helpers}.py`. No
+drifted copy of either module exists anywhere now.
+
+**NO parent change** (S3 already added _addin_root to sys.path + 'fb_shared' to _force_wipe).
+**Untouched:** `_shared_project_names` still lists both names (S5 removes them); the test conftest
+(its S2 alias covers the tests); frame-inspector (S3).
+
+**Headless — ALL PASS:**
+- py_compile all 6 OK; 0 bare `from expression_coords|entity_helpers import` left in TM core (the
+  8 are now fb_shared.*).
+- Re-ran the S2 pytest suite with the copies DELETED → **69 passed** (--ignore the pre-broken
+  test_origin_axis_target.py, per S2 baseline). Proves the tests stay green via the conftest alias
+  (bare test imports → fb_shared) + fb_shared.* (production).
+- Confirmed resolution AFTER deletion: `expression_coords`/`entity_helpers` → fb_shared/*.py (alias);
+  `template_generator.get_entity_coord_expr` from fb_shared.expression_coords (direct qualified).
+- (The 9 origin-test full-suite failures remain — the pre-existing isolation bug classified in S2b,
+  unrelated to S4.)
+
+**STOP — human Fusion Stop→Start:** template-maker generates a template (expressions / arc coords via
+the canonical evaluator arc-midpoint), AND frame-inspector still fine on co-load (the collision this
+whole de-dup targeted). On green, only S5 remains (retire the 2 names from _shared_project_names +
+the conftest alias). Committed A+B; parent/_shared_project_names/tests untouched.

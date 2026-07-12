@@ -44,7 +44,7 @@ native-AV / process-kill hazard; the wrapper returns ``None``
 instead so the walk can continue.
 """
 
-from entity_helpers import get_fb_name
+from fb_shared.entity_helpers import get_fb_name
 from entity_util import _get_native, _same_entity
 # ``[foc-*]`` diagnostic markers narrow the CoincidentConstraint crash
 # chain down to a single slot. The last Fusion reproduction stopped

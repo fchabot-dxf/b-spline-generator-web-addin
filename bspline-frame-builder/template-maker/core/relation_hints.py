@@ -28,7 +28,7 @@ None of these change behaviour on the happy path; they just prevent a
 mid-recompute selection-change from escalating into a crash.
 """
 
-from entity_helpers import get_fb_name
+from fb_shared.entity_helpers import get_fb_name
 from entity_util import _get_native, _same_entity
 from role_points import ROLE_POINT_SLOTS
 # Detection log is imported here purely for probe-level diagnostic

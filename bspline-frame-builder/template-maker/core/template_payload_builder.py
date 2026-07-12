@@ -9,8 +9,8 @@ from template_payload import (
     is_framebuilder_owned,
 )
 from template_naming import make_unique_label
-from entity_helpers import get_entity_coord, get_fb_metadata
-from expression_coords import get_entity_coord_expr
+from fb_shared.entity_helpers import get_entity_coord, get_fb_metadata
+from fb_shared.expression_coords import get_entity_coord_expr
 from template_code import wrap_statement
 from phase_parser import parse_statement_to_phase_step, format_phase_step
 from offset_hint import (

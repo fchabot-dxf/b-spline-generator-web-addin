@@ -1,5 +1,5 @@
 import adsk.core, adsk.fusion
-from expression_coords import get_design_params, get_entity_coord_expr
+from fb_shared.expression_coords import get_design_params, get_entity_coord_expr
 from phase_parser import parse_statement_to_phase_step, format_phase_step, RawCode, LiteralString
 
 _parse_statement_to_phase_step = parse_statement_to_phase_step

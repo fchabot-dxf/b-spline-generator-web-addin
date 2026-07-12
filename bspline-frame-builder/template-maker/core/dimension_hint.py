@@ -55,7 +55,7 @@ def _current_user_param_names():
     original reference before the patch lands).
     """
     try:
-        from expression_coords import get_design_params
+        from fb_shared.expression_coords import get_design_params
         params = get_design_params() or {}
         return set(params.keys())
     except Exception:

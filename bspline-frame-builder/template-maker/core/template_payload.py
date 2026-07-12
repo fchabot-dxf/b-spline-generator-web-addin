@@ -1,5 +1,5 @@
-from entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata, _get_arc_midpoint
-from expression_coords import _format_point_expr
+from fb_shared.entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata, _get_arc_midpoint
+from fb_shared.expression_coords import _format_point_expr
 # ``_get_native`` and ``_same_entity`` moved to ``entity_util`` so that
 # ``relation_hints`` can reuse them without a circular import. Re-imported
 # here so existing callers like ``rename_selection`` and
