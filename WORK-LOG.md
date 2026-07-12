@@ -1650,3 +1650,46 @@ co-load ordering = the original collision) → cleanup the dead wipes. Each slic
 Fusion smoke test; the risky function-merge is gated behind a reviewed diff.
 
 Design only — committed MODULE-DEDUP-DESIGN.md + this log. No app code touched.
+
+---
+
+## Turn 65 — C4-S1: create fb_shared/entity_helpers (canonical merge) — DONE (additive) + GATE
+
+ADDITIVE, no Fusion. Created `bspline-frame-builder/fb_shared/` (`__init__.py` + `entity_helpers.py`)
+= the canonical merged entity_helpers. Switched NO callers, deleted NO copies, did NOT touch
+`_force_wipe` / `expression_coords`. git status confirms only the 2 new files. py_compile OK both.
+Old copies untouched → template-maker tests unaffected.
+
+**Per-function reconciliation (base = frame-inspector; read both copies in full):**
+| function | source chosen | reason |
+|---|---|---|
+| `_get_native` | either (IDENTICAL) | no drift |
+| `format_point` | either (IDENTICAL) | no drift |
+| `_get_entity_key` | frame-inspector (only copy) | keep |
+| `_get_arc_midpoint_via_evaluator` | frame-inspector (only) | the reliable method |
+| `_get_arc_midpoint_legacy` | frame-inspector (only) | fallback for the dispatcher |
+| `get_fb_bridge`, `get_fb_plan`, `entity_fingerprint` | frame-inspector (only) | keep |
+| `_get_arc_midpoint` | **frame-inspector** (evaluator → legacy fallback) | template-maker had angle-bisector ONLY (wrong for semicircles) — **[GATE]** |
+| `get_fb_name` | **template-maker** (reads `FrameBuilder.ID` then `name`) | TM bug-fix: an ID-stamped curve came back anonymous under FI's name-only read, breaking the ownership gate — **[FLAG]** |
+| `get_fb_metadata` | **frame-inspector** (`Bulge=`real-midpoint) | TM emitted `BulgeCenter=`center (the misleading center-of-curvature) — **[FLAG]** |
+| `get_entity_coord` | **template-maker** (superset: +Circle/Ellipse/Spline) | strict superset; arc/line/bbox identical |
+
+**GATE — arc-midpoint (advisor-named), needs your review before S3/S4 switch callers:**
+Choosing FI's evaluator dispatcher CHANGES template-maker's arc-midpoint from angle-bisector →
+evaluator. For semicircles this FIXES a wrong-half bug; for normal arcs both agree. RISK:
+template-maker's committed tests (test_circle_ellipse_spline etc.) may assert bisector-computed
+midpoint values → S2 must run them against the canonical and reconcile any delta. This is the
+acceptance check the design named.
+
+**2 more FLAGS (behaviour changes when callers switch — S3/S4, not now):**
+- `get_fb_name`: FI's inspector display will show the `ID` attribute instead of `name` when a curve
+  carries BOTH. Confirm that's desired for the inspector (I judged TM's ID-first is the correct
+  canonical — it's a documented ownership-gate fix — but it's a display change for FI).
+- `get_fb_metadata`: template-maker consumers (template_payload*, offset_hint via get_fb_metadata)
+  will see `Bulge=(midpoint)` instead of `BulgeCenter=(center)` — label AND value change. If any TM
+  code PARSES `BulgeCenter=`, S4 must update it. (I picked FI's real-midpoint per the design's
+  "canonical = FI base + evaluator", but the label/value change is a TM-facing break to verify.)
+
+**Nothing depends on fb_shared yet** (additive), so these decisions are safe to review + revise
+before any caller switch. Reconciliation decisions are recorded inline in fb_shared/entity_helpers.py
+(per-function provenance comments) for your diff review.
