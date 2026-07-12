@@ -177,6 +177,13 @@ def _bootstrap():
     _utils_path = os.path.join(_addin_root, 'frame-builder', 'fb_utils')
     if _utils_path not in sys.path:
         sys.path.insert(0, _utils_path)
+
+    # fb_shared (canonical entity/expression helpers) is imported PACKAGE-
+    # qualified (`import fb_shared.*`) by the sub-add-ins that consume it
+    # (frame-inspector now; template-maker after S4). Put the add-in root on
+    # sys.path so those imports resolve. (C4/F8 module de-dup, S3.)
+    if _addin_root not in sys.path:
+        sys.path.insert(0, _addin_root)
     if 'fb_logger' in sys.modules:
         del sys.modules['fb_logger']
     from fb_logger import DebugLogger
@@ -190,6 +197,7 @@ def _bootstrap():
     # 'template_loader' is at the frame-builder root (top-level import,
     # not under fb_engine) so it needs its own entry to be reloaded.
     _force_wipe([
+        'fb_shared',   # C4/F8 de-dup: canonical shared helpers (cascades to fb_shared.*)
         'bspline_ui',
         'sketch_builder_ui',
         'solid_builder_ui',

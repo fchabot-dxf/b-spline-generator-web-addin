@@ -6,8 +6,8 @@ selection payload for the inspector palette.
 """
 
 import adsk.core, adsk.fusion
-from expression_coords import get_entity_coord_expr
-from entity_helpers import get_fb_name as get_entity_name
+from fb_shared.expression_coords import get_entity_coord_expr
+from fb_shared.entity_helpers import get_fb_name as get_entity_name
 
 
 def _get_native(ent):

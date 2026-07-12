@@ -5,7 +5,7 @@ This module constructs the JSON payload sent to the inspector palette.
 """
 
 from selection_items import build_selection_items
-from entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata
+from fb_shared.entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata
 
 
 def build_payload(entities):

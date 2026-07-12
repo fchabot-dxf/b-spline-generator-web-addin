@@ -19,7 +19,7 @@ PANEL_ID = 'bsplinePanel'
 _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
-from expression_coords import get_design_params
+from fb_shared.expression_coords import get_design_params
 from payload_builder import build_payload
 
 PALETTE_URL = os.path.join(_current_dir, 'inspector_palette.html').replace('\\', '/')

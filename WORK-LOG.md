@@ -1769,3 +1769,42 @@ PRE-EXISTING, NOT a de-dup regression:**
 **Net:** S2b goal achieved — the revived test proves get_fb_name/ownership-gate against the canonical
 (14/14 isolated). The full-suite isolation failures are pre-existing and de-dup-independent (proven
 by the identical old-copy failure set). Committed the 1-line syntax fix + this log; conftest unchanged.
+
+---
+
+## Turn 71 — C4-S3: switch frame-inspector to fb_shared — DONE (headless; FUSION-GATED, human verifies)
+
+Switched frame-inspector ONLY to the canonical fb_shared. I CANNOT verify in Fusion — the human does
+a Stop→Start after this pass. Headless pre-checks all pass.
+
+**(A) FI imports rewritten bare → fb_shared.* (4 sites):**
+- fusion-inspector.py:22  `from fb_shared.expression_coords import get_design_params`
+- payload_builder.py:8    `from fb_shared.entity_helpers import get_fb_name, get_entity_coord, get_fb_metadata`
+- selection_items.py:9    `from fb_shared.expression_coords import get_entity_coord_expr`
+- selection_items.py:10   `from fb_shared.entity_helpers import get_fb_name as get_entity_name`
+
+**(B) Deleted the FI copies:** `git rm frame-inspector/expression_coords.py + entity_helpers.py`
+(frame-inspector now has ZERO of the two modules — it consumes fb_shared).
+
+**(C) bspline-frame-builder.py hot-reload wiring:**
+- `_bootstrap()`: added `if _addin_root not in sys.path: sys.path.insert(0, _addin_root)` (after the
+  fb_utils insert) so the subs' `import fb_shared.*` resolves.
+- L192 `_force_wipe([...])`: added `'fb_shared'` as the first entry (cascades to
+  fb_shared.entity_helpers / .expression_coords) so hot-reload re-reads the canonical each Start.
+
+**(D) Left untouched (S4/S5):** `_shared_project_names` STILL lists 'expression_coords' +
+'entity_helpers' (L252) — correct: template-maker still imports them bare until S4, so that wipe must
+stay; S5 removes them. template-maker not touched.
+
+**Headless pre-check — ALL PASS:**
+- py_compile: fusion-inspector, payload_builder, selection_items, bspline-frame-builder, fb_shared/* — OK.
+- 0 bare imports left in frame-inspector/ (grep: none).
+- stubbed-adsk import-resolve (root on sys.path): fb_shared.expression_coords + entity_helpers resolve;
+  payload_builder + selection_items import cleanly with get_fb_name/get_entity_coord_expr coming from
+  fb_shared.*; fusion-inspector.py FULLY loads (richer adsk stub for its handler base classes) with
+  get_design_params from fb_shared.expression_coords.
+
+**STOP — Fusion verification is the human's:** after this pass, the human Stop→Starts the add-in and
+smoke-tests the Inspector (palette loads, selection → payload renders, expressions/arc coords correct;
+co-load with template-maker still fine since S5's wipe still covers TM's bare imports). Committed the
+A+B+C change; template-maker/_shared_project_names untouched.
