@@ -54,6 +54,15 @@ class ParametricSketchBuilder:
     builder.build_template(template_dict)
     """
 
+    # Frame-tilt: all sketches are hosted on a single construction plane
+    # created "by angle" about the world X axis, driven by this user
+    # parameter. At 0 deg the plane is coincident with XY (identical to the
+    # historical flat-on-XY behaviour); any other value leans the whole
+    # frame forward/back. Both the plane and the parameter are editable
+    # timeline artifacts after the build.
+    TILT_PARAM_NAME = "frame_tilt_deg"
+    TILT_PLANE_NAME = "frame_tilt_plane"
+
     def __init__(self, comp, design, logger, prefix="T1", ui_data=None, resolver=None, max_phase=None):
         self.comp = comp
         self.design = design
@@ -170,10 +179,12 @@ class ParametricSketchBuilder:
         except Exception as e:
             ctx.logger.log(f"Cleanup of '{sketch_name}' skipped: {e}", "DEBUG")
 
-        # Create the sketch on the XY construction plane (Z-up Fusion: floor
-        # plane). Was xZConstructionPlane back when the user ran Y-up Fusion;
-        # XY-plane is the natural frame-layout plane in Z-up.
-        sketch = ctx.target.sketches.add(ctx.target.xYConstructionPlane)
+        # Create the sketch on the shared frame-tilt plane. At the default
+        # frame_tilt_deg = 0 this plane is coincident with the XY construction
+        # plane (Z-up Fusion floor plane, the natural frame-layout plane);
+        # a non-zero angle leans every sketch — and the extruded solid that
+        # follows the plane normal — forward/back about the world X axis.
+        sketch = ctx.target.sketches.add(self._get_tilt_plane(ctx))
         sketch.name = sketch_name
         ctx.sketches[sketch_name] = sketch
         # Use the raw name for the entity map key to support internal lookups
@@ -344,6 +355,56 @@ class ParametricSketchBuilder:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+    def _get_tilt_plane(self, ctx):
+        """Return the construction plane that hosts every frame sketch.
+
+        A single plane is created "by angle" about the world X axis and
+        driven by the ``frame_tilt_deg`` user parameter, so all three
+        sketches stay coplanar (the inter-sketch projections depend on
+        that). At 0 deg it coincides with XY — behaviourally identical to
+        the old ``sketches.add(xYConstructionPlane)`` path. The plane is a
+        real timeline feature and the parameter is a normal user
+        parameter, so the tilt can be edited after the build by either.
+
+        Reused by name across the three sketches (and across rebuilds) so
+        the timeline never accumulates duplicate planes. Falls back to the
+        raw XY plane if plane creation fails, so a tilt hiccup can never
+        block the whole frame build.
+        """
+        comp = ctx.target
+
+        # Ensure the driving parameter exists (default 0 deg = flat on XY).
+        try:
+            if not ctx.design.userParameters.itemByName(self.TILT_PARAM_NAME):
+                ctx.create_or_update_param(self.TILT_PARAM_NAME, "0 deg", "deg")
+        except Exception as e:
+            ctx.logger.log(f"TILT: could not ensure '{self.TILT_PARAM_NAME}': {e}", "WARNING")
+
+        # Reuse an existing tilt plane so rebuilds don't stack planes.
+        try:
+            existing = comp.constructionPlanes.itemByName(self.TILT_PLANE_NAME)
+            if existing:
+                return existing
+        except Exception:
+            pass
+
+        # Create the angled plane: rotate the XY plane about the world X axis.
+        try:
+            planes = comp.constructionPlanes
+            plane_input = planes.createInput()
+            angle = adsk.core.ValueInput.createByString(self.TILT_PARAM_NAME)
+            plane_input.setByAngle(comp.xConstructionAxis, angle, comp.xYConstructionPlane)
+            plane = planes.add(plane_input)
+            plane.name = self.TILT_PLANE_NAME
+            ctx.logger.log(
+                f"TILT: created plane '{self.TILT_PLANE_NAME}' driven by '{self.TILT_PARAM_NAME}'")
+            return plane
+        except Exception as e:
+            ctx.logger.log(
+                f"TILT: plane creation failed ({e}); hosting sketches on the raw XY plane instead.",
+                "WARNING")
+            return comp.xYConstructionPlane
+
     def _project_y_axis(self, sketch, sketch_name):
         """Project the vertical construction axis into the sketch.
 
