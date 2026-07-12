@@ -295,4 +295,3 @@ if __name__ == '__main__':
     test_gate_allows_projected_origin_via_whitelist()
     test_gate_still_refuses_untagged_non_origin_geometry()
     print('test_origin_axis_target passed')
-axis_target passed')

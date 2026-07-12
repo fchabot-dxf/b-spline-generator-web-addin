@@ -1737,3 +1737,35 @@ pre-existing gap, not worsened by the de-dup. Trivial 1-line fix if you want it 
 
 **No assertion delta anywhere** — nothing was force-passed. Committed fb_shared/expression_coords.py +
 conftest.py + this log.
+
+---
+
+## Turn 69 — C4-S2b: revive ownership-gate test → FLAG2 closed + isolation bug classified — DONE
+
+Deleted ONLY the stray line 298 (`axis_target passed')`) in
+`template-maker/tests/test_origin_axis_target.py` — line 297 already had the real print. 1-line diff,
+py_compile OK. No production edits, no copies, no `_force_wipe`.
+
+**FLAG2 CLOSED (get_fb_name / ownership-gate path validated against the canonical, headlessly):**
+`pytest tests/test_origin_axis_target.py` (the file, run against the S2 fb_shared alias) → **14
+passed**. The ownership gate resolves entities through `get_fb_name` — the S1 reconciliation that
+switched to template-maker's ID-first read — and it works correctly with the canonical. Re-confirmed
+after restoring the clean conftest: still 14/14.
+
+**⚠ STOP + REPORT (per the ⛔ rule) — the test has 9 failures in the FULL suite; classified STALE
+PRE-EXISTING, NOT a de-dup regression:**
+- `pytest tests/` (whole suite) → 9 failed / 74 passed. The test PASSES alone (14) but 9 fail when
+  run after the rest → a test-ORDERING / global-state isolation bug (the ownership-gate tests depend
+  on state that earlier tests leave behind).
+- DECISIVE classification: made the conftest alias toggleable and ran the full suite with the OLD
+  core copies (`FB_DEDUP_ALIAS=0`) → the EXACT SAME 9 tests fail (`diff` of the FAILED lists =
+  identical). So fb_shared / the de-dup does NOT cause it — it's a pre-existing isolation bug in this
+  test file, independent of the shared module. (The diagnostic toggle was reverted; conftest is back
+  to the clean S2 version — empty diff.)
+- Per "don't fix other pre-existing issues (flag only)": I did NOT touch the test's isolation bug.
+  FLAG for a follow-up — the 9 origin-token/gate tests need per-test state reset (likely a stale
+  module global or the shared adsk stub) to run under the full suite. It does NOT block S3.
+
+**Net:** S2b goal achieved — the revived test proves get_fb_name/ownership-gate against the canonical
+(14/14 isolated). The full-suite isolation failures are pre-existing and de-dup-independent (proven
+by the identical old-copy failure set). Committed the 1-line syntax fix + this log; conftest unchanged.
