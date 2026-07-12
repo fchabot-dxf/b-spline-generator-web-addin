@@ -1693,3 +1693,47 @@ acceptance check the design named.
 **Nothing depends on fb_shared yet** (additive), so these decisions are safe to review + revise
 before any caller switch. Reconciliation decisions are recorded inline in fb_shared/entity_helpers.py
 (per-function provenance comments) for your diff review.
+
+---
+
+## Turn 67 — C4-S2: fb_shared/expression_coords + pytest acceptance gate — DONE (GREEN)
+
+ADDITIVE, headless. S1 flags were advisor-blessed. Created the canonical expression_coords + ran
+the template-maker pytest suite against fb_shared as the acceptance gate. NO production callers
+switched, NO copies deleted, `_force_wipe` untouched.
+
+**Created `fb_shared/expression_coords.py`** = template-maker base (params-threaded API + circle/
+ellipse/spline + `_format_scalar_expr`/`_spline_fit_points`) with `from entity_helpers import
+_get_arc_midpoint` → `from fb_shared.entity_helpers import _get_arc_midpoint`, PLUS the 4 FI extras
+(`get_entity_name`, `format_design_params`, `_get_design`, `_get_design_parameter`). Kept TM's
+`get_design_params` (base). Built via script (TM verbatim + import fix + FI fns extracted by name) to
+avoid transcription error. 19 defs. py_compile OK.
+
+**Test rewrite (Open-Q3 resolved) — centralized in conftest.py:** the tests AND the core modules they
+import (template_generator, template_payload, etc.) resolve `expression_coords`/`entity_helpers` by
+BARE name, so a per-test import swap wouldn't cover the transitive path. Instead conftest.py adds the
+addin root to sys.path, stubs adsk (fb_shared imports adsk at module level), and aliases
+`sys.modules['expression_coords'|'entity_helpers'] = fb_shared.*` (sys.modules wins over sys.path).
+This runs the ENTIRE tree against the canonical without touching any production caller.
+
+**ACCEPTANCE GATE = GREEN: 69 passed.** Rigorously verified the alias took effect:
+`expression_coords.__file__` + `entity_helpers.__file__` both point to fb_shared/; ec's arc-midpoint
+comes from `fb_shared.entity_helpers`; eh has the evaluator dispatcher + ID-first get_fb_name. So the
+merged canonical (incl. all S1 reconciliations) is behaviour-equivalent to the copies it replaces.
+
+**Arc-midpoint FLAG1 — how green validates it:** in the fake-adsk test env the fake arcs have no
+`.geometry.evaluator`, so fb_shared's `_get_arc_midpoint` falls back to `_get_arc_midpoint_legacy`
+(the SAME angle-bisector as TM's old `_get_arc_midpoint`) → arc tests pass. So the pytest gate proves
+the canonical is BACKWARD-COMPATIBLE (fallback == TM). The evaluator IMPROVEMENT only activates on
+real Fusion arcs (with evaluators) — that's the S4 human Stop→Start check, as the design said.
+
+**FLAGGED — pre-existing broken test (NOT mine, NOT a de-dup regression):**
+`template-maker/tests/test_origin_axis_target.py` has a SyntaxError at line 298 (a stray
+`axis_target passed')` line) that is present in HEAD (`git show` confirms) — I never touched it. It
+can't be collected, so it never ran (before or after this change). I excluded it with
+`--ignore` for the run and did NOT edit it (out of S2 scope; not an assertion delta). It means the
+origin/axis + relation_hints/ownership_gate coverage isn't exercised against fb_shared — a
+pre-existing gap, not worsened by the de-dup. Trivial 1-line fix if you want it as a follow-up.
+
+**No assertion delta anywhere** — nothing was force-passed. Committed fb_shared/expression_coords.py +
+conftest.py + this log.
