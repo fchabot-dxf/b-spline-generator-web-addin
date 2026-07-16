@@ -292,12 +292,10 @@ def _close_palette():
 
 
 def _run_solid_build_direct(data):
-    transaction = None
     try:
         if diag_logger: diag_logger.log("RUN SOLID BUILD (hidden command) triggered")
 
         _set_status("Building solid frame…")
-        transaction = _start_undo_transaction('Build Solid Frame')
 
         solid_coordinator.build_solid_logic_v3(
             to_face=data.get('to_face'),
@@ -305,7 +303,6 @@ def _run_solid_build_direct(data):
             appearance_name=data.get('appearance', 'Polished Chrome'),
             external_logger=diag_logger
         )
-        _commit_undo_transaction(transaction)
         _set_status("Solid frame complete")
         _notify_status("Solid Build Complete")
         # Auto-close on success
@@ -314,41 +311,6 @@ def _run_solid_build_direct(data):
         short = str(e).split('\n')[0][:120]
         _set_status(f"Solid build failed: {short} — see log")
         if diag_logger: diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
-        _abort_undo_transaction(transaction)
-
-
-def _start_undo_transaction(name):
-    try:
-        app = adsk.core.Application.get()
-        if app and hasattr(app, 'startTransaction'):
-            return app.startTransaction(name)
-    except Exception:
-        pass
-    return None
-
-
-def _commit_undo_transaction(transaction):
-    try:
-        if not transaction:
-            return
-        if hasattr(transaction, 'commit'):
-            transaction.commit()
-        elif hasattr(transaction, 'end'):
-            transaction.end()
-    except Exception:
-        pass
-
-
-def _abort_undo_transaction(transaction):
-    try:
-        if not transaction:
-            return
-        if hasattr(transaction, 'abort'):
-            transaction.abort()
-        elif hasattr(transaction, 'rollback'):
-            transaction.rollback()
-    except Exception:
-        pass
 
 
 def run_palette(engine_instance, diag_logger=None):

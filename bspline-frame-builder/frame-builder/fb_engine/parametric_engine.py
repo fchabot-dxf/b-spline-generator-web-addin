@@ -44,6 +44,32 @@ from fb_engine.parameter_schema import ParameterSchema
 from fb_engine.diagnostics import log_arc_audit
 
 
+def ensure_tilt_param(design, logger=None):
+    """Idempotently create the ``frame_tilt_deg`` user parameter (default
+    ``0 deg``) in ``design`` if it doesn't already exist. Never raises.
+
+    MUST be called OUTSIDE any frame-build command's Execute handler (i.e. at
+    palette-open / document-activated), so the parameter create is never part of
+    a build's undo unit — a mid-build user-parameter create doesn't reverse with
+    the geometry and orphans on Ctrl+Z (see UNDO-REDO-DESIGN.md / E8). The build's
+    ``_get_tilt_plane`` then only READS this parameter.
+    """
+    try:
+        if design is None:
+            return
+        name = ParametricSketchBuilder.TILT_PARAM_NAME
+        ups = design.userParameters
+        if ups.itemByName(name):
+            return
+        ups.add(name, adsk.core.ValueInput.createByString("0 deg"), "deg",
+                "Frame Builder frame tilt (deg about world X)")
+        if logger:
+            logger.log(f"TILT: ensured user parameter '{name}' = 0 deg (outside build)")
+    except Exception as e:
+        if logger:
+            logger.log(f"TILT: ensure_tilt_param failed: {e}", "WARNING")
+
+
 class ParametricSketchBuilder:
     """
     Orchestrates parametric sketch construction from template data.
@@ -373,12 +399,19 @@ class ParametricSketchBuilder:
         """
         comp = ctx.target
 
-        # Ensure the driving parameter exists (default 0 deg = flat on XY).
+        # The frame_tilt_deg parameter is ensured at palette-open / doc-activated
+        # (OUTSIDE this build command's Execute) so undo can never orphan a
+        # mid-build parameter create — see UNDO-REDO-DESIGN.md (E8). Here we only
+        # READ it; if it's somehow absent, host on the raw XY plane rather than
+        # create it now.
         try:
             if not ctx.design.userParameters.itemByName(self.TILT_PARAM_NAME):
-                ctx.create_or_update_param(self.TILT_PARAM_NAME, "0 deg", "deg")
-        except Exception as e:
-            ctx.logger.log(f"TILT: could not ensure '{self.TILT_PARAM_NAME}': {e}", "WARNING")
+                ctx.logger.log(
+                    f"TILT: '{self.TILT_PARAM_NAME}' not present at build time; "
+                    f"hosting sketches on the raw XY plane.", "WARNING")
+                return comp.xYConstructionPlane
+        except Exception:
+            return comp.xYConstructionPlane
 
         # Reuse an existing tilt plane so rebuilds don't stack planes.
         try:

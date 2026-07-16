@@ -462,7 +462,6 @@ def _close_palette():
 
 
 def _run_sketch_build_direct(data, style_id):
-    transaction = None
     try:
         if diag_logger: diag_logger.log(f"RUN SKETCH BUILD (hidden command). Style: {style_id}")
 
@@ -470,11 +469,8 @@ def _run_sketch_build_direct(data, style_id):
         phase_label = f" · up to phase {max_phase}" if max_phase is not None else ""
         _set_status(f"Building {style_id}{phase_label}…")
 
-        transaction = _start_undo_transaction('Build Skeleton')
-
         if frame_engine:
             frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger, data=data)
-            _commit_undo_transaction(transaction)
             _set_status(f"{style_id} · sketch complete{phase_label}")
             _notify_status("Sketch Build Complete")
             # Auto-close on success
@@ -482,46 +478,10 @@ def _run_sketch_build_direct(data, style_id):
         else:
             if diag_logger: diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED")
             _set_status("Build error: frame engine not loaded — restart add-in")
-            _abort_undo_transaction(transaction)
     except Exception as e:
         short = str(e).split('\n')[0][:120]
         _set_status(f"Build failed: {short} — see log")
         if diag_logger: diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
-        _abort_undo_transaction(transaction)
-
-
-def _start_undo_transaction(name):
-    try:
-        app = adsk.core.Application.get()
-        if app and hasattr(app, 'startTransaction'):
-            return app.startTransaction(name)
-    except Exception:
-        pass
-    return None
-
-
-def _commit_undo_transaction(transaction):
-    try:
-        if not transaction:
-            return
-        if hasattr(transaction, 'commit'):
-            transaction.commit()
-        elif hasattr(transaction, 'end'):
-            transaction.end()
-    except Exception:
-        pass
-
-
-def _abort_undo_transaction(transaction):
-    try:
-        if not transaction:
-            return
-        if hasattr(transaction, 'abort'):
-            transaction.abort()
-        elif hasattr(transaction, 'rollback'):
-            transaction.rollback()
-    except Exception:
-        pass
 
 
 class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
@@ -536,12 +496,30 @@ class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
             app = adsk.core.Application.get()
             if not app:
                 return
+            # Tilt param invariant (E8): a newly-activated design may lack
+            # frame_tilt_deg — ensure it now (outside any build Execute).
+            _ensure_tilt_param_safe()
             pal = app.userInterface.palettes.itemById(PALETTE_ID)
             if pal and pal.isVisible:
                 style = self._style_id_ref[0] if self._style_id_ref else "Template 1"
                 _schedule_schema_push(style)
         except Exception:
             if self.diag_logger: self.diag_logger.log_error(f"DocumentActivatedHandler CRASH:\n{traceback.format_exc()}")
+
+
+def _ensure_tilt_param_safe():
+    """Ensure the frame_tilt_deg user parameter exists in the active design,
+    OUTSIDE any build command's Execute (E8). Best-effort — never blocks the UI.
+    Called at palette-open and on document-activated so undo can't orphan a
+    mid-build parameter create. See UNDO-REDO-DESIGN.md."""
+    try:
+        app = adsk.core.Application.get()
+        design = adsk.fusion.Design.cast(app.activeProduct) if app else None
+        if design and frame_engine and hasattr(frame_engine, 'parametric_engine'):
+            frame_engine.parametric_engine.ensure_tilt_param(design, diag_logger)
+    except Exception:
+        if diag_logger:
+            diag_logger.log_error(f"_ensure_tilt_param_safe:\n{traceback.format_exc()}")
 
 
 def run_palette(engine_instance, diag_logger=None):
@@ -554,6 +532,10 @@ def run_palette(engine_instance, diag_logger=None):
     try:
         app = adsk.core.Application.get()
         ui = app.userInterface
+
+        # Tilt param invariant (E8): ensure frame_tilt_deg exists at palette-open,
+        # OUTSIDE any build Execute, so undo can't orphan a mid-build param create.
+        _ensure_tilt_param_safe()
 
         # 1. Cleanup any old palette
         existing = ui.palettes.itemById(PALETTE_ID)

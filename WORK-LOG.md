@@ -2382,3 +2382,41 @@ end)` for a collapsible node (does NOT fix undo).
 **Human repro specified** (build → Ctrl+Z once → does ALL reverse? is `frame_tilt_deg` orphaned in Change
 Parameters? → Ctrl+Y redo → rebuild reuse?). Forks gated. No code; the only live-Fusion action was a
 read-only API probe.
+
+---
+
+## Turn 101 — E8 build: undo fix (F1-C + F2) — DONE (headless); human Fusion pending
+
+Implemented the advisor's synthesis: create `frame_tilt_deg` OUTSIDE any build Execute (F1-C) + delete
+the dead undo-transaction wrappers (F2). No `timelineGroups`, didn't move the build out of Execute,
+didn't drop the param (F1-A rejected).
+
+**(1) F1-C — the tilt-param invariant:**
+- NEW module-level `ensure_tilt_param(design, logger=None)` in `parametric_engine.py:47` — idempotent
+  (`if userParameters.itemByName(TILT_PARAM_NAME): return` before `.add(..., '0 deg', 'deg', …)`); never
+  raises; uses `ParametricSketchBuilder.TILT_PARAM_NAME` (single source).
+- Called via a defensive `_ensure_tilt_param_safe()` helper in `sketch_builder_ui.py` (resolves the
+  active Design + calls `frame_engine.parametric_engine.ensure_tilt_param`) at BOTH `run_palette` /
+  palette-open (`:538`) AND `DocumentActivatedHandler.notify` / doc-activated (`:501`) — both OUTSIDE any
+  command Execute.
+- REMOVED the `create_or_update_param('frame_tilt_deg')` from `_get_tilt_plane`
+  (`parametric_engine.py:376-381`). It now only READS the param; if absent at build time → hosts sketches
+  on the raw XY plane (existing fallback), never creating the param mid-Execute.
+
+**(2) F2 — deleted the dead undo-transaction wrappers** (E8 live-probed dead: `app.startTransaction`
+doesn't exist): removed `_start_/_commit_/_abort_undo_transaction` defs + ALL call sites in both
+`_run_sketch_build_direct` (sketch) and `_run_solid_build_direct` (solid). Builds now rely solely on
+Fusion's implicit "one `command.execute` = one undo unit" for geometry.
+
+**Verify (headless — all green):**
+- py_compile all 3.
+- 0 transaction-wrapper remnants (grep `_start/_commit/_abort_undo_transaction|startTransaction` → none).
+- 0 tilt-param CREATE in the build/Execute path (grep `create_or_update_param.*TILT` → none); the only
+  `userParameters.add` for the tilt param is in `ensure_tilt_param`, called ONLY from palette-open +
+  doc-activated (both non-Execute, confirmed by reading the call sites).
+- idempotent by construction (itemByName guard + early return).
+- EOL preserved (parametric CRLF; sketch/solid LF); diff +59/−82.
+
+**Real-symptom GATE → human Fusion:** build a frame → Ctrl+Z ONCE → the whole frame (plane + sketches +
+extrudes) reverses clean; `frame_tilt_deg` PERSISTS (created outside the build, so no orphan flip-flop);
+Ctrl+Y redo works; rebuild reuses the param/plane; set `frame_tilt_deg=30` → next build tilts.
