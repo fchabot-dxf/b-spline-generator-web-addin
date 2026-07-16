@@ -2010,3 +2010,48 @@ load-bearing anchors myself (deploy handshake writer, palette registrations).
 `build-info.json` (inert data) + one read path, NOT hand-roll version-reading in 8 palettes. The whole
 doc is built on that. Passing to advisor for the fork decisions before any build slice — no code this
 turn (design gate).
+
+---
+
+## Turn 83 — E2a: version-stamp SUBSTRATE (deploy writer + fb_shared read/compare) — DONE
+
+Advisor synthesized the E2 forks: **F1=A** (DEST-only artifact) and folded **`dirty`** into the
+declared JSON (declare it now; the badge consumes it in E2b). Built the substrate only — NO palette
+HTML/JS this slice (that's E2b).
+
+**(1) `DEPLOY_bspline-frame-builder.py` — new `_write_build_info()`** (mirrors the `_write_*_handshake`
+writers; called right after them in `deploy_local`). Writes `DEST_DIR/build-info.json`
+= `{sha, branch, built_at, source_root, dirty}`:
+- sha/branch via `git -C SRC_DIR rev-parse --short HEAD` / `--abbrev-ref HEAD`.
+- built_at = `datetime.now().astimezone().isoformat(timespec='seconds')` (local ISO + offset).
+- source_root = git TOPLEVEL (SRC_DIR's parent = repo root where `.git` lives), stored portable
+  `~/...` like the handshakes so `compare_to_source` can locate `<source_root>/.git`.
+- Any git failure (absent / not-a-repo / timeout) → sha='unknown' and the file is STILL written — a
+  version stamp must never crash the deploy. Added `import subprocess`.
+
+**(2) `fb_shared/build_info.py` — NEW** (pure stdlib, no adsk / no git binary → imports + unit-tests
+headlessly; neither function raises):
+- `read_build_info(addin_root)` → the dict; absent/malformed/non-dict → `SENTINEL` (sha 'unknown');
+  missing keys backfilled from SENTINEL so callers always get the full shape.
+- `compare_to_source(info)` → `(ok|stale|unknown, msg)` via PURE FILE READS of `source_root/.git`:
+  `_resolve_git_dir` (expands `~`, follows a `gitdir:` pointer for worktrees) → `_read_head_sha`
+  (symbolic HEAD: loose ref then packed-refs; or detached SHA). ok = short-SHA prefix-matches HEAD &
+  clean; stale = mismatch OR dirty; unknown = no sha / no source_root / no `.git` / HEAD unresolvable.
+
+**DESIGN CALL flagged for advisor:** `dirty` uses `git status --porcelain --untracked-files=no` =
+uncommitted **tracked** modifications only. Untracked files are IGNORED so this repo's ever-present
+untracked coordination docs (NEXT-SESSION.md / ROADMAP.md / scratchpad) don't flag every deploy dirty.
+Trade-off: a brand-new *untracked source* file that gets deployed wouldn't count as dirty. Reasonable
+default; trivial to flip to strict (drop the flag) in E2b if you prefer.
+
+**Verify (headless — `scratchpad/verify_e2a.py`; no live deploy, real install untouched):**
+- py_compile both OK.
+- Writer in a tempdir (`DEST_DIR` monkeypatched, `SRC_DIR` = real repo) →
+  `{sha:'d2f0e76', branch:'main', built_at:'…-04:00', source_root:'~/APPS/…', dirty:True}` — all 5
+  keys, real SHA, and `dirty:True` is CORRECT (DEPLOY…py is modified-uncommitted right now = the dirty
+  path exercised live).
+- Reader sentinel on absent + malformed → sha 'unknown'.
+- `compare_to_source` vs THIS repo — all three statuses: **ok** ("up to date (main d2f0e76)"),
+  **stale** (SHA mismatch + dirty-tree), **unknown** (no-sha + unreachable-source).
+
+No palette wiring (E2b). Passing to advisor.

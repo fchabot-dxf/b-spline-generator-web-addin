@@ -19,6 +19,7 @@ import shutil
 import hashlib
 import json
 import time
+import subprocess
 from pathlib import Path
 from datetime import datetime
 
@@ -420,6 +421,10 @@ def deploy_local():
     _write_bspline_handshake()
     _write_stamp_editor_handshake()
 
+    # Version stamp: record what was deployed (git SHA + build time) as an inert
+    # DEST-only artifact every palette's Python can read. See VERSION-STAMP-DESIGN.md.
+    _write_build_info()
+
     # Verify
     print("  Verifying key files...")
     all_ok = True
@@ -441,6 +446,64 @@ def deploy_local():
     else:
         print("\n  ERROR: one or more files did not copy correctly.")
     return all_ok
+
+
+def _write_build_info():
+    """
+    Write build-info.json into the deployed add-in ROOT (DEST-only artifact,
+    fork F1=A) so every palette's Python can read WHAT was deployed:
+        {sha, branch, built_at, source_root, dirty}
+    Computed from git in SRC_DIR at deploy time. On ANY git failure (git absent,
+    not a repo, timeout) we fall back to sha='unknown' and STILL write the file —
+    a version stamp must never crash the deploy. Mirrors the _write_*_handshake
+    writers. See VERSION-STAMP-DESIGN.md 2a.
+    """
+    def _git(*args, default="unknown"):
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(SRC_DIR), *args],
+                capture_output=True, text=True, timeout=10,
+            )
+            if out.returncode == 0:
+                return out.stdout.strip() or default
+        except Exception:
+            pass
+        return default
+
+    sha    = _git("rev-parse", "--short", "HEAD")
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+
+    # source_root = the git repo TOPLEVEL (where .git lives — SRC_DIR's parent),
+    # stored portable (~/...) like the handshakes so compare_to_source can locate
+    # <source_root>/.git. Falls back to SRC_DIR's parent when git is absent.
+    toplevel  = _git("rev-parse", "--show-toplevel", default="")
+    repo_root = Path(toplevel) if toplevel else SRC_DIR.parent
+    try:
+        rel_to_home = repo_root.relative_to(Path.home())
+        source_root = f"~/{rel_to_home.as_posix()}"
+    except ValueError:
+        source_root = str(repo_root)
+
+    # dirty = uncommitted changes to TRACKED files. Untracked files (e.g. the
+    # advisor's NEXT-SESSION.md / ROADMAP.md / scratchpad) are IGNORED via
+    # --untracked-files=no so they don't perpetually flag every deploy dirty;
+    # 'dirty' therefore means "deployed modified tracked code not in any commit".
+    dirty = bool(_git("status", "--porcelain", "--untracked-files=no", default=""))
+
+    info = {
+        "sha":         sha,
+        "branch":      branch,
+        "built_at":    datetime.now().astimezone().isoformat(timespec="seconds"),
+        "source_root": source_root,
+        "dirty":       dirty,
+    }
+    try:
+        out_path = DEST_DIR / "build-info.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(info, f, indent=4)
+        print(f"  Build info: {sha} ({branch}){' DIRTY' if dirty else ''} @ {info['built_at']}")
+    except Exception as e:
+        print(f"  WARNING: could not write build-info.json: {e}")
 
 
 def _write_fb_handshake():
