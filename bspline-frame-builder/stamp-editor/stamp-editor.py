@@ -150,6 +150,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 pal = ui.palettes.itemById(PALETTE_ID)
                 if pal:
                     pal.sendInfoToHTML('pong', '{}')
+                    # Piggyback the deployed version stamp on the ping/pong handshake.
+                    _send_build_info(pal)
                 return
 
             if action == 'reset_ui':
@@ -730,6 +732,31 @@ def _compute_face_canvas(face, u_min, u_max, v_min, v_max):
         _log(f'_compute_face_canvas: outline sample failed:\n{traceback.format_exc()}')
 
     return width_mm, height_mm, outline
+
+
+def _send_build_info(pal):
+    """Best-effort version stamp: read build-info.json (add-in ROOT) via fb_shared,
+    compare to source HEAD, push to the header badge. Never breaks the palette.
+    See fb_shared.build_info / VERSION-STAMP-DESIGN.md."""
+    try:
+        import os as _os, sys as _sys
+        _root = _os.path.dirname(_os.path.abspath(__file__))
+        for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root)
+            if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
+                break
+            _root = _os.path.dirname(_root)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from fb_shared import build_info as _bi
+        info = _bi.read_build_info(_root)
+        status, message = _bi.compare_to_source(info)
+        if pal:
+            pal.sendInfoToHTML('build_info', json.dumps({
+                'sha': info.get('sha'), 'built_at': info.get('built_at'),
+                'dirty': info.get('dirty'), 'status': status, 'message': message,
+            }))
+    except Exception:
+        pass
 
 
 def _send_to_palette(action, data):

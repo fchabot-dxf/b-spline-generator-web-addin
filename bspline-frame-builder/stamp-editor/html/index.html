@@ -24,6 +24,14 @@
        editor modal is exempt — it uses its own light-themed layout via
        editor.css since it overlays full-screen. -->
   <link rel="stylesheet" href="styles/stamp-editor.css">
+
+  <!-- Version-stamp badge, painted by the build_info handshake (E2d). -->
+  <style>
+    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; }
+    .cad-nav-version.build-ok      { color: #4caf50; }
+    .cad-nav-version.build-stale   { color: #ffb300; }
+    .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
+  </style>
 </head>
 <body>
   <div id="app">
@@ -31,6 +39,7 @@
     <header class="topbar">
       <h1>Stamp Editor</h1>
       <span id="statusLine" class="status">Boot…</span>
+      <span id="build-badge" class="cad-nav-version" title=""></span>
     </header>
 
     <section class="panel">

@@ -54,6 +54,26 @@ const GRID_NZ = 64;
 const routes = {
   pong: () => pyLog('pong'),
 
+  build_info: (data) => {
+    // Python pushed the deployed build stamp. Paint the header badge:
+    // ✓ up-to-date / ⚠ stale-or-dirty; unknown keeps the muted fallback.
+    const badge = document.getElementById('build-badge');
+    if (!badge) return;
+    const info   = data || {};
+    const status = info.status || 'unknown';
+    const sha    = info.sha || 'unknown';
+    badge.title  = info.message || '';
+    if (status === 'unknown' || sha === 'unknown') {
+      badge.className = 'cad-nav-version build-unknown';
+    } else {
+      const date  = String(info.built_at || '').slice(0, 10);
+      const glyph = status === 'ok' ? '✓' : '⚠';
+      const edits = info.dirty ? ' +edits' : '';
+      badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+      badge.className   = `cad-nav-version build-${status}`;
+    }
+  },
+
   face_count_update: (data) => {
     const n = (data && Number.isFinite(data.count)) ? data.count : 0;
     state.liveCount = n;

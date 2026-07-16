@@ -2145,3 +2145,39 @@ b-spline-gen / deploy / fb_shared.
 **Real-symptom GATE → human Fusion:** redeploy → Stop→Start → each of the 6 palette headers shows
 `✓/⚠ <sha> · <date>` (CEF DOM, not headlessly drivable). With b-spline-gen (E2b) that is **7 of 8**
 palettes; only **stamp-editor** (E2d, dialect c) remains for full E2 coverage.
+
+---
+
+## Turn 89 — E2d: version badge into stamp-editor (dialect c) — DONE (headless); E2 wiring complete
+
+The final E2 slice — the 8th palette. Dialect c = ES-module bridge with a `routes[action]` map. Same
+failure-safe pattern; no other palette / deploy / fb_shared; `?v=` cache-bust (stamp-editor.py
+`htmlFileURL` setter) left untouched.
+
+**3 touches:**
+- **Python `stamp-editor.py`:** new module-level `_send_build_info(pal)` (:737, same walk-up-to-`fb_shared`
+  helper as E2c) + call it after the `pong` reply in the `ping` handler (:154) — the first-handshake
+  reply. Fully try/except-wrapped.
+- **HTML `html/index.html`:** `<span id="build-badge" class="cad-nav-version">` in the `.topbar`
+  after `#statusLine` (:34); added a small `<style>` in `<head>` (no inline `<style>` existed) with the
+  `.build-ok/.build-stale/.build-unknown` color classes.
+- **JS `html/main/main.js`:** a `build_info: (data) => {…}` entry in the `routes` map (:57), right after
+  `pong`. `data` is pre-parsed by `handle` (:145), and `handle` already wraps each `route(data)` call
+  in try/catch — so the render matches the routes-map style (no inner try). Same visual: ✓/⚠, `sha ·
+  date`, `+edits`, `title`=message, unknown→muted.
+
+**Verify (headless — all green):**
+- `py_compile` stamp-editor.py: OK.
+- `node --check` main.js **as an ES module** (copied to `.mjs`, since it `import`s from
+  `core/runtime.js`): OK — the new `build_info` route parses cleanly. (Plain `node --check main.js`
+  would misparse the top-level `import` as CommonJS; the `.mjs` copy forces module mode, syntax-only,
+  imports not resolved.)
+- grep: `_send_build_info` def (:737) + call (:154); `build_info:` route (main.js:57); `id="build-badge"`
+  (index.html ×1).
+- EOL preserved (all 3 files LF); diff +56, surgical.
+
+**Real-symptom GATE → human Fusion:** redeploy → Stop→Start → the Stamp Editor `.topbar` shows
+`✓/⚠ <sha> · <date>`.
+
+**E2 STATUS — wiring complete across ALL 8 palettes** (E2a substrate + E2b b-spline-gen + E2c ×6 +
+E2d stamp-editor). Pending the human Fusion confirmation of the 8 headers, **E2 is DONE** → E3 next.
