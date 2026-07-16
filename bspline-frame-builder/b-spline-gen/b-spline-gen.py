@@ -38,6 +38,31 @@ def _prescale_svg(svg_text, scale, width_in=7.0, height_in=9.0):
     return svg_text
 
 handlers = []
+
+
+def _send_build_info(pal):
+    """Best-effort: read the deploy-written build-info.json (at the add-in ROOT,
+    two dirs up from this file) and push {sha, built_at, dirty, status, message}
+    to the header badge via the 'build_info' handshake. Fully wrapped — a missing
+    file / import hiccup must never disturb the board sync it rides on. See
+    fb_shared.build_info / VERSION-STAMP-DESIGN.md."""
+    try:
+        import sys as _sys
+        addin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if addin_root not in _sys.path:
+            _sys.path.insert(0, addin_root)
+        from fb_shared import build_info as _bi
+        info = _bi.read_build_info(addin_root)
+        status, message = _bi.compare_to_source(info)
+        pal.sendInfoToHTML('build_info', json.dumps({
+            'sha':      info.get('sha'),
+            'built_at': info.get('built_at'),
+            'dirty':    info.get('dirty'),
+            'status':   status,
+            'message':  message,
+        }))
+    except Exception:
+        pass
 ui  = None
 app = adsk.core.Application.get()
 if app:
@@ -689,9 +714,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # UI asks: "How big is my board?" 
                 board = _get_current_board_size()
                 pal = ui.palettes.itemById(PALETTE_ID)
-                if pal: 
+                if pal:
                     _log(f"Sending Board Sync: {board}")
                     pal.sendInfoToHTML('sync_board', json.dumps(board))
+                    # Piggy-back the deployed version stamp on this first
+                    # handshake reply so the header badge fills in at open.
+                    _send_build_info(pal)
                 return
 
             # ── Reset UI / session restart (from JS)

@@ -162,6 +162,33 @@ function handleFusionHandshake(ev) {
 
     if (action === 'pong') return;
 
+    if (action === 'build_info') {
+        // Python pushed the deployed build stamp {sha, built_at, dirty, status,
+        // message}. Paint the header badge: ✓ up-to-date / ⚠ stale-or-dirty, with
+        // the full detail in the tooltip. Unknown (no build-info.json / dev run)
+        // keeps the fallback literal, just muted + explained via title.
+        try {
+            const badge = document.getElementById('build-badge');
+            if (!badge) return;
+            const info   = JSON.parse(ev.detail.data || '{}');
+            const status = info.status || 'unknown';
+            const sha    = info.sha || 'unknown';
+            badge.title  = info.message || '';
+            if (status === 'unknown' || sha === 'unknown') {
+                badge.className = 'cad-nav-version build-unknown';
+            } else {
+                const date  = String(info.built_at || '').slice(0, 10);   // YYYY-MM-DD
+                const glyph = status === 'ok' ? '✓' : '⚠';
+                const edits = info.dirty ? ' +edits' : '';
+                badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+                badge.className   = `cad-nav-version build-${status}`;
+            }
+        } catch (e) {
+            fusLog(`build_info parse failed: ${e.message}`);
+        }
+        return;
+    }
+
     if (action === 'sync_board') {
         // Python pushed widthIn / heightIn from the active Fusion design.
         // Apply via applyParam so the full plumbing runs: state update,

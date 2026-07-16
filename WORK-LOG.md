@@ -2055,3 +2055,44 @@ default; trivial to flip to strict (drop the flag) in E2b if you prefer.
   **stale** (SHA mismatch + dirty-tree), **unknown** (no-sha + unreachable-source).
 
 No palette wiring (E2b). Passing to advisor.
+
+---
+
+## Turn 85 — E2b: wire version badge into b-spline-gen ONLY (end-to-end) — DONE (headless); human Fusion pending
+
+The key-palette-first slice (design §2d): prove the whole path on ONE palette. 3 touches per §2c,
+b-spline-gen only; **deploy + fb_shared untouched**.
+
+**(1) HTML `bspline_gen_palette.html`:** the existing `.cad-nav-version` span (:268) got
+`id="build-badge"` + an empty `title=""` slot; KEPT its `v1.1.0` fallback literal. Added 3 status-color
+classes `.build-ok` / `.build-stale` / `.build-unknown` (:206-208). Updated the now-stale comment (it
+claimed "no build step injects this" — in Fusion, Python now does).
+
+**(2) Python `b-spline-gen.py`:** new module helper `_send_build_info(pal)` (:43) — resolves
+`addin_root = dirname(dirname(abspath(__file__)))` (build-info.json lives at the add-in ROOT),
+`from fb_shared import build_info`, `read_build_info` + `compare_to_source`, then
+`sendInfoToHTML('build_info', {sha,built_at,dirty,status,message})`. Fully try/except-wrapped — a
+missing file / import hiccup never disturbs the board sync it rides on. Called (:722) right after the
+existing `sync_board` reply in the `get_design_params` handler (the dialect-b first handshake).
+
+**(3) JS `main.js`:** new `build_info` case in `handleFusionHandshake` (:165) — paints `#build-badge`:
+`✓ <sha> · YYYY-MM-DD` (ok) / `⚠ …` (stale), ` +edits` if dirty, a `build-<status>` class, and the full
+compare message in `title`. Unknown / no-sha keeps the fallback literal, just muted + explained via
+`title`.
+
+End-to-end chain: JS `get_design_params` → Py `sync_board`+`_send_build_info` →
+`sendInfoToHTML('build_info')` → `fusionJavaScriptHandler.handle` → `CustomEvent('fusionHandshake')` →
+`handleFusionHandshake` build_info case → `#build-badge`.
+
+**Verify (headless — all green):** `py_compile` b-spline-gen.py; `node --check` main.js (Node v24);
+grep confirmed the def+call (43/722), the JS case+badge lookup+status class (165/171/184), and the HTML
+id+classes (268/206-208).
+
+**Real-symptom GATE → human Fusion** (the badge is a CEF-webview DOM update; `adsk` + the palette can't
+be driven headlessly, so this is the tool boundary, NOT a skipped check): redeploy (writes
+build-info.json into DEST) → in Fusion, Stop→Start the add-in → open the **B-Spline Generator** palette
+in a design → header shows `✓ <sha> · <date>` (green) when deployed == source HEAD, `⚠ …` (amber) when
+stale/dirty; tooltip = the compare message. If build-info.json is absent (pre-redeploy), the badge
+stays the muted `v1.1.0` fallback.
+
+No other palette; deploy/fb_shared untouched.

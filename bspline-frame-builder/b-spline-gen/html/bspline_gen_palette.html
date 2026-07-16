@@ -200,6 +200,12 @@
       color: var(--cad-text-muted);
       letter-spacing: 0;
     }
+    /* Version-stamp status (set by main.js on the Fusion 'build_info' push):
+       ok = deployed SHA == source HEAD; stale = differs or dirty; unknown =
+       no build-info.json (dev run) -> stays the muted fallback literal. */
+    .cad-nav-version.build-ok      { color: #4caf50; }
+    .cad-nav-version.build-stale   { color: #ffb300; }
+    .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
 
     /* Mobile: bump nav buttons to the 44x44 touch-target minimum
        (Apple HIG / WCAG 2.5.5). See BUG-13. */
@@ -254,10 +260,12 @@
       <span data-fred-home-mount></span>
       <span class="cad-nav-titlebox">
         <span class="cad-nav-title">B-SPLINE GENERATOR</span>
-        <!-- Version. Source of truth: root package.json "version" (1.1.0).
-             No build step injects this — bump this literal and package.json
-             together. -->
-        <span class="cad-nav-version">v1.1.0</span>
+        <!-- Version badge. In Fusion, Python pushes the DEPLOYED git SHA +
+             build time here via the 'build_info' handshake (main.js), with a
+             ✓/⚠ vs the source repo. The 'v1.1.0' literal is the web/fallback
+             shown until (or if) that push arrives — keep it bumped with
+             package.json for the web build. -->
+        <span id="build-badge" class="cad-nav-version" title="">v1.1.0</span>
       </span>
     </div>
 
