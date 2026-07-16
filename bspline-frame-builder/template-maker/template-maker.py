@@ -59,7 +59,6 @@ PALETTE_HEIGHT    = 700
 template_generator = None
 template_payload   = None
 template_code      = None
-expression_coords  = None
 rename_selection   = None
 deferred_rebuild   = None
 # Projection pipeline — mirrors the import block in ``template_bridge.py``.
@@ -81,9 +80,7 @@ RESOURCES_PATH = os.path.join(_current_dir, 'ui', 'ressources')
 # All project-local modules that should be force-reloaded on run().
 # Order irrelevant — we wipe then re-import the top-level ones we use directly.
 _PROJECT_MODULES = [
-    'entity_helpers',
     'entity_util',
-    'expression_coords',
     'phase_parser',
     'role_points',
     'cc_proxy',
@@ -201,7 +198,7 @@ def _reload_all_project_modules():
     the top-level ones we reference directly. This is what makes Stop -> Start
     pick up edits without a Fusion restart (importlib.reload alone doesn't
     cascade through dependencies)."""
-    global template_generator, template_payload, template_code, expression_coords, rename_selection, deferred_rebuild, detect_projections
+    global template_generator, template_payload, template_code, rename_selection, deferred_rebuild, detect_projections
 
     _cleanup_cache_files(_current_dir)
     _cleanup_cache_files(_core_dir)
@@ -225,7 +222,6 @@ def _reload_all_project_modules():
     template_generator = importlib.import_module('template_generator')
     template_payload   = importlib.import_module('template_payload')
     template_code      = importlib.import_module('template_code')
-    expression_coords  = importlib.import_module('expression_coords')
     rename_selection   = importlib.import_module('rename_selection')
     deferred_rebuild   = importlib.import_module('deferred_rebuild')
     # Projection pipeline. Wired into ``_push_selection_to_palette`` below
