@@ -2306,3 +2306,36 @@ assertions, no product code, no other test files.
 **Flag (not a bug):** `_get_origin_entity_map` re-reading `sys.modules['adsk']` per call is CORRECT
 product behaviour (it must reflect the live design), so this is genuinely a test-isolation issue, not a
 resettable product global. No product change warranted.
+
+---
+
+## Turn 97 — E6 investigation: classify the remaining `_shared_project_names` — DONE
+
+Produced `DEDUP-FINISH-DESIGN.md`. Investigation/design only — no code.
+
+**Headline: de-dup is ALREADY COMPLETE.** Classified all 16 post-S5 `_shared_project_names`:
+- **(A) duplicated+drifted → consolidate: 0.** `find -name <name>.py` shows every one of the 16 has
+  EXACTLY ONE copy (14 in `template-maker/core/`, `payload_builder` in `frame-inspector/`, `exporter`
+  in `fusion-exporter/`). No drifted duplicates remain — C4 consolidated the only 2 (`expression_coords`,
+  `entity_helpers`).
+- **(B) dead-wipe → retire: 0.** Unlike S5's 2 (retired because consumers had moved to
+  `from fb_shared.X import …` → the bare name was never in `sys.modules` → wiping it was a proven
+  no-op), ALL 16 remaining have LIVE production bare-name importers (`from entity_util import …` ×6,
+  `from payload_builder import …` at fusion-inspector.py:23, `import exporter` at fusion-exporter.py:15,
+  …), + 6 also via `importlib.import_module` (template-maker.py:222-234).
+- **(C) keep: 16.** The wipe forces re-import from disk on Stop→Start = HOT-RELOAD; retiring it would
+  bind a re-bootstrapped sub to STALE cached code (the S4-class regression). Load-bearing, NOT dead.
+
+**⇒ E6 does NOT collapse to "retire the wipe list" (the dispatch's fallback) — the opposite: the wipe is
+genuinely needed.** No (A) slice, no (B) slice.
+
+**Import surface documented (S4b lesson, 3 places any move must sweep):** bare-import (16),
+`import_module` (6 in template-maker.py), wipe-list (all 16, wiped 3× at `:264/:271/:278`).
+
+**Only open item (OPTIONAL, low-priority, Fusion-gated):** the 3 wiped subs use DISJOINT name-sets
+(exporter={exporter}, inspector={payload_builder}, template-maker={the 14}) — zero overlap post-C4 — so
+the 3× repeated `_force_wipe(_shared_project_names)` could reduce to 1× (behaviour-neutral, since no
+cross-sub collision remains). Tiny payoff, real S4b-subtlety risk → recommend DEFERRING unless the
+advisor wants the tidy-up.
+
+**Recommendation:** close E6 as "de-dup complete." No code this turn.
