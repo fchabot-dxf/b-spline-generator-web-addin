@@ -2339,3 +2339,46 @@ cross-sub collision remains). Tiny payoff, real S4b-subtlety risk → recommend 
 advisor wants the tidy-up.
 
 **Recommendation:** close E6 as "de-dup complete." No code this turn.
+
+---
+
+## Turn 99 — E8 investigation: undo/redo root cause + fix proposal — DONE
+
+Produced `UNDO-REDO-DESIGN.md`. Investigation/design only — no code. Evidence = code trace + a
+**read-only** live-Fusion probe (`fusion_execute`, no design mutation).
+
+**Op sequence (in order, inside the hidden-command Execute handler):** `frame_tilt_deg` USER PARAM
+create/reuse (`build_context.py:269` via `parametric_engine._get_tilt_plane:379`) → tilt construction
+plane `setByAngle` create/reuse (`parametric_engine.py:391-398`, angle DRIVEN BY the param) → 3 sketches
+on the plane (`isComputeDeferred` windows) → [solid] extrudes following the plane normal → attribute
+stamping. Tilt commit `6c1cce4` introduced steps 1-2 (touched ONLY parametric_engine, +65/−4).
+
+**Grouping today = NONE explicit (confirmed by live probe):**
+- `_start_undo_transaction` wrapper is DEAD: `app.startTransaction` behind `hasattr` → **probe:
+  `hasattr(app,'startTransaction')` = False** (+ `transactionManager` False). Fusion has no public
+  undo-transaction API on `app`; the wrapper always returns None.
+- No `timelineGroups` anywhere → **probe: `timeline.timelineGroups.add` EXISTS, 0 groups today.**
+- ONLY grouping = implicit: `cmd_def.execute()` makes the command's Execute-handler geometry mutations
+  ONE undo unit. So geometry (plane+sketches+extrudes) already reverses together; the gap is the USER
+  PARAM (not a timeline feature).
+
+**Root cause (verdict):** primarily **(b)** — user-parameter create doesn't undo like geometry.
+`frame_tilt_deg` is design-level (`userParameters.add`), NOT a timeline feature, so a single Ctrl+Z that
+cleanly removes the geometry leaves it ORPHANED (and the plane's angle-driven-by-param link desyncs);
+param + plane are both reused by name → stale state undo can't walk = "broken." (a) fits only the param,
+not the grouped geometry. (c) hidden dispatch is NOT the culprit — it's what provides the working
+geometry unit. **TILT-INTRODUCED** (first mid-build user param), not pre-existing.
+
+**Proposal (mechanism reality):** Fusion has NO public undo-transaction (probed) — you can't "wrap the
+build"; the undo unit IS the command execute. `timelineGroups.add` is ORGANIZATIONAL (collapse), not
+undo, and excludes user params. So the fix is about the PARAM lifecycle. **Forks:** F1-A drop the
+standalone param (drive plane by literal — loses post-build editability) / **F1-B (rec)** treat
+`frame_tilt_deg` as a persistent 0-deg design setting + make `_get_tilt_plane` tolerate "param present,
+plane undone" (geometry stays one clean command unit; residue = benign 0-deg param) / F1-C create the
+param at add-in/palette-open (never inside a build's undo unit). **F2 (rec yes):** delete the dead
+`_start_undo_transaction` wrappers (misleading dead code). Optional tidiness: `timelineGroups.add(start,
+end)` for a collapsible node (does NOT fix undo).
+
+**Human repro specified** (build → Ctrl+Z once → does ALL reverse? is `frame_tilt_deg` orphaned in Change
+Parameters? → Ctrl+Y redo → rebuild reuse?). Forks gated. No code; the only live-Fusion action was a
+read-only API probe.
