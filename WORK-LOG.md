@@ -1882,3 +1882,37 @@ grep blind spot for a `from X import` sweep — any future module move must also
 **STOP — human Fusion Stop→Start** (re-deploy first): the Template Maker button should return; both
 palettes co-load. On green → S5 (retire the 2 names from _shared_project_names + the test conftest
 alias) is the only remaining slice.
+
+---
+
+## Turn 77 — C4-S5: retire the 2 dead names from _shared_project_names — DONE (C4 final slice)
+
+Behavior-neutral cleanup, the last C4/F8 slice. Both palettes now import the canonical fb_shared
+package (qualified), so the parent's `_force_wipe(_shared_project_names)` of the BARE names
+'expression_coords'/'entity_helpers' had become a dead no-op (nothing imports those bare names).
+
+**Change (ONLY bspline-frame-builder.py):** removed `'expression_coords'` + `'entity_helpers'` from
+the `_shared_project_names` list (L252). DATA entries 18 → 16; a hyphenated why-comment added in
+their place. Nothing else touched.
+
+**Kept (as instructed — NOT dead):**
+- The `_force_wipe(_shared_project_names)` calls (16 live names remain: entity_util, payload_builder,
+  phase_parser, role_points, cc_proxy, fb_attributes, ownership_gate, relation_hints,
+  coincidence_clusters, template_generator, template_code, template_payload, detect_projections,
+  rename_selection, deferred_rebuild, exporter).
+- The `'fb_shared'` entry in the earlier (L192) `_force_wipe` (hot-reloads the canonical) — untouched.
+- The test conftest alias (load-bearing test infra) — untouched.
+- fb_shared/ — untouched.
+
+**Verify:**
+- py_compile OK.
+- Parsed the list DATA (excl. the comment): expression_coords/entity_helpers NOT present; size 16;
+  first entries entity_util/payload_builder/phase_parser; `'fb_shared'` still in a _force_wipe.
+- Add-in-wide grep (excl tests) for bare `from/import expression_coords|entity_helpers` + import_module
+  → ZERO (already true after S3/S4; this slice removes the last DEAD wipe-list mention).
+- pytest 69 passed.
+
+**STOP — light human Fusion Stop→Start:** both palettes load (NO functional change — the removed wipe
+never did anything post-S4). On green → **C4/F8 module de-dup COMPLETE** (fb_shared is the single
+source of truth; frame-inspector + template-maker both consume it; no drifted copies; the 3×-per-
+bootstrap bare-name wipe of these 2 is retired).

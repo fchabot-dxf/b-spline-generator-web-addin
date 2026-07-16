@@ -249,7 +249,11 @@ def _bootstrap():
     # top-level imports resolve fresh from its own folder (sys.path[0] gets
     # set by the sub-module's own module-level `sys.path.insert(0, ...)`).
     _shared_project_names = [
-        'expression_coords', 'entity_helpers', 'entity_util', 'payload_builder',
+        # expression-coords + entity-helpers retired here (C4/F8 S5): both are now
+        # the canonical fb_shared package, imported package-qualified by every
+        # consumer, so wiping the bare names was a dead no-op. fb_shared itself is
+        # wiped via its own entry in the earlier _force_wipe list.
+        'entity_util', 'payload_builder',
         'phase_parser', 'role_points', 'cc_proxy', 'fb_attributes',
         'ownership_gate', 'relation_hints', 'coincidence_clusters',
         'template_generator', 'template_code', 'template_payload',
