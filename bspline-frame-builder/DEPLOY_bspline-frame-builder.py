@@ -178,11 +178,11 @@ def deploy_fusion_exporter() -> bool:
     return _deploy_addin(addin_dir, "fusion-exporter", verify_files)
 
 
-def deploy_all() -> bool:
+def deploy_all(force=False) -> bool:
     # The three former sub-add-ins are now bundled INSIDE bspline-frame-builder
     # (their source subfolders are copied as part of deploy_local), so we no
     # longer install them as separate top-level AddIns.
-    return deploy_local()
+    return deploy_local(force=force)
 
 
 # Files to verify after the local copy
@@ -223,6 +223,7 @@ SKIP_NAMES = {
     "probe.txt", "import_test.txt", "run_test.txt", "run_debug.txt",
     "desktop.ini",
     "_legacy_archived",  # archived hybrid-palette source — kept locally, not shipped
+    ".addin-running.lock",  # runtime heartbeat lock (E3 stop-first guard) — never ship/copy
 }
 SKIP_SUFFIXES = {".log", ".old", ".pyc", ".pyo"}
 # Dev-only scripts that shouldn't ship to end-users
@@ -355,12 +356,105 @@ def scrub_source(base: Path):
 # Step 1 — Local Fusion 360 deploy
 # ---------------------------------------------------------------------------
 
-def deploy_local():
+_LOCK_STALE_SECONDS = 24 * 3600   # a lock older than this is treated as stale (PID-reuse guard)
+
+
+def _pid_alive(pid):
+    """True if a process with ``pid`` is currently running. Windows-safe: it
+    QUERIES the process (OpenProcess + GetExitCodeProcess) and never signals it.
+    (The POSIX ``os.kill(pid, 0)`` liveness idiom is DANGEROUS on Windows, where
+    os.kill routes to TerminateProcess and would KILL the target, e.g. Fusion.)"""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        k = ctypes.windll.kernel32
+        k.OpenProcess.restype        = wintypes.HANDLE
+        k.OpenProcess.argtypes       = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        k.CloseHandle.argtypes       = [wintypes.HANDLE]
+        h = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return False          # no such process (or not queryable) -> not alive
+        try:
+            code = wintypes.DWORD()
+            if k.GetExitCodeProcess(h, ctypes.byref(code)):
+                return code.value == STILL_ACTIVE
+            return False
+        finally:
+            k.CloseHandle(h)
+    try:
+        os.kill(pid, 0)           # POSIX: signal 0 only tests existence, does NOT kill
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True               # exists but owned by another user
+    return True
+
+
+def _detect_running_addin():
+    """Best-effort stop-first pre-check. Reads ``DEST_DIR/.addin-running.lock``
+    (written by the add-in's run(), removed by stop()) and returns
+    ``(status, message)``:
+
+      'live'  — lock present, its PID is running, and it isn't older than the
+                stale threshold  -> caller REFUSES (unless --force).
+      'stale' — lock present but the PID is dead / the file is unreadable / it is
+                older than the threshold  -> caller WARNS + proceeds.
+      'none'  — no lock  -> silent, proceed.
+
+    Never blocks on uncertainty: any read/parse problem degrades to 'stale'."""
+    lock = DEST_DIR / ".addin-running.lock"
+    if not lock.exists():
+        return ("none", "")
+    try:
+        info    = json.loads(lock.read_text(encoding="utf-8"))
+        pid     = int(info.get("pid"))
+        started = str(info.get("started_at", "?"))
+    except Exception:
+        return ("stale", "unreadable .addin-running.lock (ignoring)")
+    if not _pid_alive(pid):
+        return ("stale", f"stale lock — pid {pid} is not running (ignoring)")
+    try:
+        age = (datetime.now().astimezone() - datetime.fromisoformat(started)).total_seconds()
+        if age > _LOCK_STALE_SECONDS:
+            return ("stale", f"lock is ~{int(age // 3600)}h old — pid {pid} likely reused (ignoring)")
+    except Exception:
+        pass
+    return ("live", f"add-in appears LIVE in Fusion (pid {pid}, since {started})")
+
+
+def deploy_local(force=False):
     print("=" * 60)
     print("STEP 1: Local Fusion 360 deploy")
     print(f"  Source : {SRC_DIR}")
     print(f"  Target : {DEST_DIR}")
     print("=" * 60)
+
+    # Stop-first pre-check (E3): refuse to deploy over a demonstrably-live add-in.
+    # Best-effort — degrades to a warning on ANY uncertainty, and E1's post-copy
+    # fail-loud remains the correctness gate regardless.
+    _status, _msg = _detect_running_addin()
+    if _status == "live" and not force:
+        print("  " + "=" * 58)
+        print(f"  REFUSING TO DEPLOY: {_msg}")
+        print("  Deploying over a running add-in fights a live process and can")
+        print("  leave a STALE / partial install. Stop it first:")
+        print("      Fusion -> Tools -> Add-Ins -> Stop")
+        print("  then redeploy. To deploy anyway, re-run with  --force")
+        print("  " + "=" * 58)
+        sys.exit(2)
+    elif _status == "live":
+        print(f"  WARNING (--force): {_msg} — deploying over it anyway.")
+    elif _status == "stale":
+        print(f"  Note: {_msg}")
 
     if not SRC_DIR.exists():
         print(f"ERROR: source directory not found: {SRC_DIR}")
@@ -622,12 +716,15 @@ def _usage():
     print("\nExample: python DEPLOY_bspline-frame-builder.py all")
 
 if __name__ == "__main__":
-    target = sys.argv[1].lower() if len(sys.argv) > 1 else "all"
+    _flags      = {a.lower() for a in sys.argv[1:] if a.startswith("--")}
+    _positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    _force      = "--force" in _flags   # skip the E3 stop-first refusal
+    target = _positional[0].lower() if _positional else "all"
 
     if target in {"all", "deploy-all"}:
-        success = deploy_all()
+        success = deploy_all(force=_force)
     elif target in {"bbf", "bspline", "framebuilder", "frame-builder", "bspline-frame-builder", "local"}:
-        success = deploy_local()
+        success = deploy_local(force=_force)
     elif target in {"template-maker", "template_maker", "template"}:
         print("WARNING: installing template-maker as a SEPARATE add-in.")
         print("         The unified bspline-frame-builder add-in already contains it.")

@@ -2220,3 +2220,50 @@ B log-mtime / C dry-probe) · F3 refuse-vs-warn (refuse-on-high-confidence rec; 
 Recommended bundle **F1-A + F2-A + F3**; zero-add-in-edit fallback **F2-B + warn-only**.
 
 No code — passing to advisor for the fork decisions before any E3 build slice.
+
+---
+
+## Turn 93 — E3 build: stop-first guard + heartbeat lock (F1-A / F2-A / F3-refuse-on-live-PID) — DONE (headless); human Fusion pending
+
+Implemented the advisor's synthesized forks: a heartbeat lock (add-in run/stop) + `_detect_running_addin`
+refuse-on-live-PID in `deploy_local` + `--force`. Consolidation confirmed already done (release `--local`
+delegates via subprocess); did NOT touch E1 fail-loud / build-info / copy_overlay, did NOT invert
+DEPLOY↔release.
+
+**⚠ CRITICAL SAFETY DEVIATION from the dispatch's `os.kill(pid,0)`:** on **Windows** (this repo's
+platform), `os.kill(pid, 0)` routes to `TerminateProcess` and would **KILL the target (Fusion!)** — and
+would have killed the this-pid test itself. The intent (is-the-PID-alive) is unambiguous, so I
+implemented a Windows-SAFE query-only `_pid_alive`: `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` +
+`GetExitCodeProcess == STILL_ACTIVE` (never signals), with the POSIX `os.kill(pid,0)` kept ONLY for
+non-win32. Proven safe: the headless test calls `_pid_alive(os.getpid())` and the test process SURVIVED.
+
+**(1) Parent `bspline-frame-builder.py`:** `_write_run_lock()` (run() writes
+`<addin_root>/.addin-running.lock` = `{pid, started_at:ISO}`) + `_remove_run_lock()` (stop() removes it),
+BOTH fully try/except-wrapped (never break run/stop). `_write_run_lock()` right after `ui=None` in run();
+`_remove_run_lock()` first thing in stop() (before the app-None early return, so a clean Stop always
+clears it).
+
+**(2) `DEPLOY_…py`:**
+- `_pid_alive(pid)` (Windows-safe, above) + `_detect_running_addin()` → `(status, msg)`: `live` (lock +
+  PID running + not older than 24h), `stale` (dead PID / unreadable / >24h — PID-reuse guard), `none` (no
+  lock). Never blocks on uncertainty (any parse error → `stale`).
+- `deploy_local(force=False)`: at the TOP (before clean_dir/copy) refuse+`sys.exit(2)` on `live` unless
+  `force`; warn+proceed on live-with-force / stale; silent on none. E1's post-copy fail-loud untouched.
+- `--force` threaded as a **parameter** (not a module global — avoids a linter false-unreachable +
+  cleaner data flow): `deploy_all(force=)` → `deploy_local(force=)`; `__main__` parses `--force` from
+  argv + a positional target.
+- `.addin-running.lock` added to `SKIP_NAMES` (+ `.gitignore`) so it's never copied/committed.
+
+**Verify (headless — all green; `scratchpad/verify_e3.py`):** py_compile both; `_pid_alive`
+self=alive/bogus=dead (no kill); `_detect_running_addin` none / live / stale(dead-pid / unreadable /
+48h-old); refuse gate live+noforce=exit2 · live+force=skip · none/stale=proceed. EOL preserved (DEPLOY
+LF; bootstrap + .gitignore CRLF); diff +131/−6.
+
+**Follow-up (noted, NOT done):** `release.py --local` does NOT forward `--force` (its `_parse_args`
+rejects unknown flags; adding it would touch release's flag contract). Not needed for the guard:
+`release.py --local` → subprocess → DEPLOY refuses (exit 2) → release reports failed; to force in the
+release flow, run `DEPLOY_…py all --force` directly. Small release.py follow-up if the advisor wants it.
+
+**Real-symptom GATE → human Fusion:** Start the add-in → `.addin-running.lock` appears in the deployed
+root; Stop → it's gone; `DEPLOY_…py all` while running → REFUSES (exit 2) with the Stop message;
+`--force` deploys anyway.

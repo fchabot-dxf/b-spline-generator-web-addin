@@ -447,8 +447,34 @@ def _res_paths():
 
 
 # ── run() ─────────────────────────────────────────────────────────────────────
+def _write_run_lock():
+    """Best-effort heartbeat: write .addin-running.lock {pid, started_at} into the
+    add-in root so the deploy's stop-first pre-check (E3) can detect a live
+    session. Fully wrapped — a lock hiccup must NEVER break run()."""
+    try:
+        import json as _json, datetime as _dt
+        _lock = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.addin-running.lock')
+        with open(_lock, 'w', encoding='utf-8') as _f:
+            _json.dump({'pid': os.getpid(),
+                        'started_at': _dt.datetime.now().astimezone().isoformat(timespec='seconds')}, _f)
+    except Exception:
+        pass
+
+
+def _remove_run_lock():
+    """Best-effort: remove .addin-running.lock on stop() so the deploy won't refuse
+    after a clean Stop. Never raises."""
+    try:
+        _lock = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.addin-running.lock')
+        if os.path.exists(_lock):
+            os.remove(_lock)
+    except Exception:
+        pass
+
+
 def run(context):
     ui = None
+    _write_run_lock()   # E3 heartbeat: mark the add-in live for the deploy's stop-first guard
     try:
         app = adsk.core.Application.get()
         ui  = app.userInterface
@@ -664,6 +690,7 @@ def stop(context):
     to stay alive for the full Fusion session so palettes (or a keyboard shortcut)
     can still trigger a hot-reload after a crash during run().
     """
+    _remove_run_lock()   # E3: clear the heartbeat lock so the deploy won't refuse after Stop
     try:
         app = adsk.core.Application.get()
         if not app:

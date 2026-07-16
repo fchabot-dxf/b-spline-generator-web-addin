@@ -41,6 +41,7 @@ desktop.ini
 
 # Project Specific
 *.log
+.addin-running.lock
 *_log.txt
 *-log_path.json
 *_log_path.json
