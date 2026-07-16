@@ -1961,3 +1961,52 @@ Cheap data hand-off; the fail-vs-tip decision lives in one place per caller.
 copies DELETED in C4-S3/S4. Those functions aren't reached by `deploy_all` (which → `deploy_local`),
 so they're dead-ish and only WARN if ever run standalone; the dispatch said "NOT E3's consolidation,"
 so I left them untouched. Worth sweeping when E3 consolidates the deploy paths.
+
+---
+
+## Turn 81 — E2: version-stamp DESIGN pass (map + propose, no code) — DONE
+
+Produced `VERSION-STAMP-DESIGN.md` for advisor review. Design-only — ZERO app / deploy / palette-HTML
+code touched. Mapped via 4 parallel Explore agents (one per add-in group), then spot-verified the
+load-bearing anchors myself (deploy handshake writer, palette registrations).
+
+**What the map found (ground truth — anchors in the doc):**
+- The count is **8 palettes across 7 add-ins**, NOT the dispatched "7". Corrections: **fusion-exporter
+  has NO palette** (never calls `palettes.add`, ships no HTML — nothing to stamp); **CAM-builder has
+  TWO** (B-spline CAM + CAM Studio, distinct IDs AND distinct channels, `cam-builder.py:392`/`:458`).
+  b-spline-gen loads `bspline_gen_palette.html` (its `index.html` is a 7-line meta-refresh stub).
+- **The Python→HTML SEND channel is UNIFORM across all 8**: `palette.sendInfoToHTML(action, jsonStr)`.
+  The JS RECEIVE side has 3 dialects (if/elif ladder ×6; `CustomEvent('fusionHandshake')` for
+  b-spline-gen; `routes[action]` ES-module map for stamp-editor) — all key off `action`, so a new
+  `'build_info'` action is a 1-case add per receiver. That's WHY the Python inject is uniform but a
+  single drop-in JS "component" is not.
+- Open-time: only template-maker pushes at open (`:616`); the other 7 are pull-first (JS requests on
+  `DOMContentLoaded`, Python answers) → least-friction inject = piggy-back `build_info` on the existing
+  first-handshake reply, not a brand-new push.
+- **No palette reads a local JSON at load, and there is NO CSP anywhere in the tree.** The blocker is
+  NOT CSP — it's `file://` local fetch being unreliable in Fusion's embedded Chromium (CEF). So the
+  decision is **Python-read-+-inject** over the proven channel, NOT a browser fetch.
+
+**Declare-aligned proposal (core of the doc):**
+- ONE declared artifact: `build-info.json` `{sha, branch, built_at, source_root}`, written by the
+  deploy as a **DEST-only artifact** (mirrors the existing `_write_*_handshake` writers,
+  `DEPLOY…py:446+`; zero source churn). ONE file at the add-in root, N readers — not per-palette.
+- ONE shared read path: `fb_shared/build_info.py::read_build_info(addin_root)` — lives in the
+  C4-consolidated shared package every sub-module already imports. No palette hand-rolls git/file-reads.
+- Least-wiring badge: 3 tiny touches/palette (a header `<span>`, one `sendInfoToHTML('build_info')`
+  line [identical for all 8], one JS case). b-spline-gen is nearly free — it already has a hardcoded
+  `.cad-nav-version` span (`bspline_gen_palette.html:260`) to repurpose.
+- ✓/⚠-vs-repo: **feasible** Python-side WITHOUT a git binary — compare `build-info.sha` vs
+  `<source_root>/.git/HEAD`→ref→SHA (pure file reads); reuses the source-path pointer the handshake
+  files already record. Caveats stated: compares deployed-vs-committed-HEAD (not uncommitted edits),
+  and it's dev-machine-only (degrades to the plain badge if source `.git` absent).
+
+**GATED for advisor — 3 forks (options laid out, my rec given, NOT implemented):**
+- **F1** build-info.json location: DEST-only artifact (rec) vs SRC-copied+verified (dirties tree).
+- **F2** ✓/⚠ scope: A plain badge / **B +live vs committed HEAD (rec)** / C +working-tree-dirty detect.
+- **F3** rollout: substrate → key palettes → follow-up wave (rec) vs all-8-at-once.
+
+**Declare-gate note:** this feature is a textbook *missing declaration* — the fix is to DECLARE
+`build-info.json` (inert data) + one read path, NOT hand-roll version-reading in 8 palettes. The whole
+doc is built on that. Passing to advisor for the fork decisions before any build slice — no code this
+turn (design gate).
