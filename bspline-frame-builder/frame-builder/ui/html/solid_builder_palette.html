@@ -59,6 +59,11 @@
       border-right: none;
       border-bottom: 1px solid rgba(0,0,0,0.05);
     }
+    /* Version-stamp badge — painted by the build_info handshake (E2c). */
+    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; }
+    .cad-nav-version.build-ok      { color: #4caf50; }
+    .cad-nav-version.build-stale   { color: #ffb300; }
+    .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -73,6 +78,7 @@
       <div style="flex:1;"></div>
 
       <div style="display:flex; gap:12px; align-items:center;">
+        <span id="build-badge" class="cad-nav-version" title=""></span>
         <button class="cad-btn cad-btn-primary" id="header-action-btn" onclick="runBuild()">EXTRUDE</button>
       </div>
     </header>
@@ -149,6 +155,28 @@
         data = (typeof rawData === 'string') ? JSON.parse(rawData) : (rawData || {});
       } catch(e) {
         console.error('[BRIDGE] JSON parse failed', e);
+      }
+
+      if (action === 'build_info') {
+        try {
+          const badge = document.getElementById('build-badge');
+          if (badge) {
+            const info   = (typeof data === 'string') ? JSON.parse(data || '{}') : (data || {});
+            const status = info.status || 'unknown';
+            const sha    = info.sha || 'unknown';
+            badge.title  = info.message || '';
+            if (status === 'unknown' || sha === 'unknown') {
+              badge.className = 'cad-nav-version build-unknown';
+            } else {
+              const date  = String(info.built_at || '').slice(0, 10);
+              const glyph = status === 'ok' ? '✓' : '⚠';
+              const edits = info.dirty ? ' +edits' : '';
+              badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+              badge.className   = `cad-nav-version build-${status}`;
+            }
+          }
+        } catch (e) { /* version badge is best-effort */ }
+        return;
       }
 
       if (action === 'status_update') {

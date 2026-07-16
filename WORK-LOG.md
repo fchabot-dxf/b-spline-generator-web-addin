@@ -2096,3 +2096,52 @@ stale/dirty; tooltip = the compare message. If build-info.json is absent (pre-re
 stays the muted `v1.1.0` fallback.
 
 No other palette; deploy/fb_shared untouched.
+
+---
+
+## Turn 87 — E2c: version badge into the 6 dialect-a palettes — DONE (headless); human Fusion pending
+
+Repeated E2b's failure-safe 3-touch pattern on **sketch, solid, inspector, template-maker, cam-main,
+cam-studio** (18 touches = 6 × [HTML span + CSS, Python push, JS branch]). No stamp-editor (E2d), no
+b-spline-gen / deploy / fb_shared.
+
+**Per-palette placement** (the varying part; the Python + fb_shared read is identical everywhere):
+- **sketch** — push in `_send_template_list` (fires on the request_template_list reply at open); JS
+  branch in `_dispatchFromPython` (parsed `data`); badge in the header right-group.
+- **solid** — push after ping/pong (`_send_palette_message(...,'response','PONG')`); JS in
+  `_dispatchFromPython`; badge in the right-group.
+- **inspector** — push after `palette.isVisible = True` in CommandCreated (once at open); JS in
+  `fusionJavaScriptHandler = function(action,data)` (raw-string data); badge after `.cad-nav-title`.
+- **template-maker** — push after `_push_selection_to_palette()` at open (:616); JS in
+  `function(action,data)`; badge in `#status-bar`.
+- **cam-main** — push after `_do_list_cam_templates()` (boot pull); JS in `{handle:function}`
+  (pre-parsed `payload`); badge in the right-group.
+- **cam-studio** — push after `_do_studio_init()`; JS in `{handle:function}`; badge in the right-group.
+
+**Design choices (flagged for advisor):**
+1. **`addin_root` via walk-up-to-`fb_shared`, not the dispatch's "count the dirnames."** These 5 files
+   sit at 2 vs 3 levels deep, so a single identical walk-up helper is the *same code* in all six and
+   robust to depth/moves — cleaner than per-file depth counts. Same result. (b-spline-gen's E2b still
+   uses `dirname(dirname())`; a later pass could unify, but E2c wasn't allowed to touch b-spline-gen.)
+2. **CAM uses `_build_info_payload()` + the existing `_send_to_html`/`_send_to_studio_html` primitives**
+   (returns the dict; the primitives json-dump + send), vs the other 5 palettes' `_send_build_info(pal)`.
+   CAM has module-level send primitives (no palette var at the handler), so this is the idiomatic fit.
+   Same wire result (`sendInfoToHTML('build_info', …)`).
+3. Badge rides each palette's existing at-open handshake; for a couple (solid ping, sketch
+   template_list) that's an idempotent re-push on heartbeat/refresh — harmless (re-paints the same
+   badge). Fully try/except-wrapped, so a per-palette miss is cosmetic.
+
+**Verify (headless — all green):**
+- `py_compile` all 5 edited `.py`: OK.
+- `node --check` the inline JS: 4 palettes' full script block OK; inspector + template-maker's full
+  block fails ONLY on PRE-EXISTING duplicate function declarations (`reportError` 2×, `switchTab` 2×;
+  browser sloppy-mode tolerates them; node aborts there, BEFORE my branch). My inserted `build_info`
+  branch `node --check`s OK in isolation for ALL 6.
+- 6-row 3-touch checklist: every palette has the Python `'build_info'` push + the JS
+  `action === 'build_info'` branch + the `id="build-badge"` span. (cam-builder.py holds both CAM
+  pushes → count 2.)
+- EOL preserved per file (7 LF, 4 CRLF — none flipped); diff +307/−2, surgical.
+
+**Real-symptom GATE → human Fusion:** redeploy → Stop→Start → each of the 6 palette headers shows
+`✓/⚠ <sha> · <date>` (CEF DOM, not headlessly drivable). With b-spline-gen (E2b) that is **7 of 8**
+palettes; only **stamp-editor** (E2d, dialect c) remains for full E2 coverage.

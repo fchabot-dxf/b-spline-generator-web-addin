@@ -585,6 +585,31 @@ class _HTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f"[DEBUG_HTML] unknown action={html_args.action}")
             html_args.returnData = ''
 
+def _send_build_info(pal):
+    """Best-effort version stamp: read build-info.json (add-in ROOT) via fb_shared,
+    compare to source HEAD, push to the header badge. Never breaks the palette.
+    See fb_shared.build_info / VERSION-STAMP-DESIGN.md."""
+    try:
+        import os as _os, sys as _sys, json as _json
+        _root = _os.path.dirname(_os.path.abspath(__file__))
+        for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root)
+            if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
+                break
+            _root = _os.path.dirname(_root)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from fb_shared import build_info as _bi
+        info = _bi.read_build_info(_root)
+        status, message = _bi.compare_to_source(info)
+        if pal:
+            pal.sendInfoToHTML('build_info', _json.dumps({
+                'sha': info.get('sha'), 'built_at': info.get('built_at'),
+                'dirty': info.get('dirty'), 'status': status, 'message': message,
+            }))
+    except Exception:
+        pass
+
+
 class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
     def notify(self, args):
         global _html_handler
@@ -601,6 +626,8 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             except Exception as e:
                 _log(f"[ERROR] Failed to add HTML event handler: {e}")
         palette.isVisible = True
+        # Piggyback the deployed version stamp on palette open (once).
+        _send_build_info(palette)
 
 # ---------------------------------------------------------------------------
 # LIFECYCLE

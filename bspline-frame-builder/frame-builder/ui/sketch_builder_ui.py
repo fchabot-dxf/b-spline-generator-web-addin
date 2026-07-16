@@ -295,7 +295,10 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 'templates': templates,
                 'selected': self.style_id
             }
-            return self._send_palette_message(pal, 'template_list', payload)
+            ok = self._send_palette_message(pal, 'template_list', payload)
+            # Piggyback the deployed version stamp on the first template_list reply.
+            self._send_build_info(pal)
+            return ok
         except Exception as e:
             if self.diag_logger: self.diag_logger.log_error(f"Template list send failed: {e}")
             return False
@@ -343,6 +346,30 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         except Exception as e:
             if self.diag_logger: self.diag_logger.log_error(f"Palette sendInfoToHTML failed ({action}): {e}")
             return False
+
+    def _send_build_info(self, pal):
+        """Best-effort version stamp: read build-info.json (add-in ROOT) via
+        fb_shared, compare to source HEAD, push to the header badge. Fully
+        wrapped — never breaks the palette. See fb_shared.build_info."""
+        try:
+            import os as _os, sys as _sys
+            _root = _os.path.dirname(_os.path.abspath(__file__))
+            for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root)
+                if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
+                    break
+                _root = _os.path.dirname(_root)
+            if _root not in _sys.path:
+                _sys.path.insert(0, _root)
+            from fb_shared import build_info as _bi
+            info = _bi.read_build_info(_root)
+            status, message = _bi.compare_to_source(info)
+            if pal:
+                pal.sendInfoToHTML('build_info', json.dumps({
+                    'sha': info.get('sha'), 'built_at': info.get('built_at'),
+                    'dirty': info.get('dirty'), 'status': status, 'message': message,
+                }))
+        except Exception:
+            pass
 
     def _run_sketch_build(self, data):
         style_id = data.get('template') or self.style_id

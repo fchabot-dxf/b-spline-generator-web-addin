@@ -40,6 +40,11 @@
             border: 1px solid #ddd;
             display: inline-block;
         }
+    /* Version-stamp badge — painted by the build_info handshake (E2c). */
+    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; }
+    .cad-nav-version.build-ok      { color: #4caf50; }
+    .cad-nav-version.build-stale   { color: #ffb300; }
+    .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
     </style>
 </head>
 <body>
@@ -47,6 +52,7 @@
         <header class="cad-navbar" style="padding: 0 12px;">
             <div class="cad-nav-group">
                 <span class="cad-nav-title">FRAME INSPECTOR</span>
+                <span id="build-badge" class="cad-nav-version" title=""></span>
             </div>
             <div style="flex:1;"></div>
             <div id="pulse-box">Bridge: WAITING...</div>
@@ -195,6 +201,27 @@
         // Channel A: Python pushes via sendInfoToHTML
         window.fusionJavaScriptHandler = function(action, data) {
             dlog('PUSH start action=' + action + ' len=' + (data ? data.length : 0));
+            if (action === 'build_info') {
+                try {
+                    const badge = document.getElementById('build-badge');
+                    if (badge) {
+                        const info   = (typeof data === 'string') ? JSON.parse(data || '{}') : (data || {});
+                        const status = info.status || 'unknown';
+                        const sha    = info.sha || 'unknown';
+                        badge.title  = info.message || '';
+                        if (status === 'unknown' || sha === 'unknown') {
+                            badge.className = 'cad-nav-version build-unknown';
+                        } else {
+                            const date  = String(info.built_at || '').slice(0, 10);
+                            const glyph = status === 'ok' ? '✓' : '⚠';
+                            const edits = info.dirty ? ' +edits' : '';
+                            badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+                            badge.className   = `cad-nav-version build-${status}`;
+                        }
+                    }
+                } catch (e) { /* version badge is best-effort */ }
+                return;
+            }
             if (action === 'update' && data) {
                 applyData(data, 'PUSH');
             } else {

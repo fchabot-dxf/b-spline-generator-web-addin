@@ -258,6 +258,10 @@ class _HtmlEventHandler(adsk.core.HTMLEventHandler):
                 _do_preview()
             elif action == 'list_cam_templates':
                 _do_list_cam_templates()
+                # Piggyback the deployed version stamp on the first boot pull.
+                _p = _build_info_payload()
+                if _p:
+                    _send_to_html('build_info', _p)
             elif action == 'get_template_assignments':
                 _do_get_template_assignments()
             elif action == 'set_template_assignments':
@@ -430,7 +434,12 @@ class _StudioHtmlEventHandler(adsk.core.HTMLEventHandler):
             data = json.loads(ea.data) if ea.data else {}
             action = ea.action or data.get('action')
             if   action == 'generate':      _do_studio_generate(data)
-            elif action == 'init':          _do_studio_init()
+            elif action == 'init':
+                _do_studio_init()
+                # Piggyback the deployed version stamp on studio init.
+                _p = _build_info_payload()
+                if _p:
+                    _send_to_studio_html('build_info', _p)
             elif action == 'import_setup':  _do_import_setup(data)
             elif action == 'preview':       _do_studio_preview(data)
             elif action == 'preview_clear': _clear_studio_preview()
@@ -1163,6 +1172,29 @@ def _kick_off_toolpath_generation(report):
         _log("CKPT TPGEN A: event fired; handler will run on next Fusion tick")
     except Exception:
         _log_error("fire deferred TPGen failed\n" + traceback.format_exc())
+
+
+def _build_info_payload():
+    """Return the version-stamp dict {sha, built_at, dirty, status, message} for the
+    header badge, or None on any failure. Reads build-info.json (add-in ROOT) via
+    fb_shared + compares to the source HEAD. Never raises. See fb_shared.build_info /
+    VERSION-STAMP-DESIGN.md."""
+    try:
+        import os as _os, sys as _sys
+        _root = _os.path.dirname(_os.path.abspath(__file__))
+        for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root)
+            if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
+                break
+            _root = _os.path.dirname(_root)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from fb_shared import build_info as _bi
+        info = _bi.read_build_info(_root)
+        status, message = _bi.compare_to_source(info)
+        return {'sha': info.get('sha'), 'built_at': info.get('built_at'),
+                'dirty': info.get('dirty'), 'status': status, 'message': message}
+    except Exception:
+        return None
 
 
 def _send_to_html(action, payload):

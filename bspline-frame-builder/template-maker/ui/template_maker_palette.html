@@ -15,6 +15,11 @@
         .status-dot-info {
             background-color: #2f7d3f; /* standard green for live */
         }
+    /* Version-stamp badge — painted by the build_info handshake (E2c). */
+    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; }
+    .cad-nav-version.build-ok      { color: #4caf50; }
+    .cad-nav-version.build-stale   { color: #ffb300; }
+    .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
     </style>
 </head>
 <body>
@@ -22,6 +27,7 @@
         <span class="cad-status-dot"></span>
         <span class="cad-status-label" id="status-count">—</span>
         <span id="status-desc">Waiting for Fusion bridge…</span>
+        <span id="build-badge" class="cad-nav-version" title=""></span>
     </div>
 
     <!-- SETTINGS ROLLOUT -->
@@ -1248,6 +1254,27 @@
         }
 
         window.fusionJavaScriptHandler = function(action, data) {
+            if (action === 'build_info') {
+                try {
+                    const badge = document.getElementById('build-badge');
+                    if (badge) {
+                        const info   = (typeof data === 'string') ? JSON.parse(data || '{}') : (data || {});
+                        const status = info.status || 'unknown';
+                        const sha    = info.sha || 'unknown';
+                        badge.title  = info.message || '';
+                        if (status === 'unknown' || sha === 'unknown') {
+                            badge.className = 'cad-nav-version build-unknown';
+                        } else {
+                            const date  = String(info.built_at || '').slice(0, 10);
+                            const glyph = status === 'ok' ? '✓' : '⚠';
+                            const edits = info.dirty ? ' +edits' : '';
+                            badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+                            badge.className   = `cad-nav-version build-${status}`;
+                        }
+                    }
+                } catch (e) { /* version badge is best-effort */ }
+                return;
+            }
             if (action === 'update' && data) {
                 applyData(data, 'PUSH');
             }

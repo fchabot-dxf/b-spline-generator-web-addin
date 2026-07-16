@@ -222,6 +222,11 @@
     .cam-tpl-picker-row:hover { background: #e8f1ff; }
     .cam-tpl-picker-row.disabled { color: var(--cad-text-muted); cursor: not-allowed; }
     .cam-tpl-picker-row.disabled:hover { background: transparent; }
+    /* Version-stamp badge — painted by the build_info handshake (E2c). */
+    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; }
+    .cad-nav-version.build-ok      { color: #4caf50; }
+    .cad-nav-version.build-stale   { color: #ffb300; }
+    .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -233,6 +238,7 @@
       </div>
       <div style="flex:1;"></div>
       <div style="display:flex;gap:8px;align-items:center;">
+        <span id="build-badge" class="cad-nav-version" title=""></span>
         <span id="status-summary" style="font-size:10px;font-weight:600;color:var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
         <button class="cad-btn" id="preview-btn" type="button" onclick="runPreview()" style="font-size:11px;padding:5px 10px;">PREVIEW</button>
       </div>
@@ -433,6 +439,28 @@
     handle: function(action, data) {
       try {
         const payload = data ? JSON.parse(data) : {};
+
+        if (action === 'build_info') {
+          try {
+            const badge = document.getElementById('build-badge');
+            if (badge) {
+              const info   = payload || {};
+              const status = info.status || 'unknown';
+              const sha    = info.sha || 'unknown';
+              badge.title  = info.message || '';
+              if (status === 'unknown' || sha === 'unknown') {
+                badge.className = 'cad-nav-version build-unknown';
+              } else {
+                const date  = String(info.built_at || '').slice(0, 10);
+                const glyph = status === 'ok' ? '✓' : '⚠';
+                const edits = info.dirty ? ' +edits' : '';
+                badge.textContent = `${glyph} ${sha} · ${date}${edits}`;
+                badge.className   = `cad-nav-version build-${status}`;
+              }
+            }
+          } catch (e) { /* version badge is best-effort */ }
+          return;
+        }
 
         // Treat short status messages from any phase as a friendly toast
         // in the status bar (e.g. "BUILD complete", "Machine attached…").
