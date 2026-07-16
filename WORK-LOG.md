@@ -1916,3 +1916,48 @@ their place. Nothing else touched.
 never did anything post-S4). On green → **C4/F8 module de-dup COMPLETE** (fb_shared is the single
 source of truth; frame-inspector + template-maker both consume it; no drifted copies; the 3×-per-
 bootstrap bare-name wipe of these 2 is retired).
+
+---
+
+## Turn 79 — E1: DEPLOY fail-loud on skipped files + widen VERIFY_FILES — DONE
+
+The stale-deploy bug: `copy_overlay` tolerated locked files (Fusion holding them open) by COUNTING
+skips, and both callers merely soft-TIPPED ("skipped N… likely locked by a running Fusion addin")
+while still returning SUCCESS. So a deploy that silently dropped a changed file reported "successful" —
+and if that file wasn't in VERIFY_FILES, nothing caught it. That's exactly how a source edit could
+look deployed but run STALE in Fusion.
+
+**Declare-gate:** the skipped set is DATA the deploy must report on. Rather than re-print/re-derive it
+inline, `copy_overlay` now RETURNS the skipped paths (a list) and each CALLER owns the policy (fatal).
+Cheap data hand-off; the fail-vs-tip decision lives in one place per caller.
+
+**Changes (ONLY DEPLOY_bspline-frame-builder.py):**
+1. `copy_overlay`: return type `tuple[int, int]` → `tuple[int, list]`. Accumulates dst-relative POSIX
+   paths into `skipped_paths` — BOTH the per-file `copy2` failure branch AND the mkdir-fail branch
+   (which now `.extend`s `(rel_root/f).as_posix()` for each file it couldn't land, replacing the old
+   `skipped += len(files)`). Returns `(copied, skipped_paths)`.
+2. `deploy_local` (the LIVE path: `deploy_all` → `deploy_local`): on a non-empty `skipped_paths`, print
+   an ERROR listing EVERY skipped path + `sys.exit(1)` (mirrors the sibling copy_overlay-exception
+   handler already at that spot). Was: soft-tip + fall through to a "successful" verify.
+3. `_deploy_addin` (legacy per-add-in path — shares `copy_overlay`, so it HAD to move with the new
+   signature): same treatment → `return False` (its bool contract; `__main__` maps False → exit 1).
+4. `VERIFY_FILES` widened +6: `frame-builder/fb_engine/parametric_engine.py`,
+   `fb_shared/{__init__,entity_helpers,expression_coords}.py`, `frame-inspector/fusion-inspector.py`,
+   `template-maker/template-maker.py` — so a stale copy of the C4-consolidated shared modules or of
+   either bundled sub-add-in entry point is now hash-caught in the verify loop.
+
+**Verify (headless — NO live deploy vs a running add-in, per dispatch; scratchpad/verify_e1.py):**
+- py_compile OK.
+- (a) all 6 new VERIFY_FILES exist under SRC_DIR AND are in the list.
+- (b) `copy_overlay` real read-only-file skip in a temp tree → `copied=1, skipped=['sub/locked.txt']`
+  (proves it returns the PATH now, not just a count).
+- (c1) `deploy_local` with `scrub_source`/`clean_dir`/`sync_stamp_bundle`/`copy_overlay` all
+  monkeypatched to no-ops (ZERO real-install mutation) + `copy_overlay` returning a 1-item skip →
+  raised `SystemExit(1)`. The live-path fail-loud proven without touching the real deploy.
+- (c2) `_deploy_addin` (temp src/dest) → False on skip, True when clean. No stray test-addin dir left.
+
+**NOT done (out of E1 scope — flagged for advisor / E3):** the legacy `deploy_template_maker` +
+`deploy_fusion_inspector` verify-lists STILL name `entity_helpers.py` / `expression_coords.py` — the
+copies DELETED in C4-S3/S4. Those functions aren't reached by `deploy_all` (which → `deploy_local`),
+so they're dead-ish and only WARN if ever run standalone; the dispatch said "NOT E3's consolidation,"
+so I left them untouched. Worth sweeping when E3 consolidates the deploy paths.

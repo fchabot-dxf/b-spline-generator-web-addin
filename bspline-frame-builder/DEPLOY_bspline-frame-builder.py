@@ -93,16 +93,21 @@ def _deploy_addin(src_dir: Path, addin_name: str, verify_files: list[str], skip_
 
     print("  Copying files...")
     try:
-        copied, skipped = copy_overlay(src_dir, dest_dir, _ignore)
-        if skipped:
-            print(f"  Copied {copied} files, skipped {skipped} (likely locked by a running Fusion addin).")
-        else:
-            print(f"  Copied {copied} files.")
-        if extra_copy:
-            extra_copy(src_dir, dest_dir)
+        copied, skipped_paths = copy_overlay(src_dir, dest_dir, _ignore)
     except Exception as e:
         print(f"  ERROR: copy_overlay failed: {e}")
         return False
+    if skipped_paths:
+        # A skipped file = a STALE deploy. Fail LOUD with the full list rather
+        # than soft-tipping and returning success (the stale-deploy bug).
+        print(f"  ERROR: copy skipped {len(skipped_paths)} file(s) — {addin_name} deploy is STALE/incomplete:")
+        for rel in skipped_paths:
+            print(f"    SKIPPED {rel}")
+        print(f"  Stop the add-in in Fusion, then redeploy.")
+        return False
+    print(f"  Copied {copied} files.")
+    if extra_copy:
+        extra_copy(src_dir, dest_dir)
 
     print("  Verifying key files...")
     all_ok = True
@@ -187,6 +192,16 @@ VERIFY_FILES = [
     "frame-builder/ui/solid_builder_ui.py",
     "frame-builder/ui/html/sketch_builder_palette.html",
     "frame-builder/ui/html/solid_builder_palette.html",
+    "frame-builder/fb_engine/parametric_engine.py",
+    # fb_shared — the single source of truth consolidated in C4 (consumed by
+    # both frame-inspector and template-maker). A stale copy here would drift
+    # the shared modules silently, so verify all three.
+    "fb_shared/__init__.py",
+    "fb_shared/entity_helpers.py",
+    "fb_shared/expression_coords.py",
+    # Bundled sub-add-in entry points (installed as part of this unified deploy).
+    "frame-inspector/fusion-inspector.py",
+    "template-maker/template-maker.py",
     "b-spline-gen/b-spline-gen.py",
     "b-spline-gen/html/index.html",
     # stamp-editor — sibling add-in for surface-deformation stamping.
@@ -283,15 +298,19 @@ def clean_dir(path: Path, retries: int = 2, verbose: bool = True):
     return False
 
 
-def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, int]:
+def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, list]:
     """Walk ``src`` and copy every file into ``dst``, overwriting.
 
-    Tolerant of locked files: per-file errors are reported and counted but
-    don't abort the whole deploy. Returns ``(copied, skipped)``. Mirrors
-    ``shutil.copytree`` filtering semantics via ``ignore_func``.
+    Per-file errors are reported but don't abort the walk, so the caller sees
+    the FULL set of skipped files (not just the first). Returns
+    ``(copied, skipped_paths)`` where ``skipped_paths`` is the list of
+    dst-relative POSIX paths that could not be copied. Reporting the paths as
+    DATA lets the CALLER decide the policy: today a non-empty list is fatal
+    (a skipped file = a stale deploy). Mirrors ``shutil.copytree`` filtering
+    semantics via ``ignore_func``.
     """
     copied = 0
-    skipped = 0
+    skipped_paths = []
     for root, dirs, files in os.walk(src):
         rel_root = Path(root).relative_to(src)
         # Apply ignore filter on dirnames in-place so os.walk skips them.
@@ -304,7 +323,7 @@ def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, int]:
             target_root.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             print(f"  WARNING: cannot create {target_root}: {e}")
-            skipped += len(files)
+            skipped_paths.extend((rel_root / f).as_posix() for f in files)
             continue
 
         for fname in files:
@@ -315,9 +334,10 @@ def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, int]:
                 copied += 1
             except Exception as e:
                 # Most common reason: Fusion has the file open (logs).
-                print(f"  SKIP {dst_file.relative_to(dst)}: {e}")
-                skipped += 1
-    return copied, skipped
+                rel = dst_file.relative_to(dst).as_posix()
+                print(f"  SKIP {rel}: {e}")
+                skipped_paths.append(rel)
+    return copied, skipped_paths
 
 def scrub_source(base: Path):
     """Recursively delete __pycache__ and .pyc files in the source tree."""
@@ -378,15 +398,20 @@ def deploy_local():
     # log file open) are skipped without aborting the deploy.
     print("  Copying files...")
     try:
-        copied, skipped = copy_overlay(SRC_DIR, DEST_DIR, ignore_for_copy)
-        if skipped:
-            print(f"  Copied {copied} files, skipped {skipped} (likely locked by a running Fusion addin).")
-            print(f"  Tip: stop the addin in Fusion (Tools -> Add-Ins -> Stop) before redeploying for a clean copy.")
-        else:
-            print(f"  Copied {copied} files.")
+        copied, skipped_paths = copy_overlay(SRC_DIR, DEST_DIR, ignore_for_copy)
     except Exception as e:
         print(f"  ERROR: copy_overlay failed: {e}")
         sys.exit(1)
+    if skipped_paths:
+        # A skipped file = a STALE deploy. Fail LOUD with the full list rather
+        # than soft-tipping and returning success (the stale-deploy bug).
+        print(f"  ERROR: copy skipped {len(skipped_paths)} file(s) — deploy is STALE/incomplete:")
+        for rel in skipped_paths:
+            print(f"    SKIPPED {rel}")
+        print(f"  A running Fusion add-in is holding these locked. Stop it")
+        print(f"  (Fusion -> Tools -> Add-Ins -> Stop), then redeploy.")
+        sys.exit(1)
+    print(f"  Copied {copied} files.")
 
     # Write project_path.json handshake for the frame-builder sub-module so
     # its DebugLogger can write logs back to the source workspace.
