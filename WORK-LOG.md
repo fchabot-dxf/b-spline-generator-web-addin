@@ -1843,3 +1843,42 @@ drifted copy of either module exists anywhere now.
 the canonical evaluator arc-midpoint), AND frame-inspector still fine on co-load (the collision this
 whole de-dup targeted). On green, only S5 remains (retire the 2 names from _shared_project_names +
 the conftest alias). Committed A+B; parent/_shared_project_names/tests untouched.
+
+---
+
+## Turn 75 — C4-S4b: remove dead expression_coords self-reload orphans (S4 regression fix) — DONE
+
+Corrective for an S4 regression the human caught in Fusion (Template Maker button gone). NOTE: the
+CODE fix was committed as ee4725c in the prior session, which was torn down (process killed mid-loop)
+BEFORE I appended this WORK-LOG + passed back. This entry + the pass-back complete that cut-off turn;
+re-verified everything against the current tree on resume.
+
+**Root cause (the bug class S4 missed):** S4 switched template-maker's STATIC `from expression_coords
+import` sites to fb_shared.*, but `_reload_all_project_modules()` (the Stop→Start hot-reload) also had
+a DYNAMIC `importlib.import_module('expression_coords')` + an `expression_coords` entry in the
+`_PROJECT_MODULES` wipe list + a module global — none of which a `from X import` grep catches. With the
+bare copy deleted (S4b→ actually S4), that import_module threw ModuleNotFoundError → run() aborted →
+the toolbar button never registered.
+
+**Fix (ee4725c):** the `expression_coords` global is WRITE-ONLY (assigned only by the crashing import,
+never read — confirmed by fresh grep), so removed the 5 dead orphans rather than re-point:
+line 62 (`expression_coords = None`), 84+86 (the two `_PROJECT_MODULES` entries), 204 (the `global`
+decl), 228 (the `import_module`). template-maker consumes fb_shared only transitively via the core
+modules' static imports; the parent (S3) owns fb_shared's sys.path + wipe — so template-maker must NOT
+self-reload it. The other 6 dynamic re-imports (template_generator/template_payload/template_code/
+rename_selection/deferred_rebuild/detect_projections) are intact.
+
+**Verify (re-run on resume):**
+- py_compile template-maker.py OK.
+- STRONGER add-in-wide sweep (the S4-missed class): `grep import_module|__import__ ('expression_coords'
+  |'entity_helpers')` across all of bspline-frame-builder/ (excl tests) → ZERO. `_PROJECT_MODULES` has
+  0 moved-module entries.
+- pytest tests/ (--ignore the pre-broken origin test) → 69 passed.
+- Did NOT touch _shared_project_names (S5), frame-inspector, fb_shared, or the other 6 re-imports.
+
+**Lesson logged:** dynamic imports (`importlib.import_module`, `__import__`) + module wipe-lists are a
+grep blind spot for a `from X import` sweep — any future module move must also sweep those.
+
+**STOP — human Fusion Stop→Start** (re-deploy first): the Template Maker button should return; both
+palettes co-load. On green → S5 (retire the 2 names from _shared_project_names + the test conftest
+alias) is the only remaining slice.
