@@ -2181,3 +2181,42 @@ failure-safe pattern; no other palette / deploy / fb_shared; `?v=` cache-bust (s
 
 **E2 STATUS — wiring complete across ALL 8 palettes** (E2a substrate + E2b b-spline-gen + E2c ×6 +
 E2d stamp-editor). Pending the human Fusion confirmation of the 8 headers, **E2 is DONE** → E3 next.
+
+---
+
+## Turn 91 — E3: deploy-consolidate + stop-first DESIGN pass (map + propose, no code) — DONE
+
+Produced `DEPLOY-CONSOLIDATE-DESIGN.md` for advisor review. Design-only — ZERO code.
+
+**Map (ground truth, anchors in the doc):**
+- **3 deploy scripts:** `DEPLOY_bspline-frame-builder.py` (LOCAL install — canonical
+  copy/verify/handshake/build-info + E1 fail-loud), `release.py` (RELEASE orchestrator, 4 steps),
+  `deploy_cloudflare.py` (WEB only, out of scope). No `run_deploy.py`/`deploy_worker.py` linger (glob
+  confirms only pip's under `.venv`).
+- **KEY: the "two local entries" are NOT duplicated.** `release.py --local` (`step_local_refresh`,
+  `release.py:259`) **shells out** via `subprocess` to `DEPLOY_…py all` (`:271`) and propagates its
+  exit code. So `DEPLOY_…py::deploy_local` is ALREADY the single source; `release.py --local` is a thin
+  wrapper. Consolidation is ~90 % done already — no duplicated copy/verify block to remove.
+- **Running-add-in detection is WEAK today.** The DebugLogger (`fb_logger.py:63-68`) does
+  `open(path,"a")`→write→`fsync`→**close** *per line* (no persistent lock → a lock-probe
+  false-negatives), writes to BOTH the deployed tree + the source workspace, truncates on load; no
+  PID/lock file exists; which DEST files E1 catches as locked is non-deterministic. ⇒ **no reliable
+  zero-add-in-change way to detect a loaded-but-idle add-in.** E1 already covers correctness.
+
+**Proposal:**
+- **Consolidation:** keep `deploy_local` canonical; `release.py --local` keeps its subprocess delegation
+  (`--web/--addin/--all` untouched); put the stop-first pre-check INSIDE `deploy_local` so BOTH
+  invocation paths inherit it (single source).
+- **Stop-first pre-check:** best-effort at the top of `deploy_local`; refuse+`--force` on HIGH
+  confidence, warn+proceed otherwise; ALWAYS degrades to E1 fail-loud (never blocks on a false
+  positive).
+- **Detection:** recommend a tiny **heartbeat lock** — the parent bootstrap `bspline-frame-builder.py`
+  `run()` (`:450`) / `stop()` (`:660`) writes/removes ONE `.addin-running.lock` for the whole bundle
+  (reliable, one touch). Zero-change fallbacks: log-mtime heuristic / locked-file dry-probe (warn-only,
+  weak).
+
+**GATED for advisor — 3 forks:** F1 canonical entry (DEPLOY, rec) · F2 detection (A heartbeat-lock rec /
+B log-mtime / C dry-probe) · F3 refuse-vs-warn (refuse-on-high-confidence rec; couples to F2).
+Recommended bundle **F1-A + F2-A + F3**; zero-add-in-edit fallback **F2-B + warn-only**.
+
+No code — passing to advisor for the fork decisions before any E3 build slice.
