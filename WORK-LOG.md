@@ -2267,3 +2267,42 @@ release flow, run `DEPLOY_…py all --force` directly. Small release.py follow-u
 **Real-symptom GATE → human Fusion:** Start the add-in → `.addin-running.lock` appears in the deployed
 root; Stop → it's gone; `DEPLOY_…py all` while running → REFUSES (exit 2) with the Stop message;
 `--force` deploys anyway.
+
+---
+
+## Turn 95 — E5: fix test_origin_axis_target isolation leak (full suite green) — DONE
+
+Root-caused + fixed the pre-existing test-ordering leak (14/14 alone, 9 fail in-suite). Test-side fix
+only — no product code, no assertions.
+
+**ROOT CAUSE — leaked state = `sys.modules['adsk']` (collection-order-dependent):**
+Each test file installs its OWN fake `adsk` at IMPORT time (`sys.modules['adsk'] = adsk`). pytest
+imports every test module ONCE at collection into a single shared `sys.modules`, so the LAST-collected
+stub wins for the entire RUN. `relation_hints._get_origin_entity_map()` (`relation_hints.py:242`) does
+`import adsk.core` on EVERY call (no cache) → reads whatever stub is live → returns `{}`/wrong axes when
+that stub isn't test_origin's `FAKE_ROOT` → `_origin_axis_token` returns `None` → the 9 origin tests
+fail. **Confirmed by bisection:** `pytest test_template_naming test_origin` (origin last) → 19 passed;
+`pytest test_origin test_template_naming` (origin first, naming's stub clobbers) → 9 failed.
+**Polluter (full alphabetical run):** the last-collected adsk stub = `test_template_naming.py:16`
+(`sys.modules['adsk'] = adsk`); any later stubber (e.g. `test_rename_selection.py:16`, whose
+`Application.get()` ≠ FAKE_ROOT) reproduces it. NOT a de-dup / fb_shared regression (S2b already proved
+identical failures with the old copies).
+
+**FIX — autouse reset fixture in `tests/conftest.py` (declared once, all inherit):**
+`_reinstall_module_adsk_stub(request)` — before each test, re-installs THAT test module's own
+module-level `adsk` stub (`request.module.adsk`, if it declared one) into
+`sys.modules['adsk'/'adsk.core'/'adsk.fusion']`; restores the prior state after (`finally`). Makes every
+file's tests order-independent. Added `import pytest`. Did NOT touch the S2 fb_shared alias, no
+assertions, no product code, no other test files.
+
+**Verify (headless):**
+- Full suite `pytest tests/` NO `--ignore` → **83 passed / 0 failed** (was 74 passed + 9 failed; same
+  83 total → no test lost or skipped, the 9 now pass).
+- Isolation `pytest …/test_origin_axis_target.py` → 14/14.
+- Previously-failing order `pytest test_origin test_template_naming` → 19 passed (was 9 failed);
+  `test_origin + test_rename_selection` also green.
+- EOL preserved (conftest LF); diff +45, ONLY conftest.py.
+
+**Flag (not a bug):** `_get_origin_entity_map` re-reading `sys.modules['adsk']` per call is CORRECT
+product behaviour (it must reflect the live design), so this is genuinely a test-isolation issue, not a
+resettable product global. No product change warranted.
