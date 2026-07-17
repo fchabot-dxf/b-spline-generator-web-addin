@@ -142,7 +142,12 @@ class ExtrusionEngine:
                 ext_in.isParticipantsAutomated = False
                 ext_in.participantBodies = []
 
-            if start_def:
+            # Only the BAR extrusions start at the frame offset height. The
+            # SURROUND trim cut must ALWAYS start at the profile plane (z=0)
+            # so it trims the full height — core panel + bars — no matter the
+            # offset. Applying the offset start to the cut would leave
+            # everything below the offset untrimmed.
+            if start_def and ctype == "BAR":
                 ext_in.startExtent = start_def
 
             positive_dir = adsk.fusion.ExtentDirections.PositiveExtentDirection
