@@ -3,7 +3,7 @@ import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { updateGlobalButtons } from '../core/history.js';
+import { updateGlobalButtons, takeSnapshot, globalHistoryLog } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
@@ -57,6 +57,12 @@ export async function initApp(preview, wireGlobalEvents) {
     rebuild(preview, updateStampMasks, updatePreviewSculptMode);
   }
 
+  // Seed a baseline snapshot so the FIRST user action is undoable. Undo
+  // requires a prior state to revert to (globalHistoryLog.length > 1);
+  // without this floor, the first sculpt/clear leaves the log at length 1
+  // and the Undo button never enables. Guard against double-seeding on
+  // re-init (e.g. loading a session), which would push a duplicate floor.
+  if (globalHistoryLog.length === 0) takeSnapshot("Initial");
   updateGlobalButtons();
   wireGlobalEvents();
 }

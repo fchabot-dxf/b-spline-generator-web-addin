@@ -305,11 +305,20 @@
 
       <!-- 1. Projects (full manager opens as a fullscreen panel) -->
       <div class="panel" style="border-bottom:1px solid var(--cad-border-color);">
-        <div class="panel-body" style="padding:10px 12px;">
+        <div class="panel-body" style="padding:10px 12px; display:flex; gap:8px;">
           <button class="cad-btn cad-btn-secondary" data-open-projects
-            style="width:100%; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
+            style="flex:1; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
             <span style="font-size:15px;">📁</span>
             Projects
+          </button>
+          <!-- Quick Load: reloads the associated project (symmetric with the
+               navbar Quick Save), or opens the manager to pick one when no
+               file is associated yet. Wired in cloud-project-manager.js. -->
+          <button class="cad-btn cad-btn-secondary" id="btnQuickLoad"
+            title="Load — reopen the current project, or pick one"
+            style="flex:1; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
+            <span style="font-size:15px;">📂</span>
+            Load
           </button>
         </div>
       </div>

@@ -163,6 +163,11 @@ export function bindProjectManager(preview) {
     updateNavbarSaveLabel();
   }
 
+  // Sidebar Quick-Load button: reload the associated file, or open the
+  // manager to pick one. Wired here alongside the other project triggers.
+  const btnQuickLoad = document.getElementById('btnQuickLoad');
+  if (btnQuickLoad) btnQuickLoad.addEventListener('click', () => quickLoad());
+
   // Wire Ctrl+S / Cmd+S anywhere in the app for the same behavior.
   window.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.shiftKey) {
@@ -928,8 +933,18 @@ async function onNewFolder() {
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
 async function onLoad(name) {
-  if (!name)     return;
-  if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return; }
+  const ok = await _loadFrom(name);
+  if (ok) setTimeout(closeModal, 400);
+}
+
+/** Inner load implementation. Fetches a project by name, applies it, and
+ *  establishes the file association. Shared by the modal Load button and
+ *  the sidebar Quick-Load. Returns true on success. Safe to call with the
+ *  modal closed (setMsg no-ops without a status element; showToast
+ *  self-hosts). */
+async function _loadFrom(name) {
+  if (!name)     return false;
+  if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return false; }
 
   setMsg('Loading…');
   try {
@@ -940,10 +955,25 @@ async function onLoad(name) {
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
     setMsg(`✓ Loaded "${name}"`, 'ok');
-    setTimeout(closeModal, 400);
+    showToast(`✓ Loaded "${name}"`);
+    return true;
   } catch (e) {
     setMsg(`Load failed: ${e.message}`, 'error');
+    return false;
   }
+}
+
+/** Quick Load from outside the modal (sidebar button). If a file is
+ *  associated, silently reload it from the cloud (discarding unsaved edits,
+ *  symmetric with quickSave's silent overwrite). Otherwise open the manager
+ *  so the user can pick a project to load. */
+export async function quickLoad() {
+  if (_currentFile) {
+    if (!_API_URL) { console.warn('[project-manager] quickLoad: no API'); return; }
+    return _loadFrom(_currentFile);
+  }
+  // No association — open the manager to choose a project.
+  document.getElementById('btnOpenProjectManager')?.click();
 }
 
 // ─── Rename ───────────────────────────────────────────────────────────────────

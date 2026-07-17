@@ -75,11 +75,18 @@ export function updateGlobalButtons() {
     const rBtn = document.getElementById('btnGlobalRedo');
     if (uBtn) {
         const canUndo = globalHistoryLog.length > 1;
+        // Must clear the native `disabled` attribute (shipped in the HTML),
+        // not just a CSS class — otherwise the button stays non-interactive
+        // and click handlers never fire. This is why undo/redo appeared dead
+        // in Fusion, where the host captures Ctrl+Z so the buttons are the
+        // only undo path.
+        uBtn.disabled = !canUndo;
         uBtn.classList.toggle('disabled', !canUndo);
         uBtn.style.opacity = canUndo ? '1' : '0.4';
     }
     if (rBtn) {
         const canRedo = globalRedoLog.length > 0;
+        rBtn.disabled = !canRedo;
         rBtn.classList.toggle('disabled', !canRedo);
         rBtn.style.opacity = canRedo ? '1' : '0.4';
     }
