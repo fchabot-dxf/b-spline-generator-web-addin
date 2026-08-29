@@ -17,3 +17,8 @@ id = "db051a143b2744a2b69eda07b609e48e"
 [[kv_namespaces]]
 binding = "LOADER_APPS"
 id = "6426091a975345d08c94335424e82dc9"
+
+# Page-view counters for the frame calculators (no auth; see geometric frame calc/cloud/README.md)
+[[kv_namespaces]]
+binding = "PAGE_VIEWS"
+id = "7984acbbf72a42a6a79e1f06a4367963"

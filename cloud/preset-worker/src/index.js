@@ -32,12 +32,19 @@
 // CORS open for all origins (Fusion file:// and web).
 // Body size cap: 10 MB.
 
+import { handlePageViews } from './pageviews-route.js';
+
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 export default {
   async fetch(request, env) {
     const method = request.method.toUpperCase();
     if (method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
+
+    // Frame-calculator page views (/views/...). Returns null for every other
+    // URL, so all existing routes fall through unchanged.
+    const views = await handlePageViews(request, env, new URL(request.url));
+    if (views) return views;
 
     // Appreciation Arts Plastiques: commits straight to GitHub (separate auth).
     const url = new URL(request.url);
