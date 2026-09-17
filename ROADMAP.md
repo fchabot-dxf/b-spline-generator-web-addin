@@ -238,3 +238,14 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
   only in ids/names). Extract one declared helper. Gate: a plan, then Fusion Stop→Start verification of both palettes.
 - **Test gap (A2):** zero coverage of `parametric_engine`, `frame_engine` param lifecycle, both UIs. Candidate for the
   breaker seat once the audit series ends.
+
+## Backlog from the lane-B audit (A3 template-maker, 2026-09-17)
+- **TM1 — A3-1 + A3-2 (seat A, next):** `template-maker.py:82-100` `_PROJECT_MODULES` is a hand-maintained list of 17
+  names; `core/` has 23 modules; 5 are missing (`detection_log`, `dimension_hint`, `offset_hint`, `template_bridge`,
+  `variable_scan`) so edits to them survive Stop→Start stale (B7's class, wider radius). Fix = DERIVE the list from the
+  `core/` folder at import time (the list itself was the bug); delete the dead standalone `core/check_addin_sync.py`
+  (0 importers, stale premise, non-recursive). Fusion Stop→Start verification by the advisor after deploy.
+- **Same class, parent side (later):** `bspline-frame-builder.py:251-262` `_shared_project_names` is the same kind of
+  hand list. Derive or retire once A6 (CAM-builder) says whether cross-sub bare-name collisions still exist.
+- A3-3 (O(points×curves) coincidence pairing) — bounded by selection; leave.
+- Pre-existing pyflakes noise in `parametric_engine.py` (4 unused locals: :126, :176, :209, :309) → HY2.
