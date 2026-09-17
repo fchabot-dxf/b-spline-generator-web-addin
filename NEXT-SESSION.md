@@ -1,47 +1,43 @@
-# NEXT — BG2: the last two P1 violations — route every host call through the bridge (B9 + B11)
+# NEXT — HY4: doors with no rooms — the sketch palette's dead debug sends, one dead editor function, five over-exports
 
-**Ball: worker (seat A) · epoch 1 · BG2.** Files (under `bspline-frame-builder/b-spline-gen/html/`): `core/fusion-log.js`
-(new, leaf), `core/fusion-bridge.js`, `core/coords.js`, `core/state.js`, `main/main.js`. One commit by path, predicted
-**5 files (1 new)**.
+**Ball: worker (seat A) · epoch 1 · HY4.** Files: `bspline-frame-builder/frame-builder/ui/html/sketch_builder_palette.html`,
+`bspline-frame-builder/b-spline-gen/html/editor/dom.js`, `editor/editor-ui.js`, `editor/editor-text-session.js`,
+`editor/layers.js`. One commit by path, predicted **5 files**. No behaviour changes — every item removes something
+nothing consumes, or narrows an export nothing imports.
 
-## Ground truth (advisor-verified)
-- Principle P1: host-specific behaviour lives ONLY in `core/fusion-bridge.js`. Three sites still call `adsk.fusionSendData`
-  directly: `main/main.js:135` (`'get_design_params'`, B9) · `core/coords.js:14-15` (`'log'`, B11) ·
-  `core/state.js:268-270` (`'log'`, B11). Each hand-rolls the same guarded `'log'` tunnel that `fusion-bridge.js:14-16`
-  `fusLog` already declares.
-- **Import cycle:** `fusion-bridge.js` imports `{P, isFusionMode, setIsFusionMode}` from `state.js` and `COORD_SYSTEM`
-  from `coords.js`. So `coords.js`/`state.js` must NOT import from the bridge. The declared shape: a LEAF module
-  `core/fusion-log.js` with no imports that owns `fusLog`; the bridge re-exports it so every existing
-  `import { fusLog } from './fusion-bridge.js'` keeps working.
+## Ground truth (advisor-verified, current tree)
+- `sketch_builder_palette.html`: 10 `notifyFusion(...)` sends with NO Python receiver (the dispatcher in
+  `sketch_builder_ui.py` has no branch for any of them; audit A5b §4 + FB2 design §4): `update_phase` (`:382`) and
+  nine `debug_*` sends (`:517`, `:533`, `:548-550`, `:553`, `:576`, `:596`, `:606`) — the latter belong to one
+  dev-instrumentation block that installs mutation/resize/focus observers and a periodic watcher on the template
+  `<select>` (roughly `:505-607`; read the enclosing function to find its exact start/end). Nothing else reads what
+  it produces.
+- `b-spline-gen/html/editor/dom.js:45` `createButton` — 0 references anywhere (not even inside dom.js).
+- Five functions exported but used only inside their own file: `dismissExpandCallout` (`editor-ui.js`),
+  `initTextSession` (`editor-text-session.js`), `removeLayer`, `renameLayer`, `reorderLayer` (`layers.js`). 0 external
+  importers each (grep across `html/`, dist excluded).
 
 ## Do
-1. New `core/fusion-log.js`:
-   ```js
-   // The one Fusion log tunnel (P1: host calls live in the bridge layer; this leaf exists so core/ modules the
-   // bridge itself imports can log without an import cycle). No imports.
-   export function fusLog(msg) {
-     try { if (typeof adsk !== 'undefined' && adsk.fusionSendData) adsk.fusionSendData('log', JSON.stringify({ msg: String(msg) })); } catch (_) { }
-   }
-   ```
-2. `fusion-bridge.js`: delete its local `fusLog` (:14-16) and add `export { fusLog } from './fusion-log.js';` at the top
-   (also `import { fusLog } from './fusion-log.js';` if the bridge calls it internally — it does).
-3. `coords.js:14-15` and `state.js:268-270`: replace the inline guarded call with `fusLog(msg)` / `fusLog(JSON.stringify(session))`
-   (import from `./fusion-log.js`). Keep the surrounding `if (isFusionMode…)`-style gating if any; drop the
-   `typeof adsk` guards (the leaf owns them).
-4. B9: add to `fusion-bridge.js` `export function requestDesignParams() { try { adsk.fusionSendData('get_design_params', '{}'); } catch (e) { fusLog('requestDesignParams FAILED: ' + e.message); } }`
-   and call it from `main.js:135` (import it; the reply still arrives as the `sync_board` handshake — unchanged).
-5. Grep afterwards: `fusionSendData(` outside `core/fusion-bridge.js` and `core/fusion-log.js` → 0 across `html/`
-   (the inline `<script>` in the palette HTML is the named exception — leave it).
+1. `sketch_builder_palette.html`: delete the entire debug-instrumentation block (all nine `debug_*` sends, their
+   observers, the periodic timer, and the `installed…` notice) and the `update_phase` send at `:382` (keep the local
+   `_phaseCurrent` state it was reporting). If a helper exists only to serve that block, delete it too (retiree's own
+   machinery). Sweep: `grep -c "notifyFusion('debug_\|notifyFusion('update_phase'"` → 0; the remaining sends must be
+   exactly `update_param update_lock change_template request_template_list run_build` (5).
+2. `dom.js`: delete `createButton`.
+3. The five over-exports: drop the `export` keyword (keep the functions). Grep each name across `html/` afterwards →
+   only its own file.
 
 ## Verify
-- `node --check` ×5; `npx vitest run` → 29 (state.js and coords.js are under test — this is the byte-identity gate).
-- Greps as in step 5; `fusLog` defined once (`fusion-log.js`), re-exported once.
-- `git show --stat HEAD` → 5 files. Web look (the site rebuilds on push) + Fusion look are the ADVISOR's.
+- Extract the palette's `<script>` (as E7c did) and `node --check` it; `node --check` the four editor files.
+- `npx vitest run` → 29.
+- `git show --stat HEAD` → 5 files, deletions only (plus the five `export` removals).
+- Fusion look is the ADVISOR's (open Sketch Builder, change template, build once — the dispatcher's five live actions).
 
 ## Do NOT
-Touch the palette HTML, `pollMode`, the chunked send, or any Python.
+Touch `sketch_builder_ui.py` (its `ping`/`get_templates` branches are harmless doors; leave them), the scaffold, or any
+other palette.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "BG2: fusion-log.js leaf owns fusLog (bridge re-exports); coords/state use it; requestDesignParams() in the bridge replaces main.js's direct call — <sha>, 5 files; fusionSendData outside bridge/log = 0; vitest 29. B9+B11 closed."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "HY4: sketch palette debug block + update_phase removed (<n> lines), createButton deleted, 5 exports narrowed — <sha>, 5 files; sends = 5 live; vitest 29. Next: advisor's call (decision sheet)."`
 and stop.
