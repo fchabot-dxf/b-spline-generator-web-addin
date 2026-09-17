@@ -262,3 +262,18 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
 - **A4 drift question answered (advisor, main checkout):** regenerating the bundle (`sync_stamp_bundle.py`) reproduced all
   54 generated stamp-editor files byte-identical → no hand edits since C1. The file-level diff vs `b-spline-gen` is the
   generator's own import-path rewriting, not drift.
+
+## Backlog from the lane-B audit (A5a b-spline-gen core+main, 2026-09-17)
+- **BG1 (seat A, after HY2):** delete the two dead modules `main/preset-manager.js` + `main/cloud-preset-manager.js`
+  (283 lines, 0 importers, superseded per cloud-project-manager's own header) · DECLARE one "P for persistence"
+  serializer (strip `.mask`, the shape every live site hand-rolls) and use it in BOTH `core/history.js:takeSnapshot`
+  (today it JSON-round-trips Float32Array masks into `{"0":…}` objects on every undo step — A5a-1) and
+  `main/cloud-project-manager.js:buildSnapshot` · `b-spline-gen.py` `stop()` gains `handlers.clear()` (A5a-3, the one
+  add-in that never clears).
+- **A5a-5** `sendFusionPreview` sends action `'preview'`; Python has no receiver (only `preview_mesh`). Advisor decides
+  wire-or-delete (see BG1 dispatch).
+- **BG2 (later):** B9 (`main/main.js:136`) + B11 (`core/coords.js:14-15`, `core/state.js:264,266`) still call
+  `adsk.fusionSendData` directly outside `core/fusion-bridge.js` — route through the bridge (P1).
+- Correction recorded: `core/state.js:253-254` is the benign mask-strip, NOT B6; B6 lives in `editor/editor-io.js:27-49`
+  (A5b verifies).
+- Rebuild is debounced (50 ms scheduler) — the "every slider tick rebuilds" worry is unfounded.
