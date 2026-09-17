@@ -3116,3 +3116,51 @@ is safe and sufficient — no fallback/overlay logic needed here, unlike item 2.
 No gate hit. Didn't touch `clean_dir`, the E3 stop-first guard, `VERIFY_FILES`, or the wrangler-deploy
 branch. Didn't deploy — the real add-in deploy proof (Fusion holding a file open, overlay fallback
 actually firing) is the advisor's at the next deploy, which needs the human to stop the add-in first.
+
+---
+
+## Turn 131 — DEP1b: the real deploy path (`deploy_local`) was missed in DEP1 — DONE
+
+My own gap from DEP1: I found and fixed `_deploy_addin`'s `copy_overlay` call but never checked whether
+it had other callers. `copy_overlay` has two — `deploy_local` (`:549`, what `release.py --local` /
+`DEPLOY … all` actually runs) was untouched, and DEP1's return-type change (int → list) silently broke it:
+its `copied` variable became a list, and `print(f"  Copied {copied} files.")` printed the entire
+~600-path list instead of a count. The advisor caught this by running the real deploy.
+
+**(1)** `deploy_local`: renamed `copied` → `copied_paths`, changed the print to `len(copied_paths)`, and
+added `sweep_orphans(DEST_DIR, copied_paths)` right after the skipped-paths check — same placement as
+`_deploy_addin` in DEP1.
+
+**(2)** Extended the skip declarations — but not exactly as dispatched. The dispatch's list was
+`SKIP_NAMES += ".pytest_cache", "dist", "node_modules", ".venv"`; checked the existing set first and found
+`.venv`/`node_modules` (and `venv`) already present from before this turn. Adding them again would have
+put duplicate literals inside the same `{...}` set display — harmless at runtime (sets dedupe) but visibly
+wrong on read. Added only the two genuinely missing names (`.pytest_cache`, `dist`), flagging the
+over-count here rather than silently padding the set or silently trimming the dispatch's list without
+saying so. `SKIP_SUFFIXES` got all three as specified (`.zip`, `.tmp`, `.code-workspace` — none were
+already present). `SKIP_FILES_EXACT` got the exact `"comp export.png"`.
+
+**(3)** Swept the whole file for any other place treating `copy_overlay`'s first return as a number
+(`copied +`, `{copied}`) — 0 hits; both callers now use `copied_paths`/`len(copied_paths)` exclusively.
+
+**Verify (all green):** `py_compile` clean. `pyflakes` → same 5 pre-existing warnings as DEP1 (unused
+`_Path` import, f-string-without-placeholders lines) plus nothing new. Tempdir check (source: `a.py`,
+`.pytest_cache/x`, `b.zip`, `c.tmp`; dest pre-seeded with `old.py`; run through the SAME `ignore_for_copy`
+filter `deploy_local` actually uses, then `copy_overlay` then `sweep_orphans`):
+```
+copied_paths: ['a.py']
+skipped_paths: []
+  Removed 1 orphan(s):
+    old.py
+sweep_orphans returned: ['old.py']
+remaining files: ['a.py']
+ALL ASSERTIONS PASSED
+```
+Confirms `ignore_for_copy` (which reads `SKIP_NAMES`/`SKIP_SUFFIXES`/`SKIP_FILES_EXACT` through
+`_should_skip`) correctly drops the junk BEFORE copy, and `copied_paths == ['a.py']` exactly —
+`.pytest_cache`, `.zip`, `.tmp` never reached dest at all, matching the dispatch's expected result.
+`grep -n "Copied "` → both prints use `len(...)`. `git diff --stat` → exactly the predicted 1 file. No
+amendments pending.
+
+No gate hit. No deploy run — the advisor reads the real "Removed N orphan(s)" line (or its absence) at
+the next actual deploy.
