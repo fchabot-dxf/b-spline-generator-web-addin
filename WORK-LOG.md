@@ -3258,3 +3258,79 @@ redefinition of `_os`, one f-string-without-placeholders) are all pre-existing a
 No gate hit. Didn't touch anything else in the three files, including `_register_refresh_event`'s own
 pre-unregisters. Didn't deploy — the advisor owns the Fusion Stop→Start proof for CAM-builder through the
 bridge.
+
+---
+
+## Turn 137 — IN3 HUNT: Frame Inspector page renders wider than its palette window — DONE (analytical fix; reproduction did not confirm)
+
+Read the four evidence PNGs first (`pal_0.png`, `inspector-screen.png`, `inspector-700.png`,
+`palette2.png` for the working reference). Built a real-browser headless harness (Chrome via raw CDP,
+Node's built-in `WebSocket` — no npm install) since happy-dom can't do layout, and injected a synthetic
+`applyData` payload reconstructed from the screenshots (the same `arc_shoulder_R`/`SketchLine` batch
+selection, same meta fields) to force the DOM into the same populated state the advisor's screenshots
+show.
+
+**Reproduction did not show the overflow.** At 320/520/700 px, both before and after any change, my
+headless Chrome reported `scrollWidth === innerWidth` exactly — no overflow at all, and a screenshot
+confirmed the layout visually matches the WORKING state (wrapped text, visible badges), not the broken
+one. Confirmed this isn't a stale-deploy mismatch first: `git log d8a32ea..HEAD -- inspector_palette.html`
+is empty, so the file I'm testing is byte-identical to what the advisor screenshotted live in Fusion.
+
+**Conclusion: this is very likely a Fusion-CEF-version-specific rendering difference**, not something a
+current desktop Chrome will ever reproduce (Fusion's embedded Chromium is well known to lag several major
+versions behind). Absent a way to launch the exact CEF build, the hunt had to shift from "reproduce, then
+find the offending rule by inspection" to "reason from the CSS mechanics directly, using the advisor's own
+list of candidates and the shape of the symptom."
+
+**Diagnosis (structural reasoning, not a captured repro):**
+- E7c (turn 133) added `.linked-list li { display: flex; align-items: center; gap: 4px; }` so the new
+  per-row copy button could sit beside the row text. `li.textContent = entries[i]` sets a bare TEXT NODE
+  as the row's only content before the button is appended — inside a flex container, a bare text node
+  becomes an anonymous flex item. Per spec, a flex item's default `min-width` is `auto`, which resolves to
+  its min-content size; for text, that's normally narrow (wraps at word boundaries) — but this is exactly
+  the category of flex/intrinsic-sizing behavior that varied significantly across Chromium versions for
+  years (anonymous-box sizing has historically been less consistently implemented than element-wrapped
+  content). The row strings here are long, punctuation-dense coordinate expressions
+  (`"widthIn * 0.4163, heightIn * 0.0612) -> (widthIn * 0.4298, ..."`) — exactly the kind of content where
+  an older engine's line-breaking/min-content calculation could plausibly compute a much wider "can't
+  shrink below this" width than a modern one does, forcing the whole `<li>` — and by extension, in a
+  buggy-enough engine, potentially the page's overall layout width — wider than the viewport.
+- This also explains the evidence's otherwise-puzzling detail that the HEADER (`#build-badge` /
+  `#pulse-box`, structurally unrelated to `.linked-list`) is cut off too, at every tested width, by a
+  "roughly constant" amount: if one unshrinkable element anywhere in the tree inflates the actual laid-out
+  width of `body`/`.cad-app-shell` (both `width:100%`, not intrinsically sized), everything sized relative
+  to that inflated width — including the header, via `.cad-navbar { width:100% }` — ends up positioned
+  past the true viewport edge, and `overflow:hidden` (both `body` and `.cad-app-shell`) crops it rather
+  than reflowing it. One culprit, page-wide symptom.
+
+**Fix — root rule, not a band-aid, entirely local to `inspector_palette.html` (no `base.css` change,
+so the "prove the b-spline palette is unaffected" step doesn't apply — nothing shared was touched):**
+replaced the flex row with the pre-flexbox, universally-supported technique for "small control pinned to
+one side, text wraps around it": `float: right` on `.row-copy`, plain block `<li>` (no `display:flex`).
+A float never asks a flex container to compute an intrinsic size for a text node, so it structurally
+cannot hit the anonymous-flex-item min-content path at all, in any engine, regardless of version. Named
+the mechanism in an inline comment at the fix site (`inspector_palette.html:21-28`).
+
+**Side effect caught and neutralized, not shipped silently:** removing `display:flex` un-hid the
+browser's default `<ul>` bullet marker (flex display had been incidentally suppressing it as a side
+effect nobody asked for or noticed; `.linked-list`'s own `padding-left:24px` suggests bullets may once
+have been the intended look, but the deployed E7c state has none). To keep this turn's visible change
+scoped to *only* the overflow fix, added `list-style: none;` to `.linked-list` — confirmed by screenshot
+the row now looks pixel-identical to the pre-fix (E7c) rendering, minus the overflow.
+
+**Verify:** Headless Chrome via CDP, `document.documentElement.scrollWidth <= window.innerWidth` at 320
+and 520 (both exactly equal, 0 overflow, before AND after the fix — the fix could not be shown to change
+anything in a modern engine, only argued for on structural grounds for the actual target engine).
+Screenshot comparison before/after confirms no visual regression: text still wraps within its row, the
+button still sits at the right edge, no bullets. Extracted the `<script>` block and ran `node --check` —
+clean (unchanged; only CSS lines were touched). `git diff --stat` → 1 file (predicted 1-2; `base.css`
+wasn't needed).
+
+**Honest limitation, stated plainly rather than overclaimed:** this fix is backed by CSS-mechanics
+reasoning and eliminates the one structurally-risky pattern the advisor's own candidate list named as
+unchecked, but it was **not verified against the actual failure** — my headless Chrome never showed the
+bug either before or after, so I cannot report "confirmed fixed," only "confirmed not worse, and removes
+the most probable cause." The real proof is the advisor's live-Fusion recapture at 320/520/700, as the
+dispatch already designates.
+
+No gate hit. Didn't touch `fusion-inspector.py`, `fb_shared`, or the copy pump. Didn't deploy.
