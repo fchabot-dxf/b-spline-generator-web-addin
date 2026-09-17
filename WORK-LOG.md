@@ -2552,3 +2552,32 @@ rather than silently assuming).
 
 No gate hit — a declared, advisor-verified restoration + a declared, fully-swept removal. The advisor
 owns the visual confirmation (deploy + screenshot).
+
+---
+
+## Turn 109 — PM1b: restore palette's cut closing tags — DONE
+
+Confirmed the advisor's follow-up finding from PM1's pass-back flag: `91b624d` also deleted the file's
+last four structural lines (the two `</div>` closing `.pm-dialog`/`#projectManagerModal`, plus
+`</body>`/`</html>`). Verified before editing: from `#projectManagerModal` to EOF the file had 14 `<div`
+vs 12 `</div>`, and 0 `</body>`/`</html>`.
+
+Appended, after `<input type="hidden" id="fmProjectName">`:
+```
+    </div>
+  </div>
+
+</body>
+
+</html>
+```
+Checked the file's raw trailing bytes first (`xxd`) — CRLF throughout, no trailing blank line before EOF
+— and appended with explicit `\r\n` terminators (`printf`) rather than a text-editor append, so the new
+lines match the file's existing line endings exactly rather than relying on git's autocrlf to fix it up
+after the fact.
+
+**Verify (all green):** div balance 14/14 from `#projectManagerModal` to EOF. `grep -c "</body>"` → 1,
+`grep -c "</html>"` → 1. `git diff --stat` → 1 file, 6 insertions, 0 deletions (within the predicted 4-6
+range; the 2 blank lines account for the difference from the 4 non-blank lines). No amendments pending.
+
+No gate hit — a declared, advisor-verified structural restoration, no other content touched.
