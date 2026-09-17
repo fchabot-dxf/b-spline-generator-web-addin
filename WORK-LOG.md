@@ -3164,3 +3164,42 @@ amendments pending.
 
 No gate hit. No deploy run — the advisor reads the real "Removed N orphan(s)" line (or its absence) at
 the next actual deploy.
+
+---
+
+## Turn 133 — E7c: Frame Inspector per-row copy on the Details list — DONE
+
+Executed the dispatch verbatim. 1 file, one commit.
+
+**(1)** Declared `makeRowCopyButton(text)` right above `renderLinkedList`, exactly as given: creates a
+`.cad-btn.row-copy` button with the `⧉` glyph, click handler stops propagation and calls
+`performCopy(text, b)` — never `fusionSendData` directly.
+
+**(2)** `renderLinkedList`: one `li.appendChild(makeRowCopyButton(entries[i]))` per row, right after
+`li.textContent = entries[i]`. Nothing else in the function touched — confirmed the expr/raw toggle
+re-renders the whole list on every `applyData` call, so each row's button always captures whichever text
+(`entries[i]`) is currently displayed; there's no stale-closure risk since the buttons themselves are
+torn down and rebuilt (`list.innerHTML = ''`) on every render.
+
+**(3)** Two style rules: merged the new `display: flex; align-items: center; gap: 4px;` into the
+*existing* `.linked-list li` selector (kept its `margin-bottom: 2px`, per the dispatch's "keep the
+existing rule" instruction — didn't duplicate the selector) and added the new `.row-copy` rule right
+after it.
+
+**(4) Checked whether `performCopy` supports a custom flash message before deciding — it doesn't.**
+Read `performCopy` and its actual flash call sites: the instant click feedback is hardcoded to `'...'`
+inside `performCopy` itself, and the eventual `'Copied!'`/`'Error'` flash after the eventual
+Fusion round-trip is hardcoded inside `poll()`'s `_pendingCopy` handling (not parameterized at all —
+there's no flash-message argument threading through either path). Per the dispatch's explicit fallback,
+left the default flash text unchanged rather than modifying `performCopy`/`poll()` to add a custom-message
+parameter (that would touch the shared poll pump, which is out of scope and would affect the other two
+copy buttons too). `'...'` (the actual click-time feedback in the real Fusion flow) is short and fits the
+small button fine; `'Copied!'`/`'Error'` only render in the non-Fusion standalone-testing fallback path.
+
+**Verify (all green):** Extracted the `<script>` block and ran `node --check` on it — clean. Greps:
+`makeRowCopyButton` → 2 (declaration + the one call site). `fusionSendData(` → 1, unchanged from before
+this turn (confirms the row button never calls it directly, only through the existing `performCopy` →
+`poll()` → `_pendingCopy` chain). `git diff --stat` → exactly the predicted 1 file. No amendments pending.
+
+No gate hit. Didn't touch `fusion-inspector.py`, `copyToClipboard`/`copyShort`, the poll pump, or
+`fb_shared`. The advisor owns the Fusion look (deploy, select two entities, click a row's ⧉, paste).
