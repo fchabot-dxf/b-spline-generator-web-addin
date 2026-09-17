@@ -1,35 +1,47 @@
-# NEXT — CAM1 slice (c): honesty sweep + design-doc status (FB2c's shape)
+# NEXT — DEP2: `release.py` must VERIFY the website deployed, not just that the push succeeded
 
-**Ball: worker (seat A) · epoch 1 · CAM1c.** Files: `bspline-frame-builder/CAM-builder/cam-builder.py`,
-`bspline-frame-builder/CAM-builder/ui/html/cam_builder_palette.html`, `CAM1-CONSOLIDATION-DESIGN.md` (status block only).
-One commit by path, predicted **3 files**, comment/text-scale diffs only. No behaviour changes.
+**Ball: worker (seat A) · epoch 1 · DEP2.** File: ONLY `release.py`. One commit by path, predicted **1 file, ~+60 lines**.
 
-## Ground truth (advisor, deployed 90168b1)
-Slice (b) is live: one "CAM" button, `CamStudio_Command` and `CamStudio_Palette` gone after Stop→Start, the old palette
-file swept from the AddIns folder by DEP1's orphan sweep. Remaining wording that describes the two-palette era:
-- `cam-builder.py:37` section banner "B-spline CAM palette" (it is now the whole CAM palette); `:424` "(formerly the
-  standalone CAM Studio palette)" — fine as history, keep; `:451`, `:988`, `:1168`, `:1980` say "CAM Studio" as if it
-  were a thing a user opens — reword to "the GENERIC tab" / "generic mode". Read the module docstring (`:1-36`) and fix
-  any sentence that still says two palettes or two buttons.
-- `cam_builder_palette.html:671` the Generic tab's help note starts `<strong>CAM Studio:</strong>` → `<strong>Generic mode:</strong>`.
-- Header layout nit seen live: on the B-SPLINE tab the build stamp wraps to three lines next to the tabs. If a one-line
-  CSS tweak (e.g. `white-space:nowrap; font-size` on the stamp span, or letting the status text truncate with
-  `text-overflow`) fixes it, do it; if it needs layout work, report and leave it.
-- Design doc: add a 3-line status block at the top of `CAM1-CONSOLIDATION-DESIGN.md`: implemented in CAM1a (d714591),
-  CAM1b (de63098), CAM1c (<this sha>); the advisor's amendments (dock-right already true; stock-preview echo: <what you
-  found in slice (a)>); the two fixes found during implementation (preview_bodies on the sending side; studio sends
-  reaching the merged palette; the `response` ack; the STUDIO_PALETTE_ID NameError in generate).
+## Ground truth (advisor, today's incident)
+- Cloudflare Pages project `bspline-generator` builds every push to `main` (GitHub-connected; build command
+  `python bspline-frame-builder/deploy_cloudflare.py --build-only`, output `bspline-frame-builder/dist`). From
+  2026-07-12 to today every build FAILED (lock-file drift) while `release.py` printed
+  `Web app: https://bspline-generator.pages.dev (Cloudflare rebuilds on push)` — a sentence the script cannot know is
+  true. Nobody looked at Cloudflare for two months.
+- `release.py:166 step_git_push()` pushes; `:336` prints that line. `deploy_cloudflare.py:50-72` shows how this repo
+  loads `.env` (dotenv with a manual fallback) and reads `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`.
+- The Pages API (read-only, token already has access — used by the advisor today):
+  `GET https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/pages/projects/bspline-generator/deployments?per_page=5`
+  → `result[]` with `deployment_trigger.metadata.commit_hash`, `latest_stage.name` (`queued|initialize|clone_repo|build|deploy`)
+  and `latest_stage.status` (`idle|active|success|failure|canceled`); on failure
+  `GET …/deployments/{id}/history/logs` → `result.data[].line`.
 
-## Verify
-- `py_compile` + `pyflakes` (no new warnings); extract + `node --check` the palette scripts.
-- Grep `CAM Studio` in cam-builder.py + the html → only the `:424` history note remains (quote it).
-- Re-run the bridge sweep (15 sends ↔ 15 branches; 8 events ↔ 8 listeners) against the final tree — paste it.
-- `git show --stat HEAD` → 3 files. Live look is the ADVISOR's.
+## Do
+1. Declare the project once: `PAGES_PROJECT = "bspline-generator"` next to `PAGES_URL` (`:42`); load `.env` the same way
+   `deploy_cloudflare.py` does (copy that small block; stdlib `urllib` for the HTTP, no new dependency).
+2. `step_verify_pages(sha, timeout_s=360)`: poll every 10 s for the deployment whose `commit_hash` starts with `sha`;
+   print one line per state change (`queued → build → deploy`); on `deploy success` print `  Web app:    {PAGES_URL}
+   DEPLOYED {sha}` and return True; on `failure` print `  Web app:    BUILD FAILED for {sha}` + the last 25 log lines
+   (skip the npm usage boilerplate) and return False; on timeout print `UNCONFIRMED after {timeout_s}s — check
+   https://dash.cloudflare.com` and return False; if the token/account id is missing print `SKIPPED (no CLOUDFLARE_* in
+   .env)` and return None.
+3. Call it at the end of `step_git_push()` (after a successful push, with `git rev-parse --short HEAD`) and let its
+   result drive the summary line at `:336`: DEPLOYED / BUILD FAILED / UNCONFIRMED / SKIPPED — never again the bare
+   "Cloudflare rebuilds on push". A BUILD FAILED result makes `release.py` exit non-zero.
+4. Nothing else in the script changes.
+
+## Verify (headless)
+- `py_compile release.py`; `python release.py --help`-style flag error still prints the valid flags.
+- Dry check of the verifier without pushing: add `--verify-web [sha]` as a flag that runs only `step_verify_pages` for
+  the given (or HEAD) sha; run `python release.py --verify-web 2790636` → it must find today's deployment and print
+  DEPLOYED (2790636 built at 13:4x). Paste the output.
+- `git show --stat HEAD` → 1 file.
 
 ## Do NOT
-Change any behaviour; touch cam_engine; touch the tab bodies beyond the help-note text and the header nit.
+Touch `deploy_cloudflare.py`, the add-in deploy, or `--web`'s staging behaviour (note for the advisor: `--web` still
+does `git add -A`, which is the two-seats index trap — leave it, it is the human's ritual; recorded separately).
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "CAM1c: <n> stale comments corrected, help note reworded, header nit <fixed|reported>, design doc status block; bridge sweep 15/15 + 8/8 — <sha>, 3 files. CAM1 COMPLETE pending advisor live check."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "DEP2: step_verify_pages polls the Pages API after push; summary says DEPLOYED/BUILD FAILED/UNCONFIRMED/SKIPPED; --verify-web flag; verified against 2790636 — <sha>, 1 file. Next: FB3b."`
 and stop.
