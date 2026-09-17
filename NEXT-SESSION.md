@@ -1,30 +1,29 @@
-# LANE B (audit seat) — A6: audit `CAM-builder/` (~8.9k lines, confirmed LIVE in A1). READ-ONLY.
+# LANE B (audit seat) — A7: audit the cloud side: `cloud/preset-worker/`, `cloud/step-editor-worker/`, `cloud/step-editor-pages/`, deploy_cloudflare.py. READ-ONLY. LAST audit slice.
 
-**Seat B · epoch 1 · A6.** Same rules. Append an **"A6 — CAM-builder"** section.
+**Seat B · epoch 1 · A7.** Same rules. Append an **"A7 — cloud"** section, then a short **"Audit series summary"** at the
+end of the doc: one table of every H/M finding across A1-A7 with its current disposition (dispatched as <task> / open /
+resolved) — the advisor will reconcile it against ROADMAP.
 
-**A5b review (advisor):** accepted. B6 closed on your evidence. A5b-1 (import progress dead sends) becomes a seat-A
-task (wire the listener to the palette's existing status affordance). A5b-5's label: advisor traced history.
-Named P1 exception (`window.fusionJavaScriptHandler` inline) will be documented in ROADMAP as such.
+**A6 review (advisor):** accepted; cleanest add-in of the set. B10 → HY3. Parent wipe list: template-maker's bare
+imports are the remaining reason; CAM-builder ruled out.
 
-## A6 scope — `bspline-frame-builder/CAM-builder/`
-1. **B10 (BUGS_OPEN):** `stop()` unregisters 1 of 3 CustomEvents — still true? Name each event registered in `run()`
-   (file:line) and whether `stop()` releases it. Lifecycle symmetry overall (handlers, palette, panels, events).
-2. Entry + engine (`cam-builder.py`, `cam_engine`, `cam_utils` — the names the parent wipes at
-   `bspline-frame-builder.py` `_bootstrap`): duplication with `fb_shared` or with frame-builder's engine (toolpath /
-   geometry helpers reimplemented?); hand-rolled tables (tool libraries, feeds/speeds, post-processor strings) that
-   should be declarations; dead functions (0 callers); honesty (comments describing a pre-consolidation standalone
-   add-in).
-3. Palette HTML/JS: doorless handlers both directions (`fusionSendData` actions vs the Python dispatcher;
-   `sendInfoToHTML` events vs JS listeners) — the sweep that found A5a-5/A5b-1.
-4. **Cross-sub bare-name collisions** — the question that decides the parent's `_shared_project_names` fate: does
-   CAM-builder import any bare module name that ALSO exists under another sub-add-in (template-maker/core, frame-builder,
-   stamp-editor)? List collisions (name → both paths). None = the parent list can be retired; some = it must stay/derive.
-5. Inefficiencies: toolpath generation loops (O(n²) over points?), repeated Fusion COM reads in loops.
-6. Tests: any? (A1 saw none for CAM-builder.)
+## A7 scope
+1. **`cloud/preset-worker/`** (the SHARED worker `projects-dansemur`, serves several of Fred's apps): `src/index.js` +
+   every route module (`pageviews-route.js`, `bus-route.js`, the projects/presets/penplotter/loader routes). For each
+   route: auth (none? key?), input validation, body-size cap honoured, KV key shapes, CORS. Is anything writable by
+   anyone on the internet that should not be (the README admits the projects store is unauthenticated — list every
+   other unauthenticated WRITE). Dead routes (declared but nothing calls them — grep the apps' JS for the paths:
+   `b-spline-gen/html/main/cloud-project-manager.js` uses `/projects`; who uses `/presets`, `/loader`, `/views`, `/bus`?).
+   `wrangler.toml` bindings vs bindings the code reads (`env.X`) — both directions.
+2. **`cloud/step-editor-worker/` + `cloud/step-editor-pages/`**: STANDARDS-AUDIT §3/§5 says pages is README-only and
+   references a source that does not exist. Confirm current state: live, dead, or half-built; who deploys it.
+3. **`bspline-frame-builder/deploy_cloudflare.py`**: the Pages build (`--build-only`) — what it copies into `dist/`,
+   whether `dist/` can contain stale files (overlay vs clean), and whether the `.env` token is ever printed/logged.
+4. Repo hygiene on the cloud side: `.wrangler/` state dirs, `package-lock.json` drift, leftover `.bak` files.
 
-Do NOT run Fusion. Static read + grep + py_compile.
+Do NOT deploy, do NOT run wrangler against the account. Static read + grep only.
 
 ## When done
 Append lane-b WORK-LOG, commit by path, then FROM THIS FOLDER:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A6 CAM-builder: <n> findings (<H/M/L>), B10 <status>, bare-name collisions <k>, <sha>. Next: A7 cloud workers."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A7 cloud: <n> findings (<H/M/L>), unauthenticated writes: <list>, dead routes: <list>, step-editor status: <x>; series summary appended. <sha>. Audit series COMPLETE."`
 and stop.
