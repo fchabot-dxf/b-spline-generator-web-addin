@@ -148,7 +148,7 @@ class PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler):
 
 
 def _build_fn(data, ctx):
-    """PaletteSpec.build_fn — was _run_solid_build_direct + HiddenBuildCommandExecuteHandler."""
+    """PaletteSpec.build_fn: runs the actual solid extrude from the hidden command's queued request."""
     try:
         if ctx.diag_logger: ctx.diag_logger.log("RUN SOLID BUILD (hidden command) triggered")
 

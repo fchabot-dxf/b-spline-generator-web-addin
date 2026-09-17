@@ -61,8 +61,8 @@ def _schedule_schema_push(style_id="Template 1"):
 
 
 def _run_schema_push_execute():
-    """extra_commands execute_fn for SCHEMA_PUSH_CMD_ID (was
-    HiddenSchemaPushExecuteHandler.notify)."""
+    """extra_commands execute_fn for SCHEMA_PUSH_CMD_ID: reads the queued
+    style, then pushes the schema."""
     global _pending_schema_style
     style = _pending_schema_style or "Template 1"
     _pending_schema_style = None
@@ -180,7 +180,7 @@ if diag_logger:
     diag_logger.log("SKETCH BUILDER UI MODULE: Loaded")
 
 
-class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler, _PaletteBridgeMixin):
+class PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler):
     def __init__(self, diag_logger=None):
         super().__init__()
         self.diag_logger = diag_logger
@@ -298,7 +298,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler, _PaletteBridgeMixin):
 
 
 def _build_fn(data, ctx):
-    """PaletteSpec.build_fn — was _run_sketch_build_direct + HiddenBuildCommandExecuteHandler."""
+    """PaletteSpec.build_fn: runs the actual sketch build from the hidden command's queued request."""
     style_id = data.get('style_id', 'Template 1')
     try:
         if ctx.diag_logger: ctx.diag_logger.log(f"RUN SKETCH BUILD (hidden command). Style: {style_id}")
@@ -339,11 +339,9 @@ def _ensure_tilt_param_safe():
 
 def _on_document_activated(ctx):
     """Re-pushes the palette schema whenever the user switches active
-    documents (was DocumentActivatedHandler.notify). Reads the live
-    style_id straight off ctx.active_handler — the original's separate
-    _style_id_ref one-element-list indirection is unnecessary: self.style_id
-    and that ref were always written together in change_template, so this
-    reads identically without the extra box (verified turn 147)."""
+    documents. Reads the live style_id straight off ctx.active_handler —
+    its value is always current, since change_template sets it directly
+    on this same live handler instance (verified turn 147)."""
     try:
         # Tilt param invariant (E8): a newly-activated design may lack
         # frame_tilt_deg — ensure it now (outside any build Execute).
@@ -353,13 +351,12 @@ def _on_document_activated(ctx):
             style = ctx.active_handler.style_id if ctx.active_handler else "Template 1"
             _schedule_schema_push(style)
     except Exception:
-        if ctx.diag_logger: ctx.diag_logger.log_error(f"DocumentActivatedHandler CRASH:\n{traceback.format_exc()}")
+        if ctx.diag_logger: ctx.diag_logger.log_error(f"_on_document_activated CRASH:\n{traceback.format_exc()}")
 
 
 def _on_ready(ctx):
-    """Runs once after the palette is shown (was run_palette steps 5a/5b/6):
-    ensure the tilt param, pick the first available template, then push the
-    initial schema."""
+    """Runs once after the palette is shown: ensure the tilt param, pick the
+    first available template, then push the initial schema."""
     _ensure_tilt_param_safe()   # E8 F1-C: the param must exist BEFORE any build
     try:
         if frame_engine:

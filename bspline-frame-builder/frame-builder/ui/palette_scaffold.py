@@ -285,6 +285,8 @@ def make_palette(spec):
                     old = _state['doc_activated_handler']
                     if old is not None:
                         app.documentActivated.remove(old)
+                        if old in handlers:
+                            handlers.remove(old)
                 except Exception:
                     pass
                 doc_handler = _make_doc_activated_handler(spec.on_document_activated, _build_ctx)

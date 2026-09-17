@@ -1,5 +1,9 @@
 # FB2 — One declared hidden-command palette scaffold for the two frame builders
 
+**Status: IMPLEMENTED** — slice (a) `b7cd92e` + fix `27bfd7c`, slice (b) `dbfed18`, slice (c) (this commit).
+**Amendments folded in:** the parent's derived wipe list also covers `frame-builder/ui/`; the hidden-command loop binds `cmd_id`/`execute_fn` per call, never a loop-variable closure.
+**Measured, not a bug:** Fusion fires `documentActivated` twice per activation, so two schema pushes per document switch is expected.
+
 Design only. No product code changed in this turn. File-line references are against the current tree
 (`sketch_builder_ui.py` 594 lines, `solid_builder_ui.py` 351 lines, both under
 `bspline-frame-builder/frame-builder/ui/`).
