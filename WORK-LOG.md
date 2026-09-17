@@ -2793,3 +2793,82 @@ passed (sanity only — untouched code path). `git diff --stat` → exactly 1 fi
 No gate hit. Didn't touch the palette HTML, `fb_shared`, the parent loader, or any other add-in. Didn't
 refactor `stop()` beyond the specified try/except/finally shape. The advisor owns the Fusion Stop→Start
 proof after deploy.
+
+---
+
+## Turn 121 — HY2: 8-item hygiene batch (all L) — 8/8 landed, no behaviour changes
+
+Executed all 8 anchored items from the advisor's audit. 8 files, one commit. No refactors beyond what
+each item named.
+
+**(1)** Deleted the dead loader cluster in `bspline-frame-builder.py` (`_find_related_addin_modules`,
+`_invoke_addin_action`, `_stop_related_addins`, `_run_related_addins` — confirmed 0 external callers,
+only calling each other) and reworded the `_DeferredRefreshHandler.notify` comment that named the deleted
+`_find_related_addin_modules`. Side effect flagged, not fixed: deleting these orphaned
+`_normalize_module_path` (0 remaining callers) — not in the named list, so left it in place per "don't
+touch anything not named"; naming it here so it doesn't read as unseen.
+
+**(2)** `fb_shared/entity_helpers.py` docstring: replaced the false "NO callers are switched... (S1 is
+additive)" claim and "pending advisor review" with the dispatch's given text (ratified, S3-S5, consumed
+by frame-inspector/template-maker-core/tests). Kept the `[GATE]`/`[FLAG]` semantic-decision notes
+untouched. Caught my own mistake before it landed: my first pass at this edit left a stray closing `"""`
+mid-docstring, which would have made the rest of the docstring text execute as top-level statements (a
+SyntaxError at import). Caught it via `py_compile` before moving to item 3, fixed it, re-verified.
+
+**(3)** `fb_shared/expression_coords.py` docstring: replaced "ADDITIVE: no production callers switched
+yet." with the dispatch's given "Canonical (C4 S2-S5 complete)..." text.
+
+**(4)** `DEPLOY_bspline-frame-builder.py`: removed the `entity_helpers.py`/`expression_coords.py` entries
+from `deploy_template_maker.verify_files` — confirmed neither file exists under `template-maker/`.
+
+**(5)** `fusion-exporter/fusion-exporter.py`: deleted the `panels_to_clean = ['FusionIOPanel']` list and
+the whole "3. Clean up the panels if they are empty" loop it fed — `FusionIOPanel` is an id nothing in the
+repo creates (`run()` uses `bsplinePanel_<tab>`).
+
+**(6)** `stamp-editor/stamp-editor.py`, all 3 sub-items:
+- (a) Deleted the `if action == 'reset_ui':` branch — confirmed 0 senders under `stamp-editor/html/`
+  (a repo-wide `reset_ui` grep still shows hits, but every one is in the unrelated `b-spline-gen` add-in,
+  which has its own live, working `reset_ui` round-trip — not this dead branch).
+- (b) Replaced the "v1 SCAFFOLD... land in subsequent passes" header with the dispatch's one true
+  sentence.
+- (c) Deleted the unused `global _captured_faces` in `_commit_stamp_to_fusion` — confirmed first that the
+  function only ever READS `_captured_faces` (never assigns it), satisfying the STOP rule's "delete ONLY
+  if the function never assigns" condition. (The OTHER `global _captured_faces`, in
+  `_capture_selected_faces`, does assign and was correctly left alone — not in scope anyway.)
+  Side effect flagged, not fixed: the file's own header (lines 4 and 7, above the SCAFFOLD text I did
+  fix) makes the identical false claim item 7 targeted in `runtime.js` — "Sibling add-in to step-editor"
+  / "Architecture mirrors step-editor.py" — and no `step-editor` add-in exists anywhere in the repo
+  (confirmed via `find`). Not named in item 6b's line range (which was `:13-15` only), so left it; flagging
+  so it doesn't read as an oversight next time someone greps for this phrase.
+
+**(7)** `stamp-editor/html/core/runtime.js`: replaced the "Mirrors step-editor's runtime..." comment with
+the dispatch's given true sentence.
+
+**(8)** `frame-builder/fb_engine/parametric_engine.py` — pyflakes-flagged unused locals, STOP rule applied
+per line:
+- `ui_state` (was `:126`): RHS is `ctx.active_vars if hasattr(ctx, 'active_vars') else {}` — a plain
+  attribute read plus a builtin introspection call (`hasattr`), not a method call on `ctx`/`self`/a Fusion
+  object. Deleted, along with the now-pointless comment above it.
+- `sketch_prefix` (was `:209`): RHS is `sketch_spec.get("Prefix", self.prefix)` — `sketch_spec` is a plain
+  dict (JSON template data); `dict.get` is a pure, side-effect-free read, not a call on `ctx`/`self`/a
+  Fusion object. Deleted.
+- `built_count = 0` (was `:309`, in `_build_blocks`): a plain literal, no call at all, and confirmed by
+  grep it's never read or reassigned anywhere else in that function. Deleted.
+- `built_count = self.build_sketch(...)` (was `:176`, now `:174`): KEPT per the STOP rule — the RHS
+  calls `self.build_sketch(...)`, a method on `self` that does the actual sketch build; only the
+  assignment's target is unused, but the call itself is essential. Left the line completely unchanged.
+
+**Verify (all green):** `py_compile` on all 7 edited `.py` files. `pyflakes` on `parametric_engine.py` →
+exactly 1 warning remains (the kept `built_count`, now at `:174`) — 3 of the 4 gone as intended. The other
+edited `.py` files show only pre-existing, unrelated pyflakes noise (an unused `adsk.fusion` import in
+`entity_helpers.py`, f-string/import warnings in `DEPLOY_...py`) — none introduced by this turn's edits.
+All 6 specified 0-hit greps pass on the files each item actually targets: the dead loader cluster names,
+`FusionIOPanel`, `stamp-editor`'s own `reset_ui`, "no production callers", "NO callers are", and
+`runtime.js`'s specific "mirrors step-editor" phrasing. (Two greps have expected non-stamp-editor hits
+elsewhere in the repo, both explained above rather than silently ignored.) `node --check` on `runtime.js`
+clean. `pytest template-maker/tests -q` → 83 passed. `git diff --stat` → exactly the predicted 8 files.
+No amendments pending.
+
+8/8 items landed, 0 skipped. Two adjacent-but-out-of-scope findings flagged above
+(`_normalize_module_path`, `stamp-editor.py`'s own header lines) rather than fixed, per "don't touch
+anything not named" — named here so the advisor can decide whether either becomes its own item.
