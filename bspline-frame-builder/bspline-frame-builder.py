@@ -209,6 +209,11 @@ def _bootstrap():
         _bare_module_names(os.path.join(_addin_root, 'template-maker', 'core'))
         + [n for n in _bare_module_names(os.path.join(_addin_root, 'fusion-exporter'))
            if n != 'fusion-exporter']     # the entry file is loaded by path, never by bare name
+        # FB2: palette_scaffold.py is a new bare module under frame-builder/ui/ that
+        # would otherwise stay cached in sys.modules across Stop->Start (B7/A3-1
+        # class). The two *_builder_ui names come along too — harmless extras, since
+        # both are loaded by path under other sys.modules keys, never by bare name.
+        + _bare_module_names(os.path.join(_addin_root, 'frame-builder', 'ui'))
     )
 
     _force_wipe(_shared_project_names)
