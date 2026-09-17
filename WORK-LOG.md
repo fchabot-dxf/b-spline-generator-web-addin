@@ -4295,3 +4295,60 @@ No gate hit. Didn't touch the inspector palette, `showToast`, or the build badge
 only added one new conditional call alongside it. Web/Fusion look (Send to Fusion on a scratch design:
 progress lines appear under the header, button stays "Baking...", then "Imported ✓" fades after 3s) is
 the advisor's, as scoped.
+
+## Turn 173 — FB3: Frame Builder shows which Fusion parameters a build will create — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** `_hydrate_params` already looks each template
+parameter up in `design.userParameters` to hydrate its live value — declare whether it actually found one
+(`Exists`); show the Fusion parameter name on every row, and a "new" chip when the next build will
+create it (never on ReadOnly rows); one note at the top of the section when any row is new.
+
+**(1)** `sketch_builder_ui.py`'s `_hydrate_params`: the existing `if user_params: fp =
+user_params.itemByName(p_name); if fp: ...` nesting meant `fp` was never bound at all when `user_params`
+was falsy (no active design) — declaring `p_live['Exists'] = bool(fp)` unconditionally after that block
+would have raised `NameError` in that case. Restructured to `fp = user_params.itemByName(p_name) if
+user_params else None` up front, then `p_live['Exists'] = bool(fp)` right after (covers both "no design"
+and "no such parameter" in one line, per the dispatch's own parenthetical), then `if fp:` for the
+existing value-hydration logic — same behavior, just de-nested one level. Nothing else in the payload
+changed.
+
+**(2)** `sketch_builder_palette.html`'s `_renderParam`: added `<span class="param-fusion-name" title="Fusion
+user parameter (Modify → Change Parameters)">${p.Name}</span>` and, when `p.Exists === false &&
+!p.ReadOnly`, a `<span class="param-new">new</span>` chip — both nested **inside** the `<label
+class="cad-label">` element rather than as siblings in `row.innerHTML`. Checked `.cad-field-row`'s CSS
+first: it's a 2-column CSS grid (`grid-template-columns: 120px 1fr`), so extra top-level children would
+have wrapped onto a new implicit grid row instead of sitting under/beside the label as intended — nesting
+inside the label cell avoids fighting that layout entirely. `.param-fusion-name` is `display: block` so
+it wraps onto its own line under the label text, satisfying "under (or right of) the label" via the first
+option.
+
+**(3)** The one-line note: **deviated from a literal read of the dispatch to avoid duplicating logic.**
+A first pass recomputed `allParams.some(p => p.Exists === false && !p.ReadOnly)` directly in `renderSchema`
+— the same predicate `_renderParam` already evaluates per-row to decide its own chip, in a second place.
+Re-read the dispatch's verify section — `param-new → css + js + note` implies three separate source
+locations for that string, not two — and realized the intended design is simpler: create the note
+element unconditionally hidden, render all the sections/rows as normal (which creates zero or more real
+`.param-new` chips), then decide `note.hidden = !container.querySelector('.param-new')` **after**
+rendering — one source of truth (the chips that actually exist), not a second independent recomputation
+of the same condition. Placed the note's creation before the sketch-sections loop (so it's first in the
+DOM, satisfying "top of the parameter section") but its visibility decision after the loop.
+
+**(4)** CSS: `.param-fusion-name` (10px, monospace, `var(--cad-text-muted, #888)` — matched this file's
+own existing fallback-value convention for that token rather than my own preference), `.param-new`
+(small chip, `var(--cad-accent-blue, #0696D7)` — the dominant accent token used throughout the rest of
+this codebase's active/primary UI, not the far-less-common green), `.param-note` (11px, same muted
+token). Deliberately did **not** set `display` on `.param-note` — an unconditional `display` would be an
+author rule beating the browser's own `[hidden] { display: none }` UA default regardless of specificity,
+the same gotcha caught in PM2/UX1 — so the note's collapse relies entirely on that default.
+
+**Verify (all green):** `py_compile` on `sketch_builder_ui.py` — clean. Extracted the palette's `<script>`
+(E7c-style) → `node --check` clean, both before and after the note-visibility refactor. `python -m
+pytest bspline-frame-builder/template-maker/tests -q` → **83 passed** (sanity — `fb_shared` untouched, as
+expected). Greps: `'Exists'` → **1** in the Python file; `param-fusion-name` → **2** (1 CSS rule + 1 JS
+site); `param-new` → **3** (1 CSS rule + the chip's creation in `_renderParam` + the note's
+`querySelector` check) — had to reword my own explanatory comment above the note, which originally
+quoted the literal class name and would have inflated the count to 4, the same lesson from IN4's "Show
+all" grep. `git diff --stat` → exactly the predicted 2 files.
+
+No gate hit. Didn't touch the build path, the scaffold, or `fb_engine`. Fusion look (fresh design: every
+row shows its Fusion name + "new"; after one build: chips gone) is the advisor's, as scoped.
