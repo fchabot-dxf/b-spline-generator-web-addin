@@ -87,3 +87,13 @@ bspline-frame-builder/stamp-editor/html/core/coords.js
 bspline-frame-builder/stamp-editor/html/core/svg-utils.js
 bspline-frame-builder/stamp-editor/html/core/debug.js
 bspline-frame-builder/stamp-editor/html/core/gaussian.js
+
+# session artifacts — screenshots, run logs, diff dumps, editor backups (H1)
+/_*.png
+*_log.txt
+*_log.txt.err
+*-debug.log
+*.bak
+*.bak[0-9]
+/diff_*.txt
+/pytest_run_output.txt
