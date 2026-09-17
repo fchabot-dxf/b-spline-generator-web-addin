@@ -4046,3 +4046,53 @@ surprise if the screenshot shows clipping.
 
 No gate hit. Didn't touch the modal, Quick Save's actual save/load behaviour, or any other sidebar
 panel.
+
+## Turn 163 — IN4: Inspector — collapse big selections, keep Full Copy whole, drop Copy Name — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** declare `BATCH_COLLAPSE_AFTER = 5`; collapse the
+Connections list display past that count with a "Show all N" expand-in-place row; put the count in the
+`#list-label` header; leave Full Copy untouched (verify it already copies from data, not the DOM); remove
+the Copy Name chain entirely.
+
+**(1)** `BATCH_COLLAPSE_AFTER = 5` declared once, next to `META_FIELDS`.
+
+**(2)** `renderLinkedList`: factored the per-row DOM-building (the `<li>` + row-copy button) into a new
+`appendLinkedRow(list, text)` helper first, since the collapsed/expand path needs to build rows in two
+places (initial render, expand-click) and duplicating that block would drift the two copies out of sync
+— reused it in both. Renders `Math.min(entries.length, BATCH_COLLAPSE_AFTER)` rows; when
+`entries.length > BATCH_COLLAPSE_AFTER`, appends one `<li class="linked-more">` holding a `cad-btn`
+reading `Show all N` whose click handler removes the more-row and appends the remaining rows in place
+(closure over `shown`/`entries`/`more` — a single button per render, not a loop, so no late-binding
+concern). The expr/raw toggle re-renders from scratch via `updateCoordDisplay` → `renderLinkedList`, so
+it collapses again on toggle, matching the dispatch's "fine."
+
+**(3) Count in the header:** `renderLinkedList` now sets `#list-label`'s text itself —
+`(data.listLabel || 'Connections') + ' (' + entries.length + ')'` — whenever `entries.length > 0`, using
+`data.listLabel` directly rather than trusting whatever the caller already wrote there. Both call sites
+(`APPLY`'s initial render and `updateCoordDisplay`'s toggle-driven re-render) pass an object that carries
+`.listLabel`, so this runs identically from either path. Left the `APPLY` handler's own
+`listLabel.textContent = d.listLabel || 'Connections'` line alone — it still matters as the correct value
+for the zero-entries case, where `renderLinkedList` deliberately skips touching the label (ruling: count
+only when N > 0).
+
+**(4) Full Copy verified, not touched:** read `copyToClipboard` end to end — it builds its text from
+`currentData.linked` / `currentData.linked_expr` (falling back correctly when the expr array doesn't
+match length), never reads `#linked-list`'s DOM at all. Collapsing the display cannot affect it. No
+changes made to this function, confirming the dispatch's own claim rather than taking it on faith.
+
+**(5) Copy Name chain removed:** the `#copy-short-btn` element, `copyShort()` in full, and its
+`attachUIEvents` wiring (`copyShortBtn`/`addEventListener('click', copyShort)`). `#copy-btn` needed no
+edit — it already had `flex: 1` and now spans the action row alone once its sibling button was deleted.
+`normalizeEntityName` had exactly one caller (`copyShort`, confirmed by grep before touching anything) —
+died with it.
+
+**Verify (all green):** extracted the `<script>` block (E7c-style) → `node --check` clean. Greps:
+`copy-short-btn|copyShort|normalizeEntityName` → **0**; `BATCH_COLLAPSE_AFTER` → **3** (declaration +
+2 uses, satisfies "2+"); `Show all` → **1** (had to reword my own explanatory comment above the
+declaration, which originally quoted the literal button text and would have doubled the count to 2 —
+caught it before verifying, reworded to describe the behavior without repeating the phrase). `git diff
+--stat` → exactly the predicted 1 file.
+
+No gate hit. Didn't touch `fusion-inspector.py`, the copy pump, section folding, or `fb_shared`. Fusion
+look (select 8+ entities → 5 rows + "Show all 8", header shows "(8)", Full Copy still pastes all 8 lines)
+is the advisor's, as scoped.
