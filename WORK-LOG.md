@@ -3673,3 +3673,59 @@ a 2-line one, plus the one-line fix, net +1 over the estimate).
 
 No gate hit. Touched nothing else in the file. Slice (b) waits until the advisor proves this live (fresh
 design → open → `frame_tilt_deg` present → build → tilt plane, timeline 5).
+
+---
+
+## Turn 151 — FB2b: switch the Extrude Frame (solid) palette onto the scaffold — DONE
+
+FB2a + FB2a-fix are live-proven; this slice mirrors FB2a exactly for `solid_builder_ui.py`. 1 file, one
+commit. `sketch_builder_ui.py`, `palette_scaffold.py`, and the parent loader are all confirmed untouched
+(`git diff --stat` empty for all three).
+
+**Followed the dispatch's exact instructions, including one detail that creates a cross-file
+inconsistency I'm flagging rather than silently fixing or silently accepting without comment:** this
+turn's dispatch specifies `class PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler):`
+— mixin first. FB2a's `sketch_builder_ui.py` has the OPPOSITE order
+(`adsk.core.HTMLEventHandler, _PaletteBridgeMixin`) — that turn's dispatch didn't specify an order, so I
+chose Fusion's own interface first. Both orders are behaviourally identical (the mixin defines no
+`__init__`, only two plain methods, so there's no MRO/cooperative-init concern either way), but the two
+files now disagree stylistically. Implemented THIS turn exactly as dispatched (touching `sketch_builder_ui.py`
+to "fix" the inconsistency is explicitly forbidden this turn) — naming it here as a one-line candidate for
+slice (c)'s honesty sweep rather than leaving it for someone to discover and wonder if it's meaningful.
+
+**What moved / what stayed**, same shape as FB2a: `_create_hidden_command`/`_ensure_hidden_commands`,
+`_schedule_hidden_build`, `HiddenBuildCommandCreatedHandler`/`HiddenBuildCommandExecuteHandler`,
+`_set_status`/`_notify_status`/`_close_palette`, and `run_palette`'s create/show/hidden-commands
+boilerplate all moved into the scaffold. `PaletteHTMLEventHandler`'s `selected_face` state and its three
+actions (`pick_face`, `run_build`, `ping` — including the `ping` handler's piggybacked `_send_build_info`
+call) stay verbatim; `_handle_face_selection` (the bespoke face-pick flow, including its long comment
+about `selectEntity`'s inconsistent cancel behaviour across Fusion builds) stays verbatim; `_run_solid_build`
+now calls `_palette.schedule_hidden_build(request_data)` instead of the old module-local
+`_schedule_hidden_build`. `_run_solid_build_direct` became `_build_fn(data, ctx)`, using
+`ctx.set_status`/`ctx.notify_status`/`ctx.close_palette`/`ctx.diag_logger` — otherwise unchanged.
+`run_palette` needed NO `_doc_activated_handler`-syncing wrapper (unlike sketch's) since solid never had
+one — a direct-ish wrapper that only sets `frame_engine` and delegates.
+
+**Verify (all green):**
+- `py_compile` clean. `pyflakes` → **zero warnings** (no repeat of FB2a's initial stray-global issue —
+  checked for the same `global frame_engine`-never-assigned pattern in this file's own
+  `CommandCreatedHandler.notify()` before finishing; it never declared `global frame_engine` there in the
+  first place, since the original solid file's `notify()` didn't either).
+- Headless import-time smoke (adsk stub + a minimal `fb_engine.solid_coordinator` stub, since this file
+  imports it at module level unlike sketch's late `fb_engine` imports): `palette_scaffold` and the
+  rewritten `solid_builder_ui` both import cleanly; `handlers` is a list; `run_palette` callable;
+  `CommandCreatedHandler` exists; `PaletteHTMLEventHandler.notify` exists.
+- Action-table grep: `run_build`, `pick_face`, `ping` each exactly 1 — matches the design's §4 finding
+  that solid's bridge contract was already perfectly clean both directions; nothing to accidentally break
+  here since there was no slack to begin with.
+- `wc -l` before/after: **351 → 211**, not the dispatch's predicted ~40-60 — same pattern as FB2a's
+  594→415 gap. `_handle_face_selection` alone (verbatim, unchanged, including its extensive
+  `selectEntity`-cancel-behaviour comment) is roughly 55 lines of genuinely bespoke, zero-shared-with-sketch
+  business logic; the rest of `PaletteHTMLEventHandler` plus `_build_fn` plus the module
+  setup/`PaletteSpec` declaration account for the remainder. Reporting the real number and why, same as
+  FB2a.
+- `git diff --stat` → exactly the predicted 1 file.
+
+No gate hit. Didn't touch `sketch_builder_ui.py`, `palette_scaffold.py`, either palette HTML, or the
+parent loader. No `if is_solid` anywhere in the rewritten file. Didn't deploy. The live proof (open
+Extrude Frame, pick a face, build, auto-close, Stop→Start, reopen) is the advisor's.
