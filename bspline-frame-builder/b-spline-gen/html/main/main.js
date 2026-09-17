@@ -20,7 +20,7 @@
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams } from '../core/fusion-bridge.js';
+import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus } from '../core/fusion-bridge.js';
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { populateSeedDropdown } from '../core/seed/index.js';
@@ -153,10 +153,10 @@ function handleFusionHandshake(ev) {
 
     if (action === 'import_progress') {
         let msg = ''; try { msg = JSON.parse(ev.detail.data || '{}').msg || ''; } catch (e) {}
-        if (msg) setFusionActionState(msg, true);
+        if (msg) setFusionStatus(msg, 'busy');
         return;
     }
-    if (action === 'import_success') { setFusionActionState('Done ✓', true); return; }
+    if (action === 'import_success') { setFusionStatus('Imported into Fusion ✓', 'ok'); return; }
 
     if (action === 'pong') return;
 
@@ -172,6 +172,7 @@ function handleFusionHandshake(ev) {
             const status = info.status || 'unknown';
             const sha    = info.sha || 'unknown';
             badge.title  = info.message || '';
+            if (status !== 'ok') setFusionStatus(info.message || 'Deployed add-in is stale', 'warn');
             if (status === 'unknown' || sha === 'unknown') {
                 badge.className = 'cad-nav-version build-unknown';
             } else {

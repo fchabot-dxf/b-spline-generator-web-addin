@@ -266,6 +266,20 @@
         overflow: hidden;
       }
     }
+
+    /* UX2: the one status line for Fusion traffic. Token colors only —
+       [hidden] collapses it via the browser's own default, so nothing
+       here sets `display` and fights that. */
+    .fusion-status {
+      padding: 3px 12px;
+      font-size: 11px;
+      background: var(--cad-bg-secondary);
+      border-bottom: 1px solid var(--cad-border-standard);
+      color: var(--cad-text-muted);
+    }
+    .fusion-status[data-kind="busy"] { color: var(--cad-text-muted); }
+    .fusion-status[data-kind="ok"]   { color: var(--cad-accent-green); }
+    .fusion-status[data-kind="warn"] { color: #ffb300; }
   </style>
   <script src="https://apploader.pages.dev/fred-host.js" defer></script>
 </head>
@@ -326,6 +340,7 @@
       </button>
     </div>
   </header>
+  <div id="fusion-status" class="fusion-status" hidden role="status" aria-live="polite"></div>
 
   <main class="cad-main-content app">
     <aside class="cad-sidebar">

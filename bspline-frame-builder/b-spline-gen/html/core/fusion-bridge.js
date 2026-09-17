@@ -33,6 +33,25 @@ export function setFusionActionState(text, disabled) {
     b.textContent = text; b.disabled = !!disabled;
 }
 
+let _statusGen = 0;
+/** The one status line for Fusion traffic (UX2). kind: 'info' | 'busy' | 'ok' | 'warn'. Empty text hides it;
+ *  'ok' auto-clears after 3 s. */
+export function setFusionStatus(text, kind = 'info') {
+    const el = document.getElementById('fusion-status');
+    if (!el) return;
+    const gen = ++_statusGen;
+    el.textContent = text;
+    el.dataset.kind = kind;
+    el.hidden = !text;
+    if (kind === 'ok' && text) {
+        setTimeout(() => {
+            if (_statusGen !== gen) return; // a newer message already replaced this one
+            el.textContent = '';
+            el.hidden = true;
+        }, 3000);
+    }
+}
+
 /**
  * Sends current 3D mesh data to Fusion's canvas for real-time preview.
  */
@@ -93,6 +112,7 @@ export function startFusionPolling() {
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
             setFusionActionState(FUSION_IDLE_LABEL, false);
+            setFusionStatus('Fusion did not confirm the import — check the Fusion log', 'warn');
             return;
         }
 
