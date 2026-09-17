@@ -18,6 +18,7 @@ runtime contract that now requires ``Blocks``.
 """
 import adsk.core, adsk.fusion, traceback
 import importlib
+from contextlib import contextmanager
 
 # Sub-module imports (Absolute naming for manual loading stability)
 from fb_engine import build_context, geometry, constraints, dimensions, projections, offsets, miters, fb_value_resolver, parameter_schema, diagnostics, inner_corners
@@ -42,6 +43,18 @@ from fb_engine.offsets import offset_step, step_step
 from fb_engine.miters import miter_step
 from fb_engine.parameter_schema import ParameterSchema
 from fb_engine.diagnostics import log_arc_audit
+
+
+@contextmanager
+def deferred_compute(sketch):
+    """Run a block with sketch.isComputeDeferred = True and ALWAYS leave the sketch live
+    (isComputeDeferred = False) on exit — including when the block raises. A sketch left
+    deferred after a crash silently stops solving for the rest of the session (A2-3)."""
+    sketch.isComputeDeferred = True
+    try:
+        yield sketch
+    finally:
+        sketch.isComputeDeferred = False
 
 
 def ensure_tilt_param(design, logger=None):
@@ -120,9 +133,10 @@ class ParametricSketchBuilder:
         if not all_params:
             all_params = template.get("Parameters", [])
 
-        # 1. Parameter Sync (Centralized in frame_engine.py)
-        # We no longer handle parameter creation here to avoid overwriting 
-        # parametric expressions with raw numeric factors.
+        # 1. Parameter Sync
+        # Parameter creation lives in two places: frame_engine._create_skeletal_parameters
+        # (base requirements + template DNA, before build) and _sync_user_parameters below
+        # (UI-driven values). Neither is called from here.
 
         # 2. Iterate through sketches with Global Phase Tracking.
         #
@@ -310,40 +324,35 @@ class ParametricSketchBuilder:
                 project_step(self.ctx, sketch, sketch_name, proj)
             
             # 2. Sequence (Deferred with Pulse)
-            sketch.isComputeDeferred = True
-            
-            # Process Geometry/Constraints/Dimensions mix
-            seq = block.get("BuildSequence", [])
-            self._process_sequence(sketch, sketch_name, seq)
-            
-            # Fallback bucket support within the block
-            for g in block.get("Geometry", []): geom_step(self.ctx, sketch, sketch_name, g)
-            for c in block.get("Constraints", []): constraint_step(self.ctx, sketch, sketch_name, c)
-            for d in block.get("Dimensions", []): dimension_step(self.ctx, sketch, sketch_name, d)
+            with deferred_compute(sketch):
+                # Process Geometry/Constraints/Dimensions mix
+                seq = block.get("BuildSequence", [])
+                self._process_sequence(sketch, sketch_name, seq)
 
-            # Volatile (snap-seed) dimensions — applied then deleted to nudge the solver
-            for vd in block.get("VolatileDimensions", []):
-                dimension_step(self.ctx, sketch, sketch_name, vd, is_snap_only=True)
+                # Fallback bucket support within the block
+                for g in block.get("Geometry", []): geom_step(self.ctx, sketch, sketch_name, g)
+                for c in block.get("Constraints", []): constraint_step(self.ctx, sketch, sketch_name, c)
+                for d in block.get("Dimensions", []): dimension_step(self.ctx, sketch, sketch_name, d)
+
+                # Volatile (snap-seed) dimensions — applied then deleted to nudge the solver
+                for vd in block.get("VolatileDimensions", []):
+                    dimension_step(self.ctx, sketch, sketch_name, vd, is_snap_only=True)
 
             # Pulse the solver to settle geometry before offsets
             self.ctx.logger.log(f"  > PULSE SOLVE: {b_name}")
-            sketch.isComputeDeferred = False
             log_arc_audit(self.ctx, sketch, sketch_name, f"BLOCK {b_name} COMPLETE", display_name=display_name)
 
             # Offset Steps (runs in deferred mode for constraint stability)
-            sketch.isComputeDeferred = True
-            for step in block.get("Steps", []):
-                step_step(self.ctx, sketch, sketch_name, step)
+            with deferred_compute(sketch):
+                for step in block.get("Steps", []):
+                    step_step(self.ctx, sketch, sketch_name, step)
 
-            # Miters (depends on offset corners)
-            miters_list = block.get("Miters", [])
-            if miters_list:
-                self.ctx.logger.log(f"  > MITERS: {len(miters_list)} cuts in block {b_name}")
-                for m in miters_list:
-                    miter_step(self.ctx, sketch, sketch_name, m)
-            
-            # Final solve flush for the block
-            sketch.isComputeDeferred = False
+                # Miters (depends on offset corners)
+                miters_list = block.get("Miters", [])
+                if miters_list:
+                    self.ctx.logger.log(f"  > MITERS: {len(miters_list)} cuts in block {b_name}")
+                    for m in miters_list:
+                        miter_step(self.ctx, sketch, sketch_name, m)
 
     def _process_sequence(self, sketch, sketch_name, sequence):
         """Order-aware dispatcher for Procedural Sketching."""
