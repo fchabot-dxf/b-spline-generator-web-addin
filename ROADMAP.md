@@ -357,3 +357,17 @@ Slices (a) scaffold+sketch (b7cd92e), (a-fix) tilt ensure restored after a live-
 Stop→Start clean. 594+351 → 415+211 lines, scaffold 319. Measured quirk: Fusion fires `documentActivated` twice per
 activation (2 idempotent schema pushes; one live handler; same before the rewrite). Slice (c) = honesty sweep + prune
 the replaced doc handler from `handlers` + mixin-order convention. Dispatched.
+
+# DECISIONS 2026-09-17 15:57 (Fred, via the decision sheet https://claude.ai/artifact/5J6Tc36RbjFuf9T4FR6Do3) — the seat-A queue
+Order = advisor's, cheapest-and-safest first, design-first items last.
+- **DEC1** step-editor cloud pair → **delete both** (`cloud/step-editor-worker`, `cloud/step-editor-pages`). Removal sweep.
+- **PM2** Project Manager doors → **top-bar icon only**, drop the sidebar Projects button; **note: give the top-bar icon
+  buttons text labels on desktop / wide widths** (declared breakpoint).
+- **IN4** Inspector → collapse batch rows past 5 with the count in the header (**Full Copy must still copy the whole
+  list**); **drop Copy Name**.
+- **UX1** Confirm before Load discards unsaved edits + a visible unsaved-changes indicator (one declared dirty state).
+- **UX2** One status line for all Fusion traffic (import progress, build-stamp warning, bridge pulse).
+- **FB3** Frame Builder: show the parameters a build will create, before building.
+- **CAM1** CAM Builder vs CAM Studio → consolidate — design-first turn, then slices.
+- Kept as-is by ruling: `/presets` alias stays; GitHub-commit route unchanged; no machine profile.
+- Already done: FB2 (palette scaffold); over-exports (HY4, in flight).
