@@ -2858,3 +2858,72 @@ appended, A1-A4 untouched). No amendments pending at either poll. No Fusion, no 
 
 No gate hit — read-only turn. A5a-4 is the second time this lane has corrected a dispatch's own
 citation rather than silently following it into the wrong file (A4 did the same for the worktree gap).
+
+---
+
+## Lane B — Turn 11 — A5b audit: b-spline-gen editor + palette HTML (B6, B1/B3, dead sends, PM1) — DONE
+
+**Scope:** `editor/` (~40 files) + `bspline_gen_palette.html` (1979L) + `index.html` (6L) — the second
+half of the A5 split. The advisor's A5a review specifically thanked this lane for the B6-citation
+correction, which set the bar for this turn's B6-for-real check.
+
+**Headline: B6 is RESOLVED, stated with full evidence.** The function NEXT-SESSION originally pointed
+at (`_visibleContent`) doesn't exist anywhere in the codebase any more — grepped, 0 hits. It's been
+replaced by `serializeEditor` (`editor-io.js:36-40`), whose own docstring names B6 by number and states
+the fix directly: hidden layers are now intentionally KEPT on save. Traced every caller (`save()`,
+`saveForRasterization()`, `getLayerSvg()`) rather than trusting the one docstring — confirmed the two
+actual PERSISTENCE functions keep all layers, and the one that DOES filter by visibility
+(`getLayerSvg`) is for the live stamp preview, a deliberately different concern the same docstring
+already distinguishes. This is the kind of "state it plainly, with lines" the dispatch asked for,
+not a hedge.
+
+**B1/B3 reconciled against CURRENT code, explicitly not against the July doc — the dispatch's own
+instruction ("cite the mechanism, not the doc").** Found `pushState()` has grown from the single site
+July traced to 20 call sites across the editor. Rather than either blindly re-citing the old verdict or
+trying to trace all 20 in one turn, picked the cluster most relevant to B1's original symptom (the 4
+sites in `editor-interaction.js`, the file B1 was originally about) and traced each to its containing
+function — confirmed they're 4 distinct, non-overlapping gestures (paste, drag-end, anchor-path-commit,
+freehand-stroke-finish), including the exact original site (`finishDrawing`) at an unchanged line
+number. Said plainly that the other 16 sites weren't individually checked, rather than implying full
+coverage from a partial trace.
+
+**2 new dead sends found (Python→JS direction, the half A5a explicitly didn't finish).** Enumerated all
+7 `sendInfoToHTML` event names against every JS listener — 5 wired correctly, 2 (`import_progress`,
+`import_success`) have zero JS handling despite `import_progress` firing from 8 live call sites during
+real STEP-import (progress messages the user never sees). Same B4 class as A5a-5's finding from the
+other direction, closing out item 6's originally-incomplete doorless sweep.
+
+**editor/'s own health check came back clean on both fronts it was asked about** — P1 (0 host branches)
+and the C2 migration (0 hand-rolled `SVG.Point.transform` survivors, only a comment referencing the old
+pattern by name to explain what NOT to do). Did the exhaustive export sweep A5a explicitly couldn't fit
+(100 exports checked against the whole tree) — found 1 truly dead (`createButton`) and 5 that are used
+but only locally, which is a smaller, different finding than dead code and worth keeping distinct rather
+than lumping all 6 together.
+
+**Corrected the dispatch's OWN framing a second time this session (after A5a-4).** Item 5 assumed
+`bspline_gen_palette.html` and `index.html` are a web-host/Fusion-host PAIR to `diff`. They're not —
+`index.html` is a 6-line meta-refresh redirect stub; there is exactly ONE real page, serving both hosts
+at runtime. Traced WHY (`b-spline-gen.py` points Fusion directly at the palette HTML, bypassing the
+redirect; the redirect only exists for the web deploy's root URL) rather than just asserting the
+mismatch. Did still find a genuine, more interesting P1 nuance the dispatch's framing would have missed
+anyway: the actual Fusion→JS bridge RECEIVER (`window.fusionJavaScriptHandler`) lives inline in the
+HTML, outside `fusion-bridge.js` — but evidenced it as a NECESSARY exception (Fusion's API needs a
+synchronously-available global, which an ES module can't guarantee) rather than flagging it as a naive
+violation to "fix." Getting that distinction right matters — a wrong fix here would break the bridge.
+
+**PM1 id check: 15/16 clean, 1 real gap found.** `fmCurrentFileLabel` is read by JS
+(`updateHeaderFileIndicator`) but doesn't exist anywhere in the HTML — correctly null-guarded so it's
+silent, not a crash, but the "current file" indicator it drives never appears. Confirmed this is
+distinct from anything PM1/PM1b touched (that restoration was the selection-bar block, not a header
+indicator) rather than assuming it's a PM1 regression just because the timing lined up.
+
+**Test gap:** only 1 file this turn's findings touch (`editor-coords.js`) has any vitest coverage;
+everything else — including the just-confirmed B6 fix itself — has zero regression coverage. Said this
+plainly: a future refactor of `serializeEditor` could silently reintroduce B6 with nothing to catch it.
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` modified (A5b
+appended, A1-A5a untouched). No amendments pending at either poll. No Fusion, no `npm install`, no
+`sync_stamp_bundle.py`.
+
+No gate hit — read-only turn. This closes out the b-spline-gen slice (A5a+A5b); A6 (CAM-builder) is
+next, the last add-in in the original A1-A6 sweep.
