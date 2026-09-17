@@ -3334,3 +3334,34 @@ the most probable cause." The real proof is the advisor's live-Fusion recapture 
 dispatch already designates.
 
 No gate hit. Didn't touch `fusion-inspector.py`, `fb_shared`, or the copy pump. Didn't deploy.
+
+---
+
+## Turn 139 — IN3b: the real cause was the palette's default docking state, not CSS — DONE
+
+The advisor recaptured live Fusion after IN3 and confirmed my honesty note was correct: the flex→float
+CSS change did not remove the overflow, still clipped at 320/520. The advisor then measured live and
+found the actual mechanism: a Fusion palette that FLOATS (`dockingState` 0, the creation default) renders
+its page zoomed inside a viewport narrower than the window — a Fusion-host quirk, not a CSS bug at all.
+Docked right, the exact same page fits exactly. `b-spline-gen.py:1458` already declares
+`PaletteDockStateRight` right after its own `palettes.add`, which is why that palette never showed the
+symptom — a difference in Python, not in the shared stylesheet, as the earlier "same base.css" framing
+had (reasonably, but incorrectly) pointed me toward CSS.
+
+**Do:** right after `ui.palettes.add(...)` in `run()`'s `if not palette:` creation block, added
+`palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight`, with the given comment,
+verbatim per the dispatch. Placed it inside the SAME `if not palette:` guard the `.add()` call is in, so
+it only fires on first creation (matching "the creation default is what matters; the user can still
+undock it by hand").
+
+**Verify (all green):** `py_compile` clean. `pyflakes` shows only the same pre-existing unused `math`
+import noted back in IN1 — nothing new. `grep -n dockingState` → exactly 1. `git diff --stat` → 1 file, 4
+lines (the dispatch predicted 3; the extra line is the 3-line comment plus the 1 assignment — reporting
+the actual count rather than rounding to match). `git show --stat HEAD` → 1 file.
+
+Left the IN3 float-based CSS change in place, per the dispatch's explicit "keep the float version anyway
+— it renders fine" — it wasn't the cause, but it's not wrong either, and reverting it would have been an
+unrequested change with its own risk for zero benefit.
+
+No gate hit. Didn't touch anything else in the file. Didn't deploy — the live proof (deploy through the
+bridge, open the inspector fresh, capture at 320/520/700) is the advisor's.
