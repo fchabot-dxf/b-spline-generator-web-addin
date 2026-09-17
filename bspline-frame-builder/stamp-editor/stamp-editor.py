@@ -24,7 +24,7 @@ if app:
 
 # ── Log file ──────────────────────────────────────────────────────────────────
 def get_log_path():
-    """Mirror of step-editor's log-path strategy: prefer the workspace
+    """Mirror of b-spline-gen's log-path strategy: prefer the workspace
     source folder (so the log is visible in the dev tree), fall back to
     the deployed add-in folder."""
     addin_dir = os.path.dirname(os.path.realpath(__file__))
@@ -110,9 +110,9 @@ PICK_COMMAND_ID    = 'stampEditorPickFaceCmd'
 PICK_COMMAND_NAME  = 'Pick face for Stamp'
 PICK_COMMAND_TIP   = 'Click a face on a body to use as the stamp target.'
 
-# Where the toolbar button lives — same panel as STEP Editor and the
-# other unified add-ins. IDs MUST match step-editor / fusion-inspector
-# / template-maker (all use `bsplinePanel` + MillingTab) — otherwise
+# Where the toolbar button lives — same panel as the other unified
+# add-ins. IDs MUST match fusion-inspector / template-maker (all use
+# `bsplinePanel` + MillingTab) — otherwise
 # Fusion treats this as a separate panel that just happens to share
 # the display name, and we end up with two "B-Spline Builder" entries
 # in the toolbar.
@@ -129,7 +129,7 @@ LEGACY_PANEL_PREFIX = 'BsplineFrameBuilderPanel_'
 # ── Palette HTML event handler ────────────────────────────────────────────────
 class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
     """Routes messages from the palette JS back into Python. Same wire
-    shape as step-editor's bridge: each message is { action, data }."""
+    shape as b-spline-gen's bridge: each message is { action, data }."""
 
     def notify(self, args):
         try:
@@ -789,7 +789,7 @@ def _draw_cg_mesh(verts, indices, normals):
     flat vertex/index/normal lists.
 
     verts:   flat list of x,y,z floats in CENTIMETERS (the wire format
-             the b-spline-gen / step-editor bridge has always used —
+             the b-spline-gen bridge has always used —
              matches Fusion's internal length unit).
     indices: flat list of triangle vertex indices.
     normals: optional flat list of normals; empty → Fusion auto-shades.
@@ -1207,7 +1207,7 @@ def _open_palette():
     # Fusion expects forward-slash file:// URLs; the cache-bust query
     # string is added in a second pass via htmlFileURL setter once the
     # palette is alive (palettes.add() rejects query strings on first
-    # creation — same quirk step-editor handles).
+    # creation).
     html_url  = 'file:///' + html_abs.replace('\\', '/')
 
     _log(f'Creating palette, html_path={html_abs}')
@@ -1300,7 +1300,7 @@ def run(context):
             except Exception: pass
 
         # Command definition. Icon folder name matches the on-disk
-        # convention used by step-editor / fusion-exporter — the
+        # convention used by fusion-exporter — the
         # `ressources` folder. Fusion caches button bitmaps by
         # (command-id, resource-path) for the life of the session, so
         # the first install of this add-in latches whatever PNGs are

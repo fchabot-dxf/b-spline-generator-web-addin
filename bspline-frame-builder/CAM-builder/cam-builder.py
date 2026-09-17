@@ -237,7 +237,7 @@ class _HtmlEventHandler(adsk.core.HTMLEventHandler):
             # Verified via live tracer 2026-05-15 — the boot pair
             # (list_cam_templates / get_template_assignments) hit this
             # exact path. Reading the first arg directly via ea.action is
-            # the canonical way (mirrors step-editor.py); ea.data is
+            # the canonical way (mirrors b-spline-gen.py); ea.data is
             # the second arg as a JSON string. We keep the JSON fallback
             # so callers that ONLY put the action inside data still work.
             ea = adsk.core.HTMLEventArgs.cast(args)
