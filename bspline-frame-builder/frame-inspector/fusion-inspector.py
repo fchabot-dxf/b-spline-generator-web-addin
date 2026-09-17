@@ -330,6 +330,10 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
         palette = ui.palettes.itemById(PALETTE_ID)
         if not palette:
             palette = ui.palettes.add(PALETTE_ID, 'Fusion Inspector', PALETTE_URL, True, True, True, 320, 600)
+            # Dock right like the B-Spline palette (b-spline-gen.py:1458). A FLOATING
+            # Fusion palette renders its page zoomed inside a narrower viewport and
+            # clips the right column (IN3, measured live 2026-09-17); docked, it fits.
+            palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
         if not _html_handler:
             _html_handler = _HTMLEventHandler()
             try:
