@@ -4611,3 +4611,74 @@ guessing at a deletion nobody asked for.
 No gate hit. Did not touch `cam_engine/`, the axis-pick deferral, `_kick_off_toolpath_generation`, or the
 merged HTML's tab bodies. Live proof (only ONE CAM button; both tabs boot; Stop→Start leaves no
 `CamStudio_*` command/palette; no `'response'` warnings in the log) is the advisor's, as scoped.
+
+## Turn 181 — CAM1c: honesty sweep + design-doc status block — DONE, CAM1 complete pending live check
+
+**Task (epoch 1, per NEXT-SESSION.md):** slice (b) proven live. Reword every remaining comment/docstring
+that still describes "CAM Studio" as a separate thing a user opens, reword the GENERIC tab's help note,
+attempt a one-line CSS fix for a header-wrapping nit seen live, and add a 3-line status block to
+`CAM1-CONSOLIDATION-DESIGN.md`. No behaviour changes.
+
+**5 named lines corrected, exactly as the dispatch's ground truth listed them:**
+- `cam-builder.py`'s "B-spline CAM palette" section banner → "CAM palette" (the section it labels holds
+  the whole merged palette's constants now, not a B-spline-specific subset).
+- `_clear_studio_preview`'s docstring: "during CAM Studio use" → "while the GENERIC tab is in use."
+- `_do_studio_generate`'s docstring: "Generic CAM Studio generate" → "Generic-mode generate (GENERIC
+  tab)."
+- `_do_generate`'s docstring: "The CAM Studio palette handles generic mode..." → "The GENERIC tab handles
+  generic mode..."
+- The deferred-axis-pick registration comment: "(CAM Studio)" → "(GENERIC tab)."
+
+Left `cam-builder.py:424`'s "(formerly the standalone CAM Studio palette)" untouched — the dispatch's own
+ground truth calls this one "fine as history, keep," and it correctly describes a past state rather than
+claiming a present one. Read the module docstring (`:1-24`) in full for any other "two palettes/two
+buttons" sentence — found none; its one remaining "B-spline CAM" mention (`_do_generate`'s own docstring,
+"B-spline CAM: build the 3 MMs...") describes the B-SPLINE tab's actual pipeline name, not a separate
+palette or button, so it wasn't touched.
+
+**`cam_builder_palette.html`:** the GENERIC tab's help blurb — `<strong>CAM Studio:</strong> One
+Manufacturing Model per component...` → `<strong>Generic mode:</strong> ...` (text only, the rest of the
+sentence is unchanged).
+
+**Header-wrapping nit — attempted with the suggested one-line CSS tweak, cannot confirm it worked.** The
+build-badge span (`#build-badge`) is the only element using the `.cad-nav-version` class in this file
+(confirmed by grep before touching the shared rule, to make sure the fix wouldn't leak onto anything
+else) — added `white-space: nowrap;` to that one class rule. This is the dispatch's own first-suggested
+fix for exactly this symptom (text wrapping instead of staying on one line). **Cannot visually verify
+this actually resolves the 3-line wrap seen live** — no renderer available here, same limitation flagged
+on similar CSS nits earlier in this session (PM2/UX3). If it still wraps or now overflows into a
+neighboring element instead, that's real layout work the advisor's own instruction says to report rather
+than chase further from here.
+
+**Design doc status block**, added at the top of `CAM1-CONSOLIDATION-DESIGN.md`, matching FB2c's shape
+(a bolded `Status` line, an `Amendments` line, and a line for fixes found during implementation that the
+design itself didn't anticipate) — see the doc itself for the exact wording; used the literal
+`(this commit)` convention FB2c set for a slice referencing its own not-yet-existing SHA. Reworded the
+paragraph immediately below it to mark the file-size figures as "against the tree at the time of the
+DESIGN turn... read them as historical evidence for the plan, not as the current file state" — since
+`cam_builder_palette.html` in particular has grown substantially since that snapshot and the original
+sentence didn't make its own dating explicit.
+
+**Verify (all green):**
+- `py_compile` → clean.
+- `pyflakes` → the same 4 pre-existing warnings as slices (a)/(b), line numbers shifted only — no new
+  warnings.
+- Extracted the merged palette's `<script>` → `node --check` clean.
+- `grep "CAM Studio" cam-builder.py` → **1 hit**, exactly the `:424` history note quoted above — nothing
+  else remains.
+- Bridge sweep re-run against the final tree, both directions, pasted:
+  - JS `send('...')` actions (13 literal + `select_x_axis`/`select_y_axis` via the pickAxis ternary) →
+    **15**, matching the Python dispatcher's 15 `action == '...'` branches (the `'response'` guard
+    excluded from this count, since it isn't a page action) — **15/15**.
+  - Python `_send_to_html('...')` sends → **8** distinct events (`axis_picked build_info import_result
+    init_result preview_bodies report template_assignments templates_list`), matching the JS `handle`'s
+    8 `action === '...'` listeners exactly — **8/8**.
+- `git diff --stat` → exactly the predicted 3 files, comment/text-scale diffs only (12 lines changed in
+  the Python file, 6 in the HTML, 22 in the design doc).
+
+No gate hit. No behaviour changed — every edit this turn is a comment, docstring, help-note string, one
+CSS `white-space` declaration, or documentation. Did not touch `cam_engine/`, and touched the merged
+HTML's tab body only for the one named help-note string plus the shared header CSS rule (the header
+markup itself, and every other tab body line, is untouched). **This closes the CAM1 migration's three
+planned slices** — final live confirmation (button/palette identity after Stop→Start, no stray warnings,
+whether the header nit actually resolved) is the advisor's.
