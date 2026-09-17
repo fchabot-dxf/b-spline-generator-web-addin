@@ -279,3 +279,20 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
 - Rebuild is debounced (50 ms scheduler) — the "every slider tick rebuilds" worry is unfounded.
 - **HY3 (later, from HY2's pass-back):** `bspline-frame-builder.py` `_normalize_module_path` now orphaned (0 callers after
   the dead-cluster delete — verify, then delete) · `stamp-editor.py` header lines 4-7 still claim a step-editor sibling.
+
+## Backlog from the lane-B audit (A5b b-spline-gen editor+palette, 2026-09-17)
+- **B6 CLOSED** (`editor/editor-io.js:36-40` `serializeEditor` keeps hidden layers; every caller traced). B1/B3 remain
+  "likely fixed" (4 of 20 `pushState` sites traced, no double-fire).
+- **BG3 (seat A):** `b-spline-gen.py` sends `import_progress` (8 sites via `_send_progress`, :180-187) and
+  `import_success` (:1319) — NO JS listener → zero feedback during a STEP import. Wire both into the palette's existing
+  status affordance (see BG3 dispatch for the exact element).
+- **A5b-5** `cloud-project-manager.js:887` reads `#fmCurrentFileLabel`, absent from the HTML → the "current file"
+  indicator never renders. Advisor traced history (see BG3).
+- **Named P1 exception (document, don't fix):** `bspline_gen_palette.html:1162-1193` defines
+  `window.fusionJavaScriptHandler` inline because Fusion's palette API needs that global synchronously before any ES
+  module loads. Host-bridge logic outside `core/fusion-bridge.js`, by necessity.
+- L: `editor/dom.js:45` `createButton` dead · 5 over-exported editor functions · ~576 lines of inline `<style>` in the
+  palette not yet checked against `styles/` · the inline "Native CAD UI Integration Patch" script vs `main/ui-bindings.js`
+  possible duplication (unchecked).
+- Facts: `index.html` is a 6-line redirect; there is ONE page for both hosts. `editor/` has zero host branches and zero
+  C2 survivors.
