@@ -3058,3 +3058,61 @@ tidying an unnamed line.
 No gate hit. Didn't touch `b-spline-gen.py`, the polling interval timing, `btnWizardExport` (web), or the
 editor. Didn't deploy. The advisor owns the Fusion look (Send to Fusion → Baking... → progress messages →
 Done ✓ → idle; Project Manager load → header shows the file name).
+
+---
+
+## Turn 129 — DEP1: both deploys leave deleted files live — clean the web build, sweep orphans — DONE
+
+Executed both items. 2 files, one commit. No deploy run.
+
+**(1) `deploy_cloudflare.py` — one line.** Added `clean_dir(deploy_dist)` right before the existing
+`os.makedirs(deploy_dist, exist_ok=True)`, with the given comment. Confirmed the bug first: `dist/` is
+never locked (no running process holds it, unlike the add-in's AddIns folder), so a plain clean-then-copy
+is safe and sufficient — no fallback/overlay logic needed here, unlike item 2.
+
+**(2) `DEPLOY_bspline-frame-builder.py` — declare the keep-set, return the copied list, sweep.**
+- Declared `DEST_ONLY_KEEP_NAMES`/`_SUFFIXES`/`_DIRS` right after `SKIP_FILES_EXACT`, verbatim.
+- `copy_overlay` now builds and returns `copied_paths` (a list of dest-relative POSIX paths) instead of a
+  bare count; moved the `rel = dst_file.relative_to(dst).as_posix()` computation out of the except branch
+  so both the success and failure paths can use it. Updated the docstring to describe both return lists
+  and to note `copied_paths` is `sweep_orphans`'s input. Updated the docstring's return-type annotation
+  (`tuple[int, list]` → `tuple[list, list]`).
+- Updated the one caller in `_deploy_addin`: `copied` → `copied_paths`, the print now uses
+  `len(copied_paths)`.
+- Added `sweep_orphans(dst, copied_paths) -> list[str]`, placed right after `copy_overlay`: walks `dst`,
+  prunes `DEST_ONLY_KEEP_DIRS` from the walk entirely (so their contents are never even considered), skips
+  any file named in `DEST_ONLY_KEEP_NAMES` or suffixed per `DEST_ONLY_KEEP_SUFFIXES`, and deletes
+  (`unlink`) every remaining file whose dest-relative path isn't in `copied_paths`. Per-file delete
+  failures print `ORPHAN LOCKED <rel>: <err>` and the walk continues. Prints the removed count + each path
+  only when `N > 0`. Returns the list of deleted paths.
+- Wired the call into `_deploy_addin` right after the skipped-paths check, before `extra_copy`/verify, per
+  the dispatch.
+
+**Verify (all green):**
+- `py_compile` 2/2. `pyflakes` on both — all warnings shown are pre-existing and unrelated to this turn's
+  edits (an unused `stat` import in `deploy_cloudflare.py`; an unused `_Path` import and 3 f-string
+  placeholder warnings in `DEPLOY_...py`, none within ~50 lines of anything touched here).
+- **Web build test:** seeded the repo's real (pre-existing, git-ignored) `dist/` with a `STALE.txt`, ran
+  `python deploy_cloudflare.py --build-only`, confirmed `STALE.txt` was gone afterward
+  (`dist clean`). Confirmed `dist/` is git-ignored first (`git check-ignore -v` → matched by
+  `bspline-frame-builder/dist/`), so this test safely regenerated real build output rather than touching
+  anything tracked.
+- **Add-in sweep unit check** (temp dirs, inline Python — pasted below verbatim):
+  ```
+  copied_paths: ['a.py']
+  skipped_paths: []
+    Removed 1 orphan(s):
+      old.py
+  sweep_orphans returned: ['old.py']
+  remaining files: ['__pycache__/z.pyc', 'a.py', 'build-info.json', 'x.log']
+  ALL ASSERTIONS PASSED
+  ```
+  Source seeded with `a.py`; dest pre-seeded with `a.py`, `old.py`, `build-info.json`, `x.log`,
+  `__pycache__/z.pyc`. After `copy_overlay` then `sweep_orphans`: `old.py` gone, the other four survive,
+  return value exactly `['old.py']` — matches the dispatch's expected result precisely.
+- `git status --short` shows no `dist/` noise (confirmed ignored, per above). `git diff --stat` → exactly
+  the predicted 2 files. No amendments pending.
+
+No gate hit. Didn't touch `clean_dir`, the E3 stop-first guard, `VERIFY_FILES`, or the wrangler-deploy
+branch. Didn't deploy — the real add-in deploy proof (Fusion holding a file open, overlay fallback
+actually firing) is the advisor's at the next deploy, which needs the human to stop the add-in first.
