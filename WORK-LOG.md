@@ -2762,3 +2762,34 @@ template-maker/tests -q` → 83 passed. `git diff --stat` / `git status --short`
 
 No gate hit — a declared derivation replacing a hand-maintained literal, plus a zero-importer deletion.
 The advisor owns the Fusion Stop→Start proof after deploy.
+
+---
+
+## Turn 119 — IN1: Frame Inspector stop() must release its selection handler — DONE
+
+Executed the advisor's dispatch, mirroring `template-maker.py`'s existing remove-before-add /
+remove-then-clear-in-finally pattern exactly. 1 file, one commit.
+
+**(1)** Added module global `_sel_handler = None` next to `_handlers`.
+
+**(2) `run()`:** added `global _sel_handler` as the function's first statement. Replaced the bare
+`sel_handler = _SelectionChangedHandler(); ui.activeSelectionChanged.add(sel_handler);
+_handlers.append(sel_handler)` with the self-healing remove-before-add form — defensively removes any
+handler left over from an unclean prior `stop()` before creating and adding the new one.
+
+**(3) `stop()`:** added `global _sel_handler`. After the command-definition delete, added the
+`ui.activeSelectionChanged.remove(_sel_handler)` call (guarded, silently ignored if already gone).
+Restructured the whole function's outer `try: … except Exception: pass` into
+`try: … except Exception: _log(traceback.format_exc()) finally: _handlers.clear(); _sel_handler = None`
+— the clear/reset now runs even if an earlier step in `stop()` throws, matching the dispatch's stated
+shape. Left `_html_handler` alone (released with `palette.deleteMe()`, per instruction).
+
+**Verify (all green):** `py_compile` clean. `pyflakes` shows exactly one warning — `'math' imported but
+unused` — which the dispatch named up front as pre-existing noise, not a new issue introduced here.
+`grep -n "activeSelectionChanged"` → 3 hits (remove in `run()`, add in `run()`, remove in `stop()`).
+`grep -n "_handlers.clear()"` → 1, inside `stop()`'s `finally`. `pytest template-maker/tests -q` → 83
+passed (sanity only — untouched code path). `git diff --stat` → exactly 1 file. No amendments pending.
+
+No gate hit. Didn't touch the palette HTML, `fb_shared`, the parent loader, or any other add-in. Didn't
+refactor `stop()` beyond the specified try/except/finally shape. The advisor owns the Fusion Stop→Start
+proof after deploy.
