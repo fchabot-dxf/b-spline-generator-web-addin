@@ -253,7 +253,7 @@ def _bootstrap():
         # the canonical fb_shared package, imported package-qualified by every
         # consumer, so wiping the bare names was a dead no-op. fb_shared itself is
         # wiped via its own entry in the earlier _force_wipe list.
-        'entity_util', 'payload_builder',
+        'entity_util',
         'phase_parser', 'role_points', 'cc_proxy', 'fb_attributes',
         'ownership_gate', 'relation_hints', 'coincidence_clusters',
         'template_generator', 'template_code', 'template_payload',

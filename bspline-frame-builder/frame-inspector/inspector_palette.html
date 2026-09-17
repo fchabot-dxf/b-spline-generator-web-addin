@@ -116,42 +116,6 @@
             return false;
         }
 
-        function renderItemList(data, useExpr) {
-            var list = document.getElementById('linked-list');
-            var root = document.getElementById('linked-root');
-            if (!list) return;
-            list.innerHTML = '';
-            var items = data.items || [];
-            if (items && items.length > 0) {
-                if (root) root.style.display = 'block';
-                for (var i = 0; i < items.length; i++) {
-                    var item = items[i] || {};
-                    var detail = useExpr ? item.coordExpr || '' : item.coord || '';
-                    if (item.meta) {
-                        detail = detail ? detail + ' | ' + item.meta : item.meta;
-                    }
-                    var li = document.createElement('li');
-                    var strong = document.createElement('strong');
-                    strong.textContent = item.name || '';
-                    li.appendChild(strong);
-                    if (detail) {
-                        li.appendChild(document.createTextNode(' (' + detail + ')'));
-                    }
-                    list.appendChild(li);
-                }
-            } else {
-                if (root) root.style.display = 'none';
-            }
-        }
-
-        function reportError(message, source, lineno, colno, error) {
-            dlog('JS ERROR: ' + message + ' @' + source + ':' + lineno + ':' + colno);
-            if (error && error.stack) {
-                dlog('STACK: ' + error.stack.split('\n')[0]);
-            }
-            return false;
-        }
-
         function renderLinkedList(data, useExpr) {
             var list = document.getElementById('linked-list');
             var root = document.getElementById('linked-root');

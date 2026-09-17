@@ -73,6 +73,7 @@ assume **B**; under **A**, F7 moves ahead of F2/F5 and they each become one-copy
   `_shared_project_names` (`bspline-frame-builder.py:243-250`).
   ✅ *Success:* edit `selection_items.py`, Stop→Start, the edit takes effect with no
   Fusion restart. *(One-line; do alongside F3.)*
+  **RESOLVED 2026-09-17 (E7a): module was dead — deleted, not wiped.**
 - **F5 · confirm B1/B3** (runtime). Draw 4 discrete strokes → 4 Ctrl+Z should undo
   one each; draw a `<line>` → Expand should thicken it.
   ✅ *Success:* both behave per spec in the Fusion CEF host (or a fresh bug is filed).

@@ -263,6 +263,7 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   `'selection_items'` to `_shared_project_names`. (The two genuinely-colliding
   shared names, `entity_helpers`/`expression_coords`, ARE both wiped — no cross-sub
   hole found.)
+  **RESOLVED 2026-09-17 (E7a): module was dead — deleted, not wiped.**
 
 ### B8 — Entire editor tree duplicated into stamp-editor  ·  P1-violation  ·  confidence HIGH (severity MED)
 - **Where:** `b-spline-gen/html/editor/` (33 `.js`) copied verbatim to
