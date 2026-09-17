@@ -2552,3 +2552,72 @@ rather than silently assuming).
 
 No gate hit — a declared, advisor-verified restoration + a declared, fully-swept removal. The advisor
 owns the visual confirmation (deploy + screenshot).
+
+---
+
+## Lane B — Turn 1 — A1 audit: loader + fb_shared + frame-inspector + fusion-exporter + deploy — DONE
+
+First turn on this seat (`b-spline-generator-web-addin-lane-b`, branch `lane-b`, its own `HANDOFF.md`).
+Registered as worker in this worktree per the advisor's cross-session re-seat (I had been mistakenly
+armed as a second waiter on the MAIN checkout's `HANDOFF.md` — stopped that waiter, re-registered here,
+adopted epoch 1, confirmed via `handoff.py sig` after consuming turn 1). Read-only per the lane's rule:
+touched only `AUDIT-2026-09.md` (new) + this file.
+
+**Read in full before writing anything:** ROADMAP.md's 5 principles, `BUGS_OPEN.md` (all 11 bugs, not
+just A1-scoped ones — needed the reconcile context), `STANDARDS-AUDIT.md` (all 6 sections). Then the A1
+scope files: `bspline-frame-builder.py` (768 lines, full read), `fb_shared/` (all 3 modules, 870 lines),
+`frame-inspector/fusion-inspector.py` (targeted: `run()`/`stop()`, the payload/dead-code areas already
+swept in E7a), `fusion-exporter/{fusion-exporter.py,exporter.py}` (970 lines), `DEPLOY_bspline-frame-builder.py`
+(744 lines, full read), `release.py` (352 lines, full read — found at repo ROOT, not under
+`bspline-frame-builder/`; the dispatch's phrasing implied it might be nested there).
+
+**6 new findings** (table in AUDIT-2026-09.md), all evidence-backed by `grep`/direct read, none
+"survey"-sourced: 4 `L` (dead code in the loader — `_find_related_addin_modules` + 3 helpers, 46 lines,
+0 callers; 2 stale S1-era docstrings in `fb_shared/*` claiming "no callers switched" when all consumers
+have been switched since turn 77; a stale `deploy_template_maker()` verify entry for 2 files that no
+longer exist anywhere — same class E7a fixed for `deploy_fusion_inspector` but missed here; a dead
+panel-cleanup block in `fusion-exporter.py` targeting a legacy panel id `run()` never creates), 1 `M`
+(restated B5 with tighter evidence — see reconcile). No `H` findings in this slice.
+
+**6 reconcile items**, most resolved (good news, not just new problems): B7 already resolved (E7a);
+STANDARDS-AUDIT §1b (per-palette module drift) fully superseded by the C4/F8 fb_shared consolidation
+(verified 0 leftover copies); STANDARDS-AUDIT §4's bare-except counts resolved by turns 57/59 (verified
+0 bare excepts remain in all 3 named files) — but that turn's OWN flagged follow-up (exporter.py's 2-3
+silent-skip business-logic catch-alls, "Option B, not blessed") is still open, so I cited it as prior
+art rather than re-discovering it as new. B5 and STANDARDS-AUDIT §5 (hardcoded paths) both confirmed
+STILL open with current line numbers.
+
+**P2/P3 explicit ask (enumerate run() registers vs stop() releases):** did this as its own subsection
+("What's GOOD") rather than folding it into the findings table, since the verdict is a CLEAN PASS —
+`bspline-frame-builder.py`'s own bookkeeping (panels/commands/handlers) is fully symmetric between
+`run()` and `stop()`, and P3 isolation (try/except around every sub-module load/run/stop) is genuinely
+honored. The one open lifecycle bug (B5) lives inside a sub-module that owns its own cleanup — correctly
+outside the parent's responsibility per the P3 design, not a parent-orchestrator gap.
+
+**Registry question (CAM-builder):** answered with a paragraph + 4 citations in AUDIT-2026-09.md — it's
+LIVE (loaded, run, torn down by the parent exactly like the other 4 sub-add-ins; already ships in the
+unified deploy zip/copy; already has its own tracked bug B10). ROADMAP's one-line narrative just never
+names it — a doc gap already closed by `ARCHITECTURE.md:244` ("CAM Studio"), not a real mystery.
+
+**Verify:** `git status --short` in this worktree shows only `AUDIT-2026-09.md` (new) before this
+WORK-LOG commit — matches the "only your two files" check. Every finding's `file:line` was read
+directly in this worktree this turn (not carried over from the July survey unverified); every
+reconcile-table "RESOLVED" claim is backed by a fresh `grep`/`find` run this turn, not just trusted from
+the prior doc's text.
+
+**Noted, not chased (see AUDIT-2026-09.md "what I could not verify"):** the live
+`%APPDATA%\...\AddIns\bspline-frame-builder\` folder currently shows zero residue from the E7a deletions
+(checked via PowerShell `Get-ChildItem` against the deployed `frame-inspector/` folder) — so A1-6's
+orphan-detection gap is a structural risk, not a currently-manifesting one; didn't chase deploy history
+to pin down exactly which redeploy cleaned it.
+
+**Aside (not this lane's concern, noted for the record):** partway through this turn, two
+system-reminders fired showing `fusion-inspector.py` and `inspector_palette.html` in the MAIN checkout
+had changed on disk — Seat A actively working on E7b (structured `META_FIELDS`, a new
+`get_fb_connections` function, collapsible-section CSS hooks all visible in the diffs). Did not read
+further or act on it — lane-b is a separate worktree/branch by design and I was explicitly told never to
+touch the main checkout again this session. Mentioning only so the advisor isn't surprised this seat
+"saw" that activity.
+
+No gate hit — read-only turn, one doc + this log, nothing under `bspline-frame-builder/` (or anywhere
+else) edited.
