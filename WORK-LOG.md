@@ -3993,3 +3993,56 @@ hostage to the blocked step.
 
 No gate hit in the advisor/worker sense — this is a tool-permission block outside that protocol
 entirely. Passing back with the blocker stated plainly rather than reporting DEC1 as done.
+
+## Turn 161 — PM2: one door to the Project Manager, labelled top-bar buttons on wide screens — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** delete the sidebar's redundant "Projects" panel
+(the navbar folder icon is the only door now); narrow `cloud-project-manager.js`'s click-wiring selector
+to match; declare a `.cad-nav-label` class (hidden by default, shown ≥601px + fine pointer — the exact
+complement of the existing mobile block) and add it to the three icon-only navbar buttons plus reuse it
+for `#btnQuickSaveLabel`.
+
+**(1)** Deleted `bspline_gen_palette.html`'s sidebar panel `:315-324` (`<div class="panel">` holding only
+the `data-open-projects` button) — nothing else lived in it, confirmed by reading the block before
+cutting.
+
+**(2)** `cloud-project-manager.js:153`: narrowed `document.querySelectorAll('#btnOpenProjectManager,
+[data-open-projects]')` to `'#btnOpenProjectManager'` alone, updated the comment above it to say why.
+
+**(3)** `.cad-nav-label` declared next to `.cad-nav-btn > span` in the `<style>` block:
+`display: none` by default, `display: inline` under `@media (min-width: 601px) and (pointer: fine)` —
+deliberately the mirror image of the existing `@media (max-width: 600px), (pointer: coarse)` mobile
+block a few lines below, so the two conditions are mutually exclusive by construction, not by luck.
+Added `<span class="cad-nav-label">Projects</span>` / `Add-in` / `Settings` to `btnOpenProjectManager`,
+`btnDownloadAddin`, `settings-btn` respectively (title attributes kept, unchanged).
+
+**(4) `#btnQuickSaveLabel` — checked `updateNavbarSaveLabel` before touching it, per the dispatch's
+explicit ask.** It only ever sets `.textContent` and `.title`; it does **not** touch `.style.display`
+anywhere (confirmed by grep — the label's `style="display:none;"` in the original HTML was static
+markup, never toggled by JS). So there was no JS-vs-CSS ownership fight to resolve — swapped the static
+inline `display:none` for the `cad-nav-label` class directly; CSS now owns the breakpoint the same way
+it does for the other three. (First pass also added a `hidden` attribute as a belt-and-suspenders — caught
+it before verifying: once a class sets `display` explicitly, an author stylesheet always wins over the
+browser's default `[hidden]{display:none}` rule regardless of specificity, so `hidden` would have been
+dead markup that never actually hides anything. Removed it.)
+
+**Verify (all green):** `node --check` on `cloud-project-manager.js`. Extracted all three of the
+palette's inline `<script>` blocks (its two prior E7c-style extractions plus a third I hadn't touched)
+and `node --check` each — clean. `npx vitest run` → **29 passed**, matching baseline. Greps:
+`data-open-projects` → 0 real hits in source (one hit is my own updated comment *mentioning* the
+attribute in prose, not markup; the two remaining real hits are in `bspline-frame-builder/dist/`, a
+gitignored build artifact that rebuilds from source — confirmed with `git check-ignore`, not part of
+this commit). `cad-nav-label` → exactly **4 spans + 2 rules**, matching the dispatch's predicted count.
+`git diff --stat` → exactly the predicted 2 files.
+
+**Flagging for the advisor's visual check (not fixed, not in scope):** `.cad-navbar .cad-nav-btn` forces
+a hard `width/min-width/max-width: 32px !important` on all four of these buttons at every breakpoint —
+the desktop media query only ever toggles the *label's* `display`, nothing widens the button itself to
+make room for it. Unless something else in the cascade I didn't find already handles this, the label
+text may render clipped or overflow the fixed-width box at ≥601px. This is exactly the layout check the
+dispatch calls out as the advisor's own ("palette at 1000px shows labels") — didn't touch the button
+sizing since it wasn't asked for and I can't visually verify it from here; flagging so it isn't a silent
+surprise if the screenshot shows clipping.
+
+No gate hit. Didn't touch the modal, Quick Save's actual save/load behaviour, or any other sidebar
+panel.
