@@ -1,62 +1,54 @@
-# NEXT — E7a Frame Inspector dead-code sweep (headless) — precedes E7b readability [F]
+# NEXT — PM1 Project Manager: restore the lost Load/Rename/Delete bar + remove the sidebar Load button
 
-**Ball: worker · epoch 1 · E7a.** Advisor review of the inspector found dead code that would only get in
-the way of the readability work: a Python module pair that is imported but never called, a JS renderer
-that reads a payload key Python never sends, a duplicated JS function, and a deploy-verify entry naming a
-file deleted in July. Sweep them out FIRST so E7b edits a truthful file. **Removal is a chain — every link
-below is either removed or kept with a named reason. Nothing else changes.**
+**Ball: worker · epoch 1 · PM1 (human ruling 2026-09-17, see ROADMAP "PM1").** Files: ONLY
+`bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` and
+`bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js`. One commit, by path, predicted **2 files**.
 
-## Ground truth (advisor-verified 2026-09-17)
-- `frame-inspector/fusion-inspector.py:23` `from payload_builder import build_payload` — `build_payload`
-  has **zero** other occurrences in that file (grep confirmed). The live payload is built inline at
-  `fusion-inspector.py:499-556` (`p_data` with keys `count, mainFeature, coord, coord_expr, linked,
-  linked_expr, listLabel, meta, type`). So `payload_builder.py` + its only importer-of `selection_items.py`
-  are dead; no other file imports either (repo grep).
-- `frame-inspector/inspector_palette.html:119-145` `renderItemList(...)` — never called (grep: only its
-  definition); it reads `data.items`, a key the live payload does not have. The live renderer is
-  `renderLinkedList` (:155). Also `reportError` is defined TWICE (:111 and :147); the second is identical
-  and shadows the first — keep :111, delete :147-153.
-- `bspline-frame-builder.py:256` `_shared_project_names` contains `'payload_builder'` — the wipe entry for
-  a module that will no longer exist.
-- `DEPLOY_bspline-frame-builder.py:154-163` `deploy_fusion_inspector.verify_files` lists
-  `selection_items.py`, `payload_builder.py`, AND `entity_helpers.py` — the last has not existed in
-  `frame-inspector/` since C4-S3 (Jul 12); it prints a WARNING on every deploy today.
-- Deploy is an OVERLAY copy (`copy_overlay`, :97): deleting a source file does NOT delete its copy in the
-  AddIns folder. The advisor handles the AddIns residue at the next deploy — you do not touch AddIns.
+## Ground truth (advisor-verified)
+- Commit `91b624d` (2026-05-23) accidentally deleted, from the Project Manager modal in
+  `bspline_gen_palette.html`, the block that starts `<!-- Bottom selection bar -->` and ends with
+  `<input type="hidden" id="fmProjectName">` (selection bar with `fmSelbarInfo` / `fmBtnLoad` / `fmBtnRename` /
+  `fmBtnDelete`, then the `pm-status-bar` with `fmProjectStatus` / `fmProjectMsg`, then the hidden input).
+  The CSS for all of it is still in HEAD (`.pm-selbar` :1806, `.pm-status-bar` :1836) and the JS still looks every id
+  up (`cloud-project-manager.js:231-243`, null-guarded) — so restoring the markup is the whole fix.
+- The sidebar `📂 Load` button (`btnQuickLoad`, html ~:322-331 incl. its HTML comment) is wired at
+  `cloud-project-manager.js:166-169` to `export async function quickLoad()` (~:966-980). `quickLoad` is imported
+  NOWHERE else (repo grep). The sidebar `📁 Projects` button (~:316-321) and the navbar `btnOpenProjectManager`
+  (:285) both open the manager and STAY. Quick Save (navbar 💾) STAYS.
+- Node is v24 → `node --check` understands the ES-module file directly.
 
-## Do — one commit, BY PATH (`git commit <paths> -F -`, never `git add -A`)
-1. `fusion-inspector.py`: delete line 23. **STOP** if `grep -n build_payload` shows any hit besides :23.
-2. `git rm frame-inspector/payload_builder.py frame-inspector/selection_items.py`.
-3. `inspector_palette.html`: delete the whole `renderItemList` function (:119-145) and the second
-   `reportError` (:147-153). Nothing else in the file.
-4. `bspline-frame-builder.py:256`: remove `'payload_builder'` from the list (keep `'entity_util'`).
-5. `DEPLOY_bspline-frame-builder.py`: remove the three entries `selection_items.py`, `entity_helpers.py`,
-   `payload_builder.py` from `deploy_fusion_inspector.verify_files`.
-6. Docs (mark, don't rewrite): under `BUGS_OPEN.md` B7 (:252) and `FIX-BACKLOG.md` F4 (:72) append one
-   line each: `**RESOLVED 2026-09-17 (E7a): module was dead — deleted, not wiped.**` Do NOT edit
-   ARCHITECTURE.md / STANDARDS-AUDIT.md (historical audits; the advisor tracks them).
+## Do
+1. **Restore the deleted block verbatim.** Source of truth:
+   `git show 91b624d^:bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` — copy from the line
+   `<!-- Bottom selection bar -->` through the line `<input type="hidden" id="fmProjectName">` (inclusive).
+   Insert it immediately AFTER the `</div>` that closes `<div id="fmProjectList" class="pm-content" …>` (:1952-1957)
+   and BEFORE the `</div>` that closes `.pm-dialog`. Do not edit the block's contents.
+2. **Remove the sidebar Load chain** — every link, nothing more:
+   (a) html: the `btnQuickLoad` `<button>…</button>` AND the `<!-- Quick Load: … -->` comment above it;
+   (b) js :166-169: the "Sidebar Quick-Load button" comment + `const btnQuickLoad …` + its `addEventListener`;
+   (c) js: the whole `export async function quickLoad() { … }` and its `/** Quick Load from outside the modal … */`
+   doc comment;
+   (d) js ~:940-944: the `_loadFrom` doc comment says "Shared by the modal Load button and the sidebar Quick-Load" —
+   reword to "Used by the modal Load button and row double-click." (a comment that names a deleted thing is a lie).
+3. Leave the `📁 Projects` button in place; if its row was a two-button flex row, it simply spans alone now — no
+   style edits beyond deleting the Load button.
 
-## Verify (fast tier) — the sweep is only done when its inverse also holds
-- `python -m py_compile` on `fusion-inspector.py`, `bspline-frame-builder.py`, `DEPLOY_bspline-frame-builder.py`.
-- Sweep grep (must be **0 hits** outside WORK-LOG.md / BUGS_OPEN.md / FIX-BACKLOG.md / ARCHITECTURE.md /
-  STANDARDS-AUDIT.md): `grep -rnE "payload_builder|selection_items|build_payload\b|renderItemList" --include=*.py --include=*.html --include=*.js bspline-frame-builder/` — note `build_payload_items` in template-maker is a DIFFERENT symbol and must NOT match (hence `\b`); if your grep tool reports a file as binary, re-run with `-a`.
-- `grep -c "function reportError" inspector_palette.html` → 1.
-- Predicted commit shape: 5 modified + 2 deleted = **7 files**. Read `git show --stat HEAD`; if it differs, say so.
+## Verify (fast tier)
+- `node --check bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js` → clean.
+- Each of `fmSelbarInfo fmBtnLoad fmBtnRename fmBtnDelete fmProjectStatus fmProjectMsg fmProjectName` occurs
+  **exactly once** in the html (`grep -c`).
+- `grep -rnE "btnQuickLoad|quickLoad|Quick.?Load" bspline-frame-builder/b-spline-gen/html --include=*.html --include=*.js`
+  → **0 hits** (the inverse sweep: no door without a room, no room without a door).
+- `git show --stat HEAD` → 2 files. If anything else changed, say so.
+- The visual check (modal shows Load/Rename/Delete + status line; sidebar shows Projects only) is the ADVISOR's:
+  it deploys + screenshots. You do not deploy.
 
 ## Do NOT
-Don't touch `fb_shared/`, `frame-builder/`, `sketch_builder_ui.py`, `parametric_engine.py` (E8 tree under
-human test). Don't add collapsible sections or copy buttons yet — that is E7b, next turn. Don't deploy.
-Don't run the full pytest suite (no test imports these modules; if you doubt it, grep tests/ and say so).
-
-## Queued after this (advisor's plan, for context only — do not start)
-**E7b readability [F]:** (a) collapsible sections by toggling the `collapsed` class the shared stylesheet
-already declares (`styles/base.css:1081-1090`) on `.cad-accordion-header` + its sibling
-`.cad-dialog-content` — no new CSS; (b) DECLARE `meta` as a structured object in Python (`type, bridge,
-plan, startId, endId, bulge`) instead of a pipe-joined string the JS would have to re-parse, and render it
-as label/value rows; (c) per-row copy on the Details list, routed through the existing `_pendingCopy`
-poll-tick pump (`inspector_palette.html:239-288`) — never a direct `fusionSendData` from a click.
+Touch `dist/` (generated, untracked), `index.html`, any other palette, `quickSave`, `_loadFrom`, `onLoad`,
+`btnOpenProjectManager`. Don't "improve" the restored markup. Don't run the full vitest suite (no spec imports this
+module; if you find one that does, run only that spec and say so).
 
 ## When done
 Append WORK-LOG, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "E7a: inspector dead-code sweep — <sha>, 7 files (dead import + 2 modules + dead JS + wipe entry + 3 stale verify entries + 2 doc marks). Sweep grep 0 hits. Next: E7b."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "PM1: restored selbar+status+hidden input from 91b624d^, removed sidebar Load chain (button+comment+wiring+quickLoad export+doc comment) — <sha>, 2 files. node --check clean; ids ×1 each; Quick-Load grep 0. Next: E7b."`
 and stop.
