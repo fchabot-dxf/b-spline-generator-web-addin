@@ -2872,3 +2872,76 @@ No amendments pending.
 8/8 items landed, 0 skipped. Two adjacent-but-out-of-scope findings flagged above
 (`_normalize_module_path`, `stamp-editor.py`'s own header lines) rather than fixed, per "don't touch
 anything not named" — named here so the advisor can decide whether either becomes its own item.
+
+---
+
+## Turn 123 — BG1: b-spline-gen — delete 2 dead modules, DECLARE persistableP, clear handlers, drop a dead send
+
+Executed all 6 items in the dispatch. 9 files, one commit (predicted 8 — see note on item 5 below).
+
+**(1)** `git rm html/main/preset-manager.js html/main/cloud-preset-manager.js` — confirmed 0 real importers
+first (only mentions were `cloud-project-manager.js`'s own header comment, now reworded to
+"Replaced preset-manager.js / cloud-preset-manager.js, both deleted in BG1"). Checked the
+`splineGenPresets`/`splineGenProjectsMigrated` localStorage keys as instructed: `cloud-project-manager.js`
+has its own independent one-time migration reader for those keys (not routed through either deleted
+file) — left it alone, it's the intended one-time import path.
+
+**(2)** Declared `persistableP(p = P)` in `core/state.js` right above `saveLastSession`, verbatim per the
+dispatch. Rewired `saveLastSession` to call it on `P_physical` instead of its inline
+`.map(layer => ({...layer, mask: null}))`.
+
+**(3)** `core/history.js` `takeSnapshot`: imported `persistableP` from `./state.js`; both JSON-copy lines
+(`P` and `layerConfigs`) now route through it. Left the pre-existing odd extra indentation on the
+`layerConfigs` line as-is — the dispatch said nothing else in the function changes.
+
+**(4)** `cloud-project-manager.js` `buildSnapshot`: replaced the `cleanLayers`/`cleanP` pair with
+`const cleanP = persistableP();`. **Direct consequence of this exact edit, not a separate out-of-scope
+finding:** the imported `P` became fully unused in this file once its only real reference (inside
+`buildSnapshot`) was gone — verified with a whole-file grep before touching the import (every other `P`
+in the file is either the object key `P: cleanP` or a locally-shadowed `const P = snap?.P || {}` inside a
+different function). Removed `P` from the import since leaving it would introduce a brand-new dead
+import as a mechanical side effect of literally applying this item — different from the HY2-style
+adjacent findings I left untouched, because this one is caused by the instructed edit itself, not by
+something else nearby.
+
+**(5)** Deleted `sendFusionPreview` from `fusion-bridge.js` (confirmed `P` — a different import in that
+file — still has other live callers, so its import stays). Removed the import name and the
+`if (isFusionMode) sendFusionPreview(preview)` call from `export-flow.js`. **Extended beyond the
+dispatch's named file list, required by the dispatch's own verify grep:** `stepWriter.js` carried two
+stale doc-comments naming `sendFusionPreview` as a caller of `generateStep`/`generateThickenedStep`
+(checked: neither function was ever actually called from `sendFusionPreview` — the comments were already
+inaccurate before this turn, describing a relationship that never existed). The dispatch's verify step
+explicitly requires `grep sendFusionPreview → 0` repo-wide, which these two comments would have failed;
+fixed them (removed the false attribution, kept the accurate `executeExport()` caller lines) since the
+dispatch's own acceptance test demanded it. This is why the commit is 9 files, not the predicted 8.
+
+**(6)** `b-spline-gen.py` `stop()`: added `finally: handlers.clear()` after the existing `except`, per
+"if stop() already has a try/except, add only the finally." **Citation correction:** the dispatch's
+reference "like its siblings (stamp-editor.py:1432)" doesn't match — `stamp-editor.py`'s `stop()` calls
+`handlers.clear()` inline at the end of its `try` block, with no `finally` at all. The actual sibling with
+this exact try/except/finally + `handlers.clear()`-in-finally pattern is `fusion-inspector.py`'s `stop()`
+(written this session, turn 119/IN1). Implemented b-spline-gen.py's fix to match that pattern regardless
+of the citation mismatch, since the instruction itself was unambiguous.
+
+**Verify (all green):** `node --check` on all 6 edited `.js` files (5 named + `stepWriter.js`).
+`py_compile b-spline-gen.py` clean. `npx vitest run` (from repo root, where the actual `vitest.config` /
+`tests/` live — `b-spline-gen/` itself has no test runner config) → **29 passed**, matching the baseline
+run before any edits. Greps:
+- `persistableP` → **3 files** (`state.js`, `history.js`, `cloud-project-manager.js`), not the predicted
+  4 — the dispatch's "Do" section only names these three consumers; no fourth file was ever instructed to
+  import it, so this reads as a prediction slip rather than a missed step.
+- `mask: null` inline-map pattern: the *only* `.map(... => ({...L, mask: null}))` stripping pattern left
+  is inside `persistableP` itself. A raw substring grep for `mask: null` also hits several unrelated,
+  pre-existing literals (default layer objects in `state.js`, unrelated `generateHeightmap` options in
+  `rebuild.js`/`render-topview.js`, `app-init.js`'s snapshot shape) — none of those are inline
+  serialization maps, they just happen to contain the same substring.
+- `sendFusionPreview` → 0 (after the `stepWriter.js` fix above).
+- Bounded `'preview'` action-string grep → 0; `'preview_mesh'` confirmed still present and untouched.
+- `preset-manager.js` mentions → only the one reworded header comment.
+
+`git diff --stat` → 9 files (7 modified + 2 deleted), not the predicted 8 — accounted for above (the
+`stepWriter.js` comment fix).
+
+No gate hit. Didn't touch `applySnapshot`, `editor/`, the palette HTML, any B9/B11 call site, or the
+`preview_mesh` path. Didn't deploy. The advisor owns the Fusion/browser look (undo across a stamped
+layer; save/load a project).
