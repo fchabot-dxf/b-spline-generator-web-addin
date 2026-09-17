@@ -1,6 +1,10 @@
 """
 Extrude Frame palette — focused on face selection and frame extrusion.
 Auto-closes after a successful extrude.
+
+Runs on the shared palette scaffold (FB2 slice b) — see palette_scaffold.py
+and FB2-PALETTE-SCAFFOLD-DESIGN.md. Everything left in this file is
+genuinely solid-specific: face-pick selection state and the extrude call.
 """
 import adsk.core, adsk.fusion, traceback
 import os, json, sys
@@ -10,12 +14,17 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+# palette_scaffold.py lives alongside this file, in ui/ itself (not a
+# package) — that directory is never otherwise on sys.path (only its
+# PARENT is, for `from fb_engine import ...`), so add it here (FB2).
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+from palette_scaffold import PaletteSpec, _PaletteBridgeMixin, make_palette
 
 # Modular imports - initialized by the Entry Point (bspline-frame-builder.py)
 frame_engine = None
 from fb_engine import solid_coordinator
-
-_active_handler = None
 
 # Standard Logger setup
 try:
@@ -29,75 +38,13 @@ PALETTE_NAME = 'Extrude Frame'
 PALETTE_HTML = 'html/solid_builder_palette.html'
 
 BUILD_SOLID_CMD_ID = 'frameSolidBuildCommand'
-_pending_build_request = None
-
-handlers = []
-
-
-def _create_hidden_command(cmd_defs, cmd_id, name):
-    try:
-        if cmd_defs.itemById(cmd_id):
-            return
-        cmd_def = cmd_defs.addButtonDefinition(cmd_id, name, '', '')
-        handler = HiddenBuildCommandCreatedHandler()
-        cmd_def.commandCreated.add(handler)
-        handlers.append(handler)
-    except Exception:
-        pass
-
-
-def _ensure_hidden_commands(ui):
-    """Ensure the hidden bridge commands exist for solid extrude dispatch."""
-    try:
-        cmd_defs = ui.commandDefinitions
-        existing = cmd_defs.itemById(BUILD_SOLID_CMD_ID)
-        if existing:
-            try:
-                existing.deleteMe()
-            except Exception:
-                pass
-        _create_hidden_command(cmd_defs, BUILD_SOLID_CMD_ID, 'Build Solid Frame')
-    except Exception:
-        if diag_logger:
-            diag_logger.log_error(f"_ensure_hidden_commands FAILED:\n{traceback.format_exc()}")
-
-
-def _schedule_hidden_build(data):
-    global _pending_build_request
-    _pending_build_request = {'data': data}
-    if diag_logger: diag_logger.log("DISPATCH: queued solid build")
-    try:
-        app = adsk.core.Application.get()
-        if not app:
-            return
-        ui = app.userInterface
-        cmd_def = ui.commandDefinitions.itemById(BUILD_SOLID_CMD_ID)
-        if cmd_def:
-            cmd_def.execute()
-        else:
-            if diag_logger: diag_logger.log_error(f"DISPATCH ABORT: '{BUILD_SOLID_CMD_ID}' not found")
-    except Exception:
-        if diag_logger: diag_logger.log_error(f"Solid dispatch failed:\n{traceback.format_exc()}")
 
 
 if diag_logger:
     diag_logger.log("SOLID BUILDER UI MODULE: Loaded")
 
 
-class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        try:
-            global frame_engine
-            run_palette(frame_engine, diag_logger=diag_logger)
-        except Exception as e:
-            if diag_logger:
-                diag_logger.log_error(f"SolidBuilder CommandCreatedHandler CRASH:\n{traceback.format_exc()}")
-            adsk.core.Application.get().userInterface.messageBox(f"Palette Launch Failed:\n{e}")
-
-
-class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
+class PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler):
     def __init__(self, diag_logger=None):
         super().__init__()
         self.diag_logger = diag_logger
@@ -135,40 +82,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
         except Exception:
             if self.diag_logger: self.diag_logger.log_error(f"SolidPaletteHTMLEvent ERROR:\n{traceback.format_exc()}")
-
-    def _send_palette_message(self, pal, action, payload):
-        try:
-            if not pal:
-                return False
-            pal.sendInfoToHTML(action, json.dumps(payload))
-            return True
-        except Exception as e:
-            if self.diag_logger: self.diag_logger.log_error(f"Palette sendInfoToHTML failed ({action}): {e}")
-            return False
-
-    def _send_build_info(self, pal):
-        """Best-effort version stamp: read build-info.json (add-in ROOT) via
-        fb_shared, compare to source HEAD, push to the header badge. Fully
-        wrapped — never breaks the palette. See fb_shared.build_info."""
-        try:
-            import os as _os, sys as _sys
-            _root = _os.path.dirname(_os.path.abspath(__file__))
-            for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root)
-                if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
-                    break
-                _root = _os.path.dirname(_root)
-            if _root not in _sys.path:
-                _sys.path.insert(0, _root)
-            from fb_shared import build_info as _bi
-            info = _bi.read_build_info(_root)
-            status, message = _bi.compare_to_source(info)
-            if pal:
-                pal.sendInfoToHTML('build_info', json.dumps({
-                    'sha': info.get('sha'), 'built_at': info.get('built_at'),
-                    'dirty': info.get('dirty'), 'status': status, 'message': message,
-                }))
-        except Exception:
-            pass
 
     def _handle_face_selection(self, ui):
         pal = ui.palettes.itemById(PALETTE_ID)
@@ -231,121 +144,68 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         if self.diag_logger: self.diag_logger.log(f"Scheduling solid build with face: {self.selected_face.tempId}")
         request_data = dict(data)
         request_data['to_face'] = self.selected_face
-        _schedule_hidden_build(request_data)
+        _palette.schedule_hidden_build(request_data)
 
 
-class HiddenBuildCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        try:
-            event_args = adsk.core.CommandCreatedEventArgs.cast(args)
-            cmd = event_args.command
-            self.on_execute = HiddenBuildCommandExecuteHandler()
-            cmd.execute.add(self.on_execute)
-            handlers.append(self.on_execute)
-        except Exception:
-            if diag_logger: diag_logger.log_error(f"SolidBuild CommandCreated CRASH:\n{traceback.format_exc()}")
-
-
-class HiddenBuildCommandExecuteHandler(adsk.core.CommandEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        global _pending_build_request
-        try:
-            request = _pending_build_request
-            _pending_build_request = None
-            if not request:
-                return
-            data = request.get('data', {})
-            _run_solid_build_direct(data)
-        except Exception:
-            if diag_logger: diag_logger.log_error(f"SolidBuildExecute CRASH:\n{traceback.format_exc()}")
-
-
-def _set_status(msg):
+def _build_fn(data, ctx):
+    """PaletteSpec.build_fn — was _run_solid_build_direct + HiddenBuildCommandExecuteHandler."""
     try:
-        app = adsk.core.Application.get()
-        if app:
-            app.userInterface.statusBarMessage = msg
-    except Exception:
-        pass
+        if ctx.diag_logger: ctx.diag_logger.log("RUN SOLID BUILD (hidden command) triggered")
 
-
-def _notify_status(msg):
-    try:
-        pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
-    except Exception:
-        pass
-
-
-def _close_palette():
-    try:
-        pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.isVisible = False
-    except Exception:
-        pass
-
-
-def _run_solid_build_direct(data):
-    try:
-        if diag_logger: diag_logger.log("RUN SOLID BUILD (hidden command) triggered")
-
-        _set_status("Building solid frame…")
+        ctx.set_status("Building solid frame…")
 
         solid_coordinator.build_solid_logic_v3(
             to_face=data.get('to_face'),
             start_offset_expr=data.get('offset', '-1 in'),
             appearance_name=data.get('appearance', 'Polished Chrome'),
-            external_logger=diag_logger
+            external_logger=ctx.diag_logger
         )
-        _set_status("Solid frame complete")
-        _notify_status("Solid Build Complete")
+        ctx.set_status("Solid frame complete")
+        ctx.notify_status("Solid Build Complete")
         # Auto-close on success
-        _close_palette()
+        ctx.close_palette()
     except Exception as e:
         short = str(e).split('\n')[0][:120]
-        _set_status(f"Solid build failed: {short} — see log")
-        if diag_logger: diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
+        ctx.set_status(f"Solid build failed: {short} — see log")
+        if ctx.diag_logger: ctx.diag_logger.log_error(f"Solid Build Logic Failed:\n{traceback.format_exc()}")
+
+
+def _make_html_handler(diag_logger):
+    return PaletteHTMLEventHandler(diag_logger=diag_logger)
+
+
+_spec = PaletteSpec(
+    palette_id=PALETTE_ID,
+    name=PALETTE_NAME,
+    html_path=PALETTE_HTML,
+    size=(380, 460),
+    min_size=(320, 360),
+    build_cmd_id=BUILD_SOLID_CMD_ID,
+    build_fn=_build_fn,
+    make_html_handler=_make_html_handler,
+    extra_commands=(),
+    on_document_activated=None,
+    on_ready=None,
+)
+
+_palette = make_palette(_spec)
+handlers = _palette.handlers
 
 
 def run_palette(engine_instance, diag_logger=None):
     """Central runner to launch the Extrude Frame palette."""
-    global frame_engine, _active_handler
+    global frame_engine
     frame_engine = engine_instance
+    _palette.run_palette(engine_instance, diag_logger=diag_logger)
 
-    try:
-        app = adsk.core.Application.get()
-        ui = app.userInterface
 
-        # 1. Cleanup any old palette
-        existing = ui.palettes.itemById(PALETTE_ID)
-        if existing:
-            existing.deleteMe()
-
-        # 2. Create
-        html_path = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
-        pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 380, 460)
-        pal.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
-        pal.setMinimumSize(320, 360)
-
-        # 3. Bridge
-        _active_handler = PaletteHTMLEventHandler(diag_logger=diag_logger)
-        pal.incomingFromHTML.add(_active_handler)
-        pal.handler_anchor = _active_handler
-        handlers.append(_active_handler)
-
-        # 4. Show
-        pal.isVisible = True
-
-        # 5. Hidden commands
-        _ensure_hidden_commands(ui)
-
-    except Exception as e:
-        if diag_logger:
-            diag_logger.log_error(f"FAILURE IN solid run_palette: {e}\n{traceback.format_exc()}")
-        raise e
+class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
+        try:
+            run_palette(frame_engine, diag_logger=diag_logger)
+        except Exception as e:
+            if diag_logger:
+                diag_logger.log_error(f"SolidBuilder CommandCreatedHandler CRASH:\n{traceback.format_exc()}")
+            adsk.core.Application.get().userInterface.messageBox(f"Palette Launch Failed:\n{e}")
