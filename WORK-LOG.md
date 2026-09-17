@@ -3365,3 +3365,54 @@ unrequested change with its own risk for zero benefit.
 
 No gate hit. Didn't touch anything else in the file. Didn't deploy — the live proof (deploy through the
 bridge, open the inspector fresh, capture at 320/520/700) is the advisor's.
+
+---
+
+## Turn 141 — CW1: one declared body-size cap for the shared worker (A7-1) — DONE
+
+New project this turn: `cloud/preset-worker`, the shared Cloudflare Worker. Executed all 4 items. 3 files
+(1 new), one commit.
+
+**(1)** Created `src/body.js` verbatim per the dispatch: `MAX_BODY_BYTES` (10 MB) + `readBoundedBody`
+(content-length pre-check, empty→400, too-large→413) + its two private (unexported) `tooLarge`/`json`
+helpers. Checked first that neither name collides with anything in the importing files: `index.js` has
+its own separate, ALSO-unexported `json` helper (different module, no conflict); `bus-route.js` uses its
+own `busJson`, never `json` at all.
+
+**(2)** `index.js`: deleted the local `MAX_BODY_BYTES` const, imported `readBoundedBody`, and replaced all
+three identical `const body = await request.text(); if (body.length === 0) …; if (body.length >
+MAX_BODY_BYTES) …;` blocks (loader/apps PUT, projects/:name PUT, presets/:name PUT) with the one-line
+bounded form — used `replace_all` since the three blocks were byte-identical. Everything after each site
+(the `JSON.parse` try/catch, shape checks, KV writes) untouched.
+
+**(3)** `bus-route.js`: added the header comment line and the import, then replaced all five identical
+`const body = await request.text();` lines (collecte-grid, collecte/:profile, places, config, streets)
+the same way. Each handler's own JSON-parse/shape checks stayed exactly as they were.
+
+**(4)** Greps: `request.text()` → 0 in both `index.js` and `bus-route.js`; still present (1, correctly
+kept) in `pageviews-route.js`, which has its own separate, tighter 4 KB cap the dispatch said to leave
+alone — confirmed it's a genuinely different `MAX_BODY_BYTES` constant scoped to that file, not a
+collision with the new shared one. `MAX_BODY_BYTES` now defined in exactly one place
+(`body.js`, exported) plus its own default-parameter reference; no other file declares it (aside from
+`pageviews-route.js`'s intentionally-separate, differently-scoped 4096 constant).
+
+**Adjacent, not touched:** found a stray, untracked `src/index.js.bak` sitting in the same directory,
+holding pre-refactor content. Confirmed it's already `.gitignore`'d (matches the `*.bak` rule from an
+earlier hygiene turn) and isn't part of the bundle's import graph (nothing imports it) — disk clutter, not
+a git or deploy concern, and not something this dispatch named. Left it; noting it here rather than
+silently deleting an untracked file outside this task's scope.
+
+**Verify (all green):** `node --check` on all three files (confirmed the worker's `package.json` declares
+`"type": "module"` first, so ES-module `import`/`export` syntax is expected to parse cleanly — it did).
+Headless `readBoundedBody` check (Node 24's built-in `Request`/`Response`, pasted verbatim):
+```
+normal body: {"body":"{}"}
+empty body: status 400 {"error":"empty body"}
+declared-too-large: status 413 {"error":"body too large","maxBytes":10485760}
+MAX_BODY_BYTES = 10485760
+```
+All three cases match the dispatch's expected shapes exactly. `git diff --stat` → exactly the predicted 3
+files (2 modified + 1 new). No amendments pending.
+
+No gate hit. Didn't touch `pageviews-route.js`, auth, CORS, KV key shapes, or any GET handler. No wrangler
+run — the advisor deploys the worker.
