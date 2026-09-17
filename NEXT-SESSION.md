@@ -1,43 +1,37 @@
-# NEXT — HY4: doors with no rooms — the sketch palette's dead debug sends, one dead editor function, five over-exports
+# NEXT — DEC1: delete the step-editor cloud pair (Fred's ruling) — a removal sweep, every link accounted for
 
-**Ball: worker (seat A) · epoch 1 · HY4.** Files: `bspline-frame-builder/frame-builder/ui/html/sketch_builder_palette.html`,
-`bspline-frame-builder/b-spline-gen/html/editor/dom.js`, `editor/editor-ui.js`, `editor/editor-text-session.js`,
-`editor/layers.js`. One commit by path, predicted **5 files**. No behaviour changes — every item removes something
-nothing consumes, or narrows an export nothing imports.
+**Ball: worker (seat A) · epoch 1 · DEC1.** One commit by path, predicted **8 files (6 deleted, 2 edited)** + comment
+edits in 2 more (see item 3) → **10 files**.
 
-## Ground truth (advisor-verified, current tree)
-- `sketch_builder_palette.html`: 10 `notifyFusion(...)` sends with NO Python receiver (the dispatcher in
-  `sketch_builder_ui.py` has no branch for any of them; audit A5b §4 + FB2 design §4): `update_phase` (`:382`) and
-  nine `debug_*` sends (`:517`, `:533`, `:548-550`, `:553`, `:576`, `:596`, `:606`) — the latter belong to one
-  dev-instrumentation block that installs mutation/resize/focus observers and a periodic watcher on the template
-  `<select>` (roughly `:505-607`; read the enclosing function to find its exact start/end). Nothing else reads what
-  it produces.
-- `b-spline-gen/html/editor/dom.js:45` `createButton` — 0 references anywhere (not even inside dom.js).
-- Five functions exported but used only inside their own file: `dismissExpandCallout` (`editor-ui.js`),
-  `initTextSession` (`editor-text-session.js`), `removeLayer`, `renameLayer`, `reorderLayer` (`layers.js`). 0 external
-  importers each (grep across `html/`, dist excluded).
+## Ground truth (advisor-verified)
+- `cloud/step-editor-worker/` (5 files: `.gitignore`, `package.json`, `README.md`, `src/index.js`, `wrangler.toml` with
+  `id = "REPLACE_AFTER_KV_CREATE"`) — finished code, never provisioned. `cloud/step-editor-pages/README.md` — the only
+  file there. The add-in they served (`bspline-frame-builder/step-editor/`) never existed in this repo (absorbed by
+  stamp-editor). Ruling: **delete both**; git history keeps them.
+- References outside the folders: `ARCHITECTURE.md:42-43` (cloud diagram lines) and `:271-279` (two bullets). Nothing in
+  deploy scripts, `release.py`, or `cloud/preset-worker`.
+- Comments that still name a "step-editor" add-in as if it existed (honesty, same chain): `stamp-editor/stamp-editor.py`
+  `:27` ("Mirror of step-editor's log-path strategy"), `:114` ("IDs MUST match step-editor / fusion-inspector"), `:132`
+  ("same shape as step-editor's bridge"), `:792` ("the b-spline-gen / step-editor bridge"), `:1210` ("same quirk
+  step-editor handles"); `CAM-builder/cam-builder.py:240` ("mirrors step-editor.py").
 
 ## Do
-1. `sketch_builder_palette.html`: delete the entire debug-instrumentation block (all nine `debug_*` sends, their
-   observers, the periodic timer, and the `installed…` notice) and the `update_phase` send at `:382` (keep the local
-   `_phaseCurrent` state it was reporting). If a helper exists only to serve that block, delete it too (retiree's own
-   machinery). Sweep: `grep -c "notifyFusion('debug_\|notifyFusion('update_phase'"` → 0; the remaining sends must be
-   exactly `update_param update_lock change_template request_template_list run_build` (5).
-2. `dom.js`: delete `createButton`.
-3. The five over-exports: drop the `export` keyword (keep the functions). Grep each name across `html/` afterwards →
-   only its own file.
+1. `git rm -r cloud/step-editor-worker cloud/step-editor-pages`.
+2. `ARCHITECTURE.md`: in the cloud diagram (`:42-43`) replace the two step-editor lines with one line
+   `· (step-editor cloud pair deleted 2026-09-17 — never provisioned; its add-in was absorbed by stamp-editor)`; replace
+   the two bullets at `:271-279` with one sentence saying the same and naming the deleting commit as "DEC1".
+3. The six comments: replace "step-editor" with "b-spline-gen" where the sentence is about the bridge/log/ID pattern
+   (that IS the file they mirror — stamp-editor's docstring already says "Architecture mirrors b-spline-gen.py" since
+   HY3); at `:1210` and `cam-builder.py:240` reword to "same quirk b-spline-gen handles" / "mirrors b-spline-gen.py".
+4. Sweep: `grep -rn "step-editor" --include=*.py --include=*.js --include=*.md --include=*.toml .` (excluding WORK-LOG*,
+   AUDIT-2026-09.md, ROADMAP.md, FB2-PALETTE-SCAFFOLD-DESIGN.md, node_modules, .venv*) → only ARCHITECTURE.md's
+   "deleted" sentence and `sync_stamp_bundle.py`'s historical note (leave that one: it explains where the bundle came from).
 
 ## Verify
-- Extract the palette's `<script>` (as E7c did) and `node --check` it; `node --check` the four editor files.
-- `npx vitest run` → 29.
-- `git show --stat HEAD` → 5 files, deletions only (plus the five `export` removals).
-- Fusion look is the ADVISOR's (open Sketch Builder, change template, build once — the dispatcher's five live actions).
-
-## Do NOT
-Touch `sketch_builder_ui.py` (its `ping`/`get_templates` branches are harmless doors; leave them), the scaffold, or any
-other palette.
+`py_compile` stamp-editor.py + cam-builder.py; the sweep grep as above; `git show --stat HEAD` → 10 files, 6 deletions.
+No deploy, no wrangler.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "HY4: sketch palette debug block + update_phase removed (<n> lines), createButton deleted, 5 exports narrowed — <sha>, 5 files; sends = 5 live; vitest 29. Next: advisor's call (decision sheet)."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "DEC1: step-editor cloud pair deleted (6 files), ARCHITECTURE updated, 6 stale step-editor comments corrected — <sha>, 10 files; sweep clean. Next: PM2."`
 and stop.
