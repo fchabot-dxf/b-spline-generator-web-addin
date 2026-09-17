@@ -338,3 +338,11 @@ same unit; UNDO-REDO-DESIGN.md's general claim ("user params don't undo like geo
 **Deploy ritual is now hands-free:** `stop()` via the bridge → `release.py --local` → `run()` via the bridge; the human
 no longer needs the Add-Ins dialog (loader file itself only refreshes on a real Fusion restart — all changes today are
 in sub-modules, which `run()` reloads).
+
+## IN3 — Frame Inspector page is wider than its palette window (found live 2026-09-17 10:15, deployed d8a32ea)
+Screen captures at palette widths 320 / 520 / 700 px all show the page laid out ~100-150 px wider than the window: the
+header's build badge + bridge pulse, the "Copy Name" button and E7c's per-row ⧉ buttons sit off the right edge; the
+list text wraps at a width larger than the window. Folding + labelled meta rows render correctly. Advisor's bounded
+look (body width:100%, global box-sizing:border-box, .cad-dialog-content overflow-x:hidden) did not locate the cause →
+UNLOCATED; dispatched as a hunt (IN3). Evidence PNGs: scratchpad `pal_0.png` (320), `inspector-screen.png` (520),
+`inspector-700.png` (700). Palette restored to 320×600; scratch design closed unsaved.
