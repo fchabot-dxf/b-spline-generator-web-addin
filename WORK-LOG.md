@@ -2621,3 +2621,61 @@ touch the main checkout again this session. Mentioning only so the advisor isn't
 
 No gate hit — read-only turn, one doc + this log, nothing under `bspline-frame-builder/` (or anywhere
 else) edited.
+
+---
+
+## Lane B — Turn 3 — A2 audit: frame-builder (fb_engine + the two builder UIs) — DONE
+
+**Read before writing:** `fb_engine/parametric_engine.py` (484L, full), `build_context.py` (targeted:
+`create_or_update_param`), `frame_engine.py` (targeted: `FrameBuilder`, `_create_skeletal_parameters`,
+both `run_*` entry points), `ui/sketch_builder_ui.py` (594L, full) + `ui/solid_builder_ui.py` (351L,
+full, diffed against sketch's), the 3 root test files (1013L), and `UNDO-REDO-DESIGN.md` (E8's own
+investigation doc, full) as ground truth for the param-lifecycle question the dispatch asked about.
+
+**5 new findings** (1 H, 2 M/M-H, 2 L). The headline one (A2-1, H): traced the exact call chain the
+dispatch asked about ("is any OTHER param still created inside a command Execute?") and found the answer
+is yes — `_create_skeletal_parameters` (`frame_engine.py:225-320`) and `_sync_user_parameters`
+(`parametric_engine.py:246-289`) both call `userParameters.add(...)` inside the same Execute handler
+`ensure_tilt_param`'s own docstring warns against. More significantly: this appears to CONTRADICT
+`UNDO-REDO-DESIGN.md`'s own root-cause claim that `frame_tilt_deg` was "the first design-level user
+parameter created mid-build" — `_create_skeletal_parameters` lives in `frame_engine.py`, a file the
+tilt commit `6c1cce4` never touched (per that doc's own line 32), and it already creates Master +
+Dependent template params (width/height/thickness/…) the identical way. If confirmed at runtime, this
+means E8's F1-A/B/C fix options were scoped to the wrong blast radius — narrowed to one parameter when
+the mechanism creates several. Flagged clearly as **UNVERIFIED** (no Fusion access in this lane) rather
+than asserted as fact — this is a static contradiction worth a live-Fusion recheck, not a confirmed bug.
+
+A2-3 (M-H) confirms the dispatch's other named concern is real and unmitigated: `_build_blocks`'s
+`isComputeDeferred` windows are correctly balanced on the happy path, but nothing resets the flag to
+`False` if a step raises mid-window — the one exception handler in the chain (`build_template`'s
+per-sketch try/except) never touches it. A2-2 is a small, clean dead-code find directly tied to the E8
+migration (the exact old tilt-chain function `UNDO-REDO-DESIGN.md` cites, now orphaned). A2-4 quantifies
+the two builder UIs' duplication (555/945 diff lines — same hidden-command dispatch mechanism hand-rolled
+twice) as a named P4 violation, extending the B8-class duplication debt to a pair STANDARDS-AUDIT hadn't
+covered. A2-5 is a small honesty nuance on the same file as A2-1.
+
+**Verified what's GOOD too, not just problems:** confirmed F2 (delete the dead undo-transaction
+wrappers) was actually done — 0 hits for `_start_undo_transaction`/`startTransaction`/`_commit`/`_abort`
+across both UI files. Confirmed the UI lifecycle-symmetry verdict from A1's "What's GOOD" extends
+cleanly into A2's specific files (sketch's `documentActivated` sub / solid's lack of one both match what
+the parent's `_teardown_submodules` releases — no new drift). `_get_tilt_plane` itself (the post-E8
+code) is clean and accurately documented — held up as the pattern A2-1's fix should follow.
+
+**Test gap sharpened, not just restated:** grepped all 3 root test files for every symbol this turn's
+findings touch (`parametric_engine|_sync_user_parameters|_create_skeletal_parameters|isComputeDeferred|
+sketch_builder_ui|solid_builder_ui`) → 0 matches. The exact code A2-1/A2-3 found problems in is the
+untested part of an already-lightly-tested folder — turned STANDARDS-AUDIT's generic "light coverage"
+into a concrete claim.
+
+**Honesty sweep:** checked the two claims NEXT-SESSION named (E8 undo-wrapper removal: confirmed true;
+C4 shared-module move: out of this folder's scope). Found one more not-previously-named
+(A2-5) on the same file as A2-1. The various "used to X, now Y" comments elsewhere in `fb_engine/` were
+each checked against current code and are accurate — didn't just assume past-tense comments are honest
+by default.
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` (modified, A2 section
+appended) — matches "append, don't rewrite A1." No amendments pending at either poll.
+
+No gate hit — read-only turn, same as turn 1. Nothing under `bspline-frame-builder/` edited; no Fusion
+access used (explicitly off-limits this turn) — A2-1 and A2-3 are correctly flagged UNVERIFIED rather
+than asserted, since neither could be runtime-confirmed from this lane.
