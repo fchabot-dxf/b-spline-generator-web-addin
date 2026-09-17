@@ -205,3 +205,19 @@ null-guarded, so nothing errored: the manager has silently had NO Load / Rename 
 **Ruling:** consolidate — the sidebar `📂 Load` (Quick-Load) button goes away; `📁 Projects` is the single
 entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is untouched.
 **Sequenced right after E7a** (bug + human-requested beats E7b polish). Headless-verifiable + a browser look.
+
+## Backlog from the lane-B audit (A1, 2026-09-17) + advisor findings — seat A order after E7b
+- **IN2 — inspector inline de-dup** (advisor, AST-verified): `fusion-inspector.py` still defines 10 fb_shared
+  functions locally, 8 divergent; C4-S3 only switched one import. **Dispatched now.** Note: A1's reconcile marked
+  STANDARDS-AUDIT §1b "resolved" — wrong for the inspector; it looked for duplicate *files*, not inline duplicates.
+- **E7c — per-row copy** on the inspector's details list (through the `_pendingCopy` poll pump).
+- **IN1 — B5 / A1-2** inspector `stop()` never removes `activeSelectionChanged` nor clears `_handlers` (M). Fusion
+  Stop→Start verification.
+- **HY2 — hygiene batch (all L):** A1-1 delete the 4 dead loader functions (`bspline-frame-builder.py:123-168`) ·
+  A1-3 fix the two stale fb_shared docstrings ("no callers switched yet") · A1-4 drop 2 dead entries from
+  `deploy_template_maker.verify_files` · A1-5 delete the dead `FusionIOPanel` cleanup in fusion-exporter.
+- **DEP1 — A1-6** deploy has no orphan sweep (overlay copy leaves deleted sources in AddIns). Add a dest-only listing
+  + warning after copy. Also: the E3 stop-first guard works (refused today while the add-in was live) — the deploy
+  ritual is now "human Stops add-in → advisor deploys → human Runs".
+- Still open from July, confirmed by A1: exporter.py silent-skip catch-alls (:656/:705/:440), hardcoded machine paths
+  in fusion-exporter (:165, exporter.py:86).
