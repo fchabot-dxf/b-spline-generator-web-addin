@@ -3416,3 +3416,52 @@ files (2 modified + 1 new). No amendments pending.
 
 No gate hit. Didn't touch `pageviews-route.js`, auth, CORS, KV key shapes, or any GET handler. No wrangler
 run — the advisor deploys the worker.
+
+---
+
+## Turn 143 — TM2: derive the parent loader's shared-name wipe list (same fix as TM1) — DONE
+
+Same class of bug as TM1, one level up: `bspline-frame-builder.py`'s `_shared_project_names` was a
+hand-typed 15-name list — 14 real template-maker/core names plus `'exporter'` — wiped before each
+sub-add-in load so a bare name cached by one sub can't bind into the next. `template-maker/core/` actually
+holds 22 modules; the list was missing 8 (`detection_log`, `dimension_hint`, `offset_hint`,
+`template_bridge`, `template_naming`, `template_payload_builder`, `template_variable_block`,
+`variable_scan`) — the same drift TM1 fixed for `template-maker.py`'s own wipe list, just at the parent
+loader instead.
+
+**Do:** declared `_bare_module_names(folder)` as a module-level helper (placed right before the Bootstrap
+section, since TM2 needs it in two places `_bootstrap()` combines — TM1's fix was a single-folder inline
+comprehension, this one genuinely needed a reusable function). Replaced the literal `_shared_project_names`
+list with `_bare_module_names(template-maker/core) + [fusion-exporter's names, minus 'exporter' itself —
+the entry file, loaded by path, never by bare name]`. Trimmed the old 4-line C4/F8 comment to the one line
+that's still true (fb_shared is retired/wiped elsewhere); kept everything else — the three
+`_force_wipe(_shared_project_names)` call sites and the separate `cam_engine`/`cam_utils` wipe — untouched.
+
+Confirmed `_addin_root` first: it's a genuine module-level global (assigned inside a bare `try/except` at
+module top level, lines 45-48 — NOT inside any function, so no `global` declaration is needed to read it
+from within `_bootstrap()`). Matches the dispatch's own note to check `:389-395` if the name seemed wrong;
+it was right.
+
+**Verify (all green):** `py_compile` clean. `pyflakes` → 0 warnings, none at all (cleaner than TM1's file,
+which still carries some pre-existing unrelated noise). Headless proof, run against the real folders from
+`bspline-frame-builder/`:
+```
+core count: 22
+result: ['cc_proxy', 'coincidence_clusters', 'deferred_rebuild', 'detect_projections', 'detection_log',
+'dimension_hint', 'entity_util', 'fb_attributes', 'offset_hint', 'ownership_gate', 'phase_parser',
+'relation_hints', 'rename_selection', 'role_points', 'template_bridge', 'template_code',
+'template_generator', 'template_naming', 'template_payload', 'template_payload_builder',
+'template_variable_block', 'variable_scan', 'exporter']
+count: 23
+expected-previously-missing names now present? True (missing: set())
+'exporter' present? True
+any .py suffix leaked? False
+any hyphen in a name? False
+```
+All 22 template-maker/core names present, `exporter` present, all 8 previously-missing names confirmed
+now included, no `.py`/hyphen contamination. `git diff --stat` → exactly the predicted 1 file. No
+amendments pending.
+
+No gate hit. Didn't touch `template-maker.py`, `fusion-exporter.py`, or the earlier `_force_wipe([...])`
+list at `:144` (CAM-builder's own top-level module names — a different list). Didn't deploy — the Fusion
+Stop→Start proof for the whole add-in is the advisor's.
