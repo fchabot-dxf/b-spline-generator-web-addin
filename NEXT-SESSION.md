@@ -1,59 +1,52 @@
-# NEXT — IN1: Frame Inspector `stop()` must release its selection handler (B5 / A1-2)
+# NEXT — HY2: hygiene batch from the audit (all L) — 8 small, independent, fully-anchored edits
 
-**Ball: worker (seat A) · epoch 1 · IN1.** File: ONLY `bspline-frame-builder/frame-inspector/fusion-inspector.py`.
-One commit by path, predicted **1 file, ~+15/−3**.
+**Ball: worker (seat A) · epoch 1 · HY2.** One commit by path, predicted **8 files**. Land each item COMPLETELY; if one
+is blocked by its STOP rule, skip it, finish the rest, and name the skip in the commit message. No behaviour changes.
 
-## Ground truth (advisor-verified, current line numbers post-IN2)
-- `:10` `_handlers = []` (module list). `run()` `:347-404`: builds `sel_handler = _SelectionChangedHandler()` at `:398`,
-  `ui.activeSelectionChanged.add(sel_handler)` `:399`, appends to `_handlers` `:400`. The handler object lives only in
-  that local + the list.
-- `stop()` `:406-`: deletes the palette, panel controls and the command definition — **never calls
-  `ui.activeSelectionChanged.remove(...)` and never clears `_handlers`** (`grep -c "\.remove("` → 0). Every Stop→Start
-  adds one more live handler; N cycles fire N handlers per selection change (and each keeps its Python object alive).
-- Reference pattern, same repo: `template-maker/template-maker.py` — module global `_sel_handler = None` (`:24`); in
-  `run()` remove-before-add (`:722-728`); in `stop()` remove (`:806-808`) then `_handlers.clear()` + `_sel_handler = None`
-  in `finally` (`:843-845`).
-
-## Do
-1. Add module global `_sel_handler = None` next to `_handlers` (`:10`).
-2. In `run()`, replace `:398-400` with the template-maker pattern:
-   ```python
-   global _sel_handler
-   try:
-       if _sel_handler:
-           ui.activeSelectionChanged.remove(_sel_handler)   # self-heal after an unclean prior stop
-   except Exception:
-       pass
-   _sel_handler = _SelectionChangedHandler()
-   ui.activeSelectionChanged.add(_sel_handler)
-   _handlers.append(_sel_handler)
-   ```
-   (`global _sel_handler` must be the first statement of `run()`'s body that references it — put it at the top of `run()`.)
-3. In `stop()`: add `global _sel_handler` at the top; after the command-definition delete, add
-   ```python
-   try:
-       if _sel_handler:
-           ui.activeSelectionChanged.remove(_sel_handler)
-   except Exception:
-       pass
-   ```
-   and restructure the function's `try: … except Exception: pass` into `try: … except Exception: _log(traceback.format_exc())
-   finally: _handlers.clear(); _sel_handler = None` — the clear must run even if an earlier step throws.
-4. Nothing else. The `_html_handler` appended at `:336` is released with the palette (`palette.deleteMe()`); leave it.
+## Items (every anchor advisor-verified 2026-09-17 on the current tree)
+1. **`bspline-frame-builder/bspline-frame-builder.py:123-170`** — delete the 4 dead functions
+   `_find_related_addin_modules` (:123), `_invoke_addin_action` (:148), `_stop_related_addins` (:163),
+   `_run_related_addins` (:167). They only call each other; 0 external callers (grep). Then fix the comment at `:398`
+   that names `_find_related_addin_modules` — reword so it no longer refers to a deleted function.
+2. **`bspline-frame-builder/fb_shared/entity_helpers.py:5-9`** — the docstring says "NO callers are switched to this
+   module yet (S1 is additive)". False since July. Reword: "Canonical shared helpers (C4 S1-S5 complete): consumed by
+   frame-inspector, template-maker/core and the tests." Keep the `[GATE]`/`[FLAG]` notes but change "pending advisor
+   review" to "ratified — callers switched (S3-S5)".
+3. **`bspline-frame-builder/fb_shared/expression_coords.py:7`** — same: replace "ADDITIVE: no production callers switched
+   yet." with "Canonical (C4 S2-S5 complete); consumed by frame-inspector and template-maker/core."
+4. **`bspline-frame-builder/DEPLOY_bspline-frame-builder.py:143-144`** — in `deploy_template_maker.verify_files` delete the
+   two entries `"entity_helpers.py"` and `"expression_coords.py"` (no such files under template-maker/; they print a
+   spurious WARNING on every legacy deploy).
+5. **`bspline-frame-builder/fusion-exporter/fusion-exporter.py:124` + the loop at `:147`** — `panels_to_clean =
+   ['FusionIOPanel']` names a panel id nothing creates (run() uses `bsplinePanel_<tab>`; the parent's sweep removes it).
+   Delete the `panels_to_clean` list and the `for p_id in panels_to_clean:` block it feeds (the whole dead cleanup,
+   nothing else in `stop()`).
+6. **`bspline-frame-builder/stamp-editor/stamp-editor.py`** — (a) `:157-158` delete the `if action == 'reset_ui':` branch
+   (0 JS senders; grep `reset_ui` under `stamp-editor/html/` → 0). (b) `:13-15` replace the "v1 SCAFFOLD … land in
+   subsequent passes" header with one true sentence: "Stamp Editor add-in: toolbar button + palette, face-pick capture,
+   live face count, preview mesh, STEP emission (`commit`)." (c) `:855` `global _captured_faces` is unused in that scope
+   (pyflakes) — delete that one `global` line ONLY if the function never assigns `_captured_faces`; else leave.
+7. **`bspline-frame-builder/stamp-editor/html/core/runtime.js:4-6`** — the comment claims it "mirrors step-editor's
+   runtime"; no such add-in exists in the repo. Replace those three lines with: " * The Fusion ↔ JS wire shape shared
+   by Fred's add-ins; no sibling mirrors it today."
+8. **`bspline-frame-builder/frame-builder/fb_engine/parametric_engine.py`** — pyflakes: unused locals `ui_state` (:126),
+   `built_count` (:176 and :309), `sketch_prefix` (:209). **STOP rule per line:** delete the assignment ONLY if its
+   right-hand side is a plain read / literal / arithmetic with no call that could have a side effect; if it calls a
+   method (e.g. anything on `ctx`, `self`, Fusion objects) leave the line and name it in the commit message.
 
 ## Verify (fast tier)
-- `python -m py_compile` + `python -m pyflakes` (no new warnings; "imported but unused" lines are pre-existing noise).
-- `grep -n "activeSelectionChanged" fusion-inspector.py` → exactly 3 hits (remove in run, add in run, remove in stop).
-- `grep -n "_handlers.clear()" fusion-inspector.py` → 1, inside `stop()`'s `finally`.
-- `git show --stat HEAD` → 1 file.
-- The Fusion Stop→Start proof (select something after 3 cycles → the palette updates ONCE, log shows one handler) is the
-  ADVISOR's after deploy.
+- `python -m py_compile` on every edited `.py`; `python -m pyflakes` on them → no NEW warnings, and the 4-5 listed
+  ones gone (or named as kept).
+- Greps → 0: `_find_related_addin_modules|_invoke_addin_action|_stop_related_addins|_run_related_addins`,
+  `FusionIOPanel`, `reset_ui`, `no production callers`, `NO callers are`, `Mirrors step-editor`.
+- `node --check bspline-frame-builder/stamp-editor/html/core/runtime.js`.
+- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83.
+- `git show --stat HEAD` → 8 files (7 if item 6c or 8 is fully skipped — say which).
 
 ## Do NOT
-Touch the palette HTML, fb_shared, the parent loader, or any other add-in. Don't refactor `stop()` beyond the
-try/except/finally shape above.
+Touch anything not named above. No refactors, no "while I'm here". Don't deploy.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "IN1: inspector _sel_handler global; run() removes-before-add; stop() removes + clears in finally — <sha>, 1 file; grep 3/1. Next: E7c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "HY2: <n>/8 items landed (<skips>), <sha>, <k> files; greps 0; pyflakes clean; pytest 83. Next: E7c."`
 and stop.

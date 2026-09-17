@@ -259,3 +259,6 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
 - Noted, outside A4 scope: the three save paths (cloud-preset / cloud-project / preset managers) each hand-roll the same
   "strip `.mask` before persisting" loop → one declared serializer (P4). Candidate for the A5 turn.
 - Test gap: stamp-editor's 8 unique files have zero coverage, direct or by proxy.
+- **A4 drift question answered (advisor, main checkout):** regenerating the bundle (`sync_stamp_bundle.py`) reproduced all
+  54 generated stamp-editor files byte-identical → no hand edits since C1. The file-level diff vs `b-spline-gen` is the
+  generator's own import-path rewriting, not drift.
