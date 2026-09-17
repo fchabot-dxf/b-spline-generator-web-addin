@@ -2637,3 +2637,52 @@ poll.
 
 No gate hit. Nothing under `frame-builder/` was touched. No copy buttons added (E7c). Didn't deploy — the
 advisor owns the visual confirmation.
+
+---
+
+## Turn 113 — IN2: retire fusion-inspector's 10 inline fb_shared duplicates — DONE
+
+Executed the advisor's AST-diff-verified dispatch. 1 file, one commit. Did not touch `fb_shared/`.
+
+**(1) Deleted the 10 local duplicates** named in the ground-truth table (`get_fb_name`, `get_fb_bridge`,
+`get_fb_plan`, `_get_entity_key`, `format_point`, `_get_arc_midpoint`, `get_fb_metadata`,
+`entity_fingerprint`, `get_entity_coord`, `get_entity_coord_expr`), whole functions including docstrings
+— via `sed` line-range deletion (verified exact boundaries with `grep -n "^def "` first, then re-read the
+seams after) rather than the Edit tool's literal-string matching, since several of these functions had
+inconsistent trailing whitespace that would have made exact-match edits fragile.
+
+**(2) Retiree's own machinery — mutation-tested, not assumed:** grepped each of `get_design_dimensions`,
+`format_expr_component`, `format_point_expr`, `get_fb_attribute` for surviving callers after step 1;
+all four had zero (their only callers were inside the now-deleted local `get_entity_coord_expr`) — deleted
+all four.
+
+**(3) Import replacement — two names dropped beyond the dispatch's own example.** Replaced the two import
+lines with the shared-function set. The dispatch's literal proposed import list included `_get_entity_key`
+(explicitly flagged "0 today" in the dispatch itself — dropped, per instruction) but ALSO listed
+`_get_arc_midpoint` and `get_design_params`. I checked call sites for every name in the proposed list
+after the deletions and found both of those also at **zero** direct call sites in this file: `_get_arc_midpoint`
+is only needed internally by `fb_shared`'s own functions (which import it themselves inside `fb_shared`),
+and `get_design_params` was already a dead import before this turn (0 call sites pre-existing, not
+introduced by IN2). Applying the dispatch's own stated rule ("drop any name that turns out to have 0 call
+sites") consistently rather than only to the one named example, I dropped both. Flagging this as a
+judgment call in case the advisor intended `get_design_params` to stay for a reason not visible in this
+file alone.
+
+**Call sites unchanged** — `get_fb_connections` (kept, no shared equivalent, per dispatch) still calls
+`get_fb_name`/`format_point` by their now-imported names; `_push_selection_to_palette` still calls
+`get_fb_name(e)`, `get_entity_coord(e)`, `get_entity_coord_expr(e)`, `get_fb_bridge(e)`, `get_fb_plan(e)`,
+`get_fb_metadata_fields(e)`, `entity_fingerprint(ent)`, `get_fb_metadata(ent)` (batch loop) — all matching
+the shared functions' signatures, no renames.
+
+**No STOP condition hit** — every shared function's signature and behaviour covers what
+`_push_selection_to_palette` needs; the one accepted visible change (point coord line drops the
+`<name>: ` prefix, now `Point: (x, y)`) was pre-ruled by the advisor in the dispatch.
+
+**Verify (all green):** `py_compile` clean. AST dup-sweep script → `clean` (0 overlap between
+fusion-inspector.py's defs and fb_shared's). `grep -c "^def "` → **21 → 7** (14 deleted: the 10 named +
+the 4 orphaned expr-helpers). `pytest template-maker/tests -q` → 83 passed (fb_shared untouched, so
+unchanged — confirms this turn's import-only change didn't touch behavior). `git diff --stat` → exactly 1
+file (301 lines touched: 5 insertions, 296 deletions). No amendments pending at either poll.
+
+No gate hit. Didn't touch `fb_shared/`, the palette HTML, `frame-builder/`, or the exporter. Didn't add
+wrappers or aliases. Didn't deploy — the advisor owns the visual confirmation.
