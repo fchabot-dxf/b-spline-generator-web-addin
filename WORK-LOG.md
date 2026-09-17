@@ -4352,3 +4352,62 @@ all" grep. `git diff --stat` → exactly the predicted 2 files.
 
 No gate hit. Didn't touch the build path, the scaffold, or `fb_engine`. Fusion look (fresh design: every
 row shows its Fusion name + "new"; after one build: chips gone) is the advisor's, as scoped.
+
+## Turn 175 — CAM1 DESIGN: consolidate CAM Builder + CAM Studio into one palette — DESIGN ONLY, awaiting blessing
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** write `CAM1-CONSOLIDATION-DESIGN.md` mapping what
+each of the two CAM palettes does today (with handler evidence), propose one merged palette with one
+dispatcher (resolving the duplicate `preview` action), a bridge-contract sweep, a 3-slice migration, and
+risks. No code this turn.
+
+**Read, not skimmed:** the full dispatcher for both palettes (`cam-builder.py:230-272` Builder,
+`:427-453` Studio), both send helpers and both `_do_*` handlers cited in the doc, `run()`/`stop()` in
+full (`:2082-2308`) for the toolbar/parent-line section, and both palette HTMLs' button layout + `send()`
++ `window.fusionJavaScriptHandler.handle` blocks via targeted `grep`+`Read` rather than a linear top-to-
+bottom read of all ~4000 lines — efficient but every citation in the doc was checked against the actual
+file content, not assumed from the dispatch's ground truth.
+
+**Two findings beyond what the dispatch's ground truth named:**
+1. **A second naming collision, not just `preview`.** Builder's dispatcher aliases a legacy `generate`
+   action to the same handler as `build` (`py:246-250`, comment says "existing callers don't break").
+   Studio's dispatcher has its OWN real `generate` action with different behavior. Checked whether
+   Builder's current HTML ever actually sends `'generate'` — it does not (`grep "send('generate'"` → 0
+   hits in `cam_builder_palette.html`; `runBuild()` only ever sends `'build'`). Builder's `generate`
+   branch is dead code in the current tree. Proposed resolution: drop it in the merge; Studio's real
+   `generate` is unaffected. Documented as its own subsection so it isn't missed at implementation time.
+2. **Builder already had two duplicate send helpers before any Studio merge**: `_palette_send`
+   (`py:374-382`, used twice) and `_send_to_html` (`py:1200-1207`, used everywhere else for the same
+   palette). Proposed folding this into the merge's "one send helper" work since slice (b) already
+   touches this exact area — not a new problem the Studio merge introduces, but in scope to fix here
+   rather than leaving it for a future turn.
+
+**One deliberate deviation from a literal reading of the dispatch, stated plainly in §2 of the doc:** the
+dispatch's own example phrasing for the merged layout was a single linear order ("Setup → Templates →
+Toolpaths → Generate"). Having read both workflows in full, forcing them into one sequence would
+misrepresent them — Builder is a fixed multi-phase pipeline with a required manual pause (click Origin in
+Fusion's native UI between ADD MACHINE and SYNC TABLE ATTACH), Studio is a profile-driven one-shot
+GENERATE with live 3D preview. They already diverge at the engine boundary via `mode='bspline'|'generic'`
+(`cam_engine/cam_coordinator.py:99`, confirmed parameterized by mode, never by palette identity — the "does
+cam_engine assume which palette called it" risk item resolves to **no**, with evidence). Proposed a
+palette with two MODE TABS instead — each tab keeps its own true step order verbatim, both share one
+dispatcher table, one `send()`, one receive handler. This still satisfies every literal requirement (one
+palette, one dispatcher, tabs/steps was explicitly offered as an option in the dispatch's own wording) while
+staying honest about there being two real workflows, not one.
+
+**The bridge contract sweep (§4)** follows FB2 design §4's exact table format (HTML sends ↔ Python
+handles, then Python sends ↔ JS listens), run against the CURRENT tree for both palettes separately, then
+projected onto the proposed merged dispatcher — confirmed clean both directions after the two renames
+and the one dead-alias removal, no new gaps.
+
+**Risks (§6):** the modal `selectEntity` axis-pick block (`_AxisPickHandler.notify`, `py:723-754`,
+already deferred via `fireCustomEvent` so the HTML handler itself returns immediately — flagged that a
+careless dispatcher refactor could accidentally make this call synchronous from the handler, which would
+freeze the palette); the async, unawaited `generateAllToolpaths(skipValid=True)` (already correct and
+already shared between both paths via `_kick_off_toolpath_generation`, `py:1147-1174` — nothing to change,
+flagged so a merge doesn't accidentally add polling); the three CustomEvent ids' `run()`/`stop()`
+lifecycle (unaffected by which palette/tab is open); `cam_engine` palette-assumption check (clean, cited
+above); the two pre-existing send helpers (see finding 2); the dead `generate` alias (see finding 1, flagged
+as low-probability since it can only be confirmed against source in this repo).
+
+No code changed. Did not touch any `.py`/`.html`, did not propose "keep both, add a switch" (the ruling's
+explicit anti-goal), did not deploy.
