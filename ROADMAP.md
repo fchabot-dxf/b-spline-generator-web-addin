@@ -308,3 +308,20 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
   template-maker imports package-qualified (TM2, design note).
 - Machine coupling: "Ultimate Bee" appears ~15× in `cam_engine/setup_builder.py` (machine matching, sim-doc detection,
   default machine, WCS). Portability is a declaration job (one machine profile), not a one-line path fix. Parked.
+
+## Backlog from the lane-B audit (A7 cloud, 2026-09-17) — AUDIT SERIES COMPLETE (AUDIT-2026-09.md on main)
+- **CW1 — A7-1:** `cloud/preset-worker/src/bus-route.js` has no body-size cap on any of its 6 unauthenticated write
+  routes while `index.js` and `pageviews-route.js` each declare one. DECLARE the cap once in `index.js` (it already owns
+  `MAX_BODY_BYTES`) and apply it before dispatching to any route module, so no route can forget it.
+- **DEP1 (widened) — A7-3 twin of A1-6:** `deploy_cloudflare.py --build-only` never cleans `dist/` (exit at :220 precedes
+  the only `clean_dir` at :233) → a deleted source file stays live on the Pages site. Fix both deploys as ONE lesson:
+  clean-then-copy (or orphan sweep) in `DEPLOY_bspline-frame-builder.py` and `deploy_cloudflare.py`.
+- **A7-2** (accepted risk): the Appreciation Arts Plastiques routes commit to GitHub with no auth; its own comment invites
+  an origin/API-key gate "if abuse ever shows up". Named, not dispatched.
+- **`/presets`** is provably dead within this repo (its only caller was deleted in BG1) — retire the alias routes in the
+  worker once the human confirms no other app uses them (they are the "legacy alias" the README keeps for old clients).
+- **step-editor-worker + step-editor-pages:** worker code finished but never provisioned (`REPLACE_AFTER_KV_CREATE`),
+  pages is README-only, the add-in it served does not exist (absorbed by stamp-editor). **Human keep-or-delete call.**
+- Series summary: see AUDIT-2026-09.md "Audit series summary". Dispositions as of now — dispatched/landed: A2-3 (FB1),
+  A3-1 (TM1), A5a-1/-2/-3 (BG1), A5a-5 (BG1), A5b-1 (BG3 in flight), A1-2 (IN1), B7 (E7a); closed: B6; open: A2-1 (human
+  Fusion check), A2-4 (FB2 design), B10 (HY3), A7-1 (CW1), A7-3 (DEP1), A7-2 (accepted).
