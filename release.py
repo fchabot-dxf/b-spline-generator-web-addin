@@ -27,12 +27,17 @@ in print mode. No API key needed — uses your existing Claude Code auth.
 If the CLI is missing or the call fails, the script prompts interactively.
 """
 
+import json
 import os
 import stat
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 import zipfile
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -40,11 +45,34 @@ REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 ADDIN_ROOT = os.path.join(REPO_ROOT, "bspline-frame-builder")
 ZIP_TARGET = os.path.join(ADDIN_ROOT, "bspline-frame-builder.zip")
 PAGES_URL = "https://bspline-generator.pages.dev"
+PAGES_PROJECT = "bspline-generator"
+
+# Load .env the same way deploy_cloudflare.py does — dotenv if available,
+# else a manual key=value fallback (release.py lives at REPO_ROOT itself,
+# so unlike deploy_cloudflare.py's `parent.parent`, this is just `parent`).
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(REPO_ROOT) / '.env'
+    load_dotenv(dotenv_path=_env_path)
+except ImportError:
+    _env_path = Path(REPO_ROOT) / '.env'
+if os.path.exists(_env_path):
+    with open(_env_path, encoding='utf-8') as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _val = _line.split("=", 1)
+                os.environ[_key.strip()] = _val.strip()
 
 zip_summary = "(not built)"
 commit_summary = "(skipped)"
 commit_message_summary = "(none)"
 push_summary = "(skipped)"
+web_verify_summary = f"{PAGES_URL}  (not verified)"
+web_verify_ok = None      # True (deployed) / False (failed or unconfirmed) / None (skipped)
+web_build_failed = False  # True ONLY for a confirmed BUILD FAILED — the one case that
+                          # makes release.py's normal (--web/--all) run exit non-zero;
+                          # UNCONFIRMED is inconclusive, not a hard failure, so it doesn't.
 release_summary = "(skipped)"
 fusion_summary = "(skipped)"
 
@@ -208,7 +236,111 @@ def step_git_push():
     branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=REPO_ROOT,
                             capture_output=True, text=True).stdout.strip()
     push_summary = f"{branch} -> origin/{branch}"
-    print("      Pushed. Cloudflare Pages will auto-rebuild the web app.")
+    print("      Pushed. Verifying the Cloudflare Pages build...")
+
+    sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT,
+                         capture_output=True, text=True).stdout.strip()
+    step_verify_pages(sha)
+
+
+# ----- step 2b: verify the Cloudflare Pages build actually deployed -----
+# From 2026-07-12 to 2026-09-17 every push-triggered build on the
+# GitHub-connected Pages project silently FAILED (lock-file drift) while
+# this script kept printing "Cloudflare rebuilds on push" — a claim it had
+# no way to back up. Nobody looked at the dashboard for two months. This
+# polls the real deployments API instead of assuming success.
+CLOUDFLARE_API = "https://api.cloudflare.com/client/v4"
+
+
+def _fetch_pages_failure_log(account_id, api_token, deployment_id):
+    """Print the last 25 non-boilerplate lines of a failed build's log, so
+    the failure is visible right here instead of requiring a trip to the
+    Cloudflare dashboard."""
+    try:
+        url = (f"{CLOUDFLARE_API}/accounts/{account_id}/pages/projects/{PAGES_PROJECT}"
+               f"/deployments/{deployment_id}/history/logs")
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {api_token}"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        lines = [entry.get("line", "") for entry in data.get("result", {}).get("data", [])]
+        # Skip the generic `npm <command>` usage/help boilerplate Cloudflare's
+        # build log prepends before the actual build output.
+        lines = [ln for ln in lines if ln.strip() and not ln.strip().startswith("npm ")
+                 and "Usage:" not in ln]
+        print("      ---- build log tail ----")
+        for ln in lines[-25:]:
+            print(f"      {ln}")
+        print("      -------------------------")
+    except Exception as e:
+        print(f"      (could not fetch failure log: {e})")
+
+
+def step_verify_pages(sha, timeout_s=360):
+    """Poll the Pages deployments API for the deployment matching `sha`
+    (a short or full commit hash — matched via startswith) until it reaches
+    deploy success/failure, or `timeout_s` elapses. Returns True (deployed),
+    False (build failed or unconfirmed), or None (no CLOUDFLARE_* creds)."""
+    global web_verify_summary, web_verify_ok, web_build_failed
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+    api_token = os.environ.get("CLOUDFLARE_API_TOKEN")
+    if not account_id or not api_token:
+        web_verify_summary = "SKIPPED (no CLOUDFLARE_* in .env)"
+        web_verify_ok = None
+        print(f"      Web deploy: {web_verify_summary}")
+        return None
+
+    print(f"      Web deploy: watching Cloudflare Pages for {sha}...")
+    headers = {"Authorization": f"Bearer {api_token}"}
+    url = (f"{CLOUDFLARE_API}/accounts/{account_id}/pages/projects/{PAGES_PROJECT}"
+           f"/deployments?per_page=5")
+
+    deadline = time.monotonic() + timeout_s
+    last_state = None
+    while time.monotonic() < deadline:
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, urllib.error.HTTPError, ValueError) as e:
+            print(f"      Web deploy: API check failed ({e}); retrying...")
+            time.sleep(10)
+            continue
+
+        deployment = None
+        for d in data.get("result", []):
+            trigger = d.get("deployment_trigger") or {}
+            commit_hash = (trigger.get("metadata") or {}).get("commit_hash", "")
+            if commit_hash.startswith(sha):
+                deployment = d
+                break
+
+        if deployment is None:
+            time.sleep(10)
+            continue
+
+        stage = deployment.get("latest_stage") or {}
+        state = (stage.get("name"), stage.get("status"))
+        if state != last_state:
+            print(f"      Web deploy: {state[0]} ({state[1]})")
+            last_state = state
+
+        if state == ("deploy", "success"):
+            web_verify_summary = f"{PAGES_URL}  DEPLOYED {sha}"
+            web_verify_ok = True
+            return True
+
+        if state[1] == "failure":
+            _fetch_pages_failure_log(account_id, api_token, deployment.get("id"))
+            web_verify_summary = f"BUILD FAILED for {sha}"
+            web_verify_ok = False
+            web_build_failed = True
+            return False
+
+        time.sleep(10)
+
+    web_verify_summary = f"UNCONFIRMED after {timeout_s}s — check https://dash.cloudflare.com"
+    web_verify_ok = False
+    return False
 
 
 # ----- step 3: upload zip to GitHub release ------------------------------
@@ -333,7 +465,7 @@ def print_summary():
     print(f"  Message:    {commit_message_summary}")
     print(f"  Push:       {push_summary}")
     print(f"  Zip:        {zip_summary}")
-    print(f"  Web app:    {PAGES_URL}  (Cloudflare rebuilds on push)")
+    print(f"  Web app:    {web_verify_summary}")
     print(f"  GH release: {release_summary}")
     print(f"  Fusion:     {fusion_summary}")
     print("=" * 64)
@@ -341,11 +473,31 @@ def print_summary():
 
 def main():
     global commit_message
-    selected, commit_message = _parse_args(sys.argv[1:])
+    argv = sys.argv[1:]
+
+    # --verify-web [sha]: a standalone diagnostic — runs ONLY
+    # step_verify_pages for the given (or HEAD) sha and exits, without
+    # touching git/zip/gh/local. Intercepted before the normal flag parse
+    # so it isn't subject to KNOWN_FLAGS' single-token-per-flag shape.
+    if "--verify-web" in argv:
+        idx = argv.index("--verify-web")
+        sha_arg = argv[idx + 1] if idx + 1 < len(argv) and not argv[idx + 1].startswith("--") else None
+        sha = sha_arg or subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT,
+            capture_output=True, text=True,
+        ).stdout.strip()
+        print(f"Verifying Cloudflare Pages deployment for {sha}...")
+        ok = step_verify_pages(sha)
+        print(f"  Web app:    {web_verify_summary}")
+        sys.exit(0 if ok else 1)
+
+    selected, commit_message = _parse_args(argv)
     for group, fn in STEPS:
         if group in selected:
             fn()
     print_summary()
+    if web_build_failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
