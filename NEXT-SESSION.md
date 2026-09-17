@@ -1,49 +1,31 @@
-# LANE B (audit seat) — A1: audit the add-in LOADER + shared substrate. READ-ONLY on code; you write ONE doc.
+# LANE B (audit seat) — A2: audit `frame-builder/` (the parametric frame engine + its two palettes). READ-ONLY.
 
-**Seat B · epoch 1 · A1.** You are the second worker, in your OWN worktree (`b-spline-generator-web-addin-lane-b`,
-branch `lane-b`) with your OWN handoff channel (this folder's `HANDOFF.md`). Never edit anything under the main
-checkout. Your lane is the **audit** the human asked for: *"audit the whole add-ins, all of them, bugs and
-inefficiencies."* It runs in slices, one add-in group per turn; findings feed the advisor's dispatches to seat A.
+**Seat B · epoch 1 · A2.** Same rules as A1 (edit ONLY `AUDIT-2026-09.md` + lane-b `WORK-LOG.md`, commit by path on
+`lane-b`, evidence or UNVERIFIED, lens = ROADMAP principles + north-star gate, declared row format, per-add-in
+"Inefficiencies" subsection, "What's GOOD", "What I could not verify"). Append an **"A2 — frame-builder"** section
+to the existing doc; do not rewrite A1.
 
-## Rules of the lane
-- **You edit ONLY `AUDIT-2026-09.md`** (create it this turn) + `WORK-LOG.md` (lane-b copy). No product code, no
-  other docs. Commit by path (`git commit AUDIT-2026-09.md WORK-LOG.md -F -`), on branch `lane-b`.
-- **Evidence or it isn't a finding.** Every item carries `file:line`, the concrete symptom (what a user or the next
-  developer would hit), and how you verified it (read / grep / py_compile / a test you RAN read-only). Mark anything
-  you could not confirm **UNVERIFIED** — never smooth it.
-- **Lens = the project's declared principles** (`ROADMAP.md` "Principles / invariants" 1-5) + the north-star gate
-  (*declare over hand-roll; codebase must not lie about itself; removal leaves no doorless handlers / vacuous tests*).
-  Classify each finding: `bug` · `principle` (say which #) · `dead` (code/flag/test/doc that survives with no
-  consumer) · `inefficiency` (perf or repeated work) · `honesty` (name/comment/test that asserts something false).
-- **Reconcile, don't duplicate.** `BUGS_OPEN.md` (B1-B11) and `STANDARDS-AUDIT.md` (July) exist. For every OLD item
-  that falls in this turn's scope, record its CURRENT status (fixed in <sha> / still open / superseded) with evidence.
+**A1 review (advisor):** accepted as written. Answer to one of your open items: the AddIns inspector folder is clean
+because the advisor deleted `payload_builder.py`/`selection_items.py` there by hand after E7a — the overlay gap (A1-6)
+is real and still unguarded.
 
-## Declared finding format (one row each — keep it greppable)
-```
-| ID | add-in | file:line | class | symptom | evidence | fix shape (declare? delete? one-liner) | severity |
-```
-Severity: `H` (data loss / wrong geometry / crash on a normal gesture) · `M` (wrong on an edge, leak, silent no-op) ·
-`L` (hygiene). Put an **"Inefficiencies"** subsection per add-in for repeated work, N× loops, redundant I/O, re-reads.
+## A2 scope (this turn only) — `bspline-frame-builder/frame-builder/` (~9.5k lines)
+1. `fb_engine/` — the parametric engine (`parametric_engine.py`, `build_context.py`, `parameter_schema.py`,
+   `diagnostics.py`, …). Look hardest at: the phase pipeline and `isComputeDeferred` windows (a sketch left
+   deferred = silent wrong geometry); `create_or_update_param` / user-parameter lifecycle (E8 just moved
+   `frame_tilt_deg` creation to palette-open — is any OTHER param still created inside a command Execute?);
+   `_get_tilt_plane` reuse-by-name; any attribute stamping that can go stale on rebuild.
+2. `ui/sketch_builder_ui.py` + `ui/solid_builder_ui.py` + their `html/` palettes — lifecycle symmetry (what
+   `run_palette` registers vs what the parent's `_teardown_submodules` releases: handlers, `DocumentActivated`
+   subscription, palettes), duplicated logic between the two builders that should be ONE declaration, the
+   `frame_engine` injection contract (`if frame_engine:` guards — can it be None in practice?).
+3. **Honesty sweep** for this folder: comments/docstrings that describe a state that is no longer true (E8 removed the
+   undo-transaction wrappers; C4 moved shared modules) — quote each.
+4. **Tests:** what covers this folder? (`tests/`, `template-maker/tests` conftest stubs) — name the gap concretely.
 
-## A1 scope (this turn only)
-1. `bspline-frame-builder/bspline-frame-builder.py` (768 lines — the single add-in entry: sub-module loading,
-   `_force_wipe` / `_shared_project_names`, run()/stop() lifecycle, heartbeat lock). Check principle #2 (full
-   release in stop) and #3 (isolation) explicitly: enumerate what run() registers vs what stop() releases.
-2. `bspline-frame-builder/fb_shared/` (870 lines — canonical shared package).
-3. `bspline-frame-builder/frame-inspector/` (~1.1k) and `bspline-frame-builder/fusion-exporter/` (~1k).
-4. `bspline-frame-builder/DEPLOY_bspline-frame-builder.py` + `release.py` (deploy path — note the overlay-copy
-   behaviour: deleted sources linger in AddIns; is anything else in that class?).
-5. **Registry question:** `bspline-frame-builder/CAM-builder/` (8.8k lines) is NOT in ROADMAP's add-in list — is it
-   loaded by the entry file, dead, or a separate thing? One paragraph with evidence.
-
-Queued for later turns (do NOT start): A2 frame-builder · A3 template-maker · A4 stamp-editor · A5 b-spline-gen
-(split) · A6 CAM-builder (if live) · A7 cloud workers.
-
-## Verify
-`git status --short` shows only your two files. `AUDIT-2026-09.md` has: a header naming the lens + date, the A1
-reconcile table, the A1 findings table, an inefficiencies subsection, and a "what I could not verify" list.
+Do NOT run Fusion or mutate any design; `fusion_execute` is off-limits in this lane. Static read + grep + py_compile.
 
 ## When done
-Append WORK-LOG (lane-b), commit, then FROM THIS FOLDER:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A1 audit: <n> findings (<H/M/L counts>), <m> old items reconciled, CAM-builder status: <live|dead|separate>. <sha>. Next: A2."`
+Append lane-b WORK-LOG, commit by path, then FROM THIS FOLDER:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A2 frame-builder audit: <n> findings (<H/M/L>), <m> reconciled, <sha>. Next: A3 template-maker."`
 and stop.
