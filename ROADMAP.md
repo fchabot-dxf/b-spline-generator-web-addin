@@ -391,3 +391,10 @@ local `npm ci`; Cloudflare's older npm still disagrees with it — irrelevant no
   driving them; the sidebar's sticky header keeps only "Generate New Seed". Queue after UX1.
 - **FB3 live-verified 13:00** (names + `new` chips + note; ReadOnly rows correctly chip-free). **FB3b (cosmetic, later):**
   the `new` chip stretches to the label column's width — make it `display:inline-block; width:auto`.
+
+## CAM1 status (13:45): COMPLETE — slices (a) d714591, (b) de63098, (c) 2c7195e; live-proven through the bridge (one CAM
+button, two mode tabs boot, Studio command/palette gone after Stop→Start, no false 'response' warnings). With it every
+item of the 2026-09-17 decision sheet is live in both hosts.
+- **DEP3 (note, not dispatched):** `release.py --web` does `git add -A` before committing — the two-seats index trap
+  (advisor skill, measured 2026-09-11). Fine for a lone human; never run it while a worker seat holds the tree.
+- Remaining queue: DEP2 (in flight), FB3b (cosmetic chip), then the list is DONE → advisor runs `handoff.py done`.
