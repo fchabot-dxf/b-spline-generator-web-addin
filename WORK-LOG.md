@@ -4769,3 +4769,57 @@ HEAD` if none given) and exits with the function's own True/False/None result (0
 No gate hit. Did not touch `deploy_cloudflare.py`, the add-in deploy path, or `--web`'s `git add -A`
 staging ritual. `PAGES_PROJECT` declared as its own constant rather than reusing/renaming
 `deploy_cloudflare.py`'s differently-scoped `PROJECT_NAME` — flagged above, not a silent divergence.
+
+## Turn 185 — COS1: the last two cosmetic nits (FB3b chip + CAM1d header) — DONE, task list exhausted
+
+**Task (epoch 1, per NEXT-SESSION.md, marked as the final task of this cycle):** the `new` chip in the
+Frame Builder's parameter list renders stretched across its whole label column instead of hugging its
+own text; the merged CAM palette's header crams tabs, badge, both status strips, and the mode's action
+button onto one row, clipping/wrapping at the docked ~460px width.
+
+**(1) FB3b — `.param-new`:** applied exactly the fix the dispatch's live capture diagnosed —
+`width: max-content; justify-self: start; align-self: start;` added to the existing rule, nothing else
+touched. Picked this over the alternative the dispatch offered (wrapping the name + chip in a new
+`<span class="param-meta">`) since it needs no new element and the dispatch's own instruction said to
+prefer that when it works. **Could not visually confirm it resolves the stretch** — no renderer
+available here; the dispatch's fix was based on a real live capture I don't have access to reproduce,
+so I implemented it exactly as specified rather than second-guessing a diagnosis made from evidence I
+can't see myself.
+
+**(2) CAM1d — the merged CAM header:** `.cad-navbar` (base.css) is a **fixed `height: 36px`** single-row
+flex container — checked this before touching anything, since the dispatch's own phrasing ("a NEW second
+row... under the tabs") could have been read as nesting the new row *inside* the existing header. A
+36px-tall flex row can't hold two rows without either overflowing or needing the header's own height
+overridden (which the dispatch didn't ask for). Instead moved `#build-badge` and both
+`#status-summary-*` spans OUT of `<header class="cad-navbar">` entirely, into a new `<div
+class="cam-header-meta">` placed as a **sibling immediately after `</header>`** — visually "row 2 under
+the tabs" without fighting the header's own fixed-height layout. Row 1 (`<header>`) now holds only the
+title, mode tabs, and the mode's action button (PREVIEW/GENERATE) — right-aligned via the existing
+`flex:1` spacer, nothing else competing for its width.
+
+Checked `switchMode`'s show/hide selector *before* moving anything, per the dispatch's own instruction:
+it queries `document.querySelectorAll('.cam-tab-header-item')` — document-wide, not scoped to any
+particular parent — so relocating the two status spans changed nothing about how they're shown/hidden.
+Also checked `updateHeaderSummary()` and the `build_info` handler, both of which look elements up by
+`id` (`status-summary-generic`, `build-badge`) — unaffected by the DOM relocation, since neither id
+changed.
+
+Dropped the redundant `font-size:10px;` from each status span's own inline style (the new
+`.cam-header-meta` container declares `font-size: 10px` for the whole row) but kept each span's
+`font-weight:600;color:var(--cad-accent-blue);` — that's what makes them visually stand out from the
+badge's own muted color, and the dispatch didn't ask to change that distinction.
+
+**Verify (all green):**
+- Extracted both palettes' `<script>` blocks → `node --check` clean on each (neither file's JS logic
+  changed; sanity check only, per the dispatch's own framing).
+- `grep -A5 "\.param-new {"` → confirms `max-content` and `justify-self` both present in the rule.
+- `cam-header-meta` → **1** CSS rule + **1** `<div>` — exactly as predicted.
+- `id="build-badge"` / `id="status-summary-bspline"` / `id="status-summary-generic"` → **1** each,
+  confirming the relocation didn't accidentally duplicate or drop any of the three.
+- `git diff --stat` → exactly the predicted 2 files, CSS/markup-only diffs (no `<script>` content
+  touched in either file).
+
+No gate hit. No behaviour changed in either file — every edit this turn is a CSS property, a moved
+`<div>`, or a dropped duplicate inline style. Visual confirmation of both fixes (the chip's sizing, the
+header's two-row layout at the docked width) is the advisor's, as scoped — flagged plainly above rather
+than claiming success I can't see. **Task list exhausted per this turn's dispatch note.**
