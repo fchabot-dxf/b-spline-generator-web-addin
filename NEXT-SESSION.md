@@ -1,47 +1,28 @@
-# NEXT — DEP2: `release.py` must VERIFY the website deployed, not just that the push succeeded
+# NEXT — COS1: the last two cosmetic nits (FB3b chip + CAM1d header) — final task of this cycle
 
-**Ball: worker (seat A) · epoch 1 · DEP2.** File: ONLY `release.py`. One commit by path, predicted **1 file, ~+60 lines**.
+**Ball: worker (seat A) · epoch 1 · COS1.** Files: `bspline-frame-builder/frame-builder/ui/html/sketch_builder_palette.html`,
+`bspline-frame-builder/CAM-builder/ui/html/cam_builder_palette.html`. One commit by path, predicted **2 files**, CSS/markup
+only, no behaviour change.
 
-## Ground truth (advisor, today's incident)
-- Cloudflare Pages project `bspline-generator` builds every push to `main` (GitHub-connected; build command
-  `python bspline-frame-builder/deploy_cloudflare.py --build-only`, output `bspline-frame-builder/dist`). From
-  2026-07-12 to today every build FAILED (lock-file drift) while `release.py` printed
-  `Web app: https://bspline-generator.pages.dev (Cloudflare rebuilds on push)` — a sentence the script cannot know is
-  true. Nobody looked at Cloudflare for two months.
-- `release.py:166 step_git_push()` pushes; `:336` prints that line. `deploy_cloudflare.py:50-72` shows how this repo
-  loads `.env` (dotenv with a manual fallback) and reads `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN`.
-- The Pages API (read-only, token already has access — used by the advisor today):
-  `GET https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/pages/projects/bspline-generator/deployments?per_page=5`
-  → `result[]` with `deployment_trigger.metadata.commit_hash`, `latest_stage.name` (`queued|initialize|clone_repo|build|deploy`)
-  and `latest_stage.status` (`idle|active|success|failure|canceled`); on failure
-  `GET …/deployments/{id}/history/logs` → `result.data[].line`.
+## Ground truth (advisor, live captures)
+- **FB3b:** the `new` chip is `display:inline-block` (`sketch_builder_palette.html:49-53`) yet renders stretched across
+  the whole label column: it sits as a direct child of a grid/flex cell (`.cad-field-row` is a 2-column grid), so the
+  cell stretches it. Fix at the chip: `width: max-content; justify-self: start; align-self: start;` — or wrap name +
+  chip in one `<span class="param-meta">` inline container. Pick the one that needs no new element if it works.
+- **CAM1d:** the merged CAM header (`cam_builder_palette.html:339-354`) puts tabs + `#build-badge` + the mode's
+  `#status-summary-*` + the mode's action button on ONE row; at the docked 460 px the status wraps and PREVIEW is
+  clipped. Fix: keep row 1 = title + tabs + the action button (right-aligned, never clipped); move `#build-badge` and both
+  `#status-summary-*` spans into a NEW second row `<div class="cam-header-meta">` under the tabs (10 px, muted, `gap`,
+  `flex-wrap: wrap`). The `data-mode` show/hide logic must keep working for the status spans (check `switchMode`'s
+  selector — if it targets `.cam-tab-header-item` regardless of parent, nothing else changes).
 
-## Do
-1. Declare the project once: `PAGES_PROJECT = "bspline-generator"` next to `PAGES_URL` (`:42`); load `.env` the same way
-   `deploy_cloudflare.py` does (copy that small block; stdlib `urllib` for the HTTP, no new dependency).
-2. `step_verify_pages(sha, timeout_s=360)`: poll every 10 s for the deployment whose `commit_hash` starts with `sha`;
-   print one line per state change (`queued → build → deploy`); on `deploy success` print `  Web app:    {PAGES_URL}
-   DEPLOYED {sha}` and return True; on `failure` print `  Web app:    BUILD FAILED for {sha}` + the last 25 log lines
-   (skip the npm usage boilerplate) and return False; on timeout print `UNCONFIRMED after {timeout_s}s — check
-   https://dash.cloudflare.com` and return False; if the token/account id is missing print `SKIPPED (no CLOUDFLARE_* in
-   .env)` and return None.
-3. Call it at the end of `step_git_push()` (after a successful push, with `git rev-parse --short HEAD`) and let its
-   result drive the summary line at `:336`: DEPLOYED / BUILD FAILED / UNCONFIRMED / SKIPPED — never again the bare
-   "Cloudflare rebuilds on push". A BUILD FAILED result makes `release.py` exit non-zero.
-4. Nothing else in the script changes.
-
-## Verify (headless)
-- `py_compile release.py`; `python release.py --help`-style flag error still prints the valid flags.
-- Dry check of the verifier without pushing: add `--verify-web [sha]` as a flag that runs only `step_verify_pages` for
-  the given (or HEAD) sha; run `python release.py --verify-web 2790636` → it must find today's deployment and print
-  DEPLOYED (2790636 built at 13:4x). Paste the output.
-- `git show --stat HEAD` → 1 file.
-
-## Do NOT
-Touch `deploy_cloudflare.py`, the add-in deploy, or `--web`'s staging behaviour (note for the advisor: `--web` still
-does `git add -A`, which is the two-seats index trap — leave it, it is the human's ritual; recorded separately).
+## Verify
+- Extract + `node --check` both palettes' scripts (unchanged logic; sanity).
+- Greps: `param-new` rule contains `max-content` or `justify-self`; `cam-header-meta` → 1 div + 1 rule;
+  `#build-badge`, `#status-summary-bspline`, `#status-summary-generic` still exactly once each.
+- `git show --stat HEAD` → 2 files. Look is the ADVISOR's (deploy + captures at docked width).
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "DEP2: step_verify_pages polls the Pages API after push; summary says DEPLOYED/BUILD FAILED/UNCONFIRMED/SKIPPED; --verify-web flag; verified against 2790636 — <sha>, 1 file. Next: FB3b."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "COS1: FB3b chip sized to content; CAM1d header split into tabs+action / meta rows — <sha>, 2 files. Task list exhausted."`
 and stop.
