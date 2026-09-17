@@ -1,41 +1,47 @@
-# NEXT — FB2 slice (c): finish the scaffold migration — honesty sweep, one small leak, consistency
+# NEXT — BG2: the last two P1 violations — route every host call through the bridge (B9 + B11)
 
-**Ball: worker (seat A) · epoch 1 · FB2c.** Files: `frame-builder/ui/palette_scaffold.py`, `frame-builder/ui/sketch_builder_ui.py`,
-`frame-builder/ui/solid_builder_ui.py`, `FB2-PALETTE-SCAFFOLD-DESIGN.md` (status header only). One commit by path,
-predicted **4 files**, comment-scale diffs plus one 1-line code change.
+**Ball: worker (seat A) · epoch 1 · BG2.** Files (under `bspline-frame-builder/b-spline-gen/html/`): `core/fusion-log.js`
+(new, leaf), `core/fusion-bridge.js`, `core/coords.js`, `core/state.js`, `main/main.js`. One commit by path, predicted
+**5 files (1 new)**.
 
-## Live proof so far (advisor, deployed 7207bfe)
-Sketch Builder: opens, ensures the tilt param, builds (timeline 5), doc-switch re-push works. Extrude Frame: opens,
-auto-pick via a real click, extrudes 10 bodies onto the picked face, auto-hides on success. Stop→Start rebuilds fresh
-modules for both; the parent's teardown clears handlers and the doc handler. Measured: exactly TWO schema pushes per
-document activation regardless of how many times the palette was opened, with ONE live doc handler — Fusion fires
-`documentActivated` twice per activation; pre-existing, idempotent, not a scaffold bug. Do not "fix" it.
+## Ground truth (advisor-verified)
+- Principle P1: host-specific behaviour lives ONLY in `core/fusion-bridge.js`. Three sites still call `adsk.fusionSendData`
+  directly: `main/main.js:135` (`'get_design_params'`, B9) · `core/coords.js:14-15` (`'log'`, B11) ·
+  `core/state.js:268-270` (`'log'`, B11). Each hand-rolls the same guarded `'log'` tunnel that `fusion-bridge.js:14-16`
+  `fusLog` already declares.
+- **Import cycle:** `fusion-bridge.js` imports `{P, isFusionMode, setIsFusionMode}` from `state.js` and `COORD_SYSTEM`
+  from `coords.js`. So `coords.js`/`state.js` must NOT import from the bridge. The declared shape: a LEAF module
+  `core/fusion-log.js` with no imports that owns `fusLog`; the bridge re-exports it so every existing
+  `import { fusLog } from './fusion-bridge.js'` keeps working.
 
 ## Do
-1. **Prune the replaced doc handler from `handlers`** (`palette_scaffold.py:283-293`): when `old` is removed from
-   `app.documentActivated`, also `handlers.remove(old)` (guarded) — today each re-open appends another
-   `_DocActivatedHandler` to the list (3 after 3 opens; Python-side retention only).
-2. **Mixin order, one convention:** sketch declares `PaletteHTMLEventHandler(adsk.core.HTMLEventHandler, _PaletteBridgeMixin)`
-   and solid the reverse. Pick `(_PaletteBridgeMixin, adsk.core.HTMLEventHandler)` (mixin first is the Python idiom) and
-   make both match. Behaviour-identical; say so in the commit.
-3. **Honesty sweep** of all three files: every comment/docstring that still describes the pre-scaffold shape
-   ("was run_palette step…", "mirrors solid_builder_ui", "the original's _style_id_ref", references to deleted
-   functions `_create_hidden_command`/`_ensure_hidden_commands`/`_run_*_build_direct`/`DocumentActivatedHandler` as if
-   they still existed). Quote each in the WORK-LOG with what you replaced it with. Keep the design-doc citations.
-4. **Design doc status:** add a 3-line status block at the top of `FB2-PALETTE-SCAFFOLD-DESIGN.md`: implemented in
-   FB2a (b7cd92e) + FB2a-fix (27bfd7c) + FB2b (dbfed18) + FB2c (<this sha>); the two advisor amendments (derived
-   wipe list; per-iteration binding); the measured double-push note above. Nothing else in the doc changes.
+1. New `core/fusion-log.js`:
+   ```js
+   // The one Fusion log tunnel (P1: host calls live in the bridge layer; this leaf exists so core/ modules the
+   // bridge itself imports can log without an import cycle). No imports.
+   export function fusLog(msg) {
+     try { if (typeof adsk !== 'undefined' && adsk.fusionSendData) adsk.fusionSendData('log', JSON.stringify({ msg: String(msg) })); } catch (_) { }
+   }
+   ```
+2. `fusion-bridge.js`: delete its local `fusLog` (:14-16) and add `export { fusLog } from './fusion-log.js';` at the top
+   (also `import { fusLog } from './fusion-log.js';` if the bridge calls it internally — it does).
+3. `coords.js:14-15` and `state.js:268-270`: replace the inline guarded call with `fusLog(msg)` / `fusLog(JSON.stringify(session))`
+   (import from `./fusion-log.js`). Keep the surrounding `if (isFusionMode…)`-style gating if any; drop the
+   `typeof adsk` guards (the leaf owns them).
+4. B9: add to `fusion-bridge.js` `export function requestDesignParams() { try { adsk.fusionSendData('get_design_params', '{}'); } catch (e) { fusLog('requestDesignParams FAILED: ' + e.message); } }`
+   and call it from `main.js:135` (import it; the reply still arrives as the `sync_board` handshake — unchanged).
+5. Grep afterwards: `fusionSendData(` outside `core/fusion-bridge.js` and `core/fusion-log.js` → 0 across `html/`
+   (the inline `<script>` in the palette HTML is the named exception — leave it).
 
 ## Verify
-- `py_compile` + `pyflakes` ×3 (0 warnings). Import smoke (adsk stub) for both UI modules as in FB2a/FB2b.
-- Greps: names of deleted functions → 0 hits outside the design doc; `_PaletteBridgeMixin, adsk.core.HTMLEventHandler`
-  → 2 (one per UI module); `handlers.remove(old)` → 1.
-- `git show --stat HEAD` → 4 files. Live proof (both palettes open + build once more, Stop→Start) is the ADVISOR's.
+- `node --check` ×5; `npx vitest run` → 29 (state.js and coords.js are under test — this is the byte-identity gate).
+- Greps as in step 5; `fusLog` defined once (`fusion-log.js`), re-exported once.
+- `git show --stat HEAD` → 5 files. Web look (the site rebuilds on push) + Fusion look are the ADVISOR's.
 
 ## Do NOT
-Change any behaviour beyond item 1. Don't touch fb_engine, the HTML, or the parent loader. Don't deploy.
+Touch the palette HTML, `pollMode`, the chunked send, or any Python.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2c: replaced doc handler pruned from handlers; mixin order unified; <n> stale comments corrected; design doc status block — <sha>, 4 files. FB2 COMPLETE pending advisor live check."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "BG2: fusion-log.js leaf owns fusLog (bridge re-exports); coords/state use it; requestDesignParams() in the bridge replaces main.js's direct call — <sha>, 5 files; fusionSendData outside bridge/log = 0; vitest 29. B9+B11 closed."`
 and stop.
