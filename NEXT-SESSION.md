@@ -1,27 +1,28 @@
-# LANE B (audit seat) — A3: audit `template-maker/` (~8.2k lines). READ-ONLY.
+# LANE B (audit seat) — A4: audit `stamp-editor/` (~10.7k lines). READ-ONLY.
 
-**Seat B · epoch 1 · A3.** Same rules as A1/A2. Append an **"A3 — template-maker"** section to `AUDIT-2026-09.md`.
+**Seat B · epoch 1 · A4.** Same rules as A1-A3. Append an **"A4 — stamp-editor"** section to `AUDIT-2026-09.md`.
 
-**A2 review (advisor):** accepted. A2-1 (params created inside Execute beyond the tilt) is being verified live by the
-advisor; A2-3 (deferred-compute window with no `finally`) goes to seat A as a declared context manager; A2-2/A2-5 fold
-into that task; A2-4 (duplicated hidden-command machinery) is queued design-first. Good catch on the design doc's scope.
+**A3 review (advisor):** accepted. A3-1 becomes a seat-A task — not "add the 5 names" but DERIVE the wipe list from the
+`core/` folder so it cannot drift again (the hand-maintained list IS the bug). A3-2 (`check_addin_sync.py`) → delete.
 
-## A3 scope — `bspline-frame-builder/template-maker/`
-1. `template-maker.py` (entry, lifecycle: what `run()` registers vs `stop()` releases; the `_PROJECT_MODULES` /
-   `_reload_all_project_modules` dynamic-import machinery that bit C4-S4b — is it still needed now that fb_shared is
-   canonical? enumerate what it wipes and whether each name still exists).
-2. `core/` — `template_generator.py`, `template_payload_builder.py`, `template_payload.py`, `coincidence_clusters.py`,
-   `relation_hints.py`, `ownership_gate.py`, `detection_log.py`, `check_addin_sync.py`. Look for: hand-rolled
-   tables that should be declarations; N² loops over entities (real sketches have hundreds); repeated Fusion API
-   calls inside loops (each `.geometry`/`.attributes` call crosses the COM boundary — count re-reads of the same
-   entity); logic duplicated with `fb_shared`; `check_addin_sync.py` — is it live or dead?
-3. `ui/template_maker_palette.html` — declared vs hand-rolled rendering; doorless handlers.
-4. `tests/` — it HAS a suite (83 green today). Which of the above modules does it actually cover, and which findings
-   land in untested code?
+## A4 scope — `bspline-frame-builder/stamp-editor/`
+Context you need first: ROADMAP "CLEANUP PHASE" C1 (the editor tree used to be a sync-GENERATED fork of
+`b-spline-gen/html/editor/` + `core/stamp/`; C1 untracked the generated copies) and C5/EDM4 (the `P.stampLayers` mirror
+tangle, still open, carve-path). `sync_stamp_bundle.py` at `bspline-frame-builder/` root is the generator.
+1. **Fork status (P1: one frontend, no copy-paste per host):** which files under `stamp-editor/html/` are GENERATED
+   (by `sync_stamp_bundle.py`) vs UNIQUE (engine.js / runtime.js / main/)? Are any generated copies still tracked in git
+   (`git ls-files stamp-editor/`)? Has any generated copy been hand-edited since its source (diff them)? Name each.
+2. `stamp-editor.py` (entry) — lifecycle symmetry, palette + handlers released in `stop()`.
+3. `html/main/` + `html/core/runtime.js` + `engine.js` — the unique code: doorless handlers both directions
+   (`fusionSendData` actions vs Python dispatcher; `sendInfoToHTML` events vs JS handlers), hand-rolled tables that
+   should be declarations, dead functions (0 callers), honesty (comments describing a pre-C1 or pre-EDM4 state).
+4. **EDM4 (C5) reconnaissance, read-only:** where is `P.stampLayers` written and read today? One list of `file:line`
+   for writers and one for readers — this is the map the eventual C5 carve needs; do not propose the carve.
+5. Tests: `tests/` at repo root has 4 vitest files (29 green) — which touch stamp-editor code?
 
-Do NOT run Fusion. Static read + grep + `pytest template-maker/tests -q` (read-only run is fine).
+Do NOT run Fusion; do not run `sync_stamp_bundle.py` (it writes). Static read + grep + `git ls-files` + `diff`.
 
 ## When done
 Append lane-b WORK-LOG, commit by path, then FROM THIS FOLDER:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A3 template-maker audit: <n> findings (<H/M/L>), <m> reconciled, <sha>. Next: A4 stamp-editor."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A4 stamp-editor audit: <n> findings (<H/M/L>), fork status: <tracked generated copies? hand-edited?>, stampLayers writers/readers mapped, <sha>. Next: A5 b-spline-gen."`
 and stop.
