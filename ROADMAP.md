@@ -296,3 +296,15 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
   possible duplication (unchecked).
 - Facts: `index.html` is a 6-line redirect; there is ONE page for both hosts. `editor/` has zero host branches and zero
   C2 survivors.
+
+## Backlog from the lane-B audit (A6 CAM-builder, 2026-09-17)
+- Cleanest add-in: doorless sweep clean both directions (13 JS→Py actions, 7 Py→JS events, two palettes), no fb_shared
+  duplication, zero bare-name imports, no app-level subscriptions. 0 tests (as A1 said).
+- **B10 → HY3:** `cam-builder.py` `stop()` (:2211-2298) unregisters only `REFRESH_EVENT_ID` (:2284); `TPGEN_EVENT_ID` +
+  `AXISPICK_EVENT_ID` are released only by the next `run()`'s re-register (:2037-2063). Add the two `unregisterCustomEvent`
+  calls to `stop()`. L.
+- **Parent wipe list (`_shared_project_names`):** CAM-builder contributes no reason to keep it; template-maker's own bare
+  imports are the remaining one → after TM1, derive the parent list from template-maker's `core/` too, or retire it once
+  template-maker imports package-qualified (TM2, design note).
+- Machine coupling: "Ultimate Bee" appears ~15× in `cam_engine/setup_builder.py` (machine matching, sim-doc detection,
+  default machine, WCS). Portability is a declaration job (one machine profile), not a one-line path fix. Parked.
