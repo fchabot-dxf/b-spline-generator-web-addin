@@ -4528,3 +4528,86 @@ No gate hit. Did not touch `cam_engine/`, the parent loader, the `selectEntity` 
 and still register/work exactly as before (the fallback). Live proof (open the merged palette, switch
 tabs, PREVIEW BODIES + PREVIEW STOCK each do their real thing; old CAM Studio button still opens the
 untouched palette) is the advisor's, as scoped.
+
+## Turn 179 — CAM1b: retire the Studio command/palette; one send helper; ignore 'response' — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md):** slice (a) proven live by the advisor (merged palette docks
+right, both tabs boot). This slice deletes the now-superseded Studio-only code, collapses to one Python
+send helper, silences a spurious warning on Fusion's own `sendInfoToHTML` acknowledgement, renames the
+toolbar button, and removes the old standalone Studio HTML.
+
+**Grepped the parent loader first, per the dispatch's own instruction:** `grep "CamStudio"
+bspline-frame-builder.py` → **0 hits**. Confirmed design §3's claim that the toolbar loops live entirely
+in `cam-builder.py` — the parent file needed no changes, so this landed as **2 files**, not 3.
+
+**Deleted:** the `STUDIO_CMD_ID`/`STUDIO_PALETTE_ID`/`STUDIO_PALETTE_NAME`/`STUDIO_PALETTE_WIDTH`/
+`STUDIO_PALETTE_HEIGHT`/`STUDIO_PALETTE_URL`/`STUDIO_RESOURCES_PATH` constants block; the
+`_studio_html_handler`/`_studio_closed_handler` globals; `_StudioCmdCreatedHandler`;
+`_StudioHtmlEventHandler` (superseded in slice (a)); `_show_studio_palette`; the superseded
+`_HtmlEventHandler` (also slice-(a)-superseded); `_send_to_studio_html`; `_palette_send`. Repointed
+`_palette_send`'s 2 callers and every `_send_to_studio_html(...)` call (9 sites) to `_send_to_html` —
+**one Python send helper remains**, closing the second duplicate-helper finding from the design doc.
+
+**`_StudioPaletteClosedHandler` — kept and renamed, per the dispatch's own conditional.** Read
+`_show_palette` (the merged palette's creation function) first: it had **no** `.closed` hook of its own,
+meaning the GENERIC tab's live stock-preview graphics (`_do_studio_preview`'s custom-graphics group)
+would leak into the viewport with no cleanup path once the merged palette became the only way most users
+reach that tab. Renamed the class to `_CamPaletteClosedHandler` (same body — still calls
+`_clear_studio_preview()`) and wired it into `_show_palette` with the same first-creation-only guard
+`_show_studio_palette` used, via a renamed `_cam_closed_handler` global.
+
+**`run()`/`stop()` edited exactly per design §3:** the command-def purge loop, the toolbar-add loop, and
+`stop()`'s three loops (palette teardown, control removal, command-def removal) are now all
+single-element tuples over `CMD_ID`/`PALETTE_ID` only. Deleted `run()`'s entire "4b. Register CAM Studio
+button" block. `AXISPICK_EVENT_ID` registration/unregistration in both `run()` and `stop()` is untouched,
+per the dispatch's explicit instruction — the GENERIC tab still needs it.
+
+**One real bug caught by the grep sweep, not anticipated in the dispatch's own list:**
+`_do_studio_generate`'s success path hid the palette via `ui.palettes.itemById(STUDIO_PALETTE_ID)` after
+a successful GENERATE — a reference to a constant this same turn deletes. Left alone, this would have
+raised `NameError` on every successful GENERIC-tab generate (a runtime crash, not just a stale warning).
+Repointed to `PALETTE_ID` — the merged palette auto-hides after a successful generate, matching the old
+standalone Studio's exact UX, just against the one palette both tabs now share.
+
+**The `'response'` fix:** added `if action == 'response': return` as the first check inside
+`_CamHtmlEventHandler.notify`, before the action table, with a one-line comment explaining it's Fusion's
+own acknowledgement of every `sendInfoToHTML` call, not a page-originated action — matches why the old
+per-palette dispatchers never needed this (each one only ever *sent* via its own single-purpose helper
+and apparently never saw this echo hit its *own* handler in the old two-palette topology; the merged
+dispatcher does, now that both tabs share one `sendInfoToHTML` traffic pattern through the same handler).
+
+**Toolbar label:** `CMD_ID`'s button changed from `'B-spline CAM'` to `'CAM'`; left its tooltip
+description text unchanged (only the display name was asked for — a first pass of mine drafted an
+expanded tooltip mentioning both workflows, caught it before finalizing as scope beyond what was asked,
+reverted to the original description string).
+
+**Noticed, not removed (flagging rather than silently leaving it or silently deleting it):** the
+`resources/CamStudioCommand/` icon folder is now unreferenced by any code (its constant,
+`STUDIO_RESOURCES_PATH`, is deleted) but the dispatch's "Do" list only named the HTML file for deletion,
+not this folder. Left it in place — an orphaned resource folder is a much lower-risk leftover than
+guessing at a deletion nobody asked for.
+
+**Verify (all green):**
+- `py_compile` → clean.
+- `pyflakes` → the same 4 pre-existing warnings as slice (a) (confirmed again against `git show
+  HEAD:...` from before this turn's edits, only line numbers shifted) — **no new warnings**.
+- Extracted the merged palette's `<script>` → `node --check` clean; `git diff --stat` on the HTML file
+  itself → **no changes at all**, confirming the tab bodies were genuinely untouched this slice as
+  required.
+- Adsk-stub import smoke (extended with explicit assertions this time, not just "it imports"): module
+  imports; `run`/`stop` exist; `_CamHtmlEventHandler.notify` exists; `STUDIO_CMD_ID`,
+  `_show_studio_palette`, `_palette_send`, `_send_to_studio_html` all confirmed **absent** from the
+  loaded module's namespace via `hasattr`, not just absent from a text grep.
+- The dispatch's official 9-term grep (`STUDIO_CMD_ID|STUDIO_PALETTE_ID|_show_studio_palette|
+  _StudioHtmlEventHandler|_StudioCmdCreatedHandler|_send_to_studio_html|_palette_send|class
+  _HtmlEventHandler|cam_studio_palette`) → **0** in `cam-builder.py`. `_send_to_html(` → **39** (the one
+  definition plus every call site combined — the one remaining helper).
+- Action table re-verified: **15** real page actions unchanged (plus the new `'response'` early-return,
+  which isn't a page action and doesn't count against that figure).
+- `git rm` on `cam_studio_palette.html` succeeded outright this time (no sandbox permission denial, unlike
+  the earlier DEC1 incident with `cloud/step-editor-*` — no workaround needed, no blocker to report).
+- `git diff --stat` → exactly **2 files** (`cam-builder.py` modified, `cam_studio_palette.html` deleted).
+
+No gate hit. Did not touch `cam_engine/`, the axis-pick deferral, `_kick_off_toolpath_generation`, or the
+merged HTML's tab bodies. Live proof (only ONE CAM button; both tabs boot; Stop→Start leaves no
+`CamStudio_*` command/palette; no `'response'` warnings in the log) is the advisor's, as scoped.
