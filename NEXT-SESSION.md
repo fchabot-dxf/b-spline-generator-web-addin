@@ -1,44 +1,49 @@
-# NEXT — FB2 DESIGN (no code): one declared hidden-command palette scaffold for the two frame builders
+# NEXT — FB2 slice (a): add `palette_scaffold.py`, switch the Sketch Builder onto it (solid untouched)
 
-**Ball: worker (seat A) · epoch 1 · FB2-design.** Output: ONE file, `FB2-PALETTE-SCAFFOLD-DESIGN.md` at the repo root.
-No product code this turn. Commit by path.
+**Ball: worker (seat A) · epoch 1 · FB2a.** Design BLESSED as written in `FB2-PALETTE-SCAFFOLD-DESIGN.md` with two
+amendments below. Files: `bspline-frame-builder/frame-builder/ui/palette_scaffold.py` (new),
+`bspline-frame-builder/frame-builder/ui/sketch_builder_ui.py` (rewritten onto the scaffold),
+`bspline-frame-builder/bspline-frame-builder.py` (one line, amendment 1). One commit by path, predicted **3 files**.
+`solid_builder_ui.py` stays untouched — the two styles must coexist after this slice.
 
-## Ground truth (advisor-verified)
-`frame-builder/ui/sketch_builder_ui.py` (594 lines) and `frame-builder/ui/solid_builder_ui.py` (351) define the SAME
-eleven names: `_create_hidden_command`, `_ensure_hidden_commands`, `_schedule_hidden_build`, `CommandCreatedHandler`,
-`PaletteHTMLEventHandler`, `HiddenBuildCommandCreatedHandler`, `HiddenBuildCommandExecuteHandler`, `_set_status`,
-`_notify_status`, `_close_palette`, `run_palette`. They differ by module constants (`PALETTE_ID/NAME/HTML`, the build
-command id) and by the one build call (`frame_engine.build_sketch_logic_v3` vs `solid_coordinator.build_solid_logic_v3`).
-Sketch-only extras: `_schedule_schema_push` / `_push_schema_direct` + their two handler classes, `DocumentActivatedHandler`,
-`_ensure_tilt_param_safe`. The parent loader tears both down through `_teardown_submodules` (`bspline-frame-builder.py`),
-reading each module's `handlers` list and, for sketch, its `DocumentActivated` subscription — the design must keep that
-contract or change it explicitly.
+## Amendments to the design (advisor)
+1. **Hot-reload wipe.** A new bare module `palette_scaffold` would stay cached in `sys.modules` across Stop→Start
+   (B7/A3-1 class). Extend the derivation from TM2 in `bspline-frame-builder.py` `_bootstrap`:
+   `+ _bare_module_names(os.path.join(_addin_root, 'frame-builder', 'ui'))` appended to `_shared_project_names`
+   (the two `*_builder_ui` names are harmless extras; they are loaded by path under other names).
+2. **The loop must bind per iteration.** In the generic hidden-command loop, pass `cmd_id`/`handler_factory` as
+   default arguments or via a small factory function — never a closure over the loop variable. Add one line to the
+   docstring saying so, and prove it in the headless smoke (register two fake commands, assert the two handlers
+   differ).
 
-## Write the design — sections, each with file:line evidence
-1. **Diff map.** For each of the eleven shared names: identical / differs only by constant / differs in logic (quote the
-   differing lines). `diff -u` is your tool; summarize, don't paste it all.
-2. **The declaration.** Propose `frame-builder/ui/palette_scaffold.py` exposing ONE declared shape — e.g. a
-   `PaletteSpec(palette_id, name, html, build_cmd_id, build_fn, extra_commands=(), on_document_activated=None)` — and a
-   `make_palette(spec)` (or a small class) that returns the run/stop surface the parent needs (`run_palette`,
-   `handlers`, and whatever `_teardown_submodules` reads). Show what each of the two UI modules becomes: ideally ~40
-   lines each = constants + the spec + the build function. Name every function that moves, and where.
-3. **What stays sketch-only** (schema push, tilt param, doc-activated) and how it plugs into the scaffold without a
-   flag that the solid side has to know about (no `if is_sketch:` inside the scaffold — that is the hand-roll in disguise).
-4. **The bridge contract check.** The palette HTML sends actions (`fusionSendData`) that `PaletteHTMLEventHandler`
-   dispatches. List both palettes' action strings and confirm the scaffold keeps every one wired (doorless sweep both
-   directions, like the audit did).
-5. **Migration plan in slices**, each one turn, each leaving both palettes working: (a) scaffold module added + sketch
-   switched; (b) solid switched; (c) delete the duplicates + honesty sweep of comments. Per slice: files, predicted
-   shape, the headless gate (py_compile, pyflakes, an import-time smoke with the template-maker conftest adsk stub if
-   feasible), and what the advisor verifies live through the bridge (open both palettes, build one frame each,
-   Stop→Start).
-6. **Risks / STOP conditions**: anything whose behaviour could change (handler lifetime, palette re-open on
-   document switch, the hidden-command purge order in `run_palette`).
+## Do (exactly the design's slice (a))
+1. `palette_scaffold.py`: `PaletteSpec`, `_PaletteBridgeMixin` (`_send_palette_message`, `_send_build_info` moved
+   verbatim), `make_palette(spec)` returning an object/namespace with `run_palette`, `handlers`, `set_status`,
+   `notify_status`, `close_palette`, `schedule_hidden_build(data)`; the generic delete-then-recreate command loop
+   (amendment 2); `on_document_activated` / `on_ready` wired only when populated; NO name check of any builder.
+2. `sketch_builder_ui.py`: keep the module constants, the sketch-only material (§3 of the design: schema push +
+   its two handler classes as `extra_commands`, `_ensure_tilt_param_safe`, the doc-activated callback, the sketch
+   `PaletteHTMLEventHandler` subclassing the mixin, `_run_sketch_build_direct` as `build_fn(data, ctx)` reading
+   `data['style_id']`), the `sys.path` line for `ui/`, and the spec + `make_palette` call re-exported as
+   `run_palette` / `handlers` (and `_doc_activated_handler` if the parent reads it — check `_teardown_submodules`
+   first and keep whatever it reads).
+3. `bspline-frame-builder.py`: amendment 1 only.
+
+## Verify (headless gate, as designed)
+- `py_compile` + `pyflakes` on the three files (no new warnings).
+- Import-time smoke with the template-maker conftest's `adsk` stub: `palette_scaffold` and the new
+  `sketch_builder_ui` import; `handlers` is a list; `run_palette` callable; `PaletteHTMLEventHandler.notify` exists;
+  the per-iteration binding proof (amendment 2). Paste the script + output into the WORK-LOG.
+- Re-run the §4 sketch action table by grep against the new `notify` source: `update_param update_lock
+  change_template request_template_list run_build ping get_templates` all still present; nothing new handled.
+- `wc -l` before/after for `sketch_builder_ui.py` (expect ~594 → 200-250).
+- `git show --stat HEAD` → 3 files. The live proof (open Sketch Builder through the bridge, build, auto-close,
+  Stop→Start, one schema push on document switch) is the ADVISOR's.
 
 ## Do NOT
-Edit any `.py`/`.html`. Don't propose "keep both, add a flag". Don't deploy.
+Touch `solid_builder_ui.py`, either palette HTML, `fb_engine/`, or fb_shared. No `if is_sketch`. Don't deploy.
 
 ## When done
-Commit `FB2-PALETTE-SCAFFOLD-DESIGN.md` + WORK-LOG by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2 design: <n> of 11 names identical/<m> constant-only/<k> logic-diff; PaletteSpec + make_palette proposed; 3 slices; risks listed — <sha>. Awaiting advisor blessing."`
+Append WORK-LOG, commit, then:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2a: palette_scaffold.py added (PaletteSpec, mixin, make_palette, per-iteration-bound command loop); sketch_builder_ui 594→<n> lines on the scaffold; ui/ added to the parent's derived wipe list — <sha>, 3 files; smoke + action table OK. Next: FB2b."`
 and stop.
