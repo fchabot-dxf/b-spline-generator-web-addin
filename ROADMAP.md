@@ -371,3 +371,18 @@ Order = advisor's, cheapest-and-safest first, design-first items last.
 - **CAM1** CAM Builder vs CAM Studio → consolidate — design-first turn, then slices.
 - Kept as-is by ruling: `/presets` alias stays; GitHub-commit route unchanged; no machine profile.
 - Already done: FB2 (palette scaffold); over-exports (HY4, in flight).
+
+## WEBSITE INCIDENT 2026-09-17 12:20 — the site had not built since JULY 12
+Cloudflare Pages (`bspline-generator`, GitHub-connected, build = `python bspline-frame-builder/deploy_cloudflare.py
+--build-only`, output `bspline-frame-builder/dist`) ran `npm clean-install` before every build because a root
+`package.json` exists; the lock file drifted (`@emnapi/*`), so **every build since 6c1cce4 (2026-07-12) failed** while
+`git push` reported success and nobody looked at Cloudflare. All of July's E-series and today's work were invisible
+on the web until 16:24 today. Fix applied: Pages project env `SKIP_DEPENDENCY_INSTALL=1` (production + preview) — the
+site build needs no npm packages (vitest is dev-only) — then retried; deploy success at 16:24, served bytes verified
+against HEAD (fusion-log.js, state.js, cloud-project-manager.js byte-identical). Lock also regenerated (6a610b9) for
+local `npm ci`; Cloudflare's older npm still disagrees with it — irrelevant now that installs are skipped.
+- **DEP2 (queue, after UX2):** `release.py --web` must VERIFY the Pages deployment (poll the API for the push's
+  commit → success/failure, print the reason on failure) — "push succeeded" is not "site updated". The advisor skill's
+  release rule already says so; now the script must.
+- **PM2b (next for seat A):** the new top-bar labels clip — `.cad-navbar .cad-nav-btn` keeps a fixed width on desktop.
+  Widen in the same `min-width:601px + fine pointer` block.
