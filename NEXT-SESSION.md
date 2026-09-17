@@ -1,38 +1,33 @@
-# NEXT — IN4: Inspector — collapse big selections, keep Full Copy whole, drop Copy Name (Fred's ruling)
+# NEXT — PM2b: the top-bar labels clip — let the icon buttons grow when their label shows
 
-**Ball: worker (seat A) · epoch 1 · IN4.** File: ONLY `bspline-frame-builder/frame-inspector/inspector_palette.html`.
-One commit by path, predicted **1 file**.
+**Ball: worker (seat A) · epoch 1 · PM2b.** File: ONLY `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html`.
+One commit by path, predicted **1 file, ~+8 lines**.
 
-## Ground truth (advisor-verified, current lines)
-- Details list: `#linked-root` (:72) → header `#list-label` (:73, text set from `d.listLabel`) → `<ul id="linked-list">`
-  (:74). `renderLinkedList(data, useExpr)` (:135-153) renders one `<li>` per entry (+ E7c's ⧉ button).
-- Bottom row: `#copy-btn` "Full Copy" (:96) → `copyToClipboard` (copies the WHOLE batch list from `currentData.linked`,
-  not from the DOM — must stay whole regardless of collapsing); `#copy-short-btn` "Copy Name" (:97) → `copyShort` (:330),
-  wired at `:430-431`. Ruling: **drop Copy Name**; `normalizeEntityName` is used by `copyShort` — check whether anything
-  else uses it (grep); if not, it dies with it.
-- Ruling note on collapsing: "but allow to copy full list" → collapse only the DISPLAY.
+## Ground truth (advisor, Fusion screenshot at 1000 px, deployed 6a610b9)
+Labels render but clip: "💾 S", "📁 Proje", "⚙ Setting", and the 🧩 add-in icon collides with "Send to Fusion".
+Cause: `.cad-navbar .cad-nav-btn` (`:159-175`) pins `width/min-width/max-width: 32px !important`, `padding: 0
+!important`, `flex: 0 0 32px !important` on desktop. The label rule (`:193-200`) only flips `display`. The mobile block
+(`@media (max-width: 600px), (pointer: coarse)`, `:212-235`) pins 44px the same way — leave it.
 
 ## Do
-1. **Declare the threshold once:** `var BATCH_COLLAPSE_AFTER = 5;` next to `META_FIELDS`.
-2. In `renderLinkedList`: when `entries.length > BATCH_COLLAPSE_AFTER`, render the first `BATCH_COLLAPSE_AFTER` rows,
-   then one `<li class="linked-more">` with a `cad-btn` reading `Show all N` that, on click, renders the remaining rows
-   in place (replace the more-row; no re-fetch). Set `#list-label` to `<listLabel> (N)` whenever N > 0 (the count
-   belongs in the header per the ruling). The expr/raw toggle re-renders → collapsed again; fine.
-3. Remove the Copy Name chain: the `#copy-short-btn` element (:97), `copyShort` (:330-~345), its wiring (:430-431),
-   and `normalizeEntityName` if it has no other caller. `#copy-btn` keeps `flex:1` and now spans the row alone.
-4. `copyToClipboard` unchanged (already copies from data, not DOM) — verify by reading it, and say so.
+In the existing `@media (min-width: 601px) and (pointer: fine)` block (`:198-200`), add ONE rule so the sizing follows
+the same breakpoint as the label:
+```css
+.cad-navbar .cad-nav-btn {
+  width: auto !important; min-width: 32px !important; max-width: none !important;
+  padding: 0 10px !important; flex: 0 0 auto !important; gap: 6px;
+}
+```
+(the `!important`s are needed only because the base rule uses them — say so in a one-line comment). Then the
+`.cad-nav-label { margin-left: 6px }` becomes redundant with `gap` — drop the margin.
+Nothing else: the "STEP / Send to Fusion" primary button and the settings gear keep their markup.
 
 ## Verify
-- Extract the `<script>` (as E7c did) → `node --check`.
-- Greps: `copy-short-btn|copyShort|normalizeEntityName` → 0 (unless normalizeEntityName has another caller — then say
-  which); `BATCH_COLLAPSE_AFTER` → 2+ (decl + use); `Show all` → 1.
-- `git show --stat HEAD` → 1 file. Fusion look is the ADVISOR's (select 8 entities → 5 rows + "Show all 8", header
-  shows (8), Full Copy pastes 8 lines).
-
-## Do NOT
-Touch `fusion-inspector.py`, the copy pump, folding, or fb_shared.
+- Extract + `node --check` the inline scripts (unchanged, sanity). `npx vitest run` → 29.
+- `git show --stat HEAD` → 1 file. The look is the ADVISOR's (Fusion palette at 1000 px: four labelled buttons, no
+  overlap; docked narrow: icons only).
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "IN4: BATCH_COLLAPSE_AFTER=5 + Show all N row + count in header; Copy Name chain removed (<n> lines) — <sha>, 1 file; node --check OK. Next: UX1."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "PM2b: nav buttons size auto inside the label breakpoint — <sha>, 1 file. Next: UX1."`
 and stop.
