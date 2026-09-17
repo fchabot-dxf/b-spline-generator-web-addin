@@ -2978,3 +2978,67 @@ appended, A1-A5b untouched). No amendments pending at either poll. No Fusion, st
 per NEXT-SESSION's explicit constraint.
 
 No gate hit — read-only turn. This closes the original A1-A6 add-in sweep; A7 (cloud workers) is next.
+
+---
+
+## Lane B — Turn 15 — A7 audit: cloud (preset-worker, step-editor pair, deploy_cloudflare.py) — DONE
+
+**Last audit slice.** Scope: `cloud/preset-worker/` (3 source files, ~1350L combined), `cloud/
+step-editor-worker/`, `cloud/step-editor-pages/`, `bspline-frame-builder/deploy_cloudflare.py`. This is
+a security-relevant review (a real, internet-facing, unauthenticated-by-design shared worker) — treated
+it with the care that implies: read every route's auth/validation posture directly rather than
+extrapolating from one example, and was explicit about what's a known/accepted risk (the README already
+admits `/projects` is unauthenticated) versus what's a genuinely new gap.
+
+**Built a route-by-route table (auth/validation/size-cap/CORS) across all 3 route families** in
+`preset-worker` rather than a single pass/fail verdict — the postures are genuinely different:
+`/views/*` (pageviews) has the BEST discipline (origin allowlist, bot-UA filter, Cloudflare bot-score
+gate, tight size cap) despite having no auth by design; `/bus/*` has the WORST (no size cap on any of
+its 6 write endpoints — the one new concrete gap, A7-1). Listed every unauthenticated write explicitly,
+as asked, rather than just the ones the README already names.
+
+**Flagged the GitHub-commit route (A7-2) as the highest-consequence unauthenticated write, distinct
+from the KV routes.** A bad KV write is trivially revertible; a bad GitHub commit via a server-side PAT
+is not. The code's own comment already accepts this risk explicitly — said so plainly (known/accepted,
+not an oversight) rather than reporting it as if newly discovered.
+
+**Traced `deploy_cloudflare.py`'s `--build-only` control flow end to end and found a confirmed bug
+(A7-3), not an inferred one.** The only `clean_dir(deploy_dist)` call in the file is unreachable in
+`--build-only` mode because `sys.exit(0)` fires first — so `dist/` is a pure overlay, never cleaned
+before OR after a build. Connected this explicitly to A1-6 (the same overlay-without-clean pattern
+already found in the Fusion AddIns deploy path) — two instances of one root cause, not two coincidences,
+worth fixing as one lesson.
+
+**step-editor: gave a precise 3-way status instead of one verdict**, since the three pieces (worker code,
+pages scaffold, the Fusion add-in itself) are in three genuinely different states. Read step-editor-
+worker's actual source (122L) rather than trusting the README — it's finished, validated code, just
+never provisioned (placeholder KV id). Confirmed step-editor-pages really is README-only (matches
+STANDARDS-AUDIT exactly). The more interesting finding: the Fusion add-in these two cloud pieces exist
+to serve doesn't exist in the repo at all, and per A4's own sync_stamp_bundle.py reading, its
+functionality already moved to stamp-editor — reframed this from "half-built, needs finishing" to
+"probably superseded, needs a keep-or-delete call," which is a materially different thing to put in
+front of the advisor/human than a generic TODO.
+
+**Dead-routes question answered with an explicit scope correction, not just an answer.** This worker is
+shared across MULTIPLE of Fred's app repos (confirmed via its own routing comment); this repo doesn't
+contain the sibling apps for `/loader`, `/bus`, or `/views`. Only called `/presets` genuinely dead,
+because I could trace its one caller in THIS repo to code A5a already proved is dead — for the other
+three, said plainly "zero callers found in this repo" is not the same claim as "dead," and didn't
+overreach into calling them that.
+
+**Hygiene sweep reconciled STANDARDS-AUDIT §5's preset-worker identity-drift finding precisely: half
+resolved.** The dangerous half (`deploy_worker.py`, the orphan mis-bound REST-deploy script) no longer
+exists — confirmed gone. The cosmetic half (`package.json`'s third, unused name label) is still there,
+but doesn't affect the actual deploy identity. Said both halves separately rather than one blended verdict.
+
+**Built the audit-series summary table as the final deliverable** — every H/M finding across A1-A7 in
+one table with current disposition, cross-referencing the advisor's own review notes from each turn
+(which findings became seat-A tasks, which are still open, which got reframed). Also surfaced two
+cross-cutting notes worth ROADMAP attention that don't fit a single-turn row: the A1-6/A7-3 overlay-
+pattern pairing, and the now-complete picture of every add-in's lifecycle-symmetry status in one place.
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` modified (A7 +
+summary table appended, A1-A6 untouched). No amendments pending at either poll. No wrangler/deploy
+commands run against the live account — static read + grep only, per NEXT-SESSION's explicit constraint.
+
+No gate hit — read-only turn. **This completes the audit series (A1-A7).**
