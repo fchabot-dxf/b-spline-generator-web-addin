@@ -192,3 +192,16 @@ carve-path, so slot it near E9/E10 or after, human's call.
   never added to `handoff.py`; the loop runs on `pass` + self-looping `wait`.
 - **Parked cleanup (not dispatched):** move the 6 `*-DESIGN.md` + audit docs into `docs/` (breaks paths quoted
   in WORK-LOG/ROADMAP — do only with a link sweep); 4 stale `.venv*` dirs at root (ignored, disk only).
+
+## PM1 — Project Manager: restore the lost selection bar + consolidate to ONE entry (human ruling 2026-09-17)
+
+**Bug found while answering "where are the 6 items":** commit `91b624d` (2026-05-23, labelled *fix(deploy):
+self-healing wrangler shim*) also swallowed an unrelated palette-HTML change that DELETED the Project Manager's
+bottom selection bar (`fmBtnLoad` / `fmBtnRename` / `fmBtnDelete` + `fmSelbarInfo`), its status bar
+(`fmProjectStatus` / `fmProjectMsg`) and the hidden `fmProjectName` input. The CSS and the JS wiring stayed, all
+null-guarded, so nothing errored: the manager has silently had NO Load / Rename / Delete for four months.
+(Textbook index-swallow — the same defect class the advisor skill records from 2026-09-11.)
+
+**Ruling:** consolidate — the sidebar `📂 Load` (Quick-Load) button goes away; `📁 Projects` is the single
+entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is untouched.
+**Sequenced right after E7a** (bug + human-requested beats E7b polish). Headless-verifiable + a browser look.
