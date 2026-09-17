@@ -225,8 +225,9 @@ SKIP_NAMES = {
     "desktop.ini",
     "_legacy_archived",  # archived hybrid-palette source — kept locally, not shipped
     ".addin-running.lock",  # runtime heartbeat lock (E3 stop-first guard) — never ship/copy
+    ".pytest_cache", "dist",  # DEP1b: test cache + web build output — not add-in files
 }
-SKIP_SUFFIXES = {".log", ".old", ".pyc", ".pyo"}
+SKIP_SUFFIXES = {".log", ".old", ".pyc", ".pyo", ".zip", ".tmp", ".code-workspace"}
 # Dev-only scripts that shouldn't ship to end-users
 SKIP_FILES_EXACT = {
     "DEPLOY_bspline-frame-builder.py",   # this script itself
@@ -243,6 +244,7 @@ SKIP_FILES_EXACT = {
     "b_spline_gen_log.txt",
     "frame-builder.py",       # LEGACY: ignore the monolithic backup
     "frame-builder.manifest", # LEGACY: ignore redundant manifest
+    "comp export.png",        # DEP1b: stray dev screenshot, not an icon — .png stays shippable
 }
 
 # DEST-only artifacts a post-copy orphan sweep must never delete (declared once — A1-6/DEP1).
@@ -546,7 +548,7 @@ def deploy_local(force=False):
     # log file open) are skipped without aborting the deploy.
     print("  Copying files...")
     try:
-        copied, skipped_paths = copy_overlay(SRC_DIR, DEST_DIR, ignore_for_copy)
+        copied_paths, skipped_paths = copy_overlay(SRC_DIR, DEST_DIR, ignore_for_copy)
     except Exception as e:
         print(f"  ERROR: copy_overlay failed: {e}")
         sys.exit(1)
@@ -559,7 +561,12 @@ def deploy_local(force=False):
         print(f"  A running Fusion add-in is holding these locked. Stop it")
         print(f"  (Fusion -> Tools -> Add-Ins -> Stop), then redeploy.")
         sys.exit(1)
-    print(f"  Copied {copied} files.")
+    print(f"  Copied {len(copied_paths)} files.")
+
+    # A1-6/DEP1: when clean_dir (above) fell back to overlay because Fusion
+    # held a file open, anything deleted from source would otherwise survive
+    # in dest forever. Sweep it now that we know exactly what this run copied.
+    sweep_orphans(DEST_DIR, copied_paths)
 
     # Write project_path.json handshake for the frame-builder sub-module so
     # its DebugLogger can write logs back to the source workspace.
