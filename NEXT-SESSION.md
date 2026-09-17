@@ -1,60 +1,50 @@
-# NEXT — FB1: DECLARE the deferred-compute window (crash-safe) + delete a dead param helper + fix one lying comment
+# NEXT — TM1: DERIVE template-maker's hot-reload wipe list from the `core/` folder + delete a dead script
 
-**Ball: worker (seat A) · epoch 1 · FB1.** Files: `bspline-frame-builder/frame-builder/fb_engine/parametric_engine.py`,
-`bspline-frame-builder/frame-builder/fb_engine/build_context.py`. One commit by path, predicted **2 files**.
-⚠ This touches the E8 tree. The human's Fusion undo check runs on the DEPLOYED copy (sha 6777525), which you do not
-touch — so it is safe. Do not deploy.
+**Ball: worker (seat A) · epoch 1 · TM1.** Files: `bspline-frame-builder/template-maker/template-maker.py` (edit) and
+`bspline-frame-builder/template-maker/core/check_addin_sync.py` (`git rm`). One commit by path, predicted **2 files**.
 
 ## Ground truth (advisor-verified)
-- `parametric_engine.py:_build_blocks` (:291-346) opens `sketch.isComputeDeferred = True` twice per block (:313 → :330,
-  :334 → :346) with NO `try/finally`. The only handler is one layer up (`build_template` :157-179) which logs and moves
-  on but never resets the flag. A step that raises inside a window leaves that Fusion sketch in deferred mode for the
-  session = silent wrong geometry. (`offsets.py:77-78` is a pulse INSIDE the engine's window, not a window — leave it.
-  `_process_sequence` :368-369 "Pulse" likewise — leave it.)
-- `build_context.py:251-272` `create_or_update_param` — 0 callers in the repo (E8 removed the last one). Dead.
-- `parametric_engine.py:123-125` comment says parameter creation "no longer" happens in `build_template` — implying one
-  creation site elsewhere — while `_sync_user_parameters` (:246-289, same file, reached from `build_sketch`) AND
-  `frame_engine.py:225-320` both create params. Two sites; the comment must say so.
+- `template-maker.py:82-100` — `_PROJECT_MODULES`, a hand-typed list of 17 module names. `_reload_all_project_modules`
+  (:196-215) deletes exactly those names from `sys.modules` on every `run()` so Stop→Start picks up edits.
+  `core/` holds 23 modules. **Five are not in the list:** `detection_log`, `dimension_hint`, `offset_hint`,
+  `template_bridge`, `variable_scan` → edits to them survive Stop→Start STALE (B7's class; `detection_log` alone has
+  9+ importers). The list is the bug: any hand-maintained copy of a folder listing drifts. Derive it.
+- `core/check_addin_sync.py` (29 lines): 0 importers in the repo, compares against a standalone AddIns folder that the
+  unified deploy no longer populates, and is non-recursive. Dead.
+- `_core_dir` is defined at :71, BEFORE the list. `os` is already imported.
 
 ## Do
-1. **Declare the window once.** In `parametric_engine.py` (module level, near the top helpers), add:
+1. Replace the whole literal list (:80-100, including its two comment lines) with a derivation placed right after
+   `_core_dir`'s `sys.path.insert` block:
    ```python
-   from contextlib import contextmanager
-
-   @contextmanager
-   def deferred_compute(sketch):
-       """Run a block with sketch.isComputeDeferred = True and ALWAYS leave the sketch live
-       (isComputeDeferred = False) on exit — including when the block raises. A sketch left
-       deferred after a crash silently stops solving for the rest of the session (A2-3)."""
-       sketch.isComputeDeferred = True
-       try:
-           yield sketch
-       finally:
-           sketch.isComputeDeferred = False
+   # Every bare-name module under core/, DERIVED from the folder so the hot-reload
+   # wipe list can never drift behind it (A3-1: a hand-typed list missed 5 modules).
+   _PROJECT_MODULES = sorted(
+       os.path.splitext(f)[0]
+       for f in os.listdir(_core_dir)
+       if f.endswith('.py') and f != '__init__.py'
+   )
    ```
-2. Rewrite the two windows in `_build_blocks` as `with deferred_compute(sketch):` blocks. The explicit `= False` lines
-   at :330 and :346 become the context exit (delete them); the explicit `= True` at :313 and :334 become the `with`.
-   Keep the PULSE SOLVE log line and `log_arc_audit` call exactly where they are relative to the solve (i.e. after the
-   first `with` block closes). Keep :308 (`= False` before Projections) as is.
-3. Delete `create_or_update_param` from `build_context.py` (whole method + its docstring).
-4. Reword `parametric_engine.py:123-125` to: "Parameter creation lives in two places: `frame_engine._create_skeletal_parameters`
-   (base requirements + template DNA, before build) and `_sync_user_parameters` below (UI-driven values). Neither is
-   called from here." — a true sentence, nothing more.
+   Keep the name `_PROJECT_MODULES` (its consumer at :207 stays untouched).
+2. `git rm bspline-frame-builder/template-maker/core/check_addin_sync.py`.
+3. Nothing else — no changes to `_reload_all_project_modules`, no changes to the parent loader.
 
 ## Verify (fast tier)
-- `python -m py_compile` both files.
-- Grep: `isComputeDeferred = True` in `parametric_engine.py` → exactly 2 hits left (`deferred_compute` + the
-  `_process_sequence` pulse at :369); `isComputeDeferred = False` → 3 (:308, the finally, the pulse :368).
-- `grep -rn create_or_update_param bspline-frame-builder/` → 0.
-- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83 (untouched code path, sanity only).
-- `git show --stat HEAD` → 2 files.
-- Fusion look is the ADVISOR's: a normal build must produce identical geometry (deploy + build + compare).
+- `python -m py_compile template-maker.py`.
+- Headless proof the derived list is a superset of the old one plus the five missing names — run from
+  `bspline-frame-builder/template-maker/`:
+  ```
+  python -c "import os; core=os.path.join(os.getcwd(),'core'); names=sorted(os.path.splitext(f)[0] for f in os.listdir(core) if f.endswith('.py') and f!='__init__.py'); old={'entity_util','phase_parser','role_points','cc_proxy','fb_attributes','ownership_gate','relation_hints','coincidence_clusters','template_code','template_naming','template_payload','template_payload_builder','template_variable_block','rename_selection','detect_projections','template_generator','deferred_rebuild'}; missing={'detection_log','dimension_hint','offset_hint','template_bridge','variable_scan'}; print(len(names), old<=set(names), missing<=set(names), 'check_addin_sync' in names)"
+  ```
+  Expected: `22 True True False`.
+- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83.
+- `git show --stat HEAD` → 2 files (1 modified, 1 deleted).
+- Fusion Stop→Start proof (edit `detection_log.py`, Stop→Start, see the edit) is the ADVISOR's after deploy.
 
 ## Do NOT
-Touch `frame_engine.py`, `offsets.py`, `_process_sequence`, the UIs, or `fb_shared`. Don't move parameter creation
-(that is A2-1, pending the human's live check). Don't deploy.
+Touch `bspline-frame-builder.py` (parent list is a separate item), `core/*` other than the deletion, tests, or deploy.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB1: deferred_compute context manager declared + both _build_blocks windows use it; create_or_update_param deleted; comment fixed — <sha>, 2 files; grep counts True=2/False=3; pytest 83. Next: E7c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "TM1: _PROJECT_MODULES derived from core/ (22 names, superset proven), check_addin_sync.py deleted — <sha>, 2 files; pytest 83. Next: E7c."`
 and stop.
