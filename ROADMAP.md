@@ -386,3 +386,6 @@ local `npm ci`; Cloudflare's older npm still disagrees with it — irrelevant no
   release rule already says so; now the script must.
 - **PM2b (next for seat A):** the new top-bar labels clip — `.cad-navbar .cad-nav-btn` keeps a fixed width on desktop.
   Widen in the same `min-width:601px + fine pointer` block.
+- **UX3 (ruling 2026-09-17 12:45): Undo/Redo leave the sidebar control panel** → top bar, left of Save, as icon
+  buttons (↶ ↷) with the PM2 label pattern (`cad-nav-label`, text on wide+mouse); ids unchanged so history.js keeps
+  driving them; the sidebar's sticky header keeps only "Generate New Seed". Queue after UX1.
