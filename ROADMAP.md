@@ -398,3 +398,6 @@ item of the 2026-09-17 decision sheet is live in both hosts.
 - **DEP3 (note, not dispatched):** `release.py --web` does `git add -A` before committing — the two-seats index trap
   (advisor skill, measured 2026-09-11). Fine for a lone human; never run it while a worker seat holds the tree.
 - Remaining queue: DEP2 (in flight), FB3b (cosmetic chip), then the list is DONE → advisor runs `handoff.py done`.
+- **CAM1d (cosmetic batch with FB3b):** the merged CAM header is over-full at the docked 460 px — stamp on one line now,
+  but "N SETUPS · READY" wraps and the PREVIEW button is clipped. Move stamp + status to their own row under the tabs
+  (or hide the status text under 520 px); keep the action button whole.
