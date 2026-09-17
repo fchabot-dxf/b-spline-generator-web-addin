@@ -3833,3 +3833,55 @@ the parent loader. Didn't deploy.
 **FB2 is now complete pending the advisor's final live check** (both palettes open + build once more,
 Stop→Start) — three implementation slices plus one live-caught regression fix, landing at `b7cd92e`
 (slice a) → `27bfd7c` (fix) → `dbfed18` (slice b) → this commit (slice c).
+
+---
+
+## Turn 155 — BG2: route the last two P1 violations through the bridge (B9 + B11) — DONE
+
+New area this turn: `b-spline-gen`'s web/browser side (separate from the Fusion add-in Python this session
+had been in). 5 files (1 new), one commit.
+
+**Ground truth confirmed before editing:** `main/main.js:135`, `core/coords.js:14-15`, and
+`core/state.js:268-274` each hand-rolled the same guarded `adsk.fusionSendData('log', ...)` tunnel that
+`fusion-bridge.js`'s `fusLog` already declared — three separate copies of one policy, the exact class of
+duplication this whole session's audits keep finding. Confirmed the import-cycle constraint first:
+`fusion-bridge.js` imports from `state.js` and `coords.js`, so neither of those can import FROM the
+bridge — `fusLog` had to move to a genuine leaf module both directions can reach.
+
+**(1)** Created `core/fusion-log.js` verbatim per the dispatch: one function, no imports, owns the
+`typeof adsk`/`adsk.fusionSendData` guard and the try/catch.
+
+**(2)** `fusion-bridge.js`: deleted the local `fusLog` definition, added
+`import { fusLog } from './fusion-log.js'` (confirmed first it's genuinely needed — the bridge calls
+`fusLog` internally at 9 other sites, not just for re-export) plus
+`export { fusLog } from './fusion-log.js'` so every existing `import { fusLog } from
+'../core/fusion-bridge.js'` across the codebase keeps resolving unchanged.
+
+**(3)** `coords.js`: `COORD_SYSTEM.log`'s guarded `fusionSendData` block replaced with a plain
+`fusLog(msg)` call (imported from the leaf) — kept the `console.log(msg)` half of the method, since
+that's unrelated to the P1 violation and `COORD_SYSTEM.log` is still called internally by `coords.js`
+itself (`toPhysical`/`toUI`, confirmed via grep, no external callers). `state.js`: the same pattern —
+replaced the whole `if (window.adsk && typeof adsk.fusionSendData === 'function') { try {...} catch
+{...} }` guard block with `fusLog(JSON.stringify(session))`.
+
+**(4) B9 — `requestDesignParams()`:** added to `fusion-bridge.js`, called from `main.js` via
+`setTimeout(requestDesignParams, 250)` in place of the old inline arrow function. **One deliberate
+deviation from the dispatch's literal given snippet, not silently applied:** the dispatch's illustrative
+code for `requestDesignParams` omitted the `fusLog('get_design_params sent to Python')` success-log
+line that the ORIGINAL `main.js` code had; kept it, since dropping it would have been an undeclared
+behaviour change (one fewer log line) beyond what "route the same call through the bridge" asks for —
+the dispatch's snippet reads as illustrative shorthand for the STRUCTURE, not a byte-exact spec to copy
+over the original's actual behaviour.
+
+**Verify (all green):** `node --check` on all 5 files. `npx vitest run` (repo root) → **29 passed**,
+matching the baseline run before any edits (`state.js` and `coords.js` are under test — this is the
+byte-identity gate the dispatch names). Confirmed `fusLog` still used elsewhere in `main.js` (8 other
+call sites) before trusting the import wasn't orphaned by removing its one directly-inlined use.
+Greps: `fusionSendData(` outside `core/fusion-bridge.js`/`core/fusion-log.js` → **0** across the whole
+`html/` tree, including the palette HTML (checked directly — the dispatch's named exception for the
+palette's inline script doesn't even need to apply, since it has zero `fusionSendData(` calls to begin
+with). `fusLog` defined once (`fusion-log.js`), re-exported once (`fusion-bridge.js`). `git diff --stat`
+→ exactly the predicted 5 files (4 modified + 1 new). No amendments pending.
+
+No gate hit. Didn't touch the palette HTML, `pollMode`, the chunked send, or any Python. B9 and B11 both
+closed.
