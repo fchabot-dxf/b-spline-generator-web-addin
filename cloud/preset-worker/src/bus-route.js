@@ -9,6 +9,9 @@
 //
 // Returns null for every other path so existing worker routes fall through.
 // Needs the STM_API_KEY secret and the BUS_DATA KV binding.
+// Body size: capped by body.js like every other route.
+
+import { readBoundedBody } from './body.js';
 
 const STM_BASE = 'https://api.stm.info/pub/od/gtfs-rt/ic/v2';
 const CACHE_SECONDS = 20;
@@ -81,7 +84,7 @@ export async function handleBus(request, env, url) {
     }
     if (p === '/bus/collecte-grid') {
       if (request.method === 'PUT') {
-        const body = await request.text();
+        const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
         try { JSON.parse(body); } catch (e) { return busJson({ error: 'invalid JSON' }, 400); }
         await env.BUS_DATA.put('collecte:grid', body, { metadata: { savedAt: Date.now() } });
         return busJson({ ok: true, bytes: body.length }, 200);
@@ -99,7 +102,7 @@ export async function handleBus(request, env, url) {
       // sectors and primed per profile (see prime_collecte.py).
       const prof = profId(url);
       if (request.method === 'PUT') {
-        const body = await request.text();
+        const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
         let g;
         try { g = JSON.parse(body); } catch (e) { return busJson({ error: 'invalid JSON' }, 400); }
         await env.BUS_DATA.put('collecte:' + prof, JSON.stringify(g),
@@ -134,7 +137,7 @@ export async function handleBus(request, env, url) {
       // Named points (home, work, studio). Shared across devices; which one a
       // screen uses is remembered locally, or 'auto' for live location.
       if (request.method === 'PUT') {
-        const body = await request.text();
+        const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
         let list;
         try { list = JSON.parse(body); } catch (e) { return busJson({ error: 'invalid JSON' }, 400); }
         if (!Array.isArray(list)) return busJson({ error: 'expected an array' }, 400);
@@ -194,7 +197,7 @@ export async function handleBus(request, env, url) {
         return busJson({ ok: true, deleted: prof }, 200);
       }
       if (request.method === 'PUT') {
-        const body = await request.text();
+        const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
         let cfg;
         try { cfg = JSON.parse(body); } catch (e) { return busJson({ error: 'invalid JSON' }, 400); }
         if (!cfg.route || !Array.isArray(cfg.dirs) || !cfg.dirs.length) {
@@ -209,7 +212,7 @@ export async function handleBus(request, env, url) {
     if (p === '/bus/streets') {
       const rid = url.searchParams.get('r') || '34';
       if (request.method === 'PUT') {
-        const body = await request.text();
+        const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
         let g;
         try { g = JSON.parse(body); } catch (e) { return busJson({ error: 'invalid JSON' }, 400); }
         if (!Array.isArray(g.major) || !Array.isArray(g.minor)) {

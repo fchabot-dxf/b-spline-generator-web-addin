@@ -34,8 +34,7 @@
 
 import { handlePageViews } from './pageviews-route.js';
 import { handleBus } from './bus-route.js';
-
-const MAX_BODY_BYTES = 10 * 1024 * 1024;
+import { readBoundedBody } from './body.js';
 
 export default {
   async fetch(request, env) {
@@ -193,9 +192,7 @@ async function handleBspline(request, env, method) {
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
-      const body = await request.text();
-      if (body.length === 0)            return json({ error: 'empty body' }, 400);
-      if (body.length > MAX_BODY_BYTES) return json({ error: 'body too large', maxBytes: MAX_BODY_BYTES }, 413);
+      const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
       let parsed;
       try { parsed = JSON.parse(body); } catch { return json({ error: 'invalid JSON' }, 400); }
       if (!parsed || !Array.isArray(parsed.apps)) {
@@ -234,9 +231,7 @@ async function handleBspline(request, env, method) {
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
-      const body = await request.text();
-      if (body.length === 0)            return json({ error: 'empty body' }, 400);
-      if (body.length > MAX_BODY_BYTES) return json({ error: 'body too large', maxBytes: MAX_BODY_BYTES }, 413);
+      const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
       try { JSON.parse(body); } catch   { return json({ error: 'invalid JSON' }, 400); }
       const savedAt = Date.now();
       await env.PRESETS.put(name, body, { metadata: { savedAt, size: body.length } });
@@ -275,9 +270,7 @@ async function handleBspline(request, env, method) {
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
-      const body = await request.text();
-      if (body.length === 0)            return json({ error: 'empty body' }, 400);
-      if (body.length > MAX_BODY_BYTES) return json({ error: 'body too large', maxBytes: MAX_BODY_BYTES }, 413);
+      const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
       try { JSON.parse(body); } catch   { return json({ error: 'invalid JSON' }, 400); }
       const savedAt = Date.now();
       await env.PRESETS.put(key, body, { metadata: { savedAt, size: body.length } });
