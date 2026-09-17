@@ -3885,3 +3885,48 @@ with). `fusLog` defined once (`fusion-log.js`), re-exported once (`fusion-bridge
 
 No gate hit. Didn't touch the palette HTML, `pollMode`, the chunked send, or any Python. B9 and B11 both
 closed.
+
+## Turn 157 — HY4: sketch palette debug block + update_phase removed, dead createButton, five over-exports narrowed — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md):** delete `sketch_builder_palette.html`'s dev-instrumentation
+block (nine `debug_*` `notifyFusion` sends plus their observers/timer) and the `update_phase` send
+(keeping the `_phaseCurrent` state it reported); delete the dead `createButton` in `editor/dom.js`;
+drop `export` on five functions used only inside their own file (`dismissExpandCallout`,
+`initTextSession`, `removeLayer`, `renameLayer`, `reorderLayer`).
+
+**(1) Palette debug block:** located the exact bounds by reading the enclosing scope —
+`window.addEventListener('DOMContentLoaded', ...)` at line 483 contains a startup-handshake
+`setTimeout` (:484-502) followed directly by the labeled `/* TEMPORARY DEBUG */` comment and a second
+`setTimeout(..., 700)` (:504-607) that installs the transition/resize/mutation/periodic observers and
+fires the nine `debug_*` sends. Deleted the comment + the whole second `setTimeout` statement as one
+unit (:504-607), leaving the handshake's `}, 500);` immediately followed by the outer `});` — verified
+by reading the file back mentally against bracket nesting, then confirmed with `node --check`. No
+helper functions existed solely to serve this block (the observers were inline closures, not named
+functions), so there was nothing separate to sweep.
+
+**(2) `update_phase`:** `adjustPhase(delta)` had three lines — update `_phaseCurrent`, call
+`_updatePhaseDisplay()`, then `notifyFusion('update_phase', ...)`. Deleted only the third line;
+`_phaseCurrent` and `_updatePhaseDisplay()` are both still read/called elsewhere in the file (the
+initial render and the lock/lookup logic), so nothing else needed touching.
+
+**(3) `createButton` (`editor/dom.js`):** grepped the whole `html/` tree first — zero references
+anywhere, not even inside `dom.js` itself. Deleted the function.
+
+**(4) Five over-exports:** grepped each name across `html/` (dist excluded) *before* editing — every
+call site for all five sits in the same file as its definition, zero `import ... from` lines reference
+any of them anywhere else. Dropped `export` from each, kept the function bodies and all call sites
+untouched.
+
+**Verify (all green):** extracted the palette's inline `<script>` (regex-matched, same approach as
+E7c) to a scratch `.js` file — `node --check` clean. `node --check` on all four editor files — clean.
+`npx vitest run` (repo root) → **29 passed**, matching baseline (no editor/core logic changed, only
+export visibility + dead code). Post-edit sweep: `grep -c "notifyFusion('debug_\|notifyFusion('update_phase'"`
+→ **0**. Remaining `notifyFusion(` call sites in the palette resolve to exactly the five live action
+names the dispatch named — `update_lock`, `update_param`, `change_template`, `run_build`,
+`request_template_list` (8 call sites, 5 distinct actions — `request_template_list` and `update_lock`
+each fire from two places, which is unchanged pre-existing behaviour, not new). Re-grepped all five
+narrowed names for `import` sites post-edit — none. `git diff --stat` → exactly the predicted 5 files,
+119 deletions / 5 insertions (the insertions are the un-exported `function` lines themselves).
+
+No gate hit. Left `sketch_builder_ui.py`'s `ping`/`get_templates` dispatcher branches untouched per the
+dispatch's explicit "Do NOT" — didn't touch the scaffold or any other palette.
