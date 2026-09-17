@@ -186,6 +186,19 @@
       line-height: 1;
     }
 
+    /* Icon-only nav buttons pick up a text label on wide desktop screens
+       (Fred's ruling, PM2) — hidden by default, shown only when there's
+       room and no touch input. Exact complement of the mobile block
+       below, so the two can never both apply. */
+    .cad-nav-label {
+      display: none;
+      margin-left: 6px;
+      font-size: 12px;
+    }
+    @media (min-width: 601px) and (pointer: fine) {
+      .cad-nav-label { display: inline; }
+    }
+
     /* Title + version label. The version literal lives in the markup next
        to the title; source of truth is root package.json "version". Small
        and muted so it sits beside the title without crowding it. */
@@ -281,17 +294,20 @@
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnQuickSave"
               title="Save (no file associated yet)">
         <span style="font-size:18px; line-height:1;">💾</span>
-        <span id="btnQuickSaveLabel" style="display:none;">Save…</span>
+        <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnOpenProjectManager" title="Open Project Manager">
         <span style="font-size:18px; line-height:1;">📁</span>
+        <span class="cad-nav-label">Projects</span>
       </button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnDownloadAddin" title="Download Fusion add-in">
         <span style="font-size:18px; line-height:1;">🧩</span>
+        <span class="cad-nav-label">Add-in</span>
       </button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="settings-btn" title="Settings">
         <span style="font-size:18px; line-height:1;">⚙️</span>
+        <span class="cad-nav-label">Settings</span>
       </button>
     </div>
   </header>
@@ -309,17 +325,6 @@
             disabled>Undo</button>
           <button class="cad-btn cad-btn-secondary" id="btnGlobalRedo" style="flex:1; height:28px;"
             disabled>Redo</button>
-        </div>
-      </div>
-
-      <!-- 1. Projects (full manager opens as a fullscreen panel) -->
-      <div class="panel" style="border-bottom:1px solid var(--cad-border-color);">
-        <div class="panel-body" style="padding:10px 12px; display:flex; gap:8px;">
-          <button class="cad-btn cad-btn-secondary" data-open-projects
-            style="flex:1; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
-            <span style="font-size:15px;">📁</span>
-            Projects
-          </button>
         </div>
       </div>
 

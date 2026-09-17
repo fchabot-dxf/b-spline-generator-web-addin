@@ -149,8 +149,9 @@ export function bindProjectManager(preview) {
     console.info('[project-manager] BSPLINE_PRESETS_API_URL not set — cloud disabled');
   }
 
-  // Wire all trigger buttons (navbar + any data-attr ones in sidebar)
-  document.querySelectorAll('#btnOpenProjectManager, [data-open-projects]')
+  // Wire the trigger button (the sidebar's [data-open-projects] copy was
+  // removed in PM2 — the navbar folder icon is the one door now).
+  document.querySelectorAll('#btnOpenProjectManager')
     .forEach((el) => el.addEventListener('click', openModal));
 
   // Navbar quick-save button: silent overwrite if a file is associated,
