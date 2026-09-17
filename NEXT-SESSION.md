@@ -1,54 +1,49 @@
-# NEXT — PM1 Project Manager: restore the lost Load/Rename/Delete bar + remove the sidebar Load button
+# LANE B (audit seat) — A1: audit the add-in LOADER + shared substrate. READ-ONLY on code; you write ONE doc.
 
-**Ball: worker · epoch 1 · PM1 (human ruling 2026-09-17, see ROADMAP "PM1").** Files: ONLY
-`bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` and
-`bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js`. One commit, by path, predicted **2 files**.
+**Seat B · epoch 1 · A1.** You are the second worker, in your OWN worktree (`b-spline-generator-web-addin-lane-b`,
+branch `lane-b`) with your OWN handoff channel (this folder's `HANDOFF.md`). Never edit anything under the main
+checkout. Your lane is the **audit** the human asked for: *"audit the whole add-ins, all of them, bugs and
+inefficiencies."* It runs in slices, one add-in group per turn; findings feed the advisor's dispatches to seat A.
 
-## Ground truth (advisor-verified)
-- Commit `91b624d` (2026-05-23) accidentally deleted, from the Project Manager modal in
-  `bspline_gen_palette.html`, the block that starts `<!-- Bottom selection bar -->` and ends with
-  `<input type="hidden" id="fmProjectName">` (selection bar with `fmSelbarInfo` / `fmBtnLoad` / `fmBtnRename` /
-  `fmBtnDelete`, then the `pm-status-bar` with `fmProjectStatus` / `fmProjectMsg`, then the hidden input).
-  The CSS for all of it is still in HEAD (`.pm-selbar` :1806, `.pm-status-bar` :1836) and the JS still looks every id
-  up (`cloud-project-manager.js:231-243`, null-guarded) — so restoring the markup is the whole fix.
-- The sidebar `📂 Load` button (`btnQuickLoad`, html ~:322-331 incl. its HTML comment) is wired at
-  `cloud-project-manager.js:166-169` to `export async function quickLoad()` (~:966-980). `quickLoad` is imported
-  NOWHERE else (repo grep). The sidebar `📁 Projects` button (~:316-321) and the navbar `btnOpenProjectManager`
-  (:285) both open the manager and STAY. Quick Save (navbar 💾) STAYS.
-- Node is v24 → `node --check` understands the ES-module file directly.
+## Rules of the lane
+- **You edit ONLY `AUDIT-2026-09.md`** (create it this turn) + `WORK-LOG.md` (lane-b copy). No product code, no
+  other docs. Commit by path (`git commit AUDIT-2026-09.md WORK-LOG.md -F -`), on branch `lane-b`.
+- **Evidence or it isn't a finding.** Every item carries `file:line`, the concrete symptom (what a user or the next
+  developer would hit), and how you verified it (read / grep / py_compile / a test you RAN read-only). Mark anything
+  you could not confirm **UNVERIFIED** — never smooth it.
+- **Lens = the project's declared principles** (`ROADMAP.md` "Principles / invariants" 1-5) + the north-star gate
+  (*declare over hand-roll; codebase must not lie about itself; removal leaves no doorless handlers / vacuous tests*).
+  Classify each finding: `bug` · `principle` (say which #) · `dead` (code/flag/test/doc that survives with no
+  consumer) · `inefficiency` (perf or repeated work) · `honesty` (name/comment/test that asserts something false).
+- **Reconcile, don't duplicate.** `BUGS_OPEN.md` (B1-B11) and `STANDARDS-AUDIT.md` (July) exist. For every OLD item
+  that falls in this turn's scope, record its CURRENT status (fixed in <sha> / still open / superseded) with evidence.
 
-## Do
-1. **Restore the deleted block verbatim.** Source of truth:
-   `git show 91b624d^:bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` — copy from the line
-   `<!-- Bottom selection bar -->` through the line `<input type="hidden" id="fmProjectName">` (inclusive).
-   Insert it immediately AFTER the `</div>` that closes `<div id="fmProjectList" class="pm-content" …>` (:1952-1957)
-   and BEFORE the `</div>` that closes `.pm-dialog`. Do not edit the block's contents.
-2. **Remove the sidebar Load chain** — every link, nothing more:
-   (a) html: the `btnQuickLoad` `<button>…</button>` AND the `<!-- Quick Load: … -->` comment above it;
-   (b) js :166-169: the "Sidebar Quick-Load button" comment + `const btnQuickLoad …` + its `addEventListener`;
-   (c) js: the whole `export async function quickLoad() { … }` and its `/** Quick Load from outside the modal … */`
-   doc comment;
-   (d) js ~:940-944: the `_loadFrom` doc comment says "Shared by the modal Load button and the sidebar Quick-Load" —
-   reword to "Used by the modal Load button and row double-click." (a comment that names a deleted thing is a lie).
-3. Leave the `📁 Projects` button in place; if its row was a two-button flex row, it simply spans alone now — no
-   style edits beyond deleting the Load button.
+## Declared finding format (one row each — keep it greppable)
+```
+| ID | add-in | file:line | class | symptom | evidence | fix shape (declare? delete? one-liner) | severity |
+```
+Severity: `H` (data loss / wrong geometry / crash on a normal gesture) · `M` (wrong on an edge, leak, silent no-op) ·
+`L` (hygiene). Put an **"Inefficiencies"** subsection per add-in for repeated work, N× loops, redundant I/O, re-reads.
 
-## Verify (fast tier)
-- `node --check bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js` → clean.
-- Each of `fmSelbarInfo fmBtnLoad fmBtnRename fmBtnDelete fmProjectStatus fmProjectMsg fmProjectName` occurs
-  **exactly once** in the html (`grep -c`).
-- `grep -rnE "btnQuickLoad|quickLoad|Quick.?Load" bspline-frame-builder/b-spline-gen/html --include=*.html --include=*.js`
-  → **0 hits** (the inverse sweep: no door without a room, no room without a door).
-- `git show --stat HEAD` → 2 files. If anything else changed, say so.
-- The visual check (modal shows Load/Rename/Delete + status line; sidebar shows Projects only) is the ADVISOR's:
-  it deploys + screenshots. You do not deploy.
+## A1 scope (this turn only)
+1. `bspline-frame-builder/bspline-frame-builder.py` (768 lines — the single add-in entry: sub-module loading,
+   `_force_wipe` / `_shared_project_names`, run()/stop() lifecycle, heartbeat lock). Check principle #2 (full
+   release in stop) and #3 (isolation) explicitly: enumerate what run() registers vs what stop() releases.
+2. `bspline-frame-builder/fb_shared/` (870 lines — canonical shared package).
+3. `bspline-frame-builder/frame-inspector/` (~1.1k) and `bspline-frame-builder/fusion-exporter/` (~1k).
+4. `bspline-frame-builder/DEPLOY_bspline-frame-builder.py` + `release.py` (deploy path — note the overlay-copy
+   behaviour: deleted sources linger in AddIns; is anything else in that class?).
+5. **Registry question:** `bspline-frame-builder/CAM-builder/` (8.8k lines) is NOT in ROADMAP's add-in list — is it
+   loaded by the entry file, dead, or a separate thing? One paragraph with evidence.
 
-## Do NOT
-Touch `dist/` (generated, untracked), `index.html`, any other palette, `quickSave`, `_loadFrom`, `onLoad`,
-`btnOpenProjectManager`. Don't "improve" the restored markup. Don't run the full vitest suite (no spec imports this
-module; if you find one that does, run only that spec and say so).
+Queued for later turns (do NOT start): A2 frame-builder · A3 template-maker · A4 stamp-editor · A5 b-spline-gen
+(split) · A6 CAM-builder (if live) · A7 cloud workers.
+
+## Verify
+`git status --short` shows only your two files. `AUDIT-2026-09.md` has: a header naming the lens + date, the A1
+reconcile table, the A1 findings table, an inefficiencies subsection, and a "what I could not verify" list.
 
 ## When done
-Append WORK-LOG, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "PM1: restored selbar+status+hidden input from 91b624d^, removed sidebar Load chain (button+comment+wiring+quickLoad export+doc comment) — <sha>, 2 files. node --check clean; ids ×1 each; Quick-Load grep 0. Next: E7b."`
+Append WORK-LOG (lane-b), commit, then FROM THIS FOLDER:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A1 audit: <n> findings (<H/M/L counts>), <m> old items reconciled, CAM-builder status: <live|dead|separate>. <sha>. Next: A2."`
 and stop.
