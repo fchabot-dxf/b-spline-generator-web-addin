@@ -357,8 +357,10 @@ def _on_document_activated(ctx):
 
 
 def _on_ready(ctx):
-    """Runs once after the palette is shown (was run_palette steps 5b/6):
-    pick the first available template, then push the initial schema."""
+    """Runs once after the palette is shown (was run_palette steps 5a/5b/6):
+    ensure the tilt param, pick the first available template, then push the
+    initial schema."""
+    _ensure_tilt_param_safe()   # E8 F1-C: the param must exist BEFORE any build
     try:
         if frame_engine:
             templates = frame_engine.get_available_templates()
@@ -407,7 +409,6 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
         super().__init__()
     def notify(self, args):
         try:
-            global frame_engine
             run_palette(frame_engine, diag_logger=diag_logger)
         except Exception as e:
             if diag_logger:
