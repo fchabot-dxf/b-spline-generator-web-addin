@@ -1,67 +1,65 @@
-# NEXT — BG3: Fusion import feedback goes to a button that no longer exists — retarget it, wire the dead sends, add the missing label
+# NEXT — DEP1: both deploys leave deleted files live — clean the web build, sweep orphans from the add-in deploy
 
-**Ball: worker (seat A) · epoch 1 · BG3.** Files (under `bspline-frame-builder/b-spline-gen/html/`): `main/main.js`,
-`main/export-flow.js`, `core/fusion-bridge.js`, `bspline_gen_palette.html`. One commit by path, predicted **4 files**.
+**Ball: worker (seat A) · epoch 1 · DEP1.** Files: `bspline-frame-builder/deploy_cloudflare.py`,
+`bspline-frame-builder/DEPLOY_bspline-frame-builder.py`. One commit by path, predicted **2 files**.
 
-## Ground truth (advisor-verified 2026-09-17)
-- `#btnFusionApply` was REMOVED from the palette HTML on 2026-04-09 (`4cc7907`). Four JS sites still target it, all
-  null-guarded, so every state change lands nowhere: `main.js:122` (reset to 'OK' on load), `main.js:158`
-  (`import_ready`/`reset_ui` → 'OK'), `export-flow.js:137-148` ('Baking...' → 'OK'), `export-flow.js:158-163` (same,
-  in `executeExport`); `startFusionPolling(btnApply)` (`fusion-bridge.js:65-88`) re-enables it on timeout.
-- The LIVE control in Fusion mode is the header button `#btnDownload`, relabelled 'Send to Fusion' by `main.js:118`
-  (`header-controls.js:19` calls it "STEP / Send to Fusion (mode-aware)"). Its idle label in Fusion mode is
-  **'Send to Fusion'**, never 'OK' — 'OK' was the vanished apply button's label.
-- Python sends `import_progress` `{msg}` from 8 sites (`b-spline-gen.py:180-187` `_send_progress`) and `import_success`
-  once (`:1319`); `handleFusionHandshake` (`main.js:153-`) handles neither. So a STEP import shows NOTHING.
-- `cloud-project-manager.js:887` reads `#fmCurrentFileLabel` — never existed in the HTML (added JS-side 2026-05-02 only).
-  The header title box is `bspline_gen_palette.html:261-268` (`.cad-nav-titlebox` → title span + `#build-badge`).
+## Ground truth (advisor-verified)
+- **Web (A7-3):** `deploy_cloudflare.py:159` sets `deploy_dist = "dist"` under `--build-only`; the cleanup loop at
+  `:161-166` only removes `deploy_dist_<ts>` folders and the legacy `deploy_dist`; `os.makedirs(deploy_dist,
+  exist_ok=True)` (`:170`) keeps whatever is already in `dist/`; `sys.exit(0)` at `:220` runs before the only
+  `clean_dir(deploy_dist)` (`:233`). A file deleted from `b-spline-gen/html/` stays in `dist/` and therefore on the
+  Pages site. `dist/` is never locked (no process holds it) → clean-then-copy is safe.
+- **Add-in (A1-6):** `DEPLOY_bspline-frame-builder.py:_deploy_addin` (`:60-130`) calls `clean_dir(dest_dir)` (`:93`),
+  which legitimately FAILS when Fusion holds a file open, then falls back to `copy_overlay` (`:97`) — so anything deleted
+  from source survives in the AddIns folder. `copy_overlay` (`:300-339`) returns `(copied_count, skipped_paths)`; it has
+  each file's dest-relative POSIX path in hand (`rel`) but does not return the copied list. DEST-only artifacts that
+  MUST survive a sweep: `build-info.json` (written by the deploy itself, `:590`), `.addin-running.lock` (runtime
+  heartbeat, `:221`), `*.log` (runtime logs; `.log` is already in `SKIP_SUFFIXES` so they are never copied from source),
+  and `__pycache__/` (Fusion writes it).
 
 ## Do
-1. **Declare the one button once.** In `core/fusion-bridge.js` add and export:
-   ```js
-   /** The single control that reflects Fusion send/import state: the header 'Send to Fusion' button.
-    *  (#btnFusionApply was removed from the HTML on 2026-04-09; this replaces four null-guarded lookups.) */
-   export const FUSION_IDLE_LABEL = 'Send to Fusion';
-   export function fusionActionButton() { return document.getElementById('btnDownload'); }
-   export function setFusionActionState(text, disabled) {
-     const b = fusionActionButton(); if (!b) return;
-     b.textContent = text; b.disabled = !!disabled;
-   }
-   ```
-2. Replace the four `getElementById('btnFusionApply')` sites with the helper, and every `'OK'` restore with
-   `FUSION_IDLE_LABEL`: `main.js:122` → `setFusionActionState(FUSION_IDLE_LABEL, false)`; `main.js:158` (import_ready /
-   reset_ui) → same; `export-flow.js:137-148` → `setFusionActionState('Baking...', true)` / finally
-   `setFusionActionState(FUSION_IDLE_LABEL, false)`; `export-flow.js:158-163` → the `btn` local becomes
-   `fusionActionButton()` in Fusion mode (keep the web `btnWizardExport` branch as is); `startFusionPolling` timeout →
-   `setFusionActionState(FUSION_IDLE_LABEL, false)`. Grep `btnFusionApply` → 0 afterwards.
-3. **Wire the dead sends** in `handleFusionHandshake` (`main.js`), before the `pong` line:
-   ```js
-   if (action === 'import_progress') {
-       let msg = ''; try { msg = JSON.parse(ev.detail.data || '{}').msg || ''; } catch (e) {}
-       if (msg) setFusionActionState(msg, true);
-       return;
-   }
-   if (action === 'import_success') { setFusionActionState('Done ✓', true); return; }
-   ```
-   (`import_ready` follows `import_success` from Python and restores the idle label — verify that order in
-   `b-spline-gen.py:1315-1325`; if `import_ready` is NOT sent after success, restore the idle label from
-   `import_success` after a 1500 ms timeout instead, and say which you did.)
-4. **Add the missing label:** in `bspline_gen_palette.html` inside `.cad-nav-titlebox`, right after the
-   `#build-badge` span: `<span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none"></span>`.
-   (`updateHeaderFileIndicator` already fills and shows/hides it.)
+### (1) `deploy_cloudflare.py` — one line
+Right before `os.makedirs(deploy_dist, exist_ok=True)` (`:170`), add `clean_dir(deploy_dist)` with a comment:
+`# dist/ is a clean build output, never an overlay (A7-3: stale files otherwise stay live on Pages)`.
+Nothing else in the file.
 
-## Verify (fast tier)
-- `node --check` on the three `.js` files. `npx vitest run` → 29 (main/app-init.js is under test; main.js is not — fine).
-- Greps: `btnFusionApply` → 0 across `html/`; `'OK'` in main.js/export-flow.js → 0 (Fusion mode never shows 'OK');
-  `import_progress|import_success` → present in main.js once each; `fmCurrentFileLabel` → 1 in the HTML.
-- `git show --stat HEAD` → 4 files.
-- Fusion look is the ADVISOR's: Send to Fusion → button shows 'Baking...', then the Python progress messages, then
-  'Done ✓', then back to 'Send to Fusion'; Project Manager load → header shows '· <name>'.
+### (2) `DEPLOY_bspline-frame-builder.py` — declare the keep-set, return the copied list, sweep
+a. Next to `SKIP_FILES_EXACT` (`:225`) declare:
+   ```python
+   # DEST-only artifacts a post-copy orphan sweep must never delete (declared once — A1-6/DEP1).
+   DEST_ONLY_KEEP_NAMES    = {"build-info.json", ".addin-running.lock"}
+   DEST_ONLY_KEEP_SUFFIXES = {".log"}
+   DEST_ONLY_KEEP_DIRS     = {"__pycache__"}
+   ```
+b. `copy_overlay`: collect every successfully copied `rel` (dest-relative POSIX) into a list and return
+   `(copied_paths, skipped_paths)` — a list instead of the count. Update its docstring and the ONE caller (`:97`;
+   `copied` becomes `len(copied_paths)` where it is printed).
+c. Add `sweep_orphans(dst: Path, copied_paths: list[str]) -> list[str]`: walk `dst`; skip any dir named in
+   `DEST_ONLY_KEEP_DIRS`; for each file whose dest-relative POSIX path is NOT in `set(copied_paths)` and whose name
+   is not in `DEST_ONLY_KEEP_NAMES` and whose suffix is not in `DEST_ONLY_KEEP_SUFFIXES`: delete it (`unlink`); on
+   failure print `  ORPHAN LOCKED <rel>: <err>` and keep going. Return the list of deleted rel paths. Print
+   `  Removed N orphan(s):` + each path when N > 0, else nothing.
+d. In `_deploy_addin`, call `sweep_orphans(dest_dir, copied_paths)` right after the skipped-paths check (`:101-108`)
+   and BEFORE `extra_copy`/verify. (When `clean_dir` succeeded the sweep is a no-op; when it fell back to overlay the
+   sweep is the fix.)
+
+## Verify (fast tier — headless, no Fusion, no wrangler)
+- `python -m py_compile` both; `python -m pyflakes` both (no new warnings).
+- **Web:** `mkdir -p bspline-frame-builder/dist && echo stale > bspline-frame-builder/dist/STALE.txt && python
+  bspline-frame-builder/deploy_cloudflare.py --build-only && test ! -e bspline-frame-builder/dist/STALE.txt && echo
+  "dist clean"`.
+- **Add-in sweep unit check** (inline python, temp dirs): source with `a.py`; dest pre-seeded with `a.py`, `old.py`,
+  `build-info.json`, `x.log`, `__pycache__/z.pyc`; run `copy_overlay` then `sweep_orphans` → `old.py` gone, the other
+  four still present, return value `['old.py']`. Paste the check + output into the WORK-LOG.
+- `git status --short` must show no `dist/` noise (it is untracked/ignored — confirm with `git check-ignore -v
+  bspline-frame-builder/dist`).
+- `git show --stat HEAD` → 2 files.
+- The real add-in deploy proof is the ADVISOR's at the next deploy (needs the human to stop the add-in).
 
 ## Do NOT
-Touch `b-spline-gen.py`, the polling interval, `btnWizardExport` (web), or the editor.
+Change `clean_dir`, the E3 stop-first guard, `VERIFY_FILES`, or the wrangler-deploy branch. Don't deploy.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "BG3: fusionActionButton/setFusionActionState/FUSION_IDLE_LABEL declared in fusion-bridge; 4 btnFusionApply sites retargeted; import_progress/import_success wired; fmCurrentFileLabel added — <sha>, 4 files; vitest 29; greps clean. Next: E7c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "DEP1: dist/ cleaned before build; DEST_ONLY_KEEP_* declared; copy_overlay returns copied paths; sweep_orphans wired into _deploy_addin — <sha>, 2 files; STALE.txt gone; tempdir check ['old.py']. Next: E7c."`
 and stop.
