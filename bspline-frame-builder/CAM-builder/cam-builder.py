@@ -42,9 +42,9 @@ REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
 TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
 AXISPICK_EVENT_ID = 'CamStudio_AxisPick'   # deferred viewport pick for WCS X/Y
 
-PALETTE_NAME      = 'B-spline CAM'
+PALETTE_NAME      = 'CAM'
 PALETTE_WIDTH     = 460
-PALETTE_HEIGHT    = 620
+PALETTE_HEIGHT    = 700   # CAM1a: the larger of the two pre-merge palettes (was 620)
 
 _addin_dir = os.path.dirname(os.path.realpath(__file__))
 PALETTE_URL = os.path.join(_addin_dir, 'ui', 'html', 'cam_builder_palette.html').replace('\\', '/')
@@ -66,8 +66,9 @@ STUDIO_RESOURCES_PATH = os.path.join(_addin_dir, 'resources', 'CamStudioCommand'
 
 _handlers = []          # per-run handlers, cleared on stop
 _refresh_handlers = []  # CustomEvent handlers, alive for full Fusion session
-_html_handler        = None   # B-spline CAM palette
-_studio_html_handler = None   # CAM Studio palette
+_cam_html_handler    = None   # CAM1a: the merged palette's one dispatcher (PALETTE_ID)
+_html_handler        = None   # CAM1a: superseded by _cam_html_handler; deleted in slice (b)
+_studio_html_handler = None   # CAM Studio palette (fallback, kept through slice (a))
 _logger = None
 _engine = None          # cam_engine.cam_coordinator after load
 
@@ -227,6 +228,66 @@ class _CmdCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _log_error("CmdCreated\n" + traceback.format_exc())
 
 
+class _CamHtmlEventHandler(adsk.core.HTMLEventHandler):
+    """CAM1a: the one dispatcher for the merged palette (B-SPLINE + GENERIC
+    tabs), wired to PALETTE_ID in _show_palette(). Supersedes
+    _HtmlEventHandler and _StudioHtmlEventHandler, both kept below for
+    slice (b) to delete. See CAM1-CONSOLIDATION-DESIGN.md §2 for the full
+    action table (15 real actions — the design doc's own count of 14 was
+    an arithmetic slip caught during implementation: select_x_axis and
+    select_y_axis are two distinct actions, not one)."""
+    def notify(self, args):
+        try:
+            # Same cast-first pattern as the two dispatchers below — see
+            # their long comment for why HTMLEventArgs.cast is required.
+            ea = adsk.core.HTMLEventArgs.cast(args)
+            data = json.loads(ea.data) if ea.data else {}
+            action = ea.action or data.get('action')
+            if action == 'preview_bodies':
+                _do_preview()
+            elif action == 'build':
+                _do_generate()
+            elif action == 'add_machine':
+                _do_add_machine()
+            elif action == 'sync_table_attach':
+                _do_sync_table_attach()
+            elif action == 'apply_toolpaths':
+                _do_apply_toolpaths()
+            elif action == 'list_cam_templates':
+                _do_list_cam_templates()
+                # Piggyback the deployed version stamp on the first boot pull.
+                _p = _build_info_payload()
+                if _p:
+                    _send_to_html('build_info', _p)
+            elif action == 'get_template_assignments':
+                _do_get_template_assignments()
+            elif action == 'set_template_assignments':
+                _do_set_template_assignments(data)
+            elif action == 'init':
+                _do_studio_init()
+                # Piggyback the deployed version stamp on studio init.
+                _p = _build_info_payload()
+                if _p:
+                    _send_to_html('build_info', _p)
+            elif action == 'import_setup':
+                _do_import_setup(data)
+            elif action == 'preview_stock':
+                _do_studio_preview(data)
+            elif action == 'preview_clear':
+                _clear_studio_preview()
+            elif action == 'generate':
+                _do_studio_generate(data)
+            elif action == 'select_x_axis':
+                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'x')
+            elif action == 'select_y_axis':
+                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'y')
+            else:
+                _log(f"unknown HTML action: {action!r}", "WARNING")
+        except Exception:
+            _log_error("CamHtmlEvent\n" + traceback.format_exc())
+
+
+# CAM1a: superseded by _CamHtmlEventHandler; deleted in slice (b)
 class _HtmlEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         try:
@@ -405,10 +466,10 @@ def _show_palette():
             palette.setMinimumSize(360, 500)
         except Exception:
             pass
-        global _html_handler
-        _html_handler = _HtmlEventHandler()
-        palette.incomingFromHTML.add(_html_handler)
-        _handlers.append(_html_handler)
+        global _cam_html_handler
+        _cam_html_handler = _CamHtmlEventHandler()
+        palette.incomingFromHTML.add(_cam_html_handler)
+        _handlers.append(_cam_html_handler)
     palette.isVisible = True
 
 
@@ -424,6 +485,7 @@ class _StudioCmdCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _log_error("StudioCmdCreated\n" + traceback.format_exc())
 
 
+# CAM1a: superseded by _CamHtmlEventHandler; deleted in slice (b)
 class _StudioHtmlEventHandler(adsk.core.HTMLEventHandler):
     def notify(self, args):
         try:
@@ -755,13 +817,22 @@ class _AxisPickHandler(adsk.core.CustomEventHandler):
 
 
 def _send_to_studio_html(action, payload):
+    # CAM1a: broadcasts to whichever Studio-shaped palette is actually
+    # visible — the merged palette's GENERIC tab (PALETTE_ID) and/or the
+    # old standalone CAM Studio palette (STUDIO_PALETTE_ID, kept through
+    # slice (a) as the fallback). Both share the same Studio-side handler
+    # functions and JS payload shape, so broadcasting to whichever is
+    # visible is safe; without this the merged palette's GENERIC tab would
+    # never receive init_result/axis_picked/import_result/report, since
+    # every Studio-side handler still calls this one function.
     try:
         app = adsk.core.Application.get()
         if not app:
             return
-        palette = app.userInterface.palettes.itemById(STUDIO_PALETTE_ID)
-        if palette and palette.isVisible:
-            palette.sendInfoToHTML(action, json.dumps(payload))
+        for pid in (PALETTE_ID, STUDIO_PALETTE_ID):
+            palette = app.userInterface.palettes.itemById(pid)
+            if palette and palette.isVisible:
+                palette.sendInfoToHTML(action, json.dumps(payload))
     except Exception:
         _log_error(f"_send_to_studio_html({action})\n" + traceback.format_exc())
 
@@ -1216,7 +1287,7 @@ def _do_preview():
     app = adsk.core.Application.get()
     design = adsk.fusion.Design.cast(app.activeProduct)
     if not design:
-        _send_to_html('preview', {
+        _send_to_html('preview_bodies', {
             'ok': False,
             'msg': 'No active Design product.'
         })
@@ -1234,7 +1305,7 @@ def _do_preview():
                 samples[kind].append('<unnamed>')
 
     _log(f"PREVIEW: counts={counts}")
-    _send_to_html('preview', {
+    _send_to_html('preview_bodies', {
         'ok': True,
         'counts': counts,
         'samples': samples,
