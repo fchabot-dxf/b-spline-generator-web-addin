@@ -20,7 +20,7 @@
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { fusLog, pollMode, stopFusionPolling } from '../core/fusion-bridge.js';
+import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL } from '../core/fusion-bridge.js';
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { populateSeedDropdown } from '../core/seed/index.js';
@@ -117,10 +117,9 @@ async function onFusionDetected() {
     const headerBtn = document.getElementById('btnDownload');
     if (headerBtn) headerBtn.textContent = 'Send to Fusion';
     // On every Fusion-mode load (including palette hide/re-show HTML
-    // reloads), reset the Apply button to 'OK' so it never shows the
-    // default text.
-    const applyBtn = document.getElementById('btnFusionApply');
-    if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'OK'; }
+    // reloads), reset the Send-to-Fusion button to its idle label so it
+    // never shows a stale in-progress state.
+    setFusionActionState(FUSION_IDLE_LABEL, false);
 
     initApp(preview, () => wireGlobalEvents(preview));
     initSvgEditor(preview);
@@ -155,10 +154,16 @@ function handleFusionHandshake(ev) {
 
     if (action === 'import_ready' || action === 'reset_ui') {
         stopFusionPolling();
-        const btn = document.getElementById('btnFusionApply');
-        if (btn) { btn.disabled = false; btn.textContent = 'OK'; }
+        setFusionActionState(FUSION_IDLE_LABEL, false);
         return;
     }
+
+    if (action === 'import_progress') {
+        let msg = ''; try { msg = JSON.parse(ev.detail.data || '{}').msg || ''; } catch (e) {}
+        if (msg) setFusionActionState(msg, true);
+        return;
+    }
+    if (action === 'import_success') { setFusionActionState('Done ✓', true); return; }
 
     if (action === 'pong') return;
 

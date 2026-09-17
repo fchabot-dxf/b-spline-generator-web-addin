@@ -15,6 +15,15 @@ export function fusLog(msg) {
     try { adsk.fusionSendData('log', JSON.stringify({ msg: String(msg) })); } catch (_) { }
 }
 
+/** The single control that reflects Fusion send/import state: the header 'Send to Fusion' button.
+ *  (#btnFusionApply was removed from the HTML on 2026-04-09; this replaces four null-guarded lookups.) */
+export const FUSION_IDLE_LABEL = 'Send to Fusion';
+export function fusionActionButton() { return document.getElementById('btnDownload'); }
+export function setFusionActionState(text, disabled) {
+    const b = fusionActionButton(); if (!b) return;
+    b.textContent = text; b.disabled = !!disabled;
+}
+
 /**
  * Sends current 3D mesh data to Fusion's canvas for real-time preview.
  */
@@ -62,7 +71,7 @@ export async function sendFusionPayloadChunked(payloadString) {
 /**
  * Initiates the reliable polling loop for Fusion status updates.
  */
-export function startFusionPolling(btnApply) {
+export function startFusionPolling() {
     if (pollInterval) clearInterval(pollInterval);
     let _pollTicks = 0;
     const timeoutTicks = (P.spacing <= 0.05) ? 300 : 90;
@@ -74,7 +83,7 @@ export function startFusionPolling(btnApply) {
             clearInterval(pollInterval); pollInterval = null;
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
-            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'OK'; }
+            setFusionActionState(FUSION_IDLE_LABEL, false);
             return;
         }
 
