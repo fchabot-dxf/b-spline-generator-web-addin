@@ -2733,3 +2733,32 @@ and `False` appears three times (the pre-Projections reset, `deferred_compute`'s
 
 No gate hit. Didn't touch `frame_engine.py`, `offsets.py`, `_process_sequence`'s body, any UI, or
 `fb_shared`. Didn't move parameter creation. Didn't deploy.
+
+---
+
+## Turn 117 — TM1: DERIVE template-maker's hot-reload wipe list from core/ + delete dead script — DONE
+
+Executed the advisor's dispatch. 2 files, one commit. Did not touch the parent loader
+(`bspline-frame-builder.py`), `core/*` other than the deletion, or tests.
+
+**(1) Replaced `_PROJECT_MODULES`'s hand-typed 17-name list** with a derivation from
+`os.listdir(_core_dir)` (`*.py` minus `__init__.py`, sorted), placed right after `_core_dir`'s
+`sys.path.insert` block per the dispatch — this moved it above `PALETTE_URL`/`RESOURCES_PATH` rather
+than leaving a gap where the old list sat. Kept the name `_PROJECT_MODULES` unchanged; its consumer in
+`_reload_all_project_modules` (`:207`, untouched) needs no changes. Confirmed before editing: the hand-typed
+list really was missing the 5 modules the ground truth named (`detection_log`, `dimension_hint`,
+`offset_hint`, `template_bridge`, `variable_scan`) — any edit to those survived Stop→Start stale.
+
+**(2) Deleted `core/check_addin_sync.py`** (`git rm`) — confirmed 0 importers repo-wide first
+(`grep -rn "check_addin_sync"` over all of `bspline-frame-builder/` → no hits at all, not even the dead
+file referencing itself elsewhere).
+
+**Verify (all green):** `py_compile` clean. The dispatch's exact one-liner superset proof printed
+**`22 True True False`** — matching the predicted output precisely: 22 names derived, the old 17-name set
+is a subset, all 5 previously-missing names are now present, and `check_addin_sync` correctly does NOT
+appear (it was never a `_PROJECT_MODULES` member — it's dead, not merely under-listed). `pytest
+template-maker/tests -q` → 83 passed. `git diff --stat` / `git status --short` → exactly the predicted
+2 files (1 modified, 1 deleted). No amendments pending at either poll.
+
+No gate hit — a declared derivation replacing a hand-maintained literal, plus a zero-importer deletion.
+The advisor owns the Fusion Stop→Start proof after deploy.
