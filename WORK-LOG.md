@@ -4096,3 +4096,35 @@ caught it before verifying, reworded to describe the behavior without repeating 
 No gate hit. Didn't touch `fusion-inspector.py`, the copy pump, section folding, or `fb_shared`. Fusion
 look (select 8+ entities → 5 rows + "Show all 8", header shows "(8)", Full Copy still pastes all 8 lines)
 is the advisor's, as scoped.
+
+## Turn 165 — PM2b: nav buttons grow inside the label breakpoint — DONE (closes my own PM2 flag)
+
+**Task (epoch 1, per NEXT-SESSION.md):** the advisor's Fusion screenshot at 1000px confirmed exactly the
+clipping risk flagged at the end of turn 161 (PM2) — `.cad-navbar .cad-nav-btn`'s hard 32px-square pin
+was never widened when `PM2` turned the labels on, so "💾 S", "📁 Proje", "⚙ Setting" all clipped and the
+add-in icon collided with "Send to Fusion". Fix: inside the existing `@media (min-width: 601px) and
+(pointer: fine)` block, add a rule letting the button grow to fit its label; drop the now-redundant
+`margin-left` on `.cad-nav-label` since the button's new `gap` covers that spacing instead.
+
+Added the exact rule given in the dispatch — `width: auto`, `min-width: 32px` (keeps the icon-only floor
+so a button never shrinks below its old size), `max-width: none`, `padding: 0 10px`, `flex: 0 0 auto`,
+`gap: 6px` — with the `!important`s the dispatch called for (needed only because the base 32px-square
+rule they override also uses `!important` — noted in a one-line comment rather than leaving an
+unexplained `!important` chain). Placed it inside the desktop media query so it activates on exactly the
+same breakpoint as the label itself, never independently. Removed `.cad-nav-label`'s `margin-left: 6px`
+— the button's new `gap: 6px` between its icon span and label span already produces the same spacing,
+so keeping both would have doubled it.
+
+Left the mobile block (`@media (max-width: 600px), (pointer: coarse)`, 44px pin) untouched, and left the
+"STEP / Send to Fusion" primary button and the settings gear's own markup alone, per the dispatch's
+explicit scope.
+
+**Verify (all green):** extracted all three of the palette's inline `<script>` blocks (unchanged by this
+CSS-only edit; checked anyway per the dispatch's "sanity" ask) → `node --check` clean on each. `npx
+vitest run` → **29 passed**. `git diff --stat` → exactly the predicted 1 file (+6/-1, close to the
+predicted "~+8 lines").
+
+No gate hit. CSS-only change; no JS, no Python, no other panel touched. Fusion look (four labelled
+buttons at 1000px with no overlap; icons-only when docked narrow) is the advisor's, as scoped — this is
+the same screenshot-driven check that caught the original clipping, so I'd expect it to confirm clean
+this time, but I can't verify rendering from here myself.
