@@ -137,7 +137,7 @@ export function addLayer(editor, opts = {}) {
   return layer;
 }
 
-export function removeLayer(editor, id) {
+function removeLayer(editor, id) {
   if (!Array.isArray(editor._layers)) return;
   const idx = editor._layers.findIndex(l => String(l.id) === String(id));
   if (idx === -1) return;
@@ -162,7 +162,7 @@ export function removeLayer(editor, id) {
   if (editor._onChange) editor._onChange();
 }
 
-export function renameLayer(editor, id, newName) {
+function renameLayer(editor, id, newName) {
   if (!Array.isArray(editor._layers)) return;
   const layer = editor._layers.find(l => String(l.id) === String(id));
   if (!layer) return;
@@ -176,7 +176,7 @@ export function renameLayer(editor, id, newName) {
  *  display list shows _layers in reverse (top of list = on top of
  *  z-stack). 'before' in display terms means HIGHER in z-order =
  *  AFTER in the array. 'after' = LOWER = BEFORE in the array. */
-export function reorderLayer(editor, sourceId, targetId, displaySide /* 'before' | 'after' */) {
+function reorderLayer(editor, sourceId, targetId, displaySide /* 'before' | 'after' */) {
   if (!Array.isArray(editor._layers)) return;
   const sIdx = editor._layers.findIndex(l => l.id === String(sourceId));
   const tIdx = editor._layers.findIndex(l => l.id === String(targetId));
