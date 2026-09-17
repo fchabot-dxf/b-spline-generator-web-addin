@@ -99,6 +99,19 @@
       background: #fff; color: var(--cad-text-muted); cursor: pointer;
     }
     .cam-mode-tab.active { background: var(--cad-accent-blue); color: #fff; border-color: var(--cad-accent-blue); }
+    /* CAM1d: row 2 under the tabs (badge + both status strips) — split out
+       of .cad-navbar itself so row 1 (tabs + action button) never wraps or
+       clips at the docked ~460px width. */
+    .cam-header-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 2px 16px;
+      font-size: 10px;
+      color: var(--cad-text-muted, #888);
+      border-bottom: 1px solid var(--cad-border-soft);
+    }
     .cam-tab { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
     /* ── B-SPLINE tab (from cam_builder_palette.html) ────────────────────── */
@@ -346,13 +359,18 @@
       </div>
       <div style="flex:1;"></div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <span id="build-badge" class="cad-nav-version" title=""></span>
-        <span id="status-summary-bspline" class="cam-tab-header-item" data-mode="bspline" style="font-size:10px;font-weight:600;color:var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
         <button class="cad-btn cam-tab-header-item" data-mode="bspline" id="preview-btn" type="button" onclick="runPreview()" style="font-size:11px;padding:5px 10px;">PREVIEW</button>
-        <span id="status-summary-generic" class="cam-tab-header-item hidden" data-mode="generic" style="font-size:10px;font-weight:600;color:var(--cad-accent-blue);">…</span>
         <button class="cad-btn cad-btn-primary cam-tab-header-item hidden" data-mode="generic" type="button" onclick="runGenerate()">GENERATE</button>
       </div>
     </header>
+    <!-- CAM1d: row 2 under the tabs — badge + both status strips. Split out
+         of the fixed-36px .cad-navbar (which can't hold two rows) so
+         PREVIEW/GENERATE on row 1 never clip or wrap at the docked width. -->
+    <div class="cam-header-meta">
+      <span id="build-badge" class="cad-nav-version" title=""></span>
+      <span id="status-summary-bspline" class="cam-tab-header-item" data-mode="bspline" style="font-weight:600;color:var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
+      <span id="status-summary-generic" class="cam-tab-header-item hidden" data-mode="generic" style="font-weight:600;color:var(--cad-accent-blue);">…</span>
+    </div>
 
     <!-- ══════════════════════════ B-SPLINE tab ══════════════════════════ -->
     <div id="tab-bspline" class="cam-tab">
