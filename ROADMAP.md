@@ -277,3 +277,5 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
 - Correction recorded: `core/state.js:253-254` is the benign mask-strip, NOT B6; B6 lives in `editor/editor-io.js:27-49`
   (A5b verifies).
 - Rebuild is debounced (50 ms scheduler) — the "every slider tick rebuilds" worry is unfounded.
+- **HY3 (later, from HY2's pass-back):** `bspline-frame-builder.py` `_normalize_module_path` now orphaned (0 callers after
+  the dead-cluster delete — verify, then delete) · `stamp-editor.py` header lines 4-7 still claim a step-editor sibling.

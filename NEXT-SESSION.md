@@ -1,52 +1,60 @@
-# NEXT — HY2: hygiene batch from the audit (all L) — 8 small, independent, fully-anchored edits
+# NEXT — BG1: b-spline-gen — delete two dead modules, DECLARE one persistence serializer, clear handlers, drop a dead send
 
-**Ball: worker (seat A) · epoch 1 · HY2.** One commit by path, predicted **8 files**. Land each item COMPLETELY; if one
-is blocked by its STOP rule, skip it, finish the rest, and name the skip in the commit message. No behaviour changes.
+**Ball: worker (seat A) · epoch 1 · BG1.** Files (all under `bspline-frame-builder/b-spline-gen/`): `html/main/preset-manager.js`
+(git rm) · `html/main/cloud-preset-manager.js` (git rm) · `html/core/state.js` (add the declared serializer) ·
+`html/core/history.js` · `html/main/cloud-project-manager.js` · `html/core/fusion-bridge.js` · `html/main/export-flow.js` ·
+`b-spline-gen.py`. One commit by path, predicted **8 files (2 deleted)**.
 
-## Items (every anchor advisor-verified 2026-09-17 on the current tree)
-1. **`bspline-frame-builder/bspline-frame-builder.py:123-170`** — delete the 4 dead functions
-   `_find_related_addin_modules` (:123), `_invoke_addin_action` (:148), `_stop_related_addins` (:163),
-   `_run_related_addins` (:167). They only call each other; 0 external callers (grep). Then fix the comment at `:398`
-   that names `_find_related_addin_modules` — reword so it no longer refers to a deleted function.
-2. **`bspline-frame-builder/fb_shared/entity_helpers.py:5-9`** — the docstring says "NO callers are switched to this
-   module yet (S1 is additive)". False since July. Reword: "Canonical shared helpers (C4 S1-S5 complete): consumed by
-   frame-inspector, template-maker/core and the tests." Keep the `[GATE]`/`[FLAG]` notes but change "pending advisor
-   review" to "ratified — callers switched (S3-S5)".
-3. **`bspline-frame-builder/fb_shared/expression_coords.py:7`** — same: replace "ADDITIVE: no production callers switched
-   yet." with "Canonical (C4 S2-S5 complete); consumed by frame-inspector and template-maker/core."
-4. **`bspline-frame-builder/DEPLOY_bspline-frame-builder.py:143-144`** — in `deploy_template_maker.verify_files` delete the
-   two entries `"entity_helpers.py"` and `"expression_coords.py"` (no such files under template-maker/; they print a
-   spurious WARNING on every legacy deploy).
-5. **`bspline-frame-builder/fusion-exporter/fusion-exporter.py:124` + the loop at `:147`** — `panels_to_clean =
-   ['FusionIOPanel']` names a panel id nothing creates (run() uses `bsplinePanel_<tab>`; the parent's sweep removes it).
-   Delete the `panels_to_clean` list and the `for p_id in panels_to_clean:` block it feeds (the whole dead cleanup,
-   nothing else in `stop()`).
-6. **`bspline-frame-builder/stamp-editor/stamp-editor.py`** — (a) `:157-158` delete the `if action == 'reset_ui':` branch
-   (0 JS senders; grep `reset_ui` under `stamp-editor/html/` → 0). (b) `:13-15` replace the "v1 SCAFFOLD … land in
-   subsequent passes" header with one true sentence: "Stamp Editor add-in: toolbar button + palette, face-pick capture,
-   live face count, preview mesh, STEP emission (`commit`)." (c) `:855` `global _captured_faces` is unused in that scope
-   (pyflakes) — delete that one `global` line ONLY if the function never assigns `_captured_faces`; else leave.
-7. **`bspline-frame-builder/stamp-editor/html/core/runtime.js:4-6`** — the comment claims it "mirrors step-editor's
-   runtime"; no such add-in exists in the repo. Replace those three lines with: " * The Fusion ↔ JS wire shape shared
-   by Fred's add-ins; no sibling mirrors it today."
-8. **`bspline-frame-builder/frame-builder/fb_engine/parametric_engine.py`** — pyflakes: unused locals `ui_state` (:126),
-   `built_count` (:176 and :309), `sketch_prefix` (:209). **STOP rule per line:** delete the assignment ONLY if its
-   right-hand side is a plain read / literal / arithmetic with no call that could have a side effect; if it calls a
-   method (e.g. anything on `ctx`, `self`, Fusion objects) leave the line and name it in the commit message.
+## Ground truth (advisor-verified 2026-09-17)
+- `main/preset-manager.js` (121 L) and `main/cloud-preset-manager.js` (162 L): 0 importers anywhere under `html/`
+  (only mention = cloud-project-manager's header saying it replaces both). Dead.
+- Every live site that persists `P` first strips `.stampLayers[*].mask` (a `Float32Array` that `JSON.stringify` turns
+  into a `{"0":…}` object): `core/state.js:253-254` (`saveLastSession`), `main/cloud-project-manager.js:64-65`
+  (`buildSnapshot`). **Except** `core/history.js:24-41` `takeSnapshot`, which does `JSON.parse(JSON.stringify(P))` raw at
+  `:28` AND again for `layerConfigs` at `:33` — on every undo step. Same hand-rolled shape, three times, one of them wrong.
+- `b-spline-gen.py:40` `handlers = []` is never cleared; every sibling add-in clears in `stop()`'s `finally`.
+- `core/fusion-bridge.js:41-51` `sendFusionPreview` sends action `'preview'`. `b-spline-gen.py` has NO such branch and
+  `git log -S"action == 'preview'"` shows it never had one. Only caller: `main/export-flow.js:92` (import at `:21`).
+  The live preview path is `sendFusionMeshPreview` → `'preview_mesh'` (:765). Dead send since birth.
+
+## Do
+1. `git rm html/main/preset-manager.js html/main/cloud-preset-manager.js`. Then grep `splineGenPresets|splineGenProjectsMigrated`
+   — the localStorage migration in cloud-project-manager.js that reads the OLD store may now be the only reader of those keys;
+   leave it (it is the one-time import path) but say so in the commit message.
+2. **Declare the serializer once**, in `core/state.js` next to `saveLastSession`:
+   ```js
+   /** P as it must be persisted or snapshotted: masks stripped (Float32Array does not survive JSON). One truth —
+    *  saveLastSession, history.takeSnapshot and the Project Manager all go through here. */
+   export function persistableP(p = P) {
+     return { ...p, stampLayers: (p.stampLayers || []).map((L) => ({ ...L, mask: null })) };
+   }
+   ```
+   and make `saveLastSession` (:253-254) use it instead of its inline map.
+3. `core/history.js:takeSnapshot`: `P: JSON.parse(JSON.stringify(persistableP()))` and
+   `layerConfigs: JSON.parse(JSON.stringify(persistableP().stampLayers))` — import `persistableP` from `./state.js`.
+   Nothing else in the function changes. (Restore-side `applySnapshot` already regenerates masks; do not touch it.)
+4. `main/cloud-project-manager.js:buildSnapshot` (:63-66): replace the two `cleanLayers`/`cleanP` lines with
+   `const cleanP = persistableP();` (import it); keep the `points` → physical conversion and `thumbnail` as they are.
+5. Delete `sendFusionPreview` from `core/fusion-bridge.js` (:38-51 incl. its docblock); delete the import name at
+   `export-flow.js:21` and the call at `:92` (the `if (isFusionMode) …` line). Grep `sendFusionPreview|'preview'` → 0
+   (note `'preview_mesh'` must remain; use a closing-quote-bounded grep).
+6. `b-spline-gen.py` `stop()` (:1592-1634): wrap in `try/except/finally` like its siblings (`stamp-editor.py:1432`)
+   with `handlers.clear()` in the `finally`. If `stop()` already has a `try/except`, add only the `finally`.
 
 ## Verify (fast tier)
-- `python -m py_compile` on every edited `.py`; `python -m pyflakes` on them → no NEW warnings, and the 4-5 listed
-  ones gone (or named as kept).
-- Greps → 0: `_find_related_addin_modules|_invoke_addin_action|_stop_related_addins|_run_related_addins`,
-  `FusionIOPanel`, `reset_ui`, `no production callers`, `NO callers are`, `Mirrors step-editor`.
-- `node --check bspline-frame-builder/stamp-editor/html/core/runtime.js`.
-- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83.
-- `git show --stat HEAD` → 8 files (7 if item 6c or 8 is fully skipped — say which).
+- `node --check` on every edited `.js`; `python -m py_compile b-spline-gen.py`.
+- `npx vitest run` → 29 (core/state.js and main/app-init.js are under test; this is the byte-identity gate for
+  `saveLastSession`).
+- Greps: `persistableP` → 4 files (state, history, cloud-project-manager, + the export); `mask: null` inline maps →
+  only inside `persistableP`; `sendFusionPreview` → 0; `preset-manager.js` → only the header comment (reword it: "Replaced
+  preset-manager.js / cloud-preset-manager.js, both deleted in BG1").
+- `git show --stat HEAD` → 8 files.
+- Browser/Fusion look is the ADVISOR's (undo across a stamped layer; save/load a project).
 
 ## Do NOT
-Touch anything not named above. No refactors, no "while I'm here". Don't deploy.
+Touch `applySnapshot`, `editor/`, the palette HTML, B9/B11 call sites (BG2), or the `preview_mesh` path.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "HY2: <n>/8 items landed (<skips>), <sha>, <k> files; greps 0; pyflakes clean; pytest 83. Next: E7c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "BG1: 2 dead modules deleted; persistableP declared in state.js and used by saveLastSession/takeSnapshot/buildSnapshot; sendFusionPreview chain removed; b-spline-gen.py stop() clears handlers — <sha>, 8 files; vitest 29; greps clean. Next: E7c."`
 and stop.
