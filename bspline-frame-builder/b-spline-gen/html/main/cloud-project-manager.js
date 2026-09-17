@@ -17,6 +17,7 @@
 import { P, preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
+import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -169,6 +170,12 @@ export function bindProjectManager(preview) {
       e.preventDefault();
       quickSave();
     }
+  });
+
+  // Unsaved-changes dot in the header (UX1).
+  onDirtyChange((d) => {
+    const el = document.getElementById('dirty-dot');
+    if (el) el.hidden = !d;
   });
 }
 
@@ -833,6 +840,7 @@ async function _saveTo(fullName) {
     if (!r.ok) throw new Error((await safeJson(r)).error || `HTTP ${r.status}`);
     setMsg(`✓ Saved "${fullName}"`, 'ok');
     showToast(`✓ Saved "${fullName}"`);
+    markClean();
     closeModal();
     // Optimistic UI update first — KV's eventual consistency means an
     // immediate refreshList() may return the pre-write list. Mutate
@@ -940,6 +948,7 @@ async function onLoad(name) {
 async function _loadFrom(name) {
   if (!name)     return false;
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return false; }
+  if (isDirty() && !window.confirm('You have unsaved changes. Reload the project and lose them?')) return false;
 
   setMsg('Loading…');
   try {
@@ -949,6 +958,7 @@ async function _loadFrom(name) {
     applySnapshot(unpackPoints(snap), _preview);
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
+    markClean();
     setMsg(`✓ Loaded "${name}"`, 'ok');
     showToast(`✓ Loaded "${name}"`);
     return true;
