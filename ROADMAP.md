@@ -389,3 +389,5 @@ local `npm ci`; Cloudflare's older npm still disagrees with it — irrelevant no
 - **UX3 (ruling 2026-09-17 12:45): Undo/Redo leave the sidebar control panel** → top bar, left of Save, as icon
   buttons (↶ ↷) with the PM2 label pattern (`cad-nav-label`, text on wide+mouse); ids unchanged so history.js keeps
   driving them; the sidebar's sticky header keeps only "Generate New Seed". Queue after UX1.
+- **FB3 live-verified 13:00** (names + `new` chips + note; ReadOnly rows correctly chip-free). **FB3b (cosmetic, later):**
+  the `new` chip stretches to the label column's width — make it `display:inline-block; width:auto`.
