@@ -4682,3 +4682,90 @@ HTML's tab body only for the one named help-note string plus the shared header C
 markup itself, and every other tab body line, is untouched). **This closes the CAM1 migration's three
 planned slices** — final live confirmation (button/palette identity after Stop→Start, no stray warnings,
 whether the header nit actually resolved) is the advisor's.
+
+## Turn 183 — DEP2: `release.py` verifies the website actually deployed — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, today's incident):** `release.py` printed "Cloudflare rebuilds on
+push" after every push regardless of whether the build actually succeeded — every build had silently
+failed for two months. Poll the real Pages deployments API instead of assuming, drive the summary line
+from the real result, and exit non-zero on a confirmed build failure.
+
+**(1)** Declared `PAGES_PROJECT = "bspline-generator"` next to `PAGES_URL`, per the dispatch's literal
+value — deliberately did NOT reuse `deploy_cloudflare.py`'s own `PROJECT_NAME` (default
+`"symmetric-b-spline-gen"`, read from `CLOUDFLARE_PROJECT`): that script's wrangler-deploy project name
+and the GitHub-connected auto-build project the dispatch's ground truth names are evidently two different
+things, and the dispatch told me exactly which literal string to declare, so no ambiguity to resolve.
+
+**(2)** Copied `deploy_cloudflare.py`'s `.env`-loading block (dotenv, with a manual `key=value` fallback
+when `python-dotenv` isn't installed) — **one path adjustment required**: that script lives one directory
+deeper (`bspline-frame-builder/`) so its `.env` path is `Path(__file__).parent.parent`; `release.py` lives
+at `REPO_ROOT` itself, so its own copy uses `Path(REPO_ROOT) / '.env'` (equivalently `.parent`).
+Deliberately did **not** copy the "exit(1) if CLOUDFLARE_* missing" hard validation that script has —
+`release.py`'s `--web`/`--all` must still be able to finish committing, pushing, zipping, and uploading
+even when Cloudflare creds are absent from `.env`; `step_verify_pages` handles that case itself by
+returning `None`/printing `SKIPPED`, not by aborting the whole run.
+
+**(3) `step_verify_pages(sha, timeout_s=360)`:** polls `GET .../pages/projects/{PAGES_PROJECT}/deployments
+?per_page=5` every 10s (stdlib `urllib.request`, no new dependency), matches the entry whose
+`deployment_trigger.metadata.commit_hash` **starts with** `sha` (handles the short-vs-full-hash mismatch),
+and prints one line only on a `(stage_name, stage_status)` state change — not once per poll tick. On
+`('deploy', 'success')` → sets the summary to `{PAGES_URL}  DEPLOYED {sha}`, returns `True`. On any stage
+reaching `status == 'failure'` → fetches `.../deployments/{id}/history/logs` and prints its last 25
+non-boilerplate lines (filtered by dropping blank lines and anything starting with `npm ` or containing
+`Usage:`, a best-effort heuristic for the generic npm-CLI-help noise Cloudflare's build log prepends —
+**could not verify this filter against a real failing build's actual log content**, since the only
+deployment available to test against today is a successful one; flagging rather than claiming it's
+proven), sets the summary to `BUILD FAILED for {sha}`, returns `False`. On timeout → `UNCONFIRMED after
+{timeout_s}s — check https://dash.cloudflare.com`, returns `False`. On missing credentials → `SKIPPED (no
+CLOUDFLARE_* in .env)`, returns `None` — checked and confirmed this branch never sets `web_build_failed`.
+
+**(4) Exit-code semantics — deliberately NOT a plain `web_verify_ok is False` check.** The dispatch's own
+wording singles out only a **confirmed BUILD FAILED** for the non-zero exit ("A BUILD FAILED result makes
+release.py exit non-zero") — UNCONFIRMED (timeout) is explicitly a different, inconclusive outcome that
+the dispatch never asks to be treated as a hard failure. Since both BUILD FAILED and UNCONFIRMED return
+`False` from `step_verify_pages` (both mean "not confirmed deployed," which is the right shared return
+value for `--verify-web`'s own exit code), a plain `is False` check in `main()`'s normal `--web`/`--all`
+path would have wrongly failed the whole release on a slow build that just hadn't finished within 360s.
+Added a separate `web_build_failed` global, set `True` only in the actual failure branch, and gated the
+real exit-1 behavior on that — first pass of this used the coarser check and I caught the over-broad
+UNCONFIRMED-also-fails behavior before finalizing.
+
+**(5) `--verify-web [sha]` flag:** intercepted at the very top of `main()`, before the normal
+`_parse_args`/`KNOWN_FLAGS` machinery, since it takes an optional trailing value the existing bare-flag
+parser doesn't support — runs only `step_verify_pages` against the given sha (or `git rev-parse --short
+HEAD` if none given) and exits with the function's own True/False/None result (0 only on a confirmed
+`True`), touching nothing else in the script.
+
+**Verify (all green, including two REAL live checks against the actual Cloudflare API — not mocked):**
+- `py_compile` → clean.
+- `python release.py --bogus` → unchanged: `Unknown flag: --bogus` + the valid-flags line + exit 2.
+- `python release.py --verify-web 2790636` (the advisor's named test commit, CAM1c's WORK-LOG commit) →
+  ```
+  Verifying Cloudflare Pages deployment for 2790636...
+        Web deploy: watching Cloudflare Pages for 2790636...
+        Web deploy: deploy (success)
+    Web app:    https://bspline-generator.pages.dev  DEPLOYED 2790636
+  ```
+  exit code **0**. Confirms the build genuinely succeeded for that commit — a real answer from Cloudflare,
+  not an assumption.
+- `python release.py --verify-web` (no sha, defaults to HEAD `1bed176` at the time) → same DEPLOYED
+  result, confirming the HEAD-default path independently of the explicit-sha path.
+- SKIPPED path verified headlessly (env vars cleared in an isolated module load, real `.env` untouched):
+  `step_verify_pages('deadbeef')` → prints `SKIPPED (no CLOUDFLARE_* in .env)`, returns `None`,
+  `web_build_failed` stays `False`.
+- **Not verified live** (no failing or slow-pending deployment exists right now to test against):
+  the BUILD FAILED branch (log fetch + filter + non-zero exit) and the UNCONFIRMED timeout branch. Both
+  are implemented exactly per the dispatch's documented API shape and reasoning, but only the DEPLOYED and
+  SKIPPED paths have been proven against real responses. Flagging this gap explicitly rather than
+  claiming full live coverage.
+- `git diff --stat` → **1 file**, but **+155/-3 lines, not the predicted "~+60."** The bulk of the excess
+  is the failure-log fetcher (a whole function), the full state-tracked polling loop, the `.env`-loading
+  block copied from `deploy_cloudflare.py`, and the `--verify-web` flag's own parsing block — none of
+  which fit inside a rough 60-line estimate once written out with the same error-handling density as the
+  rest of the file. Reporting the real number rather than smoothing over the gap from the estimate.
+- Confirmed `git add -A` (`--web`'s existing staging behavior) is byte-for-byte untouched, per the
+  dispatch's explicit "leave it, it is the human's ritual" instruction.
+
+No gate hit. Did not touch `deploy_cloudflare.py`, the add-in deploy path, or `--web`'s `git add -A`
+staging ritual. `PAGES_PROJECT` declared as its own constant rather than reusing/renaming
+`deploy_cloudflare.py`'s differently-scoped `PROJECT_NAME` — flagged above, not a silent divergence.
