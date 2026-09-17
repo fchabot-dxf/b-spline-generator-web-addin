@@ -1,0 +1,30 @@
+# Deploy the shared Cloudflare Worker (projects-dansemur) on every push to main that touches it.
+# Declared here so "push" means "deployed" for the worker the same way it already does for the
+# Pages site (Cloudflare's GitHub integration). Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+name: deploy-worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloud/preset-worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy with wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloud/preset-worker
+          command: deploy
