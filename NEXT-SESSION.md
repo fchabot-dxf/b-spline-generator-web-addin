@@ -1,35 +1,43 @@
-# NEXT — FB2a-fix: the rewritten Sketch Builder dropped the tilt-param ensure at palette-open (E8 regression)
+# NEXT — FB2 slice (b): switch the Extrude Frame (solid) palette onto the scaffold
 
-**Ball: worker (seat A) · epoch 1 · FB2a-fix.** File: ONLY `bspline-frame-builder/frame-builder/ui/sketch_builder_ui.py`.
-One commit by path, predicted **1 file, ~+3/−1**.
+**Ball: worker (seat A) · epoch 1 · FB2b.** File: ONLY `bspline-frame-builder/frame-builder/ui/solid_builder_ui.py`.
+One commit by path, predicted **1 file** (351 → ~40-60 lines).
 
-## Ground truth (advisor, live Fusion 11:15, deployed f7236f9)
-- Fresh design → open Sketch Builder → `frame_tilt_deg` **absent** (this morning, pre-FB2a: present). Build → log says
-  `TILT: 'frame_tilt_deg' not present at build time; hosting sketches on the raw XY plane` → timeline 4 (no tilt plane).
-  The tilt feature and the E8 undo guarantee are silently lost.
-- Cause: `_on_ready(ctx)` (`:359`) does template pre-select + `_schedule_schema_push` only. The design (§3) said on_ready
-  = "tilt-param-ensure at open + first-template pre-select + initial schema push"; the implementation dropped the
-  first item (its docstring even says "was run_palette steps 5b/6" — the tilt step was 5a). `_ensure_tilt_param_safe`
-  (`:325`) still exists and `_on_document_activated` (`:340`) still calls it — only the open path lost it.
-- pyflakes: `:410` `global frame_engine` is declared but never assigned in that scope (the parent injects the module
-  attribute directly). Drop that name from the `global` statement if the function does not assign it.
+## Ground truth (advisor)
+- FB2a + FB2a-fix are live-proven (deployed 387942e): Sketch Builder opens, creates `frame_tilt_deg`, builds a
+  tilted frame (timeline 5), Stop→Start rebuilds a fresh module with the doc-activated handler cleared and re-added.
+  One open question is parked for slice (c): a single document switch logged TWO "SCHEMA PUSH: scheduled" lines; the
+  advisor will re-measure with a cleaner test before (c). Do not touch the sketch side in this slice.
+- `solid_builder_ui.py` today: constants `PALETTE_ID/NAME/HTML`, `BUILD_SOLID_CMD_ID`; `PaletteHTMLEventHandler` with
+  `selected_face` state and actions `run_build`, `pick_face`, `ping` (all wired, §4 of the design — must stay exactly
+  so); `_run_solid_build_direct(data)` calls `solid_coordinator.build_solid_logic_v3(...)`; no doc-activated, no
+  schema push; window 380×460, min 320×360. The parent reads `_fb_solid.handlers` and `_fb_solid.CommandCreatedHandler`
+  and injects `frame_engine` (unused by solid — keep accepting it).
 
-## Do
-1. First line of `_on_ready`'s body: `_ensure_tilt_param_safe()   # E8 F1-C: the param must exist BEFORE any build`.
-   Update its docstring to "(was run_palette steps 5a/5b/6)".
-2. `:410`: remove `frame_engine` from the `global` statement if nothing in that function assigns it (keep
-   `_doc_activated_handler`).
+## Do (exactly the design's slice (b), the way FB2a did it for sketch)
+1. `sys.path` line for `ui/` (same as sketch). Import `PaletteSpec, make_palette, _PaletteBridgeMixin` from
+   `palette_scaffold`.
+2. `PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler)` keeps its `selected_face` state and its
+   three actions verbatim; `run_build` calls `_palette.schedule_hidden_build(data)`.
+3. `_build_fn(data, ctx)` = today's `_run_solid_build_direct` body using `ctx.set_status`/`ctx.notify_status`/
+   `ctx.close_palette`/`ctx.diag_logger`.
+4. `_spec = PaletteSpec(..., size=(380, 460), min_size=(320, 360), build_cmd_id=BUILD_SOLID_CMD_ID, build_fn=_build_fn,
+   make_html_handler=..., extra_commands=(), on_document_activated=None, on_ready=None)`; `_palette = make_palette(_spec)`;
+   re-export `run_palette`, `handlers`, `CommandCreatedHandler` the same way sketch does.
+5. Delete every duplicated function/class the scaffold now provides. No `_doc_activated_handler` attribute is needed
+   for solid (the parent reads it only for sketch).
 
-## Verify
-- `py_compile` + `pyflakes` (the `:410` warning gone, no new ones).
-- `grep -n "_ensure_tilt_param_safe()" sketch_builder_ui.py` → 2 call sites (on_ready + on_document_activated).
-- `git show --stat HEAD` → 1 file. Live proof (fresh design → open → param present → build → tilt plane, timeline 5)
-  is the ADVISOR's.
+## Verify (headless)
+- `py_compile` + `pyflakes` (0 warnings).
+- Import smoke with the adsk stub (same script as FB2a): module imports; `handlers` is a list; `run_palette` callable;
+  `CommandCreatedHandler` exists; `PaletteHTMLEventHandler.notify` exists; action grep `run_build pick_face ping` → 1 each.
+- `wc -l` before/after. `git show --stat HEAD` → 1 file. Live proof (open Extrude Frame, pick a face, build, auto-close,
+  Stop→Start, reopen) is the ADVISOR's.
 
 ## Do NOT
-Touch anything else; slice (b) waits until this is proven live.
+Touch `sketch_builder_ui.py`, `palette_scaffold.py`, either HTML, or the parent. No `if is_solid`. Don't deploy.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2a-fix: _on_ready calls _ensure_tilt_param_safe first; stray global dropped — <sha>, 1 file. Next: FB2b after live proof."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2b: solid_builder_ui 351→<n> lines on the scaffold; actions run_build/pick_face/ping intact; smoke OK — <sha>, 1 file. Next: FB2c."`
 and stop.
