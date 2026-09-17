@@ -9,6 +9,7 @@ import adsk.core, adsk.fusion, traceback, os, json, datetime, subprocess, sys, m
 # ---------------------------------------------------------------------------
 _handlers = []
 _html_handler = None
+_sel_handler = None
 _last_sel_ids = ""
 _latest_payload = ""
 
@@ -345,6 +346,7 @@ class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
 # ---------------------------------------------------------------------------
 
 def run(context):
+    global _sel_handler
     try:
         app = adsk.core.Application.get()
         ui = app.userInterface
@@ -395,15 +397,21 @@ def run(context):
             except Exception as e:
                 _log(f"[Fusion Inspector] toolbar registration failed for {target_id}: {e}\n" + traceback.format_exc())
         # 3. Selection Monitor
-        sel_handler = _SelectionChangedHandler()
-        ui.activeSelectionChanged.add(sel_handler)
-        _handlers.append(sel_handler)
-        
+        try:
+            if _sel_handler:
+                ui.activeSelectionChanged.remove(_sel_handler)   # self-heal after an unclean prior stop
+        except Exception:
+            pass
+        _sel_handler = _SelectionChangedHandler()
+        ui.activeSelectionChanged.add(_sel_handler)
+        _handlers.append(_sel_handler)
+
         _log("Fusion Inspector Standalone Start (Proper Registration)")
     except Exception:
         _log(traceback.format_exc())
 
 def stop(context):
+    global _sel_handler
     try:
         app = adsk.core.Application.get()
         ui = app.userInterface
@@ -437,6 +445,16 @@ def stop(context):
 
         cmd_def = ui.commandDefinitions.itemById(CMD_ID)
         if cmd_def: cmd_def.deleteMe()
-            
+
+        try:
+            if _sel_handler:
+                ui.activeSelectionChanged.remove(_sel_handler)
+        except Exception:
+            pass
+
         _log("Fusion Inspector Standalone Stop")
-    except Exception: pass
+    except Exception:
+        _log(traceback.format_exc())
+    finally:
+        _handlers.clear()
+        _sel_handler = None
