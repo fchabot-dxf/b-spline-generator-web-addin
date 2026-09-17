@@ -14,7 +14,7 @@
 // 'splineGenPresets' (old local preset store), offers to upload them to cloud.
 // Marks completion with 'splineGenProjectsMigrated' so the prompt never repeats.
 
-import { preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';
+import { P, preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
 
