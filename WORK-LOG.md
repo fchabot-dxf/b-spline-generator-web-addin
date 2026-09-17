@@ -4128,3 +4128,66 @@ No gate hit. CSS-only change; no JS, no Python, no other panel touched. Fusion l
 buttons at 1000px with no overlap; icons-only when docked narrow) is the advisor's, as scoped — this is
 the same screenshot-driven check that caught the original clipping, so I'd expect it to confirm clean
 this time, but I can't verify rendering from here myself.
+
+## Turn 167 — UX1: one declared "unsaved changes" state, confirm before Load discards edits — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** declare a single dirty-state module; mark dirty on
+real edits (snapshots, param changes) but not the initial-load snapshot; mark clean on a completed
+save/load; confirm before `_loadFrom` silently discards unsaved edits; show a dot in the header.
+
+**(1)** `core/dirty.js` created verbatim per the dispatch's given code — a leaf module, no imports:
+`isDirty`/`markDirty`/`markClean`/`onDirtyChange`, both mutators no-op (and don't notify) when already
+in the target state.
+
+**(2) Writers — picked the label-check option, not the `{edit:false}` parameter, and did NOT touch
+`app-init.js`:** the dispatch offered a choice ("pick one, say which"). Before choosing, read
+`app-init.js`'s actual init path: `initApp` seeds the UI via `Object.keys(P).forEach(k =>
+syncUItoParam(k, P[k]))`, never `applyParam` — so `applyParam`'s unconditional `markDirty()` cannot
+fire during load regardless of which option I picked. That left `takeSnapshot("Initial")` as the only
+remaining risk, and a plain `if (label !== "Initial") markDirty()` inside `takeSnapshot` handles it
+without adding a second parameter that would have exactly one caller (`app-init.js`'s existing
+`takeSnapshot("Initial")` call already passes the right label; nothing there needed to change). Added
+the check in `core/history.js`'s `takeSnapshot`, imported `markDirty` from the new leaf. `applyParam`
+(`main/param-manager.js`) calls `markDirty()` right after `updateP(key, value)` — after the value is
+accepted, before any of the downstream rebuild/UI-sync side effects.
+**Consequence: `app-init.js` needed no change at all** — the predicted 6-file diff is genuinely 5 files
+under this choice, not an oversight. Flagging plainly rather than padding the diff to hit the predicted
+count.
+
+**(3) Clean points:** `cloud-project-manager.js`'s `_saveTo` — the one save-success path — gets
+`markClean()` right after the `✓ Saved` toast, **before** `closeModal()`. Checked first whether Save As
+shares this path (dispatch's explicit ask): grepped `_saveTo(` — `quickSave` (`:780`... actually the
+associated-file branch), the modal's regular Save button, and `onSaveAs` (`:805`) all call `_saveTo`
+directly, so this single `markClean()` covers all three UI entry points, not just Quick Save. `_loadFrom`
+gets `markClean()` right after `setCurrentFile(name)`, before the `✓ Loaded` toast. `applySnapshot`
+(undo/redo) was not touched, per the dispatch's explicit "does NOT touch it."
+
+**(4) Confirm before discard:** added `if (isDirty() && !window.confirm('You have unsaved changes.
+Reload the project and lose them?')) return false;` as the first substantive line of `_loadFrom` (after
+its existing `!name`/`!_API_URL` guards, before the `setMsg('Loading…')` that starts the actual fetch).
+Quick Save's own code path was not touched — it only ever saves, never discards.
+
+**(5) The dot:** `<span id="dirty-dot" class="cad-nav-version" title="Unsaved changes" hidden>●</span>`
+added to the title box, immediately before `#fmCurrentFileLabel`, exactly as given. Subscribed in
+`bindProjectManager` (confirmed by reading it first — this is where `#btnOpenProjectManager` and the
+Quick-Save button are wired, i.e. the actual header-init function) with `onDirtyChange((d) => { const el
+= document.getElementById('dirty-dot'); if (el) el.hidden = !d; })` — placed after the existing Ctrl+S
+listener, at the end of the function.
+
+**Verify (all green):** `node --check` on all 4 touched JS files (not 5 — see the file-count note above)
+→ clean. Headless semantics check on `dirty.js` in isolation (pasted below) — starts clean, subscriber
+fires immediately with current state on subscribe, `markDirty`/`markClean` both notify exactly once per
+real transition and are idempotent (no duplicate notify when already in that state), unsubscribe stops
+further notifications:
+```
+dirty.js semantics: ALL ASSERTIONS PASSED [false,true,false]
+```
+`npx vitest run` → **29 passed**, matching baseline. Greps: `markDirty(` → **2** (`history.js`,
+`param-manager.js`); `markClean(` → **2** (`cloud-project-manager.js`'s `_saveTo` and `_loadFrom`);
+`confirm(` → **1** (`_loadFrom`); `dirty-dot` → **2** (the HTML span + the JS query). All match the
+dispatch's predicted counts exactly. `git status --short` → 4 modified + 1 new = **5 files**, not the
+predicted 6 (see (2) above for why).
+
+No gate hit. Didn't add a `beforeunload` prompt, touch undo/redo semantics, or any other Project Manager
+action, per the dispatch's explicit "Do NOT." Web/Fusion look (slider → dot appears; Quick Save → dot
+gone; Load with edits → prompt) is the advisor's, as scoped.
