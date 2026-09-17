@@ -1,28 +1,35 @@
-# LANE B (audit seat) — A4: audit `stamp-editor/` (~10.7k lines). READ-ONLY.
+# LANE B (audit seat) — A5a: audit `b-spline-gen/html/core/` + `main/` (the app's state, engine and managers). READ-ONLY.
 
-**Seat B · epoch 1 · A4.** Same rules as A1-A3. Append an **"A4 — stamp-editor"** section to `AUDIT-2026-09.md`.
+**Seat B · epoch 1 · A5a.** Same rules as A1-A4. Append an **"A5a — b-spline-gen core+main"** section. b-spline-gen is
+23k lines, so it is split: A5a = `core/` + `main/` (+ `b-spline-gen.py`); A5b (next turn) = `editor/` + the palette
+HTML + `index.html`. The `node_modules` gap in this worktree is known — static only, do not `npm install` here.
 
-**A3 review (advisor):** accepted. A3-1 becomes a seat-A task — not "add the 5 names" but DERIVE the wipe list from the
-`core/` folder so it cannot drift again (the hand-maintained list IS the bug). A3-2 (`check_addin_sync.py`) → delete.
+**A4 review (advisor):** accepted. Drift check done from the main checkout (result recorded in ROADMAP). Your
+stampLayers map is the C5 input; the "strip .mask ×3" observation is in scope THIS turn (below).
 
-## A4 scope — `bspline-frame-builder/stamp-editor/`
-Context you need first: ROADMAP "CLEANUP PHASE" C1 (the editor tree used to be a sync-GENERATED fork of
-`b-spline-gen/html/editor/` + `core/stamp/`; C1 untracked the generated copies) and C5/EDM4 (the `P.stampLayers` mirror
-tangle, still open, carve-path). `sync_stamp_bundle.py` at `bspline-frame-builder/` root is the generator.
-1. **Fork status (P1: one frontend, no copy-paste per host):** which files under `stamp-editor/html/` are GENERATED
-   (by `sync_stamp_bundle.py`) vs UNIQUE (engine.js / runtime.js / main/)? Are any generated copies still tracked in git
-   (`git ls-files stamp-editor/`)? Has any generated copy been hand-edited since its source (diff them)? Name each.
-2. `stamp-editor.py` (entry) — lifecycle symmetry, palette + handlers released in `stop()`.
-3. `html/main/` + `html/core/runtime.js` + `engine.js` — the unique code: doorless handlers both directions
-   (`fusionSendData` actions vs Python dispatcher; `sendInfoToHTML` events vs JS handlers), hand-rolled tables that
-   should be declarations, dead functions (0 callers), honesty (comments describing a pre-C1 or pre-EDM4 state).
-4. **EDM4 (C5) reconnaissance, read-only:** where is `P.stampLayers` written and read today? One list of `file:line`
-   for writers and one for readers — this is the map the eventual C5 carve needs; do not propose the carve.
-5. Tests: `tests/` at repo root has 4 vitest files (29 green) — which touch stamp-editor code?
-
-Do NOT run Fusion; do not run `sync_stamp_bundle.py` (it writes). Static read + grep + `git ls-files` + `diff`.
+## A5a scope — `bspline-frame-builder/b-spline-gen/html/core/`, `main/`, `b-spline-gen.py`
+1. **P1 (one frontend, two hosts):** host-specific branches must live ONLY in `core/fusion-bridge.js`. Grep `main/` and
+   `core/` for `isFusion`, `adsk`, `window.fusion`, `fusionSendData`, `location.host` outside that file — every hit is a
+   P1 violation; list them.
+2. **Declared vs hand-rolled:** the three "strip `.mask` before persisting" loops (`main/cloud-preset-manager.js:23-24`,
+   `main/cloud-project-manager.js:64-65,669`, `main/preset-manager.js:54-55`) — confirm they are the same shape and name
+   the one declared serializer they should become. Then look for the same class elsewhere: parallel if/else ladders
+   encoding a table, duplicated literals (ids, storage keys, API paths) that should be one declaration.
+3. **Dead code:** `main/preset-manager.js` and `main/cloud-preset-manager.js` — the Project Manager's own header says it
+   "replaces both". Are they still imported/loaded (grep `main.js`, `app-init.js`, the palette HTML `<script type=module>`
+   graph)? If not, they are two dead modules + a dead localStorage migration. Also: exported functions with 0 importers
+   across `html/` (list them with file:line).
+4. **State + undo:** `core/state.js` (the `P` object) and `core/history.js` — what gets snapshotted, what does not (a
+   field that changes but is not in the snapshot = undo silently skips it). B1/B3 in BUGS_OPEN.md concern undo; reconcile.
+5. **B6 (hidden-layer data loss, `core/state.js:253-254`)** — still present? state it plainly with the line.
+6. **`b-spline-gen.py`** — lifecycle symmetry, dispatcher vs JS actions both directions (the palette HTML is A5b, but the
+   `sendToPython`/`fusionSendData` action strings in `main/` are yours).
+7. **Inefficiencies:** rebuild cost — does every slider tick rebuild the whole mesh (`core/engine/rebuild.js`)? Any
+   O(n²) over points/layers? Repeated JSON clone of `P` per keystroke?
+8. **Tests:** the 4 vitest files import `core/state.js`, `editor/editor-coords.js`, `main/stamp/_shared.js`,
+   `main/app-init.js`, `main/stamp/svg-source.js` — which findings above land in tested vs untested code.
 
 ## When done
 Append lane-b WORK-LOG, commit by path, then FROM THIS FOLDER:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A4 stamp-editor audit: <n> findings (<H/M/L>), fork status: <tracked generated copies? hand-edited?>, stampLayers writers/readers mapped, <sha>. Next: A5 b-spline-gen."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "A5a b-spline-gen core+main: <n> findings (<H/M/L>), P1 violations <k>, dead modules <list>, B1/B3/B6 status, <sha>. Next: A5b editor+palette."`
 and stop.
