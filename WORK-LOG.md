@@ -3538,3 +3538,107 @@ scaffold needs a special case — STOP and revise the spec shape instead of addi
 
 No gate hit (design-only, nothing to run). No code touched. Awaiting the advisor's blessing before any
 implementation slice begins.
+
+---
+
+## Turn 147 — FB2a: add palette_scaffold.py, switch Sketch Builder onto it (solid untouched) — DONE
+
+Design blessed with 2 amendments; implemented exactly the design's slice (a) plus both amendments. 3
+files, one commit. `solid_builder_ui.py` untouched (confirmed via `git diff --stat`, empty).
+
+**Design decisions made during implementation, not fully spelled out in the design doc, recorded here
+so slice (b) doesn't have to re-derive them:**
+
+- **`PaletteSpec` gained a `make_html_handler` field** the design doc's §2 sketch didn't explicitly list.
+  Needed because the scaffold's generic `run_palette` has to construct the per-builder
+  `PaletteHTMLEventHandler` subclass instance somehow, and — per the design's own §3 reasoning for why
+  that class stays per-builder — the scaffold can't know the subclass's name. `make_html_handler(diag_logger)`
+  is the minimal hook: a builder-supplied factory, called once per `run_palette()`.
+- **`HiddenBuildCommandCreatedHandler`/`HiddenBuildCommandExecuteHandler` and the two schema-push handler
+  classes are NOT re-exported by name anywhere** — nothing external ever referenced them (not the parent
+  loader, not the HTML), so they became fully scaffold-internal via `_make_hidden_command_pair(cmd_id,
+  execute_fn, handlers, log_error)`, a factory returning a fresh `CommandCreatedHandler` (which itself
+  creates a fresh `CommandEventHandler` on `commandCreated`) per call — this is also where amendment 2's
+  fix lives: `cmd_id`/`execute_fn` are THIS CALL's own parameters, not a loop variable closed over from
+  outside, so two hidden commands (build + schema-push) can never share captured state.
+- **`extra_commands` entries are `(cmd_id, cmd_name, execute_fn)` triples, not `(cmd_id, cmd_name,
+  handler_class)` as the design doc's §2 sketch first proposed.** `execute_fn` takes no arguments — the
+  MAIN build command's pending-data envelope is scaffold-managed (`schedule_hidden_build(data)`), but an
+  EXTRA command's own pending-data storage stays the caller's responsibility, same as it always was
+  (sketch keeps its own `_pending_schema_style` module global, unchanged). This keeps the scaffold from
+  having to invent a generic "arbitrary payload per extra command" mechanism it doesn't actually need yet
+  — declaring that shape before there's a second extra-command consumer to prove it right would have been
+  exactly the premature-machinery trap the design doc's §3 already argued against for the HTML dispatch
+  table.
+- **The `frame_engine` module attribute is untouched by the scaffold entirely.** Traced the actual
+  injection path before assuming otherwise: `bspline-frame-builder.py:190` (`_fb_sketch.frame_engine =
+  _engine`) sets it directly on the loaded module at bootstrap time, independent of any `run_palette` call
+  — so `sketch_builder_ui.py` keeps its own plain `frame_engine = None` module global exactly as before;
+  the scaffold's `ctx.frame_engine` is populated from `run_palette`'s own `engine_instance` PARAMETER
+  (which is always the same value the parent just set), not by reaching into the caller's globals — Python
+  can't do that across module boundaries via a plain `global` statement anyway, since `global` always
+  targets the STATEMENT'S OWN defining module.
+- **`run_palette` is a genuine thin wrapper, not a direct re-export of `_palette.run_palette`.** The parent's
+  `_teardown_submodules` reads `_fb_sketch._doc_activated_handler` via a plain `getattr` on the module —
+  a snapshot read, not a live property — so something has to refresh that module attribute after every
+  `run_palette()` call. The wrapper does exactly that: calls the scaffold's `run_palette`, then copies
+  `_palette.get_doc_activated_handler()` into the module-level name the parent expects. Confirmed this
+  contract by reading `_teardown_submodules` (`bspline-frame-builder.py:270-291`) before writing the
+  wrapper, not by assuming the design doc's summary was complete.
+- **Eliminated the `_style_id_ref` one-element-list indirection** (verified behaviour-equivalent, not
+  just simplified for its own sake): the original wired a mutable `[style_id]` box into both the active
+  handler and `DocumentActivatedHandler` so the latter could read a value that might change later. Since
+  `self.style_id` and `self._style_id_ref[0]` were ALWAYS written together, in the same branch, one line
+  apart (`change_template`'s handler), reading `ctx.active_handler.style_id` directly at call-time in
+  `_on_document_activated` gives the identical value the box would have — Python object attributes are
+  already live references, the box added a layer of indirection solving a problem `ctx.active_handler`
+  already solves for free. Flagging this rather than silently dropping it, since it's a real (if small)
+  structural change beyond pure code-motion.
+
+**Verify (all green):**
+- `py_compile` 3/3 clean.
+- `pyflakes` on all three → exactly one warning, `sketch_builder_ui.py`: `` `global frame_engine` is
+  unused: name is never assigned in scope `` inside `CommandCreatedHandler.notify()`. **Confirmed
+  pre-existing, not introduced**: ran `pyflakes` against the pre-refactor file pulled from `git show HEAD`
+  — same warning, same construct, present before this turn touched anything. Left it exactly as the
+  original had it (this file is already being substantially rewritten, but this specific harmless
+  dead-`global` predates FB2 and isn't part of what this slice was asked to clean up).
+- Headless import-time smoke (adsk stub modeled on `template-maker/tests/conftest.py:26-40`; script + full
+  output pasted below): `palette_scaffold` and the rewritten `sketch_builder_ui` both import cleanly;
+  `handlers` is a list; `run_palette` is callable; `PaletteHTMLEventHandler.notify` exists;
+  `_doc_activated_handler` module attribute exists (`None` before any `run_palette()` call, as expected).
+  **Amendment 2's per-iteration-binding proof**: called `_make_hidden_command_pair` twice with different
+  `(cmd_id, execute_fn)` pairs, confirmed the two returned handler instances are of DIFFERENT classes
+  (fresh nested classes per call, not one shared class closing over a loop variable), then simulated both
+  firing through a minimal fake `CommandCreatedEventArgs`/`command.execute` — the two `execute_fn`s fired
+  in the correct order (`['a', 'b']`), proving neither call's handler leaked the other's captured state:
+  ```
+  palette_scaffold imported OK
+  sketch_builder_ui imported OK
+  handlers is a list: OK
+  run_palette is callable: OK
+  PaletteHTMLEventHandler.notify exists: OK
+  _doc_activated_handler attribute exists (value=None): OK
+  h1/h2 are independent classes: OK
+  per-iteration binding proof: calls == ['a', 'b'] — OK, no shared closure state
+  ALL SMOKE ASSERTIONS PASSED
+  ```
+- §4 action-table re-check against the new `notify()` source: `update_param update_lock change_template
+  request_template_list run_build ping get_templates` each grep exactly 1 — all 7 present, nothing new
+  handled, nothing dropped.
+- `wc -l` before/after: **594 → 415**, not the design's predicted 200-250. Investigated rather than
+  waved off: `_push_schema_direct` alone (verbatim, unchanged) is **107 lines** — parameter-hydration
+  business logic with zero solid-side counterpart, genuinely sketch-only, and it alone is nearly half the
+  gap between 415 and the design's 200-250 estimate. The design doc's §2 estimate of "~150-200 sketch-only
+  lines" undercounted this one function's size; the ~161 lines that DID move into the scaffold
+  (`_create_hidden_command`/`_ensure_hidden_commands`, `_schedule_hidden_build`, both hidden-command
+  handler-class pairs, `_set_status`/`_notify_status`/`_close_palette`, and `run_palette`'s boilerplate
+  skeleton) match my own line-by-line accounting of what the scaffold absorbs. Reporting the real number
+  and the reason rather than the prediction.
+- `git diff --stat` → exactly the predicted 3 files (2 modified, 1 new); `solid_builder_ui.py` diff is
+  empty (untouched, confirmed).
+
+No gate hit. Didn't touch `solid_builder_ui.py`, either palette HTML, `fb_engine/`, or `fb_shared`. No
+`if is_sketch` anywhere in `palette_scaffold.py` — verified by re-reading the finished file, not just by
+intent. Didn't deploy. The live proof (open Sketch Builder through the bridge, build, auto-close,
+Stop→Start, one schema push per document switch) is the advisor's.
