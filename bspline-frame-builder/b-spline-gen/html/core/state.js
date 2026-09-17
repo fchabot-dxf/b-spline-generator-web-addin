@@ -1,5 +1,6 @@
 import { COORD_SYSTEM } from './coords.js';
 import { dbg } from './debug.js';
+import { fusLog } from './fusion-log.js';
 /**
  * state.js — Application state and persistence logic.
  */
@@ -265,13 +266,7 @@ export function saveLastSession() {
         };
         localStorage.setItem('splineGenLastSession', JSON.stringify(session));
         // Automatically send session JSON to Fusion log file if running inside Fusion
-        if (window.adsk && typeof adsk.fusionSendData === 'function') {
-            try {
-                adsk.fusionSendData('log', JSON.stringify({ msg: JSON.stringify(session) }));
-            } catch (err) {
-                if (window.console) console.warn('Fusion log send failed:', err);
-            }
-        }
+        fusLog(JSON.stringify(session));
     } catch (e) {
         console.warn('saveLastSession failed:', e);
     }

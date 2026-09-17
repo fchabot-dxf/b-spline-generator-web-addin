@@ -5,14 +5,23 @@
 
 import { P, isFusionMode, setIsFusionMode } from './state.js';
 import { COORD_SYSTEM } from './coords.js';
+import { fusLog } from './fusion-log.js';
+
+export { fusLog } from './fusion-log.js';
 
 let pollInterval = null;
 
 /**
- * Diagnostic logging bridge to fusion_hybrid_log.txt.
+ * Asks Python for the design's widthIn/heightIn parameters (B9). The reply
+ * arrives asynchronously via the 'sync_board' handshake — unchanged.
  */
-export function fusLog(msg) {
-    try { adsk.fusionSendData('log', JSON.stringify({ msg: String(msg) })); } catch (_) { }
+export function requestDesignParams() {
+    try {
+        adsk.fusionSendData('get_design_params', '{}');
+        fusLog('get_design_params sent to Python');
+    } catch (e) {
+        fusLog(`requestDesignParams FAILED: ${e.message}`);
+    }
 }
 
 /** The single control that reflects Fusion send/import state: the header 'Send to Fusion' button.
