@@ -2,8 +2,8 @@
  * history.js — Global undo/redo and snapshot system.
  */
 
-import { 
-    P, preDelta, postDelta, extraThickenThinMask
+import {
+    P, preDelta, postDelta, extraThickenThinMask, persistableP
 } from './state.js';
 
 const GLOBAL_MAX_HISTORY = 40; // Increased capacity for complex sculpting
@@ -25,12 +25,12 @@ export function takeSnapshot(label = "Action", stampSvgText = null) {
     // Capture state into a single object
     const snapshot = {
         label: label,
-        P: JSON.parse(JSON.stringify(P)), // Deep copy parameters
+        P: JSON.parse(JSON.stringify(persistableP())), // Deep copy parameters
         preDelta: preDelta ? new Float32Array(preDelta) : null,
         postDelta: postDelta ? new Float32Array(postDelta) : null,
         extraThickenThinMask: extraThickenThinMask ? new Float32Array(extraThickenThinMask) : null,
         stampSvgText: stampSvgText,
-            layerConfigs: JSON.parse(JSON.stringify(P.stampLayers || [])),
+            layerConfigs: JSON.parse(JSON.stringify(persistableP().stampLayers)),
         activeLayerIdx: P.activeLayerIdx
     };
 

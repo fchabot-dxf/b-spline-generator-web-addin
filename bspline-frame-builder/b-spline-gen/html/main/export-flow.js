@@ -18,7 +18,6 @@ import { rebuild } from '../core/engine.js';
 import { generateThickenedStep } from '../core/stepWriter.js';
 import {
     fusLog,
-    sendFusionPreview,
     sendFusionPayloadChunked,
     startFusionPolling,
     stopFusionPolling,
@@ -88,8 +87,6 @@ export function onGenerate(preview) {
     check('wizCleanSolid',   hasThicken);
     check('wizStampedSurface', hasStamp);
     check('wizStampedSolid',   hasThicken && hasStamp);
-
-    if (isFusionMode) sendFusionPreview(preview);
 
     const svgCb = document.getElementById('includeSVG');
     if (svgCb) {

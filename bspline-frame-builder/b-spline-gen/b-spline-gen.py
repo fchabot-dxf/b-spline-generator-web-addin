@@ -1633,4 +1633,6 @@ def stop(context):
         _log(f'stop() EXCEPTION:\n{tb}')
         if ui:
             ui.messageBox('Stop Failed:\n{}'.format(tb))
+    finally:
+        handlers.clear()
    

@@ -36,21 +36,6 @@ export function sendFusionMeshPreview(preview) {
 }
 
 /**
- * Sends the final high-fidelity preview before export.
- */
-export function sendFusionPreview(preview) {
-    if (!isFusionMode || !preview) return;
-    const data = preview.getMeshData(P.exportOrientation);
-    if (!data) return;
-    fusLog('[COORD_STD] sendFusionPreview: sending high-fidelity preview to Fusion');
-    try {
-        adsk.fusionSendData('preview', JSON.stringify(data));
-    } catch (e) {
-        fusLog(`sendFusionPreview FAILED: ${e.message}`);
-    }
-}
-
-/**
  * Streams large payloads in 256KB chunks to bypass Fusion-web bridge limits.
  */
 export async function sendFusionPayloadChunked(payloadString) {

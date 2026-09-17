@@ -235,6 +235,12 @@ export function setExtraThickenThinMask(val) {
     window.extraThickenThinMask = val;
 }
 
+/** P as it must be persisted or snapshotted: masks stripped (Float32Array does not survive JSON). One truth —
+ *  saveLastSession, history.takeSnapshot and the Project Manager all go through here. */
+export function persistableP(p = P) {
+    return { ...p, stampLayers: (p.stampLayers || []).map((L) => ({ ...L, mask: null })) };
+}
+
 export function saveLastSession() {
     try {
         // Convert all geometry points in P to physical units if present
@@ -249,12 +255,10 @@ export function saveLastSession() {
         // JSON.stringify turns a Float32Array into {"0":v,"1":v,...} (an
         // object, not an array), bloating localStorage by ~10× and producing
         // an unusable shape on reload. Masks are cheap to regenerate from
-        // the stored SVG, so we drop them here.
-        if (Array.isArray(P_physical.stampLayers)) {
-            P_physical.stampLayers = P_physical.stampLayers.map(layer => ({ ...layer, mask: null }));
-        }
+        // the stored SVG, so persistableP() drops them here.
+        const P_persistable = persistableP(P_physical);
         const session = {
-            P: P_physical,
+            P: P_persistable,
             preDelta: preDelta ? Array.from(preDelta) : null,
             postDelta: postDelta ? Array.from(postDelta) : null,
             extraThickenThinMask: extraThickenThinMask ? Array.from(extraThickenThinMask) : null,

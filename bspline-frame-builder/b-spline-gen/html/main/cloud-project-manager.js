@@ -1,6 +1,6 @@
 // cloud-project-manager.js — fullscreen Project Manager panel backed by
-// Cloudflare Worker KV. Replaces both preset-manager.js (localStorage)
-// and cloud-preset-manager.js (inline cloud UI).
+// Cloudflare Worker KV. Replaced preset-manager.js / cloud-preset-manager.js,
+// both deleted in BG1.
 //
 // Terminology: "projects" everywhere (was "presets").
 //
@@ -14,7 +14,7 @@
 // 'splineGenPresets' (old local preset store), offers to upload them to cloud.
 // Marks completion with 'splineGenProjectsMigrated' so the prompt never repeats.
 
-import { P, preDelta, postDelta, extraThickenThinMask } from '../core/state.js';
+import { preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
 
@@ -61,8 +61,7 @@ function captureThumbnail(preview, w = 256, h = 192, quality = 0.7) {
 }
 
 function buildSnapshot() {
-  const cleanLayers = (P.stampLayers || []).map((L) => ({ ...L, mask: null }));
-  const cleanP = { ...P, stampLayers: cleanLayers };
+  const cleanP = persistableP();
   if (cleanP.points && Array.isArray(cleanP.points)) {
     cleanP.points = cleanP.points.map((pt) => {
       const phys = COORD_SYSTEM.toPhysical(pt[0], pt[1]);
