@@ -401,3 +401,13 @@ item of the 2026-09-17 decision sheet is live in both hosts.
 - **CAM1d (cosmetic batch with FB3b):** the merged CAM header is over-full at the docked 460 px — stamp on one line now,
   but "N SETUPS · READY" wraps and the PREVIEW button is clipped. Move stamp + status to their own row under the tabs
   (or hide the status text under 520 px); keep the action button whole.
+
+# CYCLE SUMMARY — 2026-09-17 (advisor session, two worker seats)
+Off-switch reached: the audit backlog and the decision-sheet queue are exhausted; COS1 (bcde691) is the last item,
+live-proven. Landed today (all pushed; site deploys verified through the Pages API; add-in deployed via the bridge):
+H1 · E7a · PM1/PM1b · E7b · IN2 · FB1 · TM1 · IN1 · HY2 · BG1/BG1b · BG3 · DEP1/DEP1b · E7c · HY3 · IN3/IN3b · CW1 ·
+TM2 · FB2 (a, a-fix, b, c) · BG2 · HY4 · DEC1 · PM2/PM2b · IN4 · UX1 · UX3 · UX2 · FB3 · CAM1 (a, b, c) · DEP2 · COS1.
+Audit: AUDIT-2026-09.md (A1-A7). Incidents: Pages builds silently failing since 2026-07-12 (fixed, verified);
+advisor closed an unsaved user document by name (rule recorded in memory).
+Open, not in this cycle: T1 tests on lane-b (seat B stuck on a permission prompt); CW2 worker auto-deploy needs the two
+GitHub secrets set by Fred; the `/presets` alias and the GitHub-commit route stay by ruling; DEP3 note.
