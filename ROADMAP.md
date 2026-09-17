@@ -249,3 +249,13 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
   hand list. Derive or retire once A6 (CAM-builder) says whether cross-sub bare-name collisions still exist.
 - A3-3 (O(points×curves) coincidence pairing) — bounded by selection; leave.
 - Pre-existing pyflakes noise in `parametric_engine.py` (4 unused locals: :126, :176, :209, :309) → HY2.
+
+## Backlog from the lane-B audit (A4 stamp-editor, 2026-09-17)
+- All L. → **HY2** gains: A4-1 delete the `reset_ui` dispatcher branch (Python door, no JS room) · A4-2 rewrite the
+  stale "v1 SCAFFOLD" header · A4-3 fix or drop the runtime.js "mirrors step-editor" claim (no such add-in exists).
+- **C5/EDM4 map delivered** (AUDIT-2026-09.md A4): `core/state.js` is the only writer that reshapes `P.stampLayers`
+  (incl. the B6 mask-strip at :253-254); all other writers set one layer's field; 13 reader files. Input for the C5
+  design pass — not dispatched.
+- Noted, outside A4 scope: the three save paths (cloud-preset / cloud-project / preset managers) each hand-roll the same
+  "strip `.mask` before persisting" loop → one declared serializer (P4). Candidate for the A5 turn.
+- Test gap: stamp-editor's 8 unique files have zero coverage, direct or by proxy.
