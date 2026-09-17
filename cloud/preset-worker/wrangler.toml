@@ -22,3 +22,9 @@ id = "6426091a975345d08c94335424e82dc9"
 [[kv_namespaces]]
 binding = "PAGE_VIEWS"
 id = "7984acbbf72a42a6a79e1f06a4367963"
+
+# STM route geometry + display config for the Nest Hub bus tracker
+[[kv_namespaces]]
+binding = "BUS_DATA"
+id = "22def93dd78e4442b5cff16279d97e2b"
+

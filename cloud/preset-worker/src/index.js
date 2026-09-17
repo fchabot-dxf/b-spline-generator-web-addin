@@ -33,6 +33,7 @@
 // Body size cap: 10 MB.
 
 import { handlePageViews } from './pageviews-route.js';
+import { handleBus } from './bus-route.js';
 
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 
@@ -45,6 +46,11 @@ export default {
     // URL, so all existing routes fall through unchanged.
     const views = await handlePageViews(request, env, new URL(request.url));
     if (views) return views;
+
+    // STM bus arrivals for the Nest Hub display (/bus). Returns null for
+    // every other URL, so all existing routes fall through unchanged.
+    const bus = await handleBus(request, env, new URL(request.url));
+    if (bus) return bus;
 
     // Appreciation Arts Plastiques: commits straight to GitHub (separate auth).
     const url = new URL(request.url);
