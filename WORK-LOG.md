@@ -2927,3 +2927,54 @@ appended, A1-A5a untouched). No amendments pending at either poll. No Fusion, no
 
 No gate hit — read-only turn. This closes out the b-spline-gen slice (A5a+A5b); A6 (CAM-builder) is
 next, the last add-in in the original A1-A6 sweep.
+
+---
+
+## Lane B — Turn 13 — A6 audit: CAM-builder (B10, lifecycle, duplication, doorless, collisions) — DONE
+
+**Scope:** `CAM-builder/` (~7150 L Python across `cam-builder.py` + `cam_engine/` + `cam_utils/`) + both
+palette HTMLs (1713 L). Last add-in in the original A1-A6 sweep.
+
+**B10 reconfirmed with current line numbers, not assumed still accurate.** Read `run()`/`stop()`/
+`_register_refresh_event` in full — exactly matches BUGS_OPEN's description: 3 CustomEvents registered,
+`stop()` only unregisters 1. Re-verified the masking mechanism (the re-register function itself
+unregisters all 3 first) still holds, so the practical risk stays scoped to the same narrow window B10
+already named. No severity change, just re-grounded in `:2026-2298` instead of the July citation.
+
+**Best doorless-handler result of any add-in audited this session — genuinely clean, both directions,
+both palettes.** CAM-builder has TWO palettes (builder + studio), each its own dispatcher — 13 JS→Python
+actions and 7 Python→JS events, all wired correctly. Caught my own grep blind spot mid-check (two
+actions sent via a ternary expression, missed by a literal-string pattern) by noticing the count
+mismatch rather than trusting the first pass silently — worth naming since it's exactly the kind of
+self-correction this lane's supposed to be doing, not just running greps and reporting whatever they say.
+
+**Cross-sub bare-name collision question (item 4) — answered definitively: zero.** Traced every import
+in `cam-builder.py` AND inside `cam_engine/`+`cam_utils/` themselves (not just the entry file) — 100%
+package-qualified, no bare names at all. Cross-checked submodule filenames against template-maker/core's
+own list (`comm -12`) — no overlap. This directly answers the framing question NEXT-SESSION posed
+("decides the parent's `_shared_project_names` fate") for CAM-builder's slice of it — contributes zero
+reasons to keep the list, though the list still can't be retired on this evidence alone since
+template-maker's OWN bare imports (A3) are the actual reason it stays.
+
+**Duplication with fb_shared/frame-builder: clean, and explained WHY rather than just reporting the
+grep result.** CAM-builder's domain (Fusion CAM setups/bodies) shares no concept with fb_shared's
+sketch-entity helpers, so there's nothing TO duplicate — stated the reason, not just the absence.
+
+**One reconciled STANDARDS-AUDIT item, amplified beyond its original one-line scope.** The hardcoded
+"Ultimate Bee" machine path (`setup_builder.py:206`) is confirmed still present — but the machine name
+appears ~15 times through the file, not once; a single-line path fix wouldn't address the actual
+coupling. Said this plainly rather than just checking the one cited line and calling it reconciled.
+
+**Inefficiencies and dead-function sweep were both done at a SURVEY depth, said so explicitly rather
+than implying full coverage.** No O(n²) or hot-loop COM-read pattern found in the loops actually
+checked, but the two largest engine files (`setup_builder.py` 2422L, `mm_builder.py` 1489L) were not
+read end-to-end for either question — named the specific gap rather than letting a spot-check read as
+exhaustive.
+
+**Tests: 0, confirmed, matches A1 exactly.** Nothing to reconcile beyond re-confirming.
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` modified (A6
+appended, A1-A5b untouched). No amendments pending at either poll. No Fusion, static read + grep only
+per NEXT-SESSION's explicit constraint.
+
+No gate hit — read-only turn. This closes the original A1-A6 add-in sweep; A7 (cloud workers) is next.
