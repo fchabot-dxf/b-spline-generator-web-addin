@@ -1,50 +1,59 @@
-# NEXT — TM1: DERIVE template-maker's hot-reload wipe list from the `core/` folder + delete a dead script
+# NEXT — IN1: Frame Inspector `stop()` must release its selection handler (B5 / A1-2)
 
-**Ball: worker (seat A) · epoch 1 · TM1.** Files: `bspline-frame-builder/template-maker/template-maker.py` (edit) and
-`bspline-frame-builder/template-maker/core/check_addin_sync.py` (`git rm`). One commit by path, predicted **2 files**.
+**Ball: worker (seat A) · epoch 1 · IN1.** File: ONLY `bspline-frame-builder/frame-inspector/fusion-inspector.py`.
+One commit by path, predicted **1 file, ~+15/−3**.
 
-## Ground truth (advisor-verified)
-- `template-maker.py:82-100` — `_PROJECT_MODULES`, a hand-typed list of 17 module names. `_reload_all_project_modules`
-  (:196-215) deletes exactly those names from `sys.modules` on every `run()` so Stop→Start picks up edits.
-  `core/` holds 23 modules. **Five are not in the list:** `detection_log`, `dimension_hint`, `offset_hint`,
-  `template_bridge`, `variable_scan` → edits to them survive Stop→Start STALE (B7's class; `detection_log` alone has
-  9+ importers). The list is the bug: any hand-maintained copy of a folder listing drifts. Derive it.
-- `core/check_addin_sync.py` (29 lines): 0 importers in the repo, compares against a standalone AddIns folder that the
-  unified deploy no longer populates, and is non-recursive. Dead.
-- `_core_dir` is defined at :71, BEFORE the list. `os` is already imported.
+## Ground truth (advisor-verified, current line numbers post-IN2)
+- `:10` `_handlers = []` (module list). `run()` `:347-404`: builds `sel_handler = _SelectionChangedHandler()` at `:398`,
+  `ui.activeSelectionChanged.add(sel_handler)` `:399`, appends to `_handlers` `:400`. The handler object lives only in
+  that local + the list.
+- `stop()` `:406-`: deletes the palette, panel controls and the command definition — **never calls
+  `ui.activeSelectionChanged.remove(...)` and never clears `_handlers`** (`grep -c "\.remove("` → 0). Every Stop→Start
+  adds one more live handler; N cycles fire N handlers per selection change (and each keeps its Python object alive).
+- Reference pattern, same repo: `template-maker/template-maker.py` — module global `_sel_handler = None` (`:24`); in
+  `run()` remove-before-add (`:722-728`); in `stop()` remove (`:806-808`) then `_handlers.clear()` + `_sel_handler = None`
+  in `finally` (`:843-845`).
 
 ## Do
-1. Replace the whole literal list (:80-100, including its two comment lines) with a derivation placed right after
-   `_core_dir`'s `sys.path.insert` block:
+1. Add module global `_sel_handler = None` next to `_handlers` (`:10`).
+2. In `run()`, replace `:398-400` with the template-maker pattern:
    ```python
-   # Every bare-name module under core/, DERIVED from the folder so the hot-reload
-   # wipe list can never drift behind it (A3-1: a hand-typed list missed 5 modules).
-   _PROJECT_MODULES = sorted(
-       os.path.splitext(f)[0]
-       for f in os.listdir(_core_dir)
-       if f.endswith('.py') and f != '__init__.py'
-   )
+   global _sel_handler
+   try:
+       if _sel_handler:
+           ui.activeSelectionChanged.remove(_sel_handler)   # self-heal after an unclean prior stop
+   except Exception:
+       pass
+   _sel_handler = _SelectionChangedHandler()
+   ui.activeSelectionChanged.add(_sel_handler)
+   _handlers.append(_sel_handler)
    ```
-   Keep the name `_PROJECT_MODULES` (its consumer at :207 stays untouched).
-2. `git rm bspline-frame-builder/template-maker/core/check_addin_sync.py`.
-3. Nothing else — no changes to `_reload_all_project_modules`, no changes to the parent loader.
+   (`global _sel_handler` must be the first statement of `run()`'s body that references it — put it at the top of `run()`.)
+3. In `stop()`: add `global _sel_handler` at the top; after the command-definition delete, add
+   ```python
+   try:
+       if _sel_handler:
+           ui.activeSelectionChanged.remove(_sel_handler)
+   except Exception:
+       pass
+   ```
+   and restructure the function's `try: … except Exception: pass` into `try: … except Exception: _log(traceback.format_exc())
+   finally: _handlers.clear(); _sel_handler = None` — the clear must run even if an earlier step throws.
+4. Nothing else. The `_html_handler` appended at `:336` is released with the palette (`palette.deleteMe()`); leave it.
 
 ## Verify (fast tier)
-- `python -m py_compile template-maker.py`.
-- Headless proof the derived list is a superset of the old one plus the five missing names — run from
-  `bspline-frame-builder/template-maker/`:
-  ```
-  python -c "import os; core=os.path.join(os.getcwd(),'core'); names=sorted(os.path.splitext(f)[0] for f in os.listdir(core) if f.endswith('.py') and f!='__init__.py'); old={'entity_util','phase_parser','role_points','cc_proxy','fb_attributes','ownership_gate','relation_hints','coincidence_clusters','template_code','template_naming','template_payload','template_payload_builder','template_variable_block','rename_selection','detect_projections','template_generator','deferred_rebuild'}; missing={'detection_log','dimension_hint','offset_hint','template_bridge','variable_scan'}; print(len(names), old<=set(names), missing<=set(names), 'check_addin_sync' in names)"
-  ```
-  Expected: `22 True True False`.
-- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83.
-- `git show --stat HEAD` → 2 files (1 modified, 1 deleted).
-- Fusion Stop→Start proof (edit `detection_log.py`, Stop→Start, see the edit) is the ADVISOR's after deploy.
+- `python -m py_compile` + `python -m pyflakes` (no new warnings; "imported but unused" lines are pre-existing noise).
+- `grep -n "activeSelectionChanged" fusion-inspector.py` → exactly 3 hits (remove in run, add in run, remove in stop).
+- `grep -n "_handlers.clear()" fusion-inspector.py` → 1, inside `stop()`'s `finally`.
+- `git show --stat HEAD` → 1 file.
+- The Fusion Stop→Start proof (select something after 3 cycles → the palette updates ONCE, log shows one handler) is the
+  ADVISOR's after deploy.
 
 ## Do NOT
-Touch `bspline-frame-builder.py` (parent list is a separate item), `core/*` other than the deletion, tests, or deploy.
+Touch the palette HTML, fb_shared, the parent loader, or any other add-in. Don't refactor `stop()` beyond the
+try/except/finally shape above.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "TM1: _PROJECT_MODULES derived from core/ (22 names, superset proven), check_addin_sync.py deleted — <sha>, 2 files; pytest 83. Next: E7c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "IN1: inspector _sel_handler global; run() removes-before-add; stop() removes + clears in finally — <sha>, 1 file; grep 3/1. Next: E7c."`
 and stop.
