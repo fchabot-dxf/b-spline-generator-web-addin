@@ -94,7 +94,7 @@ def _deploy_addin(src_dir: Path, addin_name: str, verify_files: list[str], skip_
 
     print("  Copying files...")
     try:
-        copied, skipped_paths = copy_overlay(src_dir, dest_dir, _ignore)
+        copied_paths, skipped_paths = copy_overlay(src_dir, dest_dir, _ignore)
     except Exception as e:
         print(f"  ERROR: copy_overlay failed: {e}")
         return False
@@ -106,7 +106,13 @@ def _deploy_addin(src_dir: Path, addin_name: str, verify_files: list[str], skip_
             print(f"    SKIPPED {rel}")
         print(f"  Stop the add-in in Fusion, then redeploy.")
         return False
-    print(f"  Copied {copied} files.")
+    print(f"  Copied {len(copied_paths)} files.")
+
+    # A1-6/DEP1: when clean_dir (above) fell back to overlay because Fusion
+    # held a file open, anything deleted from source would otherwise survive
+    # in dest forever. Sweep it now that we know exactly what this run copied.
+    sweep_orphans(dest_dir, copied_paths)
+
     if extra_copy:
         extra_copy(src_dir, dest_dir)
 
@@ -239,6 +245,11 @@ SKIP_FILES_EXACT = {
     "frame-builder.manifest", # LEGACY: ignore redundant manifest
 }
 
+# DEST-only artifacts a post-copy orphan sweep must never delete (declared once — A1-6/DEP1).
+DEST_ONLY_KEEP_NAMES    = {"build-info.json", ".addin-running.lock"}
+DEST_ONLY_KEEP_SUFFIXES = {".log"}
+DEST_ONLY_KEEP_DIRS     = {"__pycache__"}
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -295,18 +306,20 @@ def clean_dir(path: Path, retries: int = 2, verbose: bool = True):
     return False
 
 
-def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, list]:
+def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[list, list]:
     """Walk ``src`` and copy every file into ``dst``, overwriting.
 
     Per-file errors are reported but don't abort the walk, so the caller sees
     the FULL set of skipped files (not just the first). Returns
-    ``(copied, skipped_paths)`` where ``skipped_paths`` is the list of
-    dst-relative POSIX paths that could not be copied. Reporting the paths as
-    DATA lets the CALLER decide the policy: today a non-empty list is fatal
-    (a skipped file = a stale deploy). Mirrors ``shutil.copytree`` filtering
-    semantics via ``ignore_func``.
+    ``(copied_paths, skipped_paths)`` — both lists of dst-relative POSIX
+    paths, for the files that were copied and those that could not be.
+    Reporting the paths as DATA lets the CALLER decide the policy: today a
+    non-empty ``skipped_paths`` is fatal (a skipped file = a stale deploy);
+    ``copied_paths`` feeds ``sweep_orphans`` (DEP1) so a post-copy sweep
+    knows exactly what this run actually wrote. Mirrors ``shutil.copytree``
+    filtering semantics via ``ignore_func``.
     """
-    copied = 0
+    copied_paths = []
     skipped_paths = []
     for root, dirs, files in os.walk(src):
         rel_root = Path(root).relative_to(src)
@@ -326,15 +339,60 @@ def copy_overlay(src: Path, dst: Path, ignore_func) -> tuple[int, list]:
         for fname in files:
             src_file = Path(root) / fname
             dst_file = target_root / fname
+            rel = dst_file.relative_to(dst).as_posix()
             try:
                 shutil.copy2(src_file, dst_file)
-                copied += 1
+                copied_paths.append(rel)
             except Exception as e:
                 # Most common reason: Fusion has the file open (logs).
-                rel = dst_file.relative_to(dst).as_posix()
                 print(f"  SKIP {rel}: {e}")
                 skipped_paths.append(rel)
-    return copied, skipped_paths
+    return copied_paths, skipped_paths
+
+
+def sweep_orphans(dst: Path, copied_paths: list[str]) -> list[str]:
+    """Delete files in ``dst`` that this run's ``copy_overlay`` did NOT write.
+
+    ``clean_dir`` is the normal way dest gets rid of files deleted from
+    source; it legitimately fails when Fusion holds a file open, and
+    ``_deploy_addin`` falls back to an overlay copy in that case. An overlay
+    copy only ever ADDS/updates files — anything removed from source would
+    otherwise survive in dest forever (A1-6). This sweeps that residue using
+    the copy's own record of what it actually wrote, so it only ever deletes
+    files this deploy run confirmed are no longer part of the source tree.
+
+    Skips ``DEST_ONLY_KEEP_DIRS`` entirely (their contents are dest-owned,
+    e.g. ``__pycache__``), and within the walked files keeps anything named
+    in ``DEST_ONLY_KEEP_NAMES`` or suffixed per ``DEST_ONLY_KEEP_SUFFIXES``
+    (``build-info.json``, ``.addin-running.lock``, ``*.log`` — all written
+    by the deploy or the running add-in itself, never by source). Per-file
+    delete errors are reported but don't abort the sweep. Returns the list
+    of dest-relative POSIX paths actually deleted.
+    """
+    copied_set = set(copied_paths)
+    removed = []
+    for root, dirs, files in os.walk(dst):
+        dirs[:] = [d for d in dirs if d not in DEST_ONLY_KEEP_DIRS]
+        for fname in files:
+            if fname in DEST_ONLY_KEEP_NAMES:
+                continue
+            if Path(fname).suffix.lower() in DEST_ONLY_KEEP_SUFFIXES:
+                continue
+            file_path = Path(root) / fname
+            rel = file_path.relative_to(dst).as_posix()
+            if rel in copied_set:
+                continue
+            try:
+                file_path.unlink()
+                removed.append(rel)
+            except Exception as e:
+                print(f"  ORPHAN LOCKED {rel}: {e}")
+    if removed:
+        print(f"  Removed {len(removed)} orphan(s):")
+        for rel in removed:
+            print(f"    {rel}")
+    return removed
+
 
 def scrub_source(base: Path):
     """Recursively delete __pycache__ and .pyc files in the source tree."""

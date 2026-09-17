@@ -167,6 +167,8 @@ clean_dir(os.path.join(workspace_dir, "deploy_dist"))
 
 # 1. Prepare clean deployment folder
 print(f"Preparing unique deployment folder: {deploy_dist}")
+# dist/ is a clean build output, never an overlay (A7-3: stale files otherwise stay live on Pages)
+clean_dir(deploy_dist)
 os.makedirs(deploy_dist, exist_ok=True)
 
 # Only copy web-related files (HTML, JS, CSS, fonts, and common image formats)
