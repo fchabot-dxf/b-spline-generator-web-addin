@@ -1,44 +1,47 @@
-# NEXT — UX3: Undo/Redo leave the sidebar; they join the top bar next to Save (Fred's ruling)
+# NEXT — UX2: one status line for all Fusion traffic (Fred's ruling)
 
-**Ball: worker (seat A) · epoch 1 · UX3.** File: ONLY `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html`.
-One commit by path, predicted **1 file**. No JS changes: `core/history.js:75 updateGlobalButtons` finds the buttons
-by id (`btnGlobalUndo` / `btnGlobalRedo`), and the click wiring + Ctrl+Z/Y shortcuts stay as they are.
+**Ball: worker (seat A) · epoch 1 · UX2.** Files (under `bspline-frame-builder/b-spline-gen/html/`): `core/fusion-bridge.js`,
+`main/main.js`, `bspline_gen_palette.html`. One commit by path, predicted **3 files**.
 
 ## Ground truth (advisor-verified)
-- Sidebar sticky header (`:322-334`): `#btnRandomSeed` ("🎲 Generate New Seed") then a flex row with `#btnGlobalUndo`
-  / `#btnGlobalRedo` (both `disabled` at load; enabled by history.js).
-- Top bar (`:281-300`): `btnQuickSave` (💾 + `#btnQuickSaveLabel.cad-nav-label`), `btnOpenProjectManager` (📁 Projects),
-  `btnDownloadAddin` (🧩 Add-in, hidden in Fusion), `btnDownload` (STEP / Send to Fusion), `settings-btn` (⚙ Settings).
-  PM2/PM2b declared `.cad-nav-label` + the `min-width:601px and pointer:fine` block that shows labels and lets
-  `.cad-navbar .cad-nav-btn` size to content.
+- Today three things compete for attention in three places: import progress rewrites the Send-to-Fusion BUTTON label
+  (`main.js:154-159` via `setFusionActionState`); the build stamp lives in the header badge `#build-badge`
+  (`main.js:163-182`: ✓ ok / ⚠ stale-or-dirty, detail only in a tooltip); toasts from the Project Manager pop
+  bottom-right (`cloud-project-manager.js:1240 showToast`, module-local). Ruling: one thin status line under the
+  header carries Fusion traffic. (The inspector's "bridge pulse" is a different palette — out of scope.)
+- The header is `<header class="cad-navbar">…</header>` (`:281-3xx`); `.cad-main-content` follows.
 
 ## Do
-1. Delete the flex row holding the two buttons from the sidebar sticky header (`:329-333`) and the `margin-top`
-   wrapper it lived in. "Generate New Seed" stays, alone, in that header.
-2. Insert BEFORE `btnQuickSave` in the top bar, same markup shape as the other nav buttons:
-   ```html
-   <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalUndo" title="Undo (Ctrl+Z)" disabled>
-     <span style="font-size:18px; line-height:1;">↶</span><span class="cad-nav-label">Undo</span>
-   </button>
-   <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalRedo" title="Redo (Ctrl+Y)" disabled>
-     <span style="font-size:18px; line-height:1;">↷</span><span class="cad-nav-label">Redo</span>
-   </button>
+1. **Declare the line once** — in `core/fusion-bridge.js` (it owns host feedback):
+   ```js
+   /** The one status line for Fusion traffic (UX2). kind: 'info' | 'busy' | 'ok' | 'warn'. Empty text hides it;
+    *  'ok' auto-clears after 3 s. */
+   export function setFusionStatus(text, kind = 'info') { … find #fusion-status; set textContent + data-kind; el.hidden = !text; ok → setTimeout clear (guard against a newer message) … }
    ```
-   (keep the `disabled` initial state; `updateGlobalButtons` flips it). If the icon glyphs fall back to a monochrome
-   font that looks wrong next to the emoji, use `⟲` / `⟳` instead and say so.
-3. Nothing else. Check the mobile block (`:212-235`) still fits seven 44 px buttons in the bar at 600 px; if it wraps,
-   report it, don't fix it here.
+2. Markup: right after `</header>`, `<div id="fusion-status" class="fusion-status" hidden role="status" aria-live="polite"></div>`.
+   Style in the palette `<style>`, tokens only (no new colours beyond the existing `--cad-*` ones): thin bar, 11px,
+   `[data-kind="busy"]` muted, `[data-kind="ok"]` green, `[data-kind="warn"]` amber; `[hidden]` collapses it.
+3. Route the traffic:
+   - `import_progress` → `setFusionStatus(msg, 'busy')`; the BUTTON stays `'Baking...'`/disabled (set once at send
+     start in export-flow.js:140, untouched) — it no longer flickers through each message.
+   - `import_success` → `setFusionStatus('Imported into Fusion ✓', 'ok')`; `import_ready` → button idle (as today) +
+     `setFusionStatus('', 'info')` is NOT needed (ok auto-clears) — leave the line to clear itself.
+   - `build_info` with status ≠ ok → `setFusionStatus(info.message || 'Deployed add-in is stale', 'warn')` (the badge
+     keeps its glyph/tooltip). Status ok → nothing.
+   - Polling timeout in `startFusionPolling` (bridge :~90) → `setFusionStatus('Fusion did not confirm the import — check
+     the Fusion log', 'warn')`.
+4. Nothing else moves: `showToast` stays for Project Manager saves (not Fusion traffic).
 
 ## Verify
-- Extract + `node --check` the inline scripts (unchanged). `npx vitest run` → 29.
-- Greps: `btnGlobalUndo` → 1 in html (top bar), 1 in history.js; the sidebar header contains only `btnRandomSeed`.
-- `git show --stat HEAD` → 1 file. Look is the ADVISOR's (Fusion 1000 px: ↶ Undo · ↷ Redo · Save… · Projects · Send to
-  Fusion · Settings; make an edit → Undo enables).
+- `node --check` ×2 JS + extracted inline scripts; `npx vitest run` → 29.
+- Greps: `setFusionStatus(` → 1 def + 4 call sites; `fusion-status` → html 1 + css rules + js 1.
+- `git show --stat HEAD` → 3 files. Look is the ADVISOR's (Send to Fusion on a scratch design: progress lines appear
+  under the header, button stays Baking..., then "Imported ✓" fades).
 
 ## Do NOT
-Touch history.js, global-events.js, or the sidebar panels below the sticky header.
+Touch the inspector palette, showToast, or the badge's own rendering.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UX3: Undo/Redo moved to the top bar (ids kept), sidebar header keeps Generate New Seed — <sha>, 1 file; vitest 29. Next: UX2."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UX2: setFusionStatus declared in the bridge; #fusion-status line under the header; progress/success/stale/timeout routed to it; button no longer flickers — <sha>, 3 files; vitest 29. Next: FB3."`
 and stop.
