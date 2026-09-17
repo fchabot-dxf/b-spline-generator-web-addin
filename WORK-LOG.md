@@ -3729,3 +3729,107 @@ one — a direct-ish wrapper that only sets `frame_engine` and delegates.
 No gate hit. Didn't touch `sketch_builder_ui.py`, `palette_scaffold.py`, either palette HTML, or the
 parent loader. No `if is_solid` anywhere in the rewritten file. Didn't deploy. The live proof (open
 Extrude Frame, pick a face, build, auto-close, Stop→Start, reopen) is the advisor's.
+
+---
+
+## Turn 153 — FB2c: finish the scaffold migration — leak fix, consistency, honesty sweep — FB2 COMPLETE
+
+Both live proofs from FB2a/FB2a-fix/FB2b are in; this is the closing slice. 4 files, one commit.
+
+**(1) Pruned the replaced doc handler from `handlers`** (`palette_scaffold.py:282-296`): each `run_palette()`
+re-open was appending a fresh `_DocActivatedHandler` to `handlers` without ever removing the OLD one it
+just unsubscribed from `app.documentActivated` — Python-side retention only (the live Fusion subscription
+was always correctly singular; this was purely a list that grew across the session). Added
+`if old in handlers: handlers.remove(old)` inside the same guarded block that already calls
+`app.documentActivated.remove(old)`.
+
+**Proved this non-vacuously, not just by code review** (pasted verbatim below): built a fuller fake
+Fusion API (palettes/commandDefinitions/documentActivated as real stateful fakes, not just enough to
+import) and simulated 3 consecutive `run_palette()` calls — matching 3 Stop→Start cycles. Ran the same
+test script against BOTH the fixed code and the pre-fix `dbfed18` copy of `palette_scaffold.py`:
+```
+# Against the FIX (this turn):
+documentActivated live subscriptions after 3 opens: 1
+handlers list total length: 7
+entries matching the CURRENT doc-activated handler's class: 1
+handlers list entries that ARE the current live doc handler (by identity): 1
+stale doc-activated-shaped handlers remaining (must be 0): 0
+ALL HANDLER-LEAK ASSERTIONS PASSED
+
+# Against dbfed18 (pre-fix), same test, unchanged:
+documentActivated live subscriptions after 3 opens: 1
+handlers list entries that ARE the current live doc handler (by identity): 1
+stale doc-activated-shaped handlers remaining (must be 0): 2
+AssertionError: expected 0 stale handlers, found 2
+```
+Confirms the test genuinely detects the leak (fails 1/1 against the pre-fix tree, not just an argued
+claim) and confirms the fix actually closes it (0 stale handlers after 3 opens, not just "looks right").
+
+**(2) Unified the mixin order** to `(_PaletteBridgeMixin, adsk.core.HTMLEventHandler)` in both UI modules
+— sketch previously had the reverse order (unspecified by FB2a's dispatch); solid already matched (FB2b's
+dispatch specified it). Changed only `sketch_builder_ui.py`'s class declaration line; behaviour-identical
+either way (the mixin defines no `__init__`, only two plain methods — no MRO/cooperative-init path either
+order could affect).
+
+**(3) Honesty sweep — every correction, quoted, as requested:**
+
+- `sketch_builder_ui.py`, `_run_schema_push_execute`'s docstring — named a deleted class:
+  > `"""extra_commands execute_fn for SCHEMA_PUSH_CMD_ID (was HiddenSchemaPushExecuteHandler.notify)."""`
+  → `"""extra_commands execute_fn for SCHEMA_PUSH_CMD_ID: reads the queued style, then pushes the
+  schema."""`
+- `sketch_builder_ui.py`, `_build_fn`'s docstring — named two deleted things:
+  > `"""PaletteSpec.build_fn — was _run_sketch_build_direct + HiddenBuildCommandExecuteHandler."""`
+  → `"""PaletteSpec.build_fn: runs the actual sketch build from the hidden command's queued request."""`
+- `sketch_builder_ui.py`, `_on_document_activated`'s docstring — named a deleted class AND a deleted
+  attribute (`_style_id_ref`, eliminated in FB2a):
+  > `"""Re-pushes the palette schema whenever the user switches active documents (was
+  DocumentActivatedHandler.notify). Reads the live style_id straight off ctx.active_handler — the
+  original's separate _style_id_ref one-element-list indirection is unnecessary: self.style_id and that
+  ref were always written together in change_template, so this reads identically without the extra box
+  (verified turn 147)."""`
+  → `"""Re-pushes the palette schema whenever the user switches active documents. Reads the live style_id
+  straight off ctx.active_handler — its value is always current, since change_template sets it directly
+  on this same live handler instance (verified turn 147)."""` (kept the turn-147 WORK-LOG citation — that
+  still resolves to something real; dropped the two dead-name references).
+- `sketch_builder_ui.py`, `_on_ready`'s docstring — named the pre-scaffold `run_palette`'s numbered steps,
+  which no longer exist as a numbering anywhere:
+  > `"""Runs once after the palette is shown (was run_palette steps 5a/5b/6): ensure the tilt param, pick
+  the first available template, then push the initial schema."""`
+  → `"""Runs once after the palette is shown: ensure the tilt param, pick the first available template,
+  then push the initial schema."""`
+- `sketch_builder_ui.py`, `_on_document_activated`'s exception log message — found DURING the sweep, not
+  in the dispatch's own examples, but the identical class of staleness (a runtime LOG STRING, not a
+  docstring, but naming the same deleted class so a log grep would find nothing in source):
+  > `f"DocumentActivatedHandler CRASH:\n{traceback.format_exc()}"`
+  → `f"_on_document_activated CRASH:\n{traceback.format_exc()}"`
+- `solid_builder_ui.py`, `_build_fn`'s docstring — same pattern as sketch's:
+  > `"""PaletteSpec.build_fn — was _run_solid_build_direct + HiddenBuildCommandExecuteHandler."""`
+  → `"""PaletteSpec.build_fn: runs the actual solid extrude from the hidden command's queued request."""`
+
+**Confirmed clean, not stale, and correctly left alone:** `_ensure_hidden_commands` appears 4 times in
+`palette_scaffold.py` — this is the REAL, CURRENT function name in that file (not a deleted one), so
+those references are accurate and untouched. `CommandCreatedHandler` and the two
+`"SketchBuilder"/"SolidBuilder" CommandCreatedHandler CRASH` log strings in both UI modules are also
+accurate — `CommandCreatedHandler` was never deleted, it's still the real top-level Fusion command
+handler in both files.
+
+**(4) Design doc status block** — added exactly 3 lines at the top of `FB2-PALETTE-SCAFFOLD-DESIGN.md`
+(shas for slices a/a-fix/b, "this commit" for slice c since a commit can't cite its own not-yet-computed
+hash; the two advisor amendments; the measured double-push note). **Caught my own overreach before
+finalizing**: my first pass also reworded the existing "Design only..." paragraph below the status block,
+which the dispatch explicitly said not to touch ("Nothing else in the doc changes") — re-did it as a
+strict 3-line insertion with the original paragraph restored byte-for-byte.
+
+**Verify (all green):** `py_compile` 3/3 clean. `pyflakes` 3/3 → **zero warnings**, all three files.
+Both UI modules' import-time smokes (FB2a's and FB2b's, re-run) still pass, including the amendment-2
+per-iteration-binding proof. Greps: deleted-function names in the two UI modules → 0 (the
+`_ensure_hidden_commands` hits are all in `palette_scaffold.py`, correctly excluded from "deleted" —
+that function is real and current). `_PaletteBridgeMixin, adsk.core.HTMLEventHandler` → 2 (1 per UI
+module). `handlers.remove(old)` → 1. `git diff --stat` → exactly the predicted 4 files.
+
+No gate hit. Changed no behaviour beyond item 1 (the leak fix). Didn't touch `fb_engine`, either HTML, or
+the parent loader. Didn't deploy.
+
+**FB2 is now complete pending the advisor's final live check** (both palettes open + build once more,
+Stop→Start) — three implementation slices plus one live-caught regression fix, landing at `b7cd92e`
+(slice a) → `27bfd7c` (fix) → `dbfed18` (slice b) → this commit (slice c).
