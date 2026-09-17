@@ -12,13 +12,22 @@
         body { background: #f5f5f5; padding: 0; }
         .inspector-container { padding: 8px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; min-height: 0; }
         .linked-list {
-            margin: 0; 
-            padding: 4px 8px 8px 24px; 
-            font-size: 11px; 
+            margin: 0;
+            padding: 4px 8px 8px 24px;
+            font-size: 11px;
             color: #444;
+            list-style: none;
         }
-        .linked-list li { margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
-        .row-copy { margin-left: 6px; padding: 0 4px; font-size: 10px; line-height: 14px; vertical-align: middle; }
+        .linked-list li { margin-bottom: 2px; }
+        /* IN3: float, not flex — a flex row makes the row's text an anonymous
+           flex item, whose default min-width:auto lets its unbroken min-content
+           (long "widthIn * 0.41, heightIn * 0.06) -> (..." coordinate strings)
+           force the WHOLE ROW wider than the viewport in Fusion's older CEF
+           Chromium, which then drags the page's overall scrollWidth past the
+           window and clips the header's right-aligned build-badge/pulse-box
+           along with it via body's overflow:hidden. A float never asks a flex
+           container to size a text-node item, so it can't hit that path. */
+        .row-copy { float: right; margin-left: 6px; padding: 0 4px; font-size: 10px; line-height: 14px; }
         
         /* Specific status override */
         #pulse-box {
