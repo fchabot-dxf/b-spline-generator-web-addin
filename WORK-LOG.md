@@ -2727,3 +2727,66 @@ NEXT-SESSION's explicit allowance (no Fusion, no mutation).
 
 No gate hit — read-only turn. A3-1 correctly flagged UNVERIFIED-at-runtime (static diff is solid, the
 live Stop→Start symptom itself needs Fusion to confirm) rather than asserted as a confirmed live bug.
+
+---
+
+## Lane B — Turn 7 — A4 audit: stamp-editor (fork status, lifecycle, P.stampLayers map, tests) — DONE
+
+**Discovered and disclosed a worktree-specific gap before doing anything else with it:** `stamp-editor/
+html/editor/` and `html/core/stamp/` (the C1-generated copies) don't exist ON DISK in this lane-b
+worktree at all — confirmed via `find html -maxdepth 2 -type d` (only `core/`, `main/`, `styles/`
+present; `core/` holds just the 2 unique files). This makes sense structurally: those files are
+gitignored per C1, so a fresh worktree checkout never materializes them — they only exist where someone
+has actually run `sync_stamp_bundle.py` (the main checkout, not here). Said so plainly in the AUDIT doc
+rather than silently skipping or faking the "hand-edited since source?" comparison the dispatch asked
+for — that specific sub-question is genuinely unanswerable from this lane.
+
+**Read before writing:** `stamp-editor.py` (1436L, full — header, dispatcher `:138-210`, lifecycle
+`:1254-1436`, the live-face-count enable/disable pair `:243-275`), `html/core/runtime.js` (39L, full),
+grepped `html/main/*.js` for `sendToPython`/dispatch patterns, `git ls-files` against turn 53's C1
+classification, and mapped `stampLayers` across the 13 `b-spline-gen/html/` files that reference it
+(stamp-editor's own tree has zero `stampLayers` hits — confirmed by grep, the concept lives entirely in
+the sync source in this worktree's view). Also checked `tests/*.js`'s import graph (4 vitest files) and
+attempted `npx vitest run` (failed — no `node_modules` in this worktree; didn't `npm install`, that's a
+mutation outside this turn's read-only remit — relied on the static import graph instead, which fully
+answers the coverage question without needing to execute anything).
+
+**3 new findings, all L.** A4-1: `reset_ui` is a Python dispatcher branch with zero JS callers anywhere
+— the reverse of B4 (a room with no door), traced back to the file's own stale `"v1 SCAFFOLD"` header
+comment. A4-2 is that same header comment's broader claim — it frames face-pick/STEP-emission as future
+work when both are fully implemented (7 live actions in the dispatcher). A4-3 is a genuinely ambiguous
+one, flagged rather than asserted: `runtime.js` claims to mirror `step-editor`'s runtime, but no
+`step-editor/` Fusion add-in exists in the repo at all (only the unbuilt `cloud/step-editor-pages`) — 
+could be forward-looking language for a sibling not yet built, not necessarily a lie about a currently-
+mirrored file. Said so rather than picking a side without evidence either way.
+
+**Fork status (item 1) — confirmed clean, no re-drift since C1 (turn 53).** `git ls-files` returns
+exactly the 8 unique files C1 classified as hand-written+tracked; none of the 54 generated files are
+tracked. The hand-edited-drift sub-question is the one flagged unanswerable (see above).
+
+**P.stampLayers writers/readers map (item 4) — produced as reconnaissance, not a carve proposal, per
+the dispatch's own framing.** Mapped across all 13 `b-spline-gen/html/` files that reference it: writers
+(the array's origin declaration + 7 field-setter sites, including the already-known B6 mask-strip
+mechanism at `core/state.js:253-254`) and readers (10 files, mostly existence-checks/filters/clones for
+cloud-save, export, and fallback-when-editor-roster-unavailable paths). Noted the one structural
+observation worth flagging to whoever designs C5: `core/state.js` is the only writer of the raw array
+itself; every other write site writes into one layer's field. Did NOT propose the carve, as instructed.
+
+**Test gap:** confirmed via the vitest import graph that zero of the 4 test files touch anything under
+`stamp-editor/html/` directly — all 4 import from `b-spline-gen/html/...`. Framed the nuance correctly:
+stamp-editor's GENERATED portion gets indirect coverage-by-proxy (byte-identical mirror of tested
+source), but its 8 UNIQUE files have zero coverage, direct or indirect.
+
+**What's GOOD, verified by reading the code, not by trusting the B5 citation:** `_enable_live_face_count`/
+`_disable_live_face_count` read in full — idempotent-guarded, removes from both the Fusion event AND the
+module handler list, called from both `PaletteClosedHandler` and `stop()`. This is exactly the pattern
+BUGS_OPEN B5 already points to as correct; re-verified directly this turn rather than taking it on faith.
+`run()`/`stop()` toolbar symmetry also read in full and confirmed clean, including the deliberate
+icon-cache-buster design (self-sweeps on next `run()`, not a leak).
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` modified (A4 section
+appended, A1-A3 untouched). No amendments pending at either poll. Did not run Fusion or
+`sync_stamp_bundle.py` (both explicitly off-limits this turn).
+
+No gate hit — read-only turn. A4-3 correctly left as an open question rather than resolved on
+insufficient evidence; the worktree gap was disclosed rather than worked around silently.
