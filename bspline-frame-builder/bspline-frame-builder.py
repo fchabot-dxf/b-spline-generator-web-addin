@@ -113,13 +113,6 @@ def _load_submodule(safe_name, subdir, filename):
     return module
 
 
-def _normalize_module_path(path):
-    try:
-        return os.path.normcase(os.path.normpath(path))
-    except Exception:
-        return path
-
-
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""

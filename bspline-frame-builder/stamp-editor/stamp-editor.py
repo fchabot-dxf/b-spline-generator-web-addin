@@ -1,10 +1,10 @@
 # stamp-editor.py
 # Stamp Editor — surface deformation via SVG / text / freehand motifs,
 # using b-spline-gen's rasterize → SDF → modulate-control-points
-# pipeline. Sibling add-in to step-editor; loaded as a sub-module of
-# the unified bspline-frame-builder.py entry point.
+# pipeline. Loaded as a sub-module of the unified bspline-frame-builder.py
+# entry point.
 #
-# Architecture mirrors step-editor.py and b-spline-gen.py:
+# Architecture mirrors b-spline-gen.py:
 #   - HTML/JS owns the UI (palette under html/index.html).
 #   - Python tunnels log messages, opens/closes the palette, drives
 #     Fusion-side workflows the JS can't do (face picking, importing

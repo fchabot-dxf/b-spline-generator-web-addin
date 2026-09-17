@@ -2214,7 +2214,7 @@ def stop(context):
     when Fusion is mid-shutdown (Application.get() may return None).
     """
     global _html_handler, _studio_html_handler, _engine, _logger
-    global _refresh_event, _refresh_registered
+    global _refresh_event, _refresh_registered, _axispick_event
 
     app = None
     ui = None
@@ -2284,7 +2284,16 @@ def stop(context):
             app.unregisterCustomEvent(REFRESH_EVENT_ID)
         except Exception:
             pass
+        try:
+            app.unregisterCustomEvent(TPGEN_EVENT_ID)
+        except Exception:
+            pass
+        try:
+            app.unregisterCustomEvent(AXISPICK_EVENT_ID)
+        except Exception:
+            pass
     _refresh_event = None
+    _axispick_event = None
     _refresh_registered = False
     _refresh_handlers.clear()
 
