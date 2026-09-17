@@ -3642,3 +3642,34 @@ No gate hit. Didn't touch `solid_builder_ui.py`, either palette HTML, `fb_engine
 `if is_sketch` anywhere in `palette_scaffold.py` — verified by re-reading the finished file, not just by
 intent. Didn't deploy. The live proof (open Sketch Builder through the bridge, build, auto-close,
 Stop→Start, one schema push per document switch) is the advisor's.
+
+---
+
+## Turn 149 — FB2a-fix: live regression — tilt-param ensure dropped from palette-open — DONE
+
+My own bug from turn 147. The advisor tested live: on a fresh design, opening Sketch Builder no longer
+created `frame_tilt_deg`, so a build silently fell back to the raw XY plane (timeline 4 instead of 5) and
+E8's undo guarantee was gone. Root cause was a mapping error in my own design, visible in the bug itself:
+`_on_ready`'s docstring said "was run_palette steps 5b/6," but the tilt-param-ensure call in the ORIGINAL
+`run_palette` was a separate, EARLIER step (5a — it ran before palette cleanup even started, not
+alongside the template-pick/schema-push pair) — I mis-mapped it as part of 5b/6 when consolidating
+sketch's extra `run_palette` steps into the `on_ready` hook, and it fell out entirely. `_ensure_tilt_param_safe`
+itself was never deleted (still called correctly from `_on_document_activated`) — only the OPEN path
+lost it.
+
+**Do:** added `_ensure_tilt_param_safe()` as the first line of `_on_ready`'s body, with the given E8/F1-C
+comment, and corrected the docstring to "was run_palette steps 5a/5b/6" so it no longer describes its own
+history wrong. Also removed the stray `global frame_engine` from `CommandCreatedHandler.notify()`
+(`:410` at the time of the dispatch) — this was the SAME pre-existing pyflakes warning I found and
+deliberately left alone in turn 147 (confirmed pre-existing in the original file, not introduced by the
+rewrite); the advisor's dispatch this turn explicitly asked for it to be cleaned up now, so it's fixed —
+distinct from turn 147's call to leave it, which was correct for that turn's narrower scope.
+
+**Verify (all green):** `py_compile` clean. `pyflakes` → **zero warnings** (the stray-global fix cleared
+the one that remained after turn 147). `grep -n "_ensure_tilt_param_safe()"` → exactly 2 real call sites
+(`_on_document_activated` and `_on_ready`; the third hit is the `def` line itself). `git diff --stat` → 1
+file, +4/−3 (dispatch predicted +3/−1 — close; the extra line is the corrected 3-line docstring replacing
+a 2-line one, plus the one-line fix, net +1 over the estimate).
+
+No gate hit. Touched nothing else in the file. Slice (b) waits until the advisor proves this live (fresh
+design → open → `frame_tilt_deg` present → build → tilt plane, timeline 5).
