@@ -2679,3 +2679,51 @@ appended) — matches "append, don't rewrite A1." No amendments pending at eithe
 No gate hit — read-only turn, same as turn 1. Nothing under `bspline-frame-builder/` edited; no Fusion
 access used (explicitly off-limits this turn) — A2-1 and A2-3 are correctly flagged UNVERIFIED rather
 than asserted, since neither could be runtime-confirmed from this lane.
+
+---
+
+## Lane B — Turn 5 — A3 audit: template-maker (entry lifecycle, core/, palette, tests) — DONE
+
+**Read before writing:** `template-maker.py` (860L, full — entry/lifecycle/reload machinery),
+`core/check_addin_sync.py` (29L, full), targeted reads of `coincidence_clusters.py`/`relation_hints.py`/
+`phase_parser.py` for the loop/COM-call question, all of `core/`'s import graph via grep, the palette
+HTML's ~15 `fusionSendData`/`sendInfoToHTML` call sites, and ran `pytest template-maker/tests -q`
+(read-only, per NEXT-SESSION's explicit allowance) — 83/83 green.
+
+**3 new findings** (1 H, 2 L). Headline (A3-1, H) directly answers the dispatch's question — the
+`_PROJECT_MODULES` reload-wipe list is missing 5 names (`detection_log`, `dimension_hint`,
+`offset_hint`, `template_bridge`, `variable_scan`) that ARE actively imported across `core/`. This is
+the exact B7 stale-reload mechanism, but wider: `detection_log` alone is imported by 9+ other core
+modules, so editing it wouldn't take effect on Stop→Start for any of them without a full Fusion
+restart. Cross-checked against the PARENT's own wipe list (`bspline-frame-builder.py:251-262`, from
+A1) too — not covered there either. Not previously tracked anywhere (grepped BUGS_OPEN.md/
+STANDARDS-AUDIT.md for all 5 names — 0 hits). A3-2 answers the other explicit question
+("check_addin_sync.py — live or dead?") — technically runnable, zero importers, but its premise (a
+standalone per-palette AddIns folder) predates the unified deploy, and its own scan is non-recursive
+(misses `core/`/`ui/` even on its own stale premise). A3-3 is a real but likely-low-impact nested loop,
+flagged with an honest caveat about not tracing every caller to confirm the bound.
+
+**Confirmed clean on 3 fronts the dispatch asked about, not just assumed:**
+(1) `template-maker.py`'s own `run()`/`stop()` symmetry — read both in full, confirmed sel+doc-activated
+handlers are defensively removed-then-readded in `run()` AND symmetrically removed in `stop()`, plus the
+`deferred_rebuild` CustomEvent gets its own separate teardown. This is the exact "correct pattern" B5
+already cites by name — re-verified directly instead of trusting the citation.
+(2) Doorless-handler sweep on the palette, BOTH directions — every JS→Python `fusionSendData` action
+string has a matching Python `elif`, every Python→JS `sendInfoToHTML` event name has a matching JS
+handler. Named each one rather than just counting.
+(3) fb_shared duplication — grepped for shadow re-implementations of the 5 fb_shared function names
+under different identifiers in `core/` — 0 hits, extends A1's consolidation finding into A3's scope.
+
+**Test gap sharpened with a structural point, not just a coverage count.** 9 of 23 `core/` modules have
+zero references anywhere in `tests/` (named each one). The sharper finding: `detection_log.py` — the
+module A3-1's bug centers on — has zero test references AND the pytest suite **cannot structurally
+test A3-1 at all**, dedicated test or not, because it's a Stop→Start `sys.modules`-caching bug specific
+to Fusion's long-running process; each pytest run is a fresh process with no reload cycle to trigger it.
+Said this plainly rather than implying "add a test for A3-1" would actually close the gap.
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` modified (A3 section
+appended, A1/A2 untouched). No amendments pending at either poll. `pytest` run was read-only per
+NEXT-SESSION's explicit allowance (no Fusion, no mutation).
+
+No gate hit — read-only turn. A3-1 correctly flagged UNVERIFIED-at-runtime (static diff is solid, the
+live Stop→Start symptom itself needs Fusion to confirm) rather than asserted as a confirmed live bug.
