@@ -292,6 +292,15 @@
     <div style="flex:1;"></div>
 
     <div style="display:flex; gap:8px; align-items:center;">
+      <!-- Undo/Redo (UX3: moved out of the sidebar sticky header). Ids
+           unchanged — history.js's updateGlobalButtons finds them by id
+           and the Ctrl+Z/Y wiring is untouched. -->
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalUndo" title="Undo (Ctrl+Z)" disabled>
+        <span style="font-size:18px; line-height:1;">↶</span><span class="cad-nav-label">Undo</span>
+      </button>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalRedo" title="Redo (Ctrl+Y)" disabled>
+        <span style="font-size:18px; line-height:1;">↷</span><span class="cad-nav-label">Redo</span>
+      </button>
       <!-- Quick Save (replaces the old Reload button). Uses _currentFile
            (set after a successful Save/Load in the Project Manager). When
            set: silent overwrite. When not set: opens the Project Manager
@@ -326,12 +335,6 @@
         <button class="cad-btn" id="btnRandomSeed"
           style="width:100%; height:32px; background:#4caf50; color:#ffffff; border:1px solid #388e3c; font-weight:600;">🎲 Generate New
           Seed</button>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <button class="cad-btn cad-btn-secondary" id="btnGlobalUndo" style="flex:1; height:28px;"
-            disabled>Undo</button>
-          <button class="cad-btn cad-btn-secondary" id="btnGlobalRedo" style="flex:1; height:28px;"
-            disabled>Redo</button>
-        </div>
       </div>
 
       <!-- 2. Stock Dimensions -->
