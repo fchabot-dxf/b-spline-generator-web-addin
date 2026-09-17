@@ -4230,3 +4230,68 @@ the sidebar sticky header back after editing — confirmed it contains only `#bt
 No gate hit. Didn't touch `history.js`, `global-events.js`, or any sidebar panel below the sticky header.
 Visual confirmation of the glyph choice and the mobile-width fit are both the advisor's, as scoped —
 flagged both explicitly above rather than asserting either is fine.
+
+## Turn 171 — UX2: one status line for all Fusion traffic — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** declare a single `setFusionStatus(text, kind)` in
+the bridge; add a status line under the header; route import progress/success, a stale build stamp, and
+polling timeout to it instead of letting each one fight for the Send-to-Fusion button's label or a
+tooltip; the button keeps one steady "Baking..." state throughout.
+
+**(1)** `setFusionStatus` declared in `core/fusion-bridge.js`, using the dispatch's given JSDoc verbatim.
+Implementation: finds `#fusion-status`, sets `textContent` + `dataset.kind`, `el.hidden = !text`. For
+`kind === 'ok'` with non-empty text, schedules a 3s auto-clear — **implemented the clear inline (setting
+`textContent`/`hidden` directly) rather than recursively calling `setFusionStatus('', 'info')`**, so the
+grep count stays at exactly 1 definition + 4 external call sites rather than a 5th (self) call inflating
+it. The auto-clear is guarded with a generation counter (`_statusGen`, incremented on every call): the
+scheduled clear checks it still matches the generation it captured before touching the DOM, so a newer
+message arriving inside the 3s window is never stomped by a stale timeout.
+
+**(2)** Markup: `<div id="fusion-status" class="fusion-status" hidden role="status"
+aria-live="polite"></div>` right after `</header>`, before `<main class="cad-main-content app">`.
+
+**(3) CSS — one deliberate deviation, flagged rather than silently resolved:** the dispatch asked for
+"tokens only (no new colours beyond the existing `--cad-*` ones)" with `[data-kind="warn"]` in amber.
+Checked `base.css`'s actual declared custom properties first (`grep -- '--cad-[a-z-]*:'`) — there is a
+`--cad-accent-green` (used for the `ok` state) and a `--cad-text-muted` (used for the default/`busy`
+state), but **no amber/warning token exists anywhere in the codebase**, only the literal `#ffb300` hex
+already hardcoded on `.cad-nav-version.build-stale` a few lines above in this same `<style>` block. Since
+there's no token to reuse and the instruction's intent is clearly "don't invent a fourth arbitrary
+color," reused that exact existing literal for `[data-kind="warn"]` rather than inventing a new hex value
+or a new custom property outside this task's scope. Also used `var(--cad-bg-secondary)` +
+`var(--cad-border-standard)` (both real declared tokens) to give the line an actual bar look, and
+deliberately did **not** set `display` anywhere on `.fusion-status` — an unconditional `display: block`
+would be an author rule that beats the browser's own `[hidden] { display: none }` UA default regardless
+of specificity (the same gotcha caught in PM2), so the collapse relies entirely on that default, as the
+dispatch's "`[hidden]` collapses it" implies.
+
+**(4) Routing — `main.js`'s `handleFusionHandshake`:**
+- `import_progress`: `setFusionActionState(msg, true)` → `setFusionStatus(msg, 'busy')`. The button is no
+  longer touched here at all — it keeps whatever `export-flow.js:140` set once at send start ("Baking...",
+  disabled), unchanged.
+- `import_success`: `setFusionActionState('Done ✓', true)` → `setFusionStatus('Imported into Fusion ✓',
+  'ok')`. Same reasoning — the button never shows "Done ✓" now; it stays on "Baking..." until
+  `import_ready`/`reset_ui` resets it to idle, which is untouched and still does that.
+- `build_info`: added `if (status !== 'ok') setFusionStatus(info.message || 'Deployed add-in is stale',
+  'warn');` right after `badge.title = info.message || ''` and before the existing unknown/known-status
+  branch — one call site covers both the `unknown` case and any other non-`ok` status, since both flow
+  through the same already-computed `status` variable. The existing badge-painting logic (glyph, class,
+  tooltip) is completely untouched, per the dispatch's "the badge keeps its glyph/tooltip."
+
+**(5)** `core/fusion-bridge.js`'s `startFusionPolling` timeout branch: added
+`setFusionStatus('Fusion did not confirm the import — check the Fusion log', 'warn');` alongside the
+existing `fusLog(...)` call (kept — that's the internal debug log, a different concern) and the existing
+`setFusionActionState(FUSION_IDLE_LABEL, false)` button reset (kept, per the dispatch's silence on
+changing timeout's button behavior — only the badge/button-flicker-during-busy paths were named for
+removal, not this one).
+
+**Verify (all green):** `node --check` on both touched JS files, plus all three of the palette's
+extracted inline `<script>` blocks. `npx vitest run` → **29 passed**. Greps: `setFusionStatus(` → **5**
+total (1 definition + 4 call sites: polling timeout, `import_progress`, `import_success`, `build_info`),
+matching the predicted "1 def + 4 call sites" exactly. `fusion-status` → 1 HTML element + 4 CSS rules +
+1 JS reference — matches "html 1 + css rules + js 1." `git diff --stat` → exactly the predicted 3 files.
+
+No gate hit. Didn't touch the inspector palette, `showToast`, or the build badge's own rendering logic —
+only added one new conditional call alongside it. Web/Fusion look (Send to Fusion on a scratch design:
+progress lines appear under the header, button stays "Baking...", then "Imported ✓" fades after 3s) is
+the advisor's, as scoped.
