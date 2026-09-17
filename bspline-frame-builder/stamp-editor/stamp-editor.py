@@ -10,9 +10,8 @@
 #     Fusion-side workflows the JS can't do (face picking, importing
 #     STEP back into the active design).
 #
-# v1 SCAFFOLD: this file wires the toolbar button + palette + the
-# basic log/ping/reset_ui round-trip. Face-pick capture and STEP
-# emission land in subsequent passes.
+# Stamp Editor add-in: toolbar button + palette, face-pick capture,
+# live face count, preview mesh, STEP emission (`commit`).
 
 import adsk.core, adsk.fusion, traceback
 import os, json, shutil, datetime
@@ -152,10 +151,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     pal.sendInfoToHTML('pong', '{}')
                     # Piggyback the deployed version stamp on the ping/pong handshake.
                     _send_build_info(pal)
-                return
-
-            if action == 'reset_ui':
-                _log('reset_ui received')
                 return
 
             if action == 'cancel':
@@ -852,8 +847,6 @@ def _commit_stamp_to_fusion(grids_payload):
     Each face is processed independently — one face failing doesn't
     abort the rest.
     """
-    global _captured_faces
-
     if not _captured_faces:
         _log_warn('commit: no captured faces — nothing to bake')
         _send_to_palette('commit_result', {'ok': False, 'msg': 'No captured faces.'})

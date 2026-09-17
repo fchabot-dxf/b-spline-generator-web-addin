@@ -205,3 +205,106 @@ null-guarded, so nothing errored: the manager has silently had NO Load / Rename 
 **Ruling:** consolidate — the sidebar `📂 Load` (Quick-Load) button goes away; `📁 Projects` is the single
 entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is untouched.
 **Sequenced right after E7a** (bug + human-requested beats E7b polish). Headless-verifiable + a browser look.
+
+## Backlog from the lane-B audit (A1, 2026-09-17) + advisor findings — seat A order after E7b
+- **IN2 — inspector inline de-dup** (advisor, AST-verified): `fusion-inspector.py` still defines 10 fb_shared
+  functions locally, 8 divergent; C4-S3 only switched one import. **Dispatched now.** Note: A1's reconcile marked
+  STANDARDS-AUDIT §1b "resolved" — wrong for the inspector; it looked for duplicate *files*, not inline duplicates.
+- **E7c — per-row copy** on the inspector's details list (through the `_pendingCopy` poll pump).
+- **IN1 — B5 / A1-2** inspector `stop()` never removes `activeSelectionChanged` nor clears `_handlers` (M). Fusion
+  Stop→Start verification.
+- **HY2 — hygiene batch (all L):** A1-1 delete the 4 dead loader functions (`bspline-frame-builder.py:123-168`) ·
+  A1-3 fix the two stale fb_shared docstrings ("no callers switched yet") · A1-4 drop 2 dead entries from
+  `deploy_template_maker.verify_files` · A1-5 delete the dead `FusionIOPanel` cleanup in fusion-exporter.
+- **DEP1 — A1-6** deploy has no orphan sweep (overlay copy leaves deleted sources in AddIns). Add a dest-only listing
+  + warning after copy. Also: the E3 stop-first guard works (refused today while the add-in was live) — the deploy
+  ritual is now "human Stops add-in → advisor deploys → human Runs".
+- Still open from July, confirmed by A1: exporter.py silent-skip catch-alls (:656/:705/:440), hardcoded machine paths
+  in fusion-exporter (:165, exporter.py:86).
+
+## Backlog from the lane-B audit (A2 frame-builder, 2026-09-17)
+- **A2-1 (H, live-unverified):** `frame_engine.py:240` (`_create_skeletal_parameters`) and `parametric_engine.py:246-289`
+  (`_sync_user_parameters`) create the template's base parameters INSIDE the build Execute — the same pattern E8 moved
+  the tilt param out of. Static fact confirmed by the advisor. Whether it BREAKS undo (tilt did: plane driven by the
+  param desynced) or only leaves benign residue is a runtime question → added to the human's Fusion checklist: after
+  Ctrl+Z on a fresh design's first build, are width/height/thickness still listed, and does a rebuild still work?
+  If it breaks: extend F1-C (ensure the chosen template's base params at palette-open / style change).
+- **FB1 — A2-3 + A2-2 + A2-5 (seat A, after IN2):** DECLARE a `deferred_compute(sketch)` context manager in
+  `fb_engine` and use it for the three unprotected `isComputeDeferred` windows (`parametric_engine.py:313-330`,
+  `:334-346`, `offsets.py:64-78`) so a crash mid-window always leaves the sketch live; delete the dead
+  `build_context.create_or_update_param` (0 callers); reword the misleading `parametric_engine.py:123-125` comment to
+  name both parameter-creation sites.
+- **FB2 — A2-4 (design-first):** the two builder UIs hand-roll the same hidden-command dispatch (555 of 945 lines differ
+  only in ids/names). Extract one declared helper. Gate: a plan, then Fusion Stop→Start verification of both palettes.
+- **Test gap (A2):** zero coverage of `parametric_engine`, `frame_engine` param lifecycle, both UIs. Candidate for the
+  breaker seat once the audit series ends.
+
+## Backlog from the lane-B audit (A3 template-maker, 2026-09-17)
+- **TM1 — A3-1 + A3-2 (seat A, next):** `template-maker.py:82-100` `_PROJECT_MODULES` is a hand-maintained list of 17
+  names; `core/` has 23 modules; 5 are missing (`detection_log`, `dimension_hint`, `offset_hint`, `template_bridge`,
+  `variable_scan`) so edits to them survive Stop→Start stale (B7's class, wider radius). Fix = DERIVE the list from the
+  `core/` folder at import time (the list itself was the bug); delete the dead standalone `core/check_addin_sync.py`
+  (0 importers, stale premise, non-recursive). Fusion Stop→Start verification by the advisor after deploy.
+- **Same class, parent side (later):** `bspline-frame-builder.py:251-262` `_shared_project_names` is the same kind of
+  hand list. Derive or retire once A6 (CAM-builder) says whether cross-sub bare-name collisions still exist.
+- A3-3 (O(points×curves) coincidence pairing) — bounded by selection; leave.
+- Pre-existing pyflakes noise in `parametric_engine.py` (4 unused locals: :126, :176, :209, :309) → HY2.
+
+## Backlog from the lane-B audit (A4 stamp-editor, 2026-09-17)
+- All L. → **HY2** gains: A4-1 delete the `reset_ui` dispatcher branch (Python door, no JS room) · A4-2 rewrite the
+  stale "v1 SCAFFOLD" header · A4-3 fix or drop the runtime.js "mirrors step-editor" claim (no such add-in exists).
+- **C5/EDM4 map delivered** (AUDIT-2026-09.md A4): `core/state.js` is the only writer that reshapes `P.stampLayers`
+  (incl. the B6 mask-strip at :253-254); all other writers set one layer's field; 13 reader files. Input for the C5
+  design pass — not dispatched.
+- Noted, outside A4 scope: the three save paths (cloud-preset / cloud-project / preset managers) each hand-roll the same
+  "strip `.mask` before persisting" loop → one declared serializer (P4). Candidate for the A5 turn.
+- Test gap: stamp-editor's 8 unique files have zero coverage, direct or by proxy.
+- **A4 drift question answered (advisor, main checkout):** regenerating the bundle (`sync_stamp_bundle.py`) reproduced all
+  54 generated stamp-editor files byte-identical → no hand edits since C1. The file-level diff vs `b-spline-gen` is the
+  generator's own import-path rewriting, not drift.
+
+## Backlog from the lane-B audit (A5a b-spline-gen core+main, 2026-09-17)
+- **BG1 (seat A, after HY2):** delete the two dead modules `main/preset-manager.js` + `main/cloud-preset-manager.js`
+  (283 lines, 0 importers, superseded per cloud-project-manager's own header) · DECLARE one "P for persistence"
+  serializer (strip `.mask`, the shape every live site hand-rolls) and use it in BOTH `core/history.js:takeSnapshot`
+  (today it JSON-round-trips Float32Array masks into `{"0":…}` objects on every undo step — A5a-1) and
+  `main/cloud-project-manager.js:buildSnapshot` · `b-spline-gen.py` `stop()` gains `handlers.clear()` (A5a-3, the one
+  add-in that never clears).
+- **A5a-5** `sendFusionPreview` sends action `'preview'`; Python has no receiver (only `preview_mesh`). Advisor decides
+  wire-or-delete (see BG1 dispatch).
+- **BG2 (later):** B9 (`main/main.js:136`) + B11 (`core/coords.js:14-15`, `core/state.js:264,266`) still call
+  `adsk.fusionSendData` directly outside `core/fusion-bridge.js` — route through the bridge (P1).
+- Correction recorded: `core/state.js:253-254` is the benign mask-strip, NOT B6; B6 lives in `editor/editor-io.js:27-49`
+  (A5b verifies).
+- Rebuild is debounced (50 ms scheduler) — the "every slider tick rebuilds" worry is unfounded.
+- **HY3 (later, from HY2's pass-back):** `bspline-frame-builder.py` `_normalize_module_path` now orphaned (0 callers after
+  the dead-cluster delete — verify, then delete) · `stamp-editor.py` header lines 4-7 still claim a step-editor sibling.
+
+## Backlog from the lane-B audit (A5b b-spline-gen editor+palette, 2026-09-17)
+- **B6 CLOSED** (`editor/editor-io.js:36-40` `serializeEditor` keeps hidden layers; every caller traced). B1/B3 remain
+  "likely fixed" (4 of 20 `pushState` sites traced, no double-fire).
+- **BG3 (seat A):** `b-spline-gen.py` sends `import_progress` (8 sites via `_send_progress`, :180-187) and
+  `import_success` (:1319) — NO JS listener → zero feedback during a STEP import. Wire both into the palette's existing
+  status affordance (see BG3 dispatch for the exact element).
+- **A5b-5** `cloud-project-manager.js:887` reads `#fmCurrentFileLabel`, absent from the HTML → the "current file"
+  indicator never renders. Advisor traced history (see BG3).
+- **Named P1 exception (document, don't fix):** `bspline_gen_palette.html:1162-1193` defines
+  `window.fusionJavaScriptHandler` inline because Fusion's palette API needs that global synchronously before any ES
+  module loads. Host-bridge logic outside `core/fusion-bridge.js`, by necessity.
+- L: `editor/dom.js:45` `createButton` dead · 5 over-exported editor functions · ~576 lines of inline `<style>` in the
+  palette not yet checked against `styles/` · the inline "Native CAD UI Integration Patch" script vs `main/ui-bindings.js`
+  possible duplication (unchecked).
+- Facts: `index.html` is a 6-line redirect; there is ONE page for both hosts. `editor/` has zero host branches and zero
+  C2 survivors.
+
+## Backlog from the lane-B audit (A6 CAM-builder, 2026-09-17)
+- Cleanest add-in: doorless sweep clean both directions (13 JS→Py actions, 7 Py→JS events, two palettes), no fb_shared
+  duplication, zero bare-name imports, no app-level subscriptions. 0 tests (as A1 said).
+- **B10 → HY3:** `cam-builder.py` `stop()` (:2211-2298) unregisters only `REFRESH_EVENT_ID` (:2284); `TPGEN_EVENT_ID` +
+  `AXISPICK_EVENT_ID` are released only by the next `run()`'s re-register (:2037-2063). Add the two `unregisterCustomEvent`
+  calls to `stop()`. L.
+- **Parent wipe list (`_shared_project_names`):** CAM-builder contributes no reason to keep it; template-maker's own bare
+  imports are the remaining one → after TM1, derive the parent list from template-maker's `core/` too, or retire it once
+  template-maker imports package-qualified (TM2, design note).
+- Machine coupling: "Ultimate Bee" appears ~15× in `cam_engine/setup_builder.py` (machine matching, sim-doc detection,
+  default machine, WCS). Portability is a declaration job (one machine profile), not a one-line path fix. Parked.

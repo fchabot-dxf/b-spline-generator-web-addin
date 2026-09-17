@@ -4,9 +4,10 @@ Canonical Fusion entity helpers (fb_shared) — C4/F8 de-dup, slice S1.
 Merged from the two drifted copies (frame-inspector/entity_helpers.py +
 template-maker/core/entity_helpers.py). Base = frame-inspector; each function's
 provenance and any reconciliation decision is noted inline. Reconciliation
-decisions are pending advisor review (see WORK-LOG turn 65) — NO callers are
-switched to this module yet (S1 is additive), so nothing depends on it until
-S3/S4.
+decisions are ratified — callers switched (S3-S5).
+
+Canonical shared helpers (C4 S1-S5 complete): consumed by frame-inspector,
+template-maker/core and the tests.
 
 Semantic decisions flagged for review:
   - _get_arc_midpoint: uses frame-inspector's evaluator (+ legacy fallback).
@@ -207,17 +208,21 @@ def get_fb_plan(ent):
 # ── RECONCILED: frame-inspector's real-arc-midpoint `Bulge=` wins (template-
 #    maker emitted `BulgeCenter=`center, the misleading center-of-curvature).
 #    [FLAG — changes template-maker's metadata label + value] ──────────────────
-def get_fb_metadata(ent):
+def get_fb_metadata_fields(ent):
+    """One truth for entity metadata — structured. get_fb_metadata (below)
+    derives its pipe-joined string from this; frame-inspector's palette
+    renders these same keys as labelled rows. Returns only the keys that
+    have a value: startId, endId, centerId, bulge."""
     try:
         ent = _get_native(ent)
         if not hasattr(ent, 'attributes'):
-            return ''
+            return {}
 
-        info = []
-        for name in ('StartID', 'EndID', 'CenterID'):
+        fields = {}
+        for key, name in (('startId', 'StartID'), ('endId', 'EndID'), ('centerId', 'CenterID')):
             a = ent.attributes.itemByName('FrameBuilder', name)
             if a and a.value:
-                info.append(f"{name}={a.value}")
+                fields[key] = a.value
 
         if hasattr(ent, 'centerSketchPoint') and ent.centerSketchPoint:
             # Emit the real arc mid-point as "Bulge". Was previously set
@@ -228,8 +233,20 @@ def get_fb_metadata(ent):
             # downstream consumers passing it to addByThreePoints.
             mid = _get_arc_midpoint(ent)
             if mid is not None:
-                info.append(f"Bulge=({round(mid[0], 2)},{round(mid[1], 2)})")
+                fields['bulge'] = f"({round(mid[0], 2)},{round(mid[1], 2)})"
 
+        return fields
+    except Exception:
+        return {}
+
+
+def get_fb_metadata(ent):
+    """Byte-identical to the pre-E7b string output — derived from
+    get_fb_metadata_fields, not a parallel path."""
+    try:
+        fields = get_fb_metadata_fields(ent)
+        labels = (('startId', 'StartID'), ('endId', 'EndID'), ('centerId', 'CenterID'), ('bulge', 'Bulge'))
+        info = [f"{label}={fields[key]}" for key, label in labels if key in fields]
         return ' | '.join(info)
     except Exception:
         return ''

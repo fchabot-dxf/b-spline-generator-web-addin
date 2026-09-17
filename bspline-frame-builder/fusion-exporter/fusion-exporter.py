@@ -119,10 +119,9 @@ def stop(context):
         ui = app.userInterface
         cmd_defs = ui.commandDefinitions
         
-        # List of IDs and Panels to clean up (include legacy names)
+        # List of IDs to clean up (include legacy names)
         ids = ['FusionExportCommand']
-        panels_to_clean = ['FusionIOPanel']
-        
+
         for cmd_id in ids:
             # 1. Clean up ALL controls across all tabs/panels first
             for panel in ui.allToolbarPanels:
@@ -139,23 +138,6 @@ def stop(context):
                 if cdef: cdef.deleteMe()
             except Exception:
                 pass
-            
-        # 3. Clean up the panels if they are empty
-        for tab in ui.allToolbarTabs:
-            if tab is None:
-                continue
-            for p_id in panels_to_clean:
-                try:
-                    unique_panel_id = f"{p_id}_{tab.id}"
-                    panel = tab.toolbarPanels.itemById(unique_panel_id)
-                    # Also try checking for just the raw p_id in case it was a legacy panel
-                    if not panel:
-                        panel = tab.toolbarPanels.itemById(p_id)
-
-                    if panel and panel.controls.count == 0:
-                        panel.deleteMe()
-                except Exception:
-                    pass
     except Exception:
         pass
 

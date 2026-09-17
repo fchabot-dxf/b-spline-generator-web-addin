@@ -120,54 +120,6 @@ def _normalize_module_path(path):
         return path
 
 
-def _find_related_addin_modules():
-    current_path = _normalize_module_path(__file__)
-    suffixes = [
-        os.path.normcase(os.path.normpath(os.path.join('b-spline-gen', 'b-spline-gen.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('frame-builder', 'ui', 'sketch_builder_ui.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('frame-builder', 'ui', 'solid_builder_ui.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('frame-inspector', 'fusion-inspector.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('fusion-exporter', 'fusion-exporter.py'))),
-        os.path.normcase(os.path.normpath(os.path.join('template-maker', 'template-maker.py'))),
-    ]
-
-    for mod in list(sys.modules.values()):
-        mod_file = getattr(mod, '__file__', None)
-        if not mod_file:
-            continue
-        mod_path = _normalize_module_path(mod_file)
-        if mod_path == current_path:
-            continue
-        mod_path = os.path.splitext(mod_path)[0]
-        for suffix in suffixes:
-            if mod_path.endswith(os.path.splitext(suffix)[0]):
-                yield mod
-                break
-
-
-def _invoke_addin_action(modules, action_name):
-    for mod in modules:
-        action = getattr(mod, action_name, None)
-        if not callable(action):
-            continue
-        try:
-            action(None)
-        except Exception:
-            _log_error(
-                f'{action_name} failed for related addin module '
-                f'{getattr(mod, "__file__", repr(mod))}\n'
-                + traceback.format_exc()
-            )
-
-
-def _stop_related_addins(modules):
-    _invoke_addin_action(modules, 'stop')
-
-
-def _run_related_addins(modules):
-    _invoke_addin_action(modules, 'run')
-
-
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
 def _bootstrap():
     """Load logger, frame engine, and UI sub-modules. Safe to call repeatedly."""
@@ -394,9 +346,8 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
     def notify(self, args):
         # Since template-maker, fusion-inspector, and fusion-exporter are now
         # consolidated into this add-in's own run()/stop() lifecycle (see
-        # _bootstrap() and _teardown_submodules()), the former
-        # `_find_related_addin_modules` scan is redundant — a plain stop/run
-        # cycle already tears down and rebuilds every sub-module from disk.
+        # _bootstrap() and _teardown_submodules()), a plain stop/run cycle
+        # already tears down and rebuilds every sub-module from disk.
         try:
             stop(None)
             run(None)

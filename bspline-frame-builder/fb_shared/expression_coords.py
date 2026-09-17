@@ -4,7 +4,8 @@ Canonical coordinate expression helpers (fb_shared) — C4/F8 de-dup, slice S2.
 Base = template-maker (params-threaded API + circle/ellipse/spline + scalar),
 plus the frame-inspector extras appended below (get_entity_name /
 format_design_params / _get_design*). Arc-midpoint comes from the canonical
-fb_shared.entity_helpers (S1). ADDITIVE: no production callers switched yet.
+fb_shared.entity_helpers (S1). Canonical (C4 S2-S5 complete); consumed by
+frame-inspector and template-maker/core.
 """
 
 import math

@@ -74,30 +74,16 @@ if _current_dir not in sys.path:
 if _core_dir not in sys.path:
     sys.path.insert(0, _core_dir)
 
+# Every bare-name module under core/, DERIVED from the folder so the hot-reload
+# wipe list can never drift behind it (A3-1: a hand-typed list missed 5 modules).
+_PROJECT_MODULES = sorted(
+    os.path.splitext(f)[0]
+    for f in os.listdir(_core_dir)
+    if f.endswith('.py') and f != '__init__.py'
+)
+
 PALETTE_URL    = os.path.join(_current_dir, 'ui', 'template_maker_palette.html').replace('\\', '/')
 RESOURCES_PATH = os.path.join(_current_dir, 'ui', 'ressources')
-
-# All project-local modules that should be force-reloaded on run().
-# Order irrelevant — we wipe then re-import the top-level ones we use directly.
-_PROJECT_MODULES = [
-    'entity_util',
-    'phase_parser',
-    'role_points',
-    'cc_proxy',
-    'fb_attributes',
-    'ownership_gate',
-    'relation_hints',
-    'coincidence_clusters',
-    'template_code',
-    'template_naming',
-    'template_payload',
-    'template_payload_builder',
-    'template_variable_block',
-    'rename_selection',
-    'detect_projections',
-    'template_generator',
-    'deferred_rebuild',
-]
 
 
 # ── Utilities ─────────────────────────────────────────────────────────────────

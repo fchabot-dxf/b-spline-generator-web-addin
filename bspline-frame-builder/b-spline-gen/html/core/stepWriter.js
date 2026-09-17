@@ -30,8 +30,7 @@ function ints(arr) { return `(${arr.join(',')})`; }
  * SINGLE-STEP EXPORT (surface only)
  * -----------------------------------
  * Generates one AP214 STEP file containing a single B-spline surface body.
- * Used by: live preview sync (sendFusionPreview) when thicken is disabled,
- *          and by executeExport() for the "Clean Surface" / "Stamped Surface" variants.
+ * Used by: executeExport() for the "Clean Surface" / "Stamped Surface" variants.
  * Python receiver: _handle_generate() → single-stepText path.
  *
  * For multi-body / solid exports see: generateThickenedStep()
@@ -133,8 +132,7 @@ export function generateStep(heights, params) {
  * Which bodies are included is controlled by params.options (stamped/clean/stampedSurf/cleanSurf).
  *
  * Called by:
- *   • executeExport()     → "Clean Solid" and "Stamped Solid" variants in the stepVariants array
- *   • sendFusionPreview() → live preview when thicken is enabled (single-body preview)
+ *   • executeExport() → "Clean Solid" and "Stamped Solid" variants in the stepVariants array
  *
  * Python receiver: _handle_generate() → multi-variant path (stepVariants) OR single-stepText path.
  * Each body is registered as its own PRODUCT in the STEP assembly so Fusion imports them separately.

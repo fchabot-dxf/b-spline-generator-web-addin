@@ -247,26 +247,3 @@ class BuildContext:
                 best[quad] = (dist_sq, p)
 
         return {q: v[1] for q, v in best.items()}
-
-    def create_or_update_param(self, name, val, unit):
-        """Create a new user parameter or update its expression if it already exists."""
-        try:
-            param = self.user_params.itemByName(name)
-
-            # UNIT GUARD: Handled by Dedicated Resolver
-            if hasattr(self, 'resolver') and self.resolver:
-                self.resolver.validate_unit_consistency(name, val, unit)
-
-            val_input = adsk.core.ValueInput.createByString(str(val))
-            if param:
-                # Basic unit alert if drift is detected in the model
-                if param.unit != unit and unit != "":
-                     self.logger.log(f"[UNIT ALERT] {name} unit mismatch (Model:{param.unit} vs DNA:{unit})", "WARNING")
-
-                param.expression = str(val)
-                self.logger.log(f"PARAM SYNC: {name} = {val}")
-            else:
-                self.user_params.add(name, val_input, unit, "Frame Builder Parameter")
-                self.logger.log(f"PARAM NEW: {name} = {val} ({unit})")
-        except Exception:
-            self.logger.log_error(f"Param Sync Failed: {name}")
