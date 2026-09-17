@@ -2945,3 +2945,56 @@ run before any edits. Greps:
 No gate hit. Didn't touch `applySnapshot`, `editor/`, the palette HTML, any B9/B11 call site, or the
 `preview_mesh` path. Didn't deploy. The advisor owns the Fusion/browser look (undo across a stamped
 layer; save/load a project).
+
+---
+
+## Turn 125 — BG1b: regression fix — cloud-project-manager.js still used P but no longer imported it
+
+My own bug from turn 123 (BG1). Re-added `P` to the `state.js` import (1 line), then ran the requested
+no-undef sweep on all 6 files BG1 touched.
+
+**The fix:** `import { P, preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';`
+— confirmed with `node --check` afterward.
+
+**Investigated the specific citation before applying, since I'd checked this exact spot in BG1 and reached
+a different conclusion.** The dispatch's ground truth points at `:664-668` (`P.widthIn`, `P.heightIn`,
+`P.spacing`, `P.noiseType`, `P.stampLayers`) inside what it calls "the project-metadata builder." I
+re-verified: those lines are inside `fetchMeta`, whose own `const P = snap?.P || {};` (line 660) is a
+plain function-scoped local that fully shadows the module import for the rest of that function — that
+specific block was never actually going to throw `P is not defined` regardless of the import. I also
+re-checked `buildSnapshot` (the actual save-path function, which is what "the first time a project is
+saved" describes) — it no longer references bare `P` at all after BG1, only `cleanP`/`persistableP()`. I
+could not find a code path in this file that would concretely throw from the dropped import. Applied the
+fix anyway
+— it's a no-op-safe change (a module-level `P` import can't conflict with `fetchMeta`'s local shadow) and
+directly satisfies what the dispatch asked for, so there was no reason to contest it further; naming the
+discrepancy here rather than silently either arguing it away or pretending I found the exact crash site.
+
+**No-undef sweep — eslint unavailable** (`node_modules/.bin` has none; declined to let `npx` install one
+ad hoc). Did it by grep-based script instead, per the dispatch's fallback. First pass was too noisy to be
+useful (a naive `Identifier.`/`Identifier(` regex over raw source matched ordinary English words inside
+comments, e.g. "history." at a sentence end). Rewrote it to strip `//`/`/* */` comments and
+string/template-literal bodies first (keeping only `${...}` expression contents inside templates), then
+re-ran. Every remaining flagged name was checked by hand against its actual declaration and confirmed a
+false positive of the script's known blind spots, not a real bug:
+- Comma-separated declarations (`let a, b, c;`) — my declaration regex only captures the first name.
+- Destructuring loop vars (`for (const [name, mut] of map)`) and destructured params with defaults
+  (`{ options = {} }`).
+- Parenthesis-less single-arg arrows (`L => …`).
+- Class method/property names and `this` (`class StepBuilder { constructor() {…} nextId() {…} }`) — the
+  script doesn't parse class bodies at all.
+- Nested string literals inside a template's `${ternary ? 'a' : 'b'}` expression (kept verbatim by design
+  so real identifier usages inside expressions aren't lost, but literal English words inside the nested
+  quotes get swept up too).
+- Two genuinely-missing entries in my allowed-globals list (`IntersectionObserver`, plus `JSZip`/`saveAs`,
+  both loaded via `<script>` tags in the palette HTML, not ES imports) and one keyword I'd forgotten to
+  exclude (`async`).
+
+After that manual pass: **all 6 files clean, 0 real undefined-reference findings** beyond the one fix
+applied this turn. `history.js`, `state.js`, and `fusion-bridge.js` came back empty on the very first
+comment-stripped run.
+
+**Verify (all green):** `node --check` on the fixed file. `npx vitest run` (repo root) → 29 passed,
+unchanged. `git diff --stat` → exactly the predicted 1 file, 1 line. No amendments pending.
+
+No gate hit. BG1 is now correct; nothing else touched.
