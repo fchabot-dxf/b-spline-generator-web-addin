@@ -1,37 +1,44 @@
-# NEXT — DEC1: delete the step-editor cloud pair (Fred's ruling) — a removal sweep, every link accounted for
+# NEXT — PM2: one door to the Project Manager, and labelled top-bar buttons on wide screens (Fred's ruling)
+n**Note:** DEC1's folder deletion is being done by the advisor (your classifier refused it — correct call to stop). Your 7 comment fixes are accepted.
 
-**Ball: worker (seat A) · epoch 1 · DEC1.** One commit by path, predicted **8 files (6 deleted, 2 edited)** + comment
-edits in 2 more (see item 3) → **10 files**.
+**Ball: worker (seat A) · epoch 1 · PM2.** Files: `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html`,
+`bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js`. One commit by path, predicted **2 files**.
 
 ## Ground truth (advisor-verified)
-- `cloud/step-editor-worker/` (5 files: `.gitignore`, `package.json`, `README.md`, `src/index.js`, `wrangler.toml` with
-  `id = "REPLACE_AFTER_KV_CREATE"`) — finished code, never provisioned. `cloud/step-editor-pages/README.md` — the only
-  file there. The add-in they served (`bspline-frame-builder/step-editor/`) never existed in this repo (absorbed by
-  stamp-editor). Ruling: **delete both**; git history keeps them.
-- References outside the folders: `ARCHITECTURE.md:42-43` (cloud diagram lines) and `:271-279` (two bullets). Nothing in
-  deploy scripts, `release.py`, or `cloud/preset-worker`.
-- Comments that still name a "step-editor" add-in as if it existed (honesty, same chain): `stamp-editor/stamp-editor.py`
-  `:27` ("Mirror of step-editor's log-path strategy"), `:114` ("IDs MUST match step-editor / fusion-inspector"), `:132`
-  ("same shape as step-editor's bridge"), `:792` ("the b-spline-gen / step-editor bridge"), `:1210` ("same quirk
-  step-editor handles"); `CAM-builder/cam-builder.py:240` ("mirrors step-editor.py").
+- Sidebar: the whole first panel (`:314-323`, `<div class="panel" …>` → `<button … data-open-projects …>📁 Projects</button>`)
+  now holds only that button (Load left in PM1). Ruling: **drop it**; the top-bar folder icon is the one door.
+- JS: `cloud-project-manager.js:154` wires `document.querySelectorAll('#btnOpenProjectManager, [data-open-projects]')`.
+  After the removal `[data-open-projects]` matches nothing → a door with no room; narrow the selector to
+  `#btnOpenProjectManager` (and any other `data-open-projects` grep hit → 0).
+- Top bar (`:281-294`): `btnQuickSave` already has a hidden label span (`#btnQuickSaveLabel`, toggled by
+  `updateNavbarSaveLabel` in cloud-project-manager.js — read it and keep its behaviour); `btnOpenProjectManager`,
+  `btnDownloadAddin`, `settings-btn` are icon-only with `title=`. The palette's own `<style>` declares
+  `.cad-navbar .cad-nav-btn` (`:159`) and `.cad-nav-btn > span` (`:182`) with a mobile block at
+  `@media (max-width: 600px), (pointer: coarse)` (`:212-230`). Ruling note: "make them use labels too on desktop or
+  wide screen ui".
 
 ## Do
-1. `git rm -r cloud/step-editor-worker cloud/step-editor-pages`.
-2. `ARCHITECTURE.md`: in the cloud diagram (`:42-43`) replace the two step-editor lines with one line
-   `· (step-editor cloud pair deleted 2026-09-17 — never provisioned; its add-in was absorbed by stamp-editor)`; replace
-   the two bullets at `:271-279` with one sentence saying the same and naming the deleting commit as "DEC1".
-3. The six comments: replace "step-editor" with "b-spline-gen" where the sentence is about the bridge/log/ID pattern
-   (that IS the file they mirror — stamp-editor's docstring already says "Architecture mirrors b-spline-gen.py" since
-   HY3); at `:1210` and `cam-builder.py:240` reword to "same quirk b-spline-gen handles" / "mirrors b-spline-gen.py".
-4. Sweep: `grep -rn "step-editor" --include=*.py --include=*.js --include=*.md --include=*.toml .` (excluding WORK-LOG*,
-   AUDIT-2026-09.md, ROADMAP.md, FB2-PALETTE-SCAFFOLD-DESIGN.md, node_modules, .venv*) → only ARCHITECTURE.md's
-   "deleted" sentence and `sync_stamp_bundle.py`'s historical note (leave that one: it explains where the bundle came from).
+1. Delete the sidebar panel `:314-323` (the enclosing `<div class="panel">` … `</div>` — nothing else in it).
+2. `cloud-project-manager.js:154`: selector → `'#btnOpenProjectManager'` only; comment updated.
+3. **Declare the label once.** Add to each of the three icon-only nav buttons a `<span class="cad-nav-label">Projects</span>`
+   / `Add-in` / `Settings` after the icon span (keep the `title`s). In the palette `<style>`, next to `.cad-nav-btn > span`,
+   declare: `.cad-nav-label { display: none; margin-left: 6px; font-size: 12px; }` and
+   `@media (min-width: 601px) and (pointer: fine) { .cad-nav-label { display: inline; } }` — the exact complement of
+   the existing mobile block, so the two can never overlap. Give `#btnQuickSaveLabel` the same class so its JS-toggled
+   text follows the same rule (check `updateNavbarSaveLabel`: if it sets `display` inline, switch it to toggling
+   `hidden` on the span so CSS keeps ownership of the breakpoint — say which).
+4. Nothing else. STEP / Send to Fusion (`btnDownload`) is already a labelled button.
 
 ## Verify
-`py_compile` stamp-editor.py + cam-builder.py; the sweep grep as above; `git show --stat HEAD` → 10 files, 6 deletions.
-No deploy, no wrangler.
+- `node --check main/cloud-project-manager.js`; extract + `node --check` the palette's inline scripts (as E7c).
+- `npx vitest run` → 29. Greps: `data-open-projects` → 0; `cad-nav-label` → 4 spans + 2 rules.
+- `git show --stat HEAD` → 2 files. Web look (Pages rebuild) + Fusion look (palette at 1000 px shows labels; the
+  Fusion palette at narrow width hides them) are the ADVISOR's.
+
+## Do NOT
+Touch the modal, Quick Save's behaviour, or any other panel.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "DEC1: step-editor cloud pair deleted (6 files), ARCHITECTURE updated, 6 stale step-editor comments corrected — <sha>, 10 files; sweep clean. Next: PM2."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "PM2: sidebar Projects panel removed; selector narrowed; cad-nav-label declared on 4 top-bar buttons, shown ≥601px + fine pointer — <sha>, 2 files; vitest 29. Next: IN4."`
 and stop.
