@@ -1,53 +1,44 @@
-# NEXT — UX1: one declared "unsaved changes" state — confirm before Load discards edits, dot in the header (Fred's ruling)
+# NEXT — UX3: Undo/Redo leave the sidebar; they join the top bar next to Save (Fred's ruling)
 
-**Ball: worker (seat A) · epoch 1 · UX1.** Files (under `bspline-frame-builder/b-spline-gen/html/`): `core/dirty.js` (new,
-leaf), `core/history.js`, `main/param-manager.js`, `main/cloud-project-manager.js`, `main/app-init.js`,
-`bspline_gen_palette.html`. One commit by path, predicted **6 files (1 new)**.
+**Ball: worker (seat A) · epoch 1 · UX3.** File: ONLY `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html`.
+One commit by path, predicted **1 file**. No JS changes: `core/history.js:75 updateGlobalButtons` finds the buttons
+by id (`btnGlobalUndo` / `btnGlobalRedo`), and the click wiring + Ctrl+Z/Y shortcuts stay as they are.
 
 ## Ground truth (advisor-verified)
-- Change signals: `core/history.js:24` `takeSnapshot(label)` (3 callers: sculpt strokes ×2, and `app-init.js:65`
-  `takeSnapshot("Initial")` at load — that one must NOT count as an edit); `main/param-manager.js:64` `applyParam(key,
-  value)` (every slider/field change; NOT snapshotted today).
-- Save/load points in `main/cloud-project-manager.js`: `quickSave` success at `:834-835` (`✓ Saved`); `_loadFrom` (`:940`)
-  fetches then `applySnapshot(...)` `:949` + `setCurrentFile(name)` `:951` — this is where unsaved edits are silently
-  discarded (by design symmetry with Quick Save; ruling: ask first). Check whether Save As shares the `:834` success path.
-- Header: `bspline_gen_palette.html:279-288` `.cad-nav-titlebox` holds title, `#build-badge`, `#fmCurrentFileLabel`.
-- No dirty notion exists anywhere today (`grep -i dirty` → only the build-stamp badge and a sculpt-stroke local).
+- Sidebar sticky header (`:322-334`): `#btnRandomSeed` ("🎲 Generate New Seed") then a flex row with `#btnGlobalUndo`
+  / `#btnGlobalRedo` (both `disabled` at load; enabled by history.js).
+- Top bar (`:281-300`): `btnQuickSave` (💾 + `#btnQuickSaveLabel.cad-nav-label`), `btnOpenProjectManager` (📁 Projects),
+  `btnDownloadAddin` (🧩 Add-in, hidden in Fusion), `btnDownload` (STEP / Send to Fusion), `settings-btn` (⚙ Settings).
+  PM2/PM2b declared `.cad-nav-label` + the `min-width:601px and pointer:fine` block that shows labels and lets
+  `.cad-navbar .cad-nav-btn` size to content.
 
 ## Do
-1. **Declare it once** — `core/dirty.js` (no imports):
-   ```js
-   // The one "unsaved changes since the last save/load" state (UX1). Writers: any edit → markDirty();
-   // a completed save or load → markClean(). Readers subscribe with onDirtyChange(fn).
-   let _dirty = false; const _subs = new Set();
-   export function isDirty() { return _dirty; }
-   export function markDirty() { if (!_dirty) { _dirty = true; _subs.forEach((f) => f(true)); } }
-   export function markClean() { if (_dirty) { _dirty = false; _subs.forEach((f) => f(false)); } }
-   export function onDirtyChange(fn) { _subs.add(fn); fn(_dirty); return () => _subs.delete(fn); }
+1. Delete the flex row holding the two buttons from the sidebar sticky header (`:329-333`) and the `margin-top`
+   wrapper it lived in. "Generate New Seed" stays, alone, in that header.
+2. Insert BEFORE `btnQuickSave` in the top bar, same markup shape as the other nav buttons:
+   ```html
+   <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalUndo" title="Undo (Ctrl+Z)" disabled>
+     <span style="font-size:18px; line-height:1;">↶</span><span class="cad-nav-label">Undo</span>
+   </button>
+   <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalRedo" title="Redo (Ctrl+Y)" disabled>
+     <span style="font-size:18px; line-height:1;">↷</span><span class="cad-nav-label">Redo</span>
+   </button>
    ```
-2. Writers: `takeSnapshot` calls `markDirty()` unless `label === "Initial"` (add a second optional parameter instead
-   if you prefer: `takeSnapshot(label, stampSvgText, { edit = true } = {})` and have app-init pass `{edit:false}` —
-   pick one, say which). `applyParam` calls `markDirty()` after it accepts the value.
-3. Clean points: after the `✓ Saved` success (`:834`) → `markClean()`; in `_loadFrom` after `setCurrentFile(name)` →
-   `markClean()`; `applySnapshot` on undo/redo does NOT touch it.
-4. **Confirm before discard:** at the top of `_loadFrom`, `if (isDirty() && !window.confirm('You have unsaved changes.
-   Reload the project and lose them?')) return false;`. Quick Save is unchanged (it saves, it never discards).
-5. **The dot:** in the title box, before `#fmCurrentFileLabel`, `<span id="dirty-dot" class="cad-nav-version" title="Unsaved
-   changes" hidden>●</span>`; in `cloud-project-manager.js` `init` (where the header is wired) subscribe:
-   `onDirtyChange((d) => { const el = document.getElementById('dirty-dot'); if (el) el.hidden = !d; })`.
+   (keep the `disabled` initial state; `updateGlobalButtons` flips it). If the icon glyphs fall back to a monochrome
+   font that looks wrong next to the emoji, use `⟲` / `⟳` instead and say so.
+3. Nothing else. Check the mobile block (`:212-235`) still fits seven 44 px buttons in the bar at 600 px; if it wraps,
+   report it, don't fix it here.
 
 ## Verify
-- `node --check` ×5 JS; `npx vitest run` → 29 (history.js/state.js paths under test). Headless: `import` dirty.js in
-  node, assert markDirty/markClean/onDirtyChange semantics (paste output).
-- Greps: `markDirty(` → 2 call sites (history, param-manager); `markClean(` → 2; `confirm(` → 1 in `_loadFrom`;
-  `dirty-dot` → 2 (html + js).
-- `git show --stat HEAD` → 6 files. Web/Fusion look is the ADVISOR's (move a slider → dot appears; Quick Save → dot
-  gone; Load with edits → prompt).
+- Extract + `node --check` the inline scripts (unchanged). `npx vitest run` → 29.
+- Greps: `btnGlobalUndo` → 1 in html (top bar), 1 in history.js; the sidebar header contains only `btnRandomSeed`.
+- `git show --stat HEAD` → 1 file. Look is the ADVISOR's (Fusion 1000 px: ↶ Undo · ↷ Redo · Save… · Projects · Send to
+  Fusion · Settings; make an edit → Undo enables).
 
 ## Do NOT
-Add a beforeunload prompt, touch undo/redo semantics, or the Project Manager's other actions.
+Touch history.js, global-events.js, or the sidebar panels below the sticky header.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UX1: core/dirty.js declared; takeSnapshot(non-Initial)+applyParam mark dirty; save/load mark clean; _loadFrom confirms when dirty; #dirty-dot in header — <sha>, 6 files; vitest 29. Next: UX2."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UX3: Undo/Redo moved to the top bar (ids kept), sidebar header keeps Generate New Seed — <sha>, 1 file; vitest 29. Next: UX2."`
 and stop.
