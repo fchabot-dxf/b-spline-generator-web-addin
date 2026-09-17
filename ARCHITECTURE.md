@@ -39,8 +39,7 @@ hot-reloading Fusion add-in**, backed by Cloudflare workers.
    └──────────────────────────────────────────────────────────────────────┘
                  │
                  ▼ cross-device persistence + file store
-   Cloudflare: preset-worker (KV, LIVE) · step-editor-worker (KV, unprovisioned)
-               · step-editor-pages (README-only)
+   Cloudflare: preset-worker (KV, LIVE) · (step-editor cloud pair deleted 2026-09-17, DEC1 — never provisioned; its add-in was absorbed by stamp-editor)
 ```
 
 ---
@@ -268,15 +267,9 @@ All paths under `bspline-frame-builder/`.
   uses the same URL. ⚠️ **Identity is inconsistent** across sources — config name
   `projects-dansemur`, npm package `bspline-preset-worker`, REST-deploy target
   `bspline-presets` — the two deploy paths would create differently-named scripts.
-- **`cloud/step-editor-worker/`** — a self-contained Worker (`step-editor-files`)
-  that stores/serves STEP `.stp` files (`GET/PUT/DELETE /files/:name`, validates
-  the `ISO-10303-21;` header). ⚠️ **Unprovisioned** — its `STEP_FILES` KV ids are
-  still `REPLACE_AFTER_KV_CREATE` placeholders (`wrangler.toml:9-12`), so not yet
-  deployed.
-- **`cloud/step-editor-pages/`** — **README-only.** Intended as a Pages site
-  (`step-editor.pages.dev`) serving the step-editor UI, but the folder contains
-  only `README.md`; the `deploy.cmd` and `step-editor/html/` source it references
-  don't exist. Planned, not materialized.
+- **`cloud/step-editor-worker/` + `cloud/step-editor-pages/`** — **deleted 2026-09-17 (DEC1, Fred's ruling).** The worker was
+  finished but never provisioned; the pages folder was README-only; the `step-editor` add-in they served never existed
+  here (stamp-editor absorbed it). History keeps them.
 
 **Deploy scripts:**
 
