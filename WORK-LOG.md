@@ -2581,3 +2581,59 @@ after the fact.
 range; the 2 blank lines account for the difference from the 4 non-blank lines). No amendments pending.
 
 No gate hit — a declared, advisor-verified structural restoration, no other content touched.
+
+---
+
+## Turn 111 — E7b: fold sections + DECLARE metadata as structured fields — DONE
+
+Executed the advisor's epoch-1 dispatch. 3 files, one commit. Per-row copy buttons left for E7c as
+instructed.
+
+**(1) `fb_shared/entity_helpers.py` — one truth, two renderings.** Added `get_fb_metadata_fields(ent) ->
+dict` (keys `startId, endId, centerId, bulge`, only when present, same attribute reads + same
+`round(mid, 2)` bulge formatting as before). Replaced `get_fb_metadata`'s body so it derives its string
+from that dict via a fixed `(key, label)` order tuple — it no longer reads attributes directly, it calls
+`get_fb_metadata_fields` and joins. Kept the pre-existing `RECONCILED`/`FLAG` comment attached to the new
+dict function, since that's where the actual Bulge-vs-Center attribute logic now lives.
+
+**(2) `fusion-inspector.py`** — found a discrepancy in the dispatch's ground truth worth flagging: this
+file does **not** import `get_fb_metadata` from `fb_shared` — it has its **own local duplicate**
+definition (`:331-354`, near-identical logic, its own `nativeObject` resolution). The dispatch described
+"`get_fb_metadata(e)` — fb_shared/entity_helpers.py:210-235" as if fusion-inspector called the shared
+one; it doesn't. Per the dispatch's own instruction to leave the BATCH `linked` entries untouched
+(E7c/that local function stays exactly as-is, still used at the batch-loop's `fb_meta_item = get_fb_metadata(ent)`
+call), I added `from fb_shared.entity_helpers import get_fb_metadata_fields` (a new import, the shared
+dict function did not exist before this turn) and used ONLY that for the single-entity `meta` dict build,
+leaving the local duplicate `get_fb_metadata` fully alone. Changed the placeholder `'meta'` from
+`f"{count} Entities Selected"` to `{}` (so the type is one thing per the dispatch), and replaced the
+`Bridge: {bridge or 'N/A'} | Plan: ...` string build at the single-selection block with
+`{'type': ..., 'bridge': bridge or '', 'plan': plan or '', **get_fb_metadata_fields(e)}` exactly as
+specified.
+
+**(3) `inspector_palette.html`:**
+- Declared `META_FIELDS` once (`[[key,label], …]`, 7 entries, `type/bridge/plan/startId/endId/centerId/bulge`
+  in that order) near the top of the script block.
+- Added `renderMeta(meta)`: builds one `.cad-field-row` (`.cad-label` + a value `<span>`) per present,
+  non-empty key, in `META_FIELDS` order; falls back to `container.textContent = String(meta || '')` if
+  `meta` isn't an object (older Python still running mid-deploy). Wired it into `applyData` in place of
+  the old `meta-text.textContent = d.meta || ''` line.
+- Folding: in `attachUIEvents` (called once from `init()`), queried
+  `.cad-sidebar-panel > .cad-accordion-header` (the `>` direct-child combinator excludes the nested
+  `.dark #list-label` sub-header) and added one click listener per header toggling `collapsed` on the
+  header and on `header.nextElementSibling` (the section's `.cad-dialog-content`). No new CSS —
+  `styles/base.css:1081-1090` already declares both rules. Both sections start expanded (no `collapsed`
+  class added at load).
+- Removed `.meta-container`'s CSS rule (monospace font + `white-space: pre-wrap`) and dropped the class
+  from the `#meta-text` div — confirmed via grep it was the class's only definition and only consumer, so
+  nothing else was relying on it, and it no longer fits a field-row layout.
+
+**Verify (all green):** `py_compile` 2/2 clean. **Byte-identity gate:** `pytest
+template-maker/tests -q` → **83 passed before, 83 passed after** — `get_fb_metadata`'s output is
+unchanged for template-maker's consumers. `META_FIELDS` declared exactly once (`var META_FIELDS =` — the
+other 3 grep hits are the declaring comment + 2 in-function reads). `#meta-text` written only through
+`renderMeta`. `collapsed` toggled in exactly one function (the folding click handler in
+`attachUIEvents`). `git diff --stat` → exactly the predicted 3 files. No amendments pending at either
+poll.
+
+No gate hit. Nothing under `frame-builder/` was touched. No copy buttons added (E7c). Didn't deploy — the
+advisor owns the visual confirmation.
