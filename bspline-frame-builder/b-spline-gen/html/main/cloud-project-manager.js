@@ -163,11 +163,6 @@ export function bindProjectManager(preview) {
     updateNavbarSaveLabel();
   }
 
-  // Sidebar Quick-Load button: reload the associated file, or open the
-  // manager to pick one. Wired here alongside the other project triggers.
-  const btnQuickLoad = document.getElementById('btnQuickLoad');
-  if (btnQuickLoad) btnQuickLoad.addEventListener('click', () => quickLoad());
-
   // Wire Ctrl+S / Cmd+S anywhere in the app for the same behavior.
   window.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's' && !e.shiftKey) {
@@ -938,8 +933,8 @@ async function onLoad(name) {
 }
 
 /** Inner load implementation. Fetches a project by name, applies it, and
- *  establishes the file association. Shared by the modal Load button and
- *  the sidebar Quick-Load. Returns true on success. Safe to call with the
+ *  establishes the file association. Used by the modal Load button and row
+ *  double-click. Returns true on success. Safe to call with the
  *  modal closed (setMsg no-ops without a status element; showToast
  *  self-hosts). */
 async function _loadFrom(name) {
@@ -961,19 +956,6 @@ async function _loadFrom(name) {
     setMsg(`Load failed: ${e.message}`, 'error');
     return false;
   }
-}
-
-/** Quick Load from outside the modal (sidebar button). If a file is
- *  associated, silently reload it from the cloud (discarding unsaved edits,
- *  symmetric with quickSave's silent overwrite). Otherwise open the manager
- *  so the user can pick a project to load. */
-export async function quickLoad() {
-  if (_currentFile) {
-    if (!_API_URL) { console.warn('[project-manager] quickLoad: no API'); return; }
-    return _loadFrom(_currentFile);
-  }
-  // No association — open the manager to choose a project.
-  document.getElementById('btnOpenProjectManager')?.click();
 }
 
 // ─── Rename ───────────────────────────────────────────────────────────────────

@@ -319,15 +319,6 @@
             <span style="font-size:15px;">📁</span>
             Projects
           </button>
-          <!-- Quick Load: reloads the associated project (symmetric with the
-               navbar Quick Save), or opens the manager to pick one when no
-               file is associated yet. Wired in cloud-project-manager.js. -->
-          <button class="cad-btn cad-btn-secondary" id="btnQuickLoad"
-            title="Load — reopen the current project, or pick one"
-            style="flex:1; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
-            <span style="font-size:15px;">📂</span>
-            Load
-          </button>
         </div>
       </div>
 
@@ -1955,3 +1946,34 @@
           <div>Loading...</div>
         </div>
       </div>
+
+      <!-- Bottom selection bar -->
+      <div class="pm-selbar">
+        <div id="fmSelbarInfo" class="pm-selbar-info">No selection</div>
+        <div class="pm-selbar-actions">
+          <button id="fmBtnLoad" class="pm-selbar-btn pm-selbar-btn-primary" disabled
+                  title="Load the selected project (or double-click)">
+            <span style="font-size:14px;">📁</span>
+            Load
+          </button>
+          <button id="fmBtnRename" class="pm-selbar-btn" disabled title="Rename selected">
+            <span class="material-symbols-outlined" style="font-size:14px;">edit</span>
+            Rename
+          </button>
+          <button id="fmBtnDelete" class="pm-selbar-btn pm-selbar-btn-danger" disabled
+                  title="Delete selected (no undo)">
+            <span class="material-symbols-outlined" style="font-size:14px;">delete</span>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <!-- Status bar -->
+      <div class="pm-status-bar">
+        <span id="fmProjectStatus">--</span>
+        <span id="fmProjectMsg" aria-live="polite"></span>
+      </div>
+
+      <!-- Hidden — the JS still reads this for save/rename name. We populate
+           it via prompts now that the modal toolbar replaced the visible input. -->
+      <input type="hidden" id="fmProjectName">
