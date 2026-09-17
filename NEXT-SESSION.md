@@ -1,64 +1,60 @@
-# NEXT — IN2: finish the inspector de-dup for real — delete its 10 inline duplicates, import from fb_shared
+# NEXT — FB1: DECLARE the deferred-compute window (crash-safe) + delete a dead param helper + fix one lying comment
 
-**Ball: worker (seat A) · epoch 1 · IN2.** File: ONLY `bspline-frame-builder/frame-inspector/fusion-inspector.py`.
-One commit by path, predicted **1 file, ~−250 lines, +3 import lines**. Do NOT edit `fb_shared/` this turn.
+**Ball: worker (seat A) · epoch 1 · FB1.** Files: `bspline-frame-builder/frame-builder/fb_engine/parametric_engine.py`,
+`bspline-frame-builder/frame-builder/fb_engine/build_context.py`. One commit by path, predicted **2 files**.
+⚠ This touches the E8 tree. The human's Fusion undo check runs on the DEPLOYED copy (sha 6777525), which you do not
+touch — so it is safe. Do not deploy.
 
-## Ground truth (advisor-verified by AST diff, 2026-09-17)
-C4-S3 (`2483753`) "switched frame-inspector to fb_shared" — it changed ONE import line and deleted two sibling files.
-`fusion-inspector.py` still defines **10 functions that also exist in `fb_shared`**, 8 of them DIVERGENT (stale
-pre-merge copies; `fb_shared` is the S1/S2 canonical merge that the tests validate). The inspector's live selection
-readout runs on the LOCAL copies. Two sources of truth = the defect class this project keeps paying for.
-
-| local def (line) | shared home | status | note |
-|---|---|---|---|
-| `get_fb_name` :53 | `fb_shared.entity_helpers` | divergent | shared also honours the `ID` attribute + first-line split |
-| `get_fb_bridge` :75 · `get_fb_plan` :86 | entity_helpers | divergent | only the `_get_native` refactor |
-| `_get_entity_key` :216 · `format_point` :229 | entity_helpers | identical | |
-| `_get_arc_midpoint` :236 | entity_helpers | divergent | shared = evaluator + legacy fallback (superset) |
-| `get_fb_metadata` :332 | entity_helpers | divergent | shared derives from `get_fb_metadata_fields` (E7b) |
-| `entity_fingerprint` :358 | entity_helpers | divergent | `_get_native` only |
-| `get_entity_coord` :365 | entity_helpers | divergent | shared handles circle/ellipse/spline; returns `Point: (x, y)` — local returns `<name>: (x, y)` |
-| `get_entity_coord_expr` :397 | `fb_shared.expression_coords` | divergent | shared = `_build_entity_coord_expr_string` (S2, test-validated); signature `(ent, params=None)` |
-
-**Advisor ruling on the one visible change:** the point line drops its `<name>: ` prefix and reads `Point: (x, y)`.
-Accepted — the name is already the section title (`mainFeature`) and the first token of every list entry.
+## Ground truth (advisor-verified)
+- `parametric_engine.py:_build_blocks` (:291-346) opens `sketch.isComputeDeferred = True` twice per block (:313 → :330,
+  :334 → :346) with NO `try/finally`. The only handler is one layer up (`build_template` :157-179) which logs and moves
+  on but never resets the flag. A step that raises inside a window leaves that Fusion sketch in deferred mode for the
+  session = silent wrong geometry. (`offsets.py:77-78` is a pulse INSIDE the engine's window, not a window — leave it.
+  `_process_sequence` :368-369 "Pulse" likewise — leave it.)
+- `build_context.py:251-272` `create_or_update_param` — 0 callers in the repo (E8 removed the last one). Dead.
+- `parametric_engine.py:123-125` comment says parameter creation "no longer" happens in `build_template` — implying one
+  creation site elsewhere — while `_sync_user_parameters` (:246-289, same file, reached from `build_sketch`) AND
+  `frame_engine.py:225-320` both create params. Two sites; the comment must say so.
 
 ## Do
-1. Replace the import at :23 with the full set:
-   `from fb_shared.entity_helpers import get_fb_name, get_fb_bridge, get_fb_plan, _get_entity_key, format_point, _get_arc_midpoint, get_fb_metadata, get_fb_metadata_fields, entity_fingerprint, get_entity_coord`
-   `from fb_shared.expression_coords import get_design_params, get_entity_coord_expr`
-   (drop any name from that list that turns out to have 0 call sites after step 2 — e.g. `_get_entity_key` has 0 today).
-2. Delete the 10 local definitions listed above (whole functions incl. their docstrings/comments).
-3. **Retiree's own machinery dies with it:** `get_design_dimensions` :269, `format_expr_component` :289,
-   `format_point_expr` :311, `get_fb_attribute` :322 exist to serve the local `get_entity_coord_expr`. After step 2,
-   grep each: **0 surviving callers → delete it; ≥1 (e.g. from `get_fb_connections`) → keep it and say so** in the
-   commit message ("kept: used by get_fb_connections"). `get_fb_connections` :96 has no shared equivalent — it STAYS.
-4. Call sites keep working unchanged (`get_entity_coord(e)`, `get_entity_coord_expr(e)` both match the shared
-   signatures). Do not rename anything else.
-5. **STOP condition:** if a shared function lacks a behaviour the inspector's `_push_selection_to_palette` needs (e.g. a
-   key it reads that the shared version never emits), do not patch it locally and do not edit `fb_shared` — stop, pass
-   back with the exact gap, and the advisor decides.
+1. **Declare the window once.** In `parametric_engine.py` (module level, near the top helpers), add:
+   ```python
+   from contextlib import contextmanager
+
+   @contextmanager
+   def deferred_compute(sketch):
+       """Run a block with sketch.isComputeDeferred = True and ALWAYS leave the sketch live
+       (isComputeDeferred = False) on exit — including when the block raises. A sketch left
+       deferred after a crash silently stops solving for the rest of the session (A2-3)."""
+       sketch.isComputeDeferred = True
+       try:
+           yield sketch
+       finally:
+           sketch.isComputeDeferred = False
+   ```
+2. Rewrite the two windows in `_build_blocks` as `with deferred_compute(sketch):` blocks. The explicit `= False` lines
+   at :330 and :346 become the context exit (delete them); the explicit `= True` at :313 and :334 become the `with`.
+   Keep the PULSE SOLVE log line and `log_arc_audit` call exactly where they are relative to the solve (i.e. after the
+   first `with` block closes). Keep :308 (`= False` before Projections) as is.
+3. Delete `create_or_update_param` from `build_context.py` (whole method + its docstring).
+4. Reword `parametric_engine.py:123-125` to: "Parameter creation lives in two places: `frame_engine._create_skeletal_parameters`
+   (base requirements + template DNA, before build) and `_sync_user_parameters` below (UI-driven values). Neither is
+   called from here." — a true sentence, nothing more.
 
 ## Verify (fast tier)
-- `python -m py_compile bspline-frame-builder/frame-inspector/fusion-inspector.py`.
-- Duplicate sweep (must print NO `DUP` lines) — run from `bspline-frame-builder/`:
-  ```
-  python - <<'EOF'
-  import ast
-  def names(p): return {n.name for n in ast.parse(open(p,encoding='utf-8').read()).body if isinstance(n, ast.FunctionDef)}
-  a = names('frame-inspector/fusion-inspector.py'); s = names('fb_shared/entity_helpers.py') | names('fb_shared/expression_coords.py')
-  print("DUP", sorted(a & s)) if a & s else print("clean")
-  EOF
-  ```
-- `grep -c "^def " fusion-inspector.py` → 21 today; report the new count.
-- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83 (fb_shared untouched, so unchanged).
-- `git show --stat HEAD` → 1 file.
-- Fusion look is the ADVISOR's (deploy + screenshot after the human stops the add-in).
+- `python -m py_compile` both files.
+- Grep: `isComputeDeferred = True` in `parametric_engine.py` → exactly 2 hits left (`deferred_compute` + the
+  `_process_sequence` pulse at :369); `isComputeDeferred = False` → 3 (:308, the finally, the pulse :368).
+- `grep -rn create_or_update_param bspline-frame-builder/` → 0.
+- `python -m pytest bspline-frame-builder/template-maker/tests -q` → 83 (untouched code path, sanity only).
+- `git show --stat HEAD` → 2 files.
+- Fusion look is the ADVISOR's: a normal build must produce identical geometry (deploy + build + compare).
 
 ## Do NOT
-Edit `fb_shared/`, the palette HTML, `frame-builder/`, or the exporter. Don't add wrappers/aliases "for safety".
+Touch `frame_engine.py`, `offsets.py`, `_process_sequence`, the UIs, or `fb_shared`. Don't move parameter creation
+(that is A2-1, pending the human's live check). Don't deploy.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "IN2: inspector inline duplicates retired — <n> defs deleted (<kept: list or none>), imports from fb_shared; dup sweep clean; def count 21→<k>; pytest 83. <sha>, 1 file. Next: E7c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB1: deferred_compute context manager declared + both _build_blocks windows use it; create_or_update_param deleted; comment fixed — <sha>, 2 files; grep counts True=2/False=3; pytest 83. Next: E7c."`
 and stop.
