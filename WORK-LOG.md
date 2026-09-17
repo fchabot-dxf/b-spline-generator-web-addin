@@ -2790,3 +2790,71 @@ appended, A1-A3 untouched). No amendments pending at either poll. Did not run Fu
 
 No gate hit — read-only turn. A4-3 correctly left as an open question rather than resolved on
 insufficient evidence; the worktree gap was disclosed rather than worked around silently.
+
+---
+
+## Lane B — Turn 9 — A5a audit: b-spline-gen core+main+py (P1, dead code, snapshots, lifecycle) — DONE
+
+**Scope:** `core/` (24 files, 8790L) + `main/` (26 files, 4146L) + `b-spline-gen.py` (1635L) — the
+larger of the two A5 slices; `editor/`+palette HTML is A5b next turn. Grep-first across the whole
+scope for the P1/dead-code/export questions, then full reads of the specific functions the findings
+centered on: `core/history.js` (93L), `core/engine/scheduler.js` (23L), `main/snapshot-manager.js`
+(72L), all 3 `buildSnapshot`-shaped functions, `core/state.js:210-260`, `b-spline-gen.py:1508-1634`
+(`run`/`stop`) plus a full-file handler-registration grep, and `core/fusion-bridge.js:38-51`.
+
+**5 new findings (1 M-H, 3 M, 1 correction-not-a-finding).** Headline (A5a-1, M-H): `core/history.js`'s
+`takeSnapshot` — the undo/redo snapshot function — is the ONE place in the codebase that doesn't strip
+`.stampLayers[*].mask` before a `JSON.parse(JSON.stringify(P))` clone, unlike `saveLastSession` and all
+3 `buildSnapshot` variants, which all explicitly document WHY they strip it first (Float32Array→plain-
+object JSON corruption). Traced whether this actually matters downstream: `applySnapshot`'s own comment
+says it always regenerates masks from `.svg` on restore when `hasStampSvg` is true — so this is USUALLY
+masked, but not always, and it's an unconditional, avoidable perf cost either way (JSON-serializing a
+full-resolution typed array every undo step for no reason). A5a-2 reframes item 2's own premise: 2 of
+the 3 "identical mask-strip loops" the dispatch asked about live in `preset-manager.js`/
+`cloud-preset-manager.js` — both **confirmed entirely dead** (0 importers repo-wide, and
+`cloud-project-manager.js`'s own header says it replaces both by name). So the real fix isn't "extract
+3 call sites into 1 serializer," it's "delete 283 lines of dead files, then declare the 1 remaining live
+site." A5a-3: `b-spline-gen.py`'s `handlers` list is NEVER cleared in `stop()` — the only add-in in this
+suite that doesn't, confirmed by grep (1 hit: the declaration) cross-referenced against the 3 other
+add-ins' confirmed-clearing patterns from earlier turns. A5a-5 (found via completing item 6's JS→Python
+doorless sweep): `sendFusionPreview`'s `'preview'` action has zero Python receiver — a B4-class dead
+send, sibling to the already-tracked one, not a duplicate.
+
+**A5a-4 is a correction, not a finding — worth calling out on its own.** NEXT-SESSION pointed this turn
+at `core/state.js:253-254` to check "is B6 still present." Read that line in full context
+(`saveLastSession`) and it is NOT B6 — it's the same benign, unconditional mask-strip A5a-1/A5a-2
+concern themselves, not the hidden-layer GEOMETRY loss B6 actually describes. B6's real site
+(`editor/editor-io.js`'s `_visibleContent`) is under `editor/`, which is A5b's scope and wasn't read
+this turn. Said so plainly rather than either (a) quietly answering "B6 status: fixed" based on the
+wrong line, or (b) reading `editor/` out of scope to chase it down. Flagged so A5b checks the right file.
+
+**P1 sweep: reconciled, not new.** Grepped 6 files for host-branch smells; read all 6 rather than
+trusting the grep. 3 turned out to be FALSE POSITIVES on inspection — `export-flow.js`,
+`header-controls.js`, `core/engine/rebuild.js` all correctly branch on the `isFusionMode` STATE FLAG to
+decide when to call functions imported FROM `fusion-bridge.js` — that's the intended architecture, not
+a violation. The other 3 hits are B9 and B11, confirmed still present at current line numbers, nothing
+new. Distinguishing the false positives from the real hits by reading the code (not just counting grep
+matches) is the value of this pass over a naive re-grep.
+
+**Inefficiencies (item 7): the dispatch's concern turned out to be unfounded, confirmed rather than
+assumed.** Read `scheduler.js` in full — rebuild IS debounced (clearTimeout+setTimeout, 50ms default),
+not a per-keystroke full rebuild. No O(n²) found in `rebuild.js` itself (one O(n) grid pass). Said
+plainly that `core/preview/*.js` (1300+ lines) wasn't swept for the same question — ran out of turn
+budget rather than silently extending the "clean" verdict to files not actually checked.
+
+**Test gap:** cross-referenced all 5 findings against the 4 vitest files' import graph — A5a-1/A5a-2/
+A5a-5 all live in untested files/paths; A5a-3 is Python and untestable by this suite entirely (no
+Python lifecycle tests exist anywhere in the repo, reconciled from A1). Noted the B9/B11 nuance too:
+`state.js` IS imported by tests, but that doesn't mean these SPECIFIC lines are exercised — didn't
+overclaim file-level coverage as line-level coverage.
+
+**Honest about the scope-vs-time tradeoff on item 3's second half:** confirmed the 2 NAMED dead files
+thoroughly rather than attempting an exhaustive 0-importers sweep across all ~13k lines of core/+main/
+and doing it shallowly. Said so directly in "what I could not verify" rather than implying full coverage.
+
+**Verify:** `git status --short` before this commit showed only `AUDIT-2026-09.md` modified (A5a
+appended, A1-A4 untouched). No amendments pending at either poll. No Fusion, no `npm install`, no
+`sync_stamp_bundle.py` — all explicitly off-limits or out of scope this turn.
+
+No gate hit — read-only turn. A5a-4 is the second time this lane has corrected a dispatch's own
+citation rather than silently following it into the wrong file (A4 did the same for the worktree gap).
