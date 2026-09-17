@@ -34,7 +34,7 @@ import adsk.cam
 # Constants -- match the bspline-frame-builder shared panel ID.
 # ---------------------------------------------------------------------------
 
-# ── B-spline CAM palette ───────────────────────────────────────────────────
+# ── CAM palette ────────────────────────────────────────────────────────────
 CMD_ID            = 'CamBuilder_Command'
 PALETTE_ID        = 'CamBuilder_Palette'
 PANEL_ID          = 'bsplinePanel'    # shared with the rest of the suite
@@ -448,7 +448,7 @@ def _clear_studio_preview():
     We clear every group (not just our tracked one) because a group drawn in
     a different process/run isn't reachable through our module global, and the
     user must never be left with a stuck ghost. This add-in is the only one
-    drawing preview graphics during CAM Studio use, so a blanket clear is safe.
+    drawing preview graphics while the GENERIC tab is in use, so a blanket clear is safe.
     """
     global _studio_preview_group
     try:
@@ -985,7 +985,7 @@ def _extract_profile_from_setup(setup):
 
 
 def _do_studio_generate(data=None):
-    """Generic CAM Studio generate: one MM + Setup per selected component,
+    """Generic-mode generate (GENERIC tab): one MM + Setup per selected component,
     applying the profile settings from the palette."""
     data            = data or {}
     component_names = data.get('components', [])
@@ -1165,8 +1165,8 @@ def _do_preview():
 def _do_generate():
     """B-spline CAM: build the 3 MMs + 4 Setups for the active design.
 
-    Always runs in 'bspline' mode (hardcoded pipeline). The CAM Studio
-    palette handles generic mode through _do_studio_generate().
+    Always runs in 'bspline' mode (hardcoded pipeline). The GENERIC tab
+    handles generic mode through _do_studio_generate().
 
     Engine is reloaded on every generate so iterative edits to
     cam_engine.* pick up without an addin Stop/Start.
@@ -1977,7 +1977,7 @@ def _register_refresh_event():
         _tpgen_event.add(h_tp)
         _refresh_handlers.append(h_tp)
 
-        # Deferred WCS axis pick (CAM Studio). Same lifecycle/context reason:
+        # Deferred WCS axis pick (GENERIC tab). Same lifecycle/context reason:
         # selectEntity must not run inside the HTML palette event handler.
         global _axispick_event
         try:

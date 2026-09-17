@@ -1,8 +1,24 @@
 # CAM1 — Consolidate CAM Builder and CAM Studio into one palette
 
-Design only. No product code changed in this turn. File:line references are against the current tree
-(`cam-builder.py` 2324 lines, `cam_builder_palette.html` 685 lines, `cam_studio_palette.html` 1028 lines,
-all under `bspline-frame-builder/CAM-builder/`).
+**Status: IMPLEMENTED** — slice (a) `d714591`, slice (b) `de63098`, slice (c) (this commit).
+**Amendments:** dock-right (amendment 1) was already true in `_show_palette` before slice (a) even
+started — confirmed via `git diff` against the pre-turn commit, nothing to add; the stock-preview echo
+(amendment 2) has no JS listener anywhere in `cam_studio_palette.html`, so `_do_studio_preview`'s
+outgoing send needed no rename — "none needed," exactly the amendment's own fallback wording.
+**Fixes found during implementation that this design didn't anticipate:** `_do_preview`'s two outgoing
+sends had to be renamed to `preview_bodies` to match the renamed JS listener, or the body-classification
+counts would have silently stopped reaching the palette; `_send_to_studio_html` had to broadcast to both
+palette ids in slice (a), or the merged GENERIC tab would send every action correctly but never receive a
+response; slice (b) added an `if action == 'response': return` guard for Fusion's own `sendInfoToHTML`
+acknowledgement, which the merged dispatcher (unlike the old separate ones) was logging as a spurious
+warning; slice (b) also fixed a live `STUDIO_PALETTE_ID` NameError in `_do_studio_generate`'s
+success-hide path — a reference to a constant that same slice deleted, which would have crashed on every
+successful GENERIC-tab generate.
+
+Design only for this file. No product code changed by this section. File:line references below are
+against the tree at the time of the DESIGN turn (`cam-builder.py` 2324 lines, `cam_builder_palette.html`
+685 lines, `cam_studio_palette.html` 1028 lines, all under `bspline-frame-builder/CAM-builder/`) — read
+them as historical evidence for the plan, not as the current file state.
 
 Fred's ruling: "CAM Builder vs CAM Studio → consolidate" — two toolbar entries with an overlapping
 `preview` action are confusing. This design maps both palettes' real behavior with evidence, proposes one

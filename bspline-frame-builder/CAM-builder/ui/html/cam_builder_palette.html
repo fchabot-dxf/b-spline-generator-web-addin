@@ -80,7 +80,9 @@
     }
 
     /* Version-stamp badge — painted by the build_info handshake (E2c). */
-    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; }
+    /* CAM1c: the build stamp was wrapping to 3 lines next to the mode tabs
+       when the header ran short on room — nowrap keeps it on one line. */
+    .cad-nav-version { font-size: 10px; font-weight: 500; color: var(--cad-text-muted, #888); letter-spacing: 0; white-space: nowrap; }
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
@@ -668,7 +670,7 @@
       </div>
 
       <div class="cam-pipeline">
-        <strong>CAM Studio:</strong> One Manufacturing Model per component, then one
+        <strong>Generic mode:</strong> One Manufacturing Model per component, then one
         Setup per (component &times; side) &mdash; rotate the part on the table between
         Setups for indexed machining. Load or import a profile, add sides, then hit
         <strong>GENERATE</strong>.
