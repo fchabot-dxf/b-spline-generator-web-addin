@@ -1,46 +1,36 @@
-# NEXT — IN3: HUNT — the Frame Inspector page is laid out wider than its palette window
+# NEXT — IN3b: the inspector overflow is a FLOATING-palette rendering quirk — declare the dock like b-spline does
 
-**Ball: worker (seat A) · epoch 1 · IN3.** Files: `bspline-frame-builder/frame-inspector/inspector_palette.html` and, only if
-the cause is there, `bspline-frame-builder/styles/base.css` (shared by every palette — a change there must be proven
-harmless to the b-spline palette, which renders correctly today). One commit by path, predicted **1-2 files**.
+**Ball: worker (seat A) · epoch 1 · IN3b.** File: ONLY `bspline-frame-builder/frame-inspector/fusion-inspector.py`.
+One commit by path, predicted **1 file, +3 lines**.
 
-## Evidence (advisor, live Fusion, deployed d8a32ea) — read these three PNGs first
-- `/c/Users/danse/AppData/Local/Temp/claude/c--Users-danse-APPS-b-spline-generator-web-addin/3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e/scratchpad/pal_0.png` — palette 320×600: rows wrap at ~300 px, but the right column is cut.
-- `/c/Users/danse/AppData/Local/Temp/claude/c--Users-danse-APPS-b-spline-generator-web-addin/3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e/scratchpad/inspector-screen.png` — 520×760: page content ~100-150 px wider than the window; "Copy Name" cut, ⧉ buttons off-screen.
-- `/c/Users/danse/AppData/Local/Temp/claude/c--Users-danse-APPS-b-spline-generator-web-addin/3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e/scratchpad/inspector-700.png` — 700×760: same overflow at a larger size → it is NOT a fixed min-width; the page tracks the
-  window but exceeds it by a roughly constant amount. The header (title left, `#build-badge` + `#pulse-box` right)
-  is also cut on the right.
-The b-spline palette (`b-spline-gen/html/bspline_gen_palette.html`, same `styles/base.css`) fits its window exactly at
-1000 px (`/c/Users/danse/AppData/Local/Temp/claude/c--Users-danse-APPS-b-spline-generator-web-addin/3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e/scratchpad/palette2.png`) — so the shared stylesheet is not broken in general; the difference is in the inspector's
-own markup/styles or in how it uses the shared classes.
+## Ground truth (advisor, live Fusion 2026-09-17 10:35, deployed 4eb3efc = your IN3)
+- IN3's flex→float change did NOT remove the overflow (recaptured at 320 and 520: still clipped). Your honesty note was
+  right: it was not the cause. Keep the float version anyway — it renders fine.
+- Measured: DPI 96; the palette HWND client area is exactly 520×760; no child windows. So the page really was laid out
+  wider than its CSS viewport — but only while the palette FLOATS (`dockingState` 0, the creation default at
+  `fusion-inspector.py:332` `ui.palettes.add(PALETTE_ID, 'Fusion Inspector', PALETTE_URL, True, True, True, 320, 600)`).
+  A floating Fusion palette renders its page at a larger zoom (the floating captures show ~1.4× text) inside a viewport
+  narrower than the window, hence the proportional overflow.
+- **Docked right (`p.dockingState = PaletteDockStateRight`), the same page fits exactly**: bridge badge, Full Copy, Copy
+  Name and the ⧉ row buttons all visible (scratchpad `in3-docked.png`). The b-spline palette never shows the problem
+  because `b-spline-gen.py:1458` declares `palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight`
+  right after `palettes.add`.
 
-## Ground truth (advisor)
-- `base.css:37` `body { width:100%; overflow:hidden }`; `:29` global `box-sizing: border-box`; `.cad-dialog-content`
-  `overflow-x:hidden` (:1096). `.inspector-container { padding:8px; display:flex; flex-direction:column; flex:1; overflow-y:auto }`
-  (inspector :13). `.cad-sidebar-panel { width:100% }` (:1043).
-- Fusion palettes render in Chromium at the OS scale (this machine: 125-150 %) — CSS px ≠ window px, but the overflow
-  is proportional, so scaling alone is not the cause.
-
-## Do (hunt, then fix — small)
-1. Reproduce headless: open `inspector_palette.html` in a browser (or happy-dom is NOT enough — a real browser via
-   `start` / any Chromium) at 320 and 520 px wide, DevTools → find the first element whose `scrollWidth` exceeds the
-   viewport; walk up to the rule that sets it. Candidates the advisor did NOT check: `.cad-app-shell` / `.cad-navbar`
-   `min-width`, `.cad-nav-group` `flex-shrink:0` + fixed widths, the `#pulse-box` / badge `white-space:nowrap` in a
-   non-shrinking flex header, the `.linked-list` padding-left 24px inside a 100 %-width panel, and the E7c
-   `.linked-list li { display:flex }` (a flex row whose text item cannot shrink below its min-content).
-2. Fix at the ROOT rule (one declaration), not with `overflow:hidden` on the container (that hides, it does not fix).
-   If the root is in `base.css`, show by screenshot/diff that the b-spline palette is unchanged.
-3. Name the cause in the commit message with the rule and line.
+## Do
+Right after the `palettes.add(...)` at `:332`, mirror b-spline:
+```python
+            # Dock right like the B-Spline palette (b-spline-gen.py:1458). A FLOATING
+            # Fusion palette renders its page zoomed inside a narrower viewport and
+            # clips the right column (IN3, measured live 2026-09-17); docked, it fits.
+            palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
+```
+Nothing else. (The user can still undock it by hand; the default is what matters.)
 
 ## Verify
-- Headless: at 320 and 520 px viewport, `document.documentElement.scrollWidth <= innerWidth` (say how you checked).
-- `node --check` the extracted script (unchanged) if you touch the file; `git show --stat HEAD` → 1-2 files.
-- Fusion look is the ADVISOR's (deploy through the bridge, recapture at 320/520/700).
-
-## Do NOT
-Touch `fusion-inspector.py`, fb_shared, or the copy pump. Don't deploy.
+`py_compile`; `grep -n dockingState fusion-inspector.py` → 1; `git show --stat HEAD` → 1 file. Live proof is the
+advisor's (deploy through the bridge, open the inspector fresh, capture).
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "IN3: cause = <rule file:line>; fix = <one line>; headless scrollWidth check at 320/520 OK; b-spline palette unaffected — <sha>, <n> files. Next: CW1."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "IN3b: inspector palette docks right on creation (mirrors b-spline-gen.py:1458) — <sha>, 1 file. Next: CW1."`
 and stop.

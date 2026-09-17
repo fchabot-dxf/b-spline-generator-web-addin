@@ -346,3 +346,7 @@ list text wraps at a width larger than the window. Folding + labelled meta rows 
 look (body width:100%, global box-sizing:border-box, .cad-dialog-content overflow-x:hidden) did not locate the cause →
 UNLOCATED; dispatched as a hunt (IN3). Evidence PNGs: scratchpad `pal_0.png` (320), `inspector-screen.png` (520),
 `inspector-700.png` (700). Palette restored to 320×600; scratch design closed unsaved.
+- **IN3 resolved by measurement (10:35):** IN3's CSS change did not remove the overflow; docking the palette right did
+  (same page, same size, everything fits — `in3-docked.png`). Cause = floating-palette rendering (page zoomed inside a
+  narrower viewport), not CSS. IN3b declares the right dock on creation, as b-spline-gen does. Fusion quirk recorded here
+  so nobody re-hunts it in CSS.
