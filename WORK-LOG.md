@@ -2998,3 +2998,63 @@ comment-stripped run.
 unchanged. `git diff --stat` → exactly the predicted 1 file, 1 line. No amendments pending.
 
 No gate hit. BG1 is now correct; nothing else touched.
+
+---
+
+## Turn 127 — BG3: Fusion import feedback retargeted from a button that no longer exists — DONE
+
+Executed all 4 items in the dispatch. 4 files, one commit.
+
+**(1) Declared the one button once** in `core/fusion-bridge.js`: `FUSION_IDLE_LABEL`, `fusionActionButton()`,
+`setFusionActionState(text, disabled)` — verbatim per the dispatch, right after `fusLog`.
+
+**(2) Retargeted all 4 named `btnFusionApply` sites** plus every `'OK'` restore, and found one more of
+each while doing it:
+- `main.js:122` (Fusion-mode-detected reset) and `:158` (`import_ready`/`reset_ui`) → both
+  `setFusionActionState(FUSION_IDLE_LABEL, false)`. Reworded the comment above the first site — it
+  described resetting to `'OK'`, which is no longer the literal string, and the dispatch's own verify
+  grep (`'OK' → 0`) would have failed on the comment text too.
+- `export-flow.js:137-148` (`onFusionApply`, Fusion branch) → `setFusionActionState('Baking...', true)` /
+  `finally setFusionActionState(FUSION_IDLE_LABEL, false)`.
+- `export-flow.js:158-163` (`executeExport`) → the `btn` local becomes `fusionActionButton()` in the
+  Fusion branch; the web `btnWizardExport` branch is untouched.
+- `startFusionPolling`'s timeout restore → `setFusionActionState(FUSION_IDLE_LABEL, false)`.
+- **Found beyond the dispatch's named line list, in the same function `sendToFusion`:** a third `'OK'`
+  restore (the early-return path when zero step variants are selected) that the dispatch's ground truth
+  didn't name but its own verify grep (`'OK' → 0`) would have failed on. Changed
+  `btn.textContent = 'OK'` → `FUSION_IDLE_LABEL` there too.
+- **Direct, mechanical consequence of the timeout-restore fix, not a separate scope decision:**
+  `startFusionPolling`'s `btnApply` parameter became fully unused once its one reference was replaced
+  with `setFusionActionState` (which re-queries the DOM itself). Removed the parameter — same class of
+  fix as BG1's `P`-import correction — and updated its one call site
+  (`export-flow.js`, was `startFusionPolling(btn)`) to `startFusionPolling()`.
+
+**(3) Wired the dead sends** in `handleFusionHandshake`, before the `pong` check, verbatim per the
+dispatch. **Verified the `import_ready`-after-`import_success` ordering before choosing the no-timeout
+path:** traced `b-spline-gen.py` — `_handle_generate` sets `importing_done = True` then sends
+`import_success` (`:1313-1319`); the JS poll loop's next `check_import_status` tick (already running via
+`startFusionPolling`, ≤5s later) finds `importing_done` true and sends `import_ready`
+(`:693-700`), which the existing `import_ready` handler already restores to the idle label. So
+`import_ready` reliably follows `import_success` through the poll mechanism already in place — used the
+dispatch's first option (no 1500ms fallback timeout needed), and confirmed this rather than assuming it.
+
+**(4) Added the missing label:** `<span id="fmCurrentFileLabel" class="cad-nav-version"
+style="display:none"></span>` right after `#build-badge`, inside `.cad-nav-titlebox`, in
+`bspline_gen_palette.html`.
+
+**Verify (all green):** `node --check` on all 3 edited `.js` files. `npx vitest run` (repo root) → 29
+passed, unchanged. Greps: `btnFusionApply` → 0 real hits (the one match is my own explanatory comment,
+verbatim from the dispatch's given docblock, documenting why the helper exists — not a leftover
+reference). `'OK'` in `main.js`/`export-flow.js` → 0. `import_progress`/`import_success` → present once
+each in `main.js`. `fmCurrentFileLabel` → 1 in the HTML. `git diff --stat` → exactly the predicted 4
+files. No amendments pending.
+
+**Adjacent, not acted on:** `main.js:118` (`onFusionDetected`, unrelated to this task's 4 named sites)
+sets the header button's initial label with the hardcoded string `'Send to Fusion'` rather than
+`FUSION_IDLE_LABEL`, now a duplicate literal of the same string. Cosmetic only, not required by any
+verify grep, and not a site this dispatch named — left it and flagging it here rather than silently
+tidying an unnamed line.
+
+No gate hit. Didn't touch `b-spline-gen.py`, the polling interval timing, `btnWizardExport` (web), or the
+editor. Didn't deploy. The advisor owns the Fusion look (Send to Fusion → Baking... → progress messages →
+Done ✓ → idle; Project Manager load → header shows the file name).
