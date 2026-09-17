@@ -2420,3 +2420,46 @@ Fusion's implicit "one `command.execute` = one undo unit" for geometry.
 **Real-symptom GATE → human Fusion:** build a frame → Ctrl+Z ONCE → the whole frame (plane + sketches +
 extrudes) reverses clean; `frame_tilt_deg` PERSISTS (created outside the build, so no orphan flip-flop);
 Ctrl+Y redo works; rebuild reuses the param/plane; set `frame_tilt_deg=30` → next build tilts.
+
+---
+
+## Turn 103 — H1 repo hygiene (headless) — DONE
+
+Executed the advisor's epoch-1 dispatch exactly: no application code touched, no design docs, no
+file moves. `bspline-frame-builder/` left completely untouched (E8 deployed, human Fusion gate open).
+
+**(1) Committed the stray Nest Hub bus-tracker work** (`f797c20`): `node --check` passed on both
+`bus-route.js` and `index.js` before committing. New file (`bus-route.js`) needed `git add` first since
+`git commit <pathspec>` cannot stage an untracked path — staged only that one file, then committed all
+3 declared paths by path (`wrangler.toml`, `index.js`, `bus-route.js`). Shape matched prediction: 3 files,
+519 insertions, 0 deletions.
+
+**(2) Deleted session junk.** Before deleting, verified every listed path's existence and tracked/ignored
+status individually (`git ls-files --error-unmatch`, `git check-ignore -v`) rather than trusting
+`git status --short` alone — several of the listed junk files (`debug_log.txt`, `deploy_log.txt`,
+`pages_deploy_log.txt`, `wrangler_deploy_log.txt`, the `*.err` pair, the three `diff_*.txt`, and the
+6.4 MB `fusion-inspector-debug.log`) were already matched by pre-existing `.gitignore` rules (`*_log.txt`,
+`*.err`, `diff_*.txt`, `*.log`), so they never showed as `??` in `git status` even though they existed on
+disk. Confirmed each with `check-ignore -v` before `rm` so nothing was deleted on a false assumption.
+Plain `rm` on the 9 root screenshots + `index.js.bak2` + the 10 already-ignored files; `git rm --cached`
++ `rm` on the 3 tracked-junk files (`pytest_run_output.txt`, `git_original_bspline_index_head.txt`,
+`SESSION_CONTEXT_2026-05-23.md`).
+
+**(3) Appended the declared ignore block** verbatim to `.gitignore` (one block, 8 lines) per the
+advisor's exact spec. Some lines overlap pre-existing rules (`*_log.txt`, `*.bak` already present from
+an earlier F12 pass; `diff_*.txt` already present unanchored vs the new anchored `/diff_*.txt`) — left
+as declared rather than deduping, since the dispatch specified the block verbatim and duplicate globs in
+`.gitignore` are inert, not a correctness risk. New coverage the old rules lacked: `*_log.txt.err`,
+`*-debug.log` (catches `fusion-inspector-debug.log`'s class), `*.bak[0-9]` (catches `.bak2`),
+`/pytest_run_output.txt`, `/_*.png`.
+
+**(4) One hygiene commit** (`3c7bd01`): `.gitignore` + the 3 `git rm`'d files. Shape matched prediction:
+4 files, 10 insertions, 481 deletions.
+
+**Verify (fast tier, all green):** `node --check` ×2 passed pre-commit. `git status --short` clean (no
+`??`, no residue) after both commits. Both `git show --stat` shapes matched the advisor's predictions
+exactly (3 files / 4 files). `git check-ignore -v _shot.png debug_log.txt` both resolve into the new
+block's lines. No amendments were pending at either poll (before commit, before pass).
+
+No gate hit — both commits were declared, non-restructuring, and matched the dispatch exactly. Nothing
+under `bspline-frame-builder/` was read or modified.
