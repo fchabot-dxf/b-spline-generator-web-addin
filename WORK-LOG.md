@@ -2686,3 +2686,50 @@ file (301 lines touched: 5 insertions, 296 deletions). No amendments pending at 
 
 No gate hit. Didn't touch `fb_shared/`, the palette HTML, `frame-builder/`, or the exporter. Didn't add
 wrappers or aliases. Didn't deploy — the advisor owns the visual confirmation.
+
+---
+
+## Turn 115 — FB1: crash-safe deferred-compute window + dead param helper + lying comment — DONE
+
+Executed the advisor's dispatch on the E8 tree. The advisor explicitly cleared this: the human's Fusion
+undo check runs against the DEPLOYED copy (sha 6777525), not this working tree, and this turn doesn't
+deploy — so editing here doesn't disturb that check. 2 files, one commit.
+
+**(1) Declared `deferred_compute(sketch)`** as a module-level `@contextmanager` in `parametric_engine.py`
+(after the imports, before `ensure_tilt_param`) — sets `isComputeDeferred = True` on enter, ALWAYS resets
+to `False` in a `finally` on exit, verbatim per the dispatch's given implementation.
+
+**(2) Rewrote both `_build_blocks` windows** as `with deferred_compute(sketch):` blocks. Window 1 (was
+`:313→:330`) now wraps the `BuildSequence`/Geometry/Constraints/Dimensions/VolatileDimensions steps;
+window 2 (was `:334→:346`) wraps the Offset Steps + Miters loop. Deleted the explicit `= True`/`= False`
+lines the `with` now handles. Kept the `PULSE SOLVE` log line and `log_arc_audit` call exactly where they
+sat — outside the first `with`, between the two windows — and left the pre-Projections `= False` (was
+`:308`) and `_process_sequence`'s manual Pulse (`= False` then `= True`, was `:368-369`) completely
+untouched, as instructed. Also dropped the dangling `# Final solve flush for the block` comment that sat
+above the old trailing `= False` — that line is what the comment described, and the `with`-block's
+`finally` now does the same job silently; keeping the comment would have left it describing code that no
+longer exists at that spot.
+
+**(3) Deleted `create_or_update_param`** from `build_context.py` (whole method, was the last member of
+the class and the last thing in the file) — confirmed 0 callers repo-wide (`grep -rn`, only the
+now-deleted def itself and a stale `.pyc` in `__pycache__` matched).
+
+**(4) Reworded the `:123-125` comment** to the dispatch's exact given sentence. Also trimmed the header
+line above it from `# 1. Parameter Sync (Centralized in frame_engine.py)` to `# 1. Parameter Sync` — the
+old parenthetical claimed a single site, which the new sentence directly contradicts (two sites); leaving
+it would have re-introduced the same lying-comment problem one line up. Small edit beyond the dispatch's
+literal quoted text, flagging it as a judgment call for consistency.
+
+**Verify (all green):** `py_compile` 2/2. `create_or_update_param` grep → 0 `.py` hits. `pytest
+template-maker/tests -q` → 83 passed (sanity only — this turn's code path isn't under test). `git diff
+--stat` → exactly the predicted 2 files.
+
+**Grep-count note:** raw `grep -c "isComputeDeferred = True"` on the file returns 3, and `= False` returns
+4 — one extra hit each — because the `deferred_compute` docstring quotes those exact literal strings as
+prose (the dispatch's own given docstring text does this). Counting only the executable assignments:
+`True` appears twice (`deferred_compute`'s own entry line + `_process_sequence`'s untouched manual pulse)
+and `False` appears three times (the pre-Projections reset, `deferred_compute`'s `finally`, and
+`_process_sequence`'s pulse) — exactly the 2/3 the dispatch predicted.
+
+No gate hit. Didn't touch `frame_engine.py`, `offsets.py`, `_process_sequence`'s body, any UI, or
+`fb_shared`. Didn't move parameter creation. Didn't deploy.
