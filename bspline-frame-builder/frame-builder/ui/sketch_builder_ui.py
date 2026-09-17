@@ -93,20 +93,20 @@ def _push_schema_direct(style_id="Template 1"):
                 p_live = dict(p)
                 p_name = p['Name']
 
-                if user_params:
-                    fp = user_params.itemByName(p_name)
-                    if fp:
-                        raw_val = fp.value
-                        if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
-                            p_live['Val'] = round(raw_val / w_in, 4) if w_in != 0 else p.get('Val', 0)
-                        elif p_name in ['TopGap', 'BottomGap',
-                                        'ShoulderRadius', 'WaistRadius', 'HipRadius']:
-                            p_live['Val'] = round(raw_val / h_in, 4) if h_in != 0 else p.get('Val', 0)
-                        elif p_name == 'WaistOffset':
-                            p_live['Val'] = round(raw_val / (h_in / 2.0), 4) if h_in != 0 else p.get('Val', 0)
-                        else:
-                            target_unit = p.get('Unit', 'cm')
-                            p_live['Val'] = round(raw_val / 2.54, 4) if target_unit == 'in' else round(raw_val, 4)
+                fp = user_params.itemByName(p_name) if user_params else None
+                p_live['Exists'] = bool(fp)
+                if fp:
+                    raw_val = fp.value
+                    if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
+                        p_live['Val'] = round(raw_val / w_in, 4) if w_in != 0 else p.get('Val', 0)
+                    elif p_name in ['TopGap', 'BottomGap',
+                                    'ShoulderRadius', 'WaistRadius', 'HipRadius']:
+                        p_live['Val'] = round(raw_val / h_in, 4) if h_in != 0 else p.get('Val', 0)
+                    elif p_name == 'WaistOffset':
+                        p_live['Val'] = round(raw_val / (h_in / 2.0), 4) if h_in != 0 else p.get('Val', 0)
+                    else:
+                        target_unit = p.get('Unit', 'cm')
+                        p_live['Val'] = round(raw_val / 2.54, 4) if target_unit == 'in' else round(raw_val, 4)
 
                 if isinstance(p_live.get('Val'), str) and design:
                     try:

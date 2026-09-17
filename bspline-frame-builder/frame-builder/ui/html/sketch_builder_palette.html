@@ -36,6 +36,31 @@
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
+
+    /* FB3: the Fusion user-parameter name under each row's label, and a
+       chip when the next build will create it (not yet in the design). */
+    .param-fusion-name {
+      display: block;
+      font-size: 10px;
+      font-family: monospace;
+      color: var(--cad-text-muted, #888);
+      margin-top: 1px;
+    }
+    .param-new {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 4px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #fff;
+      background: var(--cad-accent-blue, #0696D7);
+      border-radius: 2px;
+    }
+    .param-note {
+      padding: 6px 8px;
+      font-size: 11px;
+      color: var(--cad-text-muted, #888);
+    }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -257,6 +282,18 @@
 
       container.innerHTML = '';
 
+      // FB3: one note when the build will create any Fusion parameter that
+      // doesn't exist in the design yet. Visibility is decided AFTER
+      // rendering, from whether any "new" chip actually got created — one
+      // source of truth instead of duplicating _renderParam's own
+      // Exists/ReadOnly check here. [hidden] does the collapsing — no
+      // `display` on .param-note anywhere, so nothing fights it.
+      const note = document.createElement('div');
+      note.className = 'param-note';
+      note.textContent = 'Building creates the parameters marked new in this design.';
+      note.hidden = true;
+      container.appendChild(note);
+
       const _shouldRender = (p, list) => {
         if (p.Name.startsWith('en_')) return false;
         if (list.find(t => t.Name === 'en_' + p.Name)) return true;
@@ -318,7 +355,8 @@
           `;
         }
 
-        row.innerHTML = `<label class="cad-label">${label}</label>${controlHtml}`;
+        const newChip = (p.Exists === false && !p.ReadOnly) ? '<span class="param-new">new</span>' : '';
+        row.innerHTML = `<label class="cad-label">${label}<span class="param-fusion-name" title="Fusion user parameter (Modify → Change Parameters)">${p.Name}</span>${newChip}</label>${controlHtml}`;
         body.appendChild(row);
       };
 
@@ -344,6 +382,7 @@
           visible.forEach(p => _renderParam(p, sketchParams, body));
         });
       }
+      note.hidden = !container.querySelector('.param-new');
       updateConstraintStatus();
     }
 
