@@ -1,49 +1,35 @@
-# NEXT — FB2 slice (a): add `palette_scaffold.py`, switch the Sketch Builder onto it (solid untouched)
+# NEXT — FB2a-fix: the rewritten Sketch Builder dropped the tilt-param ensure at palette-open (E8 regression)
 
-**Ball: worker (seat A) · epoch 1 · FB2a.** Design BLESSED as written in `FB2-PALETTE-SCAFFOLD-DESIGN.md` with two
-amendments below. Files: `bspline-frame-builder/frame-builder/ui/palette_scaffold.py` (new),
-`bspline-frame-builder/frame-builder/ui/sketch_builder_ui.py` (rewritten onto the scaffold),
-`bspline-frame-builder/bspline-frame-builder.py` (one line, amendment 1). One commit by path, predicted **3 files**.
-`solid_builder_ui.py` stays untouched — the two styles must coexist after this slice.
+**Ball: worker (seat A) · epoch 1 · FB2a-fix.** File: ONLY `bspline-frame-builder/frame-builder/ui/sketch_builder_ui.py`.
+One commit by path, predicted **1 file, ~+3/−1**.
 
-## Amendments to the design (advisor)
-1. **Hot-reload wipe.** A new bare module `palette_scaffold` would stay cached in `sys.modules` across Stop→Start
-   (B7/A3-1 class). Extend the derivation from TM2 in `bspline-frame-builder.py` `_bootstrap`:
-   `+ _bare_module_names(os.path.join(_addin_root, 'frame-builder', 'ui'))` appended to `_shared_project_names`
-   (the two `*_builder_ui` names are harmless extras; they are loaded by path under other names).
-2. **The loop must bind per iteration.** In the generic hidden-command loop, pass `cmd_id`/`handler_factory` as
-   default arguments or via a small factory function — never a closure over the loop variable. Add one line to the
-   docstring saying so, and prove it in the headless smoke (register two fake commands, assert the two handlers
-   differ).
+## Ground truth (advisor, live Fusion 11:15, deployed f7236f9)
+- Fresh design → open Sketch Builder → `frame_tilt_deg` **absent** (this morning, pre-FB2a: present). Build → log says
+  `TILT: 'frame_tilt_deg' not present at build time; hosting sketches on the raw XY plane` → timeline 4 (no tilt plane).
+  The tilt feature and the E8 undo guarantee are silently lost.
+- Cause: `_on_ready(ctx)` (`:359`) does template pre-select + `_schedule_schema_push` only. The design (§3) said on_ready
+  = "tilt-param-ensure at open + first-template pre-select + initial schema push"; the implementation dropped the
+  first item (its docstring even says "was run_palette steps 5b/6" — the tilt step was 5a). `_ensure_tilt_param_safe`
+  (`:325`) still exists and `_on_document_activated` (`:340`) still calls it — only the open path lost it.
+- pyflakes: `:410` `global frame_engine` is declared but never assigned in that scope (the parent injects the module
+  attribute directly). Drop that name from the `global` statement if the function does not assign it.
 
-## Do (exactly the design's slice (a))
-1. `palette_scaffold.py`: `PaletteSpec`, `_PaletteBridgeMixin` (`_send_palette_message`, `_send_build_info` moved
-   verbatim), `make_palette(spec)` returning an object/namespace with `run_palette`, `handlers`, `set_status`,
-   `notify_status`, `close_palette`, `schedule_hidden_build(data)`; the generic delete-then-recreate command loop
-   (amendment 2); `on_document_activated` / `on_ready` wired only when populated; NO name check of any builder.
-2. `sketch_builder_ui.py`: keep the module constants, the sketch-only material (§3 of the design: schema push +
-   its two handler classes as `extra_commands`, `_ensure_tilt_param_safe`, the doc-activated callback, the sketch
-   `PaletteHTMLEventHandler` subclassing the mixin, `_run_sketch_build_direct` as `build_fn(data, ctx)` reading
-   `data['style_id']`), the `sys.path` line for `ui/`, and the spec + `make_palette` call re-exported as
-   `run_palette` / `handlers` (and `_doc_activated_handler` if the parent reads it — check `_teardown_submodules`
-   first and keep whatever it reads).
-3. `bspline-frame-builder.py`: amendment 1 only.
+## Do
+1. First line of `_on_ready`'s body: `_ensure_tilt_param_safe()   # E8 F1-C: the param must exist BEFORE any build`.
+   Update its docstring to "(was run_palette steps 5a/5b/6)".
+2. `:410`: remove `frame_engine` from the `global` statement if nothing in that function assigns it (keep
+   `_doc_activated_handler`).
 
-## Verify (headless gate, as designed)
-- `py_compile` + `pyflakes` on the three files (no new warnings).
-- Import-time smoke with the template-maker conftest's `adsk` stub: `palette_scaffold` and the new
-  `sketch_builder_ui` import; `handlers` is a list; `run_palette` callable; `PaletteHTMLEventHandler.notify` exists;
-  the per-iteration binding proof (amendment 2). Paste the script + output into the WORK-LOG.
-- Re-run the §4 sketch action table by grep against the new `notify` source: `update_param update_lock
-  change_template request_template_list run_build ping get_templates` all still present; nothing new handled.
-- `wc -l` before/after for `sketch_builder_ui.py` (expect ~594 → 200-250).
-- `git show --stat HEAD` → 3 files. The live proof (open Sketch Builder through the bridge, build, auto-close,
-  Stop→Start, one schema push on document switch) is the ADVISOR's.
+## Verify
+- `py_compile` + `pyflakes` (the `:410` warning gone, no new ones).
+- `grep -n "_ensure_tilt_param_safe()" sketch_builder_ui.py` → 2 call sites (on_ready + on_document_activated).
+- `git show --stat HEAD` → 1 file. Live proof (fresh design → open → param present → build → tilt plane, timeline 5)
+  is the ADVISOR's.
 
 ## Do NOT
-Touch `solid_builder_ui.py`, either palette HTML, `fb_engine/`, or fb_shared. No `if is_sketch`. Don't deploy.
+Touch anything else; slice (b) waits until this is proven live.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2a: palette_scaffold.py added (PaletteSpec, mixin, make_palette, per-iteration-bound command loop); sketch_builder_ui 594→<n> lines on the scaffold; ui/ added to the parent's derived wipe list — <sha>, 3 files; smoke + action table OK. Next: FB2b."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2a-fix: _on_ready calls _ensure_tilt_param_safe first; stray global dropped — <sha>, 1 file. Next: FB2b after live proof."`
 and stop.
