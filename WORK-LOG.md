@@ -4411,3 +4411,120 @@ as low-probability since it can only be confirmed against source in this repo).
 
 No code changed. Did not touch any `.py`/`.html`, did not propose "keep both, add a switch" (the ruling's
 explicit anti-goal), did not deploy.
+
+## Turn 177 — CAM1a: merged CAM palette shell (two mode tabs) + one dispatcher — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, design blessed with 2 amendments):** build the merged shell in
+`cam_builder_palette.html` (B-SPLINE / GENERIC tabs, Studio UI copied verbatim, one `send()`, one
+`handle()`, one boot); add `_CamHtmlEventHandler` wired to `PALETTE_ID`; leave Studio-side code and
+`cam_engine/` untouched (fallback preserved).
+
+**Amendment 2 checked first, per its own instruction:** grepped `cam_studio_palette.html` for `action
+=== 'preview'` → **0 hits**. No JS listener for the stock-preview echo exists — "none needed," exactly
+the amendment's own fallback wording. `_do_studio_preview`'s internal send call was left untouched
+(still literally `'preview'`, unrenamed) since nothing consumes it either way — not in scope to touch
+this slice.
+
+**The merge — id collisions resolved with the smallest possible surface.** Diffed both original files'
+full id lists before writing anything: only three ids collide (`build-badge`, `status-summary`,
+`status-bar`); everything else in the two UIs is already disjoint. Resolution:
+- `build-badge` → made genuinely SHARED (one element, one `build_info` handler branch — the two
+  original `build_info` bodies were byte-identical, so this needed no logic change, just one copy
+  instead of two).
+- `status-summary` / `status-bar` → suffixed per tab (`-bspline` / `-generic`). Checked whether either
+  original `setStatus`/`updateHeaderSummary` needed per-call-site changes: `setStatus`'s two original
+  bodies were IDENTICAL apart from which element they wrote to, so it collapsed into one shared
+  `setStatus(msg, cls)` that resolves `'status-bar-' + currentMode` — every one of the ~20 combined call
+  sites across both former files stayed byte-for-byte verbatim, only the ONE shared definition needed to
+  become tab-aware. `updateHeaderSummary` (Studio-only, the one place `status-summary` was ever
+  JS-written) got its one line's id updated to `status-summary-generic`; Builder's `status-summary` was
+  static markup, never touched by its own script, so needed no JS change at all.
+- Both tabs' entire `<main class="cam-scroll">` content (every card, input, and button) is byte-for-byte
+  verbatim from the two original files — confirmed by diffing the merged file's tab bodies against the
+  originals mentally section-by-section while writing, not just asserting it.
+
+**Two `preview` actions resolved as designed:** `runPreview()` now sends `preview_bodies`;
+`sendPreview()` (Studio) now sends `preview_stock`. The JS listener that reads the echo
+(`else if (action === 'preview_bodies')`, formerly `'preview'`) was renamed to match — which required
+also renaming `_do_preview`'s two `_send_to_html('preview', ...)` calls to `'preview_bodies'` in Python
+(`cam-builder.py`), **a necessary change beyond the dispatch's literal "Do" list**: the dispatch's own
+verify section lists `preview_bodies` as one of the 8 expected outgoing Python events, and without this
+rename the body-classification counts would have silently stopped reaching the merged palette (a real
+behaviour regression, not a cosmetic gap). Flagging clearly since it touches a function body the
+dispatch's literal text didn't name.
+
+**A second internal ambiguity found and resolved during implementation, not anticipated in the design
+doc: the `report` event.** Both tabs' Python handlers send `report` with genuinely different payload
+shapes (Builder: fixed `SETUP_KEYS` dots; Studio: per-component state + `setups_built`). Merging into one
+`handle()` meant the two original `report` bodies could no longer coexist as sequential `if`s without
+cross-contamination (Builder's `SETUP_KEYS.find(k => key.includes(...))` substring match could
+accidentally match against a Studio component name). Gated both bodies on `currentMode` (`report` +
+`currentMode === 'bspline'` vs `report` + `currentMode === 'generic'`) so each retains its exact original
+behaviour with zero chance of one reading the other's payload — since `report` only ever arrives as a
+direct response to an action the currently-active tab's own buttons triggered, this gating is always
+correct, not just usually correct.
+
+**A structural gap found during implementation that the design's own slice (a) description missed:**
+every GENERIC-tab Python handler (`_do_studio_init`, `_do_import_setup`, `_do_studio_generate`,
+`_AxisPickHandler`) sends its response via `_send_to_studio_html`, which targeted `STUDIO_PALETTE_ID`
+only. Left as-is, the merged palette's GENERIC tab would send `init`/`import_setup`/`generate`/axis-pick
+actions correctly but **never receive any response** — `init` alone fires on every first switch to that
+tab, so this would have shown as "Scanning design…" stuck forever the instant anyone opened the GENERIC
+tab, well before testing any specific feature. Fixed by making `_send_to_studio_html` broadcast to
+whichever of `(PALETTE_ID, STUDIO_PALETTE_ID)` is actually visible — both share the same Studio-side
+handler functions and JS payload shape, so this is safe, and it's the smallest fix that makes the merged
+GENERIC tab actually work without touching any handler body, `cam_engine`, the `selectEntity` deferral,
+or `_kick_off_toolpath_generation` (all explicitly off-limits this slice). `_do_studio_preview` needed no
+equivalent fix — confirmed by reading its body that it sends no echo at all (matches amendment 2's
+finding), so PREVIEW STOCK's 3D graphics draw correctly regardless of which palette id anything targets.
+
+**A miscount in my own CAM1-design doc, caught and corrected here:** the design doc's prose said the
+merged dispatcher would have "14 actions," but its own code table (and the actual JS `send()` call sites)
+list 15 distinct actions — `select_x_axis` and `select_y_axis` are two separate actions, not one, and the
+arithmetic "8 Builder + 7 Studio = 15, minus 1 dead alias = 14" was simply wrong (the dead `generate`
+alias was never one of the 15 real JS-sent actions to begin with — it only ever existed as a phantom
+branch in Python's old dispatcher with no sender — so there was nothing to subtract from the send-side
+count). Implemented the CORRECT 15-branch dispatcher rather than force-fitting a wrong count; pasted the
+grep below.
+
+**Docking amendment 1 — already satisfied, not something I needed to add.** Checked `_show_palette`
+before touching it: it already calls `palette.dockingState = ...PaletteDockStateRight` and
+`palette.setMinimumSize(360, 500)` right after `ui.palettes.add(...)` — confirmed via `git diff` against
+the pre-turn commit that this predates my changes entirely (my own CAM1 design doc simply never checked
+this specific detail, focusing on dispatcher/action architecture instead). No code change was needed for
+amendment 1 beyond bumping `PALETTE_HEIGHT` from 620 to 700 (the larger of the two pre-merge palettes'
+heights, per the amendment's sizing instruction) and `PALETTE_NAME` from `'B-spline CAM'` to `'CAM'`
+(the merged shell's own title bar should match what it now displays — a small, low-risk addition beyond
+the dispatch's literal text, flagging it rather than leaving an inconsistent window title).
+
+**Verify (all green):**
+- `py_compile` on `cam-builder.py` → clean.
+- `pyflakes` → 4 warnings, all 4 confirmed pre-existing via `git show HEAD:...` diffed against the same
+  tool (unused `importlib.util` import, an unused `global` declaration, one shadowed `_os` name, one
+  f-string with no placeholders) — same warnings, only shifted line numbers. **No new warnings.**
+- Extracted the merged palette's `<script>` → `node --check` clean.
+- Adsk-stub import smoke (template-maker `conftest.py` pattern, extended with `adsk.cam` +
+  `HTMLEventHandler`/`HTMLEventArgs` stubs since `cam-builder.py` needs more than the entity-helpers
+  smoke does): `cam-builder.py` imports cleanly; `_CamHtmlEventHandler.notify` exists.
+- Action-table grep (pasted, `class _CamHtmlEventHandler` block only):
+  ```
+  action == 'preview_bodies' / 'build' / 'add_machine' / 'sync_table_attach' / 'apply_toolpaths' /
+  'list_cam_templates' / 'get_template_assignments' / 'set_template_assignments' / 'init' /
+  'import_setup' / 'preview_stock' / 'preview_clear' / 'generate' / 'select_x_axis' / 'select_y_axis'
+  ```
+  **15**, matching the merged JS's 15 real `send()` action strings exactly (verified separately by
+  grepping every `send('...')` call plus the one ternary-based `select_x_axis`/`select_y_axis` pair).
+- Bridge sweep, Python-send side: `_send_to_html` + `_send_to_studio_html` + `_palette_send` together
+  send exactly 8 distinct event names (`axis_picked build_info import_result init_result preview_bodies
+  report template_assignments templates_list`) — **all 8 have a JS listener** in the merged `handle()`.
+  **8/8**, matching the dispatch's own union-of-listeners list exactly.
+- Duplicate-id sanity check: every `id="..."` in the merged HTML is unique (`sort | uniq -c` → all
+  count-1) — the three collisions were genuinely resolved, not papered over.
+- `git diff --stat` → exactly the predicted 2 files.
+
+No gate hit. Did not touch `cam_engine/`, the parent loader, the `selectEntity` deferral pattern, or
+`_kick_off_toolpath_generation`. Did not delete anything Studio-side — `cam_studio_palette.html`,
+`_StudioHtmlEventHandler`, `_show_studio_palette`, and the CAM Studio toolbar command are all untouched
+and still register/work exactly as before (the fallback). Live proof (open the merged palette, switch
+tabs, PREVIEW BODIES + PREVIEW STOCK each do their real thing; old CAM Studio button still opens the
+untouched palette) is the advisor's, as scoped.
