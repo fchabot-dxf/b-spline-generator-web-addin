@@ -2463,3 +2463,51 @@ block's lines. No amendments were pending at either poll (before commit, before 
 
 No gate hit — both commits were declared, non-restructuring, and matched the dispatch exactly. Nothing
 under `bspline-frame-builder/` was read or modified.
+
+## Turn 105 — E7a Frame Inspector dead-code sweep (headless) — DONE
+
+Executed the advisor's epoch-1 dispatch exactly: dropped the dead `payload_builder` import chain, its
+dead JS renderer, the stale wipe/verify entries, and marked the two docs resolved. Nothing under
+`frame-builder/` or `fb_shared/` was touched.
+
+**(1)** `fusion-inspector.py:23` — deleted `from payload_builder import build_payload`. Confirmed first
+via `grep -n build_payload` that the name had exactly one hit (the import itself) before deleting; the
+live payload is built inline at :499-556 as documented.
+
+**(2)** `git rm frame-inspector/payload_builder.py frame-inspector/selection_items.py` — confirmed
+`selection_items` had no importer once `payload_builder.py` was gone (only chain was
+`fusion-inspector.py` → `payload_builder.py` → `selection_items.py`).
+
+**(3)** `inspector_palette.html` — deleted the dead `renderItemList` (:119-145, read `data.items`, a key
+the live payload never sends — confirmed zero callers via grep) and the duplicate `reportError`
+(:147-153), keeping the first definition at :111.
+
+**(4)** `bspline-frame-builder.py:256` — removed `'payload_builder'` from `_shared_project_names`,
+kept `'entity_util'`.
+
+**(5)** `DEPLOY_bspline-frame-builder.py` — removed `selection_items.py`, `entity_helpers.py` (gone
+since C4-S3, was warning on every deploy), and `payload_builder.py` from `deploy_fusion_inspector`'s
+`verify_files`.
+
+**(6)** Appended one `RESOLVED 2026-09-17 (E7a)` line each to `BUGS_OPEN.md` B7 and `FIX-BACKLOG.md`
+F4, per the dispatch's exact wording. Left `ARCHITECTURE.md`/`STANDARDS-AUDIT.md` untouched as
+instructed.
+
+**Verify (fast tier, all green):** `python -m py_compile` passed on all 3 edited Python files. Sweep
+grep with the dispatch's literal pattern (`payload_builder|selection_items|build_payload\b|renderItemList`,
+no `\b` on the first two terms) surfaced 6 hits — all in `template-maker/` on the unrelated
+`template_payload_builder` symbol (substring collision, same class as the `build_payload_items` caveat
+the dispatch already flagged for `build_payload` — just not anticipated for `payload_builder` itself).
+Re-ran with `\b` on every term: **0 hits**, confirming no real residue. `grep -c "function reportError"`
+→ 1. No amendments pending at either poll (before commit, before pass).
+
+**Commit shape:** predicted 5 modified + 2 deleted = 7 files; actual was **8 files** (`c60628b`) — 6
+modified (`fusion-inspector.py`, `inspector_palette.html`, `bspline-frame-builder.py`, `DEPLOY_...py`,
+`BUGS_OPEN.md`, `FIX-BACKLOG.md`) + 2 deleted. The dispatch's own step list names 6 files to modify (the
+prediction line undercounted one of the two doc files); the diff otherwise matches the dispatch exactly
+— no extra files, no missing ones. Flagging per the verify instruction to say so if it differs.
+
+No gate hit — a declared, advisor-verified deletion with 0 real sweep hits post-change. Nothing under
+`frame-builder/`, `fb_shared/`, `sketch_builder_ui.py`, or `parametric_engine.py` was touched. Full
+pytest suite not run (no test imports these modules — confirmed via the sweep grep against `tests/`,
+0 hits there either).
