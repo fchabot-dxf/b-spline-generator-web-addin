@@ -20,6 +20,7 @@ _current_dir = os.path.dirname(os.path.realpath(__file__))
 if _current_dir not in sys.path:
     sys.path.insert(0, _current_dir)
 from fb_shared.expression_coords import get_design_params
+from fb_shared.entity_helpers import get_fb_metadata_fields
 
 PALETTE_URL = os.path.join(_current_dir, 'inspector_palette.html').replace('\\', '/')
 
@@ -503,7 +504,7 @@ def _push_selection_to_palette():
         'coord': '',
         'linked': [],
         'listLabel': 'Connections',
-        'meta': f"{count} Entities Selected",
+        'meta': {},
         'type': 'Other'
     }
 
@@ -549,10 +550,12 @@ def _push_selection_to_palette():
 
         bridge = get_fb_bridge(e)
         plan = get_fb_plan(e)
-        fb_meta = get_fb_metadata(e)
-        p_data['meta'] = f"{e.objectType.split('::')[-1]} | Bridge: {bridge or 'N/A'} | Plan: {plan or 'N/A'}"
-        if fb_meta:
-            p_data['meta'] += f" | {fb_meta}"
+        p_data['meta'] = {
+            'type': e.objectType.split('::')[-1],
+            'bridge': bridge or '',
+            'plan': plan or '',
+            **get_fb_metadata_fields(e)
+        }
     _latest_payload = json.dumps(p_data)
     try:
         _log(f"[DEBUG_PUSH] palette valid={bool(palette and palette.isValid)} visible={bool(palette and palette.isVisible)}");
