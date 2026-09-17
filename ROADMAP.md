@@ -325,3 +325,16 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
 - Series summary: see AUDIT-2026-09.md "Audit series summary". Dispositions as of now — dispatched/landed: A2-3 (FB1),
   A3-1 (TM1), A5a-1/-2/-3 (BG1), A5a-5 (BG1), A5b-1 (BG3 in flight), A1-2 (IN1), B7 (E7a); closed: B6; open: A2-1 (human
   Fusion check), A2-4 (FB2 design), B10 (HY3), A7-1 (CW1), A7-3 (DEP1), A7-2 (accepted).
+
+## E8 VERIFIED LIVE (advisor, through the Fusion bridge, 2026-09-17 09:55 — deployed sha a861273)
+Scratch design; Frame Builder opened → `frame_tilt_deg` created before any build (F1-C). Build (Template 1) →
+1 component `Frame_1` = tilt plane + 3 sketches, 5 timeline items, 10 more user params created by the build.
+**Ctrl+Z once → timeline 0, component gone, AND all 10 build-created params gone; only `frame_tilt_deg` remains.**
+Ctrl+Y → all 5 items + 11 params back. Rebuild → new component `Frame_2` (each build is its own frame; one plane per
+frame). `frame_tilt_deg = 30` + rebuild → every frame plane reads 30° (all driven by the one param). **E8 CLOSED.**
+**A2-1 REFUTED at runtime:** user parameters created inside the build's command Execute DO reverse with the geometry
+(they are part of the command's undo unit). The tilt bug was specific to a param that DRIVES geometry created in the
+same unit; UNDO-REDO-DESIGN.md's general claim ("user params don't undo like geometry") is wrong — note it there.
+**Deploy ritual is now hands-free:** `stop()` via the bridge → `release.py --local` → `run()` via the bridge; the human
+no longer needs the Add-Ins dialog (loader file itself only refreshes on a real Fusion restart — all changes today are
+in sub-modules, which `run()` reloads).
