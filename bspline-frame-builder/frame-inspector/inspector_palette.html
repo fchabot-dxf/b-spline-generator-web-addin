@@ -17,7 +17,8 @@
             font-size: 11px; 
             color: #444;
         }
-        .linked-list li { margin-bottom: 2px; }
+        .linked-list li { margin-bottom: 2px; display: flex; align-items: center; gap: 4px; }
+        .row-copy { margin-left: 6px; padding: 0 4px; font-size: 10px; line-height: 14px; vertical-align: middle; }
         
         /* Specific status override */
         #pulse-box {
@@ -114,6 +115,14 @@
             return false;
         }
 
+        // One declared row-copy affordance (E7c): every Details row gets the same button.
+        function makeRowCopyButton(text) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'cad-btn row-copy'; b.title = 'Copy this line'; b.textContent = '⧉';
+            b.addEventListener('click', function (ev) { ev.stopPropagation(); performCopy(text, b); });
+            return b;
+        }
+
         function renderLinkedList(data, useExpr) {
             var list = document.getElementById('linked-list');
             var root = document.getElementById('linked-root');
@@ -125,6 +134,7 @@
                 for (var i = 0; i < entries.length; i++) {
                     var li = document.createElement('li');
                     li.textContent = entries[i];
+                    li.appendChild(makeRowCopyButton(entries[i]));
                     list.appendChild(li);
                 }
             } else {
