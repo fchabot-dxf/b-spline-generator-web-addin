@@ -1,9 +1,8 @@
 /**
  * runtime.js — Fusion ↔ JS bridge.
  *
- * Mirrors step-editor's runtime, kept identical so the two add-ins
- * share the same wire shape and any future shared modules can talk to
- * either bridge without a per-host detour.
+ * The Fusion ↔ JS wire shape shared by Fred's add-ins; no sibling mirrors
+ * it today.
  */
 
 'use strict';

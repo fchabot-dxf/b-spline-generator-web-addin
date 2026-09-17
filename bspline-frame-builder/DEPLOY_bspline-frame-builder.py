@@ -140,8 +140,6 @@ def deploy_template_maker() -> bool:
         "template-maker.manifest",
         "template_maker_palette.html",
         "template_generator.py",
-        "entity_helpers.py",
-        "expression_coords.py",
         "ressources/16x16.png",
         "ressources/32x32.png",
         "ressources/64x64.png",

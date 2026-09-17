@@ -122,9 +122,7 @@ class ParametricSketchBuilder:
         """Constructs all sketches defined in the template."""
         ctx = self.ctx
         ctx.logger.log(f"Building Template: {template.get('Name', 'Unnamed')}")
-        # Use ui_data shadow state if available to override template defaults
-        ui_state = ctx.active_vars if hasattr(ctx, 'active_vars') else {}
-        
+
         # Collect params from sketch-level; fall back to top-level for legacy templates
         all_params = []
         for sketch in template.get("Sketches", []):
@@ -206,8 +204,7 @@ class ParametricSketchBuilder:
         ctx = self.ctx
         sketch_name = f"{self.prefix}_{sketch_spec['Name']}"
         sketch_label = sketch_spec.get("Label", sketch_spec['Name'])
-        sketch_prefix = sketch_spec.get("Prefix", self.prefix)
-        
+
         # 0. Sync UI parameters to Fusion UserParameters before building
         self._sync_user_parameters(ctx, ui_data)
 
@@ -306,7 +303,6 @@ class ParametricSketchBuilder:
         """Builds a sketch using the new sequential BuildingBlock pattern."""
         display_name = display_name or sketch_name
         self.ctx.logger.log(f"Using Procedural BLOCK-BASED synthesis in {display_name} (Global limit: {limit})")
-        built_count = 0
 
         for i, block in enumerate(blocks):
             if limit is not None and i >= limit:

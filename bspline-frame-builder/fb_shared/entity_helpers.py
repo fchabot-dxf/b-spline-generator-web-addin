@@ -4,9 +4,10 @@ Canonical Fusion entity helpers (fb_shared) — C4/F8 de-dup, slice S1.
 Merged from the two drifted copies (frame-inspector/entity_helpers.py +
 template-maker/core/entity_helpers.py). Base = frame-inspector; each function's
 provenance and any reconciliation decision is noted inline. Reconciliation
-decisions are pending advisor review (see WORK-LOG turn 65) — NO callers are
-switched to this module yet (S1 is additive), so nothing depends on it until
-S3/S4.
+decisions are ratified — callers switched (S3-S5).
+
+Canonical shared helpers (C4 S1-S5 complete): consumed by frame-inspector,
+template-maker/core and the tests.
 
 Semantic decisions flagged for review:
   - _get_arc_midpoint: uses frame-inspector's evaluator (+ legacy fallback).
