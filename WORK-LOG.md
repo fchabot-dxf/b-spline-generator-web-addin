@@ -3203,3 +3203,58 @@ this turn (confirms the row button never calls it directly, only through the exi
 
 No gate hit. Didn't touch `fusion-inspector.py`, `copyToClipboard`/`copyShort`, the poll pump, or
 `fb_shared`. The advisor owns the Fusion look (deploy, select two entities, click a row's ⧉, paste).
+
+---
+
+## Turn 135 — HY3: three leftover hygiene items (all L, all anchored) — 3/3 landed
+
+Two of these three close out findings I flagged myself, unresolved, in earlier turns (HY2's
+`_normalize_module_path` and stamp-editor.py's own header). 3 files, one commit.
+
+**(1)** Deleted `_normalize_module_path` from `bspline-frame-builder.py` — confirmed 0 remaining callers
+(`grep` → only its own `def` before deletion). This was the exact orphan HY2 flagged: it existed solely to
+serve the dead loader cluster HY2 removed.
+
+**(2) CAM-builder `stop()` — B10.** Read `_register_refresh_event` (`:2030-2074`) first, per instruction,
+to mirror its pattern precisely. It registers three events (`REFRESH_EVENT_ID`, `TPGEN_EVENT_ID`,
+`AXISPICK_EVENT_ID`); `stop()` only unregistered the first. Added the other two
+`app.unregisterCustomEvent(...)` calls, each in its own `try/except Exception: pass`, immediately after
+the existing `REFRESH_EVENT_ID` one — same shape, same placement relative to the `if app is not None:`
+guard. Added `_axispick_event = None` next to `_refresh_event = None`, and added `_axispick_event` to
+`stop()`'s `global` declaration (it wasn't there before, and `_axispick_event = None` would otherwise have
+silently created an unrelated local variable instead of clearing the module global).
+
+**Discrepancy found and NOT silently smoothed over:** the dispatch's ground truth says to "null the
+matching module globals (`_tpgen_event`, `_axispick_event`)" — but `_tpgen_event` is **not actually a
+module global**. Grepped every occurrence: it's assigned exactly once, at `_register_refresh_event`'s
+`:2054`, with no `global _tpgen_event` declared anywhere in that function. `_axispick_event` is different —
+it DOES get its own `global` statement at `:2061`, and there's a real module-level
+`_axispick_event = None` declaration at `:82`. So `_tpgen_event = app.registerCustomEvent(...)` at
+`:2054` creates a function-local variable that's used once (`.add(h_tp)`) and discarded — there is no
+persistent module-level `_tpgen_event` to null. Setting `_tpgen_event = None` in `stop()` would either
+silently create a brand-new, never-populated module global (if I added a `global` for it) or do nothing
+observable (if I didn't) — neither restores or clears any real state, because there was never any real
+state to restore or clear. The functionally important half of item 2 — actually telling Fusion to release
+the `TPGEN_EVENT_ID` registration via `app.unregisterCustomEvent(TPGEN_EVENT_ID)` — doesn't depend on a
+stored Python reference and is done. Left the `_tpgen_event`-is-a-latent-local-shadowing-bug alone: fixing
+`_register_refresh_event` to properly promote it to a module global would mean editing that function
+beyond its "pre-unregisters" the dispatch explicitly protected, and is really a distinct, pre-existing bug
+outside this item's stated anchor — flagging it here for a future item rather than expanding this one's
+scope silently.
+
+**(3)** Reworded `stamp-editor.py`'s header (lines 4-5, 7) to stop claiming a `step-editor` sibling add-in
+that doesn't exist — the exact text HY2 left unfixed (it was outside that turn's named `:13-15` scope).
+Now: "Loaded as a sub-module of the unified bspline-frame-builder.py entry point." and "Architecture
+mirrors b-spline-gen.py:". Nothing else in the header touched.
+
+**Verify (all green):** `py_compile` 3/3. `pyflakes` on all three — `stamp-editor.py` clean; the 4
+warnings on `cam-builder.py` (`importlib.util` unused, an unused `global _picked_axis_tokens`, a
+redefinition of `_os`, one f-string-without-placeholders) are all pre-existing and nowhere near the
+~80-line region this turn touched (`:2211-2298`) — none introduced by this turn.
+`_normalize_module_path` → 0. `unregisterCustomEvent` in `cam-builder.py` → exactly 6 (3 in
+`_register_refresh_event`, 3 in `stop()`). `step-editor` in the stamp-editor.py header (lines 1-12) → 0.
+`git diff --stat` → exactly the predicted 3 files. No amendments pending.
+
+No gate hit. Didn't touch anything else in the three files, including `_register_refresh_event`'s own
+pre-unregisters. Didn't deploy — the advisor owns the Fusion Stop→Start proof for CAM-builder through the
+bridge.
