@@ -1,43 +1,41 @@
-# NEXT — FB2 slice (b): switch the Extrude Frame (solid) palette onto the scaffold
+# NEXT — FB2 slice (c): finish the scaffold migration — honesty sweep, one small leak, consistency
 
-**Ball: worker (seat A) · epoch 1 · FB2b.** File: ONLY `bspline-frame-builder/frame-builder/ui/solid_builder_ui.py`.
-One commit by path, predicted **1 file** (351 → ~40-60 lines).
+**Ball: worker (seat A) · epoch 1 · FB2c.** Files: `frame-builder/ui/palette_scaffold.py`, `frame-builder/ui/sketch_builder_ui.py`,
+`frame-builder/ui/solid_builder_ui.py`, `FB2-PALETTE-SCAFFOLD-DESIGN.md` (status header only). One commit by path,
+predicted **4 files**, comment-scale diffs plus one 1-line code change.
 
-## Ground truth (advisor)
-- FB2a + FB2a-fix are live-proven (deployed 387942e): Sketch Builder opens, creates `frame_tilt_deg`, builds a
-  tilted frame (timeline 5), Stop→Start rebuilds a fresh module with the doc-activated handler cleared and re-added.
-  One open question is parked for slice (c): a single document switch logged TWO "SCHEMA PUSH: scheduled" lines; the
-  advisor will re-measure with a cleaner test before (c). Do not touch the sketch side in this slice.
-- `solid_builder_ui.py` today: constants `PALETTE_ID/NAME/HTML`, `BUILD_SOLID_CMD_ID`; `PaletteHTMLEventHandler` with
-  `selected_face` state and actions `run_build`, `pick_face`, `ping` (all wired, §4 of the design — must stay exactly
-  so); `_run_solid_build_direct(data)` calls `solid_coordinator.build_solid_logic_v3(...)`; no doc-activated, no
-  schema push; window 380×460, min 320×360. The parent reads `_fb_solid.handlers` and `_fb_solid.CommandCreatedHandler`
-  and injects `frame_engine` (unused by solid — keep accepting it).
+## Live proof so far (advisor, deployed 7207bfe)
+Sketch Builder: opens, ensures the tilt param, builds (timeline 5), doc-switch re-push works. Extrude Frame: opens,
+auto-pick via a real click, extrudes 10 bodies onto the picked face, auto-hides on success. Stop→Start rebuilds fresh
+modules for both; the parent's teardown clears handlers and the doc handler. Measured: exactly TWO schema pushes per
+document activation regardless of how many times the palette was opened, with ONE live doc handler — Fusion fires
+`documentActivated` twice per activation; pre-existing, idempotent, not a scaffold bug. Do not "fix" it.
 
-## Do (exactly the design's slice (b), the way FB2a did it for sketch)
-1. `sys.path` line for `ui/` (same as sketch). Import `PaletteSpec, make_palette, _PaletteBridgeMixin` from
-   `palette_scaffold`.
-2. `PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler)` keeps its `selected_face` state and its
-   three actions verbatim; `run_build` calls `_palette.schedule_hidden_build(data)`.
-3. `_build_fn(data, ctx)` = today's `_run_solid_build_direct` body using `ctx.set_status`/`ctx.notify_status`/
-   `ctx.close_palette`/`ctx.diag_logger`.
-4. `_spec = PaletteSpec(..., size=(380, 460), min_size=(320, 360), build_cmd_id=BUILD_SOLID_CMD_ID, build_fn=_build_fn,
-   make_html_handler=..., extra_commands=(), on_document_activated=None, on_ready=None)`; `_palette = make_palette(_spec)`;
-   re-export `run_palette`, `handlers`, `CommandCreatedHandler` the same way sketch does.
-5. Delete every duplicated function/class the scaffold now provides. No `_doc_activated_handler` attribute is needed
-   for solid (the parent reads it only for sketch).
+## Do
+1. **Prune the replaced doc handler from `handlers`** (`palette_scaffold.py:283-293`): when `old` is removed from
+   `app.documentActivated`, also `handlers.remove(old)` (guarded) — today each re-open appends another
+   `_DocActivatedHandler` to the list (3 after 3 opens; Python-side retention only).
+2. **Mixin order, one convention:** sketch declares `PaletteHTMLEventHandler(adsk.core.HTMLEventHandler, _PaletteBridgeMixin)`
+   and solid the reverse. Pick `(_PaletteBridgeMixin, adsk.core.HTMLEventHandler)` (mixin first is the Python idiom) and
+   make both match. Behaviour-identical; say so in the commit.
+3. **Honesty sweep** of all three files: every comment/docstring that still describes the pre-scaffold shape
+   ("was run_palette step…", "mirrors solid_builder_ui", "the original's _style_id_ref", references to deleted
+   functions `_create_hidden_command`/`_ensure_hidden_commands`/`_run_*_build_direct`/`DocumentActivatedHandler` as if
+   they still existed). Quote each in the WORK-LOG with what you replaced it with. Keep the design-doc citations.
+4. **Design doc status:** add a 3-line status block at the top of `FB2-PALETTE-SCAFFOLD-DESIGN.md`: implemented in
+   FB2a (b7cd92e) + FB2a-fix (27bfd7c) + FB2b (dbfed18) + FB2c (<this sha>); the two advisor amendments (derived
+   wipe list; per-iteration binding); the measured double-push note above. Nothing else in the doc changes.
 
-## Verify (headless)
-- `py_compile` + `pyflakes` (0 warnings).
-- Import smoke with the adsk stub (same script as FB2a): module imports; `handlers` is a list; `run_palette` callable;
-  `CommandCreatedHandler` exists; `PaletteHTMLEventHandler.notify` exists; action grep `run_build pick_face ping` → 1 each.
-- `wc -l` before/after. `git show --stat HEAD` → 1 file. Live proof (open Extrude Frame, pick a face, build, auto-close,
-  Stop→Start, reopen) is the ADVISOR's.
+## Verify
+- `py_compile` + `pyflakes` ×3 (0 warnings). Import smoke (adsk stub) for both UI modules as in FB2a/FB2b.
+- Greps: names of deleted functions → 0 hits outside the design doc; `_PaletteBridgeMixin, adsk.core.HTMLEventHandler`
+  → 2 (one per UI module); `handlers.remove(old)` → 1.
+- `git show --stat HEAD` → 4 files. Live proof (both palettes open + build once more, Stop→Start) is the ADVISOR's.
 
 ## Do NOT
-Touch `sketch_builder_ui.py`, `palette_scaffold.py`, either HTML, or the parent. No `if is_solid`. Don't deploy.
+Change any behaviour beyond item 1. Don't touch fb_engine, the HTML, or the parent loader. Don't deploy.
 
 ## When done
 Append WORK-LOG, commit, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2b: solid_builder_ui 351→<n> lines on the scaffold; actions run_build/pick_face/ping intact; smoke OK — <sha>, 1 file. Next: FB2c."`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "FB2c: replaced doc handler pruned from handlers; mixin order unified; <n> stale comments corrected; design doc status block — <sha>, 4 files. FB2 COMPLETE pending advisor live check."`
 and stop.

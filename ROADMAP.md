@@ -350,3 +350,10 @@ UNLOCATED; dispatched as a hunt (IN3). Evidence PNGs: scratchpad `pal_0.png` (32
   (same page, same size, everything fits — `in3-docked.png`). Cause = floating-palette rendering (page zoomed inside a
   narrower viewport), not CSS. IN3b declares the right dock on creation, as b-spline-gen does. Fusion quirk recorded here
   so nobody re-hunts it in CSS.
+
+## FB2 status (2026-09-17 11:45)
+Slices (a) scaffold+sketch (b7cd92e), (a-fix) tilt ensure restored after a live-caught regression (27bfd7c), (b) solid
+(dbfed18) are live-proven through the bridge: both palettes build (sketch frame → extrude onto a picked face, 10 bodies),
+Stop→Start clean. 594+351 → 415+211 lines, scaffold 319. Measured quirk: Fusion fires `documentActivated` twice per
+activation (2 idempotent schema pushes; one live handler; same before the rewrite). Slice (c) = honesty sweep + prune
+the replaced doc handler from `handlers` + mixin-order convention. Dispatched.
