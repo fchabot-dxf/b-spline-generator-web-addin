@@ -4191,3 +4191,42 @@ predicted 6 (see (2) above for why).
 No gate hit. Didn't add a `beforeunload` prompt, touch undo/redo semantics, or any other Project Manager
 action, per the dispatch's explicit "Do NOT." Web/Fusion look (slider → dot appears; Quick Save → dot
 gone; Load with edits → prompt) is the advisor's, as scoped.
+
+## Turn 169 — UX3: Undo/Redo move from the sidebar to the top bar — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, Fred's ruling):** delete the Undo/Redo row from the sidebar's
+sticky header (leaving "Generate New Seed" alone there) and insert them as icon nav buttons in the top
+bar, before Quick Save. No JS changes — `history.js`'s `updateGlobalButtons` finds them by id regardless
+of where in the DOM they live.
+
+**(1)** Deleted the `<div style="display:flex; gap:8px; margin-top:8px;">` wrapper holding
+`#btnGlobalUndo`/`#btnGlobalRedo` from the sidebar sticky header, along with the two buttons inside it.
+`#btnRandomSeed` ("🎲 Generate New Seed") is now the sole child of that header `<div>`.
+
+**(2)** Inserted the two buttons before `#btnQuickSave` in the top bar, same markup shape as the other
+nav buttons added in PM2 (`cad-btn cad-btn-secondary cad-nav-btn` + icon span + `cad-nav-label` span):
+`#btnGlobalUndo` (↶, title "Undo (Ctrl+Z)") and `#btnGlobalRedo` (↷, title "Redo (Ctrl+Y)"), both kept
+`disabled` at load exactly as the dispatch's given markup — `updateGlobalButtons` flips that. Used the
+dispatch's primary glyphs (↶/↷) rather than the ⟲/⟳ fallback it offered: **could not verify actual
+rendering** — no headless-browser rendering available from here to check whether they clash with the
+neighboring emoji icons under `.cad-nav-btn > span`'s forced emoji font stack. Noting this rather than
+guessing; the advisor's Fusion screenshot check is the real verification, same division of labor as
+PM2's clipping flag.
+
+**(3)** Checked the mobile block's fit per the dispatch's ask (`:212-235`, 44px pin at ≤600px/coarse
+pointer) as far as arithmetic allows without a renderer: the top bar now holds 7 icon-class buttons
+(Undo, Redo, Save, Projects, Add-in, Send-to-Fusion/STEP, Settings) at 44px each + `gap: 8px` between
+them ≈ 356px before the title box and its flexible spacer are even counted. **Could not confirm whether
+this wraps at 600px** — same limitation as (2), no rendering available here. Reporting per the dispatch's
+explicit "if it wraps, report it, don't fix it here" rather than guessing either way.
+
+**Verify (all green):** extracted all three inline `<script>` blocks → `node --check` clean on each
+(no JS was touched; ran anyway per the dispatch's "unchanged, sanity" ask). `npx vitest run` → **29
+passed**. Greps: `btnGlobalUndo` → **1** in the HTML (the new top-bar button) and **1** in `history.js`
+(`updateGlobalButtons`'s `getElementById('btnGlobalUndo')`), matching the predicted counts exactly. Read
+the sidebar sticky header back after editing — confirmed it contains only `#btnRandomSeed`. `git diff
+--stat` → exactly the predicted 1 file.
+
+No gate hit. Didn't touch `history.js`, `global-events.js`, or any sidebar panel below the sticky header.
+Visual confirmation of the glyph choice and the mobile-width fit are both the advisor's, as scoped —
+flagged both explicitly above rather than asserting either is fine.
