@@ -2511,3 +2511,44 @@ No gate hit — a declared, advisor-verified deletion with 0 real sweep hits pos
 `frame-builder/`, `fb_shared/`, `sketch_builder_ui.py`, or `parametric_engine.py` was touched. Full
 pytest suite not run (no test imports these modules — confirmed via the sweep grep against `tests/`,
 0 hits there either).
+
+---
+
+## Turn 107 — PM1: restore Project Manager selection bar, remove sidebar Quick Load — DONE
+
+Executed the advisor's epoch-1 dispatch exactly. Two files only, one commit.
+
+**(1) Restored the block deleted in `91b624d`** into `bspline_gen_palette.html`, copied verbatim from
+`91b624d^` (`<!-- Bottom selection bar -->` through `<input type="hidden" id="fmProjectName">`, inclusive
+— no content edits). Insertion point needed a judgment call: the dispatch said "before the `</div>` that
+closes `.pm-dialog`", but that div's end tag doesn't exist explicitly in this file — `.pm-dialog`,
+`#projectManagerModal`, `<body>`, and `<html>` are all left to HTML5's implicit end-tag closing, and the
+file (1957 lines, matches `git show HEAD` exactly, no truncation) ends right after `#fmProjectList`'s
+closing `</div>`. So "before the implicit close" resolves to "at end of file" — inserted the restored
+block immediately after line 1957.
+
+**(2) Removed the sidebar `btnQuickLoad` chain, every link:**
+- html: the `<!-- Quick Load: … -->` comment + the whole `<button id="btnQuickLoad">…</button>`, leaving
+  the `Projects` button alone in its flex row (no style edit — dispatch confirmed none needed).
+- js `:166-169`: the "Sidebar Quick-Load button" comment + `const btnQuickLoad …` + its
+  `addEventListener`.
+- js: the whole `export async function quickLoad() { … }` plus its `/** Quick Load from outside the
+  modal … */` doc comment.
+- js `_loadFrom`'s doc comment: reworded "Shared by the modal Load button and the sidebar Quick-Load" →
+  "Used by the modal Load button and row double-click." (a comment naming a deleted thing is a lie).
+
+Left `📁 Projects`, `btnOpenProjectManager`, `quickSave`, `onLoad` untouched, per the dispatch's Do-NOT
+list.
+
+**Verify (fast tier, all green):** `node --check` on `cloud-project-manager.js` clean. Each of
+`fmSelbarInfo fmBtnLoad fmBtnRename fmBtnDelete fmProjectStatus fmProjectMsg fmProjectName` occurs
+exactly once in the html (`grep -c`, all 1). Inverse sweep
+`grep -rnE "btnQuickLoad|quickLoad|Quick.?Load"` over `b-spline-gen/html` (html+js) → 0 hits — no door
+without a room, no room without a door. `git diff --stat` shows exactly the 2 predicted files. No
+amendments pending at either poll (before commit, before pass). Did not touch `dist/`, `index.html`, any
+other palette, or run the full vitest suite (no spec imports this module — not independently re-verified
+by grepping `tests/`, since the dispatch didn't ask for that confirmation this time; flagging the gap
+rather than silently assuming).
+
+No gate hit — a declared, advisor-verified restoration + a declared, fully-swept removal. The advisor
+owns the visual confirmation (deploy + screenshot).
