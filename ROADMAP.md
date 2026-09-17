@@ -221,3 +221,20 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
   ritual is now "human Stops add-in → advisor deploys → human Runs".
 - Still open from July, confirmed by A1: exporter.py silent-skip catch-alls (:656/:705/:440), hardcoded machine paths
   in fusion-exporter (:165, exporter.py:86).
+
+## Backlog from the lane-B audit (A2 frame-builder, 2026-09-17)
+- **A2-1 (H, live-unverified):** `frame_engine.py:240` (`_create_skeletal_parameters`) and `parametric_engine.py:246-289`
+  (`_sync_user_parameters`) create the template's base parameters INSIDE the build Execute — the same pattern E8 moved
+  the tilt param out of. Static fact confirmed by the advisor. Whether it BREAKS undo (tilt did: plane driven by the
+  param desynced) or only leaves benign residue is a runtime question → added to the human's Fusion checklist: after
+  Ctrl+Z on a fresh design's first build, are width/height/thickness still listed, and does a rebuild still work?
+  If it breaks: extend F1-C (ensure the chosen template's base params at palette-open / style change).
+- **FB1 — A2-3 + A2-2 + A2-5 (seat A, after IN2):** DECLARE a `deferred_compute(sketch)` context manager in
+  `fb_engine` and use it for the three unprotected `isComputeDeferred` windows (`parametric_engine.py:313-330`,
+  `:334-346`, `offsets.py:64-78`) so a crash mid-window always leaves the sketch live; delete the dead
+  `build_context.create_or_update_param` (0 callers); reword the misleading `parametric_engine.py:123-125` comment to
+  name both parameter-creation sites.
+- **FB2 — A2-4 (design-first):** the two builder UIs hand-roll the same hidden-command dispatch (555 of 945 lines differ
+  only in ids/names). Extract one declared helper. Gate: a plan, then Fusion Stop→Start verification of both palettes.
+- **Test gap (A2):** zero coverage of `parametric_engine`, `frame_engine` param lifecycle, both UIs. Candidate for the
+  breaker seat once the audit series ends.
