@@ -3465,3 +3465,76 @@ amendments pending.
 No gate hit. Didn't touch `template-maker.py`, `fusion-exporter.py`, or the earlier `_force_wipe([...])`
 list at `:144` (CAM-builder's own top-level module names — a different list). Didn't deploy — the Fusion
 Stop→Start proof for the whole add-in is the advisor's.
+
+---
+
+## Turn 145 — FB2 DESIGN (no code): one declared hidden-command palette scaffold — awaiting blessing
+
+Design-only turn. Read both UI modules (`sketch_builder_ui.py` 594 lines, `solid_builder_ui.py` 351 lines)
+and both palette HTML files in full, plus the parent's teardown contract and the template-maker conftest's
+adsk-stub pattern, before writing anything. Produced `FB2-PALETTE-SCAFFOLD-DESIGN.md` at the repo root, 6
+sections with file:line evidence per the dispatch's outline. No `.py`/`.html` touched.
+
+**Diff map (§1) came out more nuanced than the dispatch's own framing.** The ground truth described the
+difference as "module constants + the one build call"; reading both files line by line, that undersold
+it. Actual count across the 11 shared names: **3 identical** (`_set_status`, `_notify_status`,
+`_close_palette`), **2 constant-only** (`CommandCreatedHandler`, `HiddenBuildCommandCreatedHandler` —
+same logic, differing log-message strings), **6 logic-differing**
+(`_create_hidden_command` — sketch's takes an extra `handler_class` param solid's doesn't;
+`_ensure_hidden_commands` — sketch loops over 2 targets, solid handles 1 inline;
+`_schedule_hidden_build` — sketch's signature carries an extra `style_id`;
+`PaletteHTMLEventHandler` — genuinely different action-dispatch tables and `__init__` state, the real
+crux of the whole file;
+`HiddenBuildCommandExecuteHandler` — sketch extracts and forwards `style_id`, solid doesn't;
+`run_palette` — sketch has 4 extra setup steps solid lacks, plus differing window-size constants).
+Reporting the corrected count rather than the dispatch's simplified one, since the scaffold has to be
+designed around the 6, not just the 3+2 trivial ones.
+
+**The declaration (§2)** proposes `PaletteSpec` + `make_palette(spec)` in a new
+`frame-builder/ui/palette_scaffold.py`, with `build_fn(data, ctx)` as the one real per-builder difference —
+`ctx` exposes `frame_engine` because sketch's whole module depends on the injected engine pervasively
+while solid's build path (`solid_coordinator.build_solid_logic_v3`, called directly) never touches its own
+injected `frame_engine` at all (verified: `frame_engine` is assigned once in `run_palette`, `solid:319`,
+and referenced nowhere else in the 351-line file — a genuinely vestigial parameter today, which the
+scaffold's `ctx` design accommodates without forcing a decision now). **Found and flagged a load-path gap
+neither original file solves**: `ui/` has no `__init__.py` (confirmed via `ls`) and neither UI module puts
+its OWN directory on `sys.path` (only the parent `frame-builder/` is added, for `fb_engine` imports) — so
+a bare `from palette_scaffold import …` inside either UI module would fail today without one extra
+`sys.path.append(current_dir)` line, proposed as part of the declaration rather than left as an
+implementation surprise for slice (a).
+
+**What stays sketch-only (§3)** — schema push, tilt-param, doc-activated — plugs in via `PaletteSpec`
+fields the scaffold checks for presence (`extra_commands`, `on_document_activated`, `on_ready`), never a
+name-based branch. Explicitly argued (not just asserted) why `PaletteHTMLEventHandler` itself stays a
+per-builder subclass rather than being absorbed into the scaffold: sketch's and solid's actions aren't
+variations on a shared shape, they're different applications' worth of business logic, and forcing a fake
+shared dispatch table would be the premature-abstraction trap ("no abstractions for single-use code," even
+across two call sites, when the two don't actually share behaviour). The two methods that ARE
+byte-identical (`_send_palette_message`, `_send_build_info`) become a small shared mixin instead.
+
+**Bridge contract sweep (§4)** — full action tables for both palettes, doorless swept both directions.
+Solid: perfectly clean, 3/3 actions match both ways. Sketch: found **10 doorless rooms**
+(`update_phase` + 9 `debug_*` sends the Python side never handles — read as intentional dev
+instrumentation, not a bug, but confirmed via grep rather than assumed) and **2 roomless doors**
+(`ping`/`get_templates` handlers with no HTML sender). Named this as pre-existing behaviour the scaffold
+must not accidentally close, not something FB2 is asked to fix — and built it into both migration slices'
+acceptance checks (re-verify the table against the post-migration source).
+
+**Migration plan (§5)** — 3 slices, each leaves both palettes working: (a) scaffold + sketch switched,
+(b) solid switched, (c) delete duplicates + honesty sweep. Each slice lists predicted file shape, a
+concrete headless gate (`py_compile` + `pyflakes` + an import-time smoke reusing the template-maker
+conftest's minimal `adsk` stub pattern — `template-maker/tests/conftest.py:26-40` — to prove the migrated
+module imports and exposes `handlers`/`run_palette` without a live Fusion process), and exactly what the
+advisor verifies live through the bridge per slice.
+
+**Risks/STOP conditions (§6)** named concretely rather than generically: a late-binding-closure trap in
+the genericized hidden-command loop (could bind the wrong `cmd_id`/`build_fn` per iteration — the kind of
+bug that's invisible to any headless gate and would only show as "the wrong command runs" in live
+Fusion), the visibility check inside sketch's doc-activated callback that must survive verbatim, and the
+delete-then-recreate ordering inside the hidden-command loop that must not get batched. Closed with an
+explicit standing rule for whoever implements: if any slice finds itself needing an `if is_sketch:`
+branch inside `palette_scaffold.py`, that's a signal `PaletteSpec` is missing a field, not that the
+scaffold needs a special case — STOP and revise the spec shape instead of adding the branch.
+
+No gate hit (design-only, nothing to run). No code touched. Awaiting the advisor's blessing before any
+implementation slice begins.
