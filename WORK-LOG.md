@@ -4913,3 +4913,112 @@ dispatch's own instruction to say what couldn't be exercised.
 No gate hit. Did not touch `editor-controls.js` beyond the one snap-wiring line, did not touch anything
 in `cam_engine`-adjacent or unrelated editor files, and left `mode-tools.js` untouched since its
 `toolCircle` binding was already correct — the missing piece was purely the HTML button.
+
+## Turn 189 — SE2: SVG editor zoom / pan / fit — the one usability change that matters at 460px — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md):** the editor has no zoom and no pan anywhere. Declare one view
+record `{zoom, cx, cy}`, derive the SVG viewBox from it in one place, add wheel-zoom-about-cursor,
+Space/middle-drag pan, and a Fit button — with unit tests for the pure math.
+
+**Read first, to confirm the dispatch's own "everything downstream is already viewbox-relative" claim
+rather than take it on faith:** `editor-hit.js:16`'s `getDynamicTolerance` and two more read-only
+`editor._draw.viewbox()` calls in `editor-interaction.js` (rendering the selection-highlight stroke width
+and node-handle radii) and one each in `editor-marquee.js` and `editor-transform-handles.js` — all GETTER
+calls, all already deriving their on-screen sizing from whatever the live viewbox happens to be. None of
+these needed a single change; they automatically benefit from `applyView` once it exists. This confirmed
+the claim was accurate before I built on top of it.
+
+**(1) Declared the view + the one derivation, in a new leaf (`editor/editor-view.js`) so the math is
+testable without svg.js:** `viewboxFor(view, mW, mH)` (pure), `zoomAbout(view, modelPt, factor)` (pure —
+factored the "zoom about a point" formula out as its own testable function rather than inlining it into
+the DOM wheel handler, specifically so vitest could exercise it directly), `clampZoom` +
+`ZOOM_MIN`/`ZOOM_MAX` (`[1, 16]`), `applyView(editor)` (the one place that calls
+`editor._draw.viewbox(...)` as a setter), and `fitView(editor)` (resets `{zoom:1, cx:mW/2, cy:mH/2}` and
+applies it). `editor.js`'s constructor now seeds `this._view` from `this._mW`/`this._mH` (already set two
+lines above), plus `_spaceHeld`/`_isPanning`/`_panStart`. `setModelMetrics` no longer calls
+`this._draw.viewbox(0,0,w,h)` directly — it calls the leaf's `fitView(this)` instead, so every reopen and
+every board-size change resets to a correct fit for the (possibly new) dimensions. Added a public
+`fitView()` method on the class (delegating to the leaf) for the Fit button to call.
+
+**(2) Wheel zoom** wired in `editor-interaction.js`'s `initInteraction` (`on(svgNode, 'wheel', …, {passive:
+false})`, `preventDefault` so the modal body doesn't scroll). `handleWheel` captures the cursor's
+model-space point via the EXISTING `editor._getMousePoint(e)` (which already accounts for the current
+viewbox via svg.js's own `.point()` — needed no change), computes `factor = Math.exp(-e.deltaY *
+0.0015)`, and calls `zoomAbout`. The zoom-about-cursor formula itself: `ratio = oldZoom/newZoom;
+newCenter = cursorPt + (oldCenter - cursorPt) * ratio` — a standard "pull the center toward the cursor by
+however much the zoom changed" derivation, verified algebraically before coding it (solving for the new
+center that keeps the cursor's fractional position within the viewbox constant) and then confirmed by the
+test below, not just trusted by inspection.
+
+**(3) Pan** — middle-button drag or Space+left-drag, checked in `handleStart` before the mode dispatch
+(touch events never match either condition, since `e.button` is `undefined` there, so drawing on touch
+is unaffected). `_panStart` snapshots the starting client position AND the view's `cx`/`cy`; `_panBy`
+recomputes `cx`/`cy` fresh from that fixed reference on every `handleMove` tick (not incrementally
+accumulated per-frame, to avoid drift), using the exact formula the dispatch gave (`cx -= dxClient *
+viewbox.w / clientWidth`). `handleEnd` clears the pan state. Space-tracking added to the EXISTING
+`_handleEditorKeydown`/a new matching `_handleEditorKeyup`, both gated by the pre-existing
+`_isEditorActive` check (reused, not duplicated).
+**Known minor edge case, not fixed, flagged rather than silently accepted:** because keyup uses the same
+`_isEditorActive` gate as keydown, if focus leaves the modal (or the modal closes) while Space is
+physically still held down, `_spaceHeld` can stay stuck `true` — the next mousedown on the SVG canvas
+would then incorrectly start a pan. Implemented exactly per the dispatch's explicit "the same gate"
+instruction rather than silently adding an unrequested extra reset path; low practical likelihood (the
+user would need to keep Space held while doing something else entirely) but worth the advisor knowing
+it exists.
+
+**(4) Fit button** added after Eraser (`#toolFit`, `data-key="0"`, a four-corner-bracket icon matching
+the other tools' style), bound in `action-tools.js` to `editor.fitView()` — SE1's `data-key` lookup
+already dispatches `'0'` with no changes needed there.
+
+**(5) Cursor styling — one deliberate scope correction caught before finalizing.** First pass added
+`.pan-ready`/`.panning` rules to `bspline-frame-builder/styles/editor.css` (where `#editorSVGContainer`'s
+existing `.mode-select`/`.mode-node` cursor rules already live) — then re-read the dispatch's own scope
+line ("Scope: `.../html/` only") and its instruction ("rules in the **modal's style block**") and realized
+`styles/editor.css` is a sibling directory outside the stated scope, and "the modal's style block" reads
+as an inline `<style>` tied to the modal itself, not the external stylesheet. Reverted that edit. The SVG
+editor modal (`svgEditorModal`) had no dedicated inline `<style>` block of its own anywhere in
+`bspline_gen_palette.html` (only the skeleton-editor and project-manager modals do) — added a small new
+one immediately before the modal's own markup, inside the stated scope. Declared it to load after
+`editor.css`'s `<link>` (checked the `<head>` ordering first) so the equal-specificity `#editorSVGContainer
+.pan-ready`/`.panning` rules win over `editor.css`'s `.mode-select`/`.mode-node` cursor rules via
+later-in-cascade, without needing `!important`.
+
+**(6) Reopen / serialization independence — checked, not assumed, per the dispatch's explicit ask.**
+`editor-io.js`'s `open()` calls `editor.setModelMetrics(w, h)` as its very first line (before touching
+sketch content), which now always resets to a fitted view — confirmed reopen can never carry over a
+stale zoom from a previous session. `save()`'s output SVG string hardcodes `viewBox="0 0 ${editor._mW}
+${editor._mH}"` (`editor-io.js:215`) — computed from the board's own model dimensions, **never** from
+`editor._draw.viewbox()`/`editor._view`'s live (possibly zoomed) state. Confirmed by reading the exact
+line, not inferred: zoom/pan cannot leak into the saved SVG regardless of what the user was looking at
+when they hit Apply.
+
+**Verify (all green):**
+- New `tests/editor-view.test.js`: 6 tests (2 `viewboxFor`, 1 `clampZoom`, 3 `zoomAbout` — zoom in,
+  zoom out, and clamping — one more than the dispatch's "3-4" estimate since I added a dedicated
+  zoom-out case alongside zoom-in rather than only testing one direction). Each zoom-about-cursor test
+  independently reimplements the screen→model mapping using the same `px * viewbox.width / clientWidth`
+  convention already established in `editor-hit.js`'s `getDynamicTolerance`, rather than relying on
+  svg.js — no DOM, no mocking.
+- `npx vitest run` → **42 passed** across 8 files — the dispatch's stated baseline of 36 (SE1 + lane-b,
+  already on `main`) + my 6 new, exact.
+- `node --check` on `editor-view.js`, `editor.js`, `editor-interaction.js`, `tools/action-tools.js` →
+  clean. Extracted all 3 of the palette's inline `<script>` blocks → `node --check` clean.
+- Greps: `viewbox(` with an argument (the setter form) under `editor/` → exactly **2** real calls —
+  `editor-view.js`'s `applyView` and the unrelated `bakeSvgForCarving` root in `editor-io.js:166`
+  (confirmed by reading it: a throwaway off-DOM `SVG(svgText)` document for export, unrelated to the live
+  editor) — everything else is a read-only no-arg `.viewbox()` getter. `toolFit` → **1** in the HTML +
+  **1** in `action-tools.js`. `data-key=` → **9** (SE1's 8 + Fit's `"0"`).
+- `git status --short` → **6 files**, more than the predicted "3-4": the 3 named files
+  (`editor.js`, `editor-interaction.js`, `bspline_gen_palette.html`) + the recommended new
+  `editor-view.js`, plus two the estimate didn't count even though the dispatch's own instructions
+  required them — `action-tools.js` (needed for the Fit binding) and `tests/editor-view.test.js` (the
+  dispatch's own Verify section explicitly asks for a new test file). Reporting the real number and why,
+  not smoothing it toward the estimate.
+
+**Could not exercise live** — Fusion's Session-Suspended block was still in effect as of the last
+confirmed status; none of wheel-zoom, Space-drag, middle-drag, Fit, or the tolerance/handle scaling at
+higher zoom have been visually confirmed. The site build (bspline-generator.pages.dev) is a second live
+surface the advisor can check independently of Fusion, per the dispatch's own note.
+
+No gate hit. Did not touch `cam_engine`-adjacent code, `editor-hit.js`, `editor-marquee.js`, or
+`editor-transform-handles.js` — all three were read to confirm they need no changes, not modified.

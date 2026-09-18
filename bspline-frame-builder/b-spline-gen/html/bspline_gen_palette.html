@@ -1226,6 +1226,14 @@
   <script type="module" src="./main/main.js?v=20260425_v23"></script>
 
   <!-- SVG Editor Modal (Pro-Global Full-Screen) -->
+  <style>
+    /* SE2: pan cursor. Declared here (not styles/editor.css) so it's
+       adjacent to the modal it belongs to; wins over the mode-*/crosshair
+       rules there via later-in-cascade (this <style> loads after that
+       stylesheet's <link>), same specificity. */
+    #editorSVGContainer.pan-ready { cursor: grab; }
+    #editorSVGContainer.panning { cursor: grabbing; }
+  </style>
   <div id="svgEditorModal" class="cad-modal-overlay" style="display: none;">
     <div class="cad-modal-window overhauled" style="width: 100vw; height: 100vh; max-width: none; max-height: none; display: flex; flex-direction: column; overflow: hidden; position: relative; border-radius: 0;">
       
@@ -1327,6 +1335,12 @@
               <path d="M16 3 3 16l5 5h7l8-8z"/>
               <path d="m9 9 11 11"/>
               <path d="M3 21h18"/>
+            </svg>
+          </button>
+          <!-- SE2: reset zoom/pan to show the whole board. -->
+          <button id="toolFit" class="tool-btn" title="Fit (0)" data-key="0">
+            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+              <path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/>
             </svg>
           </button>
           <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
