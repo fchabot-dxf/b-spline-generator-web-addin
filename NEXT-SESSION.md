@@ -1,40 +1,34 @@
-# LANE B — T5 (breaker): SE2's pan/tolerance math vs. preserveAspectRatio — prove it, then fix it if wrong
+# LANE B — T6: pan state can get stuck (Space held when focus leaves) — declare one reset, call it from every exit
 
-**Seat B · epoch 1 · T5.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b` (merge `main` first:
-`git merge --no-edit main` — SE2 80da844 is there). Files: `bspline-frame-builder/b-spline-gen/html/editor/editor-view.js`,
-`editor/editor-interaction.js`, `editor/editor-hit.js`, `tests/editor-view.test.js` (+ WORK-LOG-lane-b.md). Seat A is in
-`main/` (SE3a) — no overlap. One commit by path, predicted **4 files** + log.
+**Seat B · epoch 1 · T6.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. Files:
+`bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js`, `editor/editor-io.js` (open()), maybe
+`editor/editor.js` (+ WORK-LOG-lane-b.md). Seat A is in `main/` (SE3a) — no overlap. One commit by path, predicted
+**2–3 files** + log.
 
-## The suspicion (advisor, from the SE2 diff — not yet proven either way)
-The editor root is `SVG().addTo(...).size('100%','100%')` with a viewBox and the DEFAULT `preserveAspectRatio`
-(`xMidYMid meet`). Under `meet` the board renders at ONE uniform scale, `s = min(clientW / vb.w, clientH / vb.h)`
-px per model unit, letterboxed on the other axis. Two places assume per-axis scale instead:
-- `_panBy` (editor-interaction.js, SE2): `dx * vb.w / clientWidth` and `dy * vb.h / clientHeight` — on the
-  letterboxed axis the drag will feel too slow (cursor and board separate).
-- `getDynamicTolerance` (editor-hit.js:14, pre-existing): `px * vb.width / clientWidth` — wrong whenever the
-  container is TALLER than the board's aspect (the docked 460 px palette with a 7×9 board is exactly that case),
-  so click slop and handle sizes are off by the aspect ratio there.
+## Ground truth
+SE2 (80da844) tracks Space with keydown/keyup on `window`, both gated by `_isEditorActive`. Seat A flagged it in
+WORK-LOG: if focus leaves the modal while Space is held (alt-tab, a native confirm dialog, the palette losing focus —
+all common in Fusion's palette host), keyup never arrives → `_spaceHeld` stays true and the next left-click pans
+instead of drawing, with the `pan-ready` cursor stuck. Same shape for `_isPanning`/`_panStart` if mouseup is lost
+(middle-drag released outside the window).
 
-## Do
-1. **Prove it first** (breaker role): a vitest with a pure function and two container shapes (wide, tall) showing
-   the per-axis formula disagrees with the uniform one on the letterboxed axis. Quote the numbers in WORK-LOG.
-   If you find `preserveAspectRatio="none"` is actually set somewhere on the editor root (grep `preserveAspectRatio`
-   under `editor/` and `init.js`), the suspicion is WRONG — say so, add the test that proves the per-axis formula is
-   then correct, and stop there (no product change).
-2. **If wrong, declare the scale once:** in `editor-view.js` add `export function viewScale(vb, clientW, clientH)`
-   → `Math.min(clientW / vb.w, clientH / vb.h)` (px per model unit), and `screenToModelDelta(vb, clientW, clientH,
-   dxPx, dyPx)` → `{ dx: dxPx / s, dy: dyPx / s }`. Then `_panBy` and `getDynamicTolerance` both go through it
-   (tolerance = `px / viewScale(...)`). No other caller changes; no new fields on the editor.
-3. Tests: extend `tests/editor-view.test.js` — `viewScale` for a wide and a tall container; `screenToModelDelta`
-   round-trips a pan on both axes; the letterbox case is the one that used to disagree.
+## Build — one declared reset, four callers
+- `export function resetPanState(editor)` in editor-interaction.js: `_spaceHeld=false; _isPanning=false;
+  _panStart=null;` and remove both `pan-ready` / `panning` classes from `#editorSVGContainer`. The Space keyup handler
+  and the mouseup pan-end branch call it instead of hand-rolling the same three lines each.
+- Call it from: (1) `on(window, 'blur', …)` registered in `initInteraction` (focus left the page/palette), (2)
+  `open()` in editor-io.js (fresh session never starts pan-ready), (3) the existing document-level mouseup/leave path
+  if there is one (`grep -n "mouseup\|mouseleave" editor-interaction.js`) — if the pan end only listens on the svg
+  node, move that listener to `window` so a release outside the canvas still ends the pan.
+- No new state, no timers.
 
 ## Verify
-- `npx vitest run` → 42 + new, green; `node --check` touched modules.
-- Greps: `clientWidth` under `editor/` → only inside `viewScale`'s callers passing it through (i.e. the raw
-  per-axis division appears nowhere); `viewScale(` → definition + 2 callers.
-- `git show --stat HEAD` → 4 files + log. Live feel is the ADVISOR's.
+- `node --check` touched modules; `npx vitest run` → 47 green (no new test needed; DOM-bound).
+- Greps: `_spaceHeld = false` → only inside `resetPanState`; `classList.remove('pan-ready')` → only there;
+  `resetPanState(` → definition + ≥3 callers.
+- `git show --stat HEAD` → 2–3 files + log. Live is the ADVISOR's.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T5: pan/tolerance scale — proven <right|wrong>, <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T6: resetPanState declared, called from keyup/mouseup/blur/open — <sha>, N files"`
 and stop.
