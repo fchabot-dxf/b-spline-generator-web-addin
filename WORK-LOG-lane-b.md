@@ -1029,3 +1029,34 @@ independently re-derived rather than assumed correct just because the advisor is
 `styles/editor.css` only, 1 file, matching the prediction exactly.
 
 No gate hit — CSS-only, additive, no JS/markup touched.
+
+---
+
+## Lane B — Turn 37 — T11: BUGS_OPEN — B13, B15 closed — DONE, docs only
+
+- **Confirmed every cited sha was already in lane-b's own history** before writing anything (`git
+  merge-base --is-ancestor` on all three — `aeb9a53`, `629102d`, `fa9972a` — all OK; the merge with
+  main this dispatch assumed had already landed by the time T11 fired).
+- **B13 → CLOSED.** Verified the subjects of both cited commits match the claim (`aeb9a53`
+  "export-flow + compositor read the editor content store", `629102d` "shape + persistence cleanup,
+  MIGRATIONS declared"), then went one step further than trusting the subject line: `grep -rn
+  "stampSvgText" bspline-frame-builder/b-spline-gen/html/` now returns **zero** hits — the parameter
+  T9 traced as the root of the null-write chain is gone, not just unreachable. Confirmed
+  `tests/export-flow.test.js` exists on disk. Kept T9's original OPEN status block below the new
+  CLOSED one (same pattern as B12/T9) so the causal-chain writeup T9 did isn't lost — it's still the
+  best explanation of WHY the bug existed, even though the fix made it structurally impossible rather
+  than patching the three sites individually.
+- **B15 → CLOSED.** Read `fa9972a`'s full commit message (not just the subject) to confirm "no guard"
+  is accurate: it updates `tests/stamp-mask-clear.test.js` to match the single-store model but doesn't
+  add a new assertion specifically for sidebar-Clear-now-clears-real-content — that claim rests on the
+  advisor's own live-verification (2026-09-18 09:55, cited in the dispatch), which I did not re-run
+  myself since it's the advisor's stated act, not mine to re-attest.
+- **B8 — dispatch's conditional line NOT added.** Checked both the summary table row (`:25`) and the
+  detail STATUS block (`:351-357`, from T3) — both already state the `sync_stamp_bundle.py`
+  regeneration fact AND the 2026-09-18 out-of-scope ruling, just not in the dispatch's exact wording.
+  Treated "if not already there" as satisfied by substance, not by exact phrasing — adding a
+  near-duplicate line would restate what's already recorded rather than add information.
+
+**Verify:** `git show --stat HEAD` → `BUGS_OPEN.md` + `WORK-LOG-lane-b.md`, matching the prediction.
+
+No gate hit — docs-only, no product code touched.
