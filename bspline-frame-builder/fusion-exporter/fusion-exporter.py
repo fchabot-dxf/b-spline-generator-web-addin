@@ -2,6 +2,12 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 import os
 import importlib
 
+# Where _get_audited_projects() looks for comparative-audit folders. Override
+# with the FB_AUDIT_DIR env var; defaults to the same location Fred's machine
+# has always used, derived from the user's home so no username is hardcoded.
+AUDIT_PROJECTS_DIR = os.environ.get('FB_AUDIT_DIR') or os.path.join(
+    os.path.expanduser('~'), 'APPS', 'import-export-template', 'comparative-audit', 'Fusion-json')
+
 # Global list of event handlers to keep them alive
 handlers = []
 
@@ -144,7 +150,7 @@ def stop(context):
 def _get_audited_projects():
     """Returns a list of folders (name, path) found in the comparative-audit directory."""
     try:
-        base_path = r'C:\Users\danse\APPS\import-export-template\comparative-audit\Fusion-json'
+        base_path = AUDIT_PROJECTS_DIR
         if not os.path.exists(base_path): return []
         
         projects = []

@@ -830,3 +830,66 @@ for the abnormal cases (blur, open()) where you can't know which state might be 
 
 No gate hit — small, well-scoped fix; verified the two contingencies in the dispatch (mouseup listener
 location, mouseleave existence) explicitly rather than skipping past them once the main fix worked.
+
+---
+
+## Lane B — Turn 29 — T7: exporter path constants declared; both stale docstrings found ALREADY fixed
+
+**2 files, not the predicted 5-6 — every item checked against ground truth before acting, and 3 of the
+5 assumed-needed changes turned out to already be done or not to apply.** Reporting each precisely
+rather than silently narrowing scope or padding the diff to match a predicted file count.
+
+**1. Declared `AUDIT_PROJECTS_DIR` (`fusion-exporter.py`) and `DEFAULT_EXPORT_DIR` (`exporter.py`) —
+done exactly as specified.** Both env-overridable (`FB_AUDIT_DIR`/`FB_EXPORT_DIR`), home-derived, both
+with a comment naming the env var per the dispatch's own instruction. `DEFAULT_EXPORT_DIR` moves the
+export picker's default OUT of the repo (`~/Documents/bspline-frame-builder/exports`). `_get_audited_projects()`
+and the export-location picker now reference the constants instead of the literal paths.
+
+**The `.gitignore` sub-step's own stated premise does NOT hold — checked, didn't act on it.** The
+dispatch says "if `git ls-files` shows it is NOT tracked (the advisor's check says 0 tracked files), add
+`.../exported files/` to `.gitignore`." Ran it myself: **it IS tracked — 140+ JSON files across 7
+`Untitled_JSON_AUDIT*` folders, all committed.** Since the stated condition is false, did NOT touch
+`.gitignore` — adding an already-tracked path there wouldn't even untrack it (that needs `git rm
+--cached`, a separate, more invasive step never asked for here). Flagging the discrepancy plainly: the
+advisor's own check apparently ran against a different scope or an earlier state than what's on disk
+now. The old in-repo folder is left exactly as it was — Fred's data, untouched, still tracked.
+
+**2. A1-3 (the two `fb_shared` docstrings) — ALREADY FIXED, no edit needed.** Read both before touching
+anything: `entity_helpers.py:1-9` now says "Reconciliation decisions are ratified — callers switched
+(S3-S5)... Canonical shared helpers (C4 S1-S5 complete): consumed by frame-inspector, template-maker/core
+and the tests." `expression_coords.py:1-8` says "Canonical (C4 S2-S5 complete); consumed by
+frame-inspector and template-maker/core." Neither contains "NO callers"/"no production callers" — grepped
+both, 0 hits, confirmed independently rather than trusting the file summary alone. This item (A1-3) must
+have been closed by someone else's turn between when `AUDIT-2026-09.md:33` was written and now; not this
+lane's doing, but correctly verified rather than blindly re-"fixing" already-correct text.
+
+**A2-5 (`parametric_engine.py:123-125`) — ALSO ALREADY FIXED.** The misleading comment the dispatch
+quoted no longer exists at that location at all — `build_template()` now has (at `:134-137`): "Parameter
+creation lives in two places: `frame_engine._create_skeletal_parameters` (base requirements + template
+DNA, before build) and `_sync_user_parameters` below (UI-driven values). Neither is called from here." —
+exactly the "say where params are created, both places" reword the dispatch asked for, already landed.
+Plausibly part of the advisor's own A2-1 live-verification work (per the turn-19 review note, "being
+decided by the advisor") touching this same function. Read it, confirmed it says what it should, made
+no edit.
+
+**Verify, all items, reported honestly including the one that doesn't match the prediction:**
+- `python -m py_compile` on all 3 named Python modules → clean.
+- `pytest template-maker/tests frame-builder -q` → **118 passed**, matches exactly.
+- `grep -rln "danse" fusion-exporter/*.py` → **0**, confirmed clean for the files this turn actually
+  touched. **Broadened to all of `bspline-frame-builder/` (as the dispatch's verify line literally
+  says) → 1 hit: `CAM-builder/cam_engine/setup_builder.py`** — the "Ultimate Bee" machine path this lane
+  already found and reconciled in A6 (STANDARDS-AUDIT §5's OTHER citation, not `AUDIT-2026-09.md:23`'s
+  fusion-exporter pair this turn's file list actually names). Did NOT touch it — it's not in T7's file
+  list, and per A6's own finding the coupling there is much more pervasive (~15 references to the
+  machine name, not one literal path) than a same-shaped constant swap would fix. Reporting the grep's
+  real result rather than only running it scoped to make it read as a clean 0.
+- `grep -c "FB_EXPORT_DIR"`/`"FB_AUDIT_DIR"` → **2 each, not the predicted 1** — one in the
+  `os.environ.get(...)` call, one in the comment naming the env var that the dispatch's OWN item-1 text
+  explicitly asked for ("Both constants get a 2-line comment naming the env var"). The 2-count is the
+  direct, correct consequence of following that instruction, not a miss.
+- `git status --short` → 2 files, below the "5-6" prediction — accounted for by the 3 items above that
+  needed no change.
+
+No gate hit — every discrepancy from the dispatch's own predictions (untracked assumption, docstring
+staleness, comment-count) was checked against the actual repo state before deciding what to do, and
+each is reported specifically rather than smoothed into a single "done" summary.

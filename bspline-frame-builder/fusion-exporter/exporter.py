@@ -2,6 +2,12 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 import json
 import os
 
+# Default folder the export-location picker opens to. Override with the
+# FB_EXPORT_DIR env var; defaults OUT of the repo (was previously nested
+# inside it — user export data next to source is the wrong place for it).
+DEFAULT_EXPORT_DIR = os.environ.get('FB_EXPORT_DIR') or os.path.join(
+    os.path.expanduser('~'), 'Documents', 'bspline-frame-builder', 'exports')
+
 
 def _collect_attrs(ent):
     out = []
@@ -83,7 +89,7 @@ def export_data_logic(config=None):
         config = {'phys': True, 'param': True, 'sketch_deep': True, 'attr': True, 'mfg': True}
 
     # Ask user for export location (folder picker) with a sensible default.
-    default_output_dir = r'C:\Users\danse\APPS\b-spline-generator-web-addin\bspline-frame-builder\fusion-exporter\exported files'
+    default_output_dir = DEFAULT_EXPORT_DIR
     # Pre-create the default dir so the picker actually opens there
     # rather than silently falling back to the parent (or worse, the
     # last system-wide picker location).
