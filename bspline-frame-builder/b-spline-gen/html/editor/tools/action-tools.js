@@ -12,14 +12,6 @@ export function registerActionTools(editor) {
   bind('toolResetTransform',   () => editor.resetSelectionTransform());
   bind('toolFlattenTransform', () => editor.flattenSelectionTransform());
 
-  bind('toolClear', () => {
-    if (confirm('Clear all?')) {
-      editor._sketchLayer.clear();
-      editor.pushState();
-      if (editor._onChange) editor._onChange();
-    }
-  });
-
   bind('editorClear', () => {
     if (confirm('Clear all?')) {
       editor._sketchLayer.clear();

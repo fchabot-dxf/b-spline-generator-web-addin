@@ -17,7 +17,7 @@ import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState } from './layers.js';
 import { worldBbox } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
-import { on } from './dom.js';
+import { on, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import {
@@ -70,6 +70,20 @@ function _handleEditorKeydown(editor, e) {
         e.preventDefault();
         editor.deleteSelected();
         return;
+    }
+
+    // Single-key tool shortcuts (V/A/P/T/L/R/C/E) — declared on the button
+    // itself via data-key (bspline_gen_palette.html), not hand-rolled here,
+    // so the tooltip text and the key can never drift apart again. Skip
+    // when any modifier is held (the Ctrl+C/V/A shortcuts below still need
+    // their letters) or the user is typing into a text field.
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && !_isTypingTarget(e.target)) {
+        const toolBtn = document.querySelector(`#svgEditorModal [data-key="${e.key.toLowerCase()}"]`);
+        if (toolBtn) {
+            e.preventDefault();
+            toolBtn.click();
+            return;
+        }
     }
 
     const ctrl = e.ctrlKey || e.metaKey;

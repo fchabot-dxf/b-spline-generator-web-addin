@@ -97,9 +97,6 @@ export class VectorEditor {
         // Handles each updateHandles cycle, and per-drag capture on grab.
         this._transformHandles = [];
         this._transformState = null;
-        
-        this._isSnapping = false;
-        this._snapSize = 2.0;
     }
 
     /** Primary selection — the most-recently clicked element. Legacy
@@ -182,12 +179,6 @@ export class VectorEditor {
     setFontFamily(f) { return setFontFamily(this, f); }
     setFontSize(s) { return setFontSize(this, s); }
 
-    toggleSnapping() {
-        this._isSnapping = !this._isSnapping;
-        updateToolbarVisibility(this); // Refresh status bar styles
-        return this._isSnapping;
-    }
-
     /** Clear the transform attribute on every selected element. */
     resetSelectionTransform() {
         const sel = this._selectedElements;
@@ -224,12 +215,13 @@ export class VectorEditor {
         return true;
     }
 
+    // SE1: grid snapping itself was a dead feature (its toggle UI was
+    // hidden, nothing ever turned it on) — that state is gone, but _snap()
+    // still has live callers in editor-interaction.js's handleStart/
+    // handleMove, so it stays as the identity pass-through it already
+    // always behaved as in practice.
     _snap(pt) {
-        if (!this._isSnapping) return pt;
-        return {
-            x: Math.round(pt.x / this._snapSize) * this._snapSize,
-            y: Math.round(pt.y / this._snapSize) * this._snapSize
-        };
+        return pt;
     }
 
     setActiveLayer(layerId) { return setActiveLayer(this, layerId); }

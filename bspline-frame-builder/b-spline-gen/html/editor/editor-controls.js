@@ -16,8 +16,6 @@ function setupEditorToolbar(editor) {
         if (!sidebar) return;
         sidebar.classList.toggle('collapsed');
     });
-
-    on('editorSnapToggle', 'click', () => editor.toggleSnapping());
 }
 
 export { setupEditorToolbar };

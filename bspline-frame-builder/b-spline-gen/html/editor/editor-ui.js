@@ -158,10 +158,6 @@ export function updateToolbarVisibility(editor, mode, el) {
         selectPanel.classList.toggle('hidden', !hasSelection);
     }
 
-    // Sync Snap Toggle UI
-    const snapToggle = getEl('editorSnapToggle');
-    if (snapToggle) snapToggle.classList.toggle('active', editor._isSnapping);
-
     // Auto-hide symbol keyboard if leaving text mode (but keep it open when using the text tool)
     const symbolPanel = getEl('editorSymbolKeyboard');
     if (symbolPanel && !isTextMode && symbolPanel.classList.contains('hidden') === false) {

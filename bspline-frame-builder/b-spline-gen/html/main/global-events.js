@@ -9,18 +9,7 @@ import { sculptClear, updatePreviewSculptMode } from '../core/sculpt-interaction
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
-
-/** Is the user typing into a text field where the browser's native
- *  undo should be in charge (rename inputs, project manager forms, the
- *  SVG editor's hidden text-editing input, etc.)? Skip our shortcuts so
- *  preventDefault doesn't swallow the native input/textarea undo. */
-function _isTypingTarget(target) {
-    if (!target) return false;
-    const tag = target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
-    if (target.isContentEditable) return true;
-    return false;
-}
+import { _isTypingTarget } from '../editor/dom.js';
 
 export function wireGlobalEvents(preview) {
     window.addEventListener('keydown', e => {
