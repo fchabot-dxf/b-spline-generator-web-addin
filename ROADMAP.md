@@ -501,4 +501,4 @@ badges (T10), BUGS_OPEN reconciled (B1–B15). Advisor incidents: misread the st
 claimed the export folder untracked without checking (it is tracked, 147 files).
 **Open for Fred:** (1) global undo scope for drawings (SE4d if yes); (2) untrack `fusion-exporter/exported files/`;
 (3) GitHub secrets for the worker auto-deploy; (4) SE5 tooling double-persistence — design or leave.
-Seat A: DONE (cycle closed here). Seat B: T11 (docs) in flight, then idle.
+Seat A: DONE (cycle 100). Seat B: DONE after T11 (bb61a2e, B13/B15 closed) — both loops closed.
