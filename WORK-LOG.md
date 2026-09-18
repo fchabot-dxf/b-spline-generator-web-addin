@@ -5365,3 +5365,123 @@ resolved and committed as `51db788` — lane-b's T8 `_deselect` completion + T9 
 started reading files, so I was reading post-merge content throughout, not stale pre-merge state). None of
 that merge's files overlapped mine. Re-ran the full suite and the three required greps after confirming
 `git log`/`git status` showed only my own 6 files modified — still 57 green, all three greps still 0.
+
+## Turn 199 — SE4c: slice (c) of SE4-MIRROR-RETIREMENT-DESIGN.md — shape + persistence cleanup, MIGRATIONS declared, snapshot content-free — DONE
+
+Implemented all 7 numbered items in NEXT-SESSION.md's "Do exactly slice (c)," plus the product decision's
+`applySnapshot` rewrite it depends on.
+
+**1. `core/state.js`:** `DEFAULT.stampLayers[i]` drops `.svg`/`.mask` — the shape is tooling-only now.
+`persistableP` is identity on layers (`{ ...L }`, no `mask: null` override) — kept as the one declared
+serializer per the dispatch's "keep the function," with an updated docstring explaining why there's
+nothing left to strip today but the slot stays in case a future field needs it. Updated `saveLastSession`'s
+stale comment about stripping Float32Arrays (nothing left to strip) and `DEFAULT.editorSvg`'s comment
+(named what it replaced without repeating the retired field's own name).
+
+**2. `core/history.js`:** removed `takeSnapshot`'s `stampSvgText` parameter. Grepped every caller first —
+`core/sculpt-interaction.js` (×2) and `app-init.js`'s `takeSnapshot("Initial")` — none passed a second arg,
+confirming the design doc's finding #1 (it was always `null`, never used for anything real).
+
+**3. `main/snapshot-manager.js` — `applySnapshot` per the advisor's product decision:** deleted the
+`stampSvgText`-restore branch (the one that unconditionally nulled `P.stampLayers[0].svg` on every
+undo/redo — finding #1) and the `hasStampSvg` gate. The mask-regen call itself (`updateStampMasks`) is
+now UNCONDITIONAL rather than deleted outright: traced `rasterizeSvg`'s call in
+`stamp-mask-manager.js` and confirmed `depth`/`profile`/etc. (real P.stampLayers tooling, restored above
+as part of `snap.P`) are baked into the mask AT rasterize time — so even though content never changes
+here, a restored tooling value (e.g. undo reverting `depth`) needs the mask regenerated to reflect it, not
+just skipped because there's no `.svg` field left to gate on. `applySnapshot` still does NOT push
+`P.editorSvg` into the live editor (`window.svgEditor.open(...)`) — confirmed this was ALREADY true before
+this turn (it only ever read editor content via `getLayerSvg`, never opened it), for BOTH the undo/redo
+case and the cloud-project-load case (`cloud-project-manager.js`'s `_loadFrom` calls `applySnapshot`
+directly, confirmed by reading it — this is the "one place both paths converge" item 4 asked me to find).
+The dispatch's own "Do NOT implement restore P.editorSvg from the snapshot; that is SE4d" line matches
+what I found, not something I had to newly avoid.
+
+**4/5. MIGRATIONS + `editorRestoreSvg()` (`main/app-init.js`):** declared `MIGRATIONS` as an array of
+`{ id, when(p), apply(p) }`, run via `runMigrations(p = P)`. First (only) entry `legacy-stamp-svg`: when
+`!p.editorSvg` and some layer still has a legacy content field, ONE loop (not `.find()`) over every
+`P.stampLayers` position — layers with content get their children parsed, tagged `data-layer="<index>"`
+(the array index, not the layer's own `.id` — confirmed this is what `editor/layers.js`'s `_nextLayerId`
+actually generates for a fresh roster, `'0'`/`'1'`/... not `'layer0'`/`'layer1'`, so the migrated document's
+`data-layer` values will correctly match a real editor roster's ids), and appended into a synthesized root
+`<svg>` with a `data-editor-layers` attribute (same quoting convention as `editor-io.js`'s
+`_serializeLayersAttr` — double-quoted attr, inner `"` → `&quot;`). EVERY layer gets a roster entry
+(including empty ones) so `editor._layers.length` stays position-aligned with `P.stampLayers` on the next
+`open()` — an empty legacy layer becomes an empty editor layer, not a missing one. Legacy fields
+(`.svg`/`.mask`) are deleted from each `P.stampLayers` entry after migrating. Wired into BOTH convergence
+points per item 4's "call it from both": `initApp` (right after `loadLastSession()`) and `applySnapshot`
+(right after `P` is populated from `snap.P` — covers the cloud-load path found in item 3's read). Safe to
+run on every `applySnapshot` call, including undo/redo, since `when()` is false once `P.editorSvg` exists.
+`editorRestoreSvg()` is now exactly `P.editorSvg || null` per item 5 — the `.find()` fallback moved into
+the migration.
+
+**6. `main/stamp/layer.js` / `_shared.js`:** `layer.js`'s dropdown-change handler had an `else if
+(activeLayer?.svg)` branch for when no editor layers exist — dead the moment `.svg` left the shape
+(permanently false). Narrowed to just `'No file chosen'` — there's no content signal left to check without
+a live editor to query. `_shared.js`'s `activeLayer()` header comment updated: it used to justify the
+P.stampLayers fallback partly by "sessions with only legacy uploaded svgs" — no longer a distinct case
+(MIGRATIONS folds those into P.editorSvg before this function is ever reached), so re-stated the comment
+around the one case that's still real (editor not loaded yet) and noted the fallback object's shape is
+narrower now (tooling-only, no content fields) than what callers get the rest of the time.
+
+**7. `initApp`'s remask gate (`main/app-init.js`):** `if (P.stampLayers.some(l => l.svg))` can't be
+rewritten to query `editor._layers` directly — traced `main.js`'s boot order and confirmed `initSvgEditor`
+(which creates `window.svgEditor`) runs on the line immediately AFTER `initApp` returns, so
+`window.svgEditor` structurally does not exist yet at this call site (both of `initApp`'s two call sites in
+main.js are followed by `initSvgEditor` on the next line; `initApp` is never called again later through any
+other path — reload/cloud-load goes through `applySnapshot` instead, handled in item 3). Added
+`_editorSvgHasContent(svgText)`, a lightweight DOMParser check on the SERIALIZED `P.editorSvg` string
+(mirrors `getLayerSvg`'s own zero-children check, just without a live editor instance to query), and gated
+on that instead.
+
+**Self-referential-grep trap, again:** 4 of my own comments named the retired field literally
+(`P.stampLayers[i].svg`) while explaining what it used to be, which is exactly the dispatch's own verify
+grep (`\.stampLayers\[.*\]\.svg`). Same pattern as turns 163/173/191/195/197 — caught and reworded all 4
+(`core/state.js`, and 3 in `main/app-init.js`) before finalizing, describing the retired field without
+spelling out its exact bracket-dot form.
+
+**Tests — 3 updated, 1 new:**
+- `tests/persistable-p.test.js`: rewritten. The old assertions ("nulls every mask," "JSON has no mask
+  blob") tested a strip that no longer applies — there's no `.mask` field to strip. Replaced with the new
+  invariant: identity copy (every field survives), no aliasing (distinct array/object references), no
+  input mutation, and no `"mask"` substring can leak into the JSON at all any more (a stronger version of
+  the old assertion, now trivially true by construction rather than by an active strip).
+- `tests/history-snapshot.test.js`: rewritten. The old test manually set an ad-hoc
+  `P.stampLayers[0].mask` (a field no longer in the real shape) and asserted `persistableP` nulled it —
+  no longer meaningful. Replaced with: (a) `snap.stampSvgText` doesn't exist as a key at all (guards the
+  parameter removal itself, not just its disuse), (b) `takeSnapshot` still captures an independent
+  (non-aliased) copy of `P.stampLayers` tooling in both `snap.P` and `snap.layerConfigs` — restates BG1's
+  original "is this a real copy" concern against the new shape, with a mutate-after-snapshot non-vacuity
+  check.
+- `tests/editor-reopen.test.js`: the `editorRestoreSvg: P.editorSvg > legacy stamp svg > null` test
+  failed outright (asserted the now-removed `.find()` fallback). Simplified to `P.editorSvg`-or-null only,
+  with a comment pointing at `migrations.test.js` for the legacy-fallback coverage that moved there. Also
+  cleaned the `beforeEach`'s `P.stampLayers` fixture shape (dropped ad-hoc `svg`/`mask` fields it no longer
+  needs) since nothing else in the file reads them. The other 2 tests in this file (RO1's actual regression
+  guard) were untouched and still pass.
+- `tests/migrations.test.js` (new): 6 tests against `runMigrations`/`MIGRATIONS` — single legacy layer
+  migrates and strips its legacy fields (tooling untouched); a two-layer legacy save lands each layer's
+  content under its OWN `data-layer` group (parses the resulting document and checks tag names per group,
+  not just presence of both indices — the dispatch's own multi-layer risk note); an empty legacy layer
+  still gets a roster entry with no content (position alignment); idempotent on a second call; a no-op when
+  there's no legacy content; a no-op when `P.editorSvg` is already populated even if a stray legacy field
+  is still present (confirms the `when()` gate, not just the `apply()` logic).
+
+**Non-vacuity, proven not argued:** checked out the pre-change `main/app-init.js` via `git show HEAD:...`
+(which has neither `MIGRATIONS` nor `runMigrations`), ran `tests/migrations.test.js` against it — **failed
+6/6** (`TypeError: runMigrations is not a function`), then restored my actual changes and re-ran green.
+
+**Verify:**
+- `node --check` on all 6 touched JS files: clean.
+- `grep -rn '\.stampLayers\[.*\]\.svg\|\.stampLayers\[.*\]\.mask' --include=*.js .` (under `html/`) → 0.
+- `grep -rn 'stampSvgText' --include=*.js .` → 0.
+- `grep -n 'MIGRATIONS' main/app-init.js` → definition (`export const MIGRATIONS`) + the runner
+  (`for (const m of MIGRATIONS)`), plus 2 explanatory comments.
+- `npx vitest run` → **64 passed** (57 prior, −0/+1 net on the 3 rewritten files since each kept the same
+  test count except history-snapshot which gained one, +6 new in migrations.test.js: 57 + 1 + 6 = 64).
+- Re-ran `tests/editor-reopen.test.js` and `tests/stamp-mask-clear.test.js` specifically (the two STOP
+  conditions) — both green, 8 tests total, unchanged from their slice-(a)/(b) state.
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments,"
+checked both before and after finishing the edits). Did not touch `editor/` — seat B was idle this turn
+per the dispatch, so no lane to avoid, but scope stayed to the 6 named files + tests regardless.
