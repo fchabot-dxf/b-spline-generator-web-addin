@@ -5187,3 +5187,81 @@ explicitly as a product decision for Fred/the advisor, not something to guess at
   dispatch's prediction exactly.
 
 No code changed this turn — design/documentation only, per the dispatch's explicit "PLAN ONLY."
+
+## Turn 195 — SE4a: slice (a) of SE4-MIRROR-RETIREMENT-DESIGN.md — export-flow + compositor read the editor store — DONE
+
+Implemented exactly slice (a) as scoped in turn 193's design doc: `importSvgIntoLayer` exported,
+`export-flow.js` rewritten to read `editor._layers[i]` for content, `rebuild.js`'s compositor drops the
+`P.stampLayers` mask fallback. Stayed out of `editor/` (seat B's T8 lane) per the dispatch.
+
+**`main/stamp/svg-source.js`:** `_importSvgIntoEditor` renamed to exported `importSvgIntoLayer` — this
+was already the working code the design doc's own appendix flagged as "export + rename, not new code."
+Before touching the Browse handler's legacy fallback (`setStampLayerSvg`), traced `main.js`'s actual
+boot order per the dispatch's own "if you cannot prove it, keep the fallback" instruction:
+`bindControls()` (wires the Browse click handler) runs synchronously in DOMContentLoaded step 5;
+`initSvgEditor()` (creates `window.svgEditor`) doesn't run until step 7, gated behind two
+`requestAnimationFrame`s and `pollMode()` resolving. No structural guarantee the editor exists when the
+handler is wired — only a practical timing gap that's always closed by the time a human can actually
+click. Kept the fallback; documented the reasoning inline so the next slice doesn't have to re-derive it.
+
+**`main/export-flow.js`:** `isCarvingLayer`/`hasShippableSvg` unchanged (still take one object with
+`.enabled/.svg/.mask/.depth`), but `activeStampLayers`/`exportableStampLayers` now build their input via
+a new `_stampExportCandidates()` instead of filtering `P.stampLayers` directly. Per the dispatch's exact
+split: content (`_mask`, and svg text via `getLayerSvg(editor, layer.id)`) comes from `editor._layers[i]`;
+tooling (`enabled`, `depth`, `profile`) stays on `P.stampLayers[i]` by position index — that half isn't a
+mirror, it's the one place tooling actually lives. A hidden editor layer (`visible === false`) is
+short-circuited to an all-empty candidate so it can't pass either filter regardless of what its
+P.stampLayers tooling says. Exported both functions (previously module-private) so `tests/export-flow.test.js`
+could reach them without mocking the whole wizard/DOM flow — declare-over-hand-roll: the alternative was
+driving these through `onGenerate`'s DOM side effects, which would test the wizard UI, not the filter logic.
+Returns `[]` when `window.svgEditor` isn't loaded — no legacy-content fallback added, since building one
+would partially undo the "one store" point of this slice; noted as a theoretical edge case only (export
+requires an already-rendered 3D model, which requires the editor to already exist in every real flow I
+could find — did not find a path where export is reachable before `initSvgEditor` has run).
+`sendToFusion`/`downloadFiles` both read `.svg`/`.profile`/`.depth` straight off whatever
+`exportableStampLayers()` returns — kept the candidate object's shape exactly matching that so neither
+consumer needed touching.
+
+**`core/engine/rebuild.js`:** `_collectStampPasses`'s mask resolution was
+`layer._mask || (P.stampLayers?.[idx]?.mask) || null` — dropped only the `P.stampLayers` half, per the
+dispatch's explicit "leave the legacy pass-building block for slice (b)." First wrote `layer._mask ||
+null`, then caught that this still literally matches the dispatch's own verify grep (`_mask \|\|`) even
+though the P.stampLayers fallback was actually gone — same self-referential-comment/grep trap from
+turns 163/173/191, this time in code rather than a comment. `!mask` already treats `undefined` the same
+as `null`, so simplified to bare `layer._mask` with no functional change and the grep now reads 0. The
+legacy `P.stampLayers.forEach` pass-building block below it (lines ~236-243) is untouched, left for
+slice (b) as scoped.
+
+**`tests/export-flow.test.js` (new):** 5 tests against the exported `activeStampLayers`/
+`exportableStampLayers`, using the same mock-editor shape (`_draw`, `_sketchLayer.node.innerHTML`,
+`_mW`/`_mH`, `_layers[].{id,visible,_mask}`) as the existing `stamp-mask-clear.test.js` so `getLayerSvg`'s
+real serializer path runs for real, not mocked:
+1. A layer with real editor content (`data-layer` child + `_mask`) but a `null` P.stampLayers mirror
+   `.svg` — the exact post-undo state finding #1 in the design doc describes — still counts as both
+   carving and exportable, with `.depth`/`.profile` correctly sourced from the tooling mirror and `.svg`
+   fetched live from the editor (asserted `toContain('data-layer')`, not just truthy, so the assertion
+   can't pass on a stale/empty string).
+2. A hidden layer (`visible: false`) with content and enabled tooling counts as neither.
+3. An empty layer (no content, no mask) with enabled tooling counts as neither.
+4. The active/exportable asymmetry: a layer with svg but no baked mask is exportable but not carving —
+   pins the two-tier semantic the file's own header comment describes, which wasn't previously under test.
+5. Editor not loaded (`window.svgEditor = null`) → both return `[]`, no throw.
+
+**Non-vacuity, proven not argued:** checked out the pre-change `export-flow.js` via `git show HEAD:...`,
+ran the new test file against it — **failed 5/5** (4x `TypeError: activeStampLayers is not a function`
+since the old file never exported it, 1x a real assertion failure), then restored my actual changes and
+re-ran green. Full suite: `npx vitest run` → **57 passed** (52 prior + 5 new), matching the dispatch's
+prediction exactly.
+
+**Verify:**
+- `node --check` on all three touched JS files: clean.
+- `grep -c 'stampLayers\[.*\]\.svg' main/export-flow.js` → 0.
+- `grep -c '_mask ||' core/engine/rebuild.js` → 0 (after the `|| null` self-catch above).
+- `grep -rn 'importSvgIntoLayer(' main/` → 2 hits: the definition (`svg-source.js:142`) and the Browse
+  caller (`svg-source.js:62`) — matches the dispatch's "definition + Browse caller" exactly.
+- `git show --stat HEAD` (after commit) → predicted 4 files: `main/stamp/svg-source.js`,
+  `main/export-flow.js`, `core/engine/rebuild.js`, `tests/export-flow.test.js`, plus this WORK-LOG entry
+  as a separate commit per the two-seats git discipline.
+
+No amendments were pending (`handoff.py amendments --role worker` → "no new amendments"). Stayed out of
+`editor/` entirely — only `main/`, `core/engine/`, and `tests/` touched, respecting seat B's T8 lane.
