@@ -783,3 +783,50 @@ No gate hit — proved the bug with concrete numbers before writing any product-
 breaker-then-fixer sequencing the dispatch asked for; the one implementation choice I second-guessed
 (direct `viewScale` call vs. routing through `screenToModelDelta`) was resolved by checking it against
 the dispatch's own predicted verify output rather than picking whichever felt more "unified" in isolation.
+
+---
+
+## Lane B — Turn 27 — T6: declare resetPanState, call from keyup/mouseup/blur/open — DONE, 2 files
+
+**Read the current code before writing anything, confirmed the ground truth exactly as the dispatch
+stated it.** `_handleEditorKeyup` (Space release) gates on `_isEditorActive(editor)` first — if a native
+dialog or alt-tab steals focus entirely out of the window while Space is held, no `keyup` event ever
+reaches the document (the browser doesn't dispatch key events to an unfocused window), so `_spaceHeld`
+stays `true` forever and the next click pans instead of drawing. Confirmed `mouseup` is ALREADY on
+`window`, not the SVG node (`initInteraction:41`, unchanged since SE2) — so the dispatch's item-3
+contingency ("if the pan end only listens on the svg node, move it to window") does NOT apply here;
+grepped for `mouseleave` too, found none. Noted both explicitly rather than silently assuming and moving
+on, since acting on a wrong assumption here would have been a no-op edit at best.
+
+**Declared `resetPanState(editor)` in `editor-interaction.js`**, right after the imports for visibility:
+clears `_spaceHeld`/`_isPanning`/`_panStart` and removes BOTH `pan-ready` and `panning` classes in one
+place — even though a given caller (e.g. Space-keyup) would only ever need to clear one of the two
+classes in the normal case, resetting all of it unconditionally is what makes this a reliable BACKSTOP
+for the abnormal cases (blur, open()) where you can't know which state might be stuck.
+
+**Wired all 4 call sites:**
+1. `on(window, 'blur', () => resetPanState(editor))` — new listener in `initInteraction`, the actual
+   fix: `blur` fires reliably when focus leaves the window, unlike `keyup`, which needs the key
+   released WHILE focused to fire at all.
+2. `_handleEditorKeyup`'s Space branch — replaced the 3 hand-rolled lines with the one call.
+3. `handleEnd`'s pan-end branch (`editor._isPanning` true) — same replacement.
+4. `editor-io.js`'s `open()` — called right after `sync3DBackground(editor)`, before the undo-stack/
+   layer-roster resets already there, so it's grouped with the other "fresh session" state clears
+   rather than tacked on separately. Needed a new import (`editor-interaction.js` → `editor-io.js`) —
+   checked first that the reverse import doesn't already exist (it doesn't), so this doesn't create a
+   circular dependency.
+
+**Verify, all items from the dispatch:**
+- `node --check` on both touched modules → clean.
+- `npx vitest run` → **47 green**, unchanged — no new test needed, confirmed this is DOM-bound (window
+  focus/blur, `document.getElementById`) rather than pure math like T5's fix, so it isn't testable the
+  same way without a real DOM harness this suite doesn't have.
+- `grep -n "_spaceHeld = false"` → 1 hit, inside `resetPanState` only. Same for
+  `classList.remove('pan-ready')` → 1 hit, same function only.
+- `grep -rn "resetPanState("` → definition + **4** callers (blur, keyup, mouseup pan-end, `open()`) —
+  meets the dispatch's "≥3" bar.
+- `git status --short` → exactly 2 files (didn't need `editor.js` — nothing there held any of the
+  pan-state fields or listeners).
+
+No gate hit — small, well-scoped fix; verified the two contingencies in the dispatch (mouseup listener
+location, mouseleave existence) explicitly rather than skipping past them once the main fix worked.
