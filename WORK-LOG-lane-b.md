@@ -997,3 +997,35 @@ expected for a docs-only turn.
 
 No gate hit — docs-only, no product code touched; every one of the advisor's own citations was
 independently re-derived rather than assumed correct just because the advisor is usually right.
+
+---
+
+## Lane B — Turn 35 — T10: shortcut-key badge on tool buttons, `.tool-btn[data-key]::after { content: attr(data-key) }` — DONE, CSS only
+
+- Confirmed `.tool-btn` lives in `bspline-frame-builder/styles/editor.css` (grep across `styles/*.css`
+  found it only there, at `:62`), matching the dispatch's primary guess — no need to fall back to
+  base.css.
+- Confirmed the "44px rail, ~32px buttons" premise before trusting it: the base (non-media-query)
+  `.tool-btn` rule is 34px (`editor.css:62-76`), and the rail width is NOT in editor.css at all — it's
+  an inline style on the actual element, `bspline_gen_palette.html:1319`:
+  `<aside class="editor-sidebar" style="width:44px; ... display:flex; flex-direction:column;
+  align-items:center; ...">`. The three `.editor-sidebar .tool-btn` rules I found in editor.css
+  (`:312`, `:409+`) are both inside responsive breakpoints (38px/40px buttons, 56px rail) — irrelevant
+  to the base case the dispatch is describing.
+- Collision check (by math, not a render — no visual tool available in this session; the dispatch itself
+  defers "look" to the advisor's deploy+capture): 34px button, `align-items:center` on the rail flexbox,
+  20px centered icon inside → (34-20)/2 = 7px of empty corner margin on each side. An 8px, single
+  uppercase glyph at `right:2px; bottom:1px` sits inside that 7px margin without reaching the icon's
+  centered 20px box. Kept the dispatch's default `font: 600 8px/1 ...` rather than dropping to 7px,
+  since the math clears the icon with margin to spare — flagging this as an UNVERIFIED-visually call in
+  case the advisor's capture disagrees.
+- Added the three rules verbatim from the dispatch, placed right after the existing `.tool-btn.active`
+  block (`editor.css:83-87`) and before the two icon-specific overrides (`#toolSelect`/`#toolNode`), so
+  all shortcut-badge rules stay grouped with the base button rules they extend. No markup change — all
+  9 buttons (`data-key="v" a c e l p r t 0"`, confirmed via grep across the palette HTML) already carry
+  the attribute from SE1; the badge is pure CSS attr() read of an existing declaration, not a new list.
+
+**Verify:** `grep -c "attr(data-key)"` on `styles/editor.css` → 1, as predicted. `git status --short` →
+`styles/editor.css` only, 1 file, matching the prediction exactly.
+
+No gate hit — CSS-only, additive, no JS/markup touched.
