@@ -1,6 +1,6 @@
 # Open bugs
 
-_Last updated: 2026-05-20_
+_Last updated: 2026-09-18 (T3 reconciliation, lane-b)_
 
 Context sheet for a fresh debugging session — pick up cold, do not assume the
 prior fixes worked. All current entries surfaced during the SVG-editor layers
@@ -11,9 +11,40 @@ refactor.
 - B2. Elements vanish on editor reopen
 - B3. Expand tool doesn't work on lines (and possibly other tools)
 
+## T3 reconciliation summary (2026-09-18) — every entry verified against current code
+
+| ID | Status | sha / test |
+|----|--------|------------|
+| B1 | CLOSED | pre-existing fix (no single sha); re-verified T2 2026-07-11 + lane-b A5b 2026-09-17 |
+| B2 | CLOSED (via B6) | `957df31`, guarded by `tests/b6-hidden-layer-save.test.js` |
+| B3 | STALE | investigated premise never held; runtime output-correctness still unconfirmed |
+| B4 | CLOSED | `6d982ab` (no guard) |
+| B5 | CLOSED | `0607eaf` (no guard) |
+| B6 | CLOSED | `957df31`, guarded by `tests/b6-hidden-layer-save.test.js` |
+| B7 | CLOSED | `c60628b` (no guard) |
+| B8 | STALE | `59615fe` de-forked; Fred ruled 2026-09-18 stamp-editor standalone out of scope |
+| B9 | CLOSED | `48cee2b` (no guard) |
+| B10 | CLOSED | `f0d47ed` (no guard) |
+| B11 | CLOSED | `48cee2b` (no guard) — one named P1 exception remains, documented in `ROADMAP.md` |
+
+Per-entry detail (evidence, reasoning) is inline as a status line under each heading below. Original
+entry text is preserved unchanged beneath each status line — this is a reconciliation, not a rewrite.
+
 ---
 
 ## Bug B1 — Ctrl+Z erases multiple strokes at a time
+
+> **STATUS (T3, 2026-09-18): CLOSED — pre-existing fix, no single attributable sha.** The historic
+> cause (svg.js's `toggleClass(name, force)` ignoring the `force` arg) was already fixed via explicit
+> `addClass`/`removeClass` in `editor/layers.js` by the time this bug was first investigated (T2,
+> 2026-07-11) — the fix predates organized bug tracking, so there is no clean single commit to cite.
+> Verified TWICE against current code: T2's full `pushState` call-site trace (2026-07-11, one site:
+> `finishDrawing`), and lane-b's own re-trace in A5b (2026-09-17) after the mechanism grew to 20
+> `pushState()` call sites across the editor — the 4 in `editor-interaction.js` (the file this bug
+> concerns) map to 4 distinct, non-overlapping gestures; none double-fire for one stroke. **No
+> regression test exists.** A guard would assert: draw one stroke via `finishDrawing`, confirm exactly
+> one `pushState()` call. Runtime confirmation in the actual Fusion CEF host was never performed by a
+> human (T2's own caveat, still true).
 
 ### Symptom
 In the SVG editor, pressing Ctrl+Z (or clicking the sidebar undo button)
@@ -67,6 +98,13 @@ stroke / line / shape to be its own undo step.
 ---
 
 ## Bug B2 — Layer elements vanish on editor reopen
+
+> **STATUS (T3, 2026-09-18): CLOSED, via B6's fix.** T2 (2026-07-11) already resolved every original
+> hypothesis for VISIBLE layers (the save/reopen round-trip is clean) and identified the one concrete,
+> reproducible disappearance mechanism as B6 (`_visibleContent` dropping hidden-layer geometry at
+> save). B6 is now fixed (`957df31`, `serializeEditor` keeps all layers regardless of visibility) and
+> guarded by `tests/b6-hidden-layer-save.test.js` (lane-b T1, 2026-09-17). Since B2's only confirmed
+> mechanism was B6, B2 closes with it — there is no other identified cause left open.
 
 ### Symptom
 After drawing elements in the SVG editor, clicking Apply Stencils, and
@@ -135,6 +173,15 @@ childCount > 0 (DOM rehydrated), and at least one data-layer attr survived.
 ---
 
 ## Bug B3 — Expand tool doesn't work on lines (and possibly other tools)
+
+> **STATUS (T3, 2026-09-18): STALE — the investigated premise never held.** `OPEN_SHAPES = ['path',
+> 'polyline', 'line']` in `editor/editor-expand-shape.js:42` already includes `'line'` — confirmed
+> unchanged in TWO independent reads (T2, 2026-07-11, then `:41`; lane-b A5b, 2026-09-17, now `:42`,
+> same content, one-line shift). The "no line branch in the dispatcher" hypothesis this bug was filed
+> against is false and was already known false at investigation time. **Separate, still-unresolved
+> question, not the same claim as "still buggy":** whether Expand's OUTPUT is geometrically correct
+> for a `<line>` in the real Fusion CEF host has never been confirmed by a human — this needs a runtime
+> check, not a code fix, and nothing in this reconciliation resolves that half.
 
 ### Symptom
 The "Expand" tool in the SVG editor (the toolbar button + expand pipeline that
@@ -209,6 +256,13 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
 ## New findings
 
 ### B4 — `import_svg_sketches` is a DEAD SEND  ·  runtime-bug  ·  confidence HIGH
+
+> **STATUS (T3, 2026-09-18): CLOSED `6d982ab` (no guard).** The dead `#editorSendToFusion` button and
+> its handler were removed entirely (RB4, 2026-07-11) — "Human doesn't use it" per the commit message —
+> rather than wiring a Python receiver. `grep -rn "import_svg_sketches"` across the whole repo → 0 hits.
+> No regression test (a deleted-button assertion needs a DOM harness for the palette HTML, which
+> doesn't exist).
+
 - **Where:** send `b-spline-gen/html/main/app-init.js:187`
   (`adsk.fusionSendData('import_svg_sketches', payload)`); no matching receiver.
 - **Symptom:** the SVG editor's "Send to Fusion" button (BUG-23,
@@ -225,6 +279,13 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   that silently does nothing.
 
 ### B5 — fusion-inspector leaks an app-level selection subscription across Stop→Start  ·  P2-violation  ·  confidence HIGH
+
+> **STATUS (T3, 2026-09-18): CLOSED `0607eaf` (no guard).** IN1 (2026-09-17): `run()` now self-heals
+> (removes any handler left over from an unclean prior stop before adding the new one — confirmed at
+> `frame-inspector/fusion-inspector.py:406,410`) and `stop()` removes the current handler (`:455`).
+> Mirrors template-maker.py's already-correct pattern for the same event. No Python lifecycle test
+> exists anywhere in the repo (reconciled repeatedly across A1/A5a/A6/T1) — no guard.
+
 - **Where:** `frame-inspector/fusion-inspector.py:660-662` (run) vs `:668-704` (stop).
 - **Symptom:** `run()` does `ui.activeSelectionChanged.add(sel_handler)`; `stop()`
   deletes the palette, panel control, and command definition but issues **no**
@@ -238,6 +299,16 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   invoked at `:1373`). Fix: mirror those — `remove(sel_handler)` + `_handlers.clear()`.
 
 ### B6 — Destructive save drops hidden-layer geometry  ·  runtime-bug / data-loss  ·  confidence MED-HIGH
+
+> **STATUS (T3, 2026-09-18): CLOSED `957df31`, guarded by `tests/b6-hidden-layer-save.test.js`.**
+> `_visibleContent` (the function this entry cites) no longer exists anywhere in the codebase — replaced
+> by `serializeEditor` (`editor/editor-io.js:23-40`), whose own docstring names this bug by number:
+> "Dropping their geometry here loses it permanently on save/reopen... (B6)." Traced every caller:
+> `save()` and `saveForRasterization()` both keep all layers regardless of visibility; `getLayerSvg()`
+> (the ONE place that still filters by visibility) is for the live stamp preview, a deliberately
+> different concern the same docstring distinguishes. Verified independently in lane-b's A5b audit
+> (2026-09-17) before the regression test was written (T1, same day).
+
 - **Where:** `b-spline-gen/html/editor/editor-io.js:27-49` (`_visibleContent`), drop at `:44-47`.
 - **Symptom:** before serializing on save, `_visibleContent` **removes** every child
   whose `data-layer` is a hidden layer (`ch.remove()`). The docstring (`:21-26`)
@@ -250,6 +321,12 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   stamp-exclude vs persistence are conflated onto one `visible` flag.
 
 ### B7 — `selection_items` not force-wiped → stale hot-reload  ·  P2-violation  ·  confidence HIGH (severity MED)
+
+> **STATUS (T3, 2026-09-18): CLOSED `c60628b` (no guard).** Already marked resolved inline below
+> (E7a, 2026-09-17) — `payload_builder.py` + `selection_items.py` were confirmed dead (zero callers)
+> and deleted outright rather than added to the force-wipe list. No guard: the class of bug (stale
+> module caching across Stop→Start) no longer applies since the module doesn't exist to go stale.
+
 - **Where:** parent `bspline-frame-builder.py:243-250` (`_shared_project_names`) omits
   `selection_items`; import chain `frame-inspector/fusion-inspector.py:23` →
   `frame-inspector/payload_builder.py:7` (`from selection_items import …`).
@@ -266,6 +343,15 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   **RESOLVED 2026-09-17 (E7a): module was dead — deleted, not wiped.**
 
 ### B8 — Entire editor tree duplicated into stamp-editor  ·  P1-violation  ·  confidence HIGH (severity MED)
+
+> **STATUS (T3, 2026-09-18): STALE.** `59615fe` (C1/F7, 2026-07-11) de-forked stamp-editor's copy —
+> the generated `editor/`, `core/stamp/`, and 4 core deps are untracked + gitignored + regenerated by
+> `sync_stamp_bundle.py`, not a committed duplicate; confirmed independently via `git ls-files` in
+> lane-b's A4 audit (2026-09-17), which found zero of the 54 generated files tracked. Separately, Fred
+> ruled 2026-09-18 that the standalone `stamp-editor` add-in itself is out of scope going forward —
+> this entry's underlying premise (a forked editor tree needing eventual de-dup) no longer applies
+> either way.
+
 - **Where:** `b-spline-gen/html/editor/` (33 `.js`) copied verbatim to
   `stamp-editor/html/editor/` (33 `.js`); `editor-expand.js` is byte-identical today.
 - **Symptom:** P1 says shared logic "must not be forked or copy-pasted per host."
@@ -275,6 +361,13 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   source-vs-`dist/` drift — is T3 scope; logged here as the P1 breach it is.)
 
 ### B9 — Host calls bypass the fusion-bridge seam  ·  P1-violation  ·  confidence HIGH (severity LOW-MED)
+
+> **STATUS (T3, 2026-09-18): CLOSED `48cee2b` (no guard).** BG2 (2026-09-17) routes `get_design_params`
+> through `core/fusion-bridge.js` (confirmed at `:20-21`); `main.js` no longer calls `adsk.*` directly.
+> (The `import_svg_sketches` half of this entry closed separately via B4's deletion.) `grep -rln
+> "adsk\." core/*.js main/*.js` outside `fusion-bridge.js` now returns only `core/fusion-log.js` — see
+> B11. No JS test framework covers this surface — no guard.
+
 - **Where:** `b-spline-gen/html/main/main.js:136` (`get_design_params`) and
   `main/app-init.js:187` (`import_svg_sketches`) call `adsk.fusionSendData(...)`
   **directly** instead of through `core/fusion-bridge.js`.
@@ -288,6 +381,13 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   regardless). (`app-init.js:187` is also the B4 dead-send site.)
 
 ### B10 — CAM-builder stop() unregisters 1 of its 3 CustomEvents  ·  P2-violation  ·  confidence MED (severity LOW)
+
+> **STATUS (T3, 2026-09-18): CLOSED `f0d47ed` (no guard).** HY3 (2026-09-17) made `stop()` unregister
+> all three events symmetrically — confirmed at `cam-builder.py:2185,2189,2193` (`REFRESH_EVENT_ID`,
+> `TPGEN_EVENT_ID`, `AXISPICK_EVENT_ID`, in the merged CAM1 file). Re-verified against the CURRENT
+> merged cam-builder.py (post-CAM1 Builder+Studio consolidation), not just the state this entry was
+> originally written against. No Python lifecycle test exists anywhere in the repo — no guard.
+
 - **Where:** `CAM-builder/cam-builder.py` registers `REFRESH`/`TPGEN`/`AXISPICK`
   CustomEvents in run() (`:2009/2022/2034`); stop() unregisters only `REFRESH`
   (`:2252`) then clears handler refs (`:2257`).
@@ -299,6 +399,16 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   handler). Tighten stop() to unregister all three for symmetry.
 
 ### B11 — `fusLog` log-bridge re-inlined in 3 places  ·  P4-violation  ·  confidence HIGH (severity LOW)
+
+> **STATUS (T3, 2026-09-18): CLOSED `48cee2b` (no guard) — with one documented, intentional exception.**
+> BG2 (2026-09-17) extracted the log tunnel into a leaf module, `core/fusion-log.js`, breaking the
+> circular-import block this entry's own text names as the root cause; `coords.js`/`state.js` no longer
+> re-inline it. `grep -rln "adsk\." core/*.js main/*.js` outside `fusion-bridge.js` now returns only
+> `core/fusion-log.js` (the declared leaf module — by design, since it's the log tunnel itself) and the
+> palette HTML's inline `window.fusionJavaScriptHandler` (a SEPARATE, NAMED P1 exception — Fusion's
+> palette API requires that global to exist synchronously, before any ES module can load; now
+> documented as such in `ROADMAP.md:292`). No JS test framework covers this surface — no guard.
+
 - **Where:** canonical `core/fusion-bridge.js:14`; re-inlined at `core/coords.js:9-20`
   (`COORD_SYSTEM.log`) and `core/state.js:264-266`.
 - **Symptom:** the "tunnel a log line to the Fusion log via
