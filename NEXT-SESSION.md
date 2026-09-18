@@ -1,34 +1,43 @@
-# NEXT — SE4b: slice (b) — drop the legacy branch and the mirror writes; the sidebar Clear clears real content
+# NEXT — SE4c: slice (c) — migration as data, persistence cleanup, snapshot no longer touches stamp content
 
-**Ball: worker (seat A) · epoch 1 · SE4b.** Design: `SE4-MIRROR-RETIREMENT-DESIGN.md` §5 slice (b), approved.
-Files: `main/stamp-mask-manager.js`, `core/engine/rebuild.js`, `main/app-init.js`, `main/stamp/svg-source.js`,
-`core/state.js` (+ test edits, + WORK-LOG). One commit by path, predicted **5–7 files**. SE4a (aeb9a53) is merged;
-main also carries lane-b's T8 (`_deselect` complete, called from open/Clear) and T9 (BUGS_OPEN B12–B15). Seat B is
-in `styles/` (T10) — no overlap.
+**Ball: worker (seat A) · epoch 1 · SE4c.** Design §5 slice (c). Files: `core/state.js`, `core/history.js`,
+`main/app-init.js`, `main/snapshot-manager.js`, `main/stamp/layer.js`, `main/stamp/_shared.js`, tests
+(`editor-reopen`, `history-snapshot`, `persistable-p`, + a migration test) (+ WORK-LOG). One commit by path,
+predicted **9–10 files**. SE4a/b are merged and deployed (advisor live-proving now). Seat B idle.
 
-## Do exactly slice (b)
-1. `updateStampMasks`: delete the legacy fallback branch; `clearEmptyLayerMasks` drops its mirror-clear half
-   (becomes `layer._mask = null` alone). Update `tests/stamp-mask-clear.test.js` to single-store assertions — keep
-   the HIDDEN-layer case exactly as it is (STOP condition in the design).
-2. `rebuild.js`: delete the remaining legacy pass-building block (`:236-242` region).
-3. `app-init.js`: remove the `setStampLayerSvg` mirror writes in onChange / Apply / Cancel (P.editorSvg stays the
-   document; the remask calls stay).
-4. **Sidebar Clear (`btnStampClear`, svg-source.js:73-82) = B15:** clear the ACTIVE layer's real content — remove the
-   children whose `data-layer` equals the active editor layer id from `editor._sketchLayer`, then the same
-   pushState + onChange the editor's own Clear does — and stop writing the mirror. Reuse `editor._deselect()`
-   (T8 made it complete) before removing nodes. If the editor is not loaded, do nothing and say so in a status line
-   (`setFusionStatus` or the panel's own status text — whichever that panel already uses).
-5. `core/state.js`: delete `setStampLayerSvg` / `setStampLayerMask`; keep `setStampLayerEnabled`. Grep every
-   caller first — the design's chain table lists them; any caller not in that table is a finding, not a silent fix.
+## Product decision, made by the advisor (reversible, recorded in ROADMAP)
+The palette's global undo/redo is for the **heightfield** (sculpt, seed, filters). The drawing has the editor's own
+undo stack. So: `applySnapshot` STOPS touching stamp content entirely — no `stampSvgText`, no `hasStampSvg` gate on
+content; it may still refresh masks from the (unchanged) editor after restoring P, if the rebuild needs it.
+Do NOT implement "restore P.editorSvg from the snapshot"; if Fred wants that it is SE4d.
+
+## Do exactly slice (c)
+1. `core/state.js`: `DEFAULT.stampLayers[i]` drops `.svg` / `.mask`; `persistableP` drops the mask-stripping map
+   (keep the function — it is the declared serializer, now identity on layers; say so in its docstring).
+2. `core/history.js`: remove the `stampSvgText` parameter; `layerConfigs` stops carrying content once the shape does.
+3. `main/snapshot-manager.js`: delete the `stampSvgText` branch and the `hasStampSvg` gate per the decision above.
+4. **Migration, declared as data:** a `MIGRATIONS` array in `main/app-init.js` (or `core/state.js` if the loader lives
+   there), each entry `{ id, when(P), apply(P) }`, run once right after `loadLastSession()` and once after a cloud
+   project load (find the one place both paths converge, or call it from both). First entry `legacy-stamp-svg`: when
+   `!P.editorSvg` and some `P.stampLayers[i].svg` is set → synthesize a one-layer editor document from the FIRST
+   such svg (wrap its children with `data-layer` = that layer's index as string, carry `data-editor-layers` for it),
+   assign `P.editorSvg`, delete the legacy fields. Multi-layer legacy saves: migrate EVERY layer that has `.svg`
+   into its own `data-layer` group (the design's risk note) — one loop, not a `.find()`.
+5. `editorRestoreSvg()`'s fallback → folded into the migration (the function returns `P.editorSvg || null`).
+6. `main/stamp/layer.js` / `_shared.js`: narrow the `.svg` display fallbacks and `activeLayer()`'s fallback shape.
+7. `initApp`'s `.svg`-based remask gate → content check via editor layers.
 
 ## Verify
-- `npx vitest run` → all green (count in WORK-LOG); `node --check` touched modules.
-- Greps under `html/`: `setStampLayerSvg\|setStampLayerMask` → 0; `stampLayers\[.*\]\.mask` → 0 outside
-  `core/state.js`'s default shape (that is slice c); `legacy` in stamp-mask-manager.js → 0.
-- Live proof (sidebar Clear removes the carve AND the drawing; editor Clear still works; hidden layer keeps its
-  mask) is the ADVISOR's.
+- `npx vitest run` → green; new `tests/migrations.test.js`: an old-shaped save (`stampLayers[0].svg` set,
+  `editorSvg` null) → after migration `editorSvg` is populated once and the legacy field is gone; a two-layer legacy
+  save → both land in the document under their own `data-layer`; running migrations twice is a no-op.
+- Greps under `html/`: `\.stampLayers\[.*\]\.svg\|\.stampLayers\[.*\]\.mask` → 0; `stampSvgText` → 0;
+  `MIGRATIONS` → definition + the runner.
+- Re-run `tests/editor-reopen.test.js` and `tests/stamp-mask-clear.test.js` (STOP conditions) — unchanged green.
+- Live proof (an old saved project still shows its drawing; undo after sculpt leaves the drawing alone) is the
+  ADVISOR's.
 
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE4b: legacy branch + mirror writes gone, sidebar Clear clears real content (B15) — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE4c: shape + persistence cleanup, MIGRATIONS declared, snapshot content-free — <sha>, N files, vitest N"`
 and stop.
