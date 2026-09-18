@@ -1,28 +1,29 @@
-# LANE B — T9: BUGS_OPEN bookkeeping for today's finds (docs only)
+# LANE B — T10: show the shortcut letter on each tool button — derived from `data-key`, CSS only
 
-**Seat B · epoch 1 · T9.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. File: `BUGS_OPEN.md`
-(+ WORK-LOG-lane-b.md). One commit by path. Same rubric as your T3 (status line + summary-table row per entry).
+**Seat B · epoch 1 · T10.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. Files:
+`bspline-frame-builder/styles/editor.css` (where `.tool-btn` lives — confirm with grep; if it is in base.css, use that)
+(+ WORK-LOG-lane-b.md). Predicted **1 file** + log. Seat A is in `main/` + `core/engine/` — no overlap.
 
-## Update / add
-- **B12** → `CLOSED f46561a (guarded by tests/stamp-mask-clear.test.js)` — SE3a; advisor live-verified 2026-09-18
-  08:45 (Cancel reverts; Clear → Apply clears the carve).
-- **B13 (new, from SE4-MIRROR-RETIREMENT-DESIGN.md findings #1+#2):** "Global undo/redo nulls `P.stampLayers[0].svg`
-  (`takeSnapshot`'s `stampSvgText` is always null; `applySnapshot` tests `!== undefined`) and `export-flow.js`
-  reads that field with no editor fallback → Send-to-Fusion / Export-STEP silently drop the drawing after any undo."
-  Status: OPEN — fix in flight as SE4a (seat A). Proof lines: `core/history.js:24`, `main/snapshot-manager.js:41`,
-  `main/export-flow.js:40-44`.
-- **B14 (new):** "Ghost selection overlay after Clear / reopen — highlight + handle layers survive
-  `_sketchLayer.clear()`." Status: `CLOSED 13a2480 (no guard — DOM-bound)`; note the bonus: `_deselect()` also
-  missed `_selectionHighlights` for every caller.
-- **B15 (new, from the design §3 finding #3):** "Two buttons named Clear with different effects: the sidebar
-  `btnStampClear` clears only the mirror (`svg-source.js:73-82`), the editor's `editorClear` clears real content."
-  Status: OPEN — scheduled for SE4 slice (b).
+## Why
+SE1 declared the shortcut on the button (`data-key="v"` …, 9 buttons in the modal rail). The tooltip shows it only on
+hover. A small key badge on the button makes the shortcuts discoverable, and the declaration already carries the
+text — no JS, no second list.
+
+## Build
+- One rule set, no markup change:
+  `.tool-btn[data-key] { position: relative; }`
+  `.tool-btn[data-key]::after { content: attr(data-key); position: absolute; right: 2px; bottom: 1px;
+   font: 600 8px/1 system-ui, sans-serif; text-transform: uppercase; color: currentColor; opacity: .55;
+   pointer-events: none; }`
+  `.tool-btn.active[data-key]::after { opacity: .9; }`
+- Check the rail width (44 px, buttons ~32 px) so the badge does not collide with the icon: if it does, drop the
+  badge to `font-size: 7px` rather than moving it.
+- `data-key="0"` (Fit) shows "0" — fine.
 
 ## Verify
-- Summary table has rows B1–B15; each new `### B` heading has exactly one status line under it.
-- `git show --stat HEAD` → BUGS_OPEN.md + log.
+- Grep: `attr(data-key)` → 1. No other file changes. Look is the ADVISOR's (deploy + capture).
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T9: BUGS_OPEN B12 closed, B13–B15 added — <sha>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T10: data-key badge via CSS attr() — <sha>, 1 file"`
 and stop.
