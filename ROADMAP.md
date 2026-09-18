@@ -424,3 +424,16 @@ and untracked since 59615fe (2026-07-11); the on-disk drift is a stale bundle, r
 - **SE2 (next):** wheel zoom + space-drag pan + Fit button on the editor canvas (svg.js viewbox is already the base).
 - **SE3 (maybe):** shortcut letters shown on the buttons; 32 gated `dbg()` tracer calls (20 in text-session) — leave
   unless they get in the way.
+- **SE1 live-verified 2026-09-18 08:20** (add-in 6a3911b, docked palette): Circle button in the rail; `c` → Circle mode,
+  `v` → Select mode (hint + highlight follow). Two things seen while proving it:
+  - **SE3a — CANCEL DOES NOT REVERT (bug, confirmed in code + live).** A stray pen stroke drawn in the editor stayed
+    carved in the 3D preview after Cancel. Chain: `onChange` writes `P.editorSvg` + remasks after every edit
+    (app-init.js:81-95); masks rasterize from the LIVE editor layers (`stamp-mask-manager.js:49-52`,
+    `getLayerSvg(editor, …)`); the Cancel path restores `P.stampLayers[idx].svg/mask/enabled` from
+    `SvgEditorSnapshot` (app-init.js:118-127) — the legacy store nobody reads any more, and `ctx.activeLayer()`
+    is an EDITOR layer with no `.svg`, so the snapshot itself holds `undefined` (svg-source.js:91-97). Neither
+    `P.editorSvg` nor the editor document is restored. This is C5/EDM4 (ROADMAP:114) as a user-visible bug.
+    Fix = declare the snapshot as the one thing onChange writes (`{active, editorSvg}`), restore THAT + reload the
+    editor document + remask; drop the legacy fields.
+  - **SE3b — STYLE segmented control overlaps** ("ROKELBOTH"): the STROKE/FILL/BOTH buttons in the modal's top bar
+    collapse onto each other at the palette's width. Cosmetic, CSS only.
