@@ -5116,3 +5116,74 @@ carves are all the advisor's, as scoped.
 No gate hit. Did not touch `main/stamp/svg-source.js`'s Browse/Clear button handlers beyond the one
 snapshot-capture block, and did not touch `applyStampLayers`/`refreshAllStampMasks` — both were read and
 confirmed correct as-is rather than modified.
+
+## Turn 193 — SE4-plan: retire the P.stampLayers content mirror — DESIGN ONLY
+
+**Task (epoch 1, per NEXT-SESSION.md):** SE3a's own diff documented the two-content-store tangle it had
+to work around. Inventory every reader/writer of `P.stampLayers[i].svg`/`.mask`, classify what's a
+legitimate tooling field vs. the content duplicate, propose a single store, and lay out a 3-slice removal
+with the ownership-vs-sharing and removal-chain gates from the advisor skill.
+
+**Read every hit, not just the ones the dispatch's own "Why now" section already named.** Grepped
+`stampLayers` under `core/`, `main/`, `editor/`, and `tests/` — **84 total hits** (54 + 30, corrected
+after I first mis-estimated 67 while drafting the appendix — recounted with the actual grep before
+finalizing rather than leaving a wrong number in a doc whose own verify step checks it) — then read every
+file that hit, not just skimmed the grep output, to classify each site as content (dies), tooling
+(stays), or something needing a rewrite in between.
+
+**Two real, previously-undocumented bugs surfaced during the inventory, both cited as concrete evidence
+for "why now" rather than just architectural taste:**
+1. `core/history.js:24`'s `takeSnapshot(label, stampSvgText = null)` — every one of its 3 current callers
+   passes only `label`. `stampSvgText` is therefore always literally `null`, never `undefined`, in every
+   snapshot ever taken. `main/snapshot-manager.js:41`'s `applySnapshot` checks `snap.stampSvgText !==
+   undefined` — `null !== undefined` is `true` — so **every undo/redo unconditionally nulls
+   `P.stampLayers[0].svg`**, regardless of what was actually undone. Silent today only because most
+   readers already prefer `editor._layers`/`P.editorSvg`.
+2. `main/export-flow.js:40-44`'s `isCarvingLayer`/`hasShippableSvg` (driving Send-to-Fusion/Export-STEP's
+   SVG-inclusion option and the actual export payload) are **the one reader in this entire codebase with
+   no editor-layer fallback at all** — they read `P.stampLayers[i].svg`/`.mask` directly. Combined with
+   finding 1: **after any undo/redo, the export flow silently drops that layer's artwork from the
+   export.** Confirmed by tracing the exact call chain (`activeStampLayers()`/`exportableStampLayers()` →
+   wizard option gates at `:76,96,113,135` → the real payload at `:187`), not inferred from the field
+   names alone.
+3. A third, smaller finding: the sidebar's Clear button (`svg-source.js:73-82`, `btnStampClear`) only
+   nulls the mirror — it never touches `editor._sketchLayer`'s actual content for that layer, unlike the
+   editor MODAL's own Clear (`editorClear`, a different button entirely) which does. Two buttons named
+   "Clear" with two different real effects.
+
+**One genuinely useful discovery that shrinks the remaining work:** `_importSvgIntoEditor`
+(`svg-source.js:130-169`, private/unexported) **already does exactly what the dispatch's own proposal
+asked for** — parses an uploaded SVG and appends it into `editor._sketchLayer` with `data-layer` set,
+firing `onChange`/`pushState`. The Browse handler already calls it as the PRIMARY path, with
+`setStampLayerSvg` only as a fallback for when the editor isn't loaded yet. Slice (a)'s "declare
+`importSvgIntoLayer`" is therefore an export + rename of existing, working code, not new code to write —
+documented this explicitly so whoever implements slice (a) doesn't duplicate it.
+
+**One thing noticed, explicitly scoped OUT rather than silently expanded into:** the tooling fields
+(`depth`/`profile`/`angle`/etc.) appear to be persisted TWICE today — once via `P.stampLayers` +
+`persistableP` (JSON), and once via `editor-io.js`'s `_PERSISTED_LAYER_FIELDS` embedded directly in the
+saved SVG's `data-editor-layers` attribute (itself part of `P.editorSvg`). Whether that's a second mirror
+worth its own future retirement, or deliberate (one is the sidebar's live-editing buffer, one is the
+save format), is a real open question I did not resolve — the dispatch scoped this design to content
+only (`.svg`/`.mask`), and I kept to that scope, flagging the observation for ROADMAP rather than quietly
+folding a second retirement into this one.
+
+**One open product question surfaced for slice (c), flagged rather than assumed either way:** should
+undo/redo restore drawn stamp content at all? Finding 1 means it effectively hasn't been doing so
+meaningfully since `stampSvgText` was introduced — sculpt/Clear snapshots may be scoped to the
+heightfield only (the editor has its own separate undo stack via `editor.undo()`/`.redo()`), in which
+case `applySnapshot` should simply stop touching stamp content, not be "fixed" to restore it. Marked this
+explicitly as a product decision for Fred/the advisor, not something to guess at while writing the doc.
+
+**Verify:**
+- The doc has all 5 requested sections (`## 1. Inventory` through `## 5. Slices`) plus `Why now` (restated
+  with the 3 findings above), `Risks / STOP conditions`, and an appendix with the corrected grep count.
+- Every row in §1's table traces to a real file:line I read directly — no row was written from the
+  dispatch's own ground truth without independently confirming it against the current file content
+  (caught the `stampSvgText`/export-flow findings this way, which the dispatch's own "Why now" section
+  didn't mention).
+- Each of the 3 slices names its predicted files and has its own `Verify:` line, per the dispatch's ask.
+- `git show --stat HEAD` (after commit) → 2 files (the design doc + this WORK-LOG entry), matching the
+  dispatch's prediction exactly.
+
+No code changed this turn — design/documentation only, per the dispatch's explicit "PLAN ONLY."
