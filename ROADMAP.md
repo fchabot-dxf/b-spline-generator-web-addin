@@ -443,3 +443,11 @@ and untracked since 59615fe (2026-07-11); the on-disk drift is a stale bundle, r
     So the fix is one declared invariant, not two patches: after every refresh, every layer NOT in the work list has
     its mask set to null (and the preview rebuilt). Cancel then becomes: restore `P.editorSvg`, reload the editor
     document, refresh — and the invariant clears whatever the reverted document no longer contains.
+- **SE2 live-verified 08:45** (add-in 39baa37): wheel zooms about the cursor, middle-drag pans, `0` fits, Fit button in
+  the rail; Cancel closes cleanly. Measured: a 200 px horizontal middle-drag moved the board ~130 px on screen
+  (container wider than the 7×9 board → letterboxed on X) — the per-axis scale in `_panBy` is wrong under
+  `preserveAspectRatio` meet, and `getDynamicTolerance` has the same flaw on the other axis. Dispatched to seat B as
+  **T5** (declare `viewScale()` once in editor-view.js; both callers go through it).
+- **Lane-b merges:** T3 (BUGS_OPEN reconciliation, daae06e) merged at 39baa37. T4 (SE3b CSS rule + B12, a287d98) is
+  on lane-b, merges after SE3a lands (seat A holds main). Note: lane-b's NEXT-SESSION.md rides along in every merge
+  (both seats use the same file name); harmless because the advisor rewrites it on the next dispatch.

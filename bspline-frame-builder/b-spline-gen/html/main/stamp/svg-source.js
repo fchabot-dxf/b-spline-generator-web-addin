@@ -90,11 +90,13 @@ export function initSvgSource(ctx, layerModule) {
       modal.style.display = 'flex';
       const currentLayer = ctx.activeLayer();
       if (currentLayer) {
+        // SE3a: snapshot the unified document BEFORE this session, not the
+        // active editor layer's own fields (ctx.activeLayer() returns an
+        // EDITOR layer here — id/name/tooling, no `.svg` — so capturing
+        // currentLayer.svg was always undefined; see editorRestoreSvg's
+        // own comment for the same RO1 history).
         SvgEditorSnapshot.active = true;
-        SvgEditorSnapshot.layerIdx = P.activeLayerIdx;
-        SvgEditorSnapshot.svg = currentLayer.svg;
-        SvgEditorSnapshot.mask = currentLayer.mask;
-        SvgEditorSnapshot.enabled = !!currentLayer.enabled;
+        SvgEditorSnapshot.editorSvg = P.editorSvg ?? null;
       }
       if (window.svgEditor && currentLayer) {
         // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:

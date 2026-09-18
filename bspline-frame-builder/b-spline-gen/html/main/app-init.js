@@ -1,4 +1,4 @@
-import { P, loadLastSession, saveLastSession, lastResult, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '../core/state.js';
+import { P, loadLastSession, saveLastSession, lastResult, setStampLayerSvg, setStampLayerMask } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
@@ -8,11 +8,13 @@ import { AppState } from './app-state.js';
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
 
-// Snapshot of the active stamp layer captured when the SVG editor modal
-// opens. The Cancel button restores from this so closing without applying
+// SE3a: snapshot of the unified editor document (P.editorSvg) captured
+// when the SVG editor modal opens. The Cancel button restores it — reloads
+// the editor from this document and remasks — so closing without applying
 // genuinely undoes the in-flight edits (instead of silently keeping them
-// because onChange already wrote to the layer during typing).
-export const SvgEditorSnapshot = { active: false, layerIdx: -1, svg: null, mask: null, enabled: false };
+// because onChange already wrote P.editorSvg + remasked after every edit
+// while the user was still typing).
+export const SvgEditorSnapshot = { active: false, editorSvg: null };
 
 /**
  * Resolve the SVG to restore the editor with: the unified source of truth
@@ -111,17 +113,21 @@ export function initSvgEditor(preview) {
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
         }
-      } else if (SvgEditorSnapshot.active && SvgEditorSnapshot.layerIdx >= 0) {
-        // Cancel path — restore pre-edit state for the layer that was being edited.
-        const idx = SvgEditorSnapshot.layerIdx;
-        if (P.stampLayers[idx]) {
-          // Restore raw fields directly: setStampLayerSvg auto-enables the
-          // layer when svg is non-null, which we don't want here — we're
-          // restoring whatever enabled state existed pre-edit.
-          P.stampLayers[idx].svg = SvgEditorSnapshot.svg;
-          P.stampLayers[idx].mask = SvgEditorSnapshot.mask;
-          setStampLayerEnabled(idx, SvgEditorSnapshot.enabled);
-        }
+      } else if (SvgEditorSnapshot.active) {
+        // Cancel path — restore the pre-edit DOCUMENT (onChange already
+        // wrote P.editorSvg + remasked live while the user was typing, so
+        // restoring a per-layer field can't undo it — the edits are
+        // already the live state by the time Cancel runs). Reload the
+        // editor from the restored document with the SAME call the opener
+        // uses, then remask. open() only manipulates DOM/SVG attributes
+        // and reads the top-view canvas's pixel buffer (sync3DBackground)
+        // — neither depends on the modal's visibility, checked by reading
+        // both, so this is safe regardless of exactly when the modal
+        // hides relative to this call.
+        P.editorSvg = SvgEditorSnapshot.editorSvg;
+        setStampLayerSvg(P.activeLayerIdx, P.editorSvg);
+        saveLastSession();
+        window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       }

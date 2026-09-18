@@ -5022,3 +5022,168 @@ surface the advisor can check independently of Fusion, per the dispatch's own no
 
 No gate hit. Did not touch `cam_engine`-adjacent code, `editor-hit.js`, `editor-marquee.js`, or
 `editor-transform-handles.js` — all three were read to confirm they need no changes, not modified.
+
+## Turn 191 — SE3a: SVG editor Cancel must revert; an emptied layer must lose its mask — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, live-observed 2026-09-18 08:30):** two symptoms, one cause. Cancel
+doesn't actually undo an edit (the stroke stays carved); Clear → Apply on an empty canvas still shows the
+old carve. Declare the Cancel snapshot as exactly `{active, editorSvg}`, make Cancel restore the document
+and reload the editor, and declare the mask invariant "a layer with no content has no mask."
+
+**(1) Snapshot reshaped, both readers found and rewritten.** `SvgEditorSnapshot` is now `{active: false,
+editorSvg: null}` (`app-init.js`). Grepped `SvgEditorSnapshot\.` under `main/` **before** touching
+anything — exactly 2 files reference the old fields: the capture-on-open block (`svg-source.js`'s Edit
+button) and the Cancel branch (`app-init.js`'s `onCommit`). Capture now reads `P.editorSvg ?? null` — the
+document BEFORE the session — instead of `ctx.activeLayer().svg`, which the dispatch's ground truth (and
+`editorRestoreSvg`'s own pre-existing comment, same RO1 history) already established is `undefined` in
+the unified model (an editor layer has no `.svg` field).
+
+**(2) Cancel branch rewritten to restore the document, not a per-layer field.** `P.editorSvg =
+SvgEditorSnapshot.editorSvg;` → mirrored via `setStampLayerSvg(P.activeLayerIdx, P.editorSvg)` (the SAME
+call `onChange` uses — no second mirroring convention invented) → `saveLastSession()` → reload with
+`window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn)` (the exact call the opener uses,
+reusing the existing helper rather than duplicating its fallback logic) → `refreshAllStampMasks(...)`.
+**Checked, not assumed, whether `open()` genuinely works on a hidden container** (the dispatch's own
+"say in WORK-LOG that you checked" ask): read `open()` and the `sync3DBackground()` it calls — `open()`
+only does DOM/SVG attribute manipulation and string parsing (`setModelMetrics` → `applyView` just sets
+SVG attributes; no `getBoundingClientRect`/`clientWidth` reads anywhere in the function), and
+`sync3DBackground` reads a `<canvas>` element's pixel buffer via `.toDataURL()`, which doesn't depend on
+DOM visibility either. So it's safe regardless of exactly when the modal's `display` flips relative to
+this call — didn't need to reorder anything to make that literally true first.
+
+**(3) Mask invariant in `updateStampMasks` — with one refinement beyond the dispatch's literal wording,
+to avoid introducing a new regression.** The dispatch's description ("every editor layer NOT in the work
+list gets `layer._mask = null`") would, read literally, also clear masks for **hidden** layers — the work
+list excludes those too (`if (layer.visible === false) return;`), but a hidden layer isn't empty, it's
+just not shown right now, and the existing legacy-fallback comment explicitly documents a "Cancel-restore
+safety" reason hidden layers must NOT lose their mask. Tracked the two exclusion reasons separately
+instead: `emptyIdxs` (visible, no content — collected in the SAME loop that already calls `getLayerSvg`
+to build `work`, no second lookup) vs. layers simply skipped for being hidden (untouched). Factored the
+clearing itself into a new exported `clearEmptyLayerMasks(editorLayers, emptyIdxs)` — pure-ish (only
+touches `editorLayers` entries + the `P.stampLayers` mirror, no rasterizing/DOM) specifically so it's
+testable without mocking `rasterizeSvg`/`scheduleRebuild`/`getLayerSvg` — called right after the work list
+is fully built (both the editor-layer loop and the legacy-fallback loop), before the existing `if
+(work.length === 0) return …`, per the dispatch's ordering.
+**Read `core/engine/rebuild.js`'s `_collectStampPasses` and found the reason BOTH halves must clear, not
+just one:** it reads `layer._mask || (P.stampLayers?.[idx]?.mask) || null` — an `||` fallback that would
+silently resurrect the stale legacy-mirror mask if only `layer._mask` were cleared. The dispatch's own
+instruction already asked for clearing both fields; this confirms concretely why skipping either half
+would have shipped a fix that looked complete but didn't actually work.
+
+**(4) Confirmed `applyStampLayers` already treats `null` mask as "no pass"** (`core/engine/apply-stamp-
+layers.js:41`, `if (!layer || !layer.enabled || !layer.svg || !layer.mask) return;`) — no change needed,
+matching the dispatch's own expectation.
+
+**(5) Confirmed `refreshAllStampMasks` already reschedules the rebuild for an empty work list.**
+`updateStampMasks`'s early return is `myGeneration === _refreshGeneration`, which evaluates `true` in the
+normal (non-racing) case — so `refreshAllStampMasks`'s `if (!isLatest) return;` does NOT short-circuit,
+and `scheduleRebuild(...)` runs regardless, exactly as the dispatch's own "check it, don't assume it needs
+a change" framing anticipated. No code change was needed here — this is the second dispatch claim this
+turn that verification confirmed as already-true rather than something to build.
+
+**(6) Cleaned up the one orphan my own edit created:** `setStampLayerEnabled` became unused in
+`app-init.js` once the Cancel branch stopped calling it — removed from the import. Left `setStampLayerMask`
+in that same import alone even though it's ALSO unused there — confirmed via `git show HEAD:...` that it
+was already an orphan **before** this turn's edits, unrelated to my change; noting it rather than
+silently deleting pre-existing dead code I wasn't asked to touch.
+
+**Verify (all green, including a non-vacuous check on the new test):**
+- `node --check` on all 3 touched modules → clean.
+- New `tests/stamp-mask-clear.test.js`, 5 tests: `clearEmptyLayerMasks` directly (clears an emptied
+  layer's mask on both sides while leaving a content-bearing layer's mask untouched; no-ops on an empty
+  `emptyIdxs`; tolerates a missing `P.stampLayers` mirror), plus `updateStampMasks` end-to-end for the
+  **all-layers-empty** scenario — the literal Clear→Apply regression — and a **hidden-layer** case
+  proving the invariant does NOT touch a hidden layer's mask.
+  **Could not exercise the dispatch's suggested "one layer with content, one empty" scenario through
+  `updateStampMasks` itself** — checked empirically (a throwaway probe test) that this vitest
+  environment's `canvas.getContext('2d')` returns `null` (no 2D backend installed), so any layer WITH
+  content would hit the real rasterizer (`core/stamp/index.js`) and crash on that null context. This is
+  exactly the "un-mockable, test the extracted invariant function instead" case the dispatch's own Verify
+  section anticipated — `clearEmptyLayerMasks`'s first test covers the mixed one-content/one-empty case
+  at the pure-invariant level instead.
+  **Proved non-vacuous**, not just written: checked out the pre-fix `stamp-mask-manager.js` (via `git
+  show HEAD:...`) into the working tree, re-ran the suite — 4 of 5 new tests failed against it (the 5th,
+  the no-op-on-empty-input case, legitimately passes either way since it asserts nothing changed), then
+  restored the fixed file and confirmed all 5 pass again.
+- `npx vitest run` → **47 passed** across 9 files (the 42 from SE2 + these 5).
+- Greps: `SvgEditorSnapshot\.` under `main/` → exactly `.active` and `.editorSvg`, in the 2 expected
+  files. `layerIdx` → **0** in `main/`.
+- `git status --short` → **4 files**, matching the predicted "3-4" exactly (3 named files + the test).
+
+**Could not exercise live** — stroke→Cancel→no-groove, Clear→Apply→no-groove, and normal-Apply-still-
+carves are all the advisor's, as scoped.
+
+No gate hit. Did not touch `main/stamp/svg-source.js`'s Browse/Clear button handlers beyond the one
+snapshot-capture block, and did not touch `applyStampLayers`/`refreshAllStampMasks` — both were read and
+confirmed correct as-is rather than modified.
+
+## Turn 193 — SE4-plan: retire the P.stampLayers content mirror — DESIGN ONLY
+
+**Task (epoch 1, per NEXT-SESSION.md):** SE3a's own diff documented the two-content-store tangle it had
+to work around. Inventory every reader/writer of `P.stampLayers[i].svg`/`.mask`, classify what's a
+legitimate tooling field vs. the content duplicate, propose a single store, and lay out a 3-slice removal
+with the ownership-vs-sharing and removal-chain gates from the advisor skill.
+
+**Read every hit, not just the ones the dispatch's own "Why now" section already named.** Grepped
+`stampLayers` under `core/`, `main/`, `editor/`, and `tests/` — **84 total hits** (54 + 30, corrected
+after I first mis-estimated 67 while drafting the appendix — recounted with the actual grep before
+finalizing rather than leaving a wrong number in a doc whose own verify step checks it) — then read every
+file that hit, not just skimmed the grep output, to classify each site as content (dies), tooling
+(stays), or something needing a rewrite in between.
+
+**Two real, previously-undocumented bugs surfaced during the inventory, both cited as concrete evidence
+for "why now" rather than just architectural taste:**
+1. `core/history.js:24`'s `takeSnapshot(label, stampSvgText = null)` — every one of its 3 current callers
+   passes only `label`. `stampSvgText` is therefore always literally `null`, never `undefined`, in every
+   snapshot ever taken. `main/snapshot-manager.js:41`'s `applySnapshot` checks `snap.stampSvgText !==
+   undefined` — `null !== undefined` is `true` — so **every undo/redo unconditionally nulls
+   `P.stampLayers[0].svg`**, regardless of what was actually undone. Silent today only because most
+   readers already prefer `editor._layers`/`P.editorSvg`.
+2. `main/export-flow.js:40-44`'s `isCarvingLayer`/`hasShippableSvg` (driving Send-to-Fusion/Export-STEP's
+   SVG-inclusion option and the actual export payload) are **the one reader in this entire codebase with
+   no editor-layer fallback at all** — they read `P.stampLayers[i].svg`/`.mask` directly. Combined with
+   finding 1: **after any undo/redo, the export flow silently drops that layer's artwork from the
+   export.** Confirmed by tracing the exact call chain (`activeStampLayers()`/`exportableStampLayers()` →
+   wizard option gates at `:76,96,113,135` → the real payload at `:187`), not inferred from the field
+   names alone.
+3. A third, smaller finding: the sidebar's Clear button (`svg-source.js:73-82`, `btnStampClear`) only
+   nulls the mirror — it never touches `editor._sketchLayer`'s actual content for that layer, unlike the
+   editor MODAL's own Clear (`editorClear`, a different button entirely) which does. Two buttons named
+   "Clear" with two different real effects.
+
+**One genuinely useful discovery that shrinks the remaining work:** `_importSvgIntoEditor`
+(`svg-source.js:130-169`, private/unexported) **already does exactly what the dispatch's own proposal
+asked for** — parses an uploaded SVG and appends it into `editor._sketchLayer` with `data-layer` set,
+firing `onChange`/`pushState`. The Browse handler already calls it as the PRIMARY path, with
+`setStampLayerSvg` only as a fallback for when the editor isn't loaded yet. Slice (a)'s "declare
+`importSvgIntoLayer`" is therefore an export + rename of existing, working code, not new code to write —
+documented this explicitly so whoever implements slice (a) doesn't duplicate it.
+
+**One thing noticed, explicitly scoped OUT rather than silently expanded into:** the tooling fields
+(`depth`/`profile`/`angle`/etc.) appear to be persisted TWICE today — once via `P.stampLayers` +
+`persistableP` (JSON), and once via `editor-io.js`'s `_PERSISTED_LAYER_FIELDS` embedded directly in the
+saved SVG's `data-editor-layers` attribute (itself part of `P.editorSvg`). Whether that's a second mirror
+worth its own future retirement, or deliberate (one is the sidebar's live-editing buffer, one is the
+save format), is a real open question I did not resolve — the dispatch scoped this design to content
+only (`.svg`/`.mask`), and I kept to that scope, flagging the observation for ROADMAP rather than quietly
+folding a second retirement into this one.
+
+**One open product question surfaced for slice (c), flagged rather than assumed either way:** should
+undo/redo restore drawn stamp content at all? Finding 1 means it effectively hasn't been doing so
+meaningfully since `stampSvgText` was introduced — sculpt/Clear snapshots may be scoped to the
+heightfield only (the editor has its own separate undo stack via `editor.undo()`/`.redo()`), in which
+case `applySnapshot` should simply stop touching stamp content, not be "fixed" to restore it. Marked this
+explicitly as a product decision for Fred/the advisor, not something to guess at while writing the doc.
+
+**Verify:**
+- The doc has all 5 requested sections (`## 1. Inventory` through `## 5. Slices`) plus `Why now` (restated
+  with the 3 findings above), `Risks / STOP conditions`, and an appendix with the corrected grep count.
+- Every row in §1's table traces to a real file:line I read directly — no row was written from the
+  dispatch's own ground truth without independently confirming it against the current file content
+  (caught the `stampSvgText`/export-flow findings this way, which the dispatch's own "Why now" section
+  didn't mention).
+- Each of the 3 slices names its predicted files and has its own `Verify:` line, per the dispatch's ask.
+- `git show --stat HEAD` (after commit) → 2 files (the design doc + this WORK-LOG entry), matching the
+  dispatch's prediction exactly.
+
+No code changed this turn — design/documentation only, per the dispatch's explicit "PLAN ONLY."

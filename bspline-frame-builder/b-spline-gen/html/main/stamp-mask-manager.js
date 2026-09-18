@@ -24,6 +24,22 @@ function _editorLayerAt(idx) {
 }
 
 /**
+ * SE3a: the mask-clear invariant — "a layer with no content has no
+ * mask" — factored out as its own pure-ish function (only touches
+ * `editorLayers` entries and the P.stampLayers mirror; no rasterizing,
+ * no DOM) so it's testable without mocking rasterizeSvg/scheduleRebuild/
+ * getLayerSvg. `emptyIdxs` is the set of indices into `editorLayers`
+ * that are visible but currently have no content.
+ */
+export function clearEmptyLayerMasks(editorLayers, emptyIdxs) {
+  for (const idx of emptyIdxs) {
+    const layer = editorLayers[idx];
+    if (layer) layer._mask = null;
+    if (P.stampLayers?.[idx]) setStampLayerMask(idx, null);
+  }
+}
+
+/**
  * Step 3 unification: produce one stamp pass per editor layer. The
  * editor's sketch is the single SVG document; each layer's content is
  * a partition of it (children with `data-layer="<layer.id>"`).
@@ -44,13 +60,19 @@ export async function updateStampMasks(nx, nz) {
 
   // Build the work list. Each entry: { source: 'editor'|'legacy', idx, layer, svg, tooling }
   const work = [];
+  // SE3a: visible editor layers with no content — tracked separately from
+  // "not in work" so the invariant below never touches a HIDDEN layer's
+  // mask (a hidden layer still has content, just not shown right now —
+  // clearing it would break the Cancel-restore safety the legacy-fallback
+  // comment below describes).
+  const emptyIdxs = [];
 
   if (editorLayers && editorLayers.length > 0) {
     editorLayers.forEach((layer, idx) => {
       if (!layer) return;
       if (layer.visible === false) return;
       const svg = getLayerSvg(editor, layer.id);
-      if (!svg) return;   // nothing on this layer yet — skip
+      if (!svg) { emptyIdxs.push(idx); return; }   // nothing on this layer yet — skip
       work.push({ source: 'editor', idx, layer, svg });
     });
   }
@@ -74,6 +96,15 @@ export async function updateStampMasks(nx, nz) {
       work.push({ source: 'legacy', idx, layer, svg: layer.svg });
     });
   }
+
+  // Invariant: a layer with no content has no mask. Without this, a
+  // layer that just lost its content (Clear, or an edit that emptied it)
+  // keeps rendering whatever it was stamping before, forever — the mask
+  // was rasterized from content that no longer exists. Both the editor
+  // layer's own _mask AND its P.stampLayers mirror must clear: rebuild.js's
+  // _collectStampPasses reads `layer._mask || P.stampLayers[idx].mask`, so
+  // clearing only one half would let the other resurrect the stale mask.
+  clearEmptyLayerMasks(editorLayers, emptyIdxs);
 
   if (work.length === 0) return myGeneration === _refreshGeneration;
 
