@@ -601,3 +601,68 @@ already uses. `import os` was already present; no other change to the file.
 
 No gate hit — small, isolated, fully verified product-code fix on two files neither seat A nor any
 other in-flight work touches.
+
+---
+
+## Lane B — Turn 21 — T3: reconcile BUGS_OPEN.md against shipped fixes — DONE, 8 closed / 2 stale / 1 stale-with-caveat
+
+**Docs only — `BUGS_OPEN.md`.** Verified all 11 entries against ground truth per the dispatch: git log
+searches (`-S` on the specific broken symbol/pattern, plus `--grep` on the advisor's named tickets),
+current code reads, and cross-referencing the tests this lane itself wrote (T1). Trusted the code over
+the advisor's own hints where I could verify independently — confirmed every hint given, found nothing
+that contradicted one, but did not simply copy them in without checking (e.g. B4's hint named `e95d610`
+but that commit turned out to be HY4, a later unrelated cleanup — the actual B4 fix is `6d982ab`, found
+via `git log -S"import_svg_sketches"`).
+
+**Final tally: 8 CLOSED, 2 STALE, 1 STALE-with-an-unresolved-caveat** (B3 — see below, doesn't cleanly
+fit any of the 4 buckets alone).
+
+**B1 (self-verified, no advisor hint).** No single fix commit exists — the root cause (svg.js's
+`toggleClass` force-arg bug) was already fixed in `layers.js` before this bug was even filed (T2,
+2026-07-11 already found it fixed at investigation time). Rather than force a fake "CLOSED <sha>" onto
+a fix with no clean attributable commit, wrote CLOSED with an explicit note that none exists, plus the
+two independent full-trace verifications that back the verdict (T2's July trace, my own A5b re-trace of
+the 20-call-site surface it's grown into since).
+
+**B2 (self-verified).** CLOSED via B6 — T2 already traced this down to one confirmed mechanism (B6's
+hidden-layer drop), which is now fixed. Didn't re-litigate B2 independently since its own text already
+did that work; just confirmed the ONE thing it was waiting on (B6) actually closed.
+
+**B3 (self-verified) — the one entry that doesn't fit the 4-bucket rubric cleanly, said so rather than
+forcing it.** The specific hypothesis under investigation (no `'line'` branch in the Expand dispatcher)
+was false from the start and remains false — that part is STALE. But whether the actual SYMPTOM (Expand
+producing wrong output on a line) still occurs was never confirmed OR refuted in the real Fusion host —
+that's neither "closed" nor "still open" in the code-evidence sense the rubric wants, it's a genuine
+runtime unknown. Wrote both halves explicitly rather than picking whichever bucket sounded more
+finished.
+
+**B4-B11 — each individually verified, not batch-trusted from the advisor's hint list:**
+- B4: `6d982ab` (RB4, 2026-07-11) — button+handler deleted outright, not wired up. (Hint named `e95d610`
+  — checked it, it's a later unrelated commit; found the real one via `-S` search.)
+- B5: `0607eaf` (IN1, 2026-09-17) — confirmed current code at `fusion-inspector.py:406,410,455` matches
+  the commit message's description exactly (self-heal in `run()`, remove in `stop()`).
+- B6: `957df31` (EDM3) — same fix as B2 traces to; this is where the T1 guard (turn 17) actually lives.
+- B7: `c60628b` — already had a resolved note from E7a (turn 105, this session's own earlier work);
+  re-confirmed rather than re-investigated from scratch.
+- B8: `59615fe` (C1/F7) — matches this lane's own A4 audit finding exactly (`git ls-files` showed 0 of
+  54 generated files tracked); added Fred's 2026-09-18 stamp-editor-out-of-scope ruling as a second,
+  independent reason it's stale.
+- B9 + B11: both close via the SAME commit, `48cee2b` (BG2) — verified the `adsk.*`-outside-bridge grep
+  now returns only `core/fusion-log.js` (B11's declared leaf module) and confirmed `ROADMAP.md:292`
+  documents the one remaining exception (the inline Fusion handshake bridge) by name, as A5b-4
+  recommended and the advisor's turn-15 review note promised.
+- B10: `f0d47ed` (HY3) — re-verified against the CURRENT merged `cam-builder.py` (post-CAM1's Builder+
+  Studio consolidation, a big refactor since this bug was filed), not just trusting the original
+  file:line citations, which could have shifted or gone stale independent of whether the bug itself
+  was fixed.
+
+**Built the summary table + per-entry status lines exactly as specified:** one table row per entry at
+the top, one status line directly under each heading (verified via `grep -c "STATUS (T3"` → 11, matching
+11 headings 1:1), original entry text preserved unchanged beneath each — a reconciliation, not a
+rewrite. Updated the stale `_Last updated: 2026-05-20` line too, since a wrong date is its own small
+lie the file was telling.
+
+**Verify:** `git status --short` → only `BUGS_OPEN.md`. `grep -n "^## Bug B\|^### B[0-9]"` → 11 headings,
+each immediately followed by its status block. No amendments pending at either poll.
+
+No gate hit — docs-only turn, no product code touched.
