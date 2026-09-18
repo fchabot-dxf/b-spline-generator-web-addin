@@ -17,7 +17,7 @@ import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState } from './layers.js';
 import { worldBbox } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
-import { on, _isTypingTarget } from './dom.js';
+import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import {
@@ -26,6 +26,7 @@ import {
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
+import { viewboxFor, zoomAbout, applyView } from './editor-view.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -42,11 +43,25 @@ export function initInteraction(editor) {
     on(svgNode, 'touchstart', (e) => handleStart(editor, e), { passive: false });
     on(window,  'touchmove',  (e) => handleMove(editor, e),  { passive: false });
     on(window,  'touchend',   (e) => handleEnd(editor, e));
+    // SE2: wheel = zoom about the cursor. passive:false so preventDefault
+    // stops the modal body from scrolling.
+    on(svgNode, 'wheel', (e) => handleWheel(editor, e), { passive: false });
     // BUG-28: global keyboard shortcuts for the editor — Delete /
     // Backspace removes the whole multi-selection, Ctrl/Cmd+C copies it
     // onto editor._clipboard, Ctrl/Cmd+V pastes (with a small offset so
     // duplicates are visible) onto the active editor layer.
     on(window, 'keydown', (e) => _handleEditorKeydown(editor, e));
+    // SE2: matching keyup so Space-held-for-pan releases reliably.
+    on(window, 'keyup', (e) => _handleEditorKeyup(editor, e));
+}
+
+function handleWheel(editor, e) {
+    if (!editor._draw) return;
+    e.preventDefault();
+    const before = editor._getMousePoint(e);
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    editor._view = zoomAbout(editor._view, before, factor);
+    applyView(editor);
 }
 
 function _isEditorActive(editor) {
@@ -64,6 +79,16 @@ function _isEditorActive(editor) {
 function _handleEditorKeydown(editor, e) {
     if (!_isEditorActive(editor)) return;
     const sel = (editor._selectedElements || []);
+
+    // SE2: Space held = pan-ready (checked in handleStart). preventDefault
+    // so the modal body doesn't scroll while held.
+    if (e.code === 'Space') {
+        e.preventDefault();
+        editor._spaceHeld = true;
+        const c = el('editorSVGContainer');
+        if (c) c.classList.add('pan-ready');
+        return;
+    }
 
     // Delete / Backspace — remove all selected.
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel.length > 0) {
@@ -125,6 +150,15 @@ function _handleEditorKeydown(editor, e) {
     }
 }
 
+function _handleEditorKeyup(editor, e) {
+    if (!_isEditorActive(editor)) return;
+    if (e.code === 'Space') {
+        editor._spaceHeld = false;
+        const c = el('editorSVGContainer');
+        if (c) c.classList.remove('pan-ready');
+    }
+}
+
 function _pasteFromClipboard(editor, clip) {
     if (!editor._sketchLayer) return;
     const sketchNode = editor._sketchLayer.node;
@@ -176,12 +210,31 @@ function handleDblClick(editor, e) {
 function handleStart(editor, e) {
     dbg('TEXT-DBG', `handleStart fired: type=${e.type} mode=${editor._currentMode} hasEditingText=${!!editor._editingTextEl} ts=${Math.round(e.timeStamp)} target=<${e.target?.tagName}>`);
     if (e.type === 'touchstart' && e.touches.length > 1) return;
+
+    // SE2: pan — middle-button drag, or Space + left drag. Checked before
+    // the mode dispatch so it works no matter which tool is active.
+    if (e.button === 1 || (editor._spaceHeld && e.button === 0)) {
+        e.preventDefault();
+        editor._isPanning = true;
+        editor._panStart = {
+            clientX: e.clientX, clientY: e.clientY,
+            cx: editor._view.cx, cy: editor._view.cy,
+        };
+        const c = el('editorSVGContainer');
+        if (c) c.classList.add('panning');
+        return;
+    }
+
     const pt = editor._snap(editor._getMousePoint(e));
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
 }
 
 function handleMove(editor, e) {
+    if (editor._isPanning) {
+        _panBy(editor, e.clientX - editor._panStart.clientX, e.clientY - editor._panStart.clientY);
+        return;
+    }
     const pt = editor._snap(editor._getMousePoint(e));
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
@@ -203,7 +256,24 @@ function handleMove(editor, e) {
     if (handler.hover) handler.hover(editor, pt);
 }
 
+function _panBy(editor, dxClient, dyClient) {
+    const vb = viewboxFor(editor._view, editor._mW, editor._mH);
+    const svgEl = document.getElementById('editorSVGContainer');
+    const clientWidth  = (svgEl && svgEl.clientWidth)  || 1;
+    const clientHeight = (svgEl && svgEl.clientHeight) || 1;
+    editor._view.cx = editor._panStart.cx - dxClient * vb.w / clientWidth;
+    editor._view.cy = editor._panStart.cy - dyClient * vb.h / clientHeight;
+    applyView(editor);
+}
+
 function handleEnd(editor, e) {
+    if (editor._isPanning) {
+        editor._isPanning = false;
+        editor._panStart = null;
+        const c = el('editorSVGContainer');
+        if (c) c.classList.remove('panning');
+        return;
+    }
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         _strokeLog(`handleEnd  isDrawing=true  mode=${editor._currentMode}  hasFinish=${!!handler.finish}`);

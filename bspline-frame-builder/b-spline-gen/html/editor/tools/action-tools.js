@@ -7,6 +7,9 @@ export function registerActionTools(editor) {
   bind('editorUndo', () => editor.undo());
   bind('editorRedo', () => editor.redo());
 
+  // SE2: reset zoom/pan to fit the whole board.
+  bind('toolFit', () => editor.fitView());
+
   // Transform attribute helpers (paired with the on-canvas rotate/scale
   // handles). Both no-op when nothing's selected.
   bind('toolResetTransform',   () => editor.resetSelectionTransform());

@@ -14,6 +14,7 @@ import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHig
 import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
+import { fitView as _fitView } from './editor-view.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -56,6 +57,13 @@ export class VectorEditor {
         
         this._mW = 7;
         this._mH = 9;
+        // SE2: the one view record — zoom 1 = the whole board, cx/cy is
+        // the model-space center. See editor-view.js for the derivation
+        // into an SVG viewBox and the zoom/pan math.
+        this._view = { zoom: 1, cx: this._mW / 2, cy: this._mH / 2 };
+        this._spaceHeld = false;
+        this._isPanning = false;
+        this._panStart = null;
         this._currentMode = 'draw';
         this._strokeWidth = 0.5;
         this._strokeColor = '#000000';
@@ -352,11 +360,17 @@ export class VectorEditor {
     setModelMetrics(w, h) {
         if (!this._draw) return;
         this._mW = w; this._mH = h;
-        this._draw.viewbox(0, 0, w, h);
+        // SE2: resets _view to fit the (possibly new) board size and pushes
+        // it to the live viewbox — no other code should call
+        // this._draw.viewbox(...) as a setter directly.
+        _fitView(this);
         this._bgLayer.clear();
         // Remove the grey viewbox background rectangle so the preview is not clipped by it.
         this.sync3DBackground();
     }
+
+    /** Reset the view to fit the whole board — bound to the Fit tool button. */
+    fitView() { _fitView(this); }
 
     deleteSelected() {
         // BUG-28 multi-select: remove every selected element, not just
