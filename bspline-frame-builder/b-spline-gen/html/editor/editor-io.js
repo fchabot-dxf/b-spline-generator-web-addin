@@ -466,6 +466,11 @@ export function open(editor, svgString, w, h) {
     _ioLog(`open() called  svgLen=${(svgString || '').length}  w=${w} h=${h}`);
     editor.setModelMetrics(w, h);
     editor._sketchLayer.clear();
+    // T8: the wiped sketch layer's old selection (if any) would otherwise
+    // leave its highlight halo / transform handles ghosted on screen — they
+    // live in separate layers (_highlightLayer/_handleLayer) that
+    // _sketchLayer.clear() never touches.
+    if (typeof editor._deselect === 'function') editor._deselect();
     sync3DBackground(editor);
     // T6: a fresh session must never start pan-ready — the previous
     // session's Space/pan state has no meaning here.

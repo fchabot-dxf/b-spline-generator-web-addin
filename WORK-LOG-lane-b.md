@@ -893,3 +893,139 @@ no edit.
 No gate hit — every discrepancy from the dispatch's own predictions (untracked assumption, docstring
 staleness, comment-count) was checked against the actual repo state before deciding what to do, and
 each is reported specifically rather than smoothed into a single "done" summary.
+
+---
+
+## Lane B — Turn 31 — T8: ghost selection after Clear/reopen — completed _deselect(), reused it directly
+
+**Merged main first** (not explicitly told to this time, but lane-b was behind — `git log`/`git
+merge-base` confirmed it, so merged anyway rather than risk working from a stale tree). Clean merge, one
+file (`ROADMAP.md`, docs-only), no conflict. Baseline `npx vitest run` after the merge → 52 green,
+matching the dispatch's prediction exactly (no drift to chase).
+
+**Confirmed the ground truth exactly, then found ONE MORE gap beyond what it named.** `action-tools.js`'s
+Clear handler and `editor-io.js`'s `open()` both call `_sketchLayer.clear()` and neither calls
+`_deselect()` at all — confirmed by grep, matches the advisor's citation precisely. Read the existing
+`_deselect()` (`editor.js:389-395` before this turn) to answer the dispatch's own question ("if it
+already does all four... if it leaves a layer untouched, complete it THERE"): it cleared
+`_selectedElement` (which cascades to `_selectedElements` via the property setter — already declared,
+didn't need touching), `_handleLayer`, and the LEGACY singular `_selectionHighlight` — but **not**
+`_selectionHighlights` (plural, the array `updateSelectionHighlight()` actually populates with one halo
+shape per multi-selected element, added to `_highlightLayer`)`. So even where `_deselect()` WAS already
+called (11 pre-existing sites), a 2+-element selection would leave every highlight but the last one
+ghosted in `_highlightLayer` — a real, slightly wider version of the bug the ground truth's single-stroke
+repro wouldn't have surfaced. Completed `_deselect()` to also clear the plural array (iterating +
+`.remove()`) and `_selectedNodes` (named explicitly in the dispatch; found it referenced once as a guard
+at `editor-ui.js:157` but never assigned anywhere — clearing it defensively costs nothing and matches
+what was asked even though I couldn't find where it'd ever be non-empty).
+
+**Chose to reuse the now-complete `_deselect()` directly rather than declare a separate
+`resetContentState(editor)` wrapper — the dispatch's own "or `_deselect(...)` if you reuse it directly
+— say which" escape hatch.** Once `_deselect()` covers all four things (selected elements, selected
+nodes, handle layer, EVERY highlight), a second name wrapping a single call to it would be a pure
+indirection with no distinct behavior of its own — the "node-count UI reset" the dispatch mentioned is
+already covered by `_deselect()`'s existing `updateToolbarVisibility(this)` call; didn't find a separate
+node-count widget to justify a wrapper doing more than that. Saying so explicitly rather than silently
+picking one option without acknowledging the choice.
+
+**The other big win: fixing `_deselect()` once automatically fixes `deleteSelected()` too, with zero
+changes to that function.** `deleteSelected()` (`editor.js:384`) already called `_deselect()` after
+removing elements — per the dispatch's own conditional ("if it already does after removing, leave it"),
+correctly left it untouched. Its own latent multi-select-highlight-ghost gap (same root cause) is now
+closed as a side effect of the shared fix, not a separate edit.
+
+**Wired the 2 new call sites** (`open()` right after `_sketchLayer.clear()`, before the unrelated
+pan-state reset already there from T6; the Clear handler right after `_sketchLayer.clear()`, before
+`pushState()` as specified) with a guarded `typeof editor._deselect === 'function'` check — matching the
+existing defensive style at nearby call sites in these same files rather than assuming the method always
+exists.
+
+**Verify, all items from the dispatch:**
+- `node --check` on all 3 touched modules → clean.
+- `npx vitest run` → **52 green**, unchanged (DOM-bound fix, no pure-math surface to unit-test the way
+  T5's was).
+- `grep -n "_sketchLayer.clear()"` in both files → each followed within a few lines (through one short
+  explanatory comment) by the `_deselect()` call.
+- `grep -rn "_deselect("` → definition + 13 call sites total (11 pre-existing + my 2 new ones) — far
+  exceeds the "≥3" bar; didn't declare `resetContentState(` at all, per the choice explained above.
+- `git status --short` → exactly 3 files, at the top of the "2-3" prediction (the third being `editor.js`,
+  where `_deselect()` already lived — matches the dispatch's own "editor.js... where `_deselect` lives"
+  file-list entry).
+- Live verification (draw → Clear → OK → no ghost; draw → select → Cancel → reopen → no ghost) is the
+  advisor's, per the dispatch.
+
+No gate hit — completed a shared function once rather than hand-rolling three separate reset call pairs,
+and explicitly reasoned through the dispatch's own "reuse vs. declare a wrapper" fork instead of picking
+one silently.
+
+---
+
+## Lane B — Turn 33 — T9: BUGS_OPEN — B12 closed, B13-B15 added — DONE, docs only
+
+**Same rubric as T3 — verified every one of the advisor's own claims against the actual repo before
+writing anything down, not transcribed on trust, even though this dispatch's citations were far more
+precise than T3's (exact shas, exact test filenames, exact proof lines already given).**
+
+- **B12 → CLOSED.** Confirmed `f46561a` exists (`git show -s`, matches "SE3a - Cancel actually reverts,
+  an emptied layer loses its mask") and `tests/stamp-mask-clear.test.js` exists on disk. Kept BOTH status
+  blocks under the heading — the new CLOSED one and the original T4 OPEN one as history — rather than
+  overwriting, since this entry's whole point is showing the OPEN→CLOSED progression, not just the
+  current state.
+- **B13 (new) — traced all three proof lines myself, not just cited them.** `takeSnapshot`'s
+  `stampSvgText` parameter defaults to `null` (`core/history.js:25`) — grepped every call site (3 of
+  them) and confirmed NONE ever pass a second argument, so it's unconditionally `null`, not just "usually."
+  `snapshot-manager.js:41`'s guard tests `!== undefined` — worked through why that's the actual bug: `null
+  !== undefined` is `true` in JS, so the null passes the guard and gets written into
+  `P.stampLayers[0].svg` on every restore. `export-flow.js:40-44`'s `isCarvingLayer`/`hasShippableSvg`
+  read that same field with no fallback to the unified editor model, so the null silently drops the
+  layer from export. Wrote out the full causal chain in the entry, not just the three isolated
+  citations, since the "why" is what makes this a data-loss bug rather than three unrelated facts.
+- **B14 (new) — this is my own commit from last turn (T8, `13a2480`)**, so verification here was mostly
+  making sure the BUGS_OPEN entry accurately reflects what I already know is true, including the "bonus"
+  finding (the `_selectionHighlights` plural-array gap affecting all 13 pre-existing callers) rather than
+  just the narrow Clear/open() symptom the advisor's dispatch text led with.
+- **B15 (new) — read both button handlers directly.** `svg-source.js:72-81`'s `btnStampClear` only nulls
+  the legacy `P.stampLayers[idx]` mirror fields; `action-tools.js:18-24`'s `editorClear` (the one B14
+  just fixed) does the real `_sketchLayer.clear()`. Confirmed both element ids against the palette HTML
+  (`bspline_gen_palette.html:637` and `:1247`) rather than trusting the JS-side names alone.
+
+**Verify:** summary table now has 15 rows (B1-B15) — confirmed via grep, the one apparent 16th match was
+a false positive (the OLD T2-era "| Bug | Verdict |" table header, unrelated). 16 total `STATUS (` blocks
+= 11 original (T3) + B12's 2 (current+historical) + B13/B14/B15's 1 each — accounted for precisely
+rather than just checking the total "looks about right." `git status --short` → `BUGS_OPEN.md` only, as
+expected for a docs-only turn.
+
+No gate hit — docs-only, no product code touched; every one of the advisor's own citations was
+independently re-derived rather than assumed correct just because the advisor is usually right.
+
+---
+
+## Lane B — Turn 35 — T10: shortcut-key badge on tool buttons, `.tool-btn[data-key]::after { content: attr(data-key) }` — DONE, CSS only
+
+- Confirmed `.tool-btn` lives in `bspline-frame-builder/styles/editor.css` (grep across `styles/*.css`
+  found it only there, at `:62`), matching the dispatch's primary guess — no need to fall back to
+  base.css.
+- Confirmed the "44px rail, ~32px buttons" premise before trusting it: the base (non-media-query)
+  `.tool-btn` rule is 34px (`editor.css:62-76`), and the rail width is NOT in editor.css at all — it's
+  an inline style on the actual element, `bspline_gen_palette.html:1319`:
+  `<aside class="editor-sidebar" style="width:44px; ... display:flex; flex-direction:column;
+  align-items:center; ...">`. The three `.editor-sidebar .tool-btn` rules I found in editor.css
+  (`:312`, `:409+`) are both inside responsive breakpoints (38px/40px buttons, 56px rail) — irrelevant
+  to the base case the dispatch is describing.
+- Collision check (by math, not a render — no visual tool available in this session; the dispatch itself
+  defers "look" to the advisor's deploy+capture): 34px button, `align-items:center` on the rail flexbox,
+  20px centered icon inside → (34-20)/2 = 7px of empty corner margin on each side. An 8px, single
+  uppercase glyph at `right:2px; bottom:1px` sits inside that 7px margin without reaching the icon's
+  centered 20px box. Kept the dispatch's default `font: 600 8px/1 ...` rather than dropping to 7px,
+  since the math clears the icon with margin to spare — flagging this as an UNVERIFIED-visually call in
+  case the advisor's capture disagrees.
+- Added the three rules verbatim from the dispatch, placed right after the existing `.tool-btn.active`
+  block (`editor.css:83-87`) and before the two icon-specific overrides (`#toolSelect`/`#toolNode`), so
+  all shortcut-badge rules stay grouped with the base button rules they extend. No markup change — all
+  9 buttons (`data-key="v" a c e l p r t 0"`, confirmed via grep across the palette HTML) already carry
+  the attribute from SE1; the badge is pure CSS attr() read of an existing declaration, not a new list.
+
+**Verify:** `grep -c "attr(data-key)"` on `styles/editor.css` → 1, as predicted. `git status --short` →
+`styles/editor.css` only, 1 file, matching the prediction exactly.
+
+No gate hit — CSS-only, additive, no JS/markup touched.
