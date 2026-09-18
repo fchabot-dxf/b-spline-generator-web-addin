@@ -9,6 +9,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
+import { resetPanState } from './editor-interaction.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -466,6 +467,9 @@ export function open(editor, svgString, w, h) {
     editor.setModelMetrics(w, h);
     editor._sketchLayer.clear();
     sync3DBackground(editor);
+    // T6: a fresh session must never start pan-ready — the previous
+    // session's Space/pan state has no meaning here.
+    resetPanState(editor);
 
     // Fresh editor session: wipe any leftover undo history from a previous
     // session so the user can't Ctrl+Z back into someone else's design.

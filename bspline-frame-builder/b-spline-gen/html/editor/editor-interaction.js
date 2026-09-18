@@ -26,11 +26,30 @@ import {
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
-import { viewboxFor, zoomAbout, applyView } from './editor-view.js';
+import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
     try { fusLog(`[STROKE] ${msg}`); } catch (_) {}
+}
+
+/** T6: the one place that clears pan-related state (Space-held, active
+ *  drag, and both CSS classes). Space-keyup and the mouseup pan-end branch
+ *  are the normal paths; window 'blur' and a fresh open() are the ones
+ *  that don't fire a matching keyup/mouseup — focus leaving the modal
+ *  (alt-tab, a native confirm dialog, the palette losing focus — all
+ *  common in Fusion's palette host) used to leave `_spaceHeld` stuck true,
+ *  so the next left-click panned instead of drawing, with the
+ *  'pan-ready' cursor stuck on screen. */
+export function resetPanState(editor) {
+    editor._spaceHeld = false;
+    editor._isPanning = false;
+    editor._panStart = null;
+    const c = el('editorSVGContainer');
+    if (c) {
+        c.classList.remove('pan-ready');
+        c.classList.remove('panning');
+    }
 }
 
 
@@ -53,6 +72,10 @@ export function initInteraction(editor) {
     on(window, 'keydown', (e) => _handleEditorKeydown(editor, e));
     // SE2: matching keyup so Space-held-for-pan releases reliably.
     on(window, 'keyup', (e) => _handleEditorKeyup(editor, e));
+    // T6: focus leaving the page/palette (alt-tab, a native dialog, the
+    // palette losing focus) fires no keyup/mouseup — 'blur' is the one
+    // event that reliably does, so it's the backstop reset.
+    on(window, 'blur', () => resetPanState(editor));
 }
 
 function handleWheel(editor, e) {
@@ -153,9 +176,7 @@ function _handleEditorKeydown(editor, e) {
 function _handleEditorKeyup(editor, e) {
     if (!_isEditorActive(editor)) return;
     if (e.code === 'Space') {
-        editor._spaceHeld = false;
-        const c = el('editorSVGContainer');
-        if (c) c.classList.remove('pan-ready');
+        resetPanState(editor);
     }
 }
 
@@ -261,17 +282,19 @@ function _panBy(editor, dxClient, dyClient) {
     const svgEl = document.getElementById('editorSVGContainer');
     const clientWidth  = (svgEl && svgEl.clientWidth)  || 1;
     const clientHeight = (svgEl && svgEl.clientHeight) || 1;
-    editor._view.cx = editor._panStart.cx - dxClient * vb.w / clientWidth;
-    editor._view.cy = editor._panStart.cy - dyClient * vb.h / clientHeight;
+    // Uniform scale (preserveAspectRatio="meet" on the editor root — see
+    // editor-view.js's viewScale docstring), not clientWidth/clientHeight
+    // divided per-axis: that disagrees with the actual render on whichever
+    // axis is letterboxed.
+    const { dx, dy } = screenToModelDelta(vb, clientWidth, clientHeight, dxClient, dyClient);
+    editor._view.cx = editor._panStart.cx - dx;
+    editor._view.cy = editor._panStart.cy - dy;
     applyView(editor);
 }
 
 function handleEnd(editor, e) {
     if (editor._isPanning) {
-        editor._isPanning = false;
-        editor._panStart = null;
-        const c = el('editorSVGContainer');
-        if (c) c.classList.remove('panning');
+        resetPanState(editor);
         return;
     }
     if (editor._isDrawing) {

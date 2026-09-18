@@ -666,3 +666,167 @@ lie the file was telling.
 each immediately followed by its status block. No amendments pending at either poll.
 
 No gate hit — docs-only turn, no product code touched.
+
+---
+
+## Lane B — Turn 23 — T4: SE3b fillmode CSS declaration + B12 in BUGS_OPEN — DONE, 4 files (not 3)
+
+**Scope discipline first, since seat A was actively editing the SAME html file this turn.** Confirmed
+via `git diff --stat`/`git diff` after the edit that the palette-HTML change touches ONLY lines
+1267-1272 (well inside the assigned 1263-1275 window) — nothing near the tool rail (~1312+) or the modal
+script seat A owns this turn.
+
+**1. SE3b — declared the fillmode control instead of leaving it hand-rolled.** Removed `cad-icon-btn
+small` (a 16px icon-button class the three STYLE buttons were never supposed to be) and every inline
+`style=` attribute from the 3 buttons; added 3 rules to `styles/base.css` next to `.cad-icon-btn`
+(`.editor-fillmode-btn`, the `+` adjacent-sibling border rule, `.editor-fillmode-btn.active`) — exactly
+the 3 rules the dispatch specified, no more.
+
+**Found and fixed the hand-rolled JS duplicate the dispatch asked me to check for — this is the 4th
+file, beyond the predicted 3.** `editor/properties-shape.js`'s `initFillModeToggle`'s `setActive`
+closure was ALSO setting `btn.style.background`/`btn.style.color` inline on every click, duplicating
+exactly what the new `.editor-fillmode-btn.active` CSS rule now declares — two sources of truth for the
+same visual state, the kind of thing that drifts silently. Removed the two inline-style lines, kept only
+`btn.classList.toggle('active', ...)`. **Flagging the file-count discrepancy plainly:** the dispatch's
+own "Files:" list and "predicted 3 files" line didn't include this one, but its OWN item-1 instructions
+explicitly said to check for and remove exactly this hand-rolled styling if found — found it, removed
+it, and I'm reporting 4 files rather than silently narrowing my report to match the stale prediction.
+
+**2. B12 recorded — verified all three proof lines directly before writing anything down, not copied
+from the dispatch verbatim.** Read `app-init.js:114-127` (confirmed: Cancel restores the legacy
+`P.stampLayers[idx]` fields, not `P.editorSvg`), `stamp/svg-source.js:91-97` (confirmed: the Cancel
+snapshot's `.svg` field is captured from `ctx.activeLayer()`, which returns an EDITOR layer with no
+`.svg` property — the file's OWN comment two lines below independently confirms this is `undefined`,
+and names it as a recurrence of an already-fixed bug, RO1, on a different code path), and
+`stamp-mask-manager.js:40-78` (confirmed: `updateStampMasks` returns early at `:78` when the work list
+is empty, never touching a layer's stale `mask` — so an emptied canvas keeps its old stamp geometry).
+Added the entry (status OPEN, fix queued as SE3a on main — not this lane's to fix) and a row in the T3
+summary table this lane built last turn, keeping the table current rather than letting it drift stale
+again immediately after being fixed.
+
+**Verify, all items from the dispatch:**
+- Extracted the palette's 3 inline `<script>` blocks and ran `node --check` → clean (sanity check that
+  the HTML edit, which only touched attributes, didn't corrupt anything nearby).
+- `npx vitest run` → **36 green**, unchanged from before this turn's edits.
+- `grep -c "cad-icon-btn small editor-fillmode-btn"` → 0. `editor-fillmode-btn` count in the HTML → 3.
+  Rule count in `base.css` → 3. Visually confirmed no `style=` attribute remains on any of the 3 buttons.
+- `git status --short` → exactly the 4 files named above (3 predicted + `properties-shape.js`).
+
+No gate hit — small, evidence-verified change; stayed inside the assigned HTML region despite seat A's
+concurrent edits to the same file; the one scope deviation (4th file) was explicitly instructed by the
+dispatch's own item-1 text, not a unilateral addition, and is called out rather than hidden.
+
+---
+
+## Lane B — Turn 25 — T5 (breaker→fixer): pan/tolerance scale — PROVEN WRONG, fixed, 4 files
+
+**Merged main first** (`git merge --no-edit main`) — one conflict, `NEXT-SESSION.md` (expected: both
+branches rewrite it every turn; kept lane-b's own copy, the actual turn 25 dispatch, via `git checkout
+--ours`). Merge brought in SE2 (`80da844`), which had ALREADY declared `editor-view.js`'s zoom/pan view
+record (`viewboxFor`/`zoomAbout`/`clampZoom`/`applyView`/`fitView`) and its own test file
+(`tests/editor-view.test.js`, 6 tests) — this turn EXTENDS that file/module, doesn't create it from
+scratch. Noted one thing worth flagging: SE2's own `zoomAbout` test built its `screenToModel` helper
+with `clientHeight` deliberately proportional to `clientWidth` (matching the board's aspect exactly) —
+which means that test could never have caught this bug even if the product code had it, since it never
+exercises a letterboxed container. Not a defect in SE2's test (it's testing `zoomAbout`, a different
+function), just noting why this gap survived past that turn.
+
+**Step 1 — proved the suspicion before touching anything else.** Confirmed the editor root's actual
+creation site (`editor/init.js:14`, `window.SVG().addTo(...).size('100%','100%')`) has no
+`preserveAspectRatio` override — so it's the SVG default, `xMidYMid meet`, exactly as the dispatch
+suspected. Grepped for `preserveAspectRatio` under `editor/` — the only hits are in `editor-io.js`
+(save/export SVG strings, `preserveAspectRatio="none"`) and `editor-expand-trace.js` (also export) —
+a DIFFERENT, unrelated surface (files being written for saving/rasterizing, not the live interactive
+canvas). The escape hatch in the dispatch (if `none` were found on the live root, the suspicion would be
+wrong) does not apply.
+
+**Computed the actual numeric disagreement before writing any test**, quoting it here as the dispatch
+asked: for the 7×9 board —
+- **Tall container** (300×800 — width is the binding/correct axis): old per-axis `dy` formula gave
+  `1.125` where the correct uniform-scale value is `2.333` — **48.2% of correct, i.e. 51.8% too small.**
+- **Wide container** (1200×400 — height is binding): old per-axis `dx` formula gave `0.583` where
+  correct is `2.25` — **25.9% of correct, i.e. 74.1% too small.**
+- Sanity-checked the null case too: a container matching the board's exact 7:9 aspect (no letterboxing)
+  makes the old and new formulas agree on both axes — confirms the bug is specifically an
+  aspect-MISMATCH bug, not a general error in the old formula's shape.
+
+**Step 2 — declared the scale once, in `editor-view.js`** (the file SE2 already established as the
+one place for view-record math): `viewScale(vb, clientW, clientH)` → `Math.min(clientW/vb.w,
+clientH/vb.h)`, and `screenToModelDelta(vb, clientW, clientH, dxPx, dyPx)` → `{dx, dy}` via that scale.
+Routed `_panBy` (editor-interaction.js) through `screenToModelDelta` (needs both axes at once) and
+`getDynamicTolerance` (editor-hit.js) through `viewScale` DIRECTLY (`px / viewScale(...)`, matching the
+dispatch's own suggested formula literally) rather than through `screenToModelDelta` — a small
+implementation choice that matters for the verify grep: routing tolerance through `screenToModelDelta`
+instead would have left `viewScale(` at only 2 hits (definition + 1 internal call) instead of the
+dispatch's predicted "definition + 2 callers." Caught this via the grep itself, adjusted to match rather
+than leaving the count in a place I hadn't actually checked against the spec.
+
+**Step 3 — extended `tests/editor-view.test.js`**, not a new file: added `viewScale`/`screenToModelDelta`
+to the existing import, then 5 new tests — the 3-case letterbox proof (tall/wide/exact-match, quoting
+the same numbers above) plus 2 `screenToModelDelta` tests (round-trip via `dx*s`/`dy*s`, and "equal
+pixel deltas on both axes produce equal model deltas" — which is the property that fails under the old
+per-axis formula whenever the container isn't the board's exact aspect). The reference "old formula" in
+the proof tests is a small local function in the TEST file, explicitly commented as no longer existing
+in product code — not imported from anywhere, since the old buggy code was replaced, not kept around.
+
+**Verify, all items from the dispatch:**
+- `npx vitest run` → **47 green** = 42 (36 mine from before + SE2's 6 in `editor-view.test.js`, the
+  post-merge baseline) **+ 5 new**.
+- `node --check` on all 3 touched `.js` modules → clean.
+- `grep -rn "clientWidth" editor/`: the only 3 hits left are DOM-property reads passed straight through
+  to `screenToModelDelta`/`viewScale` — no raw per-axis division remains anywhere.
+- `grep -rn "viewScale(" editor/` → 3 hits: definition + 2 callers (`screenToModelDelta`'s internal
+  call, `getDynamicTolerance`'s direct call) — exactly matches the dispatch's predicted shape.
+- `git status --short` → exactly the 4 predicted files.
+
+No gate hit — proved the bug with concrete numbers before writing any product-code fix, per the
+breaker-then-fixer sequencing the dispatch asked for; the one implementation choice I second-guessed
+(direct `viewScale` call vs. routing through `screenToModelDelta`) was resolved by checking it against
+the dispatch's own predicted verify output rather than picking whichever felt more "unified" in isolation.
+
+---
+
+## Lane B — Turn 27 — T6: declare resetPanState, call from keyup/mouseup/blur/open — DONE, 2 files
+
+**Read the current code before writing anything, confirmed the ground truth exactly as the dispatch
+stated it.** `_handleEditorKeyup` (Space release) gates on `_isEditorActive(editor)` first — if a native
+dialog or alt-tab steals focus entirely out of the window while Space is held, no `keyup` event ever
+reaches the document (the browser doesn't dispatch key events to an unfocused window), so `_spaceHeld`
+stays `true` forever and the next click pans instead of drawing. Confirmed `mouseup` is ALREADY on
+`window`, not the SVG node (`initInteraction:41`, unchanged since SE2) — so the dispatch's item-3
+contingency ("if the pan end only listens on the svg node, move it to window") does NOT apply here;
+grepped for `mouseleave` too, found none. Noted both explicitly rather than silently assuming and moving
+on, since acting on a wrong assumption here would have been a no-op edit at best.
+
+**Declared `resetPanState(editor)` in `editor-interaction.js`**, right after the imports for visibility:
+clears `_spaceHeld`/`_isPanning`/`_panStart` and removes BOTH `pan-ready` and `panning` classes in one
+place — even though a given caller (e.g. Space-keyup) would only ever need to clear one of the two
+classes in the normal case, resetting all of it unconditionally is what makes this a reliable BACKSTOP
+for the abnormal cases (blur, open()) where you can't know which state might be stuck.
+
+**Wired all 4 call sites:**
+1. `on(window, 'blur', () => resetPanState(editor))` — new listener in `initInteraction`, the actual
+   fix: `blur` fires reliably when focus leaves the window, unlike `keyup`, which needs the key
+   released WHILE focused to fire at all.
+2. `_handleEditorKeyup`'s Space branch — replaced the 3 hand-rolled lines with the one call.
+3. `handleEnd`'s pan-end branch (`editor._isPanning` true) — same replacement.
+4. `editor-io.js`'s `open()` — called right after `sync3DBackground(editor)`, before the undo-stack/
+   layer-roster resets already there, so it's grouped with the other "fresh session" state clears
+   rather than tacked on separately. Needed a new import (`editor-interaction.js` → `editor-io.js`) —
+   checked first that the reverse import doesn't already exist (it doesn't), so this doesn't create a
+   circular dependency.
+
+**Verify, all items from the dispatch:**
+- `node --check` on both touched modules → clean.
+- `npx vitest run` → **47 green**, unchanged — no new test needed, confirmed this is DOM-bound (window
+  focus/blur, `document.getElementById`) rather than pure math like T5's fix, so it isn't testable the
+  same way without a real DOM harness this suite doesn't have.
+- `grep -n "_spaceHeld = false"` → 1 hit, inside `resetPanState` only. Same for
+  `classList.remove('pan-ready')` → 1 hit, same function only.
+- `grep -rn "resetPanState("` → definition + **4** callers (blur, keyup, mouseup pan-end, `open()`) —
+  meets the dispatch's "≥3" bar.
+- `git status --short` → exactly 2 files (didn't need `editor.js` — nothing there held any of the
+  pan-state fields or listeners).
+
+No gate hit — small, well-scoped fix; verified the two contingencies in the dispatch (mouseup listener
+location, mouseleave existence) explicitly rather than skipping past them once the main fix worked.

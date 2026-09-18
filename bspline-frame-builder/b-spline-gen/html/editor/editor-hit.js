@@ -10,6 +10,7 @@
  */
 import { isEditableByLayer } from './layers.js';
 import { worldPoint } from './editor-coords.js';
+import { viewScale } from './editor-view.js';
 
 export function getDynamicTolerance(editor, px = 5) {
     if (!editor._draw) return 0.1;
@@ -17,7 +18,11 @@ export function getDynamicTolerance(editor, px = 5) {
     const svgEl = document.getElementById('editorSVGContainer');
     if (!svgEl) return 0.1;
     const screenWidth = svgEl.clientWidth || 800;
-    return (px * view.width) / screenWidth;
+    const screenHeight = svgEl.clientHeight || 800;
+    // Uniform scale (preserveAspectRatio="meet"), not width-only: width-only
+    // is wrong whenever the container is proportionally taller than the
+    // board (letterboxed on width) — e.g. the docked palette.
+    return px / viewScale(view, screenWidth, screenHeight);
 }
 
 export function getNodes(el) {
