@@ -715,3 +715,71 @@ again immediately after being fixed.
 No gate hit — small, evidence-verified change; stayed inside the assigned HTML region despite seat A's
 concurrent edits to the same file; the one scope deviation (4th file) was explicitly instructed by the
 dispatch's own item-1 text, not a unilateral addition, and is called out rather than hidden.
+
+---
+
+## Lane B — Turn 25 — T5 (breaker→fixer): pan/tolerance scale — PROVEN WRONG, fixed, 4 files
+
+**Merged main first** (`git merge --no-edit main`) — one conflict, `NEXT-SESSION.md` (expected: both
+branches rewrite it every turn; kept lane-b's own copy, the actual turn 25 dispatch, via `git checkout
+--ours`). Merge brought in SE2 (`80da844`), which had ALREADY declared `editor-view.js`'s zoom/pan view
+record (`viewboxFor`/`zoomAbout`/`clampZoom`/`applyView`/`fitView`) and its own test file
+(`tests/editor-view.test.js`, 6 tests) — this turn EXTENDS that file/module, doesn't create it from
+scratch. Noted one thing worth flagging: SE2's own `zoomAbout` test built its `screenToModel` helper
+with `clientHeight` deliberately proportional to `clientWidth` (matching the board's aspect exactly) —
+which means that test could never have caught this bug even if the product code had it, since it never
+exercises a letterboxed container. Not a defect in SE2's test (it's testing `zoomAbout`, a different
+function), just noting why this gap survived past that turn.
+
+**Step 1 — proved the suspicion before touching anything else.** Confirmed the editor root's actual
+creation site (`editor/init.js:14`, `window.SVG().addTo(...).size('100%','100%')`) has no
+`preserveAspectRatio` override — so it's the SVG default, `xMidYMid meet`, exactly as the dispatch
+suspected. Grepped for `preserveAspectRatio` under `editor/` — the only hits are in `editor-io.js`
+(save/export SVG strings, `preserveAspectRatio="none"`) and `editor-expand-trace.js` (also export) —
+a DIFFERENT, unrelated surface (files being written for saving/rasterizing, not the live interactive
+canvas). The escape hatch in the dispatch (if `none` were found on the live root, the suspicion would be
+wrong) does not apply.
+
+**Computed the actual numeric disagreement before writing any test**, quoting it here as the dispatch
+asked: for the 7×9 board —
+- **Tall container** (300×800 — width is the binding/correct axis): old per-axis `dy` formula gave
+  `1.125` where the correct uniform-scale value is `2.333` — **48.2% of correct, i.e. 51.8% too small.**
+- **Wide container** (1200×400 — height is binding): old per-axis `dx` formula gave `0.583` where
+  correct is `2.25` — **25.9% of correct, i.e. 74.1% too small.**
+- Sanity-checked the null case too: a container matching the board's exact 7:9 aspect (no letterboxing)
+  makes the old and new formulas agree on both axes — confirms the bug is specifically an
+  aspect-MISMATCH bug, not a general error in the old formula's shape.
+
+**Step 2 — declared the scale once, in `editor-view.js`** (the file SE2 already established as the
+one place for view-record math): `viewScale(vb, clientW, clientH)` → `Math.min(clientW/vb.w,
+clientH/vb.h)`, and `screenToModelDelta(vb, clientW, clientH, dxPx, dyPx)` → `{dx, dy}` via that scale.
+Routed `_panBy` (editor-interaction.js) through `screenToModelDelta` (needs both axes at once) and
+`getDynamicTolerance` (editor-hit.js) through `viewScale` DIRECTLY (`px / viewScale(...)`, matching the
+dispatch's own suggested formula literally) rather than through `screenToModelDelta` — a small
+implementation choice that matters for the verify grep: routing tolerance through `screenToModelDelta`
+instead would have left `viewScale(` at only 2 hits (definition + 1 internal call) instead of the
+dispatch's predicted "definition + 2 callers." Caught this via the grep itself, adjusted to match rather
+than leaving the count in a place I hadn't actually checked against the spec.
+
+**Step 3 — extended `tests/editor-view.test.js`**, not a new file: added `viewScale`/`screenToModelDelta`
+to the existing import, then 5 new tests — the 3-case letterbox proof (tall/wide/exact-match, quoting
+the same numbers above) plus 2 `screenToModelDelta` tests (round-trip via `dx*s`/`dy*s`, and "equal
+pixel deltas on both axes produce equal model deltas" — which is the property that fails under the old
+per-axis formula whenever the container isn't the board's exact aspect). The reference "old formula" in
+the proof tests is a small local function in the TEST file, explicitly commented as no longer existing
+in product code — not imported from anywhere, since the old buggy code was replaced, not kept around.
+
+**Verify, all items from the dispatch:**
+- `npx vitest run` → **47 green** = 42 (36 mine from before + SE2's 6 in `editor-view.test.js`, the
+  post-merge baseline) **+ 5 new**.
+- `node --check` on all 3 touched `.js` modules → clean.
+- `grep -rn "clientWidth" editor/`: the only 3 hits left are DOM-property reads passed straight through
+  to `screenToModelDelta`/`viewScale` — no raw per-axis division remains anywhere.
+- `grep -rn "viewScale(" editor/` → 3 hits: definition + 2 callers (`screenToModelDelta`'s internal
+  call, `getDynamicTolerance`'s direct call) — exactly matches the dispatch's predicted shape.
+- `git status --short` → exactly the 4 predicted files.
+
+No gate hit — proved the bug with concrete numbers before writing any product-code fix, per the
+breaker-then-fixer sequencing the dispatch asked for; the one implementation choice I second-guessed
+(direct `viewScale` call vs. routing through `screenToModelDelta`) was resolved by checking it against
+the dispatch's own predicted verify output rather than picking whichever felt more "unified" in isolation.

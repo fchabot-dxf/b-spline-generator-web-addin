@@ -26,7 +26,7 @@ import {
 } from './editor-transform-handles.js';
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
-import { viewboxFor, zoomAbout, applyView } from './editor-view.js';
+import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -261,8 +261,13 @@ function _panBy(editor, dxClient, dyClient) {
     const svgEl = document.getElementById('editorSVGContainer');
     const clientWidth  = (svgEl && svgEl.clientWidth)  || 1;
     const clientHeight = (svgEl && svgEl.clientHeight) || 1;
-    editor._view.cx = editor._panStart.cx - dxClient * vb.w / clientWidth;
-    editor._view.cy = editor._panStart.cy - dyClient * vb.h / clientHeight;
+    // Uniform scale (preserveAspectRatio="meet" on the editor root — see
+    // editor-view.js's viewScale docstring), not clientWidth/clientHeight
+    // divided per-axis: that disagrees with the actual render on whichever
+    // axis is letterboxed.
+    const { dx, dy } = screenToModelDelta(vb, clientWidth, clientHeight, dxClient, dyClient);
+    editor._view.cx = editor._panStart.cx - dx;
+    editor._view.cy = editor._panStart.cy - dy;
     applyView(editor);
 }
 

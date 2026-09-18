@@ -12,6 +12,27 @@
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 16;
 
+/** px-per-model-unit under the editor root's `preserveAspectRatio="xMidYMid
+ *  meet"` (the SVG default — the root is created via `.size('100%','100%')`
+ *  with no override, see editor/init.js). The board renders at ONE uniform
+ *  scale on BOTH axes, letterboxed on whichever axis the container is
+ *  proportionally larger on — it is NEVER `clientW/vb.w` and `clientH/vb.h`
+ *  independently; that per-axis pair only agrees with this on the binding
+ *  axis and is wrong (by the container/board aspect-ratio mismatch) on the
+ *  letterboxed one. `vb` is `{w, h}` (a viewboxFor() result works directly). */
+export function viewScale(vb, clientW, clientH) {
+    return Math.min(clientW / vb.w, clientH / vb.h);
+}
+
+/** Screen-pixel delta -> model-space delta, using the ONE uniform scale
+ *  (not a per-axis divide). Use for both panning (delta = drag distance)
+ *  and hit-tolerance (delta = {dx: px, dy: 0} or similar — either axis
+ *  gives the same answer since the scale is uniform). */
+export function screenToModelDelta(vb, clientW, clientH, dxPx, dyPx) {
+    const s = viewScale(vb, clientW, clientH);
+    return { dx: dxPx / s, dy: dyPx / s };
+}
+
 export function clampZoom(z) {
     return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 }
