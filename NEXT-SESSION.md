@@ -1,38 +1,40 @@
-# LANE B — T4: SE3b STYLE-control overlap (CSS, declared rule) + BUGS_OPEN entry B12 for SE3a
+# LANE B — T5 (breaker): SE2's pan/tolerance math vs. preserveAspectRatio — prove it, then fix it if wrong
 
-**Seat B · epoch 1 · T4.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. Files:
-`bspline-frame-builder/styles/base.css`, `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` (lines
-1263-1275 ONLY — seat A is editing the same file further down, tool rail ~1312+ and the modal script; stay out of
-those regions), `BUGS_OPEN.md`, + WORK-LOG-lane-b.md. One commit by path, predicted **3 files** + log.
+**Seat B · epoch 1 · T5.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b` (merge `main` first:
+`git merge --no-edit main` — SE2 80da844 is there). Files: `bspline-frame-builder/b-spline-gen/html/editor/editor-view.js`,
+`editor/editor-interaction.js`, `editor/editor-hit.js`, `tests/editor-view.test.js` (+ WORK-LOG-lane-b.md). Seat A is in
+`main/` (SE3a) — no overlap. One commit by path, predicted **4 files** + log.
 
-## 1. SE3b — the STYLE segmented control renders "ROKELBOTH" (live, 2026-09-18 08:20)
-Cause: the three buttons `#editorFillModeStroke/Fill/Both` (palette :1267-1275) carry `class="cad-icon-btn small
-editor-fillmode-btn"`; `.cad-icon-btn` is a 16 px ICON button (`styles/base.css:1304-1313`, `width:16px`), so three
-text labels are squeezed into 48 px and overlap. Fix by DECLARING the control instead of piling inline styles:
-- Drop `cad-icon-btn small` from the three buttons; keep `editor-fillmode-btn` (+ `active`).
-- Move their inline `style="…"` into ONE rule set in `styles/base.css` next to `.cad-icon-btn`:
-  `.editor-fillmode-btn { border:none; background:transparent; color:#555; padding:0 8px; height:100%;
-  font-size:10px; font-weight:700; letter-spacing:0.04em; cursor:pointer; }`,
-  `.editor-fillmode-btn + .editor-fillmode-btn { border-left:1px solid #ddd; }`,
-  `.editor-fillmode-btn.active { background:#e8f0ff; color:#1a55b8; }`.
-  Check `editor/properties-panels.js` / wherever `.active` is toggled on these buttons: if it sets inline
-  background/color too, remove that hand-rolled styling so the rule is the only source.
-- No width anywhere: the label sets the width.
+## The suspicion (advisor, from the SE2 diff — not yet proven either way)
+The editor root is `SVG().addTo(...).size('100%','100%')` with a viewBox and the DEFAULT `preserveAspectRatio`
+(`xMidYMid meet`). Under `meet` the board renders at ONE uniform scale, `s = min(clientW / vb.w, clientH / vb.h)`
+px per model unit, letterboxed on the other axis. Two places assume per-axis scale instead:
+- `_panBy` (editor-interaction.js, SE2): `dx * vb.w / clientWidth` and `dy * vb.h / clientHeight` — on the
+  letterboxed axis the drag will feel too slow (cursor and board separate).
+- `getDynamicTolerance` (editor-hit.js:14, pre-existing): `px * vb.width / clientWidth` — wrong whenever the
+  container is TALLER than the board's aspect (the docked 460 px palette with a 7×9 board is exactly that case),
+  so click slop and handle sizes are off by the aspect ratio there.
 
-## 2. B12 — record SE3a in BUGS_OPEN.md as OPEN (the advisor found it live; you own that file now)
-Title: "SVG editor Cancel does not revert; Apply of an emptied canvas keeps the stale mask". Status OPEN, proof lines:
-`main/app-init.js:118-127` (Cancel restores the legacy `P.stampLayers[idx]` fields, not `P.editorSvg` nor the editor
-document), `main/stamp/svg-source.js:91-97` (snapshot reads `.svg` off an EDITOR layer → `undefined`),
-`main/stamp-mask-manager.js:40-76` (`updateStampMasks` returns early on an empty work list and never nulls the mask
-of a layer that lost its content). Add it to the summary table. Fix is queued as SE3a on main (seat A), not yours.
+## Do
+1. **Prove it first** (breaker role): a vitest with a pure function and two container shapes (wide, tall) showing
+   the per-axis formula disagrees with the uniform one on the letterboxed axis. Quote the numbers in WORK-LOG.
+   If you find `preserveAspectRatio="none"` is actually set somewhere on the editor root (grep `preserveAspectRatio`
+   under `editor/` and `init.js`), the suspicion is WRONG — say so, add the test that proves the per-axis formula is
+   then correct, and stop there (no product change).
+2. **If wrong, declare the scale once:** in `editor-view.js` add `export function viewScale(vb, clientW, clientH)`
+   → `Math.min(clientW / vb.w, clientH / vb.h)` (px per model unit), and `screenToModelDelta(vb, clientW, clientH,
+   dxPx, dyPx)` → `{ dx: dxPx / s, dy: dyPx / s }`. Then `_panBy` and `getDynamicTolerance` both go through it
+   (tolerance = `px / viewScale(...)`). No other caller changes; no new fields on the editor.
+3. Tests: extend `tests/editor-view.test.js` — `viewScale` for a wide and a tall container; `screenToModelDelta`
+   round-trips a pan on both axes; the letterbox case is the one that used to disagree.
 
 ## Verify
-- Extract the palette's inline script + `node --check` (untouched, sanity); `npx vitest run` → 36 green.
-- Greps: `cad-icon-btn small editor-fillmode-btn` → 0; `editor-fillmode-btn` → 3 in the html, ≥3 rules in base.css;
-  the three buttons have NO `style=` attribute.
-- `git show --stat HEAD` → 3 files + log. Look is the ADVISOR's (deploy + capture).
+- `npx vitest run` → 42 + new, green; `node --check` touched modules.
+- Greps: `clientWidth` under `editor/` → only inside `viewScale`'s callers passing it through (i.e. the raw
+  per-axis division appears nowhere); `viewScale(` → definition + 2 callers.
+- `git show --stat HEAD` → 4 files + log. Live feel is the ADVISOR's.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T4: SE3b fillmode rule + B12 entry — <sha>, 3 files"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T5: pan/tolerance scale — proven <right|wrong>, <sha>, N files, vitest N"`
 and stop.
