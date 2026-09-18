@@ -482,3 +482,7 @@ silently does neither correctly. **Noted, out of scope:** the per-layer tooling 
 - **Incident 09:20:** advisor's chained merge→dispatch conflicted on NEXT-SESSION.md and still passed the ball; seat A
   woke on a mid-merge tree. Resolved in a minute + amend sent. Rule: never chain `pass` after a merge without a
   conflict check; give lane-b its own task file name (`NEXT-SESSION-lane-b.md`) at its next dispatch.
+- **Live-verified 09:55 (a006e09):** shortcut badges on all 9 rail buttons (T10); draw → Clear → OK leaves no ghost
+  (T8); draw → Apply carves; the SIDEBAR Clear removes the carve AND the drawing (B15 / SE4b) — reopening the editor
+  shows an empty canvas. Not exercised live: Browse (needs a file dialog) and Send-to-Fusion-after-undo (would write
+  geometry into Fred's document); both are covered by tests/export-flow.test.js.
