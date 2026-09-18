@@ -451,3 +451,13 @@ and untracked since 59615fe (2026-07-11); the on-disk drift is a stale bundle, r
 - **Lane-b merges:** T3 (BUGS_OPEN reconciliation, daae06e) merged at 39baa37. T4 (SE3b CSS rule + B12, a287d98) is
   on lane-b, merges after SE3a lands (seat A holds main). Note: lane-b's NEXT-SESSION.md rides along in every merge
   (both seats use the same file name); harmless because the advisor rewrites it on the next dispatch.
+- **SE3 live-verified 08:45** (add-in 4971b4e = SE3a + lane-b T4/T5/T6): draw → Cancel → no groove; draw → Apply → groove;
+  Clear → Apply → groove gone (log: `pathCount=0`, `opaquePx=0`). STYLE reads STROKE / FILL / BOTH. B12 closes with
+  SE3a (seat B updates BUGS_OPEN on its next docs turn).
+- **Found while proving it (SE3c → lane-b T8):** after Clear or reopen the OLD stroke still shows as a translucent
+  yellow band WITH handles, although `open()` logs `children=0`. It is a ghost: `_sketchLayer.clear()` in both Clear
+  and `open()` never deselects, so `_highlightLayer`/`_handleLayer` keep drawing removed nodes. One declared content
+  reset (deselect + overlay layers) called from open/Clear/deleteSelected. Not a carve bug — I first read it as one.
+- **T7 (exporter paths) accepted** — with a correction of MY premise: `fusion-exporter/exported files/` IS tracked
+  (147 JSON files of exported user data). Untracking it is Fred's call, not dispatched.
+- **Seat A: SE4-plan** (mirror retirement design) in flight. lane-b T7/T8 merge after it lands.
