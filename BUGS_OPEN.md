@@ -11,7 +11,7 @@ refactor.
 - B2. Elements vanish on editor reopen
 - B3. Expand tool doesn't work on lines (and possibly other tools)
 
-## T3 reconciliation summary (2026-09-18) — every entry verified against current code
+## T3/T9 reconciliation summary (2026-09-18) — every entry verified against current code
 
 | ID | Status | sha / test |
 |----|--------|------------|
@@ -26,7 +26,10 @@ refactor.
 | B9 | CLOSED | `48cee2b` (no guard) |
 | B10 | CLOSED | `f0d47ed` (no guard) |
 | B11 | CLOSED | `48cee2b` (no guard) — one named P1 exception remains, documented in `ROADMAP.md` |
-| B12 | OPEN | found live 2026-09-18; fix queued as SE3a on main |
+| B12 | CLOSED | `f46561a`, guarded by `tests/stamp-mask-clear.test.js` |
+| B13 | OPEN | fix in flight as SE4a (seat A) |
+| B14 | CLOSED | `13a2480` (no guard — DOM-bound) |
+| B15 | OPEN | scheduled for SE4 slice (b) |
 
 Per-entry detail (evidence, reasoning) is inline as a status line under each heading below. Original
 entry text is preserved unchanged beneath each status line — this is a reconciliation, not a rewrite.
@@ -424,9 +427,13 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
 
 ### B12 — SVG editor Cancel does not revert; Apply of an emptied canvas keeps the stale mask  ·  runtime-bug  ·  confidence HIGH
 
-> **STATUS (T4, 2026-09-18): OPEN.** Found live by the advisor 2026-09-18; recorded here by lane-b per
-> the dispatch. Fix queued as SE3a on main (seat A), not this lane's. Verified all three proof lines
-> directly before recording:
+> **STATUS (T9, 2026-09-18): CLOSED `f46561a`, guarded by `tests/stamp-mask-clear.test.js`.** SE3a
+> (seat A) — advisor live-verified 2026-09-18 08:45: Cancel reverts; Clear → Apply clears the carve.
+> Confirmed the commit and the test file both exist before recording this status.
+
+> **STATUS (T4, 2026-09-18, historical): OPEN.** Found live by the advisor 2026-09-18; recorded here by
+> lane-b per the dispatch. Fix queued as SE3a on main (seat A), not this lane's. Verified all three proof
+> lines directly before recording:
 
 - **Where (Cancel path):** `main/app-init.js:114-127`. On Cancel, restores the LEGACY per-stamp-layer
   fields (`P.stampLayers[idx].svg`/`.mask`/`enabled`) from `SvgEditorSnapshot` — not `P.editorSvg` (the
@@ -448,6 +455,62 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
 - **Symptom:** open the SVG editor on a layer with content, Cancel — the pre-edit drawing does not come
   back (the snapshot it would restore from was `undefined` to begin with). Separately: empty a layer's
   canvas and click Apply — the old stamp geometry persists instead of clearing.
+
+### B13 — Global undo/redo nulls `P.stampLayers[0].svg`; Export/Send-to-Fusion silently drop the drawing after any undo  ·  runtime-bug / data-loss  ·  confidence HIGH
+
+> **STATUS (T9, 2026-09-18): OPEN.** From `SE4-MIRROR-RETIREMENT-DESIGN.md` findings #1+#2. Fix in
+> flight as SE4a (seat A). Verified all three proof lines directly before recording:
+
+- **Where (the null gets created):** `core/history.js:25`. `takeSnapshot(label = "Action", stampSvgText
+  = null)` — `stampSvgText` defaults to `null`. Grepped every call site (`main/app-init.js:67`,
+  `core/sculpt-interaction.js:104,146`) — none ever pass a second argument, so `stampSvgText` is `null`
+  on EVERY snapshot, unconditionally, not just some.
+- **Where (the null gets written through):** `main/snapshot-manager.js:41`. `if (snap.stampSvgText !==
+  undefined && P.stampLayers && P.stampLayers[0]) { P.stampLayers[0].svg = snap.stampSvgText; }` — the
+  guard tests `!== undefined`, but the value is `null`, and `null !== undefined` is `true` in JS — so
+  this branch runs and sets `P.stampLayers[0].svg = null` on every single undo/redo restore, wiping the
+  legacy mirror field regardless of what the editor actually has.
+- **Where (the wipe becomes visible):** `main/export-flow.js:40-44`. `isCarvingLayer`/`hasShippableSvg`
+  (and the `activeStampLayers`/`exportableStampLayers` they gate) all read `l.svg` on the raw
+  `P.stampLayers` entry — no fallback to the unified editor model (`P.editorSvg`/`editor._layers`). Once
+  `:41` above nulls `P.stampLayers[0].svg`, these all evaluate false for that layer.
+- **Symptom:** draw a stamp, do ANY undo-worthy action elsewhere (even unrelated to the stamp), then
+  Export STEP or Send-to-Fusion — the stamp layer is silently excluded, with no error, because the
+  legacy mirror field the export path reads was nulled by the most recent snapshot restore.
+
+### B14 — Ghost selection overlay survives `_sketchLayer.clear()` (highlight + handle layers)  ·  runtime-bug  ·  confidence HIGH
+
+> **STATUS (T9, 2026-09-18): CLOSED `13a2480` (no guard — DOM-bound).** Found + fixed same-day, this
+> lane, turn T8. Bonus found during the fix: `_deselect()` also never cleared `_selectionHighlights`
+> (the plural array for a multi-element selection) for ANY of its 13 pre-existing callers, not just the
+> 2 new content-wipe sites — fixed once, in the one shared function, rather than patched per call site.
+
+- **Where:** `editor/tools/action-tools.js:18-24` (Clear handler) and `editor/editor-io.js:464+`
+  (`open()`) both call `editor._sketchLayer.clear()` without deselecting — `_selectedElements` keeps
+  pointing at the now-removed nodes, and `_highlightLayer`/`_handleLayer` (separate SVG groups
+  `_sketchLayer.clear()` never touches) keep drawing their stale halo/handles.
+- **Symptom:** draw a stroke, Clear → Apply (or Cancel), or reopen the editor on an emptied layer — the
+  old stroke's translucent yellow highlight band and transform handles remain visible on an otherwise
+  empty canvas, before any further interaction.
+- **Fix:** completed `editor.js`'s `_deselect()` to clear `_selectionHighlights` (plural) alongside the
+  handle layer and the legacy singular `_selectionHighlight` it already cleared; called the now-complete
+  `_deselect()` directly from both content-wipe sites (chose reuse over declaring a separate
+  `resetContentState()` wrapper — `_deselect()` already covered everything needed).
+
+### B15 — Two buttons named "Clear" with different effects (sidebar mirror-only vs. editor real-content)  ·  P4-violation / UX confusion  ·  confidence HIGH
+
+> **STATUS (T9, 2026-09-18): OPEN.** From the SE4 design doc §3 finding #3. Scheduled for SE4 slice (b).
+> Verified both proof lines directly before recording:
+
+- **Where (sidebar):** `main/stamp/svg-source.js:72-81`. `btnStampClear` (id, per
+  `bspline_gen_palette.html:637`) nulls `P.stampLayers[idx].svg`/`.mask`, sets `enabled = false` — the
+  LEGACY mirror fields only. Does not touch the actual editor document (`_sketchLayer`/`editor._layers`).
+- **Where (editor modal):** `editor/tools/action-tools.js:18-24`. `editorClear` (id, per
+  `bspline_gen_palette.html:1247`) calls `editor._sketchLayer.clear()` — the REAL content wipe (and, as
+  of B14's fix, now correctly deselects too).
+- **Symptom:** both buttons are labeled "Clear" and both live in stamp-related UI, but clicking the
+  sidebar one does NOT clear what's drawn in the editor (only the legacy mirror snapshot of it) — a user
+  reasonably expects "Clear" to mean the same thing in both places.
 
 ## Minor / lower-confidence (noted, not promoted)
 

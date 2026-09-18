@@ -957,3 +957,43 @@ exists.
 No gate hit — completed a shared function once rather than hand-rolling three separate reset call pairs,
 and explicitly reasoned through the dispatch's own "reuse vs. declare a wrapper" fork instead of picking
 one silently.
+
+---
+
+## Lane B — Turn 33 — T9: BUGS_OPEN — B12 closed, B13-B15 added — DONE, docs only
+
+**Same rubric as T3 — verified every one of the advisor's own claims against the actual repo before
+writing anything down, not transcribed on trust, even though this dispatch's citations were far more
+precise than T3's (exact shas, exact test filenames, exact proof lines already given).**
+
+- **B12 → CLOSED.** Confirmed `f46561a` exists (`git show -s`, matches "SE3a - Cancel actually reverts,
+  an emptied layer loses its mask") and `tests/stamp-mask-clear.test.js` exists on disk. Kept BOTH status
+  blocks under the heading — the new CLOSED one and the original T4 OPEN one as history — rather than
+  overwriting, since this entry's whole point is showing the OPEN→CLOSED progression, not just the
+  current state.
+- **B13 (new) — traced all three proof lines myself, not just cited them.** `takeSnapshot`'s
+  `stampSvgText` parameter defaults to `null` (`core/history.js:25`) — grepped every call site (3 of
+  them) and confirmed NONE ever pass a second argument, so it's unconditionally `null`, not just "usually."
+  `snapshot-manager.js:41`'s guard tests `!== undefined` — worked through why that's the actual bug: `null
+  !== undefined` is `true` in JS, so the null passes the guard and gets written into
+  `P.stampLayers[0].svg` on every restore. `export-flow.js:40-44`'s `isCarvingLayer`/`hasShippableSvg`
+  read that same field with no fallback to the unified editor model, so the null silently drops the
+  layer from export. Wrote out the full causal chain in the entry, not just the three isolated
+  citations, since the "why" is what makes this a data-loss bug rather than three unrelated facts.
+- **B14 (new) — this is my own commit from last turn (T8, `13a2480`)**, so verification here was mostly
+  making sure the BUGS_OPEN entry accurately reflects what I already know is true, including the "bonus"
+  finding (the `_selectionHighlights` plural-array gap affecting all 13 pre-existing callers) rather than
+  just the narrow Clear/open() symptom the advisor's dispatch text led with.
+- **B15 (new) — read both button handlers directly.** `svg-source.js:72-81`'s `btnStampClear` only nulls
+  the legacy `P.stampLayers[idx]` mirror fields; `action-tools.js:18-24`'s `editorClear` (the one B14
+  just fixed) does the real `_sketchLayer.clear()`. Confirmed both element ids against the palette HTML
+  (`bspline_gen_palette.html:637` and `:1247`) rather than trusting the JS-side names alone.
+
+**Verify:** summary table now has 15 rows (B1-B15) — confirmed via grep, the one apparent 16th match was
+a false positive (the OLD T2-era "| Bug | Verdict |" table header, unrelated). 16 total `STATUS (` blocks
+= 11 original (T3) + B12's 2 (current+historical) + B13/B14/B15's 1 each — accounted for precisely
+rather than just checking the total "looks about right." `git status --short` → `BUGS_OPEN.md` only, as
+expected for a docs-only turn.
+
+No gate hit — docs-only, no product code touched; every one of the advisor's own citations was
+independently re-derived rather than assumed correct just because the advisor is usually right.
