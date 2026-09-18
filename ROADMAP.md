@@ -472,3 +472,13 @@ editor — DISPATCHED (turn 195); (b) drop the legacy branch + mirror writes, si
 global undo/redo restore the DRAWING at all, or only the heightfield (the editor has its own undo stack)? Today it
 silently does neither correctly. **Noted, out of scope:** the per-layer tooling fields are persisted twice too
 (`data-editor-layers` in the SVG and `P.stampLayers[i]` via `persistableP`) — a possible SE5.
+- **SE4a (aeb9a53) + SE4b (fa9972a) merged and deployed 09:40** with lane-b T8 (ghost selection), T9 (BUGS_OPEN
+  B12–B15), T10 (shortcut badges via `attr(data-key)`). vitest 57. Content-mirror setters gone; sidebar Clear = B15
+  fixed; Browse reports "editor not ready" instead of writing to a dead store.
+- **SE4c dispatched under a stated assumption** (advisor decision, reversible): the palette's global undo/redo is
+  for the HEIGHTFIELD; the drawing has the editor's own undo stack. So `applySnapshot` stops touching stamp content.
+  If Fred rules that global undo should restore drawings too, that is one follow-up (restore `P.editorSvg` from the
+  snapshot + reload the editor) — SE4d.
+- **Incident 09:20:** advisor's chained merge→dispatch conflicted on NEXT-SESSION.md and still passed the ball; seat A
+  woke on a mid-merge tree. Resolved in a minute + amend sent. Rule: never chain `pass` after a merge without a
+  conflict check; give lane-b its own task file name (`NEXT-SESSION-lane-b.md`) at its next dispatch.
