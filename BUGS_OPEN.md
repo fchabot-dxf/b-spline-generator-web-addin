@@ -27,9 +27,9 @@ refactor.
 | B10 | CLOSED | `f0d47ed` (no guard) |
 | B11 | CLOSED | `48cee2b` (no guard) — one named P1 exception remains, documented in `ROADMAP.md` |
 | B12 | CLOSED | `f46561a`, guarded by `tests/stamp-mask-clear.test.js` |
-| B13 | OPEN | fix in flight as SE4a (seat A) |
+| B13 | CLOSED | `aeb9a53` + `629102d` (guarded by `tests/export-flow.test.js`); `stampSvgText` removed |
 | B14 | CLOSED | `13a2480` (no guard — DOM-bound) |
-| B15 | OPEN | scheduled for SE4 slice (b) |
+| B15 | CLOSED | `fa9972a` (no guard — DOM-bound); advisor live-verified 2026-09-18 |
 
 Per-entry detail (evidence, reasoning) is inline as a status line under each heading below. Original
 entry text is preserved unchanged beneath each status line — this is a reconciliation, not a rewrite.
@@ -458,6 +458,14 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
 
 ### B13 — Global undo/redo nulls `P.stampLayers[0].svg`; Export/Send-to-Fusion silently drop the drawing after any undo  ·  runtime-bug / data-loss  ·  confidence HIGH
 
+> **STATUS (T11, 2026-09-18): CLOSED `aeb9a53` + `629102d` (guarded by `tests/export-flow.test.js`).**
+> `aeb9a53` (SE4a) moved export-flow + compositor onto the editor content store; `629102d` (SE4c)
+> finished the cleanup and removed `stampSvgText` outright — confirmed via `grep -rn "stampSvgText"
+> bspline-frame-builder/b-spline-gen/html/` returning zero hits, so the null-write mechanism below no
+> longer exists, not just no longer triggered. Advisor's ruling (recorded in ROADMAP): global undo now
+> covers the heightfield only, not stamp content — the design choice that makes this whole causal chain
+> moot rather than merely closing the two spots it was visible.
+>
 > **STATUS (T9, 2026-09-18): OPEN.** From `SE4-MIRROR-RETIREMENT-DESIGN.md` findings #1+#2. Fix in
 > flight as SE4a (seat A). Verified all three proof lines directly before recording:
 
@@ -499,6 +507,11 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
 
 ### B15 — Two buttons named "Clear" with different effects (sidebar mirror-only vs. editor real-content)  ·  P4-violation / UX confusion  ·  confidence HIGH
 
+> **STATUS (T11, 2026-09-18): CLOSED `fa9972a` (no guard — DOM-bound).** SE4b dropped the legacy
+> `P.stampLayers[idx].svg`/`.mask` mirror-write branch and the content it duplicated; advisor
+> live-verified 2026-09-18 09:55: the sidebar Clear button now removes both the carve and the drawing,
+> so the two "Clear" buttons agree.
+>
 > **STATUS (T9, 2026-09-18): OPEN.** From the SE4 design doc §3 finding #3. Scheduled for SE4 slice (b).
 > Verified both proof lines directly before recording:
 
