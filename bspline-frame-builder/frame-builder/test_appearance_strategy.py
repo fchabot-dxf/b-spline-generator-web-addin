@@ -17,7 +17,7 @@ def _install_adsk_stubs():
     sys.modules['adsk.fusion'] = adsk.fusion
 
 
-_HERE = "/sessions/ecstatic-gracious-planck/mnt/b-spline-generator-web-addin/bspline-frame-builder/frame-builder"
+_HERE = os.path.dirname(os.path.realpath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 

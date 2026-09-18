@@ -557,3 +557,47 @@ dispatch's own verify step.
 
 No gate hit — breaker-role turn, zero product-code edits (one attempted, correctly blocked by the
 permission system, worked around with an off-repo simulation instead of retrying or bypassing it).
+
+---
+
+## Lane B — Turn 19 — T2: DEP3 guard in release.py + hardcoded sandbox path — DONE
+
+**Role change again this turn:** back to normal worker (product-code edits), explicitly dispatched and
+scoped to two small, isolated files — "nothing seat A touches." Unlike turn 17's blocked attempt to edit
+a shared, actively-worked file, THIS edit to `release.py` was allowed by the permission system without
+issue — consistent with the block being about touching a file another seat has live work in, not a
+blanket "worker seat can never edit product code."
+
+**1. DEP3 guard (`release.py`).** Added `HANDOFF_MARKER = os.path.join(REPO_ROOT, "HANDOFF.md")` at
+module level (matching `REPO_ROOT`'s existing `os.path` string typing, not `pathlib.Path`, per the
+dispatch's own instruction to match the existing style) and `_worker_holds_tree() -> bool`, which reads
+the marker's `to:` line and returns `True` only when it says `worker`; a missing/unreadable file returns
+`False` (caught `OSError` specifically, not a bare `except`, matching the codebase's already-established
+narrowing convention from earlier turns). Wired it into `step_git_push()` immediately before the
+`git add -A` call: prints the one specified line and `sys.exit(1)` when the worker holds the ball.
+Nothing else in the step changed, no bypass flag added, exactly as specified.
+
+**2. Hardcoded sandbox path (`test_appearance_strategy.py:20`).** Replaced the literal
+`/sessions/ecstatic-gracious-planck/mnt/...` path — noted as an aside in turn 17's log, now picked up as
+its own task — with `os.path.dirname(os.path.realpath(__file__))`, the same pattern `test_deferred_compute.py`
+already uses. `import os` was already present; no other change to the file.
+
+**Verify, all 3 items from the dispatch:**
+- `release.py` DOES have a `__main__` guard (`:503` before my edits) — `import release` is safe, ran the
+  literal one-liner rather than falling back to a read-only check.
+- `python -c "import release; print(release._worker_holds_tree())"` → **True** (lane-b's `HANDOFF.md`
+  says `to: worker` — this turn's own ball).
+- Same, with `release.HANDOFF_MARKER` monkeypatched to a non-existent path → **False**.
+- `python -m pytest bspline-frame-builder/frame-builder -q` → **32 passed** (includes turn 17's 3
+  `test_deferred_compute.py` tests + the now-fixed `test_appearance_strategy.py` + the pre-existing
+  `test_document_discovery.py`/`test_templates.py`). The 29 `PytestReturnNotNoneWarning`s are pre-existing
+  (two test functions in `test_templates.py` return a list instead of asserting) — not introduced by
+  this turn's edits, not in scope to fix.
+- `python -m py_compile release.py bspline-frame-builder/frame-builder/test_appearance_strategy.py` →
+  clean.
+- `git status --short` / `git diff --stat` → exactly the 2 predicted files, 25 insertions / 1 deletion.
+
+**Verify (amendments):** polled before commit — none pending.
+
+No gate hit — small, isolated, fully verified product-code fix on two files neither seat A nor any
+other in-flight work touches.

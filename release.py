@@ -47,6 +47,24 @@ ZIP_TARGET = os.path.join(ADDIN_ROOT, "bspline-frame-builder.zip")
 PAGES_URL = "https://bspline-generator.pages.dev"
 PAGES_PROJECT = "bspline-generator"
 
+# DEP3: the two-seat advisor/worker handoff marker. `step_git_push`'s
+# `git add -A` must never sweep a worker's in-progress edits into a release
+# commit while the HANDOFF ball is with the worker (the index trap measured
+# 2026-09-11).
+HANDOFF_MARKER = os.path.join(REPO_ROOT, "HANDOFF.md")
+
+
+def _worker_holds_tree() -> bool:
+    """True when HANDOFF_MARKER's `to:` line says `worker`. Missing file -> False."""
+    try:
+        with open(HANDOFF_MARKER, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("to:"):
+                    return line.split(":", 1)[1].strip() == "worker"
+    except OSError:
+        pass
+    return False
+
 # Load .env the same way deploy_cloudflare.py does — dotenv if available,
 # else a manual key=value fallback (release.py lives at REPO_ROOT itself,
 # so unlike deploy_cloudflare.py's `parent.parent`, this is just `parent`).
@@ -194,6 +212,12 @@ def step_build_zip():
 def step_git_push():
     global commit_message, commit_summary, commit_message_summary, push_summary
     print(f"\n[2/4] Committing and pushing...")
+
+    if _worker_holds_tree():
+        print("      HANDOFF ball is with the worker — refusing `git add -A`. "
+              "Wait for the pass-back or commit by path.")
+        sys.exit(1)
+
     subprocess.run(["git", "add", "-A"], cwd=REPO_ROOT, check=True)
 
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_ROOT,
