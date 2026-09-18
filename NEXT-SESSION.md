@@ -1,34 +1,28 @@
-# LANE B — T8: ghost selection after Clear / reopen — declare the session reset, deselect on every content wipe
+# LANE B — T9: BUGS_OPEN bookkeeping for today's finds (docs only)
 
-**Seat B · epoch 1 · T8.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. Files:
-`bspline-frame-builder/b-spline-gen/html/editor/editor-io.js` (open), `editor/tools/action-tools.js` (Clear),
-`editor/editor.js` or `editor/editor-ui.js` (where `_deselect` lives) (+ WORK-LOG-lane-b.md). Seat A is writing a
-design doc — no overlap. One commit by path, predicted **2–3 files** + log.
+**Seat B · epoch 1 · T9.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. File: `BUGS_OPEN.md`
+(+ WORK-LOG-lane-b.md). One commit by path. Same rubric as your T3 (status line + summary-table row per entry).
 
-## Ground truth (advisor, live 2026-09-18 08:44, log-confirmed)
-After Clear → Apply, then reopen: `open()` logs `children=0` (document truly empty) yet the canvas shows the OLD stroke
-as a translucent yellow band WITH transform handles, before any key is pressed. Both Clear (`action-tools.js:18-24`,
-`_sketchLayer.clear()` + pushState + onChange) and `open()` (`editor-io.js:464+`, `_sketchLayer.clear()`) wipe the
-sketch layer but never deselect: `_selectedElements` still points at the removed nodes and `_highlightLayer` /
-`_handleLayer` keep drawing them. Seat B's own T6 already declared `resetPanState`; this is the same shape for
-selection.
-
-## Build — one declared reset for "the content is gone"
-- Find the existing deselect (`grep -n "_deselect\|export function deselect" editor/`). It must clear
-  `_selectedElements`, `_selectedNodes`, the highlight layer and the handle layer. If it already does all four, reuse;
-  if it leaves a layer untouched, complete it THERE (one place).
-- Call it from `open()` right after `_sketchLayer.clear()` and from the Clear handler before `pushState()`. If
-  `editor.deleteSelected()` (editor.js:361+) already deselects after removing, leave it; if not, same call there.
-- Prefer a tiny declared `resetContentState(editor)` in editor-ui.js (or next to `resetPanState`) that does
-  deselect + node-count UI reset, called from the three sites, over three hand-rolled call pairs.
+## Update / add
+- **B12** → `CLOSED f46561a (guarded by tests/stamp-mask-clear.test.js)` — SE3a; advisor live-verified 2026-09-18
+  08:45 (Cancel reverts; Clear → Apply clears the carve).
+- **B13 (new, from SE4-MIRROR-RETIREMENT-DESIGN.md findings #1+#2):** "Global undo/redo nulls `P.stampLayers[0].svg`
+  (`takeSnapshot`'s `stampSvgText` is always null; `applySnapshot` tests `!== undefined`) and `export-flow.js`
+  reads that field with no editor fallback → Send-to-Fusion / Export-STEP silently drop the drawing after any undo."
+  Status: OPEN — fix in flight as SE4a (seat A). Proof lines: `core/history.js:24`, `main/snapshot-manager.js:41`,
+  `main/export-flow.js:40-44`.
+- **B14 (new):** "Ghost selection overlay after Clear / reopen — highlight + handle layers survive
+  `_sketchLayer.clear()`." Status: `CLOSED 13a2480 (no guard — DOM-bound)`; note the bonus: `_deselect()` also
+  missed `_selectionHighlights` for every caller.
+- **B15 (new, from the design §3 finding #3):** "Two buttons named Clear with different effects: the sidebar
+  `btnStampClear` clears only the mirror (`svg-source.js:73-82`), the editor's `editorClear` clears real content."
+  Status: OPEN — scheduled for SE4 slice (b).
 
 ## Verify
-- `node --check` touched modules; `npx vitest run` → 52 green.
-- Greps: `_sketchLayer.clear()` sites → each followed (within 3 lines) by the reset call; `resetContentState(` →
-  definition + 3 callers (or `_deselect(` if you reuse it directly — say which).
-- Live is the ADVISOR's: draw → Clear → OK → no ghost; draw → select → Cancel → reopen → no ghost.
+- Summary table has rows B1–B15; each new `### B` heading has exactly one status line under it.
+- `git show --stat HEAD` → BUGS_OPEN.md + log.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T8: content reset declared, ghost selection gone after Clear/open — <sha>, N files"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T9: BUGS_OPEN B12 closed, B13–B15 added — <sha>"`
 and stop.
