@@ -437,3 +437,9 @@ and untracked since 59615fe (2026-07-11); the on-disk drift is a stale bundle, r
     editor document + remask; drop the legacy fields.
   - **SE3b — STYLE segmented control overlaps** ("ROKELBOTH"): the STROKE/FILL/BOTH buttons in the modal's top bar
     collapse onto each other at the palette's width. Cosmetic, CSS only.
+  - **SE3a, second symptom (08:35):** Clear-all → Apply with an EMPTY canvas ALSO leaves the groove carved. Root:
+    `updateStampMasks` (`stamp-mask-manager.js:40-76`) builds a work list of layers that HAVE content and returns
+    early when it is empty — it never clears the `_mask` / `P.stampLayers[i].mask` of a layer that lost its content.
+    So the fix is one declared invariant, not two patches: after every refresh, every layer NOT in the work list has
+    its mask set to null (and the preview rebuilt). Cancel then becomes: restore `P.editorSvg`, reload the editor
+    document, refresh — and the invariant clears whatever the reverted document no longer contains.
