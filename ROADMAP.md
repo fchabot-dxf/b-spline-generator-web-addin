@@ -486,3 +486,19 @@ silently does neither correctly. **Noted, out of scope:** the per-layer tooling 
   (T8); draw → Apply carves; the SIDEBAR Clear removes the carve AND the drawing (B15 / SE4b) — reopening the editor
   shows an empty canvas. Not exercised live: Browse (needs a file dialog) and Send-to-Fusion-after-undo (would write
   geometry into Fred's document); both are covered by tests/export-flow.test.js.
+- **SE4c (629102d) deployed 10:10 as 873446d and live-checked:** palette boots through `runMigrations` on the saved
+  session (no-op, `editorSvg` present), draw → Apply carves on the single-store build, Clear → Apply clears. vitest 64.
+  **The content mirror is retired.** Remaining from the design: SE5 (tooling fields persisted twice) — needs a ruling.
+
+# CYCLE SUMMARY — 2026-09-18 (SVG editor series, two worker seats)
+Fred's ask: "the svg editor tool, can you see a way to make it better?" Landed and live-proven (add-in 873446d, all
+pushed): SE1 declared shortcuts + Circle button + dead snap/Clear removed · SE2 zoom/pan/fit (declared view record) ·
+SE3a Cancel reverts + mask-clear invariant · SE3b STYLE control rule · SE4 a/b/c content-mirror retirement (declared
+MIGRATIONS, snapshot content-free, sidebar Clear = B15) · lane-b T1–T11: 21 new tests (29 → 64), DEP3 guard, exporter
+paths declared, pan/tolerance scale proven wrong and fixed (T5), pan-state reset (T6), ghost selection (T8), shortcut
+badges (T10), BUGS_OPEN reconciled (B1–B15). Advisor incidents: misread the stale stamp-editor bundle as a duplicate
+(B8 stale); misread a ghost overlay as a carve bug (log settled it); chained merge→pass on a conflict (rule recorded);
+claimed the export folder untracked without checking (it is tracked, 147 files).
+**Open for Fred:** (1) global undo scope for drawings (SE4d if yes); (2) untrack `fusion-exporter/exported files/`;
+(3) GitHub secrets for the worker auto-deploy; (4) SE5 tooling double-persistence — design or leave.
+Seat A: DONE (cycle closed here). Seat B: T11 (docs) in flight, then idle.
