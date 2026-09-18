@@ -461,3 +461,14 @@ and untracked since 59615fe (2026-07-11); the on-disk drift is a stale bundle, r
 - **T7 (exporter paths) accepted** — with a correction of MY premise: `fusion-exporter/exported files/` IS tracked
   (147 JSON files of exported user data). Untracking it is Fred's call, not dispatched.
 - **Seat A: SE4-plan** (mirror retirement design) in flight. lane-b T7/T8 merge after it lands.
+
+## SE4 — mirror retirement (design d237761, approved 2026-09-18 09:05)
+Seat A's plan inventories 84 readers/writers and found two undocumented live bugs: `takeSnapshot`'s `stampSvgText`
+is always `null`, so EVERY undo/redo sets `P.stampLayers[0].svg = null` (snapshot-manager.js:41 tests `!== undefined`);
+and `export-flow.js:40-44` is the one reader with no editor fallback, so after any undo Send-to-Fusion / Export-STEP
+silently drops the drawing. Slices: (a) one-store reads for the compositor + export-flow, Browse imports into the
+editor — DISPATCHED (turn 195); (b) drop the legacy branch + mirror writes, sidebar Clear clears real content;
+(c) migration as data + persistence cleanup. **Open product question for Fred before (c):** should the palette's
+global undo/redo restore the DRAWING at all, or only the heightfield (the editor has its own undo stack)? Today it
+silently does neither correctly. **Noted, out of scope:** the per-layer tooling fields are persisted twice too
+(`data-editor-layers` in the SVG and `P.stampLayers[i]` via `persistableP`) — a possible SE5.
