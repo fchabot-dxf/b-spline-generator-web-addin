@@ -186,6 +186,24 @@
       line-height: 1;
     }
 
+    /* Icon-only nav buttons pick up a text label on wide desktop screens
+       (Fred's ruling, PM2) — hidden by default, shown only when there's
+       room and no touch input. Exact complement of the mobile block
+       below, so the two can never both apply. */
+    .cad-nav-label {
+      display: none;
+      font-size: 12px;
+    }
+    @media (min-width: 601px) and (pointer: fine) {
+      .cad-nav-label { display: inline; }
+      /* PM2b: the label needs room — override the 32px-square pin above.
+         !important only because the base rule it beats also uses it. */
+      .cad-navbar .cad-nav-btn {
+        width: auto !important; min-width: 32px !important; max-width: none !important;
+        padding: 0 10px !important; flex: 0 0 auto !important; gap: 6px;
+      }
+    }
+
     /* Title + version label. The version literal lives in the markup next
        to the title; source of truth is root package.json "version". Small
        and muted so it sits beside the title without crowding it. */
@@ -248,6 +266,20 @@
         overflow: hidden;
       }
     }
+
+    /* UX2: the one status line for Fusion traffic. Token colors only —
+       [hidden] collapses it via the browser's own default, so nothing
+       here sets `display` and fights that. */
+    .fusion-status {
+      padding: 3px 12px;
+      font-size: 11px;
+      background: var(--cad-bg-secondary);
+      border-bottom: 1px solid var(--cad-border-standard);
+      color: var(--cad-text-muted);
+    }
+    .fusion-status[data-kind="busy"] { color: var(--cad-text-muted); }
+    .fusion-status[data-kind="ok"]   { color: var(--cad-accent-green); }
+    .fusion-status[data-kind="warn"] { color: #ffb300; }
   </style>
   <script src="https://apploader.pages.dev/fred-host.js" defer></script>
 </head>
@@ -266,12 +298,23 @@
              shown until (or if) that push arrives — keep it bumped with
              package.json for the web build. -->
         <span id="build-badge" class="cad-nav-version" title="">v1.1.0</span>
+        <span id="dirty-dot" class="cad-nav-version" title="Unsaved changes" hidden>●</span>
+        <span id="fmCurrentFileLabel" class="cad-nav-version" style="display:none"></span>
       </span>
     </div>
 
     <div style="flex:1;"></div>
 
     <div style="display:flex; gap:8px; align-items:center;">
+      <!-- Undo/Redo (UX3: moved out of the sidebar sticky header). Ids
+           unchanged — history.js's updateGlobalButtons finds them by id
+           and the Ctrl+Z/Y wiring is untouched. -->
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalUndo" title="Undo (Ctrl+Z)" disabled>
+        <span style="font-size:18px; line-height:1;">↶</span><span class="cad-nav-label">Undo</span>
+      </button>
+      <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnGlobalRedo" title="Redo (Ctrl+Y)" disabled>
+        <span style="font-size:18px; line-height:1;">↷</span><span class="cad-nav-label">Redo</span>
+      </button>
       <!-- Quick Save (replaces the old Reload button). Uses _currentFile
            (set after a successful Save/Load in the Project Manager). When
            set: silent overwrite. When not set: opens the Project Manager
@@ -280,20 +323,24 @@
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnQuickSave"
               title="Save (no file associated yet)">
         <span style="font-size:18px; line-height:1;">💾</span>
-        <span id="btnQuickSaveLabel" style="display:none;">Save…</span>
+        <span id="btnQuickSaveLabel" class="cad-nav-label">Save…</span>
       </button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnOpenProjectManager" title="Open Project Manager">
         <span style="font-size:18px; line-height:1;">📁</span>
+        <span class="cad-nav-label">Projects</span>
       </button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="btnDownloadAddin" title="Download Fusion add-in">
         <span style="font-size:18px; line-height:1;">🧩</span>
+        <span class="cad-nav-label">Add-in</span>
       </button>
       <button class="cad-btn cad-btn-primary" id="btnDownload">STEP</button>
       <button class="cad-btn cad-btn-secondary cad-nav-btn" id="settings-btn" title="Settings">
         <span style="font-size:18px; line-height:1;">⚙️</span>
+        <span class="cad-nav-label">Settings</span>
       </button>
     </div>
   </header>
+  <div id="fusion-status" class="fusion-status" hidden role="status" aria-live="polite"></div>
 
   <main class="cad-main-content app">
     <aside class="cad-sidebar">
@@ -303,23 +350,6 @@
         <button class="cad-btn" id="btnRandomSeed"
           style="width:100%; height:32px; background:#4caf50; color:#ffffff; border:1px solid #388e3c; font-weight:600;">🎲 Generate New
           Seed</button>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <button class="cad-btn cad-btn-secondary" id="btnGlobalUndo" style="flex:1; height:28px;"
-            disabled>Undo</button>
-          <button class="cad-btn cad-btn-secondary" id="btnGlobalRedo" style="flex:1; height:28px;"
-            disabled>Redo</button>
-        </div>
-      </div>
-
-      <!-- 1. Projects (full manager opens as a fullscreen panel) -->
-      <div class="panel" style="border-bottom:1px solid var(--cad-border-color);">
-        <div class="panel-body" style="padding:10px 12px; display:flex; gap:8px;">
-          <button class="cad-btn cad-btn-secondary" data-open-projects
-            style="flex:1; height:34px; display:flex; align-items:center; justify-content:center; gap:6px;">
-            <span style="font-size:15px;">📁</span>
-            Projects
-          </button>
-        </div>
       </div>
 
       <!-- 2. Stock Dimensions -->

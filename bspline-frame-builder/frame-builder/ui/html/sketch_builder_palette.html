@@ -36,6 +36,34 @@
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted, #888); }
+
+    /* FB3: the Fusion user-parameter name under each row's label, and a
+       chip when the next build will create it (not yet in the design). */
+    .param-fusion-name {
+      display: block;
+      font-size: 10px;
+      font-family: monospace;
+      color: var(--cad-text-muted, #888);
+      margin-top: 1px;
+    }
+    .param-new {
+      display: inline-block;
+      width: max-content;
+      justify-self: start;
+      align-self: start;
+      margin-left: 4px;
+      padding: 0 4px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #fff;
+      background: var(--cad-accent-blue, #0696D7);
+      border-radius: 2px;
+    }
+    .param-note {
+      padding: 6px 8px;
+      font-size: 11px;
+      color: var(--cad-text-muted, #888);
+    }
   </style>
 </head>
 <body class="cad-app-layout">
@@ -257,6 +285,18 @@
 
       container.innerHTML = '';
 
+      // FB3: one note when the build will create any Fusion parameter that
+      // doesn't exist in the design yet. Visibility is decided AFTER
+      // rendering, from whether any "new" chip actually got created — one
+      // source of truth instead of duplicating _renderParam's own
+      // Exists/ReadOnly check here. [hidden] does the collapsing — no
+      // `display` on .param-note anywhere, so nothing fights it.
+      const note = document.createElement('div');
+      note.className = 'param-note';
+      note.textContent = 'Building creates the parameters marked new in this design.';
+      note.hidden = true;
+      container.appendChild(note);
+
       const _shouldRender = (p, list) => {
         if (p.Name.startsWith('en_')) return false;
         if (list.find(t => t.Name === 'en_' + p.Name)) return true;
@@ -318,7 +358,8 @@
           `;
         }
 
-        row.innerHTML = `<label class="cad-label">${label}</label>${controlHtml}`;
+        const newChip = (p.Exists === false && !p.ReadOnly) ? '<span class="param-new">new</span>' : '';
+        row.innerHTML = `<label class="cad-label">${label}<span class="param-fusion-name" title="Fusion user parameter (Modify → Change Parameters)">${p.Name}</span>${newChip}</label>${controlHtml}`;
         body.appendChild(row);
       };
 
@@ -344,6 +385,7 @@
           visible.forEach(p => _renderParam(p, sketchParams, body));
         });
       }
+      note.hidden = !container.querySelector('.param-new');
       updateConstraintStatus();
     }
 
@@ -379,7 +421,6 @@
     function adjustPhase(delta) {
       _phaseCurrent = Math.min(_phaseMax, Math.max(1, _phaseCurrent + delta));
       _updatePhaseDisplay();
-      notifyFusion('update_phase', { phase: _phaseCurrent });
     }
 
     function toggleLock(id) {
@@ -500,111 +541,6 @@
           }, 1000);
         }
       }, 500);
-
-      /* ── TEMPORARY DEBUG: dropdown growth observer ────────────────────
-         Watches the rule-set dropdown for any size change and emits
-         debug_tx (transition/animation) and debug_resize (size change)
-         events to the addin log so we can pin down what's growing.
-         Remove this whole block once the bug is identified. */
-      setTimeout(() => {
-        const sel = document.getElementById('template-select');
-        const wrap = sel?.parentElement;
-        if (!sel || !wrap) return;
-
-        // (a) Watch for any CSS transition or animation under the panel
-        const panel = wrap.closest('.cad-sidebar-panel') || wrap;
-        const txLog = (e) => {
-          notifyFusion('debug_tx', JSON.stringify({
-            ts: performance.now() | 0,
-            type: e.type,
-            prop: e.propertyName,
-            tag: e.target.tagName,
-            id: e.target.id,
-            cls: (e.target.className || '').toString().slice(0, 60),
-          }));
-        };
-        ['transitionstart','transitionrun','transitionend','animationstart','animationend']
-          .forEach(ev => document.addEventListener(ev, txLog, true));
-
-        // (b) ResizeObserver on the wrapper + select — emits whenever
-        // either changes size, with the new dimensions
-        const ro = new ResizeObserver((entries) => {
-          for (const e of entries) {
-            notifyFusion('debug_resize', JSON.stringify({
-              ts: performance.now() | 0,
-              tag: e.target.tagName,
-              id: e.target.id,
-              w: e.contentRect.width | 0,
-              h: e.contentRect.height | 0,
-            }));
-          }
-        });
-        ro.observe(wrap);
-        ro.observe(sel);
-
-        // (c) Click counter on the select itself + inline-style observer.
-        // If something is mutating the wrapper's style attribute (our
-        // current top suspect), we'll see it here.
-        sel.addEventListener('mousedown', () => notifyFusion('debug_click', 'select-mousedown'));
-        sel.addEventListener('focus',     () => notifyFusion('debug_focus', 'select-focus'));
-        sel.addEventListener('blur',      () => notifyFusion('debug_focus', 'select-blur'));
-        new MutationObserver((muts) => {
-          muts.forEach(m => {
-            notifyFusion('debug_mut', JSON.stringify({
-              ts: performance.now() | 0,
-              target: m.target.tagName + '#' + (m.target.id || '') + '.' + (m.target.className || '').toString().slice(0,40),
-              attr: m.attributeName,
-              newVal: m.target.getAttribute(m.attributeName)?.slice(0, 120),
-            }));
-          });
-        }).observe(wrap, { attributes: true, attributeFilter: ['style', 'class'] });
-
-        // (d) Watch the SELECT itself for child additions/removals.
-        // If the user's hypothesis is right (invisible options being
-        // appended over time), this will catch every appendChild and
-        // report the running option count + the new option's text/value.
-        new MutationObserver((muts) => {
-          muts.forEach(m => {
-            if (m.type !== 'childList') return;
-            const added = Array.from(m.addedNodes).map(n => ({
-              tag: n.tagName,
-              text: (n.textContent || '').slice(0, 60),
-              empty: !(n.textContent || '').trim(),
-              value: n.value,
-            }));
-            const removed = Array.from(m.removedNodes).length;
-            notifyFusion('debug_optmut', JSON.stringify({
-              ts: performance.now() | 0,
-              addedCount: m.addedNodes.length,
-              removedCount: removed,
-              totalNow: sel.children.length,
-              added: added.slice(0, 5),
-            }));
-          });
-        }).observe(sel, { childList: true, subtree: false });
-
-        // (e) Periodic option-count snapshot — every 250ms emit the
-        // current count + sel/wrap height. If the user's "looks like
-        // it's growing" intuition is right, the count will tick up
-        // over time even if (d) misses some additions.
-        let lastCount = sel.children.length;
-        let lastH = sel.getBoundingClientRect().height | 0;
-        setInterval(() => {
-          const c = sel.children.length;
-          const h = sel.getBoundingClientRect().height | 0;
-          if (c !== lastCount || h !== lastH) {
-            notifyFusion('debug_periodic', JSON.stringify({
-              ts: performance.now() | 0,
-              optCount: c, deltaCount: c - lastCount,
-              selH: h, deltaH: h - lastH,
-            }));
-            lastCount = c;
-            lastH = h;
-          }
-        }, 250);
-
-        notifyFusion('debug_observer', 'installed (with children + periodic watchers)');
-      }, 700);
     });
   </script>
 </body>

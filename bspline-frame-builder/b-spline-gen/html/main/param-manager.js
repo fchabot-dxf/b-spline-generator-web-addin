@@ -1,4 +1,5 @@
 import { P, updateP } from '../core/state.js';
+import { markDirty } from '../core/dirty.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
@@ -76,6 +77,7 @@ export function applyParam(key, value) {
   }
 
   updateP(key, value);
+  markDirty();
   syncUItoParam(key, value);
 
   if (key === 'widthIn' || key === 'heightIn') {

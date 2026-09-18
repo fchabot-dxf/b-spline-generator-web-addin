@@ -50,7 +50,7 @@ assume **B**; under **A**, F7 moves ahead of F2/F5 and they each become one-copy
 | **F13** | Deploy: retire/align `deploy_worker.py` orphan; de-hardcode paths | §5 | Med (repro) | M | P2 |
 | **F14** | Deps: drop orphaned `opentype.js`+`clipper-lib`; add CDN SRI | §6 | Low–Med (supply chain) | S | P2 |
 | **F15** | Optional: git history rewrite for the 36 MB zip bloat | §3 | Low | M | P3 |
-| **F16** | Decide fate of unbuilt cloud pieces (step-editor worker/pages) | §3,§5 | Low | — (decision) | P3 |
+| **F16** | Decide fate of unbuilt cloud pieces (step-editor worker/pages) — ✅ RESOLVED 2026-09-17 (DEC1): deleted | §3,§5 | Low | — (decision) | P3 |
 
 ## Sequenced phases — with success criteria
 
@@ -128,7 +128,7 @@ assume **B**; under **A**, F7 moves ahead of F2/F5 and they each become one-copy
   forward). ✅ *Success:* repo pack shrinks; zip absent from history.
 - **F16 · unbuilt cloud** (§3,§5). Decide: build out or delete
   `cloud/step-editor-worker` (placeholder KV) + `cloud/step-editor-pages`
-  (README-only). ✅ *Success:* each is either provisioned+deployed or removed.
+  (README-only). ✅ *Success:* each is either provisioned+deployed or removed. **RESOLVED 2026-09-17 (DEC1): both removed.**
 
 ## Cross-reference
 

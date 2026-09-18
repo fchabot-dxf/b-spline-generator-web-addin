@@ -17,6 +17,7 @@
 import { P, preDelta, postDelta, extraThickenThinMask, persistableP } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
+import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -149,8 +150,9 @@ export function bindProjectManager(preview) {
     console.info('[project-manager] BSPLINE_PRESETS_API_URL not set — cloud disabled');
   }
 
-  // Wire all trigger buttons (navbar + any data-attr ones in sidebar)
-  document.querySelectorAll('#btnOpenProjectManager, [data-open-projects]')
+  // Wire the trigger button (the sidebar's [data-open-projects] copy was
+  // removed in PM2 — the navbar folder icon is the one door now).
+  document.querySelectorAll('#btnOpenProjectManager')
     .forEach((el) => el.addEventListener('click', openModal));
 
   // Navbar quick-save button: silent overwrite if a file is associated,
@@ -168,6 +170,12 @@ export function bindProjectManager(preview) {
       e.preventDefault();
       quickSave();
     }
+  });
+
+  // Unsaved-changes dot in the header (UX1).
+  onDirtyChange((d) => {
+    const el = document.getElementById('dirty-dot');
+    if (el) el.hidden = !d;
   });
 }
 
@@ -832,6 +840,7 @@ async function _saveTo(fullName) {
     if (!r.ok) throw new Error((await safeJson(r)).error || `HTTP ${r.status}`);
     setMsg(`✓ Saved "${fullName}"`, 'ok');
     showToast(`✓ Saved "${fullName}"`);
+    markClean();
     closeModal();
     // Optimistic UI update first — KV's eventual consistency means an
     // immediate refreshList() may return the pre-write list. Mutate
@@ -939,6 +948,7 @@ async function onLoad(name) {
 async function _loadFrom(name) {
   if (!name)     return false;
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return false; }
+  if (isDirty() && !window.confirm('You have unsaved changes. Reload the project and lose them?')) return false;
 
   setMsg('Loading…');
   try {
@@ -948,6 +958,7 @@ async function _loadFrom(name) {
     applySnapshot(unpackPoints(snap), _preview);
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
+    markClean();
     setMsg(`✓ Loaded "${name}"`, 'ok');
     showToast(`✓ Loaded "${name}"`);
     return true;

@@ -12,12 +12,22 @@
         body { background: #f5f5f5; padding: 0; }
         .inspector-container { padding: 8px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; min-height: 0; }
         .linked-list {
-            margin: 0; 
-            padding: 4px 8px 8px 24px; 
-            font-size: 11px; 
+            margin: 0;
+            padding: 4px 8px 8px 24px;
+            font-size: 11px;
             color: #444;
+            list-style: none;
         }
         .linked-list li { margin-bottom: 2px; }
+        /* IN3: float, not flex — a flex row makes the row's text an anonymous
+           flex item, whose default min-width:auto lets its unbroken min-content
+           (long "widthIn * 0.41, heightIn * 0.06) -> (..." coordinate strings)
+           force the WHOLE ROW wider than the viewport in Fusion's older CEF
+           Chromium, which then drags the page's overall scrollWidth past the
+           window and clips the header's right-aligned build-badge/pulse-box
+           along with it via body's overflow:hidden. A float never asks a flex
+           container to size a text-node item, so it can't hit that path. */
+        .row-copy { float: right; margin-left: 6px; padding: 0 4px; font-size: 10px; line-height: 14px; }
         
         /* Specific status override */
         #pulse-box {
@@ -84,7 +94,6 @@
                 </label>
                 <div style="display: flex; gap: 8px;">
                     <button type="button" id="copy-btn" class="cad-btn cad-btn-primary" style="flex: 1;">Full Copy</button>
-                    <button type="button" id="copy-short-btn" class="cad-btn" style="flex: 1;">Copy Name</button>
                 </div>
             </div>
         </div>
@@ -102,6 +111,11 @@
             ['startId', 'Start ID'], ['endId', 'End ID'], ['centerId', 'Center ID'], ['bulge', 'Bulge']
         ];
 
+        // Declared once (IN4): batches bigger than this render collapsed,
+        // with an expand-in-place row for the rest. Full Copy always copies
+        // the whole list regardless — it reads from data, not the DOM.
+        var BATCH_COLLAPSE_AFTER = 5;
+
         function dlog(msg) {
             // Debug logging disabled for normal operation.
         }
@@ -114,18 +128,46 @@
             return false;
         }
 
+        // One declared row-copy affordance (E7c): every Details row gets the same button.
+        function makeRowCopyButton(text) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'cad-btn row-copy'; b.title = 'Copy this line'; b.textContent = '⧉';
+            b.addEventListener('click', function (ev) { ev.stopPropagation(); performCopy(text, b); });
+            return b;
+        }
+
+        function appendLinkedRow(list, text) {
+            var li = document.createElement('li');
+            li.textContent = text;
+            li.appendChild(makeRowCopyButton(text));
+            list.appendChild(li);
+        }
+
         function renderLinkedList(data, useExpr) {
             var list = document.getElementById('linked-list');
             var root = document.getElementById('linked-root');
+            var labelEl = document.getElementById('list-label');
             if (!list) return;
             list.innerHTML = '';
             var entries = useExpr && data.linked_expr && data.linked_expr.length > 0 ? data.linked_expr : data.linked;
             if (entries && entries.length > 0) {
                 if (root) root.style.display = 'block';
-                for (var i = 0; i < entries.length; i++) {
-                    var li = document.createElement('li');
-                    li.textContent = entries[i];
-                    list.appendChild(li);
+                if (labelEl) labelEl.textContent = (data.listLabel || 'Connections') + ' (' + entries.length + ')';
+                var shown = Math.min(entries.length, BATCH_COLLAPSE_AFTER);
+                for (var i = 0; i < shown; i++) appendLinkedRow(list, entries[i]);
+                if (entries.length > BATCH_COLLAPSE_AFTER) {
+                    var more = document.createElement('li');
+                    more.className = 'linked-more';
+                    var moreBtn = document.createElement('button');
+                    moreBtn.type = 'button';
+                    moreBtn.className = 'cad-btn';
+                    moreBtn.textContent = 'Show all ' + entries.length;
+                    moreBtn.addEventListener('click', function () {
+                        list.removeChild(more);
+                        for (var j = shown; j < entries.length; j++) appendLinkedRow(list, entries[j]);
+                    });
+                    more.appendChild(moreBtn);
+                    list.appendChild(more);
                 }
             } else {
                 if (root) root.style.display = 'none';
@@ -274,12 +316,6 @@
 
         var currentData = null;
 
-        function normalizeEntityName(raw) {
-            if (!raw) return '';
-            var name = raw.split(' | ')[0].trim();
-            return name;
-        }
-
         function updateCoordDisplay() {
             if (!currentData) {
                 dlog('DISPLAY skipped: no currentData');
@@ -306,24 +342,6 @@
             coordEl.textContent = displayText;
             renderLinkedList(currentData, showExpr);
             dlog('DISPLAY coord=' + displayText + ' showExpr=' + showExpr + ' coord_expr=' + (currentData.coord_expr ? 'yes' : 'no'));
-        }
-
-        function copyShort() {
-            var btn = document.getElementById('copy-short-btn');
-            dlog('COPY_SHORT clicked');
-            if (!currentData) { flashBtn(btn, 'Nothing', false); return; }
-            
-            var text = "";
-            if (currentData.items && currentData.items.length > 0) {
-                var names = [];
-                for (var i = 0; i < currentData.items.length; i++) {
-                    names.push(currentData.items[i].name || '');
-                }
-                text = names.join('\n');
-            } else {
-                text = normalizeEntityName(currentData.mainFeature || 'Entity');
-            }
-            performCopy(text, btn);
         }
 
         function copyToClipboard() {
@@ -408,8 +426,6 @@
             if (exprToggle) exprToggle.addEventListener('change', updateCoordDisplay);
             var copyBtn = document.getElementById('copy-btn');
             if (copyBtn) copyBtn.addEventListener('click', copyToClipboard);
-            var copyShortBtn = document.getElementById('copy-short-btn');
-            if (copyShortBtn) copyShortBtn.addEventListener('click', copyShort);
 
             // Section folding — only the top-level .cad-accordion-header of
             // each .cad-sidebar-panel (not the nested #list-label sub-header).

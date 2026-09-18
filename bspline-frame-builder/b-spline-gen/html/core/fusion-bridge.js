@@ -5,14 +5,51 @@
 
 import { P, isFusionMode, setIsFusionMode } from './state.js';
 import { COORD_SYSTEM } from './coords.js';
+import { fusLog } from './fusion-log.js';
+
+export { fusLog } from './fusion-log.js';
 
 let pollInterval = null;
 
 /**
- * Diagnostic logging bridge to fusion_hybrid_log.txt.
+ * Asks Python for the design's widthIn/heightIn parameters (B9). The reply
+ * arrives asynchronously via the 'sync_board' handshake — unchanged.
  */
-export function fusLog(msg) {
-    try { adsk.fusionSendData('log', JSON.stringify({ msg: String(msg) })); } catch (_) { }
+export function requestDesignParams() {
+    try {
+        adsk.fusionSendData('get_design_params', '{}');
+        fusLog('get_design_params sent to Python');
+    } catch (e) {
+        fusLog(`requestDesignParams FAILED: ${e.message}`);
+    }
+}
+
+/** The single control that reflects Fusion send/import state: the header 'Send to Fusion' button.
+ *  (#btnFusionApply was removed from the HTML on 2026-04-09; this replaces four null-guarded lookups.) */
+export const FUSION_IDLE_LABEL = 'Send to Fusion';
+export function fusionActionButton() { return document.getElementById('btnDownload'); }
+export function setFusionActionState(text, disabled) {
+    const b = fusionActionButton(); if (!b) return;
+    b.textContent = text; b.disabled = !!disabled;
+}
+
+let _statusGen = 0;
+/** The one status line for Fusion traffic (UX2). kind: 'info' | 'busy' | 'ok' | 'warn'. Empty text hides it;
+ *  'ok' auto-clears after 3 s. */
+export function setFusionStatus(text, kind = 'info') {
+    const el = document.getElementById('fusion-status');
+    if (!el) return;
+    const gen = ++_statusGen;
+    el.textContent = text;
+    el.dataset.kind = kind;
+    el.hidden = !text;
+    if (kind === 'ok' && text) {
+        setTimeout(() => {
+            if (_statusGen !== gen) return; // a newer message already replaced this one
+            el.textContent = '';
+            el.hidden = true;
+        }, 3000);
+    }
 }
 
 /**
@@ -62,7 +99,7 @@ export async function sendFusionPayloadChunked(payloadString) {
 /**
  * Initiates the reliable polling loop for Fusion status updates.
  */
-export function startFusionPolling(btnApply) {
+export function startFusionPolling() {
     if (pollInterval) clearInterval(pollInterval);
     let _pollTicks = 0;
     const timeoutTicks = (P.spacing <= 0.05) ? 300 : 90;
@@ -74,7 +111,8 @@ export function startFusionPolling(btnApply) {
             clearInterval(pollInterval); pollInterval = null;
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
-            if (btnApply) { btnApply.disabled = false; btnApply.textContent = 'OK'; }
+            setFusionActionState(FUSION_IDLE_LABEL, false);
+            setFusionStatus('Fusion did not confirm the import — check the Fusion log', 'warn');
             return;
         }
 

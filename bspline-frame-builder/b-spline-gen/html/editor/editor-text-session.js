@@ -103,7 +103,7 @@ function _recoverSourceText(el) {
  * handlers. Each step is a small helper so the orchestrator reads as a
  * checklist; the helpers own their own state lifetimes.
  */
-export function initTextSession(editor, pointer) {
+function initTextSession(editor, pointer) {
     dbg('TEXT-DBG', `initTextSession: hasEditingText=${!!editor._editingTextEl} pointer=${pointer ? `(${pointer.x},${pointer.y})` : 'null'}`);
     if (!editor._editingTextEl) {
         dbg('TEXT-DBG', 'initTextSession: no editing text, returning early');

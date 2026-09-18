@@ -1,6 +1,11 @@
 """
 Sketch Builder palette — focused on template selection, parameter authoring,
 and skeleton sketch construction. Auto-closes after a successful build.
+
+Runs on the shared palette scaffold (FB2 slice a) — see palette_scaffold.py
+and FB2-PALETTE-SCAFFOLD-DESIGN.md. Everything left in this file is
+genuinely sketch-specific: schema push, parameter hydration, the tilt-param
+invariant, and template selection have no solid-side equivalent to share.
 """
 import adsk.core, adsk.fusion, traceback
 import os, json, sys, importlib
@@ -10,11 +15,16 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
+# palette_scaffold.py lives alongside this file, in ui/ itself (not a
+# package) — that directory is never otherwise on sys.path (only its
+# PARENT is, for `from fb_engine import ...`), so add it here (FB2).
+if current_dir not in sys.path:
+    sys.path.append(current_dir)
+
+from palette_scaffold import PaletteSpec, _PaletteBridgeMixin, make_palette
 
 # Modular imports - initialized by the Entry Point (bspline-frame-builder.py)
 frame_engine = None
-
-_active_handler = None
 
 # Standard Logger setup
 try:
@@ -29,62 +39,9 @@ PALETTE_HTML = 'html/sketch_builder_palette.html'
 
 BUILD_SKETCH_CMD_ID = 'frameSketchBuildCommand'
 SCHEMA_PUSH_CMD_ID  = 'frameSketchSchemaPushCommand'
-_pending_build_request = None
-_pending_schema_style  = None
+_pending_schema_style = None
 
-handlers = []
 _doc_activated_handler = None  # Holds DocumentActivated subscription to prevent GC
-
-
-def _create_hidden_command(cmd_defs, cmd_id, name, handler_class):
-    try:
-        if cmd_defs.itemById(cmd_id):
-            return
-        cmd_def = cmd_defs.addButtonDefinition(cmd_id, name, '', '')
-        handler = handler_class()
-        cmd_def.commandCreated.add(handler)
-        handlers.append(handler)
-    except Exception:
-        pass
-
-
-def _ensure_hidden_commands(ui):
-    """Ensure the hidden bridge commands exist for sketch dispatch + schema push."""
-    try:
-        cmd_defs = ui.commandDefinitions
-        targets = (
-            (BUILD_SKETCH_CMD_ID, 'Build Skeleton',  HiddenBuildCommandCreatedHandler),
-            (SCHEMA_PUSH_CMD_ID,  'Push Schema',     HiddenSchemaPushCommandCreatedHandler),
-        )
-        for cmd_id, cmd_name, handler_cls in targets:
-            existing = cmd_defs.itemById(cmd_id)
-            if existing:
-                try:
-                    existing.deleteMe()
-                except Exception:
-                    pass
-            _create_hidden_command(cmd_defs, cmd_id, cmd_name, handler_cls)
-    except Exception:
-        if diag_logger:
-            diag_logger.log_error(f"_ensure_hidden_commands FAILED:\n{traceback.format_exc()}")
-
-
-def _schedule_hidden_build(data, style_id="Template 1"):
-    global _pending_build_request
-    _pending_build_request = {'data': data, 'style_id': style_id}
-    if diag_logger: diag_logger.log(f"DISPATCH: queued sketch build for style '{style_id}'")
-    try:
-        app = adsk.core.Application.get()
-        if not app:
-            return
-        ui = app.userInterface
-        cmd_def = ui.commandDefinitions.itemById(BUILD_SKETCH_CMD_ID)
-        if cmd_def:
-            cmd_def.execute()
-        else:
-            if diag_logger: diag_logger.log_error(f"DISPATCH ABORT: '{BUILD_SKETCH_CMD_ID}' not found")
-    except Exception:
-        if diag_logger: diag_logger.log_error(f"Sketch dispatch failed:\n{traceback.format_exc()}")
 
 
 def _schedule_schema_push(style_id="Template 1"):
@@ -101,6 +58,15 @@ def _schedule_schema_push(style_id="Template 1"):
             cmd_def.execute()
     except Exception:
         if diag_logger: diag_logger.log_error(f"_schedule_schema_push failed:\n{traceback.format_exc()}")
+
+
+def _run_schema_push_execute():
+    """extra_commands execute_fn for SCHEMA_PUSH_CMD_ID: reads the queued
+    style, then pushes the schema."""
+    global _pending_schema_style
+    style = _pending_schema_style or "Template 1"
+    _pending_schema_style = None
+    _push_schema_direct(style)
 
 
 def _push_schema_direct(style_id="Template 1"):
@@ -127,20 +93,20 @@ def _push_schema_direct(style_id="Template 1"):
                 p_live = dict(p)
                 p_name = p['Name']
 
-                if user_params:
-                    fp = user_params.itemByName(p_name)
-                    if fp:
-                        raw_val = fp.value
-                        if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
-                            p_live['Val'] = round(raw_val / w_in, 4) if w_in != 0 else p.get('Val', 0)
-                        elif p_name in ['TopGap', 'BottomGap',
-                                        'ShoulderRadius', 'WaistRadius', 'HipRadius']:
-                            p_live['Val'] = round(raw_val / h_in, 4) if h_in != 0 else p.get('Val', 0)
-                        elif p_name == 'WaistOffset':
-                            p_live['Val'] = round(raw_val / (h_in / 2.0), 4) if h_in != 0 else p.get('Val', 0)
-                        else:
-                            target_unit = p.get('Unit', 'cm')
-                            p_live['Val'] = round(raw_val / 2.54, 4) if target_unit == 'in' else round(raw_val, 4)
+                fp = user_params.itemByName(p_name) if user_params else None
+                p_live['Exists'] = bool(fp)
+                if fp:
+                    raw_val = fp.value
+                    if p_name in ['ShoulderSpan', 'WaistSpan', 'HipSpan']:
+                        p_live['Val'] = round(raw_val / w_in, 4) if w_in != 0 else p.get('Val', 0)
+                    elif p_name in ['TopGap', 'BottomGap',
+                                    'ShoulderRadius', 'WaistRadius', 'HipRadius']:
+                        p_live['Val'] = round(raw_val / h_in, 4) if h_in != 0 else p.get('Val', 0)
+                    elif p_name == 'WaistOffset':
+                        p_live['Val'] = round(raw_val / (h_in / 2.0), 4) if h_in != 0 else p.get('Val', 0)
+                    else:
+                        target_unit = p.get('Unit', 'cm')
+                        p_live['Val'] = round(raw_val / 2.54, 4) if target_unit == 'in' else round(raw_val, 4)
 
                 if isinstance(p_live.get('Val'), str) and design:
                     try:
@@ -214,20 +180,7 @@ if diag_logger:
     diag_logger.log("SKETCH BUILDER UI MODULE: Loaded")
 
 
-class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        try:
-            global frame_engine
-            run_palette(frame_engine, diag_logger=diag_logger)
-        except Exception as e:
-            if diag_logger:
-                diag_logger.log_error(f"SketchBuilder CommandCreatedHandler CRASH:\n{traceback.format_exc()}")
-            adsk.core.Application.get().userInterface.messageBox(f"Palette Launch Failed:\n{e}")
-
-
-class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
+class PaletteHTMLEventHandler(_PaletteBridgeMixin, adsk.core.HTMLEventHandler):
     def __init__(self, diag_logger=None):
         super().__init__()
         self.diag_logger = diag_logger
@@ -270,8 +223,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             elif action == 'change_template':
                 self.style_id = data.get('template', "Template 1")
-                if hasattr(self, '_style_id_ref'):
-                    self._style_id_ref[0] = self.style_id
                 _schedule_schema_push(self.style_id)
 
             elif action in ('request_template_list', 'get_templates'):
@@ -337,174 +288,38 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         except Exception as e:
             if self.diag_logger: self.diag_logger.log(f"PARAM SYNC ERROR: {e}")
 
-    def _send_palette_message(self, pal, action, payload):
-        try:
-            if not pal:
-                return False
-            pal.sendInfoToHTML(action, json.dumps(payload))
-            return True
-        except Exception as e:
-            if self.diag_logger: self.diag_logger.log_error(f"Palette sendInfoToHTML failed ({action}): {e}")
-            return False
-
-    def _send_build_info(self, pal):
-        """Best-effort version stamp: read build-info.json (add-in ROOT) via
-        fb_shared, compare to source HEAD, push to the header badge. Fully
-        wrapped — never breaks the palette. See fb_shared.build_info."""
-        try:
-            import os as _os, sys as _sys
-            _root = _os.path.dirname(_os.path.abspath(__file__))
-            for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root)
-                if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
-                    break
-                _root = _os.path.dirname(_root)
-            if _root not in _sys.path:
-                _sys.path.insert(0, _root)
-            from fb_shared import build_info as _bi
-            info = _bi.read_build_info(_root)
-            status, message = _bi.compare_to_source(info)
-            if pal:
-                pal.sendInfoToHTML('build_info', json.dumps({
-                    'sha': info.get('sha'), 'built_at': info.get('built_at'),
-                    'dirty': info.get('dirty'), 'status': status, 'message': message,
-                }))
-        except Exception:
-            pass
-
     def _run_sketch_build(self, data):
         style_id = data.get('template') or self.style_id
         if self.diag_logger: self.diag_logger.log(f"RUN SKETCH BUILD triggered. Style: {style_id}")
         request_data = dict(data)
         request_data['ui_state'] = self.active_vars
-        _schedule_hidden_build(request_data, style_id)
+        request_data['style_id'] = style_id
+        _palette.schedule_hidden_build(request_data)
 
 
-class HiddenBuildCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        try:
-            event_args = adsk.core.CommandCreatedEventArgs.cast(args)
-            cmd = event_args.command
-            self.on_execute = HiddenBuildCommandExecuteHandler()
-            cmd.execute.add(self.on_execute)
-            handlers.append(self.on_execute)
-        except Exception:
-            if diag_logger: diag_logger.log_error(f"SketchBuild CommandCreated CRASH:\n{traceback.format_exc()}")
-
-
-class HiddenBuildCommandExecuteHandler(adsk.core.CommandEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        global _pending_build_request
-        try:
-            request = _pending_build_request
-            _pending_build_request = None
-            if not request:
-                return
-
-            style_id = request.get('style_id', 'Template 1')
-            data = request.get('data', {})
-            _run_sketch_build_direct(data, style_id)
-        except Exception:
-            if diag_logger: diag_logger.log_error(f"SketchBuildExecute CRASH:\n{traceback.format_exc()}")
-
-
-class HiddenSchemaPushCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        try:
-            cmd = adsk.core.CommandCreatedEventArgs.cast(args).command
-            h = HiddenSchemaPushExecuteHandler()
-            cmd.execute.add(h)
-            handlers.append(h)
-        except Exception:
-            if diag_logger: diag_logger.log_error(f"SketchSchemaPushCreated CRASH:\n{traceback.format_exc()}")
-
-
-class HiddenSchemaPushExecuteHandler(adsk.core.CommandEventHandler):
-    def __init__(self):
-        super().__init__()
-    def notify(self, args):
-        global _pending_schema_style
-        style = _pending_schema_style or "Template 1"
-        _pending_schema_style = None
-        _push_schema_direct(style)
-
-
-def _set_status(msg):
+def _build_fn(data, ctx):
+    """PaletteSpec.build_fn: runs the actual sketch build from the hidden command's queued request."""
+    style_id = data.get('style_id', 'Template 1')
     try:
-        app = adsk.core.Application.get()
-        if app:
-            app.userInterface.statusBarMessage = msg
-    except Exception:
-        pass
-
-
-def _notify_status(msg):
-    try:
-        pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.sendInfoToHTML('status_update', json.dumps({'msg': msg}))
-    except Exception:
-        pass
-
-
-def _close_palette():
-    try:
-        pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.isVisible = False
-    except Exception:
-        pass
-
-
-def _run_sketch_build_direct(data, style_id):
-    try:
-        if diag_logger: diag_logger.log(f"RUN SKETCH BUILD (hidden command). Style: {style_id}")
+        if ctx.diag_logger: ctx.diag_logger.log(f"RUN SKETCH BUILD (hidden command). Style: {style_id}")
 
         max_phase = data.get('max_phase') if isinstance(data, dict) else None
         phase_label = f" · up to phase {max_phase}" if max_phase is not None else ""
-        _set_status(f"Building {style_id}{phase_label}…")
+        ctx.set_status(f"Building {style_id}{phase_label}…")
 
-        if frame_engine:
-            frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=diag_logger, data=data)
-            _set_status(f"{style_id} · sketch complete{phase_label}")
-            _notify_status("Sketch Build Complete")
+        if ctx.frame_engine:
+            ctx.frame_engine.build_sketch_logic_v3(style_id=style_id, external_logger=ctx.diag_logger, data=data)
+            ctx.set_status(f"{style_id} · sketch complete{phase_label}")
+            ctx.notify_status("Sketch Build Complete")
             # Auto-close on success
-            _close_palette()
+            ctx.close_palette()
         else:
-            if diag_logger: diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED")
-            _set_status("Build error: frame engine not loaded — restart add-in")
+            if ctx.diag_logger: ctx.diag_logger.log_error("CRITICAL: frame_engine is NOT INJECTED")
+            ctx.set_status("Build error: frame engine not loaded — restart add-in")
     except Exception as e:
         short = str(e).split('\n')[0][:120]
-        _set_status(f"Build failed: {short} — see log")
-        if diag_logger: diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
-
-
-class DocumentActivatedHandler(adsk.core.DocumentEventHandler):
-    """Re-pushes the palette schema whenever the user switches active documents."""
-    def __init__(self, style_id_ref, diag_logger=None):
-        super().__init__()
-        self._style_id_ref = style_id_ref
-        self.diag_logger = diag_logger
-
-    def notify(self, args):
-        try:
-            app = adsk.core.Application.get()
-            if not app:
-                return
-            # Tilt param invariant (E8): a newly-activated design may lack
-            # frame_tilt_deg — ensure it now (outside any build Execute).
-            _ensure_tilt_param_safe()
-            pal = app.userInterface.palettes.itemById(PALETTE_ID)
-            if pal and pal.isVisible:
-                style = self._style_id_ref[0] if self._style_id_ref else "Template 1"
-                _schedule_schema_push(style)
-        except Exception:
-            if self.diag_logger: self.diag_logger.log_error(f"DocumentActivatedHandler CRASH:\n{traceback.format_exc()}")
+        ctx.set_status(f"Build failed: {short} — see log")
+        if ctx.diag_logger: ctx.diag_logger.log_error(f"Sketch Build Logic Failed:\n{traceback.format_exc()}")
 
 
 def _ensure_tilt_param_safe():
@@ -522,73 +337,77 @@ def _ensure_tilt_param_safe():
             diag_logger.log_error(f"_ensure_tilt_param_safe:\n{traceback.format_exc()}")
 
 
-def run_palette(engine_instance, diag_logger=None):
-    """Central runner to launch the Sketch Builder palette."""
-    global frame_engine, _active_handler
-    frame_engine = engine_instance
-    if diag_logger:
-        diag_logger.log(f"sketch run_palette: engine injected = {frame_engine is not None}")
-
+def _on_document_activated(ctx):
+    """Re-pushes the palette schema whenever the user switches active
+    documents. Reads the live style_id straight off ctx.active_handler —
+    its value is always current, since change_template sets it directly
+    on this same live handler instance (verified turn 147)."""
     try:
-        app = adsk.core.Application.get()
-        ui = app.userInterface
-
-        # Tilt param invariant (E8): ensure frame_tilt_deg exists at palette-open,
-        # OUTSIDE any build Execute, so undo can't orphan a mid-build param create.
+        # Tilt param invariant (E8): a newly-activated design may lack
+        # frame_tilt_deg — ensure it now (outside any build Execute).
         _ensure_tilt_param_safe()
+        pal = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
+        if pal and pal.isVisible:
+            style = ctx.active_handler.style_id if ctx.active_handler else "Template 1"
+            _schedule_schema_push(style)
+    except Exception:
+        if ctx.diag_logger: ctx.diag_logger.log_error(f"_on_document_activated CRASH:\n{traceback.format_exc()}")
 
-        # 1. Cleanup any old palette
-        existing = ui.palettes.itemById(PALETTE_ID)
-        if existing:
-            existing.deleteMe()
 
-        # 2. Create
-        html_path = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
-        pal = ui.palettes.add(PALETTE_ID, PALETTE_NAME, html_path, True, True, True, 450, 700)
-        pal.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
-        pal.setMinimumSize(320, 500)
+def _on_ready(ctx):
+    """Runs once after the palette is shown: ensure the tilt param, pick the
+    first available template, then push the initial schema."""
+    _ensure_tilt_param_safe()   # E8 F1-C: the param must exist BEFORE any build
+    try:
+        if frame_engine:
+            templates = frame_engine.get_available_templates()
+            if templates and ctx.active_handler:
+                ctx.active_handler.style_id = templates[0]['value']
+    except Exception:
+        pass
+    _schedule_schema_push(ctx.active_handler.style_id if ctx.active_handler else "Template 1")
 
-        # 3. Bridge
-        _active_handler = PaletteHTMLEventHandler(diag_logger=diag_logger)
-        pal.incomingFromHTML.add(_active_handler)
-        pal.handler_anchor = _active_handler
-        handlers.append(_active_handler)
 
-        # 3b. Doc switch refresh
-        global _doc_activated_handler
+def _make_html_handler(diag_logger):
+    return PaletteHTMLEventHandler(diag_logger=diag_logger)
+
+
+_spec = PaletteSpec(
+    palette_id=PALETTE_ID,
+    name=PALETTE_NAME,
+    html_path=PALETTE_HTML,
+    size=(450, 700),
+    min_size=(320, 500),
+    build_cmd_id=BUILD_SKETCH_CMD_ID,
+    build_fn=_build_fn,
+    make_html_handler=_make_html_handler,
+    extra_commands=((SCHEMA_PUSH_CMD_ID, 'Push Schema', _run_schema_push_execute),),
+    on_document_activated=_on_document_activated,
+    on_ready=_on_ready,
+)
+
+_palette = make_palette(_spec)
+handlers = _palette.handlers
+
+
+def run_palette(engine_instance, diag_logger=None):
+    """Central runner to launch the Sketch Builder palette. Thin wrapper so
+    the module-level _doc_activated_handler attribute (read by
+    bspline-frame-builder.py's _teardown_submodules via getattr) stays in
+    sync with the scaffold's own tracked handler after every call."""
+    global frame_engine, _doc_activated_handler
+    frame_engine = engine_instance
+    _palette.run_palette(engine_instance, diag_logger=diag_logger)
+    _doc_activated_handler = _palette.get_doc_activated_handler()
+
+
+class CommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
+    def __init__(self):
+        super().__init__()
+    def notify(self, args):
         try:
-            if _doc_activated_handler:
-                app.documentActivated.remove(_doc_activated_handler)
-        except Exception:
-            pass
-        _style_id_ref = [_active_handler.style_id]
-        _active_handler._style_id_ref = _style_id_ref
-
-        _doc_activated_handler = DocumentActivatedHandler(_style_id_ref, diag_logger=diag_logger)
-        app.documentActivated.add(_doc_activated_handler)
-        handlers.append(_doc_activated_handler)
-
-        # 4. Show
-        pal.isVisible = True
-
-        # 5. Hidden commands
-        _ensure_hidden_commands(ui)
-
-        # 5b. Pick first available template
-        try:
-            if frame_engine:
-                templates = frame_engine.get_available_templates()
-                if templates:
-                    first_template = templates[0]['value']
-                    _active_handler.style_id = first_template
-                    _style_id_ref[0] = first_template
-        except Exception:
-            pass
-
-        # 6. Initial schema push via deferred command
-        _schedule_schema_push(_active_handler.style_id)
-
-    except Exception as e:
-        if diag_logger:
-            diag_logger.log_error(f"FAILURE IN sketch run_palette: {e}\n{traceback.format_exc()}")
-        raise e
+            run_palette(frame_engine, diag_logger=diag_logger)
+        except Exception as e:
+            if diag_logger:
+                diag_logger.log_error(f"SketchBuilder CommandCreatedHandler CRASH:\n{traceback.format_exc()}")
+            adsk.core.Application.get().userInterface.messageBox(f"Palette Launch Failed:\n{e}")

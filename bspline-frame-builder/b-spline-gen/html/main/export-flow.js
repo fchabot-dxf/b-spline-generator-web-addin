@@ -21,6 +21,9 @@ import {
     sendFusionPayloadChunked,
     startFusionPolling,
     stopFusionPolling,
+    fusionActionButton,
+    setFusionActionState,
+    FUSION_IDLE_LABEL,
 } from '../core/fusion-bridge.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -134,18 +137,11 @@ export function onFusionApply(preview) {
 
     if (isFusionMode) {
         (async () => {
-            const btn = document.getElementById('btnFusionApply');
-            if (btn) {
-                btn.disabled    = true;
-                btn.textContent = 'Baking...';
-            }
+            setFusionActionState('Baking...', true);
             try {
                 await executeExport(preview, options, false, 'B-Spline.step');
             } finally {
-                if (btn) {
-                    btn.disabled    = false;
-                    btn.textContent = 'OK';
-                }
+                setFusionActionState(FUSION_IDLE_LABEL, false);
             }
         })();
     } else {
@@ -155,7 +151,7 @@ export function onFusionApply(preview) {
 
 export async function executeExport(preview, options = null, isAppend = false, filename_hint = null) {
     const btn = isFusionMode
-        ? document.getElementById('btnFusionApply')
+        ? fusionActionButton()
         : document.getElementById('btnWizardExport');
 
     if (btn && !isAppend) {
@@ -227,7 +223,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
 
     if (stepVariants.length === 0) {
         if (typeof fusLog === 'function') fusLog('[EXPORT] No bodies selected; skipping Fusion send.');
-        if (btn) { btn.disabled = false; btn.textContent = 'OK'; }
+        if (btn) { btn.disabled = false; btn.textContent = FUSION_IDLE_LABEL; }
         return;
     }
 
@@ -253,7 +249,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         fusLog(`[EXPORT] variants=${stepVariants.length} bases=${stepVariants.map(v => v.name).join(',')} totalStepLen=${totalLen} stampLayers=${layersToExport.length}`);
     }
     await sendFusionPayloadChunked(payload);
-    if (!isAppend) startFusionPolling(btn);
+    if (!isAppend) startFusionPolling();
 }
 
 async function downloadFiles({ shared, heights, offsetPts, unstamped, selectedVariants, layersToExport, btn }) {

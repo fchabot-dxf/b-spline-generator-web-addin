@@ -41,11 +41,3 @@ export function removeClass(target, className) {
     if (!node) return;
     node.classList.remove(className);
 }
-
-export function createButton(attrs = {}) {
-    const button = document.createElement('button');
-    button.type = attrs.type || 'button';
-    if (attrs.className) button.className = attrs.className;
-    if (attrs.textContent) button.textContent = attrs.textContent;
-    return button;
-}

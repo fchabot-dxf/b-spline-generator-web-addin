@@ -51,7 +51,7 @@ function _markExpandCalloutDismissed() {
 
 /** Hide the Expand-tool onboarding callout, optionally persisting the
  *  dismissal so it won't show again in future sessions. */
-export function dismissExpandCallout({ persist = true } = {}) {
+function dismissExpandCallout({ persist = true } = {}) {
   const el = document.getElementById('editorExpandCallout');
   if (el) el.style.display = 'none';
   if (persist) _markExpandCalloutDismissed();

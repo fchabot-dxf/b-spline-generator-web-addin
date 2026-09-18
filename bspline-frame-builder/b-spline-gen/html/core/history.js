@@ -5,6 +5,7 @@
 import {
     P, preDelta, postDelta, extraThickenThinMask, persistableP
 } from './state.js';
+import { markDirty } from './dirty.js';
 
 const GLOBAL_MAX_HISTORY = 40; // Increased capacity for complex sculpting
 export const globalHistoryLog = [];
@@ -37,6 +38,7 @@ export function takeSnapshot(label = "Action", stampSvgText = null) {
     globalHistoryLog.push(snapshot);
     globalRedoLog.length = 0; // New action clears redo path
     if (globalHistoryLog.length > GLOBAL_MAX_HISTORY) globalHistoryLog.shift();
+    if (label !== "Initial") markDirty();
     updateGlobalButtons();
 }
 

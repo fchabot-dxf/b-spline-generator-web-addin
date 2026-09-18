@@ -308,3 +308,119 @@ entry and the modal regains Load / Rename / Delete. Quick Save in the navbar is 
   template-maker imports package-qualified (TM2, design note).
 - Machine coupling: "Ultimate Bee" appears ~15× in `cam_engine/setup_builder.py` (machine matching, sim-doc detection,
   default machine, WCS). Portability is a declaration job (one machine profile), not a one-line path fix. Parked.
+
+## Backlog from the lane-B audit (A7 cloud, 2026-09-17) — AUDIT SERIES COMPLETE (AUDIT-2026-09.md on main)
+- **CW1 — A7-1:** `cloud/preset-worker/src/bus-route.js` has no body-size cap on any of its 6 unauthenticated write
+  routes while `index.js` and `pageviews-route.js` each declare one. DECLARE the cap once in `index.js` (it already owns
+  `MAX_BODY_BYTES`) and apply it before dispatching to any route module, so no route can forget it.
+- **DEP1 (widened) — A7-3 twin of A1-6:** `deploy_cloudflare.py --build-only` never cleans `dist/` (exit at :220 precedes
+  the only `clean_dir` at :233) → a deleted source file stays live on the Pages site. Fix both deploys as ONE lesson:
+  clean-then-copy (or orphan sweep) in `DEPLOY_bspline-frame-builder.py` and `deploy_cloudflare.py`.
+- **A7-2** (accepted risk): the Appreciation Arts Plastiques routes commit to GitHub with no auth; its own comment invites
+  an origin/API-key gate "if abuse ever shows up". Named, not dispatched.
+- **`/presets`** is provably dead within this repo (its only caller was deleted in BG1) — retire the alias routes in the
+  worker once the human confirms no other app uses them (they are the "legacy alias" the README keeps for old clients).
+- **step-editor-worker + step-editor-pages:** worker code finished but never provisioned (`REPLACE_AFTER_KV_CREATE`),
+  pages is README-only, the add-in it served does not exist (absorbed by stamp-editor). **Human keep-or-delete call.**
+- Series summary: see AUDIT-2026-09.md "Audit series summary". Dispositions as of now — dispatched/landed: A2-3 (FB1),
+  A3-1 (TM1), A5a-1/-2/-3 (BG1), A5a-5 (BG1), A5b-1 (BG3 in flight), A1-2 (IN1), B7 (E7a); closed: B6; open: A2-1 (human
+  Fusion check), A2-4 (FB2 design), B10 (HY3), A7-1 (CW1), A7-3 (DEP1), A7-2 (accepted).
+
+## E8 VERIFIED LIVE (advisor, through the Fusion bridge, 2026-09-17 09:55 — deployed sha a861273)
+Scratch design; Frame Builder opened → `frame_tilt_deg` created before any build (F1-C). Build (Template 1) →
+1 component `Frame_1` = tilt plane + 3 sketches, 5 timeline items, 10 more user params created by the build.
+**Ctrl+Z once → timeline 0, component gone, AND all 10 build-created params gone; only `frame_tilt_deg` remains.**
+Ctrl+Y → all 5 items + 11 params back. Rebuild → new component `Frame_2` (each build is its own frame; one plane per
+frame). `frame_tilt_deg = 30` + rebuild → every frame plane reads 30° (all driven by the one param). **E8 CLOSED.**
+**A2-1 REFUTED at runtime:** user parameters created inside the build's command Execute DO reverse with the geometry
+(they are part of the command's undo unit). The tilt bug was specific to a param that DRIVES geometry created in the
+same unit; UNDO-REDO-DESIGN.md's general claim ("user params don't undo like geometry") is wrong — note it there.
+**Deploy ritual is now hands-free:** `stop()` via the bridge → `release.py --local` → `run()` via the bridge; the human
+no longer needs the Add-Ins dialog (loader file itself only refreshes on a real Fusion restart — all changes today are
+in sub-modules, which `run()` reloads).
+
+## IN3 — Frame Inspector page is wider than its palette window (found live 2026-09-17 10:15, deployed d8a32ea)
+Screen captures at palette widths 320 / 520 / 700 px all show the page laid out ~100-150 px wider than the window: the
+header's build badge + bridge pulse, the "Copy Name" button and E7c's per-row ⧉ buttons sit off the right edge; the
+list text wraps at a width larger than the window. Folding + labelled meta rows render correctly. Advisor's bounded
+look (body width:100%, global box-sizing:border-box, .cad-dialog-content overflow-x:hidden) did not locate the cause →
+UNLOCATED; dispatched as a hunt (IN3). Evidence PNGs: scratchpad `pal_0.png` (320), `inspector-screen.png` (520),
+`inspector-700.png` (700). Palette restored to 320×600; scratch design closed unsaved.
+- **IN3 resolved by measurement (10:35):** IN3's CSS change did not remove the overflow; docking the palette right did
+  (same page, same size, everything fits — `in3-docked.png`). Cause = floating-palette rendering (page zoomed inside a
+  narrower viewport), not CSS. IN3b declares the right dock on creation, as b-spline-gen does. Fusion quirk recorded here
+  so nobody re-hunts it in CSS.
+
+## FB2 status (2026-09-17 11:45)
+Slices (a) scaffold+sketch (b7cd92e), (a-fix) tilt ensure restored after a live-caught regression (27bfd7c), (b) solid
+(dbfed18) are live-proven through the bridge: both palettes build (sketch frame → extrude onto a picked face, 10 bodies),
+Stop→Start clean. 594+351 → 415+211 lines, scaffold 319. Measured quirk: Fusion fires `documentActivated` twice per
+activation (2 idempotent schema pushes; one live handler; same before the rewrite). Slice (c) = honesty sweep + prune
+the replaced doc handler from `handlers` + mixin-order convention. Dispatched.
+
+# DECISIONS 2026-09-17 15:57 (Fred, via the decision sheet https://claude.ai/artifact/5J6Tc36RbjFuf9T4FR6Do3) — the seat-A queue
+Order = advisor's, cheapest-and-safest first, design-first items last.
+- **DEC1** step-editor cloud pair → **delete both** (`cloud/step-editor-worker`, `cloud/step-editor-pages`). Removal sweep.
+- **PM2** Project Manager doors → **top-bar icon only**, drop the sidebar Projects button; **note: give the top-bar icon
+  buttons text labels on desktop / wide widths** (declared breakpoint).
+- **IN4** Inspector → collapse batch rows past 5 with the count in the header (**Full Copy must still copy the whole
+  list**); **drop Copy Name**.
+- **UX1** Confirm before Load discards unsaved edits + a visible unsaved-changes indicator (one declared dirty state).
+- **UX2** One status line for all Fusion traffic (import progress, build-stamp warning, bridge pulse).
+- **FB3** Frame Builder: show the parameters a build will create, before building.
+- **CAM1** CAM Builder vs CAM Studio → consolidate — design-first turn, then slices.
+- Kept as-is by ruling: `/presets` alias stays; GitHub-commit route unchanged; no machine profile.
+- Already done: FB2 (palette scaffold); over-exports (HY4, in flight).
+
+## WEBSITE INCIDENT 2026-09-17 12:20 — the site had not built since JULY 12
+Cloudflare Pages (`bspline-generator`, GitHub-connected, build = `python bspline-frame-builder/deploy_cloudflare.py
+--build-only`, output `bspline-frame-builder/dist`) ran `npm clean-install` before every build because a root
+`package.json` exists; the lock file drifted (`@emnapi/*`), so **every build since 6c1cce4 (2026-07-12) failed** while
+`git push` reported success and nobody looked at Cloudflare. All of July's E-series and today's work were invisible
+on the web until 16:24 today. Fix applied: Pages project env `SKIP_DEPENDENCY_INSTALL=1` (production + preview) — the
+site build needs no npm packages (vitest is dev-only) — then retried; deploy success at 16:24, served bytes verified
+against HEAD (fusion-log.js, state.js, cloud-project-manager.js byte-identical). Lock also regenerated (6a610b9) for
+local `npm ci`; Cloudflare's older npm still disagrees with it — irrelevant now that installs are skipped.
+- **DEP2 (queue, after UX2):** `release.py --web` must VERIFY the Pages deployment (poll the API for the push's
+  commit → success/failure, print the reason on failure) — "push succeeded" is not "site updated". The advisor skill's
+  release rule already says so; now the script must.
+- **PM2b (next for seat A):** the new top-bar labels clip — `.cad-navbar .cad-nav-btn` keeps a fixed width on desktop.
+  Widen in the same `min-width:601px + fine pointer` block.
+- **UX3 (ruling 2026-09-17 12:45): Undo/Redo leave the sidebar control panel** → top bar, left of Save, as icon
+  buttons (↶ ↷) with the PM2 label pattern (`cad-nav-label`, text on wide+mouse); ids unchanged so history.js keeps
+  driving them; the sidebar's sticky header keeps only "Generate New Seed". Queue after UX1.
+- **FB3 live-verified 13:00** (names + `new` chips + note; ReadOnly rows correctly chip-free). **FB3b (cosmetic, later):**
+  the `new` chip stretches to the label column's width — make it `display:inline-block; width:auto`.
+
+## CAM1 status (13:45): COMPLETE — slices (a) d714591, (b) de63098, (c) 2c7195e; live-proven through the bridge (one CAM
+button, two mode tabs boot, Studio command/palette gone after Stop→Start, no false 'response' warnings). With it every
+item of the 2026-09-17 decision sheet is live in both hosts.
+- **DEP3 (note, not dispatched):** `release.py --web` does `git add -A` before committing — the two-seats index trap
+  (advisor skill, measured 2026-09-11). Fine for a lone human; never run it while a worker seat holds the tree.
+- Remaining queue: DEP2 (in flight), FB3b (cosmetic chip), then the list is DONE → advisor runs `handoff.py done`.
+- **CAM1d (cosmetic batch with FB3b):** the merged CAM header is over-full at the docked 460 px — stamp on one line now,
+  but "N SETUPS · READY" wraps and the PREVIEW button is clipped. Move stamp + status to their own row under the tabs
+  (or hide the status text under 520 px); keep the action button whole.
+
+# CYCLE SUMMARY — 2026-09-17 (advisor session, two worker seats)
+Off-switch reached: the audit backlog and the decision-sheet queue are exhausted; COS1 (bcde691) is the last item,
+live-proven. Landed today (all pushed; site deploys verified through the Pages API; add-in deployed via the bridge):
+H1 · E7a · PM1/PM1b · E7b · IN2 · FB1 · TM1 · IN1 · HY2 · BG1/BG1b · BG3 · DEP1/DEP1b · E7c · HY3 · IN3/IN3b · CW1 ·
+TM2 · FB2 (a, a-fix, b, c) · BG2 · HY4 · DEC1 · PM2/PM2b · IN4 · UX1 · UX3 · UX2 · FB3 · CAM1 (a, b, c) · DEP2 · COS1.
+Audit: AUDIT-2026-09.md (A1-A7). Incidents: Pages builds silently failing since 2026-07-12 (fixed, verified);
+advisor closed an unsaved user document by name (rule recorded in memory).
+Open, not in this cycle: T1 tests on lane-b (seat B stuck on a permission prompt); CW2 worker auto-deploy needs the two
+GitHub secrets set by Fred; the `/presets` alias and the GitHub-commit route stay by ruling; DEP3 note.
+
+# SVG editor series (SE) — opened 2026-09-18 on Fred's ask "can you see a way to make it better?"
+Assessment (advisor, from the code; live capture pending Fusion's Session-Suspended dialog): the advertised single-key
+tool shortcuts (V/A/P/T/L/R/E) were never implemented; the Circle mode has no button; snapping is a hidden stub that
+nothing reads; a duplicate `toolClear` handler; no zoom/pan, so node edits on the docked 460 px palette hit 3 px targets.
+**B8 (BUGS_OPEN "editor tree duplicated into stamp-editor") is STALE:** the copy is generated by `sync_stamp_bundle.py`
+and untracked since 59615fe (2026-07-11); the on-disk drift is a stale bundle, regenerated at deploy. Fred's ruling
+2026-09-18: the standalone stamp-editor is out of scope for this series.
+- **SE1 (dispatched):** declared `data-key` shortcuts on the tool buttons + generic keydown lookup (reuse
+  `_isTypingTarget`), Circle button, snap-stub removal chain, `toolClear` removal.
+- **SE2 (next):** wheel zoom + space-drag pan + Fit button on the editor canvas (svg.js viewbox is already the base).
+- **SE3 (maybe):** shortcut letters shown on the buttons; 32 gated `dbg()` tracer calls (20 in text-session) — leave
+  unless they get in the way.

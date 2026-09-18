@@ -113,11 +113,14 @@ def _load_submodule(safe_name, subdir, filename):
     return module
 
 
-def _normalize_module_path(path):
+def _bare_module_names(folder):
+    """Every importable bare module name in ``folder`` (``*.py`` minus ``__init__``) — DERIVED so the wipe
+    list can never drift behind the folder it protects (TM1/TM2; a hand-typed list missed 8 names)."""
     try:
-        return os.path.normcase(os.path.normpath(path))
+        return sorted(os.path.splitext(f)[0] for f in os.listdir(folder)
+                      if f.endswith('.py') and f != '__init__.py')
     except Exception:
-        return path
+        return []
 
 
 # ── Bootstrap (runs on every Start so code edits take effect) ─────────────────
@@ -200,18 +203,18 @@ def _bootstrap():
     # version on re-import. Wipe those names before each load so each sub's
     # top-level imports resolve fresh from its own folder (sys.path[0] gets
     # set by the sub-module's own module-level `sys.path.insert(0, ...)`).
-    _shared_project_names = [
-        # expression-coords + entity-helpers retired here (C4/F8 S5): both are now
-        # the canonical fb_shared package, imported package-qualified by every
-        # consumer, so wiping the bare names was a dead no-op. fb_shared itself is
-        # wiped via its own entry in the earlier _force_wipe list.
-        'entity_util',
-        'phase_parser', 'role_points', 'cc_proxy', 'fb_attributes',
-        'ownership_gate', 'relation_hints', 'coincidence_clusters',
-        'template_generator', 'template_code', 'template_payload',
-        'detect_projections', 'rename_selection', 'deferred_rebuild',
-        'exporter',
-    ]
+    # expression-coords + entity-helpers retired here (C4/F8 S5): both are now the
+    # canonical fb_shared package, wiped via its own entry in the earlier _force_wipe list.
+    _shared_project_names = (
+        _bare_module_names(os.path.join(_addin_root, 'template-maker', 'core'))
+        + [n for n in _bare_module_names(os.path.join(_addin_root, 'fusion-exporter'))
+           if n != 'fusion-exporter']     # the entry file is loaded by path, never by bare name
+        # FB2: palette_scaffold.py is a new bare module under frame-builder/ui/ that
+        # would otherwise stay cached in sys.modules across Stop->Start (B7/A3-1
+        # class). The two *_builder_ui names come along too — harmless extras, since
+        # both are loaded by path under other sys.modules keys, never by bare name.
+        + _bare_module_names(os.path.join(_addin_root, 'frame-builder', 'ui'))
+    )
 
     _force_wipe(_shared_project_names)
     try:

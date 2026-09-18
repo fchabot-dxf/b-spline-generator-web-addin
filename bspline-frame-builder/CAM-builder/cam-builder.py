@@ -34,7 +34,7 @@ import adsk.cam
 # Constants -- match the bspline-frame-builder shared panel ID.
 # ---------------------------------------------------------------------------
 
-# ── B-spline CAM palette ───────────────────────────────────────────────────
+# ── CAM palette ────────────────────────────────────────────────────────────
 CMD_ID            = 'CamBuilder_Command'
 PALETTE_ID        = 'CamBuilder_Palette'
 PANEL_ID          = 'bsplinePanel'    # shared with the rest of the suite
@@ -42,22 +42,13 @@ REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
 TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
 AXISPICK_EVENT_ID = 'CamStudio_AxisPick'   # deferred viewport pick for WCS X/Y
 
-PALETTE_NAME      = 'B-spline CAM'
+PALETTE_NAME      = 'CAM'
 PALETTE_WIDTH     = 460
-PALETTE_HEIGHT    = 620
+PALETTE_HEIGHT    = 700   # CAM1a: the larger of the two pre-merge palettes (was 620)
 
 _addin_dir = os.path.dirname(os.path.realpath(__file__))
 PALETTE_URL = os.path.join(_addin_dir, 'ui', 'html', 'cam_builder_palette.html').replace('\\', '/')
 RESOURCES_PATH = os.path.join(_addin_dir, 'resources', 'CamCommand')
-
-# ── CAM Studio palette (generic, profile-driven) ───────────────────────────
-STUDIO_CMD_ID         = 'CamStudio_Command'
-STUDIO_PALETTE_ID     = 'CamStudio_Palette'
-STUDIO_PALETTE_NAME   = 'CAM Studio'
-STUDIO_PALETTE_WIDTH  = 460
-STUDIO_PALETTE_HEIGHT = 700
-STUDIO_PALETTE_URL    = os.path.join(_addin_dir, 'ui', 'html', 'cam_studio_palette.html').replace('\\', '/')
-STUDIO_RESOURCES_PATH = os.path.join(_addin_dir, 'resources', 'CamStudioCommand')
 
 
 # ---------------------------------------------------------------------------
@@ -66,8 +57,7 @@ STUDIO_RESOURCES_PATH = os.path.join(_addin_dir, 'resources', 'CamStudioCommand'
 
 _handlers = []          # per-run handlers, cleared on stop
 _refresh_handlers = []  # CustomEvent handlers, alive for full Fusion session
-_html_handler        = None   # B-spline CAM palette
-_studio_html_handler = None   # CAM Studio palette
+_cam_html_handler = None   # the merged palette's one dispatcher (PALETTE_ID)
 _logger = None
 _engine = None          # cam_engine.cam_coordinator after load
 
@@ -78,7 +68,8 @@ _refresh_registered = False
 # time via design.findEntityByToken). Kept module-level so they survive the
 # HTML round-trip and feed the next GENERATE.
 _picked_axis_tokens = {}
-_studio_closed_handler = None
+_cam_closed_handler = None   # CAM1b: renamed from _studio_closed_handler — clears the
+                             # GENERIC tab's live preview graphics when the merged palette closes
 _axispick_event = None
 
 
@@ -227,35 +218,32 @@ class _CmdCreatedHandler(adsk.core.CommandCreatedEventHandler):
             _log_error("CmdCreated\n" + traceback.format_exc())
 
 
-class _HtmlEventHandler(adsk.core.HTMLEventHandler):
+class _CamHtmlEventHandler(adsk.core.HTMLEventHandler):
+    """The one dispatcher for the merged palette (B-SPLINE + GENERIC tabs),
+    wired to PALETTE_ID in _show_palette(). See
+    CAM1-CONSOLIDATION-DESIGN.md §2 for the full action table (15 real
+    actions — the design doc's own count of 14 was an arithmetic slip
+    caught during implementation: select_x_axis and select_y_axis are two
+    distinct actions, not one)."""
     def notify(self, args):
         try:
-            # IMPORTANT: cast args to HTMLEventArgs first. Without it,
-            # `args.action` / `args.data` come back empty on some Fusion
-            # builds, which causes data.get('action') to silently return
-            # None and the dispatch falls into the 'unknown' branch.
-            # Verified via live tracer 2026-05-15 — the boot pair
-            # (list_cam_templates / get_template_assignments) hit this
-            # exact path. Reading the first arg directly via ea.action is
-            # the canonical way (mirrors step-editor.py); ea.data is
-            # the second arg as a JSON string. We keep the JSON fallback
-            # so callers that ONLY put the action inside data still work.
+            # Same cast-first pattern as the two dispatchers below — see
+            # their long comment for why HTMLEventArgs.cast is required.
             ea = adsk.core.HTMLEventArgs.cast(args)
             data = json.loads(ea.data) if ea.data else {}
             action = ea.action or data.get('action')
-            # 'generate' = legacy single-button; treat as alias for 'build'
-            # so existing callers don't break. New palette uses 'build'
-            # and 'apply_toolpaths' as separate actions.
-            if action == 'generate' or action == 'build':
+            if action == 'response':
+                return  # Fusion's own ack of sendInfoToHTML, not a page action
+            if action == 'preview_bodies':
+                _do_preview()
+            elif action == 'build':
                 _do_generate()
-            elif action == 'apply_toolpaths':
-                _do_apply_toolpaths()
             elif action == 'add_machine':
                 _do_add_machine()
             elif action == 'sync_table_attach':
                 _do_sync_table_attach()
-            elif action == 'preview':
-                _do_preview()
+            elif action == 'apply_toolpaths':
+                _do_apply_toolpaths()
             elif action == 'list_cam_templates':
                 _do_list_cam_templates()
                 # Piggyback the deployed version stamp on the first boot pull.
@@ -266,10 +254,28 @@ class _HtmlEventHandler(adsk.core.HTMLEventHandler):
                 _do_get_template_assignments()
             elif action == 'set_template_assignments':
                 _do_set_template_assignments(data)
+            elif action == 'init':
+                _do_studio_init()
+                # Piggyback the deployed version stamp on studio init.
+                _p = _build_info_payload()
+                if _p:
+                    _send_to_html('build_info', _p)
+            elif action == 'import_setup':
+                _do_import_setup(data)
+            elif action == 'preview_stock':
+                _do_studio_preview(data)
+            elif action == 'preview_clear':
+                _clear_studio_preview()
+            elif action == 'generate':
+                _do_studio_generate(data)
+            elif action == 'select_x_axis':
+                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'x')
+            elif action == 'select_y_axis':
+                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'y')
             else:
                 _log(f"unknown HTML action: {action!r}", "WARNING")
         except Exception:
-            _log_error("HtmlEvent\n" + traceback.format_exc())
+            _log_error("CamHtmlEvent\n" + traceback.format_exc())
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +306,7 @@ def _do_list_cam_templates():
             except Exception:
                 # Empty / unreachable libraries are normal — skip silently.
                 continue
-        _palette_send('templates_list', payload)
+        _send_to_html('templates_list', payload)
     except Exception:
         _log_error("list_cam_templates\n" + traceback.format_exc())
 
@@ -342,7 +348,7 @@ def _do_get_template_assignments():
                 'is_override': override is not None,
                 'default':     default,
             })
-        _palette_send('template_assignments', {'setups': out})
+        _send_to_html('template_assignments', {'setups': out})
     except Exception:
         _log_error("get_template_assignments\n" + traceback.format_exc())
 
@@ -371,17 +377,6 @@ def _do_set_template_assignments(data):
         _log_error("set_template_assignments\n" + traceback.format_exc())
 
 
-def _palette_send(action, payload):
-    """Tiny helper — send a typed message to the CAM Builder palette JS."""
-    try:
-        app = adsk.core.Application.get()
-        pal = app.userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.sendInfoToHTML(action, json.dumps(payload))
-    except Exception:
-        pass
-
-
 def _show_palette():
     app = adsk.core.Application.get()
     ui = app.userInterface
@@ -405,101 +400,39 @@ def _show_palette():
             palette.setMinimumSize(360, 500)
         except Exception:
             pass
-        global _html_handler
-        _html_handler = _HtmlEventHandler()
-        palette.incomingFromHTML.add(_html_handler)
-        _handlers.append(_html_handler)
-    palette.isVisible = True
-
-
-# ---------------------------------------------------------------------------
-# CAM Studio palette handlers + helpers
-# ---------------------------------------------------------------------------
-
-class _StudioCmdCreatedHandler(adsk.core.CommandCreatedEventHandler):
-    def notify(self, args):
-        try:
-            _show_studio_palette()
-        except Exception:
-            _log_error("StudioCmdCreated\n" + traceback.format_exc())
-
-
-class _StudioHtmlEventHandler(adsk.core.HTMLEventHandler):
-    def notify(self, args):
-        try:
-            # Same cast-first pattern as _HtmlEventHandler — see the long
-            # comment there. Some Fusion builds return empty args.action/
-            # args.data unless we cast through HTMLEventArgs first.
-            ea = adsk.core.HTMLEventArgs.cast(args)
-            data = json.loads(ea.data) if ea.data else {}
-            action = ea.action or data.get('action')
-            if   action == 'generate':      _do_studio_generate(data)
-            elif action == 'init':
-                _do_studio_init()
-                # Piggyback the deployed version stamp on studio init.
-                _p = _build_info_payload()
-                if _p:
-                    _send_to_studio_html('build_info', _p)
-            elif action == 'import_setup':  _do_import_setup(data)
-            elif action == 'preview':       _do_studio_preview(data)
-            elif action == 'preview_clear': _clear_studio_preview()
-            elif action == 'select_x_axis':
-                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'x')
-            elif action == 'select_y_axis':
-                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'y')
-            else:
-                _log(f"Studio: unknown HTML action: {action!r}", "WARNING")
-        except Exception:
-            _log_error("StudioHtmlEvent\n" + traceback.format_exc())
-
-
-def _show_studio_palette():
-    app = adsk.core.Application.get()
-    ui  = app.userInterface
-
-    if not os.path.exists(STUDIO_PALETTE_URL):
-        ui.messageBox(f"CAM Studio HTML not found at {STUDIO_PALETTE_URL}")
-        _log_error(f"missing studio palette html: {STUDIO_PALETTE_URL}")
-        return
-
-    palette = ui.palettes.itemById(STUDIO_PALETTE_ID)
-    if not palette:
-        palette = ui.palettes.add(
-            STUDIO_PALETTE_ID, STUDIO_PALETTE_NAME, STUDIO_PALETTE_URL,
-            True, True, True,
-            STUDIO_PALETTE_WIDTH, STUDIO_PALETTE_HEIGHT,
-        )
-        try:
-            palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
-            palette.setMinimumSize(360, 500)
-        except Exception:
-            pass
-        global _studio_html_handler
-        _studio_html_handler = _StudioHtmlEventHandler()
-        palette.incomingFromHTML.add(_studio_html_handler)
-        _handlers.append(_studio_html_handler)
-    # Clear the preview ghost when the palette is closed, so custom graphics
-    # never persist after the user dismisses the panel. Attached here (not
-    # only on first creation) and guarded so a palette that survived a prior
-    # add-in lifecycle still gets the hook, exactly once per module load.
+        global _cam_html_handler
+        _cam_html_handler = _CamHtmlEventHandler()
+        palette.incomingFromHTML.add(_cam_html_handler)
+        _handlers.append(_cam_html_handler)
+    # Clear the GENERIC tab's live preview ghost when the merged palette is
+    # closed, so custom graphics never persist after the user dismisses the
+    # panel. Attached here (not only on first creation) and guarded so a
+    # palette that survived a prior add-in lifecycle still gets the hook,
+    # exactly once per module load.
     try:
-        global _studio_closed_handler
-        if _studio_closed_handler is None:
-            _studio_closed_handler = _StudioPaletteClosedHandler()
-            palette.closed.add(_studio_closed_handler)
-            _handlers.append(_studio_closed_handler)
+        global _cam_closed_handler
+        if _cam_closed_handler is None:
+            _cam_closed_handler = _CamPaletteClosedHandler()
+            palette.closed.add(_cam_closed_handler)
+            _handlers.append(_cam_closed_handler)
     except Exception:
-        _log_error("studio palette closed-hook\n" + traceback.format_exc())
+        _log_error("cam palette closed-hook\n" + traceback.format_exc())
     palette.isVisible = True
 
 
-class _StudioPaletteClosedHandler(adsk.core.UserInterfaceGeneralEventHandler):
-    """Clears the live preview graphics when the CAM Studio palette closes."""
+# ---------------------------------------------------------------------------
+# GENERIC-tab handlers + helpers (formerly the standalone CAM Studio palette)
+# ---------------------------------------------------------------------------
+
+class _CamPaletteClosedHandler(adsk.core.UserInterfaceGeneralEventHandler):
+    """Clears the GENERIC tab's live preview graphics when the merged
+    palette closes. Renamed from _StudioPaletteClosedHandler in CAM1b —
+    same body, now wired to the merged palette in _show_palette()."""
     def notify(self, args):
         try:
             _clear_studio_preview()
         except Exception:
-            _log_error("StudioPaletteClosed\n" + traceback.format_exc())
+            _log_error("CamPaletteClosed\n" + traceback.format_exc())
 
 
 # Live preview (custom graphics) — a yellow-ochre stock ghost + WCS triad the
@@ -515,7 +448,7 @@ def _clear_studio_preview():
     We clear every group (not just our tracked one) because a group drawn in
     a different process/run isn't reachable through our module global, and the
     user must never be left with a stuck ghost. This add-in is the only one
-    drawing preview graphics during CAM Studio use, so a blanket clear is safe.
+    drawing preview graphics while the GENERIC tab is in use, so a blanket clear is safe.
     """
     global _studio_preview_group
     try:
@@ -734,7 +667,7 @@ class _AxisPickHandler(adsk.core.CustomEventHandler):
             if not sel:
                 # Cancelled (Esc / no pick) — tell the palette so it can drop
                 # the button out of its "picking" state.
-                _send_to_studio_html('axis_picked',
+                _send_to_html('axis_picked',
                                      {'axis': axis, 'ok': False, 'cancelled': True})
                 return
             ent = sel.entity
@@ -747,23 +680,11 @@ class _AxisPickHandler(adsk.core.CustomEventHandler):
                 name = ent.objectType.split('::')[-1]
             except Exception:
                 name = 'entity'
-            _send_to_studio_html('axis_picked',
+            _send_to_html('axis_picked',
                                  {'axis': axis, 'name': name, 'ok': token is not None})
             _log(f"AXIS PICK: {axis} -> {name} token={'ok' if token else 'none'}")
         except Exception:
             _log_error("_AxisPickHandler\n" + traceback.format_exc())
-
-
-def _send_to_studio_html(action, payload):
-    try:
-        app = adsk.core.Application.get()
-        if not app:
-            return
-        palette = app.userInterface.palettes.itemById(STUDIO_PALETTE_ID)
-        if palette and palette.isVisible:
-            palette.sendInfoToHTML(action, json.dumps(payload))
-    except Exception:
-        _log_error(f"_send_to_studio_html({action})\n" + traceback.format_exc())
 
 
 def _do_studio_init():
@@ -843,7 +764,7 @@ def _do_studio_init():
         except Exception:
             model_dims = None
 
-        _send_to_studio_html('init_result', {
+        _send_to_html('init_result', {
             'ok': True,
             'components': components,
             'setups': setups,
@@ -851,7 +772,7 @@ def _do_studio_init():
         })
     except Exception:
         _log_error("_do_studio_init\n" + traceback.format_exc())
-        _send_to_studio_html('init_result', {'ok': False, 'components': [], 'setups': []})
+        _send_to_html('init_result', {'ok': False, 'components': [], 'setups': []})
 
 
 def _do_import_setup(data):
@@ -867,7 +788,7 @@ def _do_import_setup(data):
                 cam = adsk.cam.CAM.cast(p)
                 break
         if not cam:
-            _send_to_studio_html('import_result', {'ok': False, 'msg': 'No CAM product found.'})
+            _send_to_html('import_result', {'ok': False, 'msg': 'No CAM product found.'})
             return
 
         setup = None
@@ -877,17 +798,17 @@ def _do_import_setup(data):
                 setup = s
                 break
         if not setup:
-            _send_to_studio_html('import_result',
+            _send_to_html('import_result',
                                  {'ok': False, 'msg': f'Setup "{setup_name}" not found.'})
             return
 
         profile = _extract_profile_from_setup(setup)
-        _send_to_studio_html('import_result', {
+        _send_to_html('import_result', {
             'ok': True, 'profile': profile, 'setup': setup_name,
         })
     except Exception:
         _log_error("_do_import_setup\n" + traceback.format_exc())
-        _send_to_studio_html('import_result', {'ok': False, 'msg': 'Import raised — see log.'})
+        _send_to_html('import_result', {'ok': False, 'msg': 'Import raised — see log.'})
 
 
 def _extract_profile_from_setup(setup):
@@ -1064,7 +985,7 @@ def _extract_profile_from_setup(setup):
 
 
 def _do_studio_generate(data=None):
-    """Generic CAM Studio generate: one MM + Setup per selected component,
+    """Generic-mode generate (GENERIC tab): one MM + Setup per selected component,
     applying the profile settings from the palette."""
     data            = data or {}
     component_names = data.get('components', [])
@@ -1098,7 +1019,7 @@ def _do_studio_generate(data=None):
         _load_engine()
     except Exception:
         _log_error("Studio engine load failed\n" + traceback.format_exc())
-        _send_to_studio_html('report', {
+        _send_to_html('report', {
             'ok': False, 'mode': 'generic',
             'errors': ['Engine load failed — see log.']
         })
@@ -1116,7 +1037,7 @@ def _do_studio_generate(data=None):
         _log(f"CKPT STUDIO 2: _engine.run returned (report.ok={report.get('ok')})")
     except Exception:
         _log_error("Studio engine.run failed\n" + traceback.format_exc())
-        _send_to_studio_html('report', {
+        _send_to_html('report', {
             'ok': False, 'mode': 'generic',
             'errors': ['Engine.run raised — see log.']
         })
@@ -1131,13 +1052,13 @@ def _do_studio_generate(data=None):
         _log("CKPT STUDIO 4: _kick_off_toolpath_generation returned")
 
     _log("CKPT STUDIO 5: sending report to HTML")
-    _send_to_studio_html('report', report)
+    _send_to_html('report', report)
     _log("CKPT STUDIO 6: report sent")
 
     if report.get('ok'):
         try:
             ui      = adsk.core.Application.get().userInterface
-            palette = ui.palettes.itemById(STUDIO_PALETTE_ID)
+            palette = ui.palettes.itemById(PALETTE_ID)
             if palette:
                 palette.isVisible = False
         except Exception:
@@ -1216,7 +1137,7 @@ def _do_preview():
     app = adsk.core.Application.get()
     design = adsk.fusion.Design.cast(app.activeProduct)
     if not design:
-        _send_to_html('preview', {
+        _send_to_html('preview_bodies', {
             'ok': False,
             'msg': 'No active Design product.'
         })
@@ -1234,7 +1155,7 @@ def _do_preview():
                 samples[kind].append('<unnamed>')
 
     _log(f"PREVIEW: counts={counts}")
-    _send_to_html('preview', {
+    _send_to_html('preview_bodies', {
         'ok': True,
         'counts': counts,
         'samples': samples,
@@ -1244,8 +1165,8 @@ def _do_preview():
 def _do_generate():
     """B-spline CAM: build the 3 MMs + 4 Setups for the active design.
 
-    Always runs in 'bspline' mode (hardcoded pipeline). The CAM Studio
-    palette handles generic mode through _do_studio_generate().
+    Always runs in 'bspline' mode (hardcoded pipeline). The GENERIC tab
+    handles generic mode through _do_studio_generate().
 
     Engine is reloaded on every generate so iterative edits to
     cam_engine.* pick up without an addin Stop/Start.
@@ -2056,7 +1977,7 @@ def _register_refresh_event():
         _tpgen_event.add(h_tp)
         _refresh_handlers.append(h_tp)
 
-        # Deferred WCS axis pick (CAM Studio). Same lifecycle/context reason:
+        # Deferred WCS axis pick (GENERIC tab). Same lifecycle/context reason:
         # selectEntity must not run inside the HTML palette event handler.
         global _axispick_event
         try:
@@ -2114,8 +2035,8 @@ def run(context):
             return
         cmd_defs = ui.commandDefinitions
 
-        # 3. Purge prior versions of our commands. Best-effort per id.
-        for cid in (CMD_ID, STUDIO_CMD_ID):
+        # 3. Purge prior versions of our command. Best-effort.
+        for cid in (CMD_ID,):
             try:
                 ex = cmd_defs.itemById(cid)
                 if ex:
@@ -2123,16 +2044,16 @@ def run(context):
             except Exception:
                 pass
 
-        # 4a. Register B-spline CAM button.
+        # 4. Register the CAM button.
         try:
             icon_dir = RESOURCES_PATH if os.path.isdir(RESOURCES_PATH) else ''
             cmd_def = cmd_defs.addButtonDefinition(
-                CMD_ID, 'B-spline CAM',
+                CMD_ID, 'CAM',
                 'Build the 3 Manufacturing Models + 4 Setups for the B-spline frame.',
                 icon_dir,
             )
         except Exception:
-            _log_error("run(): B-spline addButtonDefinition failed\n" + traceback.format_exc())
+            _log_error("run(): CAM addButtonDefinition failed\n" + traceback.format_exc())
             return
 
         try:
@@ -2140,30 +2061,10 @@ def run(context):
             cmd_def.commandCreated.add(on_created)
             _handlers.append(on_created)
         except Exception:
-            _log_error("run(): B-spline commandCreated.add failed\n" + traceback.format_exc())
+            _log_error("run(): CAM commandCreated.add failed\n" + traceback.format_exc())
             return
 
-        # 4b. Register CAM Studio button.
-        try:
-            studio_icon_dir = STUDIO_RESOURCES_PATH if os.path.isdir(STUDIO_RESOURCES_PATH) else ''
-            studio_cmd_def = cmd_defs.addButtonDefinition(
-                STUDIO_CMD_ID, 'CAM Studio',
-                'Generic profile-driven CAM setup — one MM + Setup per component.',
-                studio_icon_dir,
-            )
-        except Exception:
-            _log_error("run(): Studio addButtonDefinition failed\n" + traceback.format_exc())
-            return
-
-        try:
-            on_studio_created = _StudioCmdCreatedHandler()
-            studio_cmd_def.commandCreated.add(on_studio_created)
-            _handlers.append(on_studio_created)
-        except Exception:
-            _log_error("run(): Studio commandCreated.add failed\n" + traceback.format_exc())
-            return
-
-        # 5. Drop both buttons into the shared bsplinePanel on every tab.
+        # 5. Drop the button into the shared bsplinePanel on every tab.
         added_any = False
         try:
             for tab in ui.allToolbarTabs:
@@ -2172,7 +2073,7 @@ def run(context):
                         try:
                             if not panel.id.startswith(PANEL_ID):
                                 continue
-                            for cid, cdef in ((CMD_ID, cmd_def), (STUDIO_CMD_ID, studio_cmd_def)):
+                            for cid, cdef in ((CMD_ID, cmd_def),):
                                 ctrl = panel.controls.itemById(cid)
                                 if not ctrl:
                                     ctrl = panel.controls.addCommand(cdef)
@@ -2213,8 +2114,8 @@ def stop(context):
     multiple times, safe to call on a partially-booted state, safe to call
     when Fusion is mid-shutdown (Application.get() may return None).
     """
-    global _html_handler, _studio_html_handler, _engine, _logger
-    global _refresh_event, _refresh_registered
+    global _cam_html_handler, _cam_closed_handler, _engine, _logger
+    global _refresh_event, _refresh_registered, _axispick_event
 
     app = None
     ui = None
@@ -2228,9 +2129,9 @@ def stop(context):
         except Exception:
             ui = None
 
-    # 1. Palettes: hide + delete + drop handler references.
+    # 1. Palette: hide + delete + drop handler references.
     if ui is not None:
-        for pid in (PALETTE_ID, STUDIO_PALETTE_ID):
+        for pid in (PALETTE_ID,):
             try:
                 palette = ui.palettes.itemById(pid)
                 if palette:
@@ -2240,8 +2141,8 @@ def stop(context):
                     except Exception: pass
             except Exception:
                 pass
-    _html_handler        = None
-    _studio_html_handler = None
+    _cam_html_handler   = None
+    _cam_closed_handler = None
 
     # 2. Remove button controls from any panel they ended up in.
     if ui is not None:
@@ -2252,7 +2153,7 @@ def stop(context):
                         try:
                             if not panel.id.startswith(PANEL_ID):
                                 continue
-                            for cid in (CMD_ID, STUDIO_CMD_ID):
+                            for cid in (CMD_ID,):
                                 ctrl = panel.controls.itemById(cid)
                                 if ctrl:
                                     try: ctrl.deleteMe()
@@ -2268,7 +2169,7 @@ def stop(context):
     if ui is not None:
         try:
             cmd_defs = ui.commandDefinitions
-            for cid in (CMD_ID, STUDIO_CMD_ID):
+            for cid in (CMD_ID,):
                 try:
                     cd = cmd_defs.itemById(cid)
                     if cd:
@@ -2284,7 +2185,16 @@ def stop(context):
             app.unregisterCustomEvent(REFRESH_EVENT_ID)
         except Exception:
             pass
+        try:
+            app.unregisterCustomEvent(TPGEN_EVENT_ID)
+        except Exception:
+            pass
+        try:
+            app.unregisterCustomEvent(AXISPICK_EVENT_ID)
+        except Exception:
+            pass
     _refresh_event = None
+    _axispick_event = None
     _refresh_registered = False
     _refresh_handlers.clear()
 

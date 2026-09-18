@@ -1,6 +1,8 @@
 // Centralized coordinate and unit conversion utility for the SVG editor and Fusion export
 // This is the single source of truth for all coordinate transforms and unit conversions
 
+import { fusLog } from './fusion-log.js';
+
 export const COORD_SYSTEM = {
     canvasHeight: 600, // Match your UI/editor SVG height
     units: 'mm',
@@ -10,13 +12,7 @@ export const COORD_SYSTEM = {
         if (typeof window !== 'undefined' && window.console) {
             console.log(msg);
         }
-        try {
-            if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
-                adsk.fusionSendData('log', JSON.stringify({ msg }));
-            }
-        } catch (_) {
-            // Ignore logging failures in non-Fusion contexts.
-        }
+        fusLog(msg);
     },
 
     // Convert a 2D grid row into a raster Y coordinate, preserving the same
