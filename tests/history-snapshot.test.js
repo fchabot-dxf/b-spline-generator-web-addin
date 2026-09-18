@@ -1,33 +1,47 @@
 /**
- * BG1 — regression guard for `takeSnapshot` (core/history.js).
+ * SE4c — regression guard for `takeSnapshot` (core/history.js) after the
+ * mirror retirement (SE4-MIRROR-RETIREMENT-DESIGN.md).
  *
- * Before A5a-1's fix, `takeSnapshot` cloned `P` via `JSON.parse(JSON.stringify(P))`
- * without stripping stamp-layer masks first — the one persistence site in the
- * codebase that skipped the strip every other site (saveLastSession,
- * buildSnapshot) already did. `takeSnapshot` now routes both `snapshot.P` and
- * `snapshot.layerConfigs` through the shared `persistableP()` serializer
- * (BG1). This guards that both routes actually strip the mask.
+ * `takeSnapshot` used to take an optional `stampSvgText` second parameter
+ * that no caller ever actually passed — it was always literally `null`,
+ * never `undefined` — which made `applySnapshot`'s `snap.stampSvgText !==
+ * undefined` check fire on every snapshot, unconditionally nulling
+ * P.stampLayers[0].svg on every undo/redo regardless of what was actually
+ * undone (the design doc's finding #1). SE4c removed the parameter and the
+ * field entirely, per the advisor's product decision that global undo/redo
+ * is for the heightfield, not the drawing (the editor has its own undo
+ * stack). This guards that the field is really gone — not just unused —
+ * and that the snapshot still captures a real, independent copy of
+ * stampLayers' tooling (BG1's original concern, restated for the new shape).
  */
 import { describe, it, expect } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { takeSnapshot, globalHistoryLog } from '../bspline-frame-builder/b-spline-gen/html/core/history.js';
 
 describe('takeSnapshot', () => {
-  it('strips the Float32Array mask from both snapshot.P and snapshot.layerConfigs', () => {
-    const originalMask = P.stampLayers[0].mask;
-    P.stampLayers[0].mask = new Float32Array([9, 9, 9]);
+  it('does not carry a stampSvgText field any more', () => {
+    takeSnapshot('test action');
+    const snap = globalHistoryLog[globalHistoryLog.length - 1];
+    expect('stampSvgText' in snap).toBe(false);
+  });
+
+  it('captures an independent copy of stampLayers tooling in both P and layerConfigs', () => {
+    const originalDepth = P.stampLayers[0].depth;
+    P.stampLayers[0].depth = 0.987;
     try {
       takeSnapshot('test action');
       const snap = globalHistoryLog[globalHistoryLog.length - 1];
+      expect(snap.P.stampLayers[0].depth).toBe(0.987);
+      expect(snap.layerConfigs[0].depth).toBe(0.987);
 
-      expect(snap.P.stampLayers[0].mask).toBeNull();
-      expect(snap.layerConfigs[0].mask).toBeNull();
-
-      // Non-vacuity companion: the source data really was a Float32Array,
-      // not already null — confirms the strip is doing real work here.
-      expect(P.stampLayers[0].mask).toBeInstanceOf(Float32Array);
+      // Non-vacuity companion: mutate P AFTER the snapshot and confirm the
+      // snapshot's copy doesn't follow — proves it's a real copy, not a
+      // reference into the live P.stampLayers array.
+      P.stampLayers[0].depth = 0.111;
+      expect(snap.P.stampLayers[0].depth).toBe(0.987);
+      expect(snap.layerConfigs[0].depth).toBe(0.987);
     } finally {
-      P.stampLayers[0].mask = originalMask;
+      P.stampLayers[0].depth = originalDepth;
     }
   });
 });

@@ -104,12 +104,15 @@ export const DEFAULT = {
     // Flat border
     edgeMarginIn: 0,
     // Vector Stamping (Multi-Layer Support)
+    // SE4c: .svg/.mask retired from this shape — content lives only on
+    // P.editorSvg / editor._layers[i]._mask now (SE4-MIRROR-RETIREMENT-
+    // DESIGN.md). These are tooling only.
     stampLayers: [
-        { id: 'layer0', name: 'Layer 1', svg: null, mask: null, depth: 0.25, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2,
+        { id: 'layer0', name: 'Layer 1', depth: 0.25, profile: 'vbit', angle: 90, blur: 0, enabled: true, smoothing: 15, suppression: 0.15, edgeFilletRadius: 0, filletPower: 2.2,
           tx: 0, ty: 0, rotation: 0, scale: 1, mirrorX: false, mirrorY: false },
-        { id: 'layer1', name: 'Layer 2', svg: null, mask: null, depth: -0.5, profile: 'ballnose', angle: 90, blur: 0, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2,
+        { id: 'layer1', name: 'Layer 2', depth: -0.5, profile: 'ballnose', angle: 90, blur: 0, enabled: false, smoothing: 10, suppression: 0.1, edgeFilletRadius: 0, filletPower: 2.2,
           tx: 0, ty: 0, rotation: 0, scale: 1, mirrorX: false, mirrorY: false },
-        { id: 'layer2', name: 'Layer 3', svg: null, mask: null, depth: 0.75, profile: 'flat', angle: 90, blur: 0, enabled: false, smoothing: 5, suppression: 0.05, edgeFilletRadius: 0, filletPower: 2.2,
+        { id: 'layer2', name: 'Layer 3', depth: 0.75, profile: 'flat', angle: 90, blur: 0, enabled: false, smoothing: 5, suppression: 0.05, edgeFilletRadius: 0, filletPower: 2.2,
           tx: 0, ty: 0, rotation: 0, scale: 1, mirrorX: false, mirrorY: false }
     ],
     activeLayerIdx: 0,
@@ -117,8 +120,9 @@ export const DEFAULT = {
     // Step 3 of the stamp-layer → editor-layer unification: the SVG
     // editor's full document. Each editor layer carries its own CNC
     // tooling (see TOOLING_DEFAULTS in editor/layers.js). Replaces the
-    // per-stamp-layer P.stampLayers[i].svg model. Saved to localStorage
-    // on every editor change so reload restores the in-flight drawing.
+    // old per-stamp-layer content field, retired in SE4c. Saved to
+    // localStorage on every editor change so reload restores the
+    // in-flight drawing.
     editorSvg: null,
 };
 
@@ -221,10 +225,12 @@ export function setExtraThickenThinMask(val) {
     window.extraThickenThinMask = val;
 }
 
-/** P as it must be persisted or snapshotted: masks stripped (Float32Array does not survive JSON). One truth —
- *  saveLastSession, history.takeSnapshot and the Project Manager all go through here. */
+/** P as it must be persisted or snapshotted. SE4c: stampLayers no longer carries a mask
+ *  (Float32Array content lives only on editor._layers[i]._mask now), so this is identity on
+ *  layers — kept as the one declared serializer so saveLastSession, history.takeSnapshot and
+ *  the Project Manager still all go through here, in case a future field needs stripping again. */
 export function persistableP(p = P) {
-    return { ...p, stampLayers: (p.stampLayers || []).map((L) => ({ ...L, mask: null })) };
+    return { ...p, stampLayers: (p.stampLayers || []).map((L) => ({ ...L })) };
 }
 
 export function saveLastSession() {
@@ -237,11 +243,9 @@ export function saveLastSession() {
                 return [phys.x, phys.y];
             });
         }
-        // Strip mask Float32Arrays from each stamp layer before serializing.
-        // JSON.stringify turns a Float32Array into {"0":v,"1":v,...} (an
-        // object, not an array), bloating localStorage by ~10× and producing
-        // an unusable shape on reload. Masks are cheap to regenerate from
-        // the stored SVG, so persistableP() drops them here.
+        // SE4c: stampLayers no longer carries a mask Float32Array to strip
+        // (content lives on editor._layers[i]._mask, never serialized here).
+        // persistableP() is kept as the one declared serializer regardless.
         const P_persistable = persistableP(P_physical);
         const session = {
             P: P_persistable,

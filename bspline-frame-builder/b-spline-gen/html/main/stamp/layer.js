@@ -141,9 +141,9 @@ export function initLayer(ctx) {
           const hasContent = editor._sketchLayer.children().toArray()
             .some((ch) => String(ch.attr('data-layer')) === layerId);
           fileNameSpan.textContent = hasContent ? 'In editor' : 'Empty';
-        } else if (activeLayer?.svg) {
-          fileNameSpan.textContent = 'Loaded';
         } else {
+          // SE4c: narrowed — .svg no longer exists on P.stampLayers, so
+          // there's no content signal left to check without a live editor.
           fileNameSpan.textContent = 'No file chosen';
         }
       }

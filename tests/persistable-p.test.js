@@ -1,13 +1,16 @@
 /**
- * BG1 — regression guard for `persistableP` (core/state.js).
+ * SE4c — regression guard for `persistableP` (core/state.js) after the
+ * mirror retirement (SE4-MIRROR-RETIREMENT-DESIGN.md).
  *
- * `persistableP` is the ONE declared serializer `saveLastSession`,
- * `history.takeSnapshot`, and the Project Manager's `buildSnapshot` all go
- * through — it strips each stamp layer's `.mask` (a Float32Array does not
- * survive `JSON.stringify` intact: it round-trips as `{"0":v,"1":v,...}`, an
- * object, not an array) while leaving every other field untouched, and it
- * must not mutate its input. This guards exactly the corruption A5a-1 found
- * (`core/history.js`'s `takeSnapshot` used to skip this strip entirely).
+ * Before SE4, `persistableP` stripped each stamp layer's `.mask` (a
+ * Float32Array does not survive `JSON.stringify` intact: it round-trips as
+ * `{"0":v,"1":v,...}`, an object, not an array) — the fix for the exact
+ * corruption A5a-1 found (`core/history.js`'s `takeSnapshot` used to skip
+ * this strip entirely). SE4c dropped `.mask`/`.svg` from the stampLayers
+ * shape itself (content lives only on `editor._layers[i]._mask` /
+ * `P.editorSvg` now), so there is nothing left to strip — `persistableP`
+ * is identity on layers. This guards THAT invariant: a plain copy, no
+ * mutation of the input, and every field carried through untouched.
  */
 import { describe, it, expect } from 'vitest';
 import { persistableP } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -16,54 +19,44 @@ function makeP() {
   return {
     widthIn: 24,
     stampLayers: [
-      {
-        id: 'layer0', name: 'Layer 1', svg: '<svg/>',
-        mask: new Float32Array([1, 2, 3]),
-        depth: 0.25, profile: 'vbit', enabled: true,
-      },
-      {
-        id: 'layer1', name: 'Layer 2', svg: null,
-        mask: new Float32Array([4, 5]),
-        depth: -0.5, profile: 'ballnose', enabled: false,
-      },
+      { id: 'layer0', name: 'Layer 1', depth: 0.25, profile: 'vbit', enabled: true },
+      { id: 'layer1', name: 'Layer 2', depth: -0.5, profile: 'ballnose', enabled: false },
     ],
   };
 }
 
 describe('persistableP', () => {
-  it('nulls every stampLayer mask', () => {
+  it('leaves every stampLayer field untouched', () => {
     const out = persistableP(makeP());
-    expect(out.stampLayers[0].mask).toBeNull();
-    expect(out.stampLayers[1].mask).toBeNull();
-  });
-
-  it('leaves every other field untouched', () => {
-    const out = persistableP(makeP());
-    expect(out.stampLayers[0]).toMatchObject({
-      id: 'layer0', name: 'Layer 1', svg: '<svg/>',
-      depth: 0.25, profile: 'vbit', enabled: true,
+    expect(out.stampLayers[0]).toEqual({
+      id: 'layer0', name: 'Layer 1', depth: 0.25, profile: 'vbit', enabled: true,
     });
-    expect(out.stampLayers[1]).toMatchObject({
-      id: 'layer1', name: 'Layer 2', svg: null,
-      depth: -0.5, profile: 'ballnose', enabled: false,
+    expect(out.stampLayers[1]).toEqual({
+      id: 'layer1', name: 'Layer 2', depth: -0.5, profile: 'ballnose', enabled: false,
     });
     expect(out.widthIn).toBe(24);
   });
 
-  it('does not mutate its input', () => {
+  it('copies the layers array and each layer object rather than aliasing them', () => {
     const input = makeP();
-    persistableP(input);
-    expect(input.stampLayers[0].mask).toBeInstanceOf(Float32Array);
-    expect(input.stampLayers[0].mask[0]).toBe(1);
-    expect(input.stampLayers[1].mask).toBeInstanceOf(Float32Array);
+    const out = persistableP(input);
+    expect(out.stampLayers).not.toBe(input.stampLayers);
+    expect(out.stampLayers[0]).not.toBe(input.stampLayers[0]);
   });
 
-  it('produces JSON with no mask blob — the exact A5a-1 corruption', () => {
+  it('does not mutate its input', () => {
+    const input = makeP();
+    const before = JSON.stringify(input);
+    persistableP(input);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it('produces JSON with no mask blob anywhere — the field no longer exists to leak', () => {
     const out = persistableP(makeP());
     const json = JSON.stringify(out);
-    // A leaked Float32Array serializes as {"0":1,"1":2,"2":3,...} — assert
-    // that shape is absent, not just that SOME "mask" substring is missing.
-    expect(json).not.toMatch(/"mask":\{"0":/);
-    expect(json).toContain('"mask":null');
+    // A leaked Float32Array serializes as {"0":1,"1":2,"2":3,...}. There's
+    // no `.mask` field in the shape at all any more, so this can't recur —
+    // asserted directly rather than assumed from the shape change.
+    expect(json).not.toMatch(/"mask"/);
   });
 });

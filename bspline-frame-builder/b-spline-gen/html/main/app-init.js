@@ -17,9 +17,11 @@ import { VectorEditor } from '../editor/index.js';
 export const SvgEditorSnapshot = { active: false, editorSvg: null };
 
 /**
- * Resolve the SVG to restore the editor with: the unified source of truth
- * P.editorSvg, falling back to any legacy per-stamp-layer svg (a one-time
- * migration aid for sessions saved before P.editorSvg existed).
+ * Resolve the SVG to restore the editor with: the unified source of truth,
+ * P.editorSvg. SE4c: the legacy per-stamp-layer `.svg` fallback that used
+ * to live here is folded into MIGRATIONS' `legacy-stamp-svg` entry — by the
+ * time this is called, a legacy-shaped save has already been migrated into
+ * P.editorSvg once, so there's nothing left to fall back to.
  *
  * Shared by BOTH the initial palette-load restore and the modal-reopen path
  * so they can't drift. Reopen used to read `.svg` off ctx.activeLayer(),
@@ -27,14 +29,103 @@ export const SvgEditorSnapshot = { active: false, editorSvg: null };
  * `.svg`), so it passed undefined to open() and reopened blank (RO1).
  */
 export function editorRestoreSvg() {
-  return P.editorSvg
-    || (P.stampLayers && P.stampLayers.find && P.stampLayers.find(l => l && l.svg)?.svg)
-    || null;
+  return P.editorSvg || null;
+}
+
+/** Does this serialized editor document have any drawn content at all?
+ *  Used at boot, before window.svgEditor exists, to decide whether the
+ *  first rebuild needs a mask refresh — a lightweight parse of the
+ *  string, not a live editor._layers query (which isn't available yet). */
+function _editorSvgHasContent(svgText) {
+  if (!svgText) return false;
+  try {
+    const root = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
+    return !!(root && root.children && root.children.length > 0);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * Declared one-time migrations, run by `runMigrations(P)` right after P is
+ * populated from a save (loadLastSession, or applySnapshot's cloud-project-
+ * load path). Each entry's `when` gates on P's CURRENT shape rather than a
+ * version number, so running the list twice (e.g. undo/redo going through
+ * applySnapshot too) is a no-op once a migration's own `when` stops matching.
+ */
+export const MIGRATIONS = [
+  {
+    id: 'legacy-stamp-svg',
+    // Pre-SE4 saves carried each layer's drawing as a field on its own
+    // P.stampLayers entry; content now lives only in the editor document
+    // (P.editorSvg).
+    when: (p) => !p.editorSvg && Array.isArray(p.stampLayers) && p.stampLayers.some(l => l && l.svg),
+    apply: (p) => {
+      const layers = p.stampLayers;
+      const bodies = [];
+      // One loop over every legacy layer with content, not a .find() —
+      // a multi-layer legacy save must land each layer's drawing under
+      // its own data-layer group, not just the first.
+      layers.forEach((layer, idx) => {
+        if (!layer || !layer.svg) return;
+        try {
+          const parsed = new DOMParser().parseFromString(layer.svg, 'image/svg+xml');
+          const root = parsed.documentElement;
+          if (!root || root.nodeName.toLowerCase() !== 'svg') return;
+          const metadata = root.querySelector('.editor-metadata');
+          if (metadata) metadata.remove();
+          Array.from(root.children).forEach((ch) => {
+            ch.setAttribute('data-layer', String(idx));
+            bodies.push(ch.outerHTML);
+          });
+        } catch (e) {
+          console.warn(`[migration] legacy-stamp-svg: layer ${idx} failed to parse:`, e);
+        }
+      });
+
+      // Roster entry per P.stampLayers position (not just the ones with
+      // content) so editor._layers stays position-aligned with
+      // P.stampLayers on the next open() — an empty legacy layer becomes
+      // an empty editor layer, not a missing one.
+      const toolingFields = [
+        'depth', 'profile', 'angle', 'tx', 'ty', 'rotation', 'scale',
+        'mirrorX', 'mirrorY', 'blur', 'smoothing', 'suppression',
+        'edgeFilletRadius', 'filletPower',
+      ];
+      const roster = layers.map((layer, idx) => {
+        const entry = { id: String(idx), name: layer?.name || `Layer ${idx + 1}`, visible: true };
+        for (const f of toolingFields) {
+          if (layer && layer[f] !== undefined) entry[f] = layer[f];
+        }
+        return entry;
+      });
+      const layersAttr = JSON.stringify(roster).replace(/"/g, '&quot;');
+
+      p.editorSvg = `<svg xmlns="http://www.w3.org/2000/svg" data-editor-layers="${layersAttr}">${bodies.join('')}</svg>`;
+
+      layers.forEach((layer) => {
+        if (!layer) return;
+        delete layer.svg;
+        delete layer.mask;
+      });
+    },
+  },
+];
+
+export function runMigrations(p = P) {
+  for (const m of MIGRATIONS) {
+    try {
+      if (m.when(p)) m.apply(p);
+    } catch (e) {
+      console.warn(`[migration] ${m.id} failed:`, e);
+    }
+  }
 }
 
 export async function initApp(preview, wireGlobalEvents) {
   AppState.isInitializing = true;
   loadLastSession();
+  runMigrations();
 
   if (!isNaN(P.seed)) {
     P.seed = Math.floor(Math.random() * 99999);
@@ -53,7 +144,13 @@ export async function initApp(preview, wireGlobalEvents) {
   }
   const { nx, nz } = grid;
 
-  if (P.stampLayers && P.stampLayers.some(l => l.svg)) {
+  // SE4c: content check via the editor document, not the old per-layer
+  // content field (retired). window.svgEditor doesn't exist yet at this
+  // point in boot (initSvgEditor runs right after initApp returns —
+  // main.js), so this
+  // parses the serialized P.editorSvg directly rather than querying a
+  // live editor._layers roster.
+  if (_editorSvgHasContent(P.editorSvg)) {
     await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
   } else {
     rebuild(preview, updateStampMasks, updatePreviewSculptMode);
@@ -132,9 +229,9 @@ export function initSvgEditor(preview) {
   );
 
   // Step 3 unification: restore the saved editor SVG so a reload picks
-  // up the in-flight drawing instead of a blank canvas. Falls back to
-  // P.stampLayers[0].svg as a one-time migration aid for sessions saved
-  // before P.editorSvg existed.
+  // up the in-flight drawing instead of a blank canvas. A legacy-shaped
+  // save (pre-P.editorSvg) has already been migrated by runMigrations()
+  // in initApp, which runs before this — see MIGRATIONS above.
   try {
     const restoreSvg = editorRestoreSvg();
     if (restoreSvg) {

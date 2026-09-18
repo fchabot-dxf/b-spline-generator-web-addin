@@ -22,7 +22,7 @@ export function isEditorOpen() {
 /**
  * Captures a complete system snapshot.
  */
-export function takeSnapshot(label = "Action", stampSvgText = null) {
+export function takeSnapshot(label = "Action") {
     // Capture state into a single object
     const snapshot = {
         label: label,
@@ -30,8 +30,7 @@ export function takeSnapshot(label = "Action", stampSvgText = null) {
         preDelta: preDelta ? new Float32Array(preDelta) : null,
         postDelta: postDelta ? new Float32Array(postDelta) : null,
         extraThickenThinMask: extraThickenThinMask ? new Float32Array(extraThickenThinMask) : null,
-        stampSvgText: stampSvgText,
-            layerConfigs: JSON.parse(JSON.stringify(persistableP().stampLayers)),
+        layerConfigs: JSON.parse(JSON.stringify(persistableP().stampLayers)),
         activeLayerIdx: P.activeLayerIdx
     };
 

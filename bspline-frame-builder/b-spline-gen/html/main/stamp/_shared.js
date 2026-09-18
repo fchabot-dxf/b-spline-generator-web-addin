@@ -22,9 +22,11 @@ export function createStampCtx(preview) {
 
   // ─── State accessors ──────────────────────────────────────────────
   // Step 3 unification: the active layer is the editor's active layer
-  // when the editor has a roster; falls back to the legacy P.stampLayers
-  // model for code paths that fire before the editor is loaded (e.g.
-  // very early init) and for sessions with only legacy uploaded svgs.
+  // when the editor has a roster; falls back to P.stampLayers for code
+  // paths that fire before the editor is loaded (e.g. very early init).
+  // SE4c: that fallback object is tooling-only now (no `.svg`/`.mask` —
+  // content moved to editor._layers[i]._mask / P.editorSvg), narrower
+  // than the editor-layer shape callers get the rest of the time.
   const activeEditorLayer = () => {
     try {
       if (typeof window === 'undefined' || !window.svgEditor) return null;

@@ -7,7 +7,11 @@
  * but in the unified model ctx.activeLayer() returns an EDITOR layer
  * (id/name/tooling — NO `.svg`), so open() received `undefined` and took its
  * empty-editor branch. Fix: reopen restores the unified source of truth via
- * editorRestoreSvg() (P.editorSvg, with a legacy stamp-svg fallback).
+ * editorRestoreSvg() (P.editorSvg). SE4c: the legacy stamp-svg fallback
+ * that used to live in editorRestoreSvg() itself was folded into
+ * MIGRATIONS (main/app-init.js, tested separately in migrations.test.js)
+ * — by the time editorRestoreSvg() runs, a legacy-shaped save has already
+ * been migrated into P.editorSvg once.
  *
  * This drives the REAL initSvgSource reopen handler and the REAL
  * ctx.activeLayer() (createStampCtx) with a mocked window.svgEditor, so a
@@ -39,7 +43,7 @@ beforeEach(() => {
     '<span id="stampFileName"></span>';
   P.activeLayerIdx = 0;
   P.editorSvg = null;
-  P.stampLayers = [{ id: 0, svg: null, mask: null, enabled: false }];
+  P.stampLayers = [{ id: 0, enabled: false }];
   openCalls = [];
   window.svgEditor = { _layers: [editorLayer('1')], _activeLayer: '1', open(svg) { openCalls.push(svg); } };
 });
@@ -68,15 +72,11 @@ describe('RO1: editor reopen restores the drawing', () => {
     expect(openCalls[0]).not.toBeUndefined();    // pre-fix passed undefined -> blank
   });
 
-  it('editorRestoreSvg: P.editorSvg > legacy stamp svg > null', () => {
+  it('editorRestoreSvg: P.editorSvg, or null — the legacy fallback moved to MIGRATIONS', () => {
     P.editorSvg = SAVED;
     expect(editorRestoreSvg()).toBe(SAVED);
 
     P.editorSvg = null;
-    P.stampLayers = [{ id: 0, svg: '<svg>legacy</svg>' }];
-    expect(editorRestoreSvg()).toBe('<svg>legacy</svg>');
-
-    P.stampLayers = [{ id: 0, svg: null }];
     expect(editorRestoreSvg()).toBeNull();
   });
 });

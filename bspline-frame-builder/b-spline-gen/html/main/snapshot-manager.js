@@ -6,6 +6,7 @@ import { updateStampMasks } from './stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
+import { runMigrations } from './app-init.js';
 
 export async function applySnapshot(snap, preview) {
   if (!snap) return;
@@ -15,6 +16,13 @@ export async function applySnapshot(snap, preview) {
     syncUItoParam(k, P[k]);
   });
   AppState.isInitializing = false;
+
+  // SE4c: this is also the cloud-project-load apply step (cloud-project-
+  // manager.js's _loadFrom), so a project saved before the migration
+  // needs it run here too, not just after loadLastSession(). Idempotent —
+  // a no-op once P.editorSvg exists, so re-running it on every undo/redo
+  // that also flows through this function costs nothing.
+  runMigrations();
 
   // Always (re)set preDelta and postDelta — including to null when the
   // snapshot doesn't have one. Previously we only assigned when truthy,
@@ -38,27 +46,22 @@ export async function applySnapshot(snap, preview) {
   // never touch the freshly-loaded P. Clear it on every load.
   setStrokeCache(null);
 
-  if (snap.stampSvgText !== undefined && P.stampLayers && P.stampLayers[0]) {
-    P.stampLayers[0].svg = snap.stampSvgText;
-  }
   updateGlobalButtons();
 
-  // Stamp masks are stripped on save (typed-array JSON corruption: a
-  // Float32Array round-trips as {"0":..., "1":...} which fails the
-  // downstream instanceof / .length checks). The save path relies on
-  // updateStampMasks() to regenerate masks from .svg before any rebuild
-  // reads them. rebuild() in engine/rebuild.js silently skips any layer
-  // whose .mask is null or whose body channel is missing/wrong length,
-  // so without regen the SVG is loaded but never imprinted.
-  // Regenerate masks here before scheduling the rebuild.
+  // SE4c (product decision): global undo/redo is for the heightfield
+  // (sculpt, seed, filters) — the drawing has the editor's OWN undo stack
+  // and is intentionally left untouched here, including on cloud project
+  // load (this function is also _loadFrom's apply step). Tooling fields
+  // (depth/profile/blur/etc.) ARE restored above as part of P.stampLayers,
+  // and rasterizeSvg bakes them into the mask at rasterize time, so the
+  // mask still needs a refresh against the (unchanged) editor content —
+  // unconditional now that there's no `.svg` field left on P.stampLayers
+  // to gate on.
   const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-  const hasStampSvg = (P.stampLayers || []).some(L => L && L.svg && L.enabled !== false);
-  if (hasStampSvg) {
-    try {
-      await updateStampMasks(nx, nz);
-    } catch (e) {
-      console.warn('[applySnapshot] stamp mask regen failed:', e);
-    }
+  try {
+    await updateStampMasks(nx, nz);
+  } catch (e) {
+    console.warn('[applySnapshot] stamp mask regen failed:', e);
   }
 
   // Sync the param-manager's grid-change tracker so the NEXT slider
