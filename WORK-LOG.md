@@ -5265,3 +5265,103 @@ prediction exactly.
 
 No amendments were pending (`handoff.py amendments --role worker` → "no new amendments"). Stayed out of
 `editor/` entirely — only `main/`, `core/engine/`, and `tests/` touched, respecting seat B's T8 lane.
+
+## Turn 197 — SE4b: slice (b) of SE4-MIRROR-RETIREMENT-DESIGN.md — legacy branch + mirror writes gone, sidebar Clear clears real content (B15) — DONE
+
+Implemented exactly the 5 numbered items in NEXT-SESSION.md's "Do exactly slice (b)", plus one finding
+(below) that fell directly out of item 5 and had to be swept, not silently dropped.
+
+**1. `main/stamp-mask-manager.js`:** deleted `updateStampMasks`'s legacy `P.stampLayers` content-fallback
+branch and `_editorLayerAt` (only used by that branch and by the now-dead `source !== 'editor'` ternaries
+it fed — removed as dead code, not left as an unreachable branch). `clearEmptyLayerMasks` drops its
+mirror-clear half (`layer._mask = null` alone, per the dispatch's exact wording). The raster-result
+assignment at the tail also had its own mirror write (`if (P.stampLayers?.[idx]) setStampLayerMask(idx,
+result)`) — not named in the dispatch's item 1 text, but it's a caller of a function item 5 deletes, so it
+had to go too; simplified to `layer._mask = result` alone. `work` entries dropped their now-constant
+`source` field. `setStampLayerMask` import removed (now fully unused in this file). Updated both function
+header comments (no more "falls back to legacy P.stampLayers when...").
+
+**2. `core/engine/rebuild.js`:** deleted `_collectStampPasses`'s remaining legacy `P.stampLayers.forEach`
+pass-building block. `coveredIdx` (only ever fed by that block and the editor-layer loop's `.add(idx)`)
+removed as dead code along with the `idx` param it existed for. Updated the function's own header comment
+and a stale one-liner above the call site that still said "falling back to (or merging in) legacy
+P.stampLayers."
+
+**3. `main/app-init.js`:** removed the three mirror-write calls in `initSvgEditor`'s onChange / Apply /
+Cancel callbacks. `P.editorSvg` assignments and the `refreshAllStampMasks`/remask calls around them are
+untouched, per the dispatch's explicit "P.editorSvg stays the document; the remask calls stay."
+
+**4. `main/stamp/svg-source.js` (B15) — sidebar Clear now clears real content:** rewrote `btnStampClear`'s
+handler to remove the ACTIVE editor layer's own children (matched by `data-layer` equal to
+`ctx.activeLayer().id`) from `editor._sketchLayer`, calling `editor._deselect()` first (T8's completed
+version — just landed on main via the merge amendment below — is explicitly documented as the right thing
+for "Content-wipe sites" to call directly), then `pushState()` + `_onChange()` in that order, matching
+`editorClear`'s own sequence in `editor/tools/action-tools.js`. Dropped the explicit `scheduleRebuild(...)`
+call the old handler had — `_onChange()` already drives `refreshAllStampMasks` (confirmed by reading
+`app-init.js`'s `onChange` wiring), so keeping both would have double-rebuilt. If the editor/active layer
+isn't ready, does nothing and reports it via `fileNameSpan` (the panel's own status text — reused rather
+than introducing `setFusionStatus` for a sidebar-local message).
+
+**5. `core/state.js`:** deleted `setStampLayerSvg` and `setStampLayerMask`; kept `setStampLayerEnabled`.
+Grepped every caller repo-wide before deleting (both functions, `--include=*.js .`) and handled each: the
+3 in app-init.js (item 3), the 2 in svg-source.js's old Clear (item 4, rewritten away), the 3 in
+stamp-mask-manager.js (item 1 + the un-named raster-result mirror write above), and svg-source.js's Browse
+fallback (below).
+
+**Finding swept, not silently dropped — Browse's auto-enable side effect:** `setStampLayerSvg` had a side
+effect nothing else replaced: "assign a truthy svg → set `P.stampLayers[idx].enabled = true`."
+`DEFAULT.stampLayers[1]`/`[2]` (`core/state.js:110,112`) start `enabled: false`. Before this turn, drawing
+into Layer 2 or 3 for the first time via Browse relied on that side effect to flip it true; without a
+replacement, the layer would stay silently excluded from `activeStampLayers`/`exportableStampLayers`
+forever (SE4a's rewrite still reads tooling `enabled` from `P.stampLayers[idx]`, per that slice's own
+dispatch) even though it displays and carves fine in the 3D preview (`rebuild.js`'s compositor never
+looked at this field — it gates on `layer.visible` instead). Traced this by reading `main/stamp/layer.js`'s
+enabled-checkbox handler (lines ~158-183): for editor-covered layers it writes `layer.visible` via
+`setLayerVisible`, NOT `P.stampLayers[idx].enabled` — meaning that field is aleady unreachable through the
+UI once the editor is loaded, and `setStampLayerSvg`'s auto-enable was the ONLY thing still able to flip
+it true for a newly-drawn layer. Preserved the effect directly: Browse's success path now calls
+`setStampLayerEnabled(P.activeLayerIdx, true)` and `layerModule.syncEnabled()`.
+
+**Also traced but correctly left alone (flagging for the advisor, not fixing):**
+- `layer.js`'s enabled-checkbox writing `layer.visible` (not `P.stampLayers[idx].enabled`) for editor
+  layers, while export-flow's tooling `enabled` check still reads `P.stampLayers[idx].enabled` — means the
+  Enabled checkbox, once an editor layer exists, no longer actually gates Send-to-Fusion/Export-STEP
+  inclusion the way it visually implies it does (it gates carving via `visible`, correctly, but not the
+  export filters). This is a pre-existing inconsistency (the OLD export-flow.js read the exact same
+  `P.stampLayers[idx].enabled` field before SE4a ever touched it) that SE4a/SE4b did not create and were
+  not asked to fix — noting it because it's directly adjacent to the field I just had to reason about above.
+- `syncFromLayer`'s `.svg` display fallback (`svg-source.js:~113`, `main/stamp/layer.js`'s parallel case)
+  — the design doc's own removal chain lists this as needing a rewrite against `getLayerSvg`/editor-layer
+  content, but doesn't assign it to slice (b)'s file list, and explicitly assigns `layer.js`'s twin to
+  slice (c). Also pre-existing (broken since editor layers, which have no `.svg` field, became the
+  preferred `ctx.activeLayer()` return value) rather than something slice (b) newly broke. Left both
+  alone rather than fixing one half of a pair the design scoped together to a later slice.
+
+**Tests:** `tests/stamp-mask-clear.test.js` updated to single-store assertions per item 1 — dropped every
+`P.stampLayers[...].mask` assertion from the `clearEmptyLayerMasks` describe block and from the first
+`updateStampMasks` test. The HIDDEN-layer test (the design's own STOP condition) is untouched byte-for-byte.
+Did not add a new test for the Clear-button rewrite (item 4) or the Browse auto-enable fix: both are
+DOM-mutation logic inside event-handler closures with no extraction, matching `importSvgIntoLayer` — its
+structural twin — which also has zero unit coverage in this codebase; the dispatch's own verify section
+routes this kind of change to the advisor's live proof rather than asking for a new test file, and I found
+no existing precedent for testing this shape of code that I'd be deviating from by skipping it here.
+
+**Verify:**
+- `node --check` on all 5 touched JS files: clean.
+- `grep -rc 'setStampLayerSvg\|setStampLayerMask' --include=*.js .` (repo-wide under `html/`) → 0. (Two of
+  my own comments first mentioned these names by name and tripped this same grep — the self-referential-
+  comment trap from turns 163/173/191/195, this time in two places in one file — reworded both without
+  losing the explanation before finalizing.)
+- `grep -rn 'stampLayers\[.*\]\.mask' --include=*.js .` → 0 everywhere, including `core/state.js` (its
+  default shape uses object-literal `mask: null`, never bracket-index assignment, so it was never going to
+  match this pattern regardless).
+- `grep -ic legacy main/stamp-mask-manager.js` → 0.
+- `npx vitest run` → **57 passed**, unchanged count (trimmed obsolete assertions, added none — no new
+  tests this turn per the note above).
+
+**Mid-task amendment absorbed:** `handoff.py amendments --role worker` (polled before committing) returned
+one: the main tree was mid-merge when this turn woke (advisor's merge conflicted on NEXT-SESSION.md,
+resolved and committed as `51db788` — lane-b's T8 `_deselect` completion + T9 BUGS_OPEN B12–B15 — before I
+started reading files, so I was reading post-merge content throughout, not stale pre-merge state). None of
+that merge's files overlapped mine. Re-ran the full suite and the three required greps after confirming
+`git log`/`git status` showed only my own 6 files modified — still 57 green, all three greps still 0.
