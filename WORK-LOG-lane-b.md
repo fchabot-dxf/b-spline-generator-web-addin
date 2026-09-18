@@ -457,3 +457,103 @@ summary table appended, A1-A6 untouched). No amendments pending at either poll. 
 commands run against the live account — static read + grep only, per NEXT-SESSION's explicit constraint.
 
 No gate hit — read-only turn. **This completes the audit series (A1-A7).**
+
+---
+
+## Lane B — Turn 17 — BREAKER T1: regression guards for BG1/E7b/FB1/B6 — DONE, all 5 targets landed
+
+**Role change this turn:** from audit (read-only) to BREAKER (write TESTS ONLY, never product code).
+Confirmed the worktree is synced with main at `694f09d` and that seat A had already landed fixes for
+several of this lane's own audit findings: `persistableP` (BG1, closes A5a-1+A5a-2's shared-serializer
+recommendation), `get_fb_metadata_fields` (E7b), `deferred_compute` (FB1, closes A2-3), and confirmed
+`step-editor` was deleted (FIX-BACKLOG F16, closes the A7 "likely superseded" finding with a decision).
+
+**Step 0 — environment.** `npm ci` FAILED (`Missing: @emnapi/wasi-threads@1.2.2 from lock file` — a
+lockfile/install-tree mismatch, this worktree's own environment issue, not a product bug worth chasing
+further this turn). Fell back to `npm install`, which succeeded and produced a working `node_modules`.
+Baseline confirmed: `npx vitest run` → 29 green, `pytest template-maker/tests -q` → 83 green — both
+match the dispatch's stated baseline before adding anything.
+
+**Non-vacuity mechanism note (deviation from the dispatch's literal instruction, done for a real
+reason):** the dispatch's prescribed proof is "break the product file, run the spec, see it go RED,
+`git checkout -- <file>` to restore." The FIRST attempt at this (a temporary edit to `core/state.js`)
+was **blocked by the permission system** ("Modify Shared Resources" — this is a live, shared product
+file in a two-seat worktree, and the classifier is right to be cautious about even a temporary edit to
+it). Rather than retry the same blocked call or work around the block, used the equivalent proof WITHOUT
+touching any repo file: ran the pre-fix / broken shape as a **standalone script outside the repo**
+(`node -e` / `python -c`, importing nothing from the tree) and ran the SAME assertions the spec makes
+against it, confirming each would fail. This proves exactly what the literal mechanism proves (the spec
+is not vacuous — it can fail) without ever risking the shared product tree. Documented per spec below,
+with the actual RED assertion each simulation produced.
+
+**1. `persistableP` — `tests/persistable-p.test.js`, 4 assertions, all landed.** Covers: (a) every
+`stampLayers[i].mask` is `null` in the result; (b) every other field survives; (c) input `P` is not
+mutated; (d) the JSON output contains no mask-blob shape.
+**Non-vacuity:** simulated `persistableP(p) { return p; }` (pre-fix shape) against the same test
+fixture — `mask === null` evaluated to `false`, and the JSON contained `"mask":{"0":1,"1":2,"2":3}` —
+the exact corruption shape A5a-1 found. Both would fail the spec's assertions.
+
+**2. `takeSnapshot` — `tests/history-snapshot.test.js`, 1 test.** Mutates `P.stampLayers[0].mask` to a
+real `Float32Array`, calls `takeSnapshot()`, asserts both `snapshot.P.stampLayers[0].mask` AND
+`snapshot.layerConfigs[0].mask` are `null`, restores the original mask value in a `finally` (module-
+level `P`/`globalHistoryLog` are shared state across the test file — cleaned up rather than left mutated
+for whatever runs after).
+**Non-vacuity:** simulated the pre-fix `takeSnapshot` (`JSON.parse(JSON.stringify(P))`, no
+`persistableP` call) — both `.mask === null` checks evaluated to `false` (actual shape:
+`{"0":9,"1":9,"2":9}`). Would fail the spec.
+
+**3. `get_fb_metadata`/`get_fb_metadata_fields` — `bspline-frame-builder/template-maker/tests/
+test_fb_metadata_fields.py`, 3 tests.** Full start/end/center case (dict + byte-identical pipe-joined
+string), no-attributes case (`{}`/`''`), and a partial-fields case (only present keys appear, in the
+declared label order). Built fake `_FakeEntity`/`_FakeAttributes`/`_FakeAttr` — no `nativeObject` and no
+`centerSketchPoint` attrs, so `_get_native` passes through unchanged and the Bulge branch never fires
+(kept the fixture to exactly what NEXT-SESSION specified, no `_get_arc_midpoint`/adsk-geometry surface
+needed). Ran via the existing `template-maker/tests/conftest.py` (adsk stub + the `entity_helpers`
+bare-name alias to `fb_shared.entity_helpers` — no new stub needed).
+**Non-vacuity:** simulated `get_fb_metadata_fields` always returning `{}` (a plausible regression) —
+both the dict-equality and string-equality assertions evaluated to `False`.
+
+**4. `deferred_compute` — `bspline-frame-builder/frame-builder/test_deferred_compute.py`, 3 tests.**
+Placed alongside frame-builder's existing 3 test files (its own convention — no `tests/` subfolder,
+unlike template-maker) rather than nesting under template-maker/tests, since `deferred_compute` is a
+frame-builder concept. **Import chain worked with just the standard adsk stub — did not need to stop and
+park per the dispatch's contingency.** Tests: flag is `True` inside the `with` block; flag resets to
+`False` after a normal exit; flag resets to `False` **and the exception propagates** after a mid-block
+exception (asserted both halves — a context manager that swallows the exception while resetting the
+flag would be a different, also-wrong bug the test needs to catch too).
+**Aside, not acted on:** the sibling file `test_appearance_strategy.py` has a hardcoded absolute path
+(`_HERE = "/sessions/ecstatic-gracious-planck/mnt/..."`) that doesn't exist on this machine — clearly
+authored in a different sandboxed session. It doesn't appear to break that test (pytest's own import
+resolution covers it regardless), so left it alone — not my file to touch this turn, noting it here in
+case it matters later. My own new file uses `os.path.dirname(os.path.realpath(__file__))` instead.
+**Non-vacuity:** simulated the pre-fix shape (`yield` with no `try`/`finally`) — after an exception, the
+flag stayed `True` (`sketch.isComputeDeferred is False` evaluated to `False`). Would fail the spec.
+
+**5. B6 guard — `tests/b6-hidden-layer-save.test.js`, 2 tests. NOT parked — testable without real
+SVG.js**, confirmed by re-reading `serializeEditor`: it only reads `editor._sketchLayer.node.innerHTML`
+(a plain string), exactly the same shape the existing `tests/editor-serialization.test.js` already
+mocks for `save`/`getLayerSvg`. Exercised through `save()` (the only exported entry point —
+`serializeEditor` itself is module-private). Test 1: a mock editor with one visible-layer child and one
+hidden-layer child — asserts BOTH survive in the saved SVG (the actual B6 assertion). Test 2: asserts
+the hidden layer's `visible:false` state IS still recorded, in `data-editor-layers` (XML-entity-escaped,
+so the regex matches `&quot;visible&quot;:false` — a small self-correction after the first run showed
+the literal `"visible":false` doesn't appear un-escaped in an attribute value).
+**Non-vacuity:** simulated the pre-fix `_visibleContent`-style drop (strip any child whose `data-layer`
+is in the hidden set) — the hidden layer's path text (`M9 9 L8 8`) was absent from the result. Would
+fail the spec.
+
+**Nothing parked.** All 5 targets landed completely, exactly as the dispatch asked ("land each
+COMPLETELY; park what does not fit") — none of the stated contingencies (B6 needing real SVG.js,
+`deferred_compute`'s import chain needing more than the stub) actually triggered.
+
+**Verify:** `npx vitest run` → **36 green** (29 + 7: the 4+1+2 across the three new vitest files).
+`pytest template-maker/tests -q` → **86 green** (83 + 3). `pytest frame-builder/test_deferred_compute.py
+-q` → **3 green** (a new file at frame-builder's own root, outside the template-maker suite glob).
+**Zero RED findings** — every target's current shipped behavior matches its spec. `npm install` had
+drifted `package-lock.json` (37 lines) to get a working `node_modules` locally — reverted it via
+`git checkout -- package-lock.json` before committing (node_modules on disk is unaffected; only the
+tracked lockfile TEXT needed reverting) so `git status --short` shows only the 5 new spec files, per the
+dispatch's own verify step.
+
+No gate hit — breaker-role turn, zero product-code edits (one attempted, correctly blocked by the
+permission system, worked around with an off-repo simulation instead of retrying or bypassing it).
