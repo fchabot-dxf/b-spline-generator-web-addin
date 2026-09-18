@@ -4823,3 +4823,93 @@ No gate hit. No behaviour changed in either file — every edit this turn is a C
 `<div>`, or a dropped duplicate inline style. Visual confirmation of both fixes (the chip's sizing, the
 header's two-row layout at the docked width) is the advisor's, as scoped — flagged plainly above rather
 than claiming success I can't see. **Task list exhausted per this turn's dispatch note.**
+
+## Turn 187 — SE1: SVG editor batch 1 — declared shortcuts + Circle button + dead snap stub + dead toolClear — DONE
+
+**Task (epoch 1, per NEXT-SESSION.md, new cycle — first task of the SVG editor series):** four independent
+fixes: tool buttons advertise keyboard shortcuts that don't exist; a fully-implemented Circle mode has no
+button to reach it; a snap-to-grid feature is a dead stub (hidden toggle, nothing reads the flag); a
+duplicate `toolClear` binding shadows the real `editorClear` handler with no button of its own.
+
+**(1) Declared the shortcut map on the markup itself, per the dispatch's explicit "declare, don't
+hand-roll a key switch."** Added `data-key="v/a/p/t/l/r/c/e"` to the 7 existing tool buttons plus the new
+Circle button (`toolSelect toolNode toolDraw toolText toolLine toolRect toolCircle toolErase`) — the
+tooltip text and the key now live on the same element, so they can't drift apart again the way they
+already had (every tooltip already said "(V)"/"(A)"/etc. with no matching handler). In
+`_handleEditorKeydown`, added one lookup — `document.querySelector('#svgEditorModal [data-key="' +
+e.key.toLowerCase() + '"]')`, click it if found — placed after the Delete/Backspace check and before the
+existing `const ctrl = ...; if (!ctrl) return;` line, exactly where the dispatch specified. This reuses
+the existing click binding + active-state styling instead of duplicating either.
+
+**(2) Circle button added** after Rect (`<button id="toolCircle" ... ><svg><circle cx="12" cy="12"
+r="8"/></svg></button>`), same size/style as the Rect icon. `mode-tools.js` already bound `toolCircle` →
+`editor.setMode('circle')` — confirmed via `bindClick`'s own null-guard (`dom.js:20-25`) that this was
+silently doing nothing without the button; no change needed to `mode-tools.js` itself, only the markup
+that was missing.
+
+**(3) The typing-target guard — moved, not duplicated, per the dispatch's "reuse it" instruction.**
+`main/global-events.js` already had a private `_isTypingTarget(target)` for its own Ctrl+Z/Y handling.
+Rather than writing a second copy in `editor-interaction.js` or having `editor/` import from `main/`
+(backwards for this codebase's layering — checked first that the existing pattern is `main/*.js
+importing from `../editor/*.js`, never the reverse), moved the function into `editor/dom.js` (the
+existing home for small shared DOM helpers: `el`, `query`, `bindClick`, etc.) and imported it from both
+`global-events.js` and `editor-interaction.js`. **Kept the original name with its leading underscore**
+(`_isTypingTarget`) even though every other export in `dom.js` is unprefixed — the dispatch's own verify
+section names the identifier literally ("`_isTypingTarget` defined ONCE"), so preserving the exact name
+was more important here than an internal naming-convention nicety. (First pass renamed it to
+`isTypingTarget` to match `dom.js`'s own convention — caught the mismatch against the dispatch's literal
+verify grep before finalizing, reverted.)
+
+**(4) The snap-stub removal — found the ground truth was slightly wrong, and resolved it without
+crashing or silently changing behaviour.** The dispatch's claim "nothing in the drag/hit/draw code reads
+`_isSnapping`" is not quite true: `editor.js`'s `_snap(pt)` DOES read it (`if (!this._isSnapping) return
+pt; ...`), and `_snap()` itself has two live callers in `editor-interaction.js` (`handleStart`,
+`handleMove`) — core pointer-handling code used by every drawing mode, not dead code. The dispatch's own
+list of links to delete named `toggleSnapping()` and the two fields (`_isSnapping`, `_snapSize`), but did
+**not** name `_snap(pt)` itself or its 2 call sites. Deleting only the named links while leaving
+`_snap(pt)`'s body untouched would not have crashed (`this._isSnapping` reading `undefined` still takes
+the `return pt` branch, since `!undefined` is truthy) — behaviour would stay byte-identical to today
+(where `_isSnapping` was always `false` anyway) — but it would leave a dead conditional branch
+permanently referencing two now-deleted fields, exactly the "looks like real logic, is actually orphaned"
+trap the role's standing rules warn about. Simplified `_snap(pt)` to a bare `return pt;` with a comment
+explaining why it survives as an identity pass-through (real callers) rather than being deleted outright,
+instead of leaving the unreachable branch in place.
+
+Removed, in full: the hidden `#editorSnapToggle` button (`bspline_gen_palette.html`), its
+`editor-controls.js:20` click wiring, `editor.js`'s `toggleSnapping()` method and the two constructor
+field-inits (`_isSnapping`, `_snapSize`), and `editor-ui.js`'s "Sync Snap Toggle UI" block. Confirmed
+`updateToolbarVisibility` (called from inside the deleted `toggleSnapping()`) has three OTHER live callers
+before deleting the method, so nothing was orphaned by that removal. Swept `editor/` and the palette HTML
+case-insensitively for `snap` afterward — every remaining hit is either the retained `_snap(pt)` itself,
+an unrelated "snapshot"/"snaps back to identity" usage, or a genuinely different feature (rotation-angle
+snapping in `editor-transform-handles.js`, unrelated to the deleted grid-snap toggle) — confirmed each one
+by reading its context, not just counting hits. Checked `tests/editor-serialization.test.js` (the one
+test file matching a broad "snap" search) — it tests `encodeSnapshot`/`decodeSnapshot` only, unrelated to
+the removed toggle; nothing to remove there.
+
+**(5) `toolClear` removed** from `action-tools.js` — its body was byte-identical to the still-real
+`editorClear` binding immediately below it, and no `#toolClear` element exists anywhere in the markup
+(confirmed before deleting).
+
+**Verify (all green):**
+- Extracted all three of the palette's inline `<script>` blocks → `node --check` clean on each.
+- `node --check` on every touched module (`dom.js`, `editor.js`, `editor-ui.js`, `editor-controls.js`,
+  `editor-interaction.js`, `tools/action-tools.js`, `main/global-events.js`) → clean.
+- `npx vitest run` → **29 passed**, matching baseline.
+- Greps: `data-key=` → **8**; `toolCircle` → **1** in the HTML + **1** in `mode-tools.js`; `toolClear` →
+  **0**; `_isSnapping|toggleSnapping|editorSnapToggle|_snapSize` → **0** anywhere under `html/` (had to
+  reword my own explanatory comment above `_snap(pt)`, which originally quoted `_isSnapping` in prose and
+  would have left a spurious 1-hit — same lesson as IN4/FB3 earlier this cycle); `_isTypingTarget` defined
+  **once**, in `editor/dom.js`.
+- `git diff --stat` → **8 files**, within the predicted 6–8 range.
+
+**Could not exercise live** — Fusion is blocked by a Session-Suspended dialog per the dispatch's own
+ground truth, so none of this turn's changes have been visually confirmed: pressing V/A/P/T/L/R/C/E
+actually switching tools, the Circle tool actually drawing, the text tool's `<input>` and the layers
+rename `<input>` still receiving letters normally (the exact case `_isTypingTarget` exists to protect),
+and the snap toggle's removal not being missed by anyone relying on it. Flagging this explicitly per the
+dispatch's own instruction to say what couldn't be exercised.
+
+No gate hit. Did not touch `editor-controls.js` beyond the one snap-wiring line, did not touch anything
+in `cam_engine`-adjacent or unrelated editor files, and left `mode-tools.js` untouched since its
+`toolCircle` binding was already correct — the missing piece was purely the HTML button.
