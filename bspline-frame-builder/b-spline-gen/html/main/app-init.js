@@ -1,4 +1,4 @@
-import { P, loadLastSession, saveLastSession, lastResult, setStampLayerSvg, setStampLayerMask } from '../core/state.js';
+import { P, loadLastSession, saveLastSession, lastResult } from '../core/state.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
@@ -86,10 +86,6 @@ export function initSvgEditor(preview) {
         // Step 3 unification: the editor's full document is the source
         // of truth. Persist to P.editorSvg so a page reload restores it.
         P.editorSvg = svg;
-        // Legacy: also mirror to P.stampLayers[active].svg so any code
-        // path still consulting it (Cancel-snapshot restore, etc.) sees
-        // a consistent value during the transition.
-        setStampLayerSvg(P.activeLayerIdx, svg);
         saveLastSession();
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
@@ -108,7 +104,6 @@ export function initSvgEditor(preview) {
         if (fontEmbeddedSvg) {
           // Step 3 unification: editor is source of truth.
           P.editorSvg = fontEmbeddedSvg;
-          setStampLayerSvg(P.activeLayerIdx, fontEmbeddedSvg);
           saveLastSession();
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
@@ -125,7 +120,6 @@ export function initSvgEditor(preview) {
         // both, so this is safe regardless of exactly when the modal
         // hides relative to this call.
         P.editorSvg = SvgEditorSnapshot.editorSvg;
-        setStampLayerSvg(P.activeLayerIdx, P.editorSvg);
         saveLastSession();
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);

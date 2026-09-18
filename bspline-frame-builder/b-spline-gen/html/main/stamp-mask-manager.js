@@ -1,4 +1,4 @@
-import { P, setStampLayerMask } from '../core/state.js';
+import { P } from '../core/state.js';
 import { rasterizeSvg } from '../core/stamp.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -11,31 +11,18 @@ import { getLayerSvg } from '../editor/editor-io.js';
 // stale stamps for one frame.
 let _refreshGeneration = 0;
 
-// Step 2 unification: prefer tooling values from the matching editor
-// layer when one exists, falling back to the stamp-layer field, then
-// the global P.* default. Position-based mapping (stamp pass i ↔ editor
-// layer i) until each stamp pass formally points at an editor layer id.
-function _editorLayerAt(idx) {
-  try {
-    if (typeof window === 'undefined' || !window.svgEditor) return null;
-    const layers = window.svgEditor._layers;
-    return Array.isArray(layers) ? (layers[idx] || null) : null;
-  } catch (_) { return null; }
-}
-
 /**
  * SE3a: the mask-clear invariant — "a layer with no content has no
  * mask" — factored out as its own pure-ish function (only touches
- * `editorLayers` entries and the P.stampLayers mirror; no rasterizing,
- * no DOM) so it's testable without mocking rasterizeSvg/scheduleRebuild/
- * getLayerSvg. `emptyIdxs` is the set of indices into `editorLayers`
- * that are visible but currently have no content.
+ * `editorLayers` entries; no rasterizing, no DOM) so it's testable
+ * without mocking rasterizeSvg/scheduleRebuild/getLayerSvg. `emptyIdxs`
+ * is the set of indices into `editorLayers` that are visible but
+ * currently have no content.
  */
 export function clearEmptyLayerMasks(editorLayers, emptyIdxs) {
   for (const idx of emptyIdxs) {
     const layer = editorLayers[idx];
     if (layer) layer._mask = null;
-    if (P.stampLayers?.[idx]) setStampLayerMask(idx, null);
   }
 }
 
@@ -44,27 +31,19 @@ export function clearEmptyLayerMasks(editorLayers, emptyIdxs) {
  * editor's sketch is the single SVG document; each layer's content is
  * a partition of it (children with `data-layer="<layer.id>"`).
  *
- * Falls back to the legacy P.stampLayers iteration when:
- *   - the editor isn't loaded yet (early init), OR
- *   - the editor has no layers with content (empty drawing) but
- *     P.stampLayers carries legacy uploaded svgs.
- *
- * Masks are stored on the editor layer as `_mask` (so the compositor
- * can read them) AND on the matching P.stampLayers entry as `mask`
- * (legacy fallback for the existing applyStampLayers iteration path).
+ * SE4b: the P.stampLayers content mirror is retired — masks live only
+ * on the editor layer's own `_mask`.
  */
 export async function updateStampMasks(nx, nz) {
   const myGeneration = ++_refreshGeneration;
   const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
   const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : null;
 
-  // Build the work list. Each entry: { source: 'editor'|'legacy', idx, layer, svg, tooling }
+  // Build the work list. Each entry: { idx, layer, svg }
   const work = [];
   // SE3a: visible editor layers with no content — tracked separately from
   // "not in work" so the invariant below never touches a HIDDEN layer's
-  // mask (a hidden layer still has content, just not shown right now —
-  // clearing it would break the Cancel-restore safety the legacy-fallback
-  // comment below describes).
+  // mask (a hidden layer still has content, just not shown right now).
   const emptyIdxs = [];
 
   if (editorLayers && editorLayers.length > 0) {
@@ -73,45 +52,24 @@ export async function updateStampMasks(nx, nz) {
       if (layer.visible === false) return;
       const svg = getLayerSvg(editor, layer.id);
       if (!svg) { emptyIdxs.push(idx); return; }   // nothing on this layer yet — skip
-      work.push({ source: 'editor', idx, layer, svg });
-    });
-  }
-
-  // Legacy fallback: any P.stampLayers entry with svg+enabled that doesn't
-  // already have a matching editor-layer pass (so a Browse upload predating
-  // the unification still produces a stamp).
-  if (Array.isArray(P.stampLayers)) {
-    P.stampLayers.forEach((layer, idx) => {
-      if (!layer || !layer.svg || !layer.enabled) return;
-      // Skip if this position is already covered by an editor-layer pass, OR
-      // if the editor layer at this index is HIDDEN. A hidden editor layer's
-      // full-doc mirror lives in P.stampLayers[idx] (written by
-      // saveForRasterization — full content since the B6 fix), and must NOT
-      // resurrect here as a stamp pass (that was the post-B6 hidden-active-stamp
-      // regression). The broader "editor owns idx" skip for the pre-existing
-      // VISIBLE double-stamp is deferred (Cancel-restore safety).
-      const alreadyCovered = work.some(w => w.source === 'editor' && w.idx === idx);
-      const editorLayerHidden = _editorLayerAt(idx)?.visible === false;
-      if (alreadyCovered || editorLayerHidden) return;
-      work.push({ source: 'legacy', idx, layer, svg: layer.svg });
+      work.push({ idx, layer, svg });
     });
   }
 
   // Invariant: a layer with no content has no mask. Without this, a
   // layer that just lost its content (Clear, or an edit that emptied it)
   // keeps rendering whatever it was stamping before, forever — the mask
-  // was rasterized from content that no longer exists. Both the editor
-  // layer's own _mask AND its P.stampLayers mirror must clear: rebuild.js's
-  // _collectStampPasses reads `layer._mask || P.stampLayers[idx].mask`, so
-  // clearing only one half would let the other resurrect the stale mask.
+  // was rasterized from content that no longer exists.
   clearEmptyLayerMasks(editorLayers, emptyIdxs);
 
   if (work.length === 0) return myGeneration === _refreshGeneration;
 
-  const promises = work.map(async ({ source, idx, layer, svg }) => {
-    // Resolve tooling: editor wins, then legacy P.stampLayers[idx], then global P.*
-    const eLayer = (source === 'editor') ? layer : (_editorLayerAt(idx) || {});
-    const lLayer = (source === 'legacy') ? layer : (P.stampLayers?.[idx] || {});
+  const promises = work.map(async ({ idx, layer, svg }) => {
+    // Resolve tooling: editor wins, then P.stampLayers[idx] (still the one
+    // place tooling lives — this mirror isn't part of the content
+    // retirement), then global P.*
+    const eLayer = layer;
+    const lLayer = P.stampLayers?.[idx] || {};
 
     const blurIn = eLayer.blur ?? lLayer.blur ?? 0;
     const stampProfile = eLayer.profile ?? lLayer.profile ?? P.stampProfile;
@@ -145,14 +103,7 @@ export async function updateStampMasks(nx, nz) {
     // global generation (rather than just `myGeneration === current`)
     // means newer raster passes can clobber older ones in any order.
     if (myGeneration !== _refreshGeneration) return;
-    if (source === 'editor') {
-      layer._mask = result;
-      // Mirror to legacy slot if it exists — keeps the old compositor
-      // path working during the transition.
-      if (P.stampLayers?.[idx]) setStampLayerMask(idx, result);
-    } else {
-      setStampLayerMask(idx, result);
-    }
+    layer._mask = result;
   });
   await Promise.all(promises);
   return myGeneration === _refreshGeneration;

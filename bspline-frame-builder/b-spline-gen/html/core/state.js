@@ -208,21 +208,6 @@ export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
 export function setStrokeCache(val) { strokeCache = val; }
 
-export function setStampLayerSvg(idx, svg) { 
-    if (P.stampLayers[idx]) {
-        P.stampLayers[idx].svg = svg;
-        // Automatically enable the layer when an SVG is assigned (not null)
-        if (svg) {
-            P.stampLayers[idx].enabled = true;
-        }
-    }
-}
-export function setStampLayerMask(idx, mask) {
-    if (P.stampLayers[idx]) {
-        P.stampLayers[idx].mask = mask;
-        // suppression is a UI scalar (0–1) stored on the layer — never overwrite it here
-    }
-}
 export function setStampLayerEnabled(idx, enabled) {
     if (P.stampLayers[idx]) {
         P.stampLayers[idx].enabled = !!enabled;

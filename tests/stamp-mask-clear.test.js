@@ -4,8 +4,14 @@
  * Before this fix, updateStampMasks (main/stamp-mask-manager.js) built a
  * work list of layers that HAVE content and returned early when the list
  * was empty, leaving any layer that had just lost its content (Clear, or
- * an edit that emptied it) with a stale `_mask` / `P.stampLayers[i].mask`
- * forever — the reported symptom (Clear -> Apply still shows the old carve).
+ * an edit that emptied it) with a stale `_mask` forever — the reported
+ * symptom (Clear -> Apply still shows the old carve).
+ *
+ * SE4b: clearEmptyLayerMasks no longer touches a P.stampLayers mirror —
+ * that content mirror is retired (SE4-MIRROR-RETIREMENT-DESIGN.md slice
+ * b). These assertions were simplified to the single (editor) store;
+ * the HIDDEN-layer case below is untouched, per the design's own STOP
+ * condition that it must survive every slice unchanged.
  *
  * Two things are exercised here:
  *  1. `clearEmptyLayerMasks` directly — the invariant factored out as its
@@ -36,39 +42,30 @@ describe('clearEmptyLayerMasks', () => {
     P.stampLayers = [];
   });
 
-  it('clears both the editor layer\'s _mask and its P.stampLayers mirror for an emptied layer, and leaves a layer WITH content untouched', () => {
+  it('clears the editor layer\'s _mask for an emptied layer, and leaves a layer WITH content untouched', () => {
     const editorLayers = [
       { id: '0', _mask: { body: new Float32Array(4) } },   // has content — not in emptyIdxs
       { id: '1', _mask: { body: new Float32Array(4) } },   // just lost its content — stale mask
-    ];
-    P.stampLayers = [
-      { svg: '<svg/>', mask: { body: new Float32Array(4) }, enabled: true },
-      { svg: null, mask: { body: new Float32Array(4) }, enabled: false }, // stale mirror mask
     ];
 
     clearEmptyLayerMasks(editorLayers, [1]);
 
     expect(editorLayers[0]._mask).not.toBeNull();       // untouched — it still has content
     expect(editorLayers[1]._mask).toBeNull();            // SE3a: the invariant
-    expect(P.stampLayers[0].mask).not.toBeNull();
-    expect(P.stampLayers[1].mask).toBeNull();            // the mirror the compositor's `||` fallback reads
   });
 
   it('is a no-op when emptyIdxs is empty', () => {
     const editorLayers = [{ id: '0', _mask: 'x' }];
-    P.stampLayers = [{ svg: '<svg/>', mask: 'x', enabled: true }];
 
     clearEmptyLayerMasks(editorLayers, []);
 
     expect(editorLayers[0]._mask).toBe('x');
-    expect(P.stampLayers[0].mask).toBe('x');
   });
 
-  it('tolerates an index with no P.stampLayers mirror at that position', () => {
+  it('tolerates an emptyIdxs entry with no matching editorLayers slot', () => {
     const editorLayers = [{ id: '0', _mask: 'stale' }];
-    P.stampLayers = []; // no mirror at all
 
-    expect(() => clearEmptyLayerMasks(editorLayers, [0])).not.toThrow();
+    expect(() => clearEmptyLayerMasks(editorLayers, [0, 5])).not.toThrow();
     expect(editorLayers[0]._mask).toBeNull();
   });
 });
@@ -91,15 +88,11 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
       _activeLayer: '0',
     };
     window.svgEditor = editor;
-    P.stampLayers = [
-      { svg: null, mask: { body: new Float32Array(4) }, enabled: false }, // stale mirror too
-    ];
 
     const isLatest = await updateStampMasks(4, 4);
 
     expect(isLatest).toBe(true);
     expect(editor._layers[0]._mask).toBeNull();
-    expect(P.stampLayers[0].mask).toBeNull();
   });
 
   it('does not touch a HIDDEN layer\'s mask even though it\'s also absent from the work list', async () => {

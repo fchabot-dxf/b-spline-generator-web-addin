@@ -180,8 +180,7 @@ function buildHeights(nx, nz) {
         for (let k = 0; k < nx * nz; k++) cleanHeights[k] += preDelta[k];
     }
 
-    // Step 3 unification: build the pass list from editor layers when
-    // available, falling back to (or merging in) legacy P.stampLayers.
+    // Step 3 unification: build the pass list from editor layers.
     const passes = _collectStampPasses();
     const heights = applyStampLayers(cleanHeights, passes, nx, nz, {
         stampDepth:            P.stampDepth,
@@ -192,10 +191,10 @@ function buildHeights(nx, nz) {
 }
 
 /**
- * Produce a unified list of stamp passes, one per editor layer (when the
- * editor is loaded), plus any legacy P.stampLayers entries with svg+mask
- * that don't already correspond to an editor layer (so Browse uploads
- * predating Step 3 still produce a pass).
+ * Produce a unified list of stamp passes, one per editor layer.
+ *
+ * SE4b: the legacy P.stampLayers content fallback is retired — the
+ * editor is the only content store now.
  *
  * The returned shape matches what applyStampLayers expects:
  *   { enabled, svg, mask, depth, profile, suppression, smoothing,
@@ -205,10 +204,9 @@ function _collectStampPasses() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : null;
     const passes = [];
-    const coveredIdx = new Set();
 
     if (editorLayers) {
-        editorLayers.forEach((layer, idx) => {
+        editorLayers.forEach((layer) => {
             if (!layer) return;
             if (layer.visible === false) return;
             const mask = layer._mask;
@@ -229,15 +227,6 @@ function _collectStampPasses() {
                 edgeFilletRadius: layer.edgeFilletRadius,
                 filletPower: layer.filletPower,
             });
-            coveredIdx.add(idx);
-        });
-    }
-
-    if (Array.isArray(P.stampLayers)) {
-        P.stampLayers.forEach((layer, idx) => {
-            if (!layer || !layer.svg || !layer.mask || !layer.enabled) return;
-            if (coveredIdx.has(idx)) return;
-            passes.push(layer);
         });
     }
 

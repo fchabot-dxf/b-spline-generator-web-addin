@@ -3,10 +3,7 @@
  * the active layer's `svg` field, plus the filename label and the
  * editor-modal Cancel-snapshot.
  */
-import { P, setStampLayerSvg, setStampLayerMask, setStampLayerEnabled } from '../../core/state.js';
-import { scheduleRebuild, rebuild } from '../../core/engine.js';
-import { updateStampMasks } from '../stamp-mask-manager.js';
-import { updatePreviewSculptMode } from '../../core/sculpt-interaction.js';
+import { P, setStampLayerEnabled } from '../../core/state.js';
 import { SvgEditorSnapshot, editorRestoreSvg } from '../app-init.js';
 import { addLayer, setActiveLayer } from '../../editor/layers.js';
 
@@ -40,8 +37,7 @@ export function initSvgSource(ctx, layerModule) {
   const btnEdit = document.getElementById('btnStampEdit');
 
   // Browse → file picker → read → validate → import into the active
-  // editor layer (Step 3 of the unification). Falls back to the legacy
-  // per-stamp-layer svg field when the editor isn't loaded.
+  // editor layer (Step 3 of the unification).
   if (btnChoose && upload) {
     btnChoose.addEventListener('click', () => upload.click());
     upload.addEventListener('change', async (e) => {
@@ -60,34 +56,59 @@ export function initSvgSource(ctx, layerModule) {
 
       const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
       const imported = editor ? importSvgIntoLayer(editor, text) : false;
-      if (!imported) {
-        // SE4a: kept, not proven removable. Traced the actual boot order
-        // (main.js) before deciding: bindControls() — which wires this
-        // click handler via initStampPanel/initSvgSource — runs
-        // SYNCHRONOUSLY in step 5 of DOMContentLoaded. initSvgEditor()
-        // (creates window.svgEditor) doesn't run until step 7, gated
-        // behind two requestAnimationFrame calls AND pollMode() resolving.
-        // A human click on Browse happens well after that in practice, but
-        // there is no STRUCTURAL/synchronous guarantee tying the two —
-        // just a timing gap that's always closed by the time a person can
-        // actually click. Per the dispatch's own "if you cannot prove it,
-        // keep the fallback" instruction: keeping it.
-        setStampLayerSvg(P.activeLayerIdx, text);
+      if (imported) {
+        // SE4b: the deleted content-mirror setter used to auto-enable the
+        // layer as a side effect of writing its mirror svg field —
+        // DEFAULT.stampLayers[1]/[2] start `enabled: false`, so without
+        // this, drawing into Layer 2/3 for the first time via Browse would
+        // leave it silently excluded from activeStampLayers/
+        // exportableStampLayers (tooling `enabled` still reads
+        // P.stampLayers[idx] — see export-flow.js) even though it has real
+        // content and displays fine in the 3D preview. Preserve the effect
+        // directly now that the write that used to carry it is gone.
+        setStampLayerEnabled(P.activeLayerIdx, true);
         if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
-        ctx.requestRemask();
+      } else {
+        // SE4b: the content-mirror fallback this used to write to is gone
+        // — it's being deleted from core/state.js this same slice, so
+        // there's nothing left to silently absorb into. SE4a already found
+        // no structural guarantee the editor exists by the time Browse is
+        // clickable (only a practical timing gap, always closed for a real
+        // human click) — surface that instead of pretending it worked.
+        if (fileNameSpan) fileNameSpan.textContent = '⚠ Editor not ready — try again.';
+        console.warn('[STAMP] Browse import failed: editor not ready.');
       }
     });
   }
 
-  // Clear → null svg+mask, disable layer (mirrors auto-enable on assign).
+  // Clear → remove the ACTIVE layer's real content from the editor's
+  // sketch, disable the layer (mirrors auto-enable on assign). SE4b/B15:
+  // this used to only null the P.stampLayers mirror, leaving the editor's
+  // actual drawing (and therefore the next Apply's carve) untouched — two
+  // buttons named "Clear" with two different real effects. Now mirrors the
+  // editor modal's own Clear (editorClear, editor/tools/action-tools.js):
+  // deselect, mutate, pushState, onChange — just scoped to one layer's
+  // children instead of the whole sketch.
   if (btnClear) {
     btnClear.addEventListener('click', () => {
-      setStampLayerSvg(P.activeLayerIdx, null);
-      setStampLayerMask(P.activeLayerIdx, null);
+      const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
+      const currentLayer = ctx.activeLayer();
+      if (!editor || !editor._sketchLayer || !currentLayer || currentLayer.id == null) {
+        if (fileNameSpan) fileNameSpan.textContent = '⚠ Editor not ready — try again.';
+        return;
+      }
+      const targetId = String(currentLayer.id);
+      if (typeof editor._deselect === 'function') editor._deselect();
+      const sketchNode = editor._sketchLayer.node;
+      Array.from(sketchNode.children).forEach((ch) => {
+        if (ch.getAttribute('data-layer') === targetId) ch.remove();
+      });
+      if (typeof editor.pushState === 'function') { try { editor.pushState(); } catch (_) {} }
+      if (typeof editor._onChange === 'function') { try { editor._onChange(); } catch (_) {} }
+
       setStampLayerEnabled(P.activeLayerIdx, false);
       if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
       if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
-      scheduleRebuild(() => rebuild(ctx.preview, updateStampMasks, updatePreviewSculptMode), 0);
     });
   }
 
