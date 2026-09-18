@@ -41,10 +41,9 @@ function initFillModeToggle(editor) {
     editor._fillMode = mode;
     for (const [m, btn] of Object.entries(buttons)) {
       if (!btn) continue;
-      const isActive = m === mode;
-      btn.classList.toggle('active', isActive);
-      btn.style.background = isActive ? '#e8f0ff' : 'transparent';
-      btn.style.color = isActive ? '#1a55b8' : '#555';
+      // .editor-fillmode-btn.active (styles/base.css, SE3b) is the only
+      // source of the active look now — no inline style here.
+      btn.classList.toggle('active', m === mode);
     }
     _applyFillModeToSelection(editor, mode);
   };

@@ -26,6 +26,7 @@ refactor.
 | B9 | CLOSED | `48cee2b` (no guard) |
 | B10 | CLOSED | `f0d47ed` (no guard) |
 | B11 | CLOSED | `48cee2b` (no guard) — one named P1 exception remains, documented in `ROADMAP.md` |
+| B12 | OPEN | found live 2026-09-18; fix queued as SE3a on main |
 
 Per-entry detail (evidence, reasoning) is inline as a status line under each heading below. Original
 entry text is preserved unchanged beneath each status line — this is a reconciliation, not a rewrite.
@@ -420,6 +421,33 @@ hot-reload lifecycle · **P3** isolated sub-modules · **P4** declare-over-hand-
   (`core/fus-log.js`) that all three import. Minor behaviour drift between copies
   (canonical `String(msg)`; coords passes `msg` raw; state double-`JSON.stringify`s).
   No runtime bug.
+
+### B12 — SVG editor Cancel does not revert; Apply of an emptied canvas keeps the stale mask  ·  runtime-bug  ·  confidence HIGH
+
+> **STATUS (T4, 2026-09-18): OPEN.** Found live by the advisor 2026-09-18; recorded here by lane-b per
+> the dispatch. Fix queued as SE3a on main (seat A), not this lane's. Verified all three proof lines
+> directly before recording:
+
+- **Where (Cancel path):** `main/app-init.js:114-127`. On Cancel, restores the LEGACY per-stamp-layer
+  fields (`P.stampLayers[idx].svg`/`.mask`/`enabled`) from `SvgEditorSnapshot` — not `P.editorSvg` (the
+  "Step 3 unification" full editor document the comment at `:134-137` names). The snapshot itself is
+  captured wrong in the first place — see the next line.
+- **Where (snapshot capture):** `main/stamp/svg-source.js:91-97`. `SvgEditorSnapshot.svg =
+  currentLayer.svg` where `currentLayer = ctx.activeLayer()` — but in the unified editor model,
+  `ctx.activeLayer()` returns an EDITOR layer, which has no `.svg` field (that's a legacy-stamp-layer
+  field). So `SvgEditorSnapshot.svg` is `undefined` at capture time, confirmed by the file's OWN comment
+  two lines below (`:100-102`, "ctx.activeLayer() returns an EDITOR layer with no `.svg`... the old code
+  passed undefined and reopened blank (RO1)") — the same class of bug already named once (RO1) for the
+  reopen path, now recurring for the Cancel-snapshot path.
+- **Where (Apply of an emptied canvas):** `main/stamp-mask-manager.js:40-78`. `updateStampMasks`
+  builds a `work` list from layers that currently have SVG content (`:52-54`, `if (!svg) return`); if
+  the user deletes everything on a layer and Applies, that layer contributes nothing to `work`. If NO
+  layer has content, `work.length === 0` and the function returns early at `:78` — **the layer's stale
+  `mask` (from before the canvas was emptied) is never nulled**, so old stamp geometry keeps rendering
+  for a canvas the user just cleared.
+- **Symptom:** open the SVG editor on a layer with content, Cancel — the pre-edit drawing does not come
+  back (the snapshot it would restore from was `undefined` to begin with). Separately: empty a layer's
+  canvas and click Apply — the old stamp geometry persists instead of clearing.
 
 ## Minor / lower-confidence (noted, not promoted)
 

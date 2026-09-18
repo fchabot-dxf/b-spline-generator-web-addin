@@ -666,3 +666,52 @@ lie the file was telling.
 each immediately followed by its status block. No amendments pending at either poll.
 
 No gate hit — docs-only turn, no product code touched.
+
+---
+
+## Lane B — Turn 23 — T4: SE3b fillmode CSS declaration + B12 in BUGS_OPEN — DONE, 4 files (not 3)
+
+**Scope discipline first, since seat A was actively editing the SAME html file this turn.** Confirmed
+via `git diff --stat`/`git diff` after the edit that the palette-HTML change touches ONLY lines
+1267-1272 (well inside the assigned 1263-1275 window) — nothing near the tool rail (~1312+) or the modal
+script seat A owns this turn.
+
+**1. SE3b — declared the fillmode control instead of leaving it hand-rolled.** Removed `cad-icon-btn
+small` (a 16px icon-button class the three STYLE buttons were never supposed to be) and every inline
+`style=` attribute from the 3 buttons; added 3 rules to `styles/base.css` next to `.cad-icon-btn`
+(`.editor-fillmode-btn`, the `+` adjacent-sibling border rule, `.editor-fillmode-btn.active`) — exactly
+the 3 rules the dispatch specified, no more.
+
+**Found and fixed the hand-rolled JS duplicate the dispatch asked me to check for — this is the 4th
+file, beyond the predicted 3.** `editor/properties-shape.js`'s `initFillModeToggle`'s `setActive`
+closure was ALSO setting `btn.style.background`/`btn.style.color` inline on every click, duplicating
+exactly what the new `.editor-fillmode-btn.active` CSS rule now declares — two sources of truth for the
+same visual state, the kind of thing that drifts silently. Removed the two inline-style lines, kept only
+`btn.classList.toggle('active', ...)`. **Flagging the file-count discrepancy plainly:** the dispatch's
+own "Files:" list and "predicted 3 files" line didn't include this one, but its OWN item-1 instructions
+explicitly said to check for and remove exactly this hand-rolled styling if found — found it, removed
+it, and I'm reporting 4 files rather than silently narrowing my report to match the stale prediction.
+
+**2. B12 recorded — verified all three proof lines directly before writing anything down, not copied
+from the dispatch verbatim.** Read `app-init.js:114-127` (confirmed: Cancel restores the legacy
+`P.stampLayers[idx]` fields, not `P.editorSvg`), `stamp/svg-source.js:91-97` (confirmed: the Cancel
+snapshot's `.svg` field is captured from `ctx.activeLayer()`, which returns an EDITOR layer with no
+`.svg` property — the file's OWN comment two lines below independently confirms this is `undefined`,
+and names it as a recurrence of an already-fixed bug, RO1, on a different code path), and
+`stamp-mask-manager.js:40-78` (confirmed: `updateStampMasks` returns early at `:78` when the work list
+is empty, never touching a layer's stale `mask` — so an emptied canvas keeps its old stamp geometry).
+Added the entry (status OPEN, fix queued as SE3a on main — not this lane's to fix) and a row in the T3
+summary table this lane built last turn, keeping the table current rather than letting it drift stale
+again immediately after being fixed.
+
+**Verify, all items from the dispatch:**
+- Extracted the palette's 3 inline `<script>` blocks and ran `node --check` → clean (sanity check that
+  the HTML edit, which only touched attributes, didn't corrupt anything nearby).
+- `npx vitest run` → **36 green**, unchanged from before this turn's edits.
+- `grep -c "cad-icon-btn small editor-fillmode-btn"` → 0. `editor-fillmode-btn` count in the HTML → 3.
+  Rule count in `base.css` → 3. Visually confirmed no `style=` attribute remains on any of the 3 buttons.
+- `git status --short` → exactly the 4 files named above (3 predicted + `properties-shape.js`).
+
+No gate hit — small, evidence-verified change; stayed inside the assigned HTML region despite seat A's
+concurrent edits to the same file; the one scope deviation (4th file) was explicitly instructed by the
+dispatch's own item-1 text, not a unilateral addition, and is called out rather than hidden.
