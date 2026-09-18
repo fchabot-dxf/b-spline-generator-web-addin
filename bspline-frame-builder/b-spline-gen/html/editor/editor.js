@@ -386,11 +386,21 @@ export class VectorEditor {
         if (this._onChange) this._onChange();
     }
 
+    /** T8: the one place that clears "what's selected" — _selectedElement(s)
+     *  (via the setter below), _selectedNodes, the handle layer, and EVERY
+     *  highlight halo (not just the legacy single alias). Content-wipe sites
+     *  (Clear, open()) call this directly rather than a separate wrapper —
+     *  it's already complete, so a second name over it would add nothing. */
     _deselect() {
         if (this._selectedElement) this._selectedElement.removeClass('svg-selected');
         this._selectedElement = null;
+        this._selectedNodes = [];
         if (this._handleLayer) this._handleLayer.clear();
         if (this._selectionHighlight) { this._selectionHighlight.remove(); this._selectionHighlight = null; }
+        if (this._selectionHighlights) {
+            for (const h of this._selectionHighlights) { try { h.remove(); } catch (_) {} }
+        }
+        this._selectionHighlights = [];
         updateToolbarVisibility(this);
     }
 }

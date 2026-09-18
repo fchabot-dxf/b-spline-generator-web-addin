@@ -18,6 +18,10 @@ export function registerActionTools(editor) {
   bind('editorClear', () => {
     if (confirm('Clear all?')) {
       editor._sketchLayer.clear();
+      // T8: the cleared elements may still be selected — deselect so their
+      // highlight halo / transform handles (separate layers, untouched by
+      // _sketchLayer.clear()) don't ghost on screen.
+      if (typeof editor._deselect === 'function') editor._deselect();
       editor.pushState();
       if (editor._onChange) editor._onChange();
     }

@@ -893,3 +893,67 @@ no edit.
 No gate hit — every discrepancy from the dispatch's own predictions (untracked assumption, docstring
 staleness, comment-count) was checked against the actual repo state before deciding what to do, and
 each is reported specifically rather than smoothed into a single "done" summary.
+
+---
+
+## Lane B — Turn 31 — T8: ghost selection after Clear/reopen — completed _deselect(), reused it directly
+
+**Merged main first** (not explicitly told to this time, but lane-b was behind — `git log`/`git
+merge-base` confirmed it, so merged anyway rather than risk working from a stale tree). Clean merge, one
+file (`ROADMAP.md`, docs-only), no conflict. Baseline `npx vitest run` after the merge → 52 green,
+matching the dispatch's prediction exactly (no drift to chase).
+
+**Confirmed the ground truth exactly, then found ONE MORE gap beyond what it named.** `action-tools.js`'s
+Clear handler and `editor-io.js`'s `open()` both call `_sketchLayer.clear()` and neither calls
+`_deselect()` at all — confirmed by grep, matches the advisor's citation precisely. Read the existing
+`_deselect()` (`editor.js:389-395` before this turn) to answer the dispatch's own question ("if it
+already does all four... if it leaves a layer untouched, complete it THERE"): it cleared
+`_selectedElement` (which cascades to `_selectedElements` via the property setter — already declared,
+didn't need touching), `_handleLayer`, and the LEGACY singular `_selectionHighlight` — but **not**
+`_selectionHighlights` (plural, the array `updateSelectionHighlight()` actually populates with one halo
+shape per multi-selected element, added to `_highlightLayer`)`. So even where `_deselect()` WAS already
+called (11 pre-existing sites), a 2+-element selection would leave every highlight but the last one
+ghosted in `_highlightLayer` — a real, slightly wider version of the bug the ground truth's single-stroke
+repro wouldn't have surfaced. Completed `_deselect()` to also clear the plural array (iterating +
+`.remove()`) and `_selectedNodes` (named explicitly in the dispatch; found it referenced once as a guard
+at `editor-ui.js:157` but never assigned anywhere — clearing it defensively costs nothing and matches
+what was asked even though I couldn't find where it'd ever be non-empty).
+
+**Chose to reuse the now-complete `_deselect()` directly rather than declare a separate
+`resetContentState(editor)` wrapper — the dispatch's own "or `_deselect(...)` if you reuse it directly
+— say which" escape hatch.** Once `_deselect()` covers all four things (selected elements, selected
+nodes, handle layer, EVERY highlight), a second name wrapping a single call to it would be a pure
+indirection with no distinct behavior of its own — the "node-count UI reset" the dispatch mentioned is
+already covered by `_deselect()`'s existing `updateToolbarVisibility(this)` call; didn't find a separate
+node-count widget to justify a wrapper doing more than that. Saying so explicitly rather than silently
+picking one option without acknowledging the choice.
+
+**The other big win: fixing `_deselect()` once automatically fixes `deleteSelected()` too, with zero
+changes to that function.** `deleteSelected()` (`editor.js:384`) already called `_deselect()` after
+removing elements — per the dispatch's own conditional ("if it already does after removing, leave it"),
+correctly left it untouched. Its own latent multi-select-highlight-ghost gap (same root cause) is now
+closed as a side effect of the shared fix, not a separate edit.
+
+**Wired the 2 new call sites** (`open()` right after `_sketchLayer.clear()`, before the unrelated
+pan-state reset already there from T6; the Clear handler right after `_sketchLayer.clear()`, before
+`pushState()` as specified) with a guarded `typeof editor._deselect === 'function'` check — matching the
+existing defensive style at nearby call sites in these same files rather than assuming the method always
+exists.
+
+**Verify, all items from the dispatch:**
+- `node --check` on all 3 touched modules → clean.
+- `npx vitest run` → **52 green**, unchanged (DOM-bound fix, no pure-math surface to unit-test the way
+  T5's was).
+- `grep -n "_sketchLayer.clear()"` in both files → each followed within a few lines (through one short
+  explanatory comment) by the `_deselect()` call.
+- `grep -rn "_deselect("` → definition + 13 call sites total (11 pre-existing + my 2 new ones) — far
+  exceeds the "≥3" bar; didn't declare `resetContentState(` at all, per the choice explained above.
+- `git status --short` → exactly 3 files, at the top of the "2-3" prediction (the third being `editor.js`,
+  where `_deselect()` already lived — matches the dispatch's own "editor.js... where `_deselect` lives"
+  file-list entry).
+- Live verification (draw → Clear → OK → no ghost; draw → select → Cancel → reopen → no ghost) is the
+  advisor's, per the dispatch.
+
+No gate hit — completed a shared function once rather than hand-rolling three separate reset call pairs,
+and explicitly reasoned through the dispatch's own "reuse vs. declare a wrapper" fork instead of picking
+one silently.
