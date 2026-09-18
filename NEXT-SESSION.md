@@ -1,56 +1,34 @@
-# NEXT — SE2: SVG editor zoom / pan / fit — the one usability change that matters at the docked 460 px
+# LANE B — T3: reconcile BUGS_OPEN.md against what actually shipped (docs only)
 
-**Ball: worker (seat A) · epoch 1 · SE2.** Scope: `bspline-frame-builder/b-spline-gen/html/` only —
-`editor/editor.js`, `editor/editor-interaction.js`, `bspline_gen_palette.html` (+ a new `editor/editor-view.js` if
-you want the view math in its own leaf; recommended, it is unit-testable without svg.js). One commit by path,
-predicted **3–4 files**. SE1 (235b8f0) landed and is merged; lane-b's tests are in main (vitest 36, pytest 118).
+**Seat B · epoch 1 · T3.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b` (merged with main just now).
+File: `BUGS_OPEN.md` only (+ WORK-LOG-lane-b.md). One commit by path. No product code.
 
-## Ground truth (advisor, from the code)
-- The editor root is `window.SVG().addTo('#editorSVGContainer').size('100%','100%')` (`editor/init.js:14`); the board
-  is shown by `setModelMetrics(w,h)` → `this._draw.viewbox(0, 0, w, h)` (`editor.js:352-358`), inches as user units.
-  There is **no zoom and no pan** anywhere (`grep 'wheel'` under `editor/` → 0).
-- Everything downstream is already viewbox-relative, which is why this is contained: pointer → model goes through
-  `editor._draw.point(clientX, clientY)` (`editor-io.js:600`), click slop through `getDynamicTolerance(editor, px)`
-  = `px * viewbox.width / #editorSVGContainer.clientWidth` (`editor-hit.js:14`), and the transform handles size
-  themselves "in model units, scales with the viewbox" (`editor-transform-handles.js:60-102`). So a smaller viewbox
-  = bigger drawing, same on-screen tolerances and handle sizes, for free.
-- Pointer entry: `handleStart` (`editor-interaction.js:176`) on `mousedown` of the svg node; `handleMove`; the mode
-  handler table `getModeHandler(mode)`.
+## Why
+The audit series (A1–A7) and yesterday's fix cycle closed most of B1–B11, but BUGS_OPEN.md still lists them as open.
+A bugs file that is wrong is worse than none: the next session re-investigates closed items. You are the breaker seat
+and you have the tests — you are the right one to say which entries are dead.
 
-## Build — DECLARE the view, derive the viewbox
-- **One view record on the editor:** `this._view = { zoom: 1, cx: w/2, cy: h/2 }` (zoom 1 = whole board; cx/cy =
-  model-space center). **One derivation:** `viewboxFor(view, mW, mH)` → `{x: cx - mW/(2z), y: cy - mH/(2z),
-  w: mW/z, h: mH/z}` — a pure function (put it in `editor/editor-view.js`, export it), and one `applyView(editor)`
-  that calls `editor._draw.viewbox(...)` from it. `setModelMetrics` resets the view to fit and applies. No other
-  code touches `viewbox()` directly.
-- **Wheel = zoom about the cursor.** `on(svgNode, 'wheel', …, { passive: false })`: factor `Math.exp(-e.deltaY * 0.0015)`,
-  clamp zoom to **[1, 16]** (declare `ZOOM_MIN/ZOOM_MAX` in editor-view.js). Zoom about the cursor: convert the
-  pointer to model space BEFORE the change (`_getMousePoint`), update zoom, then shift cx/cy so that model point
-  stays under the cursor. `preventDefault()` so the modal body does not scroll.
-- **Pan = middle-button drag OR Space + left drag.** In `handleStart`, BEFORE the mode handler: if `e.button === 1`
-  or `editor._spaceHeld`, start a pan (remember the client position + view center) and return; move/up complete it
-  (`cx -= dxClient * viewbox.w / clientWidth`, same for y). Space: track `_spaceHeld` with keydown/keyup on
-  `window` — inside `_handleEditorKeydown` (it already gates on `_isEditorActive` + `_isTypingTarget`); add the
-  matching keyup with the same gate; `preventDefault` on Space so the page does not scroll. Cursor: `grab`/`grabbing`
-  on the container while Space is held / panning (one CSS class toggle, rules in the modal's style block).
-- **Fit** = view reset to `{1, w/2, h/2}`. Add a tool button after the Eraser: `<button id="toolFit" class="tool-btn"
-  title="Fit (0)" data-key="0">` with a simple icon (four corner brackets). Bind it in `action-tools.js`
-  (`editor.fitView()`). The `data-key` costs nothing extra — SE1's lookup already dispatches it.
-- Reopen: `open()` goes through `setModelMetrics` → fit; check it does, and that Apply/Cancel/reopen never leaves a
-  stale zoom. Zoom does NOT touch the saved SVG (serialization reads the sketch layer, not the viewbox) — assert that
-  in your reading of `editor-io.js` and say so in WORK-LOG.
+## Do — for EVERY `### B<n>` entry
+Verify against ground truth (`git log --oneline -S'<symbol>' -- <path>`, the current code, and the tests under
+`tests/` + `template-maker/tests` + `frame-builder/`), then rewrite the entry's status line to one of:
+- **CLOSED <sha> (guarded by <test file>)** — fixed, and a regression test exists (your T1 specs cover B6 for sure).
+- **CLOSED <sha> (no guard)** — fixed, no test; say in one line what a guard would assert.
+- **STALE — <reason>** — the premise no longer holds. Known: **B8** (stamp-editor's editor tree is a sync-generated,
+  untracked bundle since 59615fe — not a duplicate); Fred also ruled 2026-09-18 the standalone stamp-editor is out
+  of scope.
+- **OPEN** — still true today; quote the line of code that proves it.
+Keep each entry's original text below the status line (history), do not delete entries. Add a 5-line summary table
+at the top: id · status · sha/test. The advisor knows of: B4 (dead send, removed in HY4 e95d610?), B5 (inspector
+selection leak, IN1), B6 (T1 guard), B7 (force-wipe lists, TM1/TM2), B9 (host calls bypass the bridge — check
+against the fusion-bridge.js seam; the inline `window.fusionJavaScriptHandler` in the palette is a NAMED exception),
+B10 (CAM stop() unregisters 1 of 3 — check the merged cam-builder.py after CAM1), B11 (fusLog re-inlined — check
+`core/fusion-log.js`, HY3). B1–B3: verify yourself. Trust the code over these hints.
 
 ## Verify
-- New `tests/editor-view.test.js` (vitest): `viewboxFor` at zoom 1 = `{0,0,w,h}`; zoom 2 centered = the middle
-  quarter; the zoom-about-cursor step keeps the cursor's model point fixed (compute before/after through
-  `viewboxFor` + a screen→model map at the test's own clientWidth). Pure math, no svg.js — 3–4 tests.
-- `node --check` every touched module + the extracted palette scripts; `npx vitest run` → 36 + new, all green.
-- Greps: `viewbox(` under `editor/` → only in `applyView` (+ the unrelated `bakeSvgForCarving` root in editor-io.js);
-  `toolFit` → 1 html + 1 binding; `data-key=` → 9.
-- `git show --stat HEAD` within the predicted count. Live proof (wheel, Space-drag, middle-drag, Fit, tolerances at
-  8x) is the ADVISOR's once Fusion is back; the site build is also a live surface (bspline-generator.pages.dev).
+- Every `### B` heading has exactly one status line directly under it; the summary table has one row per entry.
+- `git show --stat HEAD` → BUGS_OPEN.md + WORK-LOG-lane-b.md only.
 
 ## When done
-Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE2: declared view + wheel zoom + Space/middle pan + Fit — <sha>, N files, vitest N"`
+Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T3: BUGS_OPEN reconciled — N closed, N stale, N open — <sha>"`
 and stop.
