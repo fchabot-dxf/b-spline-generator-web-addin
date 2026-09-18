@@ -1,34 +1,38 @@
-# LANE B — T3: reconcile BUGS_OPEN.md against what actually shipped (docs only)
+# LANE B — T4: SE3b STYLE-control overlap (CSS, declared rule) + BUGS_OPEN entry B12 for SE3a
 
-**Seat B · epoch 1 · T3.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b` (merged with main just now).
-File: `BUGS_OPEN.md` only (+ WORK-LOG-lane-b.md). One commit by path. No product code.
+**Seat B · epoch 1 · T4.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. Files:
+`bspline-frame-builder/styles/base.css`, `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` (lines
+1263-1275 ONLY — seat A is editing the same file further down, tool rail ~1312+ and the modal script; stay out of
+those regions), `BUGS_OPEN.md`, + WORK-LOG-lane-b.md. One commit by path, predicted **3 files** + log.
 
-## Why
-The audit series (A1–A7) and yesterday's fix cycle closed most of B1–B11, but BUGS_OPEN.md still lists them as open.
-A bugs file that is wrong is worse than none: the next session re-investigates closed items. You are the breaker seat
-and you have the tests — you are the right one to say which entries are dead.
+## 1. SE3b — the STYLE segmented control renders "ROKELBOTH" (live, 2026-09-18 08:20)
+Cause: the three buttons `#editorFillModeStroke/Fill/Both` (palette :1267-1275) carry `class="cad-icon-btn small
+editor-fillmode-btn"`; `.cad-icon-btn` is a 16 px ICON button (`styles/base.css:1304-1313`, `width:16px`), so three
+text labels are squeezed into 48 px and overlap. Fix by DECLARING the control instead of piling inline styles:
+- Drop `cad-icon-btn small` from the three buttons; keep `editor-fillmode-btn` (+ `active`).
+- Move their inline `style="…"` into ONE rule set in `styles/base.css` next to `.cad-icon-btn`:
+  `.editor-fillmode-btn { border:none; background:transparent; color:#555; padding:0 8px; height:100%;
+  font-size:10px; font-weight:700; letter-spacing:0.04em; cursor:pointer; }`,
+  `.editor-fillmode-btn + .editor-fillmode-btn { border-left:1px solid #ddd; }`,
+  `.editor-fillmode-btn.active { background:#e8f0ff; color:#1a55b8; }`.
+  Check `editor/properties-panels.js` / wherever `.active` is toggled on these buttons: if it sets inline
+  background/color too, remove that hand-rolled styling so the rule is the only source.
+- No width anywhere: the label sets the width.
 
-## Do — for EVERY `### B<n>` entry
-Verify against ground truth (`git log --oneline -S'<symbol>' -- <path>`, the current code, and the tests under
-`tests/` + `template-maker/tests` + `frame-builder/`), then rewrite the entry's status line to one of:
-- **CLOSED <sha> (guarded by <test file>)** — fixed, and a regression test exists (your T1 specs cover B6 for sure).
-- **CLOSED <sha> (no guard)** — fixed, no test; say in one line what a guard would assert.
-- **STALE — <reason>** — the premise no longer holds. Known: **B8** (stamp-editor's editor tree is a sync-generated,
-  untracked bundle since 59615fe — not a duplicate); Fred also ruled 2026-09-18 the standalone stamp-editor is out
-  of scope.
-- **OPEN** — still true today; quote the line of code that proves it.
-Keep each entry's original text below the status line (history), do not delete entries. Add a 5-line summary table
-at the top: id · status · sha/test. The advisor knows of: B4 (dead send, removed in HY4 e95d610?), B5 (inspector
-selection leak, IN1), B6 (T1 guard), B7 (force-wipe lists, TM1/TM2), B9 (host calls bypass the bridge — check
-against the fusion-bridge.js seam; the inline `window.fusionJavaScriptHandler` in the palette is a NAMED exception),
-B10 (CAM stop() unregisters 1 of 3 — check the merged cam-builder.py after CAM1), B11 (fusLog re-inlined — check
-`core/fusion-log.js`, HY3). B1–B3: verify yourself. Trust the code over these hints.
+## 2. B12 — record SE3a in BUGS_OPEN.md as OPEN (the advisor found it live; you own that file now)
+Title: "SVG editor Cancel does not revert; Apply of an emptied canvas keeps the stale mask". Status OPEN, proof lines:
+`main/app-init.js:118-127` (Cancel restores the legacy `P.stampLayers[idx]` fields, not `P.editorSvg` nor the editor
+document), `main/stamp/svg-source.js:91-97` (snapshot reads `.svg` off an EDITOR layer → `undefined`),
+`main/stamp-mask-manager.js:40-76` (`updateStampMasks` returns early on an empty work list and never nulls the mask
+of a layer that lost its content). Add it to the summary table. Fix is queued as SE3a on main (seat A), not yours.
 
 ## Verify
-- Every `### B` heading has exactly one status line directly under it; the summary table has one row per entry.
-- `git show --stat HEAD` → BUGS_OPEN.md + WORK-LOG-lane-b.md only.
+- Extract the palette's inline script + `node --check` (untouched, sanity); `npx vitest run` → 36 green.
+- Greps: `cad-icon-btn small editor-fillmode-btn` → 0; `editor-fillmode-btn` → 3 in the html, ≥3 rules in base.css;
+  the three buttons have NO `style=` attribute.
+- `git show --stat HEAD` → 3 files + log. Look is the ADVISOR's (deploy + capture).
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T3: BUGS_OPEN reconciled — N closed, N stale, N open — <sha>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T4: SE3b fillmode rule + B12 entry — <sha>, 3 files"`
 and stop.
