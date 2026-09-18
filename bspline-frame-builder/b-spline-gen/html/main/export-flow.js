@@ -27,9 +27,16 @@ import {
 } from '../core/fusion-bridge.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
-import { bakeSvgForCarving } from '../editor/editor-io.js';
+import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
+//
+// SE4a: content (mask presence, svg text) now reads the editor — the one
+// real store — instead of the P.stampLayers mirror, which can go stale
+// (e.g. undo/redo nulls its .svg without touching the editor; see
+// SE4-MIRROR-RETIREMENT-DESIGN.md finding #1). Tooling (depth/enabled)
+// stays on P.stampLayers[idx] per the dispatch — that part isn't a mirror,
+// it's the one place tooling lives.
 //
 // Two filters with different semantics:
 //   • activeStampLayers: layers that actually carve (have mask + non-trivial
@@ -40,8 +47,30 @@ import { bakeSvgForCarving } from '../editor/editor-io.js';
 const isCarvingLayer = (l) => l.enabled && l.svg && l.mask && Math.abs(l.depth) > 0.001;
 const hasShippableSvg = (l) => l.enabled && l.svg;
 
-const activeStampLayers     = () => P.stampLayers?.filter(isCarvingLayer)   || [];
-const exportableStampLayers = () => P.stampLayers?.filter(hasShippableSvg) || [];
+/**
+ * Build one {enabled, depth, profile, mask, svg} view per editor layer,
+ * combining editor content with P.stampLayers tooling by position index.
+ * Returns [] when the editor isn't loaded (no editor-layer fallback left
+ * to build on at that point — see the design doc's own finding on this file).
+ */
+function _stampExportCandidates() {
+    const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
+    const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : [];
+    return editorLayers.map((layer, idx) => {
+        if (!layer || layer.visible === false) return { enabled: false, depth: 0, profile: null, mask: null, svg: null };
+        const tooling = P.stampLayers?.[idx] || {};
+        return {
+            enabled: tooling.enabled,
+            depth: tooling.depth,
+            profile: tooling.profile,
+            mask: layer._mask || null,
+            svg: editor ? (getLayerSvg(editor, layer.id) || null) : null,
+        };
+    });
+}
+
+export const activeStampLayers     = () => _stampExportCandidates().filter(isCarvingLayer);
+export const exportableStampLayers = () => _stampExportCandidates().filter(hasShippableSvg);
 
 // ── Wizard option assembly ───────────────────────────────────────────────
 

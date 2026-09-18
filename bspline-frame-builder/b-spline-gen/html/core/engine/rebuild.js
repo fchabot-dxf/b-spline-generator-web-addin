@@ -211,7 +211,7 @@ function _collectStampPasses() {
         editorLayers.forEach((layer, idx) => {
             if (!layer) return;
             if (layer.visible === false) return;
-            const mask = layer._mask || (P.stampLayers?.[idx]?.mask) || null;
+            const mask = layer._mask;
             if (!mask) return;
             // Build a stamp-pass-shape view of the editor layer. We keep
             // a non-empty svg marker so the applyStampLayers guard

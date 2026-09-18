@@ -59,9 +59,19 @@ export function initSvgSource(ctx, layerModule) {
       if (fileNameSpan) fileNameSpan.textContent = file.name;
 
       const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
-      const imported = editor ? _importSvgIntoEditor(editor, text) : false;
+      const imported = editor ? importSvgIntoLayer(editor, text) : false;
       if (!imported) {
-        // Legacy fallback path.
+        // SE4a: kept, not proven removable. Traced the actual boot order
+        // (main.js) before deciding: bindControls() — which wires this
+        // click handler via initStampPanel/initSvgSource — runs
+        // SYNCHRONOUSLY in step 5 of DOMContentLoaded. initSvgEditor()
+        // (creates window.svgEditor) doesn't run until step 7, gated
+        // behind two requestAnimationFrame calls AND pollMode() resolving.
+        // A human click on Browse happens well after that in practice, but
+        // there is no STRUCTURAL/synchronous guarantee tying the two —
+        // just a timing gap that's always closed by the time a person can
+        // actually click. Per the dispatch's own "if you cannot prove it,
+        // keep the fallback" instruction: keeping it.
         setStampLayerSvg(P.activeLayerIdx, text);
         if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
         ctx.requestRemask();
@@ -125,9 +135,11 @@ export function initSvgSource(ctx, layerModule) {
  *
  * Step 3 of the stamp-layer → editor-layer unification: replaces the
  * old "each stamp layer has its own svg" model with "everything lives
- * in the editor, layers partition it."
+ * in the editor, layers partition it." SE4a: exported — this is the one
+ * declared entry the mirror-retirement design (§3) asks for; it already
+ * did the job, it just wasn't public.
  */
-function _importSvgIntoEditor(editor, svgText) {
+export function importSvgIntoLayer(editor, svgText) {
   try {
     if (!editor || !editor._sketchLayer) return false;
     const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
