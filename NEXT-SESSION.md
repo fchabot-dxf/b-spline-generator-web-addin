@@ -1,38 +1,54 @@
-# LANE B — T4: SE3b STYLE-control overlap (CSS, declared rule) + BUGS_OPEN entry B12 for SE3a
+# NEXT — SE3a: SVG editor Cancel must revert, and an emptied layer must lose its mask (one declared invariant)
 
-**Seat B · epoch 1 · T4.** Worktree `b-spline-generator-web-addin-lane-b`, branch `lane-b`. Files:
-`bspline-frame-builder/styles/base.css`, `bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html` (lines
-1263-1275 ONLY — seat A is editing the same file further down, tool rail ~1312+ and the modal script; stay out of
-those regions), `BUGS_OPEN.md`, + WORK-LOG-lane-b.md. One commit by path, predicted **3 files** + log.
+**Ball: worker (seat A) · epoch 1 · SE3a.** Scope: `bspline-frame-builder/b-spline-gen/html/main/app-init.js`,
+`main/stamp/svg-source.js`, `main/stamp-mask-manager.js` (+ a vitest). One commit by path, predicted **3–4 files**.
+SE2 (80da844) is merged and deployed (39baa37); the advisor is live-testing it while you work. lane-b's T3 is merged
+(BUGS_OPEN.md now lists this as **B12**; seat B is on SE3b, the STYLE-control CSS — palette :1263-1275 + base.css —
+stay out of those).
 
-## 1. SE3b — the STYLE segmented control renders "ROKELBOTH" (live, 2026-09-18 08:20)
-Cause: the three buttons `#editorFillModeStroke/Fill/Both` (palette :1267-1275) carry `class="cad-icon-btn small
-editor-fillmode-btn"`; `.cad-icon-btn` is a 16 px ICON button (`styles/base.css:1304-1313`, `width:16px`), so three
-text labels are squeezed into 48 px and overlap. Fix by DECLARING the control instead of piling inline styles:
-- Drop `cad-icon-btn small` from the three buttons; keep `editor-fillmode-btn` (+ `active`).
-- Move their inline `style="…"` into ONE rule set in `styles/base.css` next to `.cad-icon-btn`:
-  `.editor-fillmode-btn { border:none; background:transparent; color:#555; padding:0 8px; height:100%;
-  font-size:10px; font-weight:700; letter-spacing:0.04em; cursor:pointer; }`,
-  `.editor-fillmode-btn + .editor-fillmode-btn { border-left:1px solid #ddd; }`,
-  `.editor-fillmode-btn.active { background:#e8f0ff; color:#1a55b8; }`.
-  Check `editor/properties-panels.js` / wherever `.active` is toggled on these buttons: if it sets inline
-  background/color too, remove that hand-rolled styling so the rule is the only source.
-- No width anywhere: the label sets the width.
+## Ground truth (advisor, live 2026-09-18 08:30 + code)
+Two symptoms, one cause. (1) Draw a stroke, press **Cancel** → the stroke stays carved in the 3D preview.
+(2) **Clear** → **Apply** with an empty canvas → the old carve is STILL there.
+- `onChange` (app-init.js:81-95) writes `P.editorSvg` (+ the legacy mirror via `setStampLayerSvg`) and remasks after
+  EVERY edit, so by the time Cancel runs the edits are already the live state.
+- The Cancel branch of `onCommit` (app-init.js:118-127) restores `P.stampLayers[idx].svg / .mask / enabled` from
+  `SvgEditorSnapshot` — the legacy store — and never touches `P.editorSvg` or the editor document. Worse, the
+  snapshot is taken from `ctx.activeLayer()` (svg-source.js:91-97), which in the unified model is an EDITOR layer
+  with no `.svg`, so `SvgEditorSnapshot.svg` is `undefined`.
+- Masks rasterize from the LIVE editor layers (`updateStampMasks`, stamp-mask-manager.js:40-76, `getLayerSvg`), with
+  a legacy fallback. It builds a work list of layers that HAVE content and **returns early when the list is empty**
+  — a layer that lost its content keeps its old `_mask` / `P.stampLayers[i].mask` forever. That is symptom (2), and
+  it is also why a "correct" Cancel restore would still show the groove.
 
-## 2. B12 — record SE3a in BUGS_OPEN.md as OPEN (the advisor found it live; you own that file now)
-Title: "SVG editor Cancel does not revert; Apply of an emptied canvas keeps the stale mask". Status OPEN, proof lines:
-`main/app-init.js:118-127` (Cancel restores the legacy `P.stampLayers[idx]` fields, not `P.editorSvg` nor the editor
-document), `main/stamp/svg-source.js:91-97` (snapshot reads `.svg` off an EDITOR layer → `undefined`),
-`main/stamp-mask-manager.js:40-76` (`updateStampMasks` returns early on an empty work list and never nulls the mask
-of a layer that lost its content). Add it to the summary table. Fix is queued as SE3a on main (seat A), not yours.
+## Build — declare the snapshot as the one thing onChange writes; declare the mask invariant
+1. **Snapshot = `{ active, editorSvg }`.** Replace `SvgEditorSnapshot`'s shape (app-init.js:15) with exactly that.
+   Capture (svg-source.js, on open): `SvgEditorSnapshot = { active: true, editorSvg: P.editorSvg ?? null }` — the
+   document BEFORE the session. Drop `layerIdx/svg/mask/enabled`; grep for every reader and remove each (they are
+   all in the Cancel branch).
+2. **Cancel = restore the document, reload the editor, remask.** In the Cancel branch: `P.editorSvg =
+   SvgEditorSnapshot.editorSvg;` then mirror it the same way onChange does (`setStampLayerSvg(P.activeLayerIdx, …)` —
+   keep the mirror consistent, do not invent a second convention), `saveLastSession()`, then reload the editor
+   document with the SAME call the opener uses: `window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn)`
+   (the modal is hidden by then; `open()` works on a hidden container — say in WORK-LOG that you checked), then
+   `refreshAllStampMasks(...)`. Apply branch unchanged.
+3. **Mask invariant in `updateStampMasks`:** after the work list is built, every editor layer NOT in the work list gets
+   `layer._mask = null` and, when a `P.stampLayers[idx]` mirror exists at that index, `.mask = null` too; the early
+   `if (work.length === 0) return …` stays, but AFTER that clearing, and it must still trigger the preview rebuild
+   (check `refreshAllStampMasks` → `scheduleRebuild` runs regardless of the return value; if it does not, make it).
+   Write it as one small loop with one comment naming the invariant: "a layer with no content has no mask".
+   `applyStampLayers` (the compositor) must treat `null` mask as "no pass" — verify it does (it did before layers had
+   content, so it should).
 
 ## Verify
-- Extract the palette's inline script + `node --check` (untouched, sanity); `npx vitest run` → 36 green.
-- Greps: `cad-icon-btn small editor-fillmode-btn` → 0; `editor-fillmode-btn` → 3 in the html, ≥3 rules in base.css;
-  the three buttons have NO `style=` attribute.
-- `git show --stat HEAD` → 3 files + log. Look is the ADVISOR's (deploy + capture).
+- vitest: extend `tests/b6-hidden-layer-save.test.js`'s mocking style or add `tests/stamp-mask-clear.test.js`: mock
+  `window.svgEditor` with two layers, one with content, one empty but carrying a stale `_mask`; after
+  `updateStampMasks` the empty layer's `_mask` is `null`. If the module's imports make it un-mockable in node, say
+  so and test the extracted invariant function instead (export it).
+- `npx vitest run` → 42 + new, green. `node --check` every touched module.
+- Greps: `SvgEditorSnapshot.` readers → only `.active` and `.editorSvg`; `layerIdx` → 0 in main/.
+- Live proof is the ADVISOR's: stroke → Cancel → no groove; Clear → Apply → no groove; normal Apply still carves.
 
 ## When done
-Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T4: SE3b fillmode rule + B12 entry — <sha>, 3 files"`
+Append WORK-LOG, commit by path, then:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE3a: snapshot={active,editorSvg}, Cancel reloads doc, mask-clear invariant — <sha>, N files, vitest N"`
 and stop.
