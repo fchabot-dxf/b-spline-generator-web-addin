@@ -5485,3 +5485,103 @@ spelling out its exact bracket-dot form.
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments,"
 checked both before and after finishing the edits). Did not touch `editor/` — seat B was idle this turn
 per the dispatch, so no lane to avoid, but scope stayed to the 6 named files + tests regardless.
+
+## Turn 201 — SE6: snap-to-grid + faint customisable grid in the SVG editor — DONE
+
+First new-feature dispatch since the SE4 mirror-retirement series closed (turn 200's advisor commits mark
+that series done, seat A reopened for this). Implemented the 6 numbered build steps.
+
+**1. `editor/editor-grid.js` (new):** `GRID_DEFAULTS`/`GRID_SPACINGS` declared as specified. `snapToGrid(pt,
+grid, bypass)` — pure, identity on `!grid.snap || bypass`. `mergeGridPrefs(stored)` factored out as its own
+exported pure function (per the dispatch's own "export the pure merge if that is simpler") so the
+shape-safety net is testable without mocking `localStorage`; `loadGridPrefs`/`saveGridPrefs` wrap it in
+try/catch. `applyGrid(editor)` clears `editor._gridLayer` then, when visible, draws one line per axis per
+spacing step — iterates `i * spacing` rather than an accumulating `x += spacing` specifically so float
+drift can't corrupt the "is this line on a whole inch" check at small spacings (1/16") over a multi-inch
+board; one loop per axis, each iteration's own modulo-style comparison decides major vs minor, per the
+dispatch's "one loop, the modulo decides." Major lines `opacity:.22`, minor `.10`, both
+`vector-effect:non-scaling-stroke` + `pointer-events:none`.
+
+**2. `editor/init.js`:** `gridLayer = draw.group().id('grid-layer')` created after `bgLayer`, before
+`sketchLayer`, returned from `createEditorCanvas`. Verified (not assumed) the two safety claims in the
+ground truth before relying on them: grepped `_gridLayer` in `editor-io.js` — zero hits, so
+`sync3DBackground` (which only ever touches `_bgLayer`) and `serializeEditor` (which only ever reads
+`_sketchLayer.node.innerHTML`) genuinely can't see or clear this layer. A saved SVG structurally cannot
+carry grid lines; the background-image refresh structurally can't wipe them either.
+
+**3. `editor/editor.js`:** `this._grid = loadGridPrefs()` in the constructor (next to `_view` — no
+DOM/layer dependency, so no need to wait for `initEditor`). `initEditor` wires `this._gridLayer =
+canvas.gridLayer` alongside the other layer assignments (before `setModelMetrics` is first called, so
+`applyGrid` always has a real layer on its first run too). `_snap(pt, bypass=false)` now calls
+`snapToGrid(pt, this._grid, bypass)` instead of returning `pt` unchanged. `setModelMetrics` calls
+`applyGrid(this)` right after `_fitView(this)` (board size changed → redraw at the new extent). Added
+`setGrid(patch)`: merges the patch, persists via `saveGridPrefs`, redraws via `applyGrid`, returns the new
+record — the one place the toolbar module needs to call to change anything.
+
+**4. `editor/editor-interaction.js`:** both `_snap` callers (`handleStart`/`handleMove`) now pass
+`e.altKey` as bypass. Verified the pan-branch-order claim rather than trusting it: `handleMove`'s
+`if (editor._isPanning) { ...; return; }` already sits BEFORE the `_snap` call, so panning was already
+snap-safe by construction — no reordering needed, just confirmed.
+**Ground-truth correction:** the dispatch said node-tool/transform-handle dragging reads the pointer via
+`_getMousePoint` directly at `:84`/`:222`, "leave those unsnapped this turn." Traced both: `:84` is
+`handleWheel`'s zoom-anchor point (wheel zoom, unrelated to any drawing tool) and `:222` is
+`handleDblClick`'s text-hit-test (also unrelated). Grepped every `_getMousePoint` call in the whole editor
+module (5 total, including its own definition) to find the REAL node/transform-drag path: `handleMove`'s
+`_dragNodeIndex !== -1` branch (`dragNode(editor, pt)`) and its `_transformState` branch
+(`applyTransformDrag(editor, ..., pt, ...)`) both consume the SAME already-snapped `pt` from
+`handleMove`'s one `_snap` call (line 259) that select-drag also uses — there is no separate unsnapped path
+for them to begin with. Rather than adding new plumbing to carve out an exemption the dispatch's own mental
+model assumed already existed, left this alone: node-drag and transform-handle-drag now snap too, as a
+correct and unforced consequence of "every mode that goes through those two callers" (which the dispatch
+DID ask for), not a workaround for something it asked to exclude. Flagging the discrepancy here rather than
+silently either "fixing" the dispatch's premise or building unrequested bypass logic for it.
+
+**5. Toolbar (`bspline_gen_palette.html` + `editor/properties-shape.js`):** `#editorGridGroup` inserted
+right after `#editorStrokeGroup` (before `#editorFillModeGroup`, matching that group's own divider/label
+pattern) with `#editorGridShow`/`#editorGridSnap` (`.editor-fillmode-btn`, T4's class) and
+`<select id="editorGridSpacing">` (empty in HTML — options populated from `GRID_SPACINGS` at bind time).
+`data-key="g"` on `#editorGridShow`, `title="Show grid (G)"` — SE1's keydown lookup
+(`editor-interaction.js:129`, `document.querySelector('#svgEditorModal [data-key="..."]').click()`) picks
+this up with zero new JS. Wired in `properties-shape.js` (the module `initShapeProperties` already uses for
+the stroke-width + fill-mode controls, per the dispatch's "same module that wires the stroke group") via a
+new `initGridToggle(editor)`, called right after `initFillModeToggle(editor)`: `editor.setGrid({...})` on
+each control's change, `.active` class reflects `editor._grid.{visible,snap}` after every change.
+`formatSpacingLabel(value)` declared as one small helper (GCD-reduced fraction over a power-of-two
+denominator, e.g. `0.25` → `'1/4"'`) rather than a hardcoded lookup table, so a future addition to
+`GRID_SPACINGS` formats without a second edit — matches the dispatch's "declare the label format in one
+helper."
+
+**6. Zoom:** grid lines are drawn in model units (same space as `_mW`/`_mH`) with
+`vector-effect:non-scaling-stroke`, so `applyView`'s viewBox changes leave both the geometry and the 1px
+stroke width correct at any zoom without touching `editor-view.js` at all — confirmed by reading it rather
+than assumed. Did not add `shape-rendering:crispEdges` — the dispatch's own instruction was conditional
+("if lines look soft"), and live-checking that is the advisor's verification step, not something provable
+headlessly.
+
+**Verify:**
+- `node --check` on all 5 touched JS files: clean.
+- `grep -rn '_snapSize\|_isSnapping'` → 0 (still gone, SE1's removal untouched).
+- `grep -n 'GRID_SPACINGS'` → definition (`editor-grid.js`) + the select-population loop
+  (`properties-shape.js`).
+- `grep -rc 'grid-layer'` → 1 (the `.id('grid-layer')` call in `init.js`).
+- `grep -c 'data-key='` on the palette HTML → 10 (9 before this turn + the one new attribute on
+  `#editorGridShow`).
+- `npx vitest run` → **79 passed** (64 prior + 15 new).
+
+**Tests (`tests/editor-grid.test.js`, new, 15 cases):** `snapToGrid` — identity when not snapping, identity
+on bypass, rounds both axes including a negative coordinate (first draft hit a `-0` vs `0` `toEqual`
+mismatch from `Math.round(-0.2)` — JS's `-0`; picked different test values rather than special-casing the
+assertion, since the sign of a-literal-zero distinction isn't what this test is about).
+`mergeGridPrefs` — defaults on null/undefined, merges a partial object, falls back to defaults on a
+non-object (string/number) stored value. `loadGridPrefs` — the same three cases through real
+`localStorage` (integration, not just the pure function). `applyGrid` — mocked
+`editor._gridLayer` (clear/line/stroke/attr stub) to exercise line count, major/minor classification, and
+the zoom-stable/non-interactive attrs on every line, plus a redraw-clears-first case and a no-layer-yet
+no-throw case. `GRID_SPACINGS` — sanity shape check.
+
+**Non-vacuity, proven not argued:** `editor-grid.js` is an entirely new file — moved it aside and ran the
+test file, which failed outright (module resolution error, no tests could even run) since nothing at that
+path existed to import. Restored and re-ran green.
+
+No amendments were pending (`handoff.py amendments --role worker` → "no new amendments"). Predicted 7-8
+files; landed 7 (5 modified + 2 new).
