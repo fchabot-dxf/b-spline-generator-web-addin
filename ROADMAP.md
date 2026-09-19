@@ -502,3 +502,12 @@ claimed the export folder untracked without checking (it is tracked, 147 files).
 **Open for Fred:** (1) global undo scope for drawings (SE4d if yes); (2) untrack `fusion-exporter/exported files/`;
 (3) GitHub secrets for the worker auto-deploy; (4) SE5 tooling double-persistence — design or leave.
 Seat A: DONE (cycle 100). Seat B: DONE after T11 (bb61a2e, B13/B15 closed) — both loops closed.
+
+## SE6 — grid + snap (Fred's ask 2026-09-18 10:30) — DONE, live-verified 10:50 (add-in 1dfbfad)
+`G` toggles the grid; SHOW / SNAP / spacing (1/16…1") in a GRID toolbar group derived from `GRID_SPACINGS`; minor lines
+10 %, inch lines 22 %, 1 px at every zoom (`non-scaling-stroke`); pen anchors land on intersections with SNAP on;
+Alt bypasses; prefs persist per browser profile; grid lives in its own layer under the sketch, never serialized.
+vitest 79. **Follow-ups, not dispatched:** (a) the node tool and transform handles read the pointer through a
+different path and do NOT snap yet — one slice if Fred wants node edits on-grid; (b) over the darkest bands of the
+topo background the black-at-10 % minor lines vanish — a light/dark two-tone stroke or a `mix-blend-mode:
+difference` on the grid layer would fix it; cosmetic, Fred's call.
