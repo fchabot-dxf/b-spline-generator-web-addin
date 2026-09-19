@@ -15,6 +15,7 @@ import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
+import { snapToGrid, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -51,16 +52,21 @@ export class VectorEditor {
     constructor() {
         this._draw = null;
         this._bgLayer = null;
+        this._gridLayer = null;
         this._sketchLayer = null;
         this._handleLayer = null;
         this._highlightLayer = null;
-        
+
         this._mW = 7;
         this._mH = 9;
         // SE2: the one view record — zoom 1 = the whole board, cx/cy is
         // the model-space center. See editor-view.js for the derivation
         // into an SVG viewBox and the zoom/pan math.
         this._view = { zoom: 1, cx: this._mW / 2, cy: this._mH / 2 };
+        // SE6: the one grid record — see editor-grid.js for the pure
+        // snap/draw derivations. Loaded here (not initEditor) since it's
+        // plain per-viewer prefs with no DOM/layer dependency.
+        this._grid = loadGridPrefs();
         this._spaceHeld = false;
         this._isPanning = false;
         this._panStart = null;
@@ -129,6 +135,7 @@ export class VectorEditor {
         const canvas = createEditorCanvas(containerId);
         this._draw = canvas.draw;
         this._bgLayer = canvas.bgLayer;
+        this._gridLayer = canvas.gridLayer;
         this._sketchLayer = canvas.sketchLayer;
         this._handleLayer = canvas.handleLayer;
         this._highlightLayer = canvas.highlightLayer;
@@ -223,13 +230,21 @@ export class VectorEditor {
         return true;
     }
 
-    // SE1: grid snapping itself was a dead feature (its toggle UI was
-    // hidden, nothing ever turned it on) — that state is gone, but _snap()
-    // still has live callers in editor-interaction.js's handleStart/
-    // handleMove, so it stays as the identity pass-through it already
-    // always behaved as in practice.
-    _snap(pt) {
-        return pt;
+    // SE1 removed the old dead snap toggle and left this as an identity
+    // pass-through with two live callers (editor-interaction.js's
+    // handleStart/handleMove). SE6 gives it a real grid to snap to —
+    // bypass is Alt-held, so a user can always draw off-grid.
+    _snap(pt, bypass = false) {
+        return snapToGrid(pt, this._grid, bypass);
+    }
+
+    /** One setter for the grid toolbar: merge a patch, persist, redraw,
+     *  return the new record so the caller can sync its own UI state. */
+    setGrid(patch) {
+        this._grid = { ...this._grid, ...patch };
+        saveGridPrefs(this._grid);
+        applyGrid(this);
+        return this._grid;
     }
 
     setActiveLayer(layerId) { return setActiveLayer(this, layerId); }
@@ -364,6 +379,8 @@ export class VectorEditor {
         // it to the live viewbox — no other code should call
         // this._draw.viewbox(...) as a setter directly.
         _fitView(this);
+        // SE6: board size changed -> redraw the grid at the new extent.
+        applyGrid(this);
         this._bgLayer.clear();
         // Remove the grey viewbox background rectangle so the preview is not clipped by it.
         this.sync3DBackground();

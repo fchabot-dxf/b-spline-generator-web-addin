@@ -246,7 +246,7 @@ function handleStart(editor, e) {
         return;
     }
 
-    const pt = editor._snap(editor._getMousePoint(e));
+    const pt = editor._snap(editor._getMousePoint(e), e.altKey);
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
 }
@@ -256,7 +256,7 @@ function handleMove(editor, e) {
         _panBy(editor, e.clientX - editor._panStart.clientX, e.clientY - editor._panStart.clientY);
         return;
     }
-    const pt = editor._snap(editor._getMousePoint(e));
+    const pt = editor._snap(editor._getMousePoint(e), e.altKey);
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         if (handler.update) handler.update(editor, pt);

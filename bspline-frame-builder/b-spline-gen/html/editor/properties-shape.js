@@ -1,4 +1,5 @@
 import { el, on } from './dom.js';
+import { GRID_SPACINGS } from './editor-grid.js';
 
 export function initShapeProperties(editor) {
   const strokeNum = el('editorStrokeWidth');
@@ -19,6 +20,7 @@ export function initShapeProperties(editor) {
   on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + 0.1));
 
   initFillModeToggle(editor);
+  initGridToggle(editor);
 }
 
 /**
@@ -92,4 +94,57 @@ function _applyFillModeToSelection(editor, mode) {
     try { editor.pushState(); } catch (_) {}
   }
   if (editor._onChange) { try { editor._onChange(); } catch (_) {} }
+}
+
+/** Format a spacing value (inches) as a fraction label, e.g. 0.25 -> '1/4"'.
+ *  Whole numbers show as-is (1 -> '1"'). Reduces via GCD over a power-of-
+ *  two denominator rather than a hardcoded lookup, so a future addition
+ *  to GRID_SPACINGS formats for free as long as it's a clean fraction. */
+function formatSpacingLabel(value) {
+  if (Number.isInteger(value)) return `${value}"`;
+  let denom = 1;
+  while (!Number.isInteger(value * denom)) denom *= 2;
+  let numer = Math.round(value * denom);
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const g = gcd(numer, denom);
+  numer /= g; denom /= g;
+  return `${numer}/${denom}"`;
+}
+
+/**
+ * Wire the GRID toolbar group (SE6): SHOW/SNAP toggles + spacing select.
+ * Same shape as initFillModeToggle above — editor.setGrid() is the one
+ * place that mutates the record, persists it, and redraws, so this module
+ * only needs to reflect state back onto the buttons.
+ */
+function initGridToggle(editor) {
+  const showBtn = el('editorGridShow');
+  const snapBtn = el('editorGridSnap');
+  const spacingSelect = el('editorGridSpacing');
+  if (!showBtn && !snapBtn && !spacingSelect) return;
+
+  const syncButtons = () => {
+    if (showBtn) showBtn.classList.toggle('active', !!editor._grid.visible);
+    if (snapBtn) snapBtn.classList.toggle('active', !!editor._grid.snap);
+  };
+
+  if (spacingSelect) {
+    spacingSelect.innerHTML = '';
+    for (const spacing of GRID_SPACINGS) {
+      const opt = document.createElement('option');
+      opt.value = String(spacing);
+      opt.textContent = formatSpacingLabel(spacing);
+      spacingSelect.appendChild(opt);
+    }
+    spacingSelect.value = String(editor._grid.spacing);
+  }
+
+  if (showBtn) on(showBtn, 'click', () => { editor.setGrid({ visible: !editor._grid.visible }); syncButtons(); });
+  if (snapBtn) on(snapBtn, 'click', () => { editor.setGrid({ snap: !editor._grid.snap }); syncButtons(); });
+  if (spacingSelect) on(spacingSelect, 'change', () => {
+    const spacing = parseFloat(spacingSelect.value);
+    if (!Number.isNaN(spacing)) editor.setGrid({ spacing });
+  });
+
+  syncButtons();
 }

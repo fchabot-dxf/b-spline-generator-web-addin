@@ -14,9 +14,12 @@ export function createEditorCanvas(containerId) {
     const draw = window.SVG().addTo('#' + containerId).size('100%', '100%');
     
     const bgLayer = draw.group().id('bg-layer');
+    // SE6: grid sits above the background but below the drawing, so it
+    // reads as a faint reference under the artwork rather than over it.
+    const gridLayer = draw.group().id('grid-layer');
     const sketchLayer = draw.group().id('sketch-layer');
     const handleLayer = draw.group().id('handle-layer');
     const highlightLayer = draw.group().id('highlight-layer');
 
-    return { draw, bgLayer, sketchLayer, handleLayer, highlightLayer };
+    return { draw, bgLayer, gridLayer, sketchLayer, handleLayer, highlightLayer };
 }
