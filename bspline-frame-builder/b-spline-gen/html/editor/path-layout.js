@@ -9,7 +9,19 @@
  * as points except the last two), which corrupted every circle/ellipse's
  * arc params on every carve export (they're baked as two half-arcs by
  * _primitiveToPathData, now replaced with 4 cubics — see below).
+ *
+ * SE12 Slice 0 (Fred hard requirement, 2026-09-24): arcToCubics/
+ * normalizeForBake exist because a GENERAL affine can rotate/skew an
+ * ellipse into a shape no single `A` represents — true, but not every
+ * bake matrix is general. `isSimilarity`/`bakeArcSimilar` below are the
+ * narrower case: under a similarity (rotation + uniform scale + translate,
+ * optionally with a reflection — exactly what the carve matrix is, see
+ * editor-coords.js's carveMatrix), an arc's TRUE shape survives as another
+ * arc. Callers that can prove their matrix is a similarity should try
+ * bakeArcSimilar first and fall back to arcToCubics only when it declines
+ * (non-similarity, or a degenerate arc arcToCubics already special-cases).
  */
+import { transformPoint } from './editor-coords.js';
 
 /** Per SVG command letter: `pts` = [[xIdx,yIdx], ...] for every point pair
  *  the segment carries (in order); `x`/`y` = the ONE index for H/V, which
@@ -154,6 +166,104 @@ export function arcToCubics(prev, seg) {
   const last = out[out.length - 1];
   last[5] = x2; last[6] = y2;
   return out;
+}
+
+/**
+ * Whether affine matrix m={a,b,c,d,e,f} is a similarity — rotation +
+ * uniform scale + translate, optionally with a reflection — the class
+ * under which a circular/elliptical arc's TRUE shape survives the
+ * transform (bakeArcSimilar below), rather than needing arcToCubics'
+ * approximation. Tested on the linear part only (e,f — translation —
+ * never affects shape): the two column vectors (a,b) and (c,d) must be
+ * perpendicular and of equal length. `tol` is RELATIVE (compared against
+ * the vectors' own magnitudes), since real matrices here carry dpi-scale
+ * magnitudes (e.g. a=d=96), not unit vectors — an absolute epsilon would
+ * be wrong at both very small and very large scales.
+ */
+export function isSimilarity(m, tol = 1e-6) {
+  if (!m) return false;
+  const { a, b, c, d } = m;
+  const len1sq = a * a + b * b;
+  const len2sq = c * c + d * d;
+  if (len1sq < 1e-12 || len2sq < 1e-12) return false; // zero/degenerate scale
+  const dot = a * c + b * d;
+  const perpOk = Math.abs(dot) <= tol * Math.sqrt(len1sq * len2sq);
+  const lenOk = Math.abs(len1sq - len2sq) <= tol * Math.max(len1sq, len2sq);
+  return perpOk && lenOk;
+}
+
+/**
+ * Bake a similarity matrix `m` into a single `A` segment, keeping it an
+ * `A` — the isSimilarity-gated counterpart to arcToCubics. `prev` is the
+ * arc's start point in the SAME pre-bake local space arcToCubics itself
+ * needs (an arc's parametrization depends on where it starts). Returns a
+ * new `['A', rx,ry,xRotDeg,largeArc,sweep,x,y]` segment, or null for a
+ * degenerate arc (caller falls back to arcToCubics, which already handles
+ * that case the same way).
+ *
+ * Goes through the arc's own center-parametrized form (_arcCenterParam,
+ * the same math arcToCubics already trusts). rx/ry scale by the
+ * similarity's own uniform factor (a defining property — every length
+ * scales by the same amount) and the new x-axis direction reads straight
+ * off the transformed x-axis vector via atan2, both reflection-agnostic:
+ * an ellipse's SHAPE (its point set) is fully determined by center,
+ * radii, and ONE axis direction, regardless of which way a reflection
+ * points the other axis.
+ *
+ * Sweep is the one piece a reflection genuinely disturbs, and it is
+ * DELIBERATELY NOT hand-derived here — two earlier attempts (a
+ * cross-product-sign rule, then a dTheta-magnitude match) both got it
+ * wrong under a combined rotation+reflection, caught by this function's
+ * own cross-check tests (path-layout.test.js): dTheta magnitude alone is
+ * ambiguous because, for fixed start/end/rx/ry/phi, there are two valid
+ * ellipse centers (largeArc XOR sweep picks which), and both sweep
+ * candidates can land on the SAME |dTheta| via the wrong one. The
+ * transform's own expected center is unambiguous, so this tries both
+ * sweep values through _arcCenterParam (the same oracle arcToCubics
+ * already trusts) and keeps whichever reproduces that center. largeArc
+ * is unaffected either way: which of the two (>180°/<180°) arcs is meant
+ * doesn't depend on direction.
+ */
+export function bakeArcSimilar(prev, seg, m) {
+  const [, rx0, ry0, xRotDeg, largeArc, sweep, x2, y2] = seg;
+  // Same two degenerate cases arcToCubics itself special-cases BEFORE
+  // calling _arcCenterParam — that function's own null-return only covers
+  // a near-zero radius, not these; skipping this check would feed it a
+  // 0/0 direction vector and get NaN back, not a clean decline.
+  if (rx0 === 0 || ry0 === 0) return null;
+  if (prev.x === x2 && prev.y === y2) return null;
+  const param = _arcCenterParam(prev.x, prev.y, rx0, ry0, xRotDeg, !!largeArc, !!sweep, x2, y2);
+  if (!param) return null;
+  const { cx, cy, rx, ry, phi, dTheta } = param;
+  const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
+  const u = { x: rx * cosPhi, y: rx * sinPhi }; // ellipse's own x-axis vector, world-space
+  const tVec = (p) => ({ x: m.a * p.x + m.c * p.y, y: m.b * p.x + m.d * p.y });
+  const u2 = tVec(u);
+  const newRx = Math.hypot(u2.x, u2.y);
+  if (newRx < 1e-9) return null;
+  const scale = newRx / rx; // uniform for a similarity — same factor applies to ry
+  const newRy = ry * scale;
+  const newPhiDeg = (Math.atan2(u2.y, u2.x) * 180) / Math.PI;
+  const start = transformPoint(m, prev);
+  const end = transformPoint(m, { x: x2, y: y2 });
+  const expectedCenter = transformPoint(m, { x: cx, y: cy });
+
+  // For FIXED start/end/rx/ry/phi there are two valid ellipse centers
+  // (largeArc XOR sweep picks which); dTheta MAGNITUDE alone doesn't
+  // distinguish them — both sweep values can land on the same |dTheta|
+  // via the OTHER (wrong) center (caught by this function's own
+  // cross-check tests, see path-layout.test.js). The center the
+  // transform actually produces is unambiguous, so match against that
+  // directly rather than a derived quantity both candidates can share.
+  let best = null, bestDist = Infinity;
+  for (const trySweep of [0, 1]) {
+    const p2 = _arcCenterParam(start.x, start.y, newRx, newRy, newPhiDeg, !!largeArc, !!trySweep, end.x, end.y);
+    if (!p2) continue;
+    const dist = Math.hypot(p2.cx - expectedCenter.x, p2.cy - expectedCenter.y);
+    if (dist < bestDist) { bestDist = dist; best = trySweep; }
+  }
+  if (best === null || bestDist > 1e-6 * (Math.abs(expectedCenter.x) + Math.abs(expectedCenter.y) + 1)) return null;
+  return ['A', newRx, newRy, newPhiDeg, largeArc ? 1 : 0, best, end.x, end.y];
 }
 
 /**

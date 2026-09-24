@@ -41,7 +41,7 @@
  * near-square box's factor jitter as the dominant axis flipped.
  */
 import { worldBbox, worldPoint, toLocal, transformPoint } from './editor-coords.js';
-import { PATH_LAYOUT, normalizeForBake } from './path-layout.js';
+import { PATH_LAYOUT, normalizeForBake, isSimilarity, bakeArcSimilar, arcToCubics, endPoint } from './path-layout.js';
 import { snapFor } from './editor-grid.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
@@ -611,6 +611,37 @@ export function bakeMatrixIntoElement(el, m) {
         return true;
     }
 
+    // SE12 Slice 0: a circle stays a native <circle> under ANY similarity
+    // (rotation doesn't change a circle's shape — only its center moves
+    // and its radius scales). An ellipse (rx!=ry) stays native only for
+    // the axis-aligned case (no rotation component: b==0 and c==0) — a
+    // native <ellipse> has no rotation attribute of its own, so a rotated
+    // similarity still has to fall through to the path/cubic branch below
+    // (unlike A inside a path, there's no rotated-ellipse primitive to
+    // bake into). Both branches gated by isSimilarity(m) — the ONE test
+    // path-layout.js also uses for the `A`-command case, so a circle/
+    // ellipse and an arc agree on what counts as "exact enough to stay
+    // native" for the same matrix.
+    if (type === 'circle' || type === 'ellipse') {
+        const axisAligned = Math.abs(m.b) < 1e-9 && Math.abs(m.c) < 1e-9;
+        if (isSimilarity(m) && (type === 'circle' || axisAligned)) {
+            const cx = +el.attr('cx') || 0;
+            const cy = +el.attr('cy') || 0;
+            const s = Math.hypot(m.a, m.b);
+            const c2 = transformPoint(m, { x: cx, y: cy });
+            if (type === 'circle') {
+                const r0 = +el.attr('r') || 0;
+                el.attr({ cx: c2.x, cy: c2.y, r: r0 * s });
+            } else {
+                const rx0 = +el.attr('rx') || 0;
+                const ry0 = +el.attr('ry') || 0;
+                el.attr({ cx: c2.x, cy: c2.y, rx: rx0 * s, ry: ry0 * s });
+            }
+            el.attr('transform', null);
+            return true;
+        }
+    }
+
     if (type === 'rect' || type === 'circle' || type === 'ellipse') {
         // Rotated/skewed primitives can't be expressed with native attrs
         // — promote to a path and bake. Pure translate+scale could be
@@ -659,24 +690,62 @@ function _isIdentity(m) {
  * rx ry x-rotation large-arc-flag sweep-flag x y, none of which pair up
  * as points except the last two) and for a rotated/skewed `H`/`V` (no
  * longer horizontal/vertical once the matrix lands, so it can't stay an
- * H/V at all). normalizeForBake converts every A to cubics (using the
- * PRE-bake local cursor — an arc's own parametrization depends on where
- * it starts) and every H/V to a full L FIRST; only then does PATH_LAYOUT
+ * H/V at all). Every H/V becomes a full L first (same as normalizeForBake,
+ * inlined here rather than reused — see below); only then does PATH_LAYOUT
  * say which slots to transform, uniformly, for every remaining command.
+ *
+ * SE12 Slice 0: `A` no longer ALWAYS becomes cubics. When isSimilarity(m)
+ * holds (the carve matrix on its own always does; composed with an
+ * element's own transform, it does UNLESS the element itself was
+ * non-uniformly scaled — a side-handle drag without shift), bakeArcSimilar
+ * keeps it a true `A`, already fully baked (endpoint + params) in world
+ * space — the per-command point loop below skips those, since re-running
+ * them through transformPoint would double-bake the endpoint. Only when
+ * bakeArcSimilar declines (non-similarity, or a degenerate arc it can't
+ * parametrize) does this fall back to arcToCubics, exactly as before.
+ * This duplicates normalizeForBake's cursor-walk rather than extending
+ * it, because normalizeForBake's OTHER caller (the live path-drag helper
+ * above, ~line 322) needs raw draggable cubic control points every frame
+ * regardless of matrix shape — that contract doesn't change here.
  */
 function _bakeMatrixIntoPath(pathEl, m) {
     const raw = new SVG.PathArray(pathEl.attr('d'));
-    const normalized = normalizeForBake(raw);
-    normalized.forEach(seg => {
+    const similar = isSimilarity(m);
+    const out = [];
+    let curX = 0, curY = 0;
+    for (const seg of raw) {
+        const type = seg[0];
+        if (type === 'A') {
+            const baked = similar ? bakeArcSimilar({ x: curX, y: curY }, seg, m) : null;
+            if (baked) {
+                out.push(baked);
+            } else {
+                for (const c of arcToCubics({ x: curX, y: curY }, seg)) out.push(c);
+            }
+            curX = seg[6]; curY = seg[7];
+        } else if (type === 'H') {
+            out.push(['L', seg[1], curY]);
+            curX = seg[1];
+        } else if (type === 'V') {
+            out.push(['L', curX, seg[1]]);
+            curY = seg[1];
+        } else {
+            out.push(seg.slice());
+            const end = endPoint(seg);
+            if (end) { curX = end.x; curY = end.y; }
+        }
+    }
+    out.forEach(seg => {
+        if (seg[0] === 'A') return; // bakeArcSimilar already baked this one fully, in world space
         const layout = PATH_LAYOUT[seg[0]];
-        if (!layout || !layout.pts) return; // Z, or (shouldn't occur post-normalize) A/H/V
+        if (!layout || !layout.pts) return; // Z, or (shouldn't occur here) H/V
         for (const [xi, yi] of layout.pts) {
             const p = transformPoint(m, { x: seg[xi], y: seg[yi] });
             seg[xi] = p.x;
             seg[yi] = p.y;
         }
     });
-    pathEl.attr('d', normalized.map(seg => seg.join(' ')).join(' '));
+    pathEl.attr('d', out.map(seg => seg.join(' ')).join(' '));
 }
 
 // Standard 4-cubic circle/ellipse Bezier approximation constant

@@ -24,7 +24,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  beginTransform, applyTransformDrag, renderTransformHandles,
+  beginTransform, applyTransformDrag, renderTransformHandles, bakeMatrixIntoElement,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 
 function mockEditor(selectedElements, extra = {}) {
@@ -256,6 +256,52 @@ describe('radii (ellipse): side-handle drag resizes rx/ry independently', () => 
     expect(el._state.ry).toBe(1); // untouched — this handle doesn't control y
     expect(el._state.cx).toBe(0);
     expect(el._state.cy).toBe(0);
+  });
+});
+
+describe('bakeMatrixIntoElement: circle/ellipse stay native under a similarity (SE12 Slice 0)', () => {
+  // mockCircleEl/mockEllipseEl above have NO .parent()/.remove() — if the
+  // native-stay branch's condition were wrong and control fell through to
+  // the promote-to-path fallback, these tests would throw on `.parent()`
+  // being undefined rather than silently mispass; that's the non-vacuity
+  // signal for these cases, on top of the explicit assertions below.
+  it('a pure uniform scale + translate (carveMatrix\'s own shape): circle stays a <circle>, r scaled, cx/cy mapped', () => {
+    const el = mockCircleEl({ cx: 1, cy: 2, r: 0.1 });
+    const m = { a: 96, b: 0, c: 0, d: 96, e: -(7 * 96) / 2, f: -(9 * 96) / 2 };
+    expect(bakeMatrixIntoElement(el, m)).toBe(true);
+    expect(el._state.r).toBeCloseTo(0.1 * 96, 6);
+    expect(el._state.cx).toBeCloseTo(1 * 96 - (7 * 96) / 2, 6);
+    expect(el._state.cy).toBeCloseTo(2 * 96 - (9 * 96) / 2, 6);
+    expect(el._state.transform).toBeNull();
+  });
+
+  it('a rotated similarity: circle still stays native (rotation is invisible on a circle) — radius scaled by the uniform factor', () => {
+    const rad = (40 * Math.PI) / 180, s = 3;
+    const el = mockCircleEl({ cx: 0, cy: 0, r: 2 });
+    const m = { a: s * Math.cos(rad), b: s * Math.sin(rad), c: -s * Math.sin(rad), d: s * Math.cos(rad), e: 0, f: 0 };
+    expect(bakeMatrixIntoElement(el, m)).toBe(true);
+    expect(el._state.r).toBeCloseTo(6, 6);
+  });
+
+  it('an axis-aligned (no rotation) similarity on an ellipse: rx/ry both scale, stays native', () => {
+    const el = mockEllipseEl({ cx: 5, cy: -3, rx: 2, ry: 1 });
+    const m = { a: 4, b: 0, c: 0, d: 4, e: 1, f: 1 };
+    expect(bakeMatrixIntoElement(el, m)).toBe(true);
+    expect(el._state.rx).toBeCloseTo(8, 6);
+    expect(el._state.ry).toBeCloseTo(4, 6);
+  });
+
+  it('non-vacuous: a NON-uniform (side-handle) scale is excluded by the native branch — falls through to the fallback instead of wrongly staying a circle', () => {
+    const el = mockCircleEl({ cx: 0, cy: 0, r: 1 });
+    el.parent = () => null; // real SVG.js: null for a detached/unmocked element
+    const nonUniform = { a: 2, b: 0, c: 0, d: 5, e: 0, f: 0 };
+    // The fallback bails cleanly on a missing parent (bakeMatrixIntoElement's
+    // own `if (!parent) return false`) WITHOUT needing a real SVG.js — which
+    // is exactly what proves this reached the fallback at all: had the
+    // native branch wrongly accepted a non-uniform matrix, it would have
+    // returned true and rewritten r/cx/cy, never calling .parent() at all.
+    expect(bakeMatrixIntoElement(el, nonUniform)).toBe(false);
+    expect(el._state.r).toBe(1); // untouched — native branch never ran
   });
 });
 
