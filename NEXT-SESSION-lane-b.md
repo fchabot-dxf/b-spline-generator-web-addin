@@ -1,28 +1,32 @@
-# LANE B — T19: build SE7b slice 2 — Generate / Regenerate into three layers, saved with the document
+# LANE B — T20: SE8c (part 1) — dead-code chain removals + debug/font declarations, OUTSIDE seat A's files
 
-**Seat B · epoch 1 · T19.** Worktree, branch `lane-b` (merged with main — SE8b is in: use `editor._notifyChange
-('commit')` for the single end-of-generate change, not raw `_onChange`). Slice 1 (8354a5c) accepted. Design §5 slice 2
-+ the advisor rulings in your T18 task (anchor as data; **occupied-cell skip is IN this slice**).
-Files: `editor/editor-lattice-pattern.js`, `editor/editor-io.js`, NEW `tests/editor-lattice-pattern-emit.test.js`
-(+ WORK-LOG-lane-b.md). **Seat A is on SE7s in `editor/editor-transform-handles.js`, `editor/editor-interaction.js`
-and maybe a new `editor/handle-edit.js` — do not touch those.** If you need `editor-lattice.js` or `layers.js` changed,
-stop and say so rather than editing. One commit by path.
+**Seat B · epoch 1 · T20.** Worktree, branch `lane-b`. Slice 2 (9ec4635) ACCEPTED, held on lane-b until SE7s passes
+(slice 3's drag-end detach hook lives in seat A's file). Note for slice 3 later: generatePattern leaves the ACTIVE layer
+on Nodes — restore the user's previous active layer (record it now in WORK-LOG, fix in slice 3).
+**Off-limits (seat A, SE7s):** `editor/editor-interaction.js`, `editor/editor-transform-handles.js`, `editor/editor.js`,
+any new `editor/handle-edit.js`. Everything else from your own audit's SA-DEAD-* / SA-TEXT-5/6/7 list is yours.
+One commit by path (or two if the font declaration is big — say so).
 
-## Do
-- `generatePattern(editor, PATTERN)`: resolve extent from the board, gather `occupied` from DETACHED lattice
-  elements (have `data-lattice`, lack `data-lattice-gen`) as `"i,j,kind"` keys (world centres via `worldPoint` —
-  moved elements count where they ARE), remove owned `[data-lattice-gen="<id>"]`, `computePattern`, create/reuse the
-  three layers (Rails/Ties/Nodes, ids stored in `PATTERN.layers`), emit via `emitSegment`/`emitNode` with
-  `data-lattice-gen`, ONE `pushState()` + ONE `_notifyChange('commit')`.
-- `_serializeLatticePatternAttr` + read in `open()` exactly per §1 (same 3 save sites + 1 open site as
-  `_serializeLayersAttr`).
-- Tooling defaults for the three layers: pick sensible values (rails V-bit, ties V-bit shallower, nodes ballnose),
-  declared as one `LATTICE_LAYER_DEFAULTS` object — Fred tunes them live later.
+## Do — each removal is a CHAIN (door → handler → state → CSS → test), accounted for in WORK-LOG
+- SA-DEAD-1: the 8 hand-rolled `window.__editorDebug === 'X'` gates → the declared `dbg()` / `isDebugEnabled()`
+  (`core/debug.js`); add their categories to that gate's doc list. SKIP any site inside the off-limits files and
+  list it as a leftover.
+- SA-DEAD-2 `updateNodeCountUI` (zero callers) — remove, plus `#editorNodeCountUI` markup and the instance wiring IF
+  the wiring is outside `editor.js`; otherwise list the `editor.js` link as a leftover for seat A.
+- SA-DEAD-3 doorless Smoothness ids in `properties-expand.js` — remove the dead wiring (Fred can ask for the control
+  back later; say so in the log).
+- SA-DEAD-4 `editorSelectPanel`, SA-DEAD-5 `editorSidebarToggle`, SA-DEAD-6 stale shim comments, SA-DEAD-7 redundant
+  `setMode` branches, SA-DEAD-8 empty `if` (all in `editor-ui.js` / `editor-controls.js` / `layers.js` / the palette).
+- SA-TEXT-5 stale doc comment; SA-TEXT-7 `TEXT-DBG` default OFF (match its own comment).
+- SA-TEXT-6: ONE font list — `editor-fonts.js` is the declared source; `core/stamp/render-svg.js` imports it, and the
+  palette `<select>` is populated from it at bind time (like the grid spacing select). Test: every font the select
+  offers is known to the rasterizer.
 
-## Verify — your §6 slice-2 list, plus: a detached tie at column 5 → Regenerate does NOT emit a new tie at column 5.
-`npx vitest run` green (count); `git show --stat HEAD` → 3 files + log.
+## Verify
+`npx vitest run` green (count); greps: `__editorDebug ===` → only leftover sites in off-limits files; `updateNodeCountUI`
+→ 0 or the listed editor.js leftover; font names hand-typed in only one file.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T19: SE7b slice 2 — generatePattern, 3 layers, ownership + occupied skip, data-lattice-pattern persisted — <sha>, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T20: SE8c part 1 — dead chains removed, dbg gates declared, one font list — <sha>, N files, vitest N; leftovers: …"`
 and stop.
