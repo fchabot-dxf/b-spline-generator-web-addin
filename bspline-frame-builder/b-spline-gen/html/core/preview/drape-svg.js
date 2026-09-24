@@ -122,3 +122,19 @@ export function sampleRowForV(v, texH, flipY) {
   const rowFrac = flipY ? (1 - v) : v;
   return Math.round(rowFrac * (texH - 1));
 }
+
+/**
+ * SE11e amend (Fred): the drape showed pale/white banding on steep
+ * groove walls — a non-power-of-two drape canvas (the original
+ * `nx * 4` / `nz * 4` sizing landed on ordinary numbers like 564×724)
+ * silently disables WebGL mipmap generation for that texture, so a
+ * steeply-angled wall (many texels compressed into one screen pixel)
+ * falls back to a single, aliased sample instead of a properly
+ * mip-filtered average — the exact "half-painted texel" symptom
+ * reported. Rounding UP to the next power of two guarantees mipmaps
+ * actually generate, in both WebGL1 and WebGL2, regardless of the
+ * board's own grid resolution.
+ */
+export function nextPow2(n) {
+  return Math.pow(2, Math.ceil(Math.log2(Math.max(1, n))));
+}

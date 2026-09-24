@@ -7409,3 +7409,106 @@ approach entirely, well beyond "stop skipping it in the filter").
   attempted given the emissive-black-is-invisible property explained above makes one uninformative).
 
 No amendments pending.
+
+## Turn 237 — SE11e: drape as an alpha overlay, then shaded (2 amendments) — DONE
+
+**Original build (per NEXT-SESSION.md).** SE11d (5b58a4a) removed the black skip but the drape uses an
+`emissiveMap` (additive light) — black adds zero, so it is included in the data but invisible on screen.
+Replaced with a SEPARATE mesh sharing the terrain's own geometry (`this._mesh.geometry`, no copy — same
+position/uv buffers, so it is always pixel-exact with whatever terrain shape is current), added/removed/
+disposed in lockstep with the terrain mesh (`_rebuildDrapeMesh`, called from `update()` and from
+`setDrapeTexture`). Canvas texture now clears to transparent (no fill) instead of white, so the overlay
+only paints where a vector actually is. First cut used `THREE.MeshBasicMaterial({ map, transparent: true,
+depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, side })` — unlit,
+per the dispatch's own "colors read exactly as picked" framing.
+
+**Self-diagnosed test-methodology bug, not a production bug.** First live verification pass showed the
+red line's own drape bleeding onto the black line's location. Root cause: my mouse-automation script drew
+the red line, then clicked the black swatch WHILE the red line was still selected — `editor.setColor`
+(SE9) recolors the current selection, so it repainted the already-drawn red line to black too. Fixed the
+script to explicitly switch to the Select tool and click empty canvas to deselect between colors. Redid
+the draw/apply cycle; got a clean, pixel-exact result: `#c62828` red and `#000000` black each on their own
+carved groove, verified via `System.Drawing.Bitmap.GetPixel`, not eyeballed.
+
+**Amendment 1 (Fred, screenshot): pale/white banding on steep groove walls.** Root cause: the drape
+canvas's original `nx*4`/`nz*4` sizing lands on ordinary, non-power-of-two numbers (e.g. 564x724), which
+silently disables WebGL mipmap generation for that texture — a steeply-angled wall compresses many texels
+into one screen pixel and, with no mip chain, falls back to a single aliased sample instead of a filtered
+average. Fixed with a new pure `nextPow2(n)` (`drape-svg.js`), bumped texture sizing to `nx*8`/`nz*8`
+(capped at 2048, rounded up to the next power of two — rounding UP, never down, so nothing gets cropped),
+and set `texture.generateMipmaps = true` plus explicit `minFilter`/`magFilter` in `buildDrapeTexture`.
+Verified live: a zoomed, close-up Fusion screenshot of the same steep wall region showed a clean, solid
+line with no banding.
+
+**Amendment 2 (Fred): "color still needs shading" — NOT unlit.** The unlit overlay fixed "black is
+invisible" but overcorrected: every drape color read as a flat, unshaded paint sticker instead of the
+surface's own material — a red wall showed the same flat red whether it faced the light or not. Amendment
+offered two options: (a) give the overlay the SAME lit material type as the terrain, or (b) inject a
+`mix(diffuseColor, drapeColor, drapeAlpha)` into the terrain's own material via `onBeforeCompile`. Chose
+(a). Both reach the same visual result — at a painted pixel, transparent alpha-blending REPLACES the
+terrain's color with the drape's before either one's lighting is computed, exactly like the `mix(base,
+drape, alpha)` amendment describes — but (a) needs no hand-patched GLSL: no shader-chunk-name coupling
+that could silently break on a future Three.js bump, and it stays testable by reading the material's own
+declared properties (`tests/drape-mesh.test.js`) instead of parsing injected shader source. Swapped
+`MeshBasicMaterial` for `THREE.MeshPhongMaterial`, reusing the terrain's own `specular` (cloned — it is a
+`THREE.Color`, so mutating one material's color object can never leak into the other's), `shininess`, and
+`flatShading`, so the drape shades identically to the surrounding surface. Kept `color: 0xffffff` and no
+`vertexColors` — the drape's own colour comes only from its texture, independent of any active
+thicken/sculpt vertex-colour overlay on the terrain beneath it (the same kind of unwanted mixing that was
+SE11b's original root cause, via a different mechanism). Kept the amendment-1 `polygonOffset`/
+`depthWrite: false` settings unchanged — still the same coincident-overlay z-fighting guard.
+
+**Tests (`tests/drape-mesh.test.js`, new, 11 tests).** Pins the pure object-wiring: the overlay mesh
+shares the terrain's geometry by reference (not a structurally-identical copy), adds/removes/disposes
+correctly (no leak, no duplicate overlay, no-ops when there is no texture or no terrain mesh yet), and
+`setDrapeTexture` disposes the old texture before delegating to `_rebuildDrapeMesh`. Uses the same "real
+class via `.call()`, not a reimplementation" convention as `editor-session.test.js`: the REAL
+`TerrainPreview.prototype._rebuildDrapeMesh` against a minimal mock `this` (the class cannot be
+constructed in vitest — its constructor needs `window.THREE` plus a real `WebGLRenderer`/canvas).
+Material-settings test rewritten for amendment 2: asserts `map`/`transparent`/`depthWrite`/
+`polygonOffset*`/`side` (carried over from the original cut) PLUS `color: 0xffffff`, and that
+`specular`/`shininess`/`flatShading` are read from the terrain's own material — including a non-vacuous
+variant with a DIFFERENT terrain material (`shininess: 7, flatShading: false`) to prove those values
+propagate rather than being hardcoded. `tests/drape-svg.test.js` gained 3 tests for `nextPow2` (exact
+powers unchanged, rounds up never down, two different inputs in the same power-of-two band snap to the
+same value — proves a real band-snap, not a no-op passthrough).
+
+**Non-vacuous, the standard way, twice.** (1) Before writing the amendment-2 test updates, ran the new
+`drape-mesh.test.js` mock against `_rebuildDrapeMesh` while it still called `MeshPhongMaterial` but the
+mock only defined `MeshBasicMaterial` — 6/9 failed with "THREE.MeshPhongMaterial is not a constructor",
+confirming the mock genuinely needed updating, not just cosmetic tidying. (2) After updating the mock and
+material-settings tests: saved a scratch copy of the amendment-2 `index.js`, reverted `_rebuildDrapeMesh`
+to construct `MeshBasicMaterial` (the pre-amendment-2 shape, matching what amendment 1 had shipped), reran
+— 8/11 failed (the geometry-sharing and early-return tests, which never touch material construction,
+correctly stayed green). Restored the scratch copy, reran green (11/11).
+
+**Full suite:** `npx vitest run` -> **375 passed**, 0 failed.
+
+**Live Fusion (bridge up throughout this turn — stop/release.py --local/run/deleteMe/reopen ritual run
+once before final verification, no stale-JS false negatives this time).** `[DRAPE]` log confirmed
+`setDrapeTexture done: drapeMesh=Mesh material=MeshPhongMaterial mapSet=true transparent=true` — amendment
+2's material type is what is actually live, not just what the source says. Drew a red line and a black
+line (Select-tool deselect between colors, per the earlier self-diagnosed bug), Applied, and captured a
+zoomed screenshot of the palette's own embedded preview (session scratchpad, not committed): BOTH lines
+show a genuine specular highlight and a light-to-shadow gradient across their width, matching the
+surrounding terrain's own shading — black reads as dark shaded black (still clearly visible, not lost
+against the terrain), red shades from bright toward the light to dark maroon in shadow. No z-fighting/
+flicker observed at this or the amendment-1 close-up angle. `mcp__fusion360__fusion_screenshot` was tried
+first but captures Fusion's own native 3D viewport (the carved solid body, shown selected/blue) — a
+different surface than the palette's embedded TerrainPreview canvas that actually owns the drape, so it is
+not useful for this verification; the PowerShell window-capture plus pixel-crop route (established since
+turn 229) is the one that actually shows the drape.
+
+**Stale doc comment caught and fixed:** `terrain-mesh.js`'s `uv`-attribute comment still said "SE11e's
+separate UNLIT overlay mesh" after amendment 2 made it LIT — updated to match. `core/preview/index.js`'s
+own class-header, `buildDrapeTexture`, and constructor comments were already updated to say LIT while
+implementing amendment 2 itself, not left stale.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **375 passed**, 0 failed.
+- Live Fusion: `[DRAPE]` log shows `material=MeshPhongMaterial`; zoomed screenshot shows both colors
+  correctly shaded (specular highlight plus light/shadow gradient), matching the terrain around them; no
+  z-fighting/banding at a steep angle.
+
+No amendments pending as of this pass.

@@ -7,7 +7,7 @@ import { updateGlobalButtons, takeSnapshot, globalHistoryLog } from '../core/his
 import { AppState } from './app-state.js';
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
-import { buildDrapeSvg } from '../core/preview/drape-svg.js';
+import { buildDrapeSvg, nextPow2 } from '../core/preview/drape-svg.js';
 import { dbg, isDebugEnabled } from '../core/debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -311,8 +311,13 @@ async function refreshDrape(preview) {
         return;
     }
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-    const texW = Math.min(1024, Math.max(256, nx * 4));
-    const texH = Math.min(1024, Math.max(256, nz * 4));
+    // SE11e amend (Fred): bumped from x4 to x8 of the grid resolution
+    // (still capped, now higher) and rounded to a power of two — see
+    // nextPow2's own comment for why the power-of-two rounding is the
+    // part that actually matters here (mipmap generation, not raw pixel
+    // count alone).
+    const texW = nextPow2(Math.min(2048, Math.max(512, nx * 8)));
+    const texH = nextPow2(Math.min(2048, Math.max(512, nz * 8)));
     _drapeLog(`rasterizing to ${texW}x${texH} (grid ${nx}x${nz})`);
     let texture = null;
     try {
@@ -322,11 +327,16 @@ async function refreshDrape(preview) {
     }
     _drapeLog(`buildDrapeTexture returned ${texture ? 'a texture' : 'null'}`);
     preview.setDrapeTexture(texture);
-    const mesh = preview._mesh;
-    const mat = mesh && mesh.material;
-    _drapeLog(`setDrapeTexture done: mesh=${mesh ? mesh.type : 'none'} ` +
-        `material=${mat ? mat.type : 'none'} vertexColors=${mat ? mat.vertexColors : 'n/a'} ` +
-        `emissiveMapSet=${!!(mat && mat.emissiveMap)}`);
+    // SE11e: the drape is a separate overlay mesh now (_drapeMesh), not a
+    // material property on the terrain mesh itself — log THAT instead of
+    // the terrain material's own emissiveMap, which SE11e stopped setting
+    // entirely (this line used to check it and would always read false
+    // now, which isn't a bug, just a stale question).
+    const drapeMesh = preview._drapeMesh;
+    const drapeMat = drapeMesh && drapeMesh.material;
+    _drapeLog(`setDrapeTexture done: drapeMesh=${drapeMesh ? drapeMesh.type : 'none'} ` +
+        `material=${drapeMat ? drapeMat.type : 'none'} mapSet=${!!(drapeMat && drapeMat.map)} ` +
+        `transparent=${drapeMat ? drapeMat.transparent : 'n/a'}`);
 }
 
 export function initSvgEditor(preview) {

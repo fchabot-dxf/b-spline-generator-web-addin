@@ -19,7 +19,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildDrapeSvg, DRAPE_TEXTURE_FLIPY, sampleRowForV,
+  buildDrapeSvg, DRAPE_TEXTURE_FLIPY, sampleRowForV, nextPow2,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js';
 
 const SKETCH = `<svg xmlns="http://www.w3.org/2000/svg" width="672" height="864" viewBox="0 0 7 9" preserveAspectRatio="none">` +
@@ -171,5 +171,32 @@ describe('SE11c: drape/heightfield orientation guard (empirically settled — se
     for (let i = 1; i < rows.length; i++) {
       expect(rows[i]).not.toBe(rows[i - 1]);
     }
+  });
+});
+
+/**
+ * SE11e amend (Fred): pale/white banding on steep groove walls traced to
+ * a non-power-of-two drape canvas silently disabling WebGL mipmap
+ * generation — nextPow2 is the fix's one pure, testable piece (the
+ * actual mipmap behaviour needs a real WebGL context, proven live in
+ * Fusion instead — see WORK-LOG).
+ */
+describe('nextPow2 (SE11e amend: power-of-two texture sizing for mipmaps)', () => {
+  it('an exact power of two is returned unchanged', () => {
+    expect(nextPow2(512)).toBe(512);
+    expect(nextPow2(1)).toBe(1);
+    expect(nextPow2(1024)).toBe(1024);
+  });
+
+  it('rounds UP to the next power of two — never down (would crop the texture)', () => {
+    expect(nextPow2(564)).toBe(1024);
+    expect(nextPow2(724)).toBe(1024);
+    expect(nextPow2(513)).toBe(1024);
+    expect(nextPow2(1025)).toBe(2048);
+  });
+
+  it('non-vacuous: two different inputs in the SAME power-of-two band round to the SAME value (proves it snaps to a band, not a no-op passthrough)', () => {
+    expect(nextPow2(600)).toBe(nextPow2(1000));
+    expect(nextPow2(600)).toBe(1024);
   });
 });

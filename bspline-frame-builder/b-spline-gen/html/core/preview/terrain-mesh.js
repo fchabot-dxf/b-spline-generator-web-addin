@@ -138,12 +138,16 @@ export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
   const pos = new Float32Array(totalVerts * 3);
   const col = new Float32Array(totalVerts * 3);
   const useColours = !!(topColours && topColours.length === count * 3);
-  // SE11b: without a uv attribute, a texture map (e.g. the drape's
-  // emissiveMap, core/preview/index.js) has nothing to sample by and
-  // silently renders with no visible effect — no error, no warning, just
-  // an invisible map (the exact bug this fixes: applied cleanly, logged
-  // cleanly, but nothing showed on a real carved board, which always
-  // takes this solid path, never buildTopOnlyMesh's lighter one below).
+  // SE11b: without a uv attribute, a texture map (e.g. the drape overlay
+  // mesh's own `map`, core/preview/index.js — an emissiveMap on THIS
+  // mesh's own material at the time this was fixed, since replaced by
+  // SE11e's separate LIT overlay mesh, but the overlay SHARES this
+  // same geometry, so the uv attribute is still exactly what it samples
+  // by) has nothing to sample by and silently renders with no visible
+  // effect — no error, no warning, just an invisible map (the exact bug
+  // this fixes: applied cleanly, logged cleanly, but nothing showed on a
+  // real carved board, which always takes this solid path, never
+  // buildTopOnlyMesh's lighter one below).
   // Bottom + side-wall vertices reuse their own top vertex's uv (never
   // sampled by anything today, but a "same as directly above" value is
   // more sane than an arbitrary (0,0) if that ever changes).

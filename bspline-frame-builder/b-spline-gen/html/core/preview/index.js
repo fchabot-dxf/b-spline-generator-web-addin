@@ -16,11 +16,15 @@
  *   updateTopView(...)       — render 2D heightmap to a canvas
  *   buildDrapeTexture(svg,w,h) — SE11: rasterize a drape SVG string (see
  *                              drape-svg.js's buildDrapeSvg) to a
- *                              THREE.CanvasTexture, or null if it fails
- *   setDrapeTexture(texture) — SE11: apply/clear the drape on the top
- *                              surface's material; re-applied after every
- *                              update() rebuild (same pattern as the
- *                              thicken heat-map's _heatColours)
+ *                              transparent-background THREE.CanvasTexture,
+ *                              or null if it fails
+ *   setDrapeTexture(texture) — SE11e: set/clear the drape and rebuild the
+ *                              LIT overlay mesh that shows it
+ *                              (_rebuildDrapeMesh) — a second mesh sharing
+ *                              the terrain's own geometry (and its
+ *                              specular/shininess/flatShading, for
+ *                              matching shading), rebuilt after every
+ *                              update() rebuild
  *   dispose()
  *
  * The B-spline surface evaluation, mesh build, sculpt overlay, leader
@@ -81,6 +85,12 @@ export class TerrainPreview {
     // in update(), same pattern as _heatColours) since it's independent of
     // the height data itself.
     this._drapeTexture = null;
+    // SE11e: a SECOND mesh sharing the terrain's own geometry (no copy),
+    // rendered LIT (matching the terrain's own shading) with the drape
+    // texture as its map — see _rebuildDrapeMesh's own comment for why a
+    // separate mesh, not a
+    // material property on the terrain mesh itself.
+    this._drapeMesh = null;
 
     // Renderer + scene + camera + lights.
     this._renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -218,17 +228,11 @@ export class TerrainPreview {
     this._sculpt.reapplySelection(heights, nx, nz, W, H);
     this._leaders.setData(this._worstPts, this._showLeaders);
 
-    // SE11b: a fresh mesh/material was just built above — re-apply the
-    // drape texture (if any) as an emissiveMap (see setDrapeTexture's own
-    // comment for why emissive, not map), the same way the thicken
-    // heat-map's own colours are carried across a rebuild via
-    // meshColours, above. A fresh material's own `emissive` already
-    // defaults to black, so there's no "clear" case to handle here.
-    if (this._drapeTexture && this._mesh) {
-      this._mesh.material.emissiveMap = this._drapeTexture;
-      this._mesh.material.emissive.set(0xffffff);
-      this._mesh.material.needsUpdate = true;
-    }
+    // SE11e: a fresh terrain mesh (new geometry) was just built above —
+    // rebuild the drape overlay mesh against it (if a drape texture is
+    // set), the same way the thicken heat-map's own colours are carried
+    // across a rebuild via meshColours, above.
+    this._rebuildDrapeMesh();
 
     this._needsRender = true;
     return { minZ, maxZ };
@@ -270,29 +274,29 @@ export class TerrainPreview {
   }
 
   /**
-   * SE11b: rasterize a drape SVG string (drape-svg.js's buildDrapeSvg
-   * output — board-sized viewBox, only the qualifying coloured elements)
-   * into a THREE.CanvasTexture. Same native SVG render path the stamp
-   * rasterizer uses (renderSvgNative: Blob → <img> → drawImage — real
-   * fonts/strokes, no canvg quirks), composited onto an OPAQUE BLACK
-   * background for use as an EMISSIVE map (setDrapeTexture below), not a
-   * diffuse `map`.
+   * SE11b/SE11e: rasterize a drape SVG string (drape-svg.js's
+   * buildDrapeSvg output — board-sized viewBox, only the qualifying
+   * coloured elements) into a THREE.CanvasTexture. Same native SVG
+   * render path the stamp rasterizer uses (renderSvgNative: Blob → <img>
+   * → drawImage — real fonts/strokes, no canvg quirks), left TRANSPARENT
+   * (a freshly created canvas's own default) wherever nothing is drawn.
    *
-   * SE11 originally used `material.map` on a white background, reasoning
-   * that MeshPhongMaterial multiplies map × vertexColor/material.color so
-   * white (1,1,1) would leave an unpainted pixel's terrain shading
-   * unchanged. That's true ONLY when vertexColors is off (this repo's own
-   * headless smoke test, which has no thicken/sculpt data). A real Fusion
-   * session's carved board DOES have vertex colors active (confirmed live,
-   * b_spline_gen_log.txt: "vertexColors=true"), and the carve grooves —
-   * exactly where a drawn line sits — are the darkest vertices on the
-   * mesh: red × near-black vertex colour ≈ still near-black, so the drape
-   * rendered but was invisible. `emissiveMap` is ADDED to the lit result,
-   * not multiplied into it, so it stays visible regardless of the
-   * underlying vertexColors/shading/groove-darkness — black (0,0,0) here
-   * adds nothing (unpainted areas untouched), a real colour adds exactly
-   * that colour on top. Returns null on an empty/failed render — the
-   * caller passes that straight to setDrapeTexture(null) to clear it.
+   * SE11 used `material.map` (multiply), then SE11b used `emissiveMap`
+   * (additive) to survive dark carve-groove vertex colours — but additive
+   * light can never show black (adding zero light IS black), so Fred's
+   * own ask ("black lines on the mesh", SE11d) was structurally
+   * impossible under either scheme. SE11e drops both: the drape is
+   * rendered by a SEPARATE mesh (see setDrapeTexture / _rebuildDrapeMesh
+   * below) with THIS texture as an alpha-blended `map` — transparent
+   * where nothing was drawn reveals the terrain underneath unchanged,
+   * opaque where painted REPLACES the terrain's own colour with the
+   * drape's before lighting is applied. That overlay mesh is LIT
+   * (amend 2 — a first pass made it unlit, which fixed "black invisible"
+   * but overcorrected into flat, shading-free colour; see
+   * _rebuildDrapeMesh's own comment), so a colour still reads back
+   * exactly as picked AND shades like part of the surface, not a sticker
+   * on top of it. Returns null on an empty/failed render — the caller
+   * passes that straight to setDrapeTexture(null) to clear it.
    */
   async buildDrapeTexture(svgString, w, h) {
     if (!svgString) return null;
@@ -306,16 +310,16 @@ export class TerrainPreview {
     // variable rather than leaving an unmatched, unexplained gap.
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, w, h);
-
-    const scratch = document.createElement('canvas');
-    scratch.width = w; scratch.height = h;
-    const scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
-    if (!scratchCtx) return null;
+    // No fill: a freshly created canvas is already fully transparent
+    // (rgba(0,0,0,0)) everywhere — exactly the background this needs.
+    // renderSvgNative draws straight onto it (no separate scratch canvas
+    // needed any more — that existed only to protect an opaque
+    // background fill from renderSvgNative's own internal clearRect,
+    // which is moot now that "cleared" and "the background this wants"
+    // are the same transparent state).
     try {
       const safe = prepareSvgForRaster(sanitizeSvgForRaster(svgString), w, h);
-      await renderSvgNative(scratchCtx, safe, w, h);
+      await renderSvgNative(ctx, safe, w, h);
     } catch (e) {
       const msg = 'renderSvgNative failed: ' + (e && e.message ? e.message : e);
       console.warn('[TerrainPreview] drape render failed:', e);
@@ -323,26 +327,24 @@ export class TerrainPreview {
       try { fusLog('[DRAPE] ' + msg); } catch (_) {}
       return null;
     }
-    // SE11b diagnostic: prove the scratch canvas actually has real
-    // content BEFORE compositing, so a blank/failed render (this exact
-    // symptom: emissiveMapSet=true in the log, yet no colour visible on
-    // the mesh) is distinguishable from "rendered fine, something else
-    // is wrong downstream" instead of guessed at.
+    // SE11b diagnostic, kept but re-aimed at alpha: prove the canvas
+    // actually has real (non-transparent) content, so a blank/failed
+    // render is distinguishable from "rendered fine, something else is
+    // wrong downstream" instead of guessed at.
     try {
-      const probe = scratchCtx.getImageData(0, 0, w, h).data;
-      let nonBlack = 0;
-      for (let i = 0; i < probe.length; i += 4) {
-        if (probe[i] > 10 || probe[i + 1] > 10 || probe[i + 2] > 10) nonBlack++;
+      const probe = ctx.getImageData(0, 0, w, h).data;
+      let painted = 0;
+      for (let i = 3; i < probe.length; i += 4) {
+        if (probe[i] > 10) painted++;
       }
-      const msg = `scratch canvas after render: ${nonBlack}/${probe.length / 4} non-black px`;
+      const msg = `drape canvas after render: ${painted}/${probe.length / 4} painted (non-transparent) px`;
       dbg('DRAPE', msg);
       try { fusLog('[DRAPE] ' + msg); } catch (_) {}
     } catch (e) {
-      const msg = 'scratch probe failed: ' + (e && e.message ? e.message : e);
+      const msg = 'drape canvas probe failed: ' + (e && e.message ? e.message : e);
       dbg('DRAPE', msg);
       try { fusLog('[DRAPE] ' + msg); } catch (_) {}
     }
-    ctx.drawImage(scratch, 0, 0);
 
     const THREE = this._THREE;
     const texture = new THREE.CanvasTexture(canvas);
@@ -350,34 +352,110 @@ export class TerrainPreview {
     // scripts/smoke-editor.mjs's `drape-align` mode (real carve-vs-drape
     // data, not reasoning) after two reasoned guesses at this exact value
     // were each wrong at least once; see that constant's own comment.
+    // Unaffected by SE11e's map/emissive change — flipY is about WHICH
+    // texture row a uv v-value samples, orthogonal to how the material
+    // uses the sampled colour.
     texture.flipY = DRAPE_TEXTURE_FLIPY;
+    // SE11e amend (Fred): explicit, not relying on CanvasTexture's own
+    // defaults — a non-power-of-two canvas silently disables mipmap
+    // generation, which is what produced the reported banding on steep
+    // groove walls (many texels per screen pixel, no mip level to
+    // average them, so a single aliased sample shows through). The
+    // caller now rounds w/h to a power of two (nextPow2, drape-svg.js)
+    // specifically so `generateMipmaps: true` here actually takes
+    // effect instead of being silently downgraded.
+    texture.generateMipmaps = true;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
     return texture;
   }
 
-  /** Apply (or clear, with null) the drape texture on the top surface's
-   *  material, as an EMISSIVE map (see buildDrapeTexture's own comment —
-   *  additive, so it survives dark carve-groove vertex colours instead of
-   *  vanishing into them). `emissiveMap` only contributes light where
-   *  `emissive` is non-black, so that has to move in lockstep with the
-   *  map: white while a texture is set (lets the map's own colour through
-   *  unscaled), black when cleared (an emissive map with a black
-   *  multiplier would otherwise still tint nothing, but leaving `emissive`
-   *  white with NO map would wash the whole mesh out white). Disposes the
-   *  previous texture — buildDrapeTexture makes a fresh CanvasTexture on
-   *  every refresh, so without this every edit would leak one GPU
-   *  texture. */
+  /**
+   * SE11e (amend 2, Fred: "color still needs shading" — NOT unlit): (re)build
+   * the drape OVERLAY mesh against the CURRENT terrain geometry. A
+   * separate `THREE.Mesh` sharing `this._mesh.geometry` directly (no
+   * copy — the SAME position/normal/uv buffers, so the overlay is always
+   * pixel- and shading-exact with whatever terrain shape is current)
+   * with a LIT `MeshPhongMaterial` — the FIRST amend's `MeshBasicMaterial`
+   * (unlit) fixed "black is invisible" (SE11b's additive-emissive bug)
+   * but overcorrected: flat, unshaded color reading as a paint sticker
+   * rather than the surface's own material.
+   *
+   * Chose "a separate lit mesh, alpha-blended over the terrain" over the
+   * amend's other offered option ("inject into the terrain material via
+   * onBeforeCompile, mixing diffuseColor before lighting") because it
+   * reaches the SAME visual result — at a painted pixel, `transparent`
+   * alpha-blending REPLACES the terrain's colour with the drape's before
+   * either one's lighting is computed, exactly like `mix(base, drape,
+   * alpha)` — without hand-patching GLSL chunks: no shader-chunk version
+   * coupling, no risk of a chunk name changing under a future Three.js
+   * bump, testable by reading the material's own declared properties
+   * (see tests/drape-mesh.test.js) instead of parsing injected shader
+   * source. Reuses the terrain's OWN `specular`/`shininess`/`flatShading`
+   * so the drape shades identically to the surface around it (cloning
+   * `specular` — a `THREE.Color` — so mutating one material's color
+   * object can never leak into the other's).
+   *
+   * `color: 0xffffff` (white) and no `vertexColors` on this material —
+   * the drape's colour comes ONLY from its own texture, deliberately
+   * independent of any active thicken/sculpt vertex-colour overlay on
+   * the terrain beneath it (SE11b's own root cause was exactly this kind
+   * of unwanted mixing, just via a different mechanism).
+   *
+   * `polygonOffset` (negative factor/units push a polygon TOWARD the
+   * camera) keeps this exactly-coincident overlay from z-fighting with
+   * the terrain surface it's drawn on top of — checked at a steep,
+   * close-up angle in Fusion (WORK-LOG SE11e amend 2), no flicker.
+   * `depthWrite: false` is the standard practice for a transparent
+   * overlay — it still depth-TESTS against (renders behind) anything
+   * genuinely in front of it, it just doesn't block something
+   * transparent rendered after it from also showing through.
+   *
+   * Always removes any EXISTING drape mesh first — called after every
+   * update() rebuild, when the terrain geometry it must match is brand
+   * new, so a stale overlay would be pointing at now-disposed geometry.
+   * No-ops (leaves it removed) when there's no drape texture or no
+   * terrain mesh yet.
+   */
+  _rebuildDrapeMesh() {
+    if (this._drapeMesh) {
+      this._scene.remove(this._drapeMesh);
+      this._drapeMesh.material.dispose();
+      this._drapeMesh = null;
+    }
+    if (!this._drapeTexture || !this._mesh) return;
+    const THREE = this._THREE;
+    const terrainMat = this._mesh.material;
+    const mat = new THREE.MeshPhongMaterial({
+      map: this._drapeTexture,
+      color: 0xffffff,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+      side: terrainMat.side,
+      specular: terrainMat.specular ? terrainMat.specular.clone() : undefined,
+      shininess: terrainMat.shininess,
+      flatShading: terrainMat.flatShading,
+    });
+    this._drapeMesh = new THREE.Mesh(this._mesh.geometry, mat);
+    this._drapeMesh.visible = this._mesh.visible;
+    this._scene.add(this._drapeMesh);
+  }
+
+  /** Set (or clear, with null) the drape texture and rebuild the overlay
+   *  mesh that shows it (_rebuildDrapeMesh above). Disposes the previous
+   *  texture — buildDrapeTexture makes a fresh CanvasTexture on every
+   *  refresh, so without this every edit would leak one GPU texture. */
   setDrapeTexture(texture) {
     if (this._drapeTexture && this._drapeTexture !== texture) {
       this._drapeTexture.dispose();
     }
     this._drapeTexture = texture || null;
-    if (this._mesh && this._mesh.material) {
-      this._mesh.material.emissiveMap = this._drapeTexture;
-      this._mesh.material.emissive.set(this._drapeTexture ? 0xffffff : 0x000000);
-      this._mesh.material.needsUpdate = true;
-      this._needsRender = true;
-    }
+    this._rebuildDrapeMesh();
+    this._needsRender = true;
   }
 
   goHome()                    { this._orbit.goHome(this._lastWidth, this._lastHeight); }
@@ -385,8 +463,12 @@ export class TerrainPreview {
   setSculptMode(config)       { this._sculpt.setMode(config); }
   setCurvesVisible(visible) {
     this._curvesVisible = visible;
-    if (this._mesh)   this._mesh.visible   = !visible;
-    if (this._curves) this._curves.visible =  visible;
+    if (this._mesh)      this._mesh.visible      = !visible;
+    // SE11e: the drape overlay sits directly on the terrain surface —
+    // hide it in lockstep, or it'd render as colour floating in space
+    // once the surface it's drawn on top of disappears.
+    if (this._drapeMesh) this._drapeMesh.visible = !visible;
+    if (this._curves)    this._curves.visible    =  visible;
     this._needsRender = true;
   }
 
@@ -419,6 +501,7 @@ export class TerrainPreview {
     this._ro.disconnect();
     this._groundGrid.dispose();
     this._sculpt.dispose();
+    if (this._drapeMesh) { this._scene.remove(this._drapeMesh); this._drapeMesh.material.dispose(); }
     if (this._drapeTexture) this._drapeTexture.dispose();
     this._renderer.dispose();
     if (this._viewCube) this._viewCube.dispose();
@@ -429,6 +512,15 @@ export class TerrainPreview {
 
   _dispose() {
     if (this._mesh)   { this._scene.remove(this._mesh);   this._mesh.geometry.dispose();  this._mesh.material.dispose(); }
+    // SE11e: the drape mesh SHARES this geometry (just disposed above) —
+    // remove it and dispose only its own material, never the geometry a
+    // second time. update() rebuilds it fresh against the new terrain
+    // mesh via _rebuildDrapeMesh() right after this runs.
+    if (this._drapeMesh) {
+      this._scene.remove(this._drapeMesh);
+      this._drapeMesh.material.dispose();
+      this._drapeMesh = null;
+    }
     if (this._curves) {
       this._scene.remove(this._curves);
       this._curves.children.forEach(l => l.geometry.dispose());
