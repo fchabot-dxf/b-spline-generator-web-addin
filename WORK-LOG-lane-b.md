@@ -2244,3 +2244,109 @@ column collapse, not `pointer:coarse` — this is a layout-space problem, not a 
 header row + chevron toggling a `.collapsed` class on a wrapped body div, Generate/Detach-all kept in an
 always-visible footer outside the collapsible body. None of this was written to any file — `git status
 --short` is clean, nothing to stash. Stopping here per the HOLD; no commit, no push.
+
+---
+
+## Lane B — Turn 65 — T25: pinch-zoom on a phone — proven, no app bug, entangled with T24
+
+**Verdict: the SE7m pointer path is correct.** Pinch genuinely zooms (1 → ~4x) on a clean two-finger
+`Input.dispatchTouchEvent` spread, byte-identical to the ROADMAP's own "ground truth" gesture. The
+`zoomAfterPinch: 1` finding in the Live-browser-test entry is a SYMPTOM of T24's still-open bug (the
+Pattern panel collapsing `#editorSVGContainer`), not a separate SE7m defect — proven by running the exact
+same gesture with the panel closed (zooms fine) vs open (stays at 1, `#editorSVGContainer`'s own
+`getBoundingClientRect()` is ~1.5×2px in that state). No app code needed a fix; `editor-input.js` and
+`editor-interaction.js`'s pointer path are untouched.
+
+### A false trail I have to own: my OWN local test harness was broken for most of this investigation
+
+Before finding the real result, I spent a long stretch chasing what looked like a severe app bug and
+wasn't one. `bspline_gen_palette.html` links its CSS/JS with paths like `../../styles/editor.css` —
+relative to the file's real depth in the repo (`bspline-frame-builder/b-spline-gen/html/`). I first served
+just `bspline-frame-builder/b-spline-gen/html` as the HTTP root (matching the dispatch's own literal
+suggestion) — under that root `../../styles/editor.css` resolves to nothing that exists, and the browser
+loads it as a **silent 404, no console error**. Symptoms I chased for real, before catching this:
+`#editorSVGContainer.getBoundingClientRect()` reporting **zero width**; `#svgEditorModal`'s computed
+`position` reading `"static"` instead of the CSS's own `fixed !important`, landing the whole modal ~4600px
+down a 5400px-tall unstyled page; `window.innerWidth` reporting 980 or a 4x-inflated value depending on
+`deviceScaleFactor`, tracing back to Chrome's own "no viewport meta honoured" 980px fallback layout width
+— all of it real, reproducible, and **entirely explained by the missing stylesheet**, confirmed the moment
+I re-served from the REPO ROOT (`http://localhost:PORT/bspline-frame-builder/b-spline-gen/html/
+bspline_gen_palette.html`) and every one of those numbers became sane (`position:fixed` at (0,0,390,844),
+container 390×547 at the right offset). Logging the wrong-turns here rather than hiding them — a mock-
+environment artifact that looks exactly like a real bug is worth writing down so the next local run
+doesn't repeat it; also wrote it into `scripts/smoke-editor.mjs`'s own header comment (below) so it's
+findable without reading this entry.
+
+A second confound on top of the first: my scratch probe scripts' backgrounded `python -m http.server`
+processes kept getting silently killed by cwd resets between Bash calls in this environment (`ps aux`
+sometimes couldn't even see a server that curl could still reach, on a port from an EARLIER attempt) —
+switched to the Bash tool's own `run_in_background` on a fresh, never-touched port once I noticed `ps`
+wasn't reliable here, which is what finally gave a server I could trust across the whole session.
+
+### What actually shipped: `scripts/smoke-editor.mjs` only, no other file
+
+1. **Header comment** documenting the correct local-serving setup (repo root, not the html subfolder;
+   exact command + URL), and the "if a local run shows a collapsed canvas, curl the CSS before assuming a
+   real bug" lesson from above.
+2. **`doPinch()` extracted** — the two-finger-spread CDP gesture, previously inline once, now a named
+   helper called twice so the "isolated" and "entangled" checks run byte-identical gesture code (only
+   `#editorSVGContainer`'s on-screen size differs between the two calls — the actual variable under test).
+3. **New EARLY pinch check**, right after the modal opens and BEFORE the Lattice tool / Pattern panel —
+   `report.earlyPinch: {box, zoomBefore, zoomAfter}`. This is SE7m's own proof, uncontaminated by SE7p's
+   still-open bug. Screenshot renumbered to `${MODE}-2-early-pinch.png` (was where `-2-generated.png` used
+   to sit; that shot renumbers to `-3-generated.png`).
+4. **Kept the ORIGINAL late pinch too** — `report.pinchWithPatternPanelOpen`, unchanged gesture, still run
+   AFTER Generate with the Pattern panel open, still expected to show `zoomAfter≈zoomBefore` (no change)
+   until T24 lands — this is SE7p's own regression signal, not deleted, just renamed/re-labeled so a
+   reader of the JSON immediately understands which finding is which without cross-referencing this log.
+   Screenshot renumbered `${MODE}-4-pinched-with-panel-open.png`.
+5. Chose this "keep both, name them precisely" design over silently moving the ONE pinch check earlier
+   (which would have quietly stopped testing SE7p's regression) or leaving it where it was (which would
+   have kept reporting a false SE7m failure) — reasoning recorded here rather than picked silently.
+
+### Verified end-to-end against the corrected local serve (repo root, port from `run_in_background`)
+
+```
+mobile: earlyPinch { zoomBefore: 1, zoomAfter: 3.9999999999999982 }               <- SE7m proven
+        pinchWithPatternPanelOpen { zoomBefore: 3.999..., zoomAfter: 3.999... }   <- SE7p's own bug, unchanged
+        touchActionsVisible: "flex"                                              <- bonus: on-screen touch group correct at 390px
+desktop: unaffected (mobile-only code, gated by MODE==='mobile'; re-ran clean after
+         one transient flake — a stacked-Chrome-instance timing issue from probing, not from this edit)
+```
+Screenshots: `mobile-1-editor.png`, `mobile-2-early-pinch.png`, `mobile-3-generated.png`,
+`mobile-4-pinched-with-panel-open.png` (all in the run's `<outDir>`, not committed — matching how the
+smoke script has always worked, screenshots are a local artifact, not a repo asset).
+
+### Item 3 — Layers panel + canvas at 390px (SA-MOBILE-6), no Pattern panel open
+
+Checked directly (`getBoundingClientRect()` on sidebar/canvas/Layers panel once CSS was actually loading):
+sidebar (0,86,390,57), canvas (0,143,390,547), Layers panel (0,690,170,154) — canvas gets the clear
+majority of vertical space, Layers panel sits cleanly below it at a sane width (the existing
+`@media(max-width:700px){.editor-layers-panel{width:170px}}` rule). **No bug found here — CSS-only fix
+was authorized but nothing needed fixing.** (My earlier, wrong "canvas is 0×0 in EVERY mode" reading was
+the broken-local-harness artifact above, not this.)
+
+### Non-vacuous
+
+No new unit test — no app code changed (the pointer path was proven correct as-is, not patched), so
+there's nothing to mutation-test. The finding is diagnostic, backed by a live end-to-end run whose numbers
+are reproduced above, not by an argument.
+
+### Process hygiene
+
+`proc_health.py watch` at wrap-up found **2 PRIOR-TURN-leak** `python -m http.server` processes (my own
+scratch investigation servers, backgrounded across many probe scripts, never cleanly stopped mid-turn) —
+reaped via `proc_health.py reap --role self --yes`, both confirmed dead. Logged per the skill's own "an
+earlier turn's cleanup slipped, worth logging" — it slipped WITHIN this turn (multiple probe scripts each
+starting their own server), not carried in from a previous session.
+
+### Sequence note (Fred, relayed via cross-session message)
+
+Fred said "finish lattice too" mid-turn; the advisor (cross-session) confirmed the sequence — finish T25
+(this entry), commit/push, THEN resume T24 from the drafted bottom-sheet design above. Given T25's own
+finding (T24's bug is the DIRECT cause of the pinch-with-panel-open failure), fixing T24 next should also
+retire `pinchWithPatternPanelOpen`'s "stays at zoomBefore" result — worth re-running this smoke test after
+T24 lands to confirm, not assumed.
+
+`vitest run` → **281 passed (30 files)**, unchanged (no source touched, only the smoke script). No gate
+hit.
