@@ -150,6 +150,27 @@ export function isEditableByLayer(editor, node) {
   return getElementLayer(node) === getActiveLayer(editor);
 }
 
+/** SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
+ *  in Select/Node modes — generatePattern restores whatever layer was
+ *  active BEFORE Generate ran, so its own new layers are never the
+ *  active one, and isEditableByLayer above only ever allows the active
+ *  layer through). Is `node`'s own layer simply VISIBLE — not
+ *  necessarily the active one? Used ONLY by hit-testing/marquee in
+ *  'select'/'node' modes (editor-hit.js's getNearbyElement,
+ *  editor-marquee.js's finalizeMarquee) — drawing modes keep
+ *  isEditableByLayer's active-layer-only rule unchanged, so you still
+ *  draw onto the layer you're on, never accidentally onto whatever
+ *  happens to be under the cursor. A node whose data-layer names no
+ *  layer record at all (legacy/pre-layers content, or a test fixture
+ *  with no _layers array) is always testable — the same "missing =
+ *  true" default isCarved/isExported/showsColor above already use. */
+export function isOnVisibleLayer(editor, node) {
+  const layerId = getElementLayer(node);
+  const layers = Array.isArray(editor._layers) ? editor._layers : [];
+  const layer = layers.find((l) => String(l.id) === layerId);
+  return !layer || layer.visible !== false;
+}
+
 // ----------- Data ops -----------
 
 function _nextLayerId(editor) {
@@ -412,7 +433,7 @@ function _eyeClosedSVG() {
  *  icon regardless of on/off state; `.active` carries the state, same as
  *  the carve button. */
 function _paletteSVG() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.3c2.1 0 3.7-1.7 3.7-3.7C21 6.6 17 2 12 2z"/><circle cx="7" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="pal-body" d="M12 2a10 10 0 1 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.3c2.1 0 3.7-1.7 3.7-3.7C21 6.6 17 2 12 2z"/><circle class="pal-d1" cx="7" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle class="pal-d2" cx="9.5" cy="7.5" r="1.6" fill="currentColor" stroke="none"/><circle class="pal-d3" cx="14.5" cy="7.5" r="1.6" fill="currentColor" stroke="none"/><circle class="pal-d4" cx="17" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>`;
 }
 
 /** SE10 / T26: one row renderer, two call sites — the editor's own Layers

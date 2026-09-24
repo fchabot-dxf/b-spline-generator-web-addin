@@ -803,9 +803,17 @@
 }
 .layer-carve:hover, .layer-showcolor:hover { border-color: #999; }
 .layer-carve.active     { color: #fff; background: #1f6fd1; border-color: #1f6fd1; }
-.layer-showcolor.active { color: #fff; background: #d98200; border-color: #d98200; }
+/* Fred: "palette should be a colored palette" — ON shows a real painter's
+   palette (tan board, four paint dots) on a white button; OFF stays the
+   grey outline + slash above. Classes come from layers.js's _paletteSVG. */
+.layer-showcolor.active { color: #7a5a2f; background: #fff; border-color: #b9a27f; }
+.layer-showcolor.active .pal-body { fill: #e9cfa3; }
+.layer-showcolor.active .pal-d1 { fill: #e53935; }
+.layer-showcolor.active .pal-d2 { fill: #fbc02d; }
+.layer-showcolor.active .pal-d3 { fill: #43a047; }
+.layer-showcolor.active .pal-d4 { fill: #1e88e5; }
 .layer-carve.active:hover     { background: #185bab; }
-.layer-showcolor.active:hover { background: #b86e00; }
+.layer-showcolor.active:hover { background: #f6efe3; }
 /* 44px on coarse pointers is per-BUTTON, not compact-only (both toggles
    render in both lists) — grow the row itself under (pointer:coarse) too,
    editor panel included, so a 44px button actually fits instead of
