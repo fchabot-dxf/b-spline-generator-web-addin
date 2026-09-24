@@ -21,22 +21,29 @@
  * here makes the contract explicit and changes propagate to all three
  * strategies at once.
  *
- * NOTE: the data-original-svg attribute value contains raw SVG markup
- * with `<` and `>` characters. HTML innerHTML serialization does NOT
- * escape those in attribute values, so the resulting saved SVG is
- * INVALID XML. The stamp rasterizer's DOMParser (strict
- * image/svg+xml) silently drops any element carrying such an
- * attribute. Mitigation lives in core/stamp/render-svg.js's
- * sanitizeSvgForRaster, which strips data-original-(text-)svg before
- * the rasterizer parses. Don't change that without also changing this.
+ * NOTE (SA-TEXT-5, corrected — this used to describe a live bug, not
+ * current behavior): the data-original-svg attribute value USED TO
+ * contain raw SVG markup with `<` and `>` characters, which HTML
+ * innerHTML serialization does not escape in attribute values, making
+ * the saved SVG invalid XML. Fixed by EDM2: `commitExpandedPath` below
+ * now always base64-encodes the snapshot via `encodeSnapshot` before
+ * writing it (see the `snap = encodeSnapshot(...)` line), so new saves
+ * are valid XML from the first write. `sanitizeSvgForRaster`
+ * (core/stamp/render-svg.js) still strips data-original-(text-)svg
+ * before the rasterizer parses, but that's now a defensive no-op for
+ * new content — kept as a safety net for saves made before EDM2, which
+ * `decodeSnapshot` still reads correctly (legacy-format fallback).
+ * Proven by tests/editor-serialization.test.js's "EDM2: base64
+ * data-original poison regression" suite.
  */
 import { fusLog } from '../core/fusion-bridge.js';
 import { encodeSnapshot } from '../core/svg-utils.js';
+import { dbg } from '../core/debug.js';
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
+// hand-rolling window.__editorDebug === 'EXPAND-COMMIT'.
 function _cLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-COMMIT') {
-        try { console.log('[EXPAND-COMMIT] ' + msg); } catch (_) {}
-    }
+    dbg('EXPAND-COMMIT', msg);
     try { fusLog('[EXPAND-COMMIT] ' + msg); } catch (_) {}
 }
 

@@ -10,13 +10,16 @@
  *   window.__editorDebug = ['TEXT-DBG', 'EXPAND']  // a few
  *
  * Categories used in code: TEXT-DBG, COORD_STD, EXPAND, STAMP DEBUG,
- * VertexColor. The category prefix is preserved in the output so log
- * greps still work.
+ * VertexColor, ERASER, EXPAND-COMMIT, EXPAND-SHAPE, EXPAND-ORCH,
+ * EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER. The category prefix is
+ * preserved in the output so log greps still work.
  */
 
-// Default: only TEXT-DBG (the text editor session trace). Other
-// categories stay silent. Override at runtime via window.__editorDebug.
-let _flag = 'TEXT-DBG';
+// SE8c/SA-TEXT-7: default OFF, matching this file's own doc comment
+// above ("off by default"/"false // off (default)") — it previously
+// defaulted to 'TEXT-DBG' on, silently contradicting itself. Enable a
+// category at runtime via window.__editorDebug.
+let _flag = false;
 if (typeof window !== 'undefined') {
     if (window.__editorDebug !== undefined) _flag = window.__editorDebug;
     Object.defineProperty(window, '__editorDebug', {

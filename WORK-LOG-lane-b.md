@@ -1636,3 +1636,172 @@ tests/editor-lattice-pattern-emit.test.js) + this WORK-LOG entry; grep confirmed
 
 No gate hit — stayed within slice 2's exact scope. Slice 3 (the handleEnd detach hook + panel UI) is
 next, per the design doc's own ordering.
+
+**Note for slice 3 (recorded now per this turn's dispatch, not fixed here):** generatePattern (T19)
+calls setActiveLayer 3 times in sequence (Rails, then Ties, then Nodes) while emitting each kind — the
+LAST call wins, so after any Generate/Regenerate the active layer is silently left on "Nodes" regardless
+of whatever layer the user had active beforehand. Not fixed in T19's scope (pure emission), flagged here
+for slice 3 to restore the pre-Generate active layer (capture `editor._activeLayer` before the emit
+loop, `setActiveLayer` back to it at the end, after the 3 layers are ensured but content is emitted).
+
+---
+
+## Lane B — Turn 55 — T20: SE8c part 1 — dead-code chains + debug/font declarations — DONE
+
+Built T20 exactly per the dispatch: SA-DEAD-1..8, SA-TEXT-5/6/7, entirely outside seat A's off-limits
+files (editor-interaction.js, editor-transform-handles.js, editor.js, handle-edit.js — confirmed via
+`git status --short` after the fact, none appear). Re-verified every claim against CURRENT code before
+touching anything, not against T12's audit text — several line numbers had shifted since SE7a/SE7n/
+SE8a/SE8b landed, though every underlying finding itself was still accurate.
+
+### SA-DEAD-1 — 8 hand-rolled `window.__editorDebug === 'X'` gates → the declared `dbg()` gate
+
+Re-grepped fresh (not trusted from memory): confirmed **8** sites, not 7 — `core/stamp/index.js:80`
+(`STAMP-RASTER`) plus the 7 `editor/*.js` files T12's audit found. All 8 outside the off-limits list.
+Converted each `_xLog(msg)` helper's `if (typeof window !== 'undefined' && window.__editorDebug ===
+'X') { try { console.log(...) } catch(_) {} }` body to `dbg('X', msg);` (importing `dbg` from
+`core/debug.js`), keeping each file's separate always-on `fusLog(...)` call untouched (that's a
+deliberate, unrelated behavior — logs to the Fusion log file regardless of the debug flag — not part of
+the dead-pattern this item targets). `core/stamp/index.js` already imported `dbg` (used elsewhere in the
+same file for the DIFFERENT `'STAMP DEBUG'` category) — reused that import rather than adding a second
+one.
+Updated `core/debug.js`'s own doc-comment category list to add the 7 new names (ERASER, EXPAND-COMMIT,
+EXPAND-SHAPE, EXPAND-ORCH, EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER — EXPAND-SHAPE covers both
+editor-expand-shape.js and editor-expand-union.js, which both already gated on that same category name).
+**Found but explicitly NOT fixed, noted in the code comment:** `editor-expand-union.js`'s gate checks
+category `'EXPAND-SHAPE'` while its own log label is `[EXPAND-UNION]` — a pre-existing category/label
+mismatch. Converting the MECHANISM (hand-rolled → declared) doesn't mean also silently renaming which
+category gates it — that's a separate judgment call the dispatch didn't ask for, so I left the category
+string exactly as it was and documented the mismatch instead of quietly "fixing" an unrequested behavior
+change.
+**Verify:** structural grep `if (typeof window !== 'undefined' && window.__editorDebug ===` → **0** hits
+repo-wide (not just outside off-limits — zero live hand-rolled gates left anywhere). A looser grep for
+the bare string `window.__editorDebug ===` still shows 7 hits — all 7 are inside my OWN explanatory
+comments citing the old pattern for documentation ("...instead of hand-rolling window.__editorDebug ===
+'X'"), not live code — checked each one directly rather than reporting the raw grep count as-is, since
+that count alone would have read as "not fully done."
+
+### SA-DEAD-2 — `updateNodeCountUI` — LEFTOVER, not touched (per the dispatch's own conditional)
+
+Re-confirmed: still zero real callers. But its wiring (`import {..., updateNodeCountUI, ...}` and
+`_updateNodeCountUI(data) { return updateNodeCountUI(this, data); }`) lives entirely in `editor.js` —
+off-limits this turn. Removing the function's export from `editor-ui.js` while `editor.js` still imports
+it by name would be a live import error, not a harmless leftover — so per the dispatch's own explicit
+conditional ("remove... IF the wiring is outside editor.js; otherwise list the editor.js link as a
+leftover"), left `updateNodeCountUI` (editor-ui.js), `#editorNodeCountUI` (palette markup), AND
+`editor.js`'s import+method completely untouched as one unit. **Full leftover for seat A**, not a partial
+removal — a half-removal here would have been worse than the status quo.
+
+### SA-DEAD-3 — doorless Smoothness ids in `properties-expand.js`
+
+Re-confirmed `editorExpandSmooth`/`-Minus`/`-Plus` still have 0 hits in the palette markup (Detail's
+matching stepper does exist). Removed the 3 `el()` lookups and their change/click handlers. Documented in
+the code (not just here) that `editor._expandSimplify` keeps its own construction-time default and is
+still read by `expandCurrent` — this only removes the dead ATTEMPT to let a user change it from a
+control that was never reachable. If Fred wants the control back, it needs real markup added first
+(mirroring Detail's), not this wiring resurrected as-is.
+
+### SA-DEAD-4/7/8 — `editor-ui.js`: dead selection-panel lookup, redundant setMode branches, empty if
+
+- SA-DEAD-4: `editorSelectPanel` lookup+toggle removed (0 hits in markup, confirmed — a documented prior
+  cleanup already dropped the id; this was a second, later reference to it).
+- SA-DEAD-7: `setMode`'s 3 "special case" `if (mode==='draw'/...) btn.classList.add('active')` branches
+  removed — each was provably redundant with the generic `.toggle('active', ...)` one line above (same
+  condition, already-true case).
+- SA-DEAD-8: the symbol-keyboard auto-hide `if` block (real condition, empty body, its own comment
+  admitting the "real" logic lived in tool click listeners that never actually touched this panel)
+  removed rather than resurrected.
+All three confirmed still present/still redundant/still empty before touching, not assumed from T12.
+
+### SA-DEAD-5 — `editorSidebarToggle` in `editor-controls.js`
+
+Re-confirmed triple-dead: 0 hits in palette markup, 0 `.editor-sidebar.collapsed` CSS rule anywhere
+(grepped every `.collapsed` selector in both stylesheets — all belong to unrelated panel systems),
+superseded by SE7m's responsive layout. Removed the lookup + click handler. Incidental cleanup that came
+with rewriting the same import line: `addClass`/`removeClass` were ALREADY-unused imports in this file
+before my change (not caused by it) — left them out of the rewritten import line since I was already
+touching it, rather than leaving newly-visible dead imports in a line I'd just edited; noted here rather
+than silently folded in as if it were part of the SA-DEAD-5 removal itself.
+
+### SA-DEAD-6 — stale `editorLayerSelect` "compatibility shim" comments
+
+Re-confirmed the comments in `bspline_gen_palette.html` and `layers.js` both name `editor-ui.js`,
+`editor-text-session.js`, `editor-io.js` as still reading/writing `#editorLayerSelect` directly — grepped
+all three files, zero direct reads/writes remain (editor-ui.js reaches the active layer through
+`_setActiveLayer` instead, per its own already-correct comment at :356-359). Corrected both comments to
+state the shim is self-contained inside `layers.js` today. **Not removed** — per T12's own reasoning,
+kept: an external (Fusion-side/devtools) consumer of `#editorLayerSelect`'s `.value`/`.options` can't be
+ruled out from this repo alone, so this is a documentation fix, not a code removal.
+
+### SA-TEXT-5 — stale doc comment in `editor-expand-commit.js`
+
+Re-confirmed the file's header comment still asserted (present tense) that `data-original-svg` "contains
+raw SVG markup... the resulting saved SVG is INVALID XML" while the function 90 lines below it
+(`commitExpandedPath`) already base64-encodes every new snapshot via `encodeSnapshot`. Rewrote the
+comment to past tense, named EDM2 as the fix, and cited `tests/editor-serialization.test.js`'s own EDM2
+regression suite as the existing proof — so a future reader doesn't have to re-derive what I just
+re-derived.
+
+### SA-TEXT-7 — `TEXT-DBG` default in `core/debug.js`
+
+Re-confirmed `_flag` still defaulted to `'TEXT-DBG'` (on) despite the file's own doc-comment saying "off
+by default." Changed the default to `false`, matching the documented contract exactly (the doc comment's
+own example line: `window.__editorDebug = false // off (default)`).
+
+### SA-TEXT-6 — ONE font list (the most involved item this turn)
+
+Re-read `editor/editor-fonts.js` in full before touching anything else — found it already declares
+`SYMBOL_FAMILIES` (a `Set` of the 7 icon/emoji-only fonts), which is EXACTLY the distinction needed
+between "fonts sensible to offer as a typed-text family" and "fonts that exist only for the Symbol
+Keyboard glyph picker." This mattered: naively populating the `editorFontFamily` select from ALL of
+`FONT_MAP`'s 18 keys would have added Wingdings/Webdings/Symbol/Segoe-icon-fonts as text-caption choices
+— a real product regression, not a neutral refactor. Used the already-declared `SYMBOL_FAMILIES`
+exclusion instead of inventing a new subset list myself.
+- `core/stamp/render-svg.js`: `KNOWN_FONTS` (was a hand-typed 24-entry array, 18 of which duplicated
+  FONT_MAP exactly) is now `[...Object.keys(FONT_MAP), ...GENERIC_CSS_FAMILIES]`, importing `FONT_MAP`
+  from `editor-fonts.js`. `GENERIC_CSS_FAMILIES` (serif/sans-serif/monospace/cursive/fantasy/system-ui)
+  stays declared locally — these are CSS-universal fallback keywords with no bundled `.ttf`, not "editor
+  fonts" in FONT_MAP's own sense, so folding them into FONT_MAP would have been the wrong direction.
+  Exported `KNOWN_FONTS` (was module-private) so the new test can check it directly.
+- `editor/properties-text.js`: `editorFontFamily` select now populated at bind time from
+  `Object.keys(FONT_MAP)` minus `SYMBOL_FAMILIES`, mirroring `properties-shape.js`'s `initGridToggle`
+  (the grid-spacing select) idiom exactly — same clear-innerHTML-then-loop-then-set-value shape, the
+  precedent the dispatch named.
+- `bspline_gen_palette.html`: emptied the hardcoded `<option>Arial/Tahoma/Verdana</option>` list to a
+  bare `<select id="editorFontFamily"></select>`, matching `#editorGridSpacing`'s own already-empty
+  markup convention exactly.
+- New `tests/editor-fonts.test.js` (4 assertions): every `FONT_MAP` entry is in `KNOWN_FONTS`; every
+  font the select would actually offer (post-`SYMBOL_FAMILIES` filter) is in `KNOWN_FONTS`;
+  `GENERIC_CSS_FAMILIES` are still present; and a direct proof of the "one-line addition propagates"
+  claim itself (constructs a `FONT_MAP`-shaped object with one extra hypothetical font and confirms the
+  derivation mechanism — not just today's fixed list — would pick it up).
+- **Proved non-vacuous, not argued:** temporarily hardcoded `KNOWN_FONTS` to exclude `'Cascadia Mono'`
+  (simulating a stale/hand-typed list missing a real FONT_MAP entry) — both the direct-containment test
+  and the selectable-fonts test failed exactly as expected, for the right reason. Restored, re-ran green.
+
+### Full suite + verify
+
+`npx vitest run` → **196 passed (22 files)**, up from 192 (4 new). `node --check` on all 15 touched JS
+files: clean. Verify greps (dispatch's own list): `__editorDebug ===` structural pattern → 0 live hits
+anywhere (see SA-DEAD-1 note on the bare-string count vs. the structural one). `updateNodeCountUI` → the
+predicted 3 hits, all the documented editor.js leftover, nothing removed. Font names hand-typed outside
+`editor-fonts.js` → 0 (`"Tahoma"` grepped across every other JS/HTML file in the tree).
+
+### Commit split
+
+Two commits, per the dispatch's own "or two if the font declaration is big — say so": (1) the SA-DEAD-*/
+SA-TEXT-5/7 sweep — 13 files (core/debug.js, core/stamp/index.js, editor-controls.js, editor-eraser.js,
+editor-expand-commit.js, editor-expand-shape.js, editor-expand-union.js, editor-expand.js, editor-io.js,
+editor-ui.js, expand.js, layers.js, properties-expand.js) + this WORK-LOG entry; (2) SA-TEXT-6 — 4 files
+(core/stamp/render-svg.js, editor/properties-text.js, bspline_gen_palette.html,
+tests/editor-fonts.test.js). Said so here rather than silently picking one giant commit, since the font
+consolidation is a genuinely separate concern (a declared-source-of-truth fix) from the dead-code/
+debug-gate sweep, and reviewing them separately is easier than one 17-file diff.
+
+**Leftovers for seat A** (full list, so nothing is assumed swept): SA-DEAD-2's `updateNodeCountUI`
+wiring in `editor.js` (import + `_updateNodeCountUI` method + whether the markup should go too, once
+that wiring is gone). The `generatePattern` active-layer note above (slice 3, SE7b, unrelated to SE8c but
+recorded in this same turn per the dispatch's ask).
+
+No gate hit — every removal chain traced (door → handler → markup/CSS → nothing left half-swept);
+SA-DEAD-2 deliberately left as a full leftover rather than a partial, riskier removal.

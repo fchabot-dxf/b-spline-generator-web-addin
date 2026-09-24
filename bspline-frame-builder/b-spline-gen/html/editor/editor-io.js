@@ -11,14 +11,15 @@ import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { resetPanState } from './editor-interaction.js';
 import { clearSnapCursor } from './editor-grid.js';
+import { dbg } from '../core/debug.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
- *  default; flip window.__editorDebug = 'EDITOR-IO' in devtools to enable. */
+ *  default; flip window.__editorDebug = 'EDITOR-IO' in devtools to enable.
+ *  SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
+ *  hand-rolling the window.__editorDebug check. */
 function _ioLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'EDITOR-IO') {
-        try { console.log(`[EDITOR-IO] ${msg}`); } catch (_) {}
-    }
+    dbg('EDITOR-IO', msg);
     try { fusLog(`[EDITOR-IO] ${msg}`); } catch (_) {}
 }
 

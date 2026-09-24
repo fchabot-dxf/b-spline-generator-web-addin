@@ -6,11 +6,9 @@ export function initExpandProperties(editor) {
     // module owns only the property-row controls inside the Expand mode.
 
     const detailIn = el('editorExpandDetail');
-    const smoothIn = el('editorExpandSmooth');
     const runBtn = el('editorRunExpand');
 
     on(detailIn, 'change', () => { editor._expandDetail = parseFloat(detailIn.value) || 1.0; });
-    on(smoothIn, 'change', () => { editor._expandSimplify = parseInt(smoothIn.value) || 15; });
     on(runBtn, 'click', () => performExpand(editor));
 
     // Steppers for Detail
@@ -27,17 +25,14 @@ export function initExpandProperties(editor) {
         });
     }
 
-    // Steppers for Smoothness
-    const sMinus = el('editorExpandSmoothMinus');
-    const sPlus = el('editorExpandSmoothPlus');
-    if (sMinus && sPlus && smoothIn) {
-        on(sMinus, 'click', () => {
-            smoothIn.value = parseInt(smoothIn.value) - 1;
-            smoothIn.dispatchEvent(new Event('change'));
-        });
-        on(sPlus, 'click', () => {
-            smoothIn.value = parseInt(smoothIn.value) + 1;
-            smoothIn.dispatchEvent(new Event('change'));
-        });
-    }
+    // SA-DEAD-3: the Smoothness control's lookups/steppers/change-handler
+    // removed — `editorExpandSmooth`/`-Minus`/`-Plus` have no matching
+    // markup in the palette (only Detail's stepper exists there), so all
+    // three `el()` calls always resolved null and every handler below
+    // them silently no-op'd forever. `editor._expandSimplify` still has
+    // its own default (set at editor construction) and is still read by
+    // expandCurrent — this just removes the dead attempt to let a user
+    // change it from a control that was never reachable. If Fred wants a
+    // real Smoothness stepper back, it needs the matching markup added
+    // (mirroring Detail's), not this dead wiring resurrected as-is.
 }

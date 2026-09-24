@@ -76,10 +76,13 @@ function emptyMask(nx, nz) {
     };
 }
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate (already
+// imported in this file for the 'STAMP DEBUG' category below) instead
+// of hand-rolling window.__editorDebug === 'STAMP-RASTER'. Category kept
+// distinct from 'STAMP DEBUG' — this conversion doesn't merge the two,
+// that's a separate judgment call not requested here.
 function _sLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'STAMP-RASTER') {
-        try { console.log('[STAMP-RASTER] ' + msg); } catch (_) {}
-    }
+    dbg('STAMP-RASTER', msg);
     try { fusLog('[STAMP-RASTER] ' + msg); } catch (_) {}
 }
 

@@ -18,14 +18,19 @@
  *   MultiPolygon = [polygon1, polygon2, ...]                 (disjoint islands)
  */
 import { fusLog } from '../core/fusion-bridge.js';
+import { dbg } from '../core/debug.js';
 
 let _clipperPromise = null;
 let _clipper = null;
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
+// hand-rolling window.__editorDebug === 'EXPAND-SHAPE'. Category kept
+// exactly as it was (gates on 'EXPAND-SHAPE' despite the [EXPAND-UNION]
+// log label) — a pre-existing naming mismatch, not something this
+// mechanical conversion changes; noted in WORK-LOG rather than silently
+// "fixed" as an unrequested behavior change.
 function _uLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-SHAPE') {
-        try { console.log('[EXPAND-UNION] ' + msg); } catch (_) {}
-    }
+    dbg('EXPAND-SHAPE', msg);
     try { fusLog('[EXPAND-UNION] ' + msg); } catch (_) {}
 }
 
