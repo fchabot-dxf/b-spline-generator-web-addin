@@ -681,3 +681,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   texture mapped onto the model's TOP surface (planar UV — the top is a heightfield seen from above), so lines follow the
   relief exactly; off when no layer is tagged. The tag lives in the SVG editor's Layers panel; the sidebar shows a badge
   only (T26 amend 2, seat B). Seat A after SE9.
+- **SE11 drape modes (Fred):** per-layer `drape3d: 'off' | 'plain' | 'color'` — 'plain' drapes in one neutral line
+  color, 'color' in each element's SE9 color (T26 amend 3 stores/cycles it; SE11 renders).
