@@ -2,9 +2,13 @@
  * SE11 — buildDrapeSvg (core/preview/drape-svg.js), the pure filter
  * deciding which vector elements drape onto the 3D relief.
  *
- * Rule (ROADMAP "Layer toggles FINAL" + "👁 is the master"): a layer
- * drapes when visible && carve && showColor (missing field = true, since
- * seat B's T26/SE10 hasn't landed real fields on editor._layers yet).
+ * Rule (SE11f, Fred's final table): a layer drapes when visible &&
+ * showColor (missing field = true, since seat B's T26/SE10 hasn't landed
+ * real fields on editor._layers yet) — INDEPENDENT of carve. Carving and
+ * painting are two separate gates Fred can toggle independently: 3D off
+ * + palette on paints the drape flat on the un-carved relief instead of
+ * showing nothing (SE11c/SE11e had draping gated on `isCarved(l) &&
+ * showColor`, which this turn replaces).
  * SE11d (Fred, overruling SE11's own advisor-guessed default): black
  * elements drape too — there is no colour skip. An element with NO
  * detectable colour at all (neither stroke nor fill set to anything but
@@ -56,11 +60,11 @@ describe('buildDrapeSvg — truth table', () => {
     expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'ties']);
   });
 
-  it('carve:false excludes a layer even though it is visible and showColor', () => {
+  it('SE11f: carve:false does NOT exclude a layer that is visible and showColor — draping is independent of carving now', () => {
     const layers = ALL_QUALIFY.map(l => l.id === 'ties' ? { ...l, carve: false } : l);
     const svg = buildDrapeSvg(layers, SKETCH);
-    expect(layerIdsIn(svg)).not.toContain('ties');
-    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'rails']);
+    expect(layerIdsIn(svg)).toContain('ties');
+    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'rails', 'ties']);
   });
 
   it('showColor:false excludes a layer even though it is visible and carved', () => {
@@ -87,6 +91,20 @@ describe('buildDrapeSvg — truth table', () => {
     expect(svg).not.toBe('');
     expect(layerIdsIn(svg)).toEqual(['black-layer']);
     expect(svg).toContain('#000000');
+  });
+
+  it('SE11f: the full 4-row table (carve x showColor, all visible) — drape tracks showColor only', () => {
+    const rows = [
+      { carve: true,  showColor: true,  drapes: true  }, // carved + painted
+      { carve: true,  showColor: false, drapes: false }, // carved, plain
+      { carve: false, showColor: true,  drapes: true  }, // painted, NOT carved
+      { carve: false, showColor: false, drapes: false }, // nothing
+    ];
+    for (const row of rows) {
+      const layers = [{ id: 'rails', visible: true, carve: row.carve, showColor: row.showColor }];
+      const svg = buildDrapeSvg(layers, SKETCH);
+      expect(layerIdsIn(svg).includes('rails')).toBe(row.drapes);
+    }
   });
 
   it('returns "" for empty/missing sketchSvg', () => {

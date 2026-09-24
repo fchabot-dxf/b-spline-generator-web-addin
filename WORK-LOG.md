@@ -7512,3 +7512,56 @@ implementing amendment 2 itself, not left stale.
   z-fighting/banding at a steep angle.
 
 No amendments pending as of this pass.
+
+## Turn 239 — SE11f: paint without carve (drape = showsColor) — DONE
+
+**Rule change (Fred's final table).** Carving and painting are now two INDEPENDENT gates instead of
+painting being gated behind carving: 3D off + palette on must still paint the drape flat on the un-carved
+relief, not show nothing. `layerQualifies` in `core/preview/drape-svg.js` changed from `isCarved(l) &&
+layer.showColor !== false` to plain `showsColor(l)` — T27's own `visible && showColor` helper
+(`editor/layers.js`), already declared and already used elsewhere, so this is a one-line swap to the
+already-correct primitive rather than a new rule to invent. Carving itself (`isCarved`, used elsewhere in
+the pipeline, not in this file) is untouched — the two gates were already separately declared, they just
+hadn't been separately WIRED yet. Updated the header comment to state the new independence explicitly and
+to stop citing `isCarved` as this file's rule.
+
+**Tests (`tests/drape-svg.test.js`, net +1: 19->20).** Renamed and INVERTED the old "carve:false excludes"
+test to "SE11f: carve:false does NOT exclude" (asserts the layer now DOES drape). Added a new table-driven
+test enumerating all 4 rows of Fred's table (carve x showColor, all visible) in one pass, asserting drape
+tracks `showColor` alone regardless of `carve`. Left the `visible:false` and `showColor:false` exclusion
+tests, the missing-fields-default test, and the black-drapes/no-colour-element tests unchanged — none of
+those depend on carve, so SE11f doesn't touch their behaviour.
+
+**Non-vacuous, the standard way.** Saved a scratch copy of the SE11f `drape-svg.js`, reverted
+`layerQualifies` to the pre-SE11f `isCarved(layer) && layer.showColor !== false` shape, reran — exactly
+the 2 touched/new tests failed (the renamed carve:false test and the new 4-row table test), all 18 others
+stayed green. Restored the scratch copy, reran green (20/20).
+
+**Full suite:** `npx vitest run` -> **396 passed**, 0 failed (includes seat B's T28 colour-mosaic tests,
+merged into this branch by the advisor between turn 237 and this dispatch — confirmed via `git log` that
+no local uncommitted drift was involved, just a routine two-seat merge already on `main`).
+
+**Live Fusion (bridge up, stop/release.py --local/run/deleteMe/reopen ritual run before verification).**
+Drew a red line in a fresh layer, then used the LAYERS panel's per-layer "3D" toggle to turn carving OFF
+while leaving the palette/colour toggle ON (`showsColor` still true), and Applied. `[DRAPE]` log confirmed
+`buildDrapeSvg returned length=275` (non-zero — the layer qualified for draping despite carve being off)
+and `setDrapeTexture done: ... material=MeshPhongMaterial mapSet=true`. A close-up screenshot of the
+result shows the red paint following the terrain's own existing bumps/ridge line with no flat channel or
+depression cut into the surface — painted, not carved, exactly the advisor's own test scenario from the
+dispatch note.
+
+**UI note (not a bug, just documenting what was learned this turn):** the SVG editor's COLOR control has
+changed shape since seat B's T28 landed — it's now a single collapsed swatch + dropdown chevron (opening a
+32-colour mosaic + a "RECENT" swatch + "Custom...") instead of the flat row of swatches used in earlier
+turns' mouse-automation scripts. First attempt this turn clicked where the old flat-row red swatch used to
+be and silently hit nothing, drawing a black line instead (the control's default) — caught immediately via
+the always-screenshot-and-verify habit, not shipped. Re-verified the dropdown's actual chevron position via
+a 2D pixel scan rather than eyeballing the zoomed crop a second time.
+
+**Verify:**
+- `node --check` on the one touched production file: clean.
+- `npx vitest run` -> **396 passed**, 0 failed.
+- Live Fusion: `[DRAPE]` log shows a non-zero `buildDrapeSvg` length with carve off; close-up screenshot
+  shows painted colour tracking the un-carved terrain's own bumps, no groove.
+
+No amendments pending as of this pass.

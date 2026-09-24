@@ -8,17 +8,21 @@
  * texture is the caller's job (core/preview/index.js) — this module only
  * decides WHAT gets drawn.
  *
- * Rule (Fred, ROADMAP "Layer toggles FINAL" + "👁 is the master"): a
- * layer's vectors drape when `visible && carve && showColor`. SE11c: reads
- * that rule through T27's own `isCarved` (editor/layers.js) instead of
- * re-stating visible+carve here — the one place the compound rule lives,
- * per that file's own header ("every gate... reads a layer through
- * these, never a raw check of its own, so the rule can't drift").
+ * Rule (Fred, SE11f final): draping is now INDEPENDENT of carving — a
+ * layer's vectors drape when `visible && showColor` (T27's `showsColor`,
+ * editor/layers.js), not `isCarved(l) && showColor` (SE11c/SE11e's rule).
+ * Carving (`isCarved`) and painting (`showsColor`) are two separate
+ * gates Fred can toggle independently: 3D off + palette on now paints
+ * the drape flat on the un-carved relief instead of showing nothing.
+ * Reads the rule through T27's own `showsColor` instead of re-stating
+ * visible+showColor here — the one place the compound rule lives, per
+ * that file's own header ("every gate... reads a layer through these,
+ * never a raw check of its own, so the rule can't drift").
  */
-import { isCarved } from '../../editor/layers.js';
+import { showsColor } from '../../editor/layers.js';
 
 function layerQualifies(layer) {
-  return isCarved(layer) && layer.showColor !== false;
+  return showsColor(layer);
 }
 
 /** An element's SE9 color: whichever of stroke/fill is real, stroke
