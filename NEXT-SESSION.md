@@ -1,29 +1,28 @@
-# NEXT — SE8e: Un-expand — an expanded text can become editable text again (SA-TEXT-4)
+# NEXT — SE8b-2: measure the drag pipeline, and stop persisting on every frame
 
-**Ball: worker (seat A) · epoch 1 · SE8e.** SE8d accepted + merged with SE7b slice 3 (main 231 tests). Seat B is on
-SE7m (mobile): `editor/editor-interaction.js`, `editor/editor-transform-handles.js`, `editor/editor-hit.js`,
-`editor/editor-grid.js`, `editor/editor-ui.js`, the palette modal markup for a touch action group, `styles/*` — do NOT
-touch those. Your files: `editor/editor-expand-commit.js`, `editor/editor-expand-trace.js` (read), NEW action in
-`editor/tools/action-tools.js`, one rail/toolbar button (tell me where you put it — if it must go in the palette markup,
-add ONLY that one button line and say so, seat B edits other regions of that file), tests (+ WORK-LOG).
-One commit by path.
+**Ball: worker (seat A) · epoch 1 · SE8b-2.** SE8e accepted (00e21a9). Seat B is on SE7m (editor-interaction.js,
+editor-transform-handles.js, editor-hit.js, editor-grid.js, editor-ui.js, palette modal markup, styles/) — not yours.
+Your files: `main/app-init.js` (the editor `onChange`), `editor/editor.js` (`_notifyChange`), `core/debug.js` (one
+category), tests (+ WORK-LOG). One commit by path.
 
-## Ground truth: AUDIT-SVG-EDITOR.md SA-TEXT-4 (line 397+)
-Expand stores the original as base64 `data-original-text-svg` / `data-original-svg` (`editor-expand-commit.js:107-121`,
-decoded only by `expand-trace.js:46` to re-run Expand). No path restores an editable `<text>`; Ctrl+Z is wiped on every
-reopen (`open()`).
+## Ground truth
+SE8b's `_notifyChange('live')` caps the fan-out at one `_onChange` per animation frame, but `_onChange` is still the
+whole pipeline (`main/app-init.js` initSvgEditor): `saveForRasterization()` (serialize + font embedding) →
+`P.editorSvg = …` → `saveLastSession()` (localStorage write) → `refreshAllStampMasks()` (rasterize every layer → masks
+→ rebuild the heightfield + mesh). Nobody has measured which step costs what; the advisor can't until Fusion's bridge
+is back, so this turn builds the measurement and makes only the change that is right regardless of numbers.
 ## Build
-- `unexpand(editor, el)`: decode the stored original (reuse the existing `decodeSnapshot` — do not write a second
-  decoder), replace the expanded group/path with the restored `<text>` IN PLACE (same `data-layer`, the expanded
-  element's CURRENT transform composed onto the original's so a moved expansion comes back where it now is), select
-  it, ONE pushState + `_notifyChange('commit')`.
-- A declared rule for which elements are un-expandable: `isUnexpandable(el)` = has the stored original attr. The
-  button is enabled only for a selection where every element is un-expandable.
-- Button: "Un-expand" next to the existing Expand controls (the Expand group is contextual — show it there).
+1. **Pass the kind through:** `_onChange(kind)` receives `'live' | 'commit'` from `_notifyChange` (default `'commit'`
+   for any other caller). Declare in ONE place what each kind runs: `CHANGE_PIPELINE = { live: ['serialize',
+   'remask'], commit: ['serialize', 'persist', 'remask'] }` — `persist` (`saveLastSession`) never runs during a drag.
+2. **Measure:** a `PERF` debug category in `core/debug.js` (off by default); when on, each pipeline step logs its
+   duration via `fusLog('[PERF] live serialize 3.1ms …')` plus a per-frame total — so the advisor can switch it on in
+   the add-in or the site console and read real numbers.
+3. Nothing else changes behaviour: if the table says a step runs, it runs exactly as today.
 ## Verify
-Tests: expand → unexpand round-trip returns the same text content/font/size; a moved expansion comes back at the moved
-position; a path without the attr → button disabled / no-op. `npx vitest run` → 231 + new, green.
+Tests: a 'live' change never calls `saveLastSession`; a 'commit' calls it exactly once; the PERF gate off → no timing
+logs. `npx vitest run` → 236 + new, green.
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8e: Un-expand (decodeSnapshot reuse, transform kept) — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8b-2: CHANGE_PIPELINE live/commit (no persist during drag), PERF timing gate — <sha>, N files, vitest N"`
 and stop.
