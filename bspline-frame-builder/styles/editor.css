@@ -965,11 +965,12 @@
    also excluded from the stamp output. */
 #editorSVGContainer .layer-hidden { display: none; }
 
-/* Elements on non-active layers are dimmed and non-interactive so the user
-   can clearly see which layer is currently editable. The class is applied
-   by applyLayerState() in editor/layers.js. */
+/* Elements on non-active layers are non-interactive (a click can't grab
+   something on another layer). Fred 2026-09-24: shown layers keep FULL
+   opacity even when not active — no dimming; the active layer is marked
+   in the layer list instead. The class is applied by applyLayerState()
+   in editor/layers.js. */
 #editorSVGContainer .inactive-layer {
-    opacity: 0.4;
     pointer-events: none;
 }
 
