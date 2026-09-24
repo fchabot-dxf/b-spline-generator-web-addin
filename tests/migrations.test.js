@@ -132,3 +132,75 @@ describe('runMigrations: legacy-stamp-svg', () => {
     expect(P.stampLayers[0].svg).toBeTruthy(); // untouched — when() gated on !editorSvg
   });
 });
+
+/**
+ * SE10 AMEND — layer-carve-flag. Before SE10, `visible === false` ALSO
+ * meant "don't carve" (there was no other switch). editor/layers.js's own
+ * applyToolingDefaults fills a MISSING `carve` with a flat
+ * TOOLING_DEFAULTS.carve (true) on restore, which would silently start
+ * carving a layer the user had deliberately hidden pre-SE10. This
+ * migration gives every already-saved layer its correct HISTORICAL carve
+ * value (carve = it was visible) before that flat default ever applies.
+ */
+describe('runMigrations: layer-carve-flag', () => {
+  function editorSvgWithLayers(roster) {
+    const attr = JSON.stringify(roster).replace(/"/g, '&quot;');
+    return `<svg xmlns="http://www.w3.org/2000/svg" data-editor-layers="${attr}"></svg>`;
+  }
+  function rosterOf(p) {
+    const root = new DOMParser().parseFromString(p.editorSvg, 'image/svg+xml').documentElement;
+    return JSON.parse(root.getAttribute('data-editor-layers'));
+  }
+
+  it('a hidden layer missing carve gets carve:false (its historical behavior)', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', visible: false }]) };
+    runMigrations(P);
+    expect(rosterOf(P)[0].carve).toBe(false);
+  });
+
+  it('a shown layer missing carve gets carve:true', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', visible: true }]) };
+    runMigrations(P);
+    expect(rosterOf(P)[0].carve).toBe(true);
+  });
+
+  it('a layer that already HAS carve is left exactly as saved, not overridden from visible', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', visible: false, carve: true }]) };
+    runMigrations(P);
+    expect(rosterOf(P)[0].carve).toBe(true); // NOT flipped to false by visible
+  });
+
+  it('mixed roster: only the layer missing carve is touched', () => {
+    const P = {
+      editorSvg: editorSvgWithLayers([
+        { id: '0', name: 'Layer 1', visible: true },               // missing carve -> gets true
+        { id: '1', name: 'Layer 2', visible: false, carve: true },  // already set -> untouched
+      ]),
+    };
+    runMigrations(P);
+    const roster = rosterOf(P);
+    expect(roster[0].carve).toBe(true);
+    expect(roster[1].carve).toBe(true);
+  });
+
+  it('is idempotent — running twice does not change the result', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', visible: false }]) };
+    runMigrations(P);
+    const first = P.editorSvg;
+    runMigrations(P);
+    expect(P.editorSvg).toBe(first);
+  });
+
+  it('does nothing when every layer already has carve', () => {
+    const P = { editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', visible: false, carve: false }]) };
+    const before = P.editorSvg;
+    runMigrations(P);
+    expect(P.editorSvg).toBe(before);
+  });
+
+  it('does nothing (does not throw) when there is no data-editor-layers roster at all', () => {
+    const P = { editorSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>' };
+    expect(() => runMigrations(P)).not.toThrow();
+    expect(P.editorSvg).toBe('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  });
+});

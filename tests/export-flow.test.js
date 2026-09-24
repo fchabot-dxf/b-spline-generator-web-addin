@@ -38,6 +38,7 @@ function mockEditor(layers) {
     _layers: layers.map(l => ({
       id: l.id,
       visible: l.visible,
+      carve: l.carve,
       depth: l.depth,
       profile: l.profile,
       _mask: l.mask ?? null,
@@ -73,13 +74,34 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(active[0].svg).toContain('data-layer');
   });
 
-  it('does not count a HIDDEN layer even though P.stampLayers (unused now) would say otherwise', () => {
+  it('a HIDDEN layer is never exportable, even though P.stampLayers (unused now) would say otherwise', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
 
-    expect(activeStampLayers()).toHaveLength(0);
     expect(exportableStampLayers()).toHaveLength(0);
+  });
+
+  // SE10 AMEND: SHOW (visible) and CARVE are independent axes — a layer
+  // can carve while hidden, or show without carving. These two replace
+  // the old "hidden layer never carves" assumption with the dispatch's
+  // own explicit pair of cases.
+  it('SE10: carve:false + visible:true -> not carving, still exportable (shown but not cut)', () => {
+    window.svgEditor = mockEditor([
+      { id: '0', visible: true, carve: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
+    ]);
+
+    expect(activeStampLayers()).toHaveLength(0);     // carve:false -> never carving, mask or not
+    expect(exportableStampLayers()).toHaveLength(1); // still shown -> still ships as artwork
+  });
+
+  it('SE10: visible:false + carve:true (default) -> carving, never exportable (cut but not shown/shipped)', () => {
+    window.svgEditor = mockEditor([
+      { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
+    ]);
+
+    expect(activeStampLayers()).toHaveLength(1);     // carve defaults true, independent of visible
+    expect(exportableStampLayers()).toHaveLength(0); // hidden -> never shipped, carving or not
   });
 
   it('does not count an EMPTY layer (no content, no mask)', () => {

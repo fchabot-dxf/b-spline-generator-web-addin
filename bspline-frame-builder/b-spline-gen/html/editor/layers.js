@@ -10,8 +10,21 @@
  *
  *   - id: stable string used as data-layer on SVG elements
  *   - name: user-editable display name (defaults to "Layer N")
- *   - visible: bool; hidden layers are dimmed via CSS and excluded
- *              from the stamp expand pipeline (task 4)
+ *   - visible: bool; SHOW — editor canvas, 3D vector overlay, both vector
+ *              exports (Fusion sketch + SVG download). Independent of carve.
+ *   - carve: bool (default true); CARVE — mask generation + heightfield.
+ *            A layer can carve while hidden, or show without carving
+ *            (SE10 AMEND — supersedes the old "visible = carved").
+ *   - drape3d: bool (default false); TAG — this layer's vectors drape on
+ *              the 3D mesh. Stored/toggled/shown here; seat A (SE11)
+ *              reads `layer.drape3d && layer.visible !== false` and
+ *              renders the actual drape.
+ *   - showColor: bool (default true); whether the layer draws in its own
+ *                elements' colors or one neutral color, WHEREVER it's
+ *                drawn (editor canvas flat AND the 3D drape) — applied as
+ *                a display-only override (a CSS class), never by
+ *                rewriting elements' stored stroke/fill. Independent of
+ *                drape3d; never disabled in the UI.
  *   - depth, profile, angle: tool + plunge for this pass
  *   - tx/ty/rotation/scale/mirrorX/mirrorY: per-pass transform
  *   - blur, smoothing, suppression, edgeFilletRadius, filletPower:
@@ -39,6 +52,16 @@ import { el, on } from './dom.js';
  * Each field here MUST stay in sync with what the rasterizer + apply-
  * stamp-layers pipeline reads. When migrating those readers from
  * P.stampLayers to editor._layers, update both sides together.
+ *
+ * SE10: carve/drape3d/showColor live here too, despite not being CNC
+ * tooling in the depth/profile/angle sense — `applyToolingDefaults`
+ * (below) is the one mechanism that back-fills a MISSING field on every
+ * layer-creation and every restore path (addLayer, editor-io.js's open()
+ * and _reconcileLayersFromSvg), and duplicating that fill-in logic
+ * bespoke for three more fields (the way `visible` gets, elsewhere) would
+ * be more code for the same result. `visible` itself stays special-cased
+ * (addLayer's own literal, editor-io.js's own restore line) rather than
+ * moved here — not broken, not this turn's to touch.
  */
 export const TOOLING_DEFAULTS = Object.freeze({
   depth: 0.25,
@@ -55,6 +78,9 @@ export const TOOLING_DEFAULTS = Object.freeze({
   suppression: 0.15,
   edgeFilletRadius: 0,
   filletPower: 2.2,
+  carve: true,
+  drape3d: false,
+  showColor: true,
 });
 
 /** Apply TOOLING_DEFAULTS to a partial layer object — fills only the
@@ -231,6 +257,48 @@ export function setLayerVisible(editor, id, visible) {
   if (editor._onChange) editor._onChange();
 }
 
+/** SE10 AMEND: CARVE — independent of `visible` (a layer can carve while
+ *  hidden, or show without carving). main/stamp-mask-manager.js and
+ *  core/engine/rebuild.js gate mask generation / heightfield inclusion on
+ *  this field, not `visible`, going forward. */
+export function setLayerCarve(editor, id, carve) {
+  if (!Array.isArray(editor._layers)) return;
+  const layer = editor._layers.find(l => String(l.id) === String(id));
+  if (!layer) return;
+  layer.carve = !!carve;
+  renderLayersPanel(editor);
+  if (typeof editor.pushState === 'function') editor.pushState();
+  if (editor._onChange) editor._onChange();
+}
+
+/** SE10 AMEND 4/5: the "3D" tag — stored/toggled/shown here; seat A
+ *  (SE11) reads `layer.drape3d && layer.visible !== false` to render the
+ *  actual drape. No rendering side effect in this module. */
+export function setLayerDrape3d(editor, id, drape3d) {
+  if (!Array.isArray(editor._layers)) return;
+  const layer = editor._layers.find(l => String(l.id) === String(id));
+  if (!layer) return;
+  layer.drape3d = !!drape3d;
+  renderLayersPanel(editor);
+  if (typeof editor.pushState === 'function') editor.pushState();
+  if (editor._onChange) editor._onChange();
+}
+
+/** SE10 AMEND 5: the "■" color toggle — independent of drape3d, never
+ *  disabled. Applies as a display-only class via applyLayerState (never
+ *  rewrites an element's own stored stroke/fill), so turning it back on
+ *  always restores every element's own color exactly. */
+export function setLayerShowColor(editor, id, showColor) {
+  if (!Array.isArray(editor._layers)) return;
+  const layer = editor._layers.find(l => String(l.id) === String(id));
+  if (!layer) return;
+  layer.showColor = !!showColor;
+  renderLayersPanel(editor);
+  applyLayerState(editor);
+  if (typeof editor.pushState === 'function') editor.pushState();
+  if (editor._onChange) editor._onChange();
+}
+
 // ----------- Active layer -----------
 
 export function setActiveLayer(editor, layerId) {
@@ -261,11 +329,18 @@ export function applyLayerState(editor) {
   const activeLayer = getActiveLayer(editor);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const visById = new Map(layers.map(l => [l.id, l.visible !== false]));
+  // SE10 AMEND 5: showColor — a display-only override (this class alone),
+  // never a rewrite of the element's own stored stroke/fill attrs. Off =
+  // draw in one neutral color; the CSS rule lives in styles/editor.css
+  // next to .layer-hidden/.inactive-layer, the two classes this same loop
+  // already manages the same way.
+  const colorById = new Map(layers.map(l => [l.id, l.showColor !== false]));
 
   editor._sketchLayer.children().forEach(child => {
     const layerId = getElementLayer(child);
     const isActive = layerId === activeLayer;
     const isVisible = visById.has(layerId) ? visById.get(layerId) : true;
+    const showColor = colorById.has(layerId) ? colorById.get(layerId) : true;
 
     // NOTE: do NOT use svg.js's toggleClass(name, force) here. In this
     // version of svg.js the second argument is ignored — the class just
@@ -279,6 +354,8 @@ export function applyLayerState(editor) {
     else           child.removeClass('inactive-layer');
     if (!isVisible) child.addClass('layer-hidden');
     else            child.removeClass('layer-hidden');
+    if (!showColor) child.addClass('layer-no-color');
+    else            child.removeClass('layer-no-color');
   });
 
   // BUG-28 cross-layer multi-select: only deselect when the selection is
@@ -381,6 +458,27 @@ function _formatToolSummary(layer) {
   return `${label} ${depth < 0 ? '-' : ''}${abs}"`;
 }
 
+/** SE10 AMEND 4/5: one small factory for the three fixed-glyph toggle
+ *  buttons (⛏ carve, 3D drape, ■ color) — same shape (a real <button>,
+ *  `.active` + `aria-pressed` for on/off, click stops propagation and
+ *  calls the setter), only the glyph/title/class/state-read differ. The
+ *  eye stays its own bespoke code just below — it swaps its actual SVG
+ *  icon per state (open/closed), not just an `.active` class, which
+ *  doesn't fit this shape. */
+function _makeToggleButton({ className, glyph, active, onTitle, offTitle, onClick }) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = className + (active ? ' active' : '');
+  btn.textContent = glyph;
+  btn.title = active ? onTitle : offTitle;
+  btn.setAttribute('aria-pressed', String(active));
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return btn;
+}
+
 function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const row = document.createElement('div');
   row.className = 'layer-row' + (compact ? ' compact' : '') + (isActive ? ' active' : '');
@@ -434,9 +532,46 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   vis.className = 'layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
   vis.innerHTML = layer.visible === false ? _eyeClosedSVG() : _eyeOpenSVG();
   vis.title = layer.visible === false ? 'Show layer' : 'Hide layer';
+  vis.setAttribute('aria-pressed', String(layer.visible !== false));
   vis.addEventListener('click', (e) => {
     e.stopPropagation();
     setLayerVisible(editor, layer.id, !layer.visible);
+  });
+
+  // SE10 AMEND: CARVE, independent of SHOW (👁 above) — a layer can carve
+  // while hidden, or show without carving.
+  const isCarved = layer.carve !== false;
+  const carveBtn = _makeToggleButton({
+    className: 'layer-carve',
+    glyph: '⛏',
+    active: isCarved,
+    onTitle: 'Carves (click to stop carving)',
+    offTitle: 'Not carved (click to carve)',
+    onClick: () => setLayerCarve(editor, layer.id, !isCarved),
+  });
+
+  // SE10 AMEND 4/5: the "3D" drape tag — stored/toggled here, rendered by
+  // seat A (SE11).
+  const isDraped = layer.drape3d === true;
+  const drapeBtn = _makeToggleButton({
+    className: 'layer-drape3d',
+    glyph: '3D',
+    active: isDraped,
+    onTitle: 'Draped on the 3D mesh (click to remove)',
+    offTitle: 'Not draped on the 3D mesh (click to add)',
+    onClick: () => setLayerDrape3d(editor, layer.id, !isDraped),
+  });
+
+  // SE10 AMEND 5: "■" element colors — independent of drape3d, NEVER
+  // disabled (dropped amend 4's "greyed while 3D is off" rule).
+  const showsColor = layer.showColor !== false;
+  const colorBtn = _makeToggleButton({
+    className: 'layer-showcolor',
+    glyph: '■',
+    active: showsColor,
+    onTitle: 'Shows this layer\'s own colors (click for one neutral color)',
+    offTitle: 'Drawn in one neutral color (click to show its own colors)',
+    onClick: () => setLayerShowColor(editor, layer.id, !showsColor),
   });
 
   const name = document.createElement('span');
@@ -448,12 +583,14 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   // show (and no room); the sidebar row is the one place a user picks a
   // layer WITHOUT the Plunge Depth / Tool Profile controls already in
   // view, so it gets an at-a-glance summary of what it'll carve with.
+  // SE10 AMEND: dimmed (not hidden) when the layer isn't carved — its
+  // tool spec still exists, it's just not currently cutting.
   let toolSummary = null;
   if (compact) {
     toolSummary = document.createElement('span');
-    toolSummary.className = 'layer-tool-summary';
+    toolSummary.className = 'layer-tool-summary' + (isCarved ? '' : ' not-carved');
     toolSummary.textContent = _formatToolSummary(layer);
-    toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"`;
+    toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${isCarved ? '' : ' (not carved)'}`;
   }
 
   const del = document.createElement('button');
@@ -480,8 +617,11 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
 
   row.appendChild(handle);
   row.appendChild(vis);
+  row.appendChild(carveBtn);
   row.appendChild(name);
   if (toolSummary) row.appendChild(toolSummary);
+  row.appendChild(drapeBtn);
+  row.appendChild(colorBtn);
   row.appendChild(del);
 
   // Click row → activate layer.

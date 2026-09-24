@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  renderLayerList, renderLayersPanel,
+  renderLayerList, renderLayersPanel, applyLayerState,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 function mockEditor(layers, activeLayer) {
@@ -80,6 +80,42 @@ describe('renderLayerList', () => {
     const ids = Array.from(container.querySelectorAll('.layer-row')).map(r => r.dataset.layerId);
     expect(ids).toEqual(['2', '1', '0']);
   });
+
+  // SE10 AMEND 4/5: carve (⛏) / drape3d (3D) / showColor (■) — all three
+  // real toggles, in BOTH compact and non-compact rows (amend 5 dropped
+  // the earlier compact-only-badge design for drape3d/showColor).
+  it('carve/drape3d/showColor render as real buttons with .active + aria-pressed reflecting the layer, in BOTH compact and non-compact rows', () => {
+    const editor = mockEditor([
+      mockLayer('0', { carve: false, drape3d: true, showColor: false }),
+    ], '0');
+
+    for (const compact of [false, true]) {
+      renderLayerList(container, editor, { compact });
+      const row = container.querySelector('.layer-row');
+      const carveBtn = row.querySelector('.layer-carve');
+      const drapeBtn = row.querySelector('.layer-drape3d');
+      const colorBtn = row.querySelector('.layer-showcolor');
+
+      expect(carveBtn.classList.contains('active')).toBe(false); // carve:false
+      expect(carveBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(drapeBtn.classList.contains('active')).toBe(true);  // drape3d:true
+      expect(drapeBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(colorBtn.classList.contains('active')).toBe(false); // showColor:false
+      expect(colorBtn.getAttribute('aria-pressed')).toBe('false');
+    }
+  });
+
+  it('a not-carved layer\'s tool summary gets the .not-carved (dimmed) class; a carved one does not', () => {
+    const editor = mockEditor([
+      mockLayer('0', { carve: false }),
+      mockLayer('1', { carve: true }),
+    ], '0');
+    renderLayerList(container, editor, { compact: true });
+    const row0 = container.querySelector('.layer-row[data-layer-id="0"]');
+    const row1 = container.querySelector('.layer-row[data-layer-id="1"]');
+    expect(row0.querySelector('.layer-tool-summary').classList.contains('not-carved')).toBe(true);
+    expect(row1.querySelector('.layer-tool-summary').classList.contains('not-carved')).toBe(false);
+  });
 });
 
 describe('renderLayersPanel: the editor panel and the sidebar never disagree', () => {
@@ -137,5 +173,93 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
     expect(editorList.querySelector('.layer-row[data-layer-id="1"]').classList.contains('active')).toBe(true);
     expect(stampList.querySelector('.layer-row[data-layer-id="1"]').classList.contains('active')).toBe(true);
     expect(editorList.querySelector('.layer-row[data-layer-id="0"]').classList.contains('active')).toBe(false);
+  });
+
+  // SE10 AMEND: the three new toggles are wired exactly like the eye —
+  // clicking in either list updates the shared data, so BOTH re-renders
+  // agree. One test per toggle, each driven via a real click, not data.
+  it('clicking ⛏ carve in the EDITOR panel updates the SIDEBAR row too', () => {
+    const editor = mockEditor([mockLayer('0', { carve: true })], '0');
+    renderLayersPanel(editor);
+
+    editorList.querySelector('.layer-carve').click();
+
+    expect(editor._layers[0].carve).toBe(false);
+    expect(stampList.querySelector('.layer-carve').classList.contains('active')).toBe(false);
+  });
+
+  it('clicking 3D drape3d in the SIDEBAR updates the EDITOR panel row too', () => {
+    const editor = mockEditor([mockLayer('0', { drape3d: false })], '0');
+    renderLayersPanel(editor);
+
+    stampList.querySelector('.layer-drape3d').click();
+
+    expect(editor._layers[0].drape3d).toBe(true);
+    expect(editorList.querySelector('.layer-drape3d').classList.contains('active')).toBe(true);
+  });
+
+  it('clicking ■ showColor in the EDITOR panel updates the SIDEBAR row too', () => {
+    const editor = mockEditor([mockLayer('0', { showColor: true })], '0');
+    renderLayersPanel(editor);
+
+    editorList.querySelector('.layer-showcolor').click();
+
+    expect(editor._layers[0].showColor).toBe(false);
+    expect(stampList.querySelector('.layer-showcolor').classList.contains('active')).toBe(false);
+  });
+});
+
+// SE10 AMEND 5: showColor off -> a display-only .layer-no-color class on
+// the layer's live SVG children (applyLayerState), never a rewrite of
+// their own stored stroke/fill — turning it back on removes the class
+// and the element's original color shows again untouched.
+describe('applyLayerState: showColor drives .layer-no-color on the SVG canvas', () => {
+  function mockChild(layerId) {
+    const classes = new Set();
+    return {
+      attr: (name) => (name === 'data-layer' ? layerId : undefined),
+      addClass: (c) => classes.add(c),
+      removeClass: (c) => classes.delete(c),
+      hasClass: (c) => classes.has(c),
+      _classes: classes,
+    };
+  }
+
+  it('adds .layer-no-color to a showColor:false layer\'s children, and NOT to a showColor:true layer\'s', () => {
+    const noColorChild = mockChild('0');
+    const colorChild = mockChild('1');
+    const editor = {
+      _activeLayer: '0',
+      _layers: [
+        mockLayer('0', { showColor: false }),
+        mockLayer('1', { showColor: true }),
+      ],
+      _sketchLayer: { children: () => [noColorChild, colorChild] },
+      _selectedElements: [],
+    };
+
+    applyLayerState(editor);
+
+    expect(noColorChild._classes.has('layer-no-color')).toBe(true);
+    expect(colorChild._classes.has('layer-no-color')).toBe(false);
+  });
+
+  it('removing the class again once showColor flips back to true — never touches any unrelated class', () => {
+    const child = mockChild('0');
+    child.addClass('user-custom-marker'); // a class applyLayerState has no opinion on — must survive both calls
+    const editor = {
+      _activeLayer: '0',
+      _layers: [mockLayer('0', { showColor: false })],
+      _sketchLayer: { children: () => [child] },
+      _selectedElements: [],
+    };
+
+    applyLayerState(editor);
+    expect(child._classes.has('layer-no-color')).toBe(true);
+
+    editor._layers[0].showColor = true;
+    applyLayerState(editor);
+    expect(child._classes.has('layer-no-color')).toBe(false);
+    expect(child._classes.has('user-custom-marker')).toBe(true); // untouched by this change
   });
 });

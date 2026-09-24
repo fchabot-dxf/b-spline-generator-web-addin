@@ -47,23 +47,37 @@ import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 //   • exportableStampLayers: layers with payload to ship (have svg). Looser
 //     because the SVG can be exported even before its mask has been baked.
 //     Used by includeSVG. Mask-less layers contribute artwork but no carve.
-const isCarvingLayer = (l) => l.enabled && l.svg && l.mask && Math.abs(l.depth) > 0.001;
+//
+// SE10 AMEND: `enabled` (SHOW) and `carve` (CARVE) are now independent
+// axes read straight off the candidate view — isCarvingLayer no longer
+// requires `enabled`, since a HIDDEN layer with carve:true must still
+// carve (mirrors the same gate change in stamp-mask-manager.js and
+// core/engine/rebuild.js); hasShippableSvg keeps reading `enabled` alone
+// (still means "shown"), unchanged.
+const isCarvingLayer = (l) => l.carve && l.mask && Math.abs(l.depth) > 0.001;
 const hasShippableSvg = (l) => l.enabled && l.svg;
 
 /**
- * Build one {enabled, depth, profile, mask, svg} view per editor layer,
- * reading tooling AND content from the same editor layer object — no
- * position-based cross-store lookup, so reorder/delete-in-middle can't
+ * Build one {enabled, carve, depth, profile, mask, svg} view per editor
+ * layer, reading tooling AND content from the same editor layer object —
+ * no position-based cross-store lookup, so reorder/delete-in-middle can't
  * desync the two (SA-LAYER-1 finding #3). Returns [] when the editor
  * isn't loaded (nothing to build a candidate list from).
+ *
+ * SE10 AMEND: no longer short-circuits mask/svg to null for a hidden
+ * layer — a hidden-but-carving layer's real mask/svg must still be
+ * readable here (getLayerSvg doesn't care about `visible` either; see
+ * its own docstring). `enabled` and `carve` are tracked as two separate
+ * booleans on the view instead of one collapsed flag.
  */
 function _stampExportCandidates() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : [];
     return editorLayers.map((layer) => {
-        if (!layer || layer.visible === false) return { enabled: false, depth: 0, profile: null, mask: null, svg: null };
+        if (!layer) return { enabled: false, carve: false, depth: 0, profile: null, mask: null, svg: null };
         return {
-            enabled: true,
+            enabled: layer.visible !== false,
+            carve: layer.carve !== false,
             depth: layer.depth,
             profile: layer.profile,
             mask: layer._mask || null,

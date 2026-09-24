@@ -607,6 +607,48 @@
 .layer-visibility.is-hidden { color: #c8c8c8; }
 .layer-visibility svg { width: 14px; height: 14px; }
 
+/* SE10 AMEND 4/5: carve (⛏) / drape3d (3D) / showColor (■) — fixed-glyph
+   toggles (editor/layers.js's _makeToggleButton), same real-button shape
+   as .layer-visibility above but distinguished by an .active background
+   tint rather than swapping the glyph (there's no natural "off" icon for
+   a pickaxe/3D/square the way an eye has an open/closed state). All
+   three render in BOTH the sidebar and the editor's own Layers panel —
+   amend 5 dropped the earlier compact-only-badge design entirely. */
+.layer-carve, .layer-drape3d, .layer-showcolor {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #999;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.layer-carve:hover, .layer-drape3d:hover, .layer-showcolor:hover { background: #f0f0f0; }
+.layer-carve.active     { color: #333; background: #eef3ea; border-color: #cfe0c5; }
+.layer-drape3d.active   { color: #1a55b8; background: #e8f0ff; border-color: #b6d0f5; }
+.layer-showcolor.active { color: #333; background: #fff3d6; border-color: #e6cf8a; }
+/* SE10 AMEND 4/5's own "44px on coarse pointers" is per-BUTTON, not
+   compact-only (all four toggles now render in both lists) — grow the
+   row itself under (pointer:coarse) too, editor panel included, so a
+   44px button actually fits instead of clipping a still-28px row. */
+@media (pointer: coarse) {
+    .layer-row, .layer-row.compact { height: 44px; }
+    .layer-visibility, .layer-carve, .layer-drape3d, .layer-showcolor {
+        min-width: 44px;
+        height: 44px;
+        font-size: 12px;
+    }
+    .layer-visibility svg { width: 20px; height: 20px; }
+}
+
 .layer-name {
     flex: 1;
     min-width: 0;
@@ -658,17 +700,19 @@
    (the same signal SA-MOBILE-4's tool buttons already use — an imprecise
    pointer is present, not a width guess). 36px on mouse/pen matches this
    panel's other compact controls (dispatch's own examples: the stepper
-   rows, ~26-32px) closely enough to not look oversized there. */
+   rows, ~26-32px) closely enough to not look oversized there. The
+   pointer:coarse -> 44px override lives in the single consolidated rule
+   above (next to the 4 toggle buttons' own coarse-pointer sizing) since
+   AMEND 4/5 made it apply to the editor's own (non-compact) panel too,
+   not just compact rows. */
 .layer-row.compact { height: 36px; gap: 6px; }
-@media (pointer: coarse) {
-    .layer-row.compact { height: 44px; }
-}
 
 /* SE10: profile+depth read-out ("V .25"", "Ball .12"") — compact rows
    only (editor/layers.js's _formatToolSummary), so a user picking a
    layer in the sidebar (where the Plunge Depth / Tool Profile controls
    aren't showing THIS layer's values until it's made active) sees what
-   it'll carve with before tapping it. */
+   it'll carve with before tapping it. SE10 AMEND: .not-carved dims it —
+   the tool spec still exists, it's just not currently cutting. */
 .layer-tool-summary {
     flex-shrink: 0;
     font-size: 10px;
@@ -676,6 +720,7 @@
     padding: 0 2px;
     white-space: nowrap;
 }
+.layer-tool-summary.not-carved { opacity: 0.45; }
 
 /* =========================================================================
    Layers Panel (right sidebar inside .cad-modal-body of the SVG editor)
@@ -728,6 +773,28 @@
 #editorSVGContainer .inactive-layer {
     opacity: 0.4;
     pointer-events: none;
+}
+
+/* SE10 AMEND 5: showColor off — one neutral color, applied as a display-
+   only override (this class alone; applyLayerState in editor/layers.js
+   adds/removes it, never touching the element's own stored stroke/fill
+   attrs, so turning it back on always restores every element's own
+   color exactly). stroke is unconditional (the dominant "element color"
+   concept for this app's stroke-drawn vector/toolpath content); fill is
+   only overridden when the element actually has one (:not([fill="none"])
+   — svg.js's own .fill()/.stroke() write PRESENTATION ATTRIBUTES, not
+   inline style, so this attribute selector reliably matches what this
+   app's elements actually carry) — forcing fill unconditionally would
+   turn deliberately-unfilled (fill="none") stroke art into filled
+   shapes, a real visual regression, not a neutral-color one. Known,
+   disclosed gap: an element with its color set via an INLINE style
+   attribute rather than a presentation attribute wouldn't be caught by
+   the fill guard — not a shape this app's own drawing code produces. */
+#editorSVGContainer .layer-no-color {
+    stroke: #999 !important;
+}
+#editorSVGContainer .layer-no-color:not([fill="none"]) {
+    fill: #999 !important;
 }
 
 /* Mobile: narrower panel; on very narrow viewports the panel hides behind

@@ -49,7 +49,10 @@ export async function updateStampMasks(nx, nz) {
   if (editorLayers && editorLayers.length > 0) {
     editorLayers.forEach((layer, idx) => {
       if (!layer) return;
-      if (layer.visible === false) return;
+      // SE10 AMEND: CARVE gates masking now, independent of SHOW — a
+      // hidden layer can still carve (needs its mask built here), and a
+      // shown layer with carve:false never should (was `visible===false`).
+      if (layer.carve === false) return;
       const svg = getLayerSvg(editor, layer.id);
       if (!svg) { emptyIdxs.push(idx); return; }   // nothing on this layer yet — skip
       work.push({ idx, layer, svg });

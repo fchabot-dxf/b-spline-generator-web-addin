@@ -208,7 +208,10 @@ function _collectStampPasses() {
     if (editorLayers) {
         editorLayers.forEach((layer) => {
             if (!layer) return;
-            if (layer.visible === false) return;
+            // SE10 AMEND: CARVE, not SHOW — mirrors stamp-mask-manager.js's
+            // own gate change; a hidden layer with carve:true still cuts,
+            // a shown layer with carve:false never does.
+            if (layer.carve === false) return;
             const mask = layer._mask;
             if (!mask) return;
             // Build a stamp-pass-shape view of the editor layer. We keep
