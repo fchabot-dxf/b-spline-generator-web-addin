@@ -7345,3 +7345,67 @@ drape-svg tests pass unchanged.
   clears the suspension"), not a substitute for it, just not blocking THIS turn's commit.
 
 No amendments pending.
+
+---
+
+## Turn 235 — SE11d: black lines drape too (Fred overrules the earlier skip) — DONE
+
+SE11c (f78b32e) accepted — advisor confirmed live in Fusion the red L paints exactly its carved
+grooves. Small, focused turn.
+
+**Removed `DRAPE_SKIP_COLORS` entirely** (`core/preview/drape-svg.js`): the constant, and the
+`DRAPE_SKIP_COLORS.includes(color)` half of the element filter. Kept the OTHER half of that same
+check (`if (!color) continue`) — an element with genuinely no colour at all (both stroke AND fill
+`'none'` or absent) still doesn't drape, but that was never the black-specific rule; it's "nothing to
+paint," unrelated to what colour that nothing would have been. Rule stays exactly `isCarved(l) &&
+l.showColor !== false` (T27, unchanged this turn).
+
+**Grepped every reference** (`grep -rn "DRAPE_SKIP_COLORS"` across the whole repo's `.js` files):
+found 2 in production code (the declaration + the filter use, both in `drape-svg.js`) and 4 in
+`tests/drape-svg.test.js` (an import, a `describe` block testing its value, and two prose mentions in
+comments). All removed or rewritten — a fresh grep after the edit returns nothing.
+
+**Tests (`tests/drape-svg.test.js`, net −1: 17→16).** Removed the now-pointless `describe
+('DRAPE_SKIP_COLORS', ...)` block (nothing left to assert about a deleted export). Flipped every
+truth-table test that had asserted black-layer's exclusion to assert its INCLUSION instead: the
+"all qualifying layers" test now expects `black-layer` in the output and the SVG to contain
+`#000000`; the visible/carve/showColor exclusion tests (which each hide ONE of the other three
+layers) now expect `black-layer` to survive alongside whichever of rails/ties/nodes wasn't excluded;
+the missing-fields-default test now includes it too; the old "returns '' when the only qualifying
+layer is black" test is inverted into "a layer whose only element is black now DOES drape" (asserts
+non-empty output, the layer id present, and `#000000` in the SVG). Replaced the now-moot "black check
+is specific, not skip-everything" test (there is no more black-specific check for it to prove
+specific) with a still-relevant one: an element with NO colour at all (`stroke="none" fill="none"`)
+is still excluded, using coordinates distinct from every other line in the fixture so the assertion
+can only pass if THAT SPECIFIC blank element was dropped, not the whole layer.
+
+**Non-vacuous, the standard way:** temporarily restored the old behavior (`if (!color || color ===
+'#000000') continue`) and re-ran — 6/16 tests failed exactly as expected (every test touched above).
+Restored from a scratch copy, diffed byte-identical, re-ran green.
+
+**Live Fusion check (optional per the dispatch; done since the bridge is up).** First attempt showed
+`buildDrapeSvg returned length=0` for a black line — turned out to be MY OWN mistake, not a code bug:
+I'd told the verification subagent "I've already deployed" without actually having run `python
+release.py --local` yet, so it was testing stale pre-SE11d JS (the palette's own "STALE — deployed
+<sha>; source main HEAD is now <sha>" banner was the tell, in hindsight). Actually ran the deploy,
+redid the stop→run→deleteMe→reopen cycle, redrew the same black line, re-Applied. Log then showed
+`buildDrapeSvg returned length=291` (identical length to SE11c's red-line test — same geometry, only
+the colour attribute differs) confirming the black line IS now included, followed by
+`buildDrapeTexture returned a texture` and `setDrapeTexture done: ... emissiveMapSet=true` — the full
+pipeline runs on it exactly like any other colour. **Honest caveat, expected and not a bug:** the
+render probe also logged `scratch canvas after render: 0/408336 non-black px` — a black line on the
+canvas's own black background is, correctly, indistinguishable at the pixel level, and since the
+drape uses an EMISSIVE map (additive, per SE11b's own fix), a fully-black texture contributes exactly
+zero extra light everywhere. So a black-draped element is now correctly INCLUDED in the pipeline data
+(what Fred asked for) but has NO VISIBLE EFFECT on the mesh (a property of additive-black lighting
+math, not a gap in this turn's fix — making black visually apparent would need a different rendering
+approach entirely, well beyond "stop skipping it in the filter").
+
+**Verify:**
+- `node --check` on the one touched production file: clean.
+- `npx vitest run` → **361 passed** (362 prior − 1 net, from removing the now-pointless
+  `DRAPE_SKIP_COLORS` describe block).
+- Live Fusion: confirmed via log trace as described above (data-level proof; no visual screenshot
+  attempted given the emissive-black-is-invisible property explained above makes one uninformative).
+
+No amendments pending.

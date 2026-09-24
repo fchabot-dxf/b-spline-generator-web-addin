@@ -17,11 +17,6 @@
  */
 import { isCarved } from '../../editor/layers.js';
 
-/** Pure-black elements are the advisor's declared default: an
- *  uncoloured layer (every element still #000000) doesn't cover the
- *  relief in black lines just because it's visible+carved. */
-export const DRAPE_SKIP_COLORS = ['#000000'];
-
 function layerQualifies(layer) {
   return isCarved(layer) && layer.showColor !== false;
 }
@@ -67,7 +62,7 @@ export function buildDrapeSvg(editorLayers, sketchSvg) {
     const lid = ch.getAttribute('data-layer');
     if (lid == null || !qualifyingIds.has(String(lid))) continue;
     const color = elementColor(ch);
-    if (!color || DRAPE_SKIP_COLORS.includes(color)) continue;
+    if (!color) continue;
     kept.push(ch);
   }
   if (kept.length === 0) return '';

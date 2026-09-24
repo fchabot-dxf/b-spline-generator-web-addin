@@ -5,9 +5,10 @@
  * Rule (ROADMAP "Layer toggles FINAL" + "👁 is the master"): a layer
  * drapes when visible && carve && showColor (missing field = true, since
  * seat B's T26/SE10 hasn't landed real fields on editor._layers yet).
- * Pure-black (#000000) elements never drape (advisor's declared default
- * — DRAPE_SKIP_COLORS) so an uncoloured layer doesn't paint black lines
- * over the relief just because it's visible+carved.
+ * SE11d (Fred, overruling SE11's own advisor-guessed default): black
+ * elements drape too — there is no colour skip. An element with NO
+ * detectable colour at all (neither stroke nor fill set to anything but
+ * 'none') still doesn't drape, since there's nothing to paint.
  *
  * sketchSvg is exactly editor.save()'s own output shape: a full
  * `<svg viewBox="0 0 mW mH">` document with `data-layer` on each child —
@@ -18,7 +19,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  buildDrapeSvg, DRAPE_SKIP_COLORS, DRAPE_TEXTURE_FLIPY, sampleRowForV,
+  buildDrapeSvg, DRAPE_TEXTURE_FLIPY, sampleRowForV,
 } from '../bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js';
 
 const SKETCH = `<svg xmlns="http://www.w3.org/2000/svg" width="672" height="864" viewBox="0 0 7 9" preserveAspectRatio="none">` +
@@ -41,44 +42,38 @@ function layerIdsIn(svg) {
   return matches.map(m => m[1]);
 }
 
-describe('DRAPE_SKIP_COLORS', () => {
-  it('is exactly pure black', () => {
-    expect(DRAPE_SKIP_COLORS).toEqual(['#000000']);
-  });
-});
-
 describe('buildDrapeSvg — truth table', () => {
-  it('all qualifying layers, black layer skipped by color: rails/ties/nodes kept, black-layer dropped', () => {
+  it('all qualifying layers, INCLUDING black: rails/ties/nodes/black-layer all kept', () => {
     const svg = buildDrapeSvg(ALL_QUALIFY, SKETCH);
-    expect(layerIdsIn(svg).sort()).toEqual(['nodes', 'rails', 'ties']);
-    expect(svg).not.toContain('#000000');
+    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'rails', 'ties']);
+    expect(svg).toContain('#000000');
   });
 
   it('hidden layer (visible:false) is excluded even though carve/showColor are true', () => {
     const layers = ALL_QUALIFY.map(l => l.id === 'rails' ? { ...l, visible: false } : l);
     const svg = buildDrapeSvg(layers, SKETCH);
     expect(layerIdsIn(svg)).not.toContain('rails');
-    expect(layerIdsIn(svg).sort()).toEqual(['nodes', 'ties']);
+    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'ties']);
   });
 
   it('carve:false excludes a layer even though it is visible and showColor', () => {
     const layers = ALL_QUALIFY.map(l => l.id === 'ties' ? { ...l, carve: false } : l);
     const svg = buildDrapeSvg(layers, SKETCH);
     expect(layerIdsIn(svg)).not.toContain('ties');
-    expect(layerIdsIn(svg).sort()).toEqual(['nodes', 'rails']);
+    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'rails']);
   });
 
   it('showColor:false excludes a layer even though it is visible and carved', () => {
     const layers = ALL_QUALIFY.map(l => l.id === 'nodes' ? { ...l, showColor: false } : l);
     const svg = buildDrapeSvg(layers, SKETCH);
     expect(layerIdsIn(svg)).not.toContain('nodes');
-    expect(layerIdsIn(svg).sort()).toEqual(['rails', 'ties']);
+    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'rails', 'ties']);
   });
 
   it('missing visible/carve/showColor fields default to true (seat B has not landed T26/SE10 yet)', () => {
     const bareLayers = [{ id: 'rails' }, { id: 'ties' }, { id: 'nodes' }, { id: 'black-layer' }];
     const svg = buildDrapeSvg(bareLayers, SKETCH);
-    expect(layerIdsIn(svg).sort()).toEqual(['nodes', 'rails', 'ties']);
+    expect(layerIdsIn(svg).sort()).toEqual(['black-layer', 'nodes', 'rails', 'ties']);
   });
 
   it('returns "" when no layer qualifies (all hidden)', () => {
@@ -86,9 +81,12 @@ describe('buildDrapeSvg — truth table', () => {
     expect(buildDrapeSvg(layers, SKETCH)).toBe('');
   });
 
-  it('returns "" when qualifying layers exist but every element in them is black', () => {
+  it('SE11d: a layer whose only element is black now DOES drape (Fred overruled the earlier skip)', () => {
     const onlyBlackQualifies = [{ id: 'black-layer', visible: true, carve: true, showColor: true }];
-    expect(buildDrapeSvg(onlyBlackQualifies, SKETCH)).toBe('');
+    const svg = buildDrapeSvg(onlyBlackQualifies, SKETCH);
+    expect(svg).not.toBe('');
+    expect(layerIdsIn(svg)).toEqual(['black-layer']);
+    expect(svg).toContain('#000000');
   });
 
   it('returns "" for empty/missing sketchSvg', () => {
@@ -110,10 +108,17 @@ describe('buildDrapeSvg — truth table', () => {
     expect(svg).toContain('#1a237e');
   });
 
-  it('non-vacuous: an element colored anything other than black is NOT skipped (the black check is specific, not "skip everything")', () => {
-    const svg = buildDrapeSvg(ALL_QUALIFY, SKETCH);
-    // rails is #c62828, not black — must survive the same filter that drops black-layer.
-    expect(layerIdsIn(svg)).toContain('rails');
+  it('an element with no detectable color at all (neither stroke nor fill) still does not drape — a colour skip is not the same as a "nothing to skip" skip', () => {
+    const sketchWithBlank = SKETCH.replace(
+      '</svg>',
+      '<line data-layer="rails" x1="4" y1="4" x2="5" y2="5" stroke="none" fill="none"/></svg>',
+    );
+    const svg = buildDrapeSvg(ALL_QUALIFY, sketchWithBlank);
+    // The blank line has no coordinates in common with the real rails
+    // line, so this only passes if the blank one specifically was
+    // dropped, not the whole rails layer.
+    expect(svg).toContain('x1="0"');
+    expect(svg).not.toContain('x1="4"');
   });
 });
 
