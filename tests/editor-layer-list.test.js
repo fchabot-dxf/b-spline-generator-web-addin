@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   renderLayerList, renderLayersPanel, applyLayerState,
+  isCarved, isExported, showsColor,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 function mockEditor(layers, activeLayer) {
@@ -81,27 +82,26 @@ describe('renderLayerList', () => {
     expect(ids).toEqual(['2', '1', '0']);
   });
 
-  // SE10 AMEND 4/5: carve (⛏) / drape3d (3D) / showColor (■) — all three
-  // real toggles, in BOTH compact and non-compact rows (amend 5 dropped
-  // the earlier compact-only-badge design for drape3d/showColor).
-  it('carve/drape3d/showColor render as real buttons with .active + aria-pressed reflecting the layer, in BOTH compact and non-compact rows', () => {
+  // T27: carve ("3D") / showColor (palette) — the two remaining real
+  // toggles (drape3d dropped), in BOTH compact and non-compact rows.
+  it('carve/showColor render as real buttons with .active + aria-pressed reflecting the layer, in BOTH compact and non-compact rows', () => {
     const editor = mockEditor([
-      mockLayer('0', { carve: false, drape3d: true, showColor: false }),
+      mockLayer('0', { carve: false, showColor: false }),
     ], '0');
 
     for (const compact of [false, true]) {
       renderLayerList(container, editor, { compact });
       const row = container.querySelector('.layer-row');
       const carveBtn = row.querySelector('.layer-carve');
-      const drapeBtn = row.querySelector('.layer-drape3d');
       const colorBtn = row.querySelector('.layer-showcolor');
 
       expect(carveBtn.classList.contains('active')).toBe(false); // carve:false
       expect(carveBtn.getAttribute('aria-pressed')).toBe('false');
-      expect(drapeBtn.classList.contains('active')).toBe(true);  // drape3d:true
-      expect(drapeBtn.getAttribute('aria-pressed')).toBe('true');
+      expect(carveBtn.textContent).toBe('3D');
       expect(colorBtn.classList.contains('active')).toBe(false); // showColor:false
       expect(colorBtn.getAttribute('aria-pressed')).toBe('false');
+      expect(colorBtn.querySelector('svg')).toBeTruthy(); // T27: SVG icon, not a "■" glyph
+      expect(row.querySelector('.layer-drape3d')).toBeNull(); // T27: dropped entirely
     }
   });
 
@@ -175,10 +175,10 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
     expect(editorList.querySelector('.layer-row[data-layer-id="0"]').classList.contains('active')).toBe(false);
   });
 
-  // SE10 AMEND: the three new toggles are wired exactly like the eye —
-  // clicking in either list updates the shared data, so BOTH re-renders
-  // agree. One test per toggle, each driven via a real click, not data.
-  it('clicking ⛏ carve in the EDITOR panel updates the SIDEBAR row too', () => {
+  // T27: the two toggles are wired exactly like the eye — clicking in
+  // either list updates the shared data, so BOTH re-renders agree. One
+  // test per toggle, each driven via a real click, not data.
+  it('clicking 3D carve in the EDITOR panel updates the SIDEBAR row too', () => {
     const editor = mockEditor([mockLayer('0', { carve: true })], '0');
     renderLayersPanel(editor);
 
@@ -188,17 +188,7 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
     expect(stampList.querySelector('.layer-carve').classList.contains('active')).toBe(false);
   });
 
-  it('clicking 3D drape3d in the SIDEBAR updates the EDITOR panel row too', () => {
-    const editor = mockEditor([mockLayer('0', { drape3d: false })], '0');
-    renderLayersPanel(editor);
-
-    stampList.querySelector('.layer-drape3d').click();
-
-    expect(editor._layers[0].drape3d).toBe(true);
-    expect(editorList.querySelector('.layer-drape3d').classList.contains('active')).toBe(true);
-  });
-
-  it('clicking ■ showColor in the EDITOR panel updates the SIDEBAR row too', () => {
+  it('clicking the palette showColor button in the EDITOR panel updates the SIDEBAR row too', () => {
     const editor = mockEditor([mockLayer('0', { showColor: true })], '0');
     renderLayersPanel(editor);
 
@@ -206,6 +196,48 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
 
     expect(editor._layers[0].showColor).toBe(false);
     expect(stampList.querySelector('.layer-showcolor').classList.contains('active')).toBe(false);
+  });
+
+  // T27's own explicit verify item: "toggling 👁 back on restores
+  // carve/showColor unchanged" — visible is the master, but hiding a
+  // layer must never reset its OTHER two stored values.
+  it('hiding then re-showing a layer (👁) leaves its carve/showColor VALUES unchanged', () => {
+    const editor = mockEditor([mockLayer('0', { carve: false, showColor: false })], '0');
+    renderLayersPanel(editor);
+
+    editorList.querySelector('.layer-visibility').click(); // hide
+    expect(editor._layers[0].visible).toBe(false);
+    expect(editor._layers[0].carve).toBe(false);
+    expect(editor._layers[0].showColor).toBe(false);
+    // The carve/showColor buttons still reflect the raw stored value while hidden.
+    expect(editorList.querySelector('.layer-carve').classList.contains('active')).toBe(false);
+    expect(editorList.querySelector('.layer-showcolor').classList.contains('active')).toBe(false);
+
+    editorList.querySelector('.layer-visibility').click(); // show again
+    expect(editor._layers[0].visible).toBe(true);
+    expect(editor._layers[0].carve).toBe(false);    // preserved exactly
+    expect(editor._layers[0].showColor).toBe(false); // preserved exactly
+  });
+});
+
+// T27: the declared truth table every gate rewires to — visible is the
+// master; carve/showColor only take effect when it's true.
+describe('isCarved / isExported / showsColor — the declared truth table', () => {
+  const cases = [
+    { visible: true,  carve: true,  showColor: true,  wantCarved: true,  wantExported: true,  wantShows: true  },
+    { visible: true,  carve: false, showColor: true,  wantCarved: false, wantExported: true,  wantShows: true  },
+    { visible: true,  carve: true,  showColor: false, wantCarved: true,  wantExported: true,  wantShows: false },
+    { visible: true,  carve: false, showColor: false, wantCarved: false, wantExported: true,  wantShows: false },
+    { visible: false, carve: true,  showColor: true,  wantCarved: false, wantExported: false, wantShows: false },
+    { visible: false, carve: false, showColor: false, wantCarved: false, wantExported: false, wantShows: false },
+  ];
+  cases.forEach(({ visible, carve, showColor, wantCarved, wantExported, wantShows }) => {
+    it(`visible=${visible} carve=${carve} showColor=${showColor} -> isCarved=${wantCarved} isExported=${wantExported} showsColor=${wantShows}`, () => {
+      const layer = { visible, carve, showColor };
+      expect(isCarved(layer)).toBe(wantCarved);
+      expect(isExported(layer)).toBe(wantExported);
+      expect(showsColor(layer)).toBe(wantShows);
+    });
   });
 });
 
@@ -261,5 +293,23 @@ describe('applyLayerState: showColor drives .layer-no-color on the SVG canvas', 
     applyLayerState(editor);
     expect(child._classes.has('layer-no-color')).toBe(false);
     expect(child._classes.has('user-custom-marker')).toBe(true); // untouched by this change
+  });
+
+  // T27: applyLayerState now gates this class on showsColor(layer), the
+  // compound helper — visible is the master here too, so a hidden layer
+  // gets .layer-no-color even with showColor:true stored on it.
+  it('a HIDDEN layer gets .layer-no-color regardless of its own showColor:true (visible is the master)', () => {
+    const child = mockChild('0');
+    const editor = {
+      _activeLayer: '0',
+      _layers: [mockLayer('0', { visible: false, showColor: true })],
+      _sketchLayer: { children: () => [child] },
+      _selectedElements: [],
+    };
+
+    applyLayerState(editor);
+
+    expect(child._classes.has('layer-hidden')).toBe(true);
+    expect(child._classes.has('layer-no-color')).toBe(true);
   });
 });

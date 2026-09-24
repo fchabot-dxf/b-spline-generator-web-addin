@@ -607,14 +607,14 @@
 .layer-visibility.is-hidden { color: #c8c8c8; }
 .layer-visibility svg { width: 14px; height: 14px; }
 
-/* SE10 AMEND 4/5: carve (⛏) / drape3d (3D) / showColor (■) — fixed-glyph
-   toggles (editor/layers.js's _makeToggleButton), same real-button shape
-   as .layer-visibility above but distinguished by an .active background
-   tint rather than swapping the glyph (there's no natural "off" icon for
-   a pickaxe/3D/square the way an eye has an open/closed state). All
-   three render in BOTH the sidebar and the editor's own Layers panel —
-   amend 5 dropped the earlier compact-only-badge design entirely. */
-.layer-carve, .layer-drape3d, .layer-showcolor {
+/* T27: carve (3D, fixed-glyph) / showColor (palette, SVG icon) — same
+   real-button shape as .layer-visibility above but distinguished by an
+   .active background tint rather than swapping the icon (there's no
+   natural "off" state for a 3D badge the way an eye has open/closed;
+   showColor is a single palette icon by design too — see _paletteSVG's
+   own comment). Both render in BOTH the sidebar and the editor's own
+   Layers panel. */
+.layer-carve, .layer-showcolor {
     min-width: 20px;
     height: 20px;
     padding: 0 3px;
@@ -631,22 +631,23 @@
     justify-content: center;
     flex-shrink: 0;
 }
-.layer-carve:hover, .layer-drape3d:hover, .layer-showcolor:hover { background: #f0f0f0; }
+.layer-showcolor svg { width: 13px; height: 13px; }
+.layer-carve:hover, .layer-showcolor:hover { background: #f0f0f0; }
 .layer-carve.active     { color: #333; background: #eef3ea; border-color: #cfe0c5; }
-.layer-drape3d.active   { color: #1a55b8; background: #e8f0ff; border-color: #b6d0f5; }
 .layer-showcolor.active { color: #333; background: #fff3d6; border-color: #e6cf8a; }
-/* SE10 AMEND 4/5's own "44px on coarse pointers" is per-BUTTON, not
-   compact-only (all four toggles now render in both lists) — grow the
-   row itself under (pointer:coarse) too, editor panel included, so a
-   44px button actually fits instead of clipping a still-28px row. */
+/* 44px on coarse pointers is per-BUTTON, not compact-only (both toggles
+   render in both lists) — grow the row itself under (pointer:coarse) too,
+   editor panel included, so a 44px button actually fits instead of
+   clipping a still-28px row. */
 @media (pointer: coarse) {
     .layer-row, .layer-row.compact { height: 44px; }
-    .layer-visibility, .layer-carve, .layer-drape3d, .layer-showcolor {
+    .layer-visibility, .layer-carve, .layer-showcolor {
         min-width: 44px;
         height: 44px;
         font-size: 12px;
     }
     .layer-visibility svg { width: 20px; height: 20px; }
+    .layer-showcolor svg { width: 18px; height: 18px; }
 }
 
 .layer-name {

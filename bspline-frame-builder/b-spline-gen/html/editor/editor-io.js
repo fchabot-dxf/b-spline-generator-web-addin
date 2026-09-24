@@ -6,7 +6,7 @@
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
+import { applyToolingDefaults, addLayer, setActiveLayer, isExported } from './layers.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { textGlyphPathD } from './editor-expand-text.js';
@@ -43,24 +43,23 @@ function serializeEditor(editor, { forRaster = false } = {}) {
     return stripSvgjsAttributes(raw);
 }
 
-/** SE10 AMEND: the SVG DOWNLOAD (saveWithTextCopies, below) exports SHOWN
- *  layers only — `visible` governs it the same way it governs the editor
- *  canvas and the 3D vector overlay (seat A). This does NOT touch
- *  serializeEditor itself, which every OTHER caller (the regular save/
- *  persist path, saveForRasterization, getLayerSvg) needs to keep
- *  including hidden layers for — per that function's own docstring,
- *  hidden-layer content must survive save/reopen, and a hidden-but-
- *  carving layer (SE10's own "carve while hidden") still needs its real
- *  SVG for masking. Filters the live sketch-layer children by their
- *  layer's `visible` flag BEFORE the same svg.js-attr-stripping pass
+/** T27: the SVG DOWNLOAD (saveWithTextCopies, below) exports isExported()
+ *  layers only — same rule the editor canvas and the 3D vector overlay
+ *  (seat A) read. This does NOT touch serializeEditor itself, which every
+ *  OTHER caller (the regular save/persist path, saveForRasterization,
+ *  getLayerSvg) needs to keep including hidden layers for — per that
+ *  function's own docstring, hidden-layer content must survive
+ *  save/reopen, and a hidden-but-carving layer still needs its real SVG
+ *  for masking. Filters the live sketch-layer children by their layer's
+ *  isExported() result BEFORE the same svg.js-attr-stripping pass
  *  serializeEditor itself runs — same output shape, smaller input. */
 function _serializeVisibleLayers(editor) {
     const layers = Array.isArray(editor._layers) ? editor._layers : [];
-    const hiddenIds = new Set(
-        layers.filter(l => l && l.visible === false).map(l => String(l.id))
+    const exportedIds = new Set(
+        layers.filter(l => isExported(l)).map(l => String(l.id))
     );
     const raw = editor._sketchLayer.children().toArray()
-        .filter(ch => !hiddenIds.has(String(ch.attr('data-layer'))))
+        .filter(ch => exportedIds.has(String(ch.attr('data-layer'))))
         .map(ch => ch.node.outerHTML)
         .join('');
     return stripSvgjsAttributes(raw);
@@ -79,7 +78,7 @@ export function initIO(editor) {
  *  field there means adding it here too. */
 const _PERSISTED_LAYER_FIELDS = [
     'id', 'name', 'visible',
-    'carve', 'drape3d', 'showColor',
+    'carve', 'showColor',
     'depth', 'profile', 'angle',
     'tx', 'ty', 'rotation', 'scale', 'mirrorX', 'mirrorY',
     'blur', 'smoothing', 'suppression',
@@ -102,12 +101,11 @@ function _serializeLayersAttr(editor) {
                 else if (field === 'name')    out.name    = l.name || '';
                 else if (field === 'visible') out.visible = l.visible !== false;
                 // SE10: same boolean-coercion treatment as `visible` —
-                // carve/showColor default true, drape3d defaults false,
-                // regardless of what odd value might be sitting on the
-                // in-memory layer object (defensive: a stray non-boolean
-                // here should coerce sanely, not round-trip verbatim).
+                // carve/showColor default true, regardless of what odd
+                // value might be sitting on the in-memory layer object
+                // (defensive: a stray non-boolean here should coerce
+                // sanely, not round-trip verbatim).
                 else if (field === 'carve')     out.carve     = l.carve !== false;
-                else if (field === 'drape3d')   out.drape3d   = l.drape3d === true;
                 else if (field === 'showColor') out.showColor = l.showColor !== false;
                 else if (l[field] !== undefined) out[field] = l[field];
             }

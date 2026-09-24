@@ -2824,3 +2824,113 @@ gate-rewrite pass plus a field removal plus test rewrites — not a quick tweak)
 own "capacity is a reportable fact" guidance, landing a clean checkpoint now and flagging the fast-moving
 target explicitly in the pass-back is the disciplined move, not silently absorbing an 8th redesign without
 a check-in. Not implementing amend 6/7/8 this turn — stated here plainly, not left implicit.
+
+## Lane B — Turn 71 (T27) — the layer row, FINAL — 👁 master / 3D=carve / palette=showColor / isCarved-isExported-showsColor — DONE
+
+Fred settled the row after T26's 8-amendment churn: **visible is the MASTER switch** (off = off
+everywhere — hidden, not carved, not draped, not exported — but `carve`/`showColor` keep their stored
+values for when it's shown again); **`carve` is the "3D" toggle** (drape3d is dropped entirely — there
+was never a separate drape concept, just a mislabeled carve button); **`showColor` gets an inline SVG
+palette icon** instead of the "■" glyph, matching the eye icons' style. Dispatch asked for three helper
+functions — `isCarved`/`isExported`/`showsColor` — declared once in `editor/layers.js`, with every gate
+rewired to read THROUGH them instead of re-deriving the rule at each call site. This is a genuine partial
+reversal of T26's own "carve is independent of visible" design (amends 1–5) — the dispatch says so
+explicitly ("ignore amends 2–8 as history... build from here"), so I'm not treating the T26 code as sacred;
+I'm applying the FINAL spec on top of T26's already-committed data model (carve/showColor field names, the
+`layer-carve-flag` migration — both kept unchanged, per the dispatch).
+
+**`editor/layers.js`** — the one place the three fields' effective rules now live:
+- `TOOLING_DEFAULTS.drape3d` removed; `setLayerDrape3d` removed entirely.
+- New exported helpers, declared once: `isCarved(l) = l.visible!==false && l.carve!==false`,
+  `isExported(l) = l.visible!==false`, `showsColor(l) = l.visible!==false && l.showColor!==false`.
+- `applyLayerState`'s `.layer-no-color` gate now reads `showsColor(layer)` instead of the raw
+  `layer.showColor !== false` — a HIDDEN layer gets the neutral-color class regardless of its own
+  showColor value (moot anyway since `.layer-hidden` already drops it from view, but the declared rule
+  now genuinely governs every color-gated site, not just the export ones).
+- Row rendering: dropped the drape button/branch entirely; the carve button's glyph changed from "⛏" to
+  "3D" (same `layer-carve` class/field — it's a relabel, not a new toggle); the showColor button is now
+  bespoke (matching the eye's own innerHTML-SVG pattern, not the glyph-text `_makeToggleButton` factory
+  anymore) rendering a new `_paletteSVG()` icon — one icon regardless of on/off state, `.active` carries
+  the state (same as carve), since the dispatch didn't ask for a swapping icon the way the eye has.
+- **Judgment call, not explicit in the dispatch — row order.** T26 had the 4 toggles split: eye+carve
+  before the name, drape+color after. The dispatch's header lists them as "👁 · 3D · palette" in one
+  breath; I read that as the three toggles now being grouped together ahead of the name (handle, eye,
+  3D, palette, name, [tool-summary], delete), not split around it. Flagging this as an interpretation call
+  in case Fred pictured something else — cheap to move if not.
+- **Judgment call — row DISPLAY state vs GATE state.** The carve/showColor buttons' own `.active` class
+  reflects the RAW stored field (`layer.carve !== false`, not `isCarved(layer)`), same as before. Reasoning:
+  the eye already tells you a layer is hidden; making carve/showColor ALSO greyed-out-because-hidden would
+  be redundant and would hide the very thing the dispatch says must be visible — that hiding doesn't erase
+  the stored value. The compound helpers gate BEHAVIOR (masks, exports, canvas/mesh color), never the row's
+  own toggle-button display.
+
+**`editor/editor-io.js`** — `drape3d` removed from `_PERSISTED_LAYER_FIELDS` and its serialize branch;
+`_serializeVisibleLayers` (the Download-SVG-only filter) now builds its included-id set from
+`isExported(l)` instead of the raw `l.visible === false` check — same effective result for a normal
+roster, but now reads through the one declared rule instead of a second copy of it. (Edge case, noted not
+acted on: an orphaned SVG child whose `data-layer` matches no roster entry would previously be INCLUDED
+by the old exclusion-based filter and is now EXCLUDED by the new inclusion-based one — this state
+shouldn't occur post-reconcile and isn't exercised by any test; flagging it rather than silently changing
+behavior no one asked about.)
+
+**Gate rewires** (the dispatch's own explicit list): `main/stamp-mask-manager.js`'s `updateStampMasks`
+gate (`layer.carve === false` → `!isCarved(layer)`); `core/engine/rebuild.js`'s `_collectStampPasses` gate
+(same change); `main/export-flow.js`'s `_stampExportCandidates` now computes `enabled`/`carve` on its
+candidate view as `isExported(layer)`/`isCarved(layer)` directly (off the raw editor layer), so
+`isCarvingLayer`/`hasShippableSvg` just read the already-compound candidate fields back — the rule lives
+in `editor/layers.js` once, not re-derived in export-flow's own predicates.
+
+**This IS a behavior reversal, not just a rename** — a hidden layer that still has `carve:true` no longer
+carves (T26 amend 5 made it carve while hidden; T27 makes visible the master again). Two existing T26 tests
+asserted the NOW-WRONG direction and needed rewriting, not just renaming:
+- `export-flow.test.js`'s "visible:false + carve:true → carving, never exportable" flipped to "→ NOT
+  carving (visible is the master), never exportable" (`activeStampLayers()` now `0`, was `1`).
+- `stamp-mask-clear.test.js`'s "a HIDDEN layer with no content still gets its stale mask cleared" flipped
+  to "a HIDDEN layer is exempt from this loop entirely... its stale mask survives" — with the compound
+  gate, a hidden layer is skipped by `updateStampMasks` before its emptiness is ever checked, same as the
+  ORIGINAL pre-SE10 behavior. (The `carve:false + visible:true` cases in both files needed NO change —
+  they were already correct under the compound rule.)
+
+**New tests**, per the dispatch's own "Verify" list: a 6-case truth table over `isCarved`/`isExported`/
+`showsColor` (`editor-layer-list.test.js`); "hiding then re-showing a layer leaves its carve/showColor
+VALUES unchanged" (drives the real eye-click twice, asserts the stored fields never moved); "a HIDDEN
+layer gets `.layer-no-color` regardless of its own `showColor:true`" (proves `applyLayerState`'s rewire to
+the compound helper actually took, not just declared); row-rendering assertions for the "3D" glyph, the
+SVG palette icon, and `.layer-drape3d`'s absence.
+
+**Non-vacuity, by mutation** (each reverted immediately after confirming red):
+- `isCarved`/`showsColor` mutated to drop their `visible` check → the truth-table test, the
+  `applyLayerState` hidden-layer test, the export-flow T27 test, and the stamp-mask-clear T27 test all
+  failed with the exact expected mismatch (4/4, isolated to just those 4 — nothing else moved).
+- carve glyph mutated back to "⛏" → the row-rendering test failed on the glyph assertion.
+- palette `innerHTML` mutated back to a `■` textContent, glyph assertion left correct so the SVG check
+  ran on its own → failed on `colorBtn.querySelector('svg')` specifically, confirming that line is live
+  independent of the glyph check above it.
+
+`vitest run` → **330 passed (32 files)**, full suite, no gate hit.
+
+**Live CDP verification** (repo-root `python -m http.server 8771`, per this repo's own documented gotcha
+— serving from the html subfolder 404s the relative asset paths): generated a 4-layer Lattice pattern,
+confirmed in the running page (not just data) — editor panel row order `handle, eye, 3D(active),
+palette(active, real SVG), name, delete`, zero `.layer-drape3d` anywhere in the DOM; clicked 3D off on one
+row → `data.carve=false`, sidebar row's 3D button lost `.active`, its tool-summary got `.not-carved`;
+clicked palette off on the same row → `data.showColor=false`, the row's live SVG child got
+`.layer-no-color`; clicked the eye off then on again on that SAME row → hidden snapshot
+`{visible:false, carve:false, showColor:false}`, restored snapshot `{visible:true, carve:false,
+showColor:false}` — carve/showColor genuinely untouched across the round trip; mobile emulation (390×844,
+touch) → eye/3D/palette buttons and the row itself all measured exactly 44px. Zero console
+errors/exceptions across the whole run. Screenshots saved to the session scratchpad (desktop editor panel,
+desktop sidebar, mobile sidebar) — all three read correctly at a glance: active states tinted (green 3D,
+gold palette), the one toggled-off row visibly neutral/grey on all three icons.
+
+**Process hygiene:** the CDP run's own `chrome.exe` exited cleanly this time (`tasklist` found none left
+over — not always the case on this machine, checked anyway); the repo-root `http.server` (PID looked up
+via `netstat`, not a blind `pkill`) was stopped once verification finished.
+
+Not touched, per the dispatch's own explicit scope: `main/app-init.js`'s `layer-carve-flag` migration
+(kept unchanged — it already produces the right historical `carve` value, and nothing about the
+visible-as-master rule requires touching a migration that only back-fills a missing field);
+`tests/migrations.test.js` (unaffected, still green — confirmed by the full-suite run rather than assumed).
+
+Committed by explicit path (9 files: the 5 source files, the CSS, and the 3 test files). Amendments polled
+clean both before this entry and immediately before the commit below — nothing pending.

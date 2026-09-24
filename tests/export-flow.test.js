@@ -82,11 +82,11 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(exportableStampLayers()).toHaveLength(0);
   });
 
-  // SE10 AMEND: SHOW (visible) and CARVE are independent axes — a layer
-  // can carve while hidden, or show without carving. These two replace
-  // the old "hidden layer never carves" assumption with the dispatch's
-  // own explicit pair of cases.
-  it('SE10: carve:false + visible:true -> not carving, still exportable (shown but not cut)', () => {
+  // T27 FINAL: visible is the MASTER — carve only takes effect while
+  // visible, so a hidden layer never carves regardless of its own carve
+  // flag. carve:false + visible:true is the one case that still carves
+  // "not at all but still ships" (shown but not cut).
+  it('T27: carve:false + visible:true -> not carving, still exportable (shown but not cut)', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: true, carve: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
@@ -95,13 +95,13 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(exportableStampLayers()).toHaveLength(1); // still shown -> still ships as artwork
   });
 
-  it('SE10: visible:false + carve:true (default) -> carving, never exportable (cut but not shown/shipped)', () => {
+  it('T27: visible:false + carve:true (default) -> NOT carving (visible is the master), never exportable', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
 
-    expect(activeStampLayers()).toHaveLength(1);     // carve defaults true, independent of visible
-    expect(exportableStampLayers()).toHaveLength(0); // hidden -> never shipped, carving or not
+    expect(activeStampLayers()).toHaveLength(0);     // hidden -> isCarved false even though carve defaults true
+    expect(exportableStampLayers()).toHaveLength(0); // hidden -> never shipped
   });
 
   it('does not count an EMPTY layer (no content, no mask)', () => {

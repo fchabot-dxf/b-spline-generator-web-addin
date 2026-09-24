@@ -11,11 +11,11 @@
  * that content mirror is retired (SE4-MIRROR-RETIREMENT-DESIGN.md slice
  * b). These assertions were simplified to the single (editor) store.
  *
- * SE10 AMEND: the HIDDEN-layer case below changed — updateStampMasks'
- * own gate moved from `visible` to `carve` (a layer can carve while
- * hidden now), so a hidden-but-carving EMPTY layer is no longer exempt
- * from this same stale-mask-clearing invariant; a carve:false layer is
- * the new "exempt from this loop entirely" case instead.
+ * T27 FINAL: updateStampMasks' gate reads isCarved(layer) — visible is
+ * the master, so a HIDDEN layer is exempt from this loop entirely again
+ * (its mask is never touched, built or cleared), same as before SE10's
+ * independent-axes design. A carve:false-but-visible layer is the other
+ * "exempt, gate skips it before emptiness is even checked" case.
  *
  * Two things are exercised here:
  *  1. `clearEmptyLayerMasks` directly — the invariant factored out as its
@@ -99,22 +99,18 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
     expect(editor._layers[0]._mask).toBeNull();
   });
 
-  // SE10 AMEND: CARVE, not SHOW, gates this loop now — a hidden layer
-  // carves by default (carve undefined -> true), so it's no longer
-  // exempt from the SAME "empty -> stale mask cleared" invariant every
-  // other layer gets. Being hidden was never the REAL reason the old
-  // gate spared a layer's mask; it was just how "visible === false"
-  // happened to short-circuit before this layer's emptiness was ever
-  // checked. Replaces the old (now-incorrect) expectation that a hidden
-  // layer's mask survives regardless of content.
-  it('SE10: a HIDDEN layer that also has NO content still gets its stale mask cleared (carve, not visible, gates emptiness now)', async () => {
+  // T27 FINAL: visible is the MASTER — isCarved(layer) is false for any
+  // hidden layer regardless of its own carve flag, so the gate skips it
+  // before its emptiness is ever checked. A hidden layer's mask is never
+  // touched (built or cleared) by this loop, same as pre-SE10.
+  it('T27: a HIDDEN layer is exempt from this loop entirely, even with no content — its stale mask survives (visible is the master, gates before emptiness is checked)', async () => {
     const editor = {
       _draw: {},
       _sketchLayer: { node: { innerHTML: '' } },
       _mW: 7,
       _mH: 9,
       _layers: [
-        { id: '0', visible: false, _mask: { body: new Float32Array(4) } }, // hidden AND empty — carve defaults true, so it's checked
+        { id: '0', visible: false, _mask: { body: new Float32Array(4) } }, // hidden AND empty — isCarved false regardless of carve
       ],
       _activeLayer: '0',
     };
@@ -123,10 +119,10 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
 
     await updateStampMasks(4, 4);
 
-    expect(editor._layers[0]._mask).toBeNull();
+    expect(editor._layers[0]._mask).not.toBeNull();
   });
 
-  it('SE10: a carve:false layer is exempt from this loop entirely — its mask survives even though it has no content', async () => {
+  it('T27: a visible carve:false layer is exempt from this loop entirely — its mask survives even though it has no content', async () => {
     const editor = {
       _draw: {},
       _sketchLayer: { node: { innerHTML: '' } },

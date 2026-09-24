@@ -10,21 +10,24 @@
  *
  *   - id: stable string used as data-layer on SVG elements
  *   - name: user-editable display name (defaults to "Layer N")
- *   - visible: bool; SHOW — editor canvas, 3D vector overlay, both vector
- *              exports (Fusion sketch + SVG download). Independent of carve.
- *   - carve: bool (default true); CARVE — mask generation + heightfield.
- *            A layer can carve while hidden, or show without carving
- *            (SE10 AMEND — supersedes the old "visible = carved").
- *   - drape3d: bool (default false); TAG — this layer's vectors drape on
- *              the 3D mesh. Stored/toggled/shown here; seat A (SE11)
- *              reads `layer.drape3d && layer.visible !== false` and
- *              renders the actual drape.
+ *   - visible: bool (default true); the MASTER switch — off, the layer is
+ *              off everywhere: hidden in the editor, not carved, not
+ *              draped, not exported. `carve`/`showColor` keep their
+ *              stored values while hidden, so turning it back on restores
+ *              exactly what was there before (T27 FINAL — replaces SE10's
+ *              independent-axes design; see isCarved/isExported/showsColor
+ *              below, the one place these three fields' effective rules
+ *              live).
+ *   - carve: bool (default true); this layer's presence in the 3D relief
+ *            (mask generation + heightfield), gated by visible too — see
+ *            isCarved. There is no separate drape3d field; "3D" IS this
+ *            toggle (T27 dropped the earlier standalone drape tag).
  *   - showColor: bool (default true); whether the layer draws in its own
- *                elements' colors or one neutral color, WHEREVER it's
- *                drawn (editor canvas flat AND the 3D drape) — applied as
- *                a display-only override (a CSS class), never by
- *                rewriting elements' stored stroke/fill. Independent of
- *                drape3d; never disabled in the UI.
+ *                elements' colors or one neutral color, in the editor
+ *                canvas (display-only override, a CSS class, never a
+ *                rewrite of elements' stored stroke/fill) and, gated by
+ *                visible too, painted on the 3D mesh (seat A's drape).
+ *                Never disabled in the UI. See showsColor below.
  *   - depth, profile, angle: tool + plunge for this pass
  *   - tx/ty/rotation/scale/mirrorX/mirrorY: per-pass transform
  *   - blur, smoothing, suppression, edgeFilletRadius, filletPower:
@@ -53,7 +56,7 @@ import { el, on } from './dom.js';
  * stamp-layers pipeline reads. When migrating those readers from
  * P.stampLayers to editor._layers, update both sides together.
  *
- * SE10: carve/drape3d/showColor live here too, despite not being CNC
+ * SE10 / T27: carve/showColor live here too, despite not being CNC
  * tooling in the depth/profile/angle sense — `applyToolingDefaults`
  * (below) is the one mechanism that back-fills a MISSING field on every
  * layer-creation and every restore path (addLayer, editor-io.js's open()
@@ -79,7 +82,6 @@ export const TOOLING_DEFAULTS = Object.freeze({
   edgeFilletRadius: 0,
   filletPower: 2.2,
   carve: true,
-  drape3d: false,
   showColor: true,
 });
 
@@ -95,6 +97,23 @@ export function applyToolingDefaults(layer) {
 }
 
 // ----------- Public read helpers (used elsewhere) -----------
+
+/** T27 FINAL: the one place the three fields' EFFECTIVE rules live —
+ *  every gate (mask generation, heightfield, Fusion sketch, SVG download,
+ *  canvas coloring, seat A's drape) reads a layer through these, never a
+ *  raw `layer.carve`/`layer.showColor` check of its own, so the rule
+ *  can't drift between call sites. `visible` is the master: off collapses
+ *  all three to false regardless of the layer's own carve/showColor
+ *  values (which stay stored, unchanged, for when it's shown again). */
+export function isCarved(l) {
+  return !!l && l.visible !== false && l.carve !== false;
+}
+export function isExported(l) {
+  return !!l && l.visible !== false;
+}
+export function showsColor(l) {
+  return !!l && l.visible !== false && l.showColor !== false;
+}
 
 export function getElementLayer(node) {
   if (!node) return '0';
@@ -257,10 +276,9 @@ export function setLayerVisible(editor, id, visible) {
   if (editor._onChange) editor._onChange();
 }
 
-/** SE10 AMEND: CARVE — independent of `visible` (a layer can carve while
- *  hidden, or show without carving). main/stamp-mask-manager.js and
- *  core/engine/rebuild.js gate mask generation / heightfield inclusion on
- *  this field, not `visible`, going forward. */
+/** T27: CARVE ("3D") — stored independent of `visible`, but every gate
+ *  reads the compound isCarved(layer) (above), not this raw field alone,
+ *  so a hidden layer never carves even with carve:true. */
 export function setLayerCarve(editor, id, carve) {
   if (!Array.isArray(editor._layers)) return;
   const layer = editor._layers.find(l => String(l.id) === String(id));
@@ -271,23 +289,10 @@ export function setLayerCarve(editor, id, carve) {
   if (editor._onChange) editor._onChange();
 }
 
-/** SE10 AMEND 4/5: the "3D" tag — stored/toggled/shown here; seat A
- *  (SE11) reads `layer.drape3d && layer.visible !== false` to render the
- *  actual drape. No rendering side effect in this module. */
-export function setLayerDrape3d(editor, id, drape3d) {
-  if (!Array.isArray(editor._layers)) return;
-  const layer = editor._layers.find(l => String(l.id) === String(id));
-  if (!layer) return;
-  layer.drape3d = !!drape3d;
-  renderLayersPanel(editor);
-  if (typeof editor.pushState === 'function') editor.pushState();
-  if (editor._onChange) editor._onChange();
-}
-
-/** SE10 AMEND 5: the "■" color toggle — independent of drape3d, never
- *  disabled. Applies as a display-only class via applyLayerState (never
- *  rewrites an element's own stored stroke/fill), so turning it back on
- *  always restores every element's own color exactly. */
+/** T27: the palette (showColor) toggle — never disabled. Applies as a
+ *  display-only class via applyLayerState (never rewrites an element's
+ *  own stored stroke/fill), so turning it back on always restores every
+ *  element's own color exactly. */
 export function setLayerShowColor(editor, id, showColor) {
   if (!Array.isArray(editor._layers)) return;
   const layer = editor._layers.find(l => String(l.id) === String(id));
@@ -329,12 +334,14 @@ export function applyLayerState(editor) {
   const activeLayer = getActiveLayer(editor);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const visById = new Map(layers.map(l => [l.id, l.visible !== false]));
-  // SE10 AMEND 5: showColor — a display-only override (this class alone),
-  // never a rewrite of the element's own stored stroke/fill attrs. Off =
-  // draw in one neutral color; the CSS rule lives in styles/editor.css
-  // next to .layer-hidden/.inactive-layer, the two classes this same loop
-  // already manages the same way.
-  const colorById = new Map(layers.map(l => [l.id, l.showColor !== false]));
+  // T27: showsColor(l) — visible is the master here too, so a hidden
+  // layer's color state is moot (layer-hidden already drops it from view)
+  // and never disagrees with the row's own showColor stored value once
+  // shown again. Display-only override (this class alone), never a
+  // rewrite of the element's own stored stroke/fill attrs; the CSS rule
+  // lives in styles/editor.css next to .layer-hidden/.inactive-layer, the
+  // two classes this same loop already manages the same way.
+  const colorById = new Map(layers.map(l => [l.id, showsColor(l)]));
 
   editor._sketchLayer.children().forEach(child => {
     const layerId = getElementLayer(child);
@@ -375,6 +382,14 @@ function _eyeOpenSVG() {
 }
 function _eyeClosedSVG() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-6.5 0-10-7-10-7a18.27 18.27 0 0 1 4.06-5.06"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c6.5 0 10 7 10 7a18.27 18.27 0 0 1-2.16 3.19"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`;
+}
+/** T27: the showColor toggle's icon — a paint palette, same stroke style
+ *  as the eye icons above, so the row's three toggles read as one family
+ *  rather than a glyph-text button (■) sitting next to two SVG ones. One
+ *  icon regardless of on/off state; `.active` carries the state, same as
+ *  the carve button. */
+function _paletteSVG() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1.1.9-2 2-2h2.3c2.1 0 3.7-1.7 3.7-3.7C21 6.6 17 2 12 2z"/><circle cx="7" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="7.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="17" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>`;
 }
 
 /** SE10 / T26: one row renderer, two call sites — the editor's own Layers
@@ -458,13 +473,11 @@ function _formatToolSummary(layer) {
   return `${label} ${depth < 0 ? '-' : ''}${abs}"`;
 }
 
-/** SE10 AMEND 4/5: one small factory for the three fixed-glyph toggle
- *  buttons (⛏ carve, 3D drape, ■ color) — same shape (a real <button>,
- *  `.active` + `aria-pressed` for on/off, click stops propagation and
- *  calls the setter), only the glyph/title/class/state-read differ. The
- *  eye stays its own bespoke code just below — it swaps its actual SVG
- *  icon per state (open/closed), not just an `.active` class, which
- *  doesn't fit this shape. */
+/** T27: small factory for a fixed-glyph toggle button — same shape (a
+ *  real <button>, `.active` + `aria-pressed` for on/off, click stops
+ *  propagation and calls the setter). Only the carve ("3D") button uses
+ *  this now; the eye and palette buttons are bespoke just below — they
+ *  render an SVG icon (innerHTML), not glyph textContent. */
 function _makeToggleButton({ className, glyph, active, onTitle, offTitle, onClick }) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -538,40 +551,37 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
     setLayerVisible(editor, layer.id, !layer.visible);
   });
 
-  // SE10 AMEND: CARVE, independent of SHOW (👁 above) — a layer can carve
-  // while hidden, or show without carving.
-  const isCarved = layer.carve !== false;
+  // T27: "3D" — the carve toggle, stored independent of visible (👁 above)
+  // but every GATE reads the compound isCarved(layer), not this raw
+  // button state — see that helper's own doc comment. The button itself
+  // reflects the raw stored value so a hidden layer's carve setting still
+  // shows what it'll do once shown again (the eye already communicates
+  // "hidden" on its own).
+  const carveActive = layer.carve !== false;
   const carveBtn = _makeToggleButton({
     className: 'layer-carve',
-    glyph: '⛏',
-    active: isCarved,
-    onTitle: 'Carves (click to stop carving)',
-    offTitle: 'Not carved (click to carve)',
-    onClick: () => setLayerCarve(editor, layer.id, !isCarved),
-  });
-
-  // SE10 AMEND 4/5: the "3D" drape tag — stored/toggled here, rendered by
-  // seat A (SE11).
-  const isDraped = layer.drape3d === true;
-  const drapeBtn = _makeToggleButton({
-    className: 'layer-drape3d',
     glyph: '3D',
-    active: isDraped,
-    onTitle: 'Draped on the 3D mesh (click to remove)',
-    offTitle: 'Not draped on the 3D mesh (click to add)',
-    onClick: () => setLayerDrape3d(editor, layer.id, !isDraped),
+    active: carveActive,
+    onTitle: 'Carved into the relief (click to stop carving)',
+    offTitle: 'Not carved (click to carve)',
+    onClick: () => setLayerCarve(editor, layer.id, !carveActive),
   });
 
-  // SE10 AMEND 5: "■" element colors — independent of drape3d, NEVER
-  // disabled (dropped amend 4's "greyed while 3D is off" rule).
-  const showsColor = layer.showColor !== false;
-  const colorBtn = _makeToggleButton({
-    className: 'layer-showcolor',
-    glyph: '■',
-    active: showsColor,
-    onTitle: 'Shows this layer\'s own colors (click for one neutral color)',
-    offTitle: 'Drawn in one neutral color (click to show its own colors)',
-    onClick: () => setLayerShowColor(editor, layer.id, !showsColor),
+  // T27: palette — element colors, NEVER disabled. Same raw-value-display
+  // reasoning as carveBtn above; showsColor(layer) (the compound gate) is
+  // what the canvas/drape actually read.
+  const colorActive = layer.showColor !== false;
+  const colorBtn = document.createElement('button');
+  colorBtn.type = 'button';
+  colorBtn.className = 'layer-showcolor' + (colorActive ? ' active' : '');
+  colorBtn.innerHTML = _paletteSVG();
+  colorBtn.title = colorActive
+    ? 'Shows this layer\'s own colors (click for one neutral color)'
+    : 'Drawn in one neutral color (click to show its own colors)';
+  colorBtn.setAttribute('aria-pressed', String(colorActive));
+  colorBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setLayerShowColor(editor, layer.id, !colorActive);
   });
 
   const name = document.createElement('span');
@@ -588,9 +598,9 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   let toolSummary = null;
   if (compact) {
     toolSummary = document.createElement('span');
-    toolSummary.className = 'layer-tool-summary' + (isCarved ? '' : ' not-carved');
+    toolSummary.className = 'layer-tool-summary' + (carveActive ? '' : ' not-carved');
     toolSummary.textContent = _formatToolSummary(layer);
-    toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${isCarved ? '' : ' (not carved)'}`;
+    toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
   }
 
   const del = document.createElement('button');
@@ -615,13 +625,14 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
     _confirmAndRemove(editor, layer);
   });
 
+  // T27: the three toggles grouped left-to-right — 👁 · 3D · palette —
+  // per the dispatch's own row spec, ahead of the editable name.
   row.appendChild(handle);
   row.appendChild(vis);
   row.appendChild(carveBtn);
+  row.appendChild(colorBtn);
   row.appendChild(name);
   if (toolSummary) row.appendChild(toolSummary);
-  row.appendChild(drapeBtn);
-  row.appendChild(colorBtn);
   row.appendChild(del);
 
   // Click row → activate layer.

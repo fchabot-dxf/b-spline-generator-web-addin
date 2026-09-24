@@ -28,6 +28,7 @@ import {
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
+import { isCarved, isExported } from '../editor/layers.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -48,12 +49,11 @@ import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 //     because the SVG can be exported even before its mask has been baked.
 //     Used by includeSVG. Mask-less layers contribute artwork but no carve.
 //
-// SE10 AMEND: `enabled` (SHOW) and `carve` (CARVE) are now independent
-// axes read straight off the candidate view — isCarvingLayer no longer
-// requires `enabled`, since a HIDDEN layer with carve:true must still
-// carve (mirrors the same gate change in stamp-mask-manager.js and
-// core/engine/rebuild.js); hasShippableSvg keeps reading `enabled` alone
-// (still means "shown"), unchanged.
+// T27: `enabled`/`carve` on the candidate view are the ALREADY-COMPOUND
+// isExported()/isCarved() results (computed once in _stampExportCandidates
+// below, off the raw editor layer) — isCarvingLayer/hasShippableSvg just
+// read them back, so the visible-is-master rule lives in one place
+// (editor/layers.js), not re-derived here.
 const isCarvingLayer = (l) => l.carve && l.mask && Math.abs(l.depth) > 0.001;
 const hasShippableSvg = (l) => l.enabled && l.svg;
 
@@ -64,11 +64,10 @@ const hasShippableSvg = (l) => l.enabled && l.svg;
  * desync the two (SA-LAYER-1 finding #3). Returns [] when the editor
  * isn't loaded (nothing to build a candidate list from).
  *
- * SE10 AMEND: no longer short-circuits mask/svg to null for a hidden
- * layer — a hidden-but-carving layer's real mask/svg must still be
- * readable here (getLayerSvg doesn't care about `visible` either; see
- * its own docstring). `enabled` and `carve` are tracked as two separate
- * booleans on the view instead of one collapsed flag.
+ * `enabled`/`carve` are isExported(layer)/isCarved(layer) — a hidden
+ * layer's mask/svg are still read here (getLayerSvg doesn't care about
+ * `visible`; see its own docstring), but `carve` comes back false for it
+ * regardless of its own carve flag, same as every other gate.
  */
 function _stampExportCandidates() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
@@ -76,8 +75,8 @@ function _stampExportCandidates() {
     return editorLayers.map((layer) => {
         if (!layer) return { enabled: false, carve: false, depth: 0, profile: null, mask: null, svg: null };
         return {
-            enabled: layer.visible !== false,
-            carve: layer.carve !== false,
+            enabled: isExported(layer),
+            carve: isCarved(layer),
             depth: layer.depth,
             profile: layer.profile,
             mask: layer._mask || null,
