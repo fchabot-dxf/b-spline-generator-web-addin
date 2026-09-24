@@ -633,3 +633,14 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
 - **SE8c part 2 (de00376) merged → 281 tests.** DRAW_SHAPES, TOOLBAR_GROUPS, ELEMENT_CAPS declared; remaining
   tolerances named. **The SVG editor audit is closed** except SE8b-2's live tuning (needs Fusion). Both seats idle;
   open rulings for Fred: tie anchor default, slider undo (UX-UNDO → then SE5c), Fusion bridge for deploy + PERF.
+
+## Live browser test 2026-09-24 (headless Chrome via `scripts/smoke-editor.mjs`, site 3a99ef8)
+Flow works (Lattice tool → Pattern panel → Generate: 19 rails / 6 ties / 12 nodes, all owned, Rails/Ties/Nodes layers,
+no console errors, desktop + 390 px). But the RESULT is not usable, and the phone layout is broken:
+- **SE7c (seat A):** generated rails take the editor's current stroke width (0.5") on a 0.5" rail pitch → rails merge
+  into one mass; nodes r = 0.05" (thinner than the lines); first rail at y=0 and nodes at x=0 → cut in half by the
+  board edge. The hand-drawn Lattice tool shares `emitSegment`, same issue.
+- **SE7p (seat B):** at 390 px the Pattern panel takes the full width and the canvas is off-screen; Nodes checkboxes
+  overlap their labels (desktop too); Regenerate label invisible (white on white); reroll button clipped; an emulated
+  two-finger pinch left zoom at 1 (real bug or emulation gap — verify).
+Add-in deployed 3a99ef8 (bridge back after reboot).
