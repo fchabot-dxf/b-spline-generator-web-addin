@@ -21,6 +21,8 @@ import {
   findNodeAt,
   emitNode,
   emitSegment,
+  ORIENTATIONS,
+  orient,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 
 describe('toLattice / fromLattice', () => {
@@ -61,6 +63,90 @@ describe('constrain', () => {
 
   it('keeps the dominant (tie) coordinate and locks the other to the start column', () => {
     expect(constrain({ i: 2, j: 2 }, { i: 3, j: 7 })).toEqual({ i: 2, j: 7 });
+  });
+});
+
+/**
+ * SE7h (Fred: "invert rails and ties so rails are vertical") — orient()
+ * is the ONE mapping every lattice consumer (computePattern, editor-
+ * interaction.js's hand tool) conjugates through: transpose into the
+ * canonical (horizontal) frame, run the existing algorithm unchanged,
+ * transpose the result back out. Self-inverse by construction (swapping
+ * i/j twice is the identity) — proven directly here, since every caller
+ * relies on that property to use ONE function for both directions.
+ */
+describe('orient (SE7h)', () => {
+  it('declares exactly the two orientations', () => {
+    expect(ORIENTATIONS).toEqual(['horizontal', 'vertical']);
+  });
+
+  it('horizontal is the identity', () => {
+    expect(orient({ i: 3, j: 7 }, 'horizontal')).toEqual({ i: 3, j: 7 });
+  });
+
+  it('vertical swaps i and j', () => {
+    expect(orient({ i: 3, j: 7 }, 'vertical')).toEqual({ i: 7, j: 3 });
+  });
+
+  it('is self-inverse for vertical (applying it twice returns the original point)', () => {
+    const p = { i: 2, j: -5 };
+    expect(orient(orient(p, 'vertical'), 'vertical')).toEqual(p);
+  });
+
+  it('non-vacuous: a point with i !== j actually changes under vertical (rules out an identity-in-disguise bug)', () => {
+    const p = { i: 1, j: 9 };
+    expect(orient(p, 'vertical')).not.toEqual(p);
+  });
+});
+
+/**
+ * SE7h: the exact conjugation pattern editor-interaction.js's hand tool
+ * uses (orient the two drag points in, run classifyDrag/constrain
+ * UNCHANGED, orient the result back out) — proven here as a pure
+ * composition, independent of the DOM/pointer-event plumbing that
+ * actually drives it (editor-interaction.js has no exported hook for a
+ * lighter-weight test; this validates the MATH the hand tool's
+ * `update`/`finish` handlers apply verbatim, which is what SE7h actually
+ * changed there).
+ */
+describe('orient() composed with classifyDrag/constrain (the hand-tool pattern, SE7h)', () => {
+  function classifyOriented(a, b, orientation) {
+    return classifyDrag(orient(a, orientation), orient(b, orientation));
+  }
+  function constrainOriented(a, b, orientation) {
+    const aC = orient(a, orientation), bC = orient(b, orientation);
+    return orient(constrain(aC, bC), orientation);
+  }
+
+  it('a horizontally-dominant drag (rail today) classifies as a TIE once vertical is the rail axis', () => {
+    const a = { i: 0, j: 0 }, b = { i: 4, j: 1 }; // classifyDrag(a,b) === 'rail' in horizontal
+    expect(classifyDrag(a, b)).toBe('rail'); // sanity on the un-oriented baseline
+    expect(classifyOriented(a, b, 'vertical')).toBe('tie');
+  });
+
+  it('a vertically-dominant drag (tie today) classifies as a RAIL once vertical is the rail axis', () => {
+    const a = { i: 0, j: 0 }, b = { i: 1, j: 4 };
+    expect(classifyDrag(a, b)).toBe('tie');
+    expect(classifyOriented(a, b, 'vertical')).toBe('rail');
+  });
+
+  it('horizontal orientation reproduces classifyDrag exactly (identity — no behavior change for the default)', () => {
+    const a = { i: 0, j: 0 }, b = { i: 4, j: 1 };
+    expect(classifyOriented(a, b, 'horizontal')).toBe(classifyDrag(a, b));
+  });
+
+  it('constrainOriented reproduces plain constrain exactly under horizontal', () => {
+    const a = { i: 2, j: 2 }, b = { i: 6, j: 3 };
+    expect(constrainOriented(a, b, 'horizontal')).toEqual(constrain(a, b));
+  });
+
+  it('constrainOriented under vertical locks the dominant REAL-vertical drag onto a straight vertical line (constant real-i)', () => {
+    // A drag mostly along j (vertical on screen) is now the RAIL-shaped
+    // one; the constrained endpoint must share the START's real i
+    // (a straight vertical line), not its j.
+    const a = { i: 3, j: 0 }, b = { i: 3, j: 8 };
+    const result = constrainOriented(a, b, 'vertical');
+    expect(result.i).toBe(a.i); // straight vertical line: constant i
   });
 });
 

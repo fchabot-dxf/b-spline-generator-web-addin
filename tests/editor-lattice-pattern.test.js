@@ -317,3 +317,75 @@ describe('computePattern: input contract', () => {
     expect(() => computePattern(PATTERN_DEFAULTS, {})).toThrow(/extent/);
   });
 });
+
+/**
+ * SE7h (Fred: "invert rails and ties so rails are vertical") —
+ * PATTERN.orientation conjugates the WHOLE computation through orient()
+ * (editor-lattice.js): the extent is transposed in, the SAME rail-row/
+ * tie-span/crossing math runs unchanged, every output point is
+ * transposed back out. No second copy of the algorithm exists for
+ * 'vertical' — these tests are the direct proof of that claim, plus the
+ * dispatch's own two verify lines.
+ */
+describe('computePattern: orientation (SE7h)', () => {
+  // A SQUARE extent so orienting the BOUNDS is a no-op numerically
+  // (iMin===jMin, iMax===jMax) — isolates "does the OUTPUT get swapped"
+  // from "did the extent transpose correctly", which the 7x9 test below
+  // covers separately.
+  const SQUARE_EXTENT = { iMin: 0, jMin: 0, iMax: 8, jMax: 8 };
+
+  it('vertical output = horizontal output with i/j swapped, on a square extent (the dispatch\'s own verify line)', () => {
+    const base = { ...PATTERN_DEFAULTS, seed: 55, ties: { ...PATTERN_DEFAULTS.ties, density: 0.6 } };
+    const horizontal = computePattern({ ...base, orientation: 'horizontal' }, { extent: SQUARE_EXTENT });
+    const vertical = computePattern({ ...base, orientation: 'vertical' }, { extent: SQUARE_EXTENT });
+
+    expect(vertical.segments).toHaveLength(horizontal.segments.length);
+    for (let k = 0; k < horizontal.segments.length; k++) {
+      expect(vertical.segments[k].kind).toBe(horizontal.segments[k].kind);
+      expect(vertical.segments[k].a).toEqual({ i: horizontal.segments[k].a.j, j: horizontal.segments[k].a.i });
+      expect(vertical.segments[k].b).toEqual({ i: horizontal.segments[k].b.j, j: horizontal.segments[k].b.i });
+    }
+    expect(vertical.nodePoints).toHaveLength(horizontal.nodePoints.length);
+    for (let k = 0; k < horizontal.nodePoints.length; k++) {
+      expect(vertical.nodePoints[k]).toEqual({ i: horizontal.nodePoints[k].j, j: horizontal.nodePoints[k].i });
+    }
+  });
+
+  it('non-vacuous: horizontal and vertical outputs actually DIFFER (rules out orient() silently being a no-op)', () => {
+    const base = { ...PATTERN_DEFAULTS, seed: 55, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+    const horizontal = computePattern({ ...base, orientation: 'horizontal' }, { extent: SQUARE_EXTENT });
+    const vertical = computePattern({ ...base, orientation: 'vertical' }, { extent: SQUARE_EXTENT });
+    expect(vertical.segments).not.toEqual(horizontal.segments);
+  });
+
+  it('on a 7x9 board, rails run along the 9" axis when vertical (the dispatch\'s own other verify line)', () => {
+    // spacing=1 assumed by the caller — lattice units ARE inches here, so
+    // a 7"x9" board is iMin..iMax = 0..6 (7 wide), jMin..jMax = 0..8 (9 tall).
+    const extent = { iMin: 0, iMax: 6, jMin: 0, jMax: 8 };
+    const { segments } = computePattern(
+      { ...PATTERN_DEFAULTS, orientation: 'vertical', rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } },
+      { extent }
+    );
+    const rails = segments.filter((s) => s.kind === 'rail');
+    expect(rails.length).toBeGreaterThan(0); // non-vacuous: there IS something to check
+    for (const r of rails) {
+      expect(r.a.i).toBe(r.b.i); // a straight VERTICAL line — constant real-i
+      // ...spanning the FULL 9" axis (jMin..jMax), not a short segment.
+      expect([r.a.j, r.b.j].sort((x, y) => x - y)).toEqual([extent.jMin, extent.jMax]);
+    }
+    // The rails themselves are spread across the 7" WIDTH (real-i), every
+    // 2 lattice units per PATTERN.rails.every — 4 rails at i=0,2,4,6.
+    expect(rails.map((r) => r.a.i).sort((a, b) => a - b)).toEqual([0, 2, 4, 6]);
+  });
+
+  it('an old saved pattern with no `orientation` key at all reads as horizontal (no migration needed)', () => {
+    const base = { ...PATTERN_DEFAULTS, seed: 77, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
+    const legacy = { ...base };
+    delete legacy.orientation;
+    expect(legacy.orientation).toBeUndefined(); // sanity: the field really is absent
+
+    const legacyOutput = computePattern(legacy, { extent: SQUARE_EXTENT });
+    const explicitHorizontal = computePattern({ ...base, orientation: 'horizontal' }, { extent: SQUARE_EXTENT });
+    expect(legacyOutput).toEqual(explicitHorizontal);
+  });
+});

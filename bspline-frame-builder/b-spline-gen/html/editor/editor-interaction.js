@@ -31,7 +31,7 @@ import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHo
 import { getDynamicTolerance } from './editor-hit.js';
 import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
-    emitSegment, emitNode, LATTICE_ATTR, nearestRailRow,
+    emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
 } from './editor-lattice.js';
 import { detachOwnership, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import {
@@ -825,14 +825,19 @@ const circleHandler = {
     },
 };
 
-/** T30: the ROW of every existing rail on the sketch, in lattice coords —
- *  what a tie drag's free end snaps toward. Duplicate rows are harmless
- *  (nearestRailRow just scans for the closest, ties broken toward the
- *  first match), so no dedup needed. */
-function _existingRailRows(editor, spacing) {
+/** T30: the ROW of every existing rail on the sketch, IN THE CANONICAL
+ *  FRAME (orient()'d) — what a tie drag's free end snaps toward. A real
+ *  rail segment's "row" is whichever endpoint component is constant for
+ *  that kind (real-j when horizontal, real-i when vertical, per SE7h) —
+ *  orienting each endpoint into canonical space and reading `.j` gives
+ *  that constant coordinate regardless of orientation, matching the
+ *  canonical-space value `update()` below compares against. Duplicate
+ *  rows are harmless (nearestRailRow just scans for the closest, ties
+ *  broken toward the first match), so no dedup needed. */
+function _existingRailRows(editor, spacing, orientation) {
     return _collectLatticeSegments(editor, spacing)
         .filter((s) => s.kind === 'rail')
-        .map((s) => s.a.j);
+        .map((s) => orient(s.a, orientation).j);
 }
 
 /** Existing rail/tie segments on the sketch, as {kind, a, b} in lattice
@@ -884,9 +889,17 @@ const latticeHandler = {
     update(editor, pt) {
         if (!editor._latticePreview) return;
         const spacing = editor._latticeSpacing;
+        // SE7h: the hand tool conjugates through the SAME orient() the
+        // generator uses (editor-lattice.js) — transpose into the
+        // canonical (horizontal) frame, run constrain/the tie-shape test/
+        // the rail-row snap EXACTLY as written for horizontal, then
+        // transpose the result back out. See orient()'s own doc comment.
+        const orientation = editor._latticePattern?.orientation ?? PATTERN_DEFAULTS.orientation;
         const a = editor._latticeStart;
         const bLat = toLattice(pt, spacing);
-        let constrained = constrain(a, bLat);
+        const aCanon = orient(a, orientation);
+        const bCanon = orient(bLat, orientation);
+        let constrainedCanon = constrain(aCanon, bCanon);
         // T30: a tie drag's END snaps to the nearest rail ROW within
         // railSnapRows — mirrors constrain's own dominant-axis test
         // (rather than reading it back off `constrained`, whose rail
@@ -894,7 +907,9 @@ const latticeHandler = {
         // un-snapped tie value at that same row) so only a genuinely
         // vertical (tie-shaped) drag-in-progress gets row-snapped. finish()
         // below just reads back whatever _latticeEnd ends up being here —
-        // no separate snap step needed there.
+        // no separate snap step needed there. SE7h: "row" here means
+        // canonical-frame row — in vertical orientation that's a REAL
+        // column, per _existingRailRows' own doc comment.
         // T30 AMEND (Fred): ONE setting for both surfaces — reads the
         // Pattern panel's own railSnapRows field (editor._latticePattern.
         // ties.railSnapRows, persisted with the pattern) rather than a
@@ -903,13 +918,14 @@ const latticeHandler = {
         // editor._latticePattern already exists by the time any tool can
         // be used, so the PATTERN_DEFAULTS fallback below is only ever
         // for a still-uninitialized editor in a test harness.
-        const isTieShaped = Math.abs(bLat.i - a.i) < Math.abs(bLat.j - a.j);
+        const isTieShaped = Math.abs(bCanon.i - aCanon.i) < Math.abs(bCanon.j - aCanon.j);
         if (isTieShaped) {
             const railSnapRows = editor._latticePattern?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
-            const railRows = _existingRailRows(editor, spacing);
-            const snapped = nearestRailRow(constrained.j, railRows, railSnapRows);
-            if (snapped != null) constrained = { i: constrained.i, j: snapped };
+            const railRows = _existingRailRows(editor, spacing, orientation);
+            const snapped = nearestRailRow(constrainedCanon.j, railRows, railSnapRows);
+            if (snapped != null) constrainedCanon = { i: constrainedCanon.i, j: snapped };
         }
+        const constrained = orient(constrainedCanon, orientation);
         editor._latticeEnd = constrained;
         const p2 = fromLattice(constrained, spacing);
         editor._latticePreview.attr({ x2: p2.x, y2: p2.y });
@@ -922,14 +938,30 @@ const latticeHandler = {
         editor._latticeStart = null;
         editor._latticeEnd = null;
         if (!a) return;
-        const kind = classifyDrag(a, b);
+        const orientation = editor._latticePattern?.orientation ?? PATTERN_DEFAULTS.orientation;
+        const aCanon = orient(a, orientation);
+        const bCanon = orient(b, orientation);
+        const kind = classifyDrag(aCanon, bCanon);
         if (kind === 'node') return; // bare click in lattice mode does nothing
         const spacing = editor._latticeSpacing;
-        const existing = editor._lattice.autoNodes ? _collectLatticeSegments(editor, spacing) : [];
+        // Gathered BEFORE the new segment is emitted (unchanged from
+        // before SE7h) so it never crosses against itself — oriented into
+        // the canonical frame since the crossing math below is.
+        const existing = editor._lattice.autoNodes
+            ? _collectLatticeSegments(editor, spacing).map((s) => ({
+                kind: s.kind, a: orient(s.a, orientation), b: orient(s.b, orientation),
+              }))
+            : [];
+        // emitSegment draws the REAL a/b (unchanged) — only the crossing
+        // math below needs the canonical conjugation, same reasoning as
+        // computePattern's own crossings step.
         emitSegment(editor, kind, fromLattice(a, spacing), fromLattice(b, spacing));
         if (editor._lattice.autoNodes) {
-            const crossings = latticeCrossings({ kind, a, b }, existing);
-            crossings.forEach((latPt) => emitNode(editor, fromLattice(latPt, spacing)));
+            const crossingsCanon = latticeCrossings({ kind, a: aCanon, b: bCanon }, existing);
+            crossingsCanon.forEach((ptCanon) => {
+                const latPt = orient(ptCanon, orientation);
+                emitNode(editor, fromLattice(latPt, spacing));
+            });
         }
         applyLayerState(editor);
         if (typeof editor.pushState === 'function') editor.pushState();

@@ -41,6 +41,8 @@ export function initLatticeProperties(editor) {
     const colorRailsEl = el('latticeColorRails');
     const colorTiesEl = el('latticeColorTies');
     const colorNodesEl = el('latticeColorNodes');
+    const orientHorizontalEl = el('latticeOrientHorizontal');
+    const orientVerticalEl = el('latticeOrientVertical');
     const toolBtn = el('toolLattice');
     const panelEl = el('editorLatticePanel');
     const headerBtn = el('editorLatticePanelHeader');
@@ -99,6 +101,14 @@ export function initLatticeProperties(editor) {
      *  values from whatever was on screen before. */
     function syncFieldsFromPattern() {
         const p = _currentPattern(editor);
+        // SE7h: reflect the current orientation onto the segmented
+        // control — an existing saved pattern from before this field
+        // existed has no `orientation` key, reading as 'horizontal'
+        // (PATTERN_DEFAULTS', matching computePattern's own `{
+        // ...PATTERN_DEFAULTS, ...PATTERN }` merge — no migration).
+        const orientation = p.orientation ?? PATTERN_DEFAULTS.orientation;
+        if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', orientation !== 'vertical');
+        if (orientVerticalEl) orientVerticalEl.classList.toggle('active', orientation === 'vertical');
         if (spacingEl) spacingEl.value = String(p.spacing ?? PATTERN_DEFAULTS.spacing);
         if (railsEveryEl) railsEveryEl.value = p.rails?.every ?? PATTERN_DEFAULTS.rails.every;
         if (railsOffsetEl) railsOffsetEl.value = p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset;
@@ -129,6 +139,12 @@ export function initLatticeProperties(editor) {
      *  contract) and return it. */
     function readFieldsIntoPattern() {
         const p = _currentPattern(editor);
+        // SE7h: the segmented control's own `.active` state IS the source
+        // of truth (same "read the control, not a separate variable" shape
+        // as nodesEndsEl.checked below) — Vertical active means vertical,
+        // anything else (including a fresh panel with neither button
+        // wired) reads as horizontal.
+        p.orientation = orientVerticalEl?.classList.contains('active') ? 'vertical' : 'horizontal';
         if (spacingEl) p.spacing = parseFloat(spacingEl.value) || PATTERN_DEFAULTS.spacing;
         p.rails = {
             every: railsEveryEl ? (parseInt(railsEveryEl.value, 10) || 1) : (p.rails?.every ?? PATTERN_DEFAULTS.rails.every),
@@ -171,6 +187,23 @@ export function initLatticeProperties(editor) {
             });
         });
     }
+
+    /** SE7h: flipping orientation is a RE-PROJECTION of the same pattern,
+     *  not a reshuffle — regenerates immediately with the CURRENT seed
+     *  (never rolls a new one; that's Generate's own job, SE7g), reading
+     *  every other field fresh via readFieldsIntoPattern() so a flip
+     *  mid-edit picks up whatever's currently in the panel. One undo step
+     *  (generatePattern's own single pushState — no extra plumbing
+     *  needed, same as every other field here). */
+    function selectOrientation(value) {
+        if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', value === 'horizontal');
+        if (orientVerticalEl) orientVerticalEl.classList.toggle('active', value === 'vertical');
+        const p = readFieldsIntoPattern();
+        generatePattern(editor, p);
+        syncGenerateLabel();
+    }
+    if (orientHorizontalEl) on(orientHorizontalEl, 'click', () => selectOrientation('horizontal'));
+    if (orientVerticalEl) on(orientVerticalEl, 'click', () => selectOrientation('vertical'));
 
     syncFieldsFromPattern();
     on(toolBtn, 'click', syncFieldsFromPattern);

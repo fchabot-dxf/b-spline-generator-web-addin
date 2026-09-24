@@ -40,6 +40,28 @@ export const LATTICE_STYLE = {
 /** data-lattice attribute values: 'rail' | 'tie' | 'node'. */
 export const LATTICE_ATTR = 'data-lattice';
 
+/** SE7h (Fred: "invert rails and ties so rails are vertical"): the two
+ *  declared lattice orientations. 'horizontal' (default) is the frame
+ *  every algorithm below is written in — rails constant-j (spanning i),
+ *  ties constant-i (spanning j). 'vertical' is that SAME frame with i/j
+ *  swapped at the edges (orient(), below) — no second copy of the rails/
+ *  ties math exists anywhere for it. */
+export const ORIENTATIONS = ['horizontal', 'vertical'];
+
+/**
+ * The one orientation mapping every lattice consumer conjugates through:
+ * transpose a point INTO the canonical (horizontal) frame before running
+ * classifyDrag/constrain/latticeCrossings/the generator's row-column math
+ * unchanged, then transpose the RESULT back out. Self-inverse (swapping
+ * i/j twice is the identity), so the same call does both directions —
+ * callers don't need a separate "un-orient". 'horizontal' is the
+ * identity: every existing caller that never passes an orientation
+ * keeps its current behavior exactly.
+ */
+export function orient(p, orientation) {
+  return orientation === 'vertical' ? { i: p.j, j: p.i } : { i: p.i, j: p.j };
+}
+
 /** Node radius (inches) when no grid is active to derive one from — the
  *  Circle tool's click-to-dot still needs a sane size off-grid. */
 export const DEFAULT_NODE_RADIUS_IN = 0.09;
