@@ -644,3 +644,8 @@ no console errors, desktop + 390 px). But the RESULT is not usable, and the phon
   overlap their labels (desktop too); Regenerate label invisible (white on white); reroll button clipped; an emulated
   two-finger pinch left zoom at 1 (real bug or emulation gap — verify).
 Add-in deployed 3a99ef8 (bridge back after reboot).
+- **Scope check (Fred, 2026-09-24: "I just wanted grid snap").** The pattern generator (SE7b, option C) was built
+  without an explicit yes — advisor overreach, recorded. SE7c (pattern proportions, stash@{0} on main) and T24 (pattern
+  panel on phones) are HELD. Fred then said "continue with audit fixes": SE8b-3 (measure + cheapen the live drag
+  pipeline, seat A) and T25 (prove pinch-zoom on a phone + layers at 390 px, seat B). Pattern generator's fate (remove /
+  hide / finish) awaits Fred.
