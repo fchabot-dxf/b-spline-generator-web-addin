@@ -3,6 +3,10 @@ import { GRID_SPACINGS } from './editor-grid.js';
 import { ELEMENT_CAPS } from './editor-hit.js';
 import { VECTOR_COLORS, addRecentColor, loadRecentColors } from './editor-color.js';
 
+/** Stroke-width step for the toolbar's −/+ buttons and the number field's own
+ *  arrows, in inches (Fred: 0.05"). One declaration so both agree. */
+export const STROKE_STEP_IN = 0.05;
+
 export function initShapeProperties(editor) {
   const strokeNum = el('editorStrokeWidth');
   const minusBtn = el('editorStrokeWidthMinus');
@@ -12,7 +16,8 @@ export function initShapeProperties(editor) {
   const syncStroke = (value) => {
     const numeric = parseFloat(value);
     if (Number.isNaN(numeric)) return;
-    const clamped = Math.max(0, Math.min(5, numeric));
+    // Round to 3 decimals so repeated ±0.05 steps don't drift (0.1+0.05 = 0.15000000000000002).
+    const clamped = Math.round(Math.max(0, Math.min(5, numeric)) * 1000) / 1000;
     strokeNum.value = clamped;
     editor.setStrokeWidth(clamped);
   };
@@ -24,8 +29,9 @@ export function initShapeProperties(editor) {
   // typing "2.5" commits as ONE step. The +/- buttons already fire once
   // per click either way, so they're unaffected.
   on(strokeNum, 'change', () => syncStroke(strokeNum.value));
-  on(minusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) - 0.1));
-  on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + 0.1));
+  strokeNum.step = String(STROKE_STEP_IN);
+  on(minusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) - STROKE_STEP_IN));
+  on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + STROKE_STEP_IN));
 
   initFillModeToggle(editor);
   initColorControl(editor);
