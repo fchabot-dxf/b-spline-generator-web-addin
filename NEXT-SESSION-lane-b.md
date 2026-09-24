@@ -1,32 +1,33 @@
-# NEXT (lane-b) — T36: SE12 Slice 2 (revised) — ONE per-layer field `fusionGeometry`, picked in the sidebar
+# NEXT (lane-b) — T37: SE12 Slice 3 — outline preview in the editor, commit-only
 
-**Ball: worker (seat B) · epoch 2 · T36.** NO FUSION (hard rule) — browser proof only. Seat A is on SE7h in the main
-checkout (lattice files + Pattern panel markup); don't touch those.
+**Ball: worker (seat B) · epoch 2 · T37.** NO FUSION (hard rule) — browser proof only. Seat A is mid-SE7h in the main
+checkout and touches editor.js / editor-interaction.js / lattice files / the palette html — keep your editor.js change
+small and self-contained (one import + one call at the commit hook) so the merge stays clean.
 
-## Advisor revision to your design's Slice 2 (read before building)
-Fred: "Don't choose automatically" → the user picks Outline / Centerline / Both per layer. Your design had TWO fields
-(`outline:boolean` + `fusionGeometry`, the latter "meaningless while outline:false"). That's one concept stored twice —
-`outline:false` IS `'centerline'`. **Declare ONE field**: `fusionGeometry: 'centerline' | 'outline' | 'both'`, default
-`'centerline'` (= today, so no migration: applyToolingDefaults fills it). Derive the old gate from it:
-`showsOutline(l) = isExported(l) && l.fusionGeometry !== 'centerline'` (next to isCarved/showsColor in layers.js).
-Declare the choices as data (a FUSION_GEOMETRY table: value, label, one-line hint) so the picker renders from it.
+T36 reviewed — good (one field, table-driven, 541 green). It isn't on main yet only because seat A's working tree
+blocks the fast-forward; I'll merge both after seat A passes. Keep building on lane-b.
 
-## UI placement — NOT a 4th row toggle
-The layer row already has 👁 · 3D · 🎨 and Fred just asked for them to be clearer; don't crowd it. Put the picker in the
-sidebar's per-layer settings block ("Settings below apply to the selected layer." — Plunge Depth / Tool Profile,
-bspline_gen_palette.html ~line 616) as a 3-way segmented control "Fusion geometry: Centerline · Outline · Both",
-wired like the other per-layer tooling fields (same load/save/undo path as plunge depth — one undo step per change).
-Hints (from the table): Centerline = "the line's path — V-bit / engraving"; Outline = "the stroke's true edge — pockets
-& resin inlay"; Both.
-Nothing else reads the field yet (preview = Slice 3, export swap = Slice 4) — say so in its doc comment.
+## Do your design's Slice 3 (§ item 5 "display preview"), now keyed on the ONE field
+- A non-interactive `<g id="outlinePreview">` (pointer-events:none, excluded from selection, hit-testing, save
+  (getSvgString/getLayerSvg), undo snapshots and the drape — assert each).
+- For every element on a layer where `showsOutline(layer)` is true and `lineOutlinePathD` supports it (round-cap
+  `<line>` today; anything else = skipped, no preview, no error): draw the outline path, thin stroke, no fill, in the
+  element's own color if `showsColor(layer)` else the neutral color — same rule as the element itself.
+- Rebuilt on COMMIT only (the CHANGE_PIPELINE commit hook that refreshDrape uses), never on live drag frames.
+- Picking Centerline (or hiding the layer) empties that layer's preview on the next commit — changing the picker counts
+  as a commit.
+- Outline geometry is computed in each element's local frame and the preview element gets the element's own
+  transform (don't bake here).
 
 ## Verify
-- vitest: new layer → 'centerline'; old saved layer without the field → 'centerline'; showsOutline truth table incl.
-  hidden layer; picker change persists through save/restore and is one undo step.
-- CDP screenshot of the sidebar block with the control, one per value selected.
+- vitest (pure where possible): which elements get a preview for each fusionGeometry × visible × showColor; excluded
+  from getSvgString/getLayerSvg/snapshot.
+- CDP: generate a lattice, pick Outline on its layer → screenshot shows thin outlines around rails/ties (nodes skipped);
+  drag a rail with dispatched mouse moves and read the preview `d` mid-drag (unchanged) and after release (updated);
+  pick Centerline → preview empty. Screenshots.
 - `npx vitest run` green.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T36: fusionGeometry per-layer field + sidebar picker — <sha>, vitest N, screenshots: <paths>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T37: SE12 slice 3 outline preview — <sha>, vitest N, screenshots: <paths>"`
 and stop.
