@@ -8,7 +8,7 @@
  * suppression) lives in editor-symbol-keyboard.js.
  */
 import { el, on } from './dom.js';
-import { injectFontFaceRules } from './editor-fonts.js';
+import { FONT_MAP, SYMBOL_FAMILIES, injectFontFaceRules } from './editor-fonts.js';
 import { initSymbolKeyboard } from './editor-symbol-keyboard.js';
 
 export function initTextProperties(editor) {
@@ -21,6 +21,25 @@ export function initTextProperties(editor) {
     const fontSizeEl = el('editorFontSize');
     const fsMinus = el('editorFontSizeMinus');
     const fsPlus = el('editorFontSizePlus');
+
+    // SA-TEXT-6: populated from FONT_MAP (editor-fonts.js) at bind time,
+    // same idiom properties-shape.js's initGridToggle already uses for
+    // the grid-spacing select — no more hand-typed <option> subset (was
+    // Arial/Tahoma/Verdana only) drifting from the real bundled-font
+    // list. SYMBOL_FAMILIES (also declared in editor-fonts.js) excludes
+    // the icon/emoji fonts — those are for the Symbol Keyboard glyph
+    // picker, not sensible choices for a typed-text caption's family.
+    if (fontFamilyEl) {
+        fontFamilyEl.innerHTML = '';
+        for (const family of Object.keys(FONT_MAP)) {
+            if (SYMBOL_FAMILIES.has(family)) continue;
+            const opt = document.createElement('option');
+            opt.value = family;
+            opt.textContent = family;
+            fontFamilyEl.appendChild(opt);
+        }
+        fontFamilyEl.value = editor._fontFamily || 'Arial';
+    }
 
     on(fontFamilyEl, 'change', () => editor.setFontFamily(fontFamilyEl.value));
     on(fontSizeEl, 'input', () => {
