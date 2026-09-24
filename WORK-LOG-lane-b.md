@@ -3453,3 +3453,87 @@ console errors/exceptions across the whole run.
 Committed by explicit path (7 files: the HTML, the CSS, `editor.js`, `editor-ui.js`,
 `properties-lattice.js`, the new test file, and this WORK-LOG). Amendments polled clean both before this
 entry and immediately before the commit below — nothing pending.
+
+## Lane B — Turn 83 — T33: SE12 live-expand design (plan only, no product code touched) — DONE
+
+New `SE12-LIVE-EXPAND-DESIGN.md` at the worktree root, answering all 7 dispatched questions plus
+slices/STOP-conditions/open-questions. Read-only turn per the dispatch — every file below was read, none
+edited except the new design doc and this log.
+
+**The one finding that reshaped the answer**: mid-turn, `ROADMAP.md` picked up a same-day entry (`9f3c670`,
+Fred, 18:28) requiring live expand to be **analytic** ("line → 2 lines + 2 arcs"), explicitly ruling out
+the raster-trace Expand pipeline the dispatch itself suggested reusing (`expandGeometric`'s
+`getPointAtLength()`-sampling + `unionSelfIntersecting()` polygon-clipping). I read the code first
+(`editor-expand-shape.js`, `-union.js`, `-trace.js`, `-text.js`, `-commit.js` — all read in full this
+session) and had already understood the pipeline before that roadmap entry landed, which made the
+divergence easy to reason through rather than a last-minute scramble: a round-capped straight line's true
+offset outline has a closed form (2 straight banks + 2 semicircular arcs), so going analytic isn't extra
+scope, it's strictly *less* machinery than the sampling+union approach — no CDN-loaded polygon-clipping
+library needed at all for the non-crossing v1 case. Flagged this explicitly in the doc as a deliberate
+divergence from the dispatch's literal wording, with the reasoning, rather than silently following either
+the older instruction or the newer one without saying so.
+
+**Bench numbers, real not guessed** (CDP against a freshly-generated Lattice pattern — 17 rails, 5 ties, 12
+nodes): `unionSelfIntersecting()` cold-load 7ms (one run 273ms, CDN-latency-dependent) / warm ~0ms;
+per-element cost feeding the REAL union function a 22-point polygon shaped to match `expandGeometric`'s own
+cap-sampling density — 0.1–1.1ms warm each, ≈3ms for all 22 elements. Framed in the doc as a conservative
+upper bound the analytic engine doesn't even need to pay, not as the design's actual cost.
+
+**What I could not get, disclosed rather than papered over**: `getTotalLength()`/`getPointAtLength()` throw
+`"non-rendered element"` in this headless-Chrome environment for every one of these real, on-screen lattice
+lines — confirmed a genuine headless-only limitation (two remediation attempts, `Page.bringToFront` and a
+double-rAF wait, both failed to clear it), which is why the per-element number above uses an
+analytically-shaped polygon fed straight to the union step instead of a full `performExpand()` timing. Also:
+one raster-carve equivalence run (stroke vs. expand-derived outline, rasterized through the same
+`renderSvgNative` path the real carve uses) came back with a suspicious 65% opaque-pixel mismatch; a second
+confirming run was blocked by CDP/Chrome flakiness in this environment (traced to a backlog of 12 orphaned
+`chrome.exe` processes from failed launches — cleared via `taskkill`, but re-runs still couldn't open a CDP
+connection before this turn's budget ran out). Documented as attempted-but-inconclusive with a stated,
+unverified leading hypothesis (a coordinate-space/viewBox mismatch in the hand-rolled bench harness, since
+`commitExpandedPath` is confirmed to compose transforms) rather than asserted as proven either way — and
+made it a hard gate on Slice 1 (a real empirical equivalence check must land before anything downstream
+consumes the analytic function).
+
+**Design highlights**: new pure function (not a reuse of `expandGeometric`) for the outline `d`; no cache
+needed for v1 given the analytic cost is sub-microsecond (declared the key shape for later, built no
+machinery for it now); recompute timing mirrors `refreshDrape`'s existing commit-only pattern; new layer
+field `outline:false` + `showsOutline()` gate following the exact `isCarved`/`showsColor` pattern
+(`layers.js`), row toggle inserted between the existing `colorBtn` and `name` (confirmed insertion point at
+`layers.js:653-657`); **no migration entry needed** (unlike `carve`'s `layer-carve-flag` — reasoned through
+why: `outline` has no prior semantic to preserve, so the flat `false` default is correct for every existing
+document); export/carve swap point confirmed as the single choke point `getLayerSvg` (`editor-io.js:151`,
+grep-confirmed exactly 2 call sites); two open questions surfaced for Fred as data choices, not code forks
+— outline/centerline/both per layer, and whether Fusion's SVG import actually preserves `A` arc commands
+(the latter already flagged in `ROADMAP.md`'s own new entry, restated here since it blocks Slice 4).
+
+**Process hygiene**: `tasklist` confirmed zero leftover `chrome.exe` after cleanup; the repo-root
+`http.server` on 8771 was found still listening after the bench work and explicitly stopped
+(`taskkill`/`netstat` verified clear) before finalizing the doc's own process-note claim — caught by
+re-checking the claim against the actual process list rather than writing it from memory.
+
+**Mid-task amendment, incorporated before committing** (polled per protocol before commit, one landed):
+Fred sharpened the arcs-stay-arcs requirement into 3 concrete asks, all folded into the doc before this
+entry was finalized, not bolted on after: (1) generalize the analytic offsetter's *coverage* beyond
+round-cap lines — square/butt caps (4 lines, no arcs), arc segments (2 concentric arcs + caps), circle
+nodes (2 concentric circles, moot today since nodes are filled) — added to item 1, none of it built, just
+designed to extend cleanly later. (2) A second, **pre-existing** bug the amendment surfaced that has
+nothing to do with live-expand itself: the *static* carve/export bake path
+(`editor-transform-handles.js`'s `_bakeMatrixIntoPath` + `bakeMatrixIntoElement`'s circle/ellipse branch)
+already throws away every `A` command and every circle/ellipse into cubic Béziers *unconditionally*, even
+though the carve matrix (`carveMatrix`, `editor-coords.js:64` — confirmed pure uniform-scale + translate)
+combined with an element's own transform is a similarity for the common case. Traced the exact two call
+sites and the exact reason (`normalizeForBake` runs before any per-matrix branching), confirmed non-uniform
+element scale is a default, easily-reached user action (side-handle drag without shift — corner handles
+are the ones that stay uniform), and wrote up the similarity test (`a·c+b·d≈0` and `a²+b²≈c²+d²`) plus the
+arc-endpoint/rx-ry/rotation/sweep-flip bake math precisely enough to implement without further research.
+Promoted this to **Slice 0**, first, ahead of any live-expand code, exactly as the amendment asked, with
+its own non-vacuous-shaped test (arc-in/arc-out under a similarity matrix, AND the same segment still
+falling back to cubics under a known non-uniform matrix — proves the branch fires both ways, not just the
+happy path). (3) Replaced the vague "recommend Fred test this" for the Fusion-arc-import open question
+with a concrete, self-contained 1-minute procedure (a literal one-`A`-command test SVG + where to look in
+Fusion's selection info for Arc/Circle vs. Spline) so it's actually actionable without a follow-up
+back-and-forth.
+
+Amendments polled clean a second time (`handoff.py amendments --role worker`) immediately before passing —
+nothing further pending. Committed by explicit path (2 files: `SE12-LIVE-EXPAND-DESIGN.md`, this
+WORK-LOG) — sha `d799ace` is the pre-commit HEAD this turn branched from.

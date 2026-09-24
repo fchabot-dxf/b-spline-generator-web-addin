@@ -1,25 +1,32 @@
-# LANE B — T32: editor Undo/Redo — header on desktop, floating bottom-left on touch (Fred)
+# LANE B — T33: SE12 design — LIVE expand (lines stay editable, the outline is derived). PLAN ONLY, no code.
 
-**Seat B · epoch 2 · T32.** Fred: undo/redo out of the left tool rail; "mobile bottom left, desktop distinct placement".
-Today `#editorUndo` / `#editorRedo` sit in the tool rail (palette :1454-1455), bound in `editor/tools/action-tools.js:9-10`.
-Files: palette editor modal markup, `styles/editor.css`, tests (+ WORK-LOG-lane-b.md). Seat A idle. One commit by path.
-## Build — ONE pair of buttons, placement by CSS (no duplicated controls, no JS layout switching)
-- Move the two buttons into ONE `<div class="editor-history" role="group" aria-label="Undo and redo">` (ids and bindings
-  unchanged) placed in the editor HEADER, left of Download SVG, as ↶ ↷ icon buttons with titles "Undo" / "Redo" (no
-  keyboard hint text — in Fusion, Ctrl+Z belongs to the host).
-- `@media (pointer: coarse)` (the SE7m touch rule, same query T16 used): `.editor-history` becomes
-  `position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px))` over the canvas container,
-  44 px buttons, a light pill background with shadow, z-index above the canvas but below the pattern sheet's header —
-  check it doesn't collide with the Pattern bottom sheet (T24) or the touch action group (SE7m): if the sheet is
-  open, lift the pill above it (sheet height via a CSS variable the sheet already sets, or add one).
-- Disabled state when there is nothing to undo/redo, if the editor exposes it (check `editor._undoStack` length after
-  each pushState/undo/redo — one `updateHistoryButtons(editor)` called from those three places); skip if it needs
-  touching editor.js heavily and say so.
-- Remove the rail's divider/spacing left behind.
-## Verify
-Smoke (repo-root serve): desktop screenshot (header) + mobile screenshot (floating bottom-left, with and without the
-Pattern sheet open). Undo/redo still work by click. `npx vitest run` green.
+**Seat B · epoch 2 · T33.** Fred: "is there a way to draw lines and lattice that are already expanded but keep their
+editability?" → approved the LIVE expand idea ("that's the ideal solution"). NO FUSION (hard rule) — browser only.
+Deliverable: NEW `SE12-LIVE-EXPAND-DESIGN.md` at the worktree root (+ WORK-LOG-lane-b.md). Read-only on product code.
+Seat A is on SE7g (pattern seed + colors) — no overlap.
+## The idea (agreed with Fred)
+Lines and lattice pieces stay real `<line>/<path>` elements (drag nodes, length, stroke width, Regenerate all keep
+working). A per-layer "expanded" setting makes the OUTLINE of each stroke (offset by stroke width/2, caps/joins
+respected) derived on the fly — shown faintly in the editor as the true cut contour, used for the carve and for the
+Fusion export. The document stores only the lines (single store, SE4 lesson). The existing destructive Expand button
+stays for freezing a shape.
+## Answer in the doc
+1. **Where the outline comes from:** reuse the existing Expand pipeline (`editor-expand*.js`, `expand.js` — trace /
+   union / shape) as a PURE function stroke → outline path; what it needs that it doesn't have today; cost per element
+   and whether it's fast enough to recompute on every commit (numbers from a quick bench in the browser).
+2. **Caching + invalidation:** derived outlines keyed by element + geometry + stroke width (never stored in the SVG);
+   when recomputed ('commit' only, per CHANGE_PIPELINE).
+3. **The toggle:** a per-layer field (e.g. `outline: boolean`) — where it sits in the layer row next to 👁 · 3D · 🎨,
+   persisted, MIGRATIONS default false. Open question for Fred, answered in the doc as options: when expanded, does
+   Fusion get the outline only, the centerline only, or both (V-bit engraving follows centerlines; pockets/cuts want
+   outlines) — design so it's a data choice, not a code fork.
+4. **Carve:** does the raster carve change at all? (It rasterizes the stroke already — likely identical; prove it.)
+5. **Display:** how the faint contour is drawn (layer under the sketch, non-interactive, never serialized) and how it
+   behaves with the SE9 color / showColor.
+6. **Export:** exactly where `bakeSvgForCarving` / export-flow swap lines for outlines.
+7. **Slices** with files + verify lines; STOP conditions (text, circles-as-nodes, open vs closed paths, joins at lattice
+   crossings — do crossing rails/ties union into one outline or stay separate?).
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T32: undo/redo header (desktop) / floating bottom-left (touch) — <sha>, screenshots: <paths>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T33: SE12 live-expand design — K slices, open question: <…> — <sha>"`
 and stop.
