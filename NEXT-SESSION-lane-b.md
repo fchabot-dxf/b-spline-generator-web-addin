@@ -1,33 +1,32 @@
-# NEXT (lane-b) — T35: SE12 Slice 1 — analytic live-expand engine (line → outline), round cap
+# NEXT (lane-b) — T36: SE12 Slice 2 (revised) — ONE per-layer field `fusionGeometry`, picked in the sidebar
 
-**Ball: worker (seat B) · epoch 2 · T35.** NO FUSION (hard rule) — browser proof only. Seat A is on SE7h (lattice
-orientation) in the main checkout; don't touch lattice files.
+**Ball: worker (seat B) · epoch 2 · T36.** NO FUSION (hard rule) — browser proof only. Seat A is on SE7h in the main
+checkout (lattice files + Pattern panel markup); don't touch those.
 
-First: `git merge main` (main has your T34 merged + layer-toggle styling + the SE12 doc answer).
+## Advisor revision to your design's Slice 2 (read before building)
+Fred: "Don't choose automatically" → the user picks Outline / Centerline / Both per layer. Your design had TWO fields
+(`outline:boolean` + `fusionGeometry`, the latter "meaningless while outline:false"). That's one concept stored twice —
+`outline:false` IS `'centerline'`. **Declare ONE field**: `fusionGeometry: 'centerline' | 'outline' | 'both'`, default
+`'centerline'` (= today, so no migration: applyToolingDefaults fills it). Derive the old gate from it:
+`showsOutline(l) = isExported(l) && l.fusionGeometry !== 'centerline'` (next to isCarved/showsColor in layers.js).
+Declare the choices as data (a FUSION_GEOMETRY table: value, label, one-line hint) so the picker renders from it.
 
-## Fred's answers now in SE12-LIVE-EXPAND-DESIGN.md
-- `fusionGeometry` = an explicit per-layer pick (Outline / Centerline / Both), default centerline, **never set
-  automatically** (Fred: "Don't choose automatically"). Not needed for this slice — it's Slice 4 — just don't design
-  anything that infers it.
-- Context worth knowing: Fred uses stamps two ways — raised/carved relief AND resin inlay (carve a recess, fill resin,
-  machine flush against the original uncarved STEP). Inlay is why Outline must be exact.
-
-## Do exactly your design's Slice 1
-New pure module `editor/editor-expand-analytic.js`: `line → outline path d` for a round-cap stroke = 2 straight banks
-+ 2 TRUE half-circle `A` arcs (Fred: "straight lines need to be just straight lines and arcs true arcs" — no
-sampling, no cubics). Declare the cap kinds it supports as data (round now; butt/square listed as not-yet so a caller
-gets a clear decline, not a wrong shape). Degenerate (zero-length line) → a full circle as two `A` arcs. Works in the
-element's local frame; world transforms are the bake's job (Slice 0).
+## UI placement — NOT a 4th row toggle
+The layer row already has 👁 · 3D · 🎨 and Fred just asked for them to be clearer; don't crowd it. Put the picker in the
+sidebar's per-layer settings block ("Settings below apply to the selected layer." — Plunge Depth / Tool Profile,
+bspline_gen_palette.html ~line 616) as a 3-way segmented control "Fusion geometry: Centerline · Outline · Both",
+wired like the other per-layer tooling fields (same load/save/undo path as plunge depth — one undo step per change).
+Hints (from the table): Centerline = "the line's path — V-bit / engraving"; Outline = "the stroke's true edge — pockets
+& resin inlay"; Both.
+Nothing else reads the field yet (preview = Slice 3, export swap = Slice 4) — say so in its doc comment.
 
 ## Verify
-- vitest: horizontal, vertical, diagonal lines → exact bank endpoints (offset = width/2 along the normal) and `A`
-  arcs with r = width/2, correct sweep so the outline is a single closed CCW/CW loop (assert the signed area sign +
-  magnitude = L·w + π(w/2)²); zero-length → circle; unsupported cap → explicit decline.
-- CDP smoke per the design: rasterize a real generated rail's stroke vs. the function's filled outline through the
-  real `rasterizeSvg` path; report the opaque-pixel diff (should be ~edge-AA only). Screenshot both.
+- vitest: new layer → 'centerline'; old saved layer without the field → 'centerline'; showsOutline truth table incl.
+  hidden layer; picker change persists through save/restore and is one undo step.
+- CDP screenshot of the sidebar block with the control, one per value selected.
 - `npx vitest run` green.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T35: SE12 slice 1 — analytic round-cap outline — <sha>, vitest N, pixel diff X"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T36: fusionGeometry per-layer field + sidebar picker — <sha>, vitest N, screenshots: <paths>"`
 and stop.
