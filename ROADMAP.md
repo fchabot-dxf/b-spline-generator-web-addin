@@ -536,3 +536,11 @@ live-proven. Three layers carry rails / ties / nodes with their own tooling — 
   frame (decompose m0 into rotation + scale, anchor/handles from the local bbox, delta composed in local space);
   multi-selection keeps the world frame. Pure math in a leaf with vitest (box, thin tie, rotated 30° tie keeps right
   angles).
+  **SE7s scope widened (Fred: "scaling on tie shouldn't actually scale").** A handle drag must never scale the
+  STROKE — stroke width is the carve width. Declare the edit per element kind instead of one scale transform for all:
+  `HANDLE_EDIT = { line:'endpoints', circle:'radius', rect:'geometry', path:'geometry', polyline:'geometry',
+  text:'scale' }`. `line` (every rail/tie) → the dragged handle moves ONE endpoint along the line's own axis (length
+  only, snapped per SNAP_POLICY, the other end is the anchor); `circle` (nodes) → radius only, centre fixed;
+  `geometry` → scale baked into the coordinates at drag end (flattenTransform path) so stroke width is unchanged;
+  `text` keeps today's transform scale. The projection/rotated-frame fixes above still apply to `geometry`.
+  Multi-selection of mixed kinds: each element edited by its own rule from the shared anchor.
