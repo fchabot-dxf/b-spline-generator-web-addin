@@ -3,6 +3,7 @@ import { rasterizeSvg } from '../core/stamp.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { getLayerSvg } from '../editor/editor-io.js';
+import { isCarved } from '../editor/layers.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -49,7 +50,10 @@ export async function updateStampMasks(nx, nz) {
   if (editorLayers && editorLayers.length > 0) {
     editorLayers.forEach((layer, idx) => {
       if (!layer) return;
-      if (layer.visible === false) return;
+      // T27: isCarved(layer) — visible is the master, so a HIDDEN layer
+      // never carves regardless of its own carve flag (mirrors the same
+      // gate change in core/engine/rebuild.js).
+      if (!isCarved(layer)) return;
       const svg = getLayerSvg(editor, layer.id);
       if (!svg) { emptyIdxs.push(idx); return; }   // nothing on this layer yet — skip
       work.push({ idx, layer, svg });

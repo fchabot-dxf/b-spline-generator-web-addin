@@ -28,6 +28,7 @@ import {
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
+import { isCarved, isExported } from '../editor/layers.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -47,23 +48,35 @@ import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 //   • exportableStampLayers: layers with payload to ship (have svg). Looser
 //     because the SVG can be exported even before its mask has been baked.
 //     Used by includeSVG. Mask-less layers contribute artwork but no carve.
-const isCarvingLayer = (l) => l.enabled && l.svg && l.mask && Math.abs(l.depth) > 0.001;
+//
+// T27: `enabled`/`carve` on the candidate view are the ALREADY-COMPOUND
+// isExported()/isCarved() results (computed once in _stampExportCandidates
+// below, off the raw editor layer) — isCarvingLayer/hasShippableSvg just
+// read them back, so the visible-is-master rule lives in one place
+// (editor/layers.js), not re-derived here.
+const isCarvingLayer = (l) => l.carve && l.mask && Math.abs(l.depth) > 0.001;
 const hasShippableSvg = (l) => l.enabled && l.svg;
 
 /**
- * Build one {enabled, depth, profile, mask, svg} view per editor layer,
- * reading tooling AND content from the same editor layer object — no
- * position-based cross-store lookup, so reorder/delete-in-middle can't
+ * Build one {enabled, carve, depth, profile, mask, svg} view per editor
+ * layer, reading tooling AND content from the same editor layer object —
+ * no position-based cross-store lookup, so reorder/delete-in-middle can't
  * desync the two (SA-LAYER-1 finding #3). Returns [] when the editor
  * isn't loaded (nothing to build a candidate list from).
+ *
+ * `enabled`/`carve` are isExported(layer)/isCarved(layer) — a hidden
+ * layer's mask/svg are still read here (getLayerSvg doesn't care about
+ * `visible`; see its own docstring), but `carve` comes back false for it
+ * regardless of its own carve flag, same as every other gate.
  */
 function _stampExportCandidates() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : [];
     return editorLayers.map((layer) => {
-        if (!layer || layer.visible === false) return { enabled: false, depth: 0, profile: null, mask: null, svg: null };
+        if (!layer) return { enabled: false, carve: false, depth: 0, profile: null, mask: null, svg: null };
         return {
-            enabled: true,
+            enabled: isExported(layer),
+            carve: isCarved(layer),
             depth: layer.depth,
             profile: layer.profile,
             mask: layer._mask || null,

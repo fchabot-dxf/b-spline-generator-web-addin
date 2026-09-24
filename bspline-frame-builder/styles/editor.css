@@ -523,6 +523,207 @@
 }
 
 /* =========================================================================
+   Layer list rows — SE10 / T26: de-scoped from .editor-layers-panel (was
+   `.editor-layers-panel .layer-row` etc.) so editor/layers.js's ONE
+   renderLayerList can render the exact same row markup into either the
+   SVG editor's own Layers panel (#editorLayersList) OR the Vector
+   Stamping sidebar's compact layer browser (#stampLayersList) and have
+   it look right in both, without a second copy of every rule. `.layer-
+   row`/`.layer-visibility`/etc. aren't used for anything else on this
+   page (grepped) — ambient is safe here, not just convenient.
+   ========================================================================= */
+.layers-empty {
+    color: #999;
+    font-size: 11px;
+    padding: 18px 12px;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.layers-add-btn {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--cad-accent, #1e6fea);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+.layers-add-btn:hover { background: #e7eefe; }
+
+.layer-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 4px 0 2px;
+    border-radius: 3px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 11px;
+    color: #333;
+}
+.layer-row:hover { background: #f3f3f3; }
+.layer-row.active {
+    background: #e0ecff;
+    outline: 1px solid #b6d0f5;
+}
+.layer-row.dragging { opacity: 0.4; }
+.layer-row.drop-before { box-shadow: inset 0 2px 0 var(--cad-accent, #1e6fea); }
+.layer-row.drop-after  { box-shadow: inset 0 -2px 0 var(--cad-accent, #1e6fea); }
+
+.layer-handle {
+    width: 14px;
+    flex-shrink: 0;
+    text-align: center;
+    color: #bbb;
+    font-size: 12px;
+    cursor: grab;
+    line-height: 1;
+}
+.layer-handle:active { cursor: grabbing; }
+
+.layer-visibility {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #555;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+}
+.layer-visibility:hover { background: #e6e6e6; }
+.layer-visibility.is-hidden { color: #c8c8c8; }
+.layer-visibility svg { width: 14px; height: 14px; }
+
+/* T27: carve (3D, fixed-glyph) / showColor (palette, SVG icon) — same
+   real-button shape as .layer-visibility above but distinguished by an
+   .active background tint rather than swapping the icon (there's no
+   natural "off" state for a 3D badge the way an eye has open/closed;
+   showColor is a single palette icon by design too — see _paletteSVG's
+   own comment). Both render in BOTH the sidebar and the editor's own
+   Layers panel. */
+.layer-carve, .layer-showcolor {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #999;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.layer-showcolor svg { width: 13px; height: 13px; }
+.layer-carve:hover, .layer-showcolor:hover { background: #f0f0f0; }
+.layer-carve.active     { color: #333; background: #eef3ea; border-color: #cfe0c5; }
+.layer-showcolor.active { color: #333; background: #fff3d6; border-color: #e6cf8a; }
+/* 44px on coarse pointers is per-BUTTON, not compact-only (both toggles
+   render in both lists) — grow the row itself under (pointer:coarse) too,
+   editor panel included, so a 44px button actually fits instead of
+   clipping a still-28px row. */
+@media (pointer: coarse) {
+    .layer-row, .layer-row.compact { height: 44px; }
+    .layer-visibility, .layer-carve, .layer-showcolor {
+        min-width: 44px;
+        height: 44px;
+        font-size: 12px;
+    }
+    .layer-visibility svg { width: 20px; height: 20px; }
+    .layer-showcolor svg { width: 18px; height: 18px; }
+}
+
+.layer-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 2px;
+}
+
+.layer-name-input {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--cad-accent, #1e6fea);
+    border-radius: 2px;
+    font-size: 11px;
+    padding: 2px 4px;
+    outline: none;
+    font-family: inherit;
+}
+
+.layer-delete {
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #d32f2f;
+    font-size: 13px;
+    line-height: 1;
+    border-radius: 3px;
+    visibility: hidden;
+    padding: 0;
+    flex-shrink: 0;
+}
+.layer-row:hover .layer-delete { visibility: visible; }
+.layer-delete:hover { background: #fde7e7; }
+
+/* SA-MOBILE-8: a hover-only reveal is unreachable on a touchscreen — no
+   hover event ever fires, so this button (and the only way to delete a
+   layer) was invisible on a phone. `(hover: none)` is the correct feature
+   query here (detects "no hover-capable pointer present"), not a width
+   breakpoint — a touch laptop can still have plenty of screen width. */
+@media (hover: none) {
+    .layer-delete { visibility: visible; }
+}
+
+/* SE10: the sidebar's compact rows — a tap target that's honestly sized
+   on a real phone, per T16's own "44px rows on coarse pointers" rule
+   (the same signal SA-MOBILE-4's tool buttons already use — an imprecise
+   pointer is present, not a width guess). 36px on mouse/pen matches this
+   panel's other compact controls (dispatch's own examples: the stepper
+   rows, ~26-32px) closely enough to not look oversized there. The
+   pointer:coarse -> 44px override lives in the single consolidated rule
+   above (next to the 4 toggle buttons' own coarse-pointer sizing) since
+   AMEND 4/5 made it apply to the editor's own (non-compact) panel too,
+   not just compact rows. */
+.layer-row.compact { height: 36px; gap: 6px; }
+
+/* SE10: profile+depth read-out ("V .25"", "Ball .12"") — compact rows
+   only (editor/layers.js's _formatToolSummary), so a user picking a
+   layer in the sidebar (where the Plunge Depth / Tool Profile controls
+   aren't showing THIS layer's values until it's made active) sees what
+   it'll carve with before tapping it. SE10 AMEND: .not-carved dims it —
+   the tool spec still exists, it's just not currently cutting. */
+.layer-tool-summary {
+    flex-shrink: 0;
+    font-size: 10px;
+    color: #888;
+    padding: 0 2px;
+    white-space: nowrap;
+}
+.layer-tool-summary.not-carved { opacity: 0.45; }
+
+/* =========================================================================
    Layers Panel (right sidebar inside .cad-modal-body of the SVG editor)
    Sibling of .editor-sidebar (left) and #editorCanvasContainer.
    Replaces the legacy LYR <select> dropdown — supports unlimited layers,
@@ -556,131 +757,10 @@
     flex-shrink: 0;
 }
 
-.editor-layers-panel .layers-add-btn {
-    width: 22px;
-    height: 22px;
-    border: none;
-    background: transparent;
-    color: var(--cad-accent, #1e6fea);
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-}
-.editor-layers-panel .layers-add-btn:hover { background: #e7eefe; }
-
 .editor-layers-panel .layers-list {
     flex: 1;
     overflow-y: auto;
     padding: 4px;
-}
-
-.editor-layers-panel .layers-empty {
-    color: #999;
-    font-size: 11px;
-    padding: 18px 12px;
-    text-align: center;
-    line-height: 1.4;
-}
-
-.editor-layers-panel .layer-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: 28px;
-    padding: 0 4px 0 2px;
-    border-radius: 3px;
-    cursor: pointer;
-    user-select: none;
-    font-size: 11px;
-    color: #333;
-}
-.editor-layers-panel .layer-row:hover { background: #f3f3f3; }
-.editor-layers-panel .layer-row.active {
-    background: #e0ecff;
-    outline: 1px solid #b6d0f5;
-}
-.editor-layers-panel .layer-row.dragging { opacity: 0.4; }
-.editor-layers-panel .layer-row.drop-before { box-shadow: inset 0 2px 0 var(--cad-accent, #1e6fea); }
-.editor-layers-panel .layer-row.drop-after  { box-shadow: inset 0 -2px 0 var(--cad-accent, #1e6fea); }
-
-.editor-layers-panel .layer-handle {
-    width: 14px;
-    flex-shrink: 0;
-    text-align: center;
-    color: #bbb;
-    font-size: 12px;
-    cursor: grab;
-    line-height: 1;
-}
-.editor-layers-panel .layer-handle:active { cursor: grabbing; }
-
-.editor-layers-panel .layer-visibility {
-    width: 22px;
-    height: 22px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: #555;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    padding: 0;
-}
-.editor-layers-panel .layer-visibility:hover { background: #e6e6e6; }
-.editor-layers-panel .layer-visibility.is-hidden { color: #c8c8c8; }
-.editor-layers-panel .layer-visibility svg { width: 14px; height: 14px; }
-
-.editor-layers-panel .layer-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 0 2px;
-}
-
-.editor-layers-panel .layer-name-input {
-    flex: 1;
-    min-width: 0;
-    border: 1px solid var(--cad-accent, #1e6fea);
-    border-radius: 2px;
-    font-size: 11px;
-    padding: 2px 4px;
-    outline: none;
-    font-family: inherit;
-}
-
-.editor-layers-panel .layer-delete {
-    width: 18px;
-    height: 18px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: #d32f2f;
-    font-size: 13px;
-    line-height: 1;
-    border-radius: 3px;
-    visibility: hidden;
-    padding: 0;
-    flex-shrink: 0;
-}
-.editor-layers-panel .layer-row:hover .layer-delete { visibility: visible; }
-.editor-layers-panel .layer-delete:hover { background: #fde7e7; }
-
-/* SA-MOBILE-8: a hover-only reveal is unreachable on a touchscreen — no
-   hover event ever fires, so this button (and the only way to delete a
-   layer) was invisible on a phone. `(hover: none)` is the correct feature
-   query here (detects "no hover-capable pointer present"), not a width
-   breakpoint — a touch laptop can still have plenty of screen width. */
-@media (hover: none) {
-    .editor-layers-panel .layer-delete { visibility: visible; }
 }
 
 /* When a layer is hidden, dim and hide its SVG elements in the editor view.
@@ -694,6 +774,28 @@
 #editorSVGContainer .inactive-layer {
     opacity: 0.4;
     pointer-events: none;
+}
+
+/* SE10 AMEND 5: showColor off — one neutral color, applied as a display-
+   only override (this class alone; applyLayerState in editor/layers.js
+   adds/removes it, never touching the element's own stored stroke/fill
+   attrs, so turning it back on always restores every element's own
+   color exactly). stroke is unconditional (the dominant "element color"
+   concept for this app's stroke-drawn vector/toolpath content); fill is
+   only overridden when the element actually has one (:not([fill="none"])
+   — svg.js's own .fill()/.stroke() write PRESENTATION ATTRIBUTES, not
+   inline style, so this attribute selector reliably matches what this
+   app's elements actually carry) — forcing fill unconditionally would
+   turn deliberately-unfilled (fill="none") stroke art into filled
+   shapes, a real visual regression, not a neutral-color one. Known,
+   disclosed gap: an element with its color set via an INLINE style
+   attribute rather than a presentation attribute wouldn't be caught by
+   the fill guard — not a shape this app's own drawing code produces. */
+#editorSVGContainer .layer-no-color {
+    stroke: #999 !important;
+}
+#editorSVGContainer .layer-no-color:not([fill="none"]) {
+    fill: #999 !important;
 }
 
 /* Mobile: narrower panel; on very narrow viewports the panel hides behind

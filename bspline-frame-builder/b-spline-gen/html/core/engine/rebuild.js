@@ -27,6 +27,7 @@ import { updateEditorTopView } from '../render-topview.js';
 import { applyStampLayers } from './apply-stamp-layers.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild } from './scheduler.js';
+import { isCarved } from '../../editor/layers.js';
 
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -208,7 +209,10 @@ function _collectStampPasses() {
     if (editorLayers) {
         editorLayers.forEach((layer) => {
             if (!layer) return;
-            if (layer.visible === false) return;
+            // T27: isCarved(layer) — mirrors stamp-mask-manager.js's own
+            // gate; visible is the master, so a hidden layer never cuts
+            // regardless of its own carve flag.
+            if (!isCarved(layer)) return;
             const mask = layer._mask;
             if (!mask) return;
             // Build a stamp-pass-shape view of the editor layer. We keep

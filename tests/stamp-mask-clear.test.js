@@ -9,9 +9,13 @@
  *
  * SE4b: clearEmptyLayerMasks no longer touches a P.stampLayers mirror —
  * that content mirror is retired (SE4-MIRROR-RETIREMENT-DESIGN.md slice
- * b). These assertions were simplified to the single (editor) store;
- * the HIDDEN-layer case below is untouched, per the design's own STOP
- * condition that it must survive every slice unchanged.
+ * b). These assertions were simplified to the single (editor) store.
+ *
+ * T27 FINAL: updateStampMasks' gate reads isCarved(layer) — visible is
+ * the master, so a HIDDEN layer is exempt from this loop entirely again
+ * (its mask is never touched, built or cleared), same as before SE10's
+ * independent-axes design. A carve:false-but-visible layer is the other
+ * "exempt, gate skips it before emptiness is even checked" case.
  *
  * Two things are exercised here:
  *  1. `clearEmptyLayerMasks` directly — the invariant factored out as its
@@ -95,14 +99,37 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
     expect(editor._layers[0]._mask).toBeNull();
   });
 
-  it('does not touch a HIDDEN layer\'s mask even though it\'s also absent from the work list', async () => {
+  // T27 FINAL: visible is the MASTER — isCarved(layer) is false for any
+  // hidden layer regardless of its own carve flag, so the gate skips it
+  // before its emptiness is ever checked. A hidden layer's mask is never
+  // touched (built or cleared) by this loop, same as pre-SE10.
+  it('T27: a HIDDEN layer is exempt from this loop entirely, even with no content — its stale mask survives (visible is the master, gates before emptiness is checked)', async () => {
     const editor = {
       _draw: {},
       _sketchLayer: { node: { innerHTML: '' } },
       _mW: 7,
       _mH: 9,
       _layers: [
-        { id: '0', visible: false, _mask: { body: new Float32Array(4) } }, // hidden, not empty — keep its mask
+        { id: '0', visible: false, _mask: { body: new Float32Array(4) } }, // hidden AND empty — isCarved false regardless of carve
+      ],
+      _activeLayer: '0',
+    };
+    window.svgEditor = editor;
+    P.stampLayers = [];
+
+    await updateStampMasks(4, 4);
+
+    expect(editor._layers[0]._mask).not.toBeNull();
+  });
+
+  it('T27: a visible carve:false layer is exempt from this loop entirely — its mask survives even though it has no content', async () => {
+    const editor = {
+      _draw: {},
+      _sketchLayer: { node: { innerHTML: '' } },
+      _mW: 7,
+      _mH: 9,
+      _layers: [
+        { id: '0', visible: true, carve: false, _mask: { body: new Float32Array(4) } }, // not carved — gate skips it before emptiness is even checked
       ],
       _activeLayer: '0',
     };

@@ -180,6 +180,45 @@ export const MIGRATIONS = [
       });
     },
   },
+  {
+    id: 'layer-carve-flag',
+    // SE10 AMEND: `carve` is new and independent of `visible` — but every
+    // save from BEFORE this turn only ever had `visible`, and back then
+    // `visible === false` ALSO meant "don't carve" (there was no other
+    // switch). editor/layers.js's own applyToolingDefaults already fills
+    // a MISSING `carve` with a flat TOOLING_DEFAULTS.carve (true) on
+    // restore — which would silently start carving a layer the user had
+    // deliberately hidden pre-SE10. This migration gives every
+    // already-saved layer its correct HISTORICAL carve value
+    // (carve = it was visible) before that flat default ever gets a
+    // chance to apply, so old documents carve exactly as before.
+    when: (p) => {
+      if (!p.editorSvg) return false;
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return false;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        return Array.isArray(layers) && layers.some((l) => l && l.carve === undefined);
+      } catch (_) {
+        return false;
+      }
+    },
+    apply: (p) => {
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        if (!Array.isArray(layers)) return;
+        layers.forEach((l) => {
+          if (l && l.carve === undefined) l.carve = l.visible !== false;
+        });
+        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
+      } catch (e) {
+        console.warn('[migration] layer-carve-flag failed:', e);
+      }
+    },
+  },
 ];
 
 export function runMigrations(p = P) {

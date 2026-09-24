@@ -38,6 +38,7 @@ function mockEditor(layers) {
     _layers: layers.map(l => ({
       id: l.id,
       visible: l.visible,
+      carve: l.carve,
       depth: l.depth,
       profile: l.profile,
       _mask: l.mask ?? null,
@@ -73,13 +74,34 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(active[0].svg).toContain('data-layer');
   });
 
-  it('does not count a HIDDEN layer even though P.stampLayers (unused now) would say otherwise', () => {
+  it('a HIDDEN layer is never exportable, even though P.stampLayers (unused now) would say otherwise', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
 
-    expect(activeStampLayers()).toHaveLength(0);
     expect(exportableStampLayers()).toHaveLength(0);
+  });
+
+  // T27 FINAL: visible is the MASTER — carve only takes effect while
+  // visible, so a hidden layer never carves regardless of its own carve
+  // flag. carve:false + visible:true is the one case that still carves
+  // "not at all but still ships" (shown but not cut).
+  it('T27: carve:false + visible:true -> not carving, still exportable (shown but not cut)', () => {
+    window.svgEditor = mockEditor([
+      { id: '0', visible: true, carve: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
+    ]);
+
+    expect(activeStampLayers()).toHaveLength(0);     // carve:false -> never carving, mask or not
+    expect(exportableStampLayers()).toHaveLength(1); // still shown -> still ships as artwork
+  });
+
+  it('T27: visible:false + carve:true (default) -> NOT carving (visible is the master), never exportable', () => {
+    window.svgEditor = mockEditor([
+      { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
+    ]);
+
+    expect(activeStampLayers()).toHaveLength(0);     // hidden -> isCarved false even though carve defaults true
+    expect(exportableStampLayers()).toHaveLength(0); // hidden -> never shipped
   });
 
   it('does not count an EMPTY layer (no content, no mask)', () => {

@@ -6,7 +6,7 @@
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
+import { applyToolingDefaults, addLayer, setActiveLayer, isExported } from './layers.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { textGlyphPathD } from './editor-expand-text.js';
@@ -43,6 +43,28 @@ function serializeEditor(editor, { forRaster = false } = {}) {
     return stripSvgjsAttributes(raw);
 }
 
+/** T27: the SVG DOWNLOAD (saveWithTextCopies, below) exports isExported()
+ *  layers only — same rule the editor canvas and the 3D vector overlay
+ *  (seat A) read. This does NOT touch serializeEditor itself, which every
+ *  OTHER caller (the regular save/persist path, saveForRasterization,
+ *  getLayerSvg) needs to keep including hidden layers for — per that
+ *  function's own docstring, hidden-layer content must survive
+ *  save/reopen, and a hidden-but-carving layer still needs its real SVG
+ *  for masking. Filters the live sketch-layer children by their layer's
+ *  isExported() result BEFORE the same svg.js-attr-stripping pass
+ *  serializeEditor itself runs — same output shape, smaller input. */
+function _serializeVisibleLayers(editor) {
+    const layers = Array.isArray(editor._layers) ? editor._layers : [];
+    const exportedIds = new Set(
+        layers.filter(l => isExported(l)).map(l => String(l.id))
+    );
+    const raw = editor._sketchLayer.children().toArray()
+        .filter(ch => exportedIds.has(String(ch.attr('data-layer'))))
+        .map(ch => ch.node.outerHTML)
+        .join('');
+    return stripSvgjsAttributes(raw);
+}
+
 export function initIO(editor) {
     editor.logEditorEvent = (msg, data) => {
         console.log(`[SVG EDITOR] ${msg}`, data || '');
@@ -56,6 +78,7 @@ export function initIO(editor) {
  *  field there means adding it here too. */
 const _PERSISTED_LAYER_FIELDS = [
     'id', 'name', 'visible',
+    'carve', 'showColor',
     'depth', 'profile', 'angle',
     'tx', 'ty', 'rotation', 'scale', 'mirrorX', 'mirrorY',
     'blur', 'smoothing', 'suppression',
@@ -77,6 +100,13 @@ function _serializeLayersAttr(editor) {
                 if (field === 'id')      out.id      = String(l.id);
                 else if (field === 'name')    out.name    = l.name || '';
                 else if (field === 'visible') out.visible = l.visible !== false;
+                // SE10: same boolean-coercion treatment as `visible` —
+                // carve/showColor default true, regardless of what odd
+                // value might be sitting on the in-memory layer object
+                // (defensive: a stray non-boolean here should coerce
+                // sanely, not round-trip verbatim).
+                else if (field === 'carve')     out.carve     = l.carve !== false;
+                else if (field === 'showColor') out.showColor = l.showColor !== false;
                 else if (l[field] !== undefined) out[field] = l[field];
             }
             return out;
@@ -450,7 +480,9 @@ export async function saveForRasterization(editor, dpi = 96) {
 
 export async function saveWithTextCopies(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const content = serializeEditor(editor);
+    // SE10 AMEND: SHOWN layers only (_serializeVisibleLayers) — this is
+    // the Download SVG export path specifically, not the regular save.
+    const content = _serializeVisibleLayers(editor);
     const textCopies = [];
     const fontFamilies = new Set();
     editor._sketchLayer.children().forEach(ch => {
