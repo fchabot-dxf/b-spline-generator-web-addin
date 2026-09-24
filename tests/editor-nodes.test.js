@@ -18,7 +18,7 @@
  * test needs a real transform).
  */
 import { describe, it, expect } from 'vitest';
-import { getNodes } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js';
+import { getNodes, ELEMENT_CAPS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js';
 import { transformPoint } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-coords.js';
 
 function mockAttrEl(type, attrs, matrix = null) {
@@ -181,5 +181,38 @@ describe('getNodes: polyline/polygon', () => {
     expect(nodes).toHaveLength(3);
     nodes[1].set({ x: 9, y: 9 });
     expect(el.array()).toEqual([[0, 0], [9, 9], [2, 2]]);
+  });
+});
+
+// SE8c / SA-DECL-4: ELEMENT_CAPS.nodes is a declared MIRROR of which
+// element kinds getNodes above actually has a branch for — this couples
+// the two directly (for every declared type, build a minimal real
+// element and check getNodes' OWN output length agrees with the table's
+// claim) rather than trusting them to stay in sync by inspection. A
+// future getNodes branch added without a matching ELEMENT_CAPS entry (or
+// vice versa) fails this test.
+describe('ELEMENT_CAPS: fill + nodes capabilities, coupled to getNodes\' real behavior', () => {
+  const NODE_MOCKS = {
+    line: () => mockAttrEl('line', { x1: 0, y1: 0, x2: 1, y2: 1 }),
+    polyline: () => mockArrayEl('polyline', [[0, 0], [1, 1]]),
+    polygon: () => mockArrayEl('polygon', [[0, 0], [1, 1], [2, 2]]),
+    path: () => mockPathEl([['M', 0, 0], ['L', 1, 1]]),
+    rect: () => mockAttrEl('rect', { x: 0, y: 0, width: 1, height: 1 }),
+    circle: () => mockAttrEl('circle', { cx: 0, cy: 0, r: 1 }),
+    ellipse: () => mockAttrEl('ellipse', { cx: 0, cy: 0, r: 1 }),
+    text: () => ({ type: 'text' }), // no branch in getNodes touches a text el's attrs
+  };
+
+  it('every declared element kind\'s ELEMENT_CAPS.nodes matches whether getNodes actually returns nodes for it', () => {
+    for (const [type, makeEl] of Object.entries(NODE_MOCKS)) {
+      const nodes = getNodes(makeEl());
+      expect(ELEMENT_CAPS[type].nodes).toBe(nodes.length > 0);
+    }
+  });
+
+  it('fill: only line is non-fillable — every other declared kind is fillable', () => {
+    for (const [type, caps] of Object.entries(ELEMENT_CAPS)) {
+      expect(caps.fill).toBe(type !== 'line');
+    }
   });
 });

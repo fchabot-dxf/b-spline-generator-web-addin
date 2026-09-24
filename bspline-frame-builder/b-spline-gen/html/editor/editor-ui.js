@@ -27,6 +27,11 @@ const MODE_HINTS = {
 // placing anchor points; toggled from editor-interaction.js.
 export const ANCHOR_HINT = 'Pen (anchor mode) — keep clicking to add points • Double-click or Enter to commit • Esc to cancel';
 
+// SE8c / SA-DECL-3: stroke-width padding around a selection/hover
+// highlight's cloned outline — visual size, not gated per pointer type
+// this turn (see editor-input.js's clickThresholdPx doc comment).
+const HIGHLIGHT_STROKE_PAD_PX = 5;
+
 /** Restore the default hint for the editor's current mode. Useful when
  *  the pen tool exits anchor mode (cancel/commit) but stays in 'draw'. */
 export function restoreModeHint(editor) {
@@ -139,44 +144,73 @@ export function setMode(editor, mode) {
     if (mode === 'expand') dismissExpandCallout({ persist: true });
 }
 
+/**
+ * SE8c / SA-DECL-2: the five parallel if/hidden-toggle blocks that used to
+ * live in updateToolbarVisibility, declared as one table — a new property
+ * group is one entry here, not a sixth hand-rolled block. Each predicate
+ * is `(rawMode, el, currentMode) => visible`; a key starting with '.' or
+ * '#' is resolved via querySelector, everything else via getElementById
+ * (applyToolbarGroups below does the resolving).
+ *
+ * `rawMode` vs `currentMode` is a real, PRE-EXISTING distinction this
+ * table preserves rather than smooths over: updateToolbarVisibility has
+ * two call sites (_afterSelectionChange below, and editor.js's own
+ * selection-sync path) that invoke it as `updateToolbarVisibility(editor)`
+ * — no mode/el args at all, only ever on a selection change, not a mode
+ * switch. Font/Symbol/the divider/Stroke read `rawMode` (so that
+ * parameterless call computes `isTextMode` from `undefined`, i.e. leaves
+ * their visibility exactly where the last real setMode() call left it —
+ * not re-derived from the current selection); AutoNodes/the Lattice panel
+ * read `currentMode` (SE7a's own `editor._currentMode || mode` fallback,
+ * but historically applied ONLY to those two). Both behaviors are kept
+ * byte-for-byte; SA-DECL-2 declares the existing rules, it doesn't change
+ * which one each group follows.
+ *
+ * NOT declared here: `editorTouchActionsGroup` (SE7m) — its visibility is
+ * entirely the `(pointer: coarse)` CSS media query (styles/editor.css),
+ * independent of editor._currentMode BY DESIGN (it must show in every
+ * tool on a touch device). Adding a mode-keyed predicate for it here
+ * would imply a mode dependency that doesn't exist and isn't this turn's
+ * to add (SE8c: no behaviour change).
+ */
+export const TOOLBAR_GROUPS = {
+  editorFontGroup: (rawMode, el) => rawMode === 'text' || !!(el && el.type === 'text'),
+  editorSymbolKeyboardToggle: (rawMode, el) => rawMode === 'text' || !!(el && el.type === 'text'),
+  editorExpandGroup: (rawMode) => rawMode === 'expand',
+  '.property-divider': (rawMode, el) =>
+    TOOLBAR_GROUPS.editorFontGroup(rawMode, el) || TOOLBAR_GROUPS.editorExpandGroup(rawMode),
+  // Hide stroke group in expand mode (no room) and text mode (text uses
+  // fill, not stroke — the stroke input doesn't apply).
+  editorStrokeGroup: (rawMode, el) =>
+    !TOOLBAR_GROUPS.editorExpandGroup(rawMode) && !TOOLBAR_GROUPS.editorFontGroup(rawMode, el),
+  editorAutoNodesGroup: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7a
+  editorLatticePanel: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7b slice 3
+};
+
+function _resolveGroupNode(key) {
+  return (key[0] === '.' || key[0] === '#') ? query(key) : getEl(key);
+}
+
+/** Apply every TOOLBAR_GROUPS entry's 'hidden' class. Exported for the
+ *  same reason the table itself is: a caller that only needs to re-sync
+ *  visibility (no snap/expand-button work) can call this directly. */
+export function applyToolbarGroups(rawMode, el, currentMode) {
+  for (const [key, visible] of Object.entries(TOOLBAR_GROUPS)) {
+    const node = _resolveGroupNode(key);
+    if (node) node.classList.toggle('hidden', !visible(rawMode, el, currentMode));
+  }
+}
+
 export function updateToolbarVisibility(editor, mode, el) {
-    const isTextMode = mode === 'text' || (el && el.type === 'text');
-    
-    const fontGroup = getEl('editorFontGroup');
-    const expandGroup = getEl('editorExpandGroup');
-    const symbolToggle = getEl('editorSymbolKeyboardToggle');
-    const divider = query('.property-divider');
-    const strokeGroup = getEl('editorStrokeGroup');
-
-    const isExpandMode = mode === 'expand';
-
-    if (fontGroup) fontGroup.classList.toggle('hidden', !isTextMode);
-    if (expandGroup) expandGroup.classList.toggle('hidden', !isExpandMode);
-    if (symbolToggle) symbolToggle.classList.toggle('hidden', !isTextMode);
-    if (divider) divider.classList.toggle('hidden', !isTextMode && !isExpandMode);
-    
-    // Hide stroke group in expand mode (no room) and text mode (text uses
-    // fill, not stroke — the stroke input doesn't apply).
-    if (strokeGroup) strokeGroup.classList.toggle('hidden', isExpandMode || isTextMode);
-
     // SE7a: some callers (e.g. _afterSelectionChange below) call this
     // without a `mode` arg on a selection change, not a mode switch —
     // editor._currentMode is always the authoritative source; falling
     // back to the (possibly stale/undefined) param would let a selection
     // change silently re-enable a SNAP button this same function just
-    // dimmed for the real current mode.
+    // dimmed for the real current mode. (TOOLBAR_GROUPS' own doc comment
+    // explains why only SOME groups use this fallback.)
     const currentMode = editor._currentMode || mode;
-
-    // AUTO NODES only makes sense in the lattice tool — same show/hide-
-    // the-whole-group pattern as the Font group above.
-    const autoNodesGroup = getEl('editorAutoNodesGroup');
-    if (autoNodesGroup) autoNodesGroup.classList.toggle('hidden', currentMode !== 'lattice');
-
-    // SE7b: the Lattice Pattern panel (right side, above Layers) — same
-    // "only in the lattice tool" visibility as AUTO NODES above, since
-    // it acts on the same tool's content.
-    const latticePanel = getEl('editorLatticePanel');
-    if (latticePanel) latticePanel.classList.toggle('hidden', currentMode !== 'lattice');
+    applyToolbarGroups(mode, el, currentMode);
 
     // Dim SNAP where it can't apply — 'none' (erase/expand: nothing to
     // snap) and 'always' (lattice: already always on, the toggle couldn't
@@ -249,7 +283,7 @@ function _renderHighlight(editor, el, color, opts) {
         if (textStrokeOpacity) shape.stroke({ color, width: 0.02, opacity: textStrokeOpacity });
     } else {
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth;
-        const tol5px = editor._getDynamicTolerance(5);
+        const tol5px = editor._getDynamicTolerance(HIGHLIGHT_STROKE_PAD_PX);
         shape = el.clone()
             .fill('none')
             .stroke({ color, width: sw + (tol5px * 2), opacity: lineStrokeOpacity })

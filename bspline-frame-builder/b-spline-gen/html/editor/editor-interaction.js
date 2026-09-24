@@ -44,6 +44,15 @@ function _strokeLog(msg) {
     try { fusLog(`[STROKE] ${msg}`); } catch (_) {}
 }
 
+// SE8c / SA-DECL-3: the tolerance literals left after SE7m's INPUT_PROFILE
+// sweep that are NOT hit-tolerances (tap/grab decision boundaries already
+// live in INPUT_PROFILE — see clickThresholdPx below) but purely visual or
+// geometry parameters — named here instead of left as bare numbers, with
+// no behaviour change (same values as before).
+const PASTE_OFFSET_PX = 8; // visual nudge so a paste doesn't sit exactly on the original — not a hit-tolerance, same regardless of input device.
+const CURVE_FIT_TOLERANCE_PX = 2; // simplify/fit epsilon shared by the anchor-mode commit path and the freehand draw finish path — a stroke-quality parameter, not an input-precision one.
+const NODE_HANDLE_BASE_RADIUS_PX = 5; // render radius of the node-edit diamond handles — visual size, not gated per pointer type this turn.
+
 /** T6: the one place that clears pan-related state (Space-held, active
  *  drag, and both CSS classes). Space-keyup and the mouseup pan-end branch
  *  are the normal paths; window 'blur' and a fresh open() are the ones
@@ -328,7 +337,7 @@ function _pasteFromClipboard(editor, clip) {
     const sketchNode = editor._sketchLayer.node;
     const activeLayer = ensureActiveLayer(editor);
     // Small offset so the pasted copy doesn't sit exactly on top.
-    const dx = editor._getDynamicTolerance ? editor._getDynamicTolerance(8) : 0.2;
+    const dx = editor._getDynamicTolerance ? editor._getDynamicTolerance(PASTE_OFFSET_PX) : 0.2;
     const dy = dx;
 
     const newEls = [];
@@ -629,7 +638,7 @@ const drawHandler = {
             const dp = editor._anchorDownPt;
             if (dp) {
                 const dist = Math.hypot(pt.x - dp.x, pt.y - dp.y);
-                if (dist > editor._getDynamicTolerance(3)) editor._anchorFreehand = true;
+                if (dist > getDynamicTolerance(editor, 3, 'clickThresholdPx')) editor._anchorFreehand = true;
             }
         }
         if (editor._anchorFreehand) updateDrawingShape(editor, 'draw', pt);
@@ -702,7 +711,7 @@ function _commitAnchorPath(editor) {
         editor._isDrawing   = false;
         return;
     }
-    const tol    = editor._getDynamicTolerance(2);
+    const tol    = editor._getDynamicTolerance(CURVE_FIT_TOLERANCE_PX);
     const fitted = fitCurve(editor, editor._anchorPts, tol * 1.5);
     if (fitted) {
         // BUG-27 parity with finishDrawing: close anchor-mode paths
@@ -789,7 +798,7 @@ const circleHandler = {
     finish(editor) {
         if (!editor._currentPath) { editor._isDrawing = false; return; }
         const r = parseFloat(editor._currentPath.node.getAttribute('r')) || 0;
-        if (r < editor._getDynamicTolerance(3)) {
+        if (r < getDynamicTolerance(editor, 3, 'clickThresholdPx')) {
             // No meaningful drag — drop the near-zero circle and emit a
             // default dot instead, through the SAME emitNode the lattice
             // tool's auto-nodes use (one emitter, two callers, identical
@@ -959,6 +968,59 @@ function translateSelection(editor, pt) {
 
 // ─── Drawing primitives ────────────────────────────────────────────
 
+/**
+ * SE8c / SA-DECL-1: the create/update per-tool if/else chains that used to
+ * live in createDrawingShape/updateDrawingShape below, declared as one
+ * table — adding a drawing tool is one entry here, not a new branch in
+ * two different functions that have to be kept in step by hand.
+ *
+ * `create(editor, pt, style)` returns the new svg.js element WITHOUT the
+ * `data-layer` attr — createDrawingShape applies that once, after
+ * dispatch, since every shape needs the exact same attr call (no reason
+ * to repeat it four times). `style` is `{ stroke, fillForShape,
+ * strokeForShape }`, computed once by createDrawingShape from the
+ * editor's current fill-mode/colors — identical for every shape kind.
+ *
+ * `update(editor, el, pt, start)` mutates the in-progress element in
+ * place; `start` is `editor._points[0]` (the gesture's anchor point).
+ * Only 'draw' touches `editor._points` itself (the running freehand
+ * polyline other tools don't accumulate).
+ */
+export const DRAW_SHAPES = {
+    draw: {
+        create: (editor, pt, { fillForShape, strokeForShape }) =>
+            editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)
+                .fill(fillForShape)
+                .stroke({ ...strokeForShape, linecap: 'round', linejoin: 'round' }),
+        update: (editor, el, pt) => {
+            editor._points.push([pt.x, pt.y]);
+            el.attr('d', `${el.attr('d')} L ${pt.x} ${pt.y}`);
+        },
+    },
+    // Lines are stroke-only by nature.
+    line: {
+        create: (editor, pt, { stroke }) =>
+            editor._sketchLayer.line(pt.x, pt.y, pt.x, pt.y).stroke({ ...stroke, linecap: 'round' }),
+        update: (editor, el, pt) => el.attr({ x2: pt.x, y2: pt.y }),
+    },
+    rect: {
+        create: (editor, pt, { fillForShape, strokeForShape }) =>
+            editor._sketchLayer.rect(0, 0).move(pt.x, pt.y).fill(fillForShape).stroke(strokeForShape),
+        update: (editor, el, pt, start) => {
+            const x = Math.min(pt.x, start[0]);
+            const y = Math.min(pt.y, start[1]);
+            const w = Math.abs(pt.x - start[0]);
+            const h = Math.abs(pt.y - start[1]);
+            el.size(w, h).move(x, y);
+        },
+    },
+    circle: {
+        create: (editor, pt, { fillForShape, strokeForShape }) =>
+            editor._sketchLayer.circle(0).center(pt.x, pt.y).fill(fillForShape).stroke(strokeForShape),
+        update: (editor, el, pt, start) => el.radius(Math.hypot(pt.x - start[0], pt.y - start[1])),
+    },
+};
+
 function createDrawingShape(editor, modeId, pt) {
     const layer = ensureActiveLayer(editor);
     const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
@@ -972,54 +1034,17 @@ function createDrawingShape(editor, modeId, pt) {
     const strokeForShape = (mode === 'fill')
         ? { color: 'none', width: 0 }
         : stroke;
-    if (modeId === 'draw') {
-        return editor._sketchLayer.path(`M ${pt.x} ${pt.y}`)
-            .fill(fillForShape)
-            .stroke({ ...strokeForShape, linecap: 'round', linejoin: 'round' })
-            .attr('data-layer', layer);
-    }
-    if (modeId === 'line') {
-        // Lines are stroke-only by nature.
-        return editor._sketchLayer.line(pt.x, pt.y, pt.x, pt.y)
-            .stroke({ ...stroke, linecap: 'round' })
-            .attr('data-layer', layer);
-    }
-    if (modeId === 'rect') {
-        return editor._sketchLayer.rect(0, 0)
-            .move(pt.x, pt.y)
-            .fill(fillForShape)
-            .stroke(strokeForShape)
-            .attr('data-layer', layer);
-    }
-    if (modeId === 'circle') {
-        return editor._sketchLayer.circle(0)
-            .center(pt.x, pt.y)
-            .fill(fillForShape)
-            .stroke(strokeForShape)
-            .attr('data-layer', layer);
-    }
-    return null;
+    const shape = DRAW_SHAPES[modeId];
+    if (!shape) return null;
+    const el = shape.create(editor, pt, { stroke, fillForShape, strokeForShape });
+    return el ? el.attr('data-layer', layer) : null;
 }
 
 function updateDrawingShape(editor, modeId, pt) {
     if (!editor._currentPath) return;
-    const start = editor._points[0];
-    if (modeId === 'draw') {
-        editor._points.push([pt.x, pt.y]);
-        const d = editor._currentPath.attr('d') + ` L ${pt.x} ${pt.y}`;
-        editor._currentPath.attr('d', d);
-    } else if (modeId === 'line') {
-        editor._currentPath.attr({ x2: pt.x, y2: pt.y });
-    } else if (modeId === 'rect') {
-        const x = Math.min(pt.x, start[0]);
-        const y = Math.min(pt.y, start[1]);
-        const w = Math.abs(pt.x - start[0]);
-        const h = Math.abs(pt.y - start[1]);
-        editor._currentPath.size(w, h).move(x, y);
-    } else if (modeId === 'circle') {
-        const r = Math.hypot(pt.x - start[0], pt.y - start[1]);
-        editor._currentPath.radius(r);
-    }
+    const shape = DRAW_SHAPES[modeId];
+    if (!shape) return;
+    shape.update(editor, editor._currentPath, pt, editor._points[0]);
 }
 
 function finishDrawing(editor, modeId) {
@@ -1031,7 +1056,7 @@ function finishDrawing(editor, modeId) {
     }
     if (modeId === 'draw') {
         if (editor._points.length > 2) {
-            const tol = editor._getDynamicTolerance(2);
+            const tol = editor._getDynamicTolerance(CURVE_FIT_TOLERANCE_PX);
             const simplified = ramerDouglasPeucker(editor._points, tol);
             const fitted = fitCurve(editor, simplified, tol * 1.5);
             if (fitted) {
@@ -1101,7 +1126,7 @@ export function updateHandles(editor) {
     const validNodes = nodes.filter(pt => Number.isFinite(pt.x) && Number.isFinite(pt.y));
     if (validNodes.length === 0) return;
 
-    const r = editor._getDynamicTolerance(5);
+    const r = editor._getDynamicTolerance(NODE_HANDLE_BASE_RADIUS_PX);
     const view = editor._draw && editor._draw.viewbox ? editor._draw.viewbox() : null;
     const minR = view ? Math.min(view.width, view.height) * 0.008 : 0;
     const baseR = Math.max(r, minR);
