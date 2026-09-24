@@ -95,3 +95,6 @@ stored colors — turning it back on must restore every element's own color.
   visible && showColor (else neutral); exports = visible.
 - So the mask/rebuild/isCarvingLayer reads become `visible !== false && carve !== false` (NOT carve alone as amend 1
   said). Tests: 👁 off + 3D on → no mask; 👁 on + 3D on → mask; toggling 👁 back on restores carve/color unchanged.
+
+## AMEND 8 (Fred) — the color toggle's icon is a PAINT PALETTE (🎨-style glyph, an inline SVG in the rail's icon style),
+not a ■ square. Row: 👁 · 3D · palette.
