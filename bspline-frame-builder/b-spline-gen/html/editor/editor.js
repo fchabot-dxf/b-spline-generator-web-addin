@@ -472,7 +472,15 @@ export class VectorEditor {
     // Delegation Helpers
     _getDynamicTolerance(px) { return getDynamicTolerance(this, px); }
     _getNodes(el) { return getNodes(el); }
-    _getNearbyElement(pt, tol) { return getNearbyElement(this, pt, tol); }
+    // SE7h add-on: this delegation wrapper dropped a 3rd argument entirely
+    // (opts) until this fix — editor-interaction.js's selectHandler/
+    // nodeHandler pass { anyVisibleLayer: true } through editor.
+    // _getNearbyElement (not the getNearbyElement export directly), so the
+    // option was silently discarded here and the click-any-visible-layer
+    // fix never actually reached the live app despite every unit test
+    // (which calls getNearbyElement directly) passing. Caught by the
+    // live-browser proof, not the suite — see WORK-LOG.
+    _getNearbyElement(pt, tol, opts) { return getNearbyElement(this, pt, tol, opts); }
     _getMousePoint(e) { return getPointerPos(this, e); }
     _updateHandles() { return updateHandles(this); }
     _updateSelectionHighlight() { return updateSelectionHighlight(this); }

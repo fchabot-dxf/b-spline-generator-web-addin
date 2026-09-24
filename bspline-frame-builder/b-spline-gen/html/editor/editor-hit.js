@@ -8,7 +8,7 @@
  *   - getNearbyElement: finds the closest element under a click point,
  *     filtered to the active layer.
  */
-import { isEditableByLayer } from './layers.js';
+import { isEditableByLayer, isOnVisibleLayer } from './layers.js';
 import { worldPoint, worldBbox } from './editor-coords.js';
 import { viewScale } from './editor-view.js';
 import { PATH_LAYOUT, endPoint } from './path-layout.js';
@@ -195,13 +195,21 @@ export function getNodes(el) {
 // unless every element happens to share an identical transform; kept
 // consistent units instead of adding precision that would make ranking
 // among multiple candidates wrong.
-export function getNearbyElement(editor, pt, tol = 0.1) {
+export function getNearbyElement(editor, pt, tol = 0.1, opts = {}) {
     if (!editor._sketchLayer) return null;
+    // SE7h add-on: 'select'/'node' modes pass anyVisibleLayer so a click
+    // can find (and then activate) an element on ANY visible layer, not
+    // just whichever one happened to be active before — see
+    // isOnVisibleLayer's own doc comment (layers.js) for why generated
+    // Rails/Ties/Nodes pieces specifically needed this. Every other
+    // caller (drawing/text handlers) omits it and keeps today's active-
+    // layer-only behavior exactly.
+    const editableCheck = opts.anyVisibleLayer ? isOnVisibleLayer : isEditableByLayer;
     let bestEl = null;
     let bestDistSq = Infinity;
 
     editor._sketchLayer.children().toArray().forEach(el => {
-        if (!isEditableByLayer(editor, el)) return;
+        if (!editableCheck(editor, el)) return;
 
         const b = worldBbox(el);
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;

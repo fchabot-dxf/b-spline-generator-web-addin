@@ -14,7 +14,7 @@
  */
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer, ensureActiveLayer, applyLayerState } from './layers.js';
+import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
 import { worldBbox, toLocal } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
@@ -535,9 +535,19 @@ const selectHandler = {
                 return;
             }
         }
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
+        // SE7h add-on (Fred: generated Rails/Ties/Nodes were unclickable):
+        // 'select' mode hit-tests across every VISIBLE layer, not just the
+        // active one — see isOnVisibleLayer's own doc comment (layers.js).
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         editor._dragMoved = false;
         if (hit) {
+            // Clicking an element on a DIFFERENT layer makes that layer
+            // the active one — the natural expectation that clicking
+            // something makes it (and its layer) what you're now editing,
+            // rather than requiring a pre-emptive layer pick in the
+            // sidebar just to select what you can already see and click.
+            const hitLayer = getElementLayer(hit);
+            if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
             editor._isDragging = true;
             editor._lastDragPt = pt;
             if (shift) editor._selectAdd(hit);
@@ -556,7 +566,7 @@ const selectHandler = {
             && hitTestHandle(editor._transformHandles, pt)) {
             editor._setHover(null); return;
         }
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         editor._setHover(hit);
     },
 };
@@ -578,12 +588,17 @@ const nodeHandler = {
                 return;
             }
         }
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
-        if (hit && hit !== editor._selectedElement) editor._select(hit);
+        // SE7h add-on: same anyVisibleLayer relaxation as selectHandler.
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        if (hit && hit !== editor._selectedElement) {
+            const hitLayer = getElementLayer(hit);
+            if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
+            editor._select(hit);
+        }
     },
     hover(editor, pt) {
         if (!editor._selectedElement) {
-            const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
+            const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
             editor._setHover(hit); return;
         }
         const { idx: hitIdx } = findNodeAt(editor, pt);
@@ -592,7 +607,7 @@ const nodeHandler = {
             editor._updateHandles();
         }
         if (hitIdx === -1) {
-            const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
+            const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
             editor._setHover(hit && hit !== editor._selectedElement ? hit : null);
         } else editor._setHover(null);
     },

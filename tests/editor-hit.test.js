@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getNearbyElement, getDynamicTolerance } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-hit.js';
+import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 
 function mockShapeEl({ bbox, matrix = null, layer = '0', strokeWidth = null }) {
   return {
@@ -60,6 +61,81 @@ describe('getNearbyElement', () => {
     const el = mockShapeEl({ bbox: { x: 0, y: 0, w: 1, h: 1, x2: 1, y2: 1 }, matrix: null });
     const editor = mockEditor([el]);
     expect(getNearbyElement(editor, { x: 10, y: 10 }, 0.1)).toBeNull();
+  });
+});
+
+/**
+ * SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
+ * in Select/Node modes) — by default getNearbyElement only ever hit-
+ * tests the ACTIVE layer (isEditableByLayer); passing
+ * `{ anyVisibleLayer: true }` (what selectHandler/nodeHandler now do)
+ * relaxes that to isOnVisibleLayer instead — any VISIBLE layer, not
+ * just the active one, but still never a HIDDEN one.
+ */
+describe('getNearbyElement: layer filtering (opts.anyVisibleLayer, SE7h add-on)', () => {
+  const BBOX = { x: 0, y: 0, w: 1, h: 1, x2: 1, y2: 1 };
+  const POINT = { x: 0.5, y: 0.5 };
+
+  it('by DEFAULT, excludes an element on a layer other than the active one (unchanged behavior)', () => {
+    const el = mockShapeEl({ bbox: BBOX, matrix: null, layer: 'rails' });
+    const editor = mockEditor([el], { activeLayer: 'layer0' });
+    editor._layers = [{ id: 'layer0', visible: true }, { id: 'rails', visible: true }];
+    expect(getNearbyElement(editor, POINT, 0.1)).toBeNull();
+  });
+
+  it('with anyVisibleLayer:true, FINDS an element on a visible non-active layer (the actual fix)', () => {
+    const el = mockShapeEl({ bbox: BBOX, matrix: null, layer: 'rails' });
+    const editor = mockEditor([el], { activeLayer: 'layer0' });
+    editor._layers = [{ id: 'layer0', visible: true }, { id: 'rails', visible: true }];
+    expect(getNearbyElement(editor, POINT, 0.1, { anyVisibleLayer: true })).toBe(el);
+  });
+
+  it('with anyVisibleLayer:true, still EXCLUDES an element on a HIDDEN layer', () => {
+    const el = mockShapeEl({ bbox: BBOX, matrix: null, layer: 'rails' });
+    const editor = mockEditor([el], { activeLayer: 'layer0' });
+    editor._layers = [{ id: 'layer0', visible: true }, { id: 'rails', visible: false }];
+    expect(getNearbyElement(editor, POINT, 0.1, { anyVisibleLayer: true })).toBeNull();
+  });
+});
+
+/**
+ * SE7h add-on — found via the live-browser proof (scripts/smoke-lattice-
+ * addon.mjs), not this suite: editor.js's own `_getNearbyElement(pt, tol)`
+ * delegation wrapper dropped the 3rd argument entirely, so
+ * editor-interaction.js's `editor._getNearbyElement(pt, tol, {
+ * anyVisibleLayer: true })` calls silently lost the option — the fix above
+ * (getNearbyElement's own `opts.anyVisibleLayer` branch) was correct and
+ * fully covered by the describe block above, but never actually reachable
+ * through the real editor instance until the wrapper itself was fixed to
+ * forward `opts`. Same bug SHAPE as SE8f's `_selectMany`/`_selectAdd`
+ * delegation gap (tests/editor-select-many.test.js) — a class method that
+ * silently narrows the function it delegates to. `Object.create(VectorEditor
+ * .prototype)` for the same reason that file gives: exercises the REAL
+ * delegation line, not a reimplementation.
+ */
+describe('editor._getNearbyElement (SE7h add-on): the class wrapper forwards opts, not just the getNearbyElement export', () => {
+  const BBOX = { x: 0, y: 0, w: 1, h: 1, x2: 1, y2: 1 };
+  const POINT = { x: 0.5, y: 0.5 };
+
+  function mockRealEditor(el) {
+    const editor = Object.create(VectorEditor.prototype);
+    editor._sketchLayer = { children: () => ({ toArray: () => [el] }) };
+    editor._activeLayer = 'layer0';
+    editor._layers = [{ id: 'layer0', visible: true }, { id: 'rails', visible: true }];
+    editor._strokeWidth = 0.5;
+    return editor;
+  }
+
+  it('by default (no opts), the wrapper still excludes a non-active-layer element', () => {
+    const el = mockShapeEl({ bbox: BBOX, matrix: null, layer: 'rails' });
+    const editor = mockRealEditor(el);
+    expect(editor._getNearbyElement(POINT, 0.1)).toBeNull();
+  });
+
+  it('passing { anyVisibleLayer: true } through editor._getNearbyElement (the real class method, not the bare export) finds it', () => {
+    const el = mockShapeEl({ bbox: BBOX, matrix: null, layer: 'rails' });
+    const editor = mockRealEditor(el);
+    expect(editor._getNearbyElement(POINT, 0.1, { anyVisibleLayer: true })).toBe(el);
   });
 });
 

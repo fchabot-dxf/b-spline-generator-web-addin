@@ -90,7 +90,12 @@ export function finalizeMarquee(editor) {
         // Ignore hidden / transient helpers (anchor preview, etc.).
         if (!el || !el.node || !el.node.parentNode) continue;
         const cls = el.node.getAttribute('class') || '';
-        if (cls.includes('layer-hidden') || cls.includes('inactive-layer')) continue;
+        // SE7h add-on (Fred: generated Rails/Ties/Nodes were unclickable):
+        // a marquee in 'select' mode picks from any VISIBLE layer, not
+        // just the active one — 'inactive-layer' (dimmed, non-active)
+        // pieces are now includable; 'layer-hidden' (the eye off) still
+        // excludes, same as clicking never selects a hidden layer either.
+        if (cls.includes('layer-hidden')) continue;
         // Don't pick the marquee rect itself (defensive — it lives in
         // _handleLayer, not _sketchLayer, but cheap to guard).
         if (el === r) continue;

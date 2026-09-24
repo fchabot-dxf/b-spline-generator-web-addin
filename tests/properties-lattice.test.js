@@ -279,3 +279,66 @@ describe('initLatticeProperties (SE7h): orientation toggle', () => {
     expect(document.getElementById('latticeOrientHorizontal').classList.contains('active')).toBe(true);
   });
 });
+
+/**
+ * SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end") — wired
+ * exactly like latticeNodesEnds/Crossings: unchecked by default
+ * (PATTERN_DEFAULTS.nodes.railEnds), read into PATTERN.nodes.railEnds on
+ * Generate, reflected back on syncFieldsFromPattern.
+ */
+describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () => {
+  let container, editor;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.innerHTML = `
+      <input id="latticeRailsEvery" type="number" value="2">
+      <input id="latticeRailsOffset" type="number" value="0">
+      <input id="latticeTiesDensity" type="range" value="0">
+      <input id="latticeNodesEnds" type="checkbox" checked>
+      <input id="latticeNodesCrossings" type="checkbox" checked>
+      <input id="latticeNodesRailEnds" type="checkbox">
+      <input id="latticeSeed" type="number" value="42">
+      <button id="latticeGenerate"></button>
+      <button id="latticeDetachAll"></button>
+      <button id="toolLattice"></button>
+    `;
+    document.body.appendChild(container);
+    editor = makeMockEditor();
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('unchecked by default (a fresh pattern reads PATTERN_DEFAULTS.nodes.railEnds === false)', () => {
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeNodesRailEnds').checked).toBe(false);
+    expect(PATTERN_DEFAULTS.nodes.railEnds).toBe(false);
+  });
+
+  it('checking it and pressing Generate writes PATTERN.nodes.railEnds = true, and a node lands at a rail end', () => {
+    initLatticeProperties(editor);
+    // syncFieldsFromPattern (run at init) already reflected the fresh
+    // pattern's default density (0.4) onto the field, clobbering this
+    // fixture's own value="0" — zero it again here so ties can't also
+    // contribute end/crossing nodes and blur what's under test.
+    document.getElementById('latticeTiesDensity').value = '0';
+    document.getElementById('latticeNodesRailEnds').checked = true;
+    document.getElementById('latticeGenerate').click();
+    expect(editor._latticePattern.nodes.railEnds).toBe(true);
+    const rail = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    const nodes = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'node');
+    expect(rail).toBeDefined();
+    expect(nodes.length).toBeGreaterThan(0); // non-vacuous: railEnds actually produced a node, not just a flag
+    expect(nodes.some((n) => n.attr('cx') === rail.attr('x1'))).toBe(true); // one sits at the rail's own start
+  });
+
+  it('non-vacuous: leaving it unchecked produces no nodes at all (ends/crossings have nothing to attach to with density:0)', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeTiesDensity').value = '0';
+    document.getElementById('latticeGenerate').click();
+    const node = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'node');
+    expect(node).toBeUndefined();
+  });
+});

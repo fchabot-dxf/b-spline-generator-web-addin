@@ -92,7 +92,13 @@ export const PATTERN_DEFAULTS = {
   // reads THIS same PATTERN.ties.railSnapRows too, not a second default
   // of its own, so the Pattern panel's field drives both surfaces.
   ties: { density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1 },
-  nodes: { ends: true, crossings: true },
+  // SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end"):
+  // default false — the crossings loop below deliberately SKIPS rail
+  // endpoints (see its own comment), so a rail with no crossing tie ends
+  // bare unless this flag adds one there explicitly. false keeps every
+  // existing saved pattern (no `railEnds` key) reading identically to
+  // today via the `{ ...PATTERN_DEFAULTS, ...PATTERN }` merge.
+  nodes: { ends: true, crossings: true, railEnds: false },
   // SE7g AMEND (Fred): per-kind colors — SE9's rule (stroke === fill,
   // per element) applies here too, so a generated piece's own color is
   // fully described by one hex per kind. Persisted with the rest of
@@ -286,6 +292,20 @@ export function computePattern(PATTERN, opts = {}) {
   for (const j of railRows) {
     if (_occupiedHas(occupied, iMin, j, 'rail')) continue;
     segments.push({ kind: 'rail', a: { i: iMin, j }, b: { i: iMax, j } });
+  }
+
+  // SE7h ADD-ON 2 (Fred: nodes "at rail ends"): its own step, deliberately
+  // separate from the crossings loop below — that loop explicitly SKIPS a
+  // rail's own two endpoints (a tie-end/crossing convention, see its own
+  // comment), so a bare rail end only ever gets a node here, gated by this
+  // flag alone. Canonical frame like everything else in this function;
+  // orient() at the `return` transposes these back out same as any other
+  // nodePoint.
+  if (nodes.railEnds) {
+    for (const j of railRows) {
+      if (!_occupiedHas(occupied, iMin, j, 'node')) addNode(iMin, j);
+      if (!_occupiedHas(occupied, iMax, j, 'node')) addNode(iMax, j);
+    }
   }
 
   // Ties — one per column (hand-picked list, or density-gated across the

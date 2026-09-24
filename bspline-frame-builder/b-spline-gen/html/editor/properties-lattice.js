@@ -35,6 +35,7 @@ export function initLatticeProperties(editor) {
     const tiesRailSnapRowsEl = el('latticeTiesRailSnapRows');
     const nodesEndsEl = el('latticeNodesEnds');
     const nodesCrossingsEl = el('latticeNodesCrossings');
+    const nodesRailEndsEl = el('latticeNodesRailEnds');
     const seedEl = el('latticeSeed');
     const generateBtn = el('latticeGenerate');
     const detachAllBtn = el('latticeDetachAll');
@@ -126,6 +127,7 @@ export function initLatticeProperties(editor) {
         if (tiesRailSnapRowsEl) tiesRailSnapRowsEl.value = p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
+        if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
         if (seedEl) seedEl.value = p.seed ?? PATTERN_DEFAULTS.seed;
         const colors = { ...PATTERN_DEFAULTS.colors, ...p.colors };
         if (colorRailsEl) colorRailsEl.style.background = colors.rails;
@@ -162,6 +164,7 @@ export function initLatticeProperties(editor) {
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),
             crossings: nodesCrossingsEl ? !!nodesCrossingsEl.checked : (p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings),
+            railEnds: nodesRailEndsEl ? !!nodesRailEndsEl.checked : (p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds),
         };
         if (seedEl) p.seed = parseInt(seedEl.value, 10) || 0;
         return p;

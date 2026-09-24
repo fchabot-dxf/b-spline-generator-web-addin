@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   renderLayerList, renderLayersPanel, applyLayerState,
-  isCarved, isExported, showsColor,
+  isCarved, isExported, showsColor, isOnVisibleLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 function mockEditor(layers, activeLayer) {
@@ -238,6 +238,46 @@ describe('isCarved / isExported / showsColor — the declared truth table', () =
       expect(isExported(layer)).toBe(wantExported);
       expect(showsColor(layer)).toBe(wantShows);
     });
+  });
+});
+
+/**
+ * SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
+ * in Select/Node modes — generatePattern restores whatever layer was
+ * active BEFORE Generate ran, so its own new layers are never the
+ * active one, and isEditableByLayer only ever allows the active layer
+ * through). isOnVisibleLayer is the relaxed check hit-testing/marquee
+ * use in those two modes instead: "is the element's own layer simply
+ * visible" — independent of which layer happens to be active.
+ */
+describe('isOnVisibleLayer (SE7h add-on)', () => {
+  function mockElement(layerId) {
+    return { attr: (name) => (name === 'data-layer' ? layerId : undefined) };
+  }
+
+  it('true for an element on the ACTIVE layer (unchanged case)', () => {
+    const editor = { _activeLayer: '0', _layers: [{ id: '0', visible: true }] };
+    expect(isOnVisibleLayer(editor, mockElement('0'))).toBe(true);
+  });
+
+  it('true for an element on a VISIBLE layer that is NOT the active one — the whole point of this add-on', () => {
+    const editor = { _activeLayer: '0', _layers: [{ id: '0', visible: true }, { id: 'rails', visible: true }] };
+    expect(isOnVisibleLayer(editor, mockElement('rails'))).toBe(true);
+  });
+
+  it('false for an element on a HIDDEN layer, even though it is not the active one either', () => {
+    const editor = { _activeLayer: '0', _layers: [{ id: '0', visible: true }, { id: 'rails', visible: false }] };
+    expect(isOnVisibleLayer(editor, mockElement('rails'))).toBe(false);
+  });
+
+  it('a layer with no `visible` field at all defaults to true (the same "missing = true" convention as isCarved/isExported/showsColor)', () => {
+    const editor = { _activeLayer: '0', _layers: [{ id: '0' }, { id: 'rails' }] };
+    expect(isOnVisibleLayer(editor, mockElement('rails'))).toBe(true);
+  });
+
+  it('an element whose data-layer names NO layer record at all (legacy/pre-layers content) is always testable', () => {
+    const editor = { _activeLayer: '0', _layers: [{ id: '0', visible: true }] };
+    expect(isOnVisibleLayer(editor, mockElement('some-unknown-id'))).toBe(true);
   });
 });
 

@@ -7928,3 +7928,156 @@ clean.
   flag confirmed `true` both times, zero console errors; screenshot confirms the visual 90° rotation.
 
 No amendments pending as of this pass.
+
+## Turn 245 (add-on 1) — SE7h add-on: click-to-activate any visible layer (Select/Node modes) — DONE
+
+**Task (mid-turn amendment, `handoff.py amendments`).** Fred is blocked: freshly Generated Rails/Ties/
+Nodes pieces are unclickable in Select/Node modes, because `generatePattern` restores whatever layer was
+active before Generate ran, and the app only ever let you click/select the ACTIVE layer's own content. Fix:
+in `select`/`node` modes only, hit-testing considers every VISIBLE layer (not just the active one), and
+clicking a hit auto-activates that element's own layer before selecting it. Drawing modes (Lattice, Pen,
+text) keep today's active-layer-only rule unchanged — you still draw onto the layer you're on.
+
+**The stated root cause didn't hold up — the fix was still right.** The amendment's own diagnosis said
+`.inactive-layer`'s `pointer-events:none` was blocking clicks. Reading `editor-hit.js`'s `getNearbyElement`
+first: it does its own manual bbox-distance scan over `_sketchLayer.children()` — it never goes through
+`document.elementFromPoint`/native click targets, so CSS `pointer-events` never gated it at all. The REAL
+gate is the `isEditableByLayer(editor, el)` filter call inside that scan. `editor-marquee.js`'s
+`finalizeMarquee` is a second, independent mechanism (a raw `cls.includes('inactive-layer')` string check)
+that needed the same relaxation. Implemented against the verified real gates, noted the discrepancy in the
+new code's own comments for whoever reads this next.
+
+**Declared, not hand-rolled: `isOnVisibleLayer` (`layers.js`) sits beside the existing `isEditableByLayer`**
+— same "missing layer record = true" convention `isCarved`/`isExported`/`showsColor` already use, just
+independent of active-layer status. `getNearbyElement` (`editor-hit.js`) takes a 4th `opts` param;
+`opts.anyVisibleLayer` swaps which check runs, defaulting to today's `isEditableByLayer` so every
+untouched caller (drawing/text handlers) is byte-for-byte unaffected. `editor-interaction.js`'s
+`selectHandler.start`/`hover` and `nodeHandler.start`/`hover` pass `{ anyVisibleLayer: true }`; `start` in
+both additionally calls `setActiveLayer` when the hit element's layer differs from the current active one,
+before selecting. `editor-marquee.js`'s `finalizeMarquee` drops the `inactive-layer` half of its class
+check, keeping `layer-hidden`'s exclusion (a hidden layer is never selectable, click or marquee alike).
+
+**A real bug found only by the live-browser proof, not the suite: `editor.js`'s own delegation wrapper
+was silently dropping the 3rd argument.** `_getNearbyElement(pt, tol) { return getNearbyElement(this, pt,
+tol); }` — every `editor._getNearbyElement(pt, tol, { anyVisibleLayer: true })` call from
+`editor-interaction.js` goes through THIS class method, not the bare `getNearbyElement` export, and the
+wrapper never forwarded a 3rd parameter at all. Every unit test for the fix (below) called the exported
+`getNearbyElement` function directly and passed, because the function itself was correct — the bug was
+purely in this one-line class delegation, invisible to any test that doesn't go through a real
+`VectorEditor` instance. **Exactly the same bug SHAPE as SE8f's `_selectMany`/`_selectAdd` delegation gap**
+(`tests/editor-select-many.test.js`'s own header) — a class wrapper that silently narrows what it delegates
+to. Found by `scripts/smoke-lattice-addon.mjs`'s live click test coming back with `selectedKind: null` when
+every underlying piece (bbox, layer visibility, active layer) checked out by hand; isolated by calling
+`editor._getNearbyElement` directly via `evalJS` and comparing against the bare `getNearbyElement` export
+on the identical point — the bare export found the rail, the wrapper returned `null`. Fixed by forwarding
+`opts` through (`_getNearbyElement(pt, tol, opts) { return getNearbyElement(this, pt, tol, opts); }`) and
+added a regression test (below) using this codebase's own "real class via `Object.create(VectorEditor.
+prototype)`" convention, specifically so a future narrowing of this wrapper fails a test instead of only
+ever showing up live.
+
+**Tests added:** `tests/editor-layer-list.test.js` +5 (`isOnVisibleLayer`: active-true, visible-non-active-
+true — the actual fix, hidden-false, missing-field-defaults-true, unknown-layer-id-always-true).
+`tests/editor-hit.test.js` +5: 3 for `getNearbyElement`'s own `opts.anyVisibleLayer` branch (default
+excludes non-active unchanged; `anyVisibleLayer:true` finds a visible non-active element — the fix; still
+excludes a hidden one), plus 2 new for the wrapper-delegation regression described above (default still
+excludes without opts; `anyVisibleLayer:true` through the REAL `editor._getNearbyElement` finds it).
+`tests/editor-marquee.test.js` (new file, 4 tests): plain element picked as before; `.layer-hidden` still
+excluded (negative control); `.inactive-layer` alone now INCLUDED — the fix; both classes together still
+excluded (hidden wins).
+
+**Non-vacuous, three separate passes, each restored from a scratch copy and re-confirmed green after:**
+(1) neutered `isOnVisibleLayer` to `return true` — exactly the 2 hidden-layer negative-case tests failed.
+(2) neutered `getNearbyElement`'s `editableCheck` to always be `isEditableByLayer` — exactly the 1
+"anyVisibleLayer finds a non-active element" test failed. (3) reverted `editor-marquee.js`'s filter to the
+old `layer-hidden || inactive-layer` check — exactly the 1 "`.inactive-layer` now included" test failed,
+the other 3 (including both negative controls) stayed green. (4) reverted the `editor.js` wrapper to drop
+`opts` again — exactly the 1 new wrapper-delegation test failed, all others (including the sibling
+`getNearbyElement`-export tests it sits next to) stayed green, proving the two test layers are actually
+independent, not accidentally redundant.
+
+**Live (browser, new standalone `scripts/smoke-lattice-addon.mjs` — no Fusion, per Fred's rule; own driver,
+not a `smoke-editor.mjs` mode, same collision-avoidance reasoning as `smoke-lattice-orientation.mjs`).**
+Generated a pattern with Layer 1 active beforehand; confirmed Layer 1 was still active right after Generate
+(the pre-existing "restore previous active layer" behavior, `layerIds.activeAfterGenerate === layer1`).
+Switched to Select, clicked a real generated Rails line via a genuine CDP `Input.dispatchMouseEvent` press/
+release (screen point from the SVG's own `getScreenCTM()`, same technique as SE7h's drag proof): the
+Rails layer became active (`becameRailsLayer: true`) and the element was selected (`selectedKind: 'rail'`).
+Reset (deselect + reactivate Layer 1 via its own `.layer-row` click — real UI, not a state poke), switched
+to Node, clicked a generated Nodes-layer dot: Nodes became active (`becameNodesLayer: true`), selected
+(`selectedKind: 'node'`). Reset again, dragged a real marquee (press/move×4/release) covering the whole
+generated extent in Select mode: picked 52 elements spanning 3 distinct layers (Rails/Ties/Nodes) at once
+— `marqueeSpannedMultipleLayers: true`. Zero console errors across the run. Screenshots:
+`se7h-addon-2-select-click-rail.png`, `se7h-addon-3-node-click-node.png`,
+`se7h-addon-4-marquee-multi-layer.png`.
+
+**Drawing modes unaffected — confirmed by code inspection, not a new live check.** Every `getNearbyElement`
+call site was greped: only `selectHandler`/`nodeHandler`'s 5 call sites gained `{ anyVisibleLayer: true }`.
+The Lattice tool's own `latticeHandler` never calls `getNearbyElement` at all (it drives entirely off
+`_existingRailRows`/`classifyDrag`/`constrain`), so it's structurally untouched. The Pen/text handlers'
+call sites (`handleDblClick`, `textHandler`) still call it with no 3rd argument, defaulting to today's
+`isEditableByLayer`-only behavior — unchanged. SE7h's own orientation live-drag proof
+(`smoke-lattice-orientation.mjs`) already exercises the Lattice tool's hand-drawn path end to end and
+still passes.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **548 passed**, 0 failed (some of the jump from 507 is this add-on's own +14 net
+  tests; the rest is the advisor's concurrent merge of seat B's unrelated work onto `main` — confirmed via
+  `git log` that this session's own working tree stayed uncontaminated throughout).
+- Live browser (`smoke-lattice-addon.mjs`, no Fusion): every select-click/node-click/marquee/layer-
+  activation flag confirmed `true`, zero console errors.
+
+## Turn 245 (add-on 2) — SE7h add-on 2: nodes "at rail ends" checkbox — DONE
+
+**Task (mid-turn amendment).** Fred: add a checkbox for nodes at rail ends. Declare
+`PATTERN_DEFAULTS.nodes.railEnds = false` alongside `ends`/`crossings`; a 3rd Nodes-row checkbox
+(`#latticeNodesRailEnds`, "at rail ends") wired exactly like the existing two in `properties-lattice.js`
+(read + write + persisted with `PATTERN`, no new persistence plumbing — `editor-io.js`'s
+`data-lattice-pattern` is a whole-object `JSON.stringify`, no field whitelist). `computePattern` gets its
+own step, deliberately separate from the crossings loop (which explicitly skips a rail's own two
+endpoints — see its own comment): when `nodes.railEnds`, add a node at each rail row's `iMin` and `iMax`,
+deduped via the same `addNode` every other node source already uses. Must work under `orientation:
+'vertical'` too — no second copy of the logic; it runs in the same canonical frame as everything else in
+`computePattern` and gets transposed back out by the existing `orient()` map at the `return`, for free.
+
+**Placement matters: the railEnds step sits right after the rails loop, before ties/crossings** — not
+folded into the crossings loop's own exclusion logic, so the two flags (`crossings`, `railEnds`) stay
+fully independent: a rail with no crossing tie can still get end nodes from `railEnds` alone, and toggling
+one never perturbs the other's output.
+
+**Tests added:** `tests/editor-lattice-pattern.test.js` +3 (`nodes.railEnds`): `false` (default) places no
+nodes at rail ends even though rails exist (non-vacuous — rails are confirmed present); `true` places
+exactly 2 nodes per rail, at its own `a`/`b` endpoints; `true` under `orientation:'vertical'` lands nodes
+at each vertical rail's top/bottom (`extent.jMin`/`jMax`), proving the canonical-frame reuse actually
+carries through both directions, not just the default one. `tests/properties-lattice.test.js` +3: unchecked
+by default (`PATTERN_DEFAULTS.nodes.railEnds === false`); checking it + Generate writes
+`PATTERN.nodes.railEnds = true` and a real node lands at a rail's own start (ties density explicitly
+zeroed first — `syncFieldsFromPattern` at init already overwrites a fixture's initial field value with the
+fresh pattern's own default (0.4), a state-sync detail this test tripped over before the fix, not a bug in
+the feature); leaving it unchecked produces no nodes at all under the same zeroed-ties setup.
+
+**Non-vacuous, two passes, restored from scratch copies, re-confirmed green:** (1) short-circuited the
+`computePattern` railEnds step to `if (false && nodes.railEnds)` — exactly the 2 tests depending on
+`railEnds:true` producing nodes failed (the `false`-default test stayed green, correctly, since it asserts
+an absence the mutation didn't touch). (2) short-circuited the panel's `railEnds` field read to always
+`false` — exactly the 1 "checking it produces a node" test failed.
+
+**Live (browser, same `scripts/smoke-lattice-addon.mjs` run as add-on 1 above — one script, both
+concerns, both needed the live app running anyway).** Confirmed the checkbox starts unchecked
+(`railEndsUncheckedByDefault: true`). With Math.random pinned across 3 successive Generate presses (SE7g's
+"Generate always rolls a new seed" would otherwise reshuffle the tie layout on every press and confound a
+before/after node-count comparison — an early run without the pin showed a real toggle-reversibility
+false-negative purely from that seed churn, not a functional bug; fixed in the script, not the feature):
+baseline (unchecked) had no node at the rail's own start point and 24 total nodes; checking it and
+regenerating added a node exactly at the rail's `x1`,`y1` and raised the count to 55
+(`railEndsAddedANode: true`); unchecking and regenerating again returned to exactly 24 nodes with no node
+at the rail start (`railEndsToggleIsReversible: true`) — the toggle is fully reversible, not a one-way
+ratchet. Screenshot: `se7h-addon-1-railends-on.png`.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **548 passed**, 0 failed (same run as add-on 1 above — both land in one suite pass).
+- Live browser (`smoke-lattice-addon.mjs`, no Fusion): `railEndsAddedANode` and
+  `railEndsToggleIsReversible` both `true`, zero console errors.
+
+No amendments pending as of this pass.

@@ -277,6 +277,61 @@ describe('computePattern: nodes', () => {
   });
 });
 
+/**
+ * SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end") — its own
+ * step, separate from nodes.crossings (which deliberately skips a rail's
+ * own two endpoints). Default false so every existing saved pattern is
+ * unaffected; when true, every rail gets a node at each of its two ends.
+ */
+describe('computePattern: nodes.railEnds (SE7h add-on 2)', () => {
+  it('railEnds:false (default) places no nodes at rail ends', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+    };
+    const { segments, nodePoints } = computePattern(pattern, { extent: EXTENT });
+    expect(segments.filter(s => s.kind === 'rail').length).toBeGreaterThan(0); // non-vacuous: rails DO exist
+    expect(nodePoints).toHaveLength(0);
+  });
+
+  it('railEnds:true places exactly 2 nodes per rail, at its own a/b endpoints', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      nodes: { ends: false, crossings: false, railEnds: true },
+    };
+    const { segments, nodePoints } = computePattern(pattern, { extent: EXTENT });
+    const rails = segments.filter(s => s.kind === 'rail');
+    expect(rails.length).toBeGreaterThan(0);
+    const keys = new Set(nodePoints.map(p => `${p.i},${p.j}`));
+    for (const r of rails) {
+      expect(keys.has(`${r.a.i},${r.a.j}`)).toBe(true);
+      expect(keys.has(`${r.b.i},${r.b.j}`)).toBe(true);
+    }
+    expect(nodePoints).toHaveLength(rails.length * 2);
+  });
+
+  it('railEnds:true works under orientation:"vertical" too — nodes land at each vertical rail\'s top/bottom', () => {
+    const extent = { iMin: 0, iMax: 6, jMin: 0, jMax: 8 };
+    const pattern = {
+      ...PATTERN_DEFAULTS, orientation: 'vertical', rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      nodes: { ends: false, crossings: false, railEnds: true },
+    };
+    const { segments, nodePoints } = computePattern(pattern, { extent });
+    const rails = segments.filter(s => s.kind === 'rail');
+    expect(rails.length).toBeGreaterThan(0);
+    for (const r of rails) expect(r.a.i).toBe(r.b.i); // sanity: these really are vertical rails
+    const keys = new Set(nodePoints.map(p => `${p.i},${p.j}`));
+    for (const r of rails) {
+      expect(keys.has(`${r.a.i},${extent.jMin}`)).toBe(true);
+      expect(keys.has(`${r.a.i},${extent.jMax}`)).toBe(true);
+    }
+    expect(nodePoints).toHaveLength(rails.length * 2);
+  });
+});
+
 describe('computePattern: occupied skipping', () => {
   it('skips a rail whose start cell is in `occupied`', () => {
     const pattern = { ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
