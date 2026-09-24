@@ -6434,3 +6434,92 @@ Restored both from scratch copies, `diff` confirmed exact restoration, full suit
 - `npx vitest run` → **222 passed** (215 prior - 2 removed SA-UNDO-3 tests + 9 new carve-text-roundtrip).
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 215 — SE8e: Un-expand — expanded text becomes editable text again (SA-TEXT-4) — DONE
+
+Main had moved to 231 tests (SE7b slice 3 — the Lattice pattern generator — merged since SE8d). Seat B is
+on SE7m (mobile): `editor-interaction.js`, `editor-transform-handles.js`, `editor-hit.js`, `editor-grid.js`,
+`editor-ui.js`, the touch-action palette markup, `styles/*` — none touched (confirmed via `git status
+--short` after the fact: only `editor-expand-commit.js`, `tools/action-tools.js`, one line of
+`bspline_gen_palette.html`, and the new test file).
+
+**Read the audit section in full first (line 397+).** `data-original-text-svg`/`data-original-svg`
+(`editor-expand-commit.js`) survive save/reopen and are read back exactly once, by `editor-expand-trace.js`
+(to re-run Expand at a different detail setting), never to restore an editable `<text>` — confirmed a
+repo-wide grep finds no OTHER decode site. The doc-comment at the top of `editor-expand-commit.js` itself
+already claimed (aspirationally, pre-this-turn) that the snapshot exists "so the editor's re-edit flow can
+recover the source" — updated that comment to point at the new functions instead of leaving it describing
+something that didn't exist yet.
+
+**Declared `isUnexpandable(el)` and `unexpand(editor, el)` in `editor-expand-commit.js`** (natural home:
+`commitExpandedPath`, the forward direction, already lives there — this is its un-commit companion).
+**Scoped to TEXT only, not the generic `data-original-svg`** (a plain expanded SHAPE's stored original) —
+the dispatch's own title/Build section frame this as "an expanded TEXT can become editable text again," and
+the audit's own SA-TEXT-4 framing is specifically about text content being otherwise unrecoverable (a shape
+doesn't have the same "can never be re-typed" gap). Flagging this as an explicit scope decision in case
+broader (any-expanded-element) restoration was actually intended.
+
+**`unexpand`:** decode via the EXISTING `decodeSnapshot` (never a second decoder, per the dispatch's own
+instruction) → parse the markup into a real DOM node (`document.createElementNS` + `innerHTML`, the same
+technique `editor-interaction.js`'s paste handler uses for clipboard markup captured the same way — not
+importing from that off-limits file, just matching its established pattern) → strip the stale
+`data-original-text-svg`/`-svg` sentinels from the restored node (**a real correctness detail, not
+cosmetic**: left in place, a LATER re-expand of this same text would hit `commitExpandedPath`'s own "carry
+forward existing metadata if present" rule and wrongly reuse the OLD stale snapshot instead of taking a
+fresh one of whatever the text says by then — since the whole point of un-expanding is that the text is
+live and editable again) → adopt via `window.SVG.adopt` → **compose the expanded path's CURRENT transform
+onto the snapshot's OWN transform** via the existing `multiplyMatrix`/`matrixToString` (handle-edit.js,
+SE7s) — `multiplyMatrix(el.matrix(), restored.matrix())`, matching that module's own established "delta x
+m0" convention (delta = everything that happened to the expanded path since expansion — SE7s's
+`HANDLE_EDIT.path = 'geometry'` means a scale-handle drag never leaves scale in a path's `transform`, only
+translate/rotate can have accumulated; m0 = the snapshot's own transform, i.e. whatever the text had AT
+expand time) — so a moved/rotated expansion comes back where it NOW is. Writes no `transform` attr at all
+(rather than an explicit identity matrix string) when the composed result IS identity, matching how a
+plain, never-transformed element normally looks. One `pushState` + `_notifyChange('commit')` per call,
+matching the dispatch's literal single-element description.
+
+**Button wiring (`tools/action-tools.js`, `#editorUnexpand`):** no dynamically-disabled state — the natural
+home for selection-reactive button enable/disable (`editor-ui.js`'s toolbar/selection-highlight update) is
+seat B's SE7m file this turn. Always clickable; the click handler itself no-ops (the WHOLE selection, not
+per-element — "enabled only for a selection where every element is un-expandable" reads as all-or-nothing)
+when any selected element isn't restorable — satisfies the dispatch's own literal "disabled / no-op"
+alternative without touching the off-limits file. **Multi-selection caveat, flagged rather than silently
+handled:** `unexpand()` itself is the single-element contract the dispatch describes (its own bullet says
+"select it" — singular); the button's handler loops it per qualifying element for a multi-selection, which
+means N separate pushStates and only the LAST restored element ends up selected, not a single combined
+commit. Not covered by the dispatch's own Verify list (all three scenarios there are single-element); a
+batched variant would need `unexpand`'s select/commit pulled out into a separate orchestrating layer, which
+felt like unrequested scope for what the Verify section actually asks for.
+
+**Button placement, as asked to report:** ONE line added to the EXISTING `#editorExpandGroup` div in
+`bspline_gen_palette.html` (right after `#editorRunExpand`) — `<button id="editorUnexpand" ...>UN-EXPAND
+</button>`, same styling as the EXPAND button. Rides along in that group's existing contextual show/hide
+(`updateToolbarVisibility`, `editor-ui.js` — untouched, no new visibility rule needed) exactly as the
+dispatch asked ("next to the existing Expand controls... show it there").
+
+**Tests** (`tests/unexpand.test.js`, new, 5): `isUnexpandable` (text sentinel present -> true; absent,
+null, or only the SHAPE sentinel present -> false); round-trip preserves x/y/font-family/font-size/text
+content, restores into the sketch layer, strips the stale sentinel, writes no `transform` when nothing
+moved, and asserts the exact select/pushState/notifyChange call sequence; a moved expansion (identity
+snapshot transform, a translate accumulated since) comes back at the composed position; **the harder
+case** — the ORIGINAL text ALSO had its own pre-expand transform (a rotation), composed against a
+DIFFERENT since-transform — checked against an independently-computed `multiplyMatrix` result (not just
+asserting SOME transform is written) and explicitly asserted to differ from the original's own transform
+alone, so the test can't pass by accident if the "since" half silently got dropped; a path without the
+sentinel is a full no-op (nothing selected/removed/pushed). Real happy-dom does the actual markup
+parsing (`document.createElementNS`/`innerHTML`) — only `window.SVG.adopt` is mocked (real svg.js isn't
+loaded in this test environment, the same limitation noted in SE8d's own test file). **Not covered**: the
+button-wiring glue itself (`action-tools.js`'s click handler, `bindClick`) — no click-wiring module in this
+repo has ever been unit-tested (`properties-expand.js`, `expand-tool.js`, etc. are all in the same boat);
+the logic it calls is what's actually tested.
+
+**Non-vacuity, proven not argued:** reverted `editor-expand-commit.js` to `git show HEAD:...` (the only
+file the new test imports from beyond already-tested, unchanged modules). All 5 new tests failed —
+`unexpand is not a function` / the no-op test also failed the same way (both new exports are undefined
+pre-change). Restored from the scratch copy, `diff` confirmed exact restoration, full suite re-ran green.
+
+**Verify:**
+- `node --check` on all 3 touched JS files: clean.
+- `npx vitest run` → **236 passed** (231 prior + 5 new).
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
