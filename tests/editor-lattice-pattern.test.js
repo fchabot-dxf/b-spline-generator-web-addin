@@ -86,14 +86,20 @@ describe('computePattern: ties.columns (hand-picked)', () => {
     // long each one is, and there's no reason a reroll shouldn't still be
     // able to vary hand-picked ties' spans. Corrected here, not silently
     // left inconsistent with the shipped code — see WORK-LOG.
-    // anchor:'free' (not the default 'rails') on purpose: with rails
-    // every 2 rows and spanMin..spanMax=1..3, 'rails' anchor usually has
-    // exactly ONE valid candidate end-row regardless of the seed's draw
-    // (2 is the only in-range multiple of the rail spacing), which would
-    // make this specific pattern's span seed-INdependent as a side effect
-    // of the rail spacing, not of the code being wrong. 'free' anchor's
-    // span is a direct continuous function of the seed with no such
+    // anchor:'free' on purpose (T30: this is also the DEFAULT now, but
+    // that's incidental to why it's chosen here): with rails every 2 rows
+    // and spanMin..spanMax=1..3, 'rails' anchor usually has exactly ONE
+    // valid candidate end-row regardless of the seed's draw (2 is the
+    // only in-range multiple of the rail spacing), which would make this
+    // specific pattern's span seed-INdependent as a side effect of the
+    // rail spacing, not of the code being wrong. 'free' anchor's span is
+    // a direct continuous function of the seed with no such
     // discretization artifact, so it's the fair way to test this claim.
+    // T30's own railSnapRows:1 default is still active here (spread from
+    // PATTERN_DEFAULTS.ties) and can nudge either seed's raw span onto a
+    // nearby rail — confirmed this doesn't collapse the two seeds' spans
+    // to the same value for these specific seeds (1, 2); not a structural
+    // guarantee, just verified to still hold after T30's change.
     const patternA = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [3], anchor: 'free', spanMin: 1, spanMax: 5 } };
     const patternB = { ...PATTERN_DEFAULTS, seed: 2, ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [3], anchor: 'free', spanMin: 1, spanMax: 5 } };
     const a = computePattern(patternA, { extent: EXTENT }).segments.find(s => s.kind === 'tie');
@@ -107,7 +113,7 @@ describe('computePattern: ties.columns (hand-picked)', () => {
 });
 
 describe('computePattern: ties.anchor', () => {
-  it("anchor:'rails' (default) — every generated tie starts AND ends exactly on a rail row", () => {
+  it("anchor:'rails' (strict mode, explicit — 'free' is the default since T30) — every generated tie starts AND ends exactly on a rail row", () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1, anchor: 'rails', spanMin: 1, spanMax: 3 } };
     const { segments } = computePattern(pattern, { extent: EXTENT });
     const railRows = new Set(segments.filter(s => s.kind === 'rail').map(s => s.a.j));
@@ -142,6 +148,93 @@ describe('computePattern: ties.anchor', () => {
     expect(() => computePattern(pattern, { extent: EXTENT })).not.toThrow();
     const { segments } = computePattern(pattern, { extent: EXTENT });
     expect(segments.filter(s => s.kind === 'tie')).toHaveLength(0);
+  });
+});
+
+// T30 (Fred: "don't limit it to rails, but do snap to them") — anchor:'free'
+// is now the default, with a free end snapping onto a rail row within
+// railSnapRows (default 1). Each case below is built from a RAW (pre-snap,
+// railSnapRows:0) span discovered for a fixed seed+column+spanMin/spanMax —
+// not asserted blind against the RNG — then re-run with a rail placed at an
+// exact, deliberate distance from that raw span's end and railSnapRows
+// restored, so every assertion traces to a concrete, reproducible number
+// rather than "whatever the seed happens to produce this time".
+describe("computePattern: ties.anchor 'free' + railSnapRows (T30)", () => {
+  // A taller extent than the file's own EXTENT (jMax:8) — these cases need
+  // room for a rail several rows past a span that itself needs room to
+  // exist; jMax:8 would clip the raw spans below before railSnapRows ever
+  // enters the picture. Scoped to this block only; every other describe
+  // above keeps using the file's shared (shorter) EXTENT.
+  const EXTENT_TALL = { iMin: 0, jMin: 0, jMax: 20, iMax: 10 };
+
+  // seed:4, col:3, spanMin:1/spanMax:5 -> raw span {a.j:15, b.j:18} with
+  // railSnapRows:0 (verified directly against computePattern before writing
+  // these assertions, not assumed).
+  const RAW_SEED = 4;
+  const RAW_COLUMN = 3;
+  const RAW = { aJ: 15, bJ: 18 };
+
+  function makePattern({ railOffset, spanMin = 1, spanMax = 5, railSnapRows = 1 }) {
+    return {
+      ...PATTERN_DEFAULTS,
+      seed: RAW_SEED,
+      rails: { every: 1000, offset: railOffset }, // every:1000 within a 20-row extent -> exactly one rail row, at `railOffset`
+      ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [RAW_COLUMN], anchor: 'free', spanMin, spanMax, railSnapRows },
+    };
+  }
+
+  it('sanity: railSnapRows:0 reproduces the RAW span this whole block is built from', () => {
+    const pattern = makePattern({ railOffset: 1000, railSnapRows: 0 }); // rail far outside the extent — irrelevant either way with snapping off
+    const tie = computePattern(pattern, { extent: EXTENT_TALL }).segments.find(s => s.kind === 'tie');
+    expect(tie.a.j).toBe(RAW.aJ);
+    expect(tie.b.j).toBe(RAW.bJ);
+  });
+
+  it('an end exactly 1 row from a rail snaps onto it (default railSnapRows:1)', () => {
+    const pattern = makePattern({ railOffset: RAW.bJ + 1 }); // rail at 19, one row past the raw end (18)
+    const tie = computePattern(pattern, { extent: EXTENT_TALL }).segments.find(s => s.kind === 'tie');
+    expect(tie.a.j).toBe(RAW.aJ);     // the OTHER end, nowhere near a rail, is untouched
+    expect(tie.b.j).toBe(RAW.bJ + 1); // snapped onto the rail
+  });
+
+  it('an end 2 rows from a rail stays free (default railSnapRows:1 does not reach that far)', () => {
+    const pattern = makePattern({ railOffset: RAW.bJ + 2 }); // rail at 20, two rows past the raw end
+    const tie = computePattern(pattern, { extent: EXTENT_TALL }).segments.find(s => s.kind === 'tie');
+    expect(tie.a.j).toBe(RAW.aJ);
+    expect(tie.b.j).toBe(RAW.bJ); // unchanged — too far to snap
+  });
+
+  it('railSnapRows:0 turns snapping off entirely, even for a rail 1 row away', () => {
+    const pattern = makePattern({ railOffset: RAW.bJ + 1, railSnapRows: 0 });
+    const tie = computePattern(pattern, { extent: EXTENT_TALL }).segments.find(s => s.kind === 'tie');
+    expect(tie.b.j).toBe(RAW.bJ); // unchanged — snapping explicitly off
+  });
+
+  it('span limits are respected after snapping: a rail 1 row away is NOT used if snapping onto it would leave [spanMin, spanMax]', () => {
+    // spanMin:3/spanMax:3 (strict — the raw span itself, from a DIFFERENT
+    // discovered seed, is exactly 3) — any snap changes the span away from
+    // 3, so it must be rejected even though the rail sits right next door.
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 1,
+      rails: { every: 1000, offset: 9 }, // one row past this seed's raw b.j (8) — verified via computePattern before writing this test
+      ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [3], anchor: 'free', spanMin: 3, spanMax: 3, railSnapRows: 1 },
+    };
+    const tie = computePattern(pattern, { extent: EXTENT_TALL }).segments.find(s => s.kind === 'tie');
+    expect(tie.a.j).toBe(5);
+    expect(tie.b.j).toBe(8); // NOT snapped to 9 — that would make span:4, outside [3,3]
+    expect(Math.abs(tie.b.j - tie.a.j)).toBe(3);
+  });
+
+  it("anchor:'rails' (strict mode) ignores railSnapRows entirely — already exact, nothing to snap", () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1, anchor: 'rails', spanMin: 1, spanMax: 3, railSnapRows: 1 } };
+    const { segments } = computePattern(pattern, { extent: EXTENT });
+    const railRows = new Set(segments.filter(s => s.kind === 'rail').map(s => s.a.j));
+    const ties = segments.filter(s => s.kind === 'tie');
+    expect(ties.length).toBeGreaterThan(0);
+    for (const t of ties) {
+      expect(railRows.has(t.a.j)).toBe(true);
+      expect(railRows.has(t.b.j)).toBe(true);
+    }
   });
 });
 

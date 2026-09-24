@@ -31,9 +31,9 @@ import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset } from './edi
 import { getDynamicTolerance } from './editor-hit.js';
 import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
-    emitSegment, emitNode, LATTICE_ATTR,
+    emitSegment, emitNode, LATTICE_ATTR, nearestRailRow,
 } from './editor-lattice.js';
-import { detachOwnership } from './editor-lattice-pattern.js';
+import { detachOwnership, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
     shouldCancelDrawOnPointerDown, isPinching,
@@ -818,6 +818,16 @@ const circleHandler = {
     },
 };
 
+/** T30: the ROW of every existing rail on the sketch, in lattice coords —
+ *  what a tie drag's free end snaps toward. Duplicate rows are harmless
+ *  (nearestRailRow just scans for the closest, ties broken toward the
+ *  first match), so no dedup needed. */
+function _existingRailRows(editor, spacing) {
+    return _collectLatticeSegments(editor, spacing)
+        .filter((s) => s.kind === 'rail')
+        .map((s) => s.a.j);
+}
+
 /** Existing rail/tie segments on the sketch, as {kind, a, b} in lattice
  *  coords — the crossing set latticeCrossings needs. Gathered BEFORE the
  *  new segment is emitted so it never crosses against itself. */
@@ -867,8 +877,32 @@ const latticeHandler = {
     update(editor, pt) {
         if (!editor._latticePreview) return;
         const spacing = editor._latticeSpacing;
+        const a = editor._latticeStart;
         const bLat = toLattice(pt, spacing);
-        const constrained = constrain(editor._latticeStart, bLat);
+        let constrained = constrain(a, bLat);
+        // T30: a tie drag's END snaps to the nearest rail ROW within
+        // railSnapRows — mirrors constrain's own dominant-axis test
+        // (rather than reading it back off `constrained`, whose rail
+        // branch trivially sets j:a.j and can't be told apart from an
+        // un-snapped tie value at that same row) so only a genuinely
+        // vertical (tie-shaped) drag-in-progress gets row-snapped. finish()
+        // below just reads back whatever _latticeEnd ends up being here —
+        // no separate snap step needed there.
+        // T30 AMEND (Fred): ONE setting for both surfaces — reads the
+        // Pattern panel's own railSnapRows field (editor._latticePattern.
+        // ties.railSnapRows, persisted with the pattern) rather than a
+        // second, hand-tool-only default; initLatticeProperties() (called
+        // unconditionally at editor setup, editor-controls.js) guarantees
+        // editor._latticePattern already exists by the time any tool can
+        // be used, so the PATTERN_DEFAULTS fallback below is only ever
+        // for a still-uninitialized editor in a test harness.
+        const isTieShaped = Math.abs(bLat.i - a.i) < Math.abs(bLat.j - a.j);
+        if (isTieShaped) {
+            const railSnapRows = editor._latticePattern?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+            const railRows = _existingRailRows(editor, spacing);
+            const snapped = nearestRailRow(constrained.j, railRows, railSnapRows);
+            if (snapped != null) constrained = { i: constrained.i, j: snapped };
+        }
         editor._latticeEnd = constrained;
         const p2 = fromLattice(constrained, spacing);
         editor._latticePreview.attr({ x2: p2.x, y2: p2.y });

@@ -21,7 +21,7 @@
  */
 import {
   toLattice, fromLattice, constrain, latticeCrossings,
-  LATTICE_ATTR, emitSegment, emitNode,
+  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { addLayer, setActiveLayer } from './layers.js';
@@ -76,7 +76,16 @@ export const PATTERN_DEFAULTS = {
   // extent is an explicit caller-given rectangle and is used as given.
   margin: 1,
   rails: { every: 2, offset: 0 },
-  ties: { density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'rails' },
+  // T30 (Fred: "don't limit it to rails, but do snap to them"): default
+  // anchor flips 'rails' -> 'free' + railSnapRows (a free end within this
+  // many rows of a rail moves onto it; 0 = off). 'rails' strict mode
+  // stays available (ties.anchor='rails' in the UI/a saved pattern) and
+  // is untouched by railSnapRows — see _tieSpanForColumn's own comment.
+  // T30 AMEND (Fred): this is now the ONE railSnapRows value — the
+  // hand-drawn Lattice tool's live tie-drag snap (editor-interaction.js)
+  // reads THIS same PATTERN.ties.railSnapRows too, not a second default
+  // of its own, so the Pattern panel's field drives both surfaces.
+  ties: { density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1 },
   nodes: { ends: true, crossings: true },
   seed: 42,
 };
@@ -108,6 +117,34 @@ function _columnSeed(seed, i) {
   return ((seed ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0);
 }
 
+/** T30: given a FREE-anchor span {jStart, jEnd} (jEnd >= jStart), snap
+ *  each end independently to its nearest rail row within `railSnapRows`
+ *  — but only keep a snap that leaves the resulting span inside
+ *  [spanMin, spanMax] ("spans still spanMin..spanMax, measured after
+ *  snapping" per the dispatch). Prefers snapping BOTH ends when that
+ *  stays in range; else tries snapping just jStart, then just jEnd;
+ *  else leaves both ends exactly where the free draw put them. Pure —
+ *  no seed/DOM — so every combination is directly testable. */
+function _applyRailSnap(jStart, jEnd, railRows, railSnapRows, spanMin, spanMax) {
+  if (!railSnapRows || railSnapRows <= 0) return { jStart, jEnd };
+  const snappedStart = nearestRailRow(jStart, railRows, railSnapRows);
+  const snappedEnd = nearestRailRow(jEnd, railRows, railSnapRows);
+  const inRange = (a, b) => {
+    const span = Math.abs(b - a);
+    return span >= spanMin && span <= spanMax;
+  };
+  if (snappedStart != null && snappedEnd != null && inRange(snappedStart, snappedEnd)) {
+    return { jStart: snappedStart, jEnd: snappedEnd };
+  }
+  if (snappedStart != null && inRange(snappedStart, jEnd)) {
+    return { jStart: snappedStart, jEnd };
+  }
+  if (snappedEnd != null && inRange(jStart, snappedEnd)) {
+    return { jStart, jEnd: snappedEnd };
+  }
+  return { jStart, jEnd };
+}
+
 /**
  * One column's tie span, or null (no tie this column). `railRows` is the
  * full row list from `_railRows` — only consulted when `anchor==='rails'`.
@@ -131,7 +168,11 @@ function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced) {
     const maxStart = jMax - clampedSpan;
     if (maxStart < jMin) return null;
     const jStart = jMin + Math.floor(pick.u * (maxStart - jMin + 1));
-    return { jStart, jEnd: jStart + clampedSpan };
+    const jEnd = jStart + clampedSpan;
+    // T30: snap toward nearby rails — never changes the drawn span outside
+    // [spanMin, spanMax]; see _applyRailSnap's own doc comment.
+    const railSnapRows = ties.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+    return _applyRailSnap(jStart, jEnd, railRows, railSnapRows, spanMin, spanMax);
   }
 
   // anchor === 'rails' (default): start AND end land exactly on rail
