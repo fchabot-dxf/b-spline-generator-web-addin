@@ -6598,3 +6598,14 @@ pre-change). Restored from the scratch copy, `diff` confirmed exact restoration,
 - `npx vitest run` → **244 passed** (236 prior + 8 new).
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 219 — SE7c: HELD (Fred questioned the scope) — stopped after one declaration, before wiring it in
+
+Mid-task amendment (advisor, relayed + confirmed via `handoff.py amendments`): stop immediately, no more
+commits/pushes. State at HOLD: only `LATTICE_STYLE` (rail/tie widthFactor, node radiusFactor) and the
+removal of the now-superseded `LATTICE_DEFAULTS.nodeRadiusFactor` had been written, in
+`editor-lattice.js` — `emitSegment`/`emitNode` were NOT yet wired to read it (that partial state would have
+produced a NaN node radius, so rather than leave it on disk it's `git stash`ed — `stash@{0}`, message "SE7c
+HOLD: LATTICE_STYLE declaration only, before wiring emitSegment/emitNode to it"). Nothing in
+`editor-lattice-pattern.js` (the `PATTERN.margin` inset half) was touched at all. Working tree is clean;
+`npx vitest run` → 281 passed, unaffected. No commit made this turn.
