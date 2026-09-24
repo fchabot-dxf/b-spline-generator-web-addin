@@ -100,3 +100,6 @@ bspline-frame-builder/stamp-editor/html/core/gaussian.js
 
 # Claude Code per-machine settings (permission allowlist) — never committed
 .claude/
+
+# smoke-editor.mjs output (screenshots + Chrome profile)
+smoke-out/
