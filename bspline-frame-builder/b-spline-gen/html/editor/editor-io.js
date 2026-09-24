@@ -88,6 +88,24 @@ function _serializeLayersAttr(editor) {
     }
 }
 
+/** SE7b: the declared Lattice PATTERN (editor._latticePattern, set by
+ *  editor-lattice-pattern.js's generatePattern) persisted on the root
+ *  <svg> as data-lattice-pattern — one JSON blob at the document level,
+ *  mirroring data-editor-layers exactly (same escaping, same "" for
+ *  nothing to write, same 3-save/1-open wiring below), NOT a per-layer
+ *  field: a pattern spans the 3 layers it generates into, so it isn't
+ *  any one of them's property (SE7B-PATTERN-GENERATOR-DESIGN.md §1). */
+function _serializeLatticePatternAttr(editor) {
+    const pattern = editor._latticePattern;
+    if (!pattern) return '';
+    try {
+        return JSON.stringify(pattern).replace(/"/g, '&quot;');
+    } catch (e) {
+        console.warn('[editor-io] _serializeLatticePatternAttr failed', e);
+        return '';
+    }
+}
+
 /**
  * Build a self-contained SVG string that contains ONLY the children of
  * the editor's sketch layer that carry `data-layer="<layerId>"`. Used
@@ -221,7 +239,9 @@ export function save(editor, dpi = 96) {
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${content}</svg>`;
+    const latticePatternAttr = _serializeLatticePatternAttr(editor);
+    const latticePatternAttrStr = latticePatternAttr ? ` data-lattice-pattern="${latticePatternAttr}"` : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}${latticePatternAttrStr}>${content}</svg>`;
     return svgString;
 }
 
@@ -356,7 +376,9 @@ export async function saveForRasterization(editor, dpi = 96) {
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}</svg>`;
+    const latticePatternAttr = _serializeLatticePatternAttr(editor);
+    const latticePatternAttrStr = latticePatternAttr ? ` data-lattice-pattern="${latticePatternAttr}"` : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}${latticePatternAttrStr}>${styleBlock}${content}</svg>`;
     return svgString;
 }
 
@@ -394,7 +416,9 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}${textContent}</svg>`;
+    const latticePatternAttr = _serializeLatticePatternAttr(editor);
+    const latticePatternAttrStr = latticePatternAttr ? ` data-lattice-pattern="${latticePatternAttr}"` : '';
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}${latticePatternAttrStr}>${styleBlock}${content}${textContent}</svg>`;
     return svgString;
 }
 
@@ -528,6 +552,11 @@ export function open(editor, svgString, w, h) {
     // _reconcileLayersFromSvg below will rebuild it from the loaded SVG.
     editor._layers = [];
     editor._activeLayer = null;
+    // SE7b: same reason — a fresh/different session's Lattice pattern
+    // (if any) is restored below from THIS document's own
+    // data-lattice-pattern, never carried over from whatever was open
+    // before.
+    editor._latticePattern = null;
 
     if (!svgString) {
         _ioLog('open: no svgString -> empty editor');
@@ -578,6 +607,21 @@ export function open(editor, svgString, w, h) {
                 } catch (e) {
                     _ioLog(`open: data-editor-layers JSON parse failed (${e.message}) — falling back to reconcile`);
                     persistedLayers = null;
+                }
+            }
+
+            // SE7b: same pull-before-injection reason as data-editor-layers
+            // above — read and stash editor._latticePattern so a later
+            // Regenerate (slice 3) has PATTERN.id/.layers to find and
+            // replace by, exactly mirroring the layers-roster restore.
+            const latticePatternJson = svgEl.getAttribute('data-lattice-pattern');
+            if (latticePatternJson) {
+                try {
+                    editor._latticePattern = JSON.parse(latticePatternJson);
+                    _ioLog(`open: found data-lattice-pattern (id="${editor._latticePattern && editor._latticePattern.id}")`);
+                } catch (e) {
+                    _ioLog(`open: data-lattice-pattern JSON parse failed (${e.message})`);
+                    editor._latticePattern = null;
                 }
             }
 

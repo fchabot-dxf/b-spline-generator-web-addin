@@ -1,26 +1,51 @@
 /**
- * editor-lattice-pattern.js — SE7b slice 1: the declared Lattice PATTERN,
- * turned into plain lattice-coordinate data. Pure — no svg.js, no DOM, no
- * `editor` object — same split as editor-lattice.js's own pure/DOM
- * division (that file's header comment, editor-lattice.js:8-13) and
- * editor-grid.js's snapToGrid/mergeGridPrefs vs. applyGrid. Reuses
- * editor-lattice.js's lattice math and core/terrain.js's seeded RNG
- * (lcgPoints) rather than re-deriving either — see
- * SE7B-PATTERN-GENERATOR-DESIGN.md for the full design and rationale.
+ * editor-lattice-pattern.js — SE7b: the declared Lattice PATTERN, turned
+ * into geometry. Same pure/DOM split editor-lattice.js itself uses in one
+ * file (that file's header, editor-lattice.js:8-13: pure lattice math
+ * first, "the emit helpers below that line DO touch the DOM/svg.js — same
+ * leaf-module shape as editor-grid.js's applyGrid") — `computePattern`
+ * (slice 1) is pure, `generatePattern` (slice 2, below the divider) is
+ * the DOM-touching sibling. Reuses editor-lattice.js's lattice math and
+ * emit helpers, and core/terrain.js's seeded RNG (lcgPoints), rather than
+ * re-deriving any of them — see SE7B-PATTERN-GENERATOR-DESIGN.md for the
+ * full design and rationale.
  *
  * `computePattern`'s output stays in LATTICE coordinates throughout
  * (segments AND nodePoints) — a deliberate refinement over the design
  * doc's own sketch, which showed `segments[].a/b` ambiguously. Keeping
- * one coordinate system end to end means this module never needs
- * `spacing` for its own output shape (only to resolve `extent`, done by
- * the caller — see below), and the DOM-touching slice-2 layer is the one
- * place that calls `fromLattice` before handing points to
- * emitSegment/emitNode (which take model-space points).
+ * one coordinate system end to end means slice 1 never needs `spacing`
+ * for its own output shape (only to resolve `extent`, done by the
+ * caller); `generatePattern` below is the one place that calls
+ * `fromLattice` before handing points to `emitSegment`/`emitNode` (which
+ * take model-space points).
  */
-import { toLattice, fromLattice, constrain, latticeCrossings } from './editor-lattice.js';
+import {
+  toLattice, fromLattice, constrain, latticeCrossings,
+  LATTICE_ATTR, emitSegment, emitNode,
+} from './editor-lattice.js';
+import { worldPoint } from './editor-coords.js';
+import { addLayer, setActiveLayer } from './layers.js';
 import { lcgPoints } from '../core/terrain.js';
 
 export { toLattice, fromLattice, constrain, latticeCrossings };
+
+/** data-lattice-gen="<PATTERN.id>" marks an element as OWNED by a
+ *  Generate/Regenerate run — a sibling attribute to editor-lattice.js's
+ *  own LATTICE_ATTR (data-lattice="rail"|"tie"|"node"), not a new
+ *  element shape. See SE7B design §2 for the ownership/detach rules. */
+export const OWNERSHIP_ATTR = 'data-lattice-gen';
+
+/** Sensible starting tooling per generated layer — "the color mapping of
+ *  the piece" (ROADMAP:519): rails/ties both V-bit (ties shallower — a
+ *  connector, not a structural line), nodes ballnose (a rounded dot,
+ *  matching the auto-node/Circle-tool dot shape already drawn this way
+ *  interactively). Fred tunes these live later (design doc §6, Q2) —
+ *  this is a starting point, not a final answer. */
+export const LATTICE_LAYER_DEFAULTS = {
+  rails: { name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90 },
+  ties:  { name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90 },
+  nodes: { name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90 },
+};
 
 export const PATTERN_DEFAULTS = {
   spacing: 0.25,
@@ -193,6 +218,165 @@ export function computePattern(PATTERN, opts = {}) {
       }
     }
   }
+
+  return { segments, nodePoints };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DOM-touching — generatePattern and its helpers (slice 2). Everything
+// above this line is pure; everything below touches editor/svg.js.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Resolve PATTERN.extent -> concrete lattice bounds. 'board' (the only
+ *  mode slice 2 needs) derives from editor._mW/_mH — the same board-
+ *  inches units toLattice/fromLattice already assume (their own doc
+ *  comments). 'rect' (declared in the shape for a future "pattern only
+ *  in this region", design doc §1) is honored directly since its stored
+ *  bounds are already in the resolved shape this function returns —
+ *  supporting it costs nothing extra, so both modes are handled rather
+ *  than only the one this slice strictly needs. */
+function _resolveExtent(editor, PATTERN) {
+  const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
+  const extentSpec = PATTERN.extent || { mode: 'board' };
+  if (extentSpec.mode === 'rect') {
+    const { iMin, jMin, iMax, jMax } = extentSpec;
+    return { iMin, jMin, iMax, jMax };
+  }
+  const topLeft = toLattice({ x: 0, y: 0 }, spacing);
+  const bottomRight = toLattice({ x: editor._mW, y: editor._mH }, spacing);
+  return { iMin: topLeft.i, jMin: topLeft.j, iMax: bottomRight.i, jMax: bottomRight.j };
+}
+
+/** A DETACHED lattice element's identity point(s), in lattice coords, at
+ *  their WORLD position (worldPoint bakes any transform= a Select-mode
+ *  drag wrote — "moved elements count where they ARE", per the dispatch).
+ *  Nodes are a <circle>: one point, its centre. Rails/ties are a <line>:
+ *  BOTH endpoints — a detached segment could have been dragged/rotated so
+ *  either end is now the one a future column/row's generated start would
+ *  land on; occupying both is the conservative (more coverage, not less)
+ *  choice, a disclosed widening of computePattern's own "start point
+ *  only" convention for freshly-generated elements (that convention is
+ *  about which cell a NEW segment is keyed by; this is about which
+ *  cells an EXISTING, possibly-reoriented one should block). */
+function _elementIdentityLatticePoints(el, kind, spacing) {
+  if (kind === 'node') {
+    const cx = parseFloat(el.attr('cx')), cy = parseFloat(el.attr('cy'));
+    if (Number.isNaN(cx) || Number.isNaN(cy)) return [];
+    return [toLattice(worldPoint(el, { x: cx, y: cy }), spacing)];
+  }
+  const pts = [];
+  const x1 = parseFloat(el.attr('x1')), y1 = parseFloat(el.attr('y1'));
+  const x2 = parseFloat(el.attr('x2')), y2 = parseFloat(el.attr('y2'));
+  if (!Number.isNaN(x1) && !Number.isNaN(y1)) pts.push(toLattice(worldPoint(el, { x: x1, y: y1 }), spacing));
+  if (!Number.isNaN(x2) && !Number.isNaN(y2)) pts.push(toLattice(worldPoint(el, { x: x2, y: y2 }), spacing));
+  return pts;
+}
+
+/** Every DETACHED lattice element (carries LATTICE_ATTR, lacks
+ *  OWNERSHIP_ATTR) becomes one or more "i,j,kind" occupied keys —
+ *  computePattern skips generating fresh content there (design doc §2's
+ *  detach-overlap mitigation). Elements still owned by THIS pattern are
+ *  excluded here because they're about to be removed and regenerated,
+ *  not because they aren't real — an element owned by a DIFFERENT
+ *  pattern id would still count as "detached" from this one's point of
+ *  view, though today's scope is one pattern per document (design §1). */
+function _collectOccupied(editor, patternId, spacing) {
+  const occupied = new Set();
+  if (!editor._sketchLayer) return occupied;
+  editor._sketchLayer.children().toArray().forEach((ch) => {
+    if (!ch || !ch.node) return;
+    const kind = ch.node.getAttribute(LATTICE_ATTR);
+    if (!kind) return;
+    if (ch.node.getAttribute(OWNERSHIP_ATTR) === patternId) return;
+    for (const pt of _elementIdentityLatticePoints(ch, kind, spacing)) {
+      occupied.add(`${pt.i},${pt.j},${kind}`);
+    }
+  });
+  return occupied;
+}
+
+/** Create-or-reuse the 3 pattern layers, storing their ids into
+ *  `PATTERN.layers` (mutated in place — the same object gets persisted
+ *  via editor-io.js's data-lattice-pattern afterward, design §1/§3).
+ *  Reuse check is by id existing in editor._layers, not by name, so a
+ *  user rename doesn't force a duplicate on Regenerate. skipUndo:true on
+ *  every addLayer — Generate is exactly one undo step (design §4), not
+ *  one per layer created. */
+function _ensurePatternLayers(editor, PATTERN) {
+  PATTERN.layers = PATTERN.layers || { rails: null, ties: null, nodes: null };
+  const existing = Array.isArray(editor._layers) ? editor._layers : [];
+  for (const kind of ['rails', 'ties', 'nodes']) {
+    const id = PATTERN.layers[kind];
+    const found = id != null && existing.some((l) => l.id === id);
+    if (found) continue;
+    const created = addLayer(editor, { ...LATTICE_LAYER_DEFAULTS[kind], skipUndo: true });
+    PATTERN.layers[kind] = created.id;
+  }
+  return PATTERN.layers;
+}
+
+/**
+ * Generate (first run) or Regenerate (subsequent runs, same PATTERN.id):
+ * replace every element THIS pattern owns with a fresh computation, and
+ * never touch anything it doesn't own (hand-drawn SE7a content, or a
+ * previously-owned element the user detached by editing it — design §2).
+ * One undo step total (design §4): every internal step below is undo-
+ * silent by construction; pushState() fires exactly once, at the end.
+ *
+ * @param {object} editor  a live VectorEditor instance (`editor._sketchLayer`,
+ *   `editor._layers`, `editor._mW`/`_mH`, `editor.pushState`,
+ *   `editor._notifyChange` all required).
+ * @param {object} PATTERN  see PATTERN_DEFAULTS / SE7B-PATTERN-GENERATOR-
+ *   DESIGN.md §1. `PATTERN.id` and `PATTERN.layers` are read AND written
+ *   (mutated in place) — first Generate assigns them if absent.
+ * @returns {{segments, nodePoints}} the same shape computePattern returns,
+ *   for callers that want to inspect what was just drawn (e.g. a test).
+ */
+export function generatePattern(editor, PATTERN) {
+  if (!editor || !editor._sketchLayer) return null;
+  if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
+
+  const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
+  const extent = _resolveExtent(editor, PATTERN);
+  const occupied = _collectOccupied(editor, PATTERN.id, spacing);
+
+  // Remove every element this pattern currently owns — the "replace",
+  // not "diff", half of one-way generation (design §2).
+  editor._sketchLayer.children().toArray().forEach((ch) => {
+    if (ch && ch.node && ch.node.getAttribute(OWNERSHIP_ATTR) === PATTERN.id) ch.remove();
+  });
+
+  const { segments, nodePoints } = computePattern(PATTERN, { extent, occupied });
+  const layerIds = _ensurePatternLayers(editor, PATTERN);
+
+  const tagOwned = (el) => { if (el) el.attr(OWNERSHIP_ATTR, PATTERN.id); return el; };
+
+  setActiveLayer(editor, layerIds.rails);
+  for (const seg of segments) {
+    if (seg.kind !== 'rail') continue;
+    tagOwned(emitSegment(editor, 'rail', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing)));
+  }
+  setActiveLayer(editor, layerIds.ties);
+  for (const seg of segments) {
+    if (seg.kind !== 'tie') continue;
+    tagOwned(emitSegment(editor, 'tie', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing)));
+  }
+  setActiveLayer(editor, layerIds.nodes);
+  for (const p of nodePoints) {
+    // emitNode dedupes against an existing node at the same lattice cell
+    // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
+    // occupied-detection already steered clear of it; returns null if so,
+    // which tagOwned's own null-check handles.
+    tagOwned(emitNode(editor, fromLattice(p, spacing)));
+  }
+
+  if (typeof editor.pushState === 'function') editor.pushState();
+  if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+
+  // Stash for persistence (editor-io.js's data-lattice-pattern, design
+  // §1) and for a future Regenerate call to find. Plain property — no
+  // editor.js class change needed for this slice's scope.
+  editor._latticePattern = PATTERN;
 
   return { segments, nodePoints };
 }

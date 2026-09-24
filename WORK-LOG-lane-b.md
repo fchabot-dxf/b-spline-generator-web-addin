@@ -1552,3 +1552,87 @@ editor.js, editor-io.js, editor-coords.js) confirmed untouched.
 
 No gate hit — stayed exactly within slice 1's pure-function scope; the occupied-detection LOGIC (querying
 live DOM for detached elements) is explicitly slice 2/3 work, not started here.
+
+---
+
+## Lane B — Turn 53 — T19: SE7b slice 2 — generatePattern, 3 layers, ownership + occupied skip, persisted — DONE
+
+Built slice 2 of SE7B-PATTERN-GENERATOR-DESIGN.md §5, per this turn's dispatch (occupied-cell skip
+pulled forward into this slice, per the advisor's own T18 ruling). Files: editor/editor-lattice-pattern.js,
+editor/editor-io.js, tests/editor-lattice-pattern-emit.test.js — exactly the 3 predicted. Did not touch
+editor-lattice.js or any seat-A SE7s file (editor-transform-handles.js, editor-interaction.js,
+handle-edit.js) — confirmed via git status after the fact.
+
+- generatePattern(editor, PATTERN) added below computePattern in the SAME file, matching
+  editor-lattice.js's own established convention of one file, pure math above a divider, DOM-touching
+  code below it (cited that file's own header comment as the precedent, not a new split invented here).
+- Extent resolution (_resolveExtent) derives lattice bounds from editor._mW/_mH for 'board' mode; also
+  honors 'rect' mode directly since the design doc's own PATTERN shape already stores it in the
+  resolved-bounds form — supporting both cost nothing extra once one was built.
+- Occupied-set collection (_collectOccupied) walks every data-lattice element lacking the ownership tag
+  and adds ITS WORLD-space identity point(s) via worldPoint (imported from editor-coords.js) — "moved
+  elements count where they ARE," per the dispatch's literal wording. For a detached line (rail/tie),
+  added BOTH endpoints to occupied, not just one — a disclosed widening beyond slice 1's own "start point
+  only" convention, reasoned through in the code's own comment: a dragged/rotated segment's original
+  "start" isn't necessarily meaningful any more, so blocking both ends is the more conservative,
+  defensible choice.
+- _ensurePatternLayers creates the 3 layers (LATTICE_LAYER_DEFAULTS: rails/ties both V-bit, ties
+  shallower; nodes ballnose — Fred tunes live later, per the design doc's own Q2 note) with
+  {skipUndo:true}, reused by id (not name) across Regenerate so a user rename doesn't force a duplicate.
+- generatePattern's own sequence: collect occupied -> remove owned -> computePattern -> ensure layers ->
+  emit via setActiveLayer + emitSegment/emitNode (reused as-is, not reimplemented) + tag ownership -> ONE
+  pushState() + ONE editor._notifyChange('commit') (the SE8b-declared API, not raw _onChange — the
+  dispatch's own correction from T18's plan, since SE8b landed the throttled/committed distinction in
+  the meantime; used the declared thing rather than reaching past it).
+- editor-io.js: _serializeLatticePatternAttr added right after _serializeLayersAttr, wired at the
+  identical 3 save call sites (save/saveForRasterization/saveWithTextCopies) via the same
+  layersAttrStr-pattern replace_all across all 3 (verified textually identical before using replace_all,
+  not assumed). open() reads data-lattice-pattern at the same point data-editor-layers is read (BEFORE
+  innerHTML injection, same reason: root attrs are gone after), and resets editor._latticePattern = null
+  in the same session-reset block that already clears _layers/_activeLayer/_undoStack, so a fresh/
+  different session never carries a stale pattern reference.
+
+**Wrote a lightweight in-memory sketch-layer mock for the emit tests**, extending
+tests/editor-lattice.test.js's own established mockSketchLayer/mockEditorForEmit shape (chainable
+.line()/.circle()/.center()/.fill()/.stroke()/.attr()) rather than inventing a new mocking convention.
+Hit and fixed one real mock bug while writing it: `.attr(k, undefined)` (my own simulated "strip this
+attribute" call, standing in for the future handleEnd detach hook) was being treated as a GETTER call
+(`v === undefined` matched the getter branch), so the simulated detach silently did nothing and two
+tests failed for the wrong reason (looked like a product bug, was actually a mock bug) — fixed by
+checking `arguments.length`/rest-param length instead of the value, so a setter call with an explicit
+undefined/null argument is distinguished from a bare getter call.
+
+**Proved non-vacuous on all 3 of the turn's real behavioral guarantees, not just the new lines existing**
+(each: mutate, watch the SPECIFIC intended test fail, restore, watch it pass again):
+1. Disabled _collectOccupied (return empty Set unconditionally) — the dispatch's own named verify
+   criterion ("a detached tie at column 5 -> Regenerate does NOT emit a new tie at column 5") failed
+   exactly as expected (2 ties where 1 was wanted).
+2. Made owned-removal indiscriminate (strip every data-lattice element, not just this PATTERN.id's) —
+   both the "detached element untouched" test and the SA-LAYER-1-style guard failed, for the right
+   reason (the detached tie was removed, then silently replaced by a fresh generated one).
+3. Removed latticePatternAttrStr from save()'s one call site — both new persistence tests failed exactly
+   as expected (attribute absent, DOMParser round-trip found nothing to parse).
+
+**Persistence testing scope, disclosed rather than silently left incomplete:** tested save()'s write side
+directly (mockSaveEditor, same minimal shape tests/b6-hidden-layer-save.test.js already established —
+save() only needs _draw/_sketchLayer.node.innerHTML/_mW/_mH/_layers/_activeLayer) and the actual
+encode/decode CONTRACT via a real DOMParser round trip (construct via save(), parse the result, confirm
+getAttribute+JSON.parse recovers the identical PATTERN object) — this is the part that was actually worth
+proving (the entity-escaping is correct both directions). Did NOT build a full open()-level integration
+test: open() is an 80+-line function touching setModelMetrics/sync3DBackground/resetPanState/
+_deselect/layer-reconciliation, and grepped — no existing test in this suite exercises open() end-to-end
+at all (the heaviest existing mocks stop at save()/getLayerSvg()/saveForRasterization()). Building that
+scaffold fresh was a bigger lift than this slice's scope, and the piece it would additionally prove (that
+open()'s own orchestration doesn't drop the value between the read and the assignment) is a 2-line,
+low-risk block adjacent to and modeled directly on the already-tested data-editor-layers read — named
+here rather than silently skipped.
+
+**Full suite:** npx vitest run -> 192 passed (21 files), up from 189 (13 new: 10 generatePattern + 3
+persistence). node --check on both modules: clean.
+
+**Verify:** git status --short -> exactly 3 files (editor-lattice-pattern.js, editor-io.js,
+tests/editor-lattice-pattern-emit.test.js) + this WORK-LOG entry; grep confirmed no seat-A SE7s file
+(editor-transform-handles.js, editor-interaction.js, handle-edit.js) appears in the diff.
+
+No gate hit — stayed within slice 2's exact scope. Slice 3 (the handleEnd detach hook + panel UI) is
+next, per the design doc's own ordering.
