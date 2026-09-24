@@ -1,32 +1,23 @@
-# NEXT — SE11b: the drape does not appear in Fusion's palette — find out why, fix it, prove it THERE
+# NEXT — SE11c: the drape is mirrored front↔back relative to the carve
 
-**Ball: worker (seat A) · epoch 2 · SE11b.** SE11 (8d66076) is deployed to the add-in (build fdc9a18). Seat B is on T27
-(layer row: `visible`/`carve`/`showColor` + helpers `isCarved`/`isExported`/`showsColor` in `editor/layers.js`) — not yours.
+**Ball: worker (seat A) · epoch 2 · SE11c.** SE11b (8a20cbe) accepted as far as it goes — the drape now renders in Fusion
+(uv attribute + emissiveMap were real bugs). Main also has seat B's T27 (ab7772b, 357 tests): use
+`isCarved(l) && l.showColor !== false` from `editor/layers.js` in `buildDrapeSvg` instead of re-stating the rule.
 One commit by path.
 
-## Advisor's live test in Fusion (bridge up) — evidence in `smoke-out/se11-4.png`, `smoke-out/se11-crop.png` (git-ignored)
-Picked the red swatch, drew an L (horizontal stroke + vertical stroke, top-left of the board), Apply. Result in the
-palette's 3D view: the L is CARVED correctly (groove along the back-left — orientation right) but **no red on the
-mesh** (12 red-ish pixels sampled in the whole 3D view, i.e. none). The add-in log (`bspline-frame-builder/b-spline-gen/
-b_spline_gen_log.txt`, fusLog) shows the stamp raster of both red paths and the mesh preview send — and NOTHING from
-the drape (it logs nothing, so ran / skipped / failed is indistinguishable).
-Your headless 'drape' smoke reported red/yellow in `renderedFrameColors` but its screenshots are black — a headless
-WebGL capture artefact, so the browser run never visibly proved the drape either.
+## Evidence (advisor, live in Fusion, build ab7772b) — `smoke-out/se11c-flipped.png`
+Red L drawn in the editor's TOP-LEFT (a horizontal stroke along the top + a vertical stroke down the left), Apply. In the
+palette's 3D view the L is CARVED along the model's BACK edge (dark grooves, back/top of the view), but the red DRAPE
+appears at the FRONT-LEFT corner. So the drape texture is flipped in Y relative to the heightfield (your SE11 note set
+`texture.flipY = false` by reasoning, and your SE11b screenshot showed a red line without comparing it to the carve).
 ## Do
-1. Instrument `refreshDrape` (`main/app-init.js:250`) with `fusLog('[DRAPE] …')`: called? qualifying layers/elements
-   count, svg length, texture w×h, `setDrapeTexture` reached, material that received the map (type + whether it uses
-   `map`), any caught error. Deploy (stop add-in → `python release.py --local` → run; the ritual is in ROADMAP /
-   earlier WORK-LOG turns — `m.stop(None)` / `m.run(None)` via `fusion_execute`), repeat the advisor's L test, read the
-   log.
-2. Likely suspects to check, in order: the preview mesh's material ignores `map` (vertex colors / custom shader /
-   MeshStandard without `map` re-set after `update()` rebuilds geometry); the texture is applied but `needsUpdate`/
-   `colorSpace` wrong; `buildDrapeTexture`'s image load (blob:/data: SVG into an Image) is blocked or silently fails in
-   Fusion's embedded browser; `refreshDrape` never fires on the Apply path in the palette.
-3. Fix the real cause; keep the logs behind a `DRAPE` debug category (off by default) once it works.
-4. Prove it IN FUSION: screenshot of the palette's 3D view with the red L visible on the relief (PowerShell window
-   capture — see `scratchpad`-style `shot.ps1` usage in earlier WORK-LOG turns, or `fusion_screenshot` if it captures
-   the palette). Put the path in the pass note.
+1. Fix the orientation at ONE place (texture flipY, or the uv v-coordinate, or the canvas draw) — whichever makes the
+   drape's row 0 = the heightfield's row 0. Say which and why in WORK-LOG.
+2. Add a guard that would have caught this: a pure test that the uv assigned to the vertex of heightfield cell (i, j)
+   samples the drape texture at the pixel the SAME SVG point maps to (top-left SVG → the heightfield's first row).
+3. Prove it in Fusion with an ASYMMETRIC mark (the advisor's L works): screenshot where the red lies exactly on the carved
+   L grooves. Compare drape to carve in the screenshot, not the drape alone.
 ## When done
 Append WORK-LOG, commit by path, push, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE11b: drape visible in Fusion — cause: <…> — <sha>, screenshot: <path>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE11c: drape aligned with the carve — <what flipped> — <sha>, screenshot: <path>"`
 and stop.
