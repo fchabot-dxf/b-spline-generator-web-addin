@@ -1231,3 +1231,77 @@ the prediction exactly; no `editor/` path present.
 No gate hit — stayed exactly within the dispatched slice-a scope; the transitional export-gap risk was
 flagged (in code + here) rather than acted on unilaterally, since fixing it means touching
 export-flow.js, which is explicitly slice (b), a separate turn.
+
+---
+
+## Lane B — Turn 45 — T15: SE5 slice (b) — export-flow + cloud-project-manager on editor layers — DONE, product code
+
+Built slice (b) of `SE5-TOOLING-STORE-DESIGN.md` exactly per its own §5(b) + Risks section. Did not
+touch `editor/` — seat A owns it for SE8a on main.
+
+- **`main/export-flow.js`:** `_stampExportCandidates` now reads `depth`/`profile` straight off
+  `editor._layers[idx]` (dropped the `idx` param entirely — no longer needed once there's no
+  position-based `P.stampLayers?.[idx]` lookup). `enabled` in the returned candidate object is now
+  simply `true` for any layer that passed the `visible !== false` gate — the gate itself IS the
+  enabled-check now, matching the design doc's "enabled retires in favor of visible" call. Rewrote the
+  file-header comment that used to explain the deliberate SE4a "tooling stays on P.stampLayers" split,
+  since that split no longer exists. Also renamed a stale debug-log field (`stampLayers=` →
+  `layers=` in the `[EXPORT]` fusLog line) — unrelated to the fix itself, but the dispatch's own verify
+  step wants a clean `grep stampLayers` → 0, and leaving a misleadingly-named log field around after
+  deleting the concept it names would just be a smaller, later version of the exact "stale reference"
+  problem this whole slice exists to close.
+- **`main/cloud-project-manager.js`:** found a real discrepancy between my own T13 design doc and the
+  actual code, caught before implementing rather than after — `fetchMeta`'s `.enabled` read
+  (`:676`) is NOT reading from a live editor at all. It parses a FETCHED project's raw JSON snapshot
+  (`snap.P`) for the project-browser tile list, and `fetchMeta` runs per-tile as it lazily scrolls into
+  view (`setupLazyMeta`), almost always for projects that are NOT the one currently open — there is no
+  `window.svgEditor` for those. My design doc's "rewrite — read editor._layers.some(l => l.visible !==
+  false)" instruction, taken literally, would have been either a no-op (undefined editor → always
+  false) or, worse, silently shown the CURRENTLY open project's layer visibility on every OTHER
+  project's tile if I'd carelessly reached for `window.svgEditor` without a project-identity check.
+  Implemented the actually-correct equivalent instead: a new `_hasVisibleStampContent(editorSvg)`
+  helper that parses the fetched project's own `P.editorSvg` string (mirroring `app-init.js`'s existing
+  `_editorSvgHasContent` pattern — the established "cheap, editor-independent parse" idiom in this
+  codebase) and cross-checks its embedded `data-editor-layers` roster for `visible`. Documented the
+  discrepancy and the reasoning directly in the new function's comment, not just here, so the next
+  reader of this file doesn't wonder why it doesn't look like export-flow.js's simpler fix. This is also
+  a genuine correctness improvement over the old `.enabled` read, not just an equivalent swap: `.enabled`
+  defaulted false for layers 1/2 and only ever got set via Browse-import — a project with real content
+  drawn directly into layer 2/3 could have shown `hasStamps: false` on its browser tile even before this
+  slice, the exact SA-LAYER-1 pattern applied to a different reader nobody had traced yet.
+- **`tests/export-flow.test.js`:** rewrote the whole file per the design doc's own STOP condition (no
+  partial rewrite — a mix of old- and new-shape fixtures would pass green while testing the wrong thing).
+  `mockEditor()` now carries `depth`/`profile` on the editor layer objects directly. Every fixture sets
+  `P.stampLayers` to DELIBERATELY WRONG tooling values (depth:999, profile:'WRONG', enabled:false) in
+  `beforeEach` specifically so a regression back to reading `P.stampLayers` would produce a visibly wrong
+  assertion, not just a missing field. Added the 4 cases the dispatch named: a 4th layer (P.stampLayers
+  has only 3 entries) exports correctly; a layer with real content but never touched via Browse (P.
+  stampLayers entry says enabled:false/WRONG) still exports; a reorder test that splices the editor
+  layer array and confirms tooling follows the layer object's own id, not its new array position; and an
+  end-to-end test that calls the REAL `setLayerVisible` (imported from `editor/layers.js` — importing a
+  read function is fine, only editing files under `editor/` is off-limits) rather than reimplementing its
+  effect, proving the exact SE5a-opened regression is closed. Had to add a `children: () => []` svg.js-API
+  stub to the mock editor's `_sketchLayer` for that last test — `setLayerVisible` calls
+  `applyLayerState()`, which calls `_sketchLayer.children()`; without the stub it threw
+  `TypeError: ...children is not a function` on a bare mock (found by running the test, not by reading
+  the source first — the fix was obvious once the error named exactly what was missing).
+- **Proved non-vacuous, not argued:** saved scratch copies of both edited product files, reverted both
+  to pre-fix (`git checkout HEAD --`, safe — uncommitted), re-ran the rewritten test file: **6 of 9
+  assertions failed** — exactly the ones exercising layer-4, direct-drawing, reorder, and the
+  setLayerVisible end-to-end case; the 3 that stayed green are the hidden/empty/editor-not-loaded cases,
+  which this slice doesn't change. Restored both files from the scratch copies, re-ran — green again.
+- **Full suite:** `npx vitest run` → **122 passed (15 files)**, up from 118 (net +4 assertions vs. the
+  old file's 5).
+- **Verify greps:** `grep -c stampLayers main/export-flow.js` → **0**, matching the prediction exactly.
+  `grep -c '\.enabled' main/cloud-project-manager.js` → **3**, all 3 inside the new
+  `_hasVisibleStampContent` doc-comment explaining what was retired (backtick-quoted mentions of the old
+  field, not live code) — a named survivor with its reason, per the dispatch's own allowance for that
+  case, not a miss. `node --check` on both modules: clean.
+
+**Verify:** `git status --short` → 3 files (export-flow.js, cloud-project-manager.js,
+tests/export-flow.test.js) + WORK-LOG = 4, within the "≤4 files" prediction; no `editor/` path present.
+
+No gate hit. One real design-doc correction made and disclosed rather than implemented blindly
+(cloud-project-manager.js has no live editor to read for most of its callers) — same discipline as T13's
+own "found the enabled/visible fossil before writing it down" correction, applied here at build time
+instead of design time.
