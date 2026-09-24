@@ -73,3 +73,10 @@ element colors; 'color' = each element's own SE9 color. Seat A renders; you stor
   👁 show · ⛏ carve · 3D · ■ color — all four real toggles (`aria-pressed`, 44 px on coarse pointers). The ■ toggle is
   disabled (greyed, not hidden) while 3D is off.
 - Seat A renders: drape3d && visible → draped; drapeColor ? element colors : one neutral line color.
+
+## AMEND 5 (Fred) — ■ color is INDEPENDENT of 3D
+`drapeColor` → rename `showColor` (default true). It decides whether the layer's element colors are shown WHEREVER
+the layer is drawn: the editor canvas (flat) AND the 3D drape. Off → the layer draws in one neutral color in both.
+The ■ toggle is NEVER disabled (drop the greyed-while-3D-off rule). Editor canvas: apply it as a display-only style
+(e.g. a CSS class on the layer's elements / a stroke+fill override at render), never by rewriting the elements'
+stored colors — turning it back on must restore every element's own color.
