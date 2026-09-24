@@ -1805,3 +1805,108 @@ recorded in this same turn per the dispatch's ask).
 
 No gate hit — every removal chain traced (door → handler → markup/CSS → nothing left half-swept);
 SA-DEAD-2 deliberately left as a full leftover rather than a partial, riskier removal.
+
+---
+
+## Lane B — Turn 57 — T21: SE7b slice 3 — detach hook, Detach all, Pattern panel, active-layer restore
+
+Built the final SE7b slice: design §2's detach-on-drag hook, §5's panel (moved inside the modal per this
+turn's own dispatch correction), and the active-layer restore I flagged as a note in T19/T20. Off-limits
+this turn shifted from SE7s's files (now merged, 215 tests, confirmed via the dispatch's own note) to
+SE8d's — `editor-io.js`, `editor.js`, `editor-coords.js` — confirmed via `git status --short` after the
+fact: none appear in the diff. `editor-interaction.js` and `editor-transform-handles.js` were OFF-limits
+last turn (SE7s) and are IN-scope this turn (SE7s landed) — re-checked the dispatch's own off-limits list
+fresh rather than carrying over last turn's assumption.
+
+**Declared once, not hand-rolled twice — a mid-build refactor.** Initially wrote the drag-detach loop
+inline inside `handleEnd` (editor-interaction.js). Before testing it, reconsidered: `handleEnd` isn't
+exported (no test in this suite drives the full mouse-event pipeline for editor-interaction.js — building
+that scaffold would be a bigger lift than this slice's scope, matching the same T19 gap I already
+disclosed for `editor-io.js`'s `open()`), so an inline loop there would have been UNTESTED except by
+inspection. Extracted `detachOwnership(elements)` into `editor-lattice-pattern.js` (the file that already
+owns `OWNERSHIP_ATTR` and every other ownership operation) — a pure function over a plain element array,
+no undo/commit side effects, directly unit-testable — and refactored BOTH `handleEnd`'s per-drag hook and
+`detachAllOwned`'s bulk removal to call the same declared function instead of two copies of the same
+3-line loop. This is exactly the "declare over hand-roll" gate the worker loop's own step 1 asks to run
+before building — caught it mid-build rather than after, by asking "is this about to be untestable, and
+is that because I hand-rolled something that should be a named, reusable thing instead?"
+
+### 1. `handleEnd` detach hook (editor-interaction.js)
+
+Re-read the current `handleEnd` fresh (SE8b already landed a `_notifyChange('commit')` call here since
+T12's audit) rather than trusting an old citation. Hooked right before the existing `pushState()`, inside
+the same `if (editor._dragMoved)` block, so the detach and the move land in ONE undo snapshot. Node-drag
+targets `editor._selectedElement` (singular, confirmed by reading `dragNode`'s own body); translate and
+transform-handle drags both target `editor._selectedElements` (plural, confirmed by reading
+`translateSelection`'s body) — covers all 3 gestures that converge at this one point.
+
+### 2. `detachAllOwned` (editor-lattice-pattern.js)
+
+Bulk counterpart to the hook — strips ownership from every element the given pattern id owns, no
+deletion, no movement, one undo step (skipped entirely when nothing was owned, so a no-op "Detach all"
+click doesn't pollute the undo stack with an empty entry). Reuses `detachOwnership` for the actual strip.
+
+### 3. Pattern panel — INSIDE the SVG editor modal, per this turn's own dispatch correction
+
+Markup added to `bspline_gen_palette.html` as a new `<aside id="editorLatticePanel" class="hidden">`
+sibling ABOVE the existing `<aside class="editor-layers-panel">`, matching the dispatch's explicit
+placement instruction (design doc §5's original mockup had assumed the sidebar; the dispatch corrected
+this to inside-the-modal, next to the canvas it acts on — built to the CORRECTED spec, not the design
+doc's original sketch). Visibility wired in `editor-ui.js`'s `updateToolbarVisibility`, same
+`currentMode !== 'lattice'` toggle already used for the AUTO NODES group (copied that exact precedent,
+not invented a new one). 390px-first: every control is a real input/select/checkbox/button, no
+hover-reveal, consistent with T16's own precedent in this lane.
+New `editor/properties-lattice.js` (matching the `properties-shape.js`/`properties-text.js`/
+`properties-expand.js` per-panel-module shape): spacing select populated from `GRID_SPACINGS` at bind
+time (same idiom `properties-shape.js`'s grid select and last turn's font select both already use);
+rails every/offset; ties density/spanMin/spanMax/anchor (rails|free — data, defaulting to 'rails' per
+the advisor's own T18 ruling, editable per-pattern, Fred's actual preference still unanswered); nodes
+ends/crossings; seed + reroll (reroll only edits the field — doesn't itself Generate, matching every
+other field here); Generate/Regenerate (label reflects whether `PATTERN.id` already exists — read fresh
+each click, not cached); Detach all. Registered in `editor-controls.js`'s `setupEditorToolbar` alongside
+the other three `init*Properties` calls.
+Fields re-sync from `editor._latticePattern` at bind time AND on every click of the `#toolLattice` button
+(the panel's own show-trigger) — added a listener on the SAME button `tools/mode-tools.js` already binds
+`setMode('lattice')` to, rather than inventing new cross-module coupling; a document opened via
+`editor-io.js`'s `open()` (restoring a DIFFERENT saved pattern) shouldn't show stale field values from
+whatever was on screen before the reopen.
+
+### 4. `generatePattern` restores the active layer (T19/T20's own flagged note)
+
+Captured `editor._activeLayer` before the 3-layer emit sequence, restored it right before `pushState()`
+(so the RESTORED value, not the transient "Nodes" one, is what the undo snapshot actually captures) —
+but only when there WAS a previous active layer; a totally fresh editor (`previousActiveLayer === null`,
+no layers existed before this Generate) is deliberately left on Nodes rather than forced to "no active
+layer at all" right after 3 real layers were just created — checked this edge case explicitly rather than
+restoring unconditionally, which would have been a regression for the first-ever Generate.
+
+### Non-vacuous, proven not argued (3 mutations, each on the exact new guarantee it targets)
+
+1. Disabled the active-layer restore line entirely — the "restores... not left on Nodes" test failed
+   exactly as expected (`'2'` i.e. the Nodes layer id, instead of the user's actual previous layer).
+2. Made `detachAllOwned` always push/notify regardless of count — the "does nothing when nothing owned"
+   test failed exactly as expected (1 push instead of 0).
+Both mutations reverted immediately after confirming the failure, full suite re-run green after each.
+`detachOwnership` itself is tested directly (mixed-batch, empty-list, null-entries) rather than mutated —
+low-risk enough (a 6-line pure loop, directly asserting input→output) that inspection + direct assertion
+was judged sufficient without an extra mutation round, unlike the two behavioral/integration pieces above.
+
+### Testing gap, disclosed rather than silently accepted
+
+`handleEnd`'s own WIRING (that it actually calls `detachOwnership` with the right element list, inside
+the right `if` block, before `pushState`) is NOT separately tested — `handleEnd` isn't exported and no
+test in this suite drives the full `initInteraction`/mouse-event pipeline (same class of gap T19 already
+named for `editor-io.js`'s `open()`). `detachOwnership` itself is thoroughly tested; the wiring that
+calls it from `handleEnd` was verified by direct code reading only. Named here rather than claimed as
+fully covered.
+
+### Full suite + verify
+
+`npx vitest run` → **224 passed (24 files)**, up from 215 (9 new). `node --check` on all 5 touched/new
+JS files: clean. `git status --short` → 6 modified + 1 new (`properties-lattice.js`) = 7 files + this
+WORK-LOG entry. Confirmed no SE8d file (`editor-io.js`/`editor.js`/`editor-coords.js`) appears in the diff.
+
+No gate hit. This closes SE7b's own slice list (1/2/3 all landed) — Generate/Regenerate, ownership +
+occupied-cell skip, persistence, the detach hook, bulk detach, and the panel are all in place; live
+390px capture and Fred's actual anchor-mode preference (design doc's Q1) remain the advisor's / Fred's,
+per the dispatch.

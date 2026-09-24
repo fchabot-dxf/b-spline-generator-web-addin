@@ -8,7 +8,7 @@
  * not reimplemented here).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { generatePattern, OWNERSHIP_ATTR, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { generatePattern, detachAllOwned, detachOwnership, OWNERSHIP_ATTR, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
 function _makeMockEditor() {
@@ -252,5 +252,106 @@ describe('data-lattice-pattern persistence (editor-io.js)', () => {
     expect(raw).toBeTruthy();
     const restored = JSON.parse(raw);
     expect(restored).toEqual(pattern);
+  });
+});
+
+describe('detachOwnership: the shared strip-the-tag primitive (T21 slice 3)', () => {
+  function ownedEl(id) {
+    const store = { [OWNERSHIP_ATTR]: id };
+    return { attr: (k, ...rest) => (rest.length ? (rest[0] == null ? (delete store[k], undefined) : (store[k] = rest[0])) : store[k]) };
+  }
+
+  it('strips the ownership attribute from every element that carries it', () => {
+    const a = ownedEl('lattice-1');
+    const b = ownedEl('lattice-1');
+    const count = detachOwnership([a, b]);
+    expect(count).toBe(2);
+    expect(a.attr(OWNERSHIP_ATTR)).toBeUndefined();
+    expect(b.attr(OWNERSHIP_ATTR)).toBeUndefined();
+  });
+
+  it('leaves an element with no ownership tag alone (count 0 for it)', () => {
+    const unowned = { attr: () => undefined };
+    expect(detachOwnership([unowned])).toBe(0);
+  });
+
+  it('tolerates a mixed batch (some owned, some not) and null/undefined entries', () => {
+    const owned = ownedEl('lattice-1');
+    const unowned = { attr: () => undefined };
+    expect(detachOwnership([owned, unowned, null, undefined])).toBe(1);
+    expect(owned.attr(OWNERSHIP_ATTR)).toBeUndefined();
+  });
+
+  it('handles an empty or missing list without throwing', () => {
+    expect(detachOwnership([])).toBe(0);
+    expect(detachOwnership(undefined)).toBe(0);
+  });
+});
+
+describe('detachAllOwned: the bulk "Detach all" panel action', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('strips ownership from every element owned by the given pattern id, leaves others alone', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 20, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    generatePattern(editor, pattern);
+    const ownedBefore = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR) === pattern.id);
+    expect(ownedBefore.length).toBeGreaterThan(0); // sanity — Generate must have actually made owned content
+
+    const count = detachAllOwned(editor, pattern.id);
+
+    expect(count).toBe(ownedBefore.length);
+    const stillOwned = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR) === pattern.id);
+    expect(stillOwned).toHaveLength(0);
+    // nothing was removed or moved — same element count, same geometry
+    expect(editor._sketchLayer.children()).toHaveLength(ownedBefore.length);
+  });
+
+  it('is exactly one undo step (not one per detached element)', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 21, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    generatePattern(editor, pattern);
+    editor.pushStateCalls = 0;
+    editor.notifyChangeCalls = [];
+
+    detachAllOwned(editor, pattern.id);
+
+    expect(editor.pushStateCalls).toBe(1);
+    expect(editor.notifyChangeCalls).toEqual(['commit']);
+  });
+
+  it('does nothing (no undo push) when nothing is owned', () => {
+    const count = detachAllOwned(editor, 'lattice-nonexistent');
+    expect(count).toBe(0);
+    expect(editor.pushStateCalls).toBe(0);
+    expect(editor.notifyChangeCalls).toEqual([]);
+  });
+});
+
+describe('generatePattern: restores the previously-active layer (T20/T21 note)', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('restores the layer that was active before Generate, not left on Nodes', () => {
+    // First Generate creates the 3 layers; second Generate simulates the
+    // user having switched to a DIFFERENT (non-pattern) layer in between.
+    const pattern = { ...PATTERN_DEFAULTS, seed: 22 };
+    generatePattern(editor, pattern);
+    const userLayer = { id: 'user-layer-1', name: 'My Drawing', visible: true };
+    editor._layers.push(userLayer);
+    editor._activeLayer = userLayer.id;
+
+    generatePattern(editor, pattern); // Regenerate
+
+    expect(editor._activeLayer).toBe(userLayer.id);
+  });
+
+  it('a first Generate on a totally fresh editor (no previous active layer) is left on Nodes, not forced to null', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 23 };
+    expect(editor._activeLayer).toBeNull();
+
+    generatePattern(editor, pattern);
+
+    expect(editor._activeLayer).toBe(pattern.layers.nodes);
+    expect(editor._activeLayer).not.toBeNull();
   });
 });

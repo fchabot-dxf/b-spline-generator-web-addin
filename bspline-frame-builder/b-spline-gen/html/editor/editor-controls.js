@@ -1,6 +1,7 @@
 import { initShapeProperties } from './properties-shape.js';
 import { initTextProperties } from './properties-text.js';
 import { initExpandProperties } from './properties-expand.js';
+import { initLatticeProperties } from './properties-lattice.js';
 import { registerEditorTools } from './tools/index.js';
 
 // SA-DEAD-5: the #editorSidebarToggle click handler (collapse/expand the
@@ -13,6 +14,7 @@ function setupEditorToolbar(editor) {
     initShapeProperties(editor);
     initTextProperties(editor);
     initExpandProperties(editor);
+    initLatticeProperties(editor); // SE7b slice 3
 }
 
 export { setupEditorToolbar };

@@ -35,6 +35,26 @@ export { toLattice, fromLattice, constrain, latticeCrossings };
  *  element shape. See SE7B design §2 for the ownership/detach rules. */
 export const OWNERSHIP_ATTR = 'data-lattice-gen';
 
+/** Strip OWNERSHIP_ATTR from each given element that carries it. Pure DOM
+ *  mutation only — no undo/pushState/_notifyChange; callers decide when
+ *  to commit (editor-interaction.js's handleEnd, for the one-per-drag
+ *  hook that must land in the SAME undo step as the move; detachAllOwned
+ *  below, for the bulk panel action). Declared once so both call sites
+ *  share the exact same detach mechanics rather than two copies of the
+ *  same 3-line loop. Returns how many were actually detached. */
+export function detachOwnership(elements) {
+    let count = 0;
+    for (const el of (elements || [])) {
+        try {
+            if (el && el.attr(OWNERSHIP_ATTR) != null) {
+                el.attr(OWNERSHIP_ATTR, null);
+                count++;
+            }
+        } catch (_) { /* defensive: a bad element must not abort the rest of the batch */ }
+    }
+    return count;
+}
+
 /** Sensible starting tooling per generated layer — "the color mapping of
  *  the piece" (ROADMAP:519): rails/ties both V-bit (ties shallower — a
  *  connector, not a structural line), nodes ballnose (a rounded dot,
@@ -336,6 +356,13 @@ export function generatePattern(editor, PATTERN) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
 
+  // SE7b slice 3 (T19's own note): setActiveLayer is called 3 times below
+  // (Rails, Ties, Nodes) while emitting each kind — captured here and
+  // restored right before the commit so Generate/Regenerate doesn't
+  // silently leave the user's active layer on "Nodes" as a side effect
+  // of how emission happens to be sequenced.
+  const previousActiveLayer = editor._activeLayer;
+
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const extent = _resolveExtent(editor, PATTERN);
   const occupied = _collectOccupied(editor, PATTERN.id, spacing);
@@ -370,6 +397,15 @@ export function generatePattern(editor, PATTERN) {
     tagOwned(emitNode(editor, fromLattice(p, spacing)));
   }
 
+  // Restore the layer that was active before Generate — but only when
+  // there WAS one; a totally fresh editor (previousActiveLayer === null,
+  // no layers existed yet) is better left on Nodes (the emit loop's
+  // natural end state) than forced back to "no active layer at all"
+  // right after 3 real layers were just created. setActiveLayer's own
+  // invalid-id fallback (first available layer) still applies if the
+  // previous id no longer exists for some other reason.
+  if (previousActiveLayer != null) setActiveLayer(editor, previousActiveLayer);
+
   if (typeof editor.pushState === 'function') editor.pushState();
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
 
@@ -379,4 +415,32 @@ export function generatePattern(editor, PATTERN) {
   editor._latticePattern = PATTERN;
 
   return { segments, nodePoints };
+}
+
+/**
+ * "Detach all" (design §5 panel action): strips OWNERSHIP_ATTR from
+ * every element the given pattern currently owns, WITHOUT moving or
+ * deleting anything — the bulk, gesture-free counterpart to the
+ * handleEnd per-drag detach hook (editor-interaction.js), for a user who
+ * wants to keep the generated content as a starting point and stop
+ * Regenerate from ever touching it again, without individually nudging
+ * every element. One undo step, same shape as generatePattern's own
+ * single pushState()/_notifyChange('commit') at the end of a batch of
+ * otherwise-silent mutations.
+ *
+ * @returns {number} how many elements were detached (0 if none were
+ *   owned — callers can use this to skip the undo push entirely when
+ *   there was nothing to do).
+ */
+export function detachAllOwned(editor, patternId) {
+  if (!editor || !editor._sketchLayer || !patternId) return 0;
+  const owned = editor._sketchLayer.children().toArray().filter(
+    (ch) => ch && ch.node && ch.node.getAttribute(OWNERSHIP_ATTR) === patternId
+  );
+  const count = detachOwnership(owned);
+  if (count > 0) {
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  }
+  return count;
 }
