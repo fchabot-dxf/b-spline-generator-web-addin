@@ -172,6 +172,12 @@ export function updateToolbarVisibility(editor, mode, el) {
     const autoNodesGroup = getEl('editorAutoNodesGroup');
     if (autoNodesGroup) autoNodesGroup.classList.toggle('hidden', currentMode !== 'lattice');
 
+    // SE7b: the Lattice Pattern panel (right side, above Layers) — same
+    // "only in the lattice tool" visibility as AUTO NODES above, since
+    // it acts on the same tool's content.
+    const latticePanel = getEl('editorLatticePanel');
+    if (latticePanel) latticePanel.classList.toggle('hidden', currentMode !== 'lattice');
+
     // Dim SNAP where it can't apply — 'none' (erase/expand: nothing to
     // snap) and 'always' (lattice: already always on, the toggle couldn't
     // turn it off) both make the button misleading if left live.

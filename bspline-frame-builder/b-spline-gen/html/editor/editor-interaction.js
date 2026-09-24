@@ -32,6 +32,7 @@ import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR,
 } from './editor-lattice.js';
+import { detachOwnership } from './editor-lattice-pattern.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -330,6 +331,20 @@ function handleEnd(editor, e) {
             return;
         }
         if (editor._dragMoved) {
+            // SE7b slice 3 / design §2: any completed drag detaches the
+            // elements it touched from their Lattice pattern (if owned) —
+            // strip data-lattice-gen BEFORE pushState() so the detach and
+            // the move land in the SAME undo step (one Ctrl+Z reverts
+            // both the position and re-establishes ownership together,
+            // rather than a split state where undo restores the position
+            // but leaves it detached, or vice versa). Node-drag targets
+            // editor._selectedElement (singular); translate and transform
+            // both target editor._selectedElements (plural) — covers all
+            // 3 gestures that converge here.
+            const dragged = wasNodeDrag
+                ? (editor._selectedElement ? [editor._selectedElement] : [])
+                : (editor._selectedElements || []);
+            detachOwnership(dragged);
             editor.pushState();
             // SE8b / SA-UNDO-1: the move-handlers now only ever fire
             // 'live' (rAF-coalesced) — this is the one 'commit' per
