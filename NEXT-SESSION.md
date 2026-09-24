@@ -1,48 +1,44 @@
-# NEXT — SE7n: node tool that actually drags — one node model, pointer mapped into the element's own space
+# NEXT — SE8a: what you see is what carves — declared path layout, no arcs in the bake, undo for style edits
 
-**Ball: worker (seat A) · epoch 1 · SE7n.** Files: `editor/editor-hit.js` (getNodes), `editor/editor-interaction.js`
-(dragNode + findNodeAt caller), `editor/editor-lattice.js` (findNodeAt), `editor/editor-ui.js` (AUTO NODES wiring),
-`tests/editor-nodes.test.js` (+ WORK-LOG). One commit by path, predicted **5–6 files**. SE7a (067c3df) reviewed and
-accepted, pushed (site rebuilding); the add-in is NOT deployed yet (Fusion bridge down). Seat B is running a
-read-only audit of editor/ in its worktree — no conflict, but its findings may add to this area later.
+**Ball: worker (seat A) · epoch 1 · SE8a.** Source: `AUDIT-SVG-EDITOR.md` (now on main) — findings SA-ROUNDTRIP-1,
+SA-UNDO-2, SA-UNDO-3, SA-TEXT-1, SA-TEXT-2 (read each section; advisor confirmed the first four on main). Files:
+NEW `editor/path-layout.js`, `editor/editor-hit.js`, `editor/editor-transform-handles.js`, `editor/editor.js`,
+`editor/tools/action-tools.js`, `editor/editor-io.js`, `editor/editor-text-session.js` (only if the teardown lives
+there), tests (+ WORK-LOG). One commit by path, predicted **7–9 files**. SE7n accepted (5cea9dd). Seat B is writing a
+read-only design doc (tooling store) — no overlap.
 
-## Ground truth (advisor, from the code — ROADMAP "SE7n")
-1. `getNodes` (`editor-hit.js:28-55`) returns rect corners and circle/ellipse centres, but `dragNode`
-   (`editor-interaction.js`, `function dragNode`) has branches only for line / polyline / polygon / path — grabbing a
-   rect/circle/ellipse node turns it red and nothing moves. Every lattice node is a circle.
-2. `getNodes` maps each node to WORLD with `worldPoint(el, pt)` (`:55`); `dragNode` writes the (world) pointer into
-   LOCAL attributes (`x1/y1`, array entries) with no inverse of `el.matrix()` — anything moved with Select (it writes
-   `transform="translate(...)"`), scaled or rotated jumps by its transform offset.
-3. `getNodes` pushes nodes only for M/L/C/Q path segments; `dragNode` indexes `el.array()[idx]` over ALL segments —
-   after the first Z/H/V/A/S/T the wrong segment is edited.
-4. SE7a leftovers: `findNodeAt` (`editor-lattice.js`) compares raw `cx/cy` (local) against a world lattice point — a
-   node moved with Select is not deduped; and the AUTO NODES button has no click handler (your own WORK-LOG flag).
-
-## Build — declare the node model once
-- `getNodes(el)` returns `[{ x, y, set(localPt) }]`: `x,y` in WORLD (as today, via `worldPoint`), `set` closes over
-  the real target — line: `x1/y1` or `x2/y2`; polyline/polygon: array index; path: the ACTUAL `el.array()` segment
-  index of that node (build the node list and its segment index in the same loop, so hit-test and drag can never
-  disagree); rect: the dragged corner with the OPPOSITE corner pinned (normalise negative width/height); circle /
-  ellipse: `cx/cy` (radius untouched — the per-kind radius edit is SE7s). Add H/V (endpoint = one coord + the
-  previous point's other coord) and A (end point) and S/T to the node list so every segment end is a node.
-- `dragNode(editor, pt)`: `const local = transformPoint(el.matrix().inverse(), pt)` then `nodes[idx].set(local)`.
-  Existing callers of `getNodes` that only read `x,y` keep working unchanged — grep them and say so.
-- `findNodeAt`: compare the node's WORLD centre (`worldPoint(ch, {x:cx,y:cy})`, or `worldBbox` centre) to the lattice
-  point.
-- AUTO NODES: bind `#editorLatticeAutoNodes` (or whatever id you gave it) in the same module that binds SHOW/SNAP: flip
-  `editor._lattice.autoNodes`, toggle `.active`. Initial `.active` state from `LATTICE_DEFAULTS` at bind time.
+## 1. SA-ROUNDTRIP-1 — declare the path command layout ONCE
+`_bakeMatrixIntoPath` (`editor-transform-handles.js`) transforms every numeric (i, i+1) pair as a point; for `A` that
+corrupts rx/ry, x-axis-rotation and both flags. `shapeToPath` (`:372-410`) turns every circle/ellipse into two arcs,
+so every node carved in Fusion is garbage. Your SE7n `getNodes` already hard-codes the same per-command offsets.
+- NEW `editor/path-layout.js`: `export const PATH_LAYOUT = { M:{pts:[[1,2]]}, L:{pts:[[1,2]]}, T:{pts:[[1,2]]},
+  C:{pts:[[1,2],[3,4],[5,6]]}, S:{pts:[[1,2],[3,4]]}, Q:{pts:[[1,2],[3,4]]}, H:{x:1}, V:{y:1}, A:{arc:true,
+  end:[6,7]}, Z:{} }` and `endPoint(seg)` → the segment's end offsets. `getNodes` reads end offsets from it (replace
+  the per-branch literals), `_bakeMatrixIntoPath` transforms exactly `pts` (never radii/flags).
+- Arcs under a general affine are not arcs: `arcToCubics(prev, seg)` (standard endpoint→centre parametrisation, ≤ 90°
+  per cubic) and the bake converts every `A` to cubics FIRST, then transforms points; H/V become L before the bake
+  (a rotated H is not horizontal). `shapeToPath` emits circles/ellipses as 4 cubics (κ = 0.5522847498) — no arcs.
+- Test: a circle r=0.1 at (1,2) through `carveMatrix(7,9,96)` → every resulting point lies within 1e-3 px of the
+  scaled circle; an `A` in a user path rotated 30° → endpoints and midpoint on the transformed ellipse; `PATH_LAYOUT`
+  drives getNodes (existing node tests stay green).
+## 2. SA-UNDO-2 / SA-UNDO-3 — style edits are gestures
+`setStrokeWidth` (`editor.js:191`) has neither `pushState()` nor `_onChange()`; `setStrokeColor` has pushState but no
+`_onChange`. Both: exactly one pushState + one _onChange per call when a selection changed. If the stroke-width input
+fires per keystroke/spin, make sure it is one undo step per committed value (check the binding — `change`, not `input`).
+## 3. SA-TEXT-1 — Cancel tears the text session down
+`editorCancel` (`action-tools.js`) calls only `_onCommit(null)`; Apply calls `_commitText()` first. Cancel must end an
+active text session WITHOUT committing it (read `editor-text-session.js:283-346` for the cancel path and the
+`document` mousedown listener it removes) — declare one `endEditorSession(editor, {commit})` used by both buttons.
+## 4. SA-TEXT-2 — font `<defs>` must not accumulate
+Read the finding (`editor-io.js:294-332, 465-592`). Fix at the source: strip any existing `defs.rasterization-fonts`
+before injecting a fresh one (and on open). Test: serialize → open → serialize three times → exactly one block.
 
 ## Verify
-- `tests/editor-nodes.test.js` (pure where possible: build node lists from plain attribute/array fixtures, or a tiny
-  mock element with `matrix()` returning `{a..f}` + `inverse()`): (a) line with `translate(1,0)` — setting the world
-  point (5,5) writes local (4,5); (b) path `M0 0 L1 0 Z M2 2 L3 3` — node 3 (the second M… L 3 3 end) edits the
-  segment holding `3 3`, not the `Z`; (c) circle centre set; (d) rect corner drag pins the opposite corner, and a
-  drag past it normalises width/height positive; (e) H/V node positions. ≥ 6 tests.
-- `npx vitest run` → 103 + new, green. `node --check` touched modules.
-- Live (advisor, when the bridge is back): move a line with Select, then drag its endpoint in Node mode — it follows
-  the cursor; drag a lattice node; drag a corner of a filled pen shape.
+- `npx vitest run` → 113 + new, green; `node --check` touched modules.
+- Greps: numeric offsets for segment ends appear only in `path-layout.js`; `' A '` no longer emitted by shapeToPath.
+- Live (advisor, bridge permitting): lattice nodes sent to Fusion arrive as circles of the right size.
 
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7n: node model with setters, inverse-matrix drag, path index fix, findNodeAt world, AUTO NODES wired — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8a: PATH_LAYOUT + arcs→cubics bake, style-edit undo, Cancel teardown, font defs dedupe — <sha>, N files, vitest N"`
 and stop.
