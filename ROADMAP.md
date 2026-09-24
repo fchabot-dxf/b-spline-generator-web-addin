@@ -526,3 +526,13 @@ live-proven. Three layers carry rails / ties / nodes with their own tooling — 
   `zoomAbout`/view record; (4) touch snap marker shown during press, offset above the finger with a leader line;
   (5) 390 px layout of the editor top bar (horizontal scroll or a "⋯" overflow for contextual groups), decided from a
   capture; shortcut badges hidden under `@media (hover:none)`. Not amended into SE7a (input layer under it).
+- **SE7s (queued FIRST after SE7a, before SE7m; Fred 2026-09-23: "the scale feature is not using the anchor for
+  direction").** Confirmed in `editor-transform-handles.js:179-184`: a corner drag takes the ratio of whichever axis
+  the POINTER moved more on (`useX = |nx-ox| >= |ny-oy|`), not the drag along anchor→handle. Measured: a 0.02×3 tie
+  dragged 0.3" sideways from its corner scales ×15 (projection gives ×1.00); a box jitters ×1.49↔×1.52 as the
+  dominant axis flips. Fix (declared): corner factor = projection `(n·o)/(o·o)` onto the anchor→handle vector; side
+  handles unchanged. Second defect: handles live on the WORLD-aligned bbox and scale along world X/Y, so a side
+  handle on a rotated element shears it into a parallelogram. Fix: single selection → handles in the element's own
+  frame (decompose m0 into rotation + scale, anchor/handles from the local bbox, delta composed in local space);
+  multi-selection keeps the world frame. Pure math in a leaf with vitest (box, thin tie, rotated 30° tie keeps right
+  angles).
