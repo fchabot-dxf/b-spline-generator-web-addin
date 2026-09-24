@@ -205,6 +205,20 @@ export function applyToolbarGroups(rawMode, el, currentMode) {
   }
 }
 
+/** T32: enable/disable #editorUndo/#editorRedo to match whether there's
+ *  actually anything to undo/redo — the SAME conditions undo()/redo()
+ *  themselves check (editor.js), read back here rather than re-derived,
+ *  so the buttons can never disagree with what clicking them would
+ *  actually do. Called from editor.js's pushState/undo/redo (the 3
+ *  places the stacks can change) — a no-op if the buttons aren't in this
+ *  host's DOM. */
+export function updateHistoryButtons(editor) {
+  const undoBtn = getEl('editorUndo');
+  const redoBtn = getEl('editorRedo');
+  if (undoBtn) undoBtn.disabled = !(editor._undoStack && editor._undoStack.length >= 2);
+  if (redoBtn) redoBtn.disabled = !(editor._redoStack && editor._redoStack.length);
+}
+
 export function updateToolbarVisibility(editor, mode, el) {
     // SE7a: some callers (e.g. _afterSelectionChange below) call this
     // without a `mode` arg on a selection change, not a mode switch —

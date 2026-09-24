@@ -158,6 +158,64 @@
     }
 }
 
+/* T32 (Fred: undo/redo out of the left tool rail): ONE group
+   (bspline_gen_palette.html's #editorUndo/#editorRedo, ids/bindings
+   unchanged), placed in the header's own normal flow on a fine pointer —
+   this base rule is all a mouse/pen user needs, since the buttons then
+   just sit inline next to Download SVG using their existing .tool-btn
+   look. No JS layout switching; everything below this point is the
+   pointer:coarse override that turns the SAME element into a floating
+   pill instead. */
+.editor-history {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+@media (pointer: coarse) {
+    /* Moved OUT of normal flow — SA-MOBILE-4's own .editor-sidebar .tool-btn
+       44px rule no longer reaches these buttons now that they've left the
+       sidebar, so it's redeclared here rather than inherited. */
+    .editor-history .tool-btn {
+        width: 44px;
+        height: 44px;
+        padding: 5px;
+    }
+    .editor-history {
+        /* .cad-modal-window.overhauled (bspline_gen_palette.html:1251) is
+           position:relative and spans the full 100vh modal — the nearest
+           positioned ancestor between here and the viewport regardless of
+           whether .editor-history physically lives in the header (top) or
+           would ever move elsewhere in markup, so this resolves against
+           the WHOLE modal, landing at its bottom-left, not the header's. */
+        position: absolute;
+        left: 12px;
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        z-index: 55; /* above #editorSVGContainer's z-index:2, below the Pattern sheet's z-index:60 */
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 999px;
+        padding: 4px;
+        gap: 6px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+}
+
+@media (pointer: coarse) and (max-width: 720px) {
+    /* T32: lift the pill above the Pattern bottom-sheet (T24/T25) when
+       it's open — but the sheet only becomes a FIXED, viewport-bottom
+       element under this SAME width breakpoint (styles/editor.css's own
+       `@media (max-width: 720px) { .editor-lattice-panel { position:
+       fixed; ... } }`); outside it (e.g. a coarse-pointer tablet in
+       landscape) the panel is a normal side column that never overlaps
+       the canvas bottom, so this lift is scoped to exactly the condition
+       where a collision is actually possible — see properties-lattice.js
+       for where --lattice-sheet-height (0px when the panel is hidden or
+       not in sheet mode) gets kept in sync via a ResizeObserver. */
+    .editor-history {
+        bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--lattice-sheet-height, 0px));
+    }
+}
+
 /* Top View Canvas Scaling */
 #svgEditorTopView {
     image-rendering: pixelated;

@@ -10,7 +10,7 @@ import { fitCurve, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance, getNodes, getNearbyElement } from './editor-hit.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
 import { resetTransform, flattenTransform } from './editor-transform-handles.js';
-import { setMode, updateToolbarVisibility, updateSelectionHighlight, setHover, select, selectAdd, selectMany } from './editor-ui.js';
+import { setMode, updateToolbarVisibility, updateSelectionHighlight, setHover, select, selectAdd, selectMany, updateHistoryButtons } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
@@ -377,11 +377,13 @@ export class VectorEditor {
         if (this._undoStack.length > this._maxUndo) this._undoStack.shift();
         _undoLog( `pushState  caller=${caller}  children=${childCount}  stack=${this._undoStack.length}  redo=${this._redoStack.length}  svgLen=${state.svg.length}`);
         if (this._onCommit) this._onCommit('push');
+        updateHistoryButtons(this);
     }
 
     undo() {
         if (this._undoStack.length < 2) {
             _undoLog( `undo  noop  stack=${this._undoStack.length}  (need >=2)`);
+            updateHistoryButtons(this);
             return;
         }
         const current = this._undoStack.pop();
@@ -389,17 +391,20 @@ export class VectorEditor {
         const prev = this._undoStack[this._undoStack.length - 1];
         _undoLog( `undo  popped  stack(after)=${this._undoStack.length}  redo=${this._redoStack.length}  restoringChildren=${(prev.svg||'').match(/<(path|line|rect|circle|polyline|polygon|text|g)\b/g)?.length ?? 0}`);
         this._restoreState(prev);
+        updateHistoryButtons(this);
     }
 
     redo() {
         if (!this._redoStack.length) {
             _undoLog( `redo  noop  redo=0`);
+            updateHistoryButtons(this);
             return;
         }
         const next = this._redoStack.pop();
         this._undoStack.push(next);
         _undoLog( `redo  popped  stack=${this._undoStack.length}  redo(after)=${this._redoStack.length}`);
         this._restoreState(next);
+        updateHistoryButtons(this);
     }
 
     /** Rehydrate the editor from a snapshot object (or legacy SVG string).
