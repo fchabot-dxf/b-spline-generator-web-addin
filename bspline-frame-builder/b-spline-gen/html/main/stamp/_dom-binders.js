@@ -14,7 +14,14 @@
  *     scale/mirror). bindControls doesn't know about them, so we wire
  *     the input → layer.field write directly here and trigger a remask
  *     on change.
+ *
+ * UX-UNDO: bindLayerOnlyNumber/Checkbox also call scheduleUndoSnapshot on
+ * `change` (never on the live `input` write above) — these per-layer
+ * tooling fields are exactly what SE5c added to takeSnapshot/
+ * applySnapshot, so they're undoable through the SAME global mechanism
+ * as every other sidebar control, not a bespoke one for layer fields.
  */
+import { scheduleUndoSnapshot } from '../../core/history.js';
 
 export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask }) {
   // Defensive default so older callers that don't supply activeEditorLayer
@@ -69,12 +76,14 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
           if (sld) sld.value = num.value;
           writeAndRefresh(parseFloat(num.value));
         });
+        num.addEventListener('change', () => scheduleUndoSnapshot(inputId));
       }
       if (sld) {
         sld.addEventListener('input', () => {
           if (num) num.value = sld.value;
           writeAndRefresh(parseFloat(sld.value));
         });
+        sld.addEventListener('change', () => scheduleUndoSnapshot(inputId));
       }
       return (layer) => {
         if (!layer) return;
@@ -95,6 +104,7 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
           const eLayer = _editorLayer();
           if (eLayer) eLayer[layerField] = cb.checked;
           if (triggerRemask) requestRemask();
+          scheduleUndoSnapshot(checkboxId);
         });
       }
       return (layer) => {

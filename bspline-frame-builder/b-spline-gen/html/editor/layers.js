@@ -265,6 +265,26 @@ function reorderLayer(editor, sourceId, targetId, displaySide /* 'before' | 'aft
   if (editor._onChange) editor._onChange();
 }
 
+/** UX-UNDO: these three toggles are per-layer TOOLING (SE5c's
+ *  LAYER_TOOLING_FIELDS, core/history.js) — undoable through the global
+ *  mechanism like any other sidebar control, on whichever surface they're
+ *  clicked from (this row renders in both the sidebar AND the SVG
+ *  editor's own Layers panel). A plain DOM CustomEvent, not a direct
+ *  import of core/history.js's scheduleUndoSnapshot: core/history.js
+ *  already imports TOOLING_DEFAULTS FROM this file, so importing back
+ *  would be a circular import (risky at module-init time, since
+ *  LAYER_TOOLING_FIELDS reads TOOLING_DEFAULTS at its own top level).
+ *  main/ui-bindings.js listens and calls scheduleUndoSnapshot — the
+ *  same DOM-event decoupling this codebase already uses for cross-
+ *  cutting notifications (e.g. bindTogglePanel's dispatched 'change').
+ *  scheduleUndoSnapshot's own isEditorOpen() gate suppresses this while
+ *  the SVG editor modal is open, so a toggle clicked from the EDITOR's
+ *  own Layers panel still goes through the editor's stack only
+ *  (editor.pushState() above), not the global one. */
+function _notifyLayerToolingCommit(field) {
+  document.dispatchEvent(new CustomEvent('layer-tooling-commit', { detail: { field } }));
+}
+
 export function setLayerVisible(editor, id, visible) {
   if (!Array.isArray(editor._layers)) return;
   const layer = editor._layers.find(l => String(l.id) === String(id));
@@ -274,6 +294,7 @@ export function setLayerVisible(editor, id, visible) {
   applyLayerState(editor);
   if (typeof editor.pushState === 'function') editor.pushState();
   if (editor._onChange) editor._onChange();
+  _notifyLayerToolingCommit('visible');
 }
 
 /** T27: CARVE ("3D") — stored independent of `visible`, but every gate
@@ -287,6 +308,7 @@ export function setLayerCarve(editor, id, carve) {
   renderLayersPanel(editor);
   if (typeof editor.pushState === 'function') editor.pushState();
   if (editor._onChange) editor._onChange();
+  _notifyLayerToolingCommit('carve');
 }
 
 /** T27: the palette (showColor) toggle — never disabled. Applies as a
@@ -302,6 +324,7 @@ export function setLayerShowColor(editor, id, showColor) {
   applyLayerState(editor);
   if (typeof editor.pushState === 'function') editor.pushState();
   if (editor._onChange) editor._onChange();
+  _notifyLayerToolingCommit('showColor');
 }
 
 // ----------- Active layer -----------

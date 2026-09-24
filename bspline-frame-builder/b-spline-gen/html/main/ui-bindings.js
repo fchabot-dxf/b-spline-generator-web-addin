@@ -6,8 +6,24 @@ import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode, sculptClear } from '../core/sculpt-interaction.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { initStampPanel } from './stamp/index.js';
+import { AppState } from './app-state.js';
+import { scheduleUndoSnapshot } from '../core/history.js';
 
 export function bindControls(preview) {
+  // UX-UNDO: the layer row's 👁/3D/palette toggles (editor/layers.js —
+  // shared between the sidebar and the SVG editor's own Layers panel)
+  // commit via setLayerVisible/Carve/ShowColor directly, not through
+  // bind()/the stamp-panel binders, so they dispatch this CustomEvent
+  // instead of importing core/history.js themselves (that file already
+  // imports FROM editor/layers.js for TOOLING_DEFAULTS — importing back
+  // would be circular). scheduleUndoSnapshot's own isEditorOpen() gate
+  // still applies, so a toggle flipped from inside the editor modal
+  // goes through the editor's own undo stack only, per the ROADMAP
+  // ruling ("undo follows where the change was made").
+  document.addEventListener('layer-tooling-commit', (e) => {
+    scheduleUndoSnapshot('layer:' + (e.detail && e.detail.field));
+  });
+
   Object.keys(P).forEach(key => {
     const inputId = INPUT_PAIRS[key] || key;
     const el = document.getElementById(inputId);
@@ -126,8 +142,10 @@ export function bindControls(preview) {
   attachNumberSteppers();
 
   // All stamp-panel controls are now owned by main/stamp/* — one module
-  // per slider/control, composed by initStampPanel.
-  initStampPanel(preview);
+  // per slider/control, composed by initStampPanel. Stored on AppState so
+  // applySnapshot (UX-UNDO/SE5c) can refresh these inputs after an undo
+  // restores per-layer tooling, the same way a layer switch does.
+  AppState.stampCtx = initStampPanel(preview);
 
   const btnAutoThickenThin = document.getElementById('btnAutoThickenThin');
   if (btnAutoThickenThin) {

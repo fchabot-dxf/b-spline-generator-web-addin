@@ -7565,3 +7565,129 @@ a 2D pixel scan rather than eyeballing the zoomed crop a second time.
   shows painted colour tracking the un-carved terrain's own bumps, no groove.
 
 No amendments pending as of this pass.
+
+## Turn 241 — UX-UNDO + SE5c: every sidebar control is undoable, one step per release — DONE
+
+**Ruling being implemented (ROADMAP, Fred 2026-09-24 "slider undo YES").** Sidebar controls (global
+params, seed, filters, per-layer tooling on the editor layer) go through the palette's GLOBAL undo;
+drawing content stays on the editor's own stack (SE4c, unchanged). Before this turn `takeSnapshot`
+(`core/history.js`) was called from exactly 3 places — sculpt stroke, sculpt clear, the initial snapshot —
+no sidebar slider created an undo step at all.
+
+**`UNDO_SCOPE` (declared, `core/history.js`).** One table, control id -> `'global' | 'none'`.
+`undoScopeOf(id)` defaults anything unlisted to `'global'` — the common case needs zero registration; only
+genuine visual-only exceptions are named: `showMesh` (iso-curve view toggle), `thickenWireframe`
+(solid-vs-wireframe PREVIEW mode), `showLeaders` (leader-line overlay visibility). None of the three touch
+the heightfield or anything persisted/exported.
+
+**`scheduleUndoSnapshot(id, label)` (the one commit-time hook, `core/history.js`).** Gated on
+`undoScopeOf`, on `isEditorOpen()` (sidebar has no business firing while the modal owns the interaction),
+and on a new `_isRestoring` flag (see the bug below). Coalesces rapid repeated commits into ONE step via a
+shared 400 ms `setTimeout`-reset window (`UNDO_COALESCE_MS`) — every call clears and restarts the same
+timer, so only the LAST commit in a burst actually snapshots, capturing whichever value the burst settled
+on. Wired into every commit point that exists for a sidebar control:
+- `core/ui-utils.js`'s `bind()` — one new `'change'` listener (separate from the existing value-handler
+  listeners, so it never re-runs the live-drag path). `syncPair()` also gained a `sld.addEventListener
+  ('change', ...)` forwarding the RANGE slider's own release to the paired number input's `'change'` —
+  previously only `'input'` was forwarded, so dragging the physical slider and releasing it never fired
+  anything on the number input at all; releasing a slider committed NOTHING before this turn.
+- `main/stamp/_dom-binders.js`'s `bindLayerOnlyNumber`/`bindLayerOnlyCheckbox` — per-layer tooling fields
+  (tx/ty/rotation/scale/mirror/etc., fields that live on `editor._layers`, not P) gained `'change'`
+  listeners calling `scheduleUndoSnapshot`, alongside their existing `'input'` live-write listeners.
+- `core/noise/tweaks-ui.js` — filter-tweak rows gained the same `'change'`-commits/`'input'`-lives split
+  (the range input had NO `'change'` listener at all before), plus `resetOneTweak`/`resetAllTweaks` (Reset
+  buttons are themselves a committed value change).
+
+**SE5c: `takeSnapshot`/`restoreLayerTooling` (`core/history.js`).** `LAYER_TOOLING_FIELDS` reuses
+`TOOLING_DEFAULTS`' own key list (`editor/layers.js`) plus `'visible'` — declared once, so a tooling field
+added there is captured here for free. `captureLayerTooling()` reads `window.svgEditor._layers`, picking
+ONLY those named fields per layer (never `_mask` or any content) — guards a missing `window.svgEditor` the
+same way every other reader in `main/stamp/*` already does. `restoreLayerTooling(layers, layerTooling)` is
+exported standalone (not inlined into `applySnapshot`) specifically so the restore half is unit-testable
+without `applySnapshot`'s heavy rebuild/remask pipeline; it matches by layer id and skips a saved id that
+no longer exists (layer add/remove is drawing structure, out of this mechanism's scope). `main/snapshot-
+manager.js`'s `applySnapshot` calls it right after its P-restore loop, then calls `AppState.stampCtx
+?.broadcastSyncFromLayer?.()` (the SAME refresh a layer switch triggers) so e.g. the Plunge Depth field
+visibly snaps back on undo instead of the model reverting under a stale-looking number — required adding
+`AppState.stampCtx` (set once in `ui-bindings.js`, from `initStampPanel`'s own return value, which nothing
+previously captured).
+
+**Bug found and fixed via live Fusion testing, not by reasoning: `applySnapshot` triggering itself.**
+`applySnapshot`'s P-restore loop calls `syncUItoParam` for every key, which DELIBERATELY dispatches a real
+`'change'` event on checkboxes (its own existing comment explains why: dependent panels need to re-sync).
+That's the exact same `'change'` `bind()` now listens on to schedule an undo step — so clicking Undo was
+immediately scheduling ANOTHER snapshot as a side effect of the restore itself. Caught via a temporary
+`fusLog` instrumentation pass live in Fusion (not visible from the vitest suite, which doesn't exercise the
+real `applySnapshot`/`bind()` combination end-to-end): the log showed `scheduleUndoSnapshot` firing for
+`showMesh`/`detailDensityRespectSymmetry`/`smoothRespectSymmetry`/`thickenEnabled` on every single
+`unifiedUndo` call, and one of them (`thickenEnabled`, being global-scoped) went on to actually push a
+stray snapshot. Fixed with a dedicated `_isRestoring` flag + `setUndoRestoring(true/false)`, bracketing
+`applySnapshot`'s P-restore loop — a NEW flag rather than reusing `AppState.isInitializing` (already
+toggled in exactly the right place) because `core/` never imports from `main/` anywhere in this codebase
+(verified: `grep` for `from '../main` across `core/**/*.js` returns nothing) and `AppState` lives in
+`main/app-state.js`; reaching into it from `core/history.js` would be the one file that broke that
+layering. Removed the debug `fusLog` calls once the fix was confirmed live.
+
+**Second gap found live, not anticipated by the dispatch: the layer row's 👁/3D/palette toggles.** These
+render via `editor/layers.js`'s shared `_makeLayerRow` (used by BOTH the sidebar's compact list and the
+SVG editor's own Layers panel) and commit through `setLayerVisible`/`setLayerCarve`/`setLayerShowColor`
+directly — a completely separate code path from `bind()`/the stamp-panel binders, so clicking a sidebar
+layer's "3D" badge changed the model (confirmed: the carve/paint result updated correctly) but never
+touched undo history at all. Fixed WITHOUT giving `editor/layers.js` a new import of `core/history.js`:
+`core/history.js` already imports `TOOLING_DEFAULTS` FROM `editor/layers.js` for `LAYER_TOOLING_FIELDS`,
+so importing `scheduleUndoSnapshot` back would be a circular import — risky specifically because
+`LAYER_TOOLING_FIELDS` reads `TOOLING_DEFAULTS` at its own module top level, so a load order where
+`editor/layers.js` is mid-initialization when `core/history.js`'s top-level code runs could throw
+"Cannot access 'TOOLING_DEFAULTS' before initialization". Used the same DOM-event decoupling this codebase
+already relies on elsewhere (e.g. `bindTogglePanel`'s dispatched `'change'`): the three setters now call a
+`_notifyLayerToolingCommit(field)` helper that dispatches a plain `document` `CustomEvent`
+(`'layer-tooling-commit'`, `detail: { field }`); `main/ui-bindings.js` (which already imports
+`core/history.js` safely — `main -> core` is the normal direction) listens once and calls
+`scheduleUndoSnapshot('layer:' + field)`. `scheduleUndoSnapshot`'s own `isEditorOpen()` gate still applies
+unchanged, so a toggle flipped from INSIDE the editor modal's own Layers panel still goes through the
+editor's stack only (`editor.pushState()`, already called by these setters), never the global one.
+
+**Tests.** `tests/ux-undo.test.js` (new, 21 tests): `UNDO_SCOPE`/`undoScopeOf` table; `scheduleUndoSnapshot`
+coalescing with `vi.useFakeTimers()` (single commit, five-rapid-commits-coalesce-to-one, two commits past
+the window stay separate, a `'none'`-scoped id never fires); the `isEditorOpen()` gate; `bind()`'s
+`'change'`-commits/`'input'`-never-commits split with a real DOM `<input>` and dispatched events;
+`syncPair()`'s slider-release forwarding; `createDomBinders`'s `bindLayerOnlyNumber`/`Checkbox`; the new
+`setUndoRestoring` guard (proven against the exact bug found live: schedule while restoring -> suppressed,
+same call once cleared -> commits); `setLayerVisible`/`Carve`/`ShowColor`'s `CustomEvent` dispatch plus an
+end-to-end integration test wiring a listener the same way `ui-bindings.js` does, including the
+`isEditorOpen()` negative case. `tests/history-snapshot.test.js` gained 6 SE5c tests: `takeSnapshot`
+capturing `layerTooling` from `window.svgEditor._layers` (never `_mask`), a no-`window.svgEditor` guard,
+and `restoreLayerTooling`'s match-by-id / skip-missing-id / full round-trip behaviour.
+
+**Non-vacuous, three separate passes (the standard way, once per independent fix).** (1) Reverted
+`scheduleUndoSnapshot` to an immediate no-op — exactly the 7 tests asserting a commit produces an entry
+failed; the 7 asserting no-entry (table lookups, none-scoped, `input`-only) stayed green. (2) Reverted
+`captureLayerTooling`/`restoreLayerTooling` to stubs (`[]` / no-op) — exactly the 4 tests asserting real
+capture/restore behaviour failed; the 4 negative-shaped ones (no-editor-guard, skip-missing-id) stayed
+green — an inherent limit of testing an absence, covered by their positive-case companions instead.
+(3) Reverted `_isRestoring`'s check and `_notifyLayerToolingCommit`'s dispatch separately — 2 and 4 tests
+failed respectively, matching exactly. Restored from scratch copies each time, diffed byte-identical,
+re-ran green (423/423) after each restore.
+
+**Live Fusion (bridge up; the dispatch's own test scenario, executed literally where possible).** Ctrl+Z
+itself does NOT reach the palette — Fusion (the host) captures it, a pre-existing limitation already
+documented in `updateGlobalButtons`'s own comment ("the host captures Ctrl+Z so the buttons are the only
+undo path") — so verification used the palette's own Undo/Redo buttons instead, which route through the
+exact same `unifiedUndo`/`unifiedRedo`. Drew a line, Applied, then: changed Plunge Depth via the +/-
+stepper (confirmed via a temporary debug log that a SINGLE click correctly produces one history entry
+after the coalescing window — this is also where the `applySnapshot`-triggers-itself bug above was first
+caught, mid-verification, and fixed before re-testing), toggled the layer's "3D" off (confirmed the SAME
+way this is where the second gap above was caught and fixed), clicked Undo twice: first click reverted
+Plunge Depth from 0.3 back to 0.25 (screenshot), second click reverted "3D" back to active AND the small
+preview's groove reappeared (zoomed screenshot, matching the pre-toggle carved shape) — both with NO extra
+history entries created as a side effect, confirmed by re-running the same live sequence on the FINAL,
+debug-log-free build after both fixes landed.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **423 passed**, 0 failed.
+- Live Fusion: Plunge Depth stepper -> one commit; layer "3D" toggle -> one commit (after the
+  `layer-tooling-commit` fix); Undo x2 reverts both, model carve updates, no stray entries; re-verified
+  clean on the final debug-free build.
+
+No amendments pending as of this pass.

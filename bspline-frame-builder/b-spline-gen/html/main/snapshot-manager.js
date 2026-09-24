@@ -1,6 +1,6 @@
 import { P, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
 import { syncUItoParam } from '../core/ui-utils.js';
-import { updateGlobalButtons } from '../core/history.js';
+import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
@@ -11,11 +11,28 @@ import { runMigrations } from './app-init.js';
 export async function applySnapshot(snap, preview) {
   if (!snap) return;
   AppState.isInitializing = true;
+  // UX-UNDO: syncUItoParam deliberately dispatches a real 'change' on
+  // checkboxes (see its own comment) so dependent panels re-sync — but
+  // that's the SAME event bind() listens on to schedule an undo step.
+  // Without this guard, restoring a snapshot would immediately schedule
+  // ANOTHER one as a side effect of the restore itself.
+  setUndoRestoring(true);
   Object.keys(snap.P).forEach(k => {
     P[k] = snap.P[k];
     syncUItoParam(k, P[k]);
   });
+  setUndoRestoring(false);
   AppState.isInitializing = false;
+
+  // SE5c: restore per-layer TOOLING (not content — editorSvg/_mask stay
+  // untouched, per SE4c) from editor._layers, then push the restored
+  // values out to the stamp panel's own inputs (the same refresh a
+  // layer-switch does via ctx.broadcastSyncFromLayer) so e.g. the Plunge
+  // Depth field visibly snaps back on undo instead of only the model
+  // reverting underneath a stale-looking number.
+  const editorForTooling = (typeof window !== 'undefined') ? window.svgEditor : null;
+  if (editorForTooling) restoreLayerTooling(editorForTooling._layers, snap.layerTooling);
+  AppState.stampCtx?.broadcastSyncFromLayer?.();
 
   // SE4c: this is also the cloud-project-load apply step (cloud-project-
   // manager.js's _loadFrom), so a project saved before the migration

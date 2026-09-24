@@ -4,6 +4,7 @@
 
 import { INPUT_PAIRS, SLIDER_PAIRS, RESOLUTIONS } from './state.js';
 import { resolveGrid } from './terrain.js';
+import { scheduleUndoSnapshot } from './history.js';
 
 /**
  * Binds a UI control (input/select) to a handler.
@@ -44,6 +45,15 @@ export function bind(id, type, handler, immediate = false, desc = '') {
             handler(val);
         });
     }
+
+    // UX-UNDO: ONE global undo step per COMMITTED value. `change` already
+    // means "committed" for every type bind() attaches to — native for
+    // checkbox/select, blur/Enter for number text inputs (the listener
+    // just above), and the physical range slider's own release forwarded
+    // here via syncPair below. Separate from the value-handler listener
+    // above so it never runs the live-drag path twice.
+    el.addEventListener('change', () => scheduleUndoSnapshot(id));
+
     if (immediate) {
         let val = el.value;
         if (type === 'number') val = parseFloat(val);
@@ -63,6 +73,15 @@ export function syncPair(numId, sldId, desc = '') {
     sld.addEventListener('input', () => {
         num.value = sld.value;
         num.dispatchEvent(new Event('input'));
+    });
+    // UX-UNDO: forward the slider's own release ('change', native on
+    // range inputs) to the number input's 'change' — the event bind()
+    // listens on for the undo commit. Without this, dragging the
+    // PHYSICAL slider never fired anything on the number input at all
+    // (only 'input' was forwarded above), so releasing it committed
+    // nothing to undo history.
+    sld.addEventListener('change', () => {
+        num.dispatchEvent(new Event('change'));
     });
 }
 

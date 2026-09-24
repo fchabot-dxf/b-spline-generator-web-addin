@@ -24,6 +24,7 @@
 import { NoiseTweaks } from './index.js';
 import { P, DEFAULT, saveLastSession, updateP } from '../state.js';
 import { syncUItoParam } from '../ui-utils.js';
+import { scheduleUndoSnapshot } from '../history.js';
 
 // Top-level FILTER-panel knobs that live OUTSIDE the per-filter tweaks schema
 // (their controls are hardcoded HTML in the outer .panel-body, not in the
@@ -70,6 +71,7 @@ export function resetOneTweak(filterId, key) {
   if (Object.keys(bucket).length === 0) delete P.filterTweaks[filterId];
   saveLastSession();
   if (_onChange) _onChange();
+  scheduleUndoSnapshot(`filterTweak:${filterId}:${key}`);
 }
 
 /** Drop every override for a filter (revert all to schema defaults).
@@ -92,6 +94,7 @@ export function resetAllTweaks(filterId) {
 
   saveLastSession();
   if (_onChange) _onChange();
+  scheduleUndoSnapshot(`filterTweaksReset:${filterId}`);
 }
 
 /**
@@ -150,7 +153,18 @@ function buildRow(filterId, schema) {
 
   range.addEventListener('input', (e) => apply(e.target.value));
   num.addEventListener('input', (e) => apply(e.target.value));
-  num.addEventListener('change', (e) => apply(e.target.value));
+  num.addEventListener('change', (e) => {
+    apply(e.target.value);
+    scheduleUndoSnapshot(`filterTweak:${filterId}:${key}`);
+  });
+  // UX-UNDO: range inputs never fire 'change' from num's own listener
+  // above (they're separate elements) — the slider's OWN release needs
+  // its own commit hook, same "input live, change commits" split as
+  // every other sidebar slider.
+  range.addEventListener('change', (e) => {
+    apply(e.target.value);
+    scheduleUndoSnapshot(`filterTweak:${filterId}:${key}`);
+  });
 
   reset.addEventListener('click', () => {
     resetOneTweak(filterId, key);
