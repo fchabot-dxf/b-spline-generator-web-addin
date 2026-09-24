@@ -586,3 +586,10 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   tooling-slider change is undone through the EDITOR's undo stack; global Ctrl+Z stays heightfield-only. Slices:
   (a) updateP / isFilletActive / Browse+Clear writers — dispatched to seat B on lane-b (no file overlap with SE8a);
   (b) export-flow + cloud-project-manager (fixes "only layer 1 carves"); (c) enabled deletion + migration + undo.
+- **SE5 undo ruling REVERSED (advisor, 2026-09-23, after Fred asked "so what makes sense").** Rule: *undo follows
+  where the change was made.* Sidebar tooling sliders (depth/profile/angle/…) → the palette's GLOBAL undo, like every
+  other sidebar slider; drawing content edited in the editor modal → the editor's own stack (SE4c unchanged). The
+  earlier ruling (tooling on the editor stack) was wrong: that stack exists only while the modal is open and is
+  wiped by `open()` (SA-TEXT-4), so a sidebar depth change would have been un-undoable. Slice (c) therefore extends
+  `takeSnapshot`/`applySnapshot` to capture/restore `editor._layers` TOOLING fields (not content). Slice (a) is
+  unaffected (no undo code).
