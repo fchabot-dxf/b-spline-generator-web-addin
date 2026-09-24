@@ -3123,3 +3123,231 @@ finished.
 Committed by explicit path (3 files: the HTML, the CSS, this WORK-LOG). No test file changes this turn — see
 the "no new vitest coverage" note above for why. Amendments polled clean both before this entry and
 immediately before the commit below — nothing pending.
+
+## Lane B — Turn 77 (T30) — ties go anywhere, ends snap to rails — DONE
+
+Between T29's pass and this wake, the advisor signaled `LOOP DONE at cycle 38` (T29 merged) — signed and
+re-armed per its own instruction, then this cycle opened with T30. Fred: "don't limit it to rails, but do
+snap to them." A real algorithmic change (not a layout turn) touching both the pattern GENERATOR and the
+hand-drawn Lattice TOOL, plus one mid-task amendment that changed the storage design after the first pass
+was already built and verified — full account below.
+
+**`editor/editor-lattice.js`** — new exported pure helper `nearestRailRow(j, railRows, within)`: the nearest
+rail ROW to `j` within `within` lattice rows, or `null` if none is close enough — declared ONCE here so the
+generator and the hand-tool can't drift on "how close is close enough." Deterministic tie-break (`<` not
+`<=`, first-seen-closer wins).
+
+**`editor/editor-lattice-pattern.js`** — `PATTERN_DEFAULTS.ties.anchor` flips `'rails'` → `'free'`
+(existing saved patterns keep whatever anchor they were saved with — no migration, confirmed by
+`_currentPattern`'s own read-don't-invent contract); new `PATTERN_DEFAULTS.ties.railSnapRows: 1`. New
+private helper `_applyRailSnap(jStart, jEnd, railRows, railSnapRows, spanMin, spanMax)`: tries snapping BOTH
+ends first (kept only if the resulting span stays in `[spanMin, spanMax]`), then just `jStart`, then just
+`jEnd`, else leaves both exactly where the free draw put them — "spans still spanMin..spanMax, measured
+after snapping" is enforced by never accepting a snap combination that would violate it, not by clamping
+after the fact. Wired into `_tieSpanForColumn`'s existing `'free'` branch (computes the raw span first,
+exactly as before, then snaps); the `'rails'` branch is completely untouched — strict mode was already
+exact, nothing to snap.
+
+**`editor/editor-interaction.js`** (touched despite not being in the dispatch's own file list — the
+hand-drawn tool's drag logic has no other home, same situation as T27's necessary `editor-ui.js` touch):
+`latticeHandler.update` now snaps a tie-shaped drag's moving end the SAME way — computed via the identical
+dominant-axis test `constrain` itself uses (not read back off `constrained`, whose rail branch trivially
+sets `j:a.j` and would be indistinguishable from an un-snapped tie value at that same row), against
+`_existingRailRows` (every `data-lattice="rail"` element currently on the sketch, not just what the
+GENERATOR would produce — a hand-drawn rail counts too). Because `finish()` already just reads back
+whatever `update()` last wrote into `_latticeEnd`, no separate snap step was needed at commit time; the
+LIVE PREVIEW and the FINAL element are the same code path by construction, not two implementations kept in
+sync by hand.
+
+**T30's own explicit UI ask**: a new "snap to rails within N rows" number field in the Pattern panel
+(`#latticeTiesRailSnapRows`, 0 = off), wired in `properties-lattice.js`'s existing sync/read functions —
+same pattern as every other Pattern field there. Also updated the anchor `<select>`'s default `selected`
+option and relabeled both options ("Free (snaps to rails)" / "Between rails (strict)") so the dropdown
+itself explains the new relationship instead of silently changing which option is pre-selected.
+
+**Mid-task amendment (Fred, via the mailbox, polled before the first commit):** "ONE setting — the field
+drives BOTH the generator and the hand tool, no second default for the hand tool." My FIRST pass had
+declared `LATTICE_DEFAULTS.railSnapRows: 1` (editor-lattice.js) as the hand-tool's OWN default, read via
+`editor._lattice.railSnapRows` — reasonable on its own, but a second number that could drift from the
+Pattern panel's field, and NOT persisted (editor.js's own comment on `editor._lattice`: "not persisted"),
+so it could never actually be "the same setting" the amendment asked for. Fixed by removing
+`LATTICE_DEFAULTS.railSnapRows` entirely and having the hand-tool read `editor._latticePattern.ties.
+railSnapRows` directly (falling back to `PATTERN_DEFAULTS.ties.railSnapRows` only if no pattern object
+exists yet at all, which is defensive rather than a real code path — verified `initLatticeProperties`,
+called unconditionally at editor setup from `editor-controls.js`, guarantees `editor._latticePattern`
+already exists by the time any tool could possibly be used). This lands closer to "persisted with the
+pattern" than the amendment's own suggested `editor._lattice.railSnapRows` spot would have, since only
+`editor._latticePattern` is what `data-lattice-pattern` actually persists — a case where satisfying the
+STATED requirement (one persisted value, no drift) meant deviating from the amendment's own suggested
+variable name, which was hedged with "e.g." rather than mandated; noted here rather than silently
+substituted. Re-verified live after the fix (below) rather than assuming the earlier verification still
+held once the wiring changed.
+
+**Tests** (all in `computePattern`'s pure domain — the hand-tool's live-drag wiring in
+`editor-interaction.js` isn't unit-tested, matching this file's existing convention: `latticeHandler` isn't
+exported, same as every other mode handler in that file, so its behavior is CDP-verified below instead of
+via an invasive export-just-for-testing change):
+- `tests/editor-lattice.test.js` — 6 new `nearestRailRow` cases: exact match, snaps within range, null when
+  out of range, a deterministic tie-break, `within:0` off, no rails at all.
+- `tests/editor-lattice-pattern.test.js` — a new describe block built from a RAW (pre-snap) span discovered
+  by literally running `computePattern` with `railSnapRows:0` first (not guessed against the seeded RNG,
+  and not the file's existing `EXTENT` — that one's `jMax:8` is too short for these cases, so a
+  block-scoped `EXTENT_TALL` was declared instead): an end exactly 1 row from a rail snaps on; 2 rows away
+  stays free; `railSnapRows:0` turns snapping off outright; span limits are respected after a snap attempt
+  (a `spanMin===spanMax` strict case, rail 1 row away, must stay UNCHANGED — any snap would leave the exact
+  span); `'rails'` strict mode ignores `railSnapRows` entirely (renamed from "(default)" — see below). Also
+  fixed two now-stale comments this turn's own default flip left behind: the "column SELECTION is
+  seed-independent" test's `anchor:'free' (not the default 'rails')` comment was backwards once `'free'`
+  became the default (reworded, and added a note on why `railSnapRows`'s own default doesn't collapse that
+  test's two seeds to the same span, verified not just assumed); the `"anchor:'rails' (default)"` test title
+  now reads `"(strict mode, explicit — 'free' is the default since T30)"`.
+
+**Non-vacuity, by mutation** (each reverted immediately after confirming red): `nearestRailRow`'s
+`within<=0` guard and its `d <= within` cap both dropped at once → exactly the 2 tests targeting those two
+behaviors failed, 28 others untouched. `_applyRailSnap`'s `inRange` check replaced with `() => true` →
+exactly 2 tests failed (the new "span limits" test AND — genuinely useful signal — the PRE-EXISTING
+`anchor:'free'` span-range test, confirming that older assertion is still live under T30's own default
+railSnapRows, not just passing by coincidence), 21 others unaffected. `_applyRailSnap` made an unconditional
+no-op (always returns the raw span) → exactly the one POSITIVE-snap test failed ("an end exactly 1 row from
+a rail snaps onto it"); the "2 rows stays free" / "railSnapRows:0 off" / "span limits" tests all correctly
+stayed green since they ALSO expect no change, proving those three aren't accidentally passing only because
+snapping happens to be broken.
+
+`vitest run` → **408 passed (35 files)**, full suite, no gate hit.
+
+**Live CDP verification, done TWICE** — once against the original two-default design, then again after the
+amendment changed the wiring (never assumed the first pass's screenshots/numbers still applied once the
+underlying mechanism changed):
+- Generator: UI defaults confirmed live (`anchor:'free'`, snap field `1`); Generate produced 5 ties, ALL 5
+  with at least one end landing on a rail — genuinely surprising at first glance, but a real, harmless
+  consequence of the DEFAULT `rails.every:2` (rails every OTHER row) combined with `railSnapRows:1`: with
+  rails that dense, EVERY possible row is within 1 of some rail, so under the stock defaults `'free'`
+  behaves close to `'rails'` far more often than a wider rail spacing would show — worth knowing, not a
+  bug (confirmed by the isolated unit tests above, which use a controlled, sparse rail layout and show
+  clean free/snapped/rejected outcomes independently of this density effect). Screenshot saved.
+- Hand tool: cleared the canvas via direct DOM removal first — clicking the real "Clear" button opens a
+  `confirm()` dialog that HUNG headless Chrome's `Runtime.evaluate` for a full minute before I caught and
+  fixed it (documented so a future session doesn't rediscover this the slow way); the FIRST attempt also
+  had a subtler bug — testing against a row that happened to already be a generated rail row (every EVEN
+  row, `rails.every:2`) made "raw" and "snapped" indistinguishable, so the drop-target rows were re-chosen
+  odd/away-from-generator-defaults and the canvas fully cleared before this test to get an unambiguous
+  signal. With that fixed: dispatched real `PointerEvent`s (`pointerdown`/`pointermove`/`pointerup`) at
+  screen coordinates computed via `getScreenCTM()`, not the CDP Input domain — drew a rail at row 10, then a
+  tie dragged to row 9 (1 row short) — the LIVE PREVIEW (`editor._latticePreview`'s own `y2`, read mid-drag,
+  before release) already showed the SNAPPED row 10, and the FINAL committed `<line>` also landed at row 10
+  — satisfying the dispatch's own explicit "the hover marker shows the snapped point" requirement, not just
+  the end result. Screenshot saved (a clean T-junction, not a short-of-the-rail gap).
+- Re-verified after the amendment: the Pattern panel's field and `editor._latticePattern.ties.railSnapRows`
+  read the same value (1); the SAME hand-tool drag (rail at 10, tie to 9) still snapped to 10; setting the
+  field to 0 and clicking Generate (the real path a user takes — the field only writes into the live
+  PATTERN on Generate/Regenerate, same as every other field in this panel) then repeating the identical
+  hand-tool drag left the tie at row 9, UNSNAPPED — proving the one field now genuinely gates both surfaces,
+  not just the generator.
+- Zero console errors/exceptions across every run (both passes).
+
+**Process hygiene:** zero leftover `chrome.exe` after the FIRST verification pass hung on the confirm()
+dialog and had to be force-killed (`taskkill /F /IM chrome.exe`, 5 processes) — confirmed clean again before
+the amendment's re-verification pass; the repo-root `http.server`'s PID (via `netstat`) stopped after each
+pass.
+
+Committed by explicit path (8 files: `editor-lattice.js`, `editor-lattice-pattern.js`,
+`editor-interaction.js`, the HTML, `properties-lattice.js`, the 2 test files, and this WORK-LOG). Amendments
+polled clean immediately before this commit — the one amendment above was already fully absorbed and
+re-verified before this poll, not left pending.
+
+## Lane B — Turn 79 (T31 / SE6c) — grid hover feedback: row + column + node light up — DONE
+
+T30 accepted but held on lane-b (not yet merged to main, pending seat A's own UX-UNDO work) — didn't wait on
+that, since this turn's own scope doesn't touch anything T30 changed. Fred chose hover feedback over the
+alternative that was on the table (inverting grid contrast, which the dispatch says was withdrawn). Build:
+while the pointer moves, the row and column through the nearest grid node, and the node itself, light up —
+general grid awareness, independent of whether the current gesture would actually snap there.
+
+**`editor/editor-grid.js`** — two new pure functions, next to `snapToGrid` per the dispatch's own file
+placement: `nearestGridNode(pt, spacing)` → `{i,j}`, and `gridHoverExtents(i, j, spacing, boardW, boardH)` →
+the row's full-width and column's full-height line endpoints, from plain numbers (no editor object), so the
+geometry is testable without a DOM. New DOM-touching pair `updateGridHover(editor, e)` / `clearGridHover
+(editor)`, same shape as the existing `updateSnapCursor`/`clearSnapCursor`: 6 elements (row/column each a
+dark-outline + light-core pair, the node ring the same way) live in `editor._handleLayer`, created once and
+repositioned — never recreated — on every move, `.front()`'d in a fixed order every call so the final
+stacking (node ring topmost, over both guide lines) is correct regardless of which elements
+`_handleLayer`'s own wholesale `clear()` (on nearly every mode switch/selection change, per
+`updateSnapCursor`'s own comment) happened to force a fresh create for.
+
+**Judgment call — `nearestGridNode` doesn't import `toLattice`, despite the dispatch saying "reuse
+toLattice".** `editor-lattice.js` already imports `GRID_DEFAULTS` from `editor-grid.js`; importing
+`toLattice` back the other way would make the two modules circular. Mirrored the SAME one-line rounding
+formula instead of the literal function reference — reuses the MATH, not literally the symbol — and said so
+in the comment rather than silently doing something different from what was asked without a trace.
+
+**"If both are shown, the node ring IS the snap ring" (dispatch's own spec) — worked out precisely, not
+guessed at.** `updateSnapCursor` (called immediately before this function in `handleMove`, unchanged) and
+this function's own node ring always land on the exact same `{i,j}` whenever the snap cursor shows at all —
+both derive from the identical adjusted pointer point via the identical round-to-spacing formula
+(`nearestGridNode` / `snapToGrid`). So checking whether `editor._snapCursor` is currently connected is a
+sufficient (not approximate) test for "is a ring already marking this exact spot" — verified this
+reasoning by working through `updateSnapCursor`'s own phase handling (it always calls `snapFor(...,
+'start', ...)` regardless of whether a drag is under way, so the hover-time policy behavior is uniform
+across every non-'none' mode) rather than assuming coincidence and hoping it held.
+
+**Judgment call — Alt (bypass) also hides this feature, though the dispatch never mentions Alt.**
+`updateSnapCursor` already suppresses ITS ring while Alt is held ("I want off-grid precision right now").
+Showing a grid-intersection highlight while the user has explicitly declared "ignore the grid this instant"
+would read as contradicting their own held-down modifier, so `updateGridHover` checks the same `e.altKey`
+and hides too. Flagged here as an addition beyond the literal spec, not folded in silently.
+
+**`editor/editor-interaction.js`** (hover path only, per the dispatch's own file-scope note — the
+drag-continuation logic below `handleMove`'s hover block is untouched): `updateGridHover(editor, e)` called
+right after the existing `updateSnapCursor(editor, e)` call, same unconditional spot (fires whether drawing
+or not). `clearGridHover` added alongside every existing `clearSnapCursor` call site — `pointerleave`
+(interaction.js), mode change (`editor-ui.js`'s `setMode`), and document reopen (`editor-io.js`'s `open()`)
+— mirroring that sibling feature's own three clear points exactly rather than inventing a fourth or missing
+one.
+
+**Tests** (`tests/editor-grid.test.js`, extended in place): `nearestGridNode` (4 cases — exact match,
+off-lattice rounding, the .5-exactly-between tie-break, spacing scaling) and `gridHoverExtents` (2 cases —
+general placement, the `{0,0}` degenerate node) are pure and fully covered. `updateGridHover`/
+`clearGridHover` get a lightweight mock `_handleLayer` (same convention as this file's own pre-existing
+`mockGridLayer` for `applyGrid`, extended with `circle()`/`plot()`/`radius()`/`center()`/`front()`/`remove()`
+and a `.node.isConnected` the source's own connectivity check reads) covering exactly the dispatch's own
+"Verify" ask (hidden when grid hidden / policy none) plus the two judgment calls above (Alt bypass, and the
+snap-cursor-suppression rule) plus reuse-not-recreate across two calls — 12 cases, proportionate to what
+`updateSnapCursor` itself has (zero unit tests, CDP-only) rather than an exhaustive pixel-level check, which
+belongs in the CDP screenshot verification below instead.
+
+**Non-vacuity, by mutation** (5 simultaneous cuts across the whole new surface, reverted together after
+confirming the failure count/pattern): `nearestGridNode` swapped `Math.round`→`Math.floor`; `gridHoverExtents`
+swapped its row/column x/y; `updateGridHover`'s hide-condition dropped the `!grid.visible`/`bypass` checks;
+its `snapCursorShowingHere` hardcoded to `false`; its `_connected` reuse-check hardcoded to `false`. Predicted
+the exact failure set BEFORE running (which test(s) each cut should break, including that the floor/round
+swap would only be caught by the ONE test built specifically to distinguish them, `.5`-exactly-between,
+since every OTHER rounding case happens to produce the same integer either way) — ran once, got exactly 8
+failures / 32 passed, matching the prediction 1:1 with no unexplained failures and no missed detections.
+Reverted all 5, full suite green again (426/426).
+
+`vitest run` → **426 passed (35 files)**, full suite, no gate hit.
+
+**Live CDP verification** (repo-root `python -m http.server 8771`): toggled the grid on, hovered near (not
+exactly on) a known lattice cell — the row/column lines and node marker landed at the SNAPPED node's exact
+coordinates (`rowY:1.25, colX:0.75`), not the raw hover position, confirming the "nearest node" computation
+drives the visuals, not just the pointer's own coordinates. Screenshot over the terrain preview's own
+varied-tone fur texture (the dispatch's own "smoke screenshot over a dark area" ask) shows the white-core/
+dark-outline treatment staying clearly readable crossing both light and dark patches — the whole point of
+the declared two-pass stroke. Grid hidden → nothing connected. Switched to the Eraser tool (`SNAP_POLICY.
+erase === 'none'`) with the grid STILL visible → nothing connected either (screenshot confirms: faint grid
+dots showing, zero hover highlight) — proving the suppression is genuinely keyed to policy, not just
+grid-visibility, which a less careful test could have conflated. `pointerleave` → showing before, cleared
+after. Zero console errors/exceptions across the whole run.
+
+Not CDP-verified separately: touch/press behavior. The dispatch's own explicit "Verify" list (unlike T27–T29's)
+didn't ask for a mobile pass here, and the code path for it is structurally the same shared
+`applyTouchMarkerOffset` call `updateSnapCursor` already relies on for its own touch support — not a second,
+untested branch — so it isn't a new surface this turn invented without any coverage, just one not
+separately re-proven live. Disclosed rather than silently skipped.
+
+**Process hygiene:** zero leftover `chrome.exe` before this run (clean from T30's own cleanup, confirmed via
+`tasklist`); the repo-root `http.server`'s PID (via `netstat`) stopped once verification finished.
+
+Committed by explicit path (6 files: `editor-grid.js`, `editor-interaction.js`, `editor-ui.js`,
+`editor-io.js`, the test file, and this WORK-LOG). Amendments polled clean both before this entry and
+immediately before the commit below — nothing pending.

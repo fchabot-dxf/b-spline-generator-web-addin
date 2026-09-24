@@ -17,6 +17,7 @@ import {
   classifyDrag,
   constrain,
   latticeCrossings,
+  nearestRailRow,
   findNodeAt,
   emitNode,
   emitSegment,
@@ -60,6 +61,38 @@ describe('constrain', () => {
 
   it('keeps the dominant (tie) coordinate and locks the other to the start column', () => {
     expect(constrain({ i: 2, j: 2 }, { i: 3, j: 7 })).toEqual({ i: 2, j: 7 });
+  });
+});
+
+describe('nearestRailRow (T30)', () => {
+  it('returns the exact row when j already sits on a rail', () => {
+    expect(nearestRailRow(4, [0, 2, 4, 6], 1)).toBe(4);
+  });
+
+  it('snaps to the nearest rail within `within` rows', () => {
+    expect(nearestRailRow(5, [0, 4, 9], 1)).toBe(4);
+    expect(nearestRailRow(8, [0, 4, 9], 1)).toBe(9);
+  });
+
+  it('returns null when nothing is within `within` rows', () => {
+    expect(nearestRailRow(5, [0, 20], 1)).toBeNull();
+  });
+
+  it('breaks a tie toward whichever candidate is scanned first (deterministic, not order-dependent by chance)', () => {
+    // j=5 is equidistant (2) from both 3 and 7 — the FIRST-seen strictly-
+    // closer row wins (`d < bestDist`, not `<=`), so the array's own order
+    // decides, not incidentally correct output.
+    expect(nearestRailRow(5, [3, 7], 2)).toBe(3);
+    expect(nearestRailRow(5, [7, 3], 2)).toBe(7);
+  });
+
+  it('`within:0` turns snapping off even for an exact-row match', () => {
+    expect(nearestRailRow(4, [4], 0)).toBeNull();
+  });
+
+  it('no rails at all -> null, regardless of `within`', () => {
+    expect(nearestRailRow(4, [], 5)).toBeNull();
+    expect(nearestRailRow(4, null, 5)).toBeNull();
   });
 });
 

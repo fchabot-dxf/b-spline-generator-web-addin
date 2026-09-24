@@ -11,7 +11,7 @@ import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { textGlyphPathD } from './editor-expand-text.js';
 import { resetPanState } from './editor-interaction.js';
-import { clearSnapCursor } from './editor-grid.js';
+import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
@@ -634,6 +634,8 @@ export function open(editor, svgString, w, h) {
     // SE7a: the hover snap-cursor is scoped to a mode/session — a reopen
     // shouldn't carry the previous session's marker (or reference) across.
     clearSnapCursor(editor);
+    // T31: same reason for the grid hover highlight.
+    clearGridHover(editor);
     sync3DBackground(editor);
     // T6: a fresh session must never start pan-ready — the previous
     // session's Space/pan state has no meaning here.

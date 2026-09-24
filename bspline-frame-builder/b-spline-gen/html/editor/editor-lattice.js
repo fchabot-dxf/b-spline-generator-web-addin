@@ -71,6 +71,25 @@ export function constrain(a, b) {
     : { i: a.i, j: b.j };
 }
 
+/** T30: the nearest rail ROW to `j`, within `within` lattice rows — or
+ *  `null` if none is close enough (or `within<=0` / no rails exist at
+ *  all). Ties broken toward the SMALLER row (arbitrary but deterministic
+ *  — `<` not `<=` in the distance comparison, so the first-seen closer
+ *  row wins and an exact tie keeps whichever `railRows` lists first).
+ *  Declared once here, shared by the generator's 'free'-anchor tie
+ *  snapping (editor-lattice-pattern.js) and the hand-drawn tool's live
+ *  tie-drag preview (editor-interaction.js), so "how close is close
+ *  enough" can't drift between the two surfaces. */
+export function nearestRailRow(j, railRows, within) {
+  if (!within || within <= 0 || !railRows || !railRows.length) return null;
+  let best = null, bestDist = Infinity;
+  for (const r of railRows) {
+    const d = Math.abs(r - j);
+    if (d <= within && d < bestDist) { best = r; bestDist = d; }
+  }
+  return best;
+}
+
 function _segmentCrossing(rail, tie) {
   const railJ = rail.a.j; // constant on a rail
   const tieI = tie.a.i;   // constant on a tie

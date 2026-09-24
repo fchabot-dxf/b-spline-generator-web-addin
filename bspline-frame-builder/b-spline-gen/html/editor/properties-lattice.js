@@ -29,6 +29,7 @@ export function initLatticeProperties(editor) {
     const tiesSpanMinEl = el('latticeTiesSpanMin');
     const tiesSpanMaxEl = el('latticeTiesSpanMax');
     const tiesAnchorEl = el('latticeTiesAnchor');
+    const tiesRailSnapRowsEl = el('latticeTiesRailSnapRows');
     const nodesEndsEl = el('latticeNodesEnds');
     const nodesCrossingsEl = el('latticeNodesCrossings');
     const seedEl = el('latticeSeed');
@@ -83,11 +84,14 @@ export function initLatticeProperties(editor) {
         if (tiesSpanMinEl) tiesSpanMinEl.value = p.ties?.spanMin ?? PATTERN_DEFAULTS.ties.spanMin;
         if (tiesSpanMaxEl) tiesSpanMaxEl.value = p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax;
         // Q1 (design doc open question, ruled by the advisor in T21's
-        // dispatch): anchor is DATA, default 'rails' — Fred hasn't
-        // answered which he prefers, so PATTERN_DEFAULTS.ties.anchor
-        // ('rails') is what a brand-new pattern gets; this field just
-        // reflects/edits whatever the current PATTERN already has.
+        // dispatch): anchor is DATA — T30 (Fred: "don't limit it to
+        // rails, but do snap to them") settles it as 'free' + snapping
+        // by default; PATTERN_DEFAULTS.ties.anchor is what a brand-new
+        // pattern gets, this field just reflects/edits whatever the
+        // current PATTERN already has (an existing saved 'rails' pattern
+        // keeps reading back as 'rails' — no migration).
         if (tiesAnchorEl) tiesAnchorEl.value = p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor;
+        if (tiesRailSnapRowsEl) tiesRailSnapRowsEl.value = p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (seedEl) seedEl.value = p.seed ?? PATTERN_DEFAULTS.seed;
@@ -111,6 +115,7 @@ export function initLatticeProperties(editor) {
             spanMin: tiesSpanMinEl ? (parseInt(tiesSpanMinEl.value, 10) || 1) : (p.ties?.spanMin ?? PATTERN_DEFAULTS.ties.spanMin),
             spanMax: tiesSpanMaxEl ? (parseInt(tiesSpanMaxEl.value, 10) || 1) : (p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax),
             anchor: tiesAnchorEl ? tiesAnchorEl.value : (p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor),
+            railSnapRows: tiesRailSnapRowsEl ? (parseInt(tiesRailSnapRowsEl.value, 10) || 0) : (p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),

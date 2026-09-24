@@ -1557,9 +1557,18 @@
               </div>
               <label style="display:flex; flex-direction:column; gap:2px;">anchor
                 <select id="latticeTiesAnchor" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
-                  <option value="rails" selected>Between rails</option>
-                  <option value="free">Free (any span)</option>
+                  <option value="free" selected>Free (snaps to rails)</option>
+                  <option value="rails">Between rails (strict)</option>
                 </select>
+              </label>
+              <!-- T30 (Fred: "don't limit it to rails, but do snap to
+                   them"), amended: ONE setting for BOTH the generator
+                   (anchor:'free' only — 'rails' strict mode ignores it,
+                   already exact) AND the hand-drawn Lattice tool's live
+                   tie-drag snap — no second field/default for the hand
+                   tool. 0 = off for both. -->
+              <label style="display:flex; flex-direction:column; gap:2px;">snap to rails within N rows
+                <input id="latticeTiesRailSnapRows" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
             </div>
 

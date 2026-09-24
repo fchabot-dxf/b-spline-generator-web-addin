@@ -27,6 +27,17 @@ const GRID_PREFS_KEY = 'bsg.editorGrid';
 // literal).
 const SNAP_CURSOR_RADIUS_PX = 4;
 
+// T31 (SE6c): grid hover feedback — the row + column through the nearest
+// grid node, and the node itself, light up under the pointer. One
+// declared stroke pair (light core over a dark outline) so the row/column
+// guide lines and the node ring can't drift into two different looks —
+// "readable on any terrain" per the dispatch, since a single mid-tone
+// stroke would vanish against a similarly-toned part of the relief
+// preview underneath.
+const GRID_HOVER_OUTLINE = { color: '#000', opacity: 0.6, width: 3.5 };
+const GRID_HOVER_CORE = { color: '#fff', opacity: 1, width: 2 };
+const GRID_HOVER_NODE_RADIUS_PX = 5;
+
 /** pt unchanged when the grid isn't snapping or bypass is set (Alt held);
  *  otherwise each coordinate rounds to the nearest multiple of spacing. */
 export function snapToGrid(pt, grid, bypass = false) {
@@ -35,6 +46,26 @@ export function snapToGrid(pt, grid, bypass = false) {
   return {
     x: Math.round(pt.x / spacing) * spacing,
     y: Math.round(pt.y / spacing) * spacing,
+  };
+}
+
+/** T31 (SE6c): the nearest grid intersection to a model-space point, as
+ *  integer lattice coords {i,j} — the SAME one-line rounding formula
+ *  editor-lattice.js's toLattice uses, deliberately NOT imported from
+ *  there: that module already imports GRID_DEFAULTS from THIS file, and
+ *  importing back would make the two modules circular. */
+export function nearestGridNode(pt, spacing) {
+  return { i: Math.round(pt.x / spacing), j: Math.round(pt.y / spacing) };
+}
+
+/** T31: the full-board row/column line extents through grid node {i,j} —
+ *  pure (board width/height passed as plain numbers, no editor object)
+ *  so the geometry is testable without a DOM. */
+export function gridHoverExtents(i, j, spacing, boardW, boardH) {
+  const x = i * spacing, y = j * spacing;
+  return {
+    row: { x1: 0, y1: y, x2: boardW, y2: y },
+    col: { x1: x, y1: 0, x2: x, y2: boardH },
   };
 }
 
@@ -246,4 +277,103 @@ export function updateSnapCursor(editor, e) {
   editor._snapCursorLeader
     .stroke({ color: '#ff6a00', width: 1, opacity: 0.6 })
     .plot(snapped.x, snapped.y, rawPt.x, rawPt.y);
+}
+
+/** T31 (SE6c): remove the grid hover highlight (row/column guides + node
+ *  ring). Called on pointer leave, mode change, and reopen — the same
+ *  moments clearSnapCursor already resets for, since a stale highlight
+ *  reading the OLD mode's policy or a since-closed document is exactly
+ *  the ghosting clearSnapCursor's own doc comment describes. */
+export function clearGridHover(editor) {
+  if (!editor._gridHover) return;
+  for (const key of ['rowOutline', 'rowCore', 'colOutline', 'colCore', 'nodeOutline', 'nodeCore']) {
+    const el = editor._gridHover[key];
+    if (el) { el.remove(); editor._gridHover[key] = null; }
+  }
+}
+
+function _connected(el) {
+  return !!(el && el.node && el.node.isConnected);
+}
+
+/**
+ * T31 (SE6c): while the pointer moves, highlight the row + column through
+ * the nearest grid node, and the node itself — general grid awareness,
+ * independent of whether THIS gesture would actually snap there (unlike
+ * updateSnapCursor, which only lights up when a click right now would
+ * land somewhere different). Shown only when the grid is visible and the
+ * current mode's SNAP_POLICY isn't 'none' (erase/expand — free-hand tools
+ * with no grid relationship at all); also hidden while Alt (bypass) is
+ * held, matching updateSnapCursor's own "the user explicitly wants off-
+ * grid right now" read of that modifier, even though this feature isn't
+ * itself a snap preview.
+ *
+ * "If both are shown, the node ring IS the snap ring" (dispatch): the
+ * orange snap cursor (updateSnapCursor, called immediately before this in
+ * handleMove) and this function's own node ring always land on the SAME
+ * {i,j} whenever the snap cursor shows at all — both derive from the
+ * identical adjusted point via the identical round-to-spacing formula
+ * (nearestGridNode / snapToGrid). So a connected, visible snap cursor
+ * already marks the node; this function skips drawing a second ring on
+ * top of it rather than reimplementing updateSnapCursor's own show/hide
+ * decision a second time.
+ *
+ * All 6 elements (row/column each get a dark-outline + light-core pair,
+ * so does the node ring) live in editor._handleLayer, created once and
+ * repositioned — never recreated — on every move, same discipline as
+ * updateSnapCursor's own circle. `.front()` on every element in a FIXED
+ * order at the end makes the final stacking (node ring topmost, over both
+ * guide lines) correct regardless of which elements _handleLayer's own
+ * wholesale clear() happened to detach and force a fresh create for.
+ */
+export function updateGridHover(editor, e) {
+  const layer = editor._handleLayer;
+  if (!layer) return;
+  const grid = editor._grid;
+  const policy = SNAP_POLICY[editor._currentMode] || 'point';
+  const bypass = !!(e && e.altKey);
+
+  if (!grid || !grid.visible || policy === 'none' || bypass) {
+    clearGridHover(editor);
+    return;
+  }
+
+  const spacing = grid.spacing || GRID_DEFAULTS.spacing;
+  const rawPt = editor._getMousePoint(e);
+  const adjusted = applyTouchMarkerOffset(editor, rawPt);
+  const node = nearestGridNode(adjusted, spacing);
+  const { row, col } = gridHoverExtents(node.i, node.j, spacing, editor._mW, editor._mH);
+
+  if (!editor._gridHover) editor._gridHover = {};
+  const gh = editor._gridHover;
+
+  if (!_connected(gh.rowOutline)) gh.rowOutline = layer.line(0, 0, 0, 0).attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+  if (!_connected(gh.rowCore))    gh.rowCore    = layer.line(0, 0, 0, 0).attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+  if (!_connected(gh.colOutline)) gh.colOutline = layer.line(0, 0, 0, 0).attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+  if (!_connected(gh.colCore))    gh.colCore    = layer.line(0, 0, 0, 0).attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+
+  gh.rowOutline.stroke(GRID_HOVER_OUTLINE).plot(row.x1, row.y1, row.x2, row.y2);
+  gh.rowCore.stroke(GRID_HOVER_CORE).plot(row.x1, row.y1, row.x2, row.y2);
+  gh.colOutline.stroke(GRID_HOVER_OUTLINE).plot(col.x1, col.y1, col.x2, col.y2);
+  gh.colCore.stroke(GRID_HOVER_CORE).plot(col.x1, col.y1, col.x2, col.y2);
+
+  const snapCursorShowingHere = _connected(editor._snapCursor);
+  if (snapCursorShowingHere) {
+    if (gh.nodeOutline) { gh.nodeOutline.remove(); gh.nodeOutline = null; }
+    if (gh.nodeCore) { gh.nodeCore.remove(); gh.nodeCore = null; }
+  } else {
+    const r = editor._getDynamicTolerance ? editor._getDynamicTolerance(GRID_HOVER_NODE_RADIUS_PX) : 0.06;
+    if (!_connected(gh.nodeOutline)) gh.nodeOutline = layer.circle(0).fill('none').attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+    if (!_connected(gh.nodeCore))    gh.nodeCore    = layer.circle(0).fill('none').attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+    gh.nodeOutline.stroke(GRID_HOVER_OUTLINE).radius(r).center(node.i * spacing, node.j * spacing);
+    gh.nodeCore.stroke(GRID_HOVER_CORE).radius(r).center(node.i * spacing, node.j * spacing);
+  }
+
+  // Fixed stacking order, applied every call regardless of creation
+  // history: each pair's core above its own outline, the node ring above
+  // both guide lines.
+  gh.rowOutline.front(); gh.rowCore.front();
+  gh.colOutline.front(); gh.colCore.front();
+  if (gh.nodeOutline) gh.nodeOutline.front();
+  if (gh.nodeCore) gh.nodeCore.front();
 }
