@@ -1,21 +1,32 @@
-# LANE B — T24 (resumed): SE7p — the Pattern panel must not crush the canvas on a phone (Fred: "finish lattice too")
+# LANE B — T26: SE10 — a real layer browser in the sidebar, sharing ONE list component with the editor
 
-**Seat B · epoch 2 · T24.** You already started this after T25 (7252c7d, merged into main as 8a53565). Your own
-root cause: no responsive rule targets `.editor-lattice-panel`, so at ≤720 px its content height starves the canvas's
-`flex:1` — `#editorSVGContainer` collapses to ~1.5×2 px, which is ALSO why pinch fails with the panel open.
-Files: `bspline_gen_palette.html` (`#editorLatticePanel` region only), `styles/editor.css`, `editor/properties-lattice.js`,
-tests (+ WORK-LOG-lane-b.md). Seat A is idle — no overlap. One commit by path.
-## Do
-1. The panel on narrow/coarse screens: your drafted bottom sheet (header "Lattice pattern ▾" + Generate always visible,
-   collapsed by default on a phone), canvas keeps its space either way. No hover-only affordance.
-2. Nodes checkboxes overlap their labels (desktop too) → `<label>` rows.
-3. Regenerate text invisible (white on white) → defined token / same style as Apply Stencils.
-4. Reroll button clipped next to Seed.
-## Verify (serve from the REPO ROOT — your own T25 finding)
-`node scripts/smoke-editor.mjs <out> mobile <repo-root URL to the palette>` → canvas visible with the sheet collapsed AND
-expanded; `pinchWithPatternPanelOpen` now zooms (> 1); labels clean; Regenerate readable. Also a desktop run: panel
-unchanged apart from items 2–4. Screenshot paths in WORK-LOG. `npx vitest run` green.
+**Seat B · epoch 2 · T26.** T24 (f979d7b) ACCEPTED — held on lane-b until seat A passes SE9 (colors: editor modal
+toolbar region of the palette, `editor/editor.js`, `editor/properties-shape.js`); advisor verified it live (canvas keeps
+its space, sheet + readable Regenerate, pinch 1→4→16). Fred's ask (screenshot): the VECTOR STAMPING sidebar's "Active
+Layer" dropdown (`#stampActiveLayer`, palette :624) + "On" checkbox (`#stampLayerEnabled`, :629) → "a more developed
+layer browser, with visibility setting". Files: the palette's VECTOR STAMPING region (:590–:660), `editor/layers.js`,
+`main/stamp/layer.js`, `styles/editor.css` (or base.css if the sidebar styles live there), tests (+ WORK-LOG-lane-b.md).
+Stay out of the editor modal's toolbar region and `editor/editor.js` / `properties-shape.js` (seat A). One commit by path.
+
+## Build — declare ONE layer list, render it twice
+- Extract the row rendering from `renderLayersPanel(editor)` (`editor/layers.js:303`) into
+  `renderLayerList(container, editor, { compact })` — same rows, same handlers (select → `setActiveLayer`, eye →
+  `setLayerVisible`, add, rename, delete, reorder as the editor already does) — and call it for BOTH
+  `#editorLayersList` and a new `#stampLayersList` in the sidebar. No second implementation.
+- Sidebar row: eye (visible = carved — SE5 made `visible` the only switch), active marker, name, and a short tooling
+  summary read from the editor layer (`V .25"`, `ball .12"` — profile + depth), "+" to add. Tapping a row makes it
+  active; the existing Plunge Depth / Tool Profile / V-Bit Angle controls keep editing the ACTIVE layer. 44 px rows on
+  coarse pointers, no hover-only affordances (delete visible on touch — T16's rule).
+- Remove `#stampActiveLayer` + `#stampLayerEnabled` and their wiring (removal chain: markup → `main/stamp/layer.js`
+  handlers → any `syncFromLayer` readers → tests). If the editor isn't initialised yet at boot, the list renders once it
+  is (hook the same point the sidebar currently refreshes from).
+- Both lists refresh on the same layer-change event (declare one `onLayersChanged` notify if none exists) so the
+  sidebar and the editor never disagree.
+## Verify
+Tests: renderLayerList renders one row per layer with the right visibility/active state; toggling the eye in one list
+updates the other. Smoke (serve from the REPO ROOT): desktop + mobile screenshots of the sidebar list after Generate
+(4 layers). `npx vitest run` green.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T24: SE7p — pattern sheet on phones, labels, Regenerate, reroll; pinch with panel open = N — <sha>, screenshots: <paths>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T26: SE10 sidebar layer browser, shared renderLayerList — <sha>, vitest N, screenshots: <paths>"`
 and stop.
