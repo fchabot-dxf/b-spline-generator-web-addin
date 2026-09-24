@@ -6329,3 +6329,108 @@ restoration, full suite re-ran green.
 - `npx vitest run` → **181 passed** (162 prior + 10 handle-edit + 9 editor-transform-handles).
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 213 — SE8d: rotated/scaled text carves correctly (glyph-path bake), two dead leftovers removed — DONE
+
+Main had moved to 215 tests (seat B's SE7b slices 1-2 + SE8c part 1 merged since SE7s). Re-verified every
+claim against CURRENT code, not the audit's own line numbers (several had shifted). Did not touch
+`editor-interaction.js`/pattern files — seat B's SE7b slice 3.
+
+**1. SA-DEAD-2 — `updateNodeCountUI`.** Seat B's own T20 log explains why they left this whole, not
+half-removed: its wiring (`import {...} from './editor-ui.js'` + `_updateNodeCountUI(data) {...}`) lives in
+`editor.js`, off-limits to seat B that turn. Re-confirmed still zero real callers of `_updateNodeCountUI`
+anywhere, then removed all three pieces as the one unit seat B intentionally left for me: the import +
+method in `editor.js`, the `updateNodeCountUI` function in `editor-ui.js` (its `getEl` import stays — 11
+other call sites in the same file), and the `#editorNodeCountUI` markup div in
+`bspline_gen_palette.html` (the sibling `#svgEditorTopView` canvas in the same "invisible interaction
+elements" comment block is genuinely live — `core/render-topview.js`, `editor-io.js`, `main/app-init.js`
+all read it — so only the one `<div>` line came out, not the comment or the canvas).
+
+**2. `setStrokeColor` — zero callers (my own SE8a flag), removed.** Confirmed via a repo-wide grep for
+`.setStrokeColor(` — zero invocation sites anywhere (not even in HTML `onclick`/wiring), unlike its twin
+`setStrokeWidth` (real caller: `properties-shape.js:15`) which stays, along with the shared
+`_commitStyleChange()` they both fed (still needed by `setStrokeWidth` and `setFontFamily`/`setFontSize`).
+Swept the chain: the method itself; the two comments naming it (one rewritten to explain the removal
+in-place rather than describe a method that's no longer there, one swapped to cite `setStrokeWidth` instead
+since it was just an illustrative "who calls pushState" example list); and its OWN test —
+`tests/editor-session.test.js`'s `describe('SA-UNDO-3: setStrokeColor...')` block (2 tests) plus the
+`_strokeColor` field in that file's shared mock helper, since nothing remaining reads it.
+
+**3. SA-ROUNDTRIP-2 (the main item) — a rotated/scaled `<text>` now carves correctly.** Read the audit
+section in full first: `_carveTextAnchor` (`editor-io.js`) unconditionally clears `transform` and scales
+`font-size` by `Math.abs(m.a)` alone — correct only with no rotation/skew and uniform scale. Reproduced the
+audit's own numbers in a test (below): a 45°-rotated text's old scale factor is exactly `cos(45°)=0.7071`
+— the documented "font-size 48 -> 33.94, no error" defect.
+
+**Confirmed the stamp PREVIEW is already correct, per the dispatch's own bullet 1** — traced
+`saveForRasterization` (`editor-io.js`): it serializes the raw editor content (`serializeEditor`, transform
+attrs intact) and hands it to the browser's own SVG renderer / canvg (`core/stamp/index.js`,
+`core/stamp/render-svg.js`) — real SVG rendering respects `transform` correctly. It never calls
+`bakeSvgForCarving` at all. The defect is isolated entirely to the Fusion bake.
+
+**Picked path conversion over "keep the transform as a matrix," and said why, per the dispatch's own
+question.** `bakeSvgForCarving`'s OWN docstring already states the reason: "Fusion's importer reads raw
+pixel coords... and ignores viewBox/scale/element transforms." That's not text-specific — it means leaving
+a rotation as a `transform` on the baked `<text>` would import upright regardless, same defect under a
+different name. Only baked PATH geometry (raw coordinates, no `transform` to ignore) survives Fusion's
+importer, so glyph-outline conversion is the only option that satisfies the dispatch's own bar ("keeps
+glyph orientation correct" / the Verify line's literal ask for a correctly-oriented baked output).
+
+**Extracted `textGlyphPathD(el, m)` from `editor-expand-text.js`'s `expandText`** (font-family lookup,
+opentype.js fetch/parse, baseline/PUA handling, glyph path generation, matrix bake via the already-tested
+`transformPoint`) rather than duplicating that whole pipeline a second time for the carve path — `expandText`
+is now a thin wrapper (compute the anchor-translated matrix, call the shared function, hand the result to
+`commitExpandedPath`) with IDENTICAL behavior to before. **Touched one file beyond NEXT-SESSION's list**
+(`editor-io.js`/`editor.js`/maybe `editor-coords.js`) — flagging it rather than silently expanding scope:
+`commitExpandedPath` (the alternative "just reuse expandText") mutates the LIVE editor's DOM/undo/layers,
+which is wrong for a throwaway parsed-from-string carve document with no `editor` object at all; the correct
+fix needed the REUSABLE half of that pipeline pulled out, not the whole interactive tool.
+
+**Declared `_needsGlyphBake(m)` (editor-io.js, exported despite the underscore — same convention as
+SE8a's `stripRasterizationFontDefs`/`_reconcileLayersFromSvg`)**: true if the FULL bake matrix (carve x
+el.matrix(), with any ancestor `<g>` already folded in) carries rotation/skew (`b`/`c` nonzero) or
+non-uniform scale (`|a|` vs `|d|`, checked with a RELATIVE epsilon since `m` already has carve's dpi baked
+in — a fixed epsilon tuned for inch-scale numbers would misfire at pixel scale). The common case (upright,
+uniformly scaled/translated text) skips the font-fetch entirely and keeps the cheap anchor+font-size bake,
+which is correct for that case.
+
+**`_carveText` dispatcher**: gated by `_needsGlyphBake`, converts to a path via `textGlyphPathD` and swaps
+it into the SAME parent (copying `data-*` attrs, matching `_promoteRectToPath`'s SE7s pattern) when needed;
+falls back to the old anchor-only bake WITH A LOGGED WARNING if the glyph bake itself fails (no font
+mapping, fetch failure) — the audit's whole point is that this defect must never be silent, so a
+degraded-but-logged carve beats either a vanished layer or an unhandled rejection aborting the export.
+`bakeSvgForCarving`/`_carveChildren` are now `async` (font loading is inherently async) — both of its only 2
+call sites (`main/export-flow.js`, inside `sendToFusion`/`downloadFiles`) were ALREADY `async` functions, so
+this only meant adding `await` at each (one via `Promise.all(layersToExport.map(async ...))` since the
+original built the payload with `.map()` synchronously — an async map callback would have handed
+`JSON.stringify` an array of unresolved Promises; the other via a plain `for` loop replacing `.forEach`,
+which can't `await`).
+
+**Tests** (`tests/carve-text-roundtrip.test.js`, new, 9): `_needsGlyphBake` — identity, pure translation,
+uniform scale (all: no bake) vs rotation/skew/non-uniform scale (all: needs a bake), the relative-epsilon
+distinction (a real-but-small-in-absolute-terms non-uniform scale at LOW magnitude is still caught; ordinary
+float noise on a uniform matrix at HIGH (dpi) magnitude is not), null/undefined matrix; `textGlyphPathD`'s
+no-font-mapping fast path (returns `null` without attempting a network fetch — the one slice of that
+function reachable without a live network or real svg.js). Also asserts inline, non-vacuously, that the OLD
+formula's own factor for a 45° rotation is `cos(45°)` (not 1) — the exact numeric defect this fix targets.
+**Not covered, flagged rather than silently skipped**: the full glyph-bake success path (`_carveText`
+building a real `<path>` and swapping it into the DOM) needs real svg.js — `typeof SVG === 'undefined'` in
+every test in this repo, none load the actual library, same limitation as every prior SVG.js-dependent bake
+path (`_bakeMatrixIntoPath`, `_promoteRectToPath`, both also untested directly) — AND a live network font
+fetch, the same limitation already documented for `getEmbeddedFontCss` (SE8a/b). The coordinate math itself
+introduces nothing new (reuses `transformPoint`, already thoroughly tested); only the NEW detection gate
+needed direct coverage, and it has it.
+
+**Non-vacuity, proven not argued:** reverted `editor-io.js` and `editor-expand-text.js` to
+`git show HEAD:...` (the only two files the new test imports from). All 9 new tests failed —
+`_needsGlyphBake is not a function` / `textGlyphPathD is not a function` (neither export exists pre-change).
+Restored both from scratch copies, `diff` confirmed exact restoration, full suite re-ran green.
+
+**Verify:**
+- `node --check` on all 5 touched/added JS files: clean.
+- Grep: `updateNodeCountUI` → **0** hits repo-wide (outside the gitignored `stamp-editor` sync copy, which
+  isn't tracked source). `setStrokeColor` → 2 hits, both my own comments explaining the removal, zero live
+  code — the dispatch's own "or named survivor" allowance.
+- `npx vitest run` → **222 passed** (215 prior - 2 removed SA-UNDO-3 tests + 9 new carve-text-roundtrip).
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
