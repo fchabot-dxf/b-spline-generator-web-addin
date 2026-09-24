@@ -580,3 +580,24 @@ cubics, A→C before baking, stroke width/color undo + change, Cancel teardown, 
 (seat B, dispatched) — tooling single store on the editor layer (SA-LAYER-1/2/3). Then SE8b (hit-test/expand
 coordinate spaces SA-COORD-3/4, `_onChange` per-move throttle SA-UNDO-1), SE7s, SE7m (+ all SA-MOBILE), SE8c
 declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
+- **SE5 design approved (be5dc37, seat B T13):** editor layer = the only tooling home; `enabled` merges into the
+  layer's `visible` (hidden layers are already never carved — audit SA-ROUNDTRIP-4); fixed 3-entry `P.stampLayers`
+  narrowed to a pre-load display fallback. **Advisor ruling on its open question (reversible, like SE4c):** a
+  tooling-slider change is undone through the EDITOR's undo stack; global Ctrl+Z stays heightfield-only. Slices:
+  (a) updateP / isFilletActive / Browse+Clear writers — dispatched to seat B on lane-b (no file overlap with SE8a);
+  (b) export-flow + cloud-project-manager (fixes "only layer 1 carves"); (c) enabled deletion + migration + undo.
+- **SE5 undo ruling REVERSED (advisor, 2026-09-23, after Fred asked "so what makes sense").** Rule: *undo follows
+  where the change was made.* Sidebar tooling sliders (depth/profile/angle/…) → the palette's GLOBAL undo, like every
+  other sidebar slider; drawing content edited in the editor modal → the editor's own stack (SE4c unchanged). The
+  earlier ruling (tooling on the editor stack) was wrong: that stack exists only while the modal is open and is
+  wiped by `open()` (SA-TEXT-4), so a sidebar depth change would have been un-undoable. Slice (c) therefore extends
+  `takeSnapshot`/`applySnapshot` to capture/restore `editor._layers` TOOLING fields (not content). Slice (a) is
+  unaffected (no undo code).
+- **CORRECTION to the reversed ruling above (North Star evidence check, same day).** Its premise "every other sidebar
+  slider already goes through the global undo" is FALSE: `takeSnapshot` is called only by sculpt stroke
+  (`core/sculpt-interaction.js:104`), sculpt clear (`:146`) and the initial snapshot (`main/app-init.js:164`) — NO
+  sidebar slider creates an undo step today; slider values only ride along inside the next sculpt snapshot.
+  Proposal (awaiting Fred's yes, it is new behaviour for EVERY slider): **UX-UNDO** — declare `UNDO_SCOPE` once
+  (control group → `'global' | 'editor'`: sidebar sliders + seed + filters + per-layer tooling → global, drawing →
+  editor, sculpt → global) and make sidebar sliders undoable at ONE step per committed value (`change`, not `input`).
+  SE5 slices (a)/(b) are unaffected; SE5c only registers tooling in UNDO_SCOPE.
