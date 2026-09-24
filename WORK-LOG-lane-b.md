@@ -3254,3 +3254,100 @@ Committed by explicit path (8 files: `editor-lattice.js`, `editor-lattice-patter
 `editor-interaction.js`, the HTML, `properties-lattice.js`, the 2 test files, and this WORK-LOG). Amendments
 polled clean immediately before this commit — the one amendment above was already fully absorbed and
 re-verified before this poll, not left pending.
+
+## Lane B — Turn 79 (T31 / SE6c) — grid hover feedback: row + column + node light up — DONE
+
+T30 accepted but held on lane-b (not yet merged to main, pending seat A's own UX-UNDO work) — didn't wait on
+that, since this turn's own scope doesn't touch anything T30 changed. Fred chose hover feedback over the
+alternative that was on the table (inverting grid contrast, which the dispatch says was withdrawn). Build:
+while the pointer moves, the row and column through the nearest grid node, and the node itself, light up —
+general grid awareness, independent of whether the current gesture would actually snap there.
+
+**`editor/editor-grid.js`** — two new pure functions, next to `snapToGrid` per the dispatch's own file
+placement: `nearestGridNode(pt, spacing)` → `{i,j}`, and `gridHoverExtents(i, j, spacing, boardW, boardH)` →
+the row's full-width and column's full-height line endpoints, from plain numbers (no editor object), so the
+geometry is testable without a DOM. New DOM-touching pair `updateGridHover(editor, e)` / `clearGridHover
+(editor)`, same shape as the existing `updateSnapCursor`/`clearSnapCursor`: 6 elements (row/column each a
+dark-outline + light-core pair, the node ring the same way) live in `editor._handleLayer`, created once and
+repositioned — never recreated — on every move, `.front()`'d in a fixed order every call so the final
+stacking (node ring topmost, over both guide lines) is correct regardless of which elements
+`_handleLayer`'s own wholesale `clear()` (on nearly every mode switch/selection change, per
+`updateSnapCursor`'s own comment) happened to force a fresh create for.
+
+**Judgment call — `nearestGridNode` doesn't import `toLattice`, despite the dispatch saying "reuse
+toLattice".** `editor-lattice.js` already imports `GRID_DEFAULTS` from `editor-grid.js`; importing
+`toLattice` back the other way would make the two modules circular. Mirrored the SAME one-line rounding
+formula instead of the literal function reference — reuses the MATH, not literally the symbol — and said so
+in the comment rather than silently doing something different from what was asked without a trace.
+
+**"If both are shown, the node ring IS the snap ring" (dispatch's own spec) — worked out precisely, not
+guessed at.** `updateSnapCursor` (called immediately before this function in `handleMove`, unchanged) and
+this function's own node ring always land on the exact same `{i,j}` whenever the snap cursor shows at all —
+both derive from the identical adjusted pointer point via the identical round-to-spacing formula
+(`nearestGridNode` / `snapToGrid`). So checking whether `editor._snapCursor` is currently connected is a
+sufficient (not approximate) test for "is a ring already marking this exact spot" — verified this
+reasoning by working through `updateSnapCursor`'s own phase handling (it always calls `snapFor(...,
+'start', ...)` regardless of whether a drag is under way, so the hover-time policy behavior is uniform
+across every non-'none' mode) rather than assuming coincidence and hoping it held.
+
+**Judgment call — Alt (bypass) also hides this feature, though the dispatch never mentions Alt.**
+`updateSnapCursor` already suppresses ITS ring while Alt is held ("I want off-grid precision right now").
+Showing a grid-intersection highlight while the user has explicitly declared "ignore the grid this instant"
+would read as contradicting their own held-down modifier, so `updateGridHover` checks the same `e.altKey`
+and hides too. Flagged here as an addition beyond the literal spec, not folded in silently.
+
+**`editor/editor-interaction.js`** (hover path only, per the dispatch's own file-scope note — the
+drag-continuation logic below `handleMove`'s hover block is untouched): `updateGridHover(editor, e)` called
+right after the existing `updateSnapCursor(editor, e)` call, same unconditional spot (fires whether drawing
+or not). `clearGridHover` added alongside every existing `clearSnapCursor` call site — `pointerleave`
+(interaction.js), mode change (`editor-ui.js`'s `setMode`), and document reopen (`editor-io.js`'s `open()`)
+— mirroring that sibling feature's own three clear points exactly rather than inventing a fourth or missing
+one.
+
+**Tests** (`tests/editor-grid.test.js`, extended in place): `nearestGridNode` (4 cases — exact match,
+off-lattice rounding, the .5-exactly-between tie-break, spacing scaling) and `gridHoverExtents` (2 cases —
+general placement, the `{0,0}` degenerate node) are pure and fully covered. `updateGridHover`/
+`clearGridHover` get a lightweight mock `_handleLayer` (same convention as this file's own pre-existing
+`mockGridLayer` for `applyGrid`, extended with `circle()`/`plot()`/`radius()`/`center()`/`front()`/`remove()`
+and a `.node.isConnected` the source's own connectivity check reads) covering exactly the dispatch's own
+"Verify" ask (hidden when grid hidden / policy none) plus the two judgment calls above (Alt bypass, and the
+snap-cursor-suppression rule) plus reuse-not-recreate across two calls — 12 cases, proportionate to what
+`updateSnapCursor` itself has (zero unit tests, CDP-only) rather than an exhaustive pixel-level check, which
+belongs in the CDP screenshot verification below instead.
+
+**Non-vacuity, by mutation** (5 simultaneous cuts across the whole new surface, reverted together after
+confirming the failure count/pattern): `nearestGridNode` swapped `Math.round`→`Math.floor`; `gridHoverExtents`
+swapped its row/column x/y; `updateGridHover`'s hide-condition dropped the `!grid.visible`/`bypass` checks;
+its `snapCursorShowingHere` hardcoded to `false`; its `_connected` reuse-check hardcoded to `false`. Predicted
+the exact failure set BEFORE running (which test(s) each cut should break, including that the floor/round
+swap would only be caught by the ONE test built specifically to distinguish them, `.5`-exactly-between,
+since every OTHER rounding case happens to produce the same integer either way) — ran once, got exactly 8
+failures / 32 passed, matching the prediction 1:1 with no unexplained failures and no missed detections.
+Reverted all 5, full suite green again (426/426).
+
+`vitest run` → **426 passed (35 files)**, full suite, no gate hit.
+
+**Live CDP verification** (repo-root `python -m http.server 8771`): toggled the grid on, hovered near (not
+exactly on) a known lattice cell — the row/column lines and node marker landed at the SNAPPED node's exact
+coordinates (`rowY:1.25, colX:0.75`), not the raw hover position, confirming the "nearest node" computation
+drives the visuals, not just the pointer's own coordinates. Screenshot over the terrain preview's own
+varied-tone fur texture (the dispatch's own "smoke screenshot over a dark area" ask) shows the white-core/
+dark-outline treatment staying clearly readable crossing both light and dark patches — the whole point of
+the declared two-pass stroke. Grid hidden → nothing connected. Switched to the Eraser tool (`SNAP_POLICY.
+erase === 'none'`) with the grid STILL visible → nothing connected either (screenshot confirms: faint grid
+dots showing, zero hover highlight) — proving the suppression is genuinely keyed to policy, not just
+grid-visibility, which a less careful test could have conflated. `pointerleave` → showing before, cleared
+after. Zero console errors/exceptions across the whole run.
+
+Not CDP-verified separately: touch/press behavior. The dispatch's own explicit "Verify" list (unlike T27–T29's)
+didn't ask for a mobile pass here, and the code path for it is structurally the same shared
+`applyTouchMarkerOffset` call `updateSnapCursor` already relies on for its own touch support — not a second,
+untested branch — so it isn't a new surface this turn invented without any coverage, just one not
+separately re-proven live. Disclosed rather than silently skipped.
+
+**Process hygiene:** zero leftover `chrome.exe` before this run (clean from T30's own cleanup, confirmed via
+`tasklist`); the repo-root `http.server`'s PID (via `netstat`) stopped once verification finished.
+
+Committed by explicit path (6 files: `editor-grid.js`, `editor-interaction.js`, `editor-ui.js`,
+`editor-io.js`, the test file, and this WORK-LOG). Amendments polled clean both before this entry and
+immediately before the commit below — nothing pending.

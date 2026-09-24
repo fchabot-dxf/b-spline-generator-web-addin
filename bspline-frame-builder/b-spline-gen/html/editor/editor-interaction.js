@@ -27,7 +27,7 @@ import {
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
-import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset } from './editor-grid.js';
+import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover } from './editor-grid.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
@@ -95,7 +95,7 @@ export function initInteraction(editor) {
     on(svgNode, 'wheel', (e) => handleWheel(editor, e), { passive: false });
     // SE7a: the pointer leaving the canvas is the one path that fires no
     // further pointermove to naturally hide the hover snap-cursor.
-    on(svgNode, 'pointerleave', () => clearSnapCursor(editor));
+    on(svgNode, 'pointerleave', () => { clearSnapCursor(editor); clearGridHover(editor); });
     // BUG-28: global keyboard shortcuts for the editor — Delete /
     // Backspace removes the whole multi-selection, Ctrl/Cmd+C copies it
     // onto editor._clipboard, Ctrl/Cmd+V pastes (with a small offset so
@@ -420,6 +420,13 @@ function handleMove(editor, e) {
     // (drawing or not): in lattice mode the marker doubles as the rail/tie
     // start indicator once a gesture is under way.
     updateSnapCursor(editor, e);
+    // T31 (SE6c): grid hover feedback — the row/column/node the pointer is
+    // nearest to, independent of whether this gesture would snap. AFTER
+    // updateSnapCursor so its own node-ring suppression ("if both are
+    // shown, the node ring IS the snap ring") can read the snap cursor's
+    // just-updated connected/position state, not a stale one from the
+    // previous move event.
+    updateGridHover(editor, e);
     const pt = editor._snap(applyTouchMarkerOffset(editor, editor._getMousePoint(e)), e.altKey, 'move');
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);

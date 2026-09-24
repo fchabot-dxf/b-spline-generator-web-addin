@@ -17,6 +17,10 @@ import {
   mergeGridPrefs,
   loadGridPrefs,
   applyGrid,
+  nearestGridNode,
+  gridHoverExtents,
+  updateGridHover,
+  clearGridHover,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-grid.js';
 
 describe('snapToGrid', () => {
@@ -182,5 +186,188 @@ describe('snapFor — per-tool snap policy (SE7a)', () => {
 
   it('an unlisted mode falls back to "point" policy rather than throwing', () => {
     expect(snapFor(pt, onGrid, 'nonexistent-mode', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+  });
+});
+
+describe('nearestGridNode (T31 / SE6c)', () => {
+  it('rounds a point already on the lattice to itself', () => {
+    expect(nearestGridNode({ x: 0.5, y: 0.75 }, 0.25)).toEqual({ i: 2, j: 3 });
+  });
+
+  it('rounds an off-lattice point to the nearest cell', () => {
+    expect(nearestGridNode({ x: 0.61, y: -0.4 }, 0.25)).toEqual({ i: 2, j: -2 });
+  });
+
+  it('rounds .5-exactly-between cases up (Math.round\'s own convention, not re-implemented differently here)', () => {
+    expect(nearestGridNode({ x: 0.375, y: 0 }, 0.25)).toEqual({ i: 2, j: 0 }); // 0.375/0.25 = 1.5 -> 2
+  });
+
+  it('scales with spacing', () => {
+    expect(nearestGridNode({ x: 1.0, y: 1.0 }, 0.5)).toEqual({ i: 2, j: 2 });
+    expect(nearestGridNode({ x: 1.0, y: 1.0 }, 1)).toEqual({ i: 1, j: 1 });
+  });
+});
+
+describe('gridHoverExtents (T31 / SE6c)', () => {
+  it('the row spans the FULL board width at the node\'s own y; the column spans the full height at its own x', () => {
+    const { row, col } = gridHoverExtents(2, 3, 0.25, 7, 9);
+    expect(row).toEqual({ x1: 0, y1: 0.75, x2: 7, y2: 0.75 });
+    expect(col).toEqual({ x1: 0.5, y1: 0, x2: 0.5, y2: 9 });
+  });
+
+  it('node {0,0} still produces board-spanning lines, not degenerate zero-length ones', () => {
+    const { row, col } = gridHoverExtents(0, 0, 0.25, 7, 9);
+    expect(row).toEqual({ x1: 0, y1: 0, x2: 7, y2: 0 });
+    expect(col).toEqual({ x1: 0, y1: 0, x2: 0, y2: 9 });
+  });
+});
+
+// T31: updateGridHover/clearGridHover — mock _handleLayer shaped like
+// applyGrid's own mockGridLayer above (same file, same convention), plus
+// circle() and the chain methods (plot/radius/center/front/remove, and a
+// .node.isConnected the source's own connectivity check reads) this
+// feature actually calls. Covers exactly what the dispatch's own "Verify"
+// asked for (hidden when grid hidden / policy none) plus the judgment
+// calls this turn added (Alt bypass, reuse-not-recreate, node-ring
+// suppression when the snap cursor already marks the same spot) — NOT an
+// exhaustive pixel-level visual check, which is what the CDP screenshot
+// verification is for instead (this file's own applyGrid tests draw the
+// same line, per its header comment).
+function mockHandleLayer() {
+  const created = [];
+  function makeShape(kind) {
+    const node = { isConnected: true };
+    const rec = { kind, attrs: {}, strokeOpts: null, plotArgs: null, radiusVal: null, centerArgs: null, frontCount: 0, node };
+    const chain = {
+      node,
+      attr(opts) { Object.assign(rec.attrs, opts); return chain; },
+      stroke(opts) { rec.strokeOpts = opts; return chain; },
+      fill(f) { rec.fill = f; return chain; },
+      plot(x1, y1, x2, y2) { rec.plotArgs = [x1, y1, x2, y2]; return chain; },
+      radius(r) { rec.radiusVal = r; return chain; },
+      center(x, y) { rec.centerArgs = [x, y]; return chain; },
+      front() { rec.frontCount++; return chain; },
+      remove() { node.isConnected = false; return chain; },
+    };
+    rec.el = chain;
+    created.push(rec);
+    return chain;
+  }
+  return { created, line: () => makeShape('line'), circle: () => makeShape('circle') };
+}
+
+function mockHoverEditor(overrides = {}) {
+  return {
+    _handleLayer: mockHandleLayer(),
+    _grid: { visible: true, snap: false, spacing: 0.25 },
+    _currentMode: 'select',
+    _mW: 7, _mH: 9,
+    _getMousePoint: () => ({ x: 1.1, y: 2.1 }), // -> nearest node {i:4, j:8}, i.e. (1.0, 2.0)
+    _getDynamicTolerance: (px) => px * 0.01,
+    ...overrides,
+  };
+}
+
+describe('updateGridHover / clearGridHover (T31 / SE6c)', () => {
+  it('draws nothing when the grid is not visible', () => {
+    const editor = mockHoverEditor({ _grid: { visible: false, snap: false, spacing: 0.25 } });
+    updateGridHover(editor, {});
+    expect(editor._handleLayer.created).toHaveLength(0);
+  });
+
+  it('draws nothing in a mode whose SNAP_POLICY is "none" (erase/expand)', () => {
+    const editor = mockHoverEditor({ _currentMode: 'erase' });
+    updateGridHover(editor, {});
+    expect(editor._handleLayer.created).toHaveLength(0);
+  });
+
+  it('draws nothing while Alt (bypass) is held', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, { altKey: true });
+    expect(editor._handleLayer.created).toHaveLength(0);
+  });
+
+  it('draws the row+column guide pairs AND the node ring pair (6 elements) in the normal case', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, {});
+    expect(editor._handleLayer.created).toHaveLength(6);
+    const lines = editor._handleLayer.created.filter(r => r.kind === 'line');
+    const circles = editor._handleLayer.created.filter(r => r.kind === 'circle');
+    expect(lines).toHaveLength(4);
+    expect(circles).toHaveLength(2);
+  });
+
+  it('positions the row/column lines through the nearest node, spanning the full board', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, {});
+    const gh = editor._gridHover;
+    expect(gh.rowCore.node && true).toBe(true); // sanity: refs were stored
+    // node is {i:4, j:8} at spacing 0.25 -> (1.0, 2.0)
+    const rowRec = editor._handleLayer.created.find(r => r.el === gh.rowCore);
+    const colRec = editor._handleLayer.created.find(r => r.el === gh.colCore);
+    expect(rowRec.plotArgs).toEqual([0, 2.0, 7, 2.0]);
+    expect(colRec.plotArgs).toEqual([1.0, 0, 1.0, 9]);
+  });
+
+  it('centers the node ring on the nearest node, using a positive radius', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, {});
+    const gh = editor._gridHover;
+    const nodeRec = editor._handleLayer.created.find(r => r.el === gh.nodeCore);
+    expect(nodeRec.centerArgs).toEqual([1.0, 2.0]);
+    expect(nodeRec.radiusVal).toBeGreaterThan(0);
+  });
+
+  it('reuses the SAME elements across two calls — no create/destroy per frame', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, {});
+    const first = { ...editor._gridHover };
+    updateGridHover(editor, {});
+    expect(editor._handleLayer.created).toHaveLength(6); // still 6, not 12
+    expect(editor._gridHover.rowCore).toBe(first.rowCore);
+    expect(editor._gridHover.nodeCore).toBe(first.nodeCore);
+  });
+
+  it('suppresses its OWN node ring when the snap cursor is already showing there — "the node ring IS the snap ring"', () => {
+    const editor = mockHoverEditor({
+      _snapCursor: { node: { isConnected: true } }, // simulates updateSnapCursor already having drawn its ring this move
+    });
+    updateGridHover(editor, {});
+    const circles = editor._handleLayer.created.filter(r => r.kind === 'circle');
+    expect(circles).toHaveLength(0); // no node ring of its own
+    const lines = editor._handleLayer.created.filter(r => r.kind === 'line');
+    expect(lines).toHaveLength(4); // the guide lines still draw regardless
+  });
+
+  it('a previously-drawn node ring is removed if the snap cursor appears on a LATER call', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, {}); // no snap cursor yet -> node ring drawn
+    expect(editor._handleLayer.created.filter(r => r.kind === 'circle')).toHaveLength(2);
+    editor._snapCursor = { node: { isConnected: true } };
+    updateGridHover(editor, {});
+    expect(editor._gridHover.nodeOutline).toBeNull();
+    expect(editor._gridHover.nodeCore).toBeNull();
+  });
+
+  it('clearGridHover removes every element and nulls every ref', () => {
+    const editor = mockHoverEditor();
+    updateGridHover(editor, {});
+    clearGridHover(editor);
+    for (const key of ['rowOutline', 'rowCore', 'colOutline', 'colCore', 'nodeOutline', 'nodeCore']) {
+      expect(editor._gridHover[key]).toBeNull();
+    }
+    for (const rec of editor._handleLayer.created) {
+      expect(rec.node.isConnected).toBe(false);
+    }
+  });
+
+  it('does nothing (no throw) when there is no _handleLayer yet', () => {
+    const editor = mockHoverEditor({ _handleLayer: null });
+    expect(() => updateGridHover(editor, {})).not.toThrow();
+  });
+
+  it('clearGridHover is a safe no-op when nothing has been drawn yet', () => {
+    const editor = mockHoverEditor();
+    expect(() => clearGridHover(editor)).not.toThrow();
   });
 });
