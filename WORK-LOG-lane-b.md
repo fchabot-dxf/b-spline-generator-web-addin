@@ -3046,3 +3046,80 @@ once verification finished.
 Committed by explicit path (7 files: `editor-color.js`, `properties-shape.js`, `editor-ui.js`, the HTML,
 the CSS, the test file, this WORK-LOG). Amendments polled clean both before this entry and immediately
 before the commit below — nothing pending.
+
+## Lane B — Turn 75 (T29) — sidebar layer list moves up, full names — DONE
+
+Between T28's pass and this wake, the advisor signaled `LOOP DONE at cycle 37` (T24–T28 merged into main) —
+signed that message and re-armed the waiter per its own instruction, then a NEW cycle opened with this T29
+dispatch. Small layout turn, Fred-approved mockup: move the Vector Stamping sidebar's layer list from below
+the Plunge Depth / Tool Profile / V-Bit Angle controls to right under "Open SVG Editor" (the settings apply
+to whichever layer is selected, so picking one first reads more naturally), and let layer names read in
+full instead of truncating.
+
+**`bspline_gen_palette.html`** — moved the `Layers` label/+button/`#stampLayersList` block (previously
+between V-Bit Angle and SVG Blueprint) to directly after the `#btnStampEdit` button, before `Plunge Depth`.
+Added a one-line hint (`.cad-status-text`, matching `#stampFileName`'s own established style) — "Settings
+below apply to the selected layer." — under a `.cad-status-divider` (the same divider class already used
+elsewhere in this same sidebar, not a new pattern). Grepped `main/stamp/*.js` for DOM-order-dependent
+traversal (`nextElementSibling`/`closest`/etc.) before moving anything — none found; every stamp-panel
+lookup goes through `getElementById`, so the reorder is purely visual.
+
+**`styles/editor.css`** — the dispatch's "full names, ellipsis only as a last resort" was ALREADY half-true:
+`.layer-name` has carried `flex:1; min-width:0` since T26, so the name already gets first claim on available
+width. What was missing: `.layer-tool-summary` (`flex-shrink:0; white-space:nowrap`) always shared the
+SAME line as the name, so at a narrow sidebar it still forced the name to shrink and ellipsize well before
+truly necessary. Fixed by making the compact row wrap — `.layer-tool-summary { flex: 1 0 100%; }` forces it
+onto its own second line (right-aligned) — under TWO independent triggers per the dispatch's own "≤360px
+sidebar OR coarse pointer": the existing `@media (pointer: coarse)` block, and a NEW `@container
+layers-list (max-width: 360px)` query.
+
+**Judgment call — container query over a viewport media query.** The sidebar column is user-resizable
+(`layout-app.css`'s `--cad-sidebar-width`, dragged via `.cad-resizer`) with no fixed relationship to
+viewport width, so a `@media (max-width: …)` check can't actually track "the sidebar itself is narrow" —
+confirmed by reading `layout-app.css` before choosing, not assumed. `@container` is the semantically correct
+tool for "this element's own ANCESTOR is narrow" regardless of viewport, and this codebase had zero
+`@media`/`@container`-support constraints on record (grepped first) — declared `#stampLayersList` as a
+named inline-size container (`layers-list`) since it's the exact element `renderLayerList` appends rows
+into, so no container needs to be nominated further up the tree. First use of `@container` in this
+codebase; flagged here in case that's worth a second look, not slipped in silently.
+
+**A REAL bug caught only by the live screenshot, not the DOM-only checks.** `flex-basis:100%` on the tool
+summary forces it to claim the WHOLE second line — but `.layer-delete` sits right after it in the actual
+row markup (handle, eye, carve, color, name, [tool-summary], delete — T27's own order), and flex-wrap lays
+children out in DOM order. First pass: my own `scrollWidth`/`clientWidth`/`flexWrap` assertions all read
+"correct" (not clipped, wrapped:true) — they only check the NAME's own box, never noticed `.layer-delete`
+had been stranded onto a third line, rendering as a stray red "×" hovering above the NEXT row. Caught it by
+actually looking at the mobile screenshot, not by trusting the numeric checks alone — exactly the kind of
+defect "verify the real symptom" exists to catch. Fixed with `order: 1` on `.layer-tool-summary` (both wrap
+blocks) — a pure CSS reorder, not a DOM move, so it stays scoped to compact rows only (the class doesn't
+exist on non-compact rows at all) without touching `editor/layers.js`. **`editor/layers.js` ended up NOT
+needed** despite the dispatch flagging it as a maybe — the shared `renderLayerList`/`_makeLayerRow` stays
+completely untouched, so the editor's own (non-compact) panel is provably unaffected, not just assumed so.
+
+**No new vitest coverage** — this turn is pure HTML reorder + CSS flex/container-query behavior, and this
+repo's own established position (T27/T28 WORK-LOG entries, and this file's own `getBoundingClientRect`/
+`offsetWidth` caveats) is that happy-dom doesn't perform real layout, so a live CDP check is the only
+meaningful verification for wrap/positioning claims — asserting fake pixel numbers against a non-laying-out
+DOM would be decoration, not evidence. `vitest run` confirms the existing suite is unaffected by the
+reorder (395/395, no regression), which is what a unit suite CAN honestly attest to here.
+
+**Live CDP verification** (repo-root `python -m http.server 8771`, 4-layer Lattice pattern generated):
+DOM-order check confirmed the Layers block index sits strictly between `#btnStampEdit` and the "Plunge
+Depth" label; the 4 REAL generated names (`Nodes`, `Ties`, `Rails`, `Layer 1`) all render with zero
+clipping at the app's actual default 260px sidebar — the dispatch's own literal verify ask. Stress-tested
+with a renamed row ("Left Rail Segment", 17 chars via a live double-click rename, not a mock) — clips by 4px
+at the absolute narrowest 260px default (`nameClientWidth:61` vs `scrollWidth:89` after the delete-button
+fix correctly took its own real width into account) but reads FULLY once the sidebar is widened to 300px or
+on mobile's wider effective area — reported as the genuinely marginal "last resort" case it is, not
+papered over as a clean pass. Mobile emulation (390×844, touch) screenshot, taken only after adding an
+explicit `scrollIntoView` (the first attempt landed on the wrong scroll position and showed an unrelated
+panel — caught and fixed before relying on that shot for anything). Zero console errors/exceptions across
+every run.
+
+**Process hygiene:** zero leftover `chrome.exe` before this run (clean from T28's own cleanup, confirmed via
+`tasklist` rather than assumed); the repo-root `http.server`'s PID (via `netstat`) stopped once verification
+finished.
+
+Committed by explicit path (3 files: the HTML, the CSS, this WORK-LOG). No test file changes this turn — see
+the "no new vitest coverage" note above for why. Amendments polled clean both before this entry and
+immediately before the commit below — nothing pending.
