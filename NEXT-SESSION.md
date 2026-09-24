@@ -1,33 +1,32 @@
-# NEXT — SE11: drape each layer's colored vectors onto the 3D relief (the "3D + palette" combination)
+# NEXT — SE11b: the drape does not appear in Fusion's palette — find out why, fix it, prove it THERE
 
-**Ball: worker (seat A) · epoch 2 · SE11.** SE9 accepted + merged with seat B's SE7p (main ef86c37, 312 tests).
-Seat B is building T26/SE10 (sidebar layer browser, shared `renderLayerList`, and the per-layer fields you READ):
-`visible` (👁 master), `carve` (the "3D" toggle), `showColor` (palette toggle). Their defaults while seat B lands them:
-treat missing as `visible:true, carve:true, showColor:true`. Seat B's files: `editor/layers.js`, `main/stamp/layer.js`,
-`main/stamp-mask-manager.js`, `core/engine/rebuild.js`, `main/export-flow.js`, the palette's VECTOR STAMPING region,
-`styles/*` — do NOT touch them. Yours: `core/preview/*` (Three.js), a new pure module for the drape texture, the hook
-that refreshes it, tests (+ WORK-LOG). One commit by path.
+**Ball: worker (seat A) · epoch 2 · SE11b.** SE11 (8d66076) is deployed to the add-in (build fdc9a18). Seat B is on T27
+(layer row: `visible`/`carve`/`showColor` + helpers `isCarved`/`isExported`/`showsColor` in `editor/layers.js`) — not yours.
+One commit by path.
 
-## Rule (Fred, final — ROADMAP "Layer toggles FINAL" + "👁 is the master")
-A layer's vectors are painted onto the mesh when `visible && carve && showColor`. Each element in its own SE9 color.
-**Uncolored elements (pure black #000000) are NOT painted** — advisor's default so the relief isn't covered in black
-lines for layers nobody colored (flagged to Fred; declare it as one constant `DRAPE_SKIP_COLORS = ['#000000']`).
-Nothing is painted when no layer qualifies — the model then looks exactly as today.
-## Build
-1. Pure part: `buildDrapeSvg(editorLayers, sketchSvg)` → an SVG string of just the qualifying elements (colors kept),
-   board-sized viewBox — reuse the editor's serializer (`serializeEditor`/`getLayerSvg`), don't write another.
-2. Render it to a canvas texture (same rasterize path the stamp uses, but keeping RGBA) at a resolution tied to the
-   mesh's grid, and apply it to the model's TOP surface with planar UV (x/width, y/height — the top is a heightfield
-   seen from above). Read `core/preview/*` first to find the top-surface mesh and its existing material; the drape is a
-   texture on it (or a second material layer), not new geometry. Check orientation (the SC2/SC3 Y-flip history —
-   `carveMatrix` comments) so a line drawn top-left appears top-left on the model.
-3. Refresh on the editor's 'commit' change and on layer-field changes (seat B will emit a layers-changed notify — until
-   then hook `_notifyChange('commit')`), not per drag frame.
-## Verify
-Tests for `buildDrapeSvg` (rule truth table incl. black skipped, hidden layer excluded, carve off excluded). Smoke
-(serve from the REPO ROOT): Generate, color rails red / ties yellow / nodes navy, screenshot the 3D preview — colored
-lines follow the relief, in the right orientation. `npx vitest run` green.
+## Advisor's live test in Fusion (bridge up) — evidence in `smoke-out/se11-4.png`, `smoke-out/se11-crop.png` (git-ignored)
+Picked the red swatch, drew an L (horizontal stroke + vertical stroke, top-left of the board), Apply. Result in the
+palette's 3D view: the L is CARVED correctly (groove along the back-left — orientation right) but **no red on the
+mesh** (12 red-ish pixels sampled in the whole 3D view, i.e. none). The add-in log (`bspline-frame-builder/b-spline-gen/
+b_spline_gen_log.txt`, fusLog) shows the stamp raster of both red paths and the mesh preview send — and NOTHING from
+the drape (it logs nothing, so ran / skipped / failed is indistinguishable).
+Your headless 'drape' smoke reported red/yellow in `renderedFrameColors` but its screenshots are black — a headless
+WebGL capture artefact, so the browser run never visibly proved the drape either.
+## Do
+1. Instrument `refreshDrape` (`main/app-init.js:250`) with `fusLog('[DRAPE] …')`: called? qualifying layers/elements
+   count, svg length, texture w×h, `setDrapeTexture` reached, material that received the map (type + whether it uses
+   `map`), any caught error. Deploy (stop add-in → `python release.py --local` → run; the ritual is in ROADMAP /
+   earlier WORK-LOG turns — `m.stop(None)` / `m.run(None)` via `fusion_execute`), repeat the advisor's L test, read the
+   log.
+2. Likely suspects to check, in order: the preview mesh's material ignores `map` (vertex colors / custom shader /
+   MeshStandard without `map` re-set after `update()` rebuilds geometry); the texture is applied but `needsUpdate`/
+   `colorSpace` wrong; `buildDrapeTexture`'s image load (blob:/data: SVG into an Image) is blocked or silently fails in
+   Fusion's embedded browser; `refreshDrape` never fires on the Apply path in the palette.
+3. Fix the real cause; keep the logs behind a `DRAPE` debug category (off by default) once it works.
+4. Prove it IN FUSION: screenshot of the palette's 3D view with the red L visible on the relief (PowerShell window
+   capture — see `scratchpad`-style `shot.ps1` usage in earlier WORK-LOG turns, or `fusion_screenshot` if it captures
+   the palette). Put the path in the pass note.
 ## When done
 Append WORK-LOG, commit by path, push, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE11: colored drape on the relief — <sha>, N files, vitest N, screenshot: <path>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE11b: drape visible in Fusion — cause: <…> — <sha>, screenshot: <path>"`
 and stop.
