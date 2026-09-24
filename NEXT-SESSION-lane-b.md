@@ -1,20 +1,33 @@
-# LANE B — T34: SE12 Slice 0 — the bake keeps true arcs and circles under a similarity matrix
+# NEXT (lane-b) — T35: SE12 Slice 1 — analytic live-expand engine (line → outline), round cap
 
-**Seat B · epoch 2 · T34.** Your SE12 design (f0f4592) is APPROVED; Slice 0 goes now — it's right regardless of Fred's two
-open answers (Fusion geometry default; whether Fusion's importer keeps arcs — he has `scripts/fusion-arc-test.svg` for
-that). NO FUSION. Seat A is on SE7h (lattice orientation: editor-lattice*.js, properties-lattice.js, lattice panel) —
-not yours. Files: `editor/editor-transform-handles.js` (`_bakeMatrixIntoPath`, `bakeMatrixIntoElement`),
-`editor/path-layout.js` (a pure `isSimilarity(m)` + `bakeArcSimilar(seg, m)` belong there), tests (+ WORK-LOG-lane-b.md).
-One commit by path.
-## Do exactly your design's Slice 0
-Similarity test on the COMBINED per-element matrix (a·c+b·d≈0 and a²+b²≈c²+d², declared tolerance); if similar:
-transform A endpoints, scale rx/ry by √(a²+b²), add the matrix rotation to x-axis-rotation, flip sweep when det<0;
-circles/ellipses stay native (center transformed, radii scaled). Otherwise today's cubic fallback. H/V → L as today.
+**Ball: worker (seat B) · epoch 2 · T35.** NO FUSION (hard rule) — browser proof only. Seat A is on SE7h (lattice
+orientation) in the main checkout; don't touch lattice files.
+
+First: `git merge main` (main has your T34 merged + layer-toggle styling + the SE12 doc answer).
+
+## Fred's answers now in SE12-LIVE-EXPAND-DESIGN.md
+- `fusionGeometry` = an explicit per-layer pick (Outline / Centerline / Both), default centerline, **never set
+  automatically** (Fred: "Don't choose automatically"). Not needed for this slice — it's Slice 4 — just don't design
+  anything that infers it.
+- Context worth knowing: Fred uses stamps two ways — raised/carved relief AND resin inlay (carve a recess, fill resin,
+  machine flush against the original uncarved STEP). Inlay is why Outline must be exact.
+
+## Do exactly your design's Slice 1
+New pure module `editor/editor-expand-analytic.js`: `line → outline path d` for a round-cap stroke = 2 straight banks
++ 2 TRUE half-circle `A` arcs (Fred: "straight lines need to be just straight lines and arcs true arcs" — no
+sampling, no cubics). Declare the cap kinds it supports as data (round now; butt/square listed as not-yet so a caller
+gets a clear decline, not a wrong shape). Degenerate (zero-length line) → a full circle as two `A` arcs. Works in the
+element's local frame; world transforms are the bake's job (Slice 0).
+
 ## Verify
-Tests: arc through carveMatrix(7,9,96) → still an `A` with r×96 and correct endpoints; circle → `<circle>` r×96; a
-side-handle (non-uniform) scaled circle → cubic fallback; reflected matrix flips sweep; round-trip of a lattice node.
-`npx vitest run` green.
+- vitest: horizontal, vertical, diagonal lines → exact bank endpoints (offset = width/2 along the normal) and `A`
+  arcs with r = width/2, correct sweep so the outline is a single closed CCW/CW loop (assert the signed area sign +
+  magnitude = L·w + π(w/2)²); zero-length → circle; unsupported cap → explicit decline.
+- CDP smoke per the design: rasterize a real generated rail's stroke vs. the function's filled outline through the
+  real `rasterizeSvg` path; report the opaque-pixel diff (should be ~edge-AA only). Screenshot both.
+- `npx vitest run` green.
+
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T34: SE12 slice 0 — arcs/circles stay exact under similarity, cubic fallback otherwise — <sha>, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T35: SE12 slice 1 — analytic round-cap outline — <sha>, vitest N, pixel diff X"`
 and stop.
