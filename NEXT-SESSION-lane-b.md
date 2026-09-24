@@ -30,3 +30,23 @@ updates the other. Smoke (serve from the REPO ROOT): desktop + mobile screenshot
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
 `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T26: SE10 sidebar layer browser, shared renderLayerList — <sha>, vitest N, screenshots: <paths>"`
 and stop.
+
+## AMEND (Fred, 2026-09-24) — TWO switches per layer: SHOW and CARVE (supersedes "eye = visible = carved")
+Fred's answers: a layer can be shown/exported without being carved, and carved while hidden. Declare it on the
+editor layer (the SE5 tooling home):
+- `visible` = SHOW: editor canvas, the 3D preview's vector overlay (seat A builds that next — read `visible`), and BOTH
+  vector exports (Fusion sketch via `exportableStampLayers`/`hasShippableSvg`, and the SVG download).
+- NEW `carve` (boolean, default true) = CARVE: mask generation and the heightfield. Repoint every "visible means
+  carved" read to `carve !== false`: `main/stamp-mask-manager.js:52`, `core/engine/rebuild.js:211`, and the CARVING
+  half of `main/export-flow.js:64` (`isCarvingLayer`) — `hasShippableSvg` keeps reading `visible`. Grep for any other
+  `visible === false` used as "don't carve" and list each in WORK-LOG.
+- Persist `carve` in `_PERSISTED_LAYER_FIELDS` (it must survive save/reopen). Migration as data: a `MIGRATIONS` entry
+  `layer-carve-flag` that sets `carve = (visible !== false)` on every roster layer missing it — old documents carve
+  exactly as before.
+- Row: 👁 show toggle + ⛏ carve toggle (both 44 px on coarse pointers, both real buttons, `aria-pressed`), name, tool +
+  depth; a not-carved row shows its tool summary dimmed.
+- SVG download (`editorDownload`, `tools/action-tools.js:32`): export only SHOWN layers; if the modal has no button for
+  it (`#editorDownload` count in the palette markup is reported below), add one "Download SVG" next to Apply Stencils'
+  row — ONE line of markup in the header, tell the advisor where (seat A edits the toolbar row, not the header).
+- Tests: carve false + visible true → no mask for that layer, still in `exportableStampLayers`; visible false + carve
+  true → masked/carved, not exported, not in the SVG download; migration sets carve from visible once, idempotent.
