@@ -687,3 +687,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   and color (`drapeColor`, disabled while 3D is off) — supersedes the editor-only pill / 3-state tag.
 - **Color toggle independent (Fred):** per-layer `showColor` (default true) shows element colors wherever the layer is
   drawn — editor canvas and 3D drape; off = neutral color, display-only (stored colors untouched).
+- **Layer toggles FINAL (Fred: carve and 3D are the same):** 👁 visible · 3D (= carve) · ■ showColor. Colored drape on
+  the mesh when carve && showColor && visible. `drape3d` dropped. SE11 renders the drape from that rule.
