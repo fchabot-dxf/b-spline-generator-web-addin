@@ -40,14 +40,35 @@ body {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    touch-action: none;
-    /* Prevent browser handling of touch gestures */
     -webkit-overflow-scrolling: touch;
     background: var(--bg);
     color: var(--text);
     font-family: var(--cad-font-family);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+/* SA-MOBILE-13: touch-action:none used to sit on html/body, which blocked
+   native pinch-zoom for the WHOLE page — a CSS Touch Action descendant
+   can't re-enable a gesture an ancestor disabled — directly against this
+   app's own viewport-meta comment (bspline_gen_palette.html:6-9, BUG-14):
+   "The 3D canvas has its own gesture handling, but the rest of the page
+   must remain pinch-zoomable." Scoped down to just the surfaces that
+   handle their own drag/gesture interaction and would otherwise fight the
+   browser's native pan/zoom while the user is using them:
+     #previewCanvas       the Three.js 3D preview — the one surface named
+                           in the viewport comment above; OrbitControls
+                           owns its own rotate/pan/zoom.
+     #editorSVGContainer  the SVG editor canvas — custom pan/select/draw
+                           pointer handling (editor/editor-interaction.js).
+     #resizer             the sidebar/preview drag handle — custom
+                           pointer-drag resize (core/ui-utils.js).
+   Everything else is native-pinch-zoomable again, per the comment's own
+   stated intent. No JS pinch handling added here — that's SE7m. */
+#previewCanvas,
+#editorSVGContainer,
+#resizer {
+    touch-action: none;
 }
 
 input, select, textarea, button {

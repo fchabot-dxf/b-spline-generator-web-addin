@@ -107,6 +107,17 @@
     opacity: .9;
 }
 
+/* T16: no keyboard on a phone, so the shortcut letter is dead information
+   for a touch user — hide it rather than let it sit as a tiny, meaningless
+   mark on every button. `(hover: none)` picks touch the same way it does
+   for the layer-delete button below (a real "no hover-capable pointer"
+   signal, not a width guess). */
+@media (hover: none) {
+    .tool-btn[data-key]::after {
+        display: none;
+    }
+}
+
 #toolSelect .material-symbols-outlined {
     font-variation-settings: 'FILL' 1; /* Solid Black Cursor */
 }
@@ -117,6 +128,22 @@
 
 .tool-btn .material-symbols-outlined {
     font-size: 20px;
+}
+
+/* SA-MOBILE-4: the rail buttons used to be sized by TWO width-based
+   breakpoints that disagreed (38px under max-width:720px, a dead-by-
+   specificity 40px under max-width:700px — see SA-MOBILE-5 below).
+   Consolidated to ONE rule, using the correct feature query for "does
+   this need a bigger touch target" — `pointer: coarse` (an imprecise
+   pointer is present) — rather than viewport width, which conflates
+   "narrow window" with "touch input" when they're independent (a touch
+   laptop can be wide; a narrow desktop window is still mouse-precise). */
+@media (pointer: coarse) {
+    .editor-sidebar .tool-btn {
+        width: 44px;
+        height: 44px;
+        padding: 5px;
+    }
 }
 
 /* Top View Canvas Scaling */
@@ -330,11 +357,12 @@
         touch-action: pan-x;
     }
 
+    /* SA-MOBILE-4: sizing (width/height/padding) moved to the single
+       @media (pointer: coarse) rule near .tool-btn's base declaration —
+       this row-layout context only needs to stop the buttons shrinking
+       inside the horizontal-scroll rail, not re-declare their size. */
     .editor-sidebar .tool-btn {
-        width: 38px;
-        height: 38px;
         flex: 0 0 auto;
-        padding: 6px;
     }
 
     .editor-toolbar-top {
@@ -427,22 +455,16 @@
         margin-right: 12px;
     }
 
-    .editor-sidebar {
-        width: 56px;
-        min-width: 56px;
-        padding: 10px 6px;
-    }
-
-    .tool-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 40px;
-        width: 40px;
-        height: 40px;
-        padding: 6px;
-        border-radius: 10px;
-    }
+    /* SA-MOBILE-5: `.editor-sidebar { width: 56px; ... }` used to live here
+       — dead ever since the two max-width:720px blocks above started
+       setting `.editor-sidebar { width: 100% !important; ... }` (720px is
+       a WIDER threshold than 700px, so both are already active and their
+       !important always wins by the time this rule would apply);
+       confirmed no other selector in this file references `.editor-sidebar`
+       for its width. Removed rather than left as a trap for a future edit.
+       Its sibling `.tool-btn { width: 40px; ... }` rule is removed for the
+       same reason (SA-MOBILE-4): consolidated into the single
+       @media (pointer: coarse) rule near .tool-btn's base declaration. */
 }
 
 /* =========================================================================
@@ -596,6 +618,15 @@
 }
 .editor-layers-panel .layer-row:hover .layer-delete { visibility: visible; }
 .editor-layers-panel .layer-delete:hover { background: #fde7e7; }
+
+/* SA-MOBILE-8: a hover-only reveal is unreachable on a touchscreen — no
+   hover event ever fires, so this button (and the only way to delete a
+   layer) was invisible on a phone. `(hover: none)` is the correct feature
+   query here (detects "no hover-capable pointer present"), not a width
+   breakpoint — a touch laptop can still have plenty of screen width. */
+@media (hover: none) {
+    .editor-layers-panel .layer-delete { visibility: visible; }
+}
 
 /* When a layer is hidden, dim and hide its SVG elements in the editor view.
    The expand-time geometry filter (task 4) makes sure hidden layers are
