@@ -1340,6 +1340,26 @@
           <button id="editorRunExpand" class="cad-btn cad-btn-secondary" style="height:24px; padding:0 12px; font-size:11px; font-weight:700;">EXPAND</button>
           <button id="editorUnexpand" class="cad-btn cad-btn-secondary" style="height:24px; padding:0 12px; font-size:11px; font-weight:700;">UN-EXPAND</button>
         </div>
+
+        <!-- SE7m: on-screen equivalents for keyboard-only actions
+             (SA-MOBILE-10/11/12) — Copy/Paste/Select-all/Cancel have no
+             touch path today (Ctrl+C/V/A, Esc), and Shift-modifier
+             precision aids (uniform scale, 15° rotate snap) have no
+             touch equivalent either. Hidden on a mouse/trackpad (nothing
+             here that a keyboard doesn't already do faster); shown only
+             under (pointer: coarse) — a real "imprecise pointer present"
+             signal, not a width guess, matching this lane's own T16
+             precedent for (hover: none). -->
+        <div id="editorTouchActionsGroup" class="editor-touch-actions-group" style="display:none; align-items:center; gap:6px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <div role="group" style="display:flex; height:28px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+            <button type="button" id="editorTouchCopy" class="editor-fillmode-btn" title="Copy selection" style="width:32px;">⧉</button>
+            <button type="button" id="editorTouchPaste" class="editor-fillmode-btn" title="Paste" style="width:32px;">⎘</button>
+            <button type="button" id="editorTouchSelectAll" class="editor-fillmode-btn" title="Select all" style="width:32px;">⛶</button>
+            <button type="button" id="editorTouchCancel" class="editor-fillmode-btn" title="Cancel the current pen path" style="width:32px;">✕</button>
+            <button type="button" id="editorTouchLock" class="editor-fillmode-btn" title="Lock — uniform scale / 15° rotate snap (the Shift key equivalent)" style="width:32px;">🔒</button>
+          </div>
+        </div>
         <div style="flex:1;"></div>
       </div>
 
@@ -1357,7 +1377,7 @@
           <!-- SE7a: drag along a row for a rail, along a column for a tie;
                auto-nodes mark the ends and crossings. A bare click does
                nothing — Circle (above) is the node tool. -->
-          <button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row = rail, along a column = tie, click = node" data-key="k"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M4 8h16M4 16h16M9 4v16M15 4v16"/></svg></button>
+          <button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row = rail, along a column = tie. A bare click does nothing — use Circle for a manual node." data-key="k"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M4 8h16M4 16h16M9 4v16M15 4v16"/></svg></button>
           <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
           <!-- Vector eraser: drag a stroke to clip filled shapes and
                split open strokes. Width follows the sidebar stroke

@@ -146,6 +146,18 @@
     }
 }
 
+/* SE7m / SA-MOBILE-10/11/12: on-screen Copy/Paste/Select-all/Cancel/Lock
+   — the touch equivalents of Ctrl+C/V/A, Esc, and Shift, none of which
+   have a touch path. Hidden by default (inline style="display:none" on
+   the element itself, bspline_gen_palette.html) and shown only under the
+   same (pointer: coarse) signal SA-MOBILE-4 already uses above — real
+   "imprecise pointer present," not a width guess. */
+@media (pointer: coarse) {
+    .editor-touch-actions-group {
+        display: flex !important;
+    }
+}
+
 /* Top View Canvas Scaling */
 #svgEditorTopView {
     image-rendering: pixelated;

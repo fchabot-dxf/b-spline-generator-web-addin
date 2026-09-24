@@ -27,12 +27,17 @@ import {
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
-import { updateSnapCursor, clearSnapCursor } from './editor-grid.js';
+import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset } from './editor-grid.js';
+import { getDynamicTolerance } from './editor-hit.js';
 import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR,
 } from './editor-lattice.js';
 import { detachOwnership } from './editor-lattice-pattern.js';
+import {
+    INPUT_PROFILE, inputProfileFor, computePinchUpdate,
+    shouldCancelDrawOnPointerDown, isPinching,
+} from './editor-input.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -61,19 +66,27 @@ export function resetPanState(editor) {
 
 export function initInteraction(editor) {
     const svgNode = editor._draw.node;
-    on(svgNode, 'mousedown', (e) => handleStart(editor, e));
-    on(window,  'mousemove', (e) => handleMove(editor, e));
-    on(window,  'mouseup',   (e) => handleEnd(editor, e));
+    // SE7m: ONE path for mouse/touch/pen via Pointer Events, replacing the
+    // separate mouse*/touch* listener pairs — a PointerEvent carries
+    // clientX/clientY directly (like MouseEvent), so getPointerPos's
+    // existing e.touches-then-e.clientX fallback (editor-io.js) already
+    // handles it correctly with zero changes there. editor._activePointers
+    // (pointerId -> {x,y} client coords) is what makes a second finger
+    // SEEN instead of ignored — the old code's `e.touches.length > 1`
+    // early-return in handleStart is gone; see handlePointerDown below.
+    editor._activePointers = new Map();
+    editor._pointerType = 'mouse';
+    on(svgNode, 'pointerdown', (e) => handlePointerDown(editor, e), { passive: false });
+    on(window,  'pointermove', (e) => handlePointerMove(editor, e), { passive: false });
+    on(window,  'pointerup',   (e) => handlePointerUp(editor, e));
+    on(window,  'pointercancel', (e) => handlePointerUp(editor, e));
     on(svgNode, 'dblclick',  (e) => handleDblClick(editor, e));
-    on(svgNode, 'touchstart', (e) => handleStart(editor, e), { passive: false });
-    on(window,  'touchmove',  (e) => handleMove(editor, e),  { passive: false });
-    on(window,  'touchend',   (e) => handleEnd(editor, e));
     // SE2: wheel = zoom about the cursor. passive:false so preventDefault
     // stops the modal body from scrolling.
     on(svgNode, 'wheel', (e) => handleWheel(editor, e), { passive: false });
     // SE7a: the pointer leaving the canvas is the one path that fires no
-    // further mousemove to naturally hide the hover snap-cursor.
-    on(svgNode, 'mouseleave', () => clearSnapCursor(editor));
+    // further pointermove to naturally hide the hover snap-cursor.
+    on(svgNode, 'pointerleave', () => clearSnapCursor(editor));
     // BUG-28: global keyboard shortcuts for the editor — Delete /
     // Backspace removes the whole multi-selection, Ctrl/Cmd+C copies it
     // onto editor._clipboard, Ctrl/Cmd+V pastes (with a small offset so
@@ -85,6 +98,93 @@ export function initInteraction(editor) {
     // palette losing focus) fires no keyup/mouseup — 'blur' is the one
     // event that reliably does, so it's the backstop reset.
     on(window, 'blur', () => resetPanState(editor));
+}
+
+/**
+ * SE7m: pointer-tracking wrapper around the pre-existing single-pointer
+ * handleStart. Every pointerdown updates editor._activePointers first —
+ * the resulting COUNT decides what happens:
+ *   1 pointer  -> the existing single-pointer gesture start (handleStart),
+ *                 unchanged behavior for mouse/pen/one-finger-touch.
+ *   2 pointers -> SA-MOBILE-14/15: cancel any in-progress draw WITHOUT
+ *                 committing it, then start pinch tracking. Never reaches
+ *                 handleStart — a pinch is not a draw/select gesture.
+ *   3+ pointers -> ignored (tracked in the map so a later pointerup keeps
+ *                 the count honest, but no gesture starts or changes).
+ */
+function handlePointerDown(editor, e) {
+    editor._pointerType = e.pointerType || 'mouse';
+    editor._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
+    const count = editor._activePointers.size;
+
+    if (shouldCancelDrawOnPointerDown(count, editor._isDrawing)) {
+        if (typeof editor._cancelDrawing === 'function') editor._cancelDrawing();
+    }
+
+    if (isPinching(count)) {
+        e.preventDefault();
+        const ids = Array.from(editor._activePointers.keys());
+        editor._pinchPrev = {
+            p1: editor._activePointers.get(ids[0]),
+            p2: editor._activePointers.get(ids[1]),
+        };
+        return;
+    }
+    if (count !== 1) return; // 3rd+ finger — tracked, no gesture
+
+    handleStart(editor, e);
+}
+
+function handlePointerMove(editor, e) {
+    if (!editor._activePointers.has(e.pointerId)) {
+        // A move from a pointer we never saw go down (e.g. a mouse move
+        // with no button held, which still fires pointermove on some
+        // UAs) — treat exactly like the old mousemove-with-no-drag path.
+        handleMove(editor, e);
+        return;
+    }
+    editor._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const count = editor._activePointers.size;
+
+    if (isPinching(count) && editor._pinchPrev) {
+        e.preventDefault();
+        const ids = Array.from(editor._activePointers.keys());
+        const next = {
+            p1: editor._activePointers.get(ids[0]),
+            p2: editor._activePointers.get(ids[1]),
+        };
+        const { factor, midpoint } = computePinchUpdate(editor._pinchPrev, next);
+        if (editor._draw && typeof editor._draw.point === 'function') {
+            const pivot = editor._draw.point(midpoint.x, midpoint.y);
+            editor._view = zoomAbout(editor._view, pivot, factor);
+            applyView(editor);
+        }
+        editor._pinchPrev = next;
+        return;
+    }
+    if (count > 2) return; // 3rd+ finger moving — ignored, matches pointerdown
+
+    handleMove(editor, e);
+}
+
+function handlePointerUp(editor, e) {
+    editor._activePointers.delete(e.pointerId);
+    try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
+    const count = editor._activePointers.size;
+
+    if (count >= 2) return; // still pinching with the remaining fingers — nothing to end yet
+    if (editor._pinchPrev) {
+        // Was pinching, now down to 0 or 1 fingers — end the pinch WITHOUT
+        // resuming a single-finger draw/select on whichever finger is
+        // still down (the standard "lifting one finger of a pinch doesn't
+        // start drawing" touch convention).
+        editor._pinchPrev = null;
+        return;
+    }
+    if (count > 0) return; // still tracking a lower-priority extra finger
+
+    handleEnd(editor, e);
 }
 
 function handleWheel(editor, e) {
@@ -148,37 +248,22 @@ function _handleEditorKeydown(editor, e) {
 
     // Ctrl/Cmd + C — copy selection.
     if (e.key === 'c' || e.key === 'C') {
-        if (sel.length === 0) return;
         e.preventDefault();
-        editor._clipboard = sel.map((el) => ({
-            // Capture each element's outer SVG markup + its data-layer
-            // so paste can put it back on the same layer (or rewrite to
-            // active on cross-layer paste).
-            outerSvg: el.node ? el.node.outerHTML : '',
-            layer: el.attr ? (el.attr('data-layer') || null) : null,
-        })).filter((c) => c.outerSvg);
+        copySelection(editor);
         return;
     }
 
     // Ctrl/Cmd + V — paste clipboard onto the active layer.
     if (e.key === 'v' || e.key === 'V') {
-        const clip = editor._clipboard;
-        if (!Array.isArray(clip) || clip.length === 0) return;
         e.preventDefault();
-        _pasteFromClipboard(editor, clip);
+        pasteClipboard(editor);
         return;
     }
 
     // Ctrl/Cmd + A — select every visible shape across all visible layers.
     if (e.key === 'a' || e.key === 'A') {
-        if (!editor._sketchLayer) return;
         e.preventDefault();
-        const all = editor._sketchLayer.children().toArray().filter((el) => {
-            if (!el || !el.node) return false;
-            const cls = el.node.getAttribute('class') || '';
-            return !cls.includes('layer-hidden');
-        });
-        if (typeof editor._selectMany === 'function') editor._selectMany(all);
+        selectAllVisible(editor);
     }
 }
 
@@ -186,6 +271,55 @@ function _handleEditorKeyup(editor, e) {
     if (!_isEditorActive(editor)) return;
     if (e.code === 'Space') {
         resetPanState(editor);
+    }
+}
+
+// SE7m / SA-MOBILE-11: copySelection/pasteClipboard/selectAllVisible are
+// declared once here and called from BOTH the Ctrl+C/V/A keydown handler
+// above AND the on-screen action group's Copy/Paste/Select-all buttons
+// (wired in editor-controls.js) — one behavior, two input paths, not two
+// copies of the same logic.
+
+/** Copy the current selection onto editor._clipboard. No-op (not an
+ *  error) when nothing is selected — matches the keyboard shortcut's own
+ *  pre-existing silent-no-op behavior for an empty selection. */
+export function copySelection(editor) {
+    const sel = editor._selectedElements || [];
+    if (sel.length === 0) return;
+    editor._clipboard = sel.map((el) => ({
+        // Capture each element's outer SVG markup + its data-layer so
+        // paste can put it back on the same layer (or rewrite to active
+        // on cross-layer paste).
+        outerSvg: el.node ? el.node.outerHTML : '',
+        layer: el.attr ? (el.attr('data-layer') || null) : null,
+    })).filter((c) => c.outerSvg);
+}
+
+/** Paste editor._clipboard onto the active layer. No-op when the
+ *  clipboard is empty. */
+export function pasteClipboard(editor) {
+    const clip = editor._clipboard;
+    if (!Array.isArray(clip) || clip.length === 0) return;
+    _pasteFromClipboard(editor, clip);
+}
+
+/** Select every visible shape across all visible layers. */
+export function selectAllVisible(editor) {
+    if (!editor._sketchLayer) return;
+    const all = editor._sketchLayer.children().toArray().filter((el) => {
+        if (!el || !el.node) return false;
+        const cls = el.node.getAttribute('class') || '';
+        return !cls.includes('layer-hidden');
+    });
+    if (typeof editor._selectMany === 'function') editor._selectMany(all);
+}
+
+/** Cancel an in-progress pen/anchor path WITHOUT committing it — the
+ *  on-screen equivalent of Esc (SA-MOBILE-10), which has no touch
+ *  keyboard to press. No-op when nothing is being drawn. */
+export function cancelCurrentDrawing(editor) {
+    if (editor._isDrawing && typeof editor._cancelDrawing === 'function') {
+        editor._cancelDrawing();
     }
 }
 
@@ -229,7 +363,7 @@ function handleDblClick(editor, e) {
         _commitAnchorPath(editor); return;
     }
     const pt = editor._getMousePoint(e);
-    const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+    const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
     if (hit && hit.type === 'text') {
         e.preventDefault(); e.stopPropagation();
         if (editor._currentMode !== 'text') editor.setMode('text');
@@ -239,7 +373,11 @@ function handleDblClick(editor, e) {
 
 function handleStart(editor, e) {
     dbg('TEXT-DBG', `handleStart fired: type=${e.type} mode=${editor._currentMode} hasEditingText=${!!editor._editingTextEl} ts=${Math.round(e.timeStamp)} target=<${e.target?.tagName}>`);
-    if (e.type === 'touchstart' && e.touches.length > 1) return;
+    // SE7m: the "second finger ignored" guard that used to live here
+    // (e.type==='touchstart' && e.touches.length>1) is gone — handleStart
+    // is now only ever called by handlePointerDown when
+    // editor._activePointers.size===1 (a PointerEvent has no .touches to
+    // check anyway); the 2+-pointer pinch/cancel decision happens there.
 
     // SE2: pan — middle-button drag, or Space + left drag. Checked before
     // the mode dispatch so it works no matter which tool is active.
@@ -255,7 +393,11 @@ function handleStart(editor, e) {
         return;
     }
 
-    const pt = editor._snap(editor._getMousePoint(e), e.altKey, 'start');
+    // SE7m: touch commits at the MARKER position, not the raw finger
+    // position, so the same offset updateSnapCursor draws the ring at is
+    // applied here BEFORE snapping (applyTouchMarkerOffset is a no-op for
+    // mouse/pen — INPUT_PROFILE's markerOffsetPx: 0).
+    const pt = editor._snap(applyTouchMarkerOffset(editor, editor._getMousePoint(e)), e.altKey, 'start');
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
 }
@@ -269,7 +411,7 @@ function handleMove(editor, e) {
     // (drawing or not): in lattice mode the marker doubles as the rail/tie
     // start indicator once a gesture is under way.
     updateSnapCursor(editor, e);
-    const pt = editor._snap(editor._getMousePoint(e), e.altKey, 'move');
+    const pt = editor._snap(applyTouchMarkerOffset(editor, editor._getMousePoint(e)), e.altKey, 'move');
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         if (handler.update) handler.update(editor, pt);
@@ -279,7 +421,10 @@ function handleMove(editor, e) {
         if (editor._transformState) {
             // SE7s: alt bypasses grid-snap for an 'endpoints' (line) drag,
             // matching SNAP_POLICY's existing Alt-bypass semantics elsewhere.
-            applyTransformDrag(editor, editor._transformState, pt, { shift: !!e.shiftKey, alt: !!e.altKey });
+            // SE7m: the on-screen Lock toggle (SA-MOBILE-12) ORs into the
+            // same `shift` modifier real Shift already drives — one read,
+            // two sources, no new branch in editor-transform-handles.js.
+            applyTransformDrag(editor, editor._transformState, pt, { shift: !!e.shiftKey || !!editor._lockAspect, alt: !!e.altKey });
             if (editor._transformState.moved) editor._dragMoved = true;
             return;
         }
@@ -374,7 +519,7 @@ const selectHandler = {
                 return;
             }
         }
-        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
         editor._dragMoved = false;
         if (hit) {
             editor._isDragging = true;
@@ -395,7 +540,7 @@ const selectHandler = {
             && hitTestHandle(editor._transformHandles, pt)) {
             editor._setHover(null); return;
         }
-        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
         editor._setHover(hit);
     },
 };
@@ -417,12 +562,12 @@ const nodeHandler = {
                 return;
             }
         }
-        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
         if (hit && hit !== editor._selectedElement) editor._select(hit);
     },
     hover(editor, pt) {
         if (!editor._selectedElement) {
-            const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+            const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
             editor._setHover(hit); return;
         }
         const { idx: hitIdx } = findNodeAt(editor, pt);
@@ -431,7 +576,7 @@ const nodeHandler = {
             editor._updateHandles();
         }
         if (hitIdx === -1) {
-            const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+            const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
             editor._setHover(hit && hit !== editor._selectedElement ? hit : null);
         } else editor._setHover(null);
     },
@@ -439,13 +584,13 @@ const nodeHandler = {
 
 const textHandler = {
     start(editor, pt, e) {
-        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
         if (hit && hit.type === 'text') { beginTextEdit(editor, hit); return; }
         if (hit) editor._deselect();
         startTextAt(editor, pt, e);
     },
     hover(editor, pt) {
-        const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
+        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'));
         editor._setHover(hit);
     },
 };
@@ -767,7 +912,7 @@ function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
 function findNodeAt(editor, pt) {
     if (!editor._selectedElement) return { idx: -1, nodes: [] };
     const nodes = editor._getNodes(editor._selectedElement);
-    const tol = editor._getDynamicTolerance(15);
+    const tol = getDynamicTolerance(editor, 15, 'grabPx'); // SA-MOBILE-2 — node-grab radius
     const idx = nodes.findIndex(n => Math.hypot(n.x - pt.x, n.y - pt.y) < tol);
     return { idx, nodes };
 }

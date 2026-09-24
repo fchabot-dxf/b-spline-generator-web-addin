@@ -8,6 +8,8 @@
  * and are unit-tested directly (tests/editor-grid.test.js), matching
  * editor-view.js's own split between pure math and DOM-touching code.
  */
+import { screenToModelDelta } from './editor-view.js';
+import { inputProfileFor } from './editor-input.js';
 
 /** Board is in inches — spacing/coords here are all in the same model
  *  units as editor._mW/_mH (see editor-view.js's own note on this). */
@@ -126,12 +128,39 @@ export function applyGrid(editor) {
   }
 }
 
-/** Remove the hover snap-cursor marker, if one exists. Called on mode
- *  change (setMode), reopen (editor-io.js's open()), and mouseleave —
- *  the three ways it could otherwise ghost onto a state it no longer
- *  describes. */
+/** Remove the hover snap-cursor marker (+ its touch leader line, if any).
+ *  Called on mode change (setMode), reopen (editor-io.js's open()), and
+ *  pointerleave — the ways it could otherwise ghost onto a state it no
+ *  longer describes. */
 export function clearSnapCursor(editor) {
   if (editor._snapCursor) { editor._snapCursor.remove(); editor._snapCursor = null; }
+  if (editor._snapCursorLeader) { editor._snapCursorLeader.remove(); editor._snapCursorLeader = null; }
+}
+
+/** Model-space vertical shift for INPUT_PROFILE's markerOffsetPx, at the
+ *  current view/container size. 0 for mouse/pen (markerOffsetPx: 0) or
+ *  when the container isn't laid out yet. */
+function _touchMarkerModelOffset(editor) {
+  const offsetPx = inputProfileFor(editor._pointerType).markerOffsetPx;
+  if (!offsetPx || !editor._draw) return 0;
+  const vb = editor._draw.viewbox();
+  const svgEl = document.getElementById('editorSVGContainer');
+  const clientWidth = (svgEl && svgEl.clientWidth) || 1;
+  const clientHeight = (svgEl && svgEl.clientHeight) || 1;
+  return screenToModelDelta(vb, clientWidth, clientHeight, 0, offsetPx).dy;
+}
+
+/** Shift a raw pointer point UP by the touch marker offset (model space;
+ *  screen "up" = model -Y, no Y-flip at this level, per editor-coords.js's
+ *  own convention) — a no-op for mouse/pen (INPUT_PROFILE's
+ *  markerOffsetPx: 0). Exported so editor-interaction.js's
+ *  handleStart/handleMove apply the EXACT same shift to the actual
+ *  gesture point that updateSnapCursor below draws the marker at — "the
+ *  gesture commits at the MARKER position" (SE7m design §…) means both
+ *  reads must agree on one function, not two independent offset guesses. */
+export function applyTouchMarkerOffset(editor, pt) {
+  const dy = _touchMarkerModelOffset(editor);
+  return dy ? { x: pt.x, y: pt.y - dy } : pt;
 }
 
 /**
@@ -141,30 +170,46 @@ export function clearSnapCursor(editor) {
  * handleMove on every move (drawing or not — in lattice mode the marker
  * doubles as the rail/tie start indicator once a gesture is under way).
  *
+ * SE7m: for touch, the marker ALWAYS shows (not gated on "moved due to
+ * snapping") and is drawn `markerOffsetPx` ABOVE the raw finger position
+ * with a 1px leader line back down to it — a fingertip covers the real
+ * target, so the marker's job for touch is "show where this commits,"
+ * not just "show grid intent." Mouse/pen keep the exact pre-SE7m
+ * behavior (only shown when snapping actually moves the point, no
+ * offset, no leader) — markerOffsetPx is 0 for both in INPUT_PROFILE, so
+ * `touchMarkerModelOffset` naturally returns 0 for them too; the
+ * `isTouch` branch below only changes the ALWAYS-SHOW rule.
+ *
  * Kept on editor._snapCursor inside _handleLayer (the same layer as the
  * transform handles — never part of the saved sketch) and moved via
- * .center()/.radius() rather than recreated each call. Hidden whenever
- * the point wouldn't actually move: policy 'none', Alt held, or the
- * point already sits on the snap target.
+ * .center()/.radius() rather than recreated each call.
  */
 export function updateSnapCursor(editor, e) {
   const layer = editor._handleLayer;
   if (!layer) return;
   const bypass = !!(e && e.altKey);
   const policy = SNAP_POLICY[editor._currentMode] || 'point';
-  let moved = false;
+  const isTouch = editor._pointerType === 'touch';
+  let show = false;
   let snapped = null;
+  let rawPt = null;
   if (policy !== 'none' && !bypass) {
-    const pt = editor._getMousePoint(e);
-    snapped = snapFor(pt, editor._grid, editor._currentMode, 'start', bypass);
-    moved = snapped.x !== pt.x || snapped.y !== pt.y;
+    rawPt = editor._getMousePoint(e);
+    // SE7m: the offset is applied BEFORE snapping — the marker and the
+    // actual gesture point (handleStart/handleMove, editor-interaction.js)
+    // both snap the SAME already-shifted point via applyTouchMarkerOffset,
+    // so the ring's position and the commit position can never disagree.
+    const adjusted = applyTouchMarkerOffset(editor, rawPt);
+    snapped = snapFor(adjusted, editor._grid, editor._currentMode, 'start', bypass);
+    show = isTouch || snapped.x !== adjusted.x || snapped.y !== adjusted.y;
   }
 
-  if (!moved) {
+  if (!show) {
     clearSnapCursor(editor);
     return;
   }
   const r = editor._getDynamicTolerance ? editor._getDynamicTolerance(4) : 0.05;
+
   // _handleLayer is shared with the transform handles: updateHandles()
   // clears the WHOLE layer unconditionally on nearly every mode switch,
   // selection change, and drag — which silently detaches our circle from
@@ -180,4 +225,19 @@ export function updateSnapCursor(editor, e) {
     .stroke({ color: '#ff6a00', width: 1 })
     .radius(r)
     .center(snapped.x, snapped.y);
+
+  if (!isTouch) {
+    if (editor._snapCursorLeader) { editor._snapCursorLeader.remove(); editor._snapCursorLeader = null; }
+    return;
+  }
+  // 1px leader from the raw finger position down to the marker — "the
+  // thumb no longer hides the target" only reads clearly with a visible
+  // link between where the finger actually is and where the mark is.
+  if (!editor._snapCursorLeader || !editor._snapCursorLeader.node || !editor._snapCursorLeader.node.isConnected) {
+    editor._snapCursorLeader = layer.line(0, 0, 0, 0)
+      .attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+  }
+  editor._snapCursorLeader
+    .stroke({ color: '#ff6a00', width: 1, opacity: 0.6 })
+    .plot(snapped.x, snapped.y, rawPt.x, rawPt.y);
 }
