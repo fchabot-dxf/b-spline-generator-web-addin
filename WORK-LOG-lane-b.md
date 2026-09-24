@@ -2934,3 +2934,115 @@ visible-as-master rule requires touching a migration that only back-fills a miss
 
 Committed by explicit path (9 files: the 5 source files, the CSS, and the 3 test files). Amendments polled
 clean both before this entry and immediately before the commit below — nothing pending.
+
+## Lane B — Turn 73 (T28) — COLOR control becomes a dropdown mosaic — 32 declared swatches + recent + custom — DONE
+
+Fred: "add more colors and make it a drop down mosaic." Woke on turn 73 to lane-b already merged with main
+(SE11c/SE11d drape work landed via the advisor, T27 verified live in Fusion per the peer's own cross-session
+note). Scope per dispatch: `editor/properties-shape.js` (SE9's color binding), the palette's editor toolbar
+COLOR group, `styles/editor.css`, tests.
+
+**`editor/editor-color.js`** — `VECTOR_COLORS` goes from a flat 6-color array to a declared 8-row x 4-column
+grid (32 swatches), one row per hue (Red/Orange/Yellow/Green/Teal/Blue/Purple/Neutral), so the popover's
+mosaic lays its cells out straight from this data — no second hand-typed grid to drift from it. Fred's own
+piece is kept VERBATIM inside the grid rather than bolted on separately: red `#c62828` and yellow `#f9c80e`
+are each their hue row's own base shade, navy `#1a237e` is the Blue row's darkest shade, black `#000000` is
+the Neutral row's darkest shade — chose this over a 9th "Fred's colors" row so the palette reads as one
+coherent, browsable grid rather than a special row plus a generic one. Also added the "recent" persistence:
+`mergeRecentColors` (pure, dedup-and-move-to-front, capped at `RECENT_COLORS_CAP=4`) plus
+`loadRecentColors`/`saveRecentColors`/`addRecentColor` wrapping `localStorage` in try/catch — same
+load/merge/save split as `editor-grid.js`'s `mergeGridPrefs`/`loadGridPrefs` (found and matched that existing
+convention rather than inventing a new persistence shape), key `bsg.editorRecentColors` matching that file's
+own `bsg.*` prefix.
+
+**`editor/properties-shape.js`** — `initColorControl` rewritten: the toolbar's visible control is now a
+button (`#editorColorToggle`, a swatch + caret) that opens a popover — VECTOR_COLORS' 8x4 grid, a "recent"
+row (hidden entirely when empty), and a "Custom…" button. The native `<input type="color" id="editorColor">`
+stays in the DOM (now visually hidden, off-screen-but-rendered so `.click()` reliably opens the OS picker —
+`display:none` inputs don't always fire it) — it's still what "Custom…" triggers, and still the read-back
+target editor-ui.js already writes to on selection change. Every pick (mosaic cell, recent cell, or the
+native picker's own 'change') calls `editor.setColor()` on one discrete commit (unchanged SE9 undo
+behavior) and calls `addRecentColor`. Keyboard: roving tabindex over the grid (arrow keys move by the
+declared 4-column stride, clamped not wrapped; Enter/Space reuses the cell's own click handler — one pick
+path, not two); Escape closes and refocuses the toggle button. A document-level capturing `mousedown`
+listener (added on open, removed on close) closes on an outside click. New export: `syncColorToggleSwatch(hex)`
+— the one place "update the toggle button's visible swatch" happens, so it isn't reimplemented a second time
+in editor-ui.js.
+
+**Judgment call — where the popover mounts.** `#editorColorGroup` lives inside `.editor-toolbar-top`, which
+has `overflow: hidden` (confirmed by reading the actual inline style, not assumed) — anything appended
+inside that group would be clipped the instant it needed to extend past the 38px toolbar strip. The popover
+is instead appended to `document.body` and positioned `position:fixed` from the toggle button's own
+`getBoundingClientRect()` (viewport-relative regardless of any ancestor's overflow/position), `z-index:
+10001` — one above `#svgEditorModal`'s own `9999` (checked, not guessed, via a repo-wide z-index grep before
+picking a number). `positionPopover()` flips above the button if it would overflow the viewport bottom and
+clamps its left edge if it would overflow the right — the dispatch's own explicit "stays inside the viewport
+at 390px" requirement, live-verified below, not just asserted in a unit test (happy-dom doesn't lay out real
+pixels, so `offsetWidth`/`offsetHeight`-based positioning isn't meaningfully unit-testable — this is exactly
+the kind of case CDP verification exists for).
+
+**Judgment call — one-line touch to `editor-ui.js` (not in the dispatch's own file list).** Before this
+turn, `_afterSelectionChange` set `colorEl.value = primaryColor` directly on the native `<input type=color>`,
+and the input's OWN rendered box was the toolbar's visible color indicator — no extra wiring needed, the
+browser did it for free. Now that the VISIBLE control is a button with its own swatch span, that same
+`.value =` write fires no event my new code could hook, so selecting a colored element would silently stop
+updating the toolbar's swatch — a real regression the dispatch never asked for, just an unavoidable
+consequence of replacing the visible control. Fixed with one import + one call
+(`syncColorToggleSwatch(primaryColor)`) right next to the existing line, reusing the SAME sync function
+`initColorControl` itself uses — not a second implementation.
+
+**Removed** (the old swatch row's full removal chain): `#editorColorSwatches` div from the HTML;
+`swatchContainer`/the inline-styled swatch-button loop from `properties-shape.js`; the file's own doc-comment
+claim about it. Nothing else referenced `#editorColorSwatches` (grepped project-wide, JS+HTML, before
+touching it) and the old swatches had no dedicated CSS class to clean up (their styling was inline
+`cssText`), so there's no CSS-side removal beyond that.
+
+**Tests** (`tests/editor-color.test.js`, rewritten in place — all other describe blocks in this file
+untouched, they test unrelated `setColor`/`_applyFillModeToSelection`/carve-neutral-guard behavior): the old
+"declares Fred's piece first" VECTOR_COLORS test updated to the new 8x4 shape (8 rows x 4 cols = 32, no
+duplicates, contains all four of Fred's exact hex values); a `mergeRecentColors` pure-logic block (dedup,
+cap, ordering); a `loadRecentColors`/`saveRecentColors`/`addRecentColor` localStorage-integration block
+(same pattern as `editor-grid.test.js`'s `loadGridPrefs` block — real localStorage in happy-dom, no mock
+needed); a DOM-wiring block driving `initShapeProperties` with a minimal toolbar fixture — 32-cell render
+count, picking a cell calls `setColor` with the exact hex and closes the popover, recent-list order after
+two picks, the recent row's absence when nothing's been picked yet, Escape-closes-and-refocuses,
+outside-click-closes, ArrowRight/ArrowDown roving focus, Enter-picks, and "Custom…" opens the native input.
+`afterEach` explicitly sweeps any leftover `.color-mosaic-popover` from `document.body` — the popover is
+NOT a child of the test's own mounted container (it's appended to `document.body` directly, matching the
+live page), so a test that ended with it still open would otherwise leak into the next test and inflate its
+cell count; caught this BEFORE it caused a flake, not after.
+
+**Non-vacuity, by mutation** (each reverted immediately after confirming red, two batches): batch 1 —
+`mergeRecentColors`'s dedup filter and cap both stripped → exactly the "moves to front" and "caps at 4"
+tests failed, nothing else. Batch 2 — six simultaneous mutations in `properties-shape.js` (dropped
+`addRecentColor` from `pick`; outside-click handler short-circuited to a no-op; `Escape`'s `toggleBtn.focus()`
+dropped; `ArrowRight` made a no-op; `ArrowDown`'s stride off-by-one; `buildGrid` skipping the grid's last
+row) → exactly the 6 matching tests failed (recent-list-order, outside-click-closes, Escape-refocuses,
+ArrowRight, ArrowDown, 32-cell-count), the other 29 (including "Enter picks" and "click picks + closes",
+which share code paths with some of the mutated lines but weren't THEMSELVES mutated) stayed green — clean
+1:1 attribution, no collateral failures either direction.
+
+`vitest run` → **382 passed (34 files)**, full suite (file/test count is higher than T27's 330/32 baseline
+because SE11c/SE11d's merges landed more test files in between — confirmed via `git log`, not just assumed
+from the number).
+
+**Live CDP verification** (repo-root `python -m http.server 8771`): toggle button renders with the correct
+initial black swatch, native input confirmed `opacity:0` (hidden) via `getComputedStyle`, old
+`#editorColorSwatches` confirmed absent from the live DOM; opened the popover — 32 cells, exactly matching
+the declared grid; picked Fred's yellow (`#f9c80e`) — popover closed, toggle swatch updated to
+`rgb(249,200,14)` (`#f9c80e`), matching value; reopened — recent row showed exactly `['#f9c80e']`; keyboard
+— initial roving focus on cell 0, ArrowDown moved to cell 4 (row 2, same column, proving the 4-column stride
+against the REAL declared grid, not a mock), Escape closed the popover and returned focus to the toggle
+button; mobile emulation (390x844, touch) — popover's `getBoundingClientRect()` stayed within
+`[0, window.innerWidth]` on both edges, cells measured 44px. Zero console errors/exceptions across the whole
+run. Screenshots (desktop + mobile, popover open) saved to the session scratchpad — both read correctly at a
+glance: clean 8x4 gradient grid, RECENT row with the yellow swatch, "Custom…" button below, mobile version
+appropriately larger without overflowing.
+
+**Process hygiene:** `tasklist` found zero leftover `chrome.exe` before this run started (clean from T27's
+own cleanup); the repo-root `http.server`'s PID (looked up via `netstat`, not a blind `pkill`) was stopped
+once verification finished.
+
+Committed by explicit path (7 files: `editor-color.js`, `properties-shape.js`, `editor-ui.js`, the HTML,
+the CSS, the test file, this WORK-LOG). Amendments polled clean both before this entry and immediately
+before the commit below — nothing pending.

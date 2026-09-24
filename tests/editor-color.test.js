@@ -20,13 +20,16 @@
  * same pattern as editor-session.test.js's setStrokeWidth tests, so a
  * revert of the actual editor.js fix fails these, not just a copy of it.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
-import { VECTOR_COLORS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
+import {
+  VECTOR_COLORS, RECENT_COLORS_CAP,
+  mergeRecentColors, loadRecentColors, saveRecentColors, addRecentColor,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js';
 import { computeSDF } from '../bspline-frame-builder/b-spline-gen/html/core/stamp/sdf.js';
 import { bakeMatrixIntoElement } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 import {
-  _applyFillModeToSelection, _currentElementColor,
+  _applyFillModeToSelection, _currentElementColor, initShapeProperties,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape.js';
 
 function mockAttrEl(type, attrs) {
@@ -70,11 +73,200 @@ function callSetColor(editor, color) {
   VectorEditor.prototype.setColor.call(editor, color);
 }
 
-describe('VECTOR_COLORS', () => {
-  it('declares Fred\'s piece first (red/yellow/navy/green) plus black and white', () => {
-    expect(VECTOR_COLORS).toEqual([
-      '#000000', '#c62828', '#f9c80e', '#1a237e', '#2e7d32', '#ffffff',
-    ]);
+describe('VECTOR_COLORS: T28\'s declared 8x4 mosaic grid, including Fred\'s piece', () => {
+  it('is 8 rows of 4 shades each — 32 swatches total', () => {
+    expect(VECTOR_COLORS).toHaveLength(8);
+    for (const row of VECTOR_COLORS) expect(row).toHaveLength(4);
+    expect(VECTOR_COLORS.flat()).toHaveLength(32);
+  });
+
+  it('contains Fred\'s exact black/red/yellow/navy somewhere in the grid', () => {
+    const flat = VECTOR_COLORS.flat();
+    expect(flat).toContain('#000000');
+    expect(flat).toContain('#c62828');
+    expect(flat).toContain('#f9c80e');
+    expect(flat).toContain('#1a237e');
+  });
+
+  it('has no duplicate swatches', () => {
+    const flat = VECTOR_COLORS.flat();
+    expect(new Set(flat).size).toBe(flat.length);
+  });
+});
+
+describe('mergeRecentColors (pure)', () => {
+  it('prepends a new color onto an empty list', () => {
+    expect(mergeRecentColors([], '#c62828')).toEqual(['#c62828']);
+  });
+
+  it('moves an already-present color to the front instead of duplicating it', () => {
+    expect(mergeRecentColors(['#c62828', '#f9c80e'], '#f9c80e')).toEqual(['#f9c80e', '#c62828']);
+  });
+
+  it(`caps at RECENT_COLORS_CAP (${RECENT_COLORS_CAP}), dropping the oldest`, () => {
+    const existing = ['#a', '#b', '#c', '#d'];
+    const merged = mergeRecentColors(existing, '#e');
+    expect(merged).toEqual(['#e', '#a', '#b', '#c']);
+    expect(merged).toHaveLength(RECENT_COLORS_CAP);
+  });
+});
+
+describe('loadRecentColors / saveRecentColors / addRecentColor (localStorage integration)', () => {
+  beforeEach(() => {
+    try { localStorage.removeItem('bsg.editorRecentColors'); } catch (_) {}
+  });
+
+  it('returns [] when nothing is stored', () => {
+    expect(loadRecentColors()).toEqual([]);
+  });
+
+  it('round-trips through save then load', () => {
+    saveRecentColors(['#c62828', '#f9c80e']);
+    expect(loadRecentColors()).toEqual(['#c62828', '#f9c80e']);
+  });
+
+  it('does not throw and falls back to [] on a corrupt stored value', () => {
+    localStorage.setItem('bsg.editorRecentColors', 'not json');
+    expect(loadRecentColors()).toEqual([]);
+  });
+
+  it('addRecentColor persists the merged list (most-recent-first) and returns it', () => {
+    addRecentColor('#c62828');
+    const after = addRecentColor('#f9c80e');
+    expect(after).toEqual(['#f9c80e', '#c62828']);
+    expect(loadRecentColors()).toEqual(['#f9c80e', '#c62828']);
+  });
+});
+
+describe('color mosaic popover (T28 — initShapeProperties wiring)', () => {
+  let container;
+
+  function mockEditor() {
+    return { _color: '#000000', setColor: vi.fn() };
+  }
+
+  beforeEach(() => {
+    try { localStorage.removeItem('bsg.editorRecentColors'); } catch (_) {}
+    container = document.createElement('div');
+    container.innerHTML = `
+      <input id="editorStrokeWidth" value="0.5">
+      <button id="editorStrokeWidthMinus"></button>
+      <button id="editorStrokeWidthPlus"></button>
+      <input type="color" id="editorColor" value="#000000">
+      <button id="editorColorToggle"><span id="editorColorToggleSwatch"></span></button>
+    `;
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+    // The popover is appended to document.body directly (escaping the
+    // toolbar's own overflow:hidden), so it's NOT a child of `container`
+    // — a test that ends with it still open would otherwise leak across
+    // tests in this file and inflate the next test's cell count.
+    document.querySelectorAll('.color-mosaic-popover').forEach((p) => p.remove());
+  });
+
+  it('opening the popover renders exactly 32 mosaic cells from VECTOR_COLORS', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    expect(document.querySelectorAll('.color-mosaic-grid .color-mosaic-cell')).toHaveLength(32);
+  });
+
+  it('picking a cell calls editor.setColor with that exact hex, and closes the popover', () => {
+    const editor = mockEditor();
+    initShapeProperties(editor);
+    document.getElementById('editorColorToggle').click();
+    const targetHex = VECTOR_COLORS[2][2]; // Yellow row's Fred shade, #f9c80e
+    const cell = document.querySelector(`.color-mosaic-cell[title="${targetHex}"]`);
+    expect(cell).toBeTruthy();
+    cell.click();
+    expect(editor.setColor).toHaveBeenCalledWith(targetHex);
+    expect(document.querySelector('.color-mosaic-popover')).toBeNull();
+  });
+
+  it('picking colors records them into the recent list, most-recent-first', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    const firstHex = VECTOR_COLORS[0][0];
+    document.querySelector(`.color-mosaic-cell[title="${firstHex}"]`).click();
+
+    document.getElementById('editorColorToggle').click(); // reopen
+    const secondHex = VECTOR_COLORS[1][0];
+    document.querySelector(`.color-mosaic-cell[title="${secondHex}"]`).click();
+
+    expect(loadRecentColors()).toEqual([secondHex, firstHex]);
+  });
+
+  it('the recent row reflects the persisted recent colors, in order, capped at 4', () => {
+    saveRecentColors(['#111111', '#222222', '#333333', '#444444']);
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    const recentCells = document.querySelectorAll('.color-mosaic-recent .color-mosaic-cell');
+    expect(Array.from(recentCells).map((c) => c.title)).toEqual(['#111111', '#222222', '#333333', '#444444']);
+  });
+
+  it('no recent row renders when nothing has been picked yet', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    expect(document.querySelector('.color-mosaic-recent')).toBeNull();
+  });
+
+  it('Escape closes the popover and returns focus to the toggle button', () => {
+    initShapeProperties(mockEditor());
+    const toggle = document.getElementById('editorColorToggle');
+    toggle.click();
+    expect(document.querySelector('.color-mosaic-popover')).toBeTruthy();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.color-mosaic-popover')).toBeNull();
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it('clicking outside the popover closes it', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    expect(document.querySelector('.color-mosaic-popover')).toBeTruthy();
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(document.querySelector('.color-mosaic-popover')).toBeNull();
+  });
+
+  it('ArrowRight moves roving focus to the next cell in the same row', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    const cells = Array.from(document.querySelectorAll('.color-mosaic-grid .color-mosaic-cell'));
+    expect(document.activeElement).toBe(cells[0]);
+    cells[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(document.activeElement).toBe(cells[1]);
+    expect(cells[1].tabIndex).toBe(0);
+    expect(cells[0].tabIndex).toBe(-1);
+  });
+
+  it('ArrowDown moves roving focus down one row (4 columns per row)', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    const cells = Array.from(document.querySelectorAll('.color-mosaic-grid .color-mosaic-cell'));
+    cells[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(cells[4]);
+  });
+
+  it('Enter on the focused cell picks it, same as a click', () => {
+    const editor = mockEditor();
+    initShapeProperties(editor);
+    document.getElementById('editorColorToggle').click();
+    const cells = document.querySelectorAll('.color-mosaic-grid .color-mosaic-cell');
+    cells[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(editor.setColor).toHaveBeenCalledWith(VECTOR_COLORS[0][0]);
+  });
+
+  it('"Custom..." closes the popover and opens the native color input', () => {
+    initShapeProperties(mockEditor());
+    document.getElementById('editorColorToggle').click();
+    const nativeInput = document.getElementById('editorColor');
+    let clicked = false;
+    nativeInput.addEventListener('click', () => { clicked = true; });
+    document.querySelector('.color-mosaic-custom').click();
+    expect(clicked).toBe(true);
+    expect(document.querySelector('.color-mosaic-popover')).toBeNull();
   });
 });
 

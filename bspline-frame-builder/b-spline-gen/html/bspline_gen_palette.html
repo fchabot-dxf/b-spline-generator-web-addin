@@ -1273,18 +1273,24 @@
         </div>
 
         <!--
-          Color (SE9): editor-display only, never a carve input (the stamp
-          rasterizer reads alpha, not color — see NEXT-SESSION.md ground
-          truth). One picker + a preset swatch row built from VECTOR_COLORS
-          at bind time (properties-shape.js), same "no hand-typed list to
-          drift" convention as #editorGridSpacing below.
+          Color (SE9 / T28): editor-display only, never a carve input (the
+          stamp rasterizer reads alpha, not color — see NEXT-SESSION.md
+          ground truth). One toggle button opens a popover mosaic built
+          from VECTOR_COLORS (properties-shape.js) at bind time, same "no
+          hand-typed list to drift" convention as #editorGridSpacing below.
+          #editorColor (native color input) stays in the DOM, visually
+          hidden — it's the "custom..." picker and the selection-readback
+          target editor-ui.js already writes to.
         -->
         <div id="editorColorGroup" style="display:flex; align-items:center; gap:6px;">
           <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
           <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Color</span>
-          <input type="color" id="editorColor" value="#000000" title="Element color"
-                 style="width:24px; height:24px; padding:0; border:1px solid #ccc; border-radius:3px; background:none; cursor:pointer;">
-          <div id="editorColorSwatches" role="group" style="display:flex; gap:3px;"></div>
+          <button type="button" id="editorColorToggle" class="color-toggle-btn" title="Element color" aria-haspopup="true" aria-expanded="false">
+            <span id="editorColorToggleSwatch" class="color-toggle-swatch"></span>
+            <span class="color-toggle-caret">&#9662;</span>
+          </button>
+          <input type="color" id="editorColor" value="#000000" title="Custom color"
+                 style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; border:0; opacity:0; overflow:hidden; pointer-events:none;">
         </div>
 
         <!--
