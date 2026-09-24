@@ -1,32 +1,26 @@
-# LANE B — T20: SE8c (part 1) — dead-code chain removals + debug/font declarations, OUTSIDE seat A's files
+# LANE B — T21: build SE7b slice 3 — detach-on-drag, Detach all, the Pattern panel, restore active layer
 
-**Seat B · epoch 1 · T20.** Worktree, branch `lane-b`. Slice 2 (9ec4635) ACCEPTED, held on lane-b until SE7s passes
-(slice 3's drag-end detach hook lives in seat A's file). Note for slice 3 later: generatePattern leaves the ACTIVE layer
-on Nodes — restore the user's previous active layer (record it now in WORK-LOG, fix in slice 3).
-**Off-limits (seat A, SE7s):** `editor/editor-interaction.js`, `editor/editor-transform-handles.js`, `editor/editor.js`,
-any new `editor/handle-edit.js`. Everything else from your own audit's SA-DEAD-* / SA-TEXT-5/6/7 list is yours.
-One commit by path (or two if the font declaration is big — say so).
+**Seat B · epoch 1 · T21.** Worktree, branch `lane-b` (merged with main 215 tests — SE7s is in: handle drags now go
+through HANDLE_EDIT; find where they converge in `handleEnd` before hooking). Design §6 slice 3, with one change:
+**the panel lives INSIDE the SVG editor modal**, not in the sidebar: a "Pattern" section in the modal's right-hand
+panel above Layers, shown when the Lattice tool (K) is active (same visibility mechanism as the Font group), so it sits
+next to the canvas it acts on. Seat A is on SE8d in `editor/editor-io.js`, `editor/editor.js`, `editor/editor-coords.js`
+— do not touch those. One commit by path.
 
-## Do — each removal is a CHAIN (door → handler → state → CSS → test), accounted for in WORK-LOG
-- SA-DEAD-1: the 8 hand-rolled `window.__editorDebug === 'X'` gates → the declared `dbg()` / `isDebugEnabled()`
-  (`core/debug.js`); add their categories to that gate's doc list. SKIP any site inside the off-limits files and
-  list it as a leftover.
-- SA-DEAD-2 `updateNodeCountUI` (zero callers) — remove, plus `#editorNodeCountUI` markup and the instance wiring IF
-  the wiring is outside `editor.js`; otherwise list the `editor.js` link as a leftover for seat A.
-- SA-DEAD-3 doorless Smoothness ids in `properties-expand.js` — remove the dead wiring (Fred can ask for the control
-  back later; say so in the log).
-- SA-DEAD-4 `editorSelectPanel`, SA-DEAD-5 `editorSidebarToggle`, SA-DEAD-6 stale shim comments, SA-DEAD-7 redundant
-  `setMode` branches, SA-DEAD-8 empty `if` (all in `editor-ui.js` / `editor-controls.js` / `layers.js` / the palette).
-- SA-TEXT-5 stale doc comment; SA-TEXT-7 `TEXT-DBG` default OFF (match its own comment).
-- SA-TEXT-6: ONE font list — `editor-fonts.js` is the declared source; `core/stamp/render-svg.js` imports it, and the
-  palette `<select>` is populated from it at bind time (like the grid spacing select). Test: every font the select
-  offers is known to the rasterizer.
-
+## Do
+1. `handleEnd` hook (§2): strip `data-lattice-gen` from every element the completed drag moved (node drag, translate,
+   transform handle), inside the same `if (editor._dragMoved)` before `pushState()` — one undo step reverts both.
+2. "Detach all" (declared once, wired like `editorClear` in `tools/action-tools.js`): strips the tag from every owned
+   element of the current pattern; one undo step; nothing moves or is deleted.
+3. Panel per §5's mockup (390 px first, no hover-only control): spacing select derived from `GRID_SPACINGS`, rails
+   every/offset, ties density / span min-max / **anchor rails|free** (Fred hasn't answered — default rails),
+   nodes ends/crossings, seed + reroll, Generate/Regenerate (label from whether `PATTERN.id` exists), Detach all.
+   Values bind to `editor._latticePattern` (restored by `open()` from `data-lattice-pattern`), defaults from
+   `PATTERN_DEFAULTS`. NEW module for the wiring (e.g. `editor/properties-lattice.js`, matching `properties-*.js`).
+4. `generatePattern` restores the user's previously active layer at the end (your slice-2 note).
 ## Verify
-`npx vitest run` green (count); greps: `__editorDebug ===` → only leftover sites in off-limits files; `updateNodeCountUI`
-→ 0 or the listed editor.js leftover; font names hand-typed in only one file.
-
+Your §6 slice-3 list + restore-active-layer test. `npx vitest run` green (count). Live 390 px capture is the advisor's.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T20: SE8c part 1 — dead chains removed, dbg gates declared, one font list — <sha>, N files, vitest N; leftovers: …"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T21: SE7b slice 3 — detach hook, Detach all, Pattern panel in the modal, active layer restored — <sha>, N files, vitest N"`
 and stop.
