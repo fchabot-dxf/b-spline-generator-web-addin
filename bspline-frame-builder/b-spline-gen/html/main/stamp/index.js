@@ -19,6 +19,7 @@
 import { createStampCtx } from './_shared.js';
 import { initDepth } from './depth.js';
 import { initProfileControl } from './profile-control.js';
+import { initFusionGeometry } from './fusion-geometry.js';
 import { initLayer } from './layer.js';
 import { initSvgSource } from './svg-source.js';
 import { initBlur } from './blur.js';
@@ -43,6 +44,7 @@ export function initStampPanel(preview) {
   // Profile-control before layer so the dropdown is populated when the
   // initial active-layer sync fires.
   initProfileControl(ctx);
+  initFusionGeometry(ctx);
 
   // Layer is the orchestrator: its change handler calls
   // ctx.broadcastSyncFromLayer to push the new layer's values to every
