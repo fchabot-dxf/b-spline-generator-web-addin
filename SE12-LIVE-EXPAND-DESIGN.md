@@ -281,6 +281,15 @@ exercises those paths yet (lattice lines are round-cap only; no stroked circles 
 "general offsetter" shape in item 1 so the function is designed to extend cleanly, without building the
 extra branches before anything calls them.
 
+## Scope update (Fred 2026-09-24): "it should work on shapes in priority, but eventually text"
+Supersedes the STOP conditions below for closed shapes and text. Order: lines (Slice 1) → SHAPES (next) → text.
+Exactness is limited by the math, not the choice: an offset of lines and circular arcs is still lines and circular arcs
+(exact: line, polyline/polygon with round joins, rect, rounded rect, circle → annulus, paths made of L/A). An offset of an
+ellipse or a Bezier curve is NOT an ellipse or a Bezier, so those get a tolerance-bounded curve fit (declared tolerance),
+while their straight parts stay straight and their circular parts stay true arcs. Filled shapes (and filled text) need no
+offset: the shape's own edge IS its outline, already exact. Stroked text = glyph curves offset → the fitted case.
+Engine is a per-element-kind table (OUTLINE_KINDS) so each kind plugs in without touching the preview/export.
+
 ## STOP conditions (scope boundaries for this design, not promises of a later slice)
 
 - **Text**: out of scope. Text's "live editability" story (editing content, font, glyph layout) is
