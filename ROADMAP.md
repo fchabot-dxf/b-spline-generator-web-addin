@@ -627,6 +627,9 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   drag) + `PERF` debug category for per-step timings; the editor works with fingers (Pointer Events, INPUT_PROFILE,
   pinch/pan, offset touch marker, on-screen Copy/Paste/Select all/Cancel/Lock). In flight: SE8c part 2 (seat B).
 - **Known flake (3 occurrences, 2026-09-23/24):** the FIRST `npx vitest run` after a large file change sometimes
-  reports every file failed with "no tests" and no error text; an immediate rerun on the unchanged tree passes. A
-  vitest/Windows cold-start artefact, not a code signal — always rerun once before treating a whole-suite failure as
-  real. (Worth a look if it starts happening on unchanged trees.)
+  reports every file failed with "no tests" and no error text; an immediate rerun on the unchanged tree passes (4th time 2026-09-24: TWO consecutive failed runs right after a
+  merge, then clean — 281 green). A vitest/Windows cold-start artefact (likely fresh-file scanning/locking), not a code signal — rerun (or `--reporter=verbose`) before treating a whole-suite
+  failure as real; a real failure names a test, this one names none. (Worth a look if it starts happening on unchanged trees.)
+- **SE8c part 2 (de00376) merged → 281 tests.** DRAW_SHAPES, TOOLBAR_GROUPS, ELEMENT_CAPS declared; remaining
+  tolerances named. **The SVG editor audit is closed** except SE8b-2's live tuning (needs Fusion). Both seats idle;
+  open rulings for Fred: tie anchor default, slider undo (UX-UNDO → then SE5c), Fusion bridge for deploy + PERF.
