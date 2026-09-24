@@ -1120,3 +1120,55 @@ ROUNDTRIP/MOBILE (47 total ids, matches the 6 agents' combined finding count exa
 `git status --short` → `AUDIT-SVG-EDITOR.md` (new) only; no `editor/**` files touched, confirmed.
 
 No gate hit — pure documentation deliverable, no product code or tests touched.
+
+---
+
+## Lane B — Turn 41 — T13: SE5 design — one home for per-layer tooling (fixes SA-LAYER-1/2/3) — DONE, plan only
+
+New `SE5-TOOLING-STORE-DESIGN.md` (286 lines), same section layout as SE4-MIRROR-RETIREMENT-DESIGN.md
+per the dispatch. Read-only turn — no product code touched, seat A owns `editor/` for SE8a.
+
+**Went beyond re-stating my own T12 findings — traced the actual mechanism live, and found the real
+root cause of SA-LAYER-1 finding #2 wasn't in the audit:** read `main/stamp/layer.js:91-102,153-184`
+directly and found the Vector Stamping panel's ONE "Enabled" checkbox has its own comment admitting it:
+once the editor is loaded (i.e. always, in normal use), the checkbox reads/writes `editor._layers[idx]
+.visible` exclusively, through `setLayerVisible()` — `P.stampLayers[idx].enabled` is provably dead code
+in that path, touched only by Browse-import-success and sidebar-Clear as narrow accidents, never by the
+control a user actually sees. This reframes `enabled` from "a second flag that needs syncing" to "a
+fossil with no live UI writer, that a few readers (export-flow, cloud-project-manager, isFilletActive)
+still consult instead of the `visible` field the checkbox actually controls." Changes the fix from
+"sync two flags" to "delete one and repoint 3 readers at `visible`" — materially simpler, and I said so
+explicitly in the doc rather than let the design inherit the audit's framing uncritically.
+
+**Also found, by reading rather than assuming from the audit's list:** `main/stamp/_dom-binders.js`'s
+`bindLayerOnlyNumber`/`bindLayerOnlyCheckbox` (the transform-field sliders: tx/ty/rotation/scale/
+mirrorX/mirrorY) already write `editor._layers[P.activeLayerIdx]` unconditionally, no `P.stampLayers`
+gate — proving the "write past layer 3" bug (SA-LAYER-2) isn't structural, it's an inconsistency
+between two sibling binder helpers in the same file, one of which (`updateP`'s `layerSpecific` block)
+never got the same treatment. Used this as the concrete "already-correct pattern to copy" in §3/slice
+(a) instead of inventing a new pattern.
+
+**Checked the existing MIGRATIONS entry before proposing a new one** (`main/app-init.js:56-113`,
+`legacy-stamp-svg`) — its `toolingFields` list (14 fields, `:90-94`) already does almost exactly what
+SE5's migration would need; proposed extending it with one field (`enabled`→`visible`) rather than
+declaring a second, parallel migration — smaller diff, same idempotency guarantee the existing one
+already has.
+
+**Section 6 (outside b-spline-gen):** grepped the whole repo — zero `stampLayers` hits in any `.py`
+file, no presets-worker directory exists in this repo, cloud storage confirmed opaque JSON (no
+field-level schema on the backend side). Whole change is contained to `b-spline-gen/html` + `tests/`.
+
+**Flagged, not resolved (per the dispatch's own "say why" instruction, mirroring SE4c's pattern):**
+whether a tooling-slider edit should be undoable via the global Ctrl+Z or only the editor's own undo
+stack — recommended "editor-only, consistent with the SE4c heightfield-only ruling" but left it as an
+explicit product decision for Fred/advisor before slice (c), not decided unilaterally.
+
+**Inventory grep count quoted in the doc, verified live:** `grep -rn "stampLayers" {core,main,editor}
+--include=*.js` → 41; same under `tests/` → 48; 89 total — ran both greps myself before writing the
+Appendix, not copied from memory of T12's numbers (T12 predates several of these files' current state).
+
+**Verify:** `git status --short` → `SE5-TOOLING-STORE-DESIGN.md` (new) only; grep counts in the doc's
+Appendix match what I ran; inventory table has one row per distinct reader/writer site found, 3 slices
+each with predicted files + a verify line, STOP conditions section present.
+
+No gate hit — design-doc-only turn, no product code or tests touched.
