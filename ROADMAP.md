@@ -721,3 +721,6 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **Fred blocked (2026-09-24): generated lattice pieces can't be moved** — other layers are unclickable (inactive-layer
   pointer-events) and Generate restores the previous active layer. Fix queued as an SE7h add-on: Select/Nodes click any
   shown element and activate its layer; drawing modes stay on the active layer.
+- **Fred 2026-09-24: all lattice geometry on ONE layer** ('Lattice', created on first Generate, made active after
+  Generate so pieces are immediately movable). Per-kind colors stay (element color). Old 3-layer patterns migrate on
+  next Regenerate. Queued as SE7i after SE7h; width source (toolbar STROKE vs a Widths row) awaiting Fred.
