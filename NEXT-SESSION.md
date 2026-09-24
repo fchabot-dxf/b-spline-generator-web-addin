@@ -1,4 +1,4 @@
-# NEXT — SE7a: Lattice tool — rails, ties and nodes on the grid, all ordinary SVG elements
+# NEXT — SE7a: Lattice tool — rails and ties on the grid; dots are the Circle tool's job (AMENDED 2026-09-23)
 
 **Ball: worker (seat A) · epoch 1 · SE7a.** Files: NEW `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js`
 (pure lattice math + the emit helpers), `editor/editor-interaction.js` (one new mode handler), `editor/tools/mode-tools.js`,
@@ -8,6 +8,8 @@ ignored) — if your window was open before today, restart it once so prompts st
 
 ## What Fred wants (photo: a relief with red horizontal rails, yellow vertical ties spanning 1–3 rows, dark nodes at tie
 ends and crossings). Everything the tool emits must stay EDITABLE with the existing tools, and carve like anything else.
+**Fred's ruling (amend):** the lattice tool does NOT place nodes by click — "isn't Circle enough?" Manual dots are the
+Circle tool's job. The lattice tool = rails + ties + auto-nodes. A bare click in lattice mode does nothing.
 
 ## Ground truth
 - Grid (SE6): `editor._grid = {visible, snap, spacing}` (inches), `snapToGrid`, `applyGrid`, `GRID_SPACINGS`
@@ -36,8 +38,9 @@ ends and crossings). Everything the tool emits must stay EDITABLE with the exist
 2. **Mode `lattice`** in the handler table: `start` snaps to the lattice ALWAYS (independent of the SNAP toggle —
    the lattice tool is the grid; use `toLattice/fromLattice` directly, not `_snap`), remembers `a`; `update` draws a
    preview line from `a` to `constrain(a, cursor)` (reuse the drawing-preview element the other modes use);
-   `end`: `classifyDrag` → node: toggle (`findNodeAt` ? `removeNode` : `emitNode`); rail/tie: `emitSegment`, then if
-   `editor._lattice.autoNodes` → `emitNode` at each of `latticeCrossings(newSeg, existing lattice segments)`.
+   `end`: `classifyDrag` → `'node'` (no movement) → do NOTHING (no element, no pushState); rail/tie: `emitSegment`,
+   then if `editor._lattice.autoNodes` → `emitNode` at each of `latticeCrossings(newSeg, existing lattice segments)`.
+   Drop `removeNode` from the leaf (Delete/Eraser already remove circles); keep `findNodeAt` for the dedupe.
    ONE `pushState()` + ONE `_onChange()` per gesture (not per emitted element) — check how makeDrawingHandler batches.
    `editor._lattice = { ...LATTICE_DEFAULTS }` in the constructor. If the grid is not visible when the tool is
    picked, turn it on (`setGrid({visible:true})`) — the lattice is meaningless invisible.
@@ -45,7 +48,12 @@ ends and crossings). Everything the tool emits must stay EDITABLE with the exist
    rail, along a column = tie, click = node" data-key="k">` (icon: a small ⌗). Toolbar: an `AUTO NODES` toggle button
    in the GRID group (same `.editor-fillmode-btn` class, `.active` = on) that flips `editor._lattice.autoNodes`; show
    it only in lattice mode via `updateToolbarVisibility` like the Font group.
-4. **Node-tool snap (SE6 follow-up a):** route the node-drag pointer read through `editor._snap(pt, e.altKey)` so
+4. **Circle tool = the node tool (amend):** in circle mode with SNAP on, snap the CENTER only — the drag point that
+   sets the radius must use the UNSNAPPED pointer (otherwise the smallest circle is one grid cell). And a click with
+   no drag (start == end within `_getDynamicTolerance(3)`) emits a default dot through the SAME `emitNode` the
+   lattice auto-nodes use (r = `nodeRadiusFactor × spacing` when the grid is on, else `0.09`" — declare
+   `DEFAULT_NODE_RADIUS_IN` next to `LATTICE_DEFAULTS`). One emitter, two callers, identical elements.
+5. **Node-tool snap (SE6 follow-up a):** route the node-drag pointer read through `editor._snap(pt, e.altKey)` so
    node edits honour SNAP like everything else. Transform handles stay as they are (scaling on-grid is a different
    feature; say so in WORK-LOG).
 
@@ -57,10 +65,11 @@ ends and crossings). Everything the tool emits must stay EDITABLE with the exist
 - Greps: `data-key=` → 11; `data-lattice` → only in editor-lattice.js + the handler; `modeHandlers` has `lattice:`.
 - Serialization: lattice elements are plain `<line>/<circle>` with an extra data attribute — confirm `serializeEditor`
   keeps data-* (it keeps `data-layer`) and that `getLayerSvg` still rasterizes them (a `<circle>` with fill → a dot).
-- Live (advisor): draw two rails, three ties, watch auto nodes appear at ends and crossings; click a node → gone;
-  select + move a tie with SNAP on → lands on lattice points; Apply → three kinds carve.
+- Live (advisor): draw two rails, three ties, watch auto nodes appear at ends and crossings; Circle tool + SNAP: a
+  click drops a default dot on a lattice point, a drag makes a circle centred on one with a free radius; select +
+  move a tie with SNAP on → lands on lattice points; Apply → three kinds carve.
 
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7a: lattice mode (rail/tie/node), auto-nodes, node-tool snap — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7a: lattice mode (rail/tie), auto-nodes, Circle-as-node-tool, node-tool snap — <sha>, N files, vitest N"`
 and stop.
