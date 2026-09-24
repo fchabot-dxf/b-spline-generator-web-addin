@@ -1,24 +1,26 @@
-# LANE B — T23: SE8c part 2 — the four hand-rolled rule sets become declared tables (SA-DECL-1..4)
+# LANE B — T25: does pinch-zoom really work on a phone? Prove it, fix it if not (audit mobile, SE7m)
 
-**Seat B · epoch 1 · T23.** Worktree, branch `lane-b`. SE7m (c42dfea) ACCEPTED, held until seat A passes SE8b-2
-(seat A: `main/app-init.js`, `editor/editor.js`, `core/debug.js` — off-limits). Source: your audit SA-DECL-1..4.
-One commit by path (two if big — say so). No behaviour change: every table must reproduce today's behaviour exactly.
+**Seat B · epoch 2 · T25.** T24 is on HOLD by Fred's call (pattern panel) — leave its stash alone. This task is ONLY the
+pinch question from T24 item 5, plus one non-pattern phone check. Files: `editor/editor-input.js`,
+`editor/editor-interaction.js` (pointer path only), `styles/editor.css` if needed, `scripts/smoke-editor.mjs`, tests
+(+ WORK-LOG-lane-b.md). Seat A is on SE8b-3 (perf mode in smoke-editor.mjs + change pipeline) — you both touch
+`scripts/smoke-editor.mjs`: YOU own the `mobile` mode, seat A owns a new `perf` mode; keep your edits inside the mobile
+branch. One commit by path.
 
-## Do — one table each, next to the tables that already exist (MODE_HINTS, SNAP_POLICY, HANDLE_EDIT, INPUT_PROFILE)
-1. **SA-DECL-1:** `createDrawingShape` / `updateDrawingShape` per-tool if/else (`editor-interaction.js`) →
-   `DRAW_SHAPES = { line:{create, update}, rect:{…}, circle:{…}, draw:{…} }`; the handlers read it.
-2. **SA-DECL-2:** toolbar-group visibility per mode (`editor-ui.js` `updateToolbarVisibility`, plus SE7a's lattice
-   toggle and SE7b's Pattern panel and SE7m's touch group) → `TOOLBAR_GROUPS = { mode: [groupIds…] }` (or
-   `{groupId: predicate}` if a group depends on selection, e.g. Font for a selected text) — ONE function applies it.
-3. **SA-DECL-3:** any hit-tolerance literal left after SE7m's INPUT_PROFILE — list what remains; each becomes a named
-   INPUT_PROFILE field or a named constant with a reason.
-4. **SA-DECL-4:** element-kind capabilities repeated as `.type ===` branches (`properties-shape.js` fillable,
-   `editor-interaction.js`, `editor-hit.js` node-editable) → `ELEMENT_CAPS = { line:{fill:false, nodes:true, …}, … }`
-   next to HANDLE_EDIT (same keys — consider folding HANDLE_EDIT into it as one field; say which you chose and why).
-## Verify
-All existing tests green, unchanged; new tests only for the table lookups. Greps: `.type === '` branches remaining in
-the three files — listed in WORK-LOG with a reason each.
+## Ground truth
+`node scripts/smoke-editor.mjs <out> mobile` (390×844, touch emulation) did a two-finger spread with
+`Input.dispatchTouchEvent`; `svgEditor._view.zoom` stayed 1. Either (a) real touches wouldn't zoom either — a bug in the
+SE7m pointer path (pointer map, `pointerType`, `touch-action` on `#editorSVGContainer`, setPointerCapture), or (b) the
+emulated input doesn't produce the pointer events the editor listens for.
+## Do
+1. Instrument (temporarily) and find out which: log `pointerdown`/`pointermove` with `pointerId` + `pointerType` during
+   the emulated pinch. Also try `Input.dispatchTouchEvent` with `Emulation.setEmitTouchEventsForMouse` / proper
+   `radiusX/Y` + `force`, and `Input.synthesizePinchGesture` (CDP) — the last one is Chrome's own pinch synthesis.
+2. (a) → fix it in the pointer path, with a unit test of the state machine. (b) → change the smoke script to the input
+   method that produces real pointer events and prove `zoom > 1`.
+3. While at 390 px with NO pattern panel open: check the Layers panel and the canvas share the screen sanely (audit
+   SA-MOBILE-6); fix only if broken, CSS only. Screenshot paths in WORK-LOG.
 ## When done
-Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T23: SE8c part 2 — DRAW_SHAPES, TOOLBAR_GROUPS, tolerances, ELEMENT_CAPS — <sha>, vitest N"`
+Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T25: pinch — <real bug fixed | emulation only>, zoom after pinch = N, layers@390 <ok|fixed> — <sha>"`
 and stop.
