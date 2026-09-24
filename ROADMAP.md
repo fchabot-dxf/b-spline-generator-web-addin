@@ -580,3 +580,9 @@ cubics, A→C before baking, stroke width/color undo + change, Cancel teardown, 
 (seat B, dispatched) — tooling single store on the editor layer (SA-LAYER-1/2/3). Then SE8b (hit-test/expand
 coordinate spaces SA-COORD-3/4, `_onChange` per-move throttle SA-UNDO-1), SE7s, SE7m (+ all SA-MOBILE), SE8c
 declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
+- **SE5 design approved (be5dc37, seat B T13):** editor layer = the only tooling home; `enabled` merges into the
+  layer's `visible` (hidden layers are already never carved — audit SA-ROUNDTRIP-4); fixed 3-entry `P.stampLayers`
+  narrowed to a pre-load display fallback. **Advisor ruling on its open question (reversible, like SE4c):** a
+  tooling-slider change is undone through the EDITOR's undo stack; global Ctrl+Z stays heightfield-only. Slices:
+  (a) updateP / isFilletActive / Browse+Clear writers — dispatched to seat B on lane-b (no file overlap with SE8a);
+  (b) export-flow + cloud-project-manager (fixes "only layer 1 carves"); (c) enabled deletion + migration + undo.
