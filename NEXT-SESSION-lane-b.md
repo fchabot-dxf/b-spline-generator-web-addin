@@ -1,27 +1,26 @@
-# LANE B — T14: build SE5 slice (a) of your own design — PRODUCT CODE this time
+# LANE B — T15: build SE5 slice (b) — export-flow + cloud-project-manager on editor layers (fixes "only layer 1 carves")
 
-**Seat B · epoch 1 · T14.** Worktree, branch `lane-b`. Design: `SE5-TOOLING-STORE-DESIGN.md` (be5dc37), approved as
-written; §3's open question is RULED by the advisor: tooling-slider undo lives on the EDITOR's undo stack, global
-Ctrl+Z stays heightfield-only (only matters for slice c — not this turn).
-Files (exactly your slice a): `core/state.js`, `main/stamp/_shared.js`, `main/stamp/svg-source.js`, + a test
-(+ WORK-LOG-lane-b.md). **Seat A is editing `editor/` for SE8a on main (path-layout, editor-hit, transform-handles,
-editor.js, action-tools, editor-io, text-session) — do NOT touch any file under `editor/`.** If slice (a) turns out to
-need one, stop and say so in the pass note instead of editing it. One commit by path, predicted 4 files.
+**Seat B · epoch 1 · T15.** Worktree, branch `lane-b` (merged with main). T14 / SE5a (527ade1) reviewed and ACCEPTED,
+but it is **held on lane-b, not merged**: on its own it regresses Browse-into-layer-2/3 export (the auto-enable now
+writes `visible`, export still reads `P.stampLayers[idx].enabled` — your own note). Slices (a)+(b) merge to main
+together. Files: `main/export-flow.js`, `main/cloud-project-manager.js`, `tests/export-flow.test.js` (+ WORK-LOG).
+Seat A is on SE8a in `editor/` — do not touch `editor/`. One commit by path.
 
-## Do slice (a)
-- `updateP` `layerSpecific`: drop the `P.stampLayers` write and its gate; keep only the unconditional write to
-  `editor._layers[P.activeLayerIdx][field]` (mirror `bindLayerOnlyNumber`'s pattern — cite it).
-- `isFilletActive()`: loop `editor._layers` with `visible !== false`, same shape as `activeLayer()` above it.
-- `svg-source.js` Browse-import + sidebar Clear: `setStampLayerEnabled(...)` → `setLayerVisible(editor, layer.id,
-  true|false)` (import from `editor/layers.js` — importing is fine, editing it is not).
-- Test: a 4-layer editor mock, depth slider on layer 4 (`P.stampLayers[3]` absent) → `editor._layers[3].depth`
-  updated; `isFilletActive` true when only layer 4 has a fillet and is visible, false when hidden.
+## Do slice (b) exactly as your design §5(b) + Risks says
+- `_stampExportCandidates` / `isCarvingLayer` / `hasShippableSvg`: every tooling field (enabled→`visible !== false`,
+  depth, profile, …) from `editor._layers[idx]`; content as today (`_mask`, `getLayerSvg`). No `P.stampLayers` read.
+- `cloud-project-manager.js`: the `.enabled` read your inventory found → editor layer `visible`.
+- `tests/export-flow.test.js`: rewrite the WHOLE file's fixtures to the single-store shape in this commit (your own
+  STOP condition — no partial rewrite). Must include: a 4-layer editor with layer 4 visible + content → exported;
+  layer 2 drawn directly (no Browse, no `P.stampLayers` entry touched) → exported; a hidden layer → not exported;
+  reorder then export → tooling follows the layer object, not the index.
+- Browse-into-layer-2 end to end: import → `visible` true → counts as exportable (the regression SE5a opened).
 
 ## Verify
-`npx vitest run` green (count in WORK-LOG); `node --check` the 3 modules; `git show --stat HEAD` → 4 files + log.
-Live proof is the advisor's.
+`npx vitest run` green (count); greps: `stampLayers` in `main/export-flow.js` → 0; `.enabled` in
+cloud-project-manager.js → 0 (or a named survivor with its reason). `git show --stat HEAD` → ≤ 4 files + log.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T14: SE5a — updateP/isFilletActive/Browse+Clear on editor layers — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T15: SE5b — export-flow + cloud PM on editor layers — <sha>, N files, vitest N"`
 and stop.
