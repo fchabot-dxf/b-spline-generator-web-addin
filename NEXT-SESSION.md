@@ -1,28 +1,32 @@
-# NEXT — SE8b-2: measure the drag pipeline, and stop persisting on every frame
+# NEXT — SE7c: generated and hand-drawn lattices look like the piece — declared widths, inset from the edge
 
-**Ball: worker (seat A) · epoch 1 · SE8b-2.** SE8e accepted (00e21a9). Seat B is on SE7m (editor-interaction.js,
-editor-transform-handles.js, editor-hit.js, editor-grid.js, editor-ui.js, palette modal markup, styles/) — not yours.
-Your files: `main/app-init.js` (the editor `onChange`), `editor/editor.js` (`_notifyChange`), `core/debug.js` (one
-category), tests (+ WORK-LOG). One commit by path.
+**Ball: worker (seat A) · epoch 2 · SE7c.** First task for this seat after the reboot. Files: `editor/editor-lattice.js`,
+`editor/editor-lattice-pattern.js`, tests (+ WORK-LOG). Seat B is on the Pattern panel layout + pinch (palette markup,
+`styles/editor.css`, `editor/properties-lattice.js`, `editor/editor-input.js`, `editor/editor-interaction.js`) — not yours.
+One commit by path.
 
-## Ground truth
-SE8b's `_notifyChange('live')` caps the fan-out at one `_onChange` per animation frame, but `_onChange` is still the
-whole pipeline (`main/app-init.js` initSvgEditor): `saveForRasterization()` (serialize + font embedding) →
-`P.editorSvg = …` → `saveLastSession()` (localStorage write) → `refreshAllStampMasks()` (rasterize every layer → masks
-→ rebuild the heightfield + mesh). Nobody has measured which step costs what; the advisor can't until Fusion's bridge
-is back, so this turn builds the measurement and makes only the change that is right regardless of numbers.
-## Build
-1. **Pass the kind through:** `_onChange(kind)` receives `'live' | 'commit'` from `_notifyChange` (default `'commit'`
-   for any other caller). Declare in ONE place what each kind runs: `CHANGE_PIPELINE = { live: ['serialize',
-   'remask'], commit: ['serialize', 'persist', 'remask'] }` — `persist` (`saveLastSession`) never runs during a drag.
-2. **Measure:** a `PERF` debug category in `core/debug.js` (off by default); when on, each pipeline step logs its
-   duration via `fusLog('[PERF] live serialize 3.1ms …')` plus a per-frame total — so the advisor can switch it on in
-   the add-in or the site console and read real numbers.
-3. Nothing else changes behaviour: if the table says a step runs, it runs exactly as today.
+## Ground truth (advisor, live site 3a99ef8, headless Chrome — ROADMAP "Live browser test 2026-09-24")
+A first rail reads `x1=0 y1=0 x2=7 y2=0 stroke-width=0.5`; a node `cx=0 cy=2 r=0.05`; board 7×9, editor stroke 0.5.
+Rails every 2 rows at 0.25" spacing = 0.5" apart with a 0.5" stroke → neighbouring rails touch, the pattern is one
+mass. Nodes are 10× thinner than the lines. Rails/nodes on the board edge are cut in half. `emitSegment` uses
+`editor._strokeWidth` for BOTH the generator and the hand-drawn Lattice tool.
+Tool: `node scripts/smoke-editor.mjs <outDir> desktop` (headless Chrome, no deps) prints these probes + a screenshot
+— after you push, it runs against the live site; for local checks pass `http://localhost:…` as the 3rd arg if you
+serve the html folder (e.g. `npx http-server bspline-frame-builder/b-spline-gen/html -p 8765`).
+
+## Build — declare the proportions once, relative to spacing
+- `LATTICE_STYLE = { rail: { widthFactor: 0.28 }, tie: { widthFactor: 0.22 }, node: { radiusFactor: 0.30 } }` (× grid
+  spacing; nodes visibly larger than the lines they sit on, as in the photo). `emitSegment` / `emitNode` take their
+  width/radius from it (via the kind), NOT from `editor._strokeWidth`; the hand-drawn Lattice tool gets the same
+  proportions. Remove `LATTICE_DEFAULTS.nodeRadiusFactor` if LATTICE_STYLE supersedes it (one source).
+- Extent inset: `PATTERN.margin` (in lattice cells, default 1) — `'board'` extent becomes `[margin .. last-margin]` on
+  both axes, so nothing sits on the edge.
+- Keep existing documents working: generated elements store their own stroke-width attr, so old saves render as before.
 ## Verify
-Tests: a 'live' change never calls `saveLastSession`; a 'commit' calls it exactly once; the PERF gate off → no timing
-logs. `npx vitest run` → 236 + new, green.
+Tests: rail stroke-width = 0.28 × spacing; node r = 0.30 × spacing; with margin 1 no segment/node coordinate is 0 or
+the board size; hand-drawn lattice rail uses the same width. `npx vitest run` green (rerun once if the whole suite reports
+"no tests"). After pushing, run the smoke script and look at the screenshot — the rails/ties/nodes must be distinct.
 ## When done
-Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8b-2: CHANGE_PIPELINE live/commit (no persist during drag), PERF timing gate — <sha>, N files, vitest N"`
+Append WORK-LOG, commit by path, push, then:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7c: LATTICE_STYLE widths + margin — <sha>, N files, vitest N, smoke screenshot: <path>"`
 and stop.
