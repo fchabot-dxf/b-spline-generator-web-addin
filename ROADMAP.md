@@ -676,3 +676,8 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   (new `carve`, default true, migrated from visible) — amends T26 (seat B). **SE11 (seat A, after SE9):** 3D preview
   overlay — the SHOWN layers' vectors drawn as lines on the ground plane under the model (core/preview), each element in
   its SE9 color, updated on layer/content change, a preview toggle.
+- **SE11 REDEFINED (Fred: "can the colored vectors drape over the mesh… not all the time… a tag for 3D is good"):** no
+  ground-plane overlay. SE11 = drape: render the colored vectors of layers tagged `drape3d` (and shown) into a canvas
+  texture mapped onto the model's TOP surface (planar UV — the top is a heightfield seen from above), so lines follow the
+  relief exactly; off when no layer is tagged. The tag lives in the SVG editor's Layers panel; the sidebar shows a badge
+  only (T26 amend 2, seat B). Seat A after SE9.
