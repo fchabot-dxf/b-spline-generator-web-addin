@@ -421,6 +421,15 @@ export class VectorEditor {
     _updateHandles() { return updateHandles(this); }
     _updateSelectionHighlight() { return updateSelectionHighlight(this); }
     _select(el) { return select(this, el); }
+    // SE8f: imported from editor-ui.js since the multi-selection refactor
+    // (see this constructor's own "_selectAdd / _selectMany" comments,
+    // above) but never actually delegated — Ctrl+A (guarded, silently
+    // no-op'd), Shift-click add (unguarded, threw), paste (guarded), and
+    // marquee-finalize (unguarded, threw) all call editor._selectMany/
+    // _selectAdd assuming they exist. Found while measuring the drag
+    // pipeline (SE8b-3) trying to select more than one element.
+    _selectAdd(el) { return selectAdd(this, el); }
+    _selectMany(els) { return selectMany(this, els); }
     _setHover(el) { return setHover(this, el); }
     _commitText() { return commitText(this); }
     _cancelDrawing() {

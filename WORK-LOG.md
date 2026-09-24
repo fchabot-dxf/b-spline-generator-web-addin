@@ -6701,3 +6701,55 @@ not something to speculatively "fix" per this project's own simplicity-first rul
   one test over what it replaced).
 
 No amendments were pending (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 223 part 1 — SE8f: restore `editor._selectMany`/`editor._selectAdd` — DONE
+
+Seat B is on T25 (pinch) then T24/SE7p (pattern panel on phones) — `editor-input.js`, `editor-interaction.js`
+pointer path, `styles/editor.css`, `properties-lattice.js` — not touched beyond the two guard removals the
+dispatch itself named.
+
+**Fix, as specified:** added `_selectAdd(el) { return selectAdd(this, el); }` and
+`_selectMany(els) { return selectMany(this, els); }` to `editor.js`, right next to the existing `_select`
+delegation — `selectAdd`/`selectMany` were already imported from `editor-ui.js` (used only in comments
+until now). Removed the two `typeof editor._selectMany === 'function'` guards in `editor-interaction.js`
+(Ctrl+A's `selectAllVisible`, paste) that were hiding the bug; left `:536`'s already-unguarded Shift-click
+`_selectAdd` call and `editor-marquee.js`'s already-unguarded calls untouched (they needed the delegation,
+not a guard change).
+
+**Second bug found while writing the marquee test, fixed in the same commit (in-scope: `editor-marquee.js`
+is one of the dispatch's own named call sites, and this is squarely "restore multi-select," not a new
+feature):** `finalizeMarquee` called `clearMarquee(editor)` — which resets `editor._marqueeAdditive = false`
+— BEFORE its own later `if (editor._marqueeAdditive)` check. That check was therefore ALWAYS false by the
+time it ran, so the additive (Shift-drag) branch could never execute — a Shift-drag marquee silently
+REPLACED the whole selection instead of merging into it. Before this turn this was masked by the OTHER bug
+(the additive branch also called the then-nonexistent `_selectMany`, so it threw before the wrong-branch
+problem could show itself); fixing the delegation without this second fix would have traded "throws" for
+"silently drops your prior selection," not an actual fix. One-line capture: `const additive = editor.
+_marqueeAdditive;` read BEFORE `clearMarquee(editor)`, used in the later check instead of re-reading the
+now-reset property.
+
+**Tests** (`tests/editor-select-many.test.js`, new, 7): built via `Object.create(VectorEditor.prototype)` —
+a real instance's full prototype chain (so the two new delegation lines run for real, calling through to the
+REAL, un-reimplemented `selectMany`/`selectAdd`/`_afterSelectionChange`), with only the instance fields each
+test touches — every DOM/SVG dependency `_afterSelectionChange` reaches for degrades gracefully when absent
+(`_handleLayer` unset -> `_updateHandles` no-ops; missing palette markup -> `getEl()` lookups return null),
+matching this codebase's own "real class, not a reimplementation" convention (editor-session.test.js).
+Covers: `_selectMany` replaces the selection (Ctrl+A's contract); `_selectAdd` grows a selection AND toggles
+an already-selected element back off (shift-click's full contract, not just the add half); `selectAllVisible`
+filters out hidden-layer elements; an empty sketch layer is a safe no-op; marquee-finalize picks by world-bbox
+intersection (non-additive); **additive marquee actually merges onto the prior selection** — the test that
+caught the second bug above, by asserting the exact list `[already, picked]` rather than just "something got
+selected."
+
+**Non-vacuity, proven not argued:** reverted `editor.js`, `editor-interaction.js`, `editor-marquee.js` to
+`git show HEAD:...`. 6 of 7 new tests failed (`editor._selectMany is not a function`, wrong/empty selection
+results); the 7th ("empty sketch layer selects nothing") passed even pre-fix — a legitimate degenerate case
+(nothing to select either way, since `selectAllVisible`'s guard silently no-ops on an empty layer both
+before and after), not a vacuous assertion — the OTHER 6 tests are what actually exercise the fix. Restored
+from scratch copies, `diff` confirmed exact restoration, full suite re-ran green.
+
+**Verify:**
+- `node --check` on all 3 touched JS files: clean.
+- `npx vitest run` → **289 passed** (282 prior + 7 new).
+
+No amendments pending.

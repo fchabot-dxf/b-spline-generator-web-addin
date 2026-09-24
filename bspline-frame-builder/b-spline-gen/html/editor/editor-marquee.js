@@ -55,6 +55,14 @@ export function updateMarquee(editor, pt) {
 export function finalizeMarquee(editor) {
     const s = editor._marqueeStart;
     const r = editor._marqueeRect;
+    // SE8f: captured BEFORE clearMarquee (below), which resets
+    // _marqueeAdditive to false — reading editor._marqueeAdditive AFTER
+    // that call (as this function used to, further down) meant the
+    // additive branch could never run: a shift-drag marquee silently
+    // REPLACED the selection instead of merging into it, discovered once
+    // _selectMany actually started running (previously the additive
+    // branch threw before this ordering bug could even show itself).
+    const additive = editor._marqueeAdditive;
     clearMarquee(editor);
     if (!s) return 0;
 
@@ -97,7 +105,7 @@ export function finalizeMarquee(editor) {
         return 0;
     }
 
-    if (editor._marqueeAdditive) {
+    if (additive) {
         // Merge with the existing selection. Order: existing first,
         // newcomers appended so the last picked element becomes the
         // primary (consistent with shift-click semantics).

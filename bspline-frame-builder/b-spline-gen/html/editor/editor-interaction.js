@@ -320,7 +320,7 @@ export function selectAllVisible(editor) {
         const cls = el.node.getAttribute('class') || '';
         return !cls.includes('layer-hidden');
     });
-    if (typeof editor._selectMany === 'function') editor._selectMany(all);
+    editor._selectMany(all);
 }
 
 /** Cancel an in-progress pen/anchor path WITHOUT committing it — the
@@ -357,7 +357,7 @@ function _pasteFromClipboard(editor, clip) {
             }
         } catch (_) { /* skip malformed clipboard entries */ }
     }
-    if (newEls.length && typeof editor._selectMany === 'function') {
+    if (newEls.length) {
         editor._selectMany(newEls);
     }
     if (typeof editor.pushState === 'function') {
