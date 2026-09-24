@@ -12,18 +12,35 @@ import { isEditableByLayer } from './layers.js';
 import { worldPoint, worldBbox } from './editor-coords.js';
 import { viewScale } from './editor-view.js';
 import { PATH_LAYOUT, endPoint } from './path-layout.js';
+import { inputProfileFor } from './editor-input.js';
 
-export function getDynamicTolerance(editor, px = 5) {
+/**
+ * @param {object} editor
+ * @param {number} [px=5]  mouse-tuned fallback px, used as-is when
+ *   `profileKey` is omitted (every purpose-specific tolerance this
+ *   codebase already had — paste offset, freehand threshold, curve-fit
+ *   simplify, node-handle render radius — stays exactly as tuned; SE7m
+ *   doesn't touch what isn't a touch-target-sizing concern).
+ * @param {'slopPx'|'grabPx'} [profileKey]  SE7m: when given, looks up
+ *   INPUT_PROFILE[editor._pointerType].profileKey instead of `px` —
+ *   SA-MOBILE-1 (hover/click hit-test) passes 'slopPx', SA-MOBILE-2
+ *   (node-grab) passes 'grabPx'. `px` stays the fallback for a missing/
+ *   unrecognized pointer type (inputProfileFor's own mouse default).
+ */
+export function getDynamicTolerance(editor, px = 5, profileKey = null) {
     if (!editor._draw) return 0.1;
     const view = editor._draw.viewbox();
     const svgEl = document.getElementById('editorSVGContainer');
     if (!svgEl) return 0.1;
     const screenWidth = svgEl.clientWidth || 800;
     const screenHeight = svgEl.clientHeight || 800;
+    const effectivePx = profileKey
+        ? (inputProfileFor(editor._pointerType)[profileKey] ?? px)
+        : px;
     // Uniform scale (preserveAspectRatio="meet"), not width-only: width-only
     // is wrong whenever the container is proportionally taller than the
     // board (letterboxed on width) — e.g. the docked palette.
-    return px / viewScale(view, screenWidth, screenHeight);
+    return effectivePx / viewScale(view, screenWidth, screenHeight);
 }
 
 /**

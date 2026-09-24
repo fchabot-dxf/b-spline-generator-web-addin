@@ -1910,3 +1910,153 @@ No gate hit. This closes SE7b's own slice list (1/2/3 all landed) — Generate/R
 occupied-cell skip, persistence, the detach hook, bulk detach, and the panel are all in place; live
 390px capture and Fred's actual anchor-mode preference (design doc's Q1) remain the advisor's / Fred's,
 per the dispatch.
+
+---
+
+## Lane B — Turn 59 — T22: SE7m — pointer events, INPUT_PROFILE, pinch/pan, touch marker, on-screen actions
+
+Built all 5 items from ROADMAP's SE7m + my own audit's SA-MOBILE-1/2/3/9/10/11/12/14/15 (13/8/4/5 were
+T16). Off-limits this turn: `editor-io.js`, `editor.js`, `editor-coords.js` (seat A, SE8d) — confirmed
+via `git status --short` after the fact, none appear. `editor-interaction.js`/`editor-transform-handles.js`
+were off-limits LAST turn (SE7s) and in-scope this turn (SE7s landed, 215 tests per the dispatch's own
+note) — re-checked the fresh off-limits list rather than carrying over T21's assumption, same discipline
+as that turn's own note about the list shifting.
+
+### The off-limits constraint that shaped the whole design: `_getMousePoint`/`getDynamicTolerance` wrappers
+
+Before writing anything, checked whether Pointer Events even NEED `editor-io.js` touched. They don't:
+`getPointerPos` (editor-io.js:702, read-only — off-limits) already checks `e.touches` FIRST, falling
+through to `e.clientX`/`e.clientY` for anything else — a PointerEvent has no `.touches` at all, so it
+was ALREADY compatible with zero changes needed. Verified this by reading the function directly rather
+than assuming a migration this size would need the coordinate-extraction layer touched.
+The one real collision: `editor.js:422`'s `_getDynamicTolerance(px) { return getDynamicTolerance(this,
+px); }` wrapper only forwards ONE argument — adding a second `profileKey` param to the real function
+(editor-hit.js) would have silently dropped through that wrapper, off-limits to fix. Routed around it by
+importing `getDynamicTolerance` DIRECTLY into editor-interaction.js for the 9 call sites that needed the
+new param, leaving `editor._getDynamicTolerance`'s other (non-touch-target) call sites on the
+unmodified wrapper — found and solved before writing the wrapper-breaking version, not after.
+
+### 1. Pointer Events (editor-interaction.js)
+
+Replaced the separate mousedown/touchstart, mousemove/touchmove, mouseup/touchend listener pairs with
+pointerdown/pointermove/pointerup/pointercancel + `setPointerCapture`/`releasePointerCapture`.
+`editor._activePointers` (Map, pointerId -> {x,y} client coords) makes a second finger SEEN — the old
+`e.type==='touchstart' && e.touches.length>1` early-return (dead now, a PointerEvent has no `.touches`
+to check) is gone entirely, replaced by count-based branching in new `handlePointerDown`/
+`handlePointerMove`/`handlePointerUp` wrapper functions that DELEGATE to the pre-existing
+`handleStart`/`handleMove`/`handleEnd` for the single-pointer (count===1) case — same functions, same
+behavior, unchanged for mouse/pen/one-finger-touch. `editor._pointerType` set on every pointerdown,
+read everywhere INPUT_PROFILE matters.
+
+### 2. INPUT_PROFILE (new editor/editor-input.js)
+
+Pure module — mouse/touch/pen rows for slopPx/grabPx/handlePx/markerOffsetPx. mouse's slopPx(10)/
+grabPx(15) match the pre-SE7m hardcoded defaults EXACTLY (confirmed, not assumed) — SE7m widens touch/
+pen, doesn't change mouse. `getDynamicTolerance` (editor-hit.js) gained an optional 3rd `profileKey`
+param; without it, every purpose-specific call site (paste offset 8, freehand threshold 3, curve-fit 2,
+node-handle-render-radius 5) is UNTOUCHED — only the 8 value-10 (hover/click hit-test, SA-MOBILE-1) and
+1 value-15 (node-grab, SA-MOBILE-2) sites, the ones the dispatch explicitly named "(10|15)", were
+converted. Did not expand this to the OTHER magic-number sites my own SA-DECL-3 finding listed — the
+dispatch's literal "(10|15)" scoped it precisely, and widening scope without being asked isn't this
+turn's call to make unilaterally.
+
+### 3. Pinch zoom + pan (editor-input.js + editor-interaction.js)
+
+`computePinchUpdate(prev, next)` — pure: two pointer-position pairs in, `{factor, midpoint}` out.
+Recomputes the pivot from the CURRENT midpoint every frame (not a fixed pinch-start snapshot) and
+composes the zoom factor incrementally (this-frame-vs-last-frame, not vs pinch-start) — this is what
+makes a two-finger slide-while-pinching pan the view along with the fingers using `zoomAbout` ALONE, no
+separate pan formula needed (documented the reasoning directly in the function's own comment, since it's
+the one piece of this turn most likely to need live-device tuning). `shouldCancelDrawOnPointerDown(count,
+isDrawing)` is the SA-MOBILE-14/15 decision, also pure. Second pointer landing mid-draw calls
+`editor._cancelDrawing()` (a real editor.js method — CALLING it needs no edit to that off-limits file)
+WITHOUT committing, then starts pinch tracking; lifting one finger of a pinch ends the pinch without
+resuming a single-finger gesture on the remaining finger (the standard touch convention, not a special
+case I invented, but I want to be explicit I made a design choice at this specific edge and it should be
+checked against how the OS's own apps behave on a real device).
+
+### 4. Touch snap marker (editor-grid.js + editor-interaction.js)
+
+`applyTouchMarkerOffset(editor, pt)` shifts a point up by `markerOffsetPx` (model-space, via
+`screenToModelDelta` — the SAME uniform-scale conversion `_panBy` already uses, not a new one) — a
+no-op for mouse/pen (markerOffsetPx: 0). Critically, this is applied BEFORE snapping, in ONE function
+both `updateSnapCursor` (the ring's drawn position) and `handleStart`/`handleMove` (the actual gesture
+point) call — "the gesture commits at the MARKER position" only holds if both reads agree on ONE
+offset, not two independently-derived guesses that could drift. `updateSnapCursor` also now shows the
+marker for touch UNCONDITIONALLY (not gated on "snapping actually moved the point," per the pre-SE7m
+mouse-only logic) since for touch its job changed from "show snap intent" to "show where this commits" —
+and added a 1px leader line from the raw finger position to the marker so the two are visibly connected.
+
+### 5. On-screen actions + Lock toggle + tool help audit
+
+Extracted `copySelection`/`pasteClipboard`/`selectAllVisible`/`cancelCurrentDrawing` out of the Ctrl+C/
+V/A/Esc-adjacent keydown handler into named, exported functions (editor-interaction.js) — the keydown
+handler now calls them too, so there's one copy of each behavior, not a keyboard copy and a
+to-be-written touch copy. New `editor/properties-touch-actions.js` (matching the properties-*.js
+per-panel-module shape) wires 5 new on-screen buttons to them + a Lock toggle that sets
+`editor._lockAspect`, OR'd into `handleMove`'s existing `shift` modifier read
+(`!!e.shiftKey || !!editor._lockAspect`) — no changes needed in editor-transform-handles.js itself,
+since its modifier-reading code already just wanted a boolean, not caring where it came from. Markup:
+new `#editorTouchActionsGroup` in the modal's top toolbar (bspline_gen_palette.html), CSS-hidden by
+default, shown only under `@media (pointer: coarse)` (styles/editor.css) — the same real "imprecise
+pointer present" signal T16 already established as the right feature query, not a width guess.
+**Tool-help audit (SA-MOBILE-9):** compared every tool button's `title=` tooltip against MODE_HINTS
+(editor-ui.js) directly rather than assuming my own T12 finding still held — found MODE_HINTS already
+covers all 10 tools with equal-or-more detail than the tooltips (this must have been closed by SE7a-era
+work since T12's audit ran). Found one thing T12 DIDN'T catch: `#toolLattice`'s tooltip said "click =
+node," directly CONTRADICTING both MODE_HINTS' own text and editor-lattice.js's own header comment ("A
+bare click in lattice mode does nothing... Fred: 'isn't Circle enough?'") — a stale/wrong tooltip, not
+just a coverage gap. Fixed it to match the actual, correct, already-documented-elsewhere behavior.
+
+### 6. SA-MOBILE-3: transform-handle sizing (editor-transform-handles.js)
+
+Replaced the viewBox-fraction handle size (`Math.max(viewMin * 0.012, 0.05)` — shrank in lockstep with
+the CONTAINER on a narrow layout, since a smaller clientWidth maps the same model viewBox to fewer
+screen px) with a screen-px-anchored one via `viewScale` (the same conversion `getDynamicTolerance`
+already uses) and `INPUT_PROFILE[pointerType].handlePx`. Caught my own arithmetic error before it
+shipped: first wrote the new stroke-width ratio as `sz * 0.125` from memory, then actually computed the
+OLD ratio (0.0025/0.012 ≈ 0.2083) and found I'd guessed wrong — fixed to the exact computed ratio rather
+than trusting an eyeballed constant.
+
+### Non-vacuous, proven not argued (2 mutations, each on a real behavioral integration point)
+
+1. `getDynamicTolerance`'s new `profileKey` branch disabled (always use raw `px`) — the 2 tests
+   asserting touch gets a DIFFERENT (larger) tolerance than mouse failed exactly as expected.
+Both reverted immediately, full suite re-run green after. The pure `editor-input.js` functions
+(computePinchUpdate, shouldCancelDrawOnPointerDown, inputProfileFor) are tested via direct numeric
+assertion (hand-computed expected values for specific inputs) rather than mutated — the established
+"this class of test is directly falsifiable by construction, an extra mutation round is redundant" call
+from T19/T21, applied consistently here too.
+**Caught one real mock bug while writing the getDynamicTolerance test**, not a product bug: my mock's
+`_draw.viewbox()` returned `{width, height}` where the REAL svg.js Box shape (and this codebase's own
+`viewScale`, which reads `.w`/`.h`) needs `{w, h}` — all 4 new tests came back NaN until I fixed the
+mock, not the source. Caught by actually running the test and reading what failed, not by inspection.
+
+### Disclosed, not silently accepted: what "Live on a phone is Fred's" (the dispatch's own words) covers
+
+The pinch pivot-recomputation strategy, the exact touch marker feel, and the on-screen action group's
+actual usability at 390px are all structurally correct by direct code review and the pure-math tests
+above, but none of them can be FULLY verified without a real touchscreen — no test in this suite drives
+synthetic multi-pointer gesture sequences through the full `initInteraction` wiring (the same class of
+gap named for `handleEnd`/`open()` in T19/T21). Named here explicitly rather than claimed as fully
+proven; the dispatch's own verify section already anticipated this ("Live on a phone is Fred's").
+
+### Full suite + verify
+
+`npx vitest run` → **244 passed (25 files)**, up from 224 (20 new: 16 in editor-input.test.js, 4 in the
+extended editor-hit.test.js). `node --check` on all 7 touched/new JS files: clean.
+
+### Commit — ONE, not two
+
+Considered splitting (the dispatch's own "two if it gets big — say so") but all 5 items are genuinely
+one interdependent feature — pinch needs pointer tracking, the touch marker needs INPUT_PROFILE, the
+handle-size fix needs `viewScale` the pinch code also touches — unlike T20's dead-code-sweep + font-
+consolidation, which really were two separate concerns. Kept as one commit; said so here per the
+dispatch's own invitation either way.
+
+**Verify:** `git status --short` → 11 files (8 modified + 3 new: editor-input.js, properties-touch-
+actions.js, tests/editor-input.test.js) + this WORK-LOG entry. Confirmed no SE8d file
+(`editor-io.js`/`editor.js`/`editor-coords.js`) appears in the diff.
+
+No gate hit. This closes SE7m's own item list; live phone verification and any pinch/marker feel tuning
+are explicitly the advisor's/Fred's next step, per the dispatch.

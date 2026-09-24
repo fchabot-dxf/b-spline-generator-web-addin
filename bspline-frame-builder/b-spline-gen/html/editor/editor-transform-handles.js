@@ -43,6 +43,8 @@
 import { worldBbox, worldPoint, toLocal, transformPoint } from './editor-coords.js';
 import { PATH_LAYOUT, normalizeForBake } from './path-layout.js';
 import { snapFor } from './editor-grid.js';
+import { viewScale } from './editor-view.js';
+import { inputProfileFor } from './editor-input.js';
 import {
     HANDLE_EDIT, cornerScale,
     multiplyMatrix, translateMatrix, scaleMatrix, rotateMatrix, matrixToString,
@@ -95,12 +97,29 @@ export function renderTransformHandles(editor) {
         worldOf = (fx, fy) => ({ x: bb.x + bb.w * fx, y: bb.y + bb.h * fy });
     }
 
+    // SA-MOBILE-3: handle size derived from SCREEN px (via viewScale, the
+    // same uniform-scale conversion getDynamicTolerance/_panBy already
+    // use), not a viewBox-fraction — the old `viewMin * 0.012` shrank in
+    // lockstep with the CONTAINER on a narrow/phone layout (smaller
+    // clientWidth -> the SAME model viewBox maps to fewer px -> a
+    // touch-target that was already marginal on desktop nearly halved on
+    // a phone). Scaling from actual container px means the handle stays
+    // the same PHYSICAL size regardless of container width, and
+    // INPUT_PROFILE's handlePx (mouse 8, touch 14, pen 8) sizes it larger
+    // for a fingertip specifically, not just "not smaller than before."
     const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
-    const viewMin = view ? Math.min(view.width, view.height) : 100;
-    // Handle half-size in model units. Scales with the viewbox so the
-    // handles stay visually consistent on small AND large stocks.
-    const sz = Math.max(viewMin * 0.012, 0.05);
-    const strokeW = viewMin * 0.0025;
+    const svgEl = document.getElementById('editorSVGContainer');
+    const clientWidth = (svgEl && svgEl.clientWidth) || 800;
+    const clientHeight = (svgEl && svgEl.clientHeight) || 800;
+    const pxPerModelUnit = view ? viewScale(view, clientWidth, clientHeight) : 100;
+    const handlePx = inputProfileFor(editor._pointerType).handlePx;
+    // Handle half-size in MODEL units, derived from the screen-px target —
+    // same shape as the pre-SE7m sz, just anchored to a real physical
+    // size instead of a viewBox fraction. Floor matches the old one
+    // (0.05 model units) so a pathologically small board still gets a
+    // usably-sized handle.
+    const sz = Math.max(handlePx / pxPerModelUnit, 0.05);
+    const strokeW = sz * (0.0025 / 0.012); // matches the old sz:strokeW ratio exactly
     const rotateOffset = sz * 5;
 
     const records = [];
