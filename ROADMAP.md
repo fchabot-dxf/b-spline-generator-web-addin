@@ -690,3 +690,7 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **Layer toggles FINAL (Fred: carve and 3D are the same):** 👁 visible · 3D (= carve) · ■ showColor. Colored drape on
   the mesh when carve && showColor && visible. `drape3d` dropped. SE11 renders the drape from that rule.
 - **👁 is the master (Fred):** carved = visible && carve; drape = visible && carve && showColor; export = visible.
+- **Advisor pacing lesson (2026-09-24):** T26 received 8 amendments redesigning ONE layer row inside one turn (each of
+  Fred's refinements relayed live). Seat B rightly checkpointed at amend 5 and refused to chase 6-8. Rule: while a
+  design is still moving with Fred, settle it WITH him first (mockup + questions), then dispatch ONE spec; relay
+  mid-turn only blockers. T27 = the consolidated final row.
