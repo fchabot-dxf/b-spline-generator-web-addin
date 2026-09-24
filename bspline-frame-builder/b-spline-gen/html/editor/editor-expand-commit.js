@@ -35,10 +35,19 @@
  * `decodeSnapshot` still reads correctly (legacy-format fallback).
  * Proven by tests/editor-serialization.test.js's "EDM2: base64
  * data-original poison regression" suite.
+ *
+ * SE8e / SA-TEXT-4: "so the editor's re-edit flow can recover the
+ * source" (line 13, above) used to be aspirational — nothing ever read
+ * data-original-text-svg back into a live, editable element (only
+ * editor-expand-trace.js decoded it, to re-run Expand at a different
+ * detail setting, not to restore text). `isUnexpandable`/`unexpand`
+ * below are that recovery path, for text specifically — see their own
+ * doc comments.
  */
 import { fusLog } from '../core/fusion-bridge.js';
-import { encodeSnapshot } from '../core/svg-utils.js';
+import { encodeSnapshot, decodeSnapshot } from '../core/svg-utils.js';
 import { dbg } from '../core/debug.js';
+import { multiplyMatrix, matrixToString } from './handle-edit.js';
 
 // SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
 // hand-rolling window.__editorDebug === 'EXPAND-COMMIT'.
@@ -141,4 +150,80 @@ export function commitExpandedPath(editor, originalEl, d, options) {
     _cLog('committed  isText=' + isText + '  dLen=' + d.length +
           '  layer=' + layer);
     return expanded;
+}
+
+/**
+ * SE8e / SA-TEXT-4: does `el` carry a live-text-restorable snapshot? Only
+ * `data-original-text-svg` counts — a plain shape's `data-original-svg`
+ * has no equivalent "editable source" gap the way text content does; this
+ * feature exists specifically because expanded TEXT can otherwise never
+ * be re-typed, only redrawn from scratch (the audit's own framing).
+ */
+export function isUnexpandable(el) {
+    return !!(el && typeof el.attr === 'function' && el.attr('data-original-text-svg'));
+}
+
+/**
+ * Restore an expanded text's original <text> element in place, decoding
+ * the snapshot commitExpandedPath stashed at expand time (decodeSnapshot
+ * — the exact inverse of the encodeSnapshot that wrote it, never a
+ * second decoder). Composes the expanded element's CURRENT transform
+ * (whatever moving/rotating it since expansion accumulated — a
+ * 'geometry'-kind path, per SE7s's HANDLE_EDIT, never gets a SCALE left
+ * in transform, only translate/rotate) onto the snapshot's OWN transform
+ * (whatever the text had at expand time), so a moved/rotated expansion
+ * comes back where it NOW is, not where it was pre-expand — matching
+ * multiplyMatrix's established "delta x m0" convention (handle-edit.js,
+ * SE7s): m0 = the snapshot's own transform, delta = everything that
+ * happened to the expanded path since.
+ *
+ * Returns the restored <text> element, or null if `el` isn't
+ * unexpandable, or the snapshot fails to decode/parse/adopt (logged, not
+ * thrown — callers treat null as "did nothing," matching the button's
+ * own "disabled / no-op" contract).
+ */
+export function unexpand(editor, el) {
+    if (!isUnexpandable(el)) return null;
+    const rawSvg = decodeSnapshot(el.attr('data-original-text-svg'));
+    if (!rawSvg) { _cLog('unexpand: snapshot decoded empty'); return null; }
+
+    let node;
+    try {
+        const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        wrapper.innerHTML = rawSvg;
+        node = wrapper.firstElementChild;
+    } catch (e) {
+        _cLog('unexpand: markup parse threw: ' + e.message);
+        return null;
+    }
+    if (!node) { _cLog('unexpand: snapshot markup parsed to nothing'); return null; }
+
+    // The restored text is a live element again — the expand sentinel
+    // belongs to the PATH that's about to be removed, not to it. Left in
+    // place, a future re-expand would wrongly "carry forward" THIS
+    // snapshot (commitExpandedPath's own carry-forward rule, above)
+    // instead of taking a fresh one of whatever the text says by then.
+    node.removeAttribute('data-original-text-svg');
+    node.removeAttribute('data-original-svg');
+    node.setAttribute('data-layer', String(el.attr('data-layer') || '0'));
+
+    editor._sketchLayer.node.appendChild(node);
+    const restored = window.SVG && window.SVG.adopt ? window.SVG.adopt(node) : null;
+    if (!restored) {
+        try { node.remove(); } catch (_) {}
+        _cLog('unexpand: SVG.adopt unavailable or failed');
+        return null;
+    }
+
+    const composed = multiplyMatrix(el.matrix(), restored.matrix());
+    const isIdentity = composed.a === 1 && composed.b === 0 && composed.c === 0
+        && composed.d === 1 && composed.e === 0 && composed.f === 0;
+    restored.attr('transform', isIdentity ? null : matrixToString(composed));
+
+    try { el.remove(); } catch (e) { _cLog('unexpand: expanded element remove() threw: ' + e.message); }
+    try { editor._select(restored); } catch (e) { _cLog('unexpand: _select threw: ' + e.message); }
+    if (editor.pushState) { try { editor.pushState(); } catch (e) { _cLog('unexpand: pushState threw: ' + e.message); } }
+    if (editor._notifyChange) { try { editor._notifyChange('commit'); } catch (e) { _cLog('unexpand: _notifyChange threw: ' + e.message); } }
+    _cLog('unexpand committed  layer=' + node.getAttribute('data-layer'));
+    return restored;
 }

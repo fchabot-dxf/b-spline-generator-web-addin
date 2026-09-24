@@ -1,5 +1,6 @@
 import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
+import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
 
 export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
@@ -52,4 +53,21 @@ export function registerActionTools(editor) {
   // endEditorSession's own comment for the leaked-listener failure mode).
   bind('editorApply',  () => endEditorSession(editor, { commit: true }));
   bind('editorCancel', () => endEditorSession(editor, { commit: false }));
+
+  // SE8e / SA-TEXT-4: no dynamically-disabled button state — the natural
+  // home for selection-reactive enable/disable (editor-ui.js's toolbar/
+  // selection-highlight update) is seat B's SE7m territory this turn.
+  // Always clickable; the handler itself no-ops (per element AND as a
+  // whole) when the selection isn't entirely restorable, matching the
+  // dispatch's own "disabled / no-op" contract. Multi-selection: each
+  // qualifying element gets its own full unexpand() (its own pushState +
+  // select) — a mixed batch ends with only the LAST one selected and one
+  // undo step per element rather than a single combined step; acceptable
+  // for now since unexpand() itself is the single-element contract the
+  // dispatch describes, and this isn't covered by its own Verify list.
+  bind('editorUnexpand', () => {
+    const sel = (editor._selectedElements || []).slice();
+    if (!sel.length || !sel.every(isUnexpandable)) return;
+    for (const el of sel) unexpand(editor, el);
+  });
 }
