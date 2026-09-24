@@ -36,8 +36,19 @@ export function initLatticeProperties(editor) {
     const generateBtn = el('latticeGenerate');
     const detachAllBtn = el('latticeDetachAll');
     const toolBtn = el('toolLattice');
+    const panelEl = el('editorLatticePanel');
+    const headerBtn = el('editorLatticePanelHeader');
 
     if (!generateBtn) return; // panel not present in this host — no-op, matches other properties-*.js modules' own guard shape
+
+    // SE7p: the bottom-sheet collapse toggle (styles/editor.css gates the
+    // actual show/hide behind its own <=720px media query — this handler
+    // is wired unconditionally, same as every other control here, so
+    // there's no separate "only on mobile" JS branch to keep in sync with
+    // the CSS breakpoint).
+    if (panelEl && headerBtn) {
+        on(headerBtn, 'click', () => panelEl.classList.toggle('collapsed'));
+    }
 
     // Spacing select populated at bind time from GRID_SPACINGS — same
     // idiom properties-shape.js's initGridToggle already uses for the

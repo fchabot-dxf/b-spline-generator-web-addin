@@ -1472,66 +1472,113 @@
              while the Lattice tool is active (same visibility mechanism
              as the Font group, editor-ui.js's updateToolbarVisibility).
              390px-first: every control below is a real tap target, no
-             hover-only affordance (T16 precedent). -->
-        <aside class="editor-lattice-panel hidden" id="editorLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
-          <div style="font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666;">Lattice Pattern</div>
+             hover-only affordance (T16 precedent).
+             SE7p: on narrow/coarse screens (styles/editor.css) this
+             becomes a fixed-position bottom sheet instead of a flex-row
+             sibling — T24/T25's own root cause was this panel's
+             content-driven height starving #editorSVGContainer's flex:1
+             once .cad-modal-body goes column at <=720px; taking it OUT
+             of flow (position:fixed) removes that competition entirely,
+             it doesn't just shrink it. Starts collapsed (class="collapsed"
+             below) so a phone shows canvas + a slim header/Generate bar
+             first; #editorLatticePanelHeader (a real <button>, always
+             wired) expands/collapses it. Desktop is unaffected — the
+             collapsed class only does anything inside that media query. -->
+        <aside class="editor-lattice-panel hidden collapsed" id="editorLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
+          <button type="button" id="editorLatticePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; padding:0; margin:0; font:inherit; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666; cursor:default;">
+            <span>Lattice Pattern</span>
+            <span id="editorLatticePanelChevron" class="editor-lattice-panel-chevron" aria-hidden="true" style="display:none; font-size:12px; color:#666;">▾</span>
+          </button>
 
-          <label style="display:flex; flex-direction:column; gap:3px;">Spacing
-            <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-          </label>
+          <div id="editorLatticePanelBody" style="display:flex; flex-direction:column; gap:10px;">
+            <label style="display:flex; flex-direction:column; gap:3px;">Spacing
+              <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+            </label>
 
-          <div style="display:flex; flex-direction:column; gap:3px;">
-            <span style="font-weight:600;">Rails</span>
-            <div style="display:flex; gap:6px;">
-              <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
-                <input id="latticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Rails</span>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
+                  <input id="latticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">offset
+                  <input id="latticeRailsOffset" type="number" min="0" step="1" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Ties</span>
+              <label style="display:flex; flex-direction:column; gap:2px;">density
+                <input id="latticeTiesDensity" type="range" min="0" max="1" step="0.05" value="0.4" style="width:100%; height:26px;">
               </label>
-              <label style="flex:1; display:flex; flex-direction:column; gap:2px;">offset
-                <input id="latticeRailsOffset" type="number" min="0" step="1" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span min
+                  <input id="latticeTiesSpanMin" type="number" min="1" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span max
+                  <input id="latticeTiesSpanMax" type="number" min="1" step="1" value="3" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+              <label style="display:flex; flex-direction:column; gap:2px;">anchor
+                <select id="latticeTiesAnchor" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
+                  <option value="rails" selected>Between rails</option>
+                  <option value="free">Free (any span)</option>
+                </select>
               </label>
             </div>
-          </div>
 
-          <div style="display:flex; flex-direction:column; gap:3px;">
-            <span style="font-weight:600;">Ties</span>
-            <label style="display:flex; flex-direction:column; gap:2px;">density
-              <input id="latticeTiesDensity" type="range" min="0" max="1" step="0.05" value="0.4" style="width:100%; height:26px;">
-            </label>
-            <div style="display:flex; gap:6px;">
-              <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span min
-                <input id="latticeTiesSpanMin" type="number" min="1" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Nodes</span>
+              <!-- SE7p: base.css's global `label { flex-direction: column }`
+                   (the "label ABOVE its input" default every OTHER label in
+                   this panel wants) was silently winning here too, since
+                   neither of these two labels overrode it inline — that's
+                   what stacked each checkbox on top of its own text instead
+                   of beside it. flex-direction:row fixes it directly. -->
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="latticeNodesEnds" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at tie ends
               </label>
-              <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span max
-                <input id="latticeTiesSpanMax" type="number" min="1" step="1" value="3" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="latticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at crossings
               </label>
             </div>
-            <label style="display:flex; flex-direction:column; gap:2px;">anchor
-              <select id="latticeTiesAnchor" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
-                <option value="rails" selected>Between rails</option>
-                <option value="free">Free (any span)</option>
-              </select>
+
+            <label style="display:flex; flex-direction:column; gap:3px;">Seed
+              <div style="display:flex; gap:6px;">
+                <!-- SE7p: `no-stepper` — main/ui-bindings.js's
+                     attachNumberSteppers() auto-wraps EVERY
+                     input[type=number] site-wide in a .cad-stepper
+                     (−/input/+), unless opted out. That wrapper is what
+                     was actually overflowing this row next to Reroll —
+                     not the bare input (confirmed via the DOM: the input's
+                     real parent after page load was the injected
+                     .cad-stepper, not this flex row). The Reroll button
+                     already IS this field's "adjust the value" control;
+                     a second stepper next to it is redundant as well as
+                     what broke the layout, so this is the one number
+                     input in the app that opts all the way out, using the
+                     opt-out attachNumberSteppers already declares — not a
+                     new mechanism. min-width:0 kept regardless (correct
+                     flex sizing hygiene once the input IS the flex item
+                     again). -->
+                <input id="latticeSeed" type="number" step="1" value="42" class="no-stepper" style="flex:1; min-width:0; height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
+                <button id="latticeReroll" type="button" title="Reroll seed" style="width:26px; height:26px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">⟳</button>
+              </div>
             </label>
           </div>
 
-          <div style="display:flex; flex-direction:column; gap:4px;">
-            <span style="font-weight:600;">Nodes</span>
-            <label style="display:flex; align-items:center; gap:6px; height:26px;">
-              <input id="latticeNodesEnds" type="checkbox" checked style="width:16px; height:16px;"> at tie ends
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; height:26px;">
-              <input id="latticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px;"> at crossings
-            </label>
+          <div id="editorLatticePanelFooter" style="display:flex; flex-direction:column; gap:10px;">
+            <!-- SE7p: cad-btn/cad-btn-primary (same classes as Apply
+                 Stencils, #editorApply below) replace the old
+                 `btn-primary` + `background:var(--cad-accent)` — that
+                 custom property is never defined anywhere in this repo
+                 (grepped), so the background always resolved to
+                 transparent, leaving white text on nothing. cad-btn-primary
+                 is a real, literal, already-working color. -->
+            <button id="latticeGenerate" type="button" class="cad-btn cad-btn-primary" style="height:32px; border-radius:3px; font-weight:700; cursor:pointer;">Generate</button>
+            <button id="latticeDetachAll" type="button" style="height:28px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Detach all</button>
           </div>
-
-          <label style="display:flex; flex-direction:column; gap:3px;">Seed
-            <div style="display:flex; gap:6px;">
-              <input id="latticeSeed" type="number" step="1" value="42" style="flex:1; height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
-              <button id="latticeReroll" type="button" title="Reroll seed" style="width:26px; height:26px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">⟳</button>
-            </div>
-          </label>
-
-          <button id="latticeGenerate" type="button" class="btn-primary" style="height:32px; border-radius:3px; border:none; background:var(--cad-accent); color:#fff; font-weight:700; cursor:pointer;">Generate</button>
-          <button id="latticeDetachAll" type="button" style="height:28px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Detach all</button>
         </aside>
 
         <!-- Layers Panel (Right Sidebar) -->
