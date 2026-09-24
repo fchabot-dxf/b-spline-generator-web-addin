@@ -17,7 +17,9 @@
  * tests/editor-serialization.test.js).
  */
 import { describe, it, expect } from 'vitest';
-import { buildDrapeSvg, DRAPE_SKIP_COLORS } from '../bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js';
+import {
+  buildDrapeSvg, DRAPE_SKIP_COLORS, DRAPE_TEXTURE_FLIPY, sampleRowForV,
+} from '../bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js';
 
 const SKETCH = `<svg xmlns="http://www.w3.org/2000/svg" width="672" height="864" viewBox="0 0 7 9" preserveAspectRatio="none">` +
   `<line data-layer="rails" x1="0" y1="1" x2="6" y2="1" stroke="#c62828" fill="none"/>` +
@@ -112,5 +114,57 @@ describe('buildDrapeSvg — truth table', () => {
     const svg = buildDrapeSvg(ALL_QUALIFY, SKETCH);
     // rails is #c62828, not black — must survive the same filter that drops black-layer.
     expect(layerIdsIn(svg)).toContain('rails');
+  });
+});
+
+/**
+ * SE11c — the drape/heightfield orientation guard. `sampleRowForV`'s
+ * formula and `DRAPE_TEXTURE_FLIPY`'s value are BOTH settled empirically
+ * (scripts/smoke-editor.mjs's `drape-align` mode: draw the advisor's
+ * asymmetric L, diff the height field before/after to find the REAL
+ * carved vertices, and check whether the drape texture reads red at the
+ * pixel each vertex's uv predicts — for both flipY values, plus each
+ * vertex's Y-mirrored counterpart as a control). Measured result,
+ * isolating the confident carve core from the stamp's own edge falloff:
+ * flipY=true → 100% of carved vertices read red, only 66% of their
+ * mirrors do; flipY=false is the exact inverse. These tests pin THAT
+ * measured fact, not a re-derivation of it — two independent reasoning
+ * passes at this exact question were each wrong at least once before
+ * the measurement settled it, so a comment restating "why" from first
+ * principles would be the same trap with different words.
+ */
+describe('SE11c: drape/heightfield orientation guard (empirically settled — see drape-svg.js comments)', () => {
+  it('DRAPE_TEXTURE_FLIPY is true — flip it back only after re-running drape-align, not by re-reasoning', () => {
+    expect(DRAPE_TEXTURE_FLIPY).toBe(true);
+  });
+
+  it('the declared flipY reproduces the measured mapping: v=1 samples texture row 0', () => {
+    const texH = 724;
+    expect(sampleRowForV(1, texH, DRAPE_TEXTURE_FLIPY)).toBe(0);
+  });
+
+  it('non-vacuous: the OTHER flipY value gives a different (wrong, per the measurement) row', () => {
+    const texH = 724;
+    expect(sampleRowForV(1, texH, !DRAPE_TEXTURE_FLIPY)).toBe(texH - 1);
+    expect(sampleRowForV(1, texH, !DRAPE_TEXTURE_FLIPY)).not.toBe(0);
+  });
+
+  it('a vertex and its Y-mirrored counterpart sample DIFFERENT texture rows (the property the drape-align mirror check relies on)', () => {
+    const nz = 181, texH = 724;
+    const j = 20;
+    const v = j / (nz - 1);
+    const jMirror = nz - 1 - j;
+    const vMirror = jMirror / (nz - 1);
+    const row = sampleRowForV(v, texH, DRAPE_TEXTURE_FLIPY);
+    const rowMirror = sampleRowForV(vMirror, texH, DRAPE_TEXTURE_FLIPY);
+    expect(row).not.toBe(rowMirror);
+  });
+
+  it('sampleRowForV is monotonic in v for a fixed flipY (a real per-vertex mapping, not a constant that happens to pass the point checks above)', () => {
+    const texH = 200;
+    const rows = [0, 0.25, 0.5, 0.75, 1].map(v => sampleRowForV(v, texH, DRAPE_TEXTURE_FLIPY));
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i]).not.toBe(rows[i - 1]);
+    }
   });
 });

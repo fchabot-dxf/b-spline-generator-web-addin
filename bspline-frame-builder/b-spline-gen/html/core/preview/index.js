@@ -30,6 +30,7 @@
 import { dbg } from '../debug.js';
 import { fusLog } from '../fusion-bridge.js';
 import { sanitizeSvgForRaster, prepareSvgForRaster, renderSvgNative } from '../stamp/render-svg.js';
+import { DRAPE_TEXTURE_FLIPY } from './drape-svg.js';
 import { ViewCube } from './view-cube.js';
 import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
@@ -345,12 +346,11 @@ export class TerrainPreview {
 
     const THREE = this._THREE;
     const texture = new THREE.CanvasTexture(canvas);
-    // The SVG's y axis runs top-to-bottom like the canvas it was drawn
-    // into; the height field's own v (buildHeightField) increases the
-    // same way row-to-row, so disabling THREE's default bottom-origin
-    // flip keeps texel (0,0) — the SVG's top-left — under UV (0,0)
-    // instead of mirroring it vertically.
-    texture.flipY = false;
+    // SE11c: DRAPE_TEXTURE_FLIPY (drape-svg.js) — settled empirically via
+    // scripts/smoke-editor.mjs's `drape-align` mode (real carve-vs-drape
+    // data, not reasoning) after two reasoned guesses at this exact value
+    // were each wrong at least once; see that constant's own comment.
+    texture.flipY = DRAPE_TEXTURE_FLIPY;
     texture.needsUpdate = true;
     return texture;
   }

@@ -7190,3 +7190,158 @@ loop already visits every boundary index for positions/colours).
 - Live Fusion, twice (once per bug fixed) — see Proof above for the final, both-bugs-fixed pass.
 
 No amendments pending.
+
+---
+
+## Turn 231 — SE11c: BLOCKED mid-task on a Fusion account session conflict, external to this work
+
+**Not a HOLD from the advisor — a genuine external blocker.** Left UNCOMMITTED (on disk, not
+stashed — nothing here is semantically broken, it's a complete candidate fix that just isn't
+empirically proven yet) so the next wake can pick up immediately once Fusion is reachable again.
+
+**Done, and believed solid regardless of what happens next:**
+- `buildDrapeSvg` (`core/preview/drape-svg.js`) now reads the drape rule through T27's own
+  `isCarved(l) && l.showColor !== false` (`editor/layers.js`) instead of re-stating
+  visible+carve+showColor locally — matches the dispatch's exact instruction, and `isCarved`'s own
+  null-safety (`!!l && ...`) short-circuits before `layer.showColor` is read on a null layer, so this
+  is a straight simplification, not a behavior change. All 12 existing drape-svg tests still pass
+  unchanged (their mock layer shapes already matched `isCarved`'s real field names).
+
+**In progress, NOT proven — this is the actual blocker:**
+- Declared `DRAPE_TEXTURE_FLIPY` (`drape-svg.js`) and set it to `true` (was `false` in SE11/SE11b) —
+  a REASONED CANDIDATE, not a confirmed fix. Traced the carve's own pipeline in detail to establish,
+  as a hard fact (not assumption): `apply-stamp-layers.js` applies the rasterizer's mask to
+  `heights[]` by DIRECT index (`stampedHeights[k] += body[k]*...`, no reindexing), so the mask
+  buffer's row-major layout IS the height-grid's row-major layout — a mark at SVG y=0 (top) lands at
+  height-grid row j=0, which `buildHeightField` puts at world Y=-H/2 — and the dispatch's own
+  evidence says THAT is the model's back edge (top stroke carves at the back, correctly). That chain
+  is solid. What ISN'T solid: reasoning out `texture.flipY`'s actual effect on which canvas row a
+  given UV `v` samples — attempted this twice now (SE11's original `false`, and this turn's flip to
+  `true`) and got it wrong at least once already per the advisor's own live evidence, so a THIRD
+  round of pure reasoning isn't trustworthy evidence either. **Deliberately did NOT write the guard
+  test yet** — writing `sampleRowForV`'s formula to match my own unverified flipY guess would just
+  encode the same possibly-wrong reasoning as a "test," which proves nothing new and could look like
+  coverage while guarding nothing (the exact anti-pattern the worker skill's own non-vacuous-test
+  rule warns about). The right order is: verify live, THEN write the guard test to match the
+  EMPIRICALLY established fact, documented as empirical rather than derived.
+
+**The actual blocker — external, not code:** deployed (`python release.py --local`, add-in
+stopped/redeployed/run cleanly), then hit `fusion_execute` timeouts on `run(None)`. A window
+screenshot (not a code probe — PowerShell, Fusion's own window) showed why: a **"Session Suspended"**
+Autodesk dialog — *"Fusion suspended this session because there were more sessions running than are
+allowed for this user account. Suspended by: Yoga."* — blocking the whole application, including its
+own scripting API, until resolved. Tried **Check again** twice (non-destructive, just re-polls
+license status) with an 8s gap; still suspended both times — the other session ("Yoga") is
+apparently still active. Did **NOT** click **Shut Down** — that signs this computer's Fusion out
+entirely, an account-wide action with no undo, not mine to take unilaterally over a still-active
+license conflict I have no visibility into (is "Yoga" Fred on another device? someone else on the
+same account? no way to tell from here).
+
+**What's needed to unblock (advisor/Fred's call, not something I can resolve myself):** either the
+other session ("Yoga") ends on its own (letting a later "Check again" succeed), or Fred deliberately
+signs it out / decides this computer's session should take priority. Once Fusion responds to
+`fusion_execute` again, the remaining work is exactly what the dispatch already asked for: deploy →
+redraw the SAME asymmetric L → screenshot comparing drape to carve → if aligned, write the guard test
+against the now-confirmed-correct flipY value and commit everything (isCarved refactor + flipY fix +
+guard test) as the one commit the dispatch calls for; if STILL misaligned, try the next candidate
+(the uv v-coordinate itself, or the canvas draw direction) and repeat.
+
+**Verify (of the parts that don't need live Fusion):**
+- `node --check` on both touched files: clean.
+- `npx vitest run` → **357 passed** (unchanged from before T27 merged in — this turn's isCarved
+  refactor and flipY constant are both currently uncommitted, so this number reflects them
+  regardless; no regressions).
+
+Amendments: none pending. Not calling `handoff.py pass` in the usual "done" sense — this note itself
+IS the pass, since the task can't complete right now for a reason outside this repo.
+
+---
+
+## Turn 233 — SE11c re-dispatch: settled the orientation with DATA, not a screenshot — DONE
+
+**Fusion was still session-suspended** (checked: "Check again" twice, 8s apart, both times still
+showing the same Autodesk account-conflict dialog — the other session hadn't ended). Per the
+advisor's own re-dispatch, verified the drape/carve alignment in the BROWSER instead, with real
+measured data, since `core/preview/*` is byte-identical between the site and the palette.
+
+**New `drape-align` smoke mode (`scripts/smoke-editor.mjs`, port 9338).** Doesn't open the visual
+modal at all — `window.svgEditor` exists from page load (confirmed: `editorPresent` reads true before
+any click), so this drives the sketch layer directly: snapshots `window.__preview._lastHeights`
+before touching anything, creates the advisor's own asymmetric L (a horizontal stroke along the top +
+a vertical stroke down the left — deliberately asymmetric in BOTH axes, so a Y-flip and an X-flip
+would each show up as a DIFFERENT mismatch pattern, not the same one) directly via
+`editor._sketchLayer.line(...).stroke({color:'#c62828',...})`, then `await editor._notifyChange
+('commit')` — the exact same CHANGE_PIPELINE path a real Apply click runs, including SE11b's
+`refreshDrape` hook. Then:
+1. **Finds the REAL carved vertices** by diffing `_lastHeights` before vs. after — grounded in what
+   the carve pipeline actually did, not a guess at which cells the L "should" cover. Tried three
+   thresholds (0.01/0.05/0.1 in) since the stamp's own edge falloff (sdf.js's powerStep taper) means
+   a low threshold also catches a shallow halo outside the drape's hard-edged stroke, diluting the
+   percentage without the orientation being wrong — the HIGH threshold isolates the confident core.
+2. **For each carved vertex, reads the drape texture's own canvas pixel** (`window.__preview.
+   _drapeTexture.image`, direct `getImageData` — no lighting/shading involved, so no repeat of
+   SE11b's "gold terrain fooled the eye" false positive) at the row `sampleRowForV(v, texH, flipY)`
+   predicts, for BOTH `flipY=false` and `flipY=true` in the SAME run (no redeploy/re-render needed —
+   the canvas itself is flipY-agnostic; only the row-lookup formula differs), plus each vertex's
+   Y-mirrored counterpart as a control (a coincidental match at the real position wouldn't also match
+   the mirror, since the L is asymmetric top-vs-bottom).
+3. **Optional picture** via `window.__preview.getSnapshot(800,600)` (renders + `toDataURL()`
+   synchronously in one already-proven call, from SE11's own `renderedFrameColors` check) — no
+   `preserveDrawingBuffer` juggling needed, unlike a raw CDP screenshot of the WebGL canvas (which the
+   advisor's own note says came out black before).
+
+**Result — decisive, at the confident-core threshold (0.1, isolating 62–148 vertices per run out of
+25521 total; exact counts vary run-to-run since each run generates a fresh random B-spline seed, but
+the PATTERN is stable across every run tried):**
+```
+flipY=true:  carvedRedPct=100%   mirrorRedPct≈32–66%
+flipY=false: carvedRedPct≈32–66% mirrorRedPct=100%
+```
+`flipY=true` matches the REAL carved position perfectly and does NOT match the mirror; `flipY=false`
+is the exact inverse — it matches the WRONG (mirrored) position better than the real one, i.e.
+provably flipped. This directly confirms SE11c's own candidate fix (`DRAPE_TEXTURE_FLIPY = true`,
+written but left uncommitted at the end of turn 231) was already correct — no further code change to
+the value itself, just turning "reasoned guess" into "measured fact."
+
+**Honest note on the theory, not just the fix:** turn 231's WORK-LOG traced `apply-stamp-layers.js`'s
+direct index copy (`stampedHeights[k] += body[k]*...`) to argue SVG y=0 should land at height-grid row
+j=0. The measurement says the OPPOSITE correspondence is what's actually true (v=1, the heightfield's
+LAST row, samples texture row 0 — see `sampleRowForV`'s doc in `drape-svg.js`). That trace wasn't
+wrong about what `apply-stamp-layers.js` does — it just wasn't the WHOLE chain; something earlier in
+the height-field pipeline (the B-spline surface evaluation or a coordinate convention in
+`core/coords.js`/`COORD_SYSTEM`, not re-traced this turn) evidently already flips j relative to SVG y
+before the stamp ever touches it. Not chasing that down further — the constant now agrees with
+whatever the REAL pipeline does, verified against its actual output, which is the thing that
+mattered; noting the gap so nobody mistakes this turn's fix for a complete theory of the coordinate
+chain.
+
+**Guard tests — `tests/drape-svg.test.js` (+5, one new describe block).** Pin the measured fact
+directly rather than re-deriving it: `DRAPE_TEXTURE_FLIPY === true` (a straight regression pin —
+flipping it back requires re-running `drape-align`, not reasoning about it), `sampleRowForV(1, texH,
+true) === 0` (the measured mapping), the OTHER flipY value gives `texH-1` not `0` (non-vacuous: this
+is LITERALLY the assertion that would have caught SE11/SE11b's original bug), a vertex and its
+Y-mirror sample different rows (the property the smoke test's own mirror check relies on), and
+`sampleRowForV` is monotonic in v for a fixed flipY (rules out a test that would pass against a
+mapping collapsed to one constant row). **Non-vacuous, checked directly:** temporarily set
+`DRAPE_TEXTURE_FLIPY = false`, re-ran — 3/5 failed exactly as expected (the pin itself, the mapping
+assertion, and the "other value" assertion — the mirror and monotonicity tests correctly still passed
+since those properties hold for EITHER flipY value, which is honest: they're not the tests carrying
+the orientation claim). Restored from a scratch copy, diffed byte-identical, re-ran green.
+
+**Also landed this turn (from the original SE11c dispatch, unaffected by the Fusion blocker):**
+`buildDrapeSvg` now reads the drape rule through T27's own `isCarved(l) && l.showColor !== false`
+(`editor/layers.js`) instead of re-stating visible+carve+showColor locally. All 12 pre-existing
+drape-svg tests pass unchanged.
+
+**Verify:**
+- `node --check` on all 4 touched files: clean.
+- `npx vitest run` → **362 passed** (357 prior + 5 new).
+- `drape-align` smoke mode run twice independently (different random seeds each time) — same
+  decisive pattern both times (see Result above). Snapshot picture
+  (`se11c-smoke/drape-align-snapshot.png`, scratch path) visually confirms: a clear red L along the
+  model's top+left edge, sitting exactly on the raised/carved ridge.
+- Fusion proof still pending Fred clearing the session suspension — this turn's evidence is
+  browser-data-based per the re-dispatch's own explicit allowance ("Fusion proof follows when Fred
+  clears the suspension"), not a substitute for it, just not blocking THIS turn's commit.
+
+No amendments pending.

@@ -1,4 +1,4 @@
-// Usage: node scripts/smoke-editor.mjs <outDir> [desktop|mobile|perf|color|drape] [url]
+// Usage: node scripts/smoke-editor.mjs <outDir> [desktop|mobile|perf|color|drape|drape-align] [url]
 // Headless-Chrome (CDP, no deps) smoke test of the SVG editor lattice/pattern flow on the live site (or a local URL).
 // Prints a JSON report (counts, layers, probes, console errors) and writes screenshots to <outDir>.
 // Minimal CDP driver (no deps): live-site smoke test of the SVG editor lattice/pattern flow.
@@ -23,10 +23,10 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 const OUT = process.argv[2];
-const MODE = process.argv[3] || 'desktop';          // desktop | mobile | perf | color | drape
+const MODE = process.argv[3] || 'desktop';          // desktop | mobile | perf | color | drape | drape-align
 const URL = process.argv[4] || 'https://bspline-generator.pages.dev/';
 const PORT = MODE === 'mobile' ? 9334 : MODE === 'perf' ? 9335 : MODE === 'color' ? 9336
-           : MODE === 'drape' ? 9337 : 9333;
+           : MODE === 'drape' ? 9337 : MODE === 'drape-align' ? 9338 : 9333;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(`${OUT}/chrome-${MODE}`, { recursive: true });
 
@@ -93,6 +93,132 @@ async function doPinch() {
 const report = {};
 report.buildStamp = await evalJS(`(document.body.innerText.match(/[0-9a-f]{7} · 20\\d\\d-\\d\\d-\\d\\d/)||[''])[0]`);
 report.editorPresent = await evalJS(`!!window.svgEditor`);
+
+if (MODE === 'drape-align') {
+  // SE11c re-dispatch: Fusion is Session-Suspended (an Autodesk account
+  // license conflict, external to this repo) — verify the drape/carve
+  // orientation with DATA in the browser instead of a live Fusion
+  // screenshot. The 3D preview code (core/preview/*) is identical
+  // between the site and the palette, so this is the same code path.
+  // No need to even open the visual modal — window.svgEditor exists
+  // from page load (confirmed by report.editorPresent above already
+  // being true before any click), so this drives the sketch layer
+  // directly, the same way earlier 'color' mode adopts DOM nodes rather
+  // than simulating a drawing gesture.
+  await sleep(1500); // let initApp's own startup rebuild() finish
+
+  const before = await evalJS(`(() => {
+    const p = window.__preview;
+    if (!p) return { error: 'no window.__preview' };
+    window.__heightsBeforeL = p._lastHeights ? Array.from(p._lastHeights) : null;
+    return { nx: p._lastNx, nz: p._lastNz, hasHeights: !!window.__heightsBeforeL };
+  })()`);
+  report.before = before;
+
+  await evalJS(`(async () => {
+    const editor = window.svgEditor;
+    if (!editor._layers || editor._layers.length === 0) {
+      editor._layers = [{ id: '0', name: 'Layer 1', visible: true, carve: true, showColor: true }];
+      editor._activeLayer = '0';
+    }
+    const layer = String(editor._activeLayer != null ? editor._activeLayer : editor._layers[0].id);
+    const w = editor._mW, h = editor._mH;
+    const m = Math.min(w, h) * 0.03; // a small margin off the true edge
+    // The advisor's own L: a horizontal stroke along the TOP + a
+    // vertical stroke down the LEFT — asymmetric in both axes, so a
+    // pure Y-flip (this bug) and a pure X-flip would each show up as a
+    // DIFFERENT mismatch, not the same one.
+    editor._sketchLayer.line(m, m, w - m, m).stroke({ color: '#c62828', width: 0.15, linecap: 'round' }).attr('data-layer', layer);
+    editor._sketchLayer.line(m, m, m, h - m).stroke({ color: '#c62828', width: 0.15, linecap: 'round' }).attr('data-layer', layer);
+    if (typeof editor.pushState === 'function') editor.pushState();
+    await editor._notifyChange('commit');
+    return true;
+  })()`);
+  await sleep(1000); // safety margin beyond _notifyChange's own await chain
+
+  const analysis = await evalJS(`(() => {
+    const p = window.__preview;
+    const before = window.__heightsBeforeL;
+    const after = p._lastHeights;
+    const nx = p._lastNx, nz = p._lastNz;
+    if (!before || !after || !p._drapeTexture) {
+      return { error: 'missing before/after heights or drape texture', hasBefore: !!before, hasAfter: !!after, hasTexture: !!(p && p._drapeTexture) };
+    }
+    const canvas = p._drapeTexture.image;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const texW = canvas.width, texH = canvas.height;
+    const isRed = (row, col) => {
+      row = Math.max(0, Math.min(texH - 1, row));
+      col = Math.max(0, Math.min(texW - 1, col));
+      const idx = (row * texW + col) * 4;
+      const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
+      return r > 130 && (r - g) > 40 && (r - b) > 40;
+    };
+    // A carved vertex's height genuinely moved from the stamp — a plain
+    // diff against the pre-draw snapshot, not a guess at which cells the
+    // L "should" cover, so this is grounded in what the carve pipeline
+    // actually did, matching the dispatch's own framing. Multiple
+    // thresholds: the stamp's fillet/SDF edge falloff (sdf.js's
+    // powerStep) tapers depth gradually near a stroke's boundary, so a
+    // low threshold also catches a shallow halo outside the drape's own
+    // hard-edged stroke — a HIGHER threshold (nearer the true carve
+    // depth) isolates the confident core, which should align far more
+    // tightly if the orientation is right.
+    const results = { texW, texH, nx, nz, byThreshold: {} };
+    for (const CARVE_THRESHOLD of [0.01, 0.05, 0.1]) {
+      const carved = [];
+      for (let j = 0; j < nz; j++) {
+        for (let i = 0; i < nx; i++) {
+          const k = j * nx + i;
+          if (Math.abs(after[k] - before[k]) > CARVE_THRESHOLD) carved.push([i, j]);
+        }
+      }
+      const atThreshold = { carvedCount: carved.length };
+      for (const flipY of [false, true]) {
+        let hitCarved = 0, hitMirror = 0;
+        for (const [i, j] of carved) {
+          const u = i / (nx - 1);
+          const v = j / (nz - 1);
+          const col = Math.round(u * (texW - 1));
+          const row = Math.round((flipY ? (1 - v) : v) * (texH - 1));
+          if (isRed(row, col)) hitCarved++;
+          // Y-mirrored position (flip j across the row axis) — a
+          // coincidental match at the real position wouldn't also match
+          // here, since the L is NOT vertically symmetric (top stroke,
+          // not bottom).
+          const jm = nz - 1 - j;
+          const vm = jm / (nz - 1);
+          const rowm = Math.round((flipY ? (1 - vm) : vm) * (texH - 1));
+          if (isRed(rowm, col)) hitMirror++;
+        }
+        atThreshold['flipY_' + flipY] = {
+          carvedRedPct: carved.length ? +(100 * hitCarved / carved.length).toFixed(1) : null,
+          mirrorRedPct: carved.length ? +(100 * hitMirror / carved.length).toFixed(1) : null,
+        };
+      }
+      results.byThreshold[CARVE_THRESHOLD] = atThreshold;
+    }
+    return results;
+  })()`);
+  report.drapeAlignAnalysis = analysis;
+
+  // Optional picture: getSnapshot() renders + captures synchronously in
+  // one call (proven working since SE11's own renderedFrameColors check)
+  // — no preserveDrawingBuffer juggling needed, unlike a raw CDP
+  // screenshot of the WebGL canvas (the advisor's own note: those came
+  // out black).
+  const dataUrl = await evalJS(`window.__preview ? window.__preview.getSnapshot(800, 600) : null`);
+  if (dataUrl) {
+    writeFileSync(`${OUT}/${MODE}-snapshot.png`, Buffer.from(dataUrl.split(',')[1], 'base64'));
+  }
+
+  report.logs = logs.slice(0, 15);
+  console.log(JSON.stringify(report, null, 1));
+  ws.close(); chrome.kill();
+  process.exit(0);
+}
+
 await evalJS(`document.getElementById('btnStampEdit').click(); true`);
 await sleep(2500);
 report.modalOpen = await evalJS(`getComputedStyle(document.getElementById('svgEditorModal')).display`);

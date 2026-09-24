@@ -9,11 +9,13 @@
  * decides WHAT gets drawn.
  *
  * Rule (Fred, ROADMAP "Layer toggles FINAL" + "👁 is the master"): a
- * layer's vectors drape when `visible && carve && showColor`. Seat B's
- * per-layer fields (T26/SE10, not landed yet) default to true when
- * missing, so an editor.js layer that predates them still drapes exactly
- * as before this rule existed.
+ * layer's vectors drape when `visible && carve && showColor`. SE11c: reads
+ * that rule through T27's own `isCarved` (editor/layers.js) instead of
+ * re-stating visible+carve here — the one place the compound rule lives,
+ * per that file's own header ("every gate... reads a layer through
+ * these, never a raw check of its own, so the rule can't drift").
  */
+import { isCarved } from '../../editor/layers.js';
 
 /** Pure-black elements are the advisor's declared default: an
  *  uncoloured layer (every element still #000000) doesn't cover the
@@ -21,11 +23,7 @@
 export const DRAPE_SKIP_COLORS = ['#000000'];
 
 function layerQualifies(layer) {
-  if (!layer) return false;
-  const visible = layer.visible !== false;
-  const carve = layer.carve !== false;
-  const showColor = layer.showColor !== false;
-  return visible && carve && showColor;
+  return isCarved(layer) && layer.showColor !== false;
 }
 
 /** An element's SE9 color: whichever of stroke/fill is real, stroke
@@ -80,4 +78,52 @@ export function buildDrapeSvg(editorLayers, sketchSvg) {
   const serializer = new XMLSerializer();
   const inner = kept.map(el => serializer.serializeToString(el)).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="none">${inner}</svg>`;
+}
+
+/**
+ * SE11c: the drape appeared mirrored front↔back relative to the carve —
+ * SE11's `texture.flipY = false` was set by reasoning about WebGL's UV
+ * convention, not checked against anything, and got it backwards.
+ * SE11c's FIRST attempt (also by reasoning, flipping the guess to `true`)
+ * couldn't be trusted either — two wrong reasoning passes on the same
+ * question is a sign to stop reasoning and go measure. Settled
+ * EMPIRICALLY instead, with data, because Fusion itself was
+ * session-suspended (an Autodesk account conflict, external to this
+ * repo) and unavailable for a live screenshot: `scripts/smoke-editor.mjs`'s
+ * `drape-align` mode draws the same asymmetric L (top + left strokes),
+ * diffs the height field before/after to find the REAL carved vertices
+ * (grounded in what the carve pipeline actually did, not a guess at
+ * which cells the L "should" cover), and for each one reads the drape
+ * texture colour at the pixel `sampleRowForV` below predicts — for BOTH
+ * flipY values, plus each vertex's Y-mirrored counterpart as a control.
+ * Result (isolating the confident carve core from the stamp's own edge
+ * falloff, threshold 0.1 of 25521 cells): flipY=true → 100% of carved
+ * vertices read red, only 66% of their mirrors do; flipY=false is the
+ * exact inverse (66% real, 100% mirror — matching the mirror BETTER than
+ * the real position, i.e. provably flipped). `true` is the one that
+ * matches the real carve.
+ *
+ * Note for whoever next assumes "top-left SVG (y=0) must land at the
+ * heightfield's j=0 row" (the earlier, plausible-sounding but apparently
+ * incomplete reasoning behind the original `false`): this measurement
+ * says otherwise — see sampleRowForV's own doc below. Something earlier
+ * in the height-field pipeline (outside this module, not re-traced here)
+ * evidently already flips j relative to SVG y; this constant just makes
+ * the DRAPE agree with whatever that pipeline actually does, verified
+ * against its real output rather than re-derived from its source.
+ */
+export const DRAPE_TEXTURE_FLIPY = true;
+
+/**
+ * Pure model of "given UV v, texture height texH, and flipY, which
+ * texture row does the GPU sample" — NOT called by production code (the
+ * GPU does the real sampling); exists so DRAPE_TEXTURE_FLIPY's
+ * correctness is a checkable fact instead of a comment. The formula
+ * itself is the one validated by the drape-align measurement above
+ * (v=1 samples row 0 when flipY=true — the empirically-confirmed
+ * mapping, not an independently re-derived WebGL spec reading).
+ */
+export function sampleRowForV(v, texH, flipY) {
+  const rowFrac = flipY ? (1 - v) : v;
+  return Math.round(rowFrac * (texH - 1));
 }
