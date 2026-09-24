@@ -2227,3 +2227,20 @@ commit, matching T21's reasoning for the same situation.
 WORK-LOG entry.
 
 No gate hit.
+
+---
+
+## Lane B — Turn 63 — T24: SE7p — HOLD (Fred questioned scope)
+
+Advisor HOLD received (cross-session message + `amendments` mailbox, both consistent) mid-investigation,
+before any file was edited: had read the dispatch, ROADMAP's "Live browser test 2026-09-24" entry,
+`scripts/smoke-editor.mjs`, `#editorLatticePanel`'s markup, `styles/editor.css` (confirmed NO existing
+responsive rule targets `.editor-lattice-panel` at all — it relies solely on its inline `width:220px`,
+and at `max-width:720px` `.cad-modal-body` goes `flex-direction:column`, so the panel's content-driven
+auto height stacks between the canvas and Layers panel and starves the canvas's `flex:1` of space — that's
+the actual "canvas off-screen" mechanism), and `properties-lattice.js`'s wiring. Had drafted (not yet
+written) a bottom-sheet design: fixed-position overlay at ≤720px (same breakpoint already governing the
+column collapse, not `pointer:coarse` — this is a layout-space problem, not a touch-precision one),
+header row + chevron toggling a `.collapsed` class on a wrapped body div, Generate/Detach-all kept in an
+always-visible footer outside the collapsible body. None of this was written to any file — `git status
+--short` is clean, nothing to stash. Stopping here per the HOLD; no commit, no push.
