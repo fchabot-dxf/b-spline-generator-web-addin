@@ -310,6 +310,7 @@ extra branches before anything calls them.
 
 ## Open questions for Fred (collected)
 
+**ANSWERED (Fred 2026-09-24): "Don't choose automatically."** `fusionGeometry` is an explicit per-layer pick the user makes (Outline / Centerline / Both), default `'centerline'` — never derived from another setting (e.g. no Relief/Inlay mode that sets it). Context: Fred uses stamps two ways — raised/carved relief, and resin inlay (carve a recess, fill with resin, machine flush to the original uncarved STEP).
 1. Fusion geometry choice — outline / centerline / both, as the per-layer `fusionGeometry` field proposed
    in item 3. Confirm the three-way split (and the `'centerline'` default) makes sense.
 2. Does Fusion's SVG import preserve `A` (arc) commands as true arcs, or convert/approximate them? Already
