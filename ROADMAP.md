@@ -623,3 +623,10 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   Generate/Regenerate, detach-on-drag, Detach all). In flight: SE7m (seat B). Next for seat A: SE8e — SA-TEXT-4
   "Un-expand" (decode `data-original-text-svg` back to editable text). Remaining after: SE8b-2 (needs live measure),
   SE8c part 2 (SA-DECL-1..4 in editor-interaction/editor-ui — after SE7m lands, those files are seat B's now).
+- **SE8b-2 (f0f74ba) + SE7m (c42dfea) merged → 264 tests.** Declared CHANGE_PIPELINE (no localStorage write during a
+  drag) + `PERF` debug category for per-step timings; the editor works with fingers (Pointer Events, INPUT_PROFILE,
+  pinch/pan, offset touch marker, on-screen Copy/Paste/Select all/Cancel/Lock). In flight: SE8c part 2 (seat B).
+- **Known flake (3 occurrences, 2026-09-23/24):** the FIRST `npx vitest run` after a large file change sometimes
+  reports every file failed with "no tests" and no error text; an immediate rerun on the unchanged tree passes. A
+  vitest/Windows cold-start artefact, not a code signal — always rerun once before treating a whole-suite failure as
+  real. (Worth a look if it starts happening on unchanged trees.)
