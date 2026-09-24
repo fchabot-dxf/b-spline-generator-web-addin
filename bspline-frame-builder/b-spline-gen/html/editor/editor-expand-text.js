@@ -1,9 +1,12 @@
 /**
  * Expand strategy 1: <text> via opentype.js. Loads the bundled .ttf for
- * the element's font-family, generates a glyph-outline path, bakes the
- * element's transform + (x, y) anchor into the path data, then hands
- * off to the shared commitExpandedPath helper (fill, stroke, layer,
- * snapshot, select, pushState).
+ * the element's font-family, generates a glyph-outline path, bakes an
+ * arbitrary matrix into the path data (textGlyphPathD, below — SE8d:
+ * extracted so the Fusion carve-bake path (editor-io.js's SA-ROUNDTRIP-2
+ * fix) can reuse the SAME font-loading/glyph-generation logic instead of
+ * a second, drifting copy), then hands off to the shared
+ * commitExpandedPath helper (fill, stroke, layer, snapshot, select,
+ * pushState).
  *
  * Returns true if it handled the element (success or expected skip),
  * false if the orchestrator should fall through to the next strategy.
@@ -19,9 +22,21 @@ import { dbg } from './debug.js';
 import { localAnchor, transformPoint } from './editor-coords.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
 
-export async function expandText(editor, el, { commit = true } = {}) {
-    if (el.type !== 'text') return false;
-
+/**
+ * Load the bundled font for `el`'s font-family, generate its glyph
+ * outline, and bake matrix `m` into every coordinate. `m` is the FULL
+ * bake matrix the caller wants applied — expandText composes
+ * el.matrix().translate(ax, ay) (interactive Expand, in-place); the
+ * carve-bake path (editor-io.js) composes carveMatrix x el.matrix()
+ * translated the same way, folding the board->Fusion mapping and the
+ * glyph bake into one step, exactly like bakeMatrixIntoElement does for
+ * every other geometry type.
+ *
+ * Returns the baked path `d` string, or null on any failure (no font
+ * mapping for the family, font fetch/parse error) — callers decide the
+ * fallback; this never throws.
+ */
+export async function textGlyphPathD(el, m) {
     const rawFamily = el.attr('font-family') || "Arial";
     const fontFamily = rawFamily.replace(/['"]/g, '').trim();
     const fontSize = parseFloat(el.attr('font-size') || '3.0');
@@ -37,7 +52,7 @@ export async function expandText(editor, el, { commit = true } = {}) {
     const fontFile = FONT_MAP[fontFamily];
     if (!fontFile) {
         console.warn(`[EXPAND] No mapping for "${fontFamily}"`);
-        return false;
+        return null;
     }
 
     try {
@@ -55,7 +70,7 @@ export async function expandText(editor, el, { commit = true } = {}) {
         if (!fontResp.ok) throw new Error(`Font fetch failed: ${fontResp.status} ${fontUrl}`);
         const fontBuffer = await fontResp.arrayBuffer();
         const font = opentype.parse(fontBuffer);
-        if (!font) return false;
+        if (!font) return null;
 
         // Baseline mode depends on which convention the <text> was
         // placed under:
@@ -83,19 +98,13 @@ export async function expandText(editor, el, { commit = true } = {}) {
             }).join('');
         }
 
-        // localAnchor reads the raw x/y attrs (NOT el.x() / el.y(),
-        // which would return bbox.x/y with the transform already baked
-        // in — using those here would double-count any prior drag).
-        const { x: ax, y: ay } = localAnchor(el);
-        const m = el.matrix().translate(ax, ay);
-
         const pathObj = font.getPath(processedContent, 0, baselineYOffset, fontSize);
         const rawD = pathObj.toPathData(2);
 
-        // Bake the element's transform into every coord in the path.
-        // SVG.js's .transform() API has historically failed to bake
-        // transforms reliably for path elements, so walk the segments
-        // manually and apply the matrix to each coord pair.
+        // Bake matrix `m` into every coord in the path. SVG.js's
+        // .transform() API has historically failed to bake transforms
+        // reliably for path elements, so walk the segments manually and
+        // apply the matrix to each coord pair.
         const pArray = new SVG.PathArray(rawD);
         pArray.forEach(seg => {
             for (let i = 1; i < seg.length; i += 2) {
@@ -109,16 +118,29 @@ export async function expandText(editor, el, { commit = true } = {}) {
                 }
             }
         });
-        const bakedD = pArray.toString();
-
-        const expanded = commitExpandedPath(editor, el, bakedD, {
-            commit,
-            isText: true,
-        });
-        if (!expanded) return false;
-        return true;
+        return pArray.toString();
     } catch (e) {
         console.error("[EXPAND] Opentype logic failed:", e);
-        return false;
+        return null;
     }
+}
+
+export async function expandText(editor, el, { commit = true } = {}) {
+    if (el.type !== 'text') return false;
+
+    // localAnchor reads the raw x/y attrs (NOT el.x() / el.y(), which
+    // would return bbox.x/y with the transform already baked in — using
+    // those here would double-count any prior drag).
+    const { x: ax, y: ay } = localAnchor(el);
+    const m = el.matrix().translate(ax, ay);
+
+    const bakedD = await textGlyphPathD(el, m);
+    if (!bakedD) return false;
+
+    const expanded = commitExpandedPath(editor, el, bakedD, {
+        commit,
+        isText: true,
+    });
+    if (!expanded) return false;
+    return true;
 }

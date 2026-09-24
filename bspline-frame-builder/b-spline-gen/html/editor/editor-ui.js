@@ -202,25 +202,6 @@ export function updateToolbarVisibility(editor, mode, el) {
     }
 }
 
-export function updateNodeCountUI(editor, data) {
-    const ui = getEl('editorNodeCountUI');
-    if (!ui) return;
-
-    let count = '--';
-    if (data && data.nodes !== undefined) count = data.nodes;
-    else if (editor._selectedElement) {
-        const type = editor._selectedElement.type;
-        if (type === 'polyline' || type === 'polygon') count = editor._selectedElement.array().length;
-        else if (type === 'line') count = 2;
-        else if (type === 'rect' || type === 'circle' || type === 'text') count = 1;
-    }
-
-    const x = data?.x !== undefined ? data.x.toFixed(1) : '--';
-    const y = data?.y !== undefined ? data.y.toFixed(1) : '--';
-
-    ui.textContent = `Nodes: ${count} / X: ${x} Y: ${y}`;
-}
-
 /**
  * Both selection and hover highlights have the same shape: text gets a
  * filled rounded-rect behind the bbox; everything else gets a translucent

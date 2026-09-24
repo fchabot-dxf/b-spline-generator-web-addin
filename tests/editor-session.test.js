@@ -1,11 +1,11 @@
 /**
  * SE8a — two audit findings about a gesture not committing correctly:
  *
- * SA-UNDO-2/3: setStrokeWidth had neither pushState() nor _onChange()
+ * SA-UNDO-2: setStrokeWidth had neither pushState() nor _onChange()
  * (permanently un-undoable, carve preview never updated until an
- * unrelated edit); setStrokeColor had pushState() but no _onChange()
- * (undo worked, live preview lagged). Both now route through one shared
- * _commitStyleChange().
+ * unrelated edit) — now routes through _commitStyleChange(). (SA-UNDO-3
+ * was setStrokeColor's twin fix; SE8d removed setStrokeColor itself,
+ * zero real callers, and its test below with it.)
  *
  * SA-TEXT-1: the editor modal's Cancel button skipped text-session
  * teardown entirely (Apply calls _commitText() first; Cancel called only
@@ -18,24 +18,23 @@ import { describe, it, expect } from 'vitest';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { endEditorSession } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-text-session.js';
 
-// setStrokeWidth/setStrokeColor/_commitStyleChange are plain prototype
-// methods with no constructor dependency — called via .call() against a
-// minimal mock `this` rather than instantiating a real VectorEditor
-// (which needs a live DOM canvas). Real class, not a reimplementation:
-// a revert of the actual fix fails these tests.
+// setStrokeWidth/_commitStyleChange are plain prototype methods with no
+// constructor dependency — called via .call() against a minimal mock
+// `this` rather than instantiating a real VectorEditor (which needs a
+// live DOM canvas). Real class, not a reimplementation: a revert of the
+// actual fix fails these tests.
 function mockStyleEditor(selected) {
   const calls = { pushState: 0, onChange: 0 };
   return {
     editor: {
       _selectedElements: selected,
       _strokeWidth: 0.5,
-      _strokeColor: '#000000',
       pushState: () => { calls.pushState++; },
       _onChange: () => { calls.onChange++; },
       _updateSelectionHighlight: () => {},
-      // The real _commitStyleChange, not a reimplementation — setStrokeWidth/
-      // setStrokeColor call `this._commitStyleChange()`, and `this` here is
-      // this mock, so it needs the real method attached to resolve.
+      // The real _commitStyleChange, not a reimplementation — setStrokeWidth
+      // calls `this._commitStyleChange()`, and `this` here is this mock, so
+      // it needs the real method attached to resolve.
       _commitStyleChange: VectorEditor.prototype._commitStyleChange,
     },
     calls,
@@ -59,25 +58,6 @@ describe('SA-UNDO-2: setStrokeWidth commits exactly once per call', () => {
     expect(editor._strokeWidth).toBe(2.0);
     expect(calls.pushState).toBe(0);
     expect(calls.onChange).toBe(0);
-  });
-});
-
-describe('SA-UNDO-3: setStrokeColor now ALSO fires onChange (pushState already worked)', () => {
-  it('pushes an undo step AND fires onChange when a selection is active', () => {
-    const { editor, calls } = mockStyleEditor([{ stroke: () => {}, type: 'line' }]);
-    VectorEditor.prototype.setStrokeColor.call(editor, '#ff0000');
-    expect(editor._strokeColor).toBe('#ff0000');
-    expect(calls.pushState).toBe(1);
-    expect(calls.onChange).toBe(1); // the half that was missing before this fix
-  });
-
-  it('also fills text elements (existing behaviour, unchanged) and still commits once', () => {
-    const fillCalls = [];
-    const { editor, calls } = mockStyleEditor([{ stroke: () => {}, fill: (c) => fillCalls.push(c), type: 'text' }]);
-    VectorEditor.prototype.setStrokeColor.call(editor, '#00ff00');
-    expect(fillCalls).toEqual(['#00ff00']);
-    expect(calls.pushState).toBe(1);
-    expect(calls.onChange).toBe(1);
   });
 });
 

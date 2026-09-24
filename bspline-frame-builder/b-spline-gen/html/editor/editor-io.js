@@ -9,6 +9,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
+import { textGlyphPathD } from './editor-expand-text.js';
 import { resetPanState } from './editor-interaction.js';
 import { clearSnapCursor } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
@@ -171,18 +172,25 @@ export function getLayerSvg(editor, layerId, dpi = 96) {
  * Uses svg.js (a real SVG engine) so all path syntaxes/curves bake
  * correctly. Returns the input unchanged if svg.js is unavailable.
  *
- * NOTE: <text> is not matrix-baked (font geometry) — only its x/y anchor +
- * font-size are carved so it lands in place; glyph orientation under the
- * Y-flip is NOT handled (expand text to paths before carving).
+ * SE8d / SA-ROUNDTRIP-2: a rotated/skewed/non-uniformly-scaled <text> is
+ * converted to a glyph-outline path before baking (see _carveText below) —
+ * Fusion's importer ignoring element transforms (this docstring's own
+ * point, above) means leaving the rotation ON the <text> as a `transform`
+ * would import upright regardless; only baked path geometry survives the
+ * importer. Async because that conversion loads a font file over the
+ * network (opentype.js) — both call sites (main/export-flow.js) already
+ * run inside an async function, so this just adds one more `await`.
+ * Upright / uniformly-scaled text (the common case) skips the font-fetch
+ * entirely and keeps the cheap anchor+font-size bake.
  */
-export function bakeSvgForCarving(svgText, widthIn, heightIn, dpi = 96) {
+export async function bakeSvgForCarving(svgText, widthIn, heightIn, dpi = 96) {
     if (!svgText) return svgText;
     if (typeof SVG === 'undefined' || !SVG.Matrix) return svgText;
     try {
         const carve = new SVG.Matrix(carveMatrix(widthIn, heightIn, dpi));
         const root = SVG(svgText);
         if (!root || typeof root.children !== 'function') return svgText;
-        _carveChildren(root, carve);
+        await _carveChildren(root, carve);
         const halfW = widthIn * dpi / 2, halfH = heightIn * dpi / 2;
         try { root.viewbox(-halfW, -halfH, widthIn * dpi, heightIn * dpi); } catch (_) {}
         const out = root.svg();
@@ -202,23 +210,80 @@ export function bakeSvgForCarving(svgText, widthIn, heightIn, dpi = 96) {
 const NON_GEOMETRY_NODE_TYPES = ['defs', 'title', 'desc', 'style'];
 
 /** Bake carve into each geometry leaf, descending through <g> (composing the
- *  group's own transform) so any wrapped content still bakes correctly. */
-function _carveChildren(container, carve) {
-    container.children().forEach(ch => {
+ *  group's own transform) so any wrapped content still bakes correctly.
+ *  `Array.from` up front — svg.js's own List can be walked live, but this
+ *  loop MUTATES the tree (text -> path swaps out a child mid-walk), which
+ *  would skip/repeat siblings if the loop re-read a live collection. */
+async function _carveChildren(container, carve) {
+    for (const ch of Array.from(container.children())) {
         const type = ch.type;
-        if (NON_GEOMETRY_NODE_TYPES.includes(type)) return;
+        if (NON_GEOMETRY_NODE_TYPES.includes(type)) continue;
         if (type === 'g') {
-            _carveChildren(ch, carve.multiply(ch.matrix()));
+            await _carveChildren(ch, carve.multiply(ch.matrix()));
             ch.attr('transform', null);   // the group's transform is now baked into its children
-            return;
+            continue;
         }
         const combined = carve.multiply(ch.matrix());
-        if (type === 'text') { _carveTextAnchor(ch, combined); return; }
+        if (type === 'text') { await _carveText(container, ch, combined); continue; }
         bakeMatrixIntoElement(ch, combined);
-    });
+    }
 }
 
-/** <text> carve: position the anchor + scale font-size (no glyph flip). */
+/** SA-ROUNDTRIP-2: does the FULL bake matrix (carve x el.matrix(), and any
+ *  ancestor <g> transforms already folded in by _carveChildren) carry
+ *  rotation, skew, or non-uniform scale? If so, `_carveTextAnchor`'s
+ *  font-size x |m.a| shortcut is wrong — it only accounts for x-scale and
+ *  drops rotation/skew outright (a 45°-rotated text carved perfectly
+ *  upright at cos(45°) of its real size, silently, no error). Checked with
+ *  a RELATIVE epsilon (scaled to the matrix's own magnitude) rather than a
+ *  fixed one, since `m` already has carve's dpi (e.g. 96x) baked in here —
+ *  a fixed absolute epsilon tuned for inch-scale numbers would misfire at
+ *  pixel scale. */
+export function _needsGlyphBake(m) {
+    if (!m) return false;
+    if (Math.abs(m.b) > 1e-9 || Math.abs(m.c) > 1e-9) return true; // rotation/skew
+    const scale = Math.max(Math.abs(m.a), Math.abs(m.d), 1);
+    return Math.abs(Math.abs(m.a) - Math.abs(m.d)) > scale * 1e-6; // non-uniform scale
+}
+
+/** <text> carve dispatcher: the common case (no rotation/skew/non-uniform
+ *  scale) stays the cheap anchor+font-size bake; anything else converts to
+ *  a glyph-outline path first (textGlyphPathD, editor-expand-text.js —
+ *  the SAME font-loading/glyph-generation code the interactive Expand
+ *  tool uses, not a second copy) so orientation and per-axis size survive
+ *  the bake. Falls back to the anchor-only bake (with a loud, non-silent
+ *  warning) if the glyph bake itself fails (no font mapping for the
+ *  family, or the font fetch failed) — the audit's own point is that this
+ *  defect must never be SILENT; a degraded-but-logged carve beats a
+ *  vanished layer or an unhandled rejection aborting the whole export. */
+async function _carveText(container, textEl, m) {
+    if (_needsGlyphBake(m)) {
+        const d = await textGlyphPathD(textEl, m);
+        if (d) {
+            const newPath = container.path(d)
+                .fill(textEl.attr('fill') || '#000000')
+                .stroke('none')
+                .attr('fill-rule', 'evenodd');
+            const node = textEl.node;
+            for (const attr of Array.from(node.attributes)) {
+                if (attr.name.startsWith('data-')) newPath.attr(attr.name, attr.value);
+            }
+            try { newPath.insertAfter(textEl); } catch (_) {}
+            textEl.remove();
+            return;
+        }
+        try {
+            fusLog('[CARVE] SA-ROUNDTRIP-2: glyph bake failed for a rotated/scaled <text> ' +
+                '(no font mapping or fetch failure) — falling back to the anchor-only bake, ' +
+                'which will carve it upright/wrong-size.');
+        } catch (_) {}
+    }
+    _carveTextAnchor(textEl, m);
+}
+
+/** <text> carve: position the anchor + scale font-size (no glyph flip).
+ *  Correct only when `m` carries no rotation/skew/non-uniform scale — see
+ *  _needsGlyphBake, which gates every call site that reaches this. */
 function _carveTextAnchor(textEl, m) {
     const p = transformPoint(m, { x: parseFloat(textEl.attr('x')) || 0, y: parseFloat(textEl.attr('y')) || 0 });
     textEl.attr('x', p.x);

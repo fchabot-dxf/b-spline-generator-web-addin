@@ -10,7 +10,7 @@ import { fitCurve, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance, getNodes, getNearbyElement } from './editor-hit.js';
 import { initInteraction, updateHandles } from './editor-interaction.js';
 import { resetTransform, flattenTransform } from './editor-transform-handles.js';
-import { setMode, updateToolbarVisibility, updateNodeCountUI, updateSelectionHighlight, setHover, select, selectAdd, selectMany } from './editor-ui.js';
+import { setMode, updateToolbarVisibility, updateSelectionHighlight, setHover, select, selectAdd, selectMany } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
@@ -181,16 +181,6 @@ export class VectorEditor {
     sync3DBackground() { return sync3DBackground(this); }
     
     setMode(mode) { return setMode(this, mode); }
-    setStrokeColor(color) {
-        this._strokeColor = color;
-        const sel = this._selectedElements;
-        if (!sel || !sel.length) return;
-        for (const el of sel) {
-            el.stroke({ color });
-            if (el.type === 'text') el.fill(color);
-        }
-        this._commitStyleChange();
-    }
     setStrokeWidth(w) {
         this._strokeWidth = w;
         const sel = this._selectedElements;
@@ -199,15 +189,14 @@ export class VectorEditor {
         this._updateSelectionHighlight();
         this._commitStyleChange();
     }
-    // SE8a / SA-UNDO-2,3: setStrokeWidth had neither pushState() nor
+    // SE8a / SA-UNDO-2: setStrokeWidth had neither pushState() nor
     // _onChange() (permanently un-undoable, and the carve preview never
-    // updated until an unrelated edit happened to fire _onChange());
-    // setStrokeColor had pushState() but no _onChange() (undo worked, the
-    // live preview just lagged). One shared committer so a THIRD style
-    // setter can't reintroduce either half of this gap by hand-rolling it
-    // again — mirrors the pattern setFontFamily/setFontSize
-    // (editor-text-style.js) already get right, just not previously
-    // factored into one place.
+    // updated until an unrelated edit happened to fire _onChange()).
+    // _commitStyleChange exists so a future style setter can't reintroduce
+    // that gap by hand-rolling it again — mirrors the pattern
+    // setFontFamily/setFontSize (editor-text-style.js) already get right,
+    // just not previously factored into one place. (SE8d: this method's
+    // twin, setStrokeColor, had zero real callers and was removed.)
     _commitStyleChange() {
         if (typeof this.pushState === 'function') this.pushState();
         if (this._onChange) this._onChange();
@@ -323,7 +312,7 @@ export class VectorEditor {
      */
     pushState() {
         // Caller trace lets us see WHO is pushing (finishDrawing,
-        // setStrokeColor, ensureActiveLayer, etc.) so we can spot
+        // setStrokeWidth, ensureActiveLayer, etc.) so we can spot
         // spurious snapshots that are erroneously grouping strokes.
         const caller = _shortCaller();
         const childCount = this._sketchLayer.children().toArray().length;
@@ -425,7 +414,6 @@ export class VectorEditor {
     _getMousePoint(e) { return getPointerPos(this, e); }
     _updateHandles() { return updateHandles(this); }
     _updateSelectionHighlight() { return updateSelectionHighlight(this); }
-    _updateNodeCountUI(data) { return updateNodeCountUI(this, data); }
     _select(el) { return select(this, el); }
     _setHover(el) { return setHover(this, el); }
     _commitText() { return commitText(this); }

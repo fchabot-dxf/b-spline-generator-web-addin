@@ -260,6 +260,17 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     }
 
     const totalLen = stepVariants.reduce((s, v) => s + v.stepText.length, 0);
+    // SE8d: bakeSvgForCarving is now async (a rotated/scaled <text> layer's
+    // glyph bake loads a font over the network) — await every layer's bake
+    // BEFORE building the payload object, not inside .map() (an async map
+    // callback would hand JSON.stringify an array of unresolved Promises).
+    const bakedLayers = options.includeSVG
+        ? await Promise.all(layersToExport.map(async (l, i) => ({
+            index: i + 1,
+            config: { profile: l.profile, depth: l.depth },
+            svg: await bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96),
+        })))
+        : [];
     const payload = JSON.stringify({
         params: { ...P },
         stepVariants,
@@ -269,11 +280,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         isVisible: options.isVisible !== undefined ? options.isVisible : true,
         stamp: {
             enabled: options.includeSVG,
-            layers: options.includeSVG ? layersToExport.map((l, i) => ({
-                index: i + 1,
-                config: { profile: l.profile, depth: l.depth },
-                svg: bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96),
-            })) : [],
+            layers: bakedLayers,
             dpi: 96,
         },
     });
@@ -305,12 +312,15 @@ async function downloadFiles({ shared, heights, offsetPts, unstamped, selectedVa
     }
 
     if (layersToExport.length > 0) {
-        layersToExport.forEach((l, i) => {
+        // SE8d: bakeSvgForCarving is now async (see sendToFusion's own note
+        // on why) — a plain .forEach can't await, so a for-of loop instead.
+        for (let i = 0; i < layersToExport.length; i++) {
+            const bakedSvg = await bakeSvgForCarving(layersToExport[i].svg, P.widthIn, P.heightIn, 96);
             exportFiles.push({
                 name: `B-Spline-artwork-layer-${i + 1}.svg`,
-                blob: new Blob([bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96)], { type: 'image/svg+xml' }),
+                blob: new Blob([bakedSvg], { type: 'image/svg+xml' }),
             });
-        });
+        }
     }
 
     if (exportFiles.length > 1 && typeof JSZip !== 'undefined') {
