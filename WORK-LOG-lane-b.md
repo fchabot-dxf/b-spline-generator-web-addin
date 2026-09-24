@@ -1305,3 +1305,178 @@ No gate hit. One real design-doc correction made and disclosed rather than imple
 (cloud-project-manager.js has no live editor to read for most of its callers) — same discipline as T13's
 own "found the enabled/visible fossil before writing it down" correction, applied here at build time
 instead of design time.
+
+---
+
+## Lane B — Turn 47 — T16: mobile CSS fixes (SA-MOBILE-13, -8, -4, -5 + T10 badges) — DONE, CSS only
+
+Stylesheets only, no JS — bspline-frame-builder/styles/base.css, bspline-frame-builder/styles/editor.css.
+Confirmed via git status --short: exactly these 2 files. Did not touch editor/*.js — seat A owns it for
+SE8b.
+
+### 1. SA-MOBILE-13 — touch-action scoped off html/body
+
+Before (base.css, inside the html, body rule): overflow: hidden; touch-action: none; /* Prevent browser
+handling of touch gestures */ -webkit-overflow-scrolling: touch;
+After: touch-action: none removed from html, body entirely. New rule added right after:
+#previewCanvas, #editorSVGContainer, #resizer { touch-action: none; }
+Named each selector and why, per the dispatch's ask: #previewCanvas (the Three.js 3D preview — the one
+surface the page's own WCAG 1.4.4 viewport comment already names as needing its own gesture handling;
+OrbitControls owns rotate/pan/zoom). #editorSVGContainer (the SVG editor canvas — custom pointer-based
+pan/select/draw in editor/editor-interaction.js, would otherwise fight native page pan while drawing).
+#resizer (the sidebar/preview drag handle, core/ui-utils.js's initResizer — a custom pointerdown/
+pointermove drag, not a native input type=range, so it needed the same treatment as the already-
+correctly-scoped .editor-symbol-keyboard-grip drag handle a few hundred lines below it in the same
+file). Checked all 3 candidates by reading their actual interaction code before including them, not by
+guessing from the name — confirmed #previewCanvas is the literal id in bspline_gen_palette.html:952
+and #resizer's drag handler in core/ui-utils.js:143-170 uses setPointerCapture, the exact pattern
+that benefits from touch-action:none (prevents the browser's own pan/scroll from fighting an in-progress
+pointer-captured drag). No JS pinch handling added — that's SE7m, per the dispatch's explicit exclusion.
+
+### 2. SA-MOBILE-8 — layer-delete button visible under (hover: none)
+
+Before: .editor-layers-panel .layer-row:hover .layer-delete { visibility: visible; } and
+.editor-layers-panel .layer-delete:hover { background: #fde7e7; }
+After (hover-reveal for mouse kept unchanged; new block added directly below it):
+@media (hover: none) { .editor-layers-panel .layer-delete { visibility: visible; } }
+Used (hover: none) (a real "no hover-capable pointer present" signal) rather than a width breakpoint,
+matching the reasoning already established for the T10-badge fix below and consistent with this being
+the semantically correct feature query for "is this a touch device," independent of viewport width.
+
+### 3 + SA-MOBILE-5's second half. SA-MOBILE-4 — rail buttons consolidated to ONE (pointer: coarse) rule
+
+Traced the cascade before touching anything: .editor-sidebar .tool-btn { width:38px; height:38px }
+(inside a @media (max-width:720px) block, no !important) was the LIVE rule (broader/equal-priority
+breakpoint, more specific selector); a second .tool-btn { width:40px; ... } (bare selector, inside
+@media (max-width:700px)) was dead by specificity — confirmed both facts before editing, not assumed
+from the audit alone (T12's audit had already flagged this pair, but I re-verified the live/dead split
+myself since T10 had touched nearby lines since then).
+
+Before (@media (max-width:720px) block): .editor-sidebar .tool-btn { width: 38px; height: 38px;
+flex: 0 0 auto; padding: 6px; }
+After (same block — flex: 0 0 auto kept, since that's a row-layout-context rule, not a sizing conflict;
+sizing removed): .editor-sidebar .tool-btn { flex: 0 0 auto; }
+Before (@media (max-width:700px) block, dead): .tool-btn { display: inline-flex; align-items: center;
+justify-content: center; min-width: 40px; width: 40px; height: 40px; padding: 6px; border-radius: 10px; }
+After: removed entirely (see item 4 below — this and the dead .editor-sidebar rule shared one edit).
+
+Caught a real cascade consequence before shipping it: removing ONLY the width/height from the 720px
+.editor-sidebar .tool-btn rule (leaving flex: 0 0 auto) would have made the previously-dead bare
+.tool-btn{width:40px} in the 700px block suddenly LIVE for width/height (it was only dead because a
+higher-specificity selector was setting the SAME property — once that property was gone from the
+higher-specificity rule, the lower-specificity one stops being shadowed). That would have reintroduced
+exactly the kind of two-rules-disagreeing state this task exists to close, just for narrow-but-mouse
+(non-touch) windows specifically. Deleted the 700px .tool-btn rule too, not left it as a new trap.
+
+New consolidated rule (placed right after the base .tool-btn .material-symbols-outlined declaration,
+near .tool-btn's other base rules):
+@media (pointer: coarse) { .editor-sidebar .tool-btn { width: 44px; height: 44px; padding: 5px; } }
+(pointer: coarse) chosen over a width breakpoint for the same reason as item 2 — it's the actual signal
+("an imprecise pointer is present"), not a proxy that conflates narrow-window with touch-input.
+
+### 4. SA-MOBILE-5 — dead 700px .editor-sidebar rule removed, chain confirmed
+
+Before: .editor-sidebar { width: 56px; min-width: 56px; padding: 10px 6px; }
+After: removed (replaced with a comment explaining why, and covering the .tool-btn removal from item 3
+in the same note, since both were the same dead-rule cleanup). Chain check, per the dispatch's own ask:
+grep -n "editor-sidebar" editor.css before deleting -> 5 hits total, 3 were the two live
+@media (max-width:720px) blocks' own .editor-sidebar rules (unaffected, still needed) + the dead rule
+itself + one doc-comment mentioning it — confirmed nothing else in the file (no calc(), no sibling
+selector) depended on the dead rule's 56px value before removing it.
+
+### Also — T10 shortcut badges hidden under (hover: none)
+
+Added right after the existing .tool-btn.active[data-key]::after rule:
+@media (hover: none) { .tool-btn[data-key]::after { display: none; } }
+No keyboard on a phone, so the shortcut-letter badge (T10, this lane, several turns ago) is dead
+information for a touch user — hidden rather than left as a meaningless mark on every button.
+
+### Verify
+
+npx vitest run -> 145 passed (17 files) — CSS-only change, confirms no JS regression; file/test count
+is higher than my last check (122) because seat A's SE8a/SE8b work landed on main and merged in since
+T15, unrelated to this turn.
+Brace balance check (node -e counting braces) on both files: base.css 253/253, editor.css 93/93 — both
+balanced, no stray brace from any of the edits.
+grep -n "touch-action" across both files, every occurrence listed with its selector (dispatch's own
+verify ask): base.css:71 -> my new #previewCanvas, #editorSVGContainer, #resizer rule. base.css:777 ->
+pre-existing .editor-symbol-keyboard-grip (untouched, already correctly scoped). editor.css:335 ->
+pre-existing .editor-symbol-keyboard (untouched, already correctly scoped). editor.css:357 -> pre-existing
+.editor-sidebar { touch-action: pan-x; } (untouched — a different, already-correct value, allows
+horizontal scroll of the row-layout rail).
+git status --short -> 2 files (base.css, editor.css) + this WORK-LOG entry, matching the dispatch.
+
+No gate hit — CSS-only, additive/subtractive within named rules, no JS or markup touched. Live phone
+check is Fred's, per the dispatch.
+
+---
+
+## Lane B — Turn 49 — T17: SE7b design — the Lattice pattern generator — DONE, plan only
+
+New SE7B-PATTERN-GENERATOR-DESIGN.md (331 lines). Read-only on product code — grounded the whole design
+in what SE7a/SE6 already declared rather than inventing new machinery, per the dispatch's own "ground
+truth to read first" list.
+
+Read editor-lattice.js (147 lines), editor-grid.js (183 lines), layers.js's CRUD functions, core/noise.js
+and core/terrain.js in full before writing anything. Found the design is almost entirely composition of
+existing primitives, not new geometry/DOM code:
+- emitSegment/emitNode (editor-lattice.js:119-147) already stamp data-lattice + pull data-layer from
+  ensureActiveLayer — a generated element and a hand-drawn SE7a element are the identical shape, which is
+  what makes "editable afterwards with every tool" true by construction rather than something to build.
+- latticeCrossings (editor-lattice.js:70-87) is already the exact rail x tie crossing-point primitive
+  nodes.crossings needs — no new math.
+- addLayer's {skipUndo:true} + setActiveLayer's undo-silence (layers.js:115-138,230-248) mean Generate
+  can build all 3 layers and emit every element without touching the undo stack, then push exactly once
+  at the end — same shape as action-tools.js's editorClear handler, cited directly as the precedent.
+- handleEnd (editor-interaction.js:307-334) is the ONE place node-drag/transform-drag/select-translate
+  all converge before pushState() (:330) — used this as the single ownership-detach hook instead of my
+  first instinct (hooking 3 separate move-handler functions), after actually reading the current dispatch
+  logic rather than assuming the shape from memory.
+
+**Found and reused the actual RNG, not a superficial match.** The dispatch said "find the RNG and reuse
+it, do not add a second one." Checked core/noise.js's PerlinNoise (spatially-correlated continuous
+field) against core/terrain.js's own lcgPoints (terrain.js:309-318, independent {u,v} draws from a seeded
+LCG, already used for seed-panel point scattering at :192) and concluded Perlin is the WRONG shape for
+this job — thresholding continuous noise for "does column i get a tie" would visibly clump neighboring
+columns, not scatter them the way Fred's photo shows. Recommended exporting lcgPoints (currently
+module-private, one-line change) as slice 1's first step, rather than either reusing Perlin because it's
+already exported (convenient but wrong statistically) or hand-rolling a fresh LCG (violates the dispatch's
+own instruction). Also named, without fixing (out of scope), that noise.js's buildPerm and terrain.js's
+lcgPoints already independently hand-roll the identical LCG step — a pre-existing small "declare once"
+gap, on record now rather than silently re-noticed later.
+
+**Resolved the ownership-edit fork the dispatch explicitly asked me to decide, with reasoning, not left
+it open:** any interactive drag-edit to a generated element strips data-lattice-gen (detaches it),
+hooked once at handleEnd right before the existing pushState() so the detach and the edit land in the
+same undo step. A click-without-drag does NOT detach (_dragMoved, already checked at that exact line,
+gates it for free). Named the standard "generative-fill eject on edit" precedent as the reasoning, and
+flagged a real known rough edge (a detached element and a freshly-regenerated one can end up overlapping
+at the same lattice cell) as deferred-not-ignored, with a named mitigation for a later slice.
+
+**Panel UI (390px ASCII mockup, §5):** every control is a real tap target — no hover-reveal — matching
+T16's just-landed (hover:none)/(pointer:coarse) precedent in the same lane. Recommended against a live
+preview-before-commit for slice 1, with explicit reasoning (Generate is already 1 undo step and
+non-destructive by construction, so the preview's complexity cost has to beat "just Ctrl+Z" — a real
+tradeoff stated as a tradeoff, not asserted as obviously correct, and explicitly named as something to
+revisit if actual usage shows otherwise).
+
+**Named the document-level storage choice and why it's not a per-layer field:** data-lattice-pattern on
+the root <svg>, mirroring data-editor-layers exactly — same 3 save call sites + 1 open call site
+(editor-io.js), a new sibling _serializeLatticePatternAttr next to the existing _serializeLayersAttr
+rather than a fourth divergent JSON-embedding idiom. A pattern spans 3 layers by construction, so it
+isn't one layer's property — this is the SE4/SE5 "one store" lesson applied going forward on a new
+feature instead of retrofitted onto an old one.
+
+3 slices proposed: (1) pure pattern algorithm + lcgPoints export, no DOM (3 files); (2) layer creation +
+DOM emission + document persistence (3 files); (3) ownership-detach hook + panel UI (5 files). Each has a
+predicted file list and a verify line, per the dispatch's own format ask. 3 open questions flagged
+explicitly for Fred/advisor before slice 2 starts (tie-span anchoring to rail rows — a genuine visual
+judgment call I can't resolve from code alone; per-layer tooling defaults; whether the detach-overlap
+rough edge needs pulling into an earlier slice).
+
+**Verify:** git status --short -> SE7B-PATTERN-GENERATOR-DESIGN.md (new) only; every file:line citation
+re-checked against current HEAD before writing (not copied from memory of older audit turns) — caught
+and corrected 3 stale line numbers from my own T12 audit (dragNode/translateSelection/handleEnd had all
+moved since SE7n/SE8a landed) before they went into the doc.
+
+No gate hit — design-doc-only turn, no product code or tests touched.
