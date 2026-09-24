@@ -1408,3 +1408,75 @@ git status --short -> 2 files (base.css, editor.css) + this WORK-LOG entry, matc
 
 No gate hit — CSS-only, additive/subtractive within named rules, no JS or markup touched. Live phone
 check is Fred's, per the dispatch.
+
+---
+
+## Lane B — Turn 49 — T17: SE7b design — the Lattice pattern generator — DONE, plan only
+
+New SE7B-PATTERN-GENERATOR-DESIGN.md (331 lines). Read-only on product code — grounded the whole design
+in what SE7a/SE6 already declared rather than inventing new machinery, per the dispatch's own "ground
+truth to read first" list.
+
+Read editor-lattice.js (147 lines), editor-grid.js (183 lines), layers.js's CRUD functions, core/noise.js
+and core/terrain.js in full before writing anything. Found the design is almost entirely composition of
+existing primitives, not new geometry/DOM code:
+- emitSegment/emitNode (editor-lattice.js:119-147) already stamp data-lattice + pull data-layer from
+  ensureActiveLayer — a generated element and a hand-drawn SE7a element are the identical shape, which is
+  what makes "editable afterwards with every tool" true by construction rather than something to build.
+- latticeCrossings (editor-lattice.js:70-87) is already the exact rail x tie crossing-point primitive
+  nodes.crossings needs — no new math.
+- addLayer's {skipUndo:true} + setActiveLayer's undo-silence (layers.js:115-138,230-248) mean Generate
+  can build all 3 layers and emit every element without touching the undo stack, then push exactly once
+  at the end — same shape as action-tools.js's editorClear handler, cited directly as the precedent.
+- handleEnd (editor-interaction.js:307-334) is the ONE place node-drag/transform-drag/select-translate
+  all converge before pushState() (:330) — used this as the single ownership-detach hook instead of my
+  first instinct (hooking 3 separate move-handler functions), after actually reading the current dispatch
+  logic rather than assuming the shape from memory.
+
+**Found and reused the actual RNG, not a superficial match.** The dispatch said "find the RNG and reuse
+it, do not add a second one." Checked core/noise.js's PerlinNoise (spatially-correlated continuous
+field) against core/terrain.js's own lcgPoints (terrain.js:309-318, independent {u,v} draws from a seeded
+LCG, already used for seed-panel point scattering at :192) and concluded Perlin is the WRONG shape for
+this job — thresholding continuous noise for "does column i get a tie" would visibly clump neighboring
+columns, not scatter them the way Fred's photo shows. Recommended exporting lcgPoints (currently
+module-private, one-line change) as slice 1's first step, rather than either reusing Perlin because it's
+already exported (convenient but wrong statistically) or hand-rolling a fresh LCG (violates the dispatch's
+own instruction). Also named, without fixing (out of scope), that noise.js's buildPerm and terrain.js's
+lcgPoints already independently hand-roll the identical LCG step — a pre-existing small "declare once"
+gap, on record now rather than silently re-noticed later.
+
+**Resolved the ownership-edit fork the dispatch explicitly asked me to decide, with reasoning, not left
+it open:** any interactive drag-edit to a generated element strips data-lattice-gen (detaches it),
+hooked once at handleEnd right before the existing pushState() so the detach and the edit land in the
+same undo step. A click-without-drag does NOT detach (_dragMoved, already checked at that exact line,
+gates it for free). Named the standard "generative-fill eject on edit" precedent as the reasoning, and
+flagged a real known rough edge (a detached element and a freshly-regenerated one can end up overlapping
+at the same lattice cell) as deferred-not-ignored, with a named mitigation for a later slice.
+
+**Panel UI (390px ASCII mockup, §5):** every control is a real tap target — no hover-reveal — matching
+T16's just-landed (hover:none)/(pointer:coarse) precedent in the same lane. Recommended against a live
+preview-before-commit for slice 1, with explicit reasoning (Generate is already 1 undo step and
+non-destructive by construction, so the preview's complexity cost has to beat "just Ctrl+Z" — a real
+tradeoff stated as a tradeoff, not asserted as obviously correct, and explicitly named as something to
+revisit if actual usage shows otherwise).
+
+**Named the document-level storage choice and why it's not a per-layer field:** data-lattice-pattern on
+the root <svg>, mirroring data-editor-layers exactly — same 3 save call sites + 1 open call site
+(editor-io.js), a new sibling _serializeLatticePatternAttr next to the existing _serializeLayersAttr
+rather than a fourth divergent JSON-embedding idiom. A pattern spans 3 layers by construction, so it
+isn't one layer's property — this is the SE4/SE5 "one store" lesson applied going forward on a new
+feature instead of retrofitted onto an old one.
+
+3 slices proposed: (1) pure pattern algorithm + lcgPoints export, no DOM (3 files); (2) layer creation +
+DOM emission + document persistence (3 files); (3) ownership-detach hook + panel UI (5 files). Each has a
+predicted file list and a verify line, per the dispatch's own format ask. 3 open questions flagged
+explicitly for Fred/advisor before slice 2 starts (tie-span anchoring to rail rows — a genuine visual
+judgment call I can't resolve from code alone; per-layer tooling defaults; whether the detach-overlap
+rough edge needs pulling into an earlier slice).
+
+**Verify:** git status --short -> SE7B-PATTERN-GENERATOR-DESIGN.md (new) only; every file:line citation
+re-checked against current HEAD before writing (not copied from memory of older audit turns) — caught
+and corrected 3 stale line numbers from my own T12 audit (dragNode/translateSelection/handleEnd had all
+moved since SE7n/SE8a landed) before they went into the doc.
+
+No gate hit — design-doc-only turn, no product code or tests touched.
