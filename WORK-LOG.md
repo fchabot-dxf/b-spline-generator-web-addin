@@ -6959,3 +6959,124 @@ such rather than folded into the same non-vacuous number).
   alongside it. `logs: []` — no console errors.
 
 No amendments pending beyond the one incorporated above.
+
+---
+
+## Turn 227 — SE11: colored vectors drape onto the 3D relief — DONE
+
+**Rule implemented exactly as ROADMAP's final wording:** a layer drapes when `visible && carve &&
+showColor`; pure-black (`#000000`) elements never drape (`DRAPE_SKIP_COLORS`) so an uncoloured layer
+doesn't paint black lines over a relief nobody asked to see coloured. Seat B's real `carve`/
+`showColor` fields (T26/SE10) haven't landed on `editor._layers` yet — every qualifying check treats
+a missing field as `true`, so today's layers (id/name/visible only) drape exactly as if they already
+had the new fields set true, and nothing here needs to change when seat B's fields land.
+
+**Architecture — three pieces, one hook, matching the dispatch's own split:**
+1. `core/preview/drape-svg.js` (new, PURE): `buildDrapeSvg(editorLayers, sketchSvg)`. Takes
+   `editor.save()`'s own output verbatim (a full board-sized `<svg viewBox="0 0 mW mH">` document,
+   `data-layer` on every child — already exported, no new serializer written) and returns a NEW svg
+   string of only the qualifying, non-black elements, same viewBox/width/height. No DOM object, no
+   editor instance, no canvas — just DOMParser/XMLSerializer, so this is fully unit-testable without
+   any of the "canvas.getContext('2d') returns null" / "no real svg.js" limitations this session has
+   hit repeatedly.
+2. `core/preview/index.js` (Three.js side): `TerrainPreview.buildDrapeTexture(svgString, w, h)` reuses
+   the STAMP rasterizer's own exported pieces verbatim (`sanitizeSvgForRaster`, `prepareSvgForRaster`,
+   `renderSvgNative` — `core/stamp/render-svg.js`, read-only import, not touched) to render the drape
+   SVG the SAME way the stamp mask is rendered, but keeps the full RGBA canvas instead of extracting
+   an alpha mask. **Composited onto an opaque WHITE background, not left transparent** —
+   `MeshPhongMaterial` multiplies `map` texel × `vertexColor`/`material.color`, so a white (1,1,1)
+   unpainted texel leaves the terrain's own shading at that point UNCHANGED, while a real colour
+   tints it; a transparent texel would instead alpha-blend against whatever's behind the MESH in the
+   framebuffer (background, or nothing), not the terrain's own colour there — the wrong result for
+   "drape on top of the existing surface." `TerrainPreview.setDrapeTexture(texture)` applies/clears
+   `mesh.material.map`, disposes the previous texture (a fresh CanvasTexture is built on every
+   refresh — without disposal every edit would leak one GPU texture), and `update()` re-applies
+   `this._drapeTexture` after every mesh rebuild, same pattern as the existing thicken heat-map's
+   `_heatColours`. Not new geometry — same mesh, same existing `uv` attribute
+   (`buildHeightField`/`terrain-mesh.js` already computes a planar top-down UV per vertex, unrelated
+   to height — this was ALREADY there, nothing added).
+3. `main/app-init.js`: `refreshDrape(preview)` — `editor.save()` → `buildDrapeSvg` →
+   `preview.buildDrapeTexture` → `preview.setDrapeTexture`. Hooked into the SAME three places that
+   already call `refreshAllStampMasks` after a real content change: the CHANGE_PIPELINE `remask` step
+   (now `async`, gated `if (kind === 'commit')` — the dispatch's own explicit "not per drag frame";
+   `kind` is the enclosing `(kind = 'commit') => {...}` callback's own closure variable, so 'live'
+   drag frames — which ALSO run this same remask step — never rebuild the drape texture mid-gesture),
+   the Apply branch, and the Cancel branch.
+
+**Orientation (dispatch: "check... so a line drawn top-left appears top-left" — the SC2/SC3 Y-flip
+history).** Traced rather than guessed: `buildDrapeTexture` renders through `prepareSvgForRaster` —
+the EXACT SAME function the stamp mask rasterizer calls (`core/stamp/index.js:133`) — so the drape
+canvas's row semantics (row 0 = SVG y=0 = board top, stretched to the buffer with no flip) are
+IDENTICAL to the stamp mask's own row semantics, and the stamp mask's rows already map correctly onto
+`heights[]`'s own row index (proven by this exact same screenshot: the carved grooves visibly follow
+the rail pattern's spacing and position, a pipeline this turn didn't touch). Since
+`buildHeightField`'s `v = j/(nz-1)` uses that SAME row index, texture row 0 must land at mesh v=0 for
+the two to agree — set via `texture.flipY = false` (THREE's default `true` would instead put texture
+row 0 at v=1, mirroring the drape vertically relative to the stamp carve it's meant to sit on top of).
+**Caveat, not hidden:** evenly-spaced horizontal rails are symmetric under a vertical flip, so they
+alone can't empirically prove this either way — the code-level argument above (shared rasterization
+function with the already-correct, already-visually-confirmed stamp path) is the actual evidence, not
+just "the screenshot looks fine."
+
+**Tests — `tests/drape-svg.test.js` (new, 12 tests), the dispatch's own truth table:** all-qualify
+(black layer's element correctly excluded by colour, not by layer), hidden layer excluded, `carve:
+false` excluded, `showColor: false` excluded, missing fields default to true, empty result when
+nothing qualifies, empty result when the only qualifying layer is pure black, empty string for
+empty/null input, viewBox/width/height preserved from the source, each element's own colour kept
+(not forced to one), and a same-mode-different-color survives that black doesn't ("the black check is
+specific, not skip-everything"). **Non-vacuous — mutation, not a git revert (brand-new file, nothing
+to check out)**: temporarily broke `layerQualifies` to ignore carve/showColor, and removed the
+colour-skip check entirely; re-ran — 6/12 tests correctly failed (both gating tests, the
+missing-fields-default test, the black-only-empty test, and its knock-on effects on the all-qualify
+test); restored from a scratch copy, diffed byte-identical, re-ran green. `buildDrapeTexture`/
+`setDrapeTexture`/`refreshDrape` are NOT unit-tested — they need a real canvas 2D context (returns
+null in happy-dom, the same established gap `bakeSvgForCarving` etc. have always had) and real
+Blob/Image/WebGL — proven in a real browser instead (below), matching this repo's own established
+split (pure math gets a vitest; real-DOM rendering gets a live-browser smoke test).
+
+**Smoke — real headless Chrome, `drape` mode (new, `scripts/smoke-editor.mjs`, port 9337, served from
+the REPO ROOT — checked for a stale listener on 8765 first via `netstat`, none found).** Reused SE9's
+own color-the-lattice steps (rail=red/tie=yellow/node=navy via the real `editor.setColor`), then
+clicked the REAL "Apply Stencils" button (not a shortcut into internals) so `onCommit`'s Apply branch
+— now also calling `refreshDrape` — runs exactly the way a user's Apply click does. Three independent
+pieces of evidence, not one screenshot alone:
+1. `drapeTexturePresent: true` — the hook actually ran end-to-end (save → buildDrapeSvg →
+   buildDrapeTexture → setDrapeTexture) with no thrown error (`logs: []`).
+2. `drapeTextureColors` — sampled the drape texture's OWN source canvas directly:
+   `{width:564, height:724, red:43706, yellow:495, navy:973, white:346713}` — proves `buildDrapeSvg`
+   painted the right colours in proportions matching the lattice counts (17 rails ≫ 10 nodes > 5
+   ties by pixel area), independent of how it then renders in 3D.
+3. `renderedFrameColors` — sampled `TerrainPreview.getSnapshot()`'s ACTUAL rendered frame (not the
+   texture) for a relative red/yellow/navy tint: `{redTint: 19800, yellowTint: 1263, navyTint: 0,
+   totalPx: 480000}` — ~4% of the rendered frame shows a real, measurable red tint and a smaller but
+   present yellow tint, proving the multiply-blend genuinely reaches the screen, not just the
+   texture.
+**Honest caveat, not smoothed over:** the screenshot (`drape-5-preview-3d.png`) does NOT read as
+"obviously colored lines" to the eye — the rail grooves are carved DEEP with strong Phong specular
+shading, and the multiply-blend (needed so unpainted areas stay unchanged, see above) darkens/mutes
+the tint rather than replacing it outright, so it shows as a subtle warm-red cast on the groove walls
+rather than a bright red stripe. `navyTint: 0` in the coarse relative-tint heuristic — the 10 navy
+node dots are a small fraction of texture area (973/408K px) and likely fall below this heuristic's
+detection threshold at 800×600 render resolution, not necessarily invisible in a closer/larger view;
+not re-tuned without Fred's sign-off, matching SE7c's own precedent for a similar "matches the
+declared spec exactly, looks subtle at this zoom" finding. **Not implemented — flagged, not
+silently skipped:** `buildDrapeTexture` has no canvg fallback for the (historically real, per
+`render-svg.js`'s own docstring) case where a Fusion-embedded browser blocks blob URLs — the stamp
+rasterizer has one, the drape doesn't; not asked for this turn, and adding it means importing/testing
+a second async fallback path for a case this turn had no way to reproduce.
+
+**Verify:**
+- `node --check` on all 5 touched/new JS files (`drape-svg.js`, `core/preview/index.js`,
+  `main/app-init.js`, `main/main.js`, `scripts/smoke-editor.mjs`): clean.
+- `npx vitest run` → **324 passed** (312 prior + 12 new).
+- Smoke `drape` mode: see the three-piece evidence above; screenshot at
+  `scripts/../se11-smoke/drape-5-preview-3d.png` (scratch path, not committed, same convention as
+  every prior smoke screenshot in this log).
+
+**Debug handle added:** `window.__preview` (`main/main.js`, right after `preview = new
+TerrainPreview(canvas)`) — `AppState.preview` already existed but `AppState` is a module-scoped
+export, not a `window` global, so a headless CDP script had no way to reach `preview._drapeTexture`
+without one. Same idea as SE8b-3's `window.__perfLog` — a purpose-built channel for headless
+verification, inert otherwise.
+
+No amendments pending.

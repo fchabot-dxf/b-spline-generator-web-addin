@@ -51,6 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('previewCanvas');
     preview = new TerrainPreview(canvas);
     AppState.preview = preview;
+    // SE11: a purpose-built handle for headless verification (same idea as
+    // window.__perfLog, SE8b-3) — AppState itself is a module-scoped
+    // export, not a window global, so a CDP script can't reach
+    // preview._drapeTexture any other way.
+    window.__preview = preview;
 
     // 2. Resizer + mobile viewport
     initResizer(preview);

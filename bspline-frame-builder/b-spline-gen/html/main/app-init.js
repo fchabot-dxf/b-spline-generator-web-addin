@@ -7,6 +7,7 @@ import { updateGlobalButtons, takeSnapshot, globalHistoryLog } from '../core/his
 import { AppState } from './app-state.js';
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
+import { buildDrapeSvg } from '../core/preview/drape-svg.js';
 import { dbg, isDebugEnabled } from '../core/debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -235,6 +236,29 @@ export async function initApp(preview, wireGlobalEvents) {
   wireGlobalEvents();
 }
 
+/**
+ * SE11: rebuild the 3D-drape texture from the current editor content and
+ * layer roster (buildDrapeSvg, core/preview/drape-svg.js) and apply it to
+ * the preview's top surface. Hooked into the SAME three places that
+ * already call refreshAllStampMasks after a real content change below —
+ * commit-only inside the CHANGE_PIPELINE remask step (never 'live', per
+ * the dispatch's own "not per drag frame" rule), plus Apply and Cancel.
+ * Seat B's real visible/carve/showColor fields (T26/SE10) aren't landed
+ * yet — buildDrapeSvg already treats a missing field as true, so nothing
+ * here needs to change when they land.
+ */
+async function refreshDrape(preview) {
+    if (!preview || !window.svgEditor) return;
+    const svg = window.svgEditor.save();
+    const drapeSvg = buildDrapeSvg(window.svgEditor._layers, svg);
+    if (!drapeSvg) { preview.setDrapeTexture(null); return; }
+    const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+    const texW = Math.min(1024, Math.max(256, nx * 4));
+    const texH = Math.min(1024, Math.max(256, nz * 4));
+    const texture = await preview.buildDrapeTexture(drapeSvg, texW, texH);
+    preview.setDrapeTexture(texture);
+}
+
 export function initSvgEditor(preview) {
   if (!window.svgEditor) window.svgEditor = new VectorEditor();
 
@@ -261,9 +285,14 @@ export function initSvgEditor(preview) {
           return svg;
         },
         persist: saveLastSession,
-        remask: () => {
+        remask: async () => {
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-          return refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+          await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+          // SE11: commit-only — 'kind' is this callback's own closure
+          // variable from the enclosing (kind = 'commit') => {...}, so a
+          // 'live' drag frame (which also runs this same remask step)
+          // never rebuilds the drape texture mid-gesture.
+          if (kind === 'commit') await refreshDrape(preview);
         },
       });
     },
@@ -283,6 +312,7 @@ export function initSvgEditor(preview) {
           saveLastSession();
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+          await refreshDrape(preview);
         }
       } else if (SvgEditorSnapshot.active) {
         // Cancel path — restore the pre-edit DOCUMENT (onChange already
@@ -300,6 +330,7 @@ export function initSvgEditor(preview) {
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
         refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+        await refreshDrape(preview);
       }
       SvgEditorSnapshot.active = false;
       const modal = document.getElementById('svgEditorModal');

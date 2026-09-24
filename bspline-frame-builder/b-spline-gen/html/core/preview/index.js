@@ -14,6 +14,13 @@
  *   animateTo(theta,phi)     — orbit to a specific heading (ViewCube)
  *   setGroundGridVisible(v)  — toggle the reference grid
  *   updateTopView(...)       — render 2D heightmap to a canvas
+ *   buildDrapeTexture(svg,w,h) — SE11: rasterize a drape SVG string (see
+ *                              drape-svg.js's buildDrapeSvg) to a
+ *                              THREE.CanvasTexture, or null if it fails
+ *   setDrapeTexture(texture) — SE11: apply/clear the drape on the top
+ *                              surface's material; re-applied after every
+ *                              update() rebuild (same pattern as the
+ *                              thicken heat-map's _heatColours)
  *   dispose()
  *
  * The B-spline surface evaluation, mesh build, sculpt overlay, leader
@@ -21,6 +28,7 @@
  */
 
 import { dbg } from '../debug.js';
+import { sanitizeSvgForRaster, prepareSvgForRaster, renderSvgNative } from '../stamp/render-svg.js';
 import { ViewCube } from './view-cube.js';
 import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
@@ -66,6 +74,11 @@ export class TerrainPreview {
     this._worstPts    = [];
     this._showLeaders = true;
     this._solidMeshes = []; // wireframe lines added when thickenWireframe is on
+
+    // SE11: the drape texture, if any — survives mesh rebuilds (re-applied
+    // in update(), same pattern as _heatColours) since it's independent of
+    // the height data itself.
+    this._drapeTexture = null;
 
     // Renderer + scene + camera + lights.
     this._renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -203,6 +216,14 @@ export class TerrainPreview {
     this._sculpt.reapplySelection(heights, nx, nz, W, H);
     this._leaders.setData(this._worstPts, this._showLeaders);
 
+    // SE11: a fresh mesh/material was just built above — re-apply the
+    // drape texture (if any) the same way the thicken heat-map's own
+    // colours are carried across a rebuild via meshColours, above.
+    if (this._drapeTexture && this._mesh) {
+      this._mesh.material.map = this._drapeTexture;
+      this._mesh.material.needsUpdate = true;
+    }
+
     this._needsRender = true;
     return { minZ, maxZ };
   }
@@ -240,6 +261,70 @@ export class TerrainPreview {
     }
     this._leaders.setData(this._worstPts, this._showLeaders);
     this._needsRender = true;
+  }
+
+  /**
+   * SE11: rasterize a drape SVG string (drape-svg.js's buildDrapeSvg
+   * output — board-sized viewBox, only the qualifying coloured elements)
+   * into a THREE.CanvasTexture. Same native SVG render path the stamp
+   * rasterizer uses (renderSvgNative: Blob → <img> → drawImage — real
+   * fonts/strokes, no canvg quirks), composited onto an OPAQUE WHITE
+   * background rather than used transparent: MeshPhongMaterial multiplies
+   * `map` texel × vertexColor/material.color, so white (1,1,1) leaves an
+   * unpainted pixel's terrain shading unchanged, while a real colour
+   * tints it — a transparent texel would instead alpha-blend against
+   * whatever's behind the mesh in the framebuffer, not the terrain's own
+   * colour at that point. Returns null on an empty/failed render — the
+   * caller passes that straight to setDrapeTexture(null) to clear it.
+   */
+  async buildDrapeTexture(svgString, w, h) {
+    if (!svgString) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    const scratch = document.createElement('canvas');
+    scratch.width = w; scratch.height = h;
+    const scratchCtx = scratch.getContext('2d');
+    if (!scratchCtx) return null;
+    try {
+      const safe = prepareSvgForRaster(sanitizeSvgForRaster(svgString), w, h);
+      await renderSvgNative(scratchCtx, safe, w, h);
+    } catch (e) {
+      console.warn('[TerrainPreview] drape render failed:', e);
+      return null;
+    }
+    ctx.drawImage(scratch, 0, 0);
+
+    const THREE = this._THREE;
+    const texture = new THREE.CanvasTexture(canvas);
+    // The SVG's y axis runs top-to-bottom like the canvas it was drawn
+    // into; the height field's own v (buildHeightField) increases the
+    // same way row-to-row, so disabling THREE's default bottom-origin
+    // flip keeps texel (0,0) — the SVG's top-left — under UV (0,0)
+    // instead of mirroring it vertically.
+    texture.flipY = false;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  /** Apply (or clear, with null) the drape texture on the top surface's
+   *  material. Disposes the previous texture — buildDrapeTexture makes a
+   *  fresh CanvasTexture on every refresh, so without this every edit
+   *  would leak one GPU texture. */
+  setDrapeTexture(texture) {
+    if (this._drapeTexture && this._drapeTexture !== texture) {
+      this._drapeTexture.dispose();
+    }
+    this._drapeTexture = texture || null;
+    if (this._mesh && this._mesh.material) {
+      this._mesh.material.map = this._drapeTexture;
+      this._mesh.material.needsUpdate = true;
+      this._needsRender = true;
+    }
   }
 
   goHome()                    { this._orbit.goHome(this._lastWidth, this._lastHeight); }
@@ -281,6 +366,7 @@ export class TerrainPreview {
     this._ro.disconnect();
     this._groundGrid.dispose();
     this._sculpt.dispose();
+    if (this._drapeTexture) this._drapeTexture.dispose();
     this._renderer.dispose();
     if (this._viewCube) this._viewCube.dispose();
     if (this._homeBtn)  this._homeBtn.remove();

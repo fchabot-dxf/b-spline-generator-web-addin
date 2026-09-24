@@ -1,4 +1,4 @@
-// Usage: node scripts/smoke-editor.mjs <outDir> [desktop|mobile|perf|color] [url]
+// Usage: node scripts/smoke-editor.mjs <outDir> [desktop|mobile|perf|color|drape] [url]
 // Headless-Chrome (CDP, no deps) smoke test of the SVG editor lattice/pattern flow on the live site (or a local URL).
 // Prints a JSON report (counts, layers, probes, console errors) and writes screenshots to <outDir>.
 // Minimal CDP driver (no deps): live-site smoke test of the SVG editor lattice/pattern flow.
@@ -23,9 +23,10 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 const OUT = process.argv[2];
-const MODE = process.argv[3] || 'desktop';          // desktop | mobile | perf | color
+const MODE = process.argv[3] || 'desktop';          // desktop | mobile | perf | color | drape
 const URL = process.argv[4] || 'https://bspline-generator.pages.dev/';
-const PORT = MODE === 'mobile' ? 9334 : MODE === 'perf' ? 9335 : MODE === 'color' ? 9336 : 9333;
+const PORT = MODE === 'mobile' ? 9334 : MODE === 'perf' ? 9335 : MODE === 'color' ? 9336
+           : MODE === 'drape' ? 9337 : 9333;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(`${OUT}/chrome-${MODE}`, { recursive: true });
 
@@ -134,7 +135,7 @@ report.activeLayer = await evalJS(`String(window.svgEditor._activeLayer)`);
 report.generateLabel = await evalJS(`document.getElementById('latticeGenerate').textContent.trim()`);
 await shot(`${MODE}-3-generated.png`);
 
-if (MODE === 'color') {
+if (MODE === 'color' || MODE === 'drape') {
   // SE9: color the generated Rails/Ties/Nodes layers via the SAME
   // editor.setColor(...) a user's swatch click calls — select each
   // data-lattice kind (re-wrapping its raw DOM nodes through
@@ -157,6 +158,68 @@ if (MODE === 'color') {
   report.tieColor = await evalJS(`document.querySelector("[data-lattice=tie]")?.getAttribute('stroke')`);
   report.nodeColor = await evalJS(`document.querySelector("[data-lattice=node]")?.getAttribute('fill')`);
   await shot(`${MODE}-4-colored.png`);
+}
+
+if (MODE === 'drape') {
+  // SE11: click Apply (the real user path to close the editor) so
+  // onCommit's Apply branch runs — which now also calls refreshDrape
+  // (main/app-init.js) — rather than reaching into internals to trigger
+  // it directly. Then screenshot the MAIN page's #previewCanvas (the 3D
+  // view lives there, not inside the editor modal that just closed).
+  await evalJS(`document.getElementById('editorApply').click(); true`);
+  await sleep(1200); // saveForRasterization + refreshAllStampMasks + refreshDrape are all async
+  report.modalClosedAfterApply = await evalJS(`getComputedStyle(document.getElementById('svgEditorModal')).display`);
+  report.drapeTexturePresent = await evalJS(`!!(window.__preview && window.__preview._drapeTexture)`);
+  // Sample the drape texture's OWN source canvas directly (not the 3D
+  // render) for a red/yellow/navy pixel — separates "did buildDrapeSvg /
+  // buildDrapeTexture paint the right colors" from "is the multiply-blend
+  // visible against this material's shading", which the screenshot alone
+  // can't distinguish.
+  report.drapeTextureColors = await evalJS(`(() => {
+    const tex = window.__preview && window.__preview._drapeTexture;
+    const canvas = tex && tex.image;
+    if (!canvas || !canvas.getContext) return 'no texture canvas';
+    const ctx = canvas.getContext('2d');
+    const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const near = (r,g,b,tr,tg,tb) => Math.abs(r-tr)<40 && Math.abs(g-tg)<40 && Math.abs(b-tb)<40;
+    let red = 0, yellow = 0, navy = 0, white = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const [r,g,b] = [data[i], data[i+1], data[i+2]];
+      if (near(r,g,b,198,40,40)) red++;
+      else if (near(r,g,b,249,200,14)) yellow++;
+      else if (near(r,g,b,26,35,94)) navy++;
+      else if (r>250 && g>250 && b>250) white++;
+    }
+    return { width, height, red, yellow, navy, white };
+  })()`);
+  // Also sample the ACTUAL rendered 3D frame (not just the source
+  // texture) via TerrainPreview's own getSnapshot() — separates "is the
+  // texture painted correctly" (above) from "does the multiply-blend
+  // against this material's shading actually show up on screen".
+  report.renderedFrameColors = await evalJS(`(async () => {
+    if (!window.__preview) return 'no window.__preview handle';
+    const dataUrl = window.__preview.getSnapshot(800, 600);
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    const near = (r,g,b,tr,tg,tb,tol) => Math.abs(r-tr)<tol && Math.abs(g-tg)<tol && Math.abs(b-tb)<tol;
+    let redTint = 0, yellowTint = 0, navyTint = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      // Loose tolerance: looking for a RELATIVE tint (r noticeably >
+      // g/b for "reddish"), not the exact swatch hex, since lighting
+      // darkens/brightens whatever the base terrain shade was there.
+      if (r > g + 30 && r > b + 30) redTint++;
+      else if (r > 120 && g > 100 && b < 80 && Math.abs(r-g) < 60) yellowTint++;
+      else if (b > r + 20 && b > g + 10) navyTint++;
+    }
+    return { redTint, yellowTint, navyTint, totalPx: data.length / 4 };
+  })()`);
+  await evalJS(`document.getElementById('previewCanvas')?.scrollIntoView({ block: 'center' }); true`);
+  await sleep(300);
+  await shot(`${MODE}-5-preview-3d.png`);
 }
 
 if (MODE === 'mobile') {
