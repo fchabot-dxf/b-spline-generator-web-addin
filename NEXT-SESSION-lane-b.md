@@ -1,30 +1,28 @@
-# LANE B — T18: build SE7b slice 1 — the pure pattern algorithm (no DOM, no editor)
+# LANE B — T19: build SE7b slice 2 — Generate / Regenerate into three layers, saved with the document
 
-**Seat B · epoch 1 · T18.** Worktree, branch `lane-b`. Design `SE7B-PATTERN-GENERATOR-DESIGN.md` (89a48b4) approved.
-Files: `core/terrain.js` (one `export`), NEW `editor/editor-lattice-pattern.js`, NEW `tests/editor-lattice-pattern.test.js`
-(+ WORK-LOG-lane-b.md). Seat A is on SE8b in `editor-hit.js`, `editor-expand-trace.js`, `editor-interaction.js`,
-`editor.js`, `editor-io.js`, `editor-coords.js` — none of your files; import from `editor-lattice.js`, do not edit it.
-One commit by path.
+**Seat B · epoch 1 · T19.** Worktree, branch `lane-b` (merged with main — SE8b is in: use `editor._notifyChange
+('commit')` for the single end-of-generate change, not raw `_onChange`). Slice 1 (8354a5c) accepted. Design §5 slice 2
++ the advisor rulings in your T18 task (anchor as data; **occupied-cell skip is IN this slice**).
+Files: `editor/editor-lattice-pattern.js`, `editor/editor-io.js`, NEW `tests/editor-lattice-pattern-emit.test.js`
+(+ WORK-LOG-lane-b.md). **Seat A is on SE7s in `editor/editor-transform-handles.js`, `editor/editor-interaction.js`
+and maybe a new `editor/handle-edit.js` — do not touch those.** If you need `editor-lattice.js` or `layers.js` changed,
+stop and say so rather than editing. One commit by path.
 
-## Advisor rulings on the design's open questions
-- **Q1 tie anchoring — make it DATA, not a decision baked into code:** `ties.anchor: 'rails' | 'free'`, default
-  `'rails'` (a tie starts and ends on rail rows, spanning `spanMin..spanMax` rail GAPS); `'free'` = any lattice rows
-  within `spanMin..spanMax` rows. Implement and test both — Fred's answer then flips a default, it does not rework
-  the algorithm.
-- **Q3 overlap after detach — in scope for slice 2** (skip cells occupied by detached lattice elements); nothing for
-  slice 1 beyond making `computePattern` accept an optional `occupied: Set<"i,j,kind">` it skips.
-- Q2 tooling defaults: slice 2, tuned live.
+## Do
+- `generatePattern(editor, PATTERN)`: resolve extent from the board, gather `occupied` from DETACHED lattice
+  elements (have `data-lattice`, lack `data-lattice-gen`) as `"i,j,kind"` keys (world centres via `worldPoint` —
+  moved elements count where they ARE), remove owned `[data-lattice-gen="<id>"]`, `computePattern`, create/reuse the
+  three layers (Rails/Ties/Nodes, ids stored in `PATTERN.layers`), emit via `emitSegment`/`emitNode` with
+  `data-lattice-gen`, ONE `pushState()` + ONE `_notifyChange('commit')`.
+- `_serializeLatticePatternAttr` + read in `open()` exactly per §1 (same 3 save sites + 1 open site as
+  `_serializeLayersAttr`).
+- Tooling defaults for the three layers: pick sensible values (rails V-bit, ties V-bit shallower, nodes ballnose),
+  declared as one `LATTICE_LAYER_DEFAULTS` object — Fred tunes them live later.
 
-## Do slice 1 exactly as §6 says, plus the rulings
-`computePattern(PATTERN, { extent })` → `{ segments:[{kind,a,b}], nodePoints:[{i,j}] }`, reusing
-`toLattice/fromLattice/classifyDrag/constrain/latticeCrossings` and `lcgPoints` (exported from `core/terrain.js`).
-Tests: your §6 list + both anchor modes + `occupied` skipping + same seed → identical output, different seed →
-different ties (same rails).
-
-## Verify
-`npx vitest run` green (count); `node --check`; `git show --stat HEAD` → 3 files + log.
+## Verify — your §6 slice-2 list, plus: a detached tie at column 5 → Regenerate does NOT emit a new tie at column 5.
+`npx vitest run` green (count); `git show --stat HEAD` → 3 files + log.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T18: SE7b slice 1 — computePattern (anchor rails|free, occupied), lcgPoints reuse — <sha>, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T19: SE7b slice 2 — generatePattern, 3 layers, ownership + occupied skip, data-lattice-pattern persisted — <sha>, vitest N"`
 and stop.
