@@ -50,3 +50,12 @@ editor layer (the SE5 tooling home):
   row — ONE line of markup in the header, tell the advisor where (seat A edits the toolbar row, not the header).
 - Tests: carve false + visible true → no mask for that layer, still in `exportableStampLayers`; visible false + carve
   true → masked/carved, not exported, not in the SVG download; migration sets carve from visible once, idempotent.
+
+## AMEND 2 (Fred) — a per-layer "3D" tag: drape this layer's colored vectors on the 3D mesh
+- New editor-layer field `drape3d` (boolean, default false), persisted in `_PERSISTED_LAYER_FIELDS` (migration: none —
+  missing = false). It is a TAG, toggled ONLY in the SVG editor's Layers panel (a small "3D" pill per row,
+  `aria-pressed`, 44 px on coarse pointers). The SIDEBAR list shows it as a non-interactive "3D" badge — Fred does
+  not want another sidebar toggle. So `renderLayerList(container, editor, { compact })` gets the pill only when not
+  compact, the badge when compact.
+- Seat A builds the actual drape (SE11) and will read `layer.drape3d && layer.visible !== false`. You only add the field,
+  the pill, the badge, persistence, and a test (toggle in the editor list → field true → sidebar row shows the badge).
