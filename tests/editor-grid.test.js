@@ -11,7 +11,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   GRID_DEFAULTS,
   GRID_SPACINGS,
+  SNAP_POLICY,
   snapToGrid,
+  snapFor,
   mergeGridPrefs,
   loadGridPrefs,
   applyGrid,
@@ -139,5 +141,46 @@ describe('GRID_SPACINGS', () => {
     expect(GRID_SPACINGS.length).toBeGreaterThan(0);
     expect(GRID_SPACINGS.every(s => typeof s === 'number' && s > 0)).toBe(true);
     expect(GRID_SPACINGS).toContain(GRID_DEFAULTS.spacing);
+  });
+});
+
+describe('snapFor — per-tool snap policy (SE7a)', () => {
+  const onGrid = { visible: true, snap: true, spacing: 0.25 };
+  const pt = { x: 1.13, y: 2.37 };
+
+  it('erase never snaps, even with grid.snap on and no bypass', () => {
+    expect(snapFor(pt, onGrid, 'erase', 'start', false)).toEqual(pt);
+    expect(snapFor(pt, onGrid, 'erase', 'move', false)).toEqual(pt);
+  });
+
+  it('expand never snaps either — same "none" policy', () => {
+    expect(SNAP_POLICY.expand).toBe('none');
+    expect(snapFor(pt, onGrid, 'expand', 'start', false)).toEqual(pt);
+  });
+
+  it('circle snaps on start (the center) but not on move (the radius drag)', () => {
+    const snappedStart = snapFor(pt, onGrid, 'circle', 'start', false);
+    expect(snappedStart).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid, 'circle', 'move', false)).toEqual(pt);
+  });
+
+  it('draw (pen) snaps the anchor click but not a freehand move', () => {
+    expect(snapFor(pt, onGrid, 'draw', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid, 'draw', 'move', false)).toEqual(pt);
+  });
+
+  it('lattice snaps even with grid.snap off, and even with Alt (bypass) held', () => {
+    const gridOff = { visible: true, snap: false, spacing: 0.25 };
+    expect(snapFor(pt, gridOff, 'lattice', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+    expect(snapFor(pt, onGrid, 'lattice', 'start', true)).toEqual({ x: 1.25, y: 2.25 });
+  });
+
+  it('line honours Alt bypass like every other "point"-policy tool', () => {
+    expect(snapFor(pt, onGrid, 'line', 'start', true)).toEqual(pt);
+    expect(snapFor(pt, onGrid, 'line', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
+  });
+
+  it('an unlisted mode falls back to "point" policy rather than throwing', () => {
+    expect(snapFor(pt, onGrid, 'nonexistent-mode', 'start', false)).toEqual({ x: 1.25, y: 2.25 });
   });
 });

@@ -5,6 +5,7 @@ import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { getElementLayer, setActiveLayer as _setActiveLayer } from './layers.js';
+import { SNAP_POLICY, clearSnapCursor } from './editor-grid.js';
 
 // Per-mode help text shown in the floating status hint at the bottom of the
 // editor canvas. Keeps the lessons-learned messages out of the toolbar so the
@@ -19,6 +20,7 @@ const MODE_HINTS = {
   circle: 'Circle — drag from center outward.',
   expand: 'Expand — use the Detail input + EXPAND button in the top bar to offset/outline your paths.',
   erase:  'Eraser — drag through shapes to cut them. Filled shapes get clipped; open strokes split at the cut (endcaps preserved). Width follows the stroke width.',
+  lattice: 'Lattice — drag along a row for a rail, along a column for a tie. Auto-nodes mark the ends and crossings. A bare click does nothing — use Circle for a manual dot.',
 };
 
 // Anchor-mode hint replaces the pen mode hint while the user is actively
@@ -97,6 +99,14 @@ export function setMode(editor, mode) {
     
     editor._currentMode = mode;
     updateToolbarVisibility(editor, mode, editor._selectedElement);
+    // SE7a: a mode switch invalidates the hover snap-cursor (it read the
+    // OLD mode's policy) — clear it; handleMove redraws it on the next move.
+    clearSnapCursor(editor);
+    // The lattice is meaningless invisible — turn the grid on the moment
+    // the tool is picked rather than leaving the user to find SHOW first.
+    if (mode === 'lattice' && editor._grid && !editor._grid.visible) {
+        editor.setGrid({ visible: true });
+    }
 
     // Update active class on buttons
     const btns = queryAll('.editor-sidebar .tool-btn');
@@ -149,7 +159,29 @@ export function updateToolbarVisibility(editor, mode, el) {
     // Hide stroke group in expand mode (no room) and text mode (text uses
     // fill, not stroke — the stroke input doesn't apply).
     if (strokeGroup) strokeGroup.classList.toggle('hidden', isExpandMode || isTextMode);
-    
+
+    // SE7a: some callers (e.g. _afterSelectionChange below) call this
+    // without a `mode` arg on a selection change, not a mode switch —
+    // editor._currentMode is always the authoritative source; falling
+    // back to the (possibly stale/undefined) param would let a selection
+    // change silently re-enable a SNAP button this same function just
+    // dimmed for the real current mode.
+    const currentMode = editor._currentMode || mode;
+
+    // AUTO NODES only makes sense in the lattice tool — same show/hide-
+    // the-whole-group pattern as the Font group above.
+    const autoNodesGroup = getEl('editorAutoNodesGroup');
+    if (autoNodesGroup) autoNodesGroup.classList.toggle('hidden', currentMode !== 'lattice');
+
+    // Dim SNAP where it can't apply — 'none' (erase/expand: nothing to
+    // snap) and 'always' (lattice: already always on, the toggle couldn't
+    // turn it off) both make the button misleading if left live.
+    const snapBtn = getEl('editorGridSnap');
+    if (snapBtn) {
+        const policy = SNAP_POLICY[currentMode] || 'point';
+        snapBtn.classList.toggle('disabled', policy === 'none' || policy === 'always');
+    }
+
     const selectPanel = getEl('editorSelectPanel');
     
     // Selection details logic

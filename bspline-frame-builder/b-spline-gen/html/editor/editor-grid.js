@@ -30,6 +30,41 @@ export function snapToGrid(pt, grid, bypass = false) {
   };
 }
 
+/**
+ * SE7a: snap is a per-tool DECLARATION, not a blanket call. Before this,
+ * `_snap` applied unconditionally in handleStart/handleMove for every
+ * mode, which quantised the pen's freehand stroke and the eraser — wrong.
+ * One row per mode:
+ *   'point'   — snap always (select/node/line/rect/text): both the click
+ *               and any drag continuation land on the grid.
+ *   'anchors' — snap on the START of a gesture (pen anchor clicks) but
+ *               never once a freehand drag is under way (draw).
+ *   'center'  — snap on START only; a drag that follows (setting a
+ *               circle's radius) must stay unsnapped or the smallest
+ *               circle would be one grid cell (circle).
+ *   'always'  — snap even when grid.snap is off, and ignore Alt — the
+ *               lattice tool IS the grid, there's no "off-grid" mode
+ *               for it (lattice).
+ *   'none'    — identity always (erase, expand: freehand tools that
+ *               should never quantise).
+ */
+export const SNAP_POLICY = {
+  select: 'point', node: 'point', draw: 'anchors', line: 'point', rect: 'point',
+  circle: 'center', text: 'point', erase: 'none', expand: 'none', lattice: 'always',
+};
+
+/** The one place `_snap` derives its behaviour from SNAP_POLICY + phase
+ *  ('start' | 'move'). `bypass` is Alt-held; ignored entirely for
+ *  'always' (lattice can't be drawn off-grid) and for 'none' (nothing to
+ *  bypass). */
+export function snapFor(pt, grid, mode, phase, bypass = false) {
+  const policy = SNAP_POLICY[mode] || 'point';
+  if (policy === 'none') return pt;
+  if (policy === 'always') return snapToGrid(pt, { ...grid, snap: true }, false);
+  if ((policy === 'anchors' || policy === 'center') && phase === 'move') return pt;
+  return snapToGrid(pt, grid, bypass);
+}
+
 /** Pure merge over GRID_DEFAULTS — exported so the shape-safety net (a
  *  stale/partial stored object never yields a half-shaped grid) is
  *  testable without mocking localStorage. */
@@ -89,4 +124,60 @@ export function applyGrid(editor) {
     const y = i * spacing;
     drawLine(0, y, w, y, Math.abs(y - Math.round(y)) < EPS);
   }
+}
+
+/** Remove the hover snap-cursor marker, if one exists. Called on mode
+ *  change (setMode), reopen (editor-io.js's open()), and mouseleave —
+ *  the three ways it could otherwise ghost onto a state it no longer
+ *  describes. */
+export function clearSnapCursor(editor) {
+  if (editor._snapCursor) { editor._snapCursor.remove(); editor._snapCursor = null; }
+}
+
+/**
+ * SE7a hover feedback: while the pointer moves, show a small ring at
+ * where the NEXT click would land after snapping — so the user sees the
+ * grid intent before committing to it. Called from editor-interaction.js's
+ * handleMove on every move (drawing or not — in lattice mode the marker
+ * doubles as the rail/tie start indicator once a gesture is under way).
+ *
+ * Kept on editor._snapCursor inside _handleLayer (the same layer as the
+ * transform handles — never part of the saved sketch) and moved via
+ * .center()/.radius() rather than recreated each call. Hidden whenever
+ * the point wouldn't actually move: policy 'none', Alt held, or the
+ * point already sits on the snap target.
+ */
+export function updateSnapCursor(editor, e) {
+  const layer = editor._handleLayer;
+  if (!layer) return;
+  const bypass = !!(e && e.altKey);
+  const policy = SNAP_POLICY[editor._currentMode] || 'point';
+  let moved = false;
+  let snapped = null;
+  if (policy !== 'none' && !bypass) {
+    const pt = editor._getMousePoint(e);
+    snapped = snapFor(pt, editor._grid, editor._currentMode, 'start', bypass);
+    moved = snapped.x !== pt.x || snapped.y !== pt.y;
+  }
+
+  if (!moved) {
+    clearSnapCursor(editor);
+    return;
+  }
+  const r = editor._getDynamicTolerance ? editor._getDynamicTolerance(4) : 0.05;
+  // _handleLayer is shared with the transform handles: updateHandles()
+  // clears the WHOLE layer unconditionally on nearly every mode switch,
+  // selection change, and drag — which silently detaches our circle from
+  // the DOM without telling us. Reusing a detached svg.js wrapper is
+  // undefined behaviour, so check connectivity rather than trusting the
+  // reference alone.
+  if (!editor._snapCursor || !editor._snapCursor.node || !editor._snapCursor.node.isConnected) {
+    editor._snapCursor = layer.circle(0)
+      .fill('none')
+      .attr({ 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+  }
+  editor._snapCursor
+    .stroke({ color: '#ff6a00', width: 1 })
+    .radius(r)
+    .center(snapped.x, snapped.y);
 }

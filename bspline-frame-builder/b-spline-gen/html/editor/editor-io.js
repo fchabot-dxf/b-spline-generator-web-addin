@@ -10,6 +10,7 @@ import { applyToolingDefaults, addLayer, setActiveLayer } from './layers.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { resetPanState } from './editor-interaction.js';
+import { clearSnapCursor } from './editor-grid.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -471,6 +472,9 @@ export function open(editor, svgString, w, h) {
     // live in separate layers (_highlightLayer/_handleLayer) that
     // _sketchLayer.clear() never touches.
     if (typeof editor._deselect === 'function') editor._deselect();
+    // SE7a: the hover snap-cursor is scoped to a mode/session — a reopen
+    // shouldn't carry the previous session's marker (or reference) across.
+    clearSnapCursor(editor);
     sync3DBackground(editor);
     // T6: a fresh session must never start pan-ready — the previous
     // session's Space/pan state has no meaning here.

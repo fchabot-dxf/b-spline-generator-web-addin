@@ -27,6 +27,11 @@ import {
 import { updateMarquee, finalizeMarquee, clearMarquee } from './editor-marquee.js';
 import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './editor-eraser.js';
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
+import { updateSnapCursor, clearSnapCursor } from './editor-grid.js';
+import {
+    toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
+    emitSegment, emitNode, LATTICE_ATTR,
+} from './editor-lattice.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -65,6 +70,9 @@ export function initInteraction(editor) {
     // SE2: wheel = zoom about the cursor. passive:false so preventDefault
     // stops the modal body from scrolling.
     on(svgNode, 'wheel', (e) => handleWheel(editor, e), { passive: false });
+    // SE7a: the pointer leaving the canvas is the one path that fires no
+    // further mousemove to naturally hide the hover snap-cursor.
+    on(svgNode, 'mouseleave', () => clearSnapCursor(editor));
     // BUG-28: global keyboard shortcuts for the editor — Delete /
     // Backspace removes the whole multi-selection, Ctrl/Cmd+C copies it
     // onto editor._clipboard, Ctrl/Cmd+V pastes (with a small offset so
@@ -246,7 +254,7 @@ function handleStart(editor, e) {
         return;
     }
 
-    const pt = editor._snap(editor._getMousePoint(e), e.altKey);
+    const pt = editor._snap(editor._getMousePoint(e), e.altKey, 'start');
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
 }
@@ -256,7 +264,11 @@ function handleMove(editor, e) {
         _panBy(editor, e.clientX - editor._panStart.clientX, e.clientY - editor._panStart.clientY);
         return;
     }
-    const pt = editor._snap(editor._getMousePoint(e), e.altKey);
+    // SE7a: hover feedback — where would the next click land? Unconditional
+    // (drawing or not): in lattice mode the marker doubles as the rail/tie
+    // start indicator once a gesture is under way.
+    updateSnapCursor(editor, e);
+    const pt = editor._snap(editor._getMousePoint(e), e.altKey, 'move');
     if (editor._isDrawing) {
         const handler = getModeHandler(editor._currentMode);
         if (handler.update) handler.update(editor, pt);
@@ -584,15 +596,131 @@ const eraseHandler = {
     },
 };
 
+// SE7a: Circle is the node tool for a bare click (Fred's amend — no
+// click-to-node in the lattice tool, "isn't Circle enough?"). Custom
+// handler (not makeDrawingHandler) because only circle needs the
+// click-vs-drag branch in finish; SNAP_POLICY's 'center' row (editor-
+// grid.js) already keeps the radius-setting drag unsnapped with no
+// special-casing needed here.
+const circleHandler = {
+    start(editor, pt) {
+        editor._deselect();
+        editor._isDrawing = true;
+        editor._points = [[pt.x, pt.y]];
+        editor._currentPath = createDrawingShape(editor, 'circle', pt);
+    },
+    update(editor, pt) { updateDrawingShape(editor, 'circle', pt); },
+    finish(editor) {
+        if (!editor._currentPath) { editor._isDrawing = false; return; }
+        const r = parseFloat(editor._currentPath.node.getAttribute('r')) || 0;
+        if (r < editor._getDynamicTolerance(3)) {
+            // No meaningful drag — drop the near-zero circle and emit a
+            // default dot instead, through the SAME emitNode the lattice
+            // tool's auto-nodes use (one emitter, two callers, identical
+            // elements).
+            const start = editor._points[0];
+            editor._currentPath.remove();
+            editor._currentPath = null;
+            editor._points = [];
+            editor._isDrawing = false;
+            emitNode(editor, { x: start[0], y: start[1] });
+            applyLayerState(editor);
+            if (typeof editor.pushState === 'function') editor.pushState();
+            if (editor._onChange) editor._onChange();
+            return;
+        }
+        finishDrawing(editor, 'circle');
+    },
+};
+
+/** Existing rail/tie segments on the sketch, as {kind, a, b} in lattice
+ *  coords — the crossing set latticeCrossings needs. Gathered BEFORE the
+ *  new segment is emitted so it never crosses against itself. */
+function _collectLatticeSegments(editor, spacing) {
+    if (!editor._sketchLayer) return [];
+    const segs = [];
+    for (const ch of editor._sketchLayer.children().toArray()) {
+        if (!ch || !ch.node) continue;
+        const kind = ch.node.getAttribute(LATTICE_ATTR);
+        if (kind !== 'rail' && kind !== 'tie') continue;
+        const x1 = parseFloat(ch.node.getAttribute('x1'));
+        const y1 = parseFloat(ch.node.getAttribute('y1'));
+        const x2 = parseFloat(ch.node.getAttribute('x2'));
+        const y2 = parseFloat(ch.node.getAttribute('y2'));
+        if ([x1, y1, x2, y2].some(Number.isNaN)) continue;
+        segs.push({
+            kind,
+            a: toLattice({ x: x1, y: y1 }, spacing),
+            b: toLattice({ x: x2, y: y2 }, spacing),
+        });
+    }
+    return segs;
+}
+
+// SE7a: Lattice — drag along a row for a rail, along a column for a tie;
+// a bare click does nothing (Circle is the node tool, per Fred's amend).
+// Snaps to the lattice ALWAYS via toLattice/fromLattice directly, NOT
+// editor._snap — the lattice tool IS the grid, independent of the SNAP
+// toggle (SNAP_POLICY's 'always' row exists for the hover cursor/other
+// callers of _snap, not for this handler's own point resolution).
+const latticeHandler = {
+    start(editor, pt) {
+        editor._deselect();
+        const spacing = editor._grid.spacing || 0.25;
+        editor._latticeSpacing = spacing;
+        editor._latticeStart = toLattice(pt, spacing);
+        editor._latticeEnd = editor._latticeStart;
+        editor._isDrawing = true;
+        const p = fromLattice(editor._latticeStart, spacing);
+        const color = editor._strokeColor || '#888888';
+        const width = editor._strokeWidth || 1;
+        editor._latticePreview = editor._sketchLayer
+            .line(p.x, p.y, p.x, p.y)
+            .stroke({ color, width, dasharray: '5 4', opacity: 0.6 })
+            .attr('pointer-events', 'none');
+    },
+    update(editor, pt) {
+        if (!editor._latticePreview) return;
+        const spacing = editor._latticeSpacing;
+        const bLat = toLattice(pt, spacing);
+        const constrained = constrain(editor._latticeStart, bLat);
+        editor._latticeEnd = constrained;
+        const p2 = fromLattice(constrained, spacing);
+        editor._latticePreview.attr({ x2: p2.x, y2: p2.y });
+    },
+    finish(editor) {
+        editor._isDrawing = false;
+        if (editor._latticePreview) { editor._latticePreview.remove(); editor._latticePreview = null; }
+        const a = editor._latticeStart;
+        const b = editor._latticeEnd || a;
+        editor._latticeStart = null;
+        editor._latticeEnd = null;
+        if (!a) return;
+        const kind = classifyDrag(a, b);
+        if (kind === 'node') return; // bare click in lattice mode does nothing
+        const spacing = editor._latticeSpacing;
+        const existing = editor._lattice.autoNodes ? _collectLatticeSegments(editor, spacing) : [];
+        emitSegment(editor, kind, fromLattice(a, spacing), fromLattice(b, spacing));
+        if (editor._lattice.autoNodes) {
+            const crossings = latticeCrossings({ kind, a, b }, existing);
+            crossings.forEach((latPt) => emitNode(editor, fromLattice(latPt, spacing)));
+        }
+        applyLayerState(editor);
+        if (typeof editor.pushState === 'function') editor.pushState();
+        if (editor._onChange) editor._onChange();
+    },
+};
+
 const modeHandlers = {
-    select: selectHandler,
-    node:   nodeHandler,
-    text:   textHandler,
-    draw:   drawHandler,
-    line:   makeDrawingHandler('line'),
-    rect:   makeDrawingHandler('rect'),
-    circle: makeDrawingHandler('circle'),
-    erase:  eraseHandler,
+    select:  selectHandler,
+    node:    nodeHandler,
+    text:    textHandler,
+    draw:    drawHandler,
+    line:    makeDrawingHandler('line'),
+    rect:    makeDrawingHandler('rect'),
+    circle:  circleHandler,
+    erase:   eraseHandler,
+    lattice: latticeHandler,
 };
 
 function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }

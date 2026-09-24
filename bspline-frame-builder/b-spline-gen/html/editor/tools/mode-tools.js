@@ -13,4 +13,6 @@ export function registerModeTools(editor) {
   // Vector eraser: drag a stroke to subtract from filled shapes and
   // split open strokes. Width follows the sidebar's stroke width.
   bind('toolErase', () => editor.setMode('erase'));
+  // SE7a: rails/ties on the grid, auto-nodes at ends and crossings.
+  bind('toolLattice', () => editor.setMode('lattice'));
 }

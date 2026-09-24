@@ -15,7 +15,8 @@ import { setupEditorToolbar } from './editor-controls.js';
 import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
 import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
-import { snapToGrid, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
+import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
+import { LATTICE_DEFAULTS } from './editor-lattice.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -67,6 +68,9 @@ export class VectorEditor {
         // snap/draw derivations. Loaded here (not initEditor) since it's
         // plain per-viewer prefs with no DOM/layer dependency.
         this._grid = loadGridPrefs();
+        // SE7a: the lattice tool's own settings (not persisted — a fresh
+        // session starts with auto-nodes on, matching LATTICE_DEFAULTS).
+        this._lattice = { ...LATTICE_DEFAULTS };
         this._spaceHeld = false;
         this._isPanning = false;
         this._panStart = null;
@@ -232,10 +236,13 @@ export class VectorEditor {
 
     // SE1 removed the old dead snap toggle and left this as an identity
     // pass-through with two live callers (editor-interaction.js's
-    // handleStart/handleMove). SE6 gives it a real grid to snap to —
-    // bypass is Alt-held, so a user can always draw off-grid.
-    _snap(pt, bypass = false) {
-        return snapToGrid(pt, this._grid, bypass);
+    // handleStart/handleMove). SE6 gave it a real grid to snap to. SE7a:
+    // snap is now a per-tool DECLARATION (SNAP_POLICY in editor-grid.js) —
+    // blanket snapping quantised the pen's freehand stroke and the eraser.
+    // `phase` ('start' | 'move') plus `this._currentMode` pick the policy;
+    // bypass is Alt-held (ignored by policies that don't honour it).
+    _snap(pt, bypass = false, phase = 'start') {
+        return snapFor(pt, this._grid, this._currentMode, phase, bypass);
     }
 
     /** One setter for the grid toolbar: merge a patch, persist, redraw,
