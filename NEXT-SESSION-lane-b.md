@@ -59,3 +59,9 @@ editor layer (the SE5 tooling home):
   compact, the badge when compact.
 - Seat A builds the actual drape (SE11) and will read `layer.drape3d && layer.visible !== false`. You only add the field,
   the pill, the badge, persistence, and a test (toggle in the editor list → field true → sidebar row shows the badge).
+
+## AMEND 3 (Fred) — the 3D tag has THREE states: off / plain / color
+`drape3d: 'off' | 'plain' | 'color'` (default 'off'; a stored boolean true from an earlier build reads as 'color').
+Declare the states once (`DRAPE_MODES = ['off', 'plain', 'color']`); the editor pill cycles through them (labels: empty,
+"3D", "3D■"); the sidebar badge shows "3D" / "3D■" or nothing. 'plain' = draped in one neutral line color, ignoring
+element colors; 'color' = each element's own SE9 color. Seat A renders; you store/cycle/show.
