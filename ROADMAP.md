@@ -709,3 +709,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   leave / grid hidden; drawn in _handleLayer like the snap ring (never serialized). SE6c, first seat to free up.
 - **2026-09-24 — UX-UNDO + SE5c (7165b23), T30 tie rail-snap (24bd177), T31 grid hover (ee32c8b) merged → a8c5ad1, 453
   tests, deployed.** Note: inside Fusion, Ctrl+Z is captured by the host — use the palette's Undo button (top bar).
+- **Fred 2026-09-24:** Generate rolls a new seed each press (SE7g); the pattern uses per-kind colors chosen in the Pattern
+  panel (rails red / ties yellow / nodes navy defaults, same mosaic picker), recolor without reseed — SE7g amend.
