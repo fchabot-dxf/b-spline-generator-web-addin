@@ -593,3 +593,11 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   wiped by `open()` (SA-TEXT-4), so a sidebar depth change would have been un-undoable. Slice (c) therefore extends
   `takeSnapshot`/`applySnapshot` to capture/restore `editor._layers` TOOLING fields (not content). Slice (a) is
   unaffected (no undo code).
+- **CORRECTION to the reversed ruling above (North Star evidence check, same day).** Its premise "every other sidebar
+  slider already goes through the global undo" is FALSE: `takeSnapshot` is called only by sculpt stroke
+  (`core/sculpt-interaction.js:104`), sculpt clear (`:146`) and the initial snapshot (`main/app-init.js:164`) — NO
+  sidebar slider creates an undo step today; slider values only ride along inside the next sculpt snapshot.
+  Proposal (awaiting Fred's yes, it is new behaviour for EVERY slider): **UX-UNDO** — declare `UNDO_SCOPE` once
+  (control group → `'global' | 'editor'`: sidebar sliders + seed + filters + per-layer tooling → global, drawing →
+  editor, sculpt → global) and make sidebar sliders undoable at ONE step per committed value (`change`, not `input`).
+  SE5 slices (a)/(b) are unaffected; SE5c only registers tooling in UNDO_SCOPE.
