@@ -718,3 +718,12 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   SE8a's arcs→cubics bake over-approximates: the carve matrix is a similarity, so keep A arcs (and circles) exact and
   fall back to cubics only for non-uniform transforms. Live expand must be ANALYTIC (line → 2 lines + 2 arcs), not the
   raster-trace Expand. Folded into T33 (SE12 design); open: does Fusion's SVG import keep A as arcs?
+- **Fred blocked (2026-09-24): generated lattice pieces can't be moved** — other layers are unclickable (inactive-layer
+  pointer-events) and Generate restores the previous active layer. Fix queued as an SE7h add-on: Select/Nodes click any
+  shown element and activate its layer; drawing modes stay on the active layer.
+- **Fred 2026-09-24: all lattice geometry on ONE layer** ('Lattice', created on first Generate, made active after
+  Generate so pieces are immediately movable). Per-kind colors stay (element color). Old 3-layer patterns migrate on
+  next Regenerate. Queued as SE7i after SE7h; width source (toolbar STROKE vs a Widths row) awaiting Fred.
+- **SE7i spec settled with Fred (2026-09-24):** one 'Lattice' layer, active after Generate; connected editing in the
+  Lattice tool (drag a rail → ties change LENGTH not width, nodes follow; ties slide along rails; attachments derived
+  at drag start); widths default = Widths row pending Fred. Task text staged; dispatch after SE7h.

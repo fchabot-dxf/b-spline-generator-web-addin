@@ -792,9 +792,28 @@
     flex-shrink: 0;
 }
 .layer-showcolor svg { width: 13px; height: 13px; }
-.layer-carve:hover, .layer-showcolor:hover { background: #f0f0f0; }
-.layer-carve.active     { color: #333; background: #eef3ea; border-color: #cfe0c5; }
-.layer-showcolor.active { color: #333; background: #fff3d6; border-color: #e6cf8a; }
+/* Fred: "3D and palette should have more obvious on/off states" — the
+   old pale tints read as the same pale box on or off. ON = solid fill +
+   white glyph; OFF = grey outline, faded glyph, diagonal slash (the
+   universal "disabled" mark, so off reads without comparing rows). */
+.layer-carve, .layer-showcolor {
+    color: #b0b0b0;
+    border-color: #d4d4d4;
+    background: linear-gradient(to top right, transparent calc(50% - 0.75px), #c4c4c4 calc(50% - 0.75px), #c4c4c4 calc(50% + 0.75px), transparent calc(50% + 0.75px));
+}
+.layer-carve:hover, .layer-showcolor:hover { border-color: #999; }
+.layer-carve.active     { color: #fff; background: #1f6fd1; border-color: #1f6fd1; }
+/* Fred: "palette should be a colored palette" — ON shows a real painter's
+   palette (tan board, four paint dots) on a white button; OFF stays the
+   grey outline + slash above. Classes come from layers.js's _paletteSVG. */
+.layer-showcolor.active { color: #7a5a2f; background: #fff; border-color: #b9a27f; }
+.layer-showcolor.active .pal-body { fill: #e9cfa3; }
+.layer-showcolor.active .pal-d1 { fill: #e53935; }
+.layer-showcolor.active .pal-d2 { fill: #fbc02d; }
+.layer-showcolor.active .pal-d3 { fill: #43a047; }
+.layer-showcolor.active .pal-d4 { fill: #1e88e5; }
+.layer-carve.active:hover     { background: #185bab; }
+.layer-showcolor.active:hover { background: #f6efe3; }
 /* 44px on coarse pointers is per-BUTTON, not compact-only (both toggles
    render in both lists) — grow the row itself under (pointer:coarse) too,
    editor panel included, so a 44px button actually fits instead of

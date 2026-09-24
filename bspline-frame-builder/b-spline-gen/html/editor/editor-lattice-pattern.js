@@ -21,7 +21,7 @@
  */
 import {
   toLattice, fromLattice, constrain, latticeCrossings,
-  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow,
+  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { addLayer, setActiveLayer } from './layers.js';
@@ -69,6 +69,12 @@ export const LATTICE_LAYER_DEFAULTS = {
 
 export const PATTERN_DEFAULTS = {
   spacing: 0.25,
+  // SE7h (Fred: "invert rails and ties so rails are vertical"): default
+  // 'horizontal' — an existing saved pattern from before this field
+  // existed has no `orientation` key at all, and `computePattern`'s own
+  // `{ ...PATTERN_DEFAULTS, ...PATTERN }` merge reads that as
+  // 'horizontal' (today's only behavior), so no migration is needed.
+  orientation: 'horizontal',
   // SE7c: inset the 'board' extent by this many LATTICE CELLS on every
   // side, so a generated rail/tie/node never sits exactly on the board
   // edge (a live browser test found the first rail at y=0 and nodes at
@@ -237,10 +243,33 @@ export function computePattern(PATTERN, opts = {}) {
   const ties = { ...PATTERN_DEFAULTS.ties, ...(PATTERN.ties || {}) };
   const nodes = { ...PATTERN_DEFAULTS.nodes, ...(PATTERN.nodes || {}) };
   const seed = P.seed;
-  const extent = opts.extent;
-  if (!extent) throw new Error('computePattern: opts.extent is required (resolved lattice bounds)');
-  const { iMin, jMin, iMax, jMax } = extent;
-  const occupied = opts.occupied || null;
+  // SE7h: everything from here to the `return` below runs in the ONE
+  // canonical (horizontal) frame this algorithm was always written in —
+  // rails constant-j, ties constant-i. `orientation === 'vertical'`
+  // conjugates the whole computation through orient() (editor-lattice.js):
+  // the extent's corners and the occupied set are transposed IN here,
+  // then every output point is transposed back OUT at the return. Since
+  // orient() swaps i/j and is its own inverse, this is exactly "rotate
+  // the problem 90°, solve it exactly as today, rotate the answer back" —
+  // no second copy of the rail-row/tie-span/crossing math exists for
+  // 'vertical'. 'horizontal' is the identity, so every existing caller
+  // that never sets PATTERN.orientation is byte-for-byte unaffected.
+  const orientation = P.orientation;
+  const rawExtent = opts.extent;
+  if (!rawExtent) throw new Error('computePattern: opts.extent is required (resolved lattice bounds)');
+  const extentMin = orient({ i: rawExtent.iMin, j: rawExtent.jMin }, orientation);
+  const extentMax = orient({ i: rawExtent.iMax, j: rawExtent.jMax }, orientation);
+  const iMin = extentMin.i, jMin = extentMin.j, iMax = extentMax.i, jMax = extentMax.j;
+  // "i,j,kind" occupied keys are always built from REAL (un-oriented)
+  // lattice coordinates (_collectOccupied, below) — re-key them into the
+  // SAME canonical frame the rest of this function reads i/j in, once,
+  // rather than orienting on every _occupiedHas() call.
+  const occupied = orientation === 'vertical' && opts.occupied
+    ? new Set(Array.from(opts.occupied, (key) => {
+        const [ki, kj, kind] = key.split(',');
+        return `${kj},${ki},${kind}`;
+      }))
+    : (opts.occupied || null);
 
   const segments = [];
   const nodeKeySet = new Set(); // dedupe nodePoints by "i,j"
@@ -302,7 +331,17 @@ export function computePattern(PATTERN, opts = {}) {
     }
   }
 
-  return { segments, nodePoints };
+  // Transpose back OUT of the canonical frame into real board coordinates
+  // (a no-op when orientation is 'horizontal' — orient() is the identity
+  // then, so this whole map costs nothing observable in today's default).
+  return {
+    segments: segments.map((s) => ({
+      kind: s.kind,
+      a: orient(s.a, orientation),
+      b: orient(s.b, orientation),
+    })),
+    nodePoints: nodePoints.map((p) => orient(p, orientation)),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -204,3 +204,78 @@ describe('initLatticeProperties (SE7g amend): Colors row swatches', () => {
     expect(document.getElementById('latticeColorNodes').style.background).toBe('#c62828');
   });
 });
+
+describe('initLatticeProperties (SE7h): orientation toggle', () => {
+  let container, editor;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.innerHTML = `
+      <input id="latticeRailsEvery" type="number" value="2">
+      <input id="latticeRailsOffset" type="number" value="0">
+      <input id="latticeTiesDensity" type="range" value="0">
+      <input id="latticeSeed" type="number" value="42">
+      <button id="latticeGenerate"></button>
+      <button id="latticeDetachAll"></button>
+      <button id="latticeColorRails"></button>
+      <button id="latticeColorTies"></button>
+      <button id="latticeColorNodes"></button>
+      <button id="latticeOrientHorizontal" class="active"></button>
+      <button id="latticeOrientVertical"></button>
+      <button id="toolLattice"></button>
+    `;
+    document.body.appendChild(container);
+    editor = makeMockEditor();
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('Horizontal is active by default (a fresh pattern reads PATTERN_DEFAULTS.orientation)', () => {
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeOrientHorizontal').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeOrientVertical').classList.contains('active')).toBe(false);
+  });
+
+  it('clicking Vertical activates it, deactivates Horizontal, and regenerates (PATTERN.orientation === "vertical")', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeOrientVertical').click();
+    expect(document.getElementById('latticeOrientVertical').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeOrientHorizontal').classList.contains('active')).toBe(false);
+    expect(editor._latticePattern.orientation).toBe('vertical');
+    expect(editor._latticePattern.id).toBeTruthy(); // it DID generate, not just flip a flag
+  });
+
+  it('non-vacuous: the rail geometry actually changes shape when orientation flips (proves it really regenerated, not just relabeled)', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeGenerate').click();
+    const railBefore = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    const beforeGeom = { x1: railBefore.attr('x1'), y1: railBefore.attr('y1'), x2: railBefore.attr('x2'), y2: railBefore.attr('y2') };
+
+    document.getElementById('latticeOrientVertical').click();
+    const railAfter = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    const afterGeom = { x1: railAfter.attr('x1'), y1: railAfter.attr('y1'), x2: railAfter.attr('x2'), y2: railAfter.attr('y2') };
+    expect(afterGeom).not.toEqual(beforeGeom);
+  });
+
+  it('flipping orientation does NOT roll a new seed (a re-projection, not a reshuffle — SE7g: only Generate rolls)', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeGenerate').click();
+    const seedAfterGenerate = editor._latticePattern.seed;
+
+    document.getElementById('latticeOrientVertical').click();
+    expect(editor._latticePattern.seed).toBe(seedAfterGenerate);
+
+    document.getElementById('latticeOrientHorizontal').click();
+    expect(editor._latticePattern.seed).toBe(seedAfterGenerate);
+  });
+
+  it('clicking Horizontal after Vertical flips back (PATTERN.orientation === "horizontal")', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeOrientVertical').click();
+    document.getElementById('latticeOrientHorizontal').click();
+    expect(editor._latticePattern.orientation).toBe('horizontal');
+    expect(document.getElementById('latticeOrientHorizontal').classList.contains('active')).toBe(true);
+  });
+});

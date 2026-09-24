@@ -1538,6 +1538,16 @@
 
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Rails</span>
+              <!-- SE7h (Fred: "invert rails and ties so rails are vertical"):
+                   orientation toggle, same segmented-control shape/class
+                   (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH group
+                   above — no new CSS. Flipping this regenerates with the
+                   CURRENT seed (it's a re-projection, not a reshuffle — only
+                   Generate itself rolls a new one, per SE7g). -->
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
+                <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
+              </div>
               <div style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
                   <input id="latticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">

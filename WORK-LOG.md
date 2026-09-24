@@ -7826,3 +7826,105 @@ navy/yellow on the actual generated pattern, matching the swatches exactly.
   console errors, screenshots visually clean.
 
 No amendments pending as of this pass.
+
+## Turn 245 — SE7h: lattice orientation, rails horizontal or vertical — DONE
+
+**Still under the no-Fusion hard rule** (Fred, ongoing) — every live claim below is the browser again
+(`scripts/smoke-lattice-orientation.mjs`, new, same shape as SE7g's own script).
+
+**The one mapping (`orient`, `editor-lattice.js`).** `ORIENTATIONS = ['horizontal', 'vertical']` declared
+once. `orient({i,j}, orientation)` swaps i/j for `'vertical'`, identity for `'horizontal'` — and is its own
+inverse (swapping twice is the identity), which is what lets every caller use the SAME function for both
+"transpose in" and "transpose out" instead of needing a paired un-orient. `PATTERN.orientation` (default
+`'horizontal'`, declared in `PATTERN_DEFAULTS`) drives it; an existing saved pattern from before this field
+existed has no key at all and reads as horizontal via `computePattern`'s own `{ ...PATTERN_DEFAULTS,
+...PATTERN }` merge — no migration needed.
+
+**`computePattern` (generator): conjugated, not duplicated.** The dispatch's own instruction — "compute in
+the canonical frame exactly as today, map through ONE function orient()" — landed literally: the extent's
+two corners are oriented IN (canonical `iMin/jMin/iMax/jMax`), the existing occupied-cell Set (built in REAL
+coordinates by the unchanged `_collectOccupied`) is re-keyed into that SAME canonical frame once at the top
+(cheaper than orienting on every `_occupiedHas` call), the rail-row/tie-span/crossing math in between runs
+**completely unchanged** — same functions, same branches — and every output point (`segments[].a/b`,
+`nodePoints[]`) is oriented back OUT at the return. `'horizontal'` is the identity end to end, so this is a
+provably zero-behavior-change no-op for every existing caller (confirmed: all 89 pre-existing lattice tests
+pass unchanged). Traced the geometry by hand before writing code: on a 7x9 board with `orientation:
+'vertical'`, the canonical extent becomes `{iMin:0,iMax:8,jMin:0,jMax:6}` (the axes swap), the same
+`_railRows` call now walks what's numerically the REAL 7" width, and orienting each output point back turns
+"constant-canonical-j, spans canonical-i" (a horizontal rail, as always) into "constant real-i, spans
+real-j" — a genuinely vertical line spanning the full 9" height. The 7x9 vitest test below pins this exact
+derivation as an executable assertion, not just a comment.
+
+**Hand-drawn Lattice tool (`editor-interaction.js`): same conjugation, not a parallel rule.** `classifyDrag`/
+`constrain` themselves are UNTOUCHED (still pure, still "horizontal-frame" functions) — every call site that
+feeds them now orients its inputs in and its output back out, exactly like `computePattern`: `update()`
+(live drag preview + the T30 rail-snap, which itself needed `_existingRailRows` upgraded to read an
+existing rail's row through `orient()` too — a real rail segment's "constant" endpoint component is
+real-j when horizontal but real-i when vertical, so the raw `s.a.j` read from before SE7h was silently
+wrong for vertical without this) and `finish()` (the emitted kind + the auto-nodes crossing search, which
+needed the EXISTING on-sketch segments re-oriented alongside the new one before calling `latticeCrossings`
+— `_segmentCrossing`'s own "rail = constant-j, tie = constant-i" assumption is baked into that function and
+was never going to be orientation-aware on its own). `emitSegment`'s actual drawn geometry still uses the
+REAL, un-oriented `a`/`b` throughout — only the CLASSIFICATION and CROSSING math run through the canonical
+conjugation; the drawn line was always going to be exactly where the user dragged it.
+
+**Panel: a segmented control, not a new picker style.** "Rails: Horizontal | Vertical" reuses
+`.editor-fillmode-btn` verbatim (the same class/markup shape as the existing STROKE/FILL/BOTH toggle in
+`properties-shape.js`) — no new CSS. Clicking either button sets `PATTERN.orientation`, then immediately
+calls `generatePattern` with `readFieldsIntoPattern()`'s CURRENT seed — a flip is a re-projection of the
+same pattern, never a reshuffle (SE7g's own rule: only the Generate button itself rolls a new seed). One
+undo step, for free, from `generatePattern`'s own single `pushState()` — no extra plumbing needed.
+
+**Tests (added across 3 files, `tests/editor-lattice.test.js` +10, `tests/editor-lattice-pattern.test.js`
++5, `tests/properties-lattice.test.js` +5 = 20 net).**
+- `orient` (pure): declares the two orientations; horizontal is the identity; vertical swaps i/j; self-
+  inverse (round-trips); non-vacuous "actually changes a point" guard.
+- `orient()` composed with `classifyDrag`/`constrain` — the EXACT conjugation pattern the hand tool uses,
+  proven as pure function composition (no DOM/editor mock — `editor-interaction.js`'s handlers aren't
+  exported for a lighter-weight unit test): a horizontally-dominant drag classifies as a TIE once vertical
+  is the rail axis and vice versa; horizontal orientation reproduces the un-oriented functions exactly.
+- `computePattern`: the dispatch's own two verify lines as literal assertions — vertical output equals
+  horizontal output with every point's i/j swapped on a square extent (plus a non-vacuous "they actually
+  differ" companion); on an explicit 7x9 extent, vertical rails are genuinely vertical lines (`a.i ===
+  b.i`) each spanning the FULL 9" axis (`jMin..jMax`), spread across the 7" width at the declared `every`
+  spacing; a pattern object with no `orientation` key at all produces byte-identical output to an explicit
+  `orientation:'horizontal'` one.
+- `properties-lattice.js`: Horizontal active by default; clicking Vertical activates it/deactivates
+  Horizontal/sets `PATTERN.orientation`/actually regenerates (`PATTERN.id` gets assigned, proving it's a
+  real Generate call, not a flag flip); non-vacuous — the emitted rail's own geometry changes shape across
+  the flip; flipping does NOT change the seed (checked both directions); flipping back to horizontal
+  restores `orientation:'horizontal'` and re-activates that button.
+
+**Non-vacuous, two separate passes.** (1) Neutered `orient()` to a permanent identity — 8 tests failed
+across all three files that depend on it (the pure `orient` tests, the composition tests, the
+`computePattern` orientation tests, AND the panel's own "rail geometry changes shape" integration test),
+confirming the whole dependency chain is real. (2) Removed the two `on(orientXEl, 'click', ...)` bindings
+in `properties-lattice.js` — exactly the 2 tests asserting a CLICK produces an effect failed; the two
+testing an ABSENCE of reseeding trivially passed either way (an accepted, documented limit of testing
+inaction, covered by the positive-case failures above). Restored from scratch copies each time, diffed
+byte-identical, re-ran green (507/507) after each restore.
+
+**Live (browser, `smoke-lattice-seed-color.mjs`'s new sibling `smoke-lattice-orientation.mjs`, two
+independent runs, zero console errors both times).** Every checked field came back `true`: the segmented
+control renders with Horizontal active by default; a first Generate under horizontal produces genuinely
+horizontal rail lines (`y1===y2`); clicking Vertical activates it and regenerates WITHOUT changing the seed
+(`orientationFlipDidNotReseed`); the resulting rails are genuinely vertical (`x1===x2`, spanning the full
+board height) and the ties are horizontal connectors between them; flipping back to Horizontal reverses
+cleanly, again without reseeding. **The hand-drawn tool itself, driven through a REAL simulated mouse drag**
+(CDP `Input.dispatchMouseEvent` press/move/release, MODEL-space points mapped to screen pixels via the
+SVG's own `getScreenCTM()` — indistinguishable to the page's pointer listeners from genuine hardware, so
+this exercises `editor-interaction.js`'s actual `latticeHandler` code, not a mock): the identical
+vertical-on-screen ("column") drag shape was classified as a RAIL while orientation was vertical, and as a
+TIE when flipped back to horizontal — the drag CLASSIFICATION itself flips with orientation, proven live,
+not just reasoned about. Screenshot (`se7h-2-vertical.png`) shows the full generated pattern: red rails
+running the full height of the board, evenly spaced across the width, yellow horizontal tie connectors
+between them, navy nodes at ends/crossings — visually exactly the expected 90° rotation, panel layout
+clean.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **507 passed**, 0 failed.
+- Live browser (`smoke-lattice-orientation.mjs`, no Fusion, run twice): every orientation/reseed/hand-tool
+  flag confirmed `true` both times, zero console errors; screenshot confirms the visual 90° rotation.
+
+No amendments pending as of this pass.
