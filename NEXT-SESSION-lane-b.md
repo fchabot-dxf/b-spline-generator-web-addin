@@ -87,3 +87,11 @@ stored colors — turning it back on must restore every element's own color.
 - Render rules: carve → masked into the relief; showColor → element colors in the editor canvas (off = neutral,
   display-only); the colored drape on the mesh appears when `carve && showColor && visible` (seat A renders it).
 - Exports (Fusion sketch, SVG download) follow `visible`, as in amend 1.
+
+## AMEND 7 (Fred) — 👁 is the MASTER switch
+- `visible` off → the layer is off EVERYWHERE: not carved (mask skipped), no drape, not exported, hidden in the editor.
+  `carve` and `showColor` keep their values (remembered for when 👁 comes back on).
+- Effective rules: carved = visible && carve; colored drape = visible && carve && showColor; editor colors =
+  visible && showColor (else neutral); exports = visible.
+- So the mask/rebuild/isCarvingLayer reads become `visible !== false && carve !== false` (NOT carve alone as amend 1
+  said). Tests: 👁 off + 3D on → no mask; 👁 on + 3D on → mask; toggling 👁 back on restores carve/color unchanged.
