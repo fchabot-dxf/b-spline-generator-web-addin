@@ -1,37 +1,33 @@
-# NEXT — SE9: a color per vector element, for visualising the piece in the editor (never a carve input)
+# NEXT — SE11: drape each layer's colored vectors onto the 3D relief (the "3D + palette" combination)
 
-**Ball: worker (seat A) · epoch 2 · SE9.** Fred: "add colors to vectors" → "color per element" → "for simulation, in
-editor only". Seat B is on SE7p in `bspline_gen_palette.html` (`#editorLatticePanel` region ONLY), `styles/editor.css`,
-`editor/properties-lattice.js` — you may add markup to the palette's STROKE/STYLE toolbar region (not the lattice
-panel) and must not touch those two other files. One commit by path.
+**Ball: worker (seat A) · epoch 2 · SE11.** SE9 accepted + merged with seat B's SE7p (main ef86c37, 312 tests).
+Seat B is building T26/SE10 (sidebar layer browser, shared `renderLayerList`, and the per-layer fields you READ):
+`visible` (👁 master), `carve` (the "3D" toggle), `showColor` (palette toggle). Their defaults while seat B lands them:
+treat missing as `visible:true, carve:true, showColor:true`. Seat B's files: `editor/layers.js`, `main/stamp/layer.js`,
+`main/stamp-mask-manager.js`, `core/engine/rebuild.js`, `main/export-flow.js`, the palette's VECTOR STAMPING region,
+`styles/*` — do NOT touch them. Yours: `core/preview/*` (Three.js), a new pure module for the drape texture, the hook
+that refreshes it, tests (+ WORK-LOG). One commit by path.
 
-## Ground truth
-- `editor._strokeColor` / `_fillColor` exist (`editor.js:82,87`) and new shapes use them (`properties-shape.js:74-75`),
-  but there is no color UI; `setStrokeColor` was removed in SE8d as dead (zero callers) — this brings the capability
-  back WITH a door.
-- The carve is color-blind: the stamp rasterizer builds its mask from ALPHA only (`core/stamp/index.js:2,165`,
-  `core/stamp/sdf.js:38`); the Fusion bake sends geometry. "Editor only" therefore means: color lives on the element for
-  display and survives save/reopen, and nothing downstream reads it. Prove that, don't assume it.
+## Rule (Fred, final — ROADMAP "Layer toggles FINAL" + "👁 is the master")
+A layer's vectors are painted onto the mesh when `visible && carve && showColor`. Each element in its own SE9 color.
+**Uncolored elements (pure black #000000) are NOT painted** — advisor's default so the relief isn't covered in black
+lines for layers nobody colored (flagged to Fred; declare it as one constant `DRAPE_SKIP_COLORS = ['#000000']`).
+Nothing is painted when no layer qualifies — the model then looks exactly as today.
 ## Build
-0. **Fred (amend): stroke and fill are ALWAYS the same color per element.** One `editor._color`; setColor writes it
-   to stroke AND fill of each selected element (the FILL/STROKE/BOTH mode only decides whether fill is `none`); new
-   shapes use it for both. Test: stroke === fill (or fill none) after setColor.
-1. One toolbar control "COLOR" next to STROKE: an `<input type="color">` (no alpha — an opaque color can't change
-   coverage) plus a short swatch row of presets declared once, `VECTOR_COLORS = ['#000000', '#c62828' (red),
-   '#f9c80e' (yellow), '#1a237e' (navy), '#2e7d32', '#ffffff']` — the first four are Fred's piece.
-2. `editor.setColor(color)`: sets `_strokeColor` and `_fillColor` for NEW shapes, and recolors the current selection
-   (stroke, and fill when the element is filled — respect FILL/STROKE/BOTH); ONE `pushState()` + `_notifyChange('commit')`
-   per committed change (`change` event, not `input`). Selecting an element shows its color in the control.
-3. Lattice: generated/hand-drawn rails, ties, nodes take the current color like any other element (Fred can color
-   the Rails/Ties/Nodes layers' content by selecting it — no per-kind color table unless he asks).
-4. Carve-neutral guard (the "editor only" promise): a test that rasterizes the same shape in black and in yellow
-   through the real mask path used by the stamp (or its pure part) and asserts identical masks; and a test that the
-   Fusion bake output contains no color-dependent geometry change. If any path turns out to read color, strip color
-   there (serialize-for-raster forces black) and say so.
+1. Pure part: `buildDrapeSvg(editorLayers, sketchSvg)` → an SVG string of just the qualifying elements (colors kept),
+   board-sized viewBox — reuse the editor's serializer (`serializeEditor`/`getLayerSvg`), don't write another.
+2. Render it to a canvas texture (same rasterize path the stamp uses, but keeping RGBA) at a resolution tied to the
+   mesh's grid, and apply it to the model's TOP surface with planar UV (x/width, y/height — the top is a heightfield
+   seen from above). Read `core/preview/*` first to find the top-surface mesh and its existing material; the drape is a
+   texture on it (or a second material layer), not new geometry. Check orientation (the SC2/SC3 Y-flip history —
+   `carveMatrix` comments) so a line drawn top-left appears top-left on the model.
+3. Refresh on the editor's 'commit' change and on layer-field changes (seat B will emit a layers-changed notify — until
+   then hook `_notifyChange('commit')`), not per drag frame.
 ## Verify
-`npx vitest run` green (rerun once if the whole suite reports "no tests"); smoke screenshot (serve from the REPO ROOT —
-see the script header) with a red rail, yellow tie, navy node.
+Tests for `buildDrapeSvg` (rule truth table incl. black skipped, hidden layer excluded, carve off excluded). Smoke
+(serve from the REPO ROOT): Generate, color rails red / ties yellow / nodes navy, screenshot the 3D preview — colored
+lines follow the relief, in the right orientation. `npx vitest run` green.
 ## When done
 Append WORK-LOG, commit by path, push, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE9: per-element color (picker + VECTOR_COLORS), carve-neutral proven — <sha>, N files, vitest N, screenshot: <path>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE11: colored drape on the relief — <sha>, N files, vitest N, screenshot: <path>"`
 and stop.
