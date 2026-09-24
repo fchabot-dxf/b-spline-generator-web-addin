@@ -665,3 +665,6 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   spacing, node r .30) with a 1-cell margin — smoke screenshot shows distinct rails, ties and nodes. Remaining: T25 +
   SE7p (seat B). Permissions: Fred runs auto mode — the allow/ask lists were removed from both trees' `.claude/settings.json`
   on his instruction; only the four `.env` deny rules remain.
+- **SE9 — colors on vectors (Fred 2026-09-24):** per-ELEMENT color, "for simulation, in editor only" — a display
+  aid, never a carve input. Spacing options: Fred said "don't worry" (none). Carve is color-blind already: the stamp
+  rasterizer reads alpha only (`core/stamp/index.js:2,165`, `sdf.js:38`), Fusion's importer takes geometry.
