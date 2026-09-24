@@ -6217,3 +6217,115 @@ pre-fix). All four reverts restored and the full suite re-ran green afterward.
   editor-serialization).
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 211 — SE7s: HANDLE_EDIT per kind, stroke never scales, projection corner, rotated frame — DONE
+
+Read ROADMAP's 3 "SE7s" entries in full (lines 529-567) before touching anything, per the dispatch's own
+instruction — this turn is driven by ROADMAP + Fred's rulings, not `AUDIT-SVG-EDITOR.md`. Confirmed ground
+truth by re-reading `editor-transform-handles.js` fresh: the `useX` dominant-axis pick (old lines 182-187)
+and the unconditional `delta = new SVG.Matrix()...; composed = delta.multiply(m0)` for every element type.
+Seat B is on `editor-lattice-pattern.js`/`core/terrain.js` — not touched.
+
+**1. Declared `HANDLE_EDIT` (new `editor/handle-edit.js`, pure module):** `{ line:'endpoints',
+circle:'radius', ellipse:'radii', rect:'geometry', path:'geometry', polyline:'geometry',
+polygon:'geometry', text:'scale' }`. Same file also declares `cornerScale` (the projection formula) and
+plain-object affine-matrix helpers (`multiplyMatrix`/`translateMatrix`/`scaleMatrix`/`rotateMatrix`/
+`matrixToString`) — replacing `new SVG.Matrix()...` in `editor-transform-handles.js` entirely. Two reasons,
+both real: (a) matches this codebase's own established rationale for avoiding SVG.js's transform math
+(`editor-coords.js`'s `transformPoint` docstring — historically unreliable, absent in some host builds),
+and (b) makes the corner/rotate/scale composition testable headless with a plain mock matrix object, the
+same convention `editor-coords.test.js`/`editor-nodes.test.js` already use for `.matrix()` — no `global.SVG`
+stub needed anywhere in the new tests. Verified `multiplyMatrix(A, B)` = A∘B (B applied first) matches the
+OLD code's own comment ("new transform = delta × m0_i") exactly, so the world-frame math is bit-identical
+to before, just re-expressed without `new SVG.Matrix()`.
+
+**2. Corner-handle scale = projection, not dominant-axis.** `cornerScale(ox, oy, nx, ny) = (n·o)/(o·o)` —
+the projection of the pointer vector onto the original anchor→handle vector. Reproduced both of ROADMAP's
+own measured failures as tests (`tests/handle-edit.test.js`): a 0.02×3 tie dragged 0.3" sideways gives
+~×1.00 (old dominant-axis formula, reproduced inline in the test only — never imported from source, it no
+longer exists there — gives >×10); a near-square (2×2.02) box's factor stays stable (<0.001 apart) across
+two adjacent, slightly off-diagonal pointer positions where the OLD pick's `|nx-ox| >= |ny-oy|` condition
+provably flips sides (asserted directly) and its own factor jumps >10× more than the new one for the same
+two points. Side handles are unchanged — only one axis is ever controlled there, no direction to project
+onto.
+
+**3. Per-kind handle edit (`_applyScaleToElement`, `editor-transform-handles.js`):**
+- `'geometry'` (rect/path/polyline/polygon) — bakes into raw coordinates on EVERY move from a drag-start
+  point-list snapshot (`_snapshotGeometry`), never touching `transform`. Reused SE8a's `normalizeForBake` +
+  `PATH_LAYOUT` for path (and for a promoted rect — same table, same normalization, not re-hand-rolled).
+- `'endpoints'` (line) — the dragged handle's nearest endpoint (by world distance at drag start) moves
+  ALONG THE LINE'S OWN ORIGINAL DIRECTION only (a projection onto the line's own unit vector), the other
+  end is the anchor; snapped via `snapFor(pt, editor._grid, 'select', 'move', altBypass)` — SNAP_POLICY's
+  `'point'` row, reused rather than adding a new lattice-specific policy, per the dispatch's own "snapped
+  per SNAP_POLICY('select')". `alt` now threads through from `editor-interaction.js`'s `handleMove` into
+  `applyTransformDrag`'s `modifiers` (the one `editor-interaction.js` change this turn — wiring only, no
+  new logic there) to bypass grid-snap, matching every other SNAP_POLICY Alt-bypass in the app.
+- `'radius'`/`'radii'` (circle/ellipse) — r / rx,ry scale by whichever of sx/sy this handle actually
+  controls (corner: both equal, the projection factor; side: the existing per-axis ratio, UNCHANGED per
+  ROADMAP's own "side handles unchanged"); centre never touched.
+- `'scale'` (text, and the fallback for any undeclared type) — the old transform-compose behaviour,
+  unchanged in the world-frame (multi-selection) case.
+
+**4. Rotated single selection edits in the element's own frame.** `renderTransformHandles`: for a single
+selection, every handle/anchor point is the element's LOCAL bbox fractional point mapped through its FULL
+matrix (`transformPoint(el.matrix(), ...)`) — not a world-AABB fraction — so handles sit on the element's
+own (possibly rotated) corners. `beginTransform`/`applyTransformDrag`: for a single selection, o/n vectors
+are computed by mapping the live pointer into the SAME local space via the existing `toLocal` (SE8b) before
+subtracting the local anchor — so the corner/side factor is correct in the element's own axes. For an
+UNROTATED/untranslated element this reduces to EXACTLY the old world-AABB math (a local bbox mapped through
+an identity-rotation matrix IS the world bbox) — proven by the "unrotated element: handle positions match
+its plain bbox" test, which passes against BOTH the old and new code (a deliberate no-regression pin, not a
+new-behaviour test — the one test in the new suite that's expected to also pass pre-change). Multi-selection
+is untouched: shared world combined-bbox, one shared anchor/handle/pointer, each element still edited by its
+own `HANDLE_EDIT` rule (for `'geometry'` specifically, via a world→local round-trip through that element's
+OWN unchanging matrix, so the group scales together in world space without ever writing a scale into any
+member's `transform`).
+
+**5. Rotated rect promotes to a path before a geometry bake (`_promoteRectToPath`).** An axis-aligned rect
+scales its raw `x`/`y`/`width`/`height` directly (min/max of the 4 corners after the anchor-relative scale,
+same normalisation `getNodes`' rect setter already uses for flips). A ROTATED rect promotes first — new
+path, same 4 local corners as `d`, SAME `transform` copied across (never baked — this is a representation
+swap, not a flatten) — because the world-frame (multi-selection) round-trip in point (4) can leave a
+non-axis-aligned quadrilateral in local space that plain `x/y/width/height` can't hold; going through the
+same general point-list bake `path`/`polyline`/`polygon` already need avoids a second, rotation-aware
+formula. **Scope decision, flagged rather than silently skipped:** tested the geometry-bake MATH this
+feeds into directly with a `path`-typed mock (a 30°-rotated 4×2 rect's own local geometry, exactly what
+`_promoteRectToPath` would hand it) rather than also mocking the DOM-swap mechanics of promotion itself
+(`.parent().path()`, attribute copying, `insertAfter`/`remove`) — consistent with this codebase's existing
+precedent that `bakeMatrixIntoElement`'s own, very similar rect→path promotion (SE8a) has never been
+directly unit-tested either, only the math it depends on. The mechanism is ~15 lines mirroring that
+existing, shipped code closely.
+
+**Bug caught by the tests themselves before commit:** first draft compared `kind === 'circle'` /
+`kind === 'ellipse'` in both `beginTransform` and `_applyScaleToElement` — but `HANDLE_EDIT.circle` is
+`'radius'` and `HANDLE_EDIT.ellipse` is `'radii'`, not the element type names. Both circle/ellipse tests
+failed immediately (`expected undefined to be 'radius'`) against the FIRST draft, before any revert-and-
+check was needed — fixed by comparing against the actual declared kind strings.
+
+**Tests** (`tests/handle-edit.test.js` new, 10; `tests/editor-transform-handles.test.js` new, 9 — this file
+and `editor-transform-handles.js` had no prior test coverage at all, first-time direct import):
+cornerScale's two ROADMAP reproductions (above) + a degenerate zero-length-`o` guard (returns 1, not
+NaN/Infinity); matrix helpers (`translateMatrix`/`scaleMatrix`/`rotateMatrix`+pivot/`multiplyMatrix` order/
+`matrixToString` format); axis-aligned rect side drag (width doubles, `stroke-width` and `transform`
+untouched, +1 explicit non-vacuous framing test); 30°-rotated geometry side drag (right-angle dot-product
+check, `transform`/matrix reference untouched); line handle drag (length-only, angle within 1e-9, +1
+non-vacuous "an off-axis pointer would move y2 under a naive write" test); circle corner drag (radius via
+the projection factor, centre fixed); ellipse side drag (rx/ry independent); `renderTransformHandles`
+placement for both an unrotated and a 30°-rotated single selection.
+
+**Non-vacuity, proven not argued:** reverted `editor-transform-handles.js` and `editor-interaction.js` to
+`git show HEAD:...` and removed the new `handle-edit.js` entirely (a brand-new module — "does the old file
+fail" isn't the applicable check; "does removing it break the new tests" is). Ran both new test files
+against that reverted tree: `handle-edit.test.js` failed to even load (`Failed to resolve import
+".../handle-edit.js"` — the module doesn't exist pre-change); 7 of 8 `editor-transform-handles.test.js`
+tests failed (wrong `state.frame`, `ReferenceError: SVG is not defined` from the old code's real
+`new SVG.Matrix()` call hitting a mock with no SVG global, wrong `kind`, wrong handle position for the
+rotated case) — the ONE that passed is the deliberate no-regression pin described in point (4) above, which
+is SUPPOSED to hold both before and after. Restored all 3 files from scratch copies, `diff` confirmed exact
+restoration, full suite re-ran green.
+
+**Verify:**
+- `node --check` on all 3 touched/added JS files: clean.
+- `npx vitest run` → **181 passed** (162 prior + 10 handle-edit + 9 editor-transform-handles).
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
