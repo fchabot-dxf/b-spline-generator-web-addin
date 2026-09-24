@@ -97,3 +97,6 @@ bspline-frame-builder/stamp-editor/html/core/gaussian.js
 *.bak[0-9]
 /diff_*.txt
 /pytest_run_output.txt
+
+# Claude Code per-machine settings (permission allowlist) — never committed
+.claude/
