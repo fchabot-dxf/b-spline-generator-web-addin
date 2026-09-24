@@ -565,3 +565,18 @@ live-proven. Three layers carry rails / ties / nodes with their own tooling — 
   drag maps the pointer through `el.matrix().inverse()` before calling `set`. Tests: moved line endpoint follows the
   cursor; circle centre moves; closed path — dragging node k edits segment k's endpoint, not k-th array entry.
   Order now: SE7a → SE7n → SE7s → SE7m → SE7b.
+
+## SVG editor audit (AUDIT-SVG-EDITOR.md, seat B T12 cf16467) — 47 findings, merged 2ea481e
+Advisor spot-checks on main: SA-ROUNDTRIP-1 CONFIRMED (`_bakeMatrixIntoPath` transforms EVERY numeric pair of a
+segment as a point — for `A` that mangles rx/ry, x-rotation, both flags; shapeToPath emits two arcs per circle, so
+every circle/lattice node reaches Fusion corrupted while editor + preview look right); SA-UNDO-2 CONFIRMED
+(`setStrokeWidth` has no pushState/_onChange); SA-TEXT-1 CONFIRMED (Cancel calls only `_onCommit(null)`);
+SA-LAYER-1 CONFIRMED (export tooling from the fixed 3-entry `P.stampLayers`, layers 2/3 default `enabled:false`,
+layer 4+ → `{}` — a lattice split over three layers exports only layer 1). Audit's "SNAP_POLICY doesn't exist" is a
+stale-HEAD artefact (audited before SE7a merged). SE7n (5cea9dd) accepted: node model with setters, inverse-matrix
+drag, 113 tests.
+Slices: **SE8a** (seat A, dispatched) carve correctness — declared PATH_LAYOUT shared by getNodes + bake, circles →
+cubics, A→C before baking, stroke width/color undo + change, Cancel teardown, font-defs accumulation. **SE5-plan**
+(seat B, dispatched) — tooling single store on the editor layer (SA-LAYER-1/2/3). Then SE8b (hit-test/expand
+coordinate spaces SA-COORD-3/4, `_onChange` per-move throttle SA-UNDO-1), SE7s, SE7m (+ all SA-MOBILE), SE8c
+declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
