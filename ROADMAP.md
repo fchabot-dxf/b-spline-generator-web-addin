@@ -660,3 +660,8 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   Ctrl+A (guarded) silently does nothing, Shift-click add THROWS (`editor-interaction.js:536`, unguarded), marquee
   (`editor-marquee.js:108-110`) and paste can't select their results. Likely lost in the old silent-truncation episode
   (0b40db9 restored the comments, not the methods). → SE8f, first in seat A's next task.
+- **SE8f (3e2d900) + SE7c (8cd49ca) accepted → 297 tests.** Multi-select restored (Ctrl+A, Shift-add, marquee, paste) plus
+  a second marquee-additive ordering bug seat A found; lattice proportions declared (LATTICE_STYLE rail .28 / tie .22 ×
+  spacing, node r .30) with a 1-cell margin — smoke screenshot shows distinct rails, ties and nodes. Remaining: T25 +
+  SE7p (seat B). Permissions: Fred runs auto mode — the allow/ask lists were removed from both trees' `.claude/settings.json`
+  on his instruction; only the four `.env` deny rules remain.
