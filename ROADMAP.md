@@ -718,3 +718,6 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   SE8a's arcs→cubics bake over-approximates: the carve matrix is a similarity, so keep A arcs (and circles) exact and
   fall back to cubics only for non-uniform transforms. Live expand must be ANALYTIC (line → 2 lines + 2 arcs), not the
   raster-trace Expand. Folded into T33 (SE12 design); open: does Fusion's SVG import keep A as arcs?
+- **Fred blocked (2026-09-24): generated lattice pieces can't be moved** — other layers are unclickable (inactive-layer
+  pointer-events) and Generate restores the previous active layer. Fix queued as an SE7h add-on: Select/Nodes click any
+  shown element and activate its layer; drawing modes stay on the active layer.
