@@ -694,3 +694,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   Fred's refinements relayed live). Seat B rightly checkpointed at amend 5 and refused to chase 6-8. Rule: while a
   design is still moving with Fred, settle it WITH him first (mockup + questions), then dispatch ONE spec; relay
   mid-turn only blockers. T27 = the consolidated final row.
+- **Drape shading (Fred):** the drape must be SHADED — it replaces the surface base color (mix by alpha) before
+  lighting, so color follows the relief; not emissive (washes out, black invisible), not unlit (flat sticker).
