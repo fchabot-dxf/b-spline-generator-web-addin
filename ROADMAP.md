@@ -703,3 +703,7 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   relief without carving. SE11f (seat A). Sidebar layer list moved up + full names = T29 (seat B).
 - **Fred 2026-09-24:** slider undo YES → UX-UNDO + SE5c (seat A). Ties: NOT limited to rails but ends SNAP to a rail when
   within 1 row (declared railSnapRows) — generator + hand-drawn Lattice tool (seat B). Grid contrast: options offered.
+- **Grid contrast (Fred, final — invert withdrawn): hover feedback instead.** Leave the grid faint; under the pointer,
+  highlight the grid row + column lines through the nearest intersection and that intersection (node) itself, readable
+  on any background (light core + dark outline). Pure part: nearest lattice lines/node for a point. Hidden on pointer
+  leave / grid hidden; drawn in _handleLayer like the snap ring (never serialized). SE6c, first seat to free up.
