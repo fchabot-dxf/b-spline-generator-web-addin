@@ -1060,3 +1060,63 @@ No gate hit — CSS-only, additive, no JS/markup touched.
 **Verify:** `git show --stat HEAD` → `BUGS_OPEN.md` + `WORK-LOG-lane-b.md`, matching the prediction.
 
 No gate hit — docs-only, no product code touched.
+
+---
+
+## Lane B — Turn 39 — T12: full read-only audit of the SVG editor — DONE, docs only
+
+New deliverable `AUDIT-SVG-EDITOR.md` (504 lines, 47 findings across 8 dimensions: coordinate spaces,
+undo/change fan-out, layers vs. P.stampLayers, save/reopen/carve round trip, tools-vs-declarations,
+dead/doorless code, text+Expand lifecycle, mobile readiness). Read-only turn — no product code or
+test files touched, per the dispatch's explicit "seat A is editing editor/editor-interaction.js,
+editor-grid.js, editor.js right now" constraint.
+
+**Method:** given the scope (36 files, 6.9k lines, 8 dimensions), delegated the actual file-reading and
+tracing to 6 parallel general-purpose agents, one per dimension group (coordinate spaces; undo
+fan-out + layers; save/reopen/carve round-trip; tools-vs-declarations + dead code; text/Expand;
+mobile), each briefed with the full context, told explicitly READ-ONLY and to cite verbatim file:line
+evidence or label a claim HYPOTHESIS. This is a deviation from doing every read myself, made because
+the task's own scope (8 dimensions x dozens of files) was well beyond what a single serial pass could
+cover at the depth the dispatch asked for ("a finding without a quoted line or a reproduced number is a
+hypothesis — label it"); I did not delegate the JUDGMENT of what counts as a real finding — see below.
+
+**Verification, not blind transcription:**
+- Spot-checked 6 of the agents' highest-severity citations directly via Read/grep against current HEAD
+  before compiling anything (SA-COORD-3's `getNearbyElement`/`el.bbox()`, SA-UNDO-2/3's
+  `setStrokeWidth`/`setStrokeColor` missing pushState/_onChange, SA-TEXT-1's `editorCancel` skipping
+  `_commitText`, SA-LAYER-1's `export-flow.js` P.stampLayers read, SA-ROUNDTRIP-1's
+  `_bakeMatrixIntoPath`). All 6 matched exactly — no fabricated line numbers found.
+- **Caught and corrected one root-cause error before it shipped:** the layers sub-agent framed
+  `export-flow.js` reading `.enabled`/`.depth`/`.profile` from `P.stampLayers[idx]` as "the SE4
+  mirror-retirement work missed the export path." Reading `export-flow.js:34-39` directly showed this
+  was explicit, documented, DELIBERATE SE4a design ("Tooling stays on P.stampLayers[idx] per the
+  dispatch — that part isn't a mirror, it's the one place tooling lives") — not an oversight. The
+  underlying bugs the sub-agent found (breaks past 3 layers, direct-drawn content never gets
+  `.enabled=true`, no resync on reorder/delete) are still real and still HIGH severity, but I rewrote
+  the framing in AUDIT-SVG-EDITOR.md to say so accurately, and flagged the proposed fix (SE7w) as
+  needing Fred/advisor sign-off since it REVERSES a deliberate SE4a decision rather than completing an
+  unfinished one — that's a materially different ask than "finish the rewrite."
+- **De-collided a real naming clash:** 4 of the 6 agents independently proposed slice ids
+  `SE7-new-a`/`-b`/`-c`/`-d` for 8 DIFFERENT bugs (no coordination between them — each only saw its
+  own dimension). Renamed all of them into a single coherent slice list at the audit's end (SE7t/u/v/w/x
+  + SE8, each named for its actual content) with a severity-ordered proposed sequence, rather than
+  shipping 4 collided ids into the doc.
+- Also corrected the dispatch's own stated model example: SNAP_POLICY (cited as "already done right")
+  does not exist in shipped code — grepped 0 hits repo-wide; it's a still-queued SE7s name in
+  ROADMAP.md prose only. Recorded this at the top of the audit doc so nobody goes looking for it, and
+  used the actually-shipped declarations (GRID_DEFAULTS, MODE_HINTS, modeHandlers, the dbg() gate) as
+  the real models instead.
+
+**Findings worth flagging here directly** (severity-ranked, full detail in the audit doc): 2 findings
+are silent-wrong-PHYSICAL-CARVE-OUTPUT bugs (SA-ROUNDTRIP-1: every circle/ellipse's arc gets corrupted
+by the carve-bake path, reproduced with a scratch script down to the exact malformed `d` string;
+SA-ROUNDTRIP-2: rotated text carves upright at cos(θ) the correct size, also reproduced numerically) —
+these are the worst class per the audit's own rubric (looks right in editor AND live preview, wrong
+only in the shipped part) and are proposed as the first new slice (SE7u) for exactly that reason.
+
+**Verify:** `AUDIT-SVG-EDITOR.md` has 45 ranked-table rows + 2 verified-clean sub-items pulled out of
+ROUNDTRIP/MOBILE (47 total ids, matches the 6 agents' combined finding count exactly — grepped every
+`SA-*-N` id in the doc against what each agent reported, none missing, none duplicated).
+`git status --short` → `AUDIT-SVG-EDITOR.md` (new) only; no `editor/**` files touched, confirmed.
+
+No gate hit — pure documentation deliverable, no product code or tests touched.
