@@ -703,3 +703,6 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   relief without carving. SE11f (seat A). Sidebar layer list moved up + full names = T29 (seat B).
 - **Fred 2026-09-24:** slider undo YES → UX-UNDO + SE5c (seat A). Ties: NOT limited to rails but ends SNAP to a rail when
   within 1 row (declared railSnapRows) — generator + hand-drawn Lattice tool (seat B). Grid contrast: options offered.
+- **Grid contrast (Fred: option B, invert):** grid lines drawn with mix-blend-mode: difference (white stroke) so they read
+  light on dark terrain and dark on light, keeping minor/major opacities. Queued as SE6c for the first seat that frees
+  up (editor-grid.js applyGrid + grid-layer style; test the attrs; screenshot over dark bands).
