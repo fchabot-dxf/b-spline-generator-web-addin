@@ -714,3 +714,7 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **HARD RULE (Fred 2026-09-24): no Fusion.** Fred is using Fusion — advisor and workers must not call fusion_execute /
   fusion_screenshot / release.py --local / stop-run the add-in until Fred says otherwise. Live checks via the browser
   (scripts/smoke-editor.mjs, repo-root serve).
+- **Fred 2026-09-24 hard requirement: straight lines stay straight lines, arcs stay TRUE arcs** (export + live expand).
+  SE8a's arcs→cubics bake over-approximates: the carve matrix is a similarity, so keep A arcs (and circles) exact and
+  fall back to cubics only for non-uniform transforms. Live expand must be ANALYTIC (line → 2 lines + 2 arcs), not the
+  raster-trace Expand. Folded into T33 (SE12 design); open: does Fusion's SVG import keep A as arcs?
