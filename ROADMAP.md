@@ -649,3 +649,7 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   panel on phones) are HELD. Fred then said "continue with audit fixes": SE8b-3 (measure + cheapen the live drag
   pipeline, seat A) and T25 (prove pinch-zoom on a phone + layers at 390 px, seat B). Pattern generator's fate (remove /
   hide / finish) awaits Fred.
+- **Fred's ruling 2026-09-24: "finish lattice too"** — the pattern generator STAYS and gets finished. Queue: SE7c
+  (seat A, resume stash@{0}: LATTICE_STYLE + margin) after SE8b-3; SE7p (seat B, resume T24: panel as a sheet on
+  phones — root cause already found: no responsive rule targets `.editor-lattice-panel`, its content height starves the
+  canvas at ≤720 px) after T25. Tie anchor default stays 'rails' until Fred says otherwise.
