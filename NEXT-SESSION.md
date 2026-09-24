@@ -13,6 +13,9 @@ panel) and must not touch those two other files. One commit by path.
   `core/stamp/sdf.js:38`); the Fusion bake sends geometry. "Editor only" therefore means: color lives on the element for
   display and survives save/reopen, and nothing downstream reads it. Prove that, don't assume it.
 ## Build
+0. **Fred (amend): stroke and fill are ALWAYS the same color per element.** One `editor._color`; setColor writes it
+   to stroke AND fill of each selected element (the FILL/STROKE/BOTH mode only decides whether fill is `none`); new
+   shapes use it for both. Test: stroke === fill (or fill none) after setColor.
 1. One toolbar control "COLOR" next to STROKE: an `<input type="color">` (no alpha — an opaque color can't change
    coverage) plus a short swatch row of presets declared once, `VECTOR_COLORS = ['#000000', '#c62828' (red),
    '#f9c80e' (yellow), '#1a237e' (navy), '#2e7d32', '#ffffff']` — the first four are Fred's piece.
