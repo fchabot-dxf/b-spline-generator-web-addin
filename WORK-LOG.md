@@ -6753,3 +6753,83 @@ from scratch copies, `diff` confirmed exact restoration, full suite re-ran green
 - `npx vitest run` → **289 passed** (282 prior + 7 new).
 
 No amendments pending.
+
+## Turn 223 part 2 — SE7c resumed: `LATTICE_STYLE` widths by kind + `PATTERN.margin` — DONE
+
+Popped `stash@{0}` (`SE7c HOLD: LATTICE_STYLE declaration only...`) — applied cleanly, no conflicts with
+anything landed since (`editor-lattice.js`/`editor-lattice-pattern.js` untouched by other turns in the
+meantime). Finished exactly what the stash had started, per this turn's own dispatch (ROADMAP "Live browser
+test 2026-09-24" + the SE7c section — re-read fresh, not assumed from memory).
+
+**1. `emitSegment` (editor-lattice.js) now takes its stroke width from `LATTICE_STYLE[kind].widthFactor x
+grid spacing`, not `editor._strokeWidth`.** That was the actual defect: a live browser test found a 0.5"
+board-wide stroke (the general drawing-tool setting) on a 0.5" rail pitch, so neighbouring rails visually
+merged into one mass. `emitNode` now reads `LATTICE_STYLE.node.radiusFactor` the same way, replacing the
+now-removed `LATTICE_DEFAULTS.nodeRadiusFactor` (one source instead of two, per the dispatch's own "remove
+it if LATTICE_STYLE supersedes it"). Both functions are called by BOTH the hand-drawn Lattice tool
+(`editor-interaction.js`'s `latticeHandler`) and the generator (`editor-lattice-pattern.js`'s
+`generatePattern`) — neither of those callers changed, so the fix applies to both without touching either.
+The off-grid fallback (`DEFAULT_NODE_RADIUS_IN`, used only by the Circle tool's click-to-dot with no grid
+active) is untouched.
+
+**2. `PATTERN.margin` (default 1, editor-lattice-pattern.js) insets the 'board' extent** by that many
+LATTICE CELLS on every side, in `_resolveExtent` — `iMin/jMin += margin`, `iMax/jMax -= margin`. `'rect'`
+mode (an explicit caller-given rectangle, not the board edge) is returned un-inset, matching the dispatch's
+own scoping. Old saves keep rendering as before — generated elements store their own `stroke-width`/`r`
+attribute values directly (never a live reference to `LATTICE_STYLE`), so this is confirmed by
+construction, not something that needed a code change to guarantee.
+
+**Tests** (`tests/editor-lattice.test.js` +6, `tests/editor-lattice-pattern-emit.test.js` +2): rail width =
+`0.28 x spacing` (checked against `editor._strokeWidth` explicitly set to a DIFFERENT value, so the test
+can't pass by coincidentally reading the old field); tie width = `0.22 x spacing`, independently, and
+smaller than the rail's; width scales proportionally with a different spacing value; node radius =
+`0.30 x spacing`, scales with spacing, and the off-grid fallback is confirmed unchanged. At the generator
+level: with the default margin, no emitted rail/tie endpoint or node centre sits at `x`/`y` = 0 or the board
+size (non-vacuous: `segments.length`/`nodes.length` asserted `> 0` first, so this isn't vacuously true over
+an empty set); a second, self-contained non-vacuous check within the same describe block — `margin: 0`
+reproduces the exact edge-touching rail the live test found, `margin: 1` (the default) does not, for the
+identical pattern otherwise — proves the margin ITSELF is what excludes the edge case, not some other
+incidental difference. **Dropped one test I wrote and then reconsidered**: an "emitSegment is shared by the
+hand-drawn tool and the generator" check that only compared two `emitSegment` calls' outputs against EACH
+OTHER — that would have passed identically against the OLD `editor._strokeWidth`-based code too (same mock
+`_strokeWidth` fed to both calls), so it wasn't actually pinning anything SE7c changed; the sharing itself
+is better evidenced by the four width-value tests actually exercising the shared function, not a separate
+decorative check.
+
+**Smoke-verified visually, not just numerically** — `node scripts/smoke-editor.mjs <out> desktop
+http://localhost:8765/bspline_gen_palette.html` (local serve; `npx http-server ... -p 8765 -c-1` — found and
+killed 4 STALE prior instances left bound to that port from earlier debugging THIS session before starting
+one clean one). Report confirms the exact declared values: `railAttrs` shows `stroke-width=0.07` (=
+`0.28 x 0.25`) and `x1=0.25` (not 0 — the margin inset); `nodeAttrs` shows `r=0.075` (= `0.30 x 0.25`) and
+`cx=0.25` (not 0). Screenshot: `desktop-2-generated.png` (path:
+`%LOCALAPPDATA%\Temp\smoke-se7c-desktop2\desktop-2-generated.png` — a temp verification artifact per the
+smoke script's own docstring, "writes screenshots to `<outDir>`" — a caller-supplied scratch location, not
+committed to the repo, matching the existing convention `scripts/smoke-editor.mjs` itself already
+documents). **Confirms the actual defect is fixed**: rails now render as clearly SEPARATE horizontal lines
+with visible gaps between them (not the single merged mass the live test found), and ties are visibly
+thinner than rails. **Honest caveat, not smoothed over**: nodes (r=0.30x) vs rails (0.28x) are only ~7%
+different in size at Fred's own declared factors, so at this screenshot's zoom level the node dots don't
+read as dramatically distinct from a rail the way "10x thinner -> visibly bigger" might suggest — the
+NUMBERS match the dispatch exactly (verified above), this is a report on how subtle THOSE particular
+declared values look in practice, not a defect in implementing them, and not mine to re-tune without Fred's
+sign-off.
+
+**Found the SAME "modal renders below the viewport, screenshots miss it" issue SE8b-3 hit for mouse
+coordinates — fixed it in the shared script this time** (`scripts/smoke-editor.mjs`): the very FIRST
+screenshot (`desktop-1-editor.png`) was capturing the palette page's own top, not the modal, even though
+`modalOpen` correctly reported `display:flex` — the modal lives in normal document flow below the palette
+page's own content in this local-serve layout, not as a fixed-position overlay. Added ONE
+`scrollIntoView({block:'start'})` on `#svgEditorModal` right after it opens, before the first screenshot —
+fixes every subsequent shot() in every mode (desktop/mobile/perf) for free, not just this run's. This may
+have been silently wrong in EVERY prior smoke-script screenshot including the ones the live-site test
+relied on for its own visual read — flagging for the advisor to re-check the site is laid out the same way,
+since this local html folder and the deployed site could differ, but the underlying CDP mechanics (screenshot
+captures the current viewport, `scrollIntoView` before capturing) apply either way.
+
+**Verify:**
+- `node --check` on all 3 touched JS files (`editor-lattice.js`, `editor-lattice-pattern.js`,
+  `scripts/smoke-editor.mjs`): clean.
+- `npx vitest run` → **297 passed** (289 prior + 8 net new: 6 in editor-lattice.test.js, 2 in
+  editor-lattice-pattern-emit.test.js — one test was written then dropped as vacuous, see above).
+
+No amendments pending.

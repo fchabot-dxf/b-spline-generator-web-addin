@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   LATTICE_DEFAULTS,
+  LATTICE_STYLE,
   DEFAULT_NODE_RADIUS_IN,
   toLattice,
   fromLattice,
@@ -18,6 +19,7 @@ import {
   latticeCrossings,
   findNodeAt,
   emitNode,
+  emitSegment,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 
 describe('toLattice / fromLattice', () => {
@@ -144,19 +146,21 @@ describe('findNodeAt', () => {
   });
 });
 
-function mockEditorForEmit(nodeCircles = []) {
+function mockEditorForEmit(nodeCircles = [], gridSpacing = 0.25) {
   const emitted = [];
+  const calls = { stroke: [], circle: [], line: [] };
   const chain = {
     center() { return chain; },
     fill() { return chain; },
-    stroke() { return chain; },
+    stroke(arg) { calls.stroke.push(arg); return chain; },
     attr(k, v) { emitted.push([k, v]); return chain; },
   };
   const sketchLayer = mockSketchLayer(nodeCircles);
-  sketchLayer.circle = () => chain;
+  sketchLayer.circle = (d) => { calls.circle.push(d); return chain; };
+  sketchLayer.line = (...args) => { calls.line.push(args); return chain; };
   return {
     editor: {
-      _grid: { visible: true, snap: false, spacing: 0.25 },
+      _grid: { visible: true, snap: false, spacing: gridSpacing },
       _lattice: { ...LATTICE_DEFAULTS },
       _sketchLayer: sketchLayer,
       _layers: [{ id: '0' }],
@@ -165,6 +169,7 @@ function mockEditorForEmit(nodeCircles = []) {
       _fillColor: '#000',
     },
     emitted,
+    calls,
   };
 }
 
@@ -182,5 +187,48 @@ describe('emitNode', () => {
   it('uses DEFAULT_NODE_RADIUS_IN\'s declared value as the off-grid fallback (sanity: it is a small positive inch value)', () => {
     expect(DEFAULT_NODE_RADIUS_IN).toBeGreaterThan(0);
     expect(DEFAULT_NODE_RADIUS_IN).toBeLessThan(0.5);
+  });
+
+  it('SE7c: radius is LATTICE_STYLE.node.radiusFactor x grid spacing, not a hand-tuned constant', () => {
+    const { editor, calls } = mockEditorForEmit([], 0.25);
+    emitNode(editor, { x: 1.0, y: 0.5 });
+    expect(calls.circle[0]).toBeCloseTo(2 * LATTICE_STYLE.node.radiusFactor * 0.25, 10); // circle(d) — d = 2r
+  });
+
+  it('SE7c: radius scales with grid spacing (a different spacing gives a proportionally different radius)', () => {
+    const { editor, calls } = mockEditorForEmit([], 0.5);
+    emitNode(editor, { x: 1.0, y: 0.5 });
+    expect(calls.circle[0]).toBeCloseTo(2 * LATTICE_STYLE.node.radiusFactor * 0.5, 10);
+  });
+
+  it('off-grid (grid not visible) still falls back to DEFAULT_NODE_RADIUS_IN, unchanged by SE7c', () => {
+    const { editor, calls } = mockEditorForEmit([], 0.25);
+    editor._grid.visible = false;
+    emitNode(editor, { x: 1.0, y: 0.5 });
+    expect(calls.circle[0]).toBeCloseTo(2 * DEFAULT_NODE_RADIUS_IN, 10);
+  });
+});
+
+describe('emitSegment (SE7c)', () => {
+  it('a rail\'s stroke-width is LATTICE_STYLE.rail.widthFactor x grid spacing, not editor._strokeWidth', () => {
+    const { editor, calls } = mockEditorForEmit([], 0.25);
+    editor._strokeWidth = 0.5; // the general drawing-tool setting — must NOT be what rails use
+    emitSegment(editor, 'rail', { x: 0, y: 0 }, { x: 1, y: 0 });
+    expect(calls.line).toEqual([[0, 0, 1, 0]]);
+    expect(calls.stroke[0].width).toBeCloseTo(LATTICE_STYLE.rail.widthFactor * 0.25, 10);
+    expect(calls.stroke[0].width).not.toBe(0.5);
+  });
+
+  it('a tie uses its OWN (narrower) widthFactor, independent of the rail\'s', () => {
+    const { editor, calls } = mockEditorForEmit([], 0.25);
+    emitSegment(editor, 'tie', { x: 0, y: 0 }, { x: 0, y: 1 });
+    expect(calls.stroke[0].width).toBeCloseTo(LATTICE_STYLE.tie.widthFactor * 0.25, 10);
+    expect(LATTICE_STYLE.tie.widthFactor).toBeLessThan(LATTICE_STYLE.rail.widthFactor); // ties read visually lighter than rails
+  });
+
+  it('width scales with grid spacing, same proportion', () => {
+    const { editor, calls } = mockEditorForEmit([], 1.0);
+    emitSegment(editor, 'rail', { x: 0, y: 0 }, { x: 1, y: 0 });
+    expect(calls.stroke[0].width).toBeCloseTo(LATTICE_STYLE.rail.widthFactor * 1.0, 10);
   });
 });

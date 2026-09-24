@@ -15,7 +15,27 @@ import { ensureActiveLayer } from './layers.js';
 import { GRID_DEFAULTS } from './editor-grid.js';
 import { worldPoint } from './editor-coords.js';
 
-export const LATTICE_DEFAULTS = { autoNodes: true, nodeRadiusFactor: 0.2 };
+export const LATTICE_DEFAULTS = { autoNodes: true };
+
+/**
+ * SE7c: declared line-width/radius PROPORTIONS for lattice geometry, as a
+ * fraction of the grid spacing — replaces `emitSegment` reading
+ * `editor._strokeWidth` (the general drawing-tool stroke setting, wrong
+ * here: a live browser test found a 0.5" board-wide stroke on a 0.5" rail
+ * pitch, so neighbouring rails touch and the whole pattern reads as one
+ * mass) and the old `LATTICE_DEFAULTS.nodeRadiusFactor` (now superseded —
+ * one source for all three proportions instead of two). Applies equally
+ * to the hand-drawn Lattice tool and the generator (both call the SAME
+ * emitSegment/emitNode below), so they can't drift apart. Nodes are
+ * visibly LARGER than the lines they sit on, matching the reference
+ * photo the pattern is meant to resemble — not "10x thinner," the live
+ * test's other finding.
+ */
+export const LATTICE_STYLE = {
+  rail: { widthFactor: 0.28 },
+  tie:  { widthFactor: 0.22 },
+  node: { radiusFactor: 0.30 },
+};
 
 /** data-lattice attribute values: 'rail' | 'tie' | 'node'. */
 export const LATTICE_ATTR = 'data-lattice';
@@ -113,14 +133,19 @@ export function findNodeAt(editor, p) {
   return null;
 }
 
-/** Emit a rail/tie segment between two MODEL-space points. Current stroke
- *  width/color, data-layer via the same ensureActiveLayer path
- *  makeDrawingHandler uses in editor-interaction.js. */
+/** Emit a rail/tie segment between two MODEL-space points. Width comes
+ *  from LATTICE_STYLE[kind] × grid spacing (SE7c) — NOT editor._strokeWidth
+ *  (the general drawing-tool stroke setting; a live browser test found a
+ *  0.5" board-wide stroke on a 0.5" rail pitch, so neighbouring rails
+ *  merged into one mass). Color/data-layer via the same ensureActiveLayer
+ *  path makeDrawingHandler uses in editor-interaction.js. */
 export function emitSegment(editor, kind, a, b) {
   const layer = ensureActiveLayer(editor);
+  const spacing = editor._grid?.spacing || GRID_DEFAULTS.spacing;
+  const width = LATTICE_STYLE[kind].widthFactor * spacing;
   return editor._sketchLayer
     .line(a.x, a.y, b.x, b.y)
-    .stroke({ color: editor._strokeColor, width: editor._strokeWidth, linecap: 'round' })
+    .stroke({ color: editor._strokeColor, width, linecap: 'round' })
     .attr('data-layer', layer)
     .attr(LATTICE_ATTR, kind);
 }
@@ -128,13 +153,15 @@ export function emitSegment(editor, kind, a, b) {
 /** Emit a filled dot at a MODEL-space point — the lattice tool's
  *  auto-nodes AND the Circle tool's click-to-dot both call this, so a
  *  manual dot and an auto-node are identical elements. No-ops (returns
- *  null) if a node already sits at that lattice cell. */
+ *  null) if a node already sits at that lattice cell. Radius comes from
+ *  LATTICE_STYLE.node.radiusFactor × grid spacing (SE7c) when the grid is
+ *  on — off-grid (Circle tool with no grid active) falls back to the
+ *  fixed DEFAULT_NODE_RADIUS_IN, unchanged from before. */
 export function emitNode(editor, p) {
   if (findNodeAt(editor, p)) return null;
   const grid = editor._grid;
   const gridOn = !!(grid && grid.visible);
-  const factor = editor._lattice?.nodeRadiusFactor ?? LATTICE_DEFAULTS.nodeRadiusFactor;
-  const r = gridOn ? factor * (grid.spacing || GRID_DEFAULTS.spacing) : DEFAULT_NODE_RADIUS_IN;
+  const r = gridOn ? LATTICE_STYLE.node.radiusFactor * (grid.spacing || GRID_DEFAULTS.spacing) : DEFAULT_NODE_RADIUS_IN;
   const layer = ensureActiveLayer(editor);
   const fillColor = editor._fillColor || editor._strokeColor || '#000000';
   return editor._sketchLayer

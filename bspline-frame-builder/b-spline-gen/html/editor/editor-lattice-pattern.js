@@ -69,6 +69,12 @@ export const LATTICE_LAYER_DEFAULTS = {
 
 export const PATTERN_DEFAULTS = {
   spacing: 0.25,
+  // SE7c: inset the 'board' extent by this many LATTICE CELLS on every
+  // side, so a generated rail/tie/node never sits exactly on the board
+  // edge (a live browser test found the first rail at y=0 and nodes at
+  // x=0, cut in half by the edge). Only 'board' mode is inset — a 'rect'
+  // extent is an explicit caller-given rectangle and is used as given.
+  margin: 1,
   rails: { every: 2, offset: 0 },
   ties: { density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'rails' },
   nodes: { ends: true, crossings: true },
@@ -250,9 +256,11 @@ export function computePattern(PATTERN, opts = {}) {
 /** Resolve PATTERN.extent -> concrete lattice bounds. 'board' (the only
  *  mode slice 2 needs) derives from editor._mW/_mH — the same board-
  *  inches units toLattice/fromLattice already assume (their own doc
- *  comments). 'rect' (declared in the shape for a future "pattern only
- *  in this region", design doc §1) is honored directly since its stored
- *  bounds are already in the resolved shape this function returns —
+ *  comments) — inset by PATTERN.margin lattice cells on every side (SE7c)
+ *  so nothing generated sits exactly on the board edge. 'rect' (declared
+ *  in the shape for a future "pattern only in this region", design doc
+ *  §1) is honored directly, UN-inset — its stored bounds are an explicit
+ *  caller-given rectangle, not the board edge, so margin doesn't apply;
  *  supporting it costs nothing extra, so both modes are handled rather
  *  than only the one this slice strictly needs. */
 function _resolveExtent(editor, PATTERN) {
@@ -262,9 +270,13 @@ function _resolveExtent(editor, PATTERN) {
     const { iMin, jMin, iMax, jMax } = extentSpec;
     return { iMin, jMin, iMax, jMax };
   }
+  const margin = PATTERN.margin ?? PATTERN_DEFAULTS.margin;
   const topLeft = toLattice({ x: 0, y: 0 }, spacing);
   const bottomRight = toLattice({ x: editor._mW, y: editor._mH }, spacing);
-  return { iMin: topLeft.i, jMin: topLeft.j, iMax: bottomRight.i, jMax: bottomRight.j };
+  return {
+    iMin: topLeft.i + margin, jMin: topLeft.j + margin,
+    iMax: bottomRight.i - margin, jMax: bottomRight.j - margin,
+  };
 }
 
 /** A DETACHED lattice element's identity point(s), in lattice coords, at

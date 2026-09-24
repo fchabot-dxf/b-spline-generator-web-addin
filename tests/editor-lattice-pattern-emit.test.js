@@ -355,3 +355,47 @@ describe('generatePattern: restores the previously-active layer (T20/T21 note)',
     expect(editor._activeLayer).not.toBeNull();
   });
 });
+
+describe('PATTERN.margin (SE7c): the board extent is inset so nothing sits on the edge', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); }); // _mW = 4, _mH = 4
+
+  it('with the default margin (1), no rail/tie endpoint or node centre sits at x/y = 0 or the board size', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    generatePattern(editor, pattern);
+
+    const segments = editor._sketchLayer.children().filter((el) => el.attr('x1') !== undefined);
+    expect(segments.length).toBeGreaterThan(0); // non-vacuous: there IS content to check
+    for (const el of segments) {
+      for (const attr of ['x1', 'y1', 'x2', 'y2']) {
+        expect(el.attr(attr)).not.toBe(0);
+        expect(el.attr(attr)).not.toBe(editor._mW); // mW === mH === 4 here
+      }
+    }
+
+    const nodes = editor._sketchLayer.children().filter((el) => el.attr('r') !== undefined);
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const el of nodes) {
+      expect(el.attr('cx')).not.toBe(0);
+      expect(el.attr('cx')).not.toBe(editor._mW);
+      expect(el.attr('cy')).not.toBe(0);
+      expect(el.attr('cy')).not.toBe(editor._mH);
+    }
+  });
+
+  it('non-vacuous: margin 0 DOES reproduce the original edge-touching rail (proves the default margin is what excludes it, not something else)', () => {
+    const edgeEditor = _makeMockEditor();
+    const edgePattern = { ...PATTERN_DEFAULTS, seed: 24, margin: 0, rails: { every: 2, offset: 0 } };
+    generatePattern(edgeEditor, edgePattern);
+    const edgeRails = edgeEditor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    const hasEdgeRail = edgeRails.some((el) => el.attr('y1') === 0 || el.attr('y1') === edgeEditor._mH);
+    expect(hasEdgeRail).toBe(true); // j=0 and j=mH/spacing are both "every 2" rows when margin doesn't exclude them
+
+    const insetEditor = _makeMockEditor();
+    const insetPattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 } }; // margin defaults to 1
+    generatePattern(insetEditor, insetPattern);
+    const insetRails = insetEditor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    const hasEdgeRailInset = insetRails.some((el) => el.attr('y1') === 0 || el.attr('y1') === insetEditor._mH);
+    expect(hasEdgeRailInset).toBe(false);
+  });
+});

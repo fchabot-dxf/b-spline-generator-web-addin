@@ -65,6 +65,14 @@ report.editorPresent = await evalJS(`!!window.svgEditor`);
 await evalJS(`document.getElementById('btnStampEdit').click(); true`);
 await sleep(2500);
 report.modalOpen = await evalJS(`getComputedStyle(document.getElementById('svgEditorModal')).display`);
+// SE7c: the modal renders in normal document flow below the palette
+// page, not as a fixed-position overlay — every screenshot below this
+// point would otherwise capture whatever's at the CURRENT scroll
+// position (the palette page's own top), not the modal, even though
+// modalOpen correctly reports display:flex. Scroll it into view once,
+// here, so every subsequent shot() in this run actually shows it.
+await evalJS(`document.getElementById('svgEditorModal').scrollIntoView({ block: 'start' }); true`);
+await sleep(300);
 await shot(`${MODE}-1-editor.png`);
 
 await evalJS(`document.getElementById('toolLattice').click(); true`);
