@@ -1,38 +1,28 @@
-# NEXT — SE7s: handles never scale the stroke — declared per-kind handle edit, anchor-direction corner scale
+# NEXT — SE8d: rotated/scaled text carves as drawn; two dead leftovers in editor.js
 
-**Ball: worker (seat A) · epoch 1 · SE7s.** Source: ROADMAP "SE7s" (three entries — read all three) + Fred's rulings:
-"scaling on a tie shouldn't actually scale — only adjust length", "scaling shapes shouldn't scale the stroke
-anywhere". Files: `editor/editor-transform-handles.js`, `editor/editor-interaction.js` (handleEnd/drag wiring only),
-maybe NEW `editor/handle-edit.js` for the pure math, tests (+ WORK-LOG). SE8b accepted + merged. Seat B is building
-SE7b slice 1 in NEW `editor/editor-lattice-pattern.js` + `core/terrain.js` — not yours. One commit by path.
+**Ball: worker (seat A) · epoch 1 · SE8d.** SE7s accepted + merged with seat B's SE7b slices 1–2 and SE8c part 1
+(main 215 tests). Seat B is on SE7b slice 3: `editor/editor-interaction.js` (handleEnd detach hook), the pattern panel
+(palette HTML + NEW panel module), `editor/editor-lattice-pattern.js` — do NOT touch those. Files for you:
+`editor/editor-io.js`, `editor/editor.js`, maybe `editor/editor-coords.js`, tests (+ WORK-LOG). One commit by path.
 
-## Ground truth (advisor-confirmed)
-- Corner factor uses the pointer's DOMINANT axis (`editor-transform-handles.js` `applyTransformDrag`, the `useX`
-  line): a 0.02×3 tie dragged 0.3" sideways from its corner scales ×15; a box jitters ×1.49↔×1.52.
-- Handles sit on the WORLD-aligned bbox and scale world X/Y → a side handle on a rotated element shears it.
-- The scale is carried as a `transform`, no stroke compensation → editor view AND the stamp raster scale the stroke
-  (carve width); Flatten (`bakeMatrixIntoElement`) keeps the OLD stroke-width → it silently jumps back.
-
-## Build — declare it
-1. `HANDLE_EDIT = { line:'endpoints', circle:'radius', ellipse:'radii', rect:'geometry', path:'geometry',
-   polyline:'geometry', polygon:'geometry', text:'scale' }` (pure module). `line` (every rail/tie): the dragged
-   handle moves the endpoint nearest to it ALONG THE LINE'S OWN DIRECTION (length only, angle kept), the other end is
-   the anchor; snapped per SNAP_POLICY('select'). Lines drawn with the Line tool follow the SAME rule for now (Fred
-   chose length-only for lattice lines; a free-endpoint variant for Line-tool lines is a later option, not this turn).
-   `circle`: radius only, centre fixed. `ellipse`: rx/ry independently. `geometry`: baked into coordinates on EVERY
-   move from the drag-start geometry snapshot (use SE8a's `normalizeForBake` + `PATH_LAYOUT`, and rect → path only if
-   the rect is rotated; an axis-aligned rect scales by x/y/width/height) — never a scale left in `transform`, never a
-   stroke-width change. `text`: today's transform scale (font geometry).
-2. Corner factor = projection `(n·o)/(o·o)` onto the anchor→handle vector (uniform); side handles unchanged.
-3. Rotated single selection: handles in the element's own frame (decompose `m0` into rotation + scale; anchor/handles
-   from the local bbox; delta composed in local space). Multi-selection keeps the world frame; each element is edited
-   by its own HANDLE_EDIT rule from the shared anchor.
-4. Changes go through `_notifyChange('live')` during the drag and `'commit'` at the end (SE8b).
+## 1. SA-ROUNDTRIP-2 (HIGH) — read the audit section
+A rotated or non-uniformly scaled `<text>` carves upright at the wrong size (`editor-io.js:194-202` `_carveTextAnchor`
+bakes only the anchor + font-size × |a|). Fix it where the carve actually happens:
+- If the rasterizer path (stamp preview) renders the transformed SVG itself, the preview is already right — confirm
+  and say so; the defect is only the Fusion bake.
+- For the Fusion bake: keep the text's transform as a matrix on the `<text>` (rotation/skew preserved) with the carve
+  matrix composed in, OR convert to paths via the existing Expand pipeline before baking — pick the one that keeps
+  glyph orientation correct, justify in WORK-LOG, and note what Fusion's SVG importer does with a transform on text
+  (the importer ignores transforms per `carveMatrix`'s own comment — if so, only path conversion is correct).
+- Test: a text rotated 30° → baked output's glyph baseline direction is 30° (or: output is paths whose bbox matches
+  the rotated original's world bbox within tolerance).
+## 2. SA-DEAD-2 leftover — `updateNodeCountUI` wiring in `editor.js` (seat B removed everything else; see
+`WORK-LOG-lane-b.md` T20) — remove the instance wiring + any stale state.
+## 3. `setStrokeColor` has zero callers anywhere (your own SE8a flag) — remove it (chain: method → any binding → test),
+or name the caller if one appears.
 ## Verify
-Tests: thin tie sideways ×1.00; box corner projection stable; a ×2 side drag leaves `stroke-width` unchanged and no
-`scale` in `transform`; a 30°-rotated rect side drag keeps right angles; a line handle drag changes length only
-(angle within 1e-9); circle → radius only. `npx vitest run` → 162 + new, green.
+`npx vitest run` → 215 + new, green. Greps: `updateNodeCountUI` → 0, `setStrokeColor` → 0 (or named survivor).
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7s: HANDLE_EDIT per kind, stroke never scales, projection corner, rotated frame — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8d: rotated text carves correctly (<approach>), dead leftovers removed — <sha>, N files, vitest N"`
 and stop.
