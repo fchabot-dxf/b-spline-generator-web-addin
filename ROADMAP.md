@@ -671,3 +671,8 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **SE10 — sidebar layer browser (Fred 2026-09-24, screenshot of the "Active Layer" dropdown + "On" box):** replace the
   dropdown + checkbox with a real layer list (eye = visible = carved, per SE5; tap row = active; name + tool + depth per
   row, "+" adds). ONE list component shared with the editor's Layers panel (`renderLayersPanel`, layers.js:303). Seat B.
+- **Fred 2026-09-24 — vectors in the 3D preview + two layer switches (answers):** vectors shown FLAT ON THE GRID below
+  the model; each layer gets independent SHOW (`visible`: editor, 3D overlay, Fusion-sketch + SVG export) and CARVE
+  (new `carve`, default true, migrated from visible) — amends T26 (seat B). **SE11 (seat A, after SE9):** 3D preview
+  overlay — the SHOWN layers' vectors drawn as lines on the ground plane under the model (core/preview), each element in
+  its SE9 color, updated on layer/content change, a preview toggle.
