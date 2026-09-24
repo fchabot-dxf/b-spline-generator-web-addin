@@ -701,3 +701,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   T27 layer row 👁 master · 3D · palette; drape orientation settled by data (SE11c). Both loops signed DONE.
 - **Rule change (Fred 2026-09-24):** drape = showsColor(l) (visible && showColor) — 3D off + palette on paints the
   relief without carving. SE11f (seat A). Sidebar layer list moved up + full names = T29 (seat B).
+- **Fred 2026-09-24:** slider undo YES → UX-UNDO + SE5c (seat A). Ties: NOT limited to rails but ends SNAP to a rail when
+  within 1 row (declared railSnapRows) — generator + hand-drawn Lattice tool (seat B). Grid contrast: options offered.
