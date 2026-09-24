@@ -93,6 +93,40 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
       };
     },
 
+    /** Same "listeners attached, layer-only field" shape as
+     *  bindLayerOnlyNumber/Checkbox above, for an exclusive-choice group
+     *  of buttons (e.g. .editor-fillmode-btn) instead of a single input.
+     *  `buttonMap` is { value: buttonElementId, ... } — one entry per
+     *  choice, so a caller building its picker from a data table (e.g.
+     *  editor/layers.js's FUSION_GEOMETRY) can derive this map from the
+     *  same table rather than hand-listing values twice. */
+    bindLayerOnlySegmented(buttonMap, layerField, opts = {}) {
+      const buttons = {};
+      for (const [value, id] of Object.entries(buttonMap)) buttons[value] = document.getElementById(id);
+      const triggerRemask = opts.triggerRemask !== false;
+      const setActive = (value) => {
+        for (const [v, btn] of Object.entries(buttons)) {
+          if (btn) btn.classList.toggle('active', v === value);
+        }
+      };
+      const writeAndRefresh = (value) => {
+        const layer = activeLayer();
+        if (layer) layer[layerField] = value;
+        const eLayer = _editorLayer();
+        if (eLayer) eLayer[layerField] = value;
+        setActive(value);
+        if (triggerRemask) requestRemask();
+        scheduleUndoSnapshot(layerField, opts.undoLabel);
+      };
+      for (const [value, btn] of Object.entries(buttons)) {
+        if (btn) btn.addEventListener('click', () => writeAndRefresh(value));
+      }
+      return (layer) => {
+        if (!layer) return;
+        setActive(layer[layerField]);
+      };
+    },
+
     bindLayerOnlyCheckbox(checkboxId, layerField, opts = {}) {
       const cb = document.getElementById(checkboxId);
       const triggerRemask = opts.triggerRemask !== false;

@@ -239,6 +239,51 @@ describe('createDomBinders (main/stamp/_dom-binders.js): per-layer tooling field
     vi.advanceTimersByTime(400);
     expect(globalHistoryLog.length).toBe(1);
   });
+
+  it('bindLayerOnlySegmented (SE12 T36): clicking a choice button commits exactly one entry, and only that button ends up .active', () => {
+    const btnCenter = document.createElement('button');
+    btnCenter.id = 'stampFusionGeometry-centerline';
+    btnCenter.classList.add('active');
+    const btnOutline = document.createElement('button');
+    btnOutline.id = 'stampFusionGeometry-outline';
+    document.body.append(btnCenter, btnOutline);
+
+    const layer = { fusionGeometry: 'centerline' };
+    const binders = createDomBinders({
+      activeLayer: () => layer, activeEditorLayer: () => null, requestRemask: () => {},
+    });
+    binders.bindLayerOnlySegmented(
+      { centerline: 'stampFusionGeometry-centerline', outline: 'stampFusionGeometry-outline' },
+      'fusionGeometry',
+    );
+
+    btnOutline.click();
+    expect(layer.fusionGeometry).toBe('outline');
+    expect(btnOutline.classList.contains('active')).toBe(true);
+    expect(btnCenter.classList.contains('active')).toBe(false);
+    vi.advanceTimersByTime(400);
+    expect(globalHistoryLog.length).toBe(1);
+  });
+
+  it('bindLayerOnlySegmented: two rapid clicks (changed mind) still coalesce into ONE entry, same as the number/checkbox binders above', () => {
+    const btnA = document.createElement('button');
+    btnA.id = 'segA';
+    const btnB = document.createElement('button');
+    btnB.id = 'segB';
+    document.body.append(btnA, btnB);
+    const layer = { fusionGeometry: 'centerline' };
+    const binders = createDomBinders({
+      activeLayer: () => layer, activeEditorLayer: () => null, requestRemask: () => {},
+    });
+    binders.bindLayerOnlySegmented({ a: 'segA', b: 'segB' }, 'fusionGeometry');
+
+    btnA.click();
+    vi.advanceTimersByTime(50);
+    btnB.click();
+    expect(layer.fusionGeometry).toBe('b'); // last click wins
+    vi.advanceTimersByTime(400);
+    expect(globalHistoryLog.length).toBe(1);
+  });
 });
 
 /**

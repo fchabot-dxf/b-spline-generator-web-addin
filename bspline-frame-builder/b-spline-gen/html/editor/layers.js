@@ -48,6 +48,24 @@
 import { el, on } from './dom.js';
 
 /**
+ * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
+ * per-layer pick, never inferred from the geometry itself (Fred: "Don't
+ * choose automatically"). Declared as data (value/label/hint) rather than
+ * three hand-written buttons, so the sidebar picker renders from this
+ * table and a future value is one entry here, not a UI rewrite.
+ * 'centerline' is the default — today's only behavior, so a document
+ * saved before this field existed needs no migration (see
+ * applyToolingDefaults below). Nothing reads this field yet: the derived
+ * outline preview is Slice 3 and the export swap is Slice 4 — this slice
+ * only lets the user record the choice.
+ */
+export const FUSION_GEOMETRY = Object.freeze([
+  { value: 'centerline', label: 'Centerline', hint: "The line's path — V-bit / engraving." },
+  { value: 'outline', label: 'Outline', hint: "The stroke's true edge — pockets & resin inlay." },
+  { value: 'both', label: 'Both', hint: 'Centerline and outline together.' },
+]);
+
+/**
  * Default per-pass CNC tooling values applied to every new editor layer.
  * Mirrors the historical P.stampLayers[0] defaults from state.js so
  * existing behavior is preserved while the new model is rolled out.
@@ -83,6 +101,7 @@ export const TOOLING_DEFAULTS = Object.freeze({
   filletPower: 2.2,
   carve: true,
   showColor: true,
+  fusionGeometry: 'centerline',
 });
 
 /** Apply TOOLING_DEFAULTS to a partial layer object — fills only the
@@ -113,6 +132,23 @@ export function isExported(l) {
 }
 export function showsColor(l) {
   return !!l && l.visible !== false && l.showColor !== false;
+}
+/** SE12 T36: whether a layer's export should include its OUTLINE geometry
+ *  (the derived offset shape — Slice 3's preview and Slice 4's export swap
+ *  are what will actually READ this; neither is built yet). Gated the
+ *  same shape as the three above: master `visible` (via isExported) must
+ *  hold, and the layer's own pick must not be the default 'centerline'
+ *  (which means "no outline," same as every document saved before this
+ *  field existed). `l.fusionGeometry || 'centerline'`, not a bare field
+ *  read: every REAL layer has already been through applyToolingDefaults
+ *  by the time anything calls this, but isCarved/showsColor both default
+ *  safely on a missing key too (`!== false` reads undefined as "on," the
+ *  same historical default) — matching that defensiveness here means a
+ *  layer-shaped object that HASN'T been through applyToolingDefaults yet
+ *  (a test mock, a future call site) reads as "no outline," the field's
+ *  own declared default, not the opposite. */
+export function showsOutline(l) {
+  return isExported(l) && (l.fusionGeometry || 'centerline') !== 'centerline';
 }
 
 export function getElementLayer(node) {

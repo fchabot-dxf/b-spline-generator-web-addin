@@ -640,6 +640,24 @@
             </div>
           </div>
 
+          <!-- SE12 T36: fusionGeometry — an EXPLICIT per-layer pick (Fred:
+               "Don't choose automatically"), same segmented-control shape/
+               class (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH
+               group and SE7h's rail/tie orientation toggle — no new CSS.
+               IDs follow editor/layers.js's FUSION_GEOMETRY table
+               (stampFusionGeometry-<value>) so main/stamp/fusion-
+               geometry.js can build its button map from that table
+               instead of hand-listing the 3 values here too. Nothing
+               downstream reads this yet (Slice 3/4) — see that module's
+               own doc comment. -->
+          <label class="cad-label">Fusion Geometry</label>
+          <div style="display:flex; gap:4px; margin-bottom:4px;">
+            <button type="button" id="stampFusionGeometry-centerline" class="editor-fillmode-btn active" style="flex:1;">Centerline</button>
+            <button type="button" id="stampFusionGeometry-outline" class="editor-fillmode-btn" style="flex:1;">Outline</button>
+            <button type="button" id="stampFusionGeometry-both" class="editor-fillmode-btn" style="flex:1;">Both</button>
+          </div>
+          <div id="stampFusionGeometryHint" class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;"></div>
+
           <label class="cad-label">SVG Blueprint</label>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
             <button id="btnStampChoose" class="cad-btn cad-btn-secondary" style="flex:1; font-size:11px;">Browse...</button>

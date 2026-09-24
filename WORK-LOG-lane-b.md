@@ -3693,3 +3693,95 @@ harmless `TIME_WAIT` connection remnants a busy dev server accumulates) and expl
 Amendments polled clean (`handoff.py amendments --role worker`) before committing and again immediately
 before passing. Committed by explicit path (3 files: new `editor/editor-expand-analytic.js`, new
 `tests/editor-expand-analytic.test.js`, this WORK-LOG) — pushed.
+
+## Lane B — Turn 89 — T36: SE12 slice 2 (revised) — ONE fusionGeometry field + sidebar picker — DONE
+
+**The advisor's revision, applied as designed, not as my own original draft had it**: my SE12 doc's own Slice
+2 had TWO fields (`outline:boolean` + `fusionGeometry`, the latter documented as "meaningless while
+outline:false") — Fred caught it: "Don't choose automatically," and the advisor correctly read that as "one
+concept stored twice." Declared exactly ONE field, `fusionGeometry: 'centerline'|'outline'|'both'`, default
+`'centerline'` (today's only behavior). `showsOutline(l)` now derives from it instead of being its own stored
+flag.
+
+**Declared `FUSION_GEOMETRY`** (`editor/layers.js`) — value/label/hint per choice, so the sidebar picker and
+its hint text both render FROM this table (adding a 4th choice later is one entry here, not a UI rewrite,
+matching the dispatch's own ask). `TOOLING_DEFAULTS.fusionGeometry = 'centerline'` — confirmed this needs
+**no migration entry**: `applyToolingDefaults` (the one mechanism every new layer AND every restore-from-save
+already runs through) backfills it identically either way, same reasoning T33's design doc already worked
+out for why `carve`'s migration was needed but `outline` wouldn't be.
+
+**`showsOutline(l)` — caught and fixed a real bug in the dispatch's own literal formula before shipping it.**
+Dispatched as `isExported(l) && l.fusionGeometry !== 'centerline'`. Writing the "missing key" test (a layer
+object that hasn't been through `applyToolingDefaults` yet — a test mock, or theoretically a future call
+site) surfaced that this literal formula reads `undefined !== 'centerline'` as `true` — i.e. a layer with NO
+`fusionGeometry` key AT ALL would show as "has an outline," the OPPOSITE of the field's own declared default.
+The sibling gates (`isCarved`/`showsColor`) both default a missing key to their SAFE historical value via
+their own comparison shape (`!== false` reads undefined as "on"); `showsOutline` needed the equivalent for
+ITS default, which isn't reachable by just swapping the comparison operator since the safe default here is a
+STRING, not a boolean. Fixed to `(l.fusionGeometry || 'centerline') !== 'centerline'` — same public
+behavior for every REAL layer (which always has the key by the time anything reads it), but no longer wrong
+for the theoretical missing-key case. Confirmed via mutation (below) that this specific line, not something
+else, is what the test depends on.
+
+**New `main/stamp/_dom-binders.js` binder, `bindLayerOnlySegmented`**, sibling to the existing
+`bindLayerOnlyNumber`/`bindLayerOnlyCheckbox` (same "layer-only field, listeners attached, commit-on-
+interaction + undo + optional remask" shape) — for an exclusive-choice BUTTON GROUP instead of a single
+input, since neither existing binder fit a 3-way picker. Takes a `{value: buttonId}` map so a caller building
+its picker from a data table (exactly what `fusion-geometry.js` does with `FUSION_GEOMETRY`) doesn't have to
+hand-list the values a second time. `triggerRemask` defaults `true` (same default as the siblings, for
+consistency of the SHARED binder's own behavior), overridden to `false` at THIS field's own call site — the
+mask/relief doesn't read `fusionGeometry` yet (Slice 3/4), so remasking on a click right now would re-render
+an unchanged image for no reason.
+
+**New `main/stamp/fusion-geometry.js`**: wires the 3 buttons (via the new binder) plus a hint-text line that
+follows both the active layer AND every click, rendering everything from `FUSION_GEOMETRY`. Registered into
+`main/stamp/index.js` alongside `initProfileControl` (same early-init slot — no ordering dependency on
+`initLayer`, unlike `svg-source.js`). New UI block in `bspline_gen_palette.html`, placed after V-Bit Angle /
+before SVG Blueprint in the existing "Settings below apply to the selected layer" section (NOT a 4th layer-row
+toggle, per the advisor's own explicit steer to keep 👁·3D·🎨 uncrowded) — reuses `.editor-fillmode-btn`, the
+same segmented-control class the Style STROKE/FILL/BOTH group and SE7h's rail/tie orientation toggle already
+use, so this needed zero new CSS.
+
+**Tests**: `tests/layers-fusion-geometry.test.js` (new) — the data table's shape; new-layer and old-saved-
+layer-missing-the-key both backfill to `'centerline'` through the SAME `applyToolingDefaults` call (not two
+separate mechanisms); a layer that already has a value keeps it (defaults fill gaps, never overwrite); a
+save/restore round-trip via the actual `JSON.stringify`/`&quot;`-escape encoding `editor-io.js` uses for
+`data-editor-layers` (the same shape `layer-carve-flag`'s own migration code uses, cited as precedent); the
+full `showsOutline` truth table including the hidden-layer case (master `visible` wins even over
+outline/both) and the missing-key case the fix above addresses. `tests/ux-undo.test.js` (extended, matching
+its own existing `bindLayerOnlyNumber`/`Checkbox` test shape exactly): a button click commits exactly one
+undo entry and only that button ends up `.active`; two rapid clicks (changed mind) still coalesce into ONE
+entry within the shared 400ms window, same as the number/checkbox binders' own tests just above it.
+
+**Non-vacuous, by mutation, on both new pieces**: reverted `showsOutline` to the dispatch's literal (buggy)
+formula — exactly the one test targeting the missing-key case failed, nothing else. Removed the
+`scheduleUndoSnapshot` call from `bindLayerOnlySegmented` — exactly the two new undo tests failed (single
+click, and the two-rapid-clicks coalescing case), nothing else regressed. Reverted both; full suite
+re-confirmed green (541/541) after each.
+
+**Live verification — the real symptom, not a proxy**: repo-root `http.server`, headless Chrome via CDP.
+Orphaned headless-Chrome processes were present at the start of this turn's live work, but their command
+lines (`Get-CimInstance Win32_Process`, checked BEFORE touching anything) showed a DIFFERENT session's
+scratchpad path (`.../scratchpad/smoke-out/chrome-se7h-addon`) — Seat A's own SE7h smoke test, not mine and
+not the user's real browser — so left them alone and launched on a separate port instead, rather than
+assuming "orphaned chrome.exe" always means MY OWN leftovers the way it has every other time this session.
+Opened the editor once (creates `window.svgEditor` + a default layer), hid the modal directly (no dedicated
+close-button id exists in the markup), expanded the VECTOR STAMPING panel, scrolled the picker into view, and
+screenshotted all three states: Centerline (initial, active, correct hint), then clicked Outline (screenshot
++ confirmed `layer.fusionGeometry === 'outline'` by reading the REAL layer object back, not just the button's
+own class), then Both (same). Zero console errors/exceptions across the whole run. Screenshots saved
+(`t36-centerline.png`/`t36-outline.png`/`t36-both.png`, session scratchpad) — read back directly to confirm
+layout (placed correctly between V-Bit Angle and SVG Blueprint) and that the active button + hint text track
+each other, not just trusting the state dump.
+
+**Process hygiene**: confirmed via `Get-CimInstance` (not just `tasklist`, given the mixed-ownership chrome
+processes above) that MY OWN chrome instance (`chrome-t36` user-data-dir) exited cleanly on its own; other
+sessions' chrome processes were never touched. The repo-root `http.server` (a different PID than T35's, since
+that one was already stopped) was found still listening and explicitly stopped
+(`taskkill`/`netstat` re-verified clear) before finalizing.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing and again immediately
+before passing. Committed by explicit path (8 files: `editor/layers.js`,
+`main/stamp/_dom-binders.js`, `main/stamp/index.js`, new `main/stamp/fusion-geometry.js`,
+`bspline_gen_palette.html`, `tests/ux-undo.test.js`, new `tests/layers-fusion-geometry.test.js`, this
+WORK-LOG) — pushed.
