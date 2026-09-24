@@ -15,7 +15,7 @@
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState } from './layers.js';
-import { worldBbox } from './editor-coords.js';
+import { worldBbox, transformPoint } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
@@ -320,7 +320,7 @@ function handleEnd(editor, e) {
         const wasNodeDrag  = editor._dragNodeIndex !== -1;
         const wasTransform = !!editor._transformState;
         const wasMarquee   = !!editor._marqueeStart;
-        if (wasNodeDrag) editor._dragNodeIndex = -1;
+        if (wasNodeDrag) { editor._dragNodeIndex = -1; editor._dragNodes = null; }
         if (wasTransform) editor._transformState = null;
         if (wasMarquee) {
             finalizeMarquee(editor);
@@ -378,10 +378,16 @@ const selectHandler = {
 const nodeHandler = {
     start(editor, pt) {
         if (editor._selectedElement) {
-            const hitIdx = findNodeAt(editor, pt);
-            if (hitIdx !== -1) {
+            // SE7n: cache the node list (not just the hit index) — dragNode
+            // needs the SAME closures for the rest of this gesture (a
+            // rect's opposite-corner pin, a path's segment index) rather
+            // than rebuilding them from the element's already-mutated
+            // attrs on every subsequent move.
+            const { idx, nodes } = findNodeAt(editor, pt);
+            if (idx !== -1) {
                 editor._isDragging = true;
-                editor._dragNodeIndex = hitIdx;
+                editor._dragNodeIndex = idx;
+                editor._dragNodes = nodes;
                 editor._lastDragPt = pt;
                 return;
             }
@@ -394,7 +400,7 @@ const nodeHandler = {
             const hit = editor._getNearbyElement(pt, editor._getDynamicTolerance(10));
             editor._setHover(hit); return;
         }
-        const hitIdx = findNodeAt(editor, pt);
+        const { idx: hitIdx } = findNodeAt(editor, pt);
         if (editor._hoverNodeIndex !== hitIdx) {
             editor._hoverNodeIndex = hitIdx;
             editor._updateHandles();
@@ -728,33 +734,35 @@ function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
 
 // ─── Shared helpers ────────────────────────────────────────────────
 
+/** Returns { idx, nodes } — nodes is the freshly-built list (WORLD coords
+ *  + a set() closure per node, see editor-hit.js), idx is the one under
+ *  pt or -1. Callers that only need the index (hover) can destructure
+ *  just that; a drag start needs `nodes` too, to reuse across the whole
+ *  gesture (see nodeHandler.start's own comment). */
 function findNodeAt(editor, pt) {
-    if (!editor._selectedElement) return -1;
+    if (!editor._selectedElement) return { idx: -1, nodes: [] };
     const nodes = editor._getNodes(editor._selectedElement);
     const tol = editor._getDynamicTolerance(15);
-    return nodes.findIndex(n => Math.hypot(n.x - pt.x, n.y - pt.y) < tol);
+    const idx = nodes.findIndex(n => Math.hypot(n.x - pt.x, n.y - pt.y) < tol);
+    return { idx, nodes };
 }
 
+/** SE7n: map the WORLD pointer into the element's own local space via the
+ *  inverse of its transform matrix, then hand it to the cached node's
+ *  own set() — no per-shape-type branching left here at all. Before this,
+ *  the world pointer was written straight into local attributes, so any
+ *  element moved/scaled/rotated via Select (which writes a `transform`)
+ *  jumped by its transform offset the instant you tried to drag a node. */
 function dragNode(editor, pt) {
     const el = editor._selectedElement;
+    const nodes = editor._dragNodes;
     const idx = editor._dragNodeIndex;
     editor._dragMoved = true;
-    if (el.type === 'line') {
-        if (idx === 0) el.attr({ x1: pt.x, y1: pt.y });
-        else el.attr({ x2: pt.x, y2: pt.y });
-    } else if (el.type === 'polyline' || el.type === 'polygon') {
-        const arr = el.array();
-        arr[idx] = [pt.x, pt.y];
-        el.plot(arr);
-    } else if (el.type === 'path') {
-        const arr = el.array();
-        const seg = arr[idx];
-        if (seg) {
-            seg[seg.length - 2] = pt.x;
-            seg[seg.length - 1] = pt.y;
-            el.plot(arr);
-        }
-    }
+    if (!nodes || !nodes[idx]) return;
+    let inv = null;
+    try { inv = (typeof el.matrix === 'function') ? el.matrix().inverse() : null; } catch (_) { inv = null; }
+    const local = inv ? transformPoint(inv, pt) : pt;
+    nodes[idx].set(local);
     editor._updateHandles();
     editor._updateSelectionHighlight();
     if (editor._onChange) editor._onChange();

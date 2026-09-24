@@ -13,6 +13,7 @@
  */
 import { ensureActiveLayer } from './layers.js';
 import { GRID_DEFAULTS } from './editor-grid.js';
+import { worldPoint } from './editor-coords.js';
 
 export const LATTICE_DEFAULTS = { autoNodes: true, nodeRadiusFactor: 0.2 };
 
@@ -88,7 +89,13 @@ export function latticeCrossings(seg, segs) {
 /** Does a node already sit at model-space point p (compared by lattice
  *  cell, not exact pixel match)? Used to dedupe auto-nodes against each
  *  other and against manually-placed dots (Circle tool). Returns the
- *  matching svg.js element, or null. */
+ *  matching svg.js element, or null.
+ *
+ *  SE7n: compares the node's WORLD centre (worldPoint bakes the element's
+ *  own transform in), not the raw cx/cy attribute — a node dragged with
+ *  Select writes a `transform="translate(...)"` rather than touching
+ *  cx/cy, so the raw attribute alone silently stopped matching its real
+ *  position and a moved node was never deduped against. */
 export function findNodeAt(editor, p) {
   if (!editor._sketchLayer) return null;
   const spacing = editor._grid?.spacing || GRID_DEFAULTS.spacing;
@@ -99,7 +106,8 @@ export function findNodeAt(editor, p) {
     const cx = parseFloat(ch.node.getAttribute('cx'));
     const cy = parseFloat(ch.node.getAttribute('cy'));
     if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
-    const lat = toLattice({ x: cx, y: cy }, spacing);
+    const world = worldPoint(ch, { x: cx, y: cy });
+    const lat = toLattice(world, spacing);
     if (lat.i === target.i && lat.j === target.j) return ch;
   }
   return null;

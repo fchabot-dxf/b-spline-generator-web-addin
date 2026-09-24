@@ -121,11 +121,18 @@ function initGridToggle(editor) {
   const showBtn = el('editorGridShow');
   const snapBtn = el('editorGridSnap');
   const spacingSelect = el('editorGridSpacing');
-  if (!showBtn && !snapBtn && !spacingSelect) return;
+  // SE7n: AUTO NODES bound HERE, in the same module as SHOW/SNAP, per the
+  // dispatch's own instruction — its file-list line named editor-ui.js,
+  // but SHOW/SNAP have lived in this file (properties-shape.js) since
+  // SE6, not editor-ui.js; followed the explicit "same module" build
+  // instruction over the file list.
+  const autoNodesBtn = el('editorAutoNodes');
+  if (!showBtn && !snapBtn && !spacingSelect && !autoNodesBtn) return;
 
   const syncButtons = () => {
     if (showBtn) showBtn.classList.toggle('active', !!editor._grid.visible);
     if (snapBtn) snapBtn.classList.toggle('active', !!editor._grid.snap);
+    if (autoNodesBtn) autoNodesBtn.classList.toggle('active', !!editor._lattice.autoNodes);
   };
 
   if (spacingSelect) {
@@ -144,6 +151,13 @@ function initGridToggle(editor) {
   if (spacingSelect) on(spacingSelect, 'change', () => {
     const spacing = parseFloat(spacingSelect.value);
     if (!Number.isNaN(spacing)) editor.setGrid({ spacing });
+  });
+  // Not persisted (unlike _grid) — LATTICE_DEFAULTS.autoNodes is already
+  // true, and the dispatch names no load/save pair for it, so a plain
+  // mutation matches the shape it was declared with in SE7a.
+  if (autoNodesBtn) on(autoNodesBtn, 'click', () => {
+    editor._lattice.autoNodes = !editor._lattice.autoNodes;
+    syncButtons();
   });
 
   syncButtons();

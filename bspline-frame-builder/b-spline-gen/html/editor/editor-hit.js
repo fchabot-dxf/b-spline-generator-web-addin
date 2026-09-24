@@ -25,34 +25,114 @@ export function getDynamicTolerance(editor, px = 5) {
     return px / viewScale(view, screenWidth, screenHeight);
 }
 
+/**
+ * SE7n: each node is `{ x, y, set(localPt) }` — x,y in WORLD space (as
+ * always, via worldPoint), `set` closing over the REAL mutation for that
+ * node. `dragNode` (editor-interaction.js) maps the world pointer into
+ * local space once (via el.matrix().inverse()) and calls `set` — no
+ * per-shape branching left at the drag site, and the node's own index
+ * bookkeeping (path segments especially — see below) can never disagree
+ * with what set() actually writes, because both come from this one loop.
+ */
 export function getNodes(el) {
-    const pts = [];
+    // { local: {x,y}, set(localPt) } before the worldPoint map at the end —
+    // keeps every branch below symmetric (build local, capture a setter).
+    const raw = [];
+
     if (el.type === 'line') {
-        pts.push({ x: el.attr('x1'), y: el.attr('y1') });
-        pts.push({ x: el.attr('x2'), y: el.attr('y2') });
+        raw.push({ local: { x: el.attr('x1'), y: el.attr('y1') }, set: (p) => el.attr({ x1: p.x, y1: p.y }) });
+        raw.push({ local: { x: el.attr('x2'), y: el.attr('y2') }, set: (p) => el.attr({ x2: p.x, y2: p.y }) });
     } else if (el.type === 'polyline' || el.type === 'polygon') {
-        el.array().forEach(p => pts.push({ x: p[0], y: p[1] }));
+        el.array().forEach((pt, i) => {
+            raw.push({
+                local: { x: pt[0], y: pt[1] },
+                set: (p) => { const a = el.array(); a[i] = [p.x, p.y]; el.plot(a); },
+            });
+        });
     } else if (el.type === 'path') {
-        el.array().forEach(seg => {
+        // Build the node list AND each node's REAL segment index in the
+        // SAME loop over el.array() — the old code pushed a point only for
+        // M/L/C/Q into a SEPARATE array, so after the first Z (or any
+        // other skipped command) that array's indices silently diverged
+        // from el.array()'s, and dragging edited the wrong segment.
+        // H/V/A/S/T are now covered too (every segment END is a node).
+        // H/V carry only one coordinate; the other is inherited from the
+        // running cursor position, tracked here exactly as SVG itself
+        // defines path continuation.
+        let curX = 0, curY = 0;
+        el.array().forEach((seg, segIdx) => {
             const type = seg[0];
+            // Two-coordinate segments (M/L/C/Q/A/S/T all end in an x,y
+            // pair, just at different array offsets) share this setter.
+            // H/V are genuinely different — a single coordinate each,
+            // from p.x or p.y respectively — and get their own inline set
+            // below rather than forcing them through this shape.
+            const setAt = (xIdx, yIdx) => (p) => {
+                const a = el.array();
+                a[segIdx][xIdx] = p.x;
+                a[segIdx][yIdx] = p.y;
+                el.plot(a);
+            };
             if (type === 'M' || type === 'L') {
-                pts.push({ x: seg[1], y: seg[2] });
+                curX = seg[1]; curY = seg[2];
+                raw.push({ local: { x: curX, y: curY }, set: setAt(1, 2) });
+            } else if (type === 'H') {
+                curX = seg[1]; // y inherited from the previous point — a 1-DOF node
+                raw.push({ local: { x: curX, y: curY }, set: (p) => { const a = el.array(); a[segIdx][1] = p.x; el.plot(a); } });
+            } else if (type === 'V') {
+                curY = seg[1]; // x inherited from the previous point — a 1-DOF node
+                raw.push({ local: { x: curX, y: curY }, set: (p) => { const a = el.array(); a[segIdx][1] = p.y; el.plot(a); } });
             } else if (type === 'C') {
-                pts.push({ x: seg[5], y: seg[6] });
+                curX = seg[5]; curY = seg[6];
+                raw.push({ local: { x: curX, y: curY }, set: setAt(5, 6) });
             } else if (type === 'Q') {
-                pts.push({ x: seg[3], y: seg[4] });
+                curX = seg[3]; curY = seg[4];
+                raw.push({ local: { x: curX, y: curY }, set: setAt(3, 4) });
+            } else if (type === 'A') {
+                curX = seg[6]; curY = seg[7]; // rx,ry,xRot,largeArc,sweep,x,y
+                raw.push({ local: { x: curX, y: curY }, set: setAt(6, 7) });
+            } else if (type === 'S') {
+                curX = seg[3]; curY = seg[4]; // x2,y2,x,y
+                raw.push({ local: { x: curX, y: curY }, set: setAt(3, 4) });
+            } else if (type === 'T') {
+                curX = seg[1]; curY = seg[2]; // x,y
+                raw.push({ local: { x: curX, y: curY }, set: setAt(1, 2) });
             }
+            // 'Z' has no coords of its own and is not a node.
         });
     } else if (el.type === 'rect') {
         const x = el.attr('x'), y = el.attr('y'), w = el.attr('width'), h = el.attr('height');
-        pts.push({ x: x, y: y });
-        pts.push({ x: x + w, y: y });
-        pts.push({ x: x + w, y: y + h });
-        pts.push({ x: x, y: y + h });
+        // Each corner's OPPOSITE corner is captured now, at node-list build
+        // time (drag start) — not re-derived from the rect's current attrs
+        // on every move, which would chase the corner that's shrinking
+        // rather than staying pinned to where it started.
+        const corners = [
+            { local: { x, y },         opposite: { x: x + w, y: y + h } },
+            { local: { x: x + w, y },  opposite: { x, y: y + h } },
+            { local: { x: x + w, y: y + h }, opposite: { x, y } },
+            { local: { x, y: y + h },  opposite: { x: x + w, y } },
+        ];
+        corners.forEach((c) => {
+            raw.push({
+                local: c.local,
+                set: (p) => {
+                    const nx = Math.min(p.x, c.opposite.x);
+                    const ny = Math.min(p.y, c.opposite.y);
+                    const nw = Math.abs(p.x - c.opposite.x);
+                    const nh = Math.abs(p.y - c.opposite.y);
+                    el.attr({ x: nx, y: ny, width: nw, height: nh });
+                },
+            });
+        });
     } else if (el.type === 'circle' || el.type === 'ellipse') {
-        pts.push({ x: el.attr('cx'), y: el.attr('cy') });
+        // Centre only — radius editing is SE7s, not this turn.
+        raw.push({ local: { x: el.attr('cx'), y: el.attr('cy') }, set: (p) => el.attr({ cx: p.x, cy: p.y }) });
     }
-    return pts.map(pt => worldPoint(el, pt));
+
+    return raw.map((n) => {
+        const world = worldPoint(el, n.local);
+        return { x: world.x, y: world.y, set: n.set };
+    });
 }
 
 export function getNearbyElement(editor, pt, tol = 0.1) {

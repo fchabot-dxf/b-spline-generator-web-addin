@@ -110,6 +110,10 @@ function mockSketchLayer(nodeCircles) {
         return null;
       },
     },
+    // Only present when a test needs a real transform — worldPoint()
+    // degrades to identity when .matrix isn't a function, so omitting
+    // this leaves every pre-existing test's raw cx/cy == world position.
+    ...(c.matrix ? { matrix: () => c.matrix } : {}),
   }));
   return { children: () => ({ toArray: () => children }) };
 }
@@ -123,6 +127,20 @@ describe('findNodeAt', () => {
   it('returns null when no node sits at that cell', () => {
     const editor = { _grid: { spacing: 0.25 }, _sketchLayer: mockSketchLayer([{ x: 1.0, y: 0.5 }]) };
     expect(findNodeAt(editor, { x: 2.0, y: 0.5 })).toBeNull();
+  });
+
+  it('SE7n: compares the WORLD position, not the raw cx/cy — a node dragged with Select (transform="translate(...)") is still matched', () => {
+    // Raw cx/cy say (0,0); a translate(1,0.5) puts its REAL position at
+    // (1,0.5). The pre-SE7n code compared the raw attribute directly and
+    // would have missed this — matched here only because findNodeAt now
+    // bakes the transform in via worldPoint before converting to lattice.
+    const editor = {
+      _grid: { spacing: 0.25 },
+      _sketchLayer: mockSketchLayer([{ x: 0, y: 0, matrix: { a: 1, b: 0, c: 0, d: 1, e: 1, f: 0.5 } }]),
+    };
+    expect(findNodeAt(editor, { x: 1.0, y: 0.5 })).not.toBeNull();
+    // And it does NOT match its own stale raw position any more.
+    expect(findNodeAt(editor, { x: 0, y: 0 })).toBeNull();
   });
 });
 
