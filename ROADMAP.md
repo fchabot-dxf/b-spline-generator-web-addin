@@ -689,3 +689,4 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   drawn — editor canvas and 3D drape; off = neutral color, display-only (stored colors untouched).
 - **Layer toggles FINAL (Fred: carve and 3D are the same):** 👁 visible · 3D (= carve) · ■ showColor. Colored drape on
   the mesh when carve && showColor && visible. `drape3d` dropped. SE11 renders the drape from that rule.
+- **👁 is the master (Fred):** carved = visible && carve; drape = visible && carve && showColor; export = visible.
