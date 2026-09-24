@@ -6,6 +6,7 @@ import { worldBbox } from './editor-coords.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { getElementLayer, setActiveLayer as _setActiveLayer } from './layers.js';
 import { SNAP_POLICY, clearSnapCursor } from './editor-grid.js';
+import { syncColorToggleSwatch } from './properties-shape.js';
 
 // Per-mode help text shown in the floating status hint at the bottom of the
 // editor canvas. Keeps the lessons-learned messages out of the toolbar so the
@@ -406,6 +407,10 @@ function _afterSelectionChange(editor, primary) {
                 editor._color = primaryColor;
                 const colorEl = getEl('editorColor');
                 if (colorEl) colorEl.value = primaryColor;
+                // T28: the visible control is now a toggle button, not this
+                // (hidden) native input — its own .value= write above fires
+                // no event, so the button's swatch needs this explicit sync.
+                syncColorToggleSwatch(primaryColor);
             }
         } catch (_) { /* defensive: selection sync must not crash on bad markup */ }
     }

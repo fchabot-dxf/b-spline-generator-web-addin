@@ -1,28 +1,22 @@
-# LANE B — T27: the layer row, FINAL (Fred settled it) — one consolidated spec replacing amends 6–8
+# LANE B — T28: the COLOR control becomes a dropdown mosaic with more colors (Fred)
 
-**Seat B · epoch 2 · T27.** T26 (1606e49 + 400fe05) ACCEPTED as a checkpoint — thank you for stopping; eight redesigns
-of one row inside a turn was the advisor's pacing failure, not yours. Fred has now confirmed the row ("makes sense",
-"looks great"). This is the WHOLE target — build from here, ignore amends 2–8 as history.
-Seat A is on SE11 (drape) in `core/preview/*` + a new drape module and READS your fields `visible`, `carve`,
-`showColor` with the rule below — keep those three names. One commit by path.
-
-## The row: 👁 · 3D · palette   (three toggles, all real buttons, aria-pressed, 44 px on coarse pointers)
-| field | toggle | default | meaning |
-|---|---|---|---|
-| `visible` | 👁 | true | MASTER. Off → the layer is off everywhere: hidden in the editor, not carved, not draped, not exported. `carve`/`showColor` keep their values. |
-| `carve` | "3D" | true | Carved into the relief (= its presence in the 3D model). There is NO separate `drape3d` — drop that field, its toggle and its migration step (keep the `layer-carve-flag` migration). |
-| `showColor` | palette icon (inline SVG paint palette, same style as the row's other icons — not a square) | true | Element colors shown in the editor canvas (display-only; off = neutral) and, with 3D, painted on the mesh (seat A). Never disabled. |
-Effective rules — rewire every gate to these, one helper each, declared once (e.g. in `editor/layers.js`):
-`isCarved(l) = l.visible !== false && l.carve !== false` → masks (`stamp-mask-manager.js`), heightfield (`rebuild.js`),
-`isCarvingLayer` (`export-flow.js`); `isExported(l) = l.visible !== false` → Fusion sketch (`hasShippableSvg`) + SVG
-download; `showsColor(l) = l.visible !== false && l.showColor !== false` → editor canvas coloring. (Seat A's drape uses
-`isCarved(l) && l.showColor !== false`.) Replace the per-site conditions with these helpers so the rule lives in one
-place.
+**Seat B · epoch 2 · T28.** lane-b merged with main (f78b32e + SE11c — drape verified live in Fusion). Fred: "add more
+colors and make it a drop down mosaic". Seat A is on SE11d (`core/preview/drape-svg.js` + its tests) — not yours.
+Files: `editor/properties-shape.js` (SE9's color binding), the palette's editor TOOLBAR row (the COLOR group only),
+`styles/editor.css`, tests (+ WORK-LOG-lane-b.md). One commit by path.
+## Build (mockup agreed in the advisor's chat)
+- `VECTOR_COLORS` becomes the declared palette: 8 hues × 4 shades = 32 swatches (keep black #000000, red #c62828,
+  yellow #f9c80e, navy #1a237e among them — Fred's piece); declare as rows so the mosaic lays out from the data.
+- The toolbar shows ONE button with the current color + ▾. Click/tap opens a popover: the 8×4 mosaic, a "recent" row
+  (last 4 picked this session, per-viewer localStorage wrapped in try/catch), and "custom…" opening the existing
+  `<input type="color">`. Picking closes the popover and calls the existing `editor.setColor` (one undo step — SE9).
+- Keyboard: arrow keys move in the grid, Enter picks, Esc closes; focus returns to the button. Touch: 44 px cells on
+  coarse pointers; the popover stays inside the viewport at 390 px (flip above/left if needed). Clicking outside closes.
+- Remove the old inline swatch row + its wiring (removal chain in WORK-LOG).
 ## Verify
-Truth-table test over the three fields for isCarved / isExported / showsColor; hidden layer with 3D on → no mask;
-toggling 👁 back on restores carve/showColor unchanged; old doc migration unchanged. Smoke (repo-root serve): sidebar +
-editor lists, desktop + mobile. `npx vitest run` green.
+Tests: mosaic renders 32 cells from the declared rows; picking a cell calls setColor with that hex; recent list order +
+cap of 4. Smoke (repo-root serve): desktop + mobile screenshots with the popover open. `npx vitest run` green.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T27: layer row final — 👁 master, 3D=carve, palette showColor, isCarved/isExported/showsColor helpers — <sha>, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T28: color dropdown mosaic (32 + recent + custom) — <sha>, vitest N, screenshots: <paths>"`
 and stop.
