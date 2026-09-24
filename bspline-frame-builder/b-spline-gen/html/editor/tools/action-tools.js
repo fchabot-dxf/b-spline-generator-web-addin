@@ -1,4 +1,5 @@
 import { bindClick } from '../dom.js';
+import { endEditorSession } from '../editor-text-session.js';
 
 export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
@@ -46,12 +47,9 @@ export function registerActionTools(editor) {
     }
   });
 
-  bind('editorApply', () => {
-    editor._commitText();
-    if (editor._onCommit) editor._onCommit(editor.save());
-  });
-
-  bind('editorCancel', () => {
-    if (editor._onCommit) editor._onCommit(null);
-  });
+  // SE8a / SA-TEXT-1: both go through the ONE editor-close contract now —
+  // Cancel used to skip text-session teardown entirely (see
+  // endEditorSession's own comment for the leaked-listener failure mode).
+  bind('editorApply',  () => endEditorSession(editor, { commit: true }));
+  bind('editorCancel', () => endEditorSession(editor, { commit: false }));
 }

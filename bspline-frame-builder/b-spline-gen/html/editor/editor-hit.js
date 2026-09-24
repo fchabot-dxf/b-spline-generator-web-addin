@@ -11,6 +11,7 @@
 import { isEditableByLayer } from './layers.js';
 import { worldPoint } from './editor-coords.js';
 import { viewScale } from './editor-view.js';
+import { PATH_LAYOUT, endPoint } from './path-layout.js';
 
 export function getDynamicTolerance(editor, px = 5) {
     if (!editor._draw) return 0.1;
@@ -58,47 +59,40 @@ export function getNodes(el) {
         // H/V/A/S/T are now covered too (every segment END is a node).
         // H/V carry only one coordinate; the other is inherited from the
         // running cursor position, tracked here exactly as SVG itself
-        // defines path continuation.
+        // defines path continuation. SE8a: offsets now come from the ONE
+        // declared PATH_LAYOUT (path-layout.js) instead of per-branch
+        // literals — the same table _bakeMatrixIntoPath now reads too, so
+        // the two can't drift apart again the way getNodes/dragNode did
+        // pre-SE7n.
         let curX = 0, curY = 0;
         el.array().forEach((seg, segIdx) => {
             const type = seg[0];
-            // Two-coordinate segments (M/L/C/Q/A/S/T all end in an x,y
-            // pair, just at different array offsets) share this setter.
-            // H/V are genuinely different — a single coordinate each,
-            // from p.x or p.y respectively — and get their own inline set
-            // below rather than forcing them through this shape.
-            const setAt = (xIdx, yIdx) => (p) => {
-                const a = el.array();
-                a[segIdx][xIdx] = p.x;
-                a[segIdx][yIdx] = p.y;
-                el.plot(a);
-            };
-            if (type === 'M' || type === 'L') {
-                curX = seg[1]; curY = seg[2];
-                raw.push({ local: { x: curX, y: curY }, set: setAt(1, 2) });
-            } else if (type === 'H') {
-                curX = seg[1]; // y inherited from the previous point — a 1-DOF node
-                raw.push({ local: { x: curX, y: curY }, set: (p) => { const a = el.array(); a[segIdx][1] = p.x; el.plot(a); } });
-            } else if (type === 'V') {
-                curY = seg[1]; // x inherited from the previous point — a 1-DOF node
-                raw.push({ local: { x: curX, y: curY }, set: (p) => { const a = el.array(); a[segIdx][1] = p.y; el.plot(a); } });
-            } else if (type === 'C') {
-                curX = seg[5]; curY = seg[6];
-                raw.push({ local: { x: curX, y: curY }, set: setAt(5, 6) });
-            } else if (type === 'Q') {
-                curX = seg[3]; curY = seg[4];
-                raw.push({ local: { x: curX, y: curY }, set: setAt(3, 4) });
-            } else if (type === 'A') {
-                curX = seg[6]; curY = seg[7]; // rx,ry,xRot,largeArc,sweep,x,y
-                raw.push({ local: { x: curX, y: curY }, set: setAt(6, 7) });
-            } else if (type === 'S') {
-                curX = seg[3]; curY = seg[4]; // x2,y2,x,y
-                raw.push({ local: { x: curX, y: curY }, set: setAt(3, 4) });
-            } else if (type === 'T') {
-                curX = seg[1]; curY = seg[2]; // x,y
-                raw.push({ local: { x: curX, y: curY }, set: setAt(1, 2) });
+            const layout = PATH_LAYOUT[type];
+            if (!layout) return; // unrecognized command — defensive, shouldn't occur
+            if (layout.pts) {
+                const end = endPoint(seg);
+                curX = end.x; curY = end.y;
+                const [xi, yi] = layout.pts[layout.pts.length - 1];
+                raw.push({
+                    local: { x: curX, y: curY },
+                    set: (p) => { const a = el.array(); a[segIdx][xi] = p.x; a[segIdx][yi] = p.y; el.plot(a); },
+                });
+            } else if (layout.x !== undefined) { // H — y inherited, a 1-DOF node
+                curX = seg[layout.x];
+                raw.push({ local: { x: curX, y: curY }, set: (p) => { const a = el.array(); a[segIdx][layout.x] = p.x; el.plot(a); } });
+            } else if (layout.y !== undefined) { // V — x inherited, a 1-DOF node
+                curY = seg[layout.y];
+                raw.push({ local: { x: curX, y: curY }, set: (p) => { const a = el.array(); a[segIdx][layout.y] = p.y; el.plot(a); } });
+            } else if (layout.arc) {
+                const end = endPoint(seg);
+                curX = end.x; curY = end.y;
+                const [xi, yi] = layout.end;
+                raw.push({
+                    local: { x: curX, y: curY },
+                    set: (p) => { const a = el.array(); a[segIdx][xi] = p.x; a[segIdx][yi] = p.y; el.plot(a); },
+                });
             }
-            // 'Z' has no coords of its own and is not a node.
+            // 'Z' (layout = {}) has no coords of its own and is not a node.
         });
     } else if (el.type === 'rect') {
         const x = el.attr('x'), y = el.attr('y'), w = el.attr('width'), h = el.attr('height');

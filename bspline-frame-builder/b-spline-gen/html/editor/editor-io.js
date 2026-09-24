@@ -292,9 +292,30 @@ async function getEmbeddedFontCss(family) {
  * so without embedded fonts those text elements rasterize as plain
  * Latin glyphs. Async because of the font fetch + base64 conversion.
  */
+/** SE8a / SA-TEXT-2: the ONE class name saveForRasterization's embedded
+ *  font-face block carries, and both strip sites (here, and open() below)
+ *  look for. */
+const RASTERIZATION_FONTS_CLASS = 'rasterization-fonts';
+
+/** Remove any existing rasterization-fonts <defs> block from a content
+ *  string BEFORE embedding a fresh one — without this, saving a document
+ *  that already carries one from a previous cycle (open() injects the
+ *  WHOLE saved document, defs block included, straight into the live
+ *  sketch layer) would nest one more copy on top of it, growing the
+ *  persisted payload (and localStorage) unboundedly per open/edit/close
+ *  cycle. Global (`g`) in case more than one has already accumulated
+ *  from before this fix landed. Exported for direct testing (a pure
+ *  string function — no need to drive it only through saveForRasterization,
+ *  whose own font-embedding step can't be exercised in a test environment
+ *  with no real @font-face rules to find). */
+export function stripRasterizationFontDefs(svgText) {
+    const re = new RegExp(`<defs class="${RASTERIZATION_FONTS_CLASS}">[\\s\\S]*?</defs>`, 'g');
+    return svgText.replace(re, '');
+}
+
 export async function saveForRasterization(editor, dpi = 96) {
     if (!editor._draw) return "";
-    const content = serializeEditor(editor);
+    const content = stripRasterizationFontDefs(serializeEditor(editor));
 
     // Collect every font-family referenced by a <text> in the content.
     // Parse via DOMParser so we work on real elements regardless of how
@@ -323,7 +344,7 @@ export async function saveForRasterization(editor, dpi = 96) {
     const wPx = editor._mW * dpi;
     const hPx = editor._mH * dpi;
     const styleBlock = fontCss.length
-        ? `<defs class="rasterization-fonts"><style type="text/css">${fontCss.join('\n')}</style></defs>`
+        ? `<defs class="${RASTERIZATION_FONTS_CLASS}"><style type="text/css">${fontCss.join('\n')}</style></defs>`
         : '';
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
@@ -521,6 +542,13 @@ export function open(editor, svgString, w, h) {
             // v49: Filter out Defs-based metadata so it doesn't clutter the sketch layer
             const metadata = svgEl.querySelector('.editor-metadata');
             if (metadata) metadata.remove();
+            // SE8a / SA-TEXT-2: strip on open too (belt-and-suspenders with
+            // the save-side strip above, and a one-time cleanup for any
+            // document that already accumulated copies before this fix).
+            // querySelectorAll, not querySelector — a document saved
+            // several open/edit/close cycles before this fix could carry
+            // more than one.
+            svgEl.querySelectorAll(`.${RASTERIZATION_FONTS_CLASS}`).forEach((d) => d.remove());
 
             // Pull persisted layer metadata BEFORE injecting innerHTML — once
             // we hand the markup to svg.js the root attrs are gone.

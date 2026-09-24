@@ -23,6 +23,7 @@
  * the transform away.
  */
 import { worldBbox, transformPoint } from './editor-coords.js';
+import { PATH_LAYOUT, normalizeForBake } from './path-layout.js';
 
 // ── Handle layout: corner + side scale handles. hx/hy give the handle
 // position as a (0..1) fraction of the bbox; ax/ay give the anchor
@@ -349,24 +350,39 @@ function _isIdentity(m) {
 }
 
 /**
- * Walk a path's d, transform every control point through `m`, and
- * write the result back. Mirrors the manual baking used in
- * editor-expand-text.js (SVG.js's own .transform() on path elements
- * has historically been unreliable for path baking).
+ * Walk a path's d, transform every control point through `m`, and write
+ * the result back. Mirrors the manual baking used in editor-expand-text.js
+ * (SVG.js's own .transform() on path elements has historically been
+ * unreliable for path baking).
+ *
+ * SE8a / SA-ROUNDTRIP-1: the old version paired up EVERY remaining
+ * numeric slot as an (x,y) point, which is wrong for `A` (7 params —
+ * rx ry x-rotation large-arc-flag sweep-flag x y, none of which pair up
+ * as points except the last two) and for a rotated/skewed `H`/`V` (no
+ * longer horizontal/vertical once the matrix lands, so it can't stay an
+ * H/V at all). normalizeForBake converts every A to cubics (using the
+ * PRE-bake local cursor — an arc's own parametrization depends on where
+ * it starts) and every H/V to a full L FIRST; only then does PATH_LAYOUT
+ * say which slots to transform, uniformly, for every remaining command.
  */
 function _bakeMatrixIntoPath(pathEl, m) {
-    const arr = new SVG.PathArray(pathEl.attr('d'));
-    arr.forEach(seg => {
-        for (let i = 1; i < seg.length; i += 2) {
-            if (typeof seg[i] === 'number' && typeof seg[i + 1] === 'number') {
-                const p = transformPoint(m, { x: seg[i], y: seg[i + 1] });
-                seg[i] = p.x;
-                seg[i + 1] = p.y;
-            }
+    const raw = new SVG.PathArray(pathEl.attr('d'));
+    const normalized = normalizeForBake(raw);
+    normalized.forEach(seg => {
+        const layout = PATH_LAYOUT[seg[0]];
+        if (!layout || !layout.pts) return; // Z, or (shouldn't occur post-normalize) A/H/V
+        for (const [xi, yi] of layout.pts) {
+            const p = transformPoint(m, { x: seg[xi], y: seg[yi] });
+            seg[xi] = p.x;
+            seg[yi] = p.y;
         }
     });
-    pathEl.attr('d', arr.toString());
+    pathEl.attr('d', normalized.map(seg => seg.join(' ')).join(' '));
 }
+
+// Standard 4-cubic circle/ellipse Bezier approximation constant
+// (kappa = 4/3 * (sqrt(2) - 1)), same value used industry-wide.
+const KAPPA = 0.5522847498;
 
 /**
  * Convert a rect / circle / ellipse to a path `d` string. Used by
@@ -374,7 +390,14 @@ function _bakeMatrixIntoPath(pathEl, m) {
  * can't carry rotation/skew in their native attributes, so we promote
  * them to a path first and then bake the matrix into the d.
  *
- * Circle and ellipse become two half-arcs (sweep=0) to close cleanly.
+ * SE8a / SA-ROUNDTRIP-1: circle/ellipse used to become two half-arcs
+ * (sweep=0) — every one of them then hit _bakeMatrixIntoPath's arc-
+ * corruption bug on every carve export (carveMatrix is never identity).
+ * 4 cubics (kappa approximation) sidesteps the whole problem: a cubic's
+ * control points transform correctly under ANY affine, so there's no
+ * arc left to corrupt. (A generic user-drawn `A` — e.g. from a pasted
+ * SVG — still goes through path-layout.js's arcToCubics at bake time;
+ * this fixes the one guaranteed-common source, not just this instance.)
  * Returns '' if the geometry would be degenerate (zero size) or the
  * element type isn't a supported primitive.
  */
@@ -394,23 +417,19 @@ function _primitiveToPathData(el) {
              + ' L ' + x + ' ' + (y + h) + ' Z';
     }
 
-    if (type === 'circle') {
+    if (type === 'circle' || type === 'ellipse') {
         const cx = +el.attr('cx') || 0;
         const cy = +el.attr('cy') || 0;
-        const r  = +el.attr('r')  || 0;
-        if (r <= 0) return '';
-        return 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 1 0 ' + (cx + r) + ' ' + cy
-             + ' A ' + r + ' ' + r + ' 0 1 0 ' + (cx - r) + ' ' + cy + ' Z';
-    }
-
-    if (type === 'ellipse') {
-        const cx = +el.attr('cx') || 0;
-        const cy = +el.attr('cy') || 0;
-        const rx = +el.attr('rx') || 0;
-        const ry = +el.attr('ry') || 0;
+        const rx = type === 'circle' ? (+el.attr('r') || 0) : (+el.attr('rx') || 0);
+        const ry = type === 'circle' ? (+el.attr('r') || 0) : (+el.attr('ry') || 0);
         if (rx <= 0 || ry <= 0) return '';
-        return 'M ' + (cx - rx) + ' ' + cy + ' A ' + rx + ' ' + ry + ' 0 1 0 ' + (cx + rx) + ' ' + cy
-             + ' A ' + rx + ' ' + ry + ' 0 1 0 ' + (cx - rx) + ' ' + cy + ' Z';
+        const kx = rx * KAPPA, ky = ry * KAPPA;
+        return 'M ' + (cx + rx) + ' ' + cy
+             + ' C ' + (cx + rx) + ' ' + (cy + ky) + ' ' + (cx + kx) + ' ' + (cy + ry) + ' ' + cx + ' ' + (cy + ry)
+             + ' C ' + (cx - kx) + ' ' + (cy + ry) + ' ' + (cx - rx) + ' ' + (cy + ky) + ' ' + (cx - rx) + ' ' + cy
+             + ' C ' + (cx - rx) + ' ' + (cy - ky) + ' ' + (cx - kx) + ' ' + (cy - ry) + ' ' + cx + ' ' + (cy - ry)
+             + ' C ' + (cx + kx) + ' ' + (cy - ry) + ' ' + (cx + rx) + ' ' + (cy - ky) + ' ' + (cx + rx) + ' ' + cy
+             + ' Z';
     }
 
     return '';

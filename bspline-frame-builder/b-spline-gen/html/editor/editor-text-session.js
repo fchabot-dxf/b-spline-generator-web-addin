@@ -394,3 +394,30 @@ export function cancelText(editor) {
     editor._editingTextEl = null;
     editor._currentText = '';
 }
+
+/**
+ * SE8a / SA-TEXT-1: the ONE editor-close contract Apply and Cancel both
+ * go through (editor/tools/action-tools.js). Before this, Cancel called
+ * only `editor._onCommit(null)` — skipping text-session teardown
+ * entirely, unlike Apply, which calls `_commitText()` first. Both
+ * `commitText`/`cancelText` above already no-op when there's no active
+ * session, so calling one of them unconditionally here is exactly as
+ * safe as Apply's existing unconditional `_commitText()` call was.
+ *
+ * Without this, Cancelling out of an in-progress text edit left
+ * `editor._editingTextEl` truthy forever, so `_attachRefocusHandler`'s
+ * document-level mousedown listener kept firing on every click anywhere
+ * else in the app — silently stealing focus back to the offscreen
+ * hidden input — until the editor was reopened and another text edit
+ * started, which only self-healed it as a side effect of the stale-
+ * element guard.
+ *
+ * `commit: true` (Apply) -> commitText() first, then `_onCommit(save())`.
+ * `commit: false` (Cancel) -> cancelText() first — drop the in-progress
+ * edit, do NOT commit it — then `_onCommit(null)`.
+ */
+export function endEditorSession(editor, { commit }) {
+    if (commit) commitText(editor);
+    else cancelText(editor);
+    if (editor._onCommit) editor._onCommit(commit ? editor.save() : null);
+}

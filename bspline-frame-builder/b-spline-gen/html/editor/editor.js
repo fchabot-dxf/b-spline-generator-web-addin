@@ -186,7 +186,7 @@ export class VectorEditor {
             el.stroke({ color });
             if (el.type === 'text') el.fill(color);
         }
-        this.pushState();
+        this._commitStyleChange();
     }
     setStrokeWidth(w) {
         this._strokeWidth = w;
@@ -194,6 +194,20 @@ export class VectorEditor {
         if (!sel || !sel.length) return;
         for (const el of sel) el.stroke({ width: w });
         this._updateSelectionHighlight();
+        this._commitStyleChange();
+    }
+    // SE8a / SA-UNDO-2,3: setStrokeWidth had neither pushState() nor
+    // _onChange() (permanently un-undoable, and the carve preview never
+    // updated until an unrelated edit happened to fire _onChange());
+    // setStrokeColor had pushState() but no _onChange() (undo worked, the
+    // live preview just lagged). One shared committer so a THIRD style
+    // setter can't reintroduce either half of this gap by hand-rolling it
+    // again — mirrors the pattern setFontFamily/setFontSize
+    // (editor-text-style.js) already get right, just not previously
+    // factored into one place.
+    _commitStyleChange() {
+        if (typeof this.pushState === 'function') this.pushState();
+        if (this._onChange) this._onChange();
     }
     setFontFamily(f) { return setFontFamily(this, f); }
     setFontSize(s) { return setFontSize(this, s); }

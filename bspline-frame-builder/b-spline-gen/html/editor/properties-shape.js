@@ -15,7 +15,13 @@ export function initShapeProperties(editor) {
     editor.setStrokeWidth(clamped);
   };
 
-  on(strokeNum, 'input', () => syncStroke(strokeNum.value));
+  // SE8a / SA-UNDO-2: setStrokeWidth now pushes an undo step on every
+  // call (see editor.js's _commitStyleChange) — 'input' fires per
+  // keystroke while typing a number, which would turn one intended edit
+  // into several undo steps. 'change' fires once, on blur/Enter, so
+  // typing "2.5" commits as ONE step. The +/- buttons already fire once
+  // per click either way, so they're unaffected.
+  on(strokeNum, 'change', () => syncStroke(strokeNum.value));
   on(minusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) - 0.1));
   on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + 0.1));
 

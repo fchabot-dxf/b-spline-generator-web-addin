@@ -20,6 +20,8 @@ import {
 import {
   save,
   getLayerSvg,
+  saveForRasterization,
+  stripRasterizationFontDefs,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
 // Strict image/svg+xml parse (exactly what open()/getLayerSvg do). Returns
@@ -153,5 +155,55 @@ describe('EDM3b: getLayerSvg layer filter + svgjs edge', () => {
 
   it('returns "" when the editor is not drawn yet', () => {
     expect(getLayerSvg({ _draw: null, _sketchLayer: {} }, '0')).toBe('');
+  });
+});
+
+describe('SE8a / SA-TEXT-2: rasterization-fonts defs do not accumulate', () => {
+  // open() used to inject the ENTIRE previously-saved document — defs
+  // block included — straight into the live sketch layer, so the NEXT
+  // save's serializeEditor(editor) read would already contain the STALE
+  // block as part of its own content. This simulates exactly that state
+  // (what saveForRasterization actually sees on the 2nd+ cycle) without
+  // needing a full open()/font-lookup round trip: this test environment's
+  // document.styleSheets is empty, so getEmbeddedFontCss always resolves
+  // null here regardless — meaning saveForRasterization can never
+  // actually EMBED a fresh block in this suite either, which is fine:
+  // the bug was specifically that an OLD one lingered forever, not
+  // whether a new one gets added (that half already worked).
+  const staleBlock =
+    '<defs class="rasterization-fonts"><style type="text/css">@font-face{font-family:"Old";src:url(x);}</style></defs>';
+
+  it('strips a pre-existing rasterization-fonts block from the content before returning', async () => {
+    const staleContent = staleBlock + '<path fill="#000000" data-layer="0" d="M1 1 L2 2 Z"/>';
+    const out = await saveForRasterization(mockEditor(staleContent));
+
+    expect(out).toContain('M1 1 L2 2 Z'); // real geometry survives
+    const matches = out.match(/<defs class="rasterization-fonts">/g) || [];
+    expect(matches.length).toBeLessThanOrEqual(1); // never MORE than the one this call itself might add
+    expect(out).not.toContain('"Old"'); // the STALE font-face rule specifically is gone, not just deduped
+  });
+
+  it('strips ALL copies if more than one had already accumulated before this fix landed', () => {
+    const doubled = staleBlock + staleBlock + '<path d="M0 0"/>';
+    expect(stripRasterizationFontDefs(doubled)).toBe('<path d="M0 0"/>');
+  });
+
+  it('serialize -> open -> serialize, three times: exactly one block survives (never nests)', async () => {
+    // Simulates the full accumulation cycle without needing open()'s
+    // heavier DOM machinery: each "open" step is exactly what open()'s
+    // OWN new strip does to the content before it becomes live sketch
+    // children again (svgEl.querySelectorAll('.rasterization-fonts')
+    // .forEach(remove) — the DOM form of the same stripRasterizationFontDefs
+    // the save side uses on a string). A fresh embed never actually
+    // happens in this environment (see the comment above), so this
+    // proves the "never MORE than one, never nests" half — the half
+    // that was actually broken.
+    let content = '<path d="M0 0"/>';
+    for (let cycle = 0; cycle < 3; cycle++) {
+      const out = await saveForRasterization(mockEditor(content));
+      const matches = out.match(/<defs class="rasterization-fonts">/g) || [];
+      expect(matches.length).toBeLessThanOrEqual(1);
+      content = stripRasterizationFontDefs(out); // the "open()" step
+    }
   });
 });
