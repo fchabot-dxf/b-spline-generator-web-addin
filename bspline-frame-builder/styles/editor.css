@@ -330,6 +330,49 @@
         min-width: 0 !important;
     }
 
+    /* SE7p / T24-T25: the Pattern panel becomes a bottom sheet — taken OUT
+       of .cad-modal-body's flex flow (position:fixed) so it no longer
+       competes with #editorSVGContainer above for flex space. That
+       competition (this panel's own content-driven height, as a column
+       sibling once .cad-modal-body goes column at this same breakpoint)
+       was the actual mechanism behind "canvas is off-screen" / pinch
+       failing with the panel open — confirmed via getBoundingClientRect()
+       in a live smoke run (T25's own WORK-LOG entry), not assumed. */
+    .editor-lattice-panel {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        width: 100% !important;
+        max-height: 65vh;
+        border-left: none !important;
+        border-top: 1px solid var(--cad-border-standard);
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+        z-index: 60;
+    }
+
+    .editor-lattice-panel-header {
+        cursor: pointer !important;
+    }
+
+    .editor-lattice-panel-chevron {
+        display: inline-block !important;
+    }
+
+    /* Collapsed (the default on a phone — see the markup's own
+       `collapsed` class): only the header + the always-visible
+       Generate/Detach footer show. !important: #editorLatticePanelBody's
+       own inline `style="display:flex"` otherwise wins over any external
+       rule regardless of selector specificity. */
+    .editor-lattice-panel.collapsed #editorLatticePanelBody {
+        display: none !important;
+    }
+
+    .editor-lattice-panel:not(.collapsed) .editor-lattice-panel-chevron {
+        transform: rotate(180deg);
+    }
+
     .editor-symbol-keyboard {
         position: relative !important;
         bottom: auto !important;

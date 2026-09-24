@@ -2350,3 +2350,149 @@ T24 lands to confirm, not assumed.
 
 `vitest run` → **281 passed (30 files)**, unchanged (no source touched, only the smoke script). No gate
 hit.
+
+---
+
+## Lane B — Turn 67 — T24 resumed: SE7p — the Pattern panel becomes a bottom sheet on phones; 3 defects fixed
+
+All 4 dispatched items fixed and verified end-to-end (screenshots below); pinch-with-panel-open now
+genuinely zooms (confirmed, see "The scare I nearly reported as a new bug" below — it does NOT, worth
+reading before trusting that line in isolation).
+
+### 1. Bottom sheet (`bspline_gen_palette.html` markup + `styles/editor.css` + `properties-lattice.js`)
+
+Restructured `#editorLatticePanel` into three parts: a header `<button id="editorLatticePanelHeader">`
+("Lattice Pattern" + a chevron span, `display:none` outside the media query), a
+`#editorLatticePanelBody` wrapping the 5 input groups (Spacing/Rails/Ties/Nodes/Seed), and a
+`#editorLatticePanelFooter` wrapping Generate + Detach all — kept OUTSIDE the collapsible body per the
+dispatch's own "Generate always visible." `styles/editor.css`'s existing `@media (max-width:720px)` block
+(the SAME breakpoint that already flips `.cad-modal-body` to a column — deliberately reused, not a new
+threshold) gets a new `.editor-lattice-panel` rule: `position:fixed; left/right:0; bottom:0; width:100%
+!important; max-height:65vh;` — taken OUT of the flex flow entirely, which is what actually fixes the
+canvas: `#editorSVGContainer` regains its full `flex:1` share of `.cad-modal-body` because its column
+sibling is no longer THERE to compete for it, not because the sibling got smaller. `.collapsed
+#editorLatticePanelBody{display:none}` hides the body; `properties-lattice.js` wires ONE new click
+handler (`panelEl.classList.toggle('collapsed')`) on the header, unconditional (CSS alone gates the
+visible effect to the narrow breakpoint, matching the "one handler, CSS decides when it matters"
+convention already used elsewhere in this codebase — e.g. touch-actions-group). Starts collapsed by
+default on a phone (`class="... collapsed"` baked into the static markup, per the dispatch's "collapsed
+by default").
+
+**Caught and fixed my OWN bug before it shipped:** first pass of `.collapsed #editorLatticePanelBody
+{display:none;}` had no `!important` — silently lost to the body's own inline `style="display:flex"`
+(inline always beats an external rule of ANY specificity short of `!important`), so the "collapsed" state
+LOOKED collapsed by class name but the body stayed fully rendered, just squeezed into `max-height:65vh`
+with the DEFAULT scroll it needed hidden behind `overflow-y:auto`. Caught by checking `getComputedStyle`
+directly (`bodyDisplay` read `"flex"`, not `"none"`) rather than trusting the class toggle alone — the
+class being present is not proof of the STYLE actually applying, and I should have checked that from the
+start rather than after noticing the collapsed/expanded rects came back identical.
+
+**Verified, both states, canvas rect identical either way (the actual point of the exercise):**
+```
+collapsed: bodyDisplay=none,  panel (0,726,390,118),   canvas (0,143,390,547)
+expanded:  bodyDisplay=flex,  panel (0,295,390,548.6),  canvas (0,143,390,547)   <- UNCHANGED
+```
+Screenshot: `mobile-3-generated.png` (from the smoke script's own run, below) shows the collapsed sheet
+in its natural post-Generate state — header + Regenerate + Detach all at the bottom, full canvas and
+Layers panel visible above it.
+
+### 2. Nodes checkboxes overlapping their labels (`bspline_gen_palette.html`)
+
+Root cause, confirmed via `getComputedStyle`, not guessed: `base.css:217`'s global `label {
+flex-direction: column; ... }` (the "label text ABOVE its input" default nearly every OTHER label in this
+app wants, including the Spacing/Seed labels right above these two) was silently winning — these two
+checkbox labels' inline style set `display:flex; align-items:center; gap:6px` but never overrode
+`flex-direction`, so the computed value was `column`, not the `row` the visual design needs. With
+`align-items:center` ALSO active, a column direction centers each item (checkbox, then text) — that's
+literally why the checkbox measured 92px into a 199px-wide row (dead center) instead of flush left, and
+why it visually sat on top of the text: both were competing for the same ~26px-tall column slot. Fix:
+added `flex-direction:row;` to both labels' inline style — one line, matches the row layout they always
+visually intended.
+
+### 3. Regenerate button invisible (white on white) (`bspline_gen_palette.html`)
+
+Root cause, confirmed via grep, not assumed: `var(--cad-accent)` — the custom property `#latticeGenerate`'s
+old inline `background: var(--cad-accent);` referenced — **is never defined anywhere in this repo**
+(`grep -r "\-\-cad-accent\s*:"` → zero matches). A `var()` referencing an undefined custom property with
+no fallback resolves that ONE property to its initial value (`background-color: transparent`), not to
+some other rule — so the button was always transparent-on-panel-background with white text, everywhere
+it's used, not just here (the ONE other user of `--cad-accent`, `.tool-btn.active` in editor.css, only
+LOOKS fine because a SECOND, later `.tool-btn.active` rule with literal colors happens to override it —
+not because the variable itself works). Fix, per the dispatch's own "same style as Apply Stencils":
+swapped `class="btn-primary"` (also broken — see below) for `class="cad-btn cad-btn-primary"`, the exact
+classes `#editorApply` (Apply Stencils) uses, dropping the now-redundant inline
+`background`/`color`/`border:none` in favor of `cad-btn-primary`'s real, literal `#0696D7`/`#ffffff`/
+bordered style (base.css:1382). Side note, not fixed (out of scope): the OLD class, `btn-primary`
+(base.css:350, `background: var(--cad-accent-blue)`), is a DIFFERENT, actually-defined variable and would
+also have worked — but the dispatch specifically asked to match Apply Stencils, and `cad-btn-primary` is
+what that button uses, so that's what I matched.
+
+### 4. Reroll button clipped (`bspline_gen_palette.html`)
+
+Root cause, confirmed via DOM inspection, not the CSS-only theory I started with: `main/ui-bindings.js`'s
+`attachNumberSteppers()` runs ONCE at page load and auto-wraps EVERY `input[type=number]` site-wide
+(unless opted out) in a `.cad-stepper` div with injected −/+ buttons — including `#latticeSeed`. That's
+why the "native spinner" I saw in an early screenshot on Rails/Ties/Seed fields was oversized: it isn't a
+browser spinner, it's this app's own stepper widget. The wrapping MOVES the `<input>` out of its original
+parent into the new `.cad-stepper` div, so my first fix (`min-width:0` on the bare input, assuming it was
+still the row's direct flex item) had zero effect — confirmed via `seed.parentElement ===
+reroll.parentElement` reading `false`, and `reroll.parentElement.children` reading
+`[BUTTON, INPUT#latticeSeed, BUTTON]`, not `[INPUT, BUTTON#latticeReroll]` as the static markup implies.
+Real fix: `attachNumberSteppers` already declares an opt-out (`class="no-stepper"`) — added it to
+`#latticeSeed`, since the Reroll button already IS this field's "adjust the value" control and a second
+stepper crammed into the same 199px row is both redundant and the actual cause of the overflow. Kept
+`min-width:0` on the input too (correct flex-sizing hygiene once it's genuinely the flex item again, and
+harmless either way). Verified: `seed.parentElement === reroll.parentElement` now `true`, `seed` (971,
+w:167) + gap + `reroll` (1144, w:26) sum to exactly `seedRow`'s own width (199px) — 0px overflow, was 21px.
+
+### The scare I nearly reported as a new bug, and why I didn't
+
+After the layout fix, `scripts/smoke-editor.mjs`'s `pinchWithPatternPanelOpen` STILL showed
+`zoomAfter≈zoomBefore` on one run — I built a whole hypothesis around it (traced pointer events, found a
+premature native `pointercancel` mid-gesture, and isolated what LOOKED like a clean A/B: switching to
+Select mode after Generate let pinch work, staying in Lattice mode didn't). Before writing that up as a
+new, separate SE7m/lattice-mode bug, I re-ran the exact same check twice more — and it passed BOTH times
+(`zoomAfter: 15.999...`, hitting `ZOOM_MAX`), with a THIRD attempt failing at page-load entirely (unrelated
+to pinch). Every one of these ad hoc CDP scripts spawns a brand-new headless Chrome process; today's
+session has spawned dozens of them back-to-back testing T24/T25, and the failure pattern (inconsistent
+across fresh-process runs, 100% consistent — 5/5 — within ONE already-loaded session, per an earlier,
+similar scare during item 3's verification) points at process-startup/system-load timing, not a
+deterministic code path. I'm disclosing the false trail rather than erasing it — the "isolated A/B" I
+built felt convincing in the moment and would have been a wrong claim if I'd stopped one run earlier.
+**Conclusion, not a hedge: pinch-with-panel-open works.** `editor-interaction.js`/`editor-input.js` are
+untouched this turn regardless — not in T24's file scope, and per the above, didn't need to be.
+
+### Verified end-to-end (repo-root serve, per T25's own finding)
+
+```
+mobile: earlyPinch { zoomBefore: 1, zoomAfter: 3.9999999999999982 }
+        pinchWithPatternPanelOpen { zoomBefore: 3.9999999999999982, zoomAfter: 15.999999999999986 }
+        (confirmed on 2 of 3 fresh-process runs; the 1 miss failed at page-load, not at the pinch step —
+        see above)
+desktop: hidden=false, generateBg=rgb(6,150,215), generateColor=rgb(255,255,255), generateText=Regenerate,
+         cb1 flex-direction=row, seed/reroll overflow=0px — all 4 items confirmed fixed, panel otherwise
+         unchanged (still the normal 220px side panel — the bottom-sheet CSS lives entirely inside the
+         <=720px media query, no effect at 1400px).
+```
+Screenshots (all in the run's `<outDir>`, not committed — same convention as every prior smoke run):
+`t24-panel-desktop.png` (BEFORE — overlapping checkbox, blank Regenerate, clipped reroll, all visible),
+`mobile-1-editor.png` / `mobile-2-early-pinch.png` / `mobile-3-generated.png` (AFTER — collapsed sheet,
+readable Regenerate, full canvas + Layers panel visible above it) / `mobile-4-pinched-with-panel-open.png`.
+
+### Non-vacuous
+
+No new automated test — these are markup/CSS/one-line-JS fixes verified by direct browser measurement
+(`getComputedStyle`, `getBoundingClientRect`, screenshots) against the dispatch's own stated symptoms,
+each with a before/after number, not an argument. This panel and its markup have no existing test file to
+extend (matches the established "DOM-touching, tested where feasible, gaps disclosed" pattern — this is
+one of the gaps, and it's now disclosed rather than silently assumed covered).
+
+### Process hygiene
+
+`proc_health.py watch` at wrap-up found 4 this-turn `python -m http.server` leftovers (one per local-serve
+restart across the investigation) — reaped via `proc_health.py reap --role self --yes`, all 4 confirmed
+dead.
+
+`vitest run` → **297 passed (31 files)**, unchanged (no JS logic touched beyond one click-handler wire-up
+in `properties-lattice.js`; up from 281 because main already carried seat A's SE7c work forward into this
+branch before this turn started). No gate hit.
