@@ -518,3 +518,11 @@ along a row, tie = drag along a column, click = node, click on a node = remove i
 crossings). Option C (declared pattern generator with seed, one-way into the document) follows as SE7b once B is
 live-proven. Three layers carry rails / ties / nodes with their own tooling — that is the color mapping of the piece.
 - **SE7a (dispatched):** lattice mode + auto-nodes + node-tool snap (SE6 follow-up a).
+- **SE7m (queued after SE7a, Fred 2026-09-23: "make it work even on mobile").** Today one-finger touch draws; a second
+  finger is ignored (`editor-interaction.js:233`); SE2 zoom/pan, the SE7a hover marker, Alt bypass and all shortcuts
+  are mouse/keyboard only. Plan: (1) migrate to Pointer Events, one path for mouse/touch/pen; (2) declare
+  `INPUT_PROFILE = {mouse:{slopPx:10,markerOffsetPx:0}, touch:{slopPx:22,markerOffsetPx:40}, pen:{slopPx:8,…}}`
+  read by tolerance, handle hit radius and the snap marker; (3) two-finger = pinch zoom + pan via SE2's
+  `zoomAbout`/view record; (4) touch snap marker shown during press, offset above the finger with a leader line;
+  (5) 390 px layout of the editor top bar (horizontal scroll or a "⋯" overflow for contextual groups), decided from a
+  capture; shortcut badges hidden under `@media (hover:none)`. Not amended into SE7a (input layer under it).
