@@ -247,16 +247,47 @@ export async function initApp(preview, wireGlobalEvents) {
  * yet — buildDrapeSvg already treats a missing field as true, so nothing
  * here needs to change when they land.
  */
+// SE11b: unconditional fusLog (like _ioLog/_sLog) — the advisor's live-
+// Fusion log capture must show this on the very next natural test, with
+// no debug flag to remember to set first; dbg() stays gated behind DRAPE
+// for optional console noise on the web build.
+function _drapeLog(msg) {
+    dbg('DRAPE', msg);
+    try { fusLog('[DRAPE] ' + msg); } catch (_) {}
+}
+
 async function refreshDrape(preview) {
-    if (!preview || !window.svgEditor) return;
+    if (!preview || !window.svgEditor) {
+        _drapeLog(`skip: preview=${!!preview} svgEditor=${!!window.svgEditor}`);
+        return;
+    }
     const svg = window.svgEditor.save();
-    const drapeSvg = buildDrapeSvg(window.svgEditor._layers, svg);
-    if (!drapeSvg) { preview.setDrapeTexture(null); return; }
+    const layers = window.svgEditor._layers || [];
+    _drapeLog(`called: layers=${layers.length} savedSvgLen=${svg ? svg.length : 0}`);
+    const drapeSvg = buildDrapeSvg(layers, svg);
+    _drapeLog(`buildDrapeSvg returned length=${drapeSvg.length}`);
+    if (!drapeSvg) {
+        _drapeLog('no qualifying/coloured elements - clearing drape texture');
+        preview.setDrapeTexture(null);
+        return;
+    }
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
     const texW = Math.min(1024, Math.max(256, nx * 4));
     const texH = Math.min(1024, Math.max(256, nz * 4));
-    const texture = await preview.buildDrapeTexture(drapeSvg, texW, texH);
+    _drapeLog(`rasterizing to ${texW}x${texH} (grid ${nx}x${nz})`);
+    let texture = null;
+    try {
+        texture = await preview.buildDrapeTexture(drapeSvg, texW, texH);
+    } catch (e) {
+        _drapeLog('buildDrapeTexture threw: ' + (e && e.message ? e.message : e));
+    }
+    _drapeLog(`buildDrapeTexture returned ${texture ? 'a texture' : 'null'}`);
     preview.setDrapeTexture(texture);
+    const mesh = preview._mesh;
+    const mat = mesh && mesh.material;
+    _drapeLog(`setDrapeTexture done: mesh=${mesh ? mesh.type : 'none'} ` +
+        `material=${mat ? mat.type : 'none'} vertexColors=${mat ? mat.vertexColors : 'n/a'} ` +
+        `emissiveMapSet=${!!(mat && mat.emissiveMap)}`);
 }
 
 export function initSvgEditor(preview) {
@@ -346,6 +377,12 @@ export function initSvgEditor(preview) {
     const restoreSvg = editorRestoreSvg();
     if (restoreSvg) {
       window.svgEditor.open(restoreSvg, P.widthIn, P.heightIn);
+      // SE11b: a restored drawing's colours should drape immediately, not
+      // only after the next edit — "editor only... survives save/reopen"
+      // (SE9) means drape survives reopen too. Not awaited (initSvgEditor
+      // itself isn't async) — fire-and-forget, same as the other
+      // refreshAllStampMasks call sites above.
+      refreshDrape(preview);
     }
   } catch (e) {
     console.warn('[initSvgEditor] editor SVG restore failed:', e);

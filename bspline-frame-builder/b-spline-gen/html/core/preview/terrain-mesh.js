@@ -129,7 +129,7 @@ export function buildTopOnlyMesh(THREE, field, colours, { isWireframeMode, flatS
  * with side-wall verts duplicated so normals at corners stay sharp.
  */
 export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
-  const { topColours, botColours, flatShading } = opts || {};
+  const { topColours, botColours, flatShading, topUvs } = opts || {};
   const count = nx * nz;
   const boundaryIndices = COORD_SYSTEM.gridBoundaryIndices(nx, nz);
   const B = boundaryIndices.length;
@@ -138,11 +138,27 @@ export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
   const pos = new Float32Array(totalVerts * 3);
   const col = new Float32Array(totalVerts * 3);
   const useColours = !!(topColours && topColours.length === count * 3);
+  // SE11b: without a uv attribute, a texture map (e.g. the drape's
+  // emissiveMap, core/preview/index.js) has nothing to sample by and
+  // silently renders with no visible effect — no error, no warning, just
+  // an invisible map (the exact bug this fixes: applied cleanly, logged
+  // cleanly, but nothing showed on a real carved board, which always
+  // takes this solid path, never buildTopOnlyMesh's lighter one below).
+  // Bottom + side-wall vertices reuse their own top vertex's uv (never
+  // sampled by anything today, but a "same as directly above" value is
+  // more sane than an arbitrary (0,0) if that ever changes).
+  const useUvs = !!(topUvs && topUvs.length === count * 2);
+  const uv = new Float32Array(totalVerts * 2);
 
   // Top + bottom positions.
   for (let i = 0; i < count * 3; i++) {
     pos[i] = safeNum(topPos[i]);
     pos[count * 3 + i] = safeNum(offsetPts[i]);
+  }
+
+  if (useUvs) {
+    uv.set(topUvs, 0);
+    uv.set(topUvs, count * 2);
   }
 
   // Top + bottom colours.
@@ -166,6 +182,13 @@ export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
     pos[(SIDE_START + B + i) * 3 + 0] = safeNum(offsetPts[idx * 3 + 0]);
     pos[(SIDE_START + B + i) * 3 + 1] = safeNum(offsetPts[idx * 3 + 1]);
     pos[(SIDE_START + B + i) * 3 + 2] = safeNum(offsetPts[idx * 3 + 2]);
+
+    if (useUvs) {
+      uv[(SIDE_START + i) * 2 + 0]     = topUvs[idx * 2 + 0];
+      uv[(SIDE_START + i) * 2 + 1]     = topUvs[idx * 2 + 1];
+      uv[(SIDE_START + B + i) * 2 + 0] = topUvs[idx * 2 + 0];
+      uv[(SIDE_START + B + i) * 2 + 1] = topUvs[idx * 2 + 1];
+    }
 
     if (useColours) {
       col[(SIDE_START + i) * 3 + 0]     = col[idx * 3 + 0];
@@ -197,6 +220,7 @@ export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   if (useColours) geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  if (useUvs) geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
 

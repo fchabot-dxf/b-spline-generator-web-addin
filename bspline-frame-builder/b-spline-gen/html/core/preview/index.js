@@ -28,6 +28,7 @@
  */
 
 import { dbg } from '../debug.js';
+import { fusLog } from '../fusion-bridge.js';
 import { sanitizeSvgForRaster, prepareSvgForRaster, renderSvgNative } from '../stamp/render-svg.js';
 import { ViewCube } from './view-cube.js';
 import { GroundGrid } from './ground-grid.js';
@@ -169,7 +170,7 @@ export class TerrainPreview {
       const topColours = liveBrushColours || (useMeshColours ? meshColours : null);
       if (liveBrushColours) dbg('VertexColor', 'liveBrushColours sample:', Array.from(liveBrushColours.slice(0, 12)));
       this._mesh = buildSolidMesh(THREE, pos, offsetPts, nx, nz, {
-        topColours, botColours, flatShading,
+        topColours, botColours, flatShading, topUvs: field.uvs,
       });
       this._mesh.visible = !this._curvesVisible;
       this._scene.add(this._mesh);
@@ -216,11 +217,15 @@ export class TerrainPreview {
     this._sculpt.reapplySelection(heights, nx, nz, W, H);
     this._leaders.setData(this._worstPts, this._showLeaders);
 
-    // SE11: a fresh mesh/material was just built above — re-apply the
-    // drape texture (if any) the same way the thicken heat-map's own
-    // colours are carried across a rebuild via meshColours, above.
+    // SE11b: a fresh mesh/material was just built above — re-apply the
+    // drape texture (if any) as an emissiveMap (see setDrapeTexture's own
+    // comment for why emissive, not map), the same way the thicken
+    // heat-map's own colours are carried across a rebuild via
+    // meshColours, above. A fresh material's own `emissive` already
+    // defaults to black, so there's no "clear" case to handle here.
     if (this._drapeTexture && this._mesh) {
-      this._mesh.material.map = this._drapeTexture;
+      this._mesh.material.emissiveMap = this._drapeTexture;
+      this._mesh.material.emissive.set(0xffffff);
       this._mesh.material.needsUpdate = true;
     }
 
@@ -264,38 +269,77 @@ export class TerrainPreview {
   }
 
   /**
-   * SE11: rasterize a drape SVG string (drape-svg.js's buildDrapeSvg
+   * SE11b: rasterize a drape SVG string (drape-svg.js's buildDrapeSvg
    * output — board-sized viewBox, only the qualifying coloured elements)
    * into a THREE.CanvasTexture. Same native SVG render path the stamp
    * rasterizer uses (renderSvgNative: Blob → <img> → drawImage — real
-   * fonts/strokes, no canvg quirks), composited onto an OPAQUE WHITE
-   * background rather than used transparent: MeshPhongMaterial multiplies
-   * `map` texel × vertexColor/material.color, so white (1,1,1) leaves an
-   * unpainted pixel's terrain shading unchanged, while a real colour
-   * tints it — a transparent texel would instead alpha-blend against
-   * whatever's behind the mesh in the framebuffer, not the terrain's own
-   * colour at that point. Returns null on an empty/failed render — the
+   * fonts/strokes, no canvg quirks), composited onto an OPAQUE BLACK
+   * background for use as an EMISSIVE map (setDrapeTexture below), not a
+   * diffuse `map`.
+   *
+   * SE11 originally used `material.map` on a white background, reasoning
+   * that MeshPhongMaterial multiplies map × vertexColor/material.color so
+   * white (1,1,1) would leave an unpainted pixel's terrain shading
+   * unchanged. That's true ONLY when vertexColors is off (this repo's own
+   * headless smoke test, which has no thicken/sculpt data). A real Fusion
+   * session's carved board DOES have vertex colors active (confirmed live,
+   * b_spline_gen_log.txt: "vertexColors=true"), and the carve grooves —
+   * exactly where a drawn line sits — are the darkest vertices on the
+   * mesh: red × near-black vertex colour ≈ still near-black, so the drape
+   * rendered but was invisible. `emissiveMap` is ADDED to the lit result,
+   * not multiplied into it, so it stays visible regardless of the
+   * underlying vertexColors/shading/groove-darkness — black (0,0,0) here
+   * adds nothing (unpainted areas untouched), a real colour adds exactly
+   * that colour on top. Returns null on an empty/failed render — the
    * caller passes that straight to setDrapeTexture(null) to clear it.
    */
   async buildDrapeTexture(svgString, w, h) {
     if (!svgString) return null;
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
+    // willReadFrequently: true — matches core/stamp/index.js's own
+    // stampCtx creation exactly (the SAME renderSvgNative call already
+    // proven working in Fusion's embedded browser for the stamp path);
+    // not proven necessary here, but this is the one concrete difference
+    // from a known-working call site, so matching it removes it as a
+    // variable rather than leaving an unmatched, unexplained gap.
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
     const scratch = document.createElement('canvas');
     scratch.width = w; scratch.height = h;
-    const scratchCtx = scratch.getContext('2d');
+    const scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
     if (!scratchCtx) return null;
     try {
       const safe = prepareSvgForRaster(sanitizeSvgForRaster(svgString), w, h);
       await renderSvgNative(scratchCtx, safe, w, h);
     } catch (e) {
+      const msg = 'renderSvgNative failed: ' + (e && e.message ? e.message : e);
       console.warn('[TerrainPreview] drape render failed:', e);
+      dbg('DRAPE', msg);
+      try { fusLog('[DRAPE] ' + msg); } catch (_) {}
       return null;
+    }
+    // SE11b diagnostic: prove the scratch canvas actually has real
+    // content BEFORE compositing, so a blank/failed render (this exact
+    // symptom: emissiveMapSet=true in the log, yet no colour visible on
+    // the mesh) is distinguishable from "rendered fine, something else
+    // is wrong downstream" instead of guessed at.
+    try {
+      const probe = scratchCtx.getImageData(0, 0, w, h).data;
+      let nonBlack = 0;
+      for (let i = 0; i < probe.length; i += 4) {
+        if (probe[i] > 10 || probe[i + 1] > 10 || probe[i + 2] > 10) nonBlack++;
+      }
+      const msg = `scratch canvas after render: ${nonBlack}/${probe.length / 4} non-black px`;
+      dbg('DRAPE', msg);
+      try { fusLog('[DRAPE] ' + msg); } catch (_) {}
+    } catch (e) {
+      const msg = 'scratch probe failed: ' + (e && e.message ? e.message : e);
+      dbg('DRAPE', msg);
+      try { fusLog('[DRAPE] ' + msg); } catch (_) {}
     }
     ctx.drawImage(scratch, 0, 0);
 
@@ -312,16 +356,25 @@ export class TerrainPreview {
   }
 
   /** Apply (or clear, with null) the drape texture on the top surface's
-   *  material. Disposes the previous texture — buildDrapeTexture makes a
-   *  fresh CanvasTexture on every refresh, so without this every edit
-   *  would leak one GPU texture. */
+   *  material, as an EMISSIVE map (see buildDrapeTexture's own comment —
+   *  additive, so it survives dark carve-groove vertex colours instead of
+   *  vanishing into them). `emissiveMap` only contributes light where
+   *  `emissive` is non-black, so that has to move in lockstep with the
+   *  map: white while a texture is set (lets the map's own colour through
+   *  unscaled), black when cleared (an emissive map with a black
+   *  multiplier would otherwise still tint nothing, but leaving `emissive`
+   *  white with NO map would wash the whole mesh out white). Disposes the
+   *  previous texture — buildDrapeTexture makes a fresh CanvasTexture on
+   *  every refresh, so without this every edit would leak one GPU
+   *  texture. */
   setDrapeTexture(texture) {
     if (this._drapeTexture && this._drapeTexture !== texture) {
       this._drapeTexture.dispose();
     }
     this._drapeTexture = texture || null;
     if (this._mesh && this._mesh.material) {
-      this._mesh.material.map = this._drapeTexture;
+      this._mesh.material.emissiveMap = this._drapeTexture;
+      this._mesh.material.emissive.set(this._drapeTexture ? 0xffffff : 0x000000);
       this._mesh.material.needsUpdate = true;
       this._needsRender = true;
     }

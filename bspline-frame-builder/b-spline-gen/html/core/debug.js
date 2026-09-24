@@ -11,14 +11,20 @@
  *
  * Categories used in code: TEXT-DBG, COORD_STD, EXPAND, STAMP DEBUG,
  * VertexColor, ERASER, EXPAND-COMMIT, EXPAND-SHAPE, EXPAND-ORCH,
- * EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER, PERF. The category prefix is
- * preserved in the output so log greps still work.
+ * EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER, PERF, DRAPE. The category
+ * prefix is preserved in the output so log greps still work.
  *
  * PERF (SE8b-2): per-step timing for editor._onChange's change pipeline
  * (main/app-init.js's runChangePipeline) — off by default like every
  * other category; switch it on to see which step (serialize/persist/
  * remask) actually costs what during a drag, in the add-in's log file
  * (fusLog) or the site's own devtools console (this dbg() call).
+ *
+ * DRAPE (SE11b): the 3D-drape pipeline (main/app-init.js's refreshDrape,
+ * core/preview/index.js's buildDrapeTexture) — this category only gates
+ * the dbg() console line; its fusLog line fires unconditionally (like
+ * EDITOR-IO/STAMP-RASTER) so the add-in's log file always shows drape
+ * activity without needing this flag set first.
  */
 
 // SE8c/SA-TEXT-7: default OFF, matching this file's own doc comment

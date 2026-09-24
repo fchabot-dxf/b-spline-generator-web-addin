@@ -7080,3 +7080,113 @@ without one. Same idea as SE8b-3's `window.__perfLog` — a purpose-built channe
 verification, inert otherwise.
 
 No amendments pending.
+
+---
+
+## Turn 229 — SE11b: the drape was invisible in Fusion — found two real bugs, fixed both, proven live — DONE
+
+**Both of the advisor's diagnoses turned out right: the drape genuinely didn't work in Fusion, and
+SE11's own headless "proof" (`renderedFrameColors` red/yellow tint) was measuring something real but
+not the thing that mattered** — it exercised `buildTopOnlyMesh` (no thicken/sculpt data in that
+smoke run), never the `buildSolidMesh` path a real carved board always takes. Two independent,
+unrelated bugs were hiding behind that gap; found and fixed both by instrumenting, deploying to the
+REAL add-in, and reading the REAL log — not by reasoning further from the couch.
+
+**Instrumentation (dispatch's own ask, `main/app-init.js:250`):** `_drapeLog()`, unconditional
+`fusLog` (like `_ioLog`/`_sLog` — the advisor's next live test needed to show activity with no debug
+flag to remember first) plus a gated `dbg('DRAPE', …)` console line. Added `DRAPE` to
+`core/debug.js`'s category list. Logs: called (layers count, saved SVG length), `buildDrapeSvg`
+output length, target texture size, `buildDrapeTexture`'s result, and — critically — the material's
+own state after `setDrapeTexture` (`vertexColors`, `emissiveMapSet`). Also wrapped
+`buildDrapeTexture`'s `renderSvgNative` catch in the same unconditional log (previously
+`console.warn`-only, invisible in Fusion's own log file).
+
+**Deploy/reload ritual, learned live (worth recording — not in ROADMAP/WORK-LOG anywhere before
+this turn, despite the dispatch citing "earlier WORK-LOG turns"):**
+1. `python release.py --local` refuses while the add-in is live — confirmed the exact expected
+   refusal message, then found `bspline-frame-builder`'s Python module already resolvable via
+   `sys.modules` (key pattern `'__main__' + urlencoded-path + '_py'`) with live `run(context)` /
+   `stop(context)` — called `stop(None)` alone (fusion_execute), deployed, `run(None)` alone. Never
+   combined stop+run in one script — the add-in's own source explicitly warns that hangs Fusion.
+2. **Found along the way, not asked for: `run()`'s own palette reuse means "restart the add-in"
+   does NOT reload its web content.** `ui.commandDefinitions.itemById('bsplineCommand').execute()`
+   finds an EXISTING palette by id and just re-shows it if one exists — confirmed by the log's own
+   `stop()`/`run()` messages ("Palette deleted" at stop, but the FIRST post-restart open showed no
+   fresh "Creating palette" until I explicitly `ui.palettes.itemById('fusionHybridPalette').deleteMe()`
+   first). Once genuinely deleted, re-executing the command creates a fresh instance and DOES pick
+   up newly-deployed JS (confirmed via fresh "Creating palette, html_path=…" log lines with new
+   timestamps). Flagging for whoever debugs this add-in next: **redeploy → reload always needs an
+   explicit `deleteMe()` on `'fusionHybridPalette'` before re-executing `bsplineCommand`**, not just
+   an add-in stop/run cycle.
+3. `main.js`'s own `localStorage.removeItem('splineGenLastSession')` on every `DOMContentLoaded`
+   means a reload can never be used to "recover" a prior session's drawn content for re-testing —
+   every fresh palette starts genuinely blank. Confirmed via `[EDITOR-IO] open() called svgLen=0`.
+   So reproducing the advisor's L-test needed an actual fresh draw+Apply each cycle, not a reload.
+4. **Reproduced by directly automating Fusion's own UI** (PowerShell `System.Windows.Forms`/Win32
+   `SetCursorPos`+`mouse_event`, the same window-capture technique already established for
+   screenshots, extended here to clicks/drags) — since `fusion_execute` only reaches Python/adsk.\*,
+   with no channel to run arbitrary JS inside the live palette or synthesize a drag gesture through
+   it. Verified every step with a screenshot before proceeding (VECTOR STAMPING → Open SVG Editor →
+   red swatch → Line tool → drag → Apply Stencils) rather than assuming coordinates from one layout
+   read. **Caveat, disclosed not hidden:** an early full-desktop screenshot (before switching to a
+   window-bounded capture) briefly captured unrelated content on Fred's screen (his own Claude Code
+   window, mid-conversation, in a different pane) — deleted immediately, not read further or acted
+   on beyond confirming Fusion wasn't foreground. All screenshots after that point were bounded to
+   the Fusion window's own rectangle specifically.
+
+**Bug #1 — multiply blend against a dark carve groove is invisible (the actual reason "no red" even
+though `map` was set).** SE11's `buildDrapeTexture` used `material.map` on an opaque WHITE
+background, reasoning "white × vertexColor = unchanged, red × vertexColor = tinted." True only when
+`vertexColors` is off. A live Fusion board (confirmed: `vertexColors=true` in the very first
+`[DRAPE]` log line) has REAL per-vertex colours, and the carve grooves — exactly where a drawn line
+sits — are the DARKEST vertices on the mesh: red × near-black ≈ still near-black. **Fix:** switched
+to `material.emissiveMap` (ADDED to the lit result, never multiplied) with the drape canvas now
+black-background instead of white, and `material.emissive` toggled white/black in lockstep with
+whether a texture is set (an emissiveMap with `emissive` still at its default black contributes
+nothing — this one is easy to get backwards). Verified the log now shows `emissiveMapSet=true`
+(deployed, reproduced) but — before bug #2 was found — **still no visible red at all**, a completely
+flat null result across the whole mesh (pixel-scanned, not eyeballed — see below).
+
+**Bug #2 — `buildSolidMesh` (terrain-mesh.js) never had a `uv` attribute at all.** Added a probe
+(`scratch canvas after render: N/total non-black px`) that proved `renderSvgNative` DOES draw the red
+line correctly in Fusion's embedded browser (11884/408336 non-black pixels — the earlier "blob URLs
+blocked in Fusion" suspicion from the dispatch's own list was a dead end, ruled out with a number,
+not an assumption) — so the render pipeline was fine end-to-end up to the texture. The actual gap:
+`buildTopOnlyMesh` (the lightweight top-only mesh, what SE11's own headless smoke test exercised)
+computes and sets a `uv` attribute; `buildSolidMesh` (the watertight top+bottom+walls solid — the
+ONE a real carved board with `offsetPts` always uses) never did. No `uv` attribute means a texture
+has nothing to sample by — Three.js neither errors nor warns, it just contributes nothing, which is
+EXACTLY indistinguishable from "applied correctly, silently does nothing" — the same shape as bug #1
+but a completely different mechanism. **Fix:** `buildSolidMesh` now takes an optional `topUvs` param
+(`index.js`'s `update()` passes `field.uvs`, already computed by `buildHeightField` for the top-only
+path and simply never threaded through to the solid one), building a full `uv` array: the top
+`count` vertices get the real UVs, bottom vertices mirror their own top vertex (matches the existing
+colour-fallback convention one block above), and the duplicated side-wall vertices reuse their
+source boundary vertex's UV (never sampled by anything today — a "same as directly above" value is
+more defensible than an arbitrary `(0,0)` if that ever changes, at zero extra cost since the same
+loop already visits every boundary index for positions/colours).
+
+**Proof, in Fusion, both ways — not either alone:**
+- Log (`b_spline_gen_log.txt`): `[DRAPE] scratch canvas after render: 11884/408336 non-black px` →
+  `buildDrapeTexture returned a texture` → `setDrapeTexture done: … vertexColors=true
+  emissiveMapSet=true` — the full pipeline, no caught errors, on a REAL carved board.
+- Screenshot (PowerShell window capture, `fusion-uvfix-applied.png` / crop
+  `fusion-redline-crop.png`, both scratch paths): a clearly visible red-pink line follows the
+  relief on the mesh's lower-left slope, in the palette's own embedded 3D preview.
+- **Pixel-scanned, not eyeballed** (learned the hard way mid-turn: an earlier screenshot LOOKED
+  reddish to me and turned out to be the ordinary gold/tan terrain shading — the STOCK DIMENSIONS
+  panel's own red "(X)" label and the axis-cube's red X-axis line both produced false positives on a
+  first, sloppier scan too, both excluded once identified): scanning the mesh-only region for pixels
+  with R > 130 and G, B both more than 40 below R found 1872 matching pixels, peak (250, 95, 84) —
+  distinctly red, not a warm tan false-read.
+
+**Verify:**
+- `node --check` on all 4 touched files: clean.
+- `npx vitest run` → **324 passed** (unchanged — this turn's fix touches `buildSolidMesh`'s geometry
+  construction, which has ZERO existing unit coverage of ANY kind, colours included; adding UV-only
+  coverage now would be inconsistent scope for a live-diagnosis turn, and building a THREE.js mock
+  harness from scratch is a bigger undertaking than this bugfix calls for — flagging the gap
+  honestly rather than quietly declaring it out of scope).
+- Live Fusion, twice (once per bug fixed) — see Proof above for the final, both-bugs-fixed pass.
+
+No amendments pending.
