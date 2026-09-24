@@ -1,66 +1,66 @@
-# NEXT — SE6: snap-to-grid with a faint, customisable grid in the SVG editor (Fred's ask 2026-09-18)
+# NEXT — SE7a: Lattice tool — rails, ties and nodes on the grid, all ordinary SVG elements
 
-**Ball: worker (seat A) · epoch 1 · SE6.** Files: NEW `bspline-frame-builder/b-spline-gen/html/editor/editor-grid.js`,
-`editor/init.js`, `editor/editor.js`, `editor/editor-interaction.js`, `editor/editor-ui.js` (or `editor-controls.js`,
-wherever toolbar groups are wired), `bspline_gen_palette.html` (one new toolbar group), `tests/editor-grid.test.js`
-(+ WORK-LOG). One commit by path, predicted **7–8 files**. Seat B idle; nothing else in flight.
+**Ball: worker (seat A) · epoch 1 · SE7a.** Files: NEW `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js`
+(pure lattice math + the emit helpers), `editor/editor-interaction.js` (one new mode handler), `editor/tools/mode-tools.js`,
+`bspline_gen_palette.html` (one rail button + one toolbar toggle), `tests/editor-lattice.test.js` (+ WORK-LOG). One commit
+by path, predicted **6–7 files**. NOTE: a `.claude/settings.json` permission allowlist now exists in this checkout (git-
+ignored) — if your window was open before today, restart it once so prompts stop.
+
+## What Fred wants (photo: a relief with red horizontal rails, yellow vertical ties spanning 1–3 rows, dark nodes at tie
+ends and crossings). Everything the tool emits must stay EDITABLE with the existing tools, and carve like anything else.
 
 ## Ground truth
-- Snap had a stub (hidden toggle, `_isSnapping`, `_snapSize=2.0`) that nothing could turn on; SE1 removed it and left
-  `_snap(pt)` as an identity pass-through (`editor.js:231`) with its two live callers `handleStart` / `handleMove`
-  (`editor-interaction.js:249,259`). There is no grid drawn anywhere; the dotted area around the board is the
-  container background. The view record + `applyView` (SE2) and `vector-effect` make a zoom-stable grid cheap.
-- Layers: `init.js:14-19` creates `bgLayer / sketchLayer / handleLayer / highlightLayer`; `sync3DBackground`
-  (`editor-io.js:589-603`) rebuilds `_bgLayer` (image + red border) on every board change. Serialization reads
-  `_sketchLayer` only, so a grid layer can never leak into the saved SVG — assert that in WORK-LOG after reading
-  `serializeEditor`.
-- Existing per-viewer preference pattern: `localStorage` in `editor-ui.js:39-49` (expand callout).
+- Grid (SE6): `editor._grid = {visible, snap, spacing}` (inches), `snapToGrid`, `applyGrid`, `GRID_SPACINGS`
+  (`editor/editor-grid.js`). `_snap(pt, bypass)` is applied in `handleStart`/`handleMove` (`editor-interaction.js:249,259`).
+- Drawing modes are a handler table `modeHandlers` (`editor-interaction.js:592-598`) built by `makeDrawingHandler(modeId)`
+  (`:410`) — read it for how a shape is created, gets `data-layer`, stroke width/color (`editor._strokeWidth/_strokeColor`,
+  `editor.js:74-79`), `pushState()` and `_onChange()`. Circle drawing at `:683/:708`.
+- Node tool / transform handles read the pointer through `_getMousePoint` directly (`:84` is the wheel — leave it;
+  `:222` is `handleDblClick`; the node-drag path lives in `editor-transform-handles.js` / the node handler) — those do
+  NOT snap yet (SE6 follow-up a).
 
-## Build — declare the grid once, derive everything from it
-1. **`editor/editor-grid.js` (leaf, no svg.js in the pure parts):**
-   - `export const GRID_DEFAULTS = { visible: false, snap: false, spacing: 0.25 }` (inches; the board is in inches).
-   - `export const GRID_SPACINGS = [0.0625, 0.125, 0.25, 0.5, 1]` — the customisable choices (the select derives
-     its options from this list; no hand-written `<option>`s).
-   - `export function snapToGrid(pt, grid, bypass = false)` → `pt` unchanged when `!grid.snap || bypass`, else each
-     coordinate rounded to the nearest multiple of `grid.spacing`. Pure.
-   - `export function applyGrid(editor)` → clears `editor._gridLayer` and, when `visible`, draws vertical + horizontal
-     lines across the board (0..mW, 0..mH, step `spacing`) with `stroke:#000; stroke-width:1; vector-effect:
-     non-scaling-stroke; opacity:.10`; every whole-inch line at `opacity:.22` (major/minor from ONE loop, the
-     modulo decides). The lines are `pointer-events:none`.
-   - `export function loadGridPrefs()` / `saveGridPrefs(grid)` — localStorage key `bsg.editorGrid`, try/catch, merge
-     over `GRID_DEFAULTS` so a stale key never yields a half-shaped object.
-2. **`init.js`:** add `gridLayer = draw.group().id('grid-layer')` created AFTER bg and BEFORE sketch; return it;
-   `editor._gridLayer` set in `initEditor`. `sync3DBackground` must not clear it (it clears `_bgLayer` only — verify).
-3. **`editor.js`:** `this._grid = loadGridPrefs()`; `_snap(pt, bypass)` → `snapToGrid(pt, this._grid, bypass)`;
-   `setModelMetrics` calls `applyGrid(this)` after the fit (board size changed → redraw); `setGrid(patch)` merges,
-   saves prefs, applies, and returns the new grid (one setter for the toolbar).
-4. **`editor-interaction.js`:** the two `_snap` callers pass `e.altKey` as the bypass (hold Alt to draw off-grid);
-   `handleMove` must not snap while panning (pan branch returns before it — verify order). Snap applies to every mode
-   that goes through those two callers (pen anchors, line, rect, circle, select-drag) — say in WORK-LOG which modes
-   read the pointer elsewhere (node tool / transform handles use `_getMousePoint` directly at :84/:222 — leave those
-   unsnapped this turn, note it).
-5. **Toolbar group** in the modal (`bspline_gen_palette.html`, after `#editorStrokeGroup` :1255): `#editorGridGroup`
-   with a "GRID" label like the others, two segmented toggles reusing T4's declared `.editor-fillmode-btn` class
-   (`#editorGridShow` "SHOW", `#editorGridSnap` "SNAP"; `.active` reflects state) and `<select id="editorGridSpacing">`
-   populated from `GRID_SPACINGS` at bind time (labels like `1/4"`; declare the label format in one helper).
-   Wire clicks in the same module that wires the stroke group; each handler = `editor.setGrid({...})` + toggle
-   `.active`. Add `data-key="g"` to `#editorGridShow` so the SE1 lookup gives `G` = toggle grid for free; `title="Show
-   grid (G)"`.
-6. Zoom: the grid is drawn in model units, so `applyView` leaves it consistent; `non-scaling-stroke` keeps it 1 px.
-   Confirm the modal's editor `<svg>` is not styled with `shape-rendering` that blurs 1 px lines; if lines look
-   soft, add `shape-rendering: crispEdges` to the grid lines only.
+## Build — declare the lattice, emit plain elements
+1. **`editor/editor-lattice.js` (leaf):**
+   - `export const LATTICE_DEFAULTS = { autoNodes: true, nodeRadiusFactor: 0.2 }` (node radius = factor × spacing);
+     `export const LATTICE_ATTR = 'data-lattice'` with values `'rail' | 'tie' | 'node'`.
+   - `toLattice(pt, spacing)` → `{i, j}` integer lattice coords (round); `fromLattice({i,j}, spacing)` → `{x,y}`.
+   - `classifyDrag(a, b)` (both lattice coords) → `'node'` when equal, `'rail'` when |di| ≥ |dj|, else `'tie'`;
+     `constrain(a, b)` → the end point projected onto the dominant axis (so a rail is exactly horizontal, a tie
+     exactly vertical). Pure, tested.
+   - `latticeCrossings(seg, segs)` → lattice points where an axis-aligned segment crosses others of the OTHER kind
+     (rail × tie only), plus its own two endpoints. Pure, tested.
+   - `emitSegment(editor, kind, a, b)` → `<line>` with `data-lattice=kind`, current stroke width/color, `data-layer` via
+     the same path makeDrawingHandler uses; `emitNode(editor, p)` → `<circle>` (filled, `data-lattice="node"`,
+     r = `nodeRadiusFactor × spacing`) unless a node already sits at that lattice point (dedupe by lattice coords —
+     `findNodeAt(editor, p)`); `removeNode(editor, p)`.
+2. **Mode `lattice`** in the handler table: `start` snaps to the lattice ALWAYS (independent of the SNAP toggle —
+   the lattice tool is the grid; use `toLattice/fromLattice` directly, not `_snap`), remembers `a`; `update` draws a
+   preview line from `a` to `constrain(a, cursor)` (reuse the drawing-preview element the other modes use);
+   `end`: `classifyDrag` → node: toggle (`findNodeAt` ? `removeNode` : `emitNode`); rail/tie: `emitSegment`, then if
+   `editor._lattice.autoNodes` → `emitNode` at each of `latticeCrossings(newSeg, existing lattice segments)`.
+   ONE `pushState()` + ONE `_onChange()` per gesture (not per emitted element) — check how makeDrawingHandler batches.
+   `editor._lattice = { ...LATTICE_DEFAULTS }` in the constructor. If the grid is not visible when the tool is
+   picked, turn it on (`setGrid({visible:true})`) — the lattice is meaningless invisible.
+3. **UI:** rail button after Circle: `<button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row =
+   rail, along a column = tie, click = node" data-key="k">` (icon: a small ⌗). Toolbar: an `AUTO NODES` toggle button
+   in the GRID group (same `.editor-fillmode-btn` class, `.active` = on) that flips `editor._lattice.autoNodes`; show
+   it only in lattice mode via `updateToolbarVisibility` like the Font group.
+4. **Node-tool snap (SE6 follow-up a):** route the node-drag pointer read through `editor._snap(pt, e.altKey)` so
+   node edits honour SNAP like everything else. Transform handles stay as they are (scaling on-grid is a different
+   feature; say so in WORK-LOG).
 
 ## Verify
-- `tests/editor-grid.test.js`: `snapToGrid` off → identity; on → nearest multiple for both axes (incl. a negative
-  coordinate); bypass → identity; `loadGridPrefs` merges a partial stored object over `GRID_DEFAULTS` (mock
-  localStorage or inject a storage object — export the pure merge if that is simpler).
-- `npx vitest run` → 64 + new, green; `node --check` touched modules + extracted palette scripts.
-- Greps: `_snapSize|_isSnapping` → 0; `GRID_SPACINGS` → definition + the select population; `grid-layer` → 1;
-  `data-key=` → 10.
-- Live (advisor): grid visible at 1/4", major lines at inches, stays 1 px at 8x zoom; pen anchors land on
-  intersections with SNAP on; Alt draws off-grid; prefs survive a reopen; saved SVG has no grid lines.
+- `tests/editor-lattice.test.js`: `toLattice/fromLattice` round-trip; `classifyDrag` (node / rail / tie, incl. a
+  diagonal drag resolving to the dominant axis); `constrain` keeps the dominant coordinate and snaps the other;
+  `latticeCrossings` for a tie crossing two rails → 2 crossings + 2 endpoints, no duplicates. ≥ 6 tests.
+- `npx vitest run` → 79 + new, green; `node --check` touched modules + extracted palette scripts.
+- Greps: `data-key=` → 11; `data-lattice` → only in editor-lattice.js + the handler; `modeHandlers` has `lattice:`.
+- Serialization: lattice elements are plain `<line>/<circle>` with an extra data attribute — confirm `serializeEditor`
+  keeps data-* (it keeps `data-layer`) and that `getLayerSvg` still rasterizes them (a `<circle>` with fill → a dot).
+- Live (advisor): draw two rails, three ties, watch auto nodes appear at ends and crossings; click a node → gone;
+  select + move a tie with SNAP on → lands on lattice points; Apply → three kinds carve.
 
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE6: declared grid (GRID_DEFAULTS/GRID_SPACINGS), snapToGrid + Alt bypass, grid layer, toolbar group, prefs — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7a: lattice mode (rail/tie/node), auto-nodes, node-tool snap — <sha>, N files, vitest N"`
 and stop.
