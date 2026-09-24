@@ -19,9 +19,15 @@
  *
  * editor._activeLayer is the id of the active (editable) layer.
  *
- * Compatibility: a hidden <select id="editorLayerSelect"> is kept in sync
- * for legacy callers (editor-ui.js, editor-text-session.js, editor-io.js)
- * that still read/write .value. Migrating those is task 2.
+ * Compatibility (SA-DEAD-6, corrected): a hidden <select
+ * id="editorLayerSelect"> is kept in sync (`_syncLegacySelect` below) —
+ * checked directly, no read/write of it remains in editor-ui.js,
+ * editor-text-session.js, or editor-io.js today (editor-ui.js reaches
+ * the active layer through `_setActiveLayer` instead; see its own
+ * comment at editor-ui.js:356-359). The shim is self-contained inside
+ * this file now. Kept rather than removed because an external
+ * (Fusion-side/devtools) consumer of `#editorLayerSelect`'s `.value`/
+ * `.options` can't be ruled out from this repo alone.
  */
 import { el, on } from './dom.js';
 

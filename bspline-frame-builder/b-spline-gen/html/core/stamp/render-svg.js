@@ -8,20 +8,19 @@
  * override) needed to make the SVG safe to rasterize.
  */
 import { stripSvgjsAttributes } from '../svg-utils.js';
+import { FONT_MAP } from '../../editor/editor-fonts.js';
 
-const KNOWN_FONTS = [
-    // Sans-serif
-    "Arial", "Tahoma", "Verdana", "Bahnschrift", "Impact",
-    // Serif
-    "Georgia", "Times New Roman",
-    // Monospace
-    "Courier New", "Cascadia Code", "Cascadia Mono",
-    // Symbol / icon fonts
-    "Marlett", "Symbol", "Webdings", "Wingdings",
-    "Segoe UI Symbol", "Segoe MDL2 Assets", "Segoe Fluent Icons", "Segoe UI Emoji",
-    // CSS generic families (fallback)
-    "serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui",
-];
+// SA-TEXT-6: derived from FONT_MAP (editor/editor-fonts.js) — the
+// declared single source of truth for every bundled font — instead of
+// hand-typing a second copy of the same 18 names. FONT_MAP's own header
+// already claims "adding a new symbol font is a one-line change here...
+// the opentype path, the on-screen keyboard, and the runtime self-test
+// all pick it up" — this makes that claim actually true for the
+// rasterizer's substitution fallback too. GENERIC_CSS_FAMILIES stays
+// separate and local: these are CSS-universal fallback keywords with no
+// bundled .ttf, not "editor fonts" in FONT_MAP's own sense.
+const GENERIC_CSS_FAMILIES = ["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"];
+export const KNOWN_FONTS = [...Object.keys(FONT_MAP), ...GENERIC_CSS_FAMILIES];
 
 /**
  * Sanitize an editor-produced SVG before rasterization:

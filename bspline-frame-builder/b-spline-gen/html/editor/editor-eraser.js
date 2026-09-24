@@ -36,15 +36,18 @@ import {
 import { applyLayerState } from './layers.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { transformPoint } from './editor-coords.js';
+import { dbg } from '../core/debug.js';
 
 const PREVIEW_STROKE = '#ff3b30';     // iOS red — visually distinct from the pen tool
 const PREVIEW_OPACITY = 0.55;
 const SAMPLE_STEP_IN_MODEL = 0.04;    // ~25 samples per inch — fine enough for most shapes
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate (core/debug.js)
+// instead of hand-rolling window.__editorDebug === 'ERASER' — same
+// pattern editor.js's _undoLog / editor-interaction.js's _strokeLog
+// already used correctly.
 function _eLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'ERASER') {
-        try { console.log('[ERASER] ' + msg); } catch (_) {}
-    }
+    dbg('ERASER', msg);
     try { fusLog('[ERASER] ' + msg); } catch (_) {}
 }
 

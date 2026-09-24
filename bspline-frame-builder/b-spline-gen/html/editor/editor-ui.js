@@ -111,13 +111,12 @@ export function setMode(editor, mode) {
     // Update active class on buttons
     const btns = queryAll('.editor-sidebar .tool-btn');
     btns.forEach(btn => {
+        // SA-DEAD-7: the 3 "special case" branches this generic toggle used
+        // to be followed by (draw/select/node) were provably redundant —
+        // each one only ever ran `.add('active')` in the exact case this
+        // toggle had already just set true. Removed; nothing else in this
+        // loop depended on them.
         btn.classList.toggle('active', btn.id === `tool${mode.charAt(0).toUpperCase() + mode.slice(1)}`);
-        // Special case for Draw mode (toolDraw)
-        if (mode === 'draw' && btn.id === 'toolDraw') btn.classList.add('active');
-        // Special case for Select mode (toolSelect)
-        if (mode === 'select' && btn.id === 'toolSelect') btn.classList.add('active');
-        // Special case for Node mode (toolNode)
-        if (mode === 'node' && btn.id === 'toolNode') btn.classList.add('active');
     });
 
     const container = getEl('editorSVGContainer');
@@ -182,20 +181,19 @@ export function updateToolbarVisibility(editor, mode, el) {
         snapBtn.classList.toggle('disabled', policy === 'none' || policy === 'always');
     }
 
-    const selectPanel = getEl('editorSelectPanel');
-    
-    // Selection details logic
-    if (selectPanel) {
-        const hasSelection = el || (editor._selectedNodes && editor._selectedNodes.length > 0);
-        selectPanel.classList.toggle('hidden', !hasSelection);
-    }
+    // SA-DEAD-4: `#editorSelectPanel`'s "selection details" lookup/toggle
+    // removed — the id doesn't exist in the palette markup (a documented
+    // prior cleanup, properties-panels.js's own header comment, already
+    // dropped it); this was a second, later reference to the same
+    // already-removed id, provably a no-op every time.
 
-    // Auto-hide symbol keyboard if leaving text mode (but keep it open when using the text tool)
-    const symbolPanel = getEl('editorSymbolKeyboard');
-    if (symbolPanel && !isTextMode && symbolPanel.classList.contains('hidden') === false) {
-        // Only hide if we explicitly click a non-text tool button
-        // (Managed in tool click listeners, but we keep this as a fallback)
-    }
+    // SA-DEAD-8: the symbol-keyboard auto-hide block here computed a real
+    // condition and did nothing with it (empty body — its own comment
+    // said the real logic lived in "tool click listeners", but neither
+    // tools/mode-tools.js nor tools/action-tools.js ever touched this
+    // panel). Removed rather than resurrected; if the described
+    // auto-hide-on-non-text-tool behavior is wanted, it needs real code,
+    // not this empty shell.
 
     const expandBtn = getEl('toolExpand');
     // Ensure Expand tool is always visible in the new Native CAD layout

@@ -7,11 +7,12 @@ import { expandText } from './editor-expand-text.js';
 import { expandShape } from './editor-expand-shape.js';
 import { expandTrace } from './editor-expand-trace.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { dbg } from '../core/debug.js';
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
+// hand-rolling window.__editorDebug === 'EXPAND-ORCH'.
 function _oLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-ORCH') {
-        try { console.log('[EXPAND-ORCH] ' + msg); } catch (_) {}
-    }
+    dbg('EXPAND-ORCH', msg);
     try { fusLog('[EXPAND-ORCH] ' + msg); } catch (_) {}
 }
 

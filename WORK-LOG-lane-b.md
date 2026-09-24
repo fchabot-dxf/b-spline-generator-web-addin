@@ -1480,3 +1480,328 @@ and corrected 3 stale line numbers from my own T12 audit (dragNode/translateSele
 moved since SE7n/SE8a landed) before they went into the doc.
 
 No gate hit — design-doc-only turn, no product code or tests touched.
+
+---
+
+## Lane B — Turn 51 — T18: SE7b slice 1 — pure computePattern (anchor rails|free, occupied) — DONE, product code
+
+Built slice 1 of my own SE7B-PATTERN-GENERATOR-DESIGN.md (89a48b4), plus the advisor's rulings on Q1
+(ties.anchor: 'rails'|'free', data not code) and Q3 (occupied param accepted now, real detection logic
+deferred to slice 2). Did not touch editor-lattice.js or any of seat A's SE8b files.
+
+- core/terrain.js: exported lcgPoints (one line) with a comment explaining why — the RNG reuse the
+  dispatch and my own design doc both called for, not a new one.
+- New editor/editor-lattice-pattern.js: computePattern(PATTERN, {extent, occupied}) -> {segments,
+  nodePoints}, entirely in LATTICE coordinates. Reuses toLattice/fromLattice/constrain/latticeCrossings
+  (imported from editor-lattice.js, not reimplemented) and lcgPoints (imported from core/terrain.js).
+  Made a deliberate, disclosed refinement over the design doc's own ambiguous segments[].a/b sketch:
+  kept segments AND nodePoints in one coordinate system throughout, so this module never needs spacing
+  for its own output shape — only slice 2's DOM-touching layer calls fromLattice, right before handing
+  points to emitSegment/emitNode (which need model-space).
+- Per-column RNG draws use a column-derived sub-seed (seed XOR a per-column constant), mirroring
+  terrain.js's own noiseFine/noiseWarp/noiseCoarse XOR-derivation idiom directly rather than inventing a
+  new randomness convention — and it buys a real property the design doc didn't originally ask for but
+  is worth stating: each column's tie decision is independent of how many OTHER columns exist, so
+  widening the extent can't retroactively change an already-decided column's tie.
+- ties.anchor implemented both ways per the ruling: 'rails' (default) picks a start rail row then a
+  valid end rail row within spanMin..spanMax lattice rows of it (skip the column if no candidate rail
+  pair fits that gap); 'free' picks any start row + span length within the extent, no rail requirement.
+- nodes.crossings reuses latticeCrossings rail-by-rail against the generated ties — caught my own bug
+  before it shipped by actually running the tests: latticeCrossings returns a segment's OWN two
+  endpoints alongside real crossings (its own documented behavior, editor-lattice.js:72), and since I
+  passed each RAIL as the seg being tested, that meant every rail was growing a spurious node at its own
+  left/right board-edge endpoint, not just at real tie crossings. Added an explicit exclude-the-rail's-
+  own-endpoints filter. Confirmed the bug and the fix are both real by writing a test for it (see below).
+- occupied: implemented as opts.occupied?.has("i,j,kind") checked against each element's IDENTITY point
+  (rail: its start; tie: its start; node: itself) — a slice-1 convention I named explicitly in the code's
+  own doc comment as open to refinement once slice 2/3 write the real DOM-based occupied-set builder,
+  not presented as a finished design.
+
+**Caught and fixed my own design doc's imprecision during implementation, didn't ship the mismatch
+silently:** the design doc's own §6 test list said "ties.columns explicit list bypasses lcgPoints
+entirely (no seed dependency when hand-picked)." Implementing it, that's the wrong behavior — hand-
+picking WHICH columns get a tie is a separate decision from how long each one is; there's no reason a
+seed reroll shouldn't still vary a hand-picked tie's span. Implemented column-selection as seed-
+independent (forced bypasses only the density gate) but span/position still legitimately draws from the
+seed for those columns, and wrote the test to assert the CORRECTED behavior with an explicit comment
+citing the design doc's original wording and why it changed — rather than either quietly deviating from
+my own doc or forcing the implementation into what I'd written imprecisely three turns ago.
+
+**Two real bugs caught by writing and RUNNING the tests, not by inspection alone** (both confirmed via
+mutation: reintroduced each, watched the exact intended test fail, restored, watched it pass again):
+1. every<=0 degenerate guard — my own code comment said "no rails rather than ... silently reinterpreting
+   it as every row," but the code I actually wrote did exactly the fallback the comment disclaimed
+   (`every>0?every:1`, i.e. "every row" when every<=0). Fixed to match the STATED intent (return false
+   outright when every<=0) rather than editing the comment to match the wrong code.
+2. The crossings-endpoint-exclusion bug described above.
+3. A third test (seed-dependence of a hand-picked column's span, using the DEFAULT 'rails' anchor +
+   every:2/spanMin:1/spanMax:3) initially failed not because of a code bug but because those specific
+   defaults leave exactly ONE valid rail-pair candidate almost always (rails 2 apart, span window 1-3
+   only ever admits the very next rail), making the span deterministic regardless of seed as a genuine
+   consequence of that combination, not a bug. Fixed the TEST (switched to anchor:'free' with a wider
+   span window, where the claim being tested — "span legitimately varies with seed" — isn't confounded
+   by a near-forced-unique-candidate artifact), documented why in the test's own comment, left the
+   product code untouched since it wasn't wrong.
+
+**Full suite:** npx vitest run -> 162 passed (18 files), up from 145. node --check on both modules: clean.
+
+**Verify:** git status --short -> exactly 3 files (core/terrain.js, editor/editor-lattice-pattern.js new,
+tests/editor-lattice-pattern.test.js new) + this WORK-LOG entry, matching the dispatch's prediction.
+editor-lattice.js and every seat-A SE8b file (editor-hit.js, editor-expand-trace.js, editor-interaction.js,
+editor.js, editor-io.js, editor-coords.js) confirmed untouched.
+
+No gate hit — stayed exactly within slice 1's pure-function scope; the occupied-detection LOGIC (querying
+live DOM for detached elements) is explicitly slice 2/3 work, not started here.
+
+---
+
+## Lane B — Turn 53 — T19: SE7b slice 2 — generatePattern, 3 layers, ownership + occupied skip, persisted — DONE
+
+Built slice 2 of SE7B-PATTERN-GENERATOR-DESIGN.md §5, per this turn's dispatch (occupied-cell skip
+pulled forward into this slice, per the advisor's own T18 ruling). Files: editor/editor-lattice-pattern.js,
+editor/editor-io.js, tests/editor-lattice-pattern-emit.test.js — exactly the 3 predicted. Did not touch
+editor-lattice.js or any seat-A SE7s file (editor-transform-handles.js, editor-interaction.js,
+handle-edit.js) — confirmed via git status after the fact.
+
+- generatePattern(editor, PATTERN) added below computePattern in the SAME file, matching
+  editor-lattice.js's own established convention of one file, pure math above a divider, DOM-touching
+  code below it (cited that file's own header comment as the precedent, not a new split invented here).
+- Extent resolution (_resolveExtent) derives lattice bounds from editor._mW/_mH for 'board' mode; also
+  honors 'rect' mode directly since the design doc's own PATTERN shape already stores it in the
+  resolved-bounds form — supporting both cost nothing extra once one was built.
+- Occupied-set collection (_collectOccupied) walks every data-lattice element lacking the ownership tag
+  and adds ITS WORLD-space identity point(s) via worldPoint (imported from editor-coords.js) — "moved
+  elements count where they ARE," per the dispatch's literal wording. For a detached line (rail/tie),
+  added BOTH endpoints to occupied, not just one — a disclosed widening beyond slice 1's own "start point
+  only" convention, reasoned through in the code's own comment: a dragged/rotated segment's original
+  "start" isn't necessarily meaningful any more, so blocking both ends is the more conservative,
+  defensible choice.
+- _ensurePatternLayers creates the 3 layers (LATTICE_LAYER_DEFAULTS: rails/ties both V-bit, ties
+  shallower; nodes ballnose — Fred tunes live later, per the design doc's own Q2 note) with
+  {skipUndo:true}, reused by id (not name) across Regenerate so a user rename doesn't force a duplicate.
+- generatePattern's own sequence: collect occupied -> remove owned -> computePattern -> ensure layers ->
+  emit via setActiveLayer + emitSegment/emitNode (reused as-is, not reimplemented) + tag ownership -> ONE
+  pushState() + ONE editor._notifyChange('commit') (the SE8b-declared API, not raw _onChange — the
+  dispatch's own correction from T18's plan, since SE8b landed the throttled/committed distinction in
+  the meantime; used the declared thing rather than reaching past it).
+- editor-io.js: _serializeLatticePatternAttr added right after _serializeLayersAttr, wired at the
+  identical 3 save call sites (save/saveForRasterization/saveWithTextCopies) via the same
+  layersAttrStr-pattern replace_all across all 3 (verified textually identical before using replace_all,
+  not assumed). open() reads data-lattice-pattern at the same point data-editor-layers is read (BEFORE
+  innerHTML injection, same reason: root attrs are gone after), and resets editor._latticePattern = null
+  in the same session-reset block that already clears _layers/_activeLayer/_undoStack, so a fresh/
+  different session never carries a stale pattern reference.
+
+**Wrote a lightweight in-memory sketch-layer mock for the emit tests**, extending
+tests/editor-lattice.test.js's own established mockSketchLayer/mockEditorForEmit shape (chainable
+.line()/.circle()/.center()/.fill()/.stroke()/.attr()) rather than inventing a new mocking convention.
+Hit and fixed one real mock bug while writing it: `.attr(k, undefined)` (my own simulated "strip this
+attribute" call, standing in for the future handleEnd detach hook) was being treated as a GETTER call
+(`v === undefined` matched the getter branch), so the simulated detach silently did nothing and two
+tests failed for the wrong reason (looked like a product bug, was actually a mock bug) — fixed by
+checking `arguments.length`/rest-param length instead of the value, so a setter call with an explicit
+undefined/null argument is distinguished from a bare getter call.
+
+**Proved non-vacuous on all 3 of the turn's real behavioral guarantees, not just the new lines existing**
+(each: mutate, watch the SPECIFIC intended test fail, restore, watch it pass again):
+1. Disabled _collectOccupied (return empty Set unconditionally) — the dispatch's own named verify
+   criterion ("a detached tie at column 5 -> Regenerate does NOT emit a new tie at column 5") failed
+   exactly as expected (2 ties where 1 was wanted).
+2. Made owned-removal indiscriminate (strip every data-lattice element, not just this PATTERN.id's) —
+   both the "detached element untouched" test and the SA-LAYER-1-style guard failed, for the right
+   reason (the detached tie was removed, then silently replaced by a fresh generated one).
+3. Removed latticePatternAttrStr from save()'s one call site — both new persistence tests failed exactly
+   as expected (attribute absent, DOMParser round-trip found nothing to parse).
+
+**Persistence testing scope, disclosed rather than silently left incomplete:** tested save()'s write side
+directly (mockSaveEditor, same minimal shape tests/b6-hidden-layer-save.test.js already established —
+save() only needs _draw/_sketchLayer.node.innerHTML/_mW/_mH/_layers/_activeLayer) and the actual
+encode/decode CONTRACT via a real DOMParser round trip (construct via save(), parse the result, confirm
+getAttribute+JSON.parse recovers the identical PATTERN object) — this is the part that was actually worth
+proving (the entity-escaping is correct both directions). Did NOT build a full open()-level integration
+test: open() is an 80+-line function touching setModelMetrics/sync3DBackground/resetPanState/
+_deselect/layer-reconciliation, and grepped — no existing test in this suite exercises open() end-to-end
+at all (the heaviest existing mocks stop at save()/getLayerSvg()/saveForRasterization()). Building that
+scaffold fresh was a bigger lift than this slice's scope, and the piece it would additionally prove (that
+open()'s own orchestration doesn't drop the value between the read and the assignment) is a 2-line,
+low-risk block adjacent to and modeled directly on the already-tested data-editor-layers read — named
+here rather than silently skipped.
+
+**Full suite:** npx vitest run -> 192 passed (21 files), up from 189 (13 new: 10 generatePattern + 3
+persistence). node --check on both modules: clean.
+
+**Verify:** git status --short -> exactly 3 files (editor-lattice-pattern.js, editor-io.js,
+tests/editor-lattice-pattern-emit.test.js) + this WORK-LOG entry; grep confirmed no seat-A SE7s file
+(editor-transform-handles.js, editor-interaction.js, handle-edit.js) appears in the diff.
+
+No gate hit — stayed within slice 2's exact scope. Slice 3 (the handleEnd detach hook + panel UI) is
+next, per the design doc's own ordering.
+
+**Note for slice 3 (recorded now per this turn's dispatch, not fixed here):** generatePattern (T19)
+calls setActiveLayer 3 times in sequence (Rails, then Ties, then Nodes) while emitting each kind — the
+LAST call wins, so after any Generate/Regenerate the active layer is silently left on "Nodes" regardless
+of whatever layer the user had active beforehand. Not fixed in T19's scope (pure emission), flagged here
+for slice 3 to restore the pre-Generate active layer (capture `editor._activeLayer` before the emit
+loop, `setActiveLayer` back to it at the end, after the 3 layers are ensured but content is emitted).
+
+---
+
+## Lane B — Turn 55 — T20: SE8c part 1 — dead-code chains + debug/font declarations — DONE
+
+Built T20 exactly per the dispatch: SA-DEAD-1..8, SA-TEXT-5/6/7, entirely outside seat A's off-limits
+files (editor-interaction.js, editor-transform-handles.js, editor.js, handle-edit.js — confirmed via
+`git status --short` after the fact, none appear). Re-verified every claim against CURRENT code before
+touching anything, not against T12's audit text — several line numbers had shifted since SE7a/SE7n/
+SE8a/SE8b landed, though every underlying finding itself was still accurate.
+
+### SA-DEAD-1 — 8 hand-rolled `window.__editorDebug === 'X'` gates → the declared `dbg()` gate
+
+Re-grepped fresh (not trusted from memory): confirmed **8** sites, not 7 — `core/stamp/index.js:80`
+(`STAMP-RASTER`) plus the 7 `editor/*.js` files T12's audit found. All 8 outside the off-limits list.
+Converted each `_xLog(msg)` helper's `if (typeof window !== 'undefined' && window.__editorDebug ===
+'X') { try { console.log(...) } catch(_) {} }` body to `dbg('X', msg);` (importing `dbg` from
+`core/debug.js`), keeping each file's separate always-on `fusLog(...)` call untouched (that's a
+deliberate, unrelated behavior — logs to the Fusion log file regardless of the debug flag — not part of
+the dead-pattern this item targets). `core/stamp/index.js` already imported `dbg` (used elsewhere in the
+same file for the DIFFERENT `'STAMP DEBUG'` category) — reused that import rather than adding a second
+one.
+Updated `core/debug.js`'s own doc-comment category list to add the 7 new names (ERASER, EXPAND-COMMIT,
+EXPAND-SHAPE, EXPAND-ORCH, EDITOR-IO, PERFORM-EXPAND, STAMP-RASTER — EXPAND-SHAPE covers both
+editor-expand-shape.js and editor-expand-union.js, which both already gated on that same category name).
+**Found but explicitly NOT fixed, noted in the code comment:** `editor-expand-union.js`'s gate checks
+category `'EXPAND-SHAPE'` while its own log label is `[EXPAND-UNION]` — a pre-existing category/label
+mismatch. Converting the MECHANISM (hand-rolled → declared) doesn't mean also silently renaming which
+category gates it — that's a separate judgment call the dispatch didn't ask for, so I left the category
+string exactly as it was and documented the mismatch instead of quietly "fixing" an unrequested behavior
+change.
+**Verify:** structural grep `if (typeof window !== 'undefined' && window.__editorDebug ===` → **0** hits
+repo-wide (not just outside off-limits — zero live hand-rolled gates left anywhere). A looser grep for
+the bare string `window.__editorDebug ===` still shows 7 hits — all 7 are inside my OWN explanatory
+comments citing the old pattern for documentation ("...instead of hand-rolling window.__editorDebug ===
+'X'"), not live code — checked each one directly rather than reporting the raw grep count as-is, since
+that count alone would have read as "not fully done."
+
+### SA-DEAD-2 — `updateNodeCountUI` — LEFTOVER, not touched (per the dispatch's own conditional)
+
+Re-confirmed: still zero real callers. But its wiring (`import {..., updateNodeCountUI, ...}` and
+`_updateNodeCountUI(data) { return updateNodeCountUI(this, data); }`) lives entirely in `editor.js` —
+off-limits this turn. Removing the function's export from `editor-ui.js` while `editor.js` still imports
+it by name would be a live import error, not a harmless leftover — so per the dispatch's own explicit
+conditional ("remove... IF the wiring is outside editor.js; otherwise list the editor.js link as a
+leftover"), left `updateNodeCountUI` (editor-ui.js), `#editorNodeCountUI` (palette markup), AND
+`editor.js`'s import+method completely untouched as one unit. **Full leftover for seat A**, not a partial
+removal — a half-removal here would have been worse than the status quo.
+
+### SA-DEAD-3 — doorless Smoothness ids in `properties-expand.js`
+
+Re-confirmed `editorExpandSmooth`/`-Minus`/`-Plus` still have 0 hits in the palette markup (Detail's
+matching stepper does exist). Removed the 3 `el()` lookups and their change/click handlers. Documented in
+the code (not just here) that `editor._expandSimplify` keeps its own construction-time default and is
+still read by `expandCurrent` — this only removes the dead ATTEMPT to let a user change it from a
+control that was never reachable. If Fred wants the control back, it needs real markup added first
+(mirroring Detail's), not this wiring resurrected as-is.
+
+### SA-DEAD-4/7/8 — `editor-ui.js`: dead selection-panel lookup, redundant setMode branches, empty if
+
+- SA-DEAD-4: `editorSelectPanel` lookup+toggle removed (0 hits in markup, confirmed — a documented prior
+  cleanup already dropped the id; this was a second, later reference to it).
+- SA-DEAD-7: `setMode`'s 3 "special case" `if (mode==='draw'/...) btn.classList.add('active')` branches
+  removed — each was provably redundant with the generic `.toggle('active', ...)` one line above (same
+  condition, already-true case).
+- SA-DEAD-8: the symbol-keyboard auto-hide `if` block (real condition, empty body, its own comment
+  admitting the "real" logic lived in tool click listeners that never actually touched this panel)
+  removed rather than resurrected.
+All three confirmed still present/still redundant/still empty before touching, not assumed from T12.
+
+### SA-DEAD-5 — `editorSidebarToggle` in `editor-controls.js`
+
+Re-confirmed triple-dead: 0 hits in palette markup, 0 `.editor-sidebar.collapsed` CSS rule anywhere
+(grepped every `.collapsed` selector in both stylesheets — all belong to unrelated panel systems),
+superseded by SE7m's responsive layout. Removed the lookup + click handler. Incidental cleanup that came
+with rewriting the same import line: `addClass`/`removeClass` were ALREADY-unused imports in this file
+before my change (not caused by it) — left them out of the rewritten import line since I was already
+touching it, rather than leaving newly-visible dead imports in a line I'd just edited; noted here rather
+than silently folded in as if it were part of the SA-DEAD-5 removal itself.
+
+### SA-DEAD-6 — stale `editorLayerSelect` "compatibility shim" comments
+
+Re-confirmed the comments in `bspline_gen_palette.html` and `layers.js` both name `editor-ui.js`,
+`editor-text-session.js`, `editor-io.js` as still reading/writing `#editorLayerSelect` directly — grepped
+all three files, zero direct reads/writes remain (editor-ui.js reaches the active layer through
+`_setActiveLayer` instead, per its own already-correct comment at :356-359). Corrected both comments to
+state the shim is self-contained inside `layers.js` today. **Not removed** — per T12's own reasoning,
+kept: an external (Fusion-side/devtools) consumer of `#editorLayerSelect`'s `.value`/`.options` can't be
+ruled out from this repo alone, so this is a documentation fix, not a code removal.
+
+### SA-TEXT-5 — stale doc comment in `editor-expand-commit.js`
+
+Re-confirmed the file's header comment still asserted (present tense) that `data-original-svg` "contains
+raw SVG markup... the resulting saved SVG is INVALID XML" while the function 90 lines below it
+(`commitExpandedPath`) already base64-encodes every new snapshot via `encodeSnapshot`. Rewrote the
+comment to past tense, named EDM2 as the fix, and cited `tests/editor-serialization.test.js`'s own EDM2
+regression suite as the existing proof — so a future reader doesn't have to re-derive what I just
+re-derived.
+
+### SA-TEXT-7 — `TEXT-DBG` default in `core/debug.js`
+
+Re-confirmed `_flag` still defaulted to `'TEXT-DBG'` (on) despite the file's own doc-comment saying "off
+by default." Changed the default to `false`, matching the documented contract exactly (the doc comment's
+own example line: `window.__editorDebug = false // off (default)`).
+
+### SA-TEXT-6 — ONE font list (the most involved item this turn)
+
+Re-read `editor/editor-fonts.js` in full before touching anything else — found it already declares
+`SYMBOL_FAMILIES` (a `Set` of the 7 icon/emoji-only fonts), which is EXACTLY the distinction needed
+between "fonts sensible to offer as a typed-text family" and "fonts that exist only for the Symbol
+Keyboard glyph picker." This mattered: naively populating the `editorFontFamily` select from ALL of
+`FONT_MAP`'s 18 keys would have added Wingdings/Webdings/Symbol/Segoe-icon-fonts as text-caption choices
+— a real product regression, not a neutral refactor. Used the already-declared `SYMBOL_FAMILIES`
+exclusion instead of inventing a new subset list myself.
+- `core/stamp/render-svg.js`: `KNOWN_FONTS` (was a hand-typed 24-entry array, 18 of which duplicated
+  FONT_MAP exactly) is now `[...Object.keys(FONT_MAP), ...GENERIC_CSS_FAMILIES]`, importing `FONT_MAP`
+  from `editor-fonts.js`. `GENERIC_CSS_FAMILIES` (serif/sans-serif/monospace/cursive/fantasy/system-ui)
+  stays declared locally — these are CSS-universal fallback keywords with no bundled `.ttf`, not "editor
+  fonts" in FONT_MAP's own sense, so folding them into FONT_MAP would have been the wrong direction.
+  Exported `KNOWN_FONTS` (was module-private) so the new test can check it directly.
+- `editor/properties-text.js`: `editorFontFamily` select now populated at bind time from
+  `Object.keys(FONT_MAP)` minus `SYMBOL_FAMILIES`, mirroring `properties-shape.js`'s `initGridToggle`
+  (the grid-spacing select) idiom exactly — same clear-innerHTML-then-loop-then-set-value shape, the
+  precedent the dispatch named.
+- `bspline_gen_palette.html`: emptied the hardcoded `<option>Arial/Tahoma/Verdana</option>` list to a
+  bare `<select id="editorFontFamily"></select>`, matching `#editorGridSpacing`'s own already-empty
+  markup convention exactly.
+- New `tests/editor-fonts.test.js` (4 assertions): every `FONT_MAP` entry is in `KNOWN_FONTS`; every
+  font the select would actually offer (post-`SYMBOL_FAMILIES` filter) is in `KNOWN_FONTS`;
+  `GENERIC_CSS_FAMILIES` are still present; and a direct proof of the "one-line addition propagates"
+  claim itself (constructs a `FONT_MAP`-shaped object with one extra hypothetical font and confirms the
+  derivation mechanism — not just today's fixed list — would pick it up).
+- **Proved non-vacuous, not argued:** temporarily hardcoded `KNOWN_FONTS` to exclude `'Cascadia Mono'`
+  (simulating a stale/hand-typed list missing a real FONT_MAP entry) — both the direct-containment test
+  and the selectable-fonts test failed exactly as expected, for the right reason. Restored, re-ran green.
+
+### Full suite + verify
+
+`npx vitest run` → **196 passed (22 files)**, up from 192 (4 new). `node --check` on all 15 touched JS
+files: clean. Verify greps (dispatch's own list): `__editorDebug ===` structural pattern → 0 live hits
+anywhere (see SA-DEAD-1 note on the bare-string count vs. the structural one). `updateNodeCountUI` → the
+predicted 3 hits, all the documented editor.js leftover, nothing removed. Font names hand-typed outside
+`editor-fonts.js` → 0 (`"Tahoma"` grepped across every other JS/HTML file in the tree).
+
+### Commit split
+
+Two commits, per the dispatch's own "or two if the font declaration is big — say so": (1) the SA-DEAD-*/
+SA-TEXT-5/7 sweep — 13 files (core/debug.js, core/stamp/index.js, editor-controls.js, editor-eraser.js,
+editor-expand-commit.js, editor-expand-shape.js, editor-expand-union.js, editor-expand.js, editor-io.js,
+editor-ui.js, expand.js, layers.js, properties-expand.js) + this WORK-LOG entry; (2) SA-TEXT-6 — 4 files
+(core/stamp/render-svg.js, editor/properties-text.js, bspline_gen_palette.html,
+tests/editor-fonts.test.js). Said so here rather than silently picking one giant commit, since the font
+consolidation is a genuinely separate concern (a declared-source-of-truth fix) from the dead-code/
+debug-gate sweep, and reviewing them separately is easier than one 17-file diff.
+
+**Leftovers for seat A** (full list, so nothing is assumed swept): SA-DEAD-2's `updateNodeCountUI`
+wiring in `editor.js` (import + `_updateNodeCountUI` method + whether the markup should go too, once
+that wiring is gone). The `generatePattern` active-layer note above (slice 3, SE7b, unrelated to SE8c but
+recorded in this same turn per the dispatch's ask).
+
+No gate hit — every removal chain traced (door → handler → markup/CSS → nothing left half-swept);
+SA-DEAD-2 deliberately left as a full leftover rather than a partial, riskier removal.

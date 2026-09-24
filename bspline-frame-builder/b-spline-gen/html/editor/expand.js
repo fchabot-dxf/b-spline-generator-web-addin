@@ -1,10 +1,11 @@
 import { expandCurrent } from './editor-expand.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { dbg } from '../core/debug.js';
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
+// hand-rolling window.__editorDebug === 'PERFORM-EXPAND'.
 function _pLog(msg) {
-  if (typeof window !== 'undefined' && window.__editorDebug === 'PERFORM-EXPAND') {
-    try { console.log('[PERFORM-EXPAND] ' + msg); } catch (_) {}
-  }
+  dbg('PERFORM-EXPAND', msg);
   try { fusLog('[PERFORM-EXPAND] ' + msg); } catch (_) {}
 }
 

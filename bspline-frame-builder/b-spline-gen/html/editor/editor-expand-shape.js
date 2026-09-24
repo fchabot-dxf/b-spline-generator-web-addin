@@ -21,6 +21,7 @@
 import { fusLog } from '../core/fusion-bridge.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
 import { transformPoint } from './editor-coords.js';
+import { dbg } from '../core/debug.js';
 
 // Dynamic-loaded so a missing editor-expand-union.js cannot break the
 // editor module chain at panel boot. The first expand call resolves
@@ -42,10 +43,10 @@ function _loadUnionMod() {
 const OPEN_SHAPES = ['path', 'polyline', 'line'];
 const CLOSED_SHAPES = ['rect', 'circle', 'ellipse', 'polygon'];
 
+// SE8c/SA-DEAD-1: routed through the declared dbg() gate instead of
+// hand-rolling window.__editorDebug === 'EXPAND-SHAPE'.
 function _xLog(msg) {
-    if (typeof window !== 'undefined' && window.__editorDebug === 'EXPAND-SHAPE') {
-        try { console.log('[EXPAND-SHAPE] ' + msg); } catch (_) {}
-    }
+    dbg('EXPAND-SHAPE', msg);
     try { fusLog('[EXPAND-SHAPE] ' + msg); } catch (_) {}
 }
 
