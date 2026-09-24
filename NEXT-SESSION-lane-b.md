@@ -65,3 +65,11 @@ editor layer (the SE5 tooling home):
 Declare the states once (`DRAPE_MODES = ['off', 'plain', 'color']`); the editor pill cycles through them (labels: empty,
 "3D", "3D■"); the sidebar badge shows "3D" / "3D■" or nothing. 'plain' = draped in one neutral line color, ignoring
 element colors; 'color' = each element's own SE9 color. Seat A renders; you store/cycle/show.
+
+## AMEND 4 (Fred) — supersedes amends 2 and 3: TWO real toggles, in BOTH lists (sidebar included)
+- Fields: `drape3d` (boolean, default false) and `drapeColor` (boolean, default true). A stored string from amend 3
+  migrates: 'off'→false, 'plain'→{true, drapeColor:false}, 'color'→{true, true}. No DRAPE_MODES tri-state, no badge.
+- Row (the ONE shared `renderLayerList`, same in the sidebar and the editor's Layers panel — no compact-only badge):
+  👁 show · ⛏ carve · 3D · ■ color — all four real toggles (`aria-pressed`, 44 px on coarse pointers). The ■ toggle is
+  disabled (greyed, not hidden) while 3D is off.
+- Seat A renders: drape3d && visible → draped; drapeColor ? element colors : one neutral line color.
