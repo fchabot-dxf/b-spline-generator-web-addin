@@ -6083,3 +6083,137 @@ committed separately as always. Every file beyond the prediction traces to an ex
 dispatch's numbered items, not scope creep.
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 209 — SE8b: world-space hit-test/Expand, declared _notifyChange(live|commit), fonts orphan skip — DONE
+
+Four more `AUDIT-SVG-EDITOR.md` findings (SA-COORD-3, SA-COORD-4, SA-UNDO-1, SA-TEXT-3), read in full before
+touching anything. Seat B was CSS-only this turn (`styles/base.css`/`styles/editor.css`) — confirmed via
+`git status` before committing that neither file appears in my diff.
+
+**1. SA-COORD-3 — `getNearbyElement` hit-tests the element's WORLD bbox now.** Was `el.bbox()` — LOCAL,
+explicitly documented in `editor-coords.js`'s own header as "IGNORES transform" — while every OTHER bbox-
+vs-pointer site in the codebase (`updateHandles`, the marquee) already used `worldBbox`. Reproduced the
+exact failure by tracing it: drag a shape via Select (writes a `transform`, never touches x/y/width/height),
+deselect, click where it now visually sits → the stale local bbox check misses it; clicking the OLD (now
+empty) spot hits it instead. One-line swap (`el.bbox()` → `worldBbox(el)`).
+
+**Declared `toLocal(el, pt)` in `editor-coords.js`** — the dispatch's own "One helper... used by SE7n's
+drag and this — do not write the inverse twice." `dragNode` (`editor-interaction.js`, SE7n) had this
+composition INLINE (`el.matrix().inverse()` + `transformPoint`) since turn 205; refactored it to call the
+new declared helper instead — one write-side inverse now, matching `editor-coords.js`'s own docstring,
+which records the READ direction (`worldPoint`/`worldBbox`) being hardened this way 4 times before; the
+WRITE direction never had that pass until now.
+
+**Deliberately did NOT add a "precise distance-to-geometry" stage to `getNearbyElement` via `toLocal`**,
+even though the dispatch's phrasing could be read that way ("map the pointer into local space... for any
+precise distance-to-geometry test"). Traced why: `getNearbyElement` ranks candidates by distance to a bbox
+CENTRE, and that ranking has to stay in ONE consistent coordinate space to be meaningful across MULTIPLE
+elements — computing each element's distance in ITS OWN local space (a different space per element,
+potentially at a different scale under a different transform) would make "closest" incomparable across
+elements with different transforms. The audit's OWN described failure is entirely a bbox-correctness bug,
+not a ranking-precision bug — fully and correctly fixed by the `worldBbox` swap alone. Reserved `toLocal`
+for `dragNode`'s single-element, no-cross-element-ranking context, where this concern doesn't apply.
+
+**2. SA-COORD-4 — `expandTrace`'s canvg viewBox now frames from `worldBbox`, not `el.bbox()`.** The content
+already renders with its REAL transform applied (`<g transform="...">`, wrapping the raw markup) — the
+ONLY bug was the VIEWBOX being framed around the untransformed LOCAL bbox while the content it's framing
+renders in WORLD space. A moved/rotated element's actual pixels could fall entirely outside the viewBox's
+window, failing silently ("No filled pixels detected in trace") for an element plainly visible on screen.
+Picked the smaller of the audit's two offered fixes (frame from `worldBbox` vs. baking the matrix into a
+clone first) and said why in-line: the content-wrapping logic already correctly renders in world space, so
+the fix is a ONE-LINE frame-source swap; baking into a clone would need restructuring that already-correct
+content-prep code to match a different representation, for no additional correctness gained.
+
+**3. SA-UNDO-1 — declared `editor._notifyChange(kind)` (`editor.js`), replacing the direct `_onChange()`
+calls in all 3 drag-continuation paths.** Before this, `dragNode`, `translateSelection`
+(`editor-interaction.js`) and `applyTransformDrag` (`editor-transform-handles.js`) each called the REAL
+`_onChange()` — full `saveForRasterization` + `P.editorSvg` write + `saveLastSession` +
+`refreshAllStampMasks` (which immediately re-rasterizes every visible layer) — on every raw `mousemove`,
+commonly 15-40+ times per drag. `pushState()` was already correctly gated to fire once at `mouseup` via
+`_dragMoved`; only `_onChange` bypassed that gate.
+
+`kind: 'live'` (every drag-continuation call) coalesces to AT MOST ONE call per animation frame — a
+THROTTLE, not a debounce: an already-pending frame is left alone (ignored) rather than cancelled-and-
+rescheduled. This distinction mattered enough to make explicit in the code comment: `main/skeleton-
+editor.js` already has a cancel-and-reschedule pattern elsewhere in this codebase for a different purpose,
+and blindly copying it here would DEBOUNCE (perpetually defer as long as calls keep arriving) rather than
+THROTTLE (fire once every frame regardless) — starving the 3D preview entirely during a long continuous
+drag instead of updating it once per frame, the opposite of the dispatch's own verify line ("the 3D preview
+updates once per frame, not per event"). `kind: 'commit'` (handleEnd, once per gesture — the ONLY new call
+site added; every other discrete edit already called `_onChange` directly and needed no change) cancels
+any pending 'live' frame and fires the pipeline immediately, so the gesture's FINAL position is what
+commits — never a stale queued frame from mid-drag.
+
+**Report per the dispatch's own "report the before/after count":** before — 3 real-pipeline call sites, one
+per raw mousemove event, unbounded per gesture (15-40+ observed by the audit for a half-second drag).
+After — the SAME 3 call sites now only ever request a THROTTLED notification (at most 1 real pipeline run
+per animation frame during the drag), plus exactly ONE new guaranteed call at `handleEnd` per gesture. For
+a 50-move drag: before = up to 50 real pipeline runs; after = however many animation frames the drag
+actually spanned (typically 1 per ~16ms, so a fraction of 50) PLUS the one commit — verified as EXACTLY 1
+in the test's own simulated "no real time passes between the 50 moves" scenario (see Tests below), which is
+the dispatch's own literal test description.
+
+**4. SA-TEXT-3 — the orphan-adoption walk (`_reconcileLayersFromSvg`, `editor-io.js`) now skips metadata
+node types.** My own SE8a WORK-LOG flag: `open()` injects the entire previously-saved document —
+including any embedded `<defs class="rasterization-fonts">` block — into the live sketch layer, and the
+orphan walk treated any child with no `data-layer` (including that defs block) as adoptable, stamping a
+`data-layer` attribute onto it. Declared `NON_GEOMETRY_NODE_TYPES = ['defs', 'title', 'desc', 'style']`
+ONCE (per the audit's own "declare it once, reuse in both places") and reused it in BOTH `_carveChildren`
+(which already had this exact 4-type check inlined as an OR-chain — replaced with the shared constant) and
+the orphan walk (which had NO such check at all before this fix).
+
+**Tests:**
+- `tests/editor-coords.test.js` (new, 5 tests): `toLocal` is the exact inverse of `worldPoint` for a
+  translate matrix; round-trips through a rotation (world→local→world, `toBeCloseTo` for float trig);
+  identity when the element has no `.matrix`, when `.matrix()` returns null, or when the returned matrix
+  has no `.inverse()` (a plain `{a,b,c,d,e,f}` object, not an SVG.Matrix instance); does not throw if
+  `.matrix()` itself throws.
+- `tests/editor-hit.test.js` (new, 3 tests): the dispatch's own exact failure scenario (a shape translated
+  via a `transform`, clicked at its NEW world position — found; clicked at its OLD local position — not
+  found); ranking picks the closer of two overlapping candidates (proving the world-space ranking still
+  works correctly with multiple elements, the exact property the rejected "local precision" design would
+  have put at risk); returns null when nothing is in range.
+- `tests/editor-session.test.js` (+5, `_notifyChange`): a controllable `requestAnimationFrame`/
+  `cancelAnimationFrame` MOCK (records the callback instead of scheduling a real frame — nothing fires
+  until the test calls `runPending()`) makes the coalescing deterministic rather than racing a real
+  browser frame. The dispatch's own literal scenario — 50 'live' calls + 1 'commit' → the real pipeline
+  ran exactly once, and the pending 'live' frame was cancelled (not left to ALSO fire) — plus: a lone
+  'live' call DOES eventually fire once the frame elapses (not a permanent no-op — proves 'live' isn't
+  just silently dropped); a SECOND 'live' call after the first frame already fired schedules a NEW frame
+  (proves a continuous drag keeps getting updates — the THROTTLE-not-debounce property, the one place a
+  naive copy of `skeleton-editor.js`'s pattern would have silently failed this exact case); 'commit' with
+  no pending frame just fires immediately (no crash on a null pending id); does nothing when `_onChange`
+  isn't wired yet.
+- `tests/editor-serialization.test.js` (+4, `_reconcileLayersFromSvg`): exported it (despite the
+  underscore — `open()` itself needs a much heavier mock than this one function alone, same reasoning as
+  SE8a's `stripRasterizationFontDefs` export). A `<defs>` block is never adopted as an orphan and never
+  gets a `data-layer` stamped onto it; `style`/`title`/`desc` are skipped too, not just `defs`; a REAL
+  orphan (no `data-layer`, genuinely geometry) is STILL adopted — proving the skip is type-specific, not a
+  blanket "ignore everything with no data-layer" regression; a document containing ONLY a `defs` block
+  still gets an anchor Layer 1 (not zero layers).
+- **Did not add a test for `expandTrace`'s `worldBbox` framing fix** — it needs a real canvas 2D context
+  (`canvas.getContext('2d')`) to actually render anything, and this test environment's canvas backend
+  returns null for that (the SAME limitation this session already found and documented in SE3a). The fix
+  itself is a one-line frame-source swap, and `worldBbox` is independently, thoroughly tested elsewhere —
+  verified by reading, not assumed; live proof is the advisor's, consistent with how canvas-dependent
+  Expand code has been treated throughout this session.
+
+**Non-vacuity, proven not argued:** `editor-coords.js`, `editor-hit.js`, `editor.js`, and `editor-io.js`
+each reverted to `git show HEAD:...` in turn. `editor-coords.test.js` — 5/5 failed (`toLocal is not a
+function`). `editor-hit.test.js` — the ONE test that actually exercises the fix (the moved-element
+scenario) failed against the stale-bbox code; the other 2 (no transform involved) correctly still passed,
+confirming the test suite isn't failing everything indiscriminately. `editor-session.test.js` — all 5 new
+`_notifyChange` tests failed (`.call` on undefined — the method doesn't exist pre-fix); the 7 PRIOR (SE8a)
+tests in the same file stayed green, since `_commitStyleChange`/`endEditorSession` are unaffected by this
+revert (both landed in the SAME `HEAD` commit I reverted TO, i.e. before THIS turn's edits only). `editor-
+serialization.test.js` — all 4 new tests failed (`_reconcileLayersFromSvg is not a function` — unexported
+pre-fix). All four reverts restored and the full suite re-ran green afterward.
+
+**Verify:**
+- `node --check` on all 7 touched JS files: clean.
+- Confirmed via `git status` before committing: neither `styles/base.css` nor `styles/editor.css` appears
+  in this turn's diff (seat B's CSS-only lane, respected).
+- `npx vitest run` → **162 passed** (145 prior + 5 editor-coords + 3 editor-hit + 5 editor-session + 4
+  editor-serialization).
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
