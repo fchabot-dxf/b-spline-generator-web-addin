@@ -699,3 +699,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **2026-09-24 — lattice + color series complete, deployed 41990f3 (395 tests):** SE11e drape = lit Phong overlay (shaded,
   black visible, no z-fight, ≥2× texture) verified live in Fusion; T28 color dropdown mosaic (32 + recent + custom);
   T27 layer row 👁 master · 3D · palette; drape orientation settled by data (SE11c). Both loops signed DONE.
+- **Rule change (Fred 2026-09-24):** drape = showsColor(l) (visible && showColor) — 3D off + palette on paints the
+  relief without carving. SE11f (seat A). Sidebar layer list moved up + full names = T29 (seat B).
