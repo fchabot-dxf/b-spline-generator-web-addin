@@ -1,30 +1,34 @@
-# NEXT — SE8f + SE7c: restore multi-select, then finish the lattice proportions (Fred: "finish lattice too")
+# NEXT — SE9: a color per vector element, for visualising the piece in the editor (never a carve input)
 
-**Ball: worker (seat A) · epoch 2.** SE8b-3 accepted (848b910). Seat B is on T25 (pinch) then T24/SE7p (pattern panel on
-phones: palette `#editorLatticePanel` region, `styles/editor.css`, `editor/properties-lattice.js`, `editor/editor-input.js`,
-`editor/editor-interaction.js` pointer path) — not yours. Two commits by path (one per part).
+**Ball: worker (seat A) · epoch 2 · SE9.** Fred: "add colors to vectors" → "color per element" → "for simulation, in
+editor only". Seat B is on SE7p in `bspline_gen_palette.html` (`#editorLatticePanel` region ONLY), `styles/editor.css`,
+`editor/properties-lattice.js` — you may add markup to the palette's STROKE/STYLE toolbar region (not the lattice
+panel) and must not touch those two other files. One commit by path.
 
-## Part 1 — SE8f: `editor._selectMany` / `editor._selectAdd` don't exist (your own finding, advisor-confirmed)
-`editor.js:13` imports `selectAdd, selectMany` from editor-ui.js; nothing defines the instance methods. Callers:
-`editor-interaction.js:323` (Ctrl+A, guarded → silent no-op), `:360-361` (paste, guarded), `:536` (Shift-click add,
-UNGUARDED → throws), `editor-marquee.js:108-110`. Add the two delegations next to the existing `_select` one
-(`_selectMany(els) { return selectMany(this, els); }`, same for Add). Then drop the now-pointless `typeof … ===
-'function'` guards at :323 / :360 — they hid the bug. Test: Ctrl+A selects every visible element; Shift-add grows the
-selection; marquee selects. (Do not touch editor-interaction.js beyond removing those two guards — seat B owns its
-pointer path.)
-## Part 2 — SE7c: resume `stash@{0}` (LATTICE_STYLE declared, nodeRadiusFactor removed) and finish it exactly as the
-previous SE7c brief said (in git history: `git show 10c72db~0:NEXT-SESSION.md` is not it — read ROADMAP "Live browser
-test 2026-09-24" + the SE7c section below):
-- `LATTICE_STYLE = { rail:{widthFactor:0.28}, tie:{widthFactor:0.22}, node:{radiusFactor:0.30} }` × grid spacing;
-  `emitSegment` / `emitNode` read it by kind (generator AND the hand-drawn Lattice tool), not `editor._strokeWidth`.
-- `PATTERN.margin` (lattice cells, default 1): the 'board' extent is inset on both axes so nothing sits on the edge.
-- Old saves keep their own stroke-width attrs (unchanged rendering).
-- Tests: rail width = 0.28 × spacing, node r = 0.30 × spacing, margin 1 → no coordinate at 0 or the board size,
-  hand-drawn rail uses the same width. Then `node scripts/smoke-editor.mjs <out> desktop <local palette URL>` and look
-  at the screenshot: rails, ties and nodes must be distinct. Put the screenshot path in WORK-LOG.
+## Ground truth
+- `editor._strokeColor` / `_fillColor` exist (`editor.js:82,87`) and new shapes use them (`properties-shape.js:74-75`),
+  but there is no color UI; `setStrokeColor` was removed in SE8d as dead (zero callers) — this brings the capability
+  back WITH a door.
+- The carve is color-blind: the stamp rasterizer builds its mask from ALPHA only (`core/stamp/index.js:2,165`,
+  `core/stamp/sdf.js:38`); the Fusion bake sends geometry. "Editor only" therefore means: color lives on the element for
+  display and survives save/reopen, and nothing downstream reads it. Prove that, don't assume it.
+## Build
+1. One toolbar control "COLOR" next to STROKE: an `<input type="color">` (no alpha — an opaque color can't change
+   coverage) plus a short swatch row of presets declared once, `VECTOR_COLORS = ['#000000', '#c62828' (red),
+   '#f9c80e' (yellow), '#1a237e' (navy), '#2e7d32', '#ffffff']` — the first four are Fred's piece.
+2. `editor.setColor(color)`: sets `_strokeColor` and `_fillColor` for NEW shapes, and recolors the current selection
+   (stroke, and fill when the element is filled — respect FILL/STROKE/BOTH); ONE `pushState()` + `_notifyChange('commit')`
+   per committed change (`change` event, not `input`). Selecting an element shows its color in the control.
+3. Lattice: generated/hand-drawn rails, ties, nodes take the current color like any other element (Fred can color
+   the Rails/Ties/Nodes layers' content by selecting it — no per-kind color table unless he asks).
+4. Carve-neutral guard (the "editor only" promise): a test that rasterizes the same shape in black and in yellow
+   through the real mask path used by the stamp (or its pure part) and asserts identical masks; and a test that the
+   Fusion bake output contains no color-dependent geometry change. If any path turns out to read color, strip color
+   there (serialize-for-raster forces black) and say so.
 ## Verify
-`npx vitest run` green (rerun once if the whole suite reports "no tests"). Push after each part.
+`npx vitest run` green (rerun once if the whole suite reports "no tests"); smoke screenshot (serve from the REPO ROOT —
+see the script header) with a red rail, yellow tie, navy node.
 ## When done
 Append WORK-LOG, commit by path, push, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8f + SE7c: multi-select restored; LATTICE_STYLE + margin — <shas>, vitest N, screenshot: <path>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE9: per-element color (picker + VECTOR_COLORS), carve-neutral proven — <sha>, N files, vitest N, screenshot: <path>"`
 and stop.
