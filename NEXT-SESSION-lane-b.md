@@ -1,24 +1,33 @@
-# LANE B — T23: SE8c part 2 — the four hand-rolled rule sets become declared tables (SA-DECL-1..4)
+# LANE B — T24: SE7p — the Pattern panel on a phone, three panel defects, and whether pinch really zooms
 
-**Seat B · epoch 1 · T23.** Worktree, branch `lane-b`. SE7m (c42dfea) ACCEPTED, held until seat A passes SE8b-2
-(seat A: `main/app-init.js`, `editor/editor.js`, `core/debug.js` — off-limits). Source: your audit SA-DECL-1..4.
-One commit by path (two if big — say so). No behaviour change: every table must reproduce today's behaviour exactly.
+**Seat B · epoch 2 · T24.** First task for this seat after the reboot. Worktree, branch `lane-b` (merged with main —
+includes `scripts/smoke-editor.mjs`). Files: `bspline_gen_palette.html` (the `#editorLatticePanel` region only),
+`styles/editor.css`, `editor/properties-lattice.js`, `editor/editor-input.js`, `editor/editor-interaction.js` (pointer
+path only), tests (+ WORK-LOG-lane-b.md). **Seat A is on SE7c in `editor/editor-lattice.js` +
+`editor/editor-lattice-pattern.js` — do not touch those.** One commit by path.
 
-## Do — one table each, next to the tables that already exist (MODE_HINTS, SNAP_POLICY, HANDLE_EDIT, INPUT_PROFILE)
-1. **SA-DECL-1:** `createDrawingShape` / `updateDrawingShape` per-tool if/else (`editor-interaction.js`) →
-   `DRAW_SHAPES = { line:{create, update}, rect:{…}, circle:{…}, draw:{…} }`; the handlers read it.
-2. **SA-DECL-2:** toolbar-group visibility per mode (`editor-ui.js` `updateToolbarVisibility`, plus SE7a's lattice
-   toggle and SE7b's Pattern panel and SE7m's touch group) → `TOOLBAR_GROUPS = { mode: [groupIds…] }` (or
-   `{groupId: predicate}` if a group depends on selection, e.g. Font for a selected text) — ONE function applies it.
-3. **SA-DECL-3:** any hit-tolerance literal left after SE7m's INPUT_PROFILE — list what remains; each becomes a named
-   INPUT_PROFILE field or a named constant with a reason.
-4. **SA-DECL-4:** element-kind capabilities repeated as `.type ===` branches (`properties-shape.js` fillable,
-   `editor-interaction.js`, `editor-hit.js` node-editable) → `ELEMENT_CAPS = { line:{fill:false, nodes:true, …}, … }`
-   next to HANDLE_EDIT (same keys — consider folding HANDLE_EDIT into it as one field; say which you chose and why).
+## Ground truth — ROADMAP "Live browser test 2026-09-24"; reproduce with:
+`node scripts/smoke-editor.mjs <outDir> mobile` (headless Chrome, 390×844, touch emulation; prints a JSON report and
+writes `mobile-1-editor.png`, `mobile-2-generated.png`, `mobile-3-pinched.png`). Against a local build: serve the html
+folder (`npx http-server bspline-frame-builder/b-spline-gen/html -p 8765`) and pass `http://localhost:8765/bspline_gen_palette.html`
+as the 3rd arg (check which entry file the site serves).
+1. **At 390 px the Pattern panel takes the full width; the canvas is off-screen.** On narrow/coarse screens the panel
+   must not displace the canvas: a collapsible bottom sheet (header "Lattice pattern ▾" + Generate always visible) or
+   an overlay toggled from the Lattice tool — pick one, justify, no hover-only affordance.
+2. **Nodes checkboxes overlap their labels** (desktop too) — proper label/checkbox rows (`<label>` wrapping both).
+3. **Regenerate button text invisible** (white on white — its background var is unset in that context) — use a
+   defined token / the same style as Apply Stencils.
+4. **Reroll button clipped** next to the Seed field.
+5. **Pinch:** the smoke run's two-finger spread (CDP `Input.dispatchTouchEvent`, touch emulation on) left
+   `svgEditor._view.zoom` at 1. Find out whether real touches would zoom: are pointer events generated for CDP touch
+   input (log `pointerType`), is the pointer map getting both ids, does `touch-action` on `#editorSVGContainer` let the
+   events through? If it's a real bug, fix it; if it's only the emulation, change the smoke script to drive it the way
+   that DOES produce pointer events and prove zoom > 1. Either way the script ends up proving pinch.
 ## Verify
-All existing tests green, unchanged; new tests only for the table lookups. Greps: `.type === '` branches remaining in
-the three files — listed in WORK-LOG with a reason each.
+Smoke script at 390 px: canvas visible with the panel collapsed and expanded, labels clean, Regenerate readable, zoom > 1
+after pinch — attach the screenshot paths in WORK-LOG. `npx vitest run` green (rerun once if the whole suite reports
+"no tests").
 ## When done
-Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T23: SE8c part 2 — DRAW_SHAPES, TOOLBAR_GROUPS, tolerances, ELEMENT_CAPS — <sha>, vitest N"`
+Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T24: SE7p — panel sheet on phones, labels, Regenerate, reroll, pinch <real bug|emulation> — <sha>, screenshots: <paths>"`
 and stop.
