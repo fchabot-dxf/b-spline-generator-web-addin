@@ -544,3 +544,12 @@ live-proven. Three layers carry rails / ties / nodes with their own tooling — 
   `geometry` → scale baked into the coordinates at drag end (flattenTransform path) so stroke width is unchanged;
   `text` keeps today's transform scale. The projection/rotated-frame fixes above still apply to `geometry`.
   Multi-selection of mixed kinds: each element edited by its own rule from the shared anchor.
+  **SE7s, stroke rule confirmed in code (Fred: "scaling shapes shouldn't scale stroke anywhere").** Today it does:
+  the scale is carried as a `transform` with no stroke compensation, so the editor view AND the stamp raster (which
+  renders the transformed SVG) scale the stroke — non-uniformly on a side handle; Flatten (`bakeMatrixIntoElement`,
+  editor-transform-handles.js:281+) then bakes the geometry but keeps the OLD `stroke-width`, so the stroke silently
+  jumps back — the same shape carves differently before vs after Flatten. Rule for SE7s: `geometry` edits are baked
+  into the coordinates on EVERY drag move from the drag-start geometry snapshot (no scale transform survives a
+  handle drag), so stroke width is invariant during and after. `vector-effect:non-scaling-stroke` is rejected: it
+  fixes width in screen px, which would make carve width depend on zoom. Test: after a ×2 side-handle drag,
+  `stroke-width` attr unchanged and no `scale` left in `transform`.
