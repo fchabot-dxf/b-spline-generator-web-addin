@@ -34,16 +34,26 @@ export const CHANGE_PIPELINE = {
 };
 
 /** PERF category timing — off by default (core/debug.js's own gate), so
- *  this costs nothing until switched on. Goes through BOTH dbg() (site
- *  console) and fusLog (the add-in's log file) — the same two places an
- *  advisor might be looking, per the dispatch's own "switch it on in the
- *  add-in or the site console" ask. Exported (despite the underscore —
- *  same convention as SE8a's stripRasterizationFontDefs) for direct
- *  testing without needing a real drag/pipeline run. */
-export function _perfLog(msg) {
+ *  this costs nothing until switched on. Goes through THREE channels when
+ *  on: `dbg()` (site devtools console), `fusLog` (the add-in's log file —
+ *  a no-op outside Fusion, see fusion-log.js), and `window.__perfLog`
+ *  (SE8b-3: a plain array of `{kind, step, ms}` records) — the structured
+ *  one a headless measurement tool (scripts/smoke-editor.mjs's `perf`
+ *  mode) reads back directly via CDP, rather than scraping/parsing
+ *  formatted console text. Takes the pieces structured (not a
+ *  pre-formatted string) so the array entry and the human-readable line
+ *  can't drift apart. Exported (despite the underscore — same convention
+ *  as SE8a's stripRasterizationFontDefs) for direct testing without
+ *  needing a real drag/pipeline run. */
+export function _perfLog(kind, step, ms) {
     if (!isDebugEnabled('PERF')) return;
+    const msg = `${kind} ${step} ${ms.toFixed(1)}ms`;
     dbg('PERF', msg);
     try { fusLog('[PERF] ' + msg); } catch (_) {}
+    if (typeof window !== 'undefined') {
+        if (!Array.isArray(window.__perfLog)) window.__perfLog = [];
+        window.__perfLog.push({ kind, step, ms });
+    }
 }
 
 /**
@@ -70,9 +80,9 @@ export async function runChangePipeline(kind, { serialize, persist, remask }) {
         } else if (step === 'remask') {
             await remask();
         }
-        _perfLog(`${kind} ${step} ${(performance.now() - stepStart).toFixed(1)}ms`);
+        _perfLog(kind, step, performance.now() - stepStart);
     }
-    _perfLog(`${kind} total ${(performance.now() - frameStart).toFixed(1)}ms`);
+    _perfLog(kind, 'total', performance.now() - frameStart);
 }
 
 /**

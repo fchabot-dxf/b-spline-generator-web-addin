@@ -73,29 +73,41 @@ describe('runChangePipeline', () => {
 });
 
 describe('_perfLog: the PERF debug-category gate', () => {
-  afterEach(() => { window.__editorDebug = false; });
+  afterEach(() => { window.__editorDebug = false; window.__perfLog = undefined; });
 
-  it('off by default: no console output at all', () => {
+  it('off by default: no console output, and nothing pushed to window.__perfLog', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     window.__editorDebug = false;
-    _perfLog('live serialize 3.1ms');
+    _perfLog('live', 'serialize', 3.1);
     expect(spy).not.toHaveBeenCalled();
+    expect(window.__perfLog).toBeUndefined();
     spy.mockRestore();
   });
 
-  it("enabled via 'PERF': logs through dbg(), category-prefixed", () => {
+  it("enabled via 'PERF': logs through dbg(), category-prefixed, formatted ms to 1 decimal", () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     window.__editorDebug = 'PERF';
-    _perfLog('live serialize 3.1ms');
+    _perfLog('live', 'serialize', 3.14159);
     expect(spy).toHaveBeenCalledWith('[PERF]', 'live serialize 3.1ms');
     spy.mockRestore();
   });
 
-  it('a DIFFERENT category being enabled does not leak PERF logs', () => {
+  it("enabled via 'PERF': also pushes a structured {kind, step, ms} record onto window.__perfLog", () => {
+    window.__editorDebug = 'PERF';
+    _perfLog('commit', 'remask', 12.5);
+    expect(window.__perfLog).toEqual([{ kind: 'commit', step: 'remask', ms: 12.5 }]);
+    // A second call appends rather than overwriting — a real drag logs
+    // many steps across many frames into the SAME array.
+    _perfLog('commit', 'total', 20);
+    expect(window.__perfLog).toHaveLength(2);
+  });
+
+  it('a DIFFERENT category being enabled does not leak PERF logs or push to window.__perfLog', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     window.__editorDebug = 'SOME-OTHER-CATEGORY';
-    _perfLog('should not appear');
+    _perfLog('live', 'serialize', 1);
     expect(spy).not.toHaveBeenCalled();
+    expect(window.__perfLog).toBeUndefined();
     spy.mockRestore();
   });
 });
