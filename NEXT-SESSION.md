@@ -53,7 +53,21 @@ Circle tool's job. The lattice tool = rails + ties + auto-nodes. A bare click in
    no drag (start == end within `_getDynamicTolerance(3)`) emits a default dot through the SAME `emitNode` the
    lattice auto-nodes use (r = `nodeRadiusFactor × spacing` when the grid is on, else `0.09`" — declare
    `DEFAULT_NODE_RADIUS_IN` next to `LATTICE_DEFAULTS`). One emitter, two callers, identical elements.
-5. **Node-tool snap (SE6 follow-up a):** route the node-drag pointer read through `editor._snap(pt, e.altKey)` so
+6. **Snap is a per-tool DECLARATION (amend 2, Fred: "snap could apply to tools that make sense").** Today `_snap`
+   is applied blindly in handleStart/handleMove for every mode, which quantises the pen's freehand stroke and the
+   eraser — wrong. Replace with one table in `editor/editor-grid.js`:
+   `export const SNAP_POLICY = { select:'point', node:'point', draw:'anchors', line:'point', rect:'point',
+   circle:'center', text:'point', erase:'none', expand:'none', lattice:'always' }` and one derivation
+   `export function snapFor(pt, grid, mode, phase, bypass)` where `phase` is `'start'|'move'` and
+   `'anchors'` = snap on start (pen anchor clicks) but never during a freehand drag (`_anchorFreehand`), `'center'` =
+   snap on start only, `'always'` = snap even when `grid.snap` is off and ignore Alt, `'none'` = identity. `_snap`
+   becomes `_snap(pt, bypass, phase)` reading `this._currentMode`; handleStart passes `'start'`, handleMove `'move'`.
+   Items 4 and 5 are then just the `circle` and `node` rows — no special-casing in the handlers. Toolbar: dim the
+   SNAP button (`.disabled` class, `pointer-events:none`, opacity .4) when the current mode's policy is `'none'` or
+   `'always'`, via `updateToolbarVisibility`, so the user sees where snap applies. Tests: `snapFor` — erase never
+   snaps; circle snaps start not move; draw snaps start, not a freehand move; lattice snaps with `grid.snap=false`
+   and with bypass=true; line honours Alt bypass. (Add to `tests/editor-grid.test.js` or the new lattice test.)
+5. **Node-tool snap (SE6 follow-up a) = the `node:'point'` row of item 6:** route the node-drag pointer read through `editor._snap(pt, e.altKey)` so
    node edits honour SNAP like everything else. Transform handles stay as they are (scaling on-grid is a different
    feature; say so in WORK-LOG).
 
