@@ -1,28 +1,29 @@
-# NEXT — SE8d: rotated/scaled text carves as drawn; two dead leftovers in editor.js
+# NEXT — SE8e: Un-expand — an expanded text can become editable text again (SA-TEXT-4)
 
-**Ball: worker (seat A) · epoch 1 · SE8d.** SE7s accepted + merged with seat B's SE7b slices 1–2 and SE8c part 1
-(main 215 tests). Seat B is on SE7b slice 3: `editor/editor-interaction.js` (handleEnd detach hook), the pattern panel
-(palette HTML + NEW panel module), `editor/editor-lattice-pattern.js` — do NOT touch those. Files for you:
-`editor/editor-io.js`, `editor/editor.js`, maybe `editor/editor-coords.js`, tests (+ WORK-LOG). One commit by path.
+**Ball: worker (seat A) · epoch 1 · SE8e.** SE8d accepted + merged with SE7b slice 3 (main 231 tests). Seat B is on
+SE7m (mobile): `editor/editor-interaction.js`, `editor/editor-transform-handles.js`, `editor/editor-hit.js`,
+`editor/editor-grid.js`, `editor/editor-ui.js`, the palette modal markup for a touch action group, `styles/*` — do NOT
+touch those. Your files: `editor/editor-expand-commit.js`, `editor/editor-expand-trace.js` (read), NEW action in
+`editor/tools/action-tools.js`, one rail/toolbar button (tell me where you put it — if it must go in the palette markup,
+add ONLY that one button line and say so, seat B edits other regions of that file), tests (+ WORK-LOG).
+One commit by path.
 
-## 1. SA-ROUNDTRIP-2 (HIGH) — read the audit section
-A rotated or non-uniformly scaled `<text>` carves upright at the wrong size (`editor-io.js:194-202` `_carveTextAnchor`
-bakes only the anchor + font-size × |a|). Fix it where the carve actually happens:
-- If the rasterizer path (stamp preview) renders the transformed SVG itself, the preview is already right — confirm
-  and say so; the defect is only the Fusion bake.
-- For the Fusion bake: keep the text's transform as a matrix on the `<text>` (rotation/skew preserved) with the carve
-  matrix composed in, OR convert to paths via the existing Expand pipeline before baking — pick the one that keeps
-  glyph orientation correct, justify in WORK-LOG, and note what Fusion's SVG importer does with a transform on text
-  (the importer ignores transforms per `carveMatrix`'s own comment — if so, only path conversion is correct).
-- Test: a text rotated 30° → baked output's glyph baseline direction is 30° (or: output is paths whose bbox matches
-  the rotated original's world bbox within tolerance).
-## 2. SA-DEAD-2 leftover — `updateNodeCountUI` wiring in `editor.js` (seat B removed everything else; see
-`WORK-LOG-lane-b.md` T20) — remove the instance wiring + any stale state.
-## 3. `setStrokeColor` has zero callers anywhere (your own SE8a flag) — remove it (chain: method → any binding → test),
-or name the caller if one appears.
+## Ground truth: AUDIT-SVG-EDITOR.md SA-TEXT-4 (line 397+)
+Expand stores the original as base64 `data-original-text-svg` / `data-original-svg` (`editor-expand-commit.js:107-121`,
+decoded only by `expand-trace.js:46` to re-run Expand). No path restores an editable `<text>`; Ctrl+Z is wiped on every
+reopen (`open()`).
+## Build
+- `unexpand(editor, el)`: decode the stored original (reuse the existing `decodeSnapshot` — do not write a second
+  decoder), replace the expanded group/path with the restored `<text>` IN PLACE (same `data-layer`, the expanded
+  element's CURRENT transform composed onto the original's so a moved expansion comes back where it now is), select
+  it, ONE pushState + `_notifyChange('commit')`.
+- A declared rule for which elements are un-expandable: `isUnexpandable(el)` = has the stored original attr. The
+  button is enabled only for a selection where every element is un-expandable.
+- Button: "Un-expand" next to the existing Expand controls (the Expand group is contextual — show it there).
 ## Verify
-`npx vitest run` → 215 + new, green. Greps: `updateNodeCountUI` → 0, `setStrokeColor` → 0 (or named survivor).
+Tests: expand → unexpand round-trip returns the same text content/font/size; a moved expansion comes back at the moved
+position; a path without the attr → button disabled / no-op. `npx vitest run` → 231 + new, green.
 ## When done
 Append WORK-LOG, commit by path, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8d: rotated text carves correctly (<approach>), dead leftovers removed — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE8e: Un-expand (decodeSnapshot reuse, transform kept) — <sha>, N files, vitest N"`
 and stop.
