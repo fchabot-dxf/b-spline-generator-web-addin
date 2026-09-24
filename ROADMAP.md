@@ -601,3 +601,9 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   (control group → `'global' | 'editor'`: sidebar sliders + seed + filters + per-layer tooling → global, drawing →
   editor, sculpt → global) and make sidebar sliders undoable at ONE step per committed value (`change`, not `input`).
   SE5 slices (a)/(b) are unaffected; SE5c only registers tooling in UNDO_SCOPE.
+- **SE8a (60cb373) + SE5a (527ade1) + SE5b (2141ddf) merged → 898ee73, 145 tests.** Circles/arcs now carve correctly
+  (declared PATH_LAYOUT, arcs→cubics before bake, circles as 4 cubics); style-edit undo; Cancel ends text sessions;
+  font defs deduped. Per-layer tooling read/written on the editor layer everywhere export/cloud look (layers 2, 3, 4+
+  now export; reorder-safe). Left over: `setStrokeColor` has no callers (→ SE8c dead-code); SA-TEXT-3 (→ SE8b).
+  Next: SE8b (seat A) — SA-COORD-3, SA-COORD-4, SA-UNDO-1, SA-TEXT-3. Mobile CSS (seat B) — SA-MOBILE-13/8/4/5.
+  SE5c waits on Fred's UX-UNDO answer.
