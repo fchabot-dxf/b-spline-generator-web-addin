@@ -618,3 +618,8 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   into Rails/Ties/Nodes with ownership + occupied skip, persisted in the document. Cleanup: dead chains, dbg gates, one
   font list. Next: SE7b slice 3 (seat B: detach hook + panel + restore active layer), SE8d (seat A: SA-ROUNDTRIP-2
   rotated text carve, SA-DEAD-2 editor.js leftover, unreachable `setStrokeColor`). Then SE7m (mobile JS), SE8b-2.
+- **SE8d (e5f26e6) + SE7b slice 3 (3f22753) merged → 231 tests.** Rotated/scaled text bakes as glyph outlines for
+  Fusion (only when needed); dead leftovers gone. **The Lattice pattern generator is complete** (panel in the modal,
+  Generate/Regenerate, detach-on-drag, Detach all). In flight: SE7m (seat B). Next for seat A: SE8e — SA-TEXT-4
+  "Un-expand" (decode `data-original-text-svg` back to editable text). Remaining after: SE8b-2 (needs live measure),
+  SE8c part 2 (SA-DECL-1..4 in editor-interaction/editor-ui — after SE7m lands, those files are seat B's now).
