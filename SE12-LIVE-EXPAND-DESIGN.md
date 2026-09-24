@@ -281,6 +281,8 @@ exercises those paths yet (lattice lines are round-cap only; no stroked circles 
 "general offsetter" shape in item 1 so the function is designed to extend cleanly, without building the
 extra branches before anything calls them.
 
+**ANSWERED (measured in Fusion 2026-09-24, scripts/fusion-arc-test.svg via Sketch.importSVG):** Fusion keeps SVG `A` arcs and `<circle>` as TRUE sketch arcs/circles — 1 SketchArc r=1.0583 cm (= 40px @96dpi exactly), 1 SketchCircle r=0.7938 cm (= 30px), 1 line, 0 splines. So an exact outline export stays exact in Fusion; no spline fallback needed on the Fusion side.
+
 ## Scope update (Fred 2026-09-24): "it should work on shapes in priority, but eventually text"
 Supersedes the STOP conditions below for closed shapes and text. Order: lines (Slice 1) → SHAPES (next) → text.
 Exactness is limited by the math, not the choice: an offset of lines and circular arcs is still lines and circular arcs
