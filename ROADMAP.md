@@ -668,3 +668,6 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **SE9 — colors on vectors (Fred 2026-09-24):** per-ELEMENT color, "for simulation, in editor only" — a display
   aid, never a carve input. Spacing options: Fred said "don't worry" (none). Carve is color-blind already: the stamp
   rasterizer reads alpha only (`core/stamp/index.js:2,165`, `sdf.js:38`), Fusion's importer takes geometry.
+- **SE10 — sidebar layer browser (Fred 2026-09-24, screenshot of the "Active Layer" dropdown + "On" box):** replace the
+  dropdown + checkbox with a real layer list (eye = visible = carved, per SE5; tap row = active; name + tool + depth per
+  row, "+" adds). ONE list component shared with the editor's Layers panel (`renderLayersPanel`, layers.js:303). Seat B.
