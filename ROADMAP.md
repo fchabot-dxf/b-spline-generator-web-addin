@@ -683,3 +683,5 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   only (T26 amend 2, seat B). Seat A after SE9.
 - **SE11 drape modes (Fred):** per-layer `drape3d: 'off' | 'plain' | 'color'` — 'plain' drapes in one neutral line
   color, 'color' in each element's SE9 color (T26 amend 3 stores/cycles it; SE11 renders).
+- **Drape controls final (Fred):** two toggles on every layer row, sidebar AND editor (shared list): 3D (`drape3d`)
+  and color (`drapeColor`, disabled while 3D is off) — supersedes the editor-only pill / 3-state tag.
