@@ -80,3 +80,10 @@ the layer is drawn: the editor canvas (flat) AND the 3D drape. Off → the layer
 The ■ toggle is NEVER disabled (drop the greyed-while-3D-off rule). Editor canvas: apply it as a display-only style
 (e.g. a CSS class on the layer's elements / a stroke+fill override at render), never by rewriting the elements'
 stored colors — turning it back on must restore every element's own color.
+
+## AMEND 6 (Fred: "carve and 3D are the same") — THREE toggles, final
+- Fields: `visible` (👁 show), `carve` (3D — the ⛏ carve toggle IS the 3D toggle, one field, labelled "3D"), `showColor` (■).
+  Drop `drape3d` entirely (and its migration). Row: 👁 · 3D · ■.
+- Render rules: carve → masked into the relief; showColor → element colors in the editor canvas (off = neutral,
+  display-only); the colored drape on the mesh appears when `carve && showColor && visible` (seat A renders it).
+- Exports (Fusion sketch, SVG download) follow `visible`, as in amend 1.
