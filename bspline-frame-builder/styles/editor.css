@@ -750,6 +750,21 @@
     }
     .layer-visibility svg { width: 20px; height: 20px; }
     .layer-showcolor svg { width: 18px; height: 18px; }
+    /* T29: full names over truncation — on a coarse pointer (narrow
+       sidebar's usual companion) the tool summary drops to its own line
+       instead of squeezing the name into an ellipsis. Comes AFTER the
+       shared `height: 44px` line above so it wins on source order (same
+       selector, same specificity) rather than fighting it.
+       `order` (not a DOM move) pushes the tool summary visually PAST
+       .layer-delete, which sits after it in the actual markup — without
+       this, flex-wrap lays children out in DOM order, so forcing the
+       summary's flex-basis to 100% (claiming the whole second line)
+       would strand .layer-delete on its own THIRD line instead of
+       staying on the row's first line with the name (caught live via
+       CDP screenshot: delete's "x" rendered as stray debris above the
+       next row — not visible in a DOM-only check). */
+    .layer-row.compact { flex-wrap: wrap; height: auto; min-height: 44px; }
+    .layer-row.compact .layer-tool-summary { flex: 1 0 100%; order: 1; text-align: right; padding-top: 2px; }
 }
 
 .layer-name {
@@ -809,6 +824,28 @@
    AMEND 4/5 made it apply to the editor's own (non-compact) panel too,
    not just compact rows. */
 .layer-row.compact { height: 36px; gap: 6px; }
+
+/* T29: #stampLayersList (the sidebar list's own direct container) is a
+   query container on its inline axis so the narrow-sidebar wrap rule
+   below reacts to the SIDEBAR's actual rendered width — a plain
+   viewport @media query can't, since the sidebar column is user-
+   resizable (layout-app.css's --cad-sidebar-width, dragged via
+   .cad-resizer) and its width has no fixed relationship to the
+   viewport. Named so the query below is explicit about which ancestor
+   it's measuring rather than "whatever's nearest". */
+#stampLayersList { container-type: inline-size; container-name: layers-list; }
+
+@container layers-list (max-width: 360px) {
+    /* Same "tool summary drops to its own line" treatment as the
+       pointer:coarse block above, for a narrow sidebar on a FINE
+       pointer (mouse) too — the two conditions are independent ("360px
+       sidebar OR coarse pointer"), so this can't be folded into that
+       @media block; @media and @container are different at-rule kinds
+       and can't share one condition list. Same `order` fix as that block
+       too — see its own comment for why .layer-delete needs it. */
+    .layer-row.compact { flex-wrap: wrap; height: auto; min-height: 36px; }
+    .layer-row.compact .layer-tool-summary { flex: 1 0 100%; order: 1; text-align: right; padding-top: 2px; }
+}
 
 /* SE10: profile+depth read-out ("V .25"", "Ball .12"") — compact rows
    only (editor/layers.js's _formatToolSummary), so a user picking a

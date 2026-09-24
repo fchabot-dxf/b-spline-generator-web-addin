@@ -593,6 +593,28 @@
         <div class="panel-body hidden">
           <button id="btnStampEdit" class="cad-btn cad-btn-secondary" style="width:100%; margin-bottom:12px;">Open SVG Editor 🎨</button>
 
+          <!-- SE10 / T26 / T29: replaces the #stampActiveLayer dropdown +
+               #stampLayerEnabled "On" checkbox with a real layer browser —
+               editor/layers.js's renderLayerList (compact:true), the SAME
+               render + handlers the SVG editor's own Layers panel uses
+               (#editorLayersList), so the two can never show different
+               layers or disagree on visibility. Eye = visible = carved
+               (SE5 made `visible` the one switch); tapping a row makes it
+               active, which the Plunge Depth / Tool Profile / V-Bit Angle
+               controls below keep editing (main/stamp/layer.js). T29:
+               moved above those tool settings (was below SVG Blueprint's
+               spot) since the settings apply to whichever layer is
+               selected here — picking a layer before dialing in its
+               tooling reads more naturally than the reverse order. -->
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <label class="cad-label" style="margin-bottom:0;">Layers</label>
+            <button id="stampAddLayer" type="button" class="layers-add-btn" title="Add Layer">+</button>
+          </div>
+          <div id="stampLayersList" style="margin-bottom:8px;"></div>
+
+          <div class="cad-status-divider" style="margin:4px 0 6px 0;"></div>
+          <div class="cad-status-text" style="font-size:10px; opacity:0.7; margin-bottom:12px;">Settings below apply to the selected layer.</div>
+
           <label class="cad-label">Plunge Depth</label>
           <div class="cad-slider-row" style="margin-bottom:12px;">
             <input type="range" id="stampDepthSlider" class="cad-slider" min="-2" max="2" step="0.005" value="0.25">
@@ -617,21 +639,6 @@
               <input type="number" id="stampVBitAngle" value="90" min="10" max="170" step="5">
             </div>
           </div>
-
-          <!-- SE10 / T26: replaces the #stampActiveLayer dropdown +
-               #stampLayerEnabled "On" checkbox with a real layer browser —
-               editor/layers.js's renderLayerList (compact:true), the SAME
-               render + handlers the SVG editor's own Layers panel uses
-               (#editorLayersList), so the two can never show different
-               layers or disagree on visibility. Eye = visible = carved
-               (SE5 made `visible` the one switch); tapping a row makes it
-               active, which the Plunge Depth / Tool Profile / V-Bit Angle
-               controls below keep editing (main/stamp/layer.js). -->
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-            <label class="cad-label" style="margin-bottom:0;">Layers</label>
-            <button id="stampAddLayer" type="button" class="layers-add-btn" title="Add Layer">+</button>
-          </div>
-          <div id="stampLayersList" style="margin-bottom:12px;"></div>
 
           <label class="cad-label">SVG Blueprint</label>
           <div style="display:flex; gap:6px; align-items:center; margin-bottom:12px;">
