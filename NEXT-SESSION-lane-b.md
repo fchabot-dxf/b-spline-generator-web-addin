@@ -1,26 +1,27 @@
-# LANE B — T15: build SE5 slice (b) — export-flow + cloud-project-manager on editor layers (fixes "only layer 1 carves")
+# LANE B — T16: mobile CSS fixes from your audit — stylesheets ONLY
 
-**Seat B · epoch 1 · T15.** Worktree, branch `lane-b` (merged with main). T14 / SE5a (527ade1) reviewed and ACCEPTED,
-but it is **held on lane-b, not merged**: on its own it regresses Browse-into-layer-2/3 export (the auto-enable now
-writes `visible`, export still reads `P.stampLayers[idx].enabled` — your own note). Slices (a)+(b) merge to main
-together. Files: `main/export-flow.js`, `main/cloud-project-manager.js`, `tests/export-flow.test.js` (+ WORK-LOG).
-Seat A is on SE8a in `editor/` — do not touch `editor/`. One commit by path.
+**Seat B · epoch 1 · T16.** Worktree, branch `lane-b` (merged with main 898ee73 — your SE5a/b are in main now).
+Files: `bspline-frame-builder/styles/base.css`, `bspline-frame-builder/styles/editor.css` (+ WORK-LOG-lane-b.md).
+**No JS.** Seat A is on SE8b in `editor/*.js`. One commit by path. Findings: SA-MOBILE-13, -8, -4, -5.
 
-## Do slice (b) exactly as your design §5(b) + Risks says
-- `_stampExportCandidates` / `isCarvingLayer` / `hasShippableSvg`: every tooling field (enabled→`visible !== false`,
-  depth, profile, …) from `editor._layers[idx]`; content as today (`_mask`, `getLayerSvg`). No `P.stampLayers` read.
-- `cloud-project-manager.js`: the `.enabled` read your inventory found → editor layer `visible`.
-- `tests/export-flow.test.js`: rewrite the WHOLE file's fixtures to the single-store shape in this commit (your own
-  STOP condition — no partial rewrite). Must include: a 4-layer editor with layer 4 visible + content → exported;
-  layer 2 drawn directly (no Browse, no `P.stampLayers` entry touched) → exported; a hidden layer → not exported;
-  reorder then export → tooling follows the layer object, not the index.
-- Browse-into-layer-2 end to end: import → `visible` true → counts as exportable (the regression SE5a opened).
+## Do
+1. **SA-MOBILE-13** — the site-wide `touch-action:none` (`base.css:36-45`) blocks native pinch-zoom everywhere, against
+   its own WCAG 1.4.4 comment. Scope it to the surfaces that really handle their own gestures (the 3D preview canvas,
+   the SVG editor canvas `#editorSVGContainer`, sliders if they need it) and leave the document zoomable. Name each
+   selector you keep and why. Do NOT add JS pinch handling (that is SE7m).
+2. **SA-MOBILE-8** — the per-layer delete button is `:hover`-only. Show it always under `@media (hover: none)`
+   (and keep the hover reveal for mouse).
+3. **SA-MOBILE-4** — resolve the two conflicting mobile breakpoints for the rail buttons to ONE rule; ≥ 44 px targets
+   under `@media (pointer: coarse)`.
+4. **SA-MOBILE-5** — delete the unreachable 700 px `.editor-sidebar` width rule (chain: confirm no other selector
+   depends on it).
+Also: hide the T10 shortcut badges under `@media (hover: none)` (no keyboard on a phone).
 
 ## Verify
-`npx vitest run` green (count); greps: `stampLayers` in `main/export-flow.js` → 0; `.enabled` in
-cloud-project-manager.js → 0 (or a named survivor with its reason). `git show --stat HEAD` → ≤ 4 files + log.
+Quote each changed rule before/after in WORK-LOG. `npx vitest run` still green. Grep: `touch-action` occurrences listed
+with their selector. Live check on a phone is Fred's (advisor will ask).
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T15: SE5b — export-flow + cloud PM on editor layers — <sha>, N files, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T16: mobile CSS — touch-action scoped, layer delete visible on touch, 44px rail, dead rule gone — <sha>"`
 and stop.
