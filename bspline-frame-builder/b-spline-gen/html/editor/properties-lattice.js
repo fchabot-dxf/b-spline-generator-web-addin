@@ -8,7 +8,10 @@
  */
 import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
-import { PATTERN_DEFAULTS, generatePattern, detachAllOwned } from './editor-lattice-pattern.js';
+import {
+    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind,
+} from './editor-lattice-pattern.js';
+import { openColorMosaic } from './editor-color.js';
 
 /** editor._latticePattern is set by generatePattern, or restored by
  *  editor-io.js's open() from a document's data-lattice-pattern — never
@@ -33,9 +36,11 @@ export function initLatticeProperties(editor) {
     const nodesEndsEl = el('latticeNodesEnds');
     const nodesCrossingsEl = el('latticeNodesCrossings');
     const seedEl = el('latticeSeed');
-    const rerollBtn = el('latticeReroll');
     const generateBtn = el('latticeGenerate');
     const detachAllBtn = el('latticeDetachAll');
+    const colorRailsEl = el('latticeColorRails');
+    const colorTiesEl = el('latticeColorTies');
+    const colorNodesEl = el('latticeColorNodes');
     const toolBtn = el('toolLattice');
     const panelEl = el('editorLatticePanel');
     const headerBtn = el('editorLatticePanelHeader');
@@ -95,6 +100,10 @@ export function initLatticeProperties(editor) {
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (seedEl) seedEl.value = p.seed ?? PATTERN_DEFAULTS.seed;
+        const colors = { ...PATTERN_DEFAULTS.colors, ...p.colors };
+        if (colorRailsEl) colorRailsEl.style.background = colors.rails;
+        if (colorTiesEl) colorTiesEl.style.background = colors.ties;
+        if (colorNodesEl) colorNodesEl.style.background = colors.nodes;
         syncGenerateLabel();
     }
 
@@ -125,24 +134,46 @@ export function initLatticeProperties(editor) {
         return p;
     }
 
+    /** SE7g AMEND: wire one Colors swatch button to the shared color
+     *  mosaic. Picking a color updates PATTERN.colors[kind] (so the NEXT
+     *  Generate/Regenerate uses it even if nothing is owned yet) and, if
+     *  this pattern has already generated at least once (p.id exists),
+     *  recolors the OWNED pieces of that kind in place — no reseed, one
+     *  undo step (recolorOwnedKind's own pushState). A detached piece
+     *  keeps its own color for free, via the same ownership check that
+     *  already excludes it. */
+    function wireColorSwatch(btnEl, kind) {
+        if (!btnEl) return;
+        on(btnEl, 'click', (e) => {
+            e.stopPropagation();
+            const p = _currentPattern(editor);
+            openColorMosaic(btnEl, (hex) => {
+                p.colors = { ...PATTERN_DEFAULTS.colors, ...p.colors, [kind]: hex };
+                btnEl.style.background = hex;
+                if (p.id) recolorOwnedKind(editor, p.id, kind, hex);
+            });
+        });
+    }
+
     syncFieldsFromPattern();
     on(toolBtn, 'click', syncFieldsFromPattern);
 
     on(generateBtn, 'click', () => {
+        // SE7g (Fred: "the generate button needs to automatically use a
+        // new seed"): roll BEFORE reading fields, so the fresh value is
+        // what readFieldsIntoPattern picks up and what generatePattern
+        // uses — one undo step total, same as every other field here
+        // (this write is local to the panel's own DOM field, not P/
+        // core-history, so it doesn't touch the global undo mechanism).
+        if (seedEl) seedEl.value = nextSeed();
         const p = readFieldsIntoPattern();
         generatePattern(editor, p);
         syncGenerateLabel();
     });
 
-    on(rerollBtn, 'click', () => {
-        if (!seedEl) return;
-        // Rails are deterministic from every/offset (not seed-dependent,
-        // per the design doc's own §5 note) — reroll only visibly moves
-        // ties/their spans. Does not itself Generate; the user still
-        // clicks Generate/Regenerate to apply the new seed, same as
-        // every other field here.
-        seedEl.value = Math.floor(Math.random() * 1_000_000);
-    });
+    wireColorSwatch(colorRailsEl, 'rails');
+    wireColorSwatch(colorTiesEl, 'ties');
+    wireColorSwatch(colorNodesEl, 'nodes');
 
     on(detachAllBtn, 'click', () => {
         const p = _currentPattern(editor);

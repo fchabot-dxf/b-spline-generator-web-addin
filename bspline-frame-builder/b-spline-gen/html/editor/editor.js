@@ -358,6 +358,19 @@ export class VectorEditor {
                 ? this._layers.map(l => ({ ...l }))
                 : [],
             activeLayer: this._activeLayer,
+            // SE7g: editor._latticePattern (seed/colors/rails/ties/nodes
+            // config — generatePattern's own PATTERN object, mutated in
+            // place) was never part of the undo snapshot before this, so
+            // undoing a Generate reverted the drawn geometry but left the
+            // Seed field (and any just-picked color) pointing at the NEW
+            // value — "undo restores the previous pattern AND seed" (the
+            // dispatch's own verify line) needs this captured too.
+            // Deep-cloned, not a reference: generatePattern mutates the
+            // SAME object on every call, so a bare reference here would
+            // let a LATER Generate silently rewrite THIS snapshot's seed.
+            latticePattern: this._latticePattern
+                ? JSON.parse(JSON.stringify(this._latticePattern))
+                : null,
         };
         this._redoStack.length = 0;
         this._undoStack.push(state);
@@ -423,6 +436,14 @@ export class VectorEditor {
         }
         if (isObj && 'activeLayer' in state) {
             this._activeLayer = state.activeLayer;
+        }
+        // SE7g: restore editor._latticePattern alongside the geometry it
+        // goes with — a snapshot taken before the pattern's very first
+        // Generate has `latticePattern: null` (see pushState above), which
+        // correctly restores to "no pattern yet" rather than leaving a
+        // stale one from whatever was generated AFTER that snapshot.
+        if (isObj && 'latticePattern' in state) {
+            this._latticePattern = state.latticePattern;
         }
         _undoLog(`restoreState  layers/active set  layers=[${(this._layers||[]).map(l=>l.id).join(',')}]  active=${this._activeLayer}`);
 

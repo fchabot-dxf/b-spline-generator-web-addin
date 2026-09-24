@@ -8,7 +8,10 @@
  * not reimplemented here).
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { generatePattern, detachAllOwned, detachOwnership, OWNERSHIP_ATTR, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import {
+  generatePattern, detachAllOwned, detachOwnership, OWNERSHIP_ATTR, PATTERN_DEFAULTS,
+  nextSeed, recolorOwnedKind,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
 function _makeMockEditor() {
@@ -28,8 +31,15 @@ function _makeMockEditor() {
         else store[k] = v;
         return el;
       },
-      stroke() { return el; },
-      fill() { return el; },
+      // Real svg.js shape: .stroke({color}) / .fill(hex) actually paint —
+      // recorded into `store` (readable back via .attr('stroke'/'fill'))
+      // so SE7g's per-kind coloring is verifiable, same convention as
+      // editor-color.test.js's mockAttrEl.
+      stroke(v) {
+        if (typeof v === 'object' && v !== null && 'color' in v) store.stroke = v.color;
+        return el;
+      },
+      fill(v) { if (v !== undefined) store.fill = v; return el; },
       center(x, y) { store.cx = x; store.cy = y; return el; },
       addClass() { return el; },
       removeClass() { return el; },
@@ -397,5 +407,168 @@ describe('PATTERN.margin (SE7c): the board extent is inset so nothing sits on th
     const insetRails = insetEditor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
     const hasEdgeRailInset = insetRails.some((el) => el.attr('y1') === 0 || el.attr('y1') === insetEditor._mH);
     expect(hasEdgeRailInset).toBe(false);
+  });
+});
+
+/**
+ * SE7g (Fred: "the generate button needs to automatically use a new
+ * seed"): nextSeed() is the ONE seed-rolling function Generate now calls
+ * on every press, replacing the standalone Reroll button.
+ */
+describe('nextSeed (SE7g)', () => {
+  it('returns an integer in [0, 1_000_000)', () => {
+    for (let i = 0; i < 20; i++) {
+      const s = nextSeed();
+      expect(Number.isInteger(s)).toBe(true);
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThan(1_000_000);
+    }
+  });
+
+  it('non-vacuous: repeated calls are not all the same value (it is actually random, not a constant)', () => {
+    const draws = new Set(Array.from({ length: 20 }, () => nextSeed()));
+    expect(draws.size).toBeGreaterThan(1);
+  });
+});
+
+/**
+ * SE7g AMEND (Fred): per-kind colors — PATTERN.colors declared with
+ * defaults, generatePattern paints each kind from its own entry.
+ */
+describe('PATTERN_DEFAULTS.colors (SE7g amend)', () => {
+  it('declares the three default kind colors', () => {
+    expect(PATTERN_DEFAULTS.colors).toEqual({ rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' });
+  });
+});
+
+describe('generatePattern: per-kind colors (SE7g amend)', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('paints rails/ties with their own PATTERN.colors stroke, and nodes with their own fill', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 30,
+      rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      colors: { rails: '#111111', ties: '#222222', nodes: '#333333' },
+    };
+    generatePattern(editor, pattern);
+
+    const rails = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    const ties = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'tie');
+    const nodes = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
+    expect(rails.length).toBeGreaterThan(0);
+    expect(ties.length).toBeGreaterThan(0);
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const el of rails) expect(el.attr('stroke')).toBe('#111111');
+    for (const el of ties) expect(el.attr('stroke')).toBe('#222222');
+    for (const el of nodes) expect(el.attr('fill')).toBe('#333333');
+  });
+
+  it('falls back to PATTERN_DEFAULTS.colors when PATTERN.colors is absent', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 31,
+      rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+    };
+    delete pattern.colors;
+    generatePattern(editor, pattern);
+    const rail = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'rail');
+    expect(rail.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.rails);
+  });
+
+  it('restores editor._color to whatever it was before Generate ran (does not leak the last kind\'s color)', () => {
+    editor._color = '#abcdef';
+    const pattern = { ...PATTERN_DEFAULTS, seed: 32 };
+    generatePattern(editor, pattern);
+    expect(editor._color).toBe('#abcdef');
+  });
+
+  it('a partial PATTERN.colors (only rails set) still fills in ties/nodes from defaults', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 33,
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      colors: { rails: '#444444' },
+    };
+    generatePattern(editor, pattern);
+    const rail = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'rail');
+    const tie = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'tie');
+    expect(rail.attr('stroke')).toBe('#444444');
+    expect(tie.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.ties);
+  });
+});
+
+describe('recolorOwnedKind (SE7g amend): recolor owned pieces in place, no reseed', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('recolors every OWNED element of the given kind, leaves other kinds alone', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 40,
+      rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+    };
+    generatePattern(editor, pattern);
+    const railsBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    const tiesBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'tie');
+    expect(railsBefore.length).toBeGreaterThan(0);
+    expect(tiesBefore.length).toBeGreaterThan(0);
+    const tieColorBefore = tiesBefore[0].attr('stroke');
+
+    const count = recolorOwnedKind(editor, pattern.id, 'rails', '#999999');
+
+    expect(count).toBe(railsBefore.length);
+    for (const el of railsBefore) expect(el.attr('stroke')).toBe('#999999');
+    // Non-vacuous: ties were NOT touched by a rails-only recolor.
+    for (const el of tiesBefore) expect(el.attr('stroke')).toBe(tieColorBefore);
+  });
+
+  it('recolors nodes via fill, not stroke', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 41, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    const nodesBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
+    expect(nodesBefore.length).toBeGreaterThan(0);
+
+    recolorOwnedKind(editor, pattern.id, 'nodes', '#00ff00');
+    for (const el of nodesBefore) expect(el.attr('fill')).toBe('#00ff00');
+  });
+
+  it('a DETACHED piece of that kind keeps its own color — untouched', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 42,
+      rails: { every: 2, offset: 0 },
+    };
+    generatePattern(editor, pattern);
+    const rail = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'rail');
+    const originalColor = rail.attr('stroke');
+    rail.attr(OWNERSHIP_ATTR, undefined); // detach, same mechanic as SE7b's own detach tests
+
+    const count = recolorOwnedKind(editor, pattern.id, 'rails', '#ffffff');
+
+    expect(rail.attr('stroke')).toBe(originalColor);
+    // The detached rail must not be counted either.
+    const stillOwnedRails = editor._sketchLayer.children().filter(
+      (el) => el.attr('data-lattice') === 'rail' && el.attr(OWNERSHIP_ATTR) === pattern.id
+    );
+    expect(count).toBe(stillOwnedRails.length);
+  });
+
+  it('is exactly one undo step (not one per recolored element)', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 43, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    editor.pushStateCalls = 0;
+    editor.notifyChangeCalls = [];
+
+    recolorOwnedKind(editor, pattern.id, 'rails', '#101010');
+
+    expect(editor.pushStateCalls).toBe(1);
+    expect(editor.notifyChangeCalls).toEqual(['commit']);
+  });
+
+  it('does nothing (no undo push) when nothing of that kind is owned yet', () => {
+    const count = recolorOwnedKind(editor, 'lattice-nonexistent', 'rails', '#101010');
+    expect(count).toBe(0);
+    expect(editor.pushStateCalls).toBe(0);
+    expect(editor.notifyChangeCalls).toEqual([]);
   });
 });

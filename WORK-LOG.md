@@ -7691,3 +7691,138 @@ debug-log-free build after both fixes landed.
   clean on the final debug-free build.
 
 No amendments pending as of this pass.
+
+## Turn 243 — SE7g + amend: Generate always rolls a new seed; per-kind Colors row — DONE
+
+**HARD RULE mid-turn (Fred, via the advisor): no Fusion at all this turn** — Fred was using it. No
+`fusion_execute`/`fusion_screenshot`/`release.py --local`/add-in stop-run. Nothing had touched Fusion yet
+when this landed, so there was nothing to unwind. Every "live" claim below is a real headless-Chrome
+browser run instead (`scripts/smoke-lattice-seed-color.mjs`, new — see its own section).
+
+**SE7g base (Fred: "the generate button needs to automatically use a new seed").**
+`nextSeed()` (`editor-lattice-pattern.js`) is the one declared seed-roll — a plain `Math.floor(Math.random()
+* 1_000_000)`, the same draw the old standalone `#latticeReroll` button used, now called from ONE place.
+`properties-lattice.js`'s Generate handler rolls it into the Seed field BEFORE `readFieldsIntoPattern()`
+reads it, so the fresh value is what `generatePattern` actually uses — still one undo step (this write is
+local to the panel's own DOM field, not P/core-history, so it never touches the global UX-UNDO mechanism
+from turn 241). Removed `#latticeReroll` (markup + its `properties-lattice.js` binding) entirely — Generate
+does its job now. Removed the Seed input's `no-stepper` class too: that opt-out existed ONLY to keep the
+auto-injected +/- stepper from squeezing Reroll out of its row (SE7p's own comment said so); with Reroll
+gone, the field gets the same stepper every other number field in the panel already has — an orphan of the
+thing just removed, not a separate decision. The field stays editable (a pattern can still be noted/hand-
+set) with a `title` saying Generate will overwrite it anyway.
+
+**Amendment (landed mid-task, before any commit): per-kind Colors.** `PATTERN_DEFAULTS.colors = { rails:
+'#c62828', ties: '#f9c80e', nodes: '#1a237e' }`, declared and persisted with the rest of PATTERN
+(`editor-io.js`'s `data-lattice-pattern` is a whole-object `JSON.stringify`, no field whitelist — needed no
+changes). `generatePattern` now paints each kind from its own `PATTERN.colors` entry: `emitSegment`/
+`emitNode` (`editor-lattice.js`) paint from `editor._color` — shared with the hand-drawn Lattice tool, left
+untouched — so `generatePattern` swaps `editor._color` in for each kind's own emission loop and restores
+the original value afterward (same save/restore shape as the existing `previousActiveLayer` handling one
+scope up). New `recolorOwnedKind(editor, patternId, kind, color)`: recolors every OWNED element of ONE kind
+in place — no reseed, no regeneration, just a stroke/fill rewrite, one undo step (skipped when nothing of
+that kind is owned yet). Filters by BOTH the ownership tag AND the lattice-kind attribute, so a DETACHED
+piece (which already lost the ownership tag) is automatically excluded and keeps its own color — "detached
+pieces keep their own color" falls out of the existing ownership mechanism for free, not a new check.
+
+**Colors row UI (`bspline_gen_palette.html` + `properties-lattice.js`).** Three swatch buttons (Rails/
+Ties/Nodes) between Nodes and Seed. Clicking one opens the color mosaic — **the same T28 popover
+`properties-shape.js`'s own COLOR toolbar button already uses**, not a second hand-rolled picker, per the
+amendment's own instruction. It wasn't reusable as-is (built entirely inline inside
+`properties-shape.js`'s `initColorControl`, tightly coupled to that control's own `#editorColor`/
+`editor.setColor`), so extracted it to `editor-color.js` as `openColorMosaic(anchorEl, onPick, {
+customInput, onClose })` — the exact same grid/recent-row/keyboard-nav/positioning code, moved verbatim,
+zero behavior change (`properties-shape.js`'s own 35 existing color tests pass UNCHANGED after the
+refactor — the non-vacuous proof for the extraction itself). `customInput` lets `properties-shape.js` keep
+delegating "Custom…" to its own pre-existing `#editorColor` (with its own already-wired `'change'`
+listener, so `openColorMosaic` does NOT also attach one — would double-fire); omitted (the Lattice panel's
+case, no natural existing input to reuse), a temporary hidden `<input type="color">` is created, wired, and
+torn down after one use. `onClose` lets a caller that tracks "is my popover open" (properties-shape.js's
+own click-to-toggle-close behavior) stay in sync without polling.
+
+**Bug found and fixed via the live browser check, not by reasoning: undo never restored the pattern/seed.**
+`editor.js`'s `pushState`/`_restoreState` snapshot `svg` (the drawn content), `layers` (the roster), and
+`activeLayer` — never `editor._latticePattern` (the seed/colors/rails/ties/nodes config object
+`generatePattern` mutates in place). So undoing a Generate reverted the drawn geometry but left the Seed
+field's underlying pattern pointing at whatever the LATEST Generate had written — exactly the gap the
+dispatch's own verify line ("undo restores the previous pattern AND seed") was checking for. Fixed by
+adding `latticePattern` (deep-cloned — the live object is mutated in place on every future Generate, so a
+bare reference would let a later Generate silently rewrite an OLDER snapshot) to the pushState snapshot and
+restoring it in `_restoreState`. Not in the dispatch's own file list (`editor.js` wasn't named), but its
+own verify line demanded it and seat B's T32 scope (undo/redo button PLACEMENT + `styles/editor.css`) never
+touches this file's undo DATA model — no actual overlap. Scoping note: the visible Seed FIELD in the DOM
+doesn't auto-refresh after an undo today (properties-lattice.js only re-syncs on the Lattice tool button's
+own click, same as every other properties-*.js panel — none of them refresh on undo, a pre-existing,
+general gap this turn didn't create and isn't the one asked to fix); the underlying `editor._latticePattern`
+data — what actually matters for the NEXT Generate/persistence — reverts correctly, verified directly.
+
+**`scripts/smoke-lattice-seed-color.mjs` (new, standalone).** A second minimal CDP driver, NOT a new mode
+on the shared `smoke-editor.mjs` (two seats could plausibly touch that file independently this same cycle;
+a fully separate script for this one-off SE7g check has zero collision surface, at the cost of ~40 duplicated
+driver-boilerplate lines already accepted elsewhere in this suite's own precedent, e.g. `editor-color.test.js`'s
+file-local mock helpers). Serves the repo root itself (`python -m http.server 8765 --directory .`), opens
+the editor, clicks Lattice, Generates twice, opens the Rails swatch, picks navy, and calls
+`window.svgEditor.undo()` twice — reading `window.svgEditor._latticePattern`/DOM attributes directly rather
+than screenshots alone. Real, decisive result (see below) with zero console errors/exceptions.
+
+**Tests (added across 3 files, `tests/editor-lattice-pattern-emit.test.js` +14, new
+`tests/editor-lattice-undo.test.js` +7, new `tests/properties-lattice.test.js` +9 = 30 net).**
+- `nextSeed`: integer in range; non-vacuous "not always the same value" (guards the degenerate constant-
+  return case a bare range check alone wouldn't catch).
+- `PATTERN_DEFAULTS.colors`: the three declared defaults.
+- `generatePattern`: rails/ties/nodes each painted from their own `PATTERN.colors` entry (real mock
+  `_sketchLayer`, upgraded to actually RECORD `.stroke()`/`.fill()` calls — the existing mock previously
+  just returned `this`, matching `editor-color.test.js`'s own `mockAttrEl` convention instead); falls back
+  to `PATTERN_DEFAULTS.colors` when absent or partial; restores `editor._color` afterward (no leak).
+- `recolorOwnedKind`: recolors only the requested kind (leaves the other kinds' colors alone — proven with
+  a companion mid-test read, not just a final-state check); nodes via fill, rails/ties via stroke; a
+  DETACHED piece of that kind is untouched and NOT counted; exactly one undo step; no-op (no pushState)
+  when nothing of that kind is owned yet.
+- `editor.js` `pushState`/`undo`/`redo` via `VectorEditor.prototype.X.call(mock)` (the real methods, not a
+  reimplementation — same convention as `editor-color.test.js`'s `setColor` tests): captures a DEEP COPY of
+  `_latticePattern` (mutating the live object after the snapshot proves the snapshot's own copy doesn't
+  follow); undo/redo round-trip the seed correctly; a pre-Generate snapshot restores `null`, not a stale
+  later pattern; the exact two-Generates-then-two-undos sequence the live check also ran.
+- `properties-lattice.js` (real DOM fixture + real `initLatticeProperties`, `generatePattern` running for
+  real against a lightweight mock `_sketchLayer`): `#latticeReroll` doesn't exist; Generate writes a NEW
+  seed into the field before generating (non-vacuous: two presses roll two DIFFERENT seeds); the Regenerate
+  label flip still works; swatch backgrounds reflect defaults pre-Generate; clicking a swatch opens the
+  SHARED 32-cell mosaic; picking a color updates the swatch + `PATTERN.colors` + recolors owned rails in
+  place; recoloring Rails leaves Ties untouched; picking a color BEFORE the first Generate updates
+  `PATTERN.colors` without crashing (nothing owned yet to recolor).
+
+**Non-vacuous, four separate passes.** (1) Reverted `generatePattern`'s per-kind `editor._color` swaps AND
+`recolorOwnedKind` to a `return 0` stub in one pass (both are in the same file, touched together) — exactly
+8 tests failed across the two affected files, all others stayed green. (2) Reverted `editor.js`'s
+`pushState`/`_restoreState` latticePattern lines — all 7 `editor-lattice-undo.test.js` tests failed. (3)
+Reverted `properties-lattice.js`'s seed-roll-on-Generate and the three `wireColorSwatch` calls together —
+exactly 6 of 9 `properties-lattice.test.js` tests failed (the 3 that don't depend on either — no-reroll-
+element, pre-Generate swatch defaults, Regenerate label flip — correctly stayed green). Restored from
+scratch copies each time, diffed byte-identical, re-ran green (481/481) after each restore. (The
+`editor-color.js` extraction's own non-vacuous proof is its 35 pre-existing tests passing UNCHANGED — a
+behavior-preserving refactor is proven by NOT breaking anything, which failed loudly during development
+before the `customInput`/`onClose` design settled on exactly reproducing the original toggle-to-close and
+Custom-picker delegation.)
+
+**Live (browser, per the hard rule — `smoke-lattice-seed-color.mjs` against `python -m http.server 8765`
+from the repo root).** Real, single run, zero console errors: `rerollButtonRemoved: true`; Generate #1
+seed 747641, Generate #2 seed 22723 (`seedChangedBetweenPresses: true`, `tieSetChangedBetweenPresses:
+true` — 8 ties -> 11 ties, different positions); `seedFieldMatchesPatternSeed: true`; default colors
+`#c62828`/`#f9c80e`/`#1a237e` on rails/ties/nodes exactly matching `PATTERN_DEFAULTS.colors`;
+`mosaicOpened: true` with `mosaicCellCount: 32` (the shared T28 grid, confirmed by count); picking navy
+recolored all 17 rails' `stroke` to `#1a237e`, left `railCount` at 17 (no reseed/regeneration) and the tie's
+own stroke untouched (`#f9c80e`), `PATTERN.colors.rails` updated, seed unchanged (`recolorDidNotReseed:
+true`); first `undo()` reverted the rail color back to `#c62828` (seed still 22723 — undoing the color pick
+lands one step before it); second `undo()` reverted the seed all the way back to `747641`
+(`undoRestoresPriorSeed: true`) — the exact bug fix above, proven end-to-end in a real page, not just a
+mocked vitest run. Screenshots (`se7g-3-mosaic-open.png`, `se7g-4-recolored.png`) confirm the panel layout:
+the mosaic renders fully on-screen anchored under the Rails swatch, and the recolored rails/ties render
+navy/yellow on the actual generated pattern, matching the swatches exactly.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **481 passed**, 0 failed.
+- Live browser (`smoke-lattice-seed-color.mjs`, no Fusion): every field above confirmed true/matching, zero
+  console errors, screenshots visually clean.
+
+No amendments pending as of this pass.

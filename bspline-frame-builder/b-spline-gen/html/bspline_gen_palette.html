@@ -1588,27 +1588,35 @@
               </label>
             </div>
 
-            <label style="display:flex; flex-direction:column; gap:3px;">Seed
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Colors</span>
               <div style="display:flex; gap:6px;">
-                <!-- SE7p: `no-stepper` — main/ui-bindings.js's
-                     attachNumberSteppers() auto-wraps EVERY
-                     input[type=number] site-wide in a .cad-stepper
-                     (−/input/+), unless opted out. That wrapper is what
-                     was actually overflowing this row next to Reroll —
-                     not the bare input (confirmed via the DOM: the input's
-                     real parent after page load was the injected
-                     .cad-stepper, not this flex row). The Reroll button
-                     already IS this field's "adjust the value" control;
-                     a second stepper next to it is redundant as well as
-                     what broke the layout, so this is the one number
-                     input in the app that opts all the way out, using the
-                     opt-out attachNumberSteppers already declares — not a
-                     new mechanism. min-width:0 kept regardless (correct
-                     flex sizing hygiene once the input IS the flex item
-                     again). -->
-                <input id="latticeSeed" type="number" step="1" value="42" class="no-stepper" style="flex:1; min-width:0; height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
-                <button id="latticeReroll" type="button" title="Reroll seed" style="width:26px; height:26px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">⟳</button>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
+                  <button id="latticeColorRails" type="button" title="Rails color" aria-label="Rails color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
+                  <button id="latticeColorTies" type="button" title="Ties color" aria-label="Ties color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Nodes
+                  <button id="latticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
               </div>
+            </div>
+
+            <!-- SE7g (Fred: "the generate button needs to automatically
+                 use a new seed"): Generate/Regenerate now rolls a fresh
+                 seed on every press (editor-lattice-pattern.js's
+                 nextSeed()) — the standalone Reroll button this field
+                 used to pair with is gone (its own SE7p `no-stepper` opt-
+                 out went with it: that class existed only to keep the
+                 auto-injected +/- stepper from squeezing Reroll out of
+                 this row, so with Reroll gone the field gets the same
+                 stepper every other number input here already has). The
+                 field stays editable (a pattern can still be noted/hand-
+                 set) but the title says plainly that Generate will
+                 overwrite it anyway. -->
+            <label style="display:flex; flex-direction:column; gap:3px;">Seed
+              <input id="latticeSeed" type="number" step="1" value="42" title="Generate picks a new seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
             </label>
           </div>
 

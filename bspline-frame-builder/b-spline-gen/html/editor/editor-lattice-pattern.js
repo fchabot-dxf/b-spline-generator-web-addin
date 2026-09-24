@@ -87,8 +87,24 @@ export const PATTERN_DEFAULTS = {
   // of its own, so the Pattern panel's field drives both surfaces.
   ties: { density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1 },
   nodes: { ends: true, crossings: true },
+  // SE7g AMEND (Fred): per-kind colors — SE9's rule (stroke === fill,
+  // per element) applies here too, so a generated piece's own color is
+  // fully described by one hex per kind. Persisted with the rest of
+  // PATTERN (editor-io.js's data-lattice-pattern is a whole-object
+  // JSON.stringify, no field whitelist, so this needs no changes there).
+  colors: { rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' },
   seed: 42,
 };
+
+/** SE7g (Fred: "the generate button needs to automatically use a new
+ *  seed"): the ONE seed-rolling function, used by Generate/Regenerate
+ *  before every run. Replaces the old standalone Reroll button, which
+ *  only ever wrote a fresh value into the Seed field without itself
+ *  generating — this is that same draw (a uniform pick over the same
+ *  range), just called from the one place that now needs it. */
+export function nextSeed() {
+  return Math.floor(Math.random() * 1_000_000);
+}
 
 /** Row j is a rail row when (j - offset) is a multiple of every. every<=0
  *  is a degenerate PATTERN (a UI stepper shouldn't produce it, but this
@@ -415,6 +431,15 @@ export function generatePattern(editor, PATTERN) {
   // silently leave the user's active layer on "Nodes" as a side effect
   // of how emission happens to be sequenced.
   const previousActiveLayer = editor._activeLayer;
+  // SE7g AMEND: emitSegment/emitNode (editor-lattice.js) paint from
+  // editor._color — the general drawing-tool color, shared with the
+  // hand-drawn Lattice tool — so each kind's own PATTERN.colors value is
+  // applied by swapping editor._color in for that kind's emission loop
+  // below, then restored here. Keeps emitSegment/emitNode themselves
+  // untouched (still exactly what the hand-drawn tool needs).
+  const previousColor = editor._color;
+  const colors = { ...PATTERN_DEFAULTS.colors, ...(PATTERN.colors || {}) };
+  PATTERN.colors = colors;
 
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const extent = _resolveExtent(editor, PATTERN);
@@ -432,16 +457,19 @@ export function generatePattern(editor, PATTERN) {
   const tagOwned = (el) => { if (el) el.attr(OWNERSHIP_ATTR, PATTERN.id); return el; };
 
   setActiveLayer(editor, layerIds.rails);
+  editor._color = colors.rails;
   for (const seg of segments) {
     if (seg.kind !== 'rail') continue;
     tagOwned(emitSegment(editor, 'rail', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing)));
   }
   setActiveLayer(editor, layerIds.ties);
+  editor._color = colors.ties;
   for (const seg of segments) {
     if (seg.kind !== 'tie') continue;
     tagOwned(emitSegment(editor, 'tie', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing)));
   }
   setActiveLayer(editor, layerIds.nodes);
+  editor._color = colors.nodes;
   for (const p of nodePoints) {
     // emitNode dedupes against an existing node at the same lattice cell
     // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
@@ -449,6 +477,7 @@ export function generatePattern(editor, PATTERN) {
     // which tagOwned's own null-check handles.
     tagOwned(emitNode(editor, fromLattice(p, spacing)));
   }
+  editor._color = previousColor;
 
   // Restore the layer that was active before Generate — but only when
   // there WAS one; a totally fresh editor (previousActiveLayer === null,
@@ -468,6 +497,53 @@ export function generatePattern(editor, PATTERN) {
   editor._latticePattern = PATTERN;
 
   return { segments, nodePoints };
+}
+
+/** PATTERN.colors' kind names ('rails'/'ties'/'nodes') to LATTICE_ATTR's
+ *  own singular values ('rail'/'tie'/'node') — the one place the two
+ *  naming conventions meet, so a caller of recolorOwnedKind (below) uses
+ *  the same kind names the rest of the Colors panel does. */
+const COLOR_KIND_TO_LATTICE_ATTR = { rails: 'rail', ties: 'tie', nodes: 'node' };
+
+/**
+ * SE7g AMEND: recolor every element THIS pattern owns of ONE kind, IN
+ * PLACE — no reseed, no regeneration, just a stroke/fill rewrite (SE9's
+ * rule: stroke === fill for a node's fill-only shape, stroke-only for
+ * rail/tie lines). Filters by BOTH OWNERSHIP_ATTR (this pattern) AND
+ * LATTICE_ATTR (this kind), so a detached (hand-edited) piece — which
+ * lost OWNERSHIP_ATTR the moment it was touched — is automatically
+ * excluded and keeps its own color, exactly the "detached pieces keep
+ * their own color" rule, for free from the ownership mechanism that
+ * already existed for a different reason (design §2). One undo step,
+ * skipped entirely (no pushState) when there was nothing owned of that
+ * kind to recolor.
+ *
+ * @returns {number} how many elements were recolored (0 = nothing owned
+ *   of this kind yet, e.g. the color was changed before the first
+ *   Generate — the caller still keeps the new color in PATTERN.colors
+ *   for the NEXT Generate to use).
+ */
+export function recolorOwnedKind(editor, patternId, kind, color) {
+  if (!editor || !editor._sketchLayer || !patternId) return 0;
+  const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
+  if (!latticeKind) return 0;
+  const owned = editor._sketchLayer.children().toArray().filter(
+    (ch) => ch && ch.node
+      && ch.node.getAttribute(OWNERSHIP_ATTR) === patternId
+      && ch.node.getAttribute(LATTICE_ATTR) === latticeKind
+  );
+  for (const ch of owned) {
+    if (latticeKind === 'node') {
+      ch.fill(color);
+    } else {
+      ch.stroke({ color });
+    }
+  }
+  if (owned.length > 0) {
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  }
+  return owned.length;
 }
 
 /**
