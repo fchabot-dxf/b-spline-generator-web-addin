@@ -3619,3 +3619,77 @@ Amendments polled clean (`handoff.py amendments --role worker`) before committin
 before passing. Committed by explicit path (5 files: `editor/path-layout.js`,
 `editor/editor-transform-handles.js`, `tests/path-layout.test.js`, `tests/editor-transform-handles.test.js`,
 this WORK-LOG) — pushed.
+
+## Lane B — Turn 87 — T35: SE12 slice 1 — analytic round-cap outline engine — DONE
+
+First step per the dispatch: `git merge origin/main` (clean working tree confirmed via `git status` first,
+`ort` strategy, no conflicts — pulled in T34's own merge back to main, layer-toggle styling, the SE12
+`fusionGeometry` answer, and Seat A's SE7h lattice-orientation work, 15 files). Full suite green (521/521,
+19 new from main) before pushing the merge; pushed separately from this turn's own product commit so a
+problem in either would be easy to bisect.
+
+**Fred's answers, now load-bearing for later slices, not this one**: `fusionGeometry` is an explicit
+per-layer pick (Outline/Centerline/Both), default centerline, **never inferred automatically** — noted, not
+designed against yet (that's Slice 4). New context: Fred uses these stamps two ways — raised/carved relief
+AND resin inlay (carve a recess, fill resin, machine flush against the original uncarved STEP) — inlay is
+why exact Outline geometry actually matters, not just a nice-to-have.
+
+New pure module `editor/editor-expand-analytic.js`: `lineOutlinePathD({x1,y1,x2,y2,strokeWidth,cap})` — a
+round-capped line's TRUE offset outline as a filled path `d`, 2 straight banks + 2 true semicircular `A`
+arcs, zero sampling, zero polygon-clipping (Fred: "straight lines need to be just straight lines and arcs
+need to be true arcs"). `SUPPORTED_LINE_CAPS` declared as data (`round: true, butt: false, square: false`)
+per the dispatch's own ask — a caller gets an explicit `{d: null, unsupported: 'butt'}` decline, never a
+silently-wrong round-cap shape for a cap this slice doesn't cover yet. Zero-length line degenerates to a
+full circle via two `A` semicircles (SVG can't express a full circle in one `A`) — same point-sequence
+shape `path-layout.test.js`'s own existing "full circle via two 180deg arcs" test already validates, just
+centered at the (coincident) endpoint instead of the origin. Works in the element's LOCAL frame only — world
+transforms are Slice 0's job (`isSimilarity`/`bakeArcSimilar`), composing with this module's `A` output
+exactly like any other arc-bearing path would, no special-casing needed between the two slices.
+
+**The one number this turn couldn't get from pure derivation**: which `sweep` flag value (0 or 1) makes each
+cap arc bulge AWAY from the line instead of back into the capsule body. Given how T34 (same session) already
+went wrong twice trusting a hand-derived sweep rule, I didn't repeat that — built a tiny scratch script that
+fed both candidate values through the REAL `arcToCubics` (already in this codebase, already trusted), sampled
+each candidate's arc midpoint, and read which one actually lands past the line's endpoint vs. folded back
+over it. `sweep=0` for both cap arcs, confirmed numerically before writing a single line of the module, not
+after debugging a failing test.
+
+**Tests** (`tests/editor-expand-analytic.test.js`, new, 7 cases): horizontal/vertical/diagonal lines — every
+bank point sits EXACTLY `strokeWidth/2` off the centerline, measured as perpendicular distance (direction-
+agnostic, so this can't just be re-asserting the module's own normal-sign convention back at itself); both
+arcs have `rx=ry=strokeWidth/2`; the whole loop's shoelace-formula area matches the analytic "stadium" shape
+(`L·w + π(w/2)²`) within 1% — this one check catches BOTH a wrong magnitude AND a self-intersecting/bowtie
+loop a wrong sweep would produce, not just one or the other. A dedicated sweep-direction test samples each
+arc's own midpoint (not just the area) and asserts it lands outside the line's own span. Zero-length →
+full-circle area + every sampled point at exact radius. Unsupported cap (`butt`/`square`) → explicit decline,
+not a shape.
+
+**Non-vacuous, by mutation**: flipped both `sweep` flags in the actual module (0→1, the wrong value my own
+scratch check had already ruled out) — 4 of 7 tests failed (both area checks that happened to hit a bowtie
+badly enough, plus the dedicated bulge-direction test); the zero-length-circle and unsupported-cap tests
+correctly stayed green (neither exercises the two-bank sweep path at all — not a false negative, just not
+what those cases test). Reverted; full suite re-confirmed green (528/528) after.
+
+**Also constructed a deliberately-bowtied `d` string BY HAND** (swapped which arc endpoint connects to
+which bank) as its own test, to prove the shoelace-area check can actually detect that failure MODE
+specifically — not just infer it from the mutation above catching *something*. Confirms the check is
+measuring the right property (a valid simple closed loop), not coincidentally sensitive to sweep alone.
+
+**CDP smoke test — the real symptom, not a proxy**: repo-root `http.server`, headless Chrome, generated a
+real Lattice pattern, took one actual rail (`x1=0.25 y1=0.5 x2=6.75 y2=0.5, stroke-width=0.07`), ran it
+through the actual `lineOutlinePathD`, then rasterized BOTH the original `<line stroke-linecap="round">` and
+the analytic `<path fill>` outline through `renderSvgNative` (the same real-native-SVG-rendering primitive
+`rasterizeSvg`'s own carve path uses, per SE12-LIVE-EXPAND-DESIGN.md's own item-4 finding this session
+already established) at 100px/inch. **Result: strokeOpaque=4587, outlineOpaque=4595, diff=0.17%** — squarely
+in the "edge anti-aliasing only" range the design predicted, not asserted. Screenshots saved
+(`t35-stroke.png`/`t35-outline.png` in the session scratchpad) — visually indistinguishable, confirmed by
+reading both images directly, not just trusting the pixel-count number alone.
+
+**Process hygiene**: `tasklist` confirmed zero leftover `chrome.exe` before and after the two live-verify
+runs this turn; the repo-root `http.server` was found still listening (its actual LISTENING socket, not the
+harmless `TIME_WAIT` connection remnants a busy dev server accumulates) and explicitly stopped
+(`taskkill`/`netstat` re-verified clear) before finalizing.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing and again immediately
+before passing. Committed by explicit path (3 files: new `editor/editor-expand-analytic.js`, new
+`tests/editor-expand-analytic.test.js`, this WORK-LOG) — pushed.
