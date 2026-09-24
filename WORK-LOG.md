@@ -6609,3 +6609,95 @@ produced a NaN node radius, so rather than leave it on disk it's `git stash`ed �
 HOLD: LATTICE_STYLE declaration only, before wiring emitSegment/emitNode to it"). Nothing in
 `editor-lattice-pattern.js` (the `PATTERN.margin` inset half) was touched at all. Working tree is clean;
 `npx vitest run` → 281 passed, unaffected. No commit made this turn.
+
+## Turn 221 — SE8b-3: measured the drag pipeline in a real browser — nothing is slow, changed nothing — DONE
+
+SE7c stays on HOLD, stash untouched. Seat B is on pinch verification (`editor-input.js`/`editor-interaction.js`
+pointer path/`styles/`) — not touched.
+
+**1. `_perfLog` (main/app-init.js) now takes structured args, not a pre-formatted string** —
+`_perfLog(kind, step, ms)` instead of `_perfLog(msg)` — and ALSO pushes `{kind, step, ms}` onto
+`window.__perfLog` (a plain array) when the PERF category is on, per the dispatch's own suggestion
+("have the pipeline also push into `window.__perfLog`"). `fusLog` is a no-op outside Fusion (checks
+`typeof adsk !== 'undefined'`) and a real browser's console output isn't reliably capturable via CDP without
+widening the smoke script's log filter — a structured array a headless script can read back directly via
+`Runtime.evaluate` is far more robust than scraping formatted text. Updated `tests/change-pipeline.test.js`
+for the new signature (9 tests: the existing 3 plus a new one asserting the pushed record's exact shape and
+that repeated calls APPEND, not overwrite).
+
+**2. Added a `perf` mode to `scripts/smoke-editor.mjs`.** Generates a lattice (reusing the existing
+desktop-mode flow — 37 elements: 19 rails/6 ties/12 nodes, per the dispatch's own "reuse what's there"),
+turns on `window.__editorDebug='PERF'`, drives 120 `editor._notifyChange('live')` calls at ~16ms intervals
+(one Node-side `sleep` per call — ~2s, matching a 60fps drag) then one `'commit'`, and summarizes
+`window.__perfLog` into count/median/p95 per `"<kind> <step>"`.
+
+**Discovered along the way, NOT fixed here (out of file scope — `editor-interaction.js`/`editor-marquee.js`
+are seat B's this turn, and neither is on my dispatch's own file list either): `editor._selectMany` and
+`editor._selectAdd` are imported into `editor.js` from `editor-ui.js` but NEVER actually delegated as
+instance methods** — only `_select(el) { return select(this, el); }` exists; there's no matching
+`_selectMany`/`_selectAdd` line. Real, currently-shipped consequences: Ctrl+A (`editor-interaction.js:323`,
+guarded with `typeof editor._selectMany === 'function'`) silently no-ops — select-all does nothing;
+clipboard paste (`:361`) and marquee-drag multi-select finalize (`editor-marquee.js:108,110`) call it
+UNGUARDED — **both throw** whenever they'd otherwise select more than one element; shift-click add-to-
+selection (`:536`, `_selectAdd`) throws too. Found while trying to drive a real "select the whole lattice,
+then drag it" gesture for this measurement — that path is why the original dispatch's literal ask (drive a
+real CDP mouse drag) got replaced with driving `_notifyChange` directly instead (next point). **Flagging
+this prominently for a follow-up dispatch** — this reads like a real, user-facing regression (multi-select
+via any path other than a single click appears to be broken), not a rare edge case.
+
+**Deviated from the dispatch's literal "drive a 2-second drag with CDP `Input.dispatchMouseEvent`"** — said
+so rather than silently doing something else. Two independent problems, found by direct experimentation
+(each confirmed by isolating it in a throwaway debug script before concluding, not guessed at):
+- The `_selectMany` bug above means "select all, then drag" can't be built without first working around (or
+  fixing, out of scope) that bug.
+- Independently: a whole press→N-moves→release gesture, when driven as ONE async expression evaluated
+  page-side via CDP's `Runtime.evaluate` (many `requestAnimationFrame` ticks + `setTimeout` delays all
+  nested inside one evaluated async function), silently never fires `editor._notifyChange`'s throttled
+  pipeline AT ALL in this headless setup — `window.__perfLog` stayed empty across many attempts. Isolated by
+  elimination: a bare `requestAnimationFrame` loop (no app code) fires correctly on this exact page,
+  including with the editor modal open, at ~60fps — so headless rAF itself isn't suspended. The SAME
+  `editor._notifyChange('live')` call, issued as its OWN separate CDP round-trip with a real Node-side
+  `sleep()` after it, populates `window.__perfLog` every time. Root cause not fully chased down (likely
+  something about how CDP's `awaitPromise` pumps a long-lived async page-side function with many nested
+  timers) — worked around rather than solved, since the WORKAROUND (drive each `_notifyChange` call as its
+  own CDP round-trip, exactly matching this script's own EXISTING pattern for the pinch-zoom drag) is simpler
+  and more robust than the thing being worked around.
+- What actually gets measured is unaffected by either finding: `editor._notifyChange('live')` is the EXACT
+  same call `translateSelection`/`applyTransformDrag` make on every real mousemove during a drag — a real
+  user's drag doesn't reach it through some OTHER code path. Also discovered along the way and fixed only in
+  my own test tooling (not app code): the earlier CDP-mouse-coordinate approach required
+  `scrollIntoView()` first — the editor modal renders well below the viewport's own top in this desktop
+  layout (not a fixed-position overlay), so `getBoundingClientRect()` on anything inside it returns
+  coordinates far outside the visible window until scrolled into view. Not needed once the mouse-drag
+  approach was dropped, but worth a mention in case a future script needs real screen coordinates again.
+
+**3. Measured (`npx http-server ... -p 8765`, `bspline_gen_palette.html`, headless Chrome via the new perf
+mode), twice for reproducibility:**
+
+| step | n | median (run 1 / run 2) | p95 (run 1 / run 2) |
+|---|---|---|---|
+| live serialize | 120 | 0.4ms / 0.4ms | 0.9ms / 0.7ms |
+| live remask | 120 | 2.6ms / 2.5ms | 5.2ms / 4.6ms |
+| **live total** | 120 | **3.1ms / 3.0ms** | **6.4ms / 5.5ms** |
+| commit serialize | 1 | 0.3ms / 0.2ms | — |
+| commit persist | 1 | 1.3ms / 1.5ms | — |
+| commit remask | 1 | 2.4ms / 2.6ms | — |
+| commit total | 1 | 4.0ms / — | — |
+
+**Verdict, per the dispatch's own explicit rule ("if nothing is slow (< 16ms total), say so and change
+nothing"): nothing is slow.** `live total`'s worst observed value (p95, 6.4ms) is under HALF the 16ms frame
+budget; median is under a fifth of it. `remask` is the most expensive single step (as the dispatch's own
+"if remask dominates" framing anticipated it might be) but at 2.5-2.6ms it isn't costing anything close to a
+dropped frame. **Changed nothing in `editor/editor.js` or `CHANGE_PIPELINE` itself** — SE8b-2's existing
+`live: ['serialize', 'remask']` (persist already excluded) stands as measured-sufficient, not just
+assumed-sufficient. Test content was the SAME 37-element lattice the dispatch itself suggested reusing; a
+MUCH larger document could plausibly push `remask` further (it re-rasterizes every visible layer) — worth
+watching if a future report says drags feel slow on a heavier drawing, but not a measured problem today, so
+not something to speculatively "fix" per this project's own simplicity-first rule.
+
+**Verify:**
+- `node --check` on `main/app-init.js` and `scripts/smoke-editor.mjs`: clean.
+- `npx vitest run` → **282 passed** (281 prior + 1 net new: the `_perfLog` signature-change test split added
+  one test over what it replaced).
+
+No amendments were pending (`handoff.py amendments --role worker` → "no new amendments").
