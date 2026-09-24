@@ -17,6 +17,8 @@ import {
   endPoint,
   arcToCubics,
   normalizeForBake,
+  isSimilarity,
+  bakeArcSimilar,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/path-layout.js';
 import { transformPoint } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-coords.js';
 
@@ -223,5 +225,153 @@ describe('normalizeForBake', () => {
   it('a rotated H would no longer be horizontal — normalizeForBake removes H/V from the array entirely so nothing downstream can re-emit one', () => {
     const out = normalizeForBake([['M', 0, 0], ['H', 5], ['V', 5], ['Z']]);
     expect(out.some((s) => s[0] === 'H' || s[0] === 'V')).toBe(false);
+  });
+});
+
+describe('isSimilarity (SE12 Slice 0)', () => {
+  it('true for identity, carveMatrix\'s own shape (uniform scale + translate), pure rotation, rotation+scale, and a reflection', () => {
+    expect(isSimilarity({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })).toBe(true);
+    expect(isSimilarity({ a: 96, b: 0, c: 0, d: 96, e: -(7 * 96) / 2, f: -(9 * 96) / 2 })).toBe(true);
+    const rad = (30 * Math.PI) / 180;
+    expect(isSimilarity({ a: Math.cos(rad), b: Math.sin(rad), c: -Math.sin(rad), d: Math.cos(rad), e: 0, f: 0 })).toBe(true);
+    expect(isSimilarity({ a: 2 * Math.cos(rad), b: 2 * Math.sin(rad), c: -2 * Math.sin(rad), d: 2 * Math.cos(rad), e: 5, f: -3 })).toBe(true);
+    expect(isSimilarity({ a: 1, b: 0, c: 0, d: -1, e: 0, f: 0 })).toBe(true); // Y-flip: a reflection, still a similarity
+  });
+
+  it('false for the default side-handle drag (non-uniform scale) and for a shear', () => {
+    expect(isSimilarity({ a: 2, b: 0, c: 0, d: 5, e: 0, f: 0 })).toBe(false);
+    expect(isSimilarity({ a: 1, b: 0, c: 0.5, d: 1, e: 0, f: 0 })).toBe(false);
+  });
+
+  it('false (not a throw) for a degenerate/zero-scale matrix', () => {
+    expect(isSimilarity({ a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 })).toBe(false);
+  });
+});
+
+describe('bakeArcSimilar (SE12 Slice 0)', () => {
+  // rx != ry on purpose: an axis-swap or a rotation-angle sign bug shows up
+  // as an off-ellipse point on a real ellipse, the same reasoning the
+  // existing "rotated 30°" arcToCubics test above already uses for the
+  // same reason.
+  const quarterArc = ['A', 2, 1, 0, 0, 1, 0, 1];
+  const prev = { x: 2, y: 0 };
+
+  // Fraction-aligned, NOT sampleCubicRun's per-segment-t concatenation:
+  // arcToCubics splits by Math.ceil(|dTheta|/90°), so floating-point noise
+  // on ONE side of a cross-check (e.g. a dTheta of 90.0000001° instead of
+  // exactly 90°) can push it from 1 segment to 2 while the OTHER side
+  // stays at 1 — sampleCubicRun's flat per-segment concatenation would
+  // then compare index i on a 9-point run against index i on an 18-point
+  // run, silently misaligned (this is exactly what a first draft of these
+  // tests did: it reported a 1.44-unit "mismatch" that was pure sampling
+  // misalignment, not a bakeArcSimilar bug — confirmed by an independent
+  // analytic check before rewriting this helper; see WORK-LOG). Global
+  // fraction f in [0,1] maps to the right (segment, local t) regardless
+  // of how many segments either side split into, since arcToCubics always
+  // divides into EQUAL angular steps.
+  function sampleAtFractions(start, cubics, fractions) {
+    const n = cubics.length;
+    return fractions.map((f) => {
+      const scaled = f * n;
+      const segIdx = Math.min(n - 1, Math.floor(scaled));
+      const localT = scaled - segIdx;
+      const segStart = segIdx === 0 ? start : { x: cubics[segIdx - 1][5], y: cubics[segIdx - 1][6] };
+      return sampleCubic(segStart, cubics[segIdx], localT);
+    });
+  }
+  const FRACTIONS = Array.from({ length: 9 }, (_, i) => i / 8);
+
+  /** Ground truth: sample the ORIGINAL (pre-bake) arc, then transform
+   *  each sampled point directly through m — independent of whatever
+   *  bakeArcSimilar itself computes. */
+  function sampleArcWorld(p0, seg, m) {
+    return sampleAtFractions(p0, arcToCubics(p0, seg), FRACTIONS).map((p) => transformPoint(m, p));
+  }
+  /** Sample an ALREADY-baked (world-space) arc segment — no further transform. */
+  function sampleArcSegWorld(startWorld, seg) {
+    return sampleAtFractions(startWorld, arcToCubics(startWorld, seg), FRACTIONS);
+  }
+
+  // Tolerance: TWO independently-approximated cubic runs of the SAME
+  // analytic curve, compared point-by-point — not one run against an
+  // exact value (the existing "scaled circle" test above's ~0.027% kappa
+  // bound applies once; here it can apply on both sides, plus a small
+  // extra term near a fraction that lands close to a segment boundary on
+  // one side but not the other, since the two runs aren't guaranteed to
+  // split into the SAME number of segments — confirmed empirically at
+  // ~0.7% for a 2-radius arc before writing this bound; 1% leaves margin
+  // without hiding a real defect (a wrong sweep/rotation/center produces
+  // errors of order the arc's own radius, 50-100%+, not a few percent).
+  function expectArcsMatch(groundTruth, candidate, scale) {
+    groundTruth.forEach((gt, i) => {
+      const dist = Math.hypot(gt.x - candidate[i].x, gt.y - candidate[i].y);
+      expect(dist).toBeLessThan(scale * 0.01);
+    });
+  }
+
+  it('carveMatrix(7,9,96): stays an A, rx/ry scaled by dpi, endpoint matches transformPoint, sweep/largeArc/rotation unchanged (no rotation in this matrix)', () => {
+    const m = { a: 96, b: 0, c: 0, d: 96, e: -(7 * 96) / 2, f: -(9 * 96) / 2 };
+    const baked = bakeArcSimilar(prev, quarterArc, m);
+    expect(baked[0]).toBe('A');
+    expect(baked[1]).toBeCloseTo(2 * 96, 6); // rx
+    expect(baked[2]).toBeCloseTo(1 * 96, 6); // ry
+    expect(baked[3]).toBeCloseTo(0, 6); // x-axis-rotation
+    expect(baked[4]).toBe(0); // largeArc
+    expect(baked[5]).toBe(1); // sweep
+    const end = transformPoint(m, { x: 0, y: 1 });
+    expect(baked[6]).toBeCloseTo(end.x, 6);
+    expect(baked[7]).toBeCloseTo(end.y, 6);
+  });
+
+  it('cross-check against ground truth for a rotated + non-1 scaled + translated similarity', () => {
+    const rad = (37 * Math.PI) / 180, s = 2.3;
+    const m = { a: s * Math.cos(rad), b: s * Math.sin(rad), c: -s * Math.sin(rad), d: s * Math.cos(rad), e: 12, f: -4 };
+    const baked = bakeArcSimilar(prev, quarterArc, m);
+    const groundTruth = sampleArcWorld(prev, quarterArc, m);
+    const candidate = sampleArcSegWorld(transformPoint(m, prev), baked);
+    expectArcsMatch(groundTruth, candidate, 2 * s); // rx=2, scaled by s
+  });
+
+  it('a reflection (Y-flip): sweep flips, and the cross-check against ground truth still holds', () => {
+    const m = { a: 1, b: 0, c: 0, d: -1, e: 0, f: 0 };
+    const baked = bakeArcSimilar(prev, quarterArc, m);
+    expect(baked[5]).toBe(0); // sweep flipped from 1 -> 0
+    const groundTruth = sampleArcWorld(prev, quarterArc, m);
+    const candidate = sampleArcSegWorld(transformPoint(m, prev), baked);
+    expectArcsMatch(groundTruth, candidate, 2);
+  });
+
+  it('a rotation combined with a reflection: cross-check still holds — two earlier hand-derived formulas for this case (a cross-product sweep-sign rule, then a dTheta-magnitude match) both got it wrong, each caught by exactly this test; the final approach matches the transform\'s own expected ellipse center instead of asserting a rule (see path-layout.js)', () => {
+    const rad = (50 * Math.PI) / 180;
+    const m = { a: Math.cos(rad), b: Math.sin(rad), c: Math.sin(rad), d: -Math.cos(rad), e: 3, f: 7 };
+    expect(m.a * m.d - m.b * m.c).toBeLessThan(0); // sanity: this IS a reflection
+    const baked = bakeArcSimilar(prev, quarterArc, m);
+    const groundTruth = sampleArcWorld(prev, quarterArc, m);
+    const candidate = sampleArcSegWorld(transformPoint(m, prev), baked);
+    expectArcsMatch(groundTruth, candidate, 2);
+  });
+
+  it('a circle (rx===ry) through a rotated similarity: radii unchanged, still traces the same circle', () => {
+    const circleArc = ['A', 1, 1, 0, 1, 0, -1, 0]; // half circle
+    const p0 = { x: 1, y: 0 };
+    const rad = (65 * Math.PI) / 180;
+    const m = { a: Math.cos(rad), b: Math.sin(rad), c: -Math.sin(rad), d: Math.cos(rad), e: 0, f: 0 };
+    const baked = bakeArcSimilar(p0, circleArc, m);
+    expect(baked[1]).toBeCloseTo(1, 9);
+    expect(baked[2]).toBeCloseTo(1, 9);
+    const groundTruth = sampleArcWorld(p0, circleArc, m);
+    const candidate = sampleArcSegWorld(transformPoint(m, p0), baked);
+    expectArcsMatch(groundTruth, candidate, 1);
+    candidate.forEach((c) => expect(Math.hypot(c.x, c.y)).toBeLessThan(1.01));
+  });
+
+  it('degenerate arc (identical start/end) returns null, same as arcToCubics\' own case, not NaN', () => {
+    const m = { a: 96, b: 0, c: 0, d: 96, e: 0, f: 0 };
+    expect(bakeArcSimilar({ x: 3, y: 3 }, ['A', 1, 1, 0, 0, 1, 3, 3], m)).toBeNull();
+  });
+
+  it('degenerate radius (rx or ry = 0) returns null so the caller falls back to arcToCubics\' own line rule', () => {
+    const m = { a: 96, b: 0, c: 0, d: 96, e: 0, f: 0 };
+    expect(bakeArcSimilar({ x: 0, y: 0 }, ['A', 0, 1, 0, 0, 1, 5, 5], m)).toBeNull();
   });
 });

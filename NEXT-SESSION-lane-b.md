@@ -1,32 +1,20 @@
-# LANE B — T33: SE12 design — LIVE expand (lines stay editable, the outline is derived). PLAN ONLY, no code.
+# LANE B — T34: SE12 Slice 0 — the bake keeps true arcs and circles under a similarity matrix
 
-**Seat B · epoch 2 · T33.** Fred: "is there a way to draw lines and lattice that are already expanded but keep their
-editability?" → approved the LIVE expand idea ("that's the ideal solution"). NO FUSION (hard rule) — browser only.
-Deliverable: NEW `SE12-LIVE-EXPAND-DESIGN.md` at the worktree root (+ WORK-LOG-lane-b.md). Read-only on product code.
-Seat A is on SE7g (pattern seed + colors) — no overlap.
-## The idea (agreed with Fred)
-Lines and lattice pieces stay real `<line>/<path>` elements (drag nodes, length, stroke width, Regenerate all keep
-working). A per-layer "expanded" setting makes the OUTLINE of each stroke (offset by stroke width/2, caps/joins
-respected) derived on the fly — shown faintly in the editor as the true cut contour, used for the carve and for the
-Fusion export. The document stores only the lines (single store, SE4 lesson). The existing destructive Expand button
-stays for freezing a shape.
-## Answer in the doc
-1. **Where the outline comes from:** reuse the existing Expand pipeline (`editor-expand*.js`, `expand.js` — trace /
-   union / shape) as a PURE function stroke → outline path; what it needs that it doesn't have today; cost per element
-   and whether it's fast enough to recompute on every commit (numbers from a quick bench in the browser).
-2. **Caching + invalidation:** derived outlines keyed by element + geometry + stroke width (never stored in the SVG);
-   when recomputed ('commit' only, per CHANGE_PIPELINE).
-3. **The toggle:** a per-layer field (e.g. `outline: boolean`) — where it sits in the layer row next to 👁 · 3D · 🎨,
-   persisted, MIGRATIONS default false. Open question for Fred, answered in the doc as options: when expanded, does
-   Fusion get the outline only, the centerline only, or both (V-bit engraving follows centerlines; pockets/cuts want
-   outlines) — design so it's a data choice, not a code fork.
-4. **Carve:** does the raster carve change at all? (It rasterizes the stroke already — likely identical; prove it.)
-5. **Display:** how the faint contour is drawn (layer under the sketch, non-interactive, never serialized) and how it
-   behaves with the SE9 color / showColor.
-6. **Export:** exactly where `bakeSvgForCarving` / export-flow swap lines for outlines.
-7. **Slices** with files + verify lines; STOP conditions (text, circles-as-nodes, open vs closed paths, joins at lattice
-   crossings — do crossing rails/ties union into one outline or stay separate?).
+**Seat B · epoch 2 · T34.** Your SE12 design (f0f4592) is APPROVED; Slice 0 goes now — it's right regardless of Fred's two
+open answers (Fusion geometry default; whether Fusion's importer keeps arcs — he has `scripts/fusion-arc-test.svg` for
+that). NO FUSION. Seat A is on SE7h (lattice orientation: editor-lattice*.js, properties-lattice.js, lattice panel) —
+not yours. Files: `editor/editor-transform-handles.js` (`_bakeMatrixIntoPath`, `bakeMatrixIntoElement`),
+`editor/path-layout.js` (a pure `isSimilarity(m)` + `bakeArcSimilar(seg, m)` belong there), tests (+ WORK-LOG-lane-b.md).
+One commit by path.
+## Do exactly your design's Slice 0
+Similarity test on the COMBINED per-element matrix (a·c+b·d≈0 and a²+b²≈c²+d², declared tolerance); if similar:
+transform A endpoints, scale rx/ry by √(a²+b²), add the matrix rotation to x-axis-rotation, flip sweep when det<0;
+circles/ellipses stay native (center transformed, radii scaled). Otherwise today's cubic fallback. H/V → L as today.
+## Verify
+Tests: arc through carveMatrix(7,9,96) → still an `A` with r×96 and correct endpoints; circle → `<circle>` r×96; a
+side-handle (non-uniform) scaled circle → cubic fallback; reflected matrix flips sweep; round-trip of a lattice node.
+`npx vitest run` green.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T33: SE12 live-expand design — K slices, open question: <…> — <sha>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T34: SE12 slice 0 — arcs/circles stay exact under similarity, cubic fallback otherwise — <sha>, vitest N"`
 and stop.

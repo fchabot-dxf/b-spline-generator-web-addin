@@ -3537,3 +3537,85 @@ back-and-forth.
 Amendments polled clean a second time (`handoff.py amendments --role worker`) immediately before passing —
 nothing further pending. Committed by explicit path (2 files: `SE12-LIVE-EXPAND-DESIGN.md`, this
 WORK-LOG) — sha `d799ace` is the pre-commit HEAD this turn branched from.
+
+## Lane B — Turn 85 — T34: SE12 slice 0 — the bake keeps true arcs and circles under a similarity matrix — DONE
+
+Built exactly the design's Slice 0: `isSimilarity(m)` + `bakeArcSimilar(prev, seg, m)`, new pure functions
+in `editor/path-layout.js`; wired into `editor/editor-transform-handles.js`'s `_bakeMatrixIntoPath` (an `A`
+now stays an `A` when the combined bake matrix is a similarity, falling back to `arcToCubics` exactly as
+before otherwise) and into `bakeMatrixIntoElement`'s circle/ellipse branch (a circle stays native under any
+similarity; an ellipse only when the matrix has no rotation component, since a native `<ellipse>` has no
+rotation attribute of its own). `H`/`V` still always become `L`, unchanged.
+
+**The similarity test and the arc bake, precisely**: columns `(a,b)`/`(c,d)` of the matrix must be
+perpendicular and equal-length (relative tolerance, since these carry real dpi-scale magnitudes, not unit
+vectors). For the arc: `rx`/`ry` scale by the transform's own uniform factor, the new x-axis-rotation reads
+off the transformed x-axis vector via `atan2`, and — this is where the actual bug this turn lived —
+**sweep is determined by matching the transform's own expected ellipse center**, not by any hand-derived
+rule.
+
+**Two wrong formulas, caught by this turn's own cross-check tests before either shipped.** First attempt:
+flip sweep when the transformed axis vectors' cross product changes sign (equivalent to `det(m)<0`). Second
+attempt, after the first failed a combined-rotation+reflection test: match the original arc's `dTheta`
+*magnitude* through `_arcCenterParam`. Both looked reasonable and both were wrong — diagnosed by writing a
+scratch script (not guessing) that: (a) confirmed analytically, point-by-point, that every ground-truth
+sample DOES lie exactly on the candidate ellipse (so `rx`/`ry`/`phi`/center were never the problem), then
+(b) found that for a FIXED `largeArc`, the two `sweep` values pick two *different* valid ellipse centers,
+and both can coincidentally land on the same `|dTheta|` via the wrong one — magnitude-matching is
+ambiguous. The actual fix: try both sweep values through `_arcCenterParam` (the same oracle `arcToCubics`
+itself already trusts) and keep whichever reproduces the transform's own expected center — unambiguous,
+because only one candidate's center can equal `transformPoint(m, originalCenter)`.
+
+**A second, unrelated bug turned up in my own TEST while chasing the first**: an early cross-check compared
+two independently-computed `arcToCubics` runs point-by-index, but `arcToCubics` splits into
+`Math.ceil(|dTheta|/90°)` cubics — floating-point noise pushed the baked segment's `dTheta` a hair over the
+90° boundary on one side and not the other (1 cubic vs. 2), so index-aligned comparison silently compared
+mismatched points (a 1.44-unit "error" that was pure sampling misalignment, not a geometry bug). Rewrote
+the test helper to sample by *global fraction* of the whole multi-cubic run instead of per-segment index —
+correct regardless of how many segments either side splits into (`path-layout.test.js`, `sampleAtFractions`).
+
+**Tests** (`tests/path-layout.test.js`, `tests/editor-transform-handles.test.js`): `isSimilarity` — true for
+identity/carveMatrix's own shape/pure rotation/rotation+scale/a reflection, false for non-uniform scale and
+a shear, false (not a throw) for a degenerate matrix. `bakeArcSimilar` — `carveMatrix(7,9,96)` numeric
+check (rx/ry×96, endpoint, sweep/largeArc/rotation unchanged); cross-check against sampled ground truth for
+a rotated+scaled+translated similarity, a pure reflection, and the rotation+reflection combination that
+caught both wrong formulas above; a genuine ellipse (rx≠ry, so an axis-swap bug would show as an off-ellipse
+point, not just an off-circle one) through a rotated similarity; degenerate-arc and degenerate-radius →
+`null`, matching `arcToCubics`' own contract exactly (not `NaN` — `_arcCenterParam` doesn't guard the
+identical-start/end case itself, only `arcToCubics`'s own caller-side check did, so `bakeArcSimilar` needed
+the same explicit guard, caught by tracing the code before assuming `_arcCenterParam` was self-sufficient).
+`bakeMatrixIntoElement` circle/ellipse: carveMatrix's own shape, a rotated similarity on a circle, an
+axis-aligned similarity on a genuine ellipse (rx/ry both scale) — all stay native; a non-uniform matrix,
+proven via a mock circle with `.parent()` returning `null` (the real fallback's own clean bail, reached
+without needing a full `SVG.PathArray` mock — same reason the `'path'` branch has never had a unit test in
+this file: `_bakeMatrixIntoPath` needs real svg.js, out of reach for vitest, verified live instead, below).
+
+**Non-vacuous, by mutation, on the two branches this turn actually added** (not re-proving pre-existing
+code): forced `bakeArcSimilar`'s final return to always keep the *original* sweep instead of the matched
+one → exactly the 2 reflection-dependent tests failed (the plain-rotation and carveMatrix tests correctly
+stayed green, since sweep never needed to flip for either). Forced `isSimilarity` to always return `true`
+→ 3 tests failed: both `isSimilarity`-false cases directly, plus the cross-file `bakeMatrixIntoElement`
+non-uniform-scale gate test (proving that test genuinely depends on the real gate, not a coincidence).
+Reverted both mutations; full suite re-confirmed green after each.
+
+**Live verification — the REAL production pipeline, not a proxy**, per the dispatch's own "round-trip of a
+lattice node": repo-root `python -m http.server 8771`, headless Chrome via CDP, Lattice-generate a real
+pattern (21 nodes), then the exact call sequence `export-flow.js` itself uses — `getLayerSvg(editor,
+layerId, 96)` → `bakeSvgForCarving(layerSvg, mW, mH, 96)`. Before this turn's fix (confirmed via `git stash`
+on just the 2 product files, re-running the identical script, then `stash pop`): 15/15 circles promoted to
+4-cubic `<path>` elements, 0 circles survived. After: 21/21 circles stayed `<circle>`, 0 paths, radius
+correctly scaled by dpi (`0.075 × 96 = 7.2`, confirmed by direct string match on the baked SVG, not
+inferred). A genuine arc (`<path d="...A...">`) doesn't currently occur anywhere in this app's own generated
+output (`_primitiveToPathData` emits cubics for circle/ellipse promotion already, per SE8a; only an
+imported/pasted SVG could carry a real `A`), so the arc side of Slice 0 has no in-app live case to exercise
+yet — covered by the vitest cross-check suite above instead, which is the more direct proof for that path
+anyway (exact analytic ground truth, not a screenshot).
+
+**Process hygiene**: `tasklist` confirmed zero leftover `chrome.exe` at both the start of this turn's live
+work and again after; the repo-root `http.server` was found still listening after verification and
+explicitly stopped (`taskkill`/`netstat` verified clear) before finalizing.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing and again immediately
+before passing. Committed by explicit path (5 files: `editor/path-layout.js`,
+`editor/editor-transform-handles.js`, `tests/path-layout.test.js`, `tests/editor-transform-handles.test.js`,
+this WORK-LOG) — pushed.
