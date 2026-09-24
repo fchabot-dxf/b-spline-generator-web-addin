@@ -654,6 +654,49 @@ function setupLazyMeta() {
   });
 }
 
+/**
+ * SE5b: does this saved project have at least one visible layer with real
+ * drawn content? Replaces the retired `P.stampLayers[i].enabled` read.
+ *
+ * NOTE: this can't read `editor._layers` like every other SE5b site does —
+ * `fetchMeta` runs for EVERY project tile in the browser list as it scrolls
+ * into view (`setupLazyMeta` above), almost always for projects that are
+ * NOT the one currently open, so there is no live `window.svgEditor` for
+ * them. Instead this parses the fetched project's own `P.editorSvg` string
+ * (the same lightweight, editor-independent approach `app-init.js`'s
+ * `_editorSvgHasContent` already uses at boot) and cross-checks its
+ * `data-editor-layers` roster for `visible`. This is also a real
+ * correctness improvement over the old `.enabled` read, not just an
+ * equivalent swap: `.enabled` defaulted `false` for layers 1/2 and was
+ * never set for content drawn directly (not Browse-imported) — the exact
+ * SA-LAYER-1 pattern — so a project with real, visible stamp content in
+ * layer 2/3 could have shown `hasStamps: false` here even before SE5b.
+ */
+function _hasVisibleStampContent(editorSvg) {
+  if (!editorSvg) return false;
+  try {
+    const root = new DOMParser().parseFromString(editorSvg, 'image/svg+xml').documentElement;
+    if (!root || !root.children || root.children.length === 0) return false;
+    let visibleIds = null;
+    const layersJson = root.getAttribute('data-editor-layers');
+    if (layersJson) {
+      try {
+        const roster = JSON.parse(layersJson);
+        if (Array.isArray(roster)) {
+          visibleIds = new Set(roster.filter((l) => l && l.visible !== false).map((l) => String(l.id)));
+        }
+      } catch (_) { /* malformed roster — fall through to "any content counts" */ }
+    }
+    return Array.from(root.children).some((ch) => {
+      const layerId = ch.getAttribute('data-layer');
+      if (visibleIds && layerId != null) return visibleIds.has(String(layerId));
+      return true; // no roster info to check visibility against — any content counts
+    });
+  } catch (_) {
+    return false;
+  }
+}
+
 async function fetchMeta(name) {
   if (_metaCache.has(name)) return;
   if (!_API_URL) return;
@@ -673,7 +716,7 @@ async function fetchMeta(name) {
       stockH:     P.heightIn ?? null,
       resolution: P.spacing  ?? null,
       noiseType:  P.noiseType ?? '',
-      hasStamps:  Array.isArray(P.stampLayers) && P.stampLayers.some(L => L && L.enabled !== false),
+      hasStamps:  _hasVisibleStampContent(P.editorSvg),
     });
     // Re-render the single affected tile/row in place. Simplest approach:
     // re-render the whole list (cheap — only rebuilds the DOM for items

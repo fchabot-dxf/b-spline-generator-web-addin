@@ -1120,3 +1120,188 @@ ROUNDTRIP/MOBILE (47 total ids, matches the 6 agents' combined finding count exa
 `git status --short` → `AUDIT-SVG-EDITOR.md` (new) only; no `editor/**` files touched, confirmed.
 
 No gate hit — pure documentation deliverable, no product code or tests touched.
+
+---
+
+## Lane B — Turn 41 — T13: SE5 design — one home for per-layer tooling (fixes SA-LAYER-1/2/3) — DONE, plan only
+
+New `SE5-TOOLING-STORE-DESIGN.md` (286 lines), same section layout as SE4-MIRROR-RETIREMENT-DESIGN.md
+per the dispatch. Read-only turn — no product code touched, seat A owns `editor/` for SE8a.
+
+**Went beyond re-stating my own T12 findings — traced the actual mechanism live, and found the real
+root cause of SA-LAYER-1 finding #2 wasn't in the audit:** read `main/stamp/layer.js:91-102,153-184`
+directly and found the Vector Stamping panel's ONE "Enabled" checkbox has its own comment admitting it:
+once the editor is loaded (i.e. always, in normal use), the checkbox reads/writes `editor._layers[idx]
+.visible` exclusively, through `setLayerVisible()` — `P.stampLayers[idx].enabled` is provably dead code
+in that path, touched only by Browse-import-success and sidebar-Clear as narrow accidents, never by the
+control a user actually sees. This reframes `enabled` from "a second flag that needs syncing" to "a
+fossil with no live UI writer, that a few readers (export-flow, cloud-project-manager, isFilletActive)
+still consult instead of the `visible` field the checkbox actually controls." Changes the fix from
+"sync two flags" to "delete one and repoint 3 readers at `visible`" — materially simpler, and I said so
+explicitly in the doc rather than let the design inherit the audit's framing uncritically.
+
+**Also found, by reading rather than assuming from the audit's list:** `main/stamp/_dom-binders.js`'s
+`bindLayerOnlyNumber`/`bindLayerOnlyCheckbox` (the transform-field sliders: tx/ty/rotation/scale/
+mirrorX/mirrorY) already write `editor._layers[P.activeLayerIdx]` unconditionally, no `P.stampLayers`
+gate — proving the "write past layer 3" bug (SA-LAYER-2) isn't structural, it's an inconsistency
+between two sibling binder helpers in the same file, one of which (`updateP`'s `layerSpecific` block)
+never got the same treatment. Used this as the concrete "already-correct pattern to copy" in §3/slice
+(a) instead of inventing a new pattern.
+
+**Checked the existing MIGRATIONS entry before proposing a new one** (`main/app-init.js:56-113`,
+`legacy-stamp-svg`) — its `toolingFields` list (14 fields, `:90-94`) already does almost exactly what
+SE5's migration would need; proposed extending it with one field (`enabled`→`visible`) rather than
+declaring a second, parallel migration — smaller diff, same idempotency guarantee the existing one
+already has.
+
+**Section 6 (outside b-spline-gen):** grepped the whole repo — zero `stampLayers` hits in any `.py`
+file, no presets-worker directory exists in this repo, cloud storage confirmed opaque JSON (no
+field-level schema on the backend side). Whole change is contained to `b-spline-gen/html` + `tests/`.
+
+**Flagged, not resolved (per the dispatch's own "say why" instruction, mirroring SE4c's pattern):**
+whether a tooling-slider edit should be undoable via the global Ctrl+Z or only the editor's own undo
+stack — recommended "editor-only, consistent with the SE4c heightfield-only ruling" but left it as an
+explicit product decision for Fred/advisor before slice (c), not decided unilaterally.
+
+**Inventory grep count quoted in the doc, verified live:** `grep -rn "stampLayers" {core,main,editor}
+--include=*.js` → 41; same under `tests/` → 48; 89 total — ran both greps myself before writing the
+Appendix, not copied from memory of T12's numbers (T12 predates several of these files' current state).
+
+**Verify:** `git status --short` → `SE5-TOOLING-STORE-DESIGN.md` (new) only; grep counts in the doc's
+Appendix match what I ran; inventory table has one row per distinct reader/writer site found, 3 slices
+each with predicted files + a verify line, STOP conditions section present.
+
+No gate hit — design-doc-only turn, no product code or tests touched.
+
+---
+
+## Lane B — Turn 43 — T14: SE5 slice (a) — updateP/isFilletActive/Browse+Clear onto editor layers — DONE, product code
+
+Built exactly slice (a) of my own T13 design (`SE5-TOOLING-STORE-DESIGN.md`, `be5dc37`), scoped to
+`core/state.js`, `main/stamp/_shared.js`, `main/stamp/svg-source.js` + a new test. Did **not** touch
+`editor/` — seat A owns it for SE8a on main; confirmed via `git status --short` after the fact that no
+`editor/` path appears.
+
+- **`core/state.js` `updateP`'s `layerSpecific` block:** dropped `P.stampLayers[P.activeLayerIdx]
+  [layerSpecific[key]] = P[key]` and the `P.stampLayers && P.stampLayers[P.activeLayerIdx]` gate
+  wrapping BOTH writes. Kept only the unconditional `editor._layers[P.activeLayerIdx][field] = value`
+  write — this now matches `bindLayerOnlyNumber`'s pattern exactly (cited it in the comment, per the
+  dispatch's own instruction), which never had this gate and already worked past layer 3.
+- **`main/stamp/_shared.js` `isFilletActive()`:** rewrote to check `window.svgEditor._layers` first
+  (same shape as `activeLayer()`/`activeEditorLayer()` three lines above it in the same file — reused
+  the pattern rather than inventing a new one), falling back to the old `P.stampLayers` read only in
+  the pre-editor-load window (kept, per the design doc's §2 "narrowed, not removed" call for that
+  specific fallback).
+- **`main/stamp/svg-source.js`:** both `setStampLayerEnabled(...)` call sites (Browse-import success,
+  sidebar Clear) replaced with `setLayerVisible(editor, layer.id, true/false)`, imported from
+  `editor/layers.js` (importing a function from `editor/` is fine per the dispatch — editing a file
+  under `editor/` is what's off-limits, and I didn't). Removed the now-unused `setStampLayerEnabled`
+  import from `core/state.js`; confirmed via grep it had exactly these 2 call sites in this file before
+  removing the import, nothing else in the file references it.
+- **Flagged a transitional gap explicitly, in the code comment, not just here:** until SE5 slice (b)
+  repoints `export-flow.js`'s `isCarvingLayer`/`hasShippableSvg` off `P.stampLayers[idx].enabled` onto
+  the same `.visible` field this turn now writes, a layer enabled via Browse/Clear in THIS slice can
+  still read as excluded by Export STEP / Send-to-Fusion specifically — `P.stampLayers[idx].enabled`
+  simply stops being written at all after this turn and goes stale at whatever value `DEFAULT` set it
+  to. The live 3D preview and rebuild are unaffected (already `editor._layers`-only per T12's audit).
+  This is exactly the scope boundary the dispatch drew (slice a only, export-flow.js is slice b) — not
+  a mistake, but a real and worth-naming risk during the gap between the two slices landing.
+- **`setStampLayerEnabled` itself was NOT deleted this turn** — checked, it still has one live caller
+  left after this change: `main/stamp/layer.js:180`, the pre-editor-load fallback branch, correctly
+  out of THIS slice's scope per the design doc (§2's "kept, narrowed" pre-load window) and not in the
+  dispatch's file list. Deleting it is slice (c) work, once that last caller is also narrowed.
+- **New test** `tests/se5a-tooling-single-store.test.js` (5 assertions): a 4-layer `window.svgEditor`
+  mock where `P.stampLayers[3]` is undefined by construction — proves `updateP('stampDepth', ...)`
+  reaches `editor._layers[3].depth` and `isFilletActive()` sees a fillet on layer 4 whether visible
+  (true) or hidden (false), plus the pre-load fallback still working when `window.svgEditor` is null.
+- **Proved non-vacuous, not argued:** saved scratch copies of the two edited product files, reverted
+  both to pre-fix (`git checkout HEAD --`, safe here since HEAD is the actual pre-edit state — these
+  weren't yet committed), re-ran the new test: **3 of 5 assertions failed** (the depth-write test, the
+  filletPower-write test, and the "fillet true on layer 4" test — exactly the three that exercise the
+  bug), the other 2 passed because they test the already-correct pre-load fallback path, which this
+  change doesn't touch. Restored both files from the scratch copies, re-ran — green again.
+- **Full suite:** `npx vitest run` → **118 passed (15 files)**, including the existing
+  `tests/export-flow.test.js` unchanged and still green (expected — it still exercises
+  `P.stampLayers.enabled`, which slice (b) hasn't touched yet).
+- `node --check` on all 3 modules: clean.
+
+**Verify:** `git status --short` → 4 files (state.js, _shared.js, svg-source.js, + new test), matching
+the prediction exactly; no `editor/` path present.
+
+No gate hit — stayed exactly within the dispatched slice-a scope; the transitional export-gap risk was
+flagged (in code + here) rather than acted on unilaterally, since fixing it means touching
+export-flow.js, which is explicitly slice (b), a separate turn.
+
+---
+
+## Lane B — Turn 45 — T15: SE5 slice (b) — export-flow + cloud-project-manager on editor layers — DONE, product code
+
+Built slice (b) of `SE5-TOOLING-STORE-DESIGN.md` exactly per its own §5(b) + Risks section. Did not
+touch `editor/` — seat A owns it for SE8a on main.
+
+- **`main/export-flow.js`:** `_stampExportCandidates` now reads `depth`/`profile` straight off
+  `editor._layers[idx]` (dropped the `idx` param entirely — no longer needed once there's no
+  position-based `P.stampLayers?.[idx]` lookup). `enabled` in the returned candidate object is now
+  simply `true` for any layer that passed the `visible !== false` gate — the gate itself IS the
+  enabled-check now, matching the design doc's "enabled retires in favor of visible" call. Rewrote the
+  file-header comment that used to explain the deliberate SE4a "tooling stays on P.stampLayers" split,
+  since that split no longer exists. Also renamed a stale debug-log field (`stampLayers=` →
+  `layers=` in the `[EXPORT]` fusLog line) — unrelated to the fix itself, but the dispatch's own verify
+  step wants a clean `grep stampLayers` → 0, and leaving a misleadingly-named log field around after
+  deleting the concept it names would just be a smaller, later version of the exact "stale reference"
+  problem this whole slice exists to close.
+- **`main/cloud-project-manager.js`:** found a real discrepancy between my own T13 design doc and the
+  actual code, caught before implementing rather than after — `fetchMeta`'s `.enabled` read
+  (`:676`) is NOT reading from a live editor at all. It parses a FETCHED project's raw JSON snapshot
+  (`snap.P`) for the project-browser tile list, and `fetchMeta` runs per-tile as it lazily scrolls into
+  view (`setupLazyMeta`), almost always for projects that are NOT the one currently open — there is no
+  `window.svgEditor` for those. My design doc's "rewrite — read editor._layers.some(l => l.visible !==
+  false)" instruction, taken literally, would have been either a no-op (undefined editor → always
+  false) or, worse, silently shown the CURRENTLY open project's layer visibility on every OTHER
+  project's tile if I'd carelessly reached for `window.svgEditor` without a project-identity check.
+  Implemented the actually-correct equivalent instead: a new `_hasVisibleStampContent(editorSvg)`
+  helper that parses the fetched project's own `P.editorSvg` string (mirroring `app-init.js`'s existing
+  `_editorSvgHasContent` pattern — the established "cheap, editor-independent parse" idiom in this
+  codebase) and cross-checks its embedded `data-editor-layers` roster for `visible`. Documented the
+  discrepancy and the reasoning directly in the new function's comment, not just here, so the next
+  reader of this file doesn't wonder why it doesn't look like export-flow.js's simpler fix. This is also
+  a genuine correctness improvement over the old `.enabled` read, not just an equivalent swap: `.enabled`
+  defaulted false for layers 1/2 and only ever got set via Browse-import — a project with real content
+  drawn directly into layer 2/3 could have shown `hasStamps: false` on its browser tile even before this
+  slice, the exact SA-LAYER-1 pattern applied to a different reader nobody had traced yet.
+- **`tests/export-flow.test.js`:** rewrote the whole file per the design doc's own STOP condition (no
+  partial rewrite — a mix of old- and new-shape fixtures would pass green while testing the wrong thing).
+  `mockEditor()` now carries `depth`/`profile` on the editor layer objects directly. Every fixture sets
+  `P.stampLayers` to DELIBERATELY WRONG tooling values (depth:999, profile:'WRONG', enabled:false) in
+  `beforeEach` specifically so a regression back to reading `P.stampLayers` would produce a visibly wrong
+  assertion, not just a missing field. Added the 4 cases the dispatch named: a 4th layer (P.stampLayers
+  has only 3 entries) exports correctly; a layer with real content but never touched via Browse (P.
+  stampLayers entry says enabled:false/WRONG) still exports; a reorder test that splices the editor
+  layer array and confirms tooling follows the layer object's own id, not its new array position; and an
+  end-to-end test that calls the REAL `setLayerVisible` (imported from `editor/layers.js` — importing a
+  read function is fine, only editing files under `editor/` is off-limits) rather than reimplementing its
+  effect, proving the exact SE5a-opened regression is closed. Had to add a `children: () => []` svg.js-API
+  stub to the mock editor's `_sketchLayer` for that last test — `setLayerVisible` calls
+  `applyLayerState()`, which calls `_sketchLayer.children()`; without the stub it threw
+  `TypeError: ...children is not a function` on a bare mock (found by running the test, not by reading
+  the source first — the fix was obvious once the error named exactly what was missing).
+- **Proved non-vacuous, not argued:** saved scratch copies of both edited product files, reverted both
+  to pre-fix (`git checkout HEAD --`, safe — uncommitted), re-ran the rewritten test file: **6 of 9
+  assertions failed** — exactly the ones exercising layer-4, direct-drawing, reorder, and the
+  setLayerVisible end-to-end case; the 3 that stayed green are the hidden/empty/editor-not-loaded cases,
+  which this slice doesn't change. Restored both files from the scratch copies, re-ran — green again.
+- **Full suite:** `npx vitest run` → **122 passed (15 files)**, up from 118 (net +4 assertions vs. the
+  old file's 5).
+- **Verify greps:** `grep -c stampLayers main/export-flow.js` → **0**, matching the prediction exactly.
+  `grep -c '\.enabled' main/cloud-project-manager.js` → **3**, all 3 inside the new
+  `_hasVisibleStampContent` doc-comment explaining what was retired (backtick-quoted mentions of the old
+  field, not live code) — a named survivor with its reason, per the dispatch's own allowance for that
+  case, not a miss. `node --check` on both modules: clean.
+
+**Verify:** `git status --short` → 3 files (export-flow.js, cloud-project-manager.js,
+tests/export-flow.test.js) + WORK-LOG = 4, within the "≤4 files" prediction; no `editor/` path present.
+
+No gate hit. One real design-doc correction made and disclosed rather than implemented blindly
+(cloud-project-manager.js has no live editor to read for most of its callers) — same discipline as T13's
+own "found the enabled/visible fossil before writing it down" correction, applied here at build time
+instead of design time.

@@ -41,8 +41,17 @@ export function createStampCtx(preview) {
     return (P.stampLayers ? P.stampLayers[P.activeLayerIdx] : undefined);
   };
   const grid = () => resolveGrid(P.widthIn, P.heightIn, P.spacing);
+  // SE5a: editor._layers is the single tooling store — read it directly,
+  // same editor-preferring shape as activeLayer() above, instead of the
+  // P.stampLayers-only read this used to be (the one reader in the
+  // inventory that didn't already try the editor first).
   const isFilletActive = () => {
     if ((P.stampEdgeFilletRadius || 0) > 0) return true;
+    const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers))
+      ? window.svgEditor._layers : null;
+    if (Array.isArray(layers) && layers.length > 0) {
+      return layers.some((L) => L && (L.edgeFilletRadius || 0) > 0 && L.visible !== false);
+    }
     if (!Array.isArray(P.stampLayers)) return false;
     return P.stampLayers.some((L) => L && (L.edgeFilletRadius || 0) > 0 && L.enabled !== false);
   };

@@ -31,12 +31,15 @@ import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
-// SE4a: content (mask presence, svg text) now reads the editor — the one
-// real store — instead of the P.stampLayers mirror, which can go stale
-// (e.g. undo/redo nulls its .svg without touching the editor; see
-// SE4-MIRROR-RETIREMENT-DESIGN.md finding #1). Tooling (depth/enabled)
-// stays on P.stampLayers[idx] per the dispatch — that part isn't a mirror,
-// it's the one place tooling lives.
+// SE5b: tooling (depth/profile/visible) now reads the editor layer
+// directly too — editor._layers is the single store for content AND
+// tooling (SE5-TOOLING-STORE-DESIGN.md). No read of the old per-stamp-
+// layer tooling mirror left in this file. `enabled` retires in favor of
+// `visible`, which is what the Vector Stamping panel's one checkbox has
+// actually written since the editor loads (design doc finding #2) — this
+// was the riskiest single change in the whole SE5 plan (no dual-path
+// fallback), shipped alone in
+// its own slice per that same design doc's own risk note.
 //
 // Two filters with different semantics:
 //   • activeStampLayers: layers that actually carve (have mask + non-trivial
@@ -49,20 +52,20 @@ const hasShippableSvg = (l) => l.enabled && l.svg;
 
 /**
  * Build one {enabled, depth, profile, mask, svg} view per editor layer,
- * combining editor content with P.stampLayers tooling by position index.
- * Returns [] when the editor isn't loaded (no editor-layer fallback left
- * to build on at that point — see the design doc's own finding on this file).
+ * reading tooling AND content from the same editor layer object — no
+ * position-based cross-store lookup, so reorder/delete-in-middle can't
+ * desync the two (SA-LAYER-1 finding #3). Returns [] when the editor
+ * isn't loaded (nothing to build a candidate list from).
  */
 function _stampExportCandidates() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : [];
-    return editorLayers.map((layer, idx) => {
+    return editorLayers.map((layer) => {
         if (!layer || layer.visible === false) return { enabled: false, depth: 0, profile: null, mask: null, svg: null };
-        const tooling = P.stampLayers?.[idx] || {};
         return {
-            enabled: tooling.enabled,
-            depth: tooling.depth,
-            profile: tooling.profile,
+            enabled: true,
+            depth: layer.depth,
+            profile: layer.profile,
             mask: layer._mask || null,
             svg: editor ? (getLayerSvg(editor, layer.id) || null) : null,
         };
@@ -275,7 +278,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         },
     });
     if (typeof fusLog === 'function') {
-        fusLog(`[EXPORT] variants=${stepVariants.length} bases=${stepVariants.map(v => v.name).join(',')} totalStepLen=${totalLen} stampLayers=${layersToExport.length}`);
+        fusLog(`[EXPORT] variants=${stepVariants.length} bases=${stepVariants.map(v => v.name).join(',')} totalStepLen=${totalLen} layers=${layersToExport.length}`);
     }
     await sendFusionPayloadChunked(payload);
     if (!isAppend) startFusionPolling();

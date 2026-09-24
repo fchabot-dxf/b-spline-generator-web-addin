@@ -3,9 +3,9 @@
  * the active layer's `svg` field, plus the filename label and the
  * editor-modal Cancel-snapshot.
  */
-import { P, setStampLayerEnabled } from '../../core/state.js';
+import { P } from '../../core/state.js';
 import { SvgEditorSnapshot, editorRestoreSvg } from '../app-init.js';
-import { addLayer, setActiveLayer } from '../../editor/layers.js';
+import { addLayer, setActiveLayer, setLayerVisible } from '../../editor/layers.js';
 
 /**
  * Lightweight SVG validation: parses the upload and checks that the
@@ -62,11 +62,20 @@ export function initSvgSource(ctx, layerModule) {
         // DEFAULT.stampLayers[1]/[2] start `enabled: false`, so without
         // this, drawing into Layer 2/3 for the first time via Browse would
         // leave it silently excluded from activeStampLayers/
-        // exportableStampLayers (tooling `enabled` still reads
-        // P.stampLayers[idx] — see export-flow.js) even though it has real
-        // content and displays fine in the 3D preview. Preserve the effect
-        // directly now that the write that used to carry it is gone.
-        setStampLayerEnabled(P.activeLayerIdx, true);
+        // exportableStampLayers even though it has real content and
+        // displays fine in the 3D preview. Preserve the effect directly now
+        // that the write that used to carry it is gone.
+        // SE5a: writes the editor layer's `visible` (single tooling store)
+        // instead of the now-inert P.stampLayers `.enabled`. NOTE: until
+        // SE5 slice (b) repoints export-flow.js's isCarvingLayer/
+        // hasShippableSvg off P.stampLayers[idx].enabled onto this same
+        // `visible` field, a layer enabled here can still read as excluded
+        // by Export STEP / Send-to-Fusion — the live 3D preview and
+        // rebuild are unaffected (already editor._layers-only). Flagged,
+        // not fixed here: this slice's own scope is updateP/isFilletActive/
+        // this file only, per the dispatch.
+        const layer = ctx.activeLayer();
+        if (layer && layer.id != null) setLayerVisible(editor, layer.id, true);
         if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
       } else {
         // SE4b: the content-mirror fallback this used to write to is gone
@@ -106,7 +115,10 @@ export function initSvgSource(ctx, layerModule) {
       if (typeof editor.pushState === 'function') { try { editor.pushState(); } catch (_) {} }
       if (typeof editor._onChange === 'function') { try { editor._onChange(); } catch (_) {} }
 
-      setStampLayerEnabled(P.activeLayerIdx, false);
+      // SE5a: writes `visible` on the editor layer (single tooling store)
+      // — see the Browse-import branch above for the same transitional
+      // note re: export-flow.js until slice (b).
+      setLayerVisible(editor, targetId, false);
       if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
       if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
     });

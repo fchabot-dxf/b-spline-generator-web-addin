@@ -353,14 +353,12 @@ export function updateP(key, value) {
         'stampEdgeFilletRadius': 'edgeFilletRadius',
         'stampFilletPower': 'filletPower'
     };
-    if (layerSpecific[key] && P.stampLayers && P.stampLayers[P.activeLayerIdx]) {
-        P.stampLayers[P.activeLayerIdx][layerSpecific[key]] = P[key];
-        // Mirror to the matching editor layer so the rasterizer/compositor
-        // see the change immediately when they read from editor._layers
-        // (the new source of truth post-unification). Position-based
-        // mapping until each stamp pass formally points at an editor
-        // layer id. See Step 2 of the stamp-layer → editor-layer
-        // unification.
+    // SE5a: editor._layers is the single tooling store now — write it
+    // unconditionally, no P.stampLayers gate. Matches bindLayerOnlyNumber's
+    // already-correct pattern (main/stamp/_dom-binders.js), which never had
+    // this gate and already writes past layer 3. Position-based mapping
+    // until each stamp pass formally points at an editor layer id.
+    if (layerSpecific[key]) {
         try {
             const editorLayer = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers))
                 ? window.svgEditor._layers[P.activeLayerIdx] : null;
