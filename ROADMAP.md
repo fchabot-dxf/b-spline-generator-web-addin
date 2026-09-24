@@ -511,3 +511,10 @@ vitest 79. **Follow-ups, not dispatched:** (a) the node tool and transform handl
 different path and do NOT snap yet — one slice if Fred wants node edits on-grid; (b) over the darkest bands of the
 topo background the black-at-10 % minor lines vanish — a light/dark two-tone stroke or a `mix-blend-mode:
 difference` on the grid layer would fix it; cosmetic, Fred's call.
+
+# SE7 — Lattice (Fred's ask 2026-09-23, from the red/yellow/blue relief piece): B then C
+Fred approved option B first: a Lattice drawing tool that emits ordinary lines/circles on lattice points (rail = drag
+along a row, tie = drag along a column, click = node, click on a node = remove it, auto-nodes at tie ends and
+crossings). Option C (declared pattern generator with seed, one-way into the document) follows as SE7b once B is
+live-proven. Three layers carry rails / ties / nodes with their own tooling — that is the color mapping of the piece.
+- **SE7a (dispatched):** lattice mode + auto-nodes + node-tool snap (SE6 follow-up a).
