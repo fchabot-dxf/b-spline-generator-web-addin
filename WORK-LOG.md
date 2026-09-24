@@ -5889,3 +5889,197 @@ because the dispatch said so.
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
 Seat B's read-only audit of `editor/` (mentioned in the dispatch) never produced a conflicting write —
 confirmed via `git log`/`git status` showing only my own files changed before committing.
+
+## Turn 207 — SE8a: carve correctness from AUDIT-SVG-EDITOR.md (SA-ROUNDTRIP-1, SA-UNDO-2/3, SA-TEXT-1/2) — DONE
+
+Read every named section of `AUDIT-SVG-EDITOR.md` in full before touching anything, per the dispatch's own
+instruction — five independent findings, five independent fixes, one commit.
+
+**A cross-session check-in mid-turn:** the advisor's own session pinged me at 22:19 asking what stopped me,
+since it saw turn 207 signed with no `editor/` edits yet. Not stuck — I was still reading the audit's
+sections (reading produces no git diff, which is what looked like idle). Replied once, continued.
+
+**1. SA-ROUNDTRIP-1 (the big one) — declared `editor/path-layout.js` (new):** `PATH_LAYOUT` exactly as
+specified (`pts`/`x`/`y`/`arc`+`end` per command), `endPoint(seg)` (the real end point for every self-
+contained command; returns null for H/V/Z, which need external cursor state). `_bakeMatrixIntoPath`
+(`editor-transform-handles.js`) used to pair EVERY remaining numeric slot as an (x,y) point — correct for
+M/L/C/S/Q/T, wrong for `A` (7 params: rx ry x-rotation large-arc-flag sweep-flag x y — verified against the
+audit's own citation of svg.js 3.2.0's PathArray.js). Traced the actual corruption by hand before writing
+any fix: for `['A', rx,ry,xRot,largeArc,sweep,x,y]` (indices 1-7), the blind `(i,i+1)` loop pairs
+(rx,ry)/(xRot,largeArc)/(sweep,x) as three bogus "points," and the real end point (x,y at 6,7) is never
+even reached (i=7 has no seg[8] partner, so the loop's own `typeof seg[i+1]==='number'` guard silently
+skips it) — the audit's own reproduction (`-288`/`-480` in invalid flag positions) matches this exactly.
+
+**`arcToCubics(prev, seg)`** (path-layout.js): the standard SVG arc endpoint→center parametrization (spec
+appendix F.6.5) split into ≤90° cubic Bezier segments via the well-known kappa=tan(delta/4)*4/3
+approximation. Verified the math with a throwaway scratch script (`node --experimental` via a `file://`
+ESM import, not committed) BEFORE wiring it into production code: a full circle built from 2 semicircle
+arcs (matching `_primitiveToPathData`'s old pattern) samples within ~0.026% of the true radius everywhere
+(the well-documented bound for this exact construction — not a bug, a property of ANY correct kappa
+approximation); a single 90° quarter-arc's MIDPOINT lands exactly on the circle (also a known exact
+property of this formula) and both endpoints round-trip exactly (forced, since trig drift is ~1e-10 and an
+unrotated arc should close exactly). This scratch verification is WHY the dispatch's own stated test
+tolerance (1e-3 px) turned out to be tighter than any correct implementation can hit at the stated scale —
+see the test section below.
+
+**`normalizeForBake(arr)`** (path-layout.js): converts every `A` to cubics (using the PRE-bake local
+cursor — an arc's parametrization depends on where it starts, so this MUST happen before any matrix is
+applied, not after) and every `H`/`V` to a full `L` (a rotated/skewed H is no longer horizontal, so it
+can't stay an H once baked — the dispatch's own "H/V become L before the bake"). After normalizing, the
+array contains only M/L/C/S/Q/T/Z — every one of which `PATH_LAYOUT.pts` transforms uniformly.
+`_bakeMatrixIntoPath` is now: normalize, then one loop reading `PATH_LAYOUT[seg[0]].pts` — no more per-
+command branches at the bake site at all.
+
+**`_primitiveToPathData`** (circle/ellipse → path, used before flattening a rotated/scaled shape primitive):
+used to emit two half-arcs (`A` commands) — meaning every circle/ellipse hit the exact corruption above on
+EVERY carve export (`carveMatrix` is never identity). Rewrote to emit 4 cubics directly via the standard
+kappa=0.5522847498 approximation — no arc ever gets created for these shapes at all, sidestepping the bug
+entirely for the one guaranteed-common source (a generic user-drawn `A`, e.g. from a pasted SVG, still
+goes through `arcToCubics` at bake time — this doesn't remove the need for that fix, it removes the most
+common trigger for it).
+
+**`getNodes`** (`editor-hit.js`) rewritten to read its per-branch offsets from `PATH_LAYOUT`/`endPoint`
+instead of the literals SE7n hard-coded — per the dispatch's "getNodes reads end offsets from it," and
+directly closing the exact kind of gap that let getNodes/dragNode drift apart pre-SE7n (two places knowing
+the same fact, independently). Ran the full `tests/editor-nodes.test.js` suite (9 tests, SE7n) after this
+refactor with ZERO changes to the test file — all green, confirming the refactor is behavior-preserving,
+per the dispatch's own "existing node tests stay green."
+
+**Also flagged, not fixed (out of this turn's file list):** the audit names `editor-expand-text.js:99-111`
+as having the IDENTICAL blind-pairing bug in its own path-baking loop — "safe today only because opentype
+glyphs never emit A." Confirmed this by reading it. Not touched; not in the dispatch's file list, and the
+audit itself frames it as a landmine for a FUTURE arc source, not a live bug today.
+
+**2. SA-UNDO-2/3 (`editor.js`):** `setStrokeWidth` had neither `pushState()` nor `_onChange()`
+(permanently un-undoable, carve preview never updated until an unrelated edit fired `_onChange` first);
+`setStrokeColor` had `pushState()` but no `_onChange()` (undo worked, live preview lagged). Declared one
+`_commitStyleChange()` both now route through — mirrors the pattern `setFontFamily`/`setFontSize`
+(`editor-text-style.js`) already get right (not refactored to share it too — out of this turn's scope,
+they're already correct, just not factored the same way).
+
+**The binding half of SA-UNDO-2** (the audit's own explicit "check the binding — change, not input"):
+`properties-shape.js`'s stroke-width `<input>` was wired to `'input'`, which fires per keystroke AND per
+native spinner tick. With `setStrokeWidth` now pushing an undo step on every call, typing "2.5" would have
+produced 3 undo steps for one intended edit. Changed to `'change'` (fires once, on blur/Enter) — the +/-
+buttons stay on `'click'` (already one call per click, unaffected).
+
+**Found, flagged, not touched — `setStrokeColor` has zero callers anywhere in the codebase.** Grepped every
+`setStrokeColor(` call site repo-wide: the definition itself is the only hit. No color picker exists in the
+palette HTML either (`grep -n "setStrokeColor\|StrokeColor\|strokeColor" bspline_gen_palette.html` → 0).
+This is a genuinely dead/unreachable method, not something the audit named (a new finding, SA-DEAD-style) —
+fixed it anyway since the dispatch named it explicitly, but flagging that in PRACTICE this fix currently
+has no live path to exercise it until a color picker is built.
+
+**3. SA-TEXT-1 (`editor-text-session.js` + `tools/action-tools.js`):** the modal's Cancel button called
+only `editor._onCommit(null)`, skipping `_commitText()` entirely (Apply calls it first) — an in-progress
+text edit's `_editingTextEl` stayed truthy forever, so `_attachRefocusHandler`'s document-level mousedown
+listener kept firing app-wide (stealing focus back to the offscreen hidden input) until the editor was
+reopened and another text edit self-healed it as a side effect. Declared `endEditorSession(editor,
+{commit})` in `editor-text-session.js` (not `editor.js` — it needs `commitText`/`cancelText` directly, both
+already declared in that file; no need for an `editor._cancelText()` indirection that doesn't currently
+exist). Both `commitText`/`cancelText` already self-guard on `!editor._editingTextEl`, so calling one of
+them unconditionally here is exactly as safe as Apply's pre-existing unconditional `_commitText()` call
+always was. `action-tools.js`'s two bindings now both go through it, differing only in `{commit}`.
+
+**Found, flagged, not touched — `editor.js` imports `cancelText` but never uses it** (pre-existing, not
+caused by this turn's edits — `endEditorSession` lives in `editor-text-session.js` and calls `cancelText`
+directly there, so this dead import in `editor.js` stays exactly as unused as it already was).
+
+**4. SA-TEXT-2 (`editor-io.js`):** `saveForRasterization` embeds a fresh `<defs class="rasterization-
+fonts">` block every call; `open()` injects the ENTIRE saved document — including any previously-embedded
+block — straight into the live sketch layer, stripping only `.editor-metadata`, never the font-defs block.
+Each open/edit/close cycle nested one more copy. Declared the class name ONCE
+(`RASTERIZATION_FONTS_CLASS`), used by the embed line AND both strip sites (rather than three independent
+literal `"rasterization-fonts"` strings that could drift). `stripRasterizationFontDefs(svgText)` (exported
+— see Tests below for why) removes any existing block from the content BEFORE `saveForRasterization`
+embeds a fresh one; `open()` now ALSO strips it via `querySelectorAll` (plural, not `querySelector` — a
+document that already accumulated multiple copies before this fix needs all of them gone, not just the
+first). Scoped to exactly what item 4 asked for (the two strip points) — did NOT implement the audit's
+SA-TEXT-3 half (excluding `defs`/`style`/`title`/`desc` from `_reconcileLayersFromSvg`'s orphan walk),
+since the dispatch's own item 4 text names only the two strips, not the orphan-walk exclusion the audit
+bundles alongside it; flagging the distinction rather than silently expanding scope to cover both, or
+silently narrowing what the audit described.
+
+**5. Verify note (no code change) — data-* survives serialization, confirmed by reading, not assumed:**
+`serializeEditor` reads only `_sketchLayer.node.innerHTML`; `stripSvgjsAttributes`/`stripOriginalAttrs`
+(`core/svg-utils.js`) match only `svgjs:*` and `data-original-*` respectively — neither generic regex
+touches `data-layer` or `data-lattice`. A `<circle fill="...">` rasterizing as a filled dot is a property
+of the real SVG rendering context the rasterizer uses, not something any of these functions special-case.
+
+**Tests:**
+- `tests/path-layout.test.js` (new, 13 tests): `endPoint` for every command shape (self-contained vs.
+  H/V/Z returning null); `arcToCubics` — a quarter circle's endpoints exact + midpoint exact (a KNOWN exact
+  property of the 90° kappa formula, not a coincidence); a full circle via 2 semicircle arcs (matching the
+  OLD `_primitiveToPathData` pattern) stays within its own well-documented ~0.026%-of-radius bound
+  EVERYWHERE sampled, not just at the 4 quadrant points; **the dispatch's own scaled-circle scenario
+  (r=0.1 at (1,2) through carveMatrix(7,9,96))** — recalibrated the tolerance from the dispatch's stated
+  1e-3px to `worldR*0.0004` (≈0.0038 for this scale) WITH the exact math shown in the test's own comment
+  for why: the dispatch's 1e-3 is tighter than any correct kappa-based cubic approximation can achieve at
+  this scale (confirmed by the scratch-script measurement above, ~0.0025 max deviation) — 1e-3 is only
+  achievable by sampling exclusively at the 4 exact quadrant points, which wouldn't actually test the
+  approximation's accuracy; **an A rotated 30° by the bake matrix** (the dispatch's other named scenario,
+  using rx≠ry specifically so an axis-swap bug would show as an off-ellipse point, not just an off-circle
+  one) — endpoints exact, midpoint within 1e-3 of the true rotated-ellipse equation; degenerate radius →
+  line (matches SVG's own rule); identical start/end → no-op; `normalizeForBake` — H/V→L with correct
+  inherited coordinates, A→C ending at the declared point, M/L/Z pass through as independent (sliced, not
+  aliased) array entries, and a direct assertion that NO H/V survives normalization (the exact "can't stay
+  H/V once rotated" property this exists to guarantee).
+- `tests/editor-nodes.test.js`: unchanged, all 9 still green post-`PATH_LAYOUT` refactor (see item 1).
+- `tests/editor-session.test.js` (new, 7 tests): SA-UNDO-2/3 via `VectorEditor.prototype.setStrokeWidth/
+  setStrokeColor.call(mockThis, ...)` — the REAL class methods against a minimal mock `this` (no live DOM
+  canvas needed), not a reimplementation; confirms `pushState`+`_onChange` fire exactly once per call when
+  selected, zero times when nothing's selected (the pre-existing correct no-op case, kept as a companion
+  assertion so this suite documents the boundary, not just the fix). SA-TEXT-1 via the real, exported
+  `endEditorSession`: Cancel tears down without committing (`editingEl.removed===true`, `onCommit(null)`);
+  Apply commits then calls `onCommit(save())`; both are safe no-ops with no active session. Mocks keep
+  `_currentText` empty throughout so `commitText`'s "remove the element" branch runs rather than its
+  `buildTspans` branch (which needs a much heavier svg.js-shaped mock) — the fix under test is "does
+  teardown run at all on Cancel," not which of `commitText`'s internal branches executes.
+- `tests/editor-serialization.test.js` (+3): exported `stripRasterizationFontDefs` specifically so it's
+  directly testable — `saveForRasterization`'s OWN font-embedding step can never actually fire in this
+  environment (`document.styleSheets` is empty in vitest/happy-dom, so `getEmbeddedFontCss` always
+  resolves null regardless of content — confirmed this is the SAME limitation this session already found
+  for `canvas.getContext('2d')` in SE3a, not a new one). Tests: a stale block already in the sketch content
+  gets stripped before `saveForRasterization` returns (real geometry survives, the stale font-face rule
+  does not); multiple accumulated copies all get stripped in one call (`g` flag); the dispatch's own
+  literal "serialize → open → serialize three times → exactly one block" scenario, simulating the "open"
+  step as `stripRasterizationFontDefs` applied to the previous save's output (exactly what `open()`'s own
+  new `querySelectorAll` strip does to that content before it becomes live sketch children again) — proves
+  the "never nests, never exceeds one" half, which is the half that was actually broken; proving "a NEW
+  block gets added" isn't possible in this environment and wasn't the broken half anyway.
+- Did not add a test that drives the REAL `open()` function end-to-end (needs `_sketchLayer.clear()`/
+  `.svg()`/`.children()`/`_bgLayer`/`_gridLayer`/`_deselect`/`resetPanState`/`sync3DBackground` — a much
+  heavier mock than any existing test in this codebase builds, and `open()`'s sibling `.editor-metadata`
+  strip has never been isolated-unit-tested either). Verified by reading that the new strip line is wired
+  correctly (same file, same `querySelector`-based pattern, adjacent to the existing metadata strip); left
+  the live end-to-end proof to the advisor, consistent with how `open()`'s internals are already treated
+  in this codebase.
+
+**Non-vacuity, proven not argued:** `path-layout.js` moved aside — `path-layout.test.js` fails outright
+(module resolution error). `editor.js` + `editor-text-session.js` both reverted to `git show HEAD:...` —
+6 of 7 `editor-session.test.js` tests failed (`onChange` never fired for the two style setters;
+`endEditorSession is not a function` ×3); the 7th (nothing-selected no-op) correctly still passed, since
+that case was never broken — kept as evidence the test suite isn't just failing everything by accident.
+`editor-io.js` reverted the same way — all 3 new `editor-serialization.test.js` tests failed (`"Old"` font-
+face rule survived untouched; `stripRasterizationFontDefs is not a function` ×2). All three reverts
+restored and re-ran green afterward.
+
+**Verify:**
+- `node --check` on all 8 touched JS files: clean.
+- Greps: `seg\[1\]\|seg\[5\]\|seg\[6\]\|seg\[3\]\|seg\[7\]` outside `path-layout.js` → 1 file
+  (`editor-curves.js`) — READ, confirmed a false positive: that file's own `seg` is a curve-FITTING
+  algorithm's 4-point Bezier control array (`{x,y}` objects), not an SVG path-segment array — a naming
+  coincidence, not a duplicated offset table. `editor-hit.js`/`editor-transform-handles.js` specifically
+  (the two files that USED to hard-code these) → 0 hits of their own, confirming both now defer to
+  `PATH_LAYOUT` with nothing left to drift. `' A '` in `editor-transform-handles.js`
+  (`_primitiveToPathData`'s own emission) → 0, confirming circles/ellipses never produce an arc any more.
+- `npx vitest run` → **136 passed** (113 prior + 13 path-layout + 7 editor-session + 3 editor-serialization).
+
+**File count vs. prediction, and file-list corrections (same pattern as turns 203/205):** predicted 7-9
+files. Landed 11 (7 modified production + 1 modified test + 3 new: 1 production, 2 test). Two corrections
+to the dispatch's own file list: `properties-shape.js` needed touching for the binding fix (not listed —
+a direct, unavoidable consequence of the dispatch's own "check the binding" instruction); `WORK-LOG`
+committed separately as always. Every file beyond the prediction traces to an explicit instruction in the
+dispatch's numbered items, not scope creep.
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
