@@ -5777,3 +5777,115 @@ rather than silently exceeding the stated prediction without comment.
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments,"
 checked both before implementation and before committing).
+
+## Turn 205 — SE7n: node tool that actually drags — one node model, pointer mapped into element space — DONE
+
+The node tool's drag was broken in three independent, compounding ways (per the advisor's own ground truth,
+each confirmed by reading the actual code before touching it, not assumed from the description):
+1. `getNodes` returns rect corners and circle/ellipse centres, but `dragNode` had branches only for
+   line/polyline/polygon/path — grabbing a rect/circle/ellipse node highlighted it but nothing moved. Every
+   lattice node is a circle, so this hit the brand-new SE7a tool immediately.
+2. `getNodes` maps nodes to WORLD space; `dragNode` wrote the WORLD pointer straight into LOCAL attributes
+   with no inverse of the element's transform — anything moved with Select (writes
+   `transform="translate(...)"`), scaled, or rotated jumped by its transform offset the instant a node was
+   dragged.
+3. `getNodes` pushed a point only for M/L/C/Q path segments into a SEPARATE array from `el.array()`; `dragNode`
+   indexed `el.array()[idx]` directly — after the first Z (or any other unhandled command), the two arrays'
+   indices silently diverged and dragging edited the wrong segment.
+4. SE7a leftovers (my own WORK-LOG's flag from turn 203): `editor-lattice.js`'s `findNodeAt` compared raw
+   `cx/cy` against a world lattice point, so a lattice node moved with Select was never deduped against; the
+   AUTO NODES button had no click handler.
+
+**Declared one node model (`editor/editor-hit.js`'s `getNodes`):** every node is now `{ x, y, set(localPt) }`
+— `x,y` still WORLD (via `worldPoint`, unchanged), `set` closing over the REAL per-shape mutation. Built ALL
+of them (`local` value + `set` closure) in ONE pass over the shape's own data structure per type:
+- **line:** 2 nodes, `set` writes `x1/y1` or `x2/y2`.
+- **polyline/polygon:** one node per `el.array()` entry, `set` re-fetches the LIVE array (not a build-time
+  snapshot), mutates the one index, `.plot()`s.
+- **path:** the fix for finding #3 — walks `el.array()` ONE time, pushing a node AND capturing that node's
+  REAL `segIdx` in the SAME loop, so hit-test and drag can never disagree about which segment a node belongs
+  to. Added H/V (endpoint = one coordinate; the OTHER is inherited from a running `curX/curY` cursor,
+  tracked exactly the way SVG itself defines path continuation) and A/S/T (arc/smooth-cubic/smooth-quad end
+  points) — every segment end is now a node, not just M/L/C/Q. H/V's `set` only ever writes its one real
+  coordinate (`p.x` for H, `p.y` for V) — the other half of whatever the pointer implies is correctly
+  unrepresentable in a 1-DOF command and is dropped, not smuggled into a segment type that doesn't carry it.
+- **rect:** 4 corners, each `set` closes over its OPPOSITE corner (captured ONCE, at node-list build time —
+  NOT re-derived from the rect's live, already-shrinking attrs on every move, which would chase a moving
+  target instead of staying pinned to where the drag started) and normalises via `min`/`abs` so dragging past
+  the opposite corner flips to a positive width/height instead of going negative.
+- **circle/ellipse:** centre only (`cx/cy`) — radius editing is explicitly SE7s, not this turn, per the
+  dispatch.
+
+**`dragNode` (`editor-interaction.js`) — the fix for finding #2:** now `transformPoint(el.matrix().inverse(),
+pt)` maps the WORLD pointer into the element's own local space, then hands that local point straight to the
+CACHED node's `set()`. No per-shape-type branching left at the drag site at all — every shape's specifics
+live entirely in `getNodes`, exactly once. `dragNode`/`findNodeAt`/`nodeHandler` are module-private (not
+exported), so the tests below exercise `transformPoint` (exported from `editor-coords.js`, unchanged) +
+`getNodes`'s `set()` composed the same way `dragNode` composes them, rather than importing `dragNode` itself.
+
+**Node-list caching across a gesture (the fix for finding #1, and what makes the rect's "pin at drag start"
+possible at all):** `findNodeAt` now returns `{ idx, nodes }` instead of a bare index — `nodeHandler.start`
+stores BOTH `editor._dragNodeIndex` and the new `editor._dragNodes` (the list `getNodes` just built), and
+`dragNode` reads `editor._dragNodes[idx].set(...)` on every subsequent move of the SAME gesture, rather than
+rebuilding the node list (and re-deriving "what's the opposite corner" from an already-mutated rect) on every
+move event. `handleEnd`'s node-drag cleanup now also nulls `editor._dragNodes`. `hover` only ever needed the
+index, so it destructures just that field — no behavior change there. The one OTHER existing caller of
+`getNodes` (`updateHandles`, which only reads `.x`/`.y` for rendering the diamond handles) needed no change
+at all — confirmed by grepping every `getNodes`/`_getNodes` call site (4 total: the definition, the two
+`editor-interaction.js` sites just described, and the `editor.js` passthrough) before touching anything, per
+the dispatch's own "grep them and say so."
+
+**`editor-lattice.js`'s `findNodeAt` — the fix for finding #4's first half:** now bakes the node's own
+transform in via `worldPoint(ch, {x:cx,y:cy})` before converting to lattice coords, instead of comparing the
+raw attribute. Re-ran the full SE7a lattice test suite (17 tests, none touching a transformed node) after
+this change with no edits to them — all still green, since `worldPoint` degrades to identity when
+`.matrix` isn't a function, which is exactly what those mocks look like.
+
+**AUTO NODES wiring — the fix for finding #4's second half, WITH a file-location correction:** the dispatch's
+file list named `editor/editor-ui.js` for this, but its own BUILD instruction says "bind in the SAME MODULE
+that binds SHOW/SNAP" — and SHOW/SNAP have lived in `properties-shape.js` since SE6, never `editor-ui.js`.
+Followed the explicit, unambiguous build instruction (which I have direct, verified knowledge of) over the
+file list (which reads like a guess); wired `#editorAutoNodes` into `initGridToggle` right alongside
+SHOW/SNAP/spacing: click toggles `editor._lattice.autoNodes` (plain mutation — no persistence, matching how
+SE7a declared it, with no load/save pair named for it), `.active` reflects state, `syncButtons()` at bind
+time gives it the initial state from `LATTICE_DEFAULTS.autoNodes` for free. `editor-ui.js` needed NO changes
+this turn as a direct result — flagging since the predicted file list named it and it isn't in this commit.
+
+**Tests:**
+- `tests/editor-nodes.test.js` (new, 9 tests) — the dispatch's exact (a)-(e) list plus 4 more: (a) a mock
+  line with a `translate(1,0)` matrix (and its hand-computed inverse) — asserts `getNodes`'s own forward
+  WORLD mapping AND that `transformPoint(matrix.inverse(), worldPt)` fed into `set()` produces the right
+  local write, i.e. the exact composition `dragNode` performs; a plain second-node-writes-x2/y2 sanity check;
+  (b) `M0 0 L1 0 Z M2 2 L3 3` — node 3 edits `arr[4]` (the real "L 3 3" segment), `arr[2]` (the Z) is
+  untouched; (e) H/V inheriting the other coordinate, and H's `set` ignoring an implied y-change; a C/Q/A/S/T
+  sweep (all five in one path) confirming every segment type contributes exactly one node at its real end
+  point; (d) rect corner-drag pinning + negative-size normalisation, PLUS a second rect test proving the pin
+  survives a SECOND move on the same cached node (the scenario a real drag gesture actually produces — a
+  single `getNodes()` call, many `set()` calls); (c) circle centre set, radius untouched; a polyline
+  array-index test.
+- `tests/editor-lattice.test.js` (+1): a lattice node with a `translate` matrix but stale raw `cx/cy` —
+  `findNodeAt` matches it at its WORLD position and no longer matches its own raw position. Required a small
+  extension to the existing `mockSketchLayer` helper (optional per-node `matrix`, defaulting to absent so
+  every pre-existing test's implicit identity-transform behaviour is unchanged).
+
+**Non-vacuity, proven not argued:** `editor-hit.js` reverted to `git show HEAD:...` (the pre-SE7n
+plain-`{x,y}` shape) — all 9 `editor-nodes.test.js` tests failed (`nodes[i].set is not a function`, or a
+wrong node count/position from the old M/L/C/Q-only path walk), restored and re-ran green. `editor-lattice.js`
+reverted the same way for its one new test — failed (`expected null not to be null`, the raw-cx/cy
+comparison missing the transformed node), restored and re-ran green.
+
+**Verify:**
+- `node --check` on all 4 touched JS files: clean.
+- `npx vitest run` → **113 passed** (103 prior + 9 new node tests + 1 new lattice test).
+
+**File count vs. prediction, and a duplicate of turn 203's own pattern:** predicted 5-6 files
+(`editor-hit.js`, `editor-interaction.js`, `editor-lattice.js`, `editor-ui.js`, the new test, + WORK-LOG).
+Landed 6 (4 modified + 1 new test, since `properties-shape.js` replaced `editor-ui.js` per the file-location
+correction above, and `tests/editor-lattice.test.js` was extended rather than being a separate new file) —
+within the predicted range, but with `editor-ui.js` swapped for `properties-shape.js` for the reason given
+above. Noting the swap explicitly rather than letting a diff-only read assume `editor-ui.js` was touched
+because the dispatch said so.
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+Seat B's read-only audit of `editor/` (mentioned in the dispatch) never produced a conflicting write —
+confirmed via `git log`/`git status` showing only my own files changed before committing.
