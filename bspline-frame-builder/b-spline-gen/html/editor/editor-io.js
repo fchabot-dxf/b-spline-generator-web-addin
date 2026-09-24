@@ -175,12 +175,19 @@ export function bakeSvgForCarving(svgText, widthIn, heightIn, dpi = 96) {
     }
 }
 
+/** SE8b / SA-TEXT-3: node types that are metadata/definitions, never
+ *  drawable sketch geometry — declared once, used by BOTH the carve-bake
+ *  walk below (which must not try to carve them) and
+ *  _reconcileLayersFromSvg's orphan-adoption walk (which must not stamp
+ *  a data-layer onto them either — see that function's own comment). */
+const NON_GEOMETRY_NODE_TYPES = ['defs', 'title', 'desc', 'style'];
+
 /** Bake carve into each geometry leaf, descending through <g> (composing the
  *  group's own transform) so any wrapped content still bakes correctly. */
 function _carveChildren(container, carve) {
     container.children().forEach(ch => {
         const type = ch.type;
-        if (type === 'defs' || type === 'title' || type === 'desc' || type === 'style') return;
+        if (NON_GEOMETRY_NODE_TYPES.includes(type)) return;
         if (type === 'g') {
             _carveChildren(ch, carve.multiply(ch.matrix()));
             ch.attr('transform', null);   // the group's transform is now baked into its children
@@ -417,8 +424,12 @@ function _migrateHangingBaselineTexts(sketchLayer, defaultFontSize) {
  * Returns the id of the layer we picked as active, or null if the
  * sketch was empty (in which case the user's first draw will trigger
  * ensureActiveLayer).
+ *
+ * Exported (despite the underscore) for direct testing — open() itself
+ * needs a much heavier mock (clear/svg/children/_bgLayer/_gridLayer/
+ * _deselect/resetPanState/sync3DBackground) than this one function alone.
  */
-function _reconcileLayersFromSvg(editor) {
+export function _reconcileLayersFromSvg(editor) {
     if (!editor._sketchLayer) {
         _ioLog('reconcile: no _sketchLayer, bail');
         return null;
@@ -443,6 +454,11 @@ function _reconcileLayersFromSvg(editor) {
     const orphans = [];     // children with no data-layer
 
     children.forEach((ch, i) => {
+        // SE8b / SA-TEXT-3: metadata (e.g. the embedded rasterization-
+        // fonts <defs> block) carries no data-layer and would otherwise
+        // be adopted as an "orphan" below — stamping a data-layer onto a
+        // <defs> block and treating it as sketch content it isn't.
+        if (NON_GEOMETRY_NODE_TYPES.includes(ch.type)) return;
         const raw = ch.attr('data-layer');
         const tag = ch.node?.tagName || '?';
         const cls = ch.node?.getAttribute?.('class') || '';

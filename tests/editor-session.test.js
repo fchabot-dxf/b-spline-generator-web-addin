@@ -128,3 +128,110 @@ describe('SA-TEXT-1: endEditorSession is the one contract both Apply and Cancel 
     expect(applyResult.onCommitCalls).toEqual(['SAVED_SVG']);
   });
 });
+
+// SA-UNDO-1 — _notifyChange('live'|'commit'). A controllable rAF mock:
+// requestAnimationFrame records the callback instead of scheduling a REAL
+// frame (nothing fires until the test explicitly calls runPending()), so
+// "did 50 live calls actually invoke the real pipeline" is deterministic
+// rather than racing a real animation frame.
+function mockRaf() {
+  let nextId = 1;
+  const scheduled = new Map();
+  return {
+    raf: (cb) => { const id = nextId++; scheduled.set(id, cb); return id; },
+    caf: (id) => { scheduled.delete(id); },
+    runPending: () => { const cbs = [...scheduled.values()]; scheduled.clear(); cbs.forEach((cb) => cb()); },
+    pendingCount: () => scheduled.size,
+  };
+}
+
+describe('SA-UNDO-1: _notifyChange coalesces drag-continuation fan-out', () => {
+  // Before this fix, dragNode/translateSelection/applyTransformDrag each
+  // called the REAL editor._onChange() (full remask/rasterize/
+  // localStorage) on every raw mousemove — commonly 15-40+ times per
+  // drag. 'live' throttles to at most one call per animation frame;
+  // 'commit' (handleEnd, once per gesture) fires immediately and cancels
+  // whatever 'live' frame was still pending.
+  function withMockRaf(fn) {
+    const { raf, caf, runPending, pendingCount } = mockRaf();
+    const originalRaf = global.requestAnimationFrame;
+    const originalCaf = global.cancelAnimationFrame;
+    global.requestAnimationFrame = raf;
+    global.cancelAnimationFrame = caf;
+    try {
+      fn({ runPending, pendingCount });
+    } finally {
+      global.requestAnimationFrame = originalRaf;
+      global.cancelAnimationFrame = originalCaf;
+    }
+  }
+
+  it('the dispatch\'s own scenario: 50 live notifications + 1 commit — the real pipeline runs exactly once', () => {
+    withMockRaf(({ pendingCount }) => {
+      const onChangeCalls = [];
+      const editor = { _onChange: () => onChangeCalls.push(true), _pendingChangeFrame: null };
+
+      for (let i = 0; i < 50; i++) {
+        VectorEditor.prototype._notifyChange.call(editor, 'live');
+      }
+      // None of the 50 live calls invoked the real pipeline — only ONE
+      // frame got scheduled (the other 49 saw a pending frame and no-opped).
+      expect(onChangeCalls).toHaveLength(0);
+      expect(pendingCount()).toBe(1);
+
+      VectorEditor.prototype._notifyChange.call(editor, 'commit');
+      expect(onChangeCalls).toHaveLength(1); // the ONE real pipeline run
+      expect(editor._pendingChangeFrame).toBeNull(); // the pending live frame was cancelled, not left to also fire
+      expect(pendingCount()).toBe(0);
+    });
+  });
+
+  it('a live call DOES eventually fire the pipeline once the frame elapses (not a permanent no-op)', () => {
+    withMockRaf(({ runPending }) => {
+      const onChangeCalls = [];
+      const editor = { _onChange: () => onChangeCalls.push(true), _pendingChangeFrame: null };
+
+      VectorEditor.prototype._notifyChange.call(editor, 'live');
+      VectorEditor.prototype._notifyChange.call(editor, 'live');
+      VectorEditor.prototype._notifyChange.call(editor, 'live');
+      expect(onChangeCalls).toHaveLength(0);
+
+      runPending(); // simulate the animation frame actually elapsing
+      expect(onChangeCalls).toHaveLength(1); // 3 live calls -> exactly 1 pipeline run
+      expect(editor._pendingChangeFrame).toBeNull();
+    });
+  });
+
+  it('a SECOND live call after the first frame fired schedules a NEW frame (continuous drags keep updating)', () => {
+    withMockRaf(({ runPending, pendingCount }) => {
+      const onChangeCalls = [];
+      const editor = { _onChange: () => onChangeCalls.push(true), _pendingChangeFrame: null };
+
+      VectorEditor.prototype._notifyChange.call(editor, 'live');
+      runPending();
+      expect(onChangeCalls).toHaveLength(1);
+
+      VectorEditor.prototype._notifyChange.call(editor, 'live');
+      expect(pendingCount()).toBe(1); // a NEW frame, not swallowed by the old (already-fired) one
+      runPending();
+      expect(onChangeCalls).toHaveLength(2); // NOT starved — a continuous drag keeps getting updates
+    });
+  });
+
+  it('commit with no pending live frame just fires immediately (no crash on a null pending id)', () => {
+    withMockRaf(() => {
+      const onChangeCalls = [];
+      const editor = { _onChange: () => onChangeCalls.push(true), _pendingChangeFrame: null };
+      VectorEditor.prototype._notifyChange.call(editor, 'commit');
+      expect(onChangeCalls).toHaveLength(1);
+    });
+  });
+
+  it('does nothing when there is no _onChange callback wired yet', () => {
+    withMockRaf(() => {
+      const editor = { _onChange: null, _pendingChangeFrame: null };
+      expect(() => VectorEditor.prototype._notifyChange.call(editor, 'live')).not.toThrow();
+      expect(() => VectorEditor.prototype._notifyChange.call(editor, 'commit')).not.toThrow();
+    });
+  });
+});

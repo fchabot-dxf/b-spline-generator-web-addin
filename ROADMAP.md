@@ -607,3 +607,9 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   now export; reorder-safe). Left over: `setStrokeColor` has no callers (→ SE8c dead-code); SA-TEXT-3 (→ SE8b).
   Next: SE8b (seat A) — SA-COORD-3, SA-COORD-4, SA-UNDO-1, SA-TEXT-3. Mobile CSS (seat B) — SA-MOBILE-13/8/4/5.
   SE5c waits on Fred's UX-UNDO answer.
+- **SE8b (812b424) + T16 mobile CSS (04d5087) merged.** World-bbox hit-test + one `toLocal()` helper, Expand framed in
+  world space, declared `_notifyChange('live'|'commit')`, fonts orphan skip; touch-action scoped, 44 px rail on coarse
+  pointers, layer delete visible on touch. **Follow-up SE8b-2 (after a live measurement):** 'live' still runs the FULL
+  `_onChange` pipeline (remask + rasterize + save), only capped at one per frame — make 'live' preview-only and
+  leave remask/save to 'commit'. SE7b design (89a48b4) approved; rulings: `ties.anchor` as data (default 'rails'),
+  occupied-cell skip in slice 2. SE7b slice 1 → seat B. SE7s → seat A.

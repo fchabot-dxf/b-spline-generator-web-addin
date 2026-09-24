@@ -222,7 +222,10 @@ export function applyTransformDrag(editor, state, pt, modifiers) {
     state.moved = true;
 
     editor._updateSelectionHighlight();
-    if (editor._onChange) editor._onChange();
+    // SE8b / SA-UNDO-1: was the REAL _onChange() per mousemove — see
+    // editor-interaction.js's dragNode for the full explanation. handleEnd
+    // fires the one 'commit' per gesture.
+    editor._notifyChange('live');
 }
 
 /**
