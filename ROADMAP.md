@@ -653,3 +653,10 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
   (seat A, resume stash@{0}: LATTICE_STYLE + margin) after SE8b-3; SE7p (seat B, resume T24: panel as a sheet on
   phones — root cause already found: no responsive rule targets `.editor-lattice-panel`, its content height starves the
   canvas at ≤720 px) after T25. Tie anchor default stays 'rails' until Fred says otherwise.
+- **SE8b-3 (848b910) accepted:** live drag frame measured at ~3.1 ms median / 6.4 ms p95 (remask 2.6 ms) on a lattice-
+  size drawing in headless Chrome — well under 16 ms, nothing changed. Caveat: not yet measured on a dense drawing in
+  Fusion's embedded browser (PERF is there when needed). **Found while measuring — CONFIRMED by advisor:** `editor.js`
+  imports `selectAdd`/`selectMany` from editor-ui.js but never defines `editor._selectAdd` / `editor._selectMany`, so
+  Ctrl+A (guarded) silently does nothing, Shift-click add THROWS (`editor-interaction.js:536`, unguarded), marquee
+  (`editor-marquee.js:108-110`) and paste can't select their results. Likely lost in the old silent-truncation episode
+  (0b40db9 restored the comments, not the methods). → SE8f, first in seat A's next task.
