@@ -78,7 +78,7 @@ export function initIO(editor) {
  *  field there means adding it here too. */
 const _PERSISTED_LAYER_FIELDS = [
     'id', 'name', 'visible',
-    'carve', 'showColor',
+    'carve', 'showColor', 'fusionGeometry',
     'depth', 'profile', 'angle',
     'tx', 'ty', 'rotation', 'scale', 'mirrorX', 'mirrorY',
     'blur', 'smoothing', 'suppression',
