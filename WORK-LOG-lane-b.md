@@ -2496,3 +2496,130 @@ dead.
 `vitest run` → **297 passed (31 files)**, unchanged (no JS logic touched beyond one click-handler wire-up
 in `properties-lattice.js`; up from 281 because main already carried seat A's SE7c work forward into this
 branch before this turn started). No gate hit.
+
+---
+
+## Lane B — Turn 69 — T26: SE10 — a real layer browser in the sidebar, sharing ONE render with the editor
+
+Replaced `#stampActiveLayer` (dropdown) + `#stampLayerEnabled` ("On" checkbox) with a real layer list in
+the Vector Stamping sidebar, rendered by the SAME function the SVG editor's own Layers panel already
+uses — not a second implementation that could drift from the first.
+
+### Declared ONE row renderer, exported it, called it twice
+
+`editor/layers.js`'s `renderLayersPanel` used to build rows inline for `#editorLayersList` only. Pulled
+that loop into `export function renderLayerList(container, editor, {compact=false}={})` — same
+`_makeLayerRow` (select/eye/rename/delete/reorder, unchanged), `compact` only changes presentation.
+`renderLayersPanel` is now a thin caller: `renderLayerList` into `#editorLayersList` (compact:false) AND
+`#stampLayersList` (compact:true, new), then the existing `_syncLegacySelect`/`_syncActiveLabel`/
+`editorLayersChanged` dispatch tail, untouched. Every existing call site (`addLayer`, `removeLayer`,
+`renameLayer`, `reorderLayer`, `setLayerVisible`, `setActiveLayer`) already calls `renderLayersPanel` —
+so both lists refresh from every mutation for free, no new "sync" plumbing needed. Didn't declare a
+second `onLayersChanged` event per the dispatch's own "if none exists" — `editorLayersChanged` already
+existed and already fires on every one of those mutations; reusing it is the smaller, truer-to-source
+choice.
+
+### Sidebar row: eye, active marker, name, tool summary, "+"
+
+Compact rows add ONE new element, `.layer-tool-summary` (`_formatToolSummary(layer)` — new, small,
+declared next to `PROFILE_LABELS = {vbit:'V', adaptive:'Adapt', ballnose:'Ball', flat:'Flat'}`), rendering
+e.g. `V .25"`, `Ball .12"` — exactly the dispatch's own examples. Active marker reuses the EXISTING
+`.layer-row.active` highlight (background + outline) rather than inventing a second indicator — it
+already does the job in the editor's own panel. "+" (`#stampAddLayer`) calls the same `addLayer` +
+`setActiveLayer` pair `#editorAddLayer` already does (`main/stamp/layer.js`, imported from
+`editor/layers.js` — not reimplemented).
+
+**CSS: de-scoped `.layer-row` and its children from `.editor-layers-panel`** (was `.editor-layers-panel
+.layer-row` etc. throughout `styles/editor.css`) so the exact same rules apply wherever `renderLayerList`
+renders them — the sidebar's `#stampLayersList` isn't inside an `.editor-layers-panel`, so the OLD scoped
+rules would have rendered unstyled there. Grepped first to confirm `.layer-row`/`.layer-visibility`/etc.
+aren't used for anything else on this page — ambient is safe, not just convenient. This also means the
+EXISTING `@media (hover:none) { .layer-delete { visibility:visible } }` touch-delete rule (SA-MOBILE-8,
+T16) now covers the sidebar for free — verified in the mobile screenshot below, delete (×) shows on every
+row without a hover. Added two NEW compact-only rules: `.layer-row.compact` (36px, 44px under
+`pointer:coarse` — T16's own rule, same signal SA-MOBILE-4 already uses) and `.layer-tool-summary`
+(10px, muted).
+
+### Removal chain — markup → main/stamp/layer.js → readers, swept
+
+Grepped `stampActiveLayer`/`stampLayerEnabled` repo-wide before touching anything: exactly 2 live code
+references (the markup itself, and `main/stamp/layer.js`'s own wiring) plus one historical design doc
+(`SE5-TOOLING-STORE-DESIGN.md`, left alone — a record, not living code) — no test file referenced either
+id, nothing else to sweep.
+
+**Found and fixed a real coupling I'd have broken silently otherwise:** `main/stamp/_shared.js`'s
+`ctx.activeLayer()` / `activeEditorLayer()` (which Plunge Depth / Tool Profile / V-Bit Angle all read)
+resolve the active layer by **index** — `window.svgEditor._layers[P.activeLayerIdx]` — NOT by the
+editor's own canonical id (`editor._activeLayer`). The old dropdown's `change` handler was the ONLY place
+that kept `P.activeLayerIdx` in sync (`updateP('activeLayerIdx', idx)`) whenever the active layer
+changed. Removing the dropdown without replacing that sync would have left those three controls silently
+editing whatever layer happened to sit at the LAST index they saw — a real regression the dispatch's own
+"controls keep editing the ACTIVE layer" line would have caught eventually, but not from reading the
+markup/CSS diff alone. Fixed by computing `idxOfEditorLayer(editor._activeLayer)` inside the
+`editorLayersChanged` listener (kept from the old code, same helper) and calling `updateP('activeLayerIdx',
+idx)` there instead — now stays in sync from EITHER list, not just a dropdown that no longer exists.
+
+**Confirmed, not assumed, that removing the checkbox's own explicit rebuild call was safe:** the OLD
+`enabledCb` handler called `scheduleRebuild(() => rebuild(ctx.preview, ...))` directly after flipping
+visibility; the eye icon's `setLayerVisible` (editor/layers.js) only calls `editor._onChange()`. Checked
+where `_onChange` gets assigned (`main/main.js:73`: `onChange: () => scheduleRebuild(...)`) — it already
+drives the same pipeline. This was true before T26 too (the editor's OWN eye icon has always gone through
+`setLayerVisible`, never the checkbox's explicit call) — removing the now-dead `scheduleRebuild`/`rebuild`/
+`updateStampMasks`/`updatePreviewSculptMode`/`setStampLayerEnabled` imports from `main/stamp/layer.js`
+doesn't change behavior, it deletes an already-redundant second path.
+
+**`layerModule.syncEnabled`, called by `svg-source.js`'s Browse/Clear (unchanged, out of scope) after they
+flip a layer's visibility indirectly, kept as a public method** — repointed from "sync a checkbox" to
+"re-sync `P.activeLayerIdx` + the V-Bit Angle/file-name sidebar bits" (`syncFromEditor`, the same function
+the `editorLayersChanged` listener uses). `setLayerVisible` already re-renders both lists on its own, so
+this is a defensive extra pass for the sidebar bits specifically, not the only path that keeps them fresh.
+
+### Verified end-to-end (repo-root serve; screenshots in the session scratchpad, not committed)
+
+A genuinely useful accidental discovery mid-verification: `C:\tmp\smoke-out` (where every prior turn's
+screenshots landed) silently deletes newly-written files within ~1s of creation — confirmed directly
+(`fs.existsSync` true immediately after `writeFileSync`, `ls` from a later shell call finds nothing;
+Claude's own scratchpad directory does NOT have this problem, confirmed the same way). T24/T25's
+screenshots that DID land there apparently escaped the window by luck/timing, not because the directory
+is actually safe. Switched to the scratchpad for every shot from this point on; recording this here so a
+future local-testing session doesn't lose an evening to it the way today nearly did twice more.
+
+```
+Generate → 4 layers (Layer 1, Rails, Ties, Nodes) — auto tool summaries per SE7c's own LATTICE_STYLE
+  values: Nodes "Ball .12"", Ties "V .08"", Rails "V .15"", Layer 1 "V .25"" — matches the dispatch's
+  own worked examples exactly, unprompted (SE7c gave each generated layer a real per-kind depth/profile).
+Tapped "Ties" in the SIDEBAR list -> editor._activeLayer becomes its real id ("3"); BOTH lists' .active
+  row reads "Ties" (afterTap.sidebarActiveName === afterTap.editorPanelActiveName === "Ties").
+Toggled the (now-active) Ties row's eye OFF in the SIDEBAR -> editor._layers[Ties].visible === false,
+  AND the EDITOR's own Layers panel row for Ties independently reads is-hidden too — the exact
+  "toggling the eye in one list updates the other" the dispatch's Verify section asks for, driven
+  through real DOM clicks against the live app, not asserted from data.
+Mobile (390px, scrolled to the panel): all 4 rows visible with drag handle, eye, name, tool summary,
+  and a VISIBLE (not hover-gated) delete × on every row — confirms the de-scoped CSS's touch-delete
+  rule reaches the sidebar.
+```
+
+### Non-vacuous (2 mutations)
+
+1. Commented out the sidebar's `renderLayerList` call inside `renderLayersPanel` — all 3
+   `renderLayersPanel`-level tests failed exactly as expected (2 with a null-element TypeError from a
+   click on a row that no longer existed, 1 on the row-count assertion); the 6 `renderLayerList`-direct
+   tests were unaffected, correctly isolating what each test actually covers.
+2. Dropped `_formatToolSummary`'s leading-zero strip (`"Ball 0.12""` instead of `"Ball .12""`) — the
+   compact-tool-summary test failed on the exact string, the other 8 passed.
+Both reverted immediately; full suite re-run green (306/306) after.
+
+### Process hygiene
+
+Forgot `proc_health.py mark --turn 69` at the start of this turn (should be the first thing after `wait`
+returns) — `watch` at wrap-up still correctly found and labeled 2 leftover `http.server` processes from
+this turn's own testing (tagged "t65" from the LAST mark I did run, not "PRIOR-TURN leak" — proc_health
+can only label relative to whenever it was last told a turn started, so this is a labeling gap on my
+part, not a missed leak); reaped via `proc_health.py reap --role self --yes`, both confirmed dead. Also
+found and killed 12 orphaned `chrome.exe` processes accumulated across today's T24/T25/T26 CDP scripts
+(`chrome.kill()` on the spawned Node child doesn't reliably terminate `--headless=new`'s full process
+tree on this machine) via `taskkill /F /IM chrome.exe` — not `proc_health`-tracked (a different process
+family than what it watches), noted here so a future turn recognizes the pattern faster than I did.
+
+`vitest run` → **306 passed (32 files)**, up from 297 (9 new, `tests/editor-layer-list.test.js`). No gate
+hit.

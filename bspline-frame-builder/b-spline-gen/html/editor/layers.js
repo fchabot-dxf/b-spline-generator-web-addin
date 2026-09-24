@@ -300,40 +300,60 @@ function _eyeClosedSVG() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-6.5 0-10-7-10-7a18.27 18.27 0 0 1 4.06-5.06"/><path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c6.5 0 10 7 10 7a18.27 18.27 0 0 1-2.16 3.19"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`;
 }
 
-export function renderLayersPanel(editor) {
-  const list = document.getElementById('editorLayersList');
-  if (!list) return;
-
+/** SE10 / T26: one row renderer, two call sites — the editor's own Layers
+ *  panel (#editorLayersList) and the Vector Stamping sidebar's layer
+ *  browser (#stampLayersList). Same data, same handlers (select, eye,
+ *  add, rename, delete, reorder); `compact` only changes presentation
+ *  (row sizing, and an extra tool-summary read-out the sidebar wants that
+ *  the editor's own panel has no room or need for). Exported so a
+ *  container that isn't wired through renderLayersPanel's two fixed ids
+ *  can still render the same list (kept minimal — no caller needs that
+ *  today, but the shape is the one this codebase already declares
+ *  things at: a container + editor + options, not a hardcoded id). */
+export function renderLayerList(container, editor, { compact = false } = {}) {
+  if (!container) return;
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
-  const empty = document.getElementById('editorLayersEmpty');
+
+  container.innerHTML = '';
+  if (layers.length === 0) {
+    const e = document.createElement('div');
+    e.className = 'layers-empty';
+    e.innerHTML = compact
+      ? 'No layers yet.'
+      : 'No layers yet.<br>Click + to add one, or just start drawing.';
+    container.appendChild(e);
+    return;
+  }
 
   // Render rows top-to-bottom = top-of-z-order first. The _layers array's
   // last element is on top of the SVG (added last), so reverse for display.
-  list.innerHTML = '';
-  if (layers.length === 0) {
-    if (empty) {
-      list.appendChild(empty);
-      empty.style.display = '';
-    } else {
-      const e = document.createElement('div');
-      e.className = 'layers-empty';
-      e.id = 'editorLayersEmpty';
-      e.innerHTML = 'No layers yet.<br>Click + to add one, or just start drawing.';
-      list.appendChild(e);
-    }
-  } else {
-    const activeId = getActiveLayer(editor);
-    [...layers].reverse().forEach(layer => {
-      list.appendChild(_makeLayerRow(editor, layer, layer.id === activeId));
-    });
-  }
+  const activeId = getActiveLayer(editor);
+  [...layers].reverse().forEach(layer => {
+    container.appendChild(_makeLayerRow(editor, layer, layer.id === activeId, { compact }));
+  });
+}
+
+export function renderLayersPanel(editor) {
+  const list = document.getElementById('editorLayersList');
+  if (list) renderLayerList(list, editor, { compact: false });
+
+  // SE10: the Vector Stamping sidebar's layer browser — same data, same
+  // renderLayerList, compact presentation. A no-op (renderLayerList's own
+  // `if (!container) return`) on any page/state where #stampLayersList
+  // doesn't exist, e.g. before the editor modal has ever been opened.
+  const stampList = document.getElementById('stampLayersList');
+  if (stampList) renderLayerList(stampList, editor, { compact: true });
 
   _syncLegacySelect(editor);
   _syncActiveLabel(editor);
 
-  // Notify other UI (e.g. the Vector Stamping panel's "Active Layer"
-  // dropdown) that the layer roster changed. Step 3 of the
-  // stamp-layer → editor-layer unification.
+  // Notify other UI (main/stamp/layer.js keeps P.activeLayerIdx and a
+  // couple of sidebar-owned bits — the V-Bit Angle row, the file-name
+  // label — in sync from this) that the layer roster changed. Step 3 of
+  // the stamp-layer → editor-layer unification; T26 reuses this same
+  // event rather than declaring a second one, since it already fires on
+  // every add/remove/rename/reorder/visibility/active-switch from either
+  // list (both funnel through this one function).
   try {
     if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
       document.dispatchEvent(new CustomEvent('editorLayersChanged', {
@@ -347,9 +367,23 @@ export function renderLayersPanel(editor) {
   } catch (_) { /* defensive: rendering must not crash if listeners throw */ }
 }
 
-function _makeLayerRow(editor, layer, isActive) {
+// SE10: profile → short label for the sidebar's compact tool-summary
+// ("V .25"", "Ball .12""). Declared next to TOOLING_DEFAULTS' own profile
+// values rather than inferred from the <select>'s option text, which
+// lives in bspline_gen_palette.html and says something longer
+// ("V-Bit (Linear)") that wouldn't fit a 44px row.
+const PROFILE_LABELS = { vbit: 'V', adaptive: 'Adapt', ballnose: 'Ball', flat: 'Flat' };
+
+function _formatToolSummary(layer) {
+  const label = PROFILE_LABELS[layer.profile] || layer.profile || '';
+  const depth = typeof layer.depth === 'number' ? layer.depth : 0;
+  const abs = Math.abs(depth).toFixed(2).replace(/^0\./, '.');
+  return `${label} ${depth < 0 ? '-' : ''}${abs}"`;
+}
+
+function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const row = document.createElement('div');
-  row.className = 'layer-row' + (isActive ? ' active' : '');
+  row.className = 'layer-row' + (compact ? ' compact' : '') + (isActive ? ' active' : '');
   row.dataset.layerId = layer.id;
   row.draggable = true;
 
@@ -410,6 +444,18 @@ function _makeLayerRow(editor, layer, isActive) {
   name.textContent = layer.name;
   name.title = layer.name;
 
+  // SE10: compact-only — the editor's own panel has no tooling context to
+  // show (and no room); the sidebar row is the one place a user picks a
+  // layer WITHOUT the Plunge Depth / Tool Profile controls already in
+  // view, so it gets an at-a-glance summary of what it'll carve with.
+  let toolSummary = null;
+  if (compact) {
+    toolSummary = document.createElement('span');
+    toolSummary.className = 'layer-tool-summary';
+    toolSummary.textContent = _formatToolSummary(layer);
+    toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"`;
+  }
+
   const del = document.createElement('button');
   del.type = 'button';
   del.className = 'layer-delete';
@@ -435,6 +481,7 @@ function _makeLayerRow(editor, layer, isActive) {
   row.appendChild(handle);
   row.appendChild(vis);
   row.appendChild(name);
+  if (toolSummary) row.appendChild(toolSummary);
   row.appendChild(del);
 
   // Click row → activate layer.
