@@ -306,7 +306,11 @@ function boxFilter(src, nx, nz, radiusIn, widthIn, depthIn) {
   return dst;
 }
 
-function lcgPoints(seed, count) {
+// SE7b: exported so editor-lattice-pattern.js reuses this RNG instead of
+// hand-rolling a second one (independent {u,v} draws — the right shape for
+// discrete per-column tie decisions, unlike PerlinNoise's spatially-
+// correlated continuous field). See SE7B-PATTERN-GENERATOR-DESIGN.md.
+export function lcgPoints(seed, count) {
   const pts = [];
   let s = seed >>> 0;
   const next = () => {

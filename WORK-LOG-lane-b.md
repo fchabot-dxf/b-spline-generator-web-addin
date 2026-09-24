@@ -1480,3 +1480,75 @@ and corrected 3 stale line numbers from my own T12 audit (dragNode/translateSele
 moved since SE7n/SE8a landed) before they went into the doc.
 
 No gate hit — design-doc-only turn, no product code or tests touched.
+
+---
+
+## Lane B — Turn 51 — T18: SE7b slice 1 — pure computePattern (anchor rails|free, occupied) — DONE, product code
+
+Built slice 1 of my own SE7B-PATTERN-GENERATOR-DESIGN.md (89a48b4), plus the advisor's rulings on Q1
+(ties.anchor: 'rails'|'free', data not code) and Q3 (occupied param accepted now, real detection logic
+deferred to slice 2). Did not touch editor-lattice.js or any of seat A's SE8b files.
+
+- core/terrain.js: exported lcgPoints (one line) with a comment explaining why — the RNG reuse the
+  dispatch and my own design doc both called for, not a new one.
+- New editor/editor-lattice-pattern.js: computePattern(PATTERN, {extent, occupied}) -> {segments,
+  nodePoints}, entirely in LATTICE coordinates. Reuses toLattice/fromLattice/constrain/latticeCrossings
+  (imported from editor-lattice.js, not reimplemented) and lcgPoints (imported from core/terrain.js).
+  Made a deliberate, disclosed refinement over the design doc's own ambiguous segments[].a/b sketch:
+  kept segments AND nodePoints in one coordinate system throughout, so this module never needs spacing
+  for its own output shape — only slice 2's DOM-touching layer calls fromLattice, right before handing
+  points to emitSegment/emitNode (which need model-space).
+- Per-column RNG draws use a column-derived sub-seed (seed XOR a per-column constant), mirroring
+  terrain.js's own noiseFine/noiseWarp/noiseCoarse XOR-derivation idiom directly rather than inventing a
+  new randomness convention — and it buys a real property the design doc didn't originally ask for but
+  is worth stating: each column's tie decision is independent of how many OTHER columns exist, so
+  widening the extent can't retroactively change an already-decided column's tie.
+- ties.anchor implemented both ways per the ruling: 'rails' (default) picks a start rail row then a
+  valid end rail row within spanMin..spanMax lattice rows of it (skip the column if no candidate rail
+  pair fits that gap); 'free' picks any start row + span length within the extent, no rail requirement.
+- nodes.crossings reuses latticeCrossings rail-by-rail against the generated ties — caught my own bug
+  before it shipped by actually running the tests: latticeCrossings returns a segment's OWN two
+  endpoints alongside real crossings (its own documented behavior, editor-lattice.js:72), and since I
+  passed each RAIL as the seg being tested, that meant every rail was growing a spurious node at its own
+  left/right board-edge endpoint, not just at real tie crossings. Added an explicit exclude-the-rail's-
+  own-endpoints filter. Confirmed the bug and the fix are both real by writing a test for it (see below).
+- occupied: implemented as opts.occupied?.has("i,j,kind") checked against each element's IDENTITY point
+  (rail: its start; tie: its start; node: itself) — a slice-1 convention I named explicitly in the code's
+  own doc comment as open to refinement once slice 2/3 write the real DOM-based occupied-set builder,
+  not presented as a finished design.
+
+**Caught and fixed my own design doc's imprecision during implementation, didn't ship the mismatch
+silently:** the design doc's own §6 test list said "ties.columns explicit list bypasses lcgPoints
+entirely (no seed dependency when hand-picked)." Implementing it, that's the wrong behavior — hand-
+picking WHICH columns get a tie is a separate decision from how long each one is; there's no reason a
+seed reroll shouldn't still vary a hand-picked tie's span. Implemented column-selection as seed-
+independent (forced bypasses only the density gate) but span/position still legitimately draws from the
+seed for those columns, and wrote the test to assert the CORRECTED behavior with an explicit comment
+citing the design doc's original wording and why it changed — rather than either quietly deviating from
+my own doc or forcing the implementation into what I'd written imprecisely three turns ago.
+
+**Two real bugs caught by writing and RUNNING the tests, not by inspection alone** (both confirmed via
+mutation: reintroduced each, watched the exact intended test fail, restored, watched it pass again):
+1. every<=0 degenerate guard — my own code comment said "no rails rather than ... silently reinterpreting
+   it as every row," but the code I actually wrote did exactly the fallback the comment disclaimed
+   (`every>0?every:1`, i.e. "every row" when every<=0). Fixed to match the STATED intent (return false
+   outright when every<=0) rather than editing the comment to match the wrong code.
+2. The crossings-endpoint-exclusion bug described above.
+3. A third test (seed-dependence of a hand-picked column's span, using the DEFAULT 'rails' anchor +
+   every:2/spanMin:1/spanMax:3) initially failed not because of a code bug but because those specific
+   defaults leave exactly ONE valid rail-pair candidate almost always (rails 2 apart, span window 1-3
+   only ever admits the very next rail), making the span deterministic regardless of seed as a genuine
+   consequence of that combination, not a bug. Fixed the TEST (switched to anchor:'free' with a wider
+   span window, where the claim being tested — "span legitimately varies with seed" — isn't confounded
+   by a near-forced-unique-candidate artifact), documented why in the test's own comment, left the
+   product code untouched since it wasn't wrong.
+
+**Full suite:** npx vitest run -> 162 passed (18 files), up from 145. node --check on both modules: clean.
+
+**Verify:** git status --short -> exactly 3 files (core/terrain.js, editor/editor-lattice-pattern.js new,
+tests/editor-lattice-pattern.test.js new) + this WORK-LOG entry, matching the dispatch's prediction.
+editor-lattice.js and every seat-A SE8b file (editor-hit.js, editor-expand-trace.js, editor-interaction.js,
+editor.js, editor-io.js, editor-coords.js) confirmed untouched.
+
+No gate hit — stayed exactly within slice 1's pure-function scope; the occupied-detection LOGIC (querying
+live DOM for detached elements) is explicitly slice 2/3 work, not started here.
