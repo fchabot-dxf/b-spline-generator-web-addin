@@ -6523,3 +6523,78 @@ pre-change). Restored from the scratch copy, `diff` confirmed exact restoration,
 - `npx vitest run` → **236 passed** (231 prior + 5 new).
 
 No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
+
+## Turn 217 — SE8b-2: declared CHANGE_PIPELINE (no persist during a drag) + PERF timing gate — DONE
+
+Ground truth: SE8b's `_notifyChange('live')` already caps the fan-out at one `_onChange` per animation
+frame, but `_onChange` itself (`main/app-init.js`'s `initSvgEditor` onChange callback) was still the WHOLE
+pipeline every time it ran — `saveForRasterization()` → `P.editorSvg = svg` → `saveLastSession()`
+(localStorage write) → `refreshAllStampMasks()` — including a localStorage write on every throttled drag
+frame. Nobody had measured which step actually costs what; this turn builds the measurement and makes only
+the one change that's correct regardless of the numbers (persist never running mid-drag), per the
+dispatch's own framing.
+
+**1. Declared `CHANGE_PIPELINE` (`main/app-init.js`)**: `{ live: ['serialize','remask'], commit:
+['serialize','persist','remask'] }`. `runChangePipeline(kind, {serialize, persist, remask})` is the table's
+interpreter — takes its three steps as plain callbacks rather than reaching for `window.svgEditor`/`P`/
+`resolveGrid` directly, so the ORCHESTRATION (which steps run, in what order) is unit-testable with mock
+functions, no live editor/DOM/3D-preview needed. `serialize` returning falsy stops the pipeline right there
+for EITHER kind — mirrors the original code's `if (svg) { persist; remask }` guard exactly (an editor
+that isn't drawn yet has nothing to persist or remask either); nothing about WHICH steps run or in what
+ORDER changed, only whether `persist` is in the list for a given kind.
+
+**2. `editor.js`'s `_notifyChange(kind)` now actually threads `kind` through** to `this._onChange(kind)`
+(both the immediate 'commit' call and the rAF-deferred 'live' call) — before this turn, `kind` was already
+a parameter on `_notifyChange` (SE8b) but was silently DROPPED at the two `this._onChange()` call sites,
+so `_onChange` never had any way to know which kind it was running for. Every OTHER `_onChange()` call site
+in the file (style-change commits, transform reset/flatten, etc.) is untouched — they call with zero
+arguments, which the onChange callback's own `(kind = 'commit')` default parameter correctly resolves to
+the full pipeline, exactly as before. Updated the method's own doc-comment, which had gone stale describing
+'live' as running the FULL pipeline (true before this turn, no longer true).
+
+**3. `_perfLog` (`main/app-init.js`, exported despite the underscore — SE8a's `stripRasterizationFontDefs`
+convention) — a `PERF` debug category** (added to `core/debug.js`'s category list/doc-comment): off by
+default, so this measurement costs nothing until switched on. Goes through BOTH `dbg()` (site devtools
+console) and `fusLog` (the add-in's log file) — the dispatch's own "the advisor can switch it on in the
+add-in or the site console" ask names both. Each step that actually runs logs its own duration
+(`${kind} ${step} ${ms}ms`), plus one per-frame total (`${kind} total ${ms}ms`) — matching the dispatch's
+literal example format.
+
+**4. Rewired `initSvgEditor`'s onChange callback (`main/app-init.js`)** to call `runChangePipeline(kind,
+{...})`, with `serialize` closing over `window.svgEditor.saveForRasterization()` + the `P.editorSvg = svg`
+write (unchanged from before), `persist` = `saveLastSession`, `remask` closing over `resolveGrid` +
+`refreshAllStampMasks` (unchanged). The callback now accepts `(kind = 'commit')` instead of `()` — the
+default keeps every EXISTING zero-argument `_onChange()` caller (style commits, reset/flatten transform,
+etc.) running the full pipeline exactly as before, unaffected by this turn.
+
+**One deliberate, flagged behavior nuance**: the original code fired `refreshAllStampMasks(...)`
+WITHOUT awaiting it (fire-and-forget, even though the function is `async` and the outer callback already
+is too) — `runChangePipeline` DOES `await remask()`, so the 'remask' step's logged duration is the actual
+mask-computation time, not just "how long until the async call was kicked off." Checked this doesn't change
+externally-observable behavior: nothing anywhere awaits the onChange callback's own resolution
+(`_notifyChange` fires it and moves on either way, both before and after this turn), so awaiting one more
+step inside it only delays when ITS OWN promise settles, which nothing reads. Without this, the dispatch's own
+"measure which step costs what" goal would be silently wrong for the step most likely to be expensive
+(`refreshAllStampMasks` re-rasterizes every visible layer).
+
+**Tests** (`tests/change-pipeline.test.js`, new, 8): the declared table's exact shape (`live` has no
+`persist`, `commit` does, same relative order); `runChangePipeline('live', ...)` never calls `persist`;
+`('commit', ...)` calls it exactly once, between `serialize` and `remask`; a falsy `serialize` result stops
+the pipeline for EITHER kind (proven for both, not just one); an unrecognized kind falls back to the commit
+pipeline (the dispatch's own "default 'commit' for any other caller"); `_perfLog` off by default (no
+`console.log` at all); enabled via `'PERF'` logs through `dbg()` with the right category prefix; a
+DIFFERENT category being enabled does NOT leak PERF output (proves the gate checks the SPECIFIC category,
+not just "something is on"). Not covered directly: the real `initSvgEditor` wiring closure itself (needs
+`window.svgEditor`/a live 3D `preview` object) — matches this file's own existing testing precedent
+(`runMigrations`/`editorRestoreSvg` are tested the same way; the DOM/3D-heavy callers around them are not).
+
+**Non-vacuity, proven not argued:** reverted `main/app-init.js` to `git show HEAD:...` (the only file the
+new test imports from). All 8 new tests failed — `CHANGE_PIPELINE` is `undefined` (table-shape test),
+`runChangePipeline is not a function`, `_perfLog is not a function` (none of the three exports exist
+pre-change). Restored from the scratch copy, `diff` confirmed exact restoration, full suite re-ran green.
+
+**Verify:**
+- `node --check` on all 3 touched JS files: clean.
+- `npx vitest run` → **244 passed** (236 prior + 8 new).
+
+No amendments were pending at either poll (`handoff.py amendments --role worker` → "no new amendments").
