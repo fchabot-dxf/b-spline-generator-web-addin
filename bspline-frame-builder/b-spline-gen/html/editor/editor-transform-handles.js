@@ -13,17 +13,40 @@
  *                      bbox. Dragging NE keeps SW pinned, etc.
  *   - Rotate handle  → pivot = bbox center (always).
  *
- * Transform composition: at drag start we capture the element's
- * current matrix (m0) and on every move set
- *     transform = delta × m0
- * via the SVG `transform` attribute. Geometry (d, points, x/y) is
- * never touched — the transform stays re-editable. Call
- * flattenTransform() to bake it into geometry when you need a clean
- * d (e.g. before export / rasterize); call resetTransform() to throw
- * the transform away.
+ * SE7s: what a scale-handle drag actually DOES to the element is no longer
+ * one universal "compose a scale into `transform`" rule — that scaled the
+ * stroke (carve width) and, on a rotated element, sheared it (handles sat
+ * on the WORLD-aligned bbox, scaling along world X/Y instead of the
+ * element's own axes). It's now a per-kind declaration (HANDLE_EDIT,
+ * handle-edit.js): 'endpoints' (line) moves one endpoint along the line's
+ * own direction; 'radius'/'radii' (circle/ellipse) resize in place, centre
+ * fixed; 'geometry' (rect/path/polyline/polygon) bakes straight into
+ * coordinates on every move from the drag-start snapshot, so `transform`
+ * never carries a scale and stroke-width is invariant; 'scale' (text, and
+ * the fallback for anything undeclared) keeps the old transform-compose
+ * behaviour. A single selection edits in the element's OWN frame (handles
+ * placed by mapping its local bbox through its full matrix, o/n vectors
+ * computed in local space via toLocal) so a rotated element's side handle
+ * stretches along ITS edge, not world X/Y; this reduces to exactly the old
+ * world-frame math when the element isn't rotated/translated non-trivially
+ * (a local bbox mapped through an identity-rotation matrix IS the world
+ * bbox). A multi-selection keeps the shared WORLD frame (one combined bbox,
+ * one shared anchor/handle/pointer), and each element is still edited by
+ * its own HANDLE_EDIT rule from that shared anchor.
+ *
+ * Corner-handle scaling uses cornerScale (handle-edit.js) — a projection of
+ * the pointer onto the anchor->handle direction — replacing the old
+ * dominant-pointer-axis pick, which made a thin element's corner scale
+ * wildly (a 0.02x3 tie scaled x15 for a 0.3" sideways drag) and a
+ * near-square box's factor jitter as the dominant axis flipped.
  */
-import { worldBbox, transformPoint } from './editor-coords.js';
+import { worldBbox, worldPoint, toLocal, transformPoint } from './editor-coords.js';
 import { PATH_LAYOUT, normalizeForBake } from './path-layout.js';
+import { snapFor } from './editor-grid.js';
+import {
+    HANDLE_EDIT, cornerScale,
+    multiplyMatrix, translateMatrix, scaleMatrix, rotateMatrix, matrixToString,
+} from './handle-edit.js';
 
 // ── Handle layout: corner + side scale handles. hx/hy give the handle
 // position as a (0..1) fraction of the bbox; ax/ay give the anchor
@@ -44,18 +67,33 @@ const SCALE_HANDLES = [
  * selection. Returns the records array so editor-interaction can
  * hit-test against them. Returns [] if there's nothing to draw.
  *
- * Multi-selection: the bbox is the union of all selected elements'
- * world bboxes. Dragging a handle then applies the SAME delta matrix
- * to every selected element (composed onto each element's start-of-
- * drag matrix), so the group scales / rotates as a unit.
+ * SE7s: a single selection places every handle by mapping the element's
+ * LOCAL bbox fractional point through its FULL matrix (rotation and all) —
+ * not a world-AABB fraction — so the handles sit on the element's own
+ * (possibly rotated) corners instead of the axis-aligned box around it.
+ * For an unrotated/untranslated element this is numerically identical to
+ * the old world-AABB placement (mapping a local point through an
+ * identity-rotation matrix IS its world position), so nothing changes for
+ * the common case. A multi-selection keeps the combined WORLD bbox — one
+ * shared box the group scales/rotates as a unit, exactly as before.
  */
 export function renderTransformHandles(editor) {
     if (!editor._handleLayer) return [];
     const sel = editor._selectedElements || [];
     if (!sel.length) return [];
 
-    const bb = _combinedBbox(sel);
-    if (!bb || !Number.isFinite(bb.w) || !Number.isFinite(bb.h)) return [];
+    const single = sel.length === 1 ? sel[0] : null;
+    let worldOf;
+    if (single) {
+        const b = single.bbox();
+        if (!b || !Number.isFinite(b.w) || !Number.isFinite(b.h)) return [];
+        const m = single.matrix();
+        worldOf = (fx, fy) => transformPoint(m, { x: b.x + b.w * fx, y: b.y + b.h * fy });
+    } else {
+        const bb = _combinedBbox(sel);
+        if (!bb || !Number.isFinite(bb.w) || !Number.isFinite(bb.h)) return [];
+        worldOf = (fx, fy) => ({ x: bb.x + bb.w * fx, y: bb.y + bb.h * fy });
+    }
 
     const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
     const viewMin = view ? Math.min(view.width, view.height) : 100;
@@ -69,10 +107,8 @@ export function renderTransformHandles(editor) {
 
     // Scale handles — white square with blue border.
     for (const h of SCALE_HANDLES) {
-        const hx = bb.x + bb.w * h.hx;
-        const hy = bb.y + bb.h * h.hy;
-        const ax = bb.x + bb.w * h.ax;
-        const ay = bb.y + bb.h * h.ay;
+        const { x: hx, y: hy } = worldOf(h.hx, h.hy);
+        const { x: ax, y: ay } = worldOf(h.ax, h.ay);
         editor._handleLayer.rect(sz * 2, sz * 2)
             .move(hx - sz, hy - sz)
             .fill('#ffffff')
@@ -87,12 +123,16 @@ export function renderTransformHandles(editor) {
         });
     }
 
-    // Rotate handle — connecting tick + circle floating above the top edge.
-    const rx = bb.x + bb.w * 0.5;
-    const ry = bb.y - rotateOffset;
-    const cx = bb.x + bb.w * 0.5;
-    const cy = bb.y + bb.h * 0.5;
-    editor._handleLayer.line(rx, bb.y, rx, ry)
+    // Rotate handle — connecting tick + circle floating above the top edge
+    // (the element's own "up", via worldOf, not necessarily world "up").
+    const center = worldOf(0.5, 0.5);
+    const topMid = worldOf(0.5, 0);
+    let dx = topMid.x - center.x, dy = topMid.y - center.y;
+    const dlen = Math.hypot(dx, dy) || 1;
+    dx /= dlen; dy /= dlen;
+    const rx = topMid.x + dx * rotateOffset;
+    const ry = topMid.y + dy * rotateOffset;
+    editor._handleLayer.line(topMid.x, topMid.y, rx, ry)
         .stroke({ color: '#0066cc', width: strokeW })
         .attr('pointer-events', 'none');
     editor._handleLayer.circle(sz * 2)
@@ -104,7 +144,7 @@ export function renderTransformHandles(editor) {
         kind: 'rotate',
         id: 'rotate',
         hx: rx, hy: ry,
-        cx, cy,
+        cx: center.x, cy: center.y,
         hitR: sz * 2,
     });
 
@@ -123,101 +163,274 @@ export function hitTestHandle(records, pt) {
     return best;
 }
 
+/** True if `m`'s linear part carries any rotation/skew (b or c nonzero) —
+ *  a pure scale+translate matrix always has b=c=0. Used only to decide
+ *  whether a rect needs promoting to a path before a 'geometry' edit (see
+ *  _snapshotGeometry): an axis-aligned rect's raw x/y/width/height is
+ *  always representable directly; a rotated one needs a general point
+ *  list, because the anchor-relative scale that comes out of a shared
+ *  WORLD-frame multi-selection drag (round-tripped through toLocal) can
+ *  leave a non-axis-aligned quadrilateral in local space. */
+function _isRotated(m) {
+    return !!m && (Math.abs(m.b) > 1e-9 || Math.abs(m.c) > 1e-9);
+}
+
 /**
- * Snapshot what we need at drag start so applyTransformDrag can
- * compose a fresh transform on each move without accumulating drift.
- * Captures m0 per element so the SAME delta matrix applied to each
- * stays correct under the group operation.
+ * Snapshot what we need at drag start so applyTransformDrag can recompute
+ * a fresh result on each move without accumulating drift.
+ *
+ * SE7s: the anchor/handle used for the corner-projection / side-ratio
+ * factor now come from one of two frames, decided ONCE here and carried on
+ * `state.frame`:
+ *   'local' — a single selection: anchor/handle are the element's OWN
+ *     local-bbox fractional points (untransformed), and applyTransformDrag
+ *     maps the live pointer into that same local space via toLocal before
+ *     computing o/n — so the factor is correct in the element's own
+ *     (possibly rotated) axes, not world X/Y.
+ *   'world' — a multi-selection (or nothing selected, unreachable here):
+ *     the existing combined-bbox behaviour, anchor/handle taken straight
+ *     from the hit-tested world-space handle record, exactly as before.
+ * Per-element HANDLE_EDIT kind is resolved here too, with whatever
+ * kind-specific snapshot that kind's own edit needs (line endpoints/
+ * direction, circle/ellipse start radii, geometry's point list) — built
+ * once so every move re-derives from the SAME drag-start data instead of
+ * the element's own already-mutated state (which would drift/compound).
  */
 export function beginTransform(editor, handleRec, pt) {
     const sel = editor._selectedElements || [];
     if (!sel.length) return null;
+
+    if (handleRec.kind === 'rotate') {
+        return {
+            handle: handleRec,
+            els: sel.map(el => ({ el, m0: el.matrix() })),
+            anchor: { x: handleRec.cx, y: handleRec.cy },
+            initAngle: Math.atan2(handleRec.hy - handleRec.cy, handleRec.hx - handleRec.cx),
+            startPt: { x: pt.x, y: pt.y },
+            moved: false,
+        };
+    }
+
+    const frame = sel.length === 1 ? 'local' : 'world';
+    let anchorPt, handlePt;
+    if (frame === 'local') {
+        const def = SCALE_HANDLES.find(s => s.id === handleRec.id);
+        const b = sel[0].bbox();
+        anchorPt = { x: b.x + b.w * def.ax, y: b.y + b.h * def.ay };
+        handlePt = { x: b.x + b.w * def.hx, y: b.y + b.h * def.hy };
+    } else {
+        anchorPt = { x: handleRec.ax, y: handleRec.ay };
+        handlePt = { x: handleRec.hx, y: handleRec.hy };
+    }
+    // The handle's WORLD position at drag start, regardless of frame — the
+    // 'endpoints' (line) rule needs this to tell which of ITS OWN two
+    // endpoints was actually grabbed, independent of the shared anchor.
+    const handleWorld = frame === 'local' ? transformPoint(sel[0].matrix(), handlePt) : handlePt;
+
+    const els = sel.map(rawEl => {
+        let el = rawEl;
+        const kind = HANDLE_EDIT[el.type] || 'scale';
+        if (kind === 'geometry' && el.type === 'rect' && _isRotated(el.matrix())) {
+            el = _promoteRectToPath(editor, el);
+        }
+        const m0 = el.matrix();
+        const rec = { el, m0, kind };
+        if (kind === 'geometry') {
+            rec.snapshot = _snapshotGeometry(el);
+        } else if (kind === 'radius') {
+            rec.r0 = parseFloat(el.attr('r')) || 0;
+        } else if (kind === 'radii') {
+            rec.rx0 = parseFloat(el.attr('rx')) || 0;
+            rec.ry0 = parseFloat(el.attr('ry')) || 0;
+        } else if (kind === 'endpoints') {
+            const p1 = { x: parseFloat(el.attr('x1')) || 0, y: parseFloat(el.attr('y1')) || 0 };
+            const p2 = { x: parseFloat(el.attr('x2')) || 0, y: parseFloat(el.attr('y2')) || 0 };
+            const w1 = transformPoint(m0, p1);
+            const w2 = transformPoint(m0, p2);
+            const d1 = Math.hypot(handleWorld.x - w1.x, handleWorld.y - w1.y);
+            const d2 = Math.hypot(handleWorld.x - w2.x, handleWorld.y - w2.y);
+            const movingIsP1 = d1 <= d2;
+            rec.movingIsP1 = movingIsP1;
+            rec.anchorWorld = movingIsP1 ? w2 : w1;
+            const moving = movingIsP1 ? w1 : w2;
+            const ddx = moving.x - rec.anchorWorld.x, ddy = moving.y - rec.anchorWorld.y;
+            const len = Math.hypot(ddx, ddy);
+            rec.dirUnit = len > 1e-9 ? { x: ddx / len, y: ddy / len } : null;
+        }
+        return rec;
+    });
+
     return {
         handle: handleRec,
-        // Per-element start matrices. Composition on each move:
-        //   el.transform = delta × els[i].m0
-        els: sel.map(el => ({ el, m0: el.matrix() })),
-        anchor: handleRec.kind === 'scale'
-            ? { x: handleRec.ax, y: handleRec.ay }
-            : { x: handleRec.cx, y: handleRec.cy },
-        initAngle: handleRec.kind === 'rotate'
-            ? Math.atan2(handleRec.hy - handleRec.cy, handleRec.hx - handleRec.cx)
-            : 0,
+        frame,
+        anchorPt,
+        handlePt,
+        els,
         startPt: { x: pt.x, y: pt.y },
         moved: false,
     };
 }
 
+/** Read a 'geometry'-kind element's editable points into a flat list plus
+ *  a write-back closure, so applyTransformDrag can recompute every point
+ *  from the SAME drag-start snapshot on every move (never re-reading the
+ *  element's own, already-mutated geometry, which would compound error). */
+function _snapshotGeometry(el) {
+    if (el.type === 'rect') {
+        const x = parseFloat(el.attr('x')) || 0;
+        const y = parseFloat(el.attr('y')) || 0;
+        const w = parseFloat(el.attr('width')) || 0;
+        const h = parseFloat(el.attr('height')) || 0;
+        const points = [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
+        return {
+            points,
+            write(pts) {
+                const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+                const nx = Math.min(...xs), ny = Math.min(...ys);
+                el.attr({ x: nx, y: ny, width: Math.max(...xs) - nx, height: Math.max(...ys) - ny });
+            },
+        };
+    }
+    if (el.type === 'polyline' || el.type === 'polygon') {
+        const points = el.array().map(p => ({ x: p[0], y: p[1] }));
+        return { points, write: (pts) => el.plot(pts.map(p => [p.x, p.y])) };
+    }
+    // path (including a rect just promoted by _promoteRectToPath): every
+    // A becomes cubics and every H/V becomes a full L first (SE8a's
+    // normalizeForBake) so PATH_LAYOUT's `pts` covers every remaining
+    // segment uniformly — the same normalization _bakeMatrixIntoPath uses,
+    // reused here rather than re-hand-rolled.
+    const normalized = normalizeForBake(el.array());
+    const slots = [];
+    const points = [];
+    normalized.forEach((seg, segIdx) => {
+        const layout = PATH_LAYOUT[seg[0]];
+        if (!layout || !layout.pts) return;
+        for (const [xi, yi] of layout.pts) {
+            slots.push({ segIdx, xi, yi });
+            points.push({ x: seg[xi], y: seg[yi] });
+        }
+    });
+    return {
+        points,
+        write(pts) {
+            slots.forEach((s, i) => {
+                normalized[s.segIdx][s.xi] = pts[i].x;
+                normalized[s.segIdx][s.yi] = pts[i].y;
+            });
+            el.plot(normalized);
+        },
+    };
+}
+
+/** Replace a ROTATED rect with an equivalent path holding the SAME 4
+ *  corners in local space and the SAME `transform` (rotation/translation
+ *  only — a rect never carries scale in `transform` post-SE7s) — so a
+ *  'geometry' edit has one general point-list representation to work with
+ *  instead of needing a second, rotation-aware x/y/width/height formula.
+ *  An axis-aligned rect never goes through here (see beginTransform). */
+function _promoteRectToPath(editor, el) {
+    const x = parseFloat(el.attr('x')) || 0;
+    const y = parseFloat(el.attr('y')) || 0;
+    const w = parseFloat(el.attr('width')) || 0;
+    const h = parseFloat(el.attr('height')) || 0;
+    const d = `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
+    const parent = el.parent();
+    const newPath = parent.path(d)
+        .fill(el.attr('fill') || 'none')
+        .stroke({
+            color: el.attr('stroke') || '#000',
+            width: parseFloat(el.attr('stroke-width')) || 0.5,
+        })
+        .attr('transform', el.attr('transform') || null);
+    const node = el.node;
+    for (const attr of Array.from(node.attributes)) {
+        if (attr.name.startsWith('data-')) newPath.attr(attr.name, attr.value);
+    }
+    try { newPath.insertAfter(el); } catch (_) {}
+    el.remove();
+    const sel = editor._selectedElements || [];
+    const idx = sel.indexOf(el);
+    if (idx !== -1) sel[idx] = newPath;
+    return newPath;
+}
+
 /**
- * Compose a delta transform (scale or rotate around the captured
- * anchor) on top of the element's start-of-drag matrix and write it
- * back to the transform attribute.
- *
- * Shift held while scaling locks a side handle to uniform scaling;
- * shift held while rotating snaps to 15° increments. Optional polish
- * but cheap — most editors do the same.
+ * Recompute the result of the drag-so-far and write it — geometry attrs,
+ * r/rx/ry, endpoint attrs, or `transform`, per each element's own
+ * HANDLE_EDIT kind — from the drag-start snapshot in `state`, given the
+ * live pointer `pt` (world space) and `modifiers` ({shift, alt}). Shift
+ * held while scaling locks a side handle to uniform scaling; shift held
+ * while rotating snaps to 15° increments; alt held bypasses grid-snap for
+ * an 'endpoints' (line) drag, matching SNAP_POLICY's Alt-bypass elsewhere.
  */
 export function applyTransformDrag(editor, state, pt, modifiers) {
     if (!state || !state.els || !state.els.length) return;
 
     const h = state.handle;
     const mods = modifiers || {};
-    let delta;
 
-    if (h.kind === 'scale') {
-        const ax = state.anchor.x;
-        const ay = state.anchor.y;
-
-        // Vectors from the anchor: original handle, current mouse.
-        const ox = h.hx - ax;
-        const oy = h.hy - ay;
-        const nx = pt.x - ax;
-        const ny = pt.y - ay;
-
-        const sxRaw = h.sx && Math.abs(ox) > 1e-6 ? nx / ox : 1;
-        const syRaw = h.sy && Math.abs(oy) > 1e-6 ? ny / oy : 1;
-
-        let sx, sy;
-        if (h.sx && h.sy) {
-            // Corner = uniform. Pick the dominant axis so dragging
-            // diagonally tracks the cursor naturally.
-            const useX = Math.abs(nx - ox) >= Math.abs(ny - oy);
-            const f = useX ? sxRaw : syRaw;
-            sx = f; sy = f;
-        } else if (mods.shift) {
-            // Side handle with Shift → uniform from the controlled axis.
-            const f = h.sx ? sxRaw : syRaw;
-            sx = f; sy = f;
-        } else {
-            sx = sxRaw;
-            sy = syRaw;
-        }
-
-        // Don't let an axis collapse to zero — the element would
-        // become invisible and singular, and there'd be no way back.
-        const FLOOR = 0.01;
-        if (Math.abs(sx) < FLOOR) sx = sx < 0 ? -FLOOR : FLOOR;
-        if (Math.abs(sy) < FLOOR) sy = sy < 0 ? -FLOOR : FLOOR;
-
-        delta = new SVG.Matrix()
-            .translate(ax, ay)
-            .scale(sx, sy)
-            .translate(-ax, -ay);
-    } else if (h.kind === 'rotate') {
+    if (h.kind === 'rotate') {
         const a = Math.atan2(pt.y - state.anchor.y, pt.x - state.anchor.x);
         let deg = (a - state.initAngle) * 180 / Math.PI;
-        if (mods.shift) {
-            deg = Math.round(deg / 15) * 15;
+        if (mods.shift) deg = Math.round(deg / 15) * 15;
+        const delta = rotateMatrix(deg, state.anchor.x, state.anchor.y);
+        for (const rec of state.els) {
+            rec.el.attr('transform', matrixToString(multiplyMatrix(delta, rec.m0)));
         }
-        delta = new SVG.Matrix().rotate(deg, state.anchor.x, state.anchor.y);
-    } else {
+        state.moved = true;
+        editor._updateSelectionHighlight();
+        editor._notifyChange('live');
         return;
     }
 
-    // new transform = delta × m0_i  (compose per-element in world space)
+    if (h.kind !== 'scale') return;
+
+    // o = anchor->handle at drag start, n = anchor->pointer now — both in
+    // the drag's own frame (local, mapped through toLocal for the single-
+    // selection case; world, straight from the shared bbox, otherwise).
+    let ox, oy, nx, ny;
+    if (state.frame === 'local') {
+        const localPt = toLocal(state.els[0].el, pt);
+        ox = state.handlePt.x - state.anchorPt.x;
+        oy = state.handlePt.y - state.anchorPt.y;
+        nx = localPt.x - state.anchorPt.x;
+        ny = localPt.y - state.anchorPt.y;
+    } else {
+        ox = state.handlePt.x - state.anchorPt.x;
+        oy = state.handlePt.y - state.anchorPt.y;
+        nx = pt.x - state.anchorPt.x;
+        ny = pt.y - state.anchorPt.y;
+    }
+
+    const sxRaw = h.sx && Math.abs(ox) > 1e-6 ? nx / ox : 1;
+    const syRaw = h.sy && Math.abs(oy) > 1e-6 ? ny / oy : 1;
+
+    let sx, sy;
+    if (h.sx && h.sy) {
+        // Corner = uniform, via the projection onto anchor->handle — see
+        // handle-edit.js's own docstring for why (replaces a dominant-
+        // pointer-axis pick that made a thin element's scale factor
+        // explode and a near-square one's jitter between adjacent frames).
+        const f = cornerScale(ox, oy, nx, ny);
+        sx = f; sy = f;
+    } else if (mods.shift) {
+        // Side handle with Shift → uniform from the controlled axis.
+        const f = h.sx ? sxRaw : syRaw;
+        sx = f; sy = f;
+    } else {
+        sx = sxRaw;
+        sy = syRaw;
+    }
+
+    // Don't let an axis collapse to zero — the element would become
+    // invisible and singular, and there'd be no way back.
+    const FLOOR = 0.01;
+    if (Math.abs(sx) < FLOOR) sx = sx < 0 ? -FLOOR : FLOOR;
+    if (Math.abs(sy) < FLOOR) sy = sy < 0 ? -FLOOR : FLOOR;
+
     for (const rec of state.els) {
-        const composed = delta.multiply(rec.m0);
-        rec.el.attr('transform', composed.toString());
+        _applyScaleToElement(state, rec, sx, sy, h, pt, !!mods.alt, editor);
     }
     state.moved = true;
 
@@ -226,6 +439,70 @@ export function applyTransformDrag(editor, state, pt, modifiers) {
     // editor-interaction.js's dragNode for the full explanation. handleEnd
     // fires the one 'commit' per gesture.
     editor._notifyChange('live');
+}
+
+/** Dispatch a single element's share of the drag per its own HANDLE_EDIT
+ *  kind. sx/sy are the shared factor(s) computed once above (ignored
+ *  entirely by 'endpoints', which tracks the raw pointer instead — a line
+ *  doesn't scale, it changes length). */
+function _applyScaleToElement(state, rec, sx, sy, h, pt, altBypass, editor) {
+    if (rec.kind === 'endpoints') {
+        if (!rec.dirUnit) return; // degenerate (zero-length) line — nothing to project onto
+        const dot = (pt.x - rec.anchorWorld.x) * rec.dirUnit.x + (pt.y - rec.anchorWorld.y) * rec.dirUnit.y;
+        const newWorld = {
+            x: rec.anchorWorld.x + dot * rec.dirUnit.x,
+            y: rec.anchorWorld.y + dot * rec.dirUnit.y,
+        };
+        const snapped = snapFor(newWorld, editor._grid, 'select', 'move', altBypass);
+        const local = toLocal(rec.el, snapped);
+        if (rec.movingIsP1) rec.el.attr({ x1: local.x, y1: local.y });
+        else rec.el.attr({ x2: local.x, y2: local.y });
+        return;
+    }
+
+    if (rec.kind === 'radius') {
+        const f = h.sx ? sx : sy;
+        rec.el.attr('r', rec.r0 * f);
+        return;
+    }
+
+    if (rec.kind === 'radii') {
+        rec.el.attr({ rx: rec.rx0 * sx, ry: rec.ry0 * sy });
+        return;
+    }
+
+    if (rec.kind === 'geometry') {
+        const anchor = state.anchorPt;
+        const newPts = rec.snapshot.points.map((p) => {
+            if (state.frame === 'local') {
+                return { x: anchor.x + (p.x - anchor.x) * sx, y: anchor.y + (p.y - anchor.y) * sy };
+            }
+            // World-frame (multi-selection): round-trip through THIS
+            // element's own (unchanging, for 'geometry') matrix, so the
+            // group scales together in world space without ever writing a
+            // scale into any member's transform.
+            const worldP = worldPoint(rec.el, p);
+            const worldNew = { x: anchor.x + (worldP.x - anchor.x) * sx, y: anchor.y + (worldP.y - anchor.y) * sy };
+            return toLocal(rec.el, worldNew);
+        });
+        rec.snapshot.write(newPts);
+        return;
+    }
+
+    // 'scale' (text, and the fallback for anything undeclared): compose a
+    // delta scale onto the drag-start matrix, in the SAME frame the o/n
+    // vectors above were computed in — world: delta outer (delta x m0, as
+    // before); local: delta inner (m0 x delta) so the scale happens in the
+    // element's OWN pre-rotation axes, not world X/Y.
+    const anchor = state.anchorPt;
+    const delta = multiplyMatrix(
+        translateMatrix(anchor.x, anchor.y),
+        multiplyMatrix(scaleMatrix(sx, sy), translateMatrix(-anchor.x, -anchor.y)),
+    );
+    const composed = state.frame === 'local'
+        ? multiplyMatrix(rec.m0, delta)
+        : multiplyMatrix(delta, rec.m0);
+    rec.el.attr('transform', matrixToString(composed));
 }
 
 /**

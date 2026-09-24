@@ -276,7 +276,9 @@ function handleMove(editor, e) {
     }
     if (editor._isDragging) {
         if (editor._transformState) {
-            applyTransformDrag(editor, editor._transformState, pt, { shift: !!e.shiftKey });
+            // SE7s: alt bypasses grid-snap for an 'endpoints' (line) drag,
+            // matching SNAP_POLICY's existing Alt-bypass semantics elsewhere.
+            applyTransformDrag(editor, editor._transformState, pt, { shift: !!e.shiftKey, alt: !!e.altKey });
             if (editor._transformState.moved) editor._dragMoved = true;
             return;
         }
