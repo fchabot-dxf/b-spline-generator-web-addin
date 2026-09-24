@@ -553,3 +553,15 @@ live-proven. Three layers carry rails / ties / nodes with their own tooling — 
   handle drag), so stroke width is invariant during and after. `vector-effect:non-scaling-stroke` is rejected: it
   fixes width in screen px, which would make carve width depend on zoom. Test: after a ×2 side-handle drag,
   `stroke-width` attr unchanged and no `scale` left in `transform`.
+- **SE7n (queued FIRST after SE7a, before SE7s; Fred 2026-09-23: "the node tool can't drag nodes").** Three defects,
+  all in the drag path (`editor-interaction.js` `dragNode`, `editor-hit.js` `getNodes`): (1) rect/circle/ellipse get
+  node handles from `getNodes` but `dragNode` has no branch for them — grab turns red, nothing moves (every lattice
+  node is a circle); (2) `getNodes` maps nodes to WORLD via `worldPoint`, `dragNode` writes the world pointer into
+  LOCAL attrs without the inverse of `el.matrix()` — any element moved with Select (translate transform), scaled or
+  rotated jumps by its transform offset; (3) `getNodes` indexes only M/L/C/Q segments while `dragNode` indexes the
+  full `el.array()` — after the first Z/H/V/A/S/T the wrong segment is edited (filled pen shapes, Expand output).
+  Fix (declared): one node model — `getNodes(el)` returns `{x, y, set(localPt)}` per node (the setter closes over
+  the real segment index / attribute pair; circle = centre, rect = corner with the opposite corner pinned), and the
+  drag maps the pointer through `el.matrix().inverse()` before calling `set`. Tests: moved line endpoint follows the
+  cursor; circle centre moves; closed path — dragging node k edits segment k's endpoint, not k-th array entry.
+  Order now: SE7a → SE7n → SE7s → SE7m → SE7b.
