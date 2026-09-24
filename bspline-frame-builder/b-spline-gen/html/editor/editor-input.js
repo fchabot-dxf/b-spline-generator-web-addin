@@ -16,11 +16,22 @@
  * model-space conversion each caller already does via viewScale/
  * getDynamicTolerance). mouse's slopPx/grabPx match the pre-SE7m
  * defaults exactly (10, 15) — SE7m widens touch/pen, it doesn't change
- * mouse behavior. */
+ * mouse behavior.
+ *
+ * SE8c / SA-DECL-3: `clickThresholdPx` is the click-vs-drag distance
+ * decision (editor-interaction.js's anchor-mode freehand threshold and
+ * circle-tool near-zero-radius threshold — both "did the user mean a tap
+ * or a drag" calls, the same conceptual bucket as slopPx/grabPx). Its
+ * value is 3 for EVERY pointer type, matching the un-migrated literal
+ * those two call sites already used before this turn — SE8c's own gate is
+ * "no behaviour change," so this seeds the declaration without yet
+ * tuning touch/pen differently; a later turn can widen touch's value the
+ * same way SE7m widened slopPx/grabPx, in this one place instead of
+ * hunting down two inline literals again. */
 export const INPUT_PROFILE = {
-  mouse: { slopPx: 10, grabPx: 15, handlePx: 8, markerOffsetPx: 0 },
-  touch: { slopPx: 22, grabPx: 28, handlePx: 14, markerOffsetPx: 40 },
-  pen: { slopPx: 8, grabPx: 12, handlePx: 8, markerOffsetPx: 0 },
+  mouse: { slopPx: 10, grabPx: 15, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3 },
+  touch: { slopPx: 22, grabPx: 28, handlePx: 14, markerOffsetPx: 40, clickThresholdPx: 3 },
+  pen: { slopPx: 8, grabPx: 12, handlePx: 8, markerOffsetPx: 0, clickThresholdPx: 3 },
 };
 
 /** Resolve a pointer type (from PointerEvent.pointerType, which is

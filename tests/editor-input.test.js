@@ -34,6 +34,19 @@ describe('INPUT_PROFILE / inputProfileFor', () => {
     expect(inputProfileFor(undefined)).toBe(INPUT_PROFILE.mouse);
     expect(inputProfileFor('bluetooth-stylus-typo')).toBe(INPUT_PROFILE.mouse);
   });
+
+  // SE8c / SA-DECL-3: clickThresholdPx is a NEW field, seeded with the
+  // SAME value (3) across every pointer type — unlike slopPx/grabPx/
+  // handlePx, it does NOT yet widen for touch/pen (this turn's gate is
+  // "no behaviour change"; the two call sites it replaces — the anchor-
+  // mode freehand threshold and the circle near-zero-radius threshold,
+  // editor-interaction.js — used a flat literal 3 regardless of pointer
+  // type before this turn too).
+  it('clickThresholdPx is declared and equal (3) across mouse/touch/pen — a seeded field, not yet per-device tuned', () => {
+    expect(INPUT_PROFILE.mouse.clickThresholdPx).toBe(3);
+    expect(INPUT_PROFILE.touch.clickThresholdPx).toBe(3);
+    expect(INPUT_PROFILE.pen.clickThresholdPx).toBe(3);
+  });
 });
 
 describe('computePinchUpdate: pinch geometry', () => {

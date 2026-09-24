@@ -2060,3 +2060,170 @@ actions.js, tests/editor-input.test.js) + this WORK-LOG entry. Confirmed no SE8d
 
 No gate hit. This closes SE7m's own item list; live phone verification and any pinch/marker feel tuning
 are explicitly the advisor's/Fred's next step, per the dispatch.
+
+---
+
+## Lane B — Turn 61 — T23: SE8c part 2 — DRAW_SHAPES, TOOLBAR_GROUPS, remaining tolerances, ELEMENT_CAPS (SA-DECL-1..4)
+
+Off-limits this turn: `main/app-init.js`, `editor/editor.js`, `core/debug.js` (seat A, until SE8b-2 lands) —
+confirmed via `git diff --name-only | grep` after the fact, none appear. `editor-io.js`/`editor-coords.js`
+were off-limits LAST turn (T22/SE8d) and free this turn — re-checked the dispatch's own off-limits line
+rather than carrying T22's list forward, same discipline as every prior turn's "the list shifts, re-read it."
+No behaviour change was the gate for all four items — every existing test (244) still passes UNCHANGED,
+and every new test is either a pure data assertion or mutation-proven (below).
+
+### 1. SA-DECL-1 — DRAW_SHAPES (editor-interaction.js)
+
+`createDrawingShape`/`updateDrawingShape`'s two four-branch if/else chains (draw/line/rect/circle) become
+one table, `DRAW_SHAPES = { draw:{create,update}, line:{...}, rect:{...}, circle:{...} }`. `create(editor,
+pt, style)` returns the new element WITHOUT `data-layer` — the wrapper applies that attr ONCE after
+dispatch now, since all four branches repeated the identical `.attr('data-layer', layer)` call; a real
+(tiny) dedup, not just a table wrapper. `update(editor, el, pt, start)` mutates in place; `start` is
+`editor._points[0]`, passed uniformly even though only rect/circle read it. 'draw' is the one entry that
+also mutates `editor._points` itself (the running freehand polyline) — documented in the table's own
+comment as the one asymmetry, not hidden. Exported for testability, matching every other declared table's
+convention (SNAP_POLICY, MODE_HINTS, HANDLE_EDIT, INPUT_PROFILE all export).
+
+### 2. SA-DECL-2 — TOOLBAR_GROUPS (editor-ui.js)
+
+`updateToolbarVisibility`'s five parallel if/hidden-toggle blocks (Font, Expand, Symbol, the divider,
+Stroke) plus SE7a's AutoNodes and SE7b's Lattice-panel toggles become one table, `TOOLBAR_GROUPS =
+{ groupId: predicate }` — chose the predicate shape over `{mode:[groupIds]}` because Font genuinely
+depends on SELECTION as well as mode (dispatch's own example), and the divider composes two other
+predicates (`isTextMode || isExpandMode`) — a flat per-mode list can't express either without duplicating
+logic. A key starting with `.`/`#` resolves via `querySelector` (only the divider needs this — it's the
+one group addressed by class, not id); `applyToolbarGroups` does the resolving so the table itself stays
+pure data with zero DOM calls.
+
+**Found and preserved, not fixed, a real pre-existing quirk:** `updateToolbarVisibility` has TWO call
+sites (`_afterSelectionChange` here, and editor.js's own selection-sync path — both off-limits or adjacent
+to off-limits this turn) that invoke it as `updateToolbarVisibility(editor)` — no `mode`/`el` args at all.
+Font/Symbol/divider/Stroke's ORIGINAL code read the raw `mode` PARAMETER (not `editor._currentMode`), so on
+either of those two call sites `isTextMode` computes from `undefined` — meaning selecting an existing text
+element via the general Select tool does NOT re-show the Font group; it only shows when `setMode('text',
+...)` itself fires. AutoNodes/LatticePanel, by contrast, already used SE7a's `editor._currentMode || mode`
+safer fallback — but ONLY those two, never the first five. This asymmetry predates SE8c and I did not
+touch it (this turn's gate is explicitly "no behaviour change") — TOOLBAR_GROUPS' predicates take
+`(rawMode, el, currentMode)` so BOTH existing behaviors are captured exactly as they were, byte for byte,
+and the discrepancy itself is now visible in one place (the table's own doc comment) instead of buried in
+which of five near-identical toggle lines happened to read which variable. Flagging here per "mention,
+don't fix" — if Font's "shows for a selected text element regardless of mode" comment (line 143's old
+`el.type==='text'` clause) was meant to be a LIVE feature rather than dead code, it needs an actual fix to
+the two parameterless call sites, not something this declare-only turn should do unasked.
+
+**Not declared:** `editorTouchActionsGroup` (SE7m) — its visibility is the `(pointer:coarse)` CSS media
+query alone, deliberately mode-independent (must show in every tool on a touch device). Adding a
+mode-keyed predicate for it would imply a dependency that doesn't exist; documented in TOOLBAR_GROUPS' own
+comment rather than silently left out with no explanation.
+
+### 3. SA-DECL-3 — remaining tolerance literals swept from all 3 `getDynamicTolerance` call sites (editor-interaction.js, editor-grid.js, editor-ui.js) + editor-expand-trace.js
+
+Grepped every `getDynamicTolerance(` / `_getDynamicTolerance(` call site left after T22/SE7m's INPUT_PROFILE
+migration. Split by what kind of tolerance each one actually is — a principle stated once here rather than
+re-argued per site: **a DECISION BOUNDARY** (does this distance mean "tap" or "drag"?) belongs in
+INPUT_PROFILE, next to slopPx/grabPx, because it's the same kind of question and might reasonably want
+per-device tuning later; **a RENDER SIZE or GEOMETRY PARAMETER** (how big does this marker draw, how much
+does this curve get simplified) belongs as a plain named module constant, because it isn't an input-
+interpretation question at all.
+- **Decision boundaries → `INPUT_PROFILE.clickThresholdPx`** (new field, value 3 for mouse/touch/pen —
+  UNCHANGED from the flat literal both sites already used): the anchor-mode freehand-vs-click threshold
+  (`editor-interaction.js`, was `_getDynamicTolerance(3)`) and the circle-tool near-zero-radius threshold
+  (same file, same value). Both now call `getDynamicTolerance(editor, 3, 'clickThresholdPx')` — the DIRECT
+  import, not `editor._getDynamicTolerance`, for the same reason T22 used it at 9 other sites: `editor.js`'s
+  wrapper only forwards ONE arg and is off-limits again this turn, so a second param can't reach it. Seeded
+  with the SAME value across all three types (not yet tuned) — this turn's gate is "no behaviour change,"
+  not "retune touch"; a real per-device value is a live-device decision, same disclosure SE7m's own
+  WORK-LOG entry already made for the rest of INPUT_PROFILE.
+- **Render sizes / geometry → plain named constants, same value, same file:**
+  `PASTE_OFFSET_PX = 8` (editor-interaction.js — visual nudge so a paste doesn't sit exactly on the
+  original, not a hit-tolerance); `CURVE_FIT_TOLERANCE_PX = 2` (editor-interaction.js — was two SEPARATE
+  literal `2`s, one in the anchor-mode commit path, one in the freehand draw finish path, both doing the
+  exact same simplify-then-fit job; genuinely the same constant duplicated, now declared once and used at
+  both); `NODE_HANDLE_BASE_RADIUS_PX = 5` (editor-interaction.js — node-edit diamond handle render radius);
+  `SNAP_CURSOR_RADIUS_PX = 4` (editor-grid.js — the hover snap-cursor ring); `HIGHLIGHT_STROKE_PAD_PX = 5`
+  (editor-ui.js — selection/hover highlight stroke padding).
+- **Explicitly excluded, not renamed:** `editor-expand-trace.js:107`'s `getDynamicTolerance(editor, 1.0)`
+  reuses the function purely for its px→model-unit CONVERSION factor inside bitmap-trace simplification
+  math — the surrounding code's own pre-existing comment says these are "tuning constants kept verbatim
+  from the pre-split version so visual output matches." It is not a hit-tolerance or a render-size in the
+  sense the other 6 are; naming it as either would misrepresent what it does. Left untouched, reason
+  recorded here per the dispatch's "listed in WORK-LOG with a reason each."
+- `editor-transform-handles.js` re-checked — already fully migrated in T22 (`handlePx` via INPUT_PROFILE),
+  no remaining raw literal calls there.
+
+### 4. SA-DECL-4 — ELEMENT_CAPS (editor-hit.js) + properties-shape.js's fillable check
+
+`ELEMENT_CAPS = { line:{fill:false,nodes:true}, polyline:{...}, polygon:{...}, path:{...}, rect:{...},
+circle:{...}, ellipse:{...}, text:{fill:true,nodes:false} }`, declared in editor-hit.js next to `getNodes`.
+`fill` replaces properties-shape.js's inline `elNode.type === 'line'` check (`isLine` → `fillable =
+ELEMENT_CAPS[type]?.fill ?? true`, the `?? true` preserving the old check's implicit "anything but line is
+fillable" default). `nodes` mirrors which types `getNodes`' own if/else chain actually has a branch for —
+did NOT restructure `getNodes` itself to read this table: its branches are the REAL per-type node-
+extraction logic (different `{local,set}` shapes per type), not a boolean, and a "short-circuit" early
+return keyed off `ELEMENT_CAPS.nodes` would be UNTESTABLY vacuous (output identical whether the guard
+exists or not, since the chain already falls through to `[]` for text with no branch) — adding it would
+read as coverage without being distinguishable coverage, which the non-vacuous-test rule exists to catch.
+Instead `nodes` is proven as a real MIRROR via a coupling test (below) that builds a minimal real element
+per declared type and checks `getNodes`'s OWN output length against the table's claim — this actually
+catches drift if a future getNodes branch is added/removed without updating ELEMENT_CAPS, which a
+same-turn "trust me they match" comment would not.
+
+**Chose NOT to fold HANDLE_EDIT (handle-edit.js) into ELEMENT_CAPS**, despite the dispatch flagging "same
+keys" — considered it, decided against, reasons: (1) HANDLE_EDIT has its OWN dedicated, currently-passing
+test file (`tests/handle-edit.test.js`) and exactly one real importer (`editor-transform-handles.js`);
+folding would force touching a third file's tests for a rename with zero behavioural benefit. (2) The two
+tables answer genuinely different questions that only coincidentally share key strings — ELEMENT_CAPS asks
+"can this shape be filled / does it support node-editing" (consumed by generic shape-property code);
+HANDLE_EDIT asks "what does DRAGGING this element's transform handle specifically do" (consumed only by
+the transform-handle drag math). Merging would force every reader of one concern to see the other's
+unrelated field. (3) SNAP_POLICY and MODE_HINTS are ALSO both keyed by mode strings and were never folded
+for the identical reason — same precedent, applied consistently rather than re-litigated per table.
+
+**`.type === '` branches remaining in the three named files, listed with a reason each (the dispatch's own
+Verify requirement):**
+- `editor-interaction.js:367,588` — `hit.type === 'text'` (double-click-to-edit-text, text-tool click
+  entry). NOT folded into ELEMENT_CAPS: only ONE type ('text') ever satisfies this check — a capability
+  table exists to collapse MULTIPLE types sharing a yes/no answer into one place; with exactly one match,
+  `ELEMENT_CAPS[hit.type]?.textEdit` would be more indirection for the same one comparison, not less.
+  Left as direct type comparisons.
+- `editor-hit.js`'s `getNodes` branches themselves (60–141) — these ARE the node-editable capability's real
+  implementation, not a repeated boolean check; ELEMENT_CAPS.nodes mirrors their OUTCOME (see above) without
+  replacing them, since each branch's actual EXTRACTION shape differs per type and isn't itself something a
+  boolean table could express.
+- `properties-shape.js:81` (was `isLine`) — replaced, see above; no longer a raw `.type===` branch.
+- Out of scope (outside the three named files, not touched): `editor-eraser.js:124` (`el.type==='text'` —
+  eraser skips text), `editor-expand-trace.js:133`, `editor-expand-shape.js:72`, `editor.js:190`,
+  `editor-io.js:637`, `editor-text-style.js:30,49`, `editor-ui.js:240,365,414` (all pre-existing single-
+  type checks in files the dispatch's grep didn't name).
+
+### Non-vacuous, proven not argued (3 mutations, one per new declared table with real logic)
+
+1. `DRAW_SHAPES.rect.update` — flipped `Math.min(pt.x,start[0])` to `Math.max` for the x corner: the rect
+   corner-normalization test failed exactly as expected (wrong x/width).
+2. `TOOLBAR_GROUPS.editorStrokeGroup` — inverted the expand-mode term: 3 of the 4 toolbar-groups tests
+   (expand mode, select mode, parameterless-call-site) failed exactly as expected; the 5th failure in the
+   same run was test #3 below, run together.
+3. `ELEMENT_CAPS.line.nodes` — flipped `true` to `false`: the getNodes-coupling test failed exactly as
+   expected (line has real nodes; the table now claimed it didn't).
+All three reverted immediately after confirming the failures; full suite re-run green (261/261) after.
+`INPUT_PROFILE.clickThresholdPx`'s data-assertion test is a direct value comparison, not mutated — the
+established "directly falsifiable by construction" carve-out from prior turns (T19/T21/T22), applied
+consistently.
+
+### Full suite + verify
+
+`npx vitest run` → **261 passed (27 files)**, up from 244 (17 new: 1 in editor-input.test.js, 2 in
+editor-nodes.test.js, 7 in the new editor-draw-shapes.test.js, 7 in the new editor-toolbar-groups.test.js).
+`node --check` on all 6 touched source files: clean. `git diff --name-only | grep` for the three off-limits
+files: clean (none appear).
+
+### Commit — ONE
+
+All four SA-DECL items are the SAME kind of change (hand-rolled branching → a declared table, same file
+set overlapping at editor-hit.js/editor-interaction.js) with no meaningful seam to split at; kept as one
+commit, matching T21's reasoning for the same situation.
+
+**Verify:** `git status --short` → 10 files (6 modified source + 2 modified tests + 2 new test files) + this
+WORK-LOG entry.
+
+No gate hit.

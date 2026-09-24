@@ -15,6 +15,42 @@ import { PATH_LAYOUT, endPoint } from './path-layout.js';
 import { inputProfileFor } from './editor-input.js';
 
 /**
+ * SE8c / SA-DECL-4: per-element-kind capabilities, declared once instead
+ * of the `.type === 'line'` fillable check (properties-shape.js) and the
+ * getNodes if/else chain below being the ONLY place that knows which
+ * types support node editing. `fill` mirrors properties-shape.js's old
+ * `isLine` check (only 'line' was ever excluded); `nodes` mirrors which
+ * types getNodes actually has a branch for (every declared type except
+ * 'text', which falls through to an empty node list). getNodes' own
+ * branches are left untouched — they're the real per-type EXTRACTION
+ * logic (each returns a different `{local, set}` shape), not a boolean,
+ * so collapsing them into this table isn't the goal; `nodes` here is a
+ * faithful, test-coupled MIRROR of what that chain already does, so a
+ * future branch added to getNodes without a matching ELEMENT_CAPS entry
+ * fails tests/editor-nodes.test.js's coupling check instead of silently
+ * drifting.
+ *
+ * NOT folded with HANDLE_EDIT (handle-edit.js), despite sharing the same
+ * element-type keys: that table answers a different question (what does
+ * DRAGGING a transform handle do to this element, consumed only by
+ * editor-transform-handles.js), already has its own dedicated test file
+ * (tests/handle-edit.test.js), and merging them would force every reader
+ * of one concern to see the other's unrelated field for no behavioural
+ * gain — the same reason SNAP_POLICY and MODE_HINTS, also both keyed by
+ * mode strings, were never folded together either.
+ */
+export const ELEMENT_CAPS = {
+    line:     { fill: false, nodes: true },
+    polyline: { fill: true,  nodes: true },
+    polygon:  { fill: true,  nodes: true },
+    path:     { fill: true,  nodes: true },
+    rect:     { fill: true,  nodes: true },
+    circle:   { fill: true,  nodes: true },
+    ellipse:  { fill: true,  nodes: true },
+    text:     { fill: true,  nodes: false },
+};
+
+/**
  * @param {object} editor
  * @param {number} [px=5]  mouse-tuned fallback px, used as-is when
  *   `profileKey` is omitted (every purpose-specific tolerance this

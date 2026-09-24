@@ -21,6 +21,12 @@ export const GRID_SPACINGS = [0.0625, 0.125, 0.25, 0.5, 1];
 
 const GRID_PREFS_KEY = 'bsg.editorGrid';
 
+// SE8c / SA-DECL-3: render radius of the hover snap-cursor ring — visual
+// size, not gated per pointer type this turn (see editor-input.js's
+// clickThresholdPx doc comment for the same reasoning on a sibling
+// literal).
+const SNAP_CURSOR_RADIUS_PX = 4;
+
 /** pt unchanged when the grid isn't snapping or bypass is set (Alt held);
  *  otherwise each coordinate rounds to the nearest multiple of spacing. */
 export function snapToGrid(pt, grid, bypass = false) {
@@ -208,7 +214,7 @@ export function updateSnapCursor(editor, e) {
     clearSnapCursor(editor);
     return;
   }
-  const r = editor._getDynamicTolerance ? editor._getDynamicTolerance(4) : 0.05;
+  const r = editor._getDynamicTolerance ? editor._getDynamicTolerance(SNAP_CURSOR_RADIUS_PX) : 0.05;
 
   // _handleLayer is shared with the transform handles: updateHandles()
   // clears the WHOLE layer unconditionally on nearly every mode switch,

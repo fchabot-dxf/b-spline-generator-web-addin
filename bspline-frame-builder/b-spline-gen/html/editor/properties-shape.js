@@ -1,5 +1,6 @@
 import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
+import { ELEMENT_CAPS } from './editor-hit.js';
 
 export function initShapeProperties(editor) {
   const strokeNum = el('editorStrokeWidth');
@@ -76,22 +77,26 @@ function _applyFillModeToSelection(editor, mode) {
 
   for (const elNode of sel) {
     if (!elNode || typeof elNode.fill !== 'function' || typeof elNode.stroke !== 'function') continue;
-    // <line> elements can't be filled meaningfully — skip the fill side
-    // but still let the stroke change through.
-    const isLine = (elNode.type === 'line');
+    // SE8c / SA-DECL-4: ELEMENT_CAPS[type].fill replaces the inline
+    // `type === 'line'` check — <line> is still the only non-fillable
+    // kind (ELEMENT_CAPS.line.fill === false), just declared once instead
+    // of re-typed here; `?? true` matches the old check's implicit
+    // "anything that isn't 'line' is fillable" default for any type not
+    // in the table.
+    const fillable = ELEMENT_CAPS[elNode.type]?.fill ?? true;
     try {
       if (mode === 'stroke') {
-        if (!isLine) elNode.fill('none');
+        if (fillable) elNode.fill('none');
         elNode.stroke({ color: strokeColor, width: strokeWidth });
       } else if (mode === 'fill') {
-        if (!isLine) {
+        if (fillable) {
           elNode.fill(fillColor);
           elNode.stroke({ color: 'none', width: 0 });
         } else {
           elNode.stroke({ color: strokeColor, width: strokeWidth });
         }
       } else { // both
-        if (!isLine) elNode.fill(fillColor);
+        if (fillable) elNode.fill(fillColor);
         elNode.stroke({ color: strokeColor, width: strokeWidth });
       }
     } catch (_) { /* defensive: bad element shouldn't crash the toggle */ }
