@@ -203,13 +203,16 @@ export class VectorEditor {
     }
     /**
      * SE8b / SA-UNDO-1: the ONE place a drag-continuation path notifies
-     * the outside world. `_onChange()` is the FULL pipeline (saveForRaster
-     * ization + P.editorSvg write + saveLastSession + refreshAllStampMasks
-     * — the latter immediately re-rasterizes every visible layer). Before
-     * this, dragNode/translateSelection/applyTransformDrag called it
-     * straight from every raw mousemove (commonly 15-40+ times per drag,
-     * uncoalesced — pushState was already correctly gated to fire once at
-     * mouseup by _dragMoved; only _onChange bypassed that gate).
+     * the outside world. `_onChange(kind)` (main/app-init.js's
+     * runChangePipeline, SE8b-2) runs a DECLARED subset of
+     * saveForRasterization + P.editorSvg write + saveLastSession +
+     * refreshAllStampMasks per `kind` (CHANGE_PIPELINE) — 'live' skips
+     * the localStorage write (saveLastSession) entirely; only 'commit'
+     * persists. Before SE8b, dragNode/translateSelection/applyTransformDrag
+     * called the full pipeline straight from every raw mousemove (commonly
+     * 15-40+ times per drag, uncoalesced — pushState was already correctly
+     * gated to fire once at mouseup by _dragMoved; only _onChange bypassed
+     * that gate).
      *
      * 'live' (every drag-continuation call): coalesces to AT MOST ONE
      * call per animation frame — a THROTTLE, not a debounce: an
@@ -220,9 +223,12 @@ export class VectorEditor {
      * main/skeleton-editor.js already uses elsewhere for a different
      * purpose, would do exactly that here).
      * 'commit' (handleEnd, once per gesture; every other discrete edit
-     * already called _onChange directly and is unaffected): cancels any
-     * pending 'live' frame and fires the pipeline immediately, so the
-     * FINAL position is what gets committed — never a stale queued frame.
+     * already called _onChange directly — those default to 'commit' via
+     * the callback's own parameter default, unaffected by this kind
+     * threading): cancels any pending 'live' frame and fires the pipeline
+     * immediately, so the FINAL position is what gets committed — never a
+     * stale queued frame, and never a skipped persist for the gesture's
+     * actual final state.
      */
     _notifyChange(kind) {
         if (!this._onChange) return;
@@ -231,13 +237,13 @@ export class VectorEditor {
                 cancelAnimationFrame(this._pendingChangeFrame);
                 this._pendingChangeFrame = null;
             }
-            this._onChange();
+            this._onChange(kind);
             return;
         }
         if (this._pendingChangeFrame != null) return; // already scheduled this frame
         this._pendingChangeFrame = requestAnimationFrame(() => {
             this._pendingChangeFrame = null;
-            if (this._onChange) this._onChange();
+            if (this._onChange) this._onChange(kind);
         });
     }
     setFontFamily(f) { return setFontFamily(this, f); }

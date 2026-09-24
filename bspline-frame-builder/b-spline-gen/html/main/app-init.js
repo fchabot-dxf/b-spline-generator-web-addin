@@ -7,6 +7,8 @@ import { updateGlobalButtons, takeSnapshot, globalHistoryLog } from '../core/his
 import { AppState } from './app-state.js';
 import { refreshAllStampMasks, updateStampMasks } from './stamp-mask-manager.js';
 import { VectorEditor } from '../editor/index.js';
+import { dbg, isDebugEnabled } from '../core/debug.js';
+import { fusLog } from '../core/fusion-bridge.js';
 
 // SE3a: snapshot of the unified editor document (P.editorSvg) captured
 // when the SVG editor modal opens. The Cancel button restores it — reloads
@@ -15,6 +17,63 @@ import { VectorEditor } from '../editor/index.js';
 // because onChange already wrote P.editorSvg + remasked after every edit
 // while the user was still typing).
 export const SvgEditorSnapshot = { active: false, editorSvg: null };
+
+/**
+ * SE8b-2: what editor._onChange(kind) actually runs, declared once — the
+ * dispatch's own point: the step that must never run during a drag is
+ * `persist` (saveLastSession, a localStorage write), so THAT'S what's
+ * conditional, not a scattered `if (kind === 'live')` guard buried in the
+ * pipeline body. `_notifyChange`'s two kinds (editor.js): 'live' (at most
+ * once per animation frame during a drag) and 'commit' (once per
+ * gesture, or the default for any other caller). Every step still runs
+ * in the SAME order it always did — nothing about WHAT runs changes.
+ */
+export const CHANGE_PIPELINE = {
+    live:   ['serialize', 'remask'],
+    commit: ['serialize', 'persist', 'remask'],
+};
+
+/** PERF category timing — off by default (core/debug.js's own gate), so
+ *  this costs nothing until switched on. Goes through BOTH dbg() (site
+ *  console) and fusLog (the add-in's log file) — the same two places an
+ *  advisor might be looking, per the dispatch's own "switch it on in the
+ *  add-in or the site console" ask. Exported (despite the underscore —
+ *  same convention as SE8a's stripRasterizationFontDefs) for direct
+ *  testing without needing a real drag/pipeline run. */
+export function _perfLog(msg) {
+    if (!isDebugEnabled('PERF')) return;
+    dbg('PERF', msg);
+    try { fusLog('[PERF] ' + msg); } catch (_) {}
+}
+
+/**
+ * Run the CHANGE_PIPELINE for `kind`, timing each step that actually
+ * executes. Takes its steps as plain callbacks (`serialize`/`persist`/
+ * `remask`) rather than reaching for `window.svgEditor`/`P`/`resolveGrid`
+ * directly, so the ORCHESTRATION (which steps run, in what order, timed
+ * how) is testable with plain mock functions — no live editor, DOM, or
+ * 3D preview needed. `serialize` returning falsy stops the pipeline
+ * there (mirrors the ORIGINAL code's `if (svg) { persist; remask }`
+ * guard exactly: an editor that isn't drawn yet has nothing to persist
+ * or remask either).
+ */
+export async function runChangePipeline(kind, { serialize, persist, remask }) {
+    const steps = CHANGE_PIPELINE[kind] || CHANGE_PIPELINE.commit;
+    const frameStart = performance.now();
+    for (const step of steps) {
+        const stepStart = performance.now();
+        if (step === 'serialize') {
+            const svg = await serialize();
+            if (!svg) break;
+        } else if (step === 'persist') {
+            persist();
+        } else if (step === 'remask') {
+            await remask();
+        }
+        _perfLog(`${kind} ${step} ${(performance.now() - stepStart).toFixed(1)}ms`);
+    }
+    _perfLog(`${kind} total ${(performance.now() - frameStart).toFixed(1)}ms`);
+}
 
 /**
  * Resolve the SVG to restore the editor with: the unified source of truth,
@@ -172,21 +231,31 @@ export function initSvgEditor(preview) {
   window.svgEditor.initEditor(
     'editorSVGContainer',
     'svgEditorTopView',
-    // onChange — fires after every edit. Use saveForRasterization (async)
-    // so the SVG handed to stamp.js carries embedded @font-face for every
-    // text element. Without this, iOS rasterizes Symbol/Wingdings/Webdings
-    // text as plain Latin glyphs (no document-level @font-face reaches a
-    // detached data: URL render context).
-    async () => {
-      const svg = await window.svgEditor.saveForRasterization();
-      if (svg) {
-        // Step 3 unification: the editor's full document is the source
-        // of truth. Persist to P.editorSvg so a page reload restores it.
-        P.editorSvg = svg;
-        saveLastSession();
-        const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-        refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
-      }
+    // onChange — fires after every edit, now via CHANGE_PIPELINE (SE8b-2):
+    // `kind` ('live', at most once per animation frame during a drag, or
+    // 'commit', once per gesture / any other discrete edit — see
+    // editor._notifyChange) picks which steps run; only their ORDER and
+    // wiring live here, the run-and-time loop is runChangePipeline, above.
+    // Use saveForRasterization (async) so the SVG handed to stamp.js
+    // carries embedded @font-face for every text element. Without this,
+    // iOS rasterizes Symbol/Wingdings/Webdings text as plain Latin glyphs
+    // (no document-level @font-face reaches a detached data: URL render
+    // context).
+    async (kind = 'commit') => {
+      await runChangePipeline(kind, {
+        serialize: async () => {
+          const svg = await window.svgEditor.saveForRasterization();
+          // Step 3 unification: the editor's full document is the source
+          // of truth. Persist to P.editorSvg so a page reload restores it.
+          if (svg) P.editorSvg = svg;
+          return svg;
+        },
+        persist: saveLastSession,
+        remask: () => {
+          const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+          return refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+        },
+      });
     },
     // onCommit — fires from Apply (svg=truthy) or Cancel (svg=null).
     // Apply: rebuild with font-embedded SVG and close.
