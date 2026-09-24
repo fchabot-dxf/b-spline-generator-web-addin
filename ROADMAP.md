@@ -613,3 +613,8 @@ declarations + dead-code sweep (SA-DECL-*, SA-DEAD-*), SE7b.
   `_onChange` pipeline (remask + rasterize + save), only capped at one per frame — make 'live' preview-only and
   leave remask/save to 'commit'. SE7b design (89a48b4) approved; rulings: `ties.anchor` as data (default 'rails'),
   occupied-cell skip in slice 2. SE7b slice 1 → seat B. SE7s → seat A.
+- **SE7s (eea4acc) + SE7b slices 1–2 (8354a5c, 9ec4635) + SE8c part 1 (e2c7d6d, 4e60b9c) merged → 215 tests.** Handles:
+  declared HANDLE_EDIT, projection corner, rotated frame, stroke never scales. Pattern: pure computePattern + Generate
+  into Rails/Ties/Nodes with ownership + occupied skip, persisted in the document. Cleanup: dead chains, dbg gates, one
+  font list. Next: SE7b slice 3 (seat B: detach hook + panel + restore active layer), SE8d (seat A: SA-ROUNDTRIP-2
+  rotated text carve, SA-DEAD-2 editor.js leftover, unreachable `setStrokeColor`). Then SE7m (mobile JS), SE8b-2.
