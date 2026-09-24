@@ -67,6 +67,16 @@ Circle tool's job. The lattice tool = rails + ties + auto-nodes. A bare click in
    `'always'`, via `updateToolbarVisibility`, so the user sees where snap applies. Tests: `snapFor` — erase never
    snaps; circle snaps start not move; draw snaps start, not a freehand move; lattice snaps with `grid.snap=false`
    and with bypass=true; line honours Alt bypass. (Add to `tests/editor-grid.test.js` or the new lattice test.)
+7. **Hover feedback (amend 3, Fred).** While the pointer moves with NO button down, show where the next click will
+   snap: one marker (a small ring, r = `_getDynamicTolerance(4)` so it stays ~4 px at any zoom, stroke 1 px
+   `vector-effect:non-scaling-stroke`, accent colour, `pointer-events:none`) centred on
+   `snapFor(pt, grid, mode, 'start', e.altKey)`. Shown only when that call actually moved the point (policy is
+   'point'/'anchors'/'center'/'always' and snapping is in effect); hidden when the policy is 'none', when Alt is held,
+   or when the pointer leaves the canvas (`mouseleave`). Declare it once: `updateSnapCursor(editor, e)` in
+   editor-grid.js, one element kept on `editor._snapCursor` inside `_handleLayer` (never serialized — same layer
+   as the transform handles), moved with `.center()` rather than recreated. Called from `handleMove` before the
+   `_isDrawing` branch; removed by `_deselect`-style cleanup on mode change (`setMode`) and `open()`. In lattice
+   mode the marker doubles as the rail/tie start indicator. No test (DOM-bound); say so.
 5. **Node-tool snap (SE6 follow-up a) = the `node:'point'` row of item 6:** route the node-drag pointer read through `editor._snap(pt, e.altKey)` so
    node edits honour SNAP like everything else. Transform handles stay as they are (scaling on-grid is a different
    feature; say so in WORK-LOG).
