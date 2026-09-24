@@ -1,6 +1,7 @@
 import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
 import { ELEMENT_CAPS } from './editor-hit.js';
+import { VECTOR_COLORS } from './editor-color.js';
 
 export function initShapeProperties(editor) {
   const strokeNum = el('editorStrokeWidth');
@@ -27,7 +28,43 @@ export function initShapeProperties(editor) {
   on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + 0.1));
 
   initFillModeToggle(editor);
+  initColorControl(editor);
   initGridToggle(editor);
+}
+
+/**
+ * Wire the COLOR control (SE9): a native `<input type="color">` plus a
+ * swatch row built from VECTOR_COLORS. Both call editor.setColor() on a
+ * discrete commit — the input's 'change' event, not 'input', matching
+ * syncStroke above (dragging the OS picker shouldn't produce one undo
+ * step per frame; the swatch buttons are already discrete clicks).
+ * Selecting an element reflects its color back into the control — see
+ * the sync in editor-ui.js's _afterSelectionChange.
+ */
+function initColorControl(editor) {
+  const colorInput = el('editorColor');
+  const swatchContainer = el('editorColorSwatches');
+  if (!colorInput && !swatchContainer) return;
+
+  if (colorInput) {
+    colorInput.value = editor._color || '#000000';
+    on(colorInput, 'change', () => editor.setColor(colorInput.value));
+  }
+
+  if (swatchContainer) {
+    swatchContainer.innerHTML = '';
+    for (const color of VECTOR_COLORS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.title = color;
+      btn.style.cssText = `width:16px; height:16px; padding:0; border:1px solid #999; border-radius:2px; cursor:pointer; background:${color};`;
+      on(btn, 'click', () => {
+        editor.setColor(color);
+        if (colorInput) colorInput.value = color;
+      });
+      swatchContainer.appendChild(btn);
+    }
+  }
 }
 
 /**
@@ -65,14 +102,29 @@ function initFillModeToggle(editor) {
   setActive(editor._fillMode || 'stroke');
 }
 
+/** Read back an element's OWN current color (SE9): whichever of its
+ *  stroke/fill is currently real (not 'none'), preferring stroke. Falls
+ *  back to `fallback` for an element with neither (shouldn't normally
+ *  happen). Used by _applyFillModeToSelection so a mode toggle re-paints
+ *  each element in ITS OWN color, not the toolbar's global editor._color
+ *  — otherwise a multi-colored selection would collapse to one color the
+ *  instant FILL/STROKE/BOTH is clicked. */
+export function _currentElementColor(elNode, fallback) {
+  try {
+    const stroke = elNode.attr('stroke');
+    if (stroke && stroke !== 'none') return stroke;
+    const fill = elNode.attr('fill');
+    if (fill && fill !== 'none') return fill;
+  } catch (_) { /* defensive */ }
+  return fallback;
+}
+
 /** Apply the current fill mode to every element in the selection. */
-function _applyFillModeToSelection(editor, mode) {
+export function _applyFillModeToSelection(editor, mode) {
   const sel = (editor._selectedElements || []).slice();
   if (sel.length === 0 && editor._selectedElement) sel.push(editor._selectedElement);
   if (sel.length === 0) return;
 
-  const fillColor = editor._fillColor || editor._strokeColor || '#000000';
-  const strokeColor = editor._strokeColor || '#000000';
   const strokeWidth = editor._strokeWidth ?? 0.5;
 
   for (const elNode of sel) {
@@ -84,20 +136,21 @@ function _applyFillModeToSelection(editor, mode) {
     // "anything that isn't 'line' is fillable" default for any type not
     // in the table.
     const fillable = ELEMENT_CAPS[elNode.type]?.fill ?? true;
+    const color = _currentElementColor(elNode, editor._color);
     try {
       if (mode === 'stroke') {
         if (fillable) elNode.fill('none');
-        elNode.stroke({ color: strokeColor, width: strokeWidth });
+        elNode.stroke({ color, width: strokeWidth });
       } else if (mode === 'fill') {
         if (fillable) {
-          elNode.fill(fillColor);
+          elNode.fill(color);
           elNode.stroke({ color: 'none', width: 0 });
         } else {
-          elNode.stroke({ color: strokeColor, width: strokeWidth });
+          elNode.stroke({ color, width: strokeWidth });
         }
       } else { // both
-        if (fillable) elNode.fill(fillColor);
-        elNode.stroke({ color: strokeColor, width: strokeWidth });
+        if (fillable) elNode.fill(color);
+        elNode.stroke({ color, width: strokeWidth });
       }
     } catch (_) { /* defensive: bad element shouldn't crash the toggle */ }
   }

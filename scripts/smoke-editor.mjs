@@ -1,4 +1,4 @@
-// Usage: node scripts/smoke-editor.mjs <outDir> [desktop|mobile|perf] [url]
+// Usage: node scripts/smoke-editor.mjs <outDir> [desktop|mobile|perf|color] [url]
 // Headless-Chrome (CDP, no deps) smoke test of the SVG editor lattice/pattern flow on the live site (or a local URL).
 // Prints a JSON report (counts, layers, probes, console errors) and writes screenshots to <outDir>.
 // Minimal CDP driver (no deps): live-site smoke test of the SVG editor lattice/pattern flow.
@@ -23,9 +23,9 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 const OUT = process.argv[2];
-const MODE = process.argv[3] || 'desktop';          // desktop | mobile | perf
+const MODE = process.argv[3] || 'desktop';          // desktop | mobile | perf | color
 const URL = process.argv[4] || 'https://bspline-generator.pages.dev/';
-const PORT = MODE === 'mobile' ? 9334 : MODE === 'perf' ? 9335 : 9333;
+const PORT = MODE === 'mobile' ? 9334 : MODE === 'perf' ? 9335 : MODE === 'color' ? 9336 : 9333;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(`${OUT}/chrome-${MODE}`, { recursive: true });
 
@@ -133,6 +133,31 @@ report.layers = await evalJS(`window.svgEditor._layers.map(l => l.name + (l.visi
 report.activeLayer = await evalJS(`String(window.svgEditor._activeLayer)`);
 report.generateLabel = await evalJS(`document.getElementById('latticeGenerate').textContent.trim()`);
 await shot(`${MODE}-3-generated.png`);
+
+if (MODE === 'color') {
+  // SE9: color the generated Rails/Ties/Nodes layers via the SAME
+  // editor.setColor(...) a user's swatch click calls — select each
+  // data-lattice kind (re-wrapping its raw DOM nodes through
+  // window.SVG.adopt, the same adopt call editor-interaction.js /
+  // editor-expand-commit.js already use to turn a DOM node back into an
+  // svg.js element), then call setColor. No new test-only API needed.
+  await evalJS(`(() => {
+    const wrap = (sel) => [...document.querySelectorAll(sel)].map(n => window.SVG.adopt(n)).filter(Boolean);
+    window.svgEditor._selectMany(wrap('[data-lattice=rail]'));
+    window.svgEditor.setColor('#c62828');
+    window.svgEditor._selectMany(wrap('[data-lattice=tie]'));
+    window.svgEditor.setColor('#f9c80e');
+    window.svgEditor._selectMany(wrap('[data-lattice=node]'));
+    window.svgEditor.setColor('#1a237e');
+    window.svgEditor._selectMany([]); // clear selection so halos don't obscure the screenshot
+    true;
+  })()`);
+  await sleep(300);
+  report.railColor = await evalJS(`document.querySelector("[data-lattice=rail]")?.getAttribute('stroke')`);
+  report.tieColor = await evalJS(`document.querySelector("[data-lattice=tie]")?.getAttribute('stroke')`);
+  report.nodeColor = await evalJS(`document.querySelector("[data-lattice=node]")?.getAttribute('fill')`);
+  await shot(`${MODE}-4-colored.png`);
+}
 
 if (MODE === 'mobile') {
   // T25: the ORIGINAL "ground truth" scenario (ROADMAP's Live browser

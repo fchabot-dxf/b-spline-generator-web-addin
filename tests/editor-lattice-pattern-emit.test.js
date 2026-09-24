@@ -63,7 +63,7 @@ function _makeMockEditor() {
     _sketchLayer: sketchLayer,
     _layers: [],
     _activeLayer: null,
-    _strokeColor: '#000', _fillColor: '#000', _strokeWidth: 0.02,
+    _color: '#000', _strokeWidth: 0.02,
     _selectedElements: [],
     pushStateCalls: 0,
     notifyChangeCalls: [],

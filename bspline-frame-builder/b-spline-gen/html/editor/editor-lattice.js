@@ -145,7 +145,7 @@ export function emitSegment(editor, kind, a, b) {
   const width = LATTICE_STYLE[kind].widthFactor * spacing;
   return editor._sketchLayer
     .line(a.x, a.y, b.x, b.y)
-    .stroke({ color: editor._strokeColor, width, linecap: 'round' })
+    .stroke({ color: editor._color, width, linecap: 'round' })
     .attr('data-layer', layer)
     .attr(LATTICE_ATTR, kind);
 }
@@ -163,7 +163,7 @@ export function emitNode(editor, p) {
   const gridOn = !!(grid && grid.visible);
   const r = gridOn ? LATTICE_STYLE.node.radiusFactor * (grid.spacing || GRID_DEFAULTS.spacing) : DEFAULT_NODE_RADIUS_IN;
   const layer = ensureActiveLayer(editor);
-  const fillColor = editor._fillColor || editor._strokeColor || '#000000';
+  const fillColor = editor._color || '#000000';
   return editor._sketchLayer
     .circle(r * 2)
     .center(p.x, p.y)

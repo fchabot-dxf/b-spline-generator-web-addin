@@ -6833,3 +6833,129 @@ captures the current viewport, `scrollIntoView` before capturing) apply either w
   editor-lattice-pattern-emit.test.js — one test was written then dropped as vacuous, see above).
 
 No amendments pending.
+
+---
+
+## Turn 225 — SE9: a color per vector element, editor display only — DONE
+
+**Amendment incorporated (Fred, read from NEXT-SESSION.md's own item 0 + confirmed live via
+`handoff.py amendments`): stroke and fill are ALWAYS the same color per element — one
+`editor._color`, never a `_strokeColor`/`_fillColor` pair.** Chose **retire, not alias**: deleted
+both fields from the constructor (`editor.js:81-87` before this turn) and replaced with a single
+`this._color = '#000000'`; updated every read site to match (`editor-interaction.js` x2 preview-line
+sites + `createDrawingShape`, `editor-text-session.js`'s text-fill line, `editor-lattice.js`'s
+`emitSegment`/`emitNode`) — no aliases kept, so there is exactly one name for the concept, matching
+the amendment's own "never two" wording literally.
+
+**Ground truth verified before writing anything** (dispatch: "prove that, don't assume it"):
+- `core/stamp/sdf.js`'s `computeSDF` (the stamp mask): read the WHOLE function, not just the cited
+  line — the boundary-init loop reads `pixels[i*4+3]` only (line 49), and the entire two-pass
+  Danielsson sweep afterward (`pass()`, lines 57-85) operates purely on the derived `inX/inY/outX/
+  outY` distance arrays with no pixel/color reference anywhere in the function. 100% alpha-only by
+  direct inspection, not sampling.
+- `editor-transform-handles.js`'s `bakeMatrixIntoElement` (the Fusion-export geometry bake): the
+  `line`/`polyline`/`polygon` branches (lines 596-612) touch ONLY coordinate attrs (`x1/y1/x2/y2`,
+  `.plot()`) — color is never read or written there, so it's structurally impossible for color to
+  affect their baked geometry. The `rect`/`circle`/`ellipse` branch DOES read `el.attr('fill')`/
+  `el.attr('stroke')` (line 624-628) — but only to COPY the original color onto the promoted path
+  for visual continuity; the actual `d` geometry still comes from `_primitiveToPathData` +
+  `_bakeMatrixIntoPath`, both color-blind. Carve-neutral confirmed for both halves of the pipeline
+  the dispatch named.
+
+**Build.**
+1. `editor/editor-color.js` (new): `VECTOR_COLORS` declared once — Fred's four
+   (red/yellow/navy/green) plus black/white, in that exact order, so the swatch row and any future
+   consumer read from one place.
+2. `editor.js`: `setColor(color)` — sets `_color` (drives new shapes via the existing read sites
+   above), then for the current selection: **always** writes `stroke.color` (harmless even when a
+   mode has it hidden at width:0 — it stays invisible, just at the new color, mirroring how
+   `setStrokeWidth` already trusts svg.js's partial-object `.stroke({width})` merge, so `.stroke(
+   {color})` alone doesn't clobber width); writes `fill` too **only when the element's OWN current
+   fill attr is already real** (not `'none'`) — this is what makes "fill when filled, respect FILL/
+   STROKE/BOTH" and "stroke === fill (or fill is none)" both true at once without forcing a
+   stroke-only shape to suddenly grow a visible interior. Text is a forced exception (fill always,
+   since text's color IS its fill) — matches the pre-SE8d `setStrokeColor`'s own text special-case.
+   One `pushState()` + `_onChange()` via the existing `_commitStyleChange()` helper (not a
+   hand-rolled parallel call — that helper already fires `_onChange()` with no args, which
+   SE8b-2's `runChangePipeline` callback defaults to `'commit'`, so it's the SAME outcome as calling
+   `_notifyChange('commit')` directly, just reusing the declared committer instead of duplicating
+   it). Updated `_commitStyleChange`'s own comment (was still saying "SE8d removed setStrokeColor,
+   zero callers" — no longer true, now that color is back as `setColor`).
+3. **Found and fixed a second bug this same turn, a direct consequence of introducing per-element
+   color** (not present before, since there was previously no way to color two elements
+   differently): `properties-shape.js`'s `_applyFillModeToSelection` (the FILL/STROKE/BOTH toggle)
+   repainted EVERY selected element from `editor._color` — the toolbar's single global "last picked
+   color" — regardless of what color each element actually held. Before SE9 this was harmless (every
+   element's color came from the same global anyway, since `setStrokeColor` was dead). After SE9 it
+   would silently collapse a multi-colored selection to one color the instant you clicked STROKE/
+   FILL/BOTH. Fixed by adding `_currentElementColor(el, fallback)` (reads the element's own live
+   `stroke`/`fill` attr, preferring stroke, falling back to the toolbar global only if neither is
+   set) and using it in place of the two old global `fillColor`/`strokeColor` variables. Exported
+   both (`_applyFillModeToSelection`, `_currentElementColor`) for direct testing, following this
+   codebase's established "exported despite the underscore" convention (`_needsGlyphBake` etc.,
+   SE8d).
+4. Toolbar: one `#editorColorGroup` in `bspline_gen_palette.html`, right after `#editorStrokeGroup`
+   (before Grid) — a native `<input type="color">` (no alpha, per the dispatch) plus an
+   `#editorColorSwatches` container populated from `VECTOR_COLORS` at bind time in
+   `properties-shape.js`'s new `initColorControl(editor)`, same "no hand-typed list to drift from
+   the real one" convention `#editorGridSpacing` already documents in this file. Picker wired to
+   `'change'` (not `'input'`) — matches `syncStroke`'s own documented reasoning (one undo step per
+   commit, not one per drag frame); swatch clicks are already discrete. Selecting an element syncs
+   the control: `editor-ui.js`'s `_afterSelectionChange` now also reads the primary's own stroke/
+   fill (whichever is real) into `editor._color` and `#editorColor.value`, mirroring the EXISTING
+   stroke-width sync one branch above it (same function, same pattern, not a new mechanism).
+   Stayed out of `#editorLatticePanel`, `styles/editor.css`, `editor/properties-lattice.js` (Fred's
+   seat-B carve-out this turn) — `editor-ui.js` and `properties-shape.js` are not on that list and
+   were touched.
+5. Lattice rails/ties/nodes take the current color "like any other element" for free — `emitSegment`/
+   `emitNode` already read `editor._color` (updated in the field-consolidation above), so no
+   per-kind color table was added, matching the dispatch's explicit "no per-kind table unless he
+   asks."
+
+**Tests — `tests/editor-color.test.js` (new, 15 tests).** `setColor` tests call the REAL
+`VectorEditor.prototype.setColor.call(mockEditor, ...)` with the REAL `_commitStyleChange` attached
+(`_commitStyleChange: VectorEditor.prototype._commitStyleChange`) — same shape as
+`editor-session.test.js`'s existing `setStrokeWidth` tests, not a reimplementation in the mock (an
+earlier draft of this file DID reimplement `setColor` inline in the mock and would have stayed green
+against a broken real method — caught before running the non-vacuous check, rewritten to call the
+real prototype method instead). Covers: stroke-only line keeps fill none; filled shape gets both;
+text gets both; exactly one pushState+onChange per call regardless of selection size; the Fred-amend
+invariant (`stroke === fill OR fill === 'none'`) across a mixed selection. Plus the
+`_applyFillModeToSelection` fix (2 tests: `_currentElementColor` reads live per-element color; a
+red+yellow selection toggling to BOTH mode stays red+yellow, not collapsing to the toolbar's navy)
+and the two carve-neutral guards (dispatch item 4): `computeSDF` given the identical alpha pattern
+in black vs. `#f9c80e` yellow RGB produces a byte-identical SDF array; `bakeMatrixIntoElement` given
+two lines with identical geometry but different stroke colors produces byte-identical baked
+`x1/y1/x2/y2`. Each pairs with its own non-vacuous companion (a genuinely different alpha pattern,
+or a genuinely different matrix, DOES change the result — proving the equality assertion isn't
+trivially true for any two inputs).
+
+**Non-vacuous, the standard way** (`git show HEAD:... >` the two touched files, i.e. pre-SE9):
+9 of the 15 tests FAIL against the reverted code — all 6 `setColor` tests (real method doesn't
+exist pre-SE9) and both `_applyFillModeToSelection`/`_currentElementColor` tests (not exported
+pre-SE9). The remaining 6 correctly still PASS on both sides: the `VECTOR_COLORS` declaration test
+(a brand-new standalone module, nothing to revert) and both carve-neutral guard pairs (they pin a
+PRE-EXISTING property of `computeSDF`/`bakeMatrixIntoElement` that this turn didn't change — legitimate
+coverage of an existing guarantee, a different claim from "this turn's new behavior," and reported as
+such rather than folded into the same non-vacuous number).
+
+**Verify:**
+- `node --check` on all 7 touched/new JS files: clean.
+- `npx vitest run` → **312 passed** (297 prior + 15 new).
+- Smoke screenshot, `color` mode (new mode added to `scripts/smoke-editor.mjs`, port 9336 — served
+  from the REPO ROOT per T25's header note: `python -m http.server 8765 --directory .`, confirmed no
+  stale listener on 8765 first via `netstat`). Generates the lattice pattern, then re-wraps each
+  `[data-lattice=kind]` DOM node via `window.SVG.adopt(node)` (the SAME adopt call
+  `editor-interaction.js`/`editor-expand-commit.js` already use to turn a raw node back into an
+  svg.js element — no new test-only API), selects each kind via the real `editor._selectMany(...)`
+  (working since SE8f), and calls the real `editor.setColor(...)` — i.e. the exact same calls a
+  user's swatch click makes, not a shortcut. Report: `railColor=#c62828`, `tieColor=#f9c80e`,
+  `nodeColor=#1a237e`; `railAttrs`/`nodeAttrs` confirm the live DOM attrs
+  (`stroke=#c62828`/`fill=#1a237e stroke=#1a237e stroke-width=0` — the node's stroke got written too,
+  per the design above, but stays invisible at width 0). Screenshot (`color-4-colored.png`, scratch
+  path, not committed — same convention as SE7c's) visually confirms: red horizontal rails, yellow
+  vertical ties, navy node dots, and the new COLOR toolbar control rendered correctly next to STROKE
+  (picker + 6-swatch row in VECTOR_COLORS order) with no layout regression to GRID/STYLE/AUTO NODES
+  alongside it. `logs: []` — no console errors.
+
+No amendments pending beyond the one incorporated above.

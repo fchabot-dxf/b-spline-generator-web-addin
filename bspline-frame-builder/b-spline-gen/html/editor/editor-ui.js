@@ -391,6 +391,23 @@ function _afterSelectionChange(editor, primary) {
         } else {
             editor._strokeWidth = parseFloat(primary.attr('stroke-width')) || editor._strokeWidth;
         }
+
+        // SE9: reflect the selected element's own color into the toolbar
+        // (control shows what's selected) and into editor._color (so a
+        // swatch click or the next new shape follows what you just
+        // clicked on, matching the stroke-width sync above).
+        try {
+            const strokeAttr = primary.attr('stroke');
+            const fillAttr = primary.attr('fill');
+            const primaryColor = (strokeAttr && strokeAttr !== 'none') ? strokeAttr
+                : (fillAttr && fillAttr !== 'none') ? fillAttr
+                : null;
+            if (primaryColor) {
+                editor._color = primaryColor;
+                const colorEl = getEl('editorColor');
+                if (colorEl) colorEl.value = primaryColor;
+            }
+        } catch (_) { /* defensive: selection sync must not crash on bad markup */ }
     }
 
     if (editor._hoverHighlight) {

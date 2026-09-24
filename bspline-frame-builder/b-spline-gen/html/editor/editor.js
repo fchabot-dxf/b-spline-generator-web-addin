@@ -79,12 +79,15 @@ export class VectorEditor {
         this._panStart = null;
         this._currentMode = 'draw';
         this._strokeWidth = 0.5;
-        this._strokeColor = '#000000';
+        // SE9 (Fred amend): stroke and fill are ALWAYS the same color for a
+        // given element — one field, not a _strokeColor/_fillColor pair.
+        // New shapes use it for both; FILL/STROKE/BOTH below only decides
+        // whether fill is 'none', never a second, independent color.
+        this._color = '#000000';
         // Step 27: fill mode for new shapes. 'stroke' = outline only (legacy
         // behavior, default), 'fill' = solid interior, 'both' = outline +
         // interior. Pen-anchor paths auto-close with Z when fill is active.
         this._fillMode = 'stroke';
-        this._fillColor = '#000000';
         this._fontFamily = "Arial";
         this._fontSize = 3.0;
         this._expandDetail = 1.0;
@@ -189,14 +192,41 @@ export class VectorEditor {
         this._updateSelectionHighlight();
         this._commitStyleChange();
     }
+    // SE9: sets _color for NEW shapes and recolors the current selection.
+    // Stroke is always written (harmless when a mode has it at width:0 —
+    // it just stays invisible at the new color); fill is written ONLY when
+    // the element currently has a real (non-'none') fill, so a stroke-only
+    // shape doesn't suddenly grow a visible interior. Text has no
+    // meaningful stroke visually, but gets one anyway for consistency with
+    // every other kind, plus its fill (text's color IS its fill).
+    setColor(color) {
+        this._color = color;
+        const sel = this._selectedElements;
+        if (!sel || !sel.length) return;
+        for (const el of sel) {
+            if (!el || typeof el.stroke !== 'function') continue;
+            el.stroke({ color });
+            if (typeof el.fill !== 'function') continue;
+            if (el.type === 'text') {
+                el.fill(color);
+                continue;
+            }
+            let currentFill;
+            try { currentFill = el.attr('fill'); } catch (_) { currentFill = null; }
+            if (currentFill && currentFill !== 'none') el.fill(color);
+        }
+        this._updateSelectionHighlight();
+        this._commitStyleChange();
+    }
     // SE8a / SA-UNDO-2: setStrokeWidth had neither pushState() nor
     // _onChange() (permanently un-undoable, and the carve preview never
     // updated until an unrelated edit happened to fire _onChange()).
     // _commitStyleChange exists so a future style setter can't reintroduce
     // that gap by hand-rolling it again — mirrors the pattern
     // setFontFamily/setFontSize (editor-text-style.js) already get right,
-    // just not previously factored into one place. (SE8d: this method's
-    // twin, setStrokeColor, had zero real callers and was removed.)
+    // just not previously factored into one place. (SE8d removed the prior
+    // setStrokeColor as dead; SE9 brings color back as setColor above,
+    // now driving one _color field shared by stroke and fill.)
     _commitStyleChange() {
         if (typeof this.pushState === 'function') this.pushState();
         if (this._onChange) this._onChange();

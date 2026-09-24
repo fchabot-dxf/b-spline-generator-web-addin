@@ -37,7 +37,7 @@ export function startTextAt(editor, pt, pointerEvent) {
 
     editor._editingTextEl = editor._sketchLayer.text('')
         .font({ family: editor._fontFamily, size: editor._fontSize, anchor: 'start' })
-        .fill(editor._strokeColor)
+        .fill(editor._color)
         .attr({
             'data-layer': activeLayerId,
             'data-anchor-y': pt.y,

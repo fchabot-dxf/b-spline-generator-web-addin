@@ -1266,6 +1266,21 @@
         </div>
 
         <!--
+          Color (SE9): editor-display only, never a carve input (the stamp
+          rasterizer reads alpha, not color — see NEXT-SESSION.md ground
+          truth). One picker + a preset swatch row built from VECTOR_COLORS
+          at bind time (properties-shape.js), same "no hand-typed list to
+          drift" convention as #editorGridSpacing below.
+        -->
+        <div id="editorColorGroup" style="display:flex; align-items:center; gap:6px;">
+          <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
+          <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Color</span>
+          <input type="color" id="editorColor" value="#000000" title="Element color"
+                 style="width:24px; height:24px; padding:0; border:1px solid #ccc; border-radius:3px; background:none; cursor:pointer;">
+          <div id="editorColorSwatches" role="group" style="display:flex; gap:3px;"></div>
+        </div>
+
+        <!--
           Grid + snap (SE6). A faint reference grid; SNAP rounds pointer
           coordinates to the nearest grid line while drawing/dragging (Alt
           bypasses for one action). Purely a drawing aid — never saved into

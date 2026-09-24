@@ -684,7 +684,7 @@ function _ensureAnchorPreview(editor, fromPt) {
         editor._anchorPreviewLine.attr({ x1: fromPt.x, y1: fromPt.y, x2: fromPt.x, y2: fromPt.y });
         return;
     }
-    const color = editor._strokeColor || '#888888';
+    const color = editor._color || '#888888';
     const width = editor._strokeWidth  || 1;
     editor._anchorPreviewLine = editor._sketchLayer
         .line(fromPt.x, fromPt.y, fromPt.x, fromPt.y)
@@ -857,7 +857,7 @@ const latticeHandler = {
         editor._latticeEnd = editor._latticeStart;
         editor._isDrawing = true;
         const p = fromLattice(editor._latticeStart, spacing);
-        const color = editor._strokeColor || '#888888';
+        const color = editor._color || '#888888';
         const width = editor._strokeWidth || 1;
         editor._latticePreview = editor._sketchLayer
             .line(p.x, p.y, p.x, p.y)
@@ -1023,13 +1023,13 @@ export const DRAW_SHAPES = {
 
 function createDrawingShape(editor, modeId, pt) {
     const layer = ensureActiveLayer(editor);
-    const stroke = { color: editor._strokeColor, width: editor._strokeWidth };
+    const stroke = { color: editor._color, width: editor._strokeWidth };
     // BUG-27 fill mode: pick fill + stroke based on the user's choice in
     // the editor toolbar. Lines never get filled (no interior). Pen
     // paths in 'fill' mode are auto-closed with Z at commit time so the
     // rasterizer treats the enclosed area as a region.
     const mode = editor._fillMode || 'stroke';
-    const fillColor = editor._fillColor || editor._strokeColor || '#000000';
+    const fillColor = editor._color || '#000000';
     const fillForShape = (mode === 'stroke') ? 'none' : fillColor;
     const strokeForShape = (mode === 'fill')
         ? { color: 'none', width: 0 }
