@@ -84,6 +84,27 @@ export function worldPoint(el, pt) {
 }
 
 /**
+ * SE8b / SA-COORD-3,4: the inverse of worldPoint — map a WORLD-space
+ * point into the element's own local space via el.matrix().inverse().
+ * This is the one declared inverse this file's own docstring notes was
+ * never hardened the way the read direction (worldPoint/worldBbox) has
+ * been 4 times over — dragNode (editor-interaction.js) had it inlined
+ * ad hoc since SE7n; this is that inline made a named, reusable
+ * declaration so a future write-side call site doesn't reinvent it a
+ * 5th time.
+ */
+export function toLocal(el, pt) {
+    if (!el || typeof el.matrix !== 'function') return { x: pt.x, y: pt.y };
+    try {
+        const m = el.matrix();
+        if (!m || typeof m.inverse !== 'function') return { x: pt.x, y: pt.y };
+        return transformPoint(m.inverse(), pt);
+    } catch {
+        return { x: pt.x, y: pt.y };
+    }
+}
+
+/**
  * AABB of `el.bbox()` after baking the element's transform into all four
  * corners. For pure translation this is exact; for rotation/scale it's
  * the axis-aligned bound of the rotated rect (the right answer for a

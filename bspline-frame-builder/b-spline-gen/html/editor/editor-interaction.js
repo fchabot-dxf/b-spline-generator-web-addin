@@ -15,7 +15,7 @@
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState } from './layers.js';
-import { worldBbox, transformPoint } from './editor-coords.js';
+import { worldBbox, toLocal } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
@@ -327,7 +327,15 @@ function handleEnd(editor, e) {
             editor._dragMoved = false;
             return;
         }
-        if (editor._dragMoved) editor.pushState();
+        if (editor._dragMoved) {
+            editor.pushState();
+            // SE8b / SA-UNDO-1: the move-handlers now only ever fire
+            // 'live' (rAF-coalesced) — this is the one 'commit' per
+            // gesture that guarantees the full pipeline actually runs
+            // with the FINAL position, not whatever a pending/cancelled
+            // 'live' frame happened to leave queued.
+            editor._notifyChange('commit');
+        }
         editor._dragMoved = false;
         if (wasTransform) editor._updateHandles();
     }
@@ -759,13 +767,18 @@ function dragNode(editor, pt) {
     const idx = editor._dragNodeIndex;
     editor._dragMoved = true;
     if (!nodes || !nodes[idx]) return;
-    let inv = null;
-    try { inv = (typeof el.matrix === 'function') ? el.matrix().inverse() : null; } catch (_) { inv = null; }
-    const local = inv ? transformPoint(inv, pt) : pt;
-    nodes[idx].set(local);
+    // SE8b / SA-COORD-3,4: the inline el.matrix().inverse() + transformPoint
+    // composition SE7n wrote here is now the declared toLocal (editor-
+    // coords.js) — one write-side inverse, not a second inline copy.
+    nodes[idx].set(toLocal(el, pt));
     editor._updateHandles();
     editor._updateSelectionHighlight();
-    if (editor._onChange) editor._onChange();
+    // SE8b / SA-UNDO-1: was the REAL editor._onChange() (full remask +
+    // rasterize + localStorage) firing on every raw mousemove — commonly
+    // 15-40+ times per drag. 'live' coalesces to at most one call per
+    // animation frame; handleEnd fires the real 'commit' once the
+    // gesture actually ends.
+    editor._notifyChange('live');
 }
 
 function translateSelection(editor, pt) {
@@ -778,7 +791,7 @@ function translateSelection(editor, pt) {
     editor._updateHandles();
     editor._updateSelectionHighlight();
     editor._lastDragPt = pt;
-    if (editor._onChange) editor._onChange();
+    editor._notifyChange('live'); // SE8b / SA-UNDO-1 — see dragNode's own comment
 }
 
 

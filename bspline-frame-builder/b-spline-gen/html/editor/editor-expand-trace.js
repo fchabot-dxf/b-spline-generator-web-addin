@@ -15,6 +15,7 @@ import { stripSvgjsAttributes, decodeSnapshot } from '../core/svg-utils.js';
 import { fitCurve, ramerDouglasPeucker, getHybridBezierPath } from './editor-curves.js';
 import { getDynamicTolerance } from './editor-hit.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
+import { worldBbox } from './editor-coords.js';
 
 // Lazy-load canvg v3 so the editor's main bundle isn't bloated by it.
 let _CanvgClass = null;
@@ -31,7 +32,19 @@ async function _loadCanvg() {
 }
 
 export async function expandTrace(editor, el, { commit = true } = {}) {
-    const bbox = el.bbox();
+    // SE8b / SA-COORD-4: was el.bbox() — LOCAL bbox — while the content
+    // below renders with its REAL transform applied (`<g transform>`,
+    // right below). A moved/rotated element's actual pixels land in
+    // WORLD space; framing the viewBox around the untransformed LOCAL
+    // bbox meant those pixels could fall entirely outside the visible
+    // window, failing silently ("No filled pixels detected in trace")
+    // for an element plainly visible on screen. worldBbox(el) is the
+    // smaller fix of the two the audit offered (one line, since the
+    // content-wrapping logic already correctly renders in world space —
+    // the ONLY mismatch was which space the FRAME used) versus baking
+    // the matrix into a cloned element first, which would need
+    // restructuring the content-prep below to match.
+    const bbox = worldBbox(el);
     const pad = 0.5;
     const wIn = bbox.w + pad * 2;
     const hIn = bbox.h + pad * 2;

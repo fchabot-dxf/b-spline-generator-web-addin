@@ -71,6 +71,9 @@ export class VectorEditor {
         // SE7a: the lattice tool's own settings (not persisted — a fresh
         // session starts with auto-nodes on, matching LATTICE_DEFAULTS).
         this._lattice = { ...LATTICE_DEFAULTS };
+        // SE8b: the pending rAF id for _notifyChange('live')'s throttle —
+        // null when no frame is currently scheduled.
+        this._pendingChangeFrame = null;
         this._spaceHeld = false;
         this._isPanning = false;
         this._panStart = null;
@@ -208,6 +211,45 @@ export class VectorEditor {
     _commitStyleChange() {
         if (typeof this.pushState === 'function') this.pushState();
         if (this._onChange) this._onChange();
+    }
+    /**
+     * SE8b / SA-UNDO-1: the ONE place a drag-continuation path notifies
+     * the outside world. `_onChange()` is the FULL pipeline (saveForRaster
+     * ization + P.editorSvg write + saveLastSession + refreshAllStampMasks
+     * — the latter immediately re-rasterizes every visible layer). Before
+     * this, dragNode/translateSelection/applyTransformDrag called it
+     * straight from every raw mousemove (commonly 15-40+ times per drag,
+     * uncoalesced — pushState was already correctly gated to fire once at
+     * mouseup by _dragMoved; only _onChange bypassed that gate).
+     *
+     * 'live' (every drag-continuation call): coalesces to AT MOST ONE
+     * call per animation frame — a THROTTLE, not a debounce: an
+     * already-pending frame is left alone (ignored) rather than
+     * cancelled-and-rescheduled, so a CONTINUOUS drag still gets the
+     * pipeline running once every frame instead of being starved until
+     * the drag stops (a naive cancel-and-reschedule, the pattern
+     * main/skeleton-editor.js already uses elsewhere for a different
+     * purpose, would do exactly that here).
+     * 'commit' (handleEnd, once per gesture; every other discrete edit
+     * already called _onChange directly and is unaffected): cancels any
+     * pending 'live' frame and fires the pipeline immediately, so the
+     * FINAL position is what gets committed — never a stale queued frame.
+     */
+    _notifyChange(kind) {
+        if (!this._onChange) return;
+        if (kind === 'commit') {
+            if (this._pendingChangeFrame != null) {
+                cancelAnimationFrame(this._pendingChangeFrame);
+                this._pendingChangeFrame = null;
+            }
+            this._onChange();
+            return;
+        }
+        if (this._pendingChangeFrame != null) return; // already scheduled this frame
+        this._pendingChangeFrame = requestAnimationFrame(() => {
+            this._pendingChangeFrame = null;
+            if (this._onChange) this._onChange();
+        });
     }
     setFontFamily(f) { return setFontFamily(this, f); }
     setFontSize(s) { return setFontSize(this, s); }

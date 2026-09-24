@@ -22,6 +22,7 @@ import {
   getLayerSvg,
   saveForRasterization,
   stripRasterizationFontDefs,
+  _reconcileLayersFromSvg,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
 // Strict image/svg+xml parse (exactly what open()/getLayerSvg do). Returns
@@ -205,5 +206,71 @@ describe('SE8a / SA-TEXT-2: rasterization-fonts defs do not accumulate', () => {
       expect(matches.length).toBeLessThanOrEqual(1);
       content = stripRasterizationFontDefs(out); // the "open()" step
     }
+  });
+});
+
+describe('SE8b / SA-TEXT-3: the orphan-adoption walk skips metadata node types', () => {
+  // _reconcileLayersFromSvg exported specifically for this (despite the
+  // underscore) — open() itself needs a much heavier mock than this one
+  // function alone (clear/svg/children/_bgLayer/_gridLayer/_deselect/
+  // resetPanState/sync3DBackground).
+  function mockChild({ type = 'path', dataLayer = null }) {
+    let layer = dataLayer;
+    return {
+      type,
+      attr: (name, val) => {
+        if (name !== 'data-layer') return null;
+        if (val !== undefined) { layer = val; return; }
+        return layer;
+      },
+      node: { tagName: type.toUpperCase(), getAttribute: (n) => (n === 'class' ? '' : null) },
+    };
+  }
+  function mockReconcileEditor(children) {
+    return { _sketchLayer: { children: () => ({ toArray: () => children }) } };
+  }
+
+  it('does not adopt a <defs> block (e.g. the rasterization-fonts one) as an orphan', () => {
+    const defsChild = mockChild({ type: 'defs' });
+    const pathChild = mockChild({ type: 'path', dataLayer: '0' });
+    const editor = mockReconcileEditor([defsChild, pathChild]);
+
+    _reconcileLayersFromSvg(editor);
+
+    expect(defsChild.attr('data-layer')).toBeNull(); // never stamped
+    expect(editor._layers).toHaveLength(1);           // just the real layer '0' — no phantom layer for the defs
+    expect(editor._layers[0].id).toBe('0');
+  });
+
+  it('style/title/desc are skipped too, not just defs', () => {
+    const skipped = ['style', 'title', 'desc'].map((type) => mockChild({ type }));
+    const pathChild = mockChild({ type: 'path', dataLayer: '0' });
+    const editor = mockReconcileEditor([...skipped, pathChild]);
+
+    _reconcileLayersFromSvg(editor);
+
+    for (const ch of skipped) expect(ch.attr('data-layer')).toBeNull();
+    expect(editor._layers).toHaveLength(1);
+  });
+
+  it('a REAL orphan (no data-layer, not metadata) is still adopted — the skip is type-specific, not blanket', () => {
+    const orphanPath = mockChild({ type: 'path' }); // no data-layer, but IS geometry
+    const editor = mockReconcileEditor([orphanPath]);
+
+    const anchorId = _reconcileLayersFromSvg(editor);
+
+    expect(orphanPath.attr('data-layer')).toBe(anchorId); // still adopted, unaffected by the metadata skip
+    expect(editor._layers).toHaveLength(1);
+  });
+
+  it('a document with ONLY a defs block still gets an anchor layer (not zero layers)', () => {
+    const defsChild = mockChild({ type: 'defs' });
+    const editor = mockReconcileEditor([defsChild]);
+
+    const anchorId = _reconcileLayersFromSvg(editor);
+
+    expect(editor._layers).toHaveLength(1);
+    expect(anchorId).toBe(editor._layers[0].id);
+    expect(defsChild.attr('data-layer')).toBeNull(); // still never stamped
   });
 });

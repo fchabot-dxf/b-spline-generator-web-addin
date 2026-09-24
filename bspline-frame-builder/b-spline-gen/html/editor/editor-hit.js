@@ -9,7 +9,7 @@
  *     filtered to the active layer.
  */
 import { isEditableByLayer } from './layers.js';
-import { worldPoint } from './editor-coords.js';
+import { worldPoint, worldBbox } from './editor-coords.js';
 import { viewScale } from './editor-view.js';
 import { PATH_LAYOUT, endPoint } from './path-layout.js';
 
@@ -129,6 +129,19 @@ export function getNodes(el) {
     });
 }
 
+// SE8b / SA-COORD-3: was `el.bbox()` — the LOCAL bbox, explicitly
+// documented in editor-coords.js's own header as "IGNORES transform."
+// Every other bbox-vs-pointer site in this codebase (updateHandles,
+// the marquee) already uses worldBbox; this was the one exception —
+// drag a shape via Select (writes a `transform`, never touches x/y/
+// width/height), deselect, click where it now visually sits: the CLICK
+// missed because the check compared against the shape's OLD position.
+// Ranking (dSq to the bbox centre) stays in WORLD space too, not local
+// — a "precise" per-element local-space distance would compare across
+// DIFFERENT elements' local spaces, which aren't the same scale/unit
+// unless every element happens to share an identical transform; kept
+// consistent units instead of adding precision that would make ranking
+// among multiple candidates wrong.
 export function getNearbyElement(editor, pt, tol = 0.1) {
     if (!editor._sketchLayer) return null;
     let bestEl = null;
@@ -137,7 +150,7 @@ export function getNearbyElement(editor, pt, tol = 0.1) {
     editor._sketchLayer.children().toArray().forEach(el => {
         if (!isEditableByLayer(editor, el)) return;
 
-        const b = el.bbox();
+        const b = worldBbox(el);
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;
         const buffer = tol + (sw / 2);
 
