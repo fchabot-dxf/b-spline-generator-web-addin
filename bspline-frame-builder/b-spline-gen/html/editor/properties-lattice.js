@@ -51,6 +51,23 @@ export function initLatticeProperties(editor) {
         on(headerBtn, 'click', () => panelEl.classList.toggle('collapsed'));
     }
 
+    // T32: expose this panel's own live rendered height as a CSS custom
+    // property, so the floating undo/redo pill (styles/editor.css,
+    // pointer:coarse + max-width:720px, where the panel becomes a fixed
+    // bottom sheet) can lift itself clear of the sheet without a second
+    // JS layout read of its own. ResizeObserver fires on any box-size
+    // change — sheet collapse/expand, content growth, AND per spec when
+    // the observed element's own display becomes 'none' (reports a zero
+    // size) — so one observer here covers every case (including the
+    // panel simply being hidden outside Lattice mode) without a separate
+    // visibility branch.
+    if (panelEl && typeof ResizeObserver !== 'undefined') {
+        const syncSheetHeightVar = () => {
+            document.documentElement.style.setProperty('--lattice-sheet-height', `${panelEl.offsetHeight}px`);
+        };
+        new ResizeObserver(syncSheetHeightVar).observe(panelEl);
+    }
+
     // Spacing select populated at bind time from GRID_SPACINGS — same
     // idiom properties-shape.js's initGridToggle already uses for the
     // grid's own spacing select (SA-TEXT-6 used the same pattern for

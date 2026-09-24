@@ -3351,3 +3351,105 @@ separately re-proven live. Disclosed rather than silently skipped.
 Committed by explicit path (6 files: `editor-grid.js`, `editor-interaction.js`, `editor-ui.js`,
 `editor-io.js`, the test file, and this WORK-LOG). Amendments polled clean both before this entry and
 immediately before the commit below — nothing pending.
+
+## Lane B — Turn 81 (T32) — editor undo/redo: header on desktop, floating bottom-left on touch — DONE
+
+Between T31's pass and this wake, the advisor signaled `LOOP DONE at cycle 40` (T30/T31 merged) — signed
+and re-armed per its own instruction, then this cycle opened with T32. Fred: "mobile bottom left, desktop
+distinct placement." Seat A's own UX-UNDO work (history/snapshot manager/sidebar binders) landed on lane-b
+between turns — confirmed it's a DIFFERENT concern (nothing named `updateHistoryButtons` or similar already
+existed; grepped before assuming) and doesn't touch anything this turn changes.
+
+**One pair of buttons, ids/bindings unchanged, placement entirely by CSS** — no duplicated markup, no JS
+layout branch. `bspline_gen_palette.html`: `#editorUndo`/`#editorRedo` moved out of the left tool rail (also
+removing the `<div style="flex:1;">` spacer that existed ONLY to push them to the rail's bottom — dead
+weight once they're gone, per the dispatch's own "remove the rail's divider/spacing left behind") into a
+new `<div class="editor-history" role="group" aria-label="Undo and redo">`, placed in the header's
+right-hand button group, first child — "left of Download SVG" — with the SAME `.tool-btn` icon-button look
+the rail already gave them (per the dispatch: "as ↶ ↷ icon buttons," not converted to the header's other
+`cad-btn` text-button style).
+
+**`styles/editor.css`** — `.editor-history` is `display:flex` on every viewport (the only base rule needed
+for desktop's normal-flow placement); under `@media (pointer:coarse)` it becomes
+`position:absolute; left:12px; bottom:calc(12px + safe-area-inset)`, a light pill (`rgba(255,255,255,0.92)`,
+`border-radius:999px`, shadow), `z-index:55` (above `#editorSVGContainer`'s `2`, below the Pattern sheet's
+`60`); its `.tool-btn`s get their own 44px sizing since they've left `.editor-sidebar`, whose EXISTING
+`pointer:coarse .tool-btn` rule no longer reaches them once moved.
+
+**Worked out, not guessed: WHY `position:absolute` (as the dispatch's own build spec literally says)
+actually lands at the bottom-left of the whole modal despite the element physically living in the HEADER
+(near the top).** Read `.cad-modal-window.overhauled`'s own inline style before writing any CSS:
+`position:relative`, spanning the full `100vh` — the header itself has no `position` set (`static`), so
+walking up from `.editor-history` for its containing block skips the header and resolves against that
+full-height modal window instead. That's the whole mechanism the "one element, moved by CSS alone" ask
+depends on — confirmed by reading the actual inline styles, not assumed from the dispatch's own wording
+alone.
+
+**The Pattern-sheet collision check — scoped to exactly the condition where it's real, not blanket-applied.**
+The Pattern panel (T24/T25) only becomes a `position:fixed` bottom sheet under `max-width:720px` — a
+DIFFERENT condition than `pointer:coarse` (a wide coarse-pointer tablet in landscape has `pointer:coarse`
+without the sheet ever going fixed; the panel is a normal side column there and never overlaps the canvas
+bottom). Combining both as `@media (pointer:coarse) and (max-width:720px)` for the LIFT specifically, while
+the base floating-pill styling stays under `pointer:coarse` alone, matches the dispatch's own "z-index above
+the canvas but below the pattern sheet's header... check it doesn't collide" instruction precisely rather
+than lifting unconditionally whenever the panel happens to have SOME height for unrelated (desktop-column)
+reasons.
+
+**`editor/properties-lattice.js`** — new `--lattice-sheet-height` CSS custom property (the dispatch's own
+"sheet height via a CSS variable... or add one" — neither existed, so added one), kept in sync via a
+`ResizeObserver` on `#editorLatticePanel`, set once in `initLatticeProperties` alongside the existing
+collapse-toggle wiring. One observer, not a scatter of manual sync calls at every place the sheet's height
+could change (collapse/expand click, content growth, becoming hidden outside Lattice mode) — `ResizeObserver`
+fires on all of those per spec, including reporting a zero size when the observed element's own display
+becomes `none`, so the "panel is hidden" case needed no separate branch.
+
+**Disabled state (the dispatch's own explicit "skip if it needs touching editor.js heavily and say so"
+escape hatch) — implemented, not skipped, since the actual touch turned out to be 4 one-line additions, not
+heavy.** New `updateHistoryButtons(editor)` in `editor-ui.js` (that file's own established "toolbar sync"
+responsibility — a natural home, not a new module for one function) reads `editor._undoStack`/`_redoStack`
+length against the EXACT SAME conditions `undo()`/`redo()` themselves already check (`< 2` / falsy length) —
+read back, not re-derived, so the buttons can't disagree with what clicking them would actually do. Called
+from `editor.js`'s `pushState()`/`undo()`/`redo()` — one line each, including the NOOP branches of
+`undo()`/`redo()` (so a click that does nothing still leaves the buttons correctly synced, not just the
+branches that actually mutate the stacks). `editor.js` gains one new import from `editor-ui.js` (already
+importing several other names from there — no new cross-module edge). Touched despite not being in the
+dispatch's own file list (`editor.js`), same situation as T27/T30/T31's own necessary small touches outside
+the named scope — disclosed here, not silently done.
+
+**Tests**: `tests/editor-history-buttons.test.js` (new file — no existing `editor-ui.js` test file to extend
+into for this specific concern; `editor-toolbar-groups.test.js` covers a DIFFERENT export, pure predicates
+with no DOM, so a separate DOM-driven file matches rather than forces an awkward merge) — 7 cases: disabled
+below 2 undo-stack entries, enabled at 2+, disabled with an empty redo stack, enabled once something's been
+undone, the two states are independent of each other, no-throw when the buttons aren't in the DOM, no-throw
+with missing `_undoStack`/`_redoStack` (reads as "nothing to undo/redo" rather than crashing).
+
+**Non-vacuity, by mutation**: `updateHistoryButtons`'s two `.disabled =` assignments both hardcoded to
+`false` (always enabled) → exactly the 4 tests asserting a DISABLED state failed (the two ENABLED-case tests
+correctly stayed green, since "always enabled" coincidentally satisfies them too — not a false negative,
+just those two cases not being the ones this particular mutation could distinguish). Reverted, full suite
+green again.
+
+`vitest run` → **460 passed (37 files)**, full suite, no gate hit.
+
+**Live CDP verification** (repo-root `python -m http.server 8771`): desktop — the group confirmed living
+inside `#svgEditorHeader` (not `.editor-sidebar`), `position:static` (normal flow), BOTH buttons DISABLED on
+a fresh session (the initial `pushState()` from `open()` already runs through the new hook, so this needed
+no separate init-time call). Functional round-trip via REAL BUTTON CLICKS (not calling `.undo()`/`.redo()`
+directly): drew a rect + `pushState()` → Undo enabled, Redo still disabled; clicked Undo → content reverted
+to 0 elements, Undo now disabled again, Redo now enabled; clicked Redo → content back to 1 element, Undo
+enabled, Redo disabled — the exact 3-state round trip, proving the buttons are wired to the real actions AND
+stay correctly synced through actual use, not just after a single isolated call. Mobile (390×844, touch):
+`position:absolute`, `left:12px`, `12px` gap from the viewport bottom — matches spec exactly. With the
+Pattern sheet expanded: `--lattice-sheet-height` read back as `549px`, matching the panel's own measured
+`549px` height exactly; the pill's own bottom edge sat at or above the sheet's top edge
+(`pillAboveSheet: true`) — no overlap, confirmed by inspecting both elements' real `getBoundingClientRect()`
+values, not just eyeballing the screenshot (though the screenshot confirms it too — the pill visibly floats
+right at the seam between the canvas and the Lattice Pattern sheet's own header, exactly as intended). Zero
+console errors/exceptions across the whole run.
+
+**Process hygiene:** zero leftover `chrome.exe` before this run (confirmed via `tasklist`); the repo-root
+`http.server`'s PID (via `netstat`) stopped once verification finished.
+
+Committed by explicit path (7 files: the HTML, the CSS, `editor.js`, `editor-ui.js`,
+`properties-lattice.js`, the new test file, and this WORK-LOG). Amendments polled clean both before this
+entry and immediately before the commit below — nothing pending.
