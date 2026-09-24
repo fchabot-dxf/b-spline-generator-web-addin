@@ -1172,3 +1172,62 @@ Appendix match what I ran; inventory table has one row per distinct reader/write
 each with predicted files + a verify line, STOP conditions section present.
 
 No gate hit — design-doc-only turn, no product code or tests touched.
+
+---
+
+## Lane B — Turn 43 — T14: SE5 slice (a) — updateP/isFilletActive/Browse+Clear onto editor layers — DONE, product code
+
+Built exactly slice (a) of my own T13 design (`SE5-TOOLING-STORE-DESIGN.md`, `be5dc37`), scoped to
+`core/state.js`, `main/stamp/_shared.js`, `main/stamp/svg-source.js` + a new test. Did **not** touch
+`editor/` — seat A owns it for SE8a on main; confirmed via `git status --short` after the fact that no
+`editor/` path appears.
+
+- **`core/state.js` `updateP`'s `layerSpecific` block:** dropped `P.stampLayers[P.activeLayerIdx]
+  [layerSpecific[key]] = P[key]` and the `P.stampLayers && P.stampLayers[P.activeLayerIdx]` gate
+  wrapping BOTH writes. Kept only the unconditional `editor._layers[P.activeLayerIdx][field] = value`
+  write — this now matches `bindLayerOnlyNumber`'s pattern exactly (cited it in the comment, per the
+  dispatch's own instruction), which never had this gate and already worked past layer 3.
+- **`main/stamp/_shared.js` `isFilletActive()`:** rewrote to check `window.svgEditor._layers` first
+  (same shape as `activeLayer()`/`activeEditorLayer()` three lines above it in the same file — reused
+  the pattern rather than inventing a new one), falling back to the old `P.stampLayers` read only in
+  the pre-editor-load window (kept, per the design doc's §2 "narrowed, not removed" call for that
+  specific fallback).
+- **`main/stamp/svg-source.js`:** both `setStampLayerEnabled(...)` call sites (Browse-import success,
+  sidebar Clear) replaced with `setLayerVisible(editor, layer.id, true/false)`, imported from
+  `editor/layers.js` (importing a function from `editor/` is fine per the dispatch — editing a file
+  under `editor/` is what's off-limits, and I didn't). Removed the now-unused `setStampLayerEnabled`
+  import from `core/state.js`; confirmed via grep it had exactly these 2 call sites in this file before
+  removing the import, nothing else in the file references it.
+- **Flagged a transitional gap explicitly, in the code comment, not just here:** until SE5 slice (b)
+  repoints `export-flow.js`'s `isCarvingLayer`/`hasShippableSvg` off `P.stampLayers[idx].enabled` onto
+  the same `.visible` field this turn now writes, a layer enabled via Browse/Clear in THIS slice can
+  still read as excluded by Export STEP / Send-to-Fusion specifically — `P.stampLayers[idx].enabled`
+  simply stops being written at all after this turn and goes stale at whatever value `DEFAULT` set it
+  to. The live 3D preview and rebuild are unaffected (already `editor._layers`-only per T12's audit).
+  This is exactly the scope boundary the dispatch drew (slice a only, export-flow.js is slice b) — not
+  a mistake, but a real and worth-naming risk during the gap between the two slices landing.
+- **`setStampLayerEnabled` itself was NOT deleted this turn** — checked, it still has one live caller
+  left after this change: `main/stamp/layer.js:180`, the pre-editor-load fallback branch, correctly
+  out of THIS slice's scope per the design doc (§2's "kept, narrowed" pre-load window) and not in the
+  dispatch's file list. Deleting it is slice (c) work, once that last caller is also narrowed.
+- **New test** `tests/se5a-tooling-single-store.test.js` (5 assertions): a 4-layer `window.svgEditor`
+  mock where `P.stampLayers[3]` is undefined by construction — proves `updateP('stampDepth', ...)`
+  reaches `editor._layers[3].depth` and `isFilletActive()` sees a fillet on layer 4 whether visible
+  (true) or hidden (false), plus the pre-load fallback still working when `window.svgEditor` is null.
+- **Proved non-vacuous, not argued:** saved scratch copies of the two edited product files, reverted
+  both to pre-fix (`git checkout HEAD --`, safe here since HEAD is the actual pre-edit state — these
+  weren't yet committed), re-ran the new test: **3 of 5 assertions failed** (the depth-write test, the
+  filletPower-write test, and the "fillet true on layer 4" test — exactly the three that exercise the
+  bug), the other 2 passed because they test the already-correct pre-load fallback path, which this
+  change doesn't touch. Restored both files from the scratch copies, re-ran — green again.
+- **Full suite:** `npx vitest run` → **118 passed (15 files)**, including the existing
+  `tests/export-flow.test.js` unchanged and still green (expected — it still exercises
+  `P.stampLayers.enabled`, which slice (b) hasn't touched yet).
+- `node --check` on all 3 modules: clean.
+
+**Verify:** `git status --short` → 4 files (state.js, _shared.js, svg-source.js, + new test), matching
+the prediction exactly; no `editor/` path present.
+
+No gate hit — stayed exactly within the dispatched slice-a scope; the transitional export-gap risk was
+flagged (in code + here) rather than acted on unilaterally, since fixing it means touching
+export-flow.js, which is explicitly slice (b), a separate turn.
