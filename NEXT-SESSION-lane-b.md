@@ -1,27 +1,31 @@
-# NEXT (lane-b) — T62: SE15 Slice 2 — the add-in builder (Python), advisor verifies in Fusion
+# NEXT (lane-b) — T63: SE15 fixes from the advisor's REAL Fusion run + wire the add-in to use the manifest
 
-**Ball: worker (seat B) · epoch 2 · T62.** NO FUSION for you — write + unit-test the Python without Fusion (mock
-adsk where needed); the ADVISOR runs it in real Fusion after merge. T61 merged (manifest: hourglass+fill = 83
-entities / 56 constraints / 7 params, live-verified).
+**Ball: worker (seat B) · epoch 2 · T63.** NO FUSION for you (advisor re-verifies). T62 not merged yet — it merges
+with this fix.
 
-## Build your §5/§8 Slice 2
-- Python in the b-spline-gen add-in: `build_constrained_sketch(sketch_target, manifest, placement)` — entities
-  (lines addByTwoPoints, 3-point/center arcs, circles), constraints (coincident, tangent, horizontal/vertical,
-  symmetry, equal, point-on-curve for tie ends), user parameters (create or update; names from the manifest),
-  width = TWO classic `sketch.offset(ObjectCollection([line]), dirPoint, dist)` calls per centerline with each
-  offset dimension's `parameter.expression = '<param> / 2'` (MEASURED to work by the advisor — see SE15 "Answers"),
-  round caps as arcs tangent to the offsets. Order: all geometry → constraints → dimensions/params, to avoid solver
-  fights. A failed constraint is SKIPPED and reported (count + first few reasons in the log), never aborts the send.
-  Above the 60-piece threshold: plain geometry (no constraints), as declared.
-- Wire it into the Send-to-Fusion path per §7 (constrained sketch REPLACES that layer's plain SVG sketch; the carve
-  stamp still runs; plain SVG path unchanged when the option is off). The option: a per-send toggle or the layer's
-  Fusion Geometry gets a 'Constrained sketch' choice — pick the smaller change, say which.
-- Reuse fb_engine where it fits (cite); fill its gaps as your design listed.
-- A dev entry point the advisor can call from fusion_execute with a manifest JSON file path:
-  `build_from_manifest_file(path)` → builds into a NEW sketch on the root component's XY plane and returns a summary
-  dict (entities made, constraints applied/skipped, params, seconds). Document it in WORK-LOG.
-Tests: python unit tests with a fake adsk shim for ordering, skip-and-report, threshold; JS side unchanged tests green.
+## Advisor's real Fusion run (build_from_manifest_file on a live hourglass+lattice manifest, 75 entities / 51
+## constraints; manifest saved at scratchpad\se15-real-manifest.json — use it as a fixture)
+Built in 18.8 s. Entities 75/75. Manifest constraints + dimensions: 0 failures. 7 user params created. 30 width
+offsets (15 centerlines × 2). Changing rail_width in Fusion DID move the rail offsets — param-driven width works.
+Constraint mix in the result: Vertical 13, Horizontal 8, Coincident 16, Tangent 38, Equal 6, Offset 30; 79 dims;
+59 profiles; not fully constrained (as intended).
+### Bugs
+1. **Parameter UNITS off by 2.54**: rail_width = 0.0276" (should 0.07"), tie_width 0.0276", node_radius 0.0295"
+   (should 0.075"), half_width 1.378" (should 3.5"). Length params are created from inch numbers as if they were
+   cm (e.g. ValueInput.createByReal(0.07) = 0.07 cm). Create/update length params with
+   `ValueInput.createByString(f"{v} in")` (or ×2.54 into createByReal) and the 'in' unit; keep unitless params
+   (waist_reach ratio etc.) unitless. Test with the fake shim asserting the ValueInput string/number.
+2. **30 "CAP TANGENT SKIP … VCS_SKETCH_OVER_CONSTRAINTS"**: the cap arcs are already fully determined by the
+   offsets (coincident ends + center on the centerline end), so adding tangency over-constrains. Drop the explicit
+   cap-tangent step (or build caps so exactly the needed constraints are added) — the result must have ZERO skips
+   on this fixture. Don't just silence the log.
+3. **Not wired**: b-spline-gen.py never reads `sketchManifest` — Send to Fusion still imports only the plain SVG.
+   Per SE15 §7 + the recorded default: when a layer carries `sketchManifest`, build the constrained sketch with
+   `build_constrained_sketch` (same placement as _import_single_layer_svg) INSTEAD of that layer's plain SVG
+   sketch; the carve stamp still runs. Log a one-line summary (entities, constraints applied/skipped, seconds).
+   Make sure the add-in package includes sketch_manifest_builder.py (check release/deploy file lists, the
+   sync/copy scripts, and `_ensure_fb_engine_importable` paths in the DEPLOYED layout, not just the repo layout).
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T62: SE15 add-in builder — <sha>, tests, how to call"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T63: SE15 units + caps + wiring — <sha>, tests"`
 and stop.
