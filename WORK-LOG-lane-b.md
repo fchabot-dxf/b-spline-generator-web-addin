@@ -6190,3 +6190,117 @@ likely carries into whatever generator comes next), and passing back now rather 
 Amendments polled clean before this commit. Committed by explicit path (`editor-shape-lattice-generator.js`,
 `tests/editor-shape-lattice-generator.test.js`, `WORK-LOG-lane-b.md`) — pushed.
 
+## T55 — hourglass + bottle presets (full replacement of the bust generator)
+
+**Scope**: replace T53/54's own bust/keypoint-bulge model entirely with a declared PRESET table
+({hourglass, bottle}), each solved ANALYTICALLY (closed form, no iterative solver) so every joint is
+exactly tangent, per Fred's own review ("I'd prefer a simpler hourglass shape — look in the sketch builder
+add-in") and the follow-up correction ("the middle arc is going outward" → waist must pinch INWARD) +
+"also include the bottle silhouette."
+
+**Ground truth, read directly, not assumed from the dispatch's own summary**: all `p02_*.py` phase files for
+`frame-builder/sketches/template_1/` (hourglass) and `template_2/` (bottle) — 17 files, ~485 lines total.
+Key finding, disclosed in the new module's own header comment: the SEED coordinates in `p02_03_loop.py`/
+`p02_04_arcs.py` are NOT the final geometry — `p02_09_radius_removal.py` explicitly DELETES the seed Radius
+dimensions ("Surgically deletes the temporary seed radius dimensions") once Fusion's own tangency solver has
+taken over, and the seed arc-center X values are themselves hand-tuning noise (hourglass shoulder/waist/hip
+centers at widthIn*{0.34996, 0.35, 0.34996} — visibly meant to be identical). Only the TOPOLOGY (which arc's
+own :C pins to which skeleton line, which arcs are Tangent-constrained to which) is authoritative — everything
+else had to be RE-DERIVED analytically for an arbitrary region, not copied.
+
+**The closed-form derivation** (both presets share the same shape, disclosed in the module's own doc
+comments): pin all of a side's arc centers to ONE shared skeleton-column X (a disclosed simplification over
+the source's own incidental asymmetry). Since a shoulder/hip arc is tangent to a VERTICAL horn (radius =
+distance from center to the horn's own x) AND tangent to the middle arc (external tangency: distance between
+centers = sum of radii), and the centers share one X (so their separation is a pure vertical distance in REAL
+units — dimensionally valid for ANY aspect ratio, unlike naively comparing W-fraction and H-fraction numbers
+against each other, an error I caught and corrected in my own first derivation attempt), the skeleton column's
+own X position CANCELS OUT of the tangency equation entirely. Two consequences, verified by test, not just
+derived on paper: the hourglass's shoulder/hip arcs are ALWAYS exactly quarter circles (the horn's own radius
+is horizontal, the waist arc's own radius at the shared tangent point is vertical, horizontal⊥vertical always);
+the waist/neck arc (whichever preset) is ALWAYS exactly a semicircle (its own two endpoints sit diametrically
+opposite on its own center's shared-X column). This ALSO means the naive 5-param wishlist in the dispatch
+(hourglass: waist depth, waist height, notch height, horn length, corner radius) has 2 fewer TRUE degrees of
+freedom than it names — "notch height" turns out to be a pure function of waist depth once tangency holds, and
+"horn length" a function of the vertical pin + waist depth — declared honestly (3 independent hourglass params,
+4 independent bottle params) rather than exposing named params that could request a geometrically impossible
+(non-tangent) combination.
+
+**A precision refinement**: since the "waist/neck" arc is ALWAYS an exact semicircle, and my own bulge->arc
+round-trip (`decomposeSegment`'s own formula, T53) clamps `|bulge|` to 0.999 to stay numerically safe, routing
+a semicircle through the general path introduces a small (~0.002 rad) precision loss — unacceptable for a
+design whose whole point is "exact tangent arcs." Added a genuine semicircle special-case to `_arcPrimitive`
+(a chord of length===diameter has its center AT the chord's own midpoint, by definition — no round-trip
+through `arcCenterParam` needed at all). Mutation-tested: disabling it (`if (false)`) breaks exactly the 2
+tests that check semicircle precision specifically, nothing else — confirms it's load-bearing, not decorative.
+
+**Two self-caught bugs, found before any test was written against them (by re-reading my own code against
+my own design comment, the same discipline as T53's own mid-build corrections)**:
+1. An off-by-one rotation in BOTH presets' own default `segments` array — I'd written the "top edge" entry
+   FIRST (matching how I wrote the doc comment, thinking left-to-right) but `segments[i]` connects
+   `keypoints[i]->keypoints[(i+1)%n]`, and `keypoints[0]` is the top-RIGHT corner, so the array's own first
+   real entry needs to be the FIRST edge OUT of that corner (a horn), with the top edge — which closes the
+   LOOP's own wraparound (`keypoints[n-1]->keypoints[0]`) — LAST, not first. Every curve segment was
+   consequently landing one slot off from its own intended keypoint pair (the shoulder arc would have been
+   assigned to a straight-labeled slot). Caught by re-reading the array against my own "segment i connects
+   keypoints[i]->keypoints[i+1]" comment before writing a single test. Mutation-tested (reintroducing it):
+   exactly 6 tests fail (every hourglass test that depends on correct segment/keypoint alignment — tangency,
+   both geometric invariants, the waistReach-pinning test), nothing else moves.
+2. Redundant/misleadingly-named local aliases (`perpLeftIsOutward2`, `isOutward2`) left over from restructuring
+   `_arcPrimitive` to add the semicircle branch — cleaned up before writing tests against the function, not a
+   correctness bug but worth naming since it's exactly the kind of leftover that makes a diff harder to review.
+
+**A live, mid-turn design discussion with Fred**, not part of the dispatched task but worth recording since
+it settles SE14 Slice 3's own UI approach ahead of time: Fred asked whether the SVG editor can preserve
+tangency the way Fusion's own sketch solver does when a user drags geometry post-generation. Answered with
+two options — (A) axis-constrained PARAMETRIC HANDLES tied to this module's own closed-form independent
+params (free, since every legal param combination is tangent BY CONSTRUCTION, no runtime solver); (B) true
+freeform node-dragging with a live constraint solve (a real, separately-scoped feature, not a general Fusion-
+style solver but a purpose-built per-drag-gesture inverse of this same closed-form math). Fred confirmed
+Option A for Slice 3. Relayed to the advisor (after initially messaging the WRONG session — a differently-
+named "advisor" that turned out to be a different project's DDCS-Studio advisor; corrected via an identity
+probe to the two other `b-spline-generator-web-addin-*` sessions, confirmed `-5c` is the real advisor for
+both lanes). Advisor confirmed it recorded the decision in `SE14-SHAPE-LATTICE-DESIGN.md`'s own "Slice 3
+editing model" section.
+
+**Test suite**: full replacement, `tests/editor-shape-lattice-generator.test.js`, 30 tests (was 22 for the
+retired bust model) — tangency at every real joint (unit-tangent dot check via `_arcWorldPointTangent`, an
+independent forward-parametrization code path, never re-reading `_arcPrimitive`'s own internals) confirmed
+~1.0 at every arc/horn transition and ~0.0 (a genuine right-angle) at exactly the 4 sharp bounding-box
+corners, across both presets and 3 region aspect ratios; the pinch arc's own midpoint sits closer to
+centerline than its STRAIGHT CHORD's midpoint (not its raw endpoints individually — caught and fixed a test-
+premise bug here, since the bottle's own neck arc has asymmetric endpoints, so comparing against each
+endpoint separately isn't valid, only the chord-midpoint comparison generalizes correctly); exact mirror;
+L/A-only; the two geometric invariants above; explicit-param-pins-override-jitter (caught and fixed a second
+test-premise bug: `waistReach` alone pins the WAIST ARC'S OWN midpoint, not a keypoint — the keypoints sit at
+`skelX`, which also depends on the separately-jittered `cornerRadius`); segment-reuse-if-length-matches
+(carried over from T53); declared style vocabulary (unchanged).
+
+Mutation-tested 3 pieces of new/changed logic (backup, mutate, run, confirm exact failure set, restore,
+`diff` byte-identical): (1) the off-by-one rotation, 6 failures, all hourglass-dependent; (2) the semicircle
+special-case disabled, 2 failures, exactly the precision-checking tests; (3) the tangency coefficient itself
+(`notchHalfSpan`) perturbed by 1.3x, 4 failures, all tangency/invariant tests. No unexpected tests moved in
+any run. Full suite: 874 passed (58 files), up from 866 pre-turn (net: -22 retired bust tests +30 new).
+
+**Live-verified by rendering both presets** (own script, `scratchpad/shape-t55.mjs`, reusing the advisor's
+own T53 renderer's `toD` conversion), 5 seeds each, across 2 aspect ratios (7x9 portrait, 9x7 landscape),
+screenshotted via headless Chrome and viewed directly (not just asserted from test output) — confirms: the
+hourglass waist pinches INWARD (the exact bug Fred flagged in the pre-solve seed render, now fixed), flat
+top/bottom edges, smooth tangent shoulder/waist/hip transitions, exact L/R mirror; the bottle shows a narrow
+neck, gentle S-curve, full-width body, matching Fred's own "narrow straight neck... full-width straight body"
+description. Both vary gently across seeds (proportions only, matching "seed: optional small variation...
+default ON but gentle" — not a dramatic per-seed reshaping) and hold up across both aspect ratios.
+
+**Not started this turn**: SE14 Slice 3 (the tool + panel UI, segment picking, live wiring) — per the
+dispatch's own "continue to slice 3 ONLY if this lands cleanly in the same turn; otherwise pass," and given
+T55 alone (preset rewrite + tangency derivation + tests + mutation tests + 2 renders + the Fred design
+discussion) is already a full turn, passing back now rather than starting a second large scope in the same
+turn. Slice 2 (fillets) also still not started (deferred since T54's pause; the fillet solver — L-L/L-A/A-L
+via existing primitives + a new A-A Apollonius solver — would need to be redesigned against THIS module's
+own preset-based segment model rather than the retired bust model anyway, so nothing from the earlier,
+unstarted Slice 2 planning carries over unchanged).
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(`editor-shape-lattice-generator.js`, `tests/editor-shape-lattice-generator.test.js`, `WORK-LOG-lane-b.md`)
+— pushed. `reference/` confirmed still untracked (unrelated to this turn's own files, not touched).
+

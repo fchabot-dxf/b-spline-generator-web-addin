@@ -1,46 +1,44 @@
 /**
- * editor-shape-lattice-generator.js — SE14 Slice 1 (T53): the pure
- * silhouette generator (SE14-SHAPE-LATTICE-DESIGN.md §3/§4/§7).
- * seed + region -> keypoints -> per-segment styles -> exact L/A
- * primitives. No DOM, no editor object — same "pure function" contract
- * `computePattern`/`shapeToPrimitives` already set for this codebase.
+ * editor-shape-lattice-generator.js — SE14 Slice 1 (T53/T54), REPLACED
+ * for T55: the pure silhouette generator, now a declared PRESET table
+ * (hourglass | bottle) instead of the T53/T54 bust/keypoint-bulge model
+ * (Fred: "I'd prefer a simpler hourglass shape — look in the sketch
+ * builder add-in"). No DOM, no editor object — same "pure function"
+ * contract `computePattern`/`shapeToPrimitives` already set.
  *
- * Ported from `reference/svgcreator-deployed/pathloop.js`'s own
- * `PathGenerator.generate(ctx)` (base -> shoulder-taper -> neck ->
- * head-widen -> head-arc, mirrored about a centerline) and `utils.js`'s
- * `decomposeSegment`/`resolveGenerator` (the bulge->arc formula and the
- * left/head/right/base assembly order) — NOT copied verbatim: this
- * module uses this session's own seeded RNG (`lcgPoints`, `core/
- * terrain.js`) and this session's own center-form `A` primitive
- * (`{cx,cy,rx,ry,phi,theta1,dTheta}`, `shapeToPrimitives`' own shape),
- * built via `arcCenterParam` (`path-layout.js`) rather than the
- * reference's own SVG-command `{r,sweep}` form.
- *
- * A THIRD proportion tier (`waist`, SE14 §7, Ground-truth #4) is
- * inserted between the reference's own base and neck rows — genuinely
- * new geometry the reference doesn't have, not a port.
+ * Ported from the frame-builder's own recipes, read directly (not
+ * assumed from the dispatch's own summary):
+ *   `frame-builder/sketches/template_1/phases/p02_*.py` — HOURGLASS.
+ *   `frame-builder/sketches/template_2/phases/p02_*.py` — BOTTLE.
+ * Both build a per-side arc chain (2 or 3 circular arcs + 1-2 straight
+ * "horn" segments) with every joint held EXACTLY tangent by Fusion's own
+ * sketch solver — `Radius` seed dimensions on each arc are later DELETED
+ * (`p02_09_radius_removal.py`: "Surgically deletes the temporary seed
+ * radius dimensions") once tangency has taken over, confirming the
+ * raw seed coordinates in `p02_03_loop.py`/`p02_04_arcs.py` are NOT the
+ * final geometry — only the topology (which arc connects to which,
+ * which arc centers pin to which skeleton line) is authoritative. This
+ * module re-derives the FINAL tangent geometry analytically (closed
+ * form) for an ARBITRARY region, rather than copying the source's own
+ * fixed-aspect-ratio numbers, which was verified NECESSARY: the source's
+ * own per-side arc-center X values differ from each other by a tiny,
+ * hand-tuning-noise amount (e.g. hourglass shoulder/waist/hip centers at
+ * widthIn*{0.34996, 0.35, 0.34996} — visibly meant to be the same value)
+ * — this module deliberately shares ONE exact skeleton-column X per
+ * preset (a disclosed simplification, not a copy of the source's own
+ * incidental asymmetry), which makes the tangency algebra exact and
+ * aspect-ratio-independent (see `_solveHourglass`/`_solveBottle`).
  */
 import { lcgPoints } from '../core/terrain.js';
 import { arcCenterParam } from './path-layout.js';
 
 const MIX = (a, b, t) => a + (b - a) * t;
 
-/** Per-item derived-sub-seed convention (same ROLE as `editor-lattice-
- *  pattern.js`'s own `_columnSeed`: every logical random value draws from
- *  its OWN seed, so which zone widths are explicit — and thus skip their
- *  own draw — never perturbs any OTHER value's own draw) — but NOT that
- *  function's own XOR-with-a-per-salt-constant mix, which T54's own
- *  review caught: XOR is linear, so `_subSeed(seedA,salt) ^
- *  _subSeed(seedB,salt) === seedA ^ seedB` for EVERY salt — two nearby
- *  seeds (e.g. 42 and 7, `42^7===45`, a small fixed delta) stay a small,
- *  near-fixed delta apart after mixing, and `lcgPoints`' own single-
- *  multiply LCG doesn't avalanche a small input delta into a large
- *  output delta in one step — confirmed by RENDERING seeds 42 and 7 and
- *  seeing near-identical silhouettes, not just reasoned about. Fixed
- *  with a proper two-multiply avalanche hash (Murmur3's own `fmix32`
- *  finalizer, applied after combining seed+salt via two DIFFERENT
- *  multiplicative constants so the combine step itself doesn't lose
- *  information the way a single XOR can). */
+/** Per-item derived-sub-seed convention — every logical random value
+ *  draws from its OWN seed via a proper avalanche hash (T54 fix:
+ *  Murmur3's own `fmix32` finalizer, after combining seed+salt via two
+ *  different multiplicative constants — a linear XOR mix left nearby
+ *  seeds producing near-identical output, measured directly). */
 function _subSeed(seed, salt) {
   let h = (Math.imul(seed, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b)) >>> 0;
   h ^= h >>> 16;
@@ -54,11 +52,9 @@ function _draw(seed, salt) {
   return lcgPoints(_subSeed(seed, salt), 1)[0].u;
 }
 
-/** SE14 §4 — the declared style vocabulary. Only `straight`/`curve`/
- *  `kink` are wired this slice (Fred's own explicit three, Q2 ruling);
- *  the rest are `ALL_STYLES`' own reference-ported names, declared here
- *  as a documented, additive-later extension point (a new string value,
- *  no schema change) rather than silently unavailable. */
+/** SE14 §4 — the declared style vocabulary (unchanged by T55). Only
+ *  `straight`/`curve`/`kink` are wired; the rest are declared, not yet
+ *  wired, an additive-later extension point. */
 export const ALL_STYLES = [
   'straight', 'curve', 'kink',
   'arc-deep', 'arc-flat', 'arc-in', 'arc-in-deep',
@@ -66,86 +62,79 @@ export const ALL_STYLES = [
 ];
 export const WIRED_STYLES = ['straight', 'curve', 'kink'];
 
-/** SE14 §7 — declared first-guess per-zone width ranges (fraction of
- *  fullW). `shoulder`/`neck`/`head` are the reference's own exact ranges
- *  (`pathloop.js:124-126`); `waist` is this design's own first guess
- *  (open question 4, tunable from Fred's reaction, not measured against
- *  a reference target). */
-export const WIDTH_RANGES = {
-  shoulder: [0.75, 1.15],
-  waist: [0.35, 0.70],
-  neck: [0.10, 0.28],
-  head: [0.28, 0.58],
-};
-
-/** SE14 §2's own declared shape — the default `PATTERN.shape`. */
-export const SHAPE_DEFAULTS = {
-  source: 'generated',
-  seed: 42,
-  proportions: { waist: 18, neck: 42, chin: 74 },
-  widths: { shoulder: null, waist: null, neck: null, head: null },
-  symmetryRelax: 0,
-  // `head` is declared for naming continuity with the reference's own
-  // per-zone dial (`headKeypointCount`) but NOT consumed by Slice 1: SE14
-  // §3 stage 2 drops the reference's own head-arc interior keypoints
-  // entirely (headLeft connects to headRight via exactly ONE segment,
-  // like any other segment — no special-cased head geometry). Reserved,
-  // additive-later if a future slice ever needs to subdivide the head
-  // connector.
-  keypointCounts: { base: 2, shoulder: 1, waist: 1, neck: 1, head: 1 },
-  segments: [],
+/**
+ * T55 — declared preset table. Each preset's `params` are the TRUE
+ * independent degrees of freedom: exact tangency between adjacent arcs
+ * (and between an end arc and its vertical "horn") removes 1-2 degrees
+ * of freedom from the frame-builder recipe's own naive param wishlist,
+ * so quantities like "horn length" or "notch height" are DERIVED here
+ * (see each solver's own doc comment for the closed-form relationship),
+ * not independently settable — declared honestly rather than exposing a
+ * param combination that could request a non-tangent, impossible shape.
+ * `jitter` is the gentle per-param HALF-RANGE the seed varies a param
+ * within when the caller doesn't pin it explicitly (T55's own dispatch:
+ * "seed: optional small variation of the params... default ON but
+ * gentle" — a much narrower role than T53/54's own per-zone-width
+ * randomization, since the shape's TOPOLOGY here is fixed by the preset,
+ * only its proportions vary).
+ */
+export const PRESETS = {
+  hourglass: {
+    label: 'Hourglass',
+    params: {
+      waistReach: 0.55, // 0-1: how far in from the edge (fraction of halfW) the waist pinches
+      cornerRadius: 0.22, // 0-1: shoulder/hip arc radius, fraction of halfW (shared, top/bottom symmetric)
+      waistCenterY: 0, // -1..1: vertical position of the pinch, fraction of halfH (0 = region's own center)
+    },
+    jitter: { waistReach: 0.08, cornerRadius: 0.05, waistCenterY: 0.08 },
+  },
+  bottle: {
+    label: 'Bottle',
+    params: {
+      neckWidth: 0.5, // 0-1: narrow top half-width, fraction of halfW
+      bodyWidth: 0.92, // 0-1: wide bottom half-width, fraction of halfW
+      skeletonX: 0.72, // fraction of halfW, must sit strictly between neckWidth and bodyWidth (S-curve tightness)
+      neckLength: 0.32, // 0-1: how far down the straight neck run extends before the S-curve, fraction of halfH
+    },
+    jitter: { neckWidth: 0.06, bodyWidth: 0.04, skeletonX: 0.05, neckLength: 0.06 },
+  },
 };
 
 const SALT = {
-  fullW: 1, topFrac: 2,
-  widthShoulder: 10, widthWaist: 11, widthNeck: 12, widthHead: 13,
-  relax: 20,
-  segmentLeft: 100, // + left segment index (bottom -> top)
-  segmentHead: 200,
-  segmentRight: 300, // + right segment index, ONLY drawn when relax>0 (else mirrored from left)
-  segmentBaseSub: 400, // + base-row subdivision index (only nonzero when keypointCounts.base>2)
-  segmentBaseClose: 500,
+  hourglass: { waistReach: 601, cornerRadius: 602, waistCenterY: 603 },
+  bottle: { neckWidth: 611, bodyWidth: 612, skeletonX: 613, neckLength: 614 },
 };
 
-function _zoneWidth(widths, zone, seed, salt) {
-  const explicit = widths && widths[zone];
-  const [minR, maxR] = WIDTH_RANGES[zone];
-  if (explicit != null) return MIX(minR, maxR, explicit / 100);
-  return MIX(minR, maxR, _draw(seed, salt));
+/** Explicit param value wins; else default + a gentle seeded jitter,
+ *  clamped to `[lo,hi]` so an extreme jitter draw can't produce a
+ *  degenerate (non-positive radius) shape. Same "explicit overrides
+ *  random" duality T53/54's own `_zoneWidth` used, generalized. */
+function _jitteredParam(explicitValue, defaultValue, jitterHalf, seed, salt, lo, hi) {
+  const v = explicitValue != null ? explicitValue : defaultValue + (_draw(seed, salt) - 0.5) * 2 * jitterHalf;
+  return Math.max(lo, Math.min(hi, v));
 }
 
-function _lerpPts(a, b, n) {
-  const pts = [];
-  for (let i = 1; i <= n; i++) {
-    const t = i / (n + 1);
-    pts.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  }
-  return pts;
+/** Ground-truth (Slice 1, T53): `decomposeSegment`'s own CAD "bulge
+ *  factor" — `R = |chord/2 * (1+b^2)/(2b)|` — inverted here to go the
+ *  OTHER direction: given a KNOWN radius and chord (from an
+ *  analytically-solved tangent arc), find the bulge that reproduces it
+ *  exactly. Solving the quadratic `h*b^2 - 2Rb + h = 0` (h=halfChord)
+ *  for the smaller (minor-arc) root: `b = (R - sqrt(R^2-h^2)) / h`.
+ *  `R===h` exactly (a true semicircle) gives `b=1` — `_arcPrimitive`
+ *  special-cases that below rather than clamping it to 0.999, since a
+ *  tangent-circle construction where the arc's own two endpoints are
+ *  its neighbors' shared tangent points ALWAYS produces an exact
+ *  semicircle for the middle (waist/neck) arc of both presets here (see
+ *  each solver's own doc comment) — losing precision on a case this
+ *  common, in a design whose whole point is "exact tangent arcs", isn't
+ *  acceptable. */
+function _bulgeFromRadius(R, halfChord) {
+  const disc = Math.max(0, R * R - halfChord * halfChord); // clamp: float noise can push this just under 0 at R===h
+  return (R - Math.sqrt(disc)) / halfChord;
 }
 
-/** A left-side row's point + its mirror, `relax`-blended toward an
- *  independent right side. NOTE (a disclosed, measured finding, not
- *  assumed): in the reference (`pathloop.js:148-157`), the "independent"
- *  blend target for neck/head is `cx + w/2` — which is ALGEBRAICALLY
- *  IDENTICAL to the mirror target `cx + (cx - left.x)` since
- *  `left.x = cx - w/2` always. So `relax` is a mathematical no-op for
- *  every row except the base (only `rightBase.x` gets an actual
- *  independent jitter, via its own random draw, below) — ported AS
- *  WRITTEN (Slice 1 is a port, not a redesign of `symmetryRelax`), not
- *  silently "fixed" into having an effect it never had in the reference. */
-function _mirrorPair(cx, half, y, relax) {
-  const left = { x: cx - half, y };
-  const mirror = { x: cx + (cx - left.x), y };
-  const right = { x: mirror.x + (cx + half - mirror.x) * relax, y };
-  return [left, right];
-}
-
-/** SE14 §4's `kink` construction: two `L`s meeting at a new apex offset
- *  perpendicular from the chord's own midpoint — same apex-offset
- *  formula the reference's own `computeAccurateBBox`'s `processSegment`
- *  uses for an arc's own bbox sagitta point (`utils.js:36-39`), reused
- *  here for the sharp-vertex case since it's the same "outward offset
- *  from chord midpoint by bulge * halfChord" geometry either way. */
+/** SE14 §4's `kink` construction (unchanged from T53): two `L`s meeting
+ *  at a new apex offset perpendicular from the chord's own midpoint. */
 function _bulgeApex(a, b, signedBulge, cx) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -156,42 +145,50 @@ function _bulgeApex(a, b, signedBulge, cx) {
   return { x: mx + nx * h, y: my + ny * h };
 }
 
-/** Ground-truth #3's own ported formula (`utils.js`'s `decomposeSegment`,
- *  `R = |chord/2 * (1+b^2)/(2b)|`) — builds the SVG-arc-command form
- *  `{R, sweep}` exactly as the reference does, then hands it to
- *  `arcCenterParam` (already exported, already tested, T47) to get this
- *  session's own center-form primitive, rather than hand-deriving the
- *  center from the bulge geometry a second time. `|bulge|<1` always
- *  gives an included angle < pi (a minor arc), matching the reference's
- *  own implicit assumption (it never computes/passes a largeArc flag at
- *  all) — largeArc is always 0 here for the same reason. */
+/** Ground-truth #3's own ported bulge->arc formula (unchanged shape from
+ *  T53), PLUS a T55 addition: an exact semicircle special-case (see
+ *  `_bulgeFromRadius`'s own doc comment) that builds the arc directly
+ *  from the chord midpoint (a semicircle's center IS its chord's
+ *  midpoint, since a chord of length===diameter is a diameter) rather
+ *  than round-tripping through `arcCenterParam` with a clamped bulge. */
 function _arcPrimitive(a, b, signedBulge, cx) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const len = Math.hypot(dx, dy) || 1;
-  const mx = (a.x + b.x) / 2;
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
   const od = mx >= cx ? 1 : -1;
   const perpLeftX = -dy / len;
-  const perpLeftIsOutward = (perpLeftX * od) > 0;
+  const perpLeftIsOutward = perpLeftX * od > 0;
+  // Sign is unaffected by the clamp below (it only clips MAGNITUDE), so
+  // this same boolean is valid whether or not the semicircle branch below
+  // fires — computed once, from the unclamped sign, and reused by both.
+  const isOutward = signedBulge > 0;
+  // `sweep` in arcCenterParam's own SVG-command convention: sweep=0 <=>
+  // dTheta<0 (`path-layout.js`'s own `if (!sweep && dTheta>0) dTheta-=TAU`).
+  const sweep = isOutward === perpLeftIsOutward ? 0 : 1;
+
+  if (Math.abs(Math.abs(signedBulge) - 1) < 1e-6) {
+    // Exact semicircle (Ground-truth: R===halfChord makes the chord a
+    // diameter, so the center IS the chord's own midpoint — no need to
+    // round-trip through arcCenterParam with a clamped bulge at all).
+    const R = len / 2;
+    const theta1 = Math.atan2(a.y - my, a.x - mx);
+    const dTheta = sweep === 0 ? -Math.PI : Math.PI;
+    return { type: 'A', cx: mx, cy: my, rx: R, ry: R, phi: 0, theta1, dTheta };
+  }
+
   const bClamped = Math.max(-0.999, Math.min(0.999, signedBulge));
   const R = Math.abs(((len / 2) * (1 + bClamped * bClamped)) / (2 * bClamped));
-  const isOutward = bClamped > 0;
-  const sweep = isOutward === perpLeftIsOutward ? 0 : 1;
   const param = arcCenterParam(a.x, a.y, R, R, 0, 0, sweep, b.x, b.y);
-  // Degenerate fallback (param===null, e.g. a near-zero chord): same
-  // convention `_primitivesFromSubpath` already uses for a degenerate A.
   if (!param) return { type: 'L', p0: a, p1: b };
   const { cx: ccx, cy: ccy, rx, ry, phi, theta1, dTheta } = param;
   return { type: 'A', cx: ccx, cy: ccy, rx, ry, phi, theta1, dTheta };
 }
 
-/** One `PATTERN.shape.segments[i]` entry -> its own primitive(s), in the
- *  declared storage convention: `bulge` is an UNSIGNED magnitude,
- *  `dir` ('out'|'in') carries the sign (§4's own worked example,
- *  `{bulge:0.18, dir:'out'}` — a friendlier UI split than one signed
- *  slider, and the reason `dir` isn't redundant with `bulge`'s own
- *  sign). `style:'straight'` or a zero/near-zero bulge both fall
- *  through to a plain `L`, matching `decomposeSegment`'s own
- *  `|bulge|<0.001` branch. */
+/** One `PATTERN.shape.segments[i]` entry -> its own primitive(s) — same
+ *  contract as T53/54 (unchanged): `bulge` unsigned magnitude, `dir`
+ *  carries the sign, `style:'straight'`/near-zero bulge -> `L`,
+ *  `'kink'` -> two `L`s via the apex construction, else `'curve'` via
+ *  the (now semicircle-aware) bulge->arc formula. */
 function _segmentToPrimitives(a, b, seg, cx) {
   const style = seg.style || 'straight';
   const signedBulge = (seg.dir === 'in' ? -1 : 1) * Math.abs(seg.bulge || 0);
@@ -202,219 +199,257 @@ function _segmentToPrimitives(a, b, seg, cx) {
     const apex = _bulgeApex(a, b, signedBulge, cx);
     return [{ type: 'L', p0: a, p1: apex }, { type: 'L', p0: apex, p1: b }];
   }
-  // 'curve' (WIRED_STYLES' own third entry) — any future style that
-  // reaches here falls back to the same proven bulge mechanism.
   return [_arcPrimitive(a, b, signedBulge, cx)];
 }
 
+/** A solved arc's own {centerLocal, radius, outward} plus its two chord
+ *  endpoints (also local, region-centered, Y-DOWN) -> a default `curve`
+ *  segment entry (`{style,bulge,dir,cornerRadius}`), via the exact
+ *  inverse bulge formula. `outward` (bool) directly encodes convex
+ *  (bulges away from the vertical centerline, `dir:'out'`) vs concave
+ *  (`dir:'in'`) — determined by the solver from which side of the chord
+ *  the known center sits, not re-derived from `od`/`perpLeftIsOutward`
+ *  (those are `_arcPrimitive`'s own internal, reused only to BUILD the
+ *  final primitive, not to classify direction here). */
+function _curveSegment(a, b, radius, outward) {
+  const halfChord = Math.hypot(b.x - a.x, b.y - a.y) / 2;
+  const bulge = _bulgeFromRadius(radius, halfChord);
+  return { style: 'curve', bulge, dir: outward ? 'out' : 'in', cornerRadius: 0 };
+}
+const STRAIGHT_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
+
 /**
- * `region: {x,y,w,h}` (SE14 §3, Q5 ruling — the generator's own explicit
- * area, not an implicit board bbox) + `shape` (a `PATTERN.shape`-shaped
- * object, defaults filled from `SHAPE_DEFAULTS`) -> `{leftKpts,
- * rightKpts, segments, primitives, cx}`. `primitives` is a flat
- * `{type:'L'|'A',...}` list, exactly `shapeToPrimitives`' own return
- * shape (SE13 §2) — no fillets yet (`cornerRadius` is read from a
- * reused/explicit segment but never applied this slice, per §10 Slice 1
- * scope; Slice 2's own job).
+ * HOURGLASS (frame-builder Template 1). Per side (right, then mirrored):
+ * top-corner -[horn, straight]- shoulderTangentPt -[shoulder arc,
+ * CONVEX]- shoulderWaistJunction -[waist arc, CONCAVE]- waistHipJunction
+ * -[hip arc, CONVEX]- hipTangentPt -[horn, straight]- bottom-corner.
+ * 12 segments total (2 straight top/bottom edges + 2x(2 horns + 3 arcs)
+ * per side) — matches the source's own "12-segment clockwise frame
+ * outline" (`p02_03_loop.py`'s own doc comment), a topology check, not
+ * a coincidence.
  *
- * `shape.segments`, if an array of exactly the freshly-computed expected
- * length, is REUSED verbatim (a user's own per-segment style edits
- * survive a seed/proportion/width change) — otherwise every segment is
- * freshly, deterministically drawn from `seed` (§6: only a
- * `keypointCounts` change, which alone changes the expected count,
- * forces a fresh draw).
+ * Closed form (all three arc centers share ONE skeleton column X,
+ * `skelX`, a disclosed simplification — see module header): the
+ * shoulder/hip arcs are tangent to the vertical horn at x=halfW (radius
+ * = halfW-skelX) AND tangent to the waist arc (radius_waist =
+ * skelX-waistX, where waistX is the pinch's own boundary reach). Since
+ * both tangencies are EXTERNAL (shoulder is convex, waist is concave —
+ * an inflection/S-curve pair) and the centers share one X, the center
+ * SEPARATION is a pure vertical distance, giving (real units, so this
+ * holds for ANY aspect ratio, not just the source's own 5.51x1.97):
+ *   shoulderY - waistCenterY = radius_shoulder + radius_waist
+ *                            = (halfW-skelX) + (skelX-waistX) = halfW-waistX
+ * `skelX` CANCELS — the shoulder/hip offset from the waist's own Y only
+ * depends on how far the waist pinches in, not on the skeleton column's
+ * own position (which instead only sets the shoulder/hip radius). A
+ * genuinely elegant, disclosed, VERIFIED (via `dot-product tangent`
+ * tests) consequence of the tangency algebra, not assumed.
+ *
+ * A second consequence, also verified by test: the shoulder/hip arcs are
+ * ALWAYS exactly quarter circles (90 degrees) — the horn-tangent radius
+ * is horizontal, the waist-tangent radius is vertical (both centers
+ * share `skelX`), and horizontal is-perpendicular-to-vertical always.
+ * The waist arc itself is ALWAYS exactly a semicircle (180 degrees) —
+ * its own two endpoints sit at `waistCenterY +/- radius_waist` on the
+ * SAME x=skelX as its center, i.e. diametrically opposite.
+ */
+function _solveHourglass(region, params, segmentsOverride, seed) {
+  const p = PRESETS.hourglass.params;
+  const j = PRESETS.hourglass.jitter;
+  const s = SALT.hourglass;
+  const waistReach = _jitteredParam(params.waistReach, p.waistReach, j.waistReach, seed, s.waistReach, 0.05, 0.92);
+  const cornerRadiusFrac = _jitteredParam(
+    params.cornerRadius, p.cornerRadius, j.cornerRadius, seed, s.cornerRadius, 0.04, 0.95 - waistReach
+  );
+  const waistCenterYFrac = _jitteredParam(
+    params.waistCenterY, p.waistCenterY, j.waistCenterY, seed, s.waistCenterY, -0.6, 0.6
+  );
+
+  const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
+  const waistX = hw * (1 - waistReach); // boundary reach at the pinch (local, right side, from centerline)
+  const cornerRadius = hw * cornerRadiusFrac; // shoulder/hip radius (real units)
+  const skelX = hw - cornerRadius; // shared arc-center column X (local, right side positive)
+  const waistCenterY = hh * waistCenterYFrac; // local, Y-DOWN (0 = region's own vertical center)
+  const radiusWaist = skelX - waistX;
+  const notchHalfSpan = cornerRadius + radiusWaist; // = halfW - waistX, shoulder/hip offset from waistCenterY
+  const shoulderY = waistCenterY - notchHalfSpan; // ABOVE (smaller Y) the waist
+  const hipY = waistCenterY + notchHalfSpan; // BELOW (larger Y) the waist
+
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
+
+  // Right side, top -> bottom.
+  const rTop = P(hw, -hh);
+  const rShoulderHorn = P(hw, shoulderY);
+  const rShoulderWaistJct = P(skelX, waistCenterY - radiusWaist);
+  const rWaistHipJct = P(skelX, waistCenterY + radiusWaist);
+  const rHipHorn = P(hw, hipY);
+  const rBottom = P(hw, hh);
+  // Left side (exact mirror), bottom -> top.
+  const lBottom = M(hw, hh);
+  const lHipHorn = M(hw, hipY);
+  const lWaistHipJct = M(skelX, waistCenterY + radiusWaist);
+  const lShoulderWaistJct = M(skelX, waistCenterY - radiusWaist);
+  const lShoulderHorn = M(hw, shoulderY);
+  const lTop = M(hw, -hh);
+
+  const keypoints = [
+    rTop, rShoulderHorn, rShoulderWaistJct, rWaistHipJct, rHipHorn, rBottom,
+    lBottom, lHipHorn, lWaistHipJct, lShoulderWaistJct, lShoulderHorn, lTop,
+  ];
+
+  const cxWorld = cx0;
+  // `segments[i]` connects `keypoints[i] -> keypoints[(i+1)%n]` — since
+  // `keypoints[0]===rTop`, the array below starts at the FIRST real edge
+  // out of rTop (the horn) and the top edge (lTop -> rTop) is the very
+  // LAST entry, matching the loop's own wraparound.
+  const fresh = [
+    STRAIGHT_SEGMENT, // rTop -> rShoulderHorn (horn)
+    _curveSegment(rShoulderHorn, rShoulderWaistJct, cornerRadius, true), // shoulder, convex
+    _curveSegment(rShoulderWaistJct, rWaistHipJct, radiusWaist, false), // waist, concave
+    _curveSegment(rWaistHipJct, rHipHorn, cornerRadius, true), // hip, convex
+    STRAIGHT_SEGMENT, // rHipHorn -> rBottom (horn)
+    STRAIGHT_SEGMENT, // bottom edge: rBottom -> lBottom
+    STRAIGHT_SEGMENT, // lBottom -> lHipHorn (horn)
+    _curveSegment(lHipHorn, lWaistHipJct, cornerRadius, true), // hip, convex
+    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaist, false), // waist, concave
+    _curveSegment(lShoulderWaistJct, lShoulderHorn, cornerRadius, true), // shoulder, convex
+    STRAIGHT_SEGMENT, // lShoulderHorn -> lTop (horn)
+    STRAIGHT_SEGMENT, // top edge: lTop -> rTop
+  ];
+  const segments = Array.isArray(segmentsOverride) && segmentsOverride.length === keypoints.length
+    ? segmentsOverride.map(_normalizeSegment)
+    : fresh;
+
+  return { keypoints, segments, cx: cxWorld };
+}
+
+function _normalizeSegment(seg) {
+  return {
+    style: (seg && seg.style) || 'straight',
+    bulge: (seg && seg.bulge) || 0,
+    dir: (seg && seg.dir) || 'out',
+    cornerRadius: (seg && seg.cornerRadius) || 0,
+  };
+}
+
+/**
+ * BOTTLE (frame-builder Template 2). Per side (right, then mirrored):
+ * top-corner(narrow) -[horn]- neckHornEnd -[neck/waist arc, CONCAVE]-
+ * junction -[hip arc, CONVEX]- hipHornEnd -[horn]- bottom-corner(wide).
+ * 10 segments total (2 straight edges + 2x(2 horns + 2 arcs)).
+ *
+ * Same closed-form shape as the hourglass (shared skeleton column X,
+ * `skelX`, cancels out of the arc-arc tangency): with `neckHalfW` (narrow
+ * top) and `bodyHalfW` (wide bottom),
+ *   hipCenterY - neckCenterY = radius_neck + radius_body
+ *                             = (skelX-neckHalfW) + (bodyHalfW-skelX)
+ *                             = bodyHalfW - neckHalfW
+ * `neckCenterY` is the one independent Y anchor (derived from the
+ * declared `neckLength`); `hipCenterY` (and hence the body horn's own
+ * length) is DERIVED, not independently settable — same disclosed
+ * "tangency removes a degree of freedom" finding as the hourglass.
+ */
+function _solveBottle(region, params, segmentsOverride, seed) {
+  const p = PRESETS.bottle.params;
+  const j = PRESETS.bottle.jitter;
+  const s = SALT.bottle;
+  const neckWidth = _jitteredParam(params.neckWidth, p.neckWidth, j.neckWidth, seed, s.neckWidth, 0.05, 0.85);
+  const bodyWidth = _jitteredParam(
+    params.bodyWidth, p.bodyWidth, j.bodyWidth, seed, s.bodyWidth, Math.min(0.98, neckWidth + 0.08), 0.98
+  );
+  const skeletonXFrac = _jitteredParam(
+    params.skeletonX, p.skeletonX, j.skeletonX, seed, s.skeletonX,
+    neckWidth + (bodyWidth - neckWidth) * 0.15, neckWidth + (bodyWidth - neckWidth) * 0.85
+  );
+  const neckLengthFrac = _jitteredParam(
+    params.neckLength, p.neckLength, j.neckLength, seed, s.neckLength, 0.08, 0.85
+  );
+
+  const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
+  const neckHalfW = hw * neckWidth;
+  const bodyHalfW = hw * bodyWidth;
+  const skelX = hw * skeletonXFrac;
+  const radiusNeck = skelX - neckHalfW; // concave (upper) arc
+  const radiusBody = bodyHalfW - skelX; // convex (lower) arc
+  const neckCenterY = -hh + hh * 2 * neckLengthFrac; // local Y-down; top edge at -hh
+  const hipCenterY = neckCenterY + radiusNeck + radiusBody; // derived (tangency)
+  const junctionY = neckCenterY + radiusNeck; // shared tangent point, on x=skelX
+
+  const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
+  const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
+
+  const rTop = P(neckHalfW, -hh);
+  const rNeckHorn = P(neckHalfW, neckCenterY);
+  const rJunction = P(skelX, junctionY);
+  const rHipHorn = P(bodyHalfW, hipCenterY);
+  const rBottom = P(bodyHalfW, hh);
+  const lBottom = M(bodyHalfW, hh);
+  const lHipHorn = M(bodyHalfW, hipCenterY);
+  const lJunction = M(skelX, junctionY);
+  const lNeckHorn = M(neckHalfW, neckCenterY);
+  const lTop = M(neckHalfW, -hh);
+
+  const keypoints = [rTop, rNeckHorn, rJunction, rHipHorn, rBottom, lBottom, lHipHorn, lJunction, lNeckHorn, lTop];
+
+  // Same wraparound convention as the hourglass solver above: `keypoints[0]
+  // ===rTop`, so this array starts at the first real edge out of rTop and
+  // the top edge (lTop -> rTop) is the LAST entry.
+  const fresh = [
+    STRAIGHT_SEGMENT, // rTop -> rNeckHorn (horn)
+    _curveSegment(rNeckHorn, rJunction, radiusNeck, false), // neck/waist, concave
+    _curveSegment(rJunction, rHipHorn, radiusBody, true), // hip/body, convex
+    STRAIGHT_SEGMENT, // rHipHorn -> rBottom (horn)
+    STRAIGHT_SEGMENT, // bottom edge
+    STRAIGHT_SEGMENT, // lBottom -> lHipHorn (horn)
+    _curveSegment(lHipHorn, lJunction, radiusBody, true), // hip/body, convex
+    _curveSegment(lJunction, lNeckHorn, radiusNeck, false), // neck/waist, concave
+    STRAIGHT_SEGMENT, // lNeckHorn -> lTop (horn)
+    STRAIGHT_SEGMENT, // top edge: lTop -> rTop
+  ];
+  const segments = Array.isArray(segmentsOverride) && segmentsOverride.length === keypoints.length
+    ? segmentsOverride.map(_normalizeSegment)
+    : fresh;
+
+  return { keypoints, segments, cx: cx0 };
+}
+
+/**
+ * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
+ * `{ keypoints, segments, primitives, cx }`. `shape.preset` selects
+ * `'hourglass'` (default) or `'bottle'`; `shape.params` overrides that
+ * preset's own declared params (each falls back to its own default +
+ * gentle seeded jitter — see `PRESETS`); `shape.segments`, if an array
+ * of exactly the preset's own expected length, is REUSED verbatim (a
+ * per-segment style override survives a param/seed change), else the
+ * preset's own analytically-exact default segments are used. `keypoints`
+ * is one FLAT closed loop (`keypoints[i] -> keypoints[(i+1)%n]` is
+ * `segments[i]`), clockwise: top edge, right side top->bottom, bottom
+ * edge, left side bottom->top — replacing T53/54's own asymmetric
+ * `leftKpts`/`rightKpts` split (nothing else in the codebase consumed
+ * that shape yet, so this is a clean break, not a compatibility risk).
+ * `primitives` is `shapeToPrimitives`' own `{type:'L'|'A',...}` shape —
+ * no fillets this slice (`cornerRadius` on a segment is read/passed
+ * through but never applied — Slice 2's own job, unstarted, see
+ * WORK-LOG).
  */
 export function generateSilhouette(region, shape) {
-  const s = {
-    ...SHAPE_DEFAULTS,
-    ...shape,
-    proportions: { ...SHAPE_DEFAULTS.proportions, ...(shape && shape.proportions) },
-    widths: { ...SHAPE_DEFAULTS.widths, ...(shape && shape.widths) },
-    keypointCounts: { ...SHAPE_DEFAULTS.keypointCounts, ...(shape && shape.keypointCounts) },
-  };
-  const seed = s.seed >>> 0;
-  const cx = region.x + region.w / 2;
+  const preset = (shape && shape.preset) || 'hourglass';
+  const seed = ((shape && shape.seed) || 42) >>> 0;
+  const params = (shape && shape.params) || {};
+  const segmentsOverride = shape && shape.segments;
 
-  // ── 1. Dimensions + widths ─────────────────────────────────────────
-  const fullW = region.w * MIX(0.48, 0.84, _draw(seed, SALT.fullW));
+  const solved =
+    preset === 'bottle'
+      ? _solveBottle(region, params, segmentsOverride, seed)
+      : _solveHourglass(region, params, segmentsOverride, seed);
 
-  const wShoulder = fullW * _zoneWidth(s.widths, 'shoulder', seed, SALT.widthShoulder);
-  const wWaist = fullW * _zoneWidth(s.widths, 'waist', seed, SALT.widthWaist);
-  const wNeck = fullW * _zoneWidth(s.widths, 'neck', seed, SALT.widthNeck);
-  const wHead = fullW * _zoneWidth(s.widths, 'head', seed, SALT.widthHead);
-
-  // Simultaneous (non-chained) clamp from the RAW inputs only — same
-  // shape as the reference's own 2-tier `neckT`/`chinT` clamp
-  // (`pathloop.js:129-130`), extended to 3 tiers, each >=5% apart.
-  const raw = s.proportions;
-  const waistT = Math.min(raw.waist, raw.neck - 5, raw.chin - 10) / 100;
-  const neckT = Math.min(Math.max(raw.neck, raw.waist + 5), raw.chin - 5) / 100;
-  const chinT = Math.max(raw.chin, raw.neck + 5, raw.waist + 10) / 100;
-
-  // T54 fix: the reference's own `fullH = innerH*mix(0.68,0.94,random())`
-  // (an independently-random height, ported as-is in Slice 1's first
-  // draft) interacts with `chinT` multiplicatively (`yHead = bottomY -
-  // fullH*chinT`) — for chinT well under 1 (the default proportions give
-  // 0.74), that combination left the head reaching only ~25-45% up the
-  // region, confirmed by rendering 8 seeds (advisor's own T54 note).
-  // Fixed by making the size draw a DIRECT target — how far up the
-  // region the head itself should reach (`topFrac`, a declared 6-15%-
-  // from-the-region-top range) — and deriving `fullH` FROM that target
-  // and the actual `chinT`, so the visual result is correct BY
-  // CONSTRUCTION regardless of chinT's own value, rather than the two
-  // interacting unpredictably.
-  const bottomFrac = 0.94; // base: unchanged, 6% margin from the region's true bottom
-  const topFrac = MIX(0.06, 0.15, _draw(seed, SALT.topFrac));
-  const bottomY = region.y + region.h * bottomFrac;
-  const yHeadTarget = region.y + region.h * topFrac;
-  const fullH = (bottomY - yHeadTarget) / chinT;
-
-  const yBase = bottomY;
-  const yWaist = bottomY - fullH * waistT;
-  const yNeck = bottomY - fullH * neckT;
-  const yHead = bottomY - fullH * chinT;
-
-  const relax = Math.max(0, Math.min(1, s.symmetryRelax));
-
-  // ── 2. Keypoints ─────────────────────────────────────────────────────
-  const leftBase = { x: cx - wShoulder / 2, y: yBase };
-  const rightBase = { x: cx + wShoulder / 2, y: yBase };
-  if (relax > 0) {
-    const indepX = cx + (wShoulder / 2) * (1 + (_draw(seed, SALT.relax) * 0.2 - 0.1));
-    rightBase.x = rightBase.x + (indepX - rightBase.x) * relax;
-  }
-
-  const [waistLeft, waistRight] = _mirrorPair(cx, wWaist / 2, yWaist, relax);
-  const [neckLeft, neckRight] = _mirrorPair(cx, wNeck / 2, yNeck, relax);
-  const [headLeft, headRight] = _mirrorPair(cx, wHead / 2, yHead, relax);
-
-  const kc = s.keypointCounts;
-  const B = Math.max(2, Math.round(kc.base));
-  const nSh = Math.max(1, Math.round(kc.shoulder)); // base -> waist gap
-  const nWa = Math.max(1, Math.round(kc.waist)); // waist -> neck gap (new, §7)
-  const nNk = Math.max(1, Math.round(kc.neck)); // neck -> head gap
-
-  const leftKpts = [
-    leftBase,
-    ..._lerpPts(leftBase, waistLeft, nSh),
-    waistLeft,
-    ..._lerpPts(waistLeft, neckLeft, nWa),
-    neckLeft,
-    ..._lerpPts(neckLeft, headLeft, nNk),
-    headLeft,
-  ];
-  // No headMidPts (SE14 §3 stage 2: headLeft -> headRight is ONE segment,
-  // no interior head-arc keypoints — a deliberate simplification over the
-  // reference's own separate head-arc machinery, per SHAPE_DEFAULTS' own
-  // comment on `keypointCounts.head`). This also makes leftKpts/rightKpts
-  // EXACTLY equal length whenever B===2 (the default): both zone chains
-  // use the SAME nSh/nWa/nNk counts, just traversed in opposite
-  // directions, so `rightKpts` mirrors `leftKpts` point-for-point.
-  const baseMidPts = [];
-  for (let i = 1; i < B - 1; i++) {
-    const t = i / (B - 1);
-    baseMidPts.push({
-      x: rightBase.x + (leftBase.x - rightBase.x) * t,
-      y: rightBase.y + (leftBase.y - rightBase.y) * t,
-    });
-  }
-  const rightKpts = [
-    headRight,
-    ..._lerpPts(headRight, neckRight, nNk),
-    neckRight,
-    ..._lerpPts(neckRight, waistRight, nWa),
-    waistRight,
-    ..._lerpPts(waistRight, rightBase, nSh),
-    rightBase,
-    ...baseMidPts,
-  ];
-
-  // ── 3. Segments -> primitives ───────────────────────────────────────
-  // Flat order: left (bottom->top), head, right (top->bottom), base —
-  // §2's own declared ordering, matching `resolveGenerator`'s own
-  // assembly (`utils.js:122-135`).
-  const nLeftSeg = leftKpts.length - 1;
-  const nBaseSeg = rightKpts.length - nLeftSeg; // trailing base-row subdivisions + the final base-close segment
-  const expectedSegmentCount = leftKpts.length + rightKpts.length;
-  // T54 fix: the reference hardcodes its own base edge sharp
-  // (`utils.js` resolveGenerator: "Base - always sharp", bulge 0) — my
-  // first draft treated it as an ordinary styleable segment, which
-  // rendered as a visibly curved/scalloped base (confirmed by the
-  // advisor's own render) and also matters for carving (a flat base
-  // sits on an edge). Fixed: EVERY base-row segment (the subdivisions,
-  // when keypointCounts.base>2, plus the one closing segment) is FORCED
-  // to this constant, in BOTH the fresh and the reuse path — excluded
-  // from per-segment styling entirely, not just defaulted to it (a
-  // user-edited `segments` entry at a base-row index is overridden too).
-  const BASE_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
-
-  let segments;
-  if (Array.isArray(s.segments) && s.segments.length === expectedSegmentCount) {
-    segments = s.segments.map((seg, i) =>
-      i >= expectedSegmentCount - nBaseSeg
-        ? { ...BASE_SEGMENT }
-        : {
-            style: (seg && seg.style) || 'straight',
-            bulge: (seg && seg.bulge) || 0,
-            dir: (seg && seg.dir) || 'out',
-            cornerRadius: (seg && seg.cornerRadius) || 0,
-          }
-    );
-  } else {
-    // Reference's own `randB = () => (random()-0.5)*0.6` (pathloop.js:228),
-    // mapped onto this design's own unsigned-bulge + dir storage.
-    const freshBulge = (salt) => (_draw(seed, salt) - 0.5) * 0.6;
-    const bulgeToSeg = (bulge) =>
-      Math.abs(bulge) < 0.001
-        ? { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 }
-        : { style: 'curve', bulge: Math.abs(bulge), dir: bulge > 0 ? 'out' : 'in', cornerRadius: 0 };
-
-    const leftSegs = [];
-    for (let i = 0; i < nLeftSeg; i++) leftSegs.push(bulgeToSeg(freshBulge(SALT.segmentLeft + i)));
-
-    const headSeg = bulgeToSeg(freshBulge(SALT.segmentHead));
-
-    // §4 "Mirrored pairs": at relax===0, a right-side profile segment
-    // COPIES its mirror's own style/bulge (not an independent draw) —
-    // right segment i (top->bottom) mirrors left segment (nLeftSeg-1-i)
-    // (bottom->top), the exact reverse-index correspondence the
-    // symmetric keypoint chains above already establish. relax>0 draws
-    // the right side independently (§4's own "no-op once >0").
-    const rightProfileSegs = [];
-    for (let i = 0; i < nLeftSeg; i++) {
-      rightProfileSegs.push(
-        relax === 0 ? { ...leftSegs[nLeftSeg - 1 - i] } : bulgeToSeg(freshBulge(SALT.segmentRight + i))
-      );
-    }
-
-    // Every base-row segment (subdivisions, when B>2, + the final
-    // base-close segment) is the fixed constant — no random draw at all
-    // (not drawn-then-discarded; per-item independent sub-seeds mean
-    // skipping a draw here has zero effect on any other value's draw).
-    const baseSegs = Array.from({ length: nBaseSeg }, () => ({ ...BASE_SEGMENT }));
-
-    segments = [...leftSegs, headSeg, ...rightProfileSegs, ...baseSegs];
-  }
-
-  // Reference's own `baseCx` (`utils.js:113`): the midpoint of the two
-  // OUTERMOST base points, not the theoretical `cx` — matters once
-  // `relax>0` skews `rightBase.x` off the theoretical centerline.
-  const baseCx = (leftKpts[0].x + rightKpts[rightKpts.length - 1].x) / 2;
-
+  const { keypoints, segments, cx } = solved;
+  const n = keypoints.length;
   const primitives = [];
-  let si = 0;
-  for (let i = 0; i < leftKpts.length - 1; i++) {
-    primitives.push(..._segmentToPrimitives(leftKpts[i], leftKpts[i + 1], segments[si++], baseCx));
+  for (let i = 0; i < n; i++) {
+    primitives.push(..._segmentToPrimitives(keypoints[i], keypoints[(i + 1) % n], segments[i], cx));
   }
-  primitives.push(
-    ..._segmentToPrimitives(leftKpts[leftKpts.length - 1], rightKpts[0], segments[si++], baseCx)
-  );
-  for (let i = 0; i < rightKpts.length - 1; i++) {
-    primitives.push(..._segmentToPrimitives(rightKpts[i], rightKpts[i + 1], segments[si++], baseCx));
-  }
-  primitives.push(
-    ..._segmentToPrimitives(rightKpts[rightKpts.length - 1], leftKpts[0], segments[si++], baseCx)
-  );
 
-  return { leftKpts, rightKpts, segments, primitives, cx: baseCx };
+  return { preset, keypoints, segments, primitives, cx };
 }
