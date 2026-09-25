@@ -129,7 +129,7 @@ report.afterRailEndsChecked = await evalJS(`(() => {
 report.railEndsAddedANode = report.afterRailEndsChecked.nodeAtRailStart === true
   && !report.beforeRailEnds.nodeAtRailStart
   && report.afterRailEndsChecked.nodeCount > report.beforeRailEnds.nodeCount;
-await shot('se7h-addon-1-railends-on.png');
+await shot(`se7h-addon-1-railends-on.png`);
 
 await evalJS(`document.getElementById('latticeNodesRailEnds').checked = false; true`);
 await evalJS(`window.Math.random = () => 0.42; true`);
@@ -172,7 +172,7 @@ report.selectClickOnRail = await evalJS(`(() => {
     selectedKind: e._selectedElement ? e._selectedElement.node.getAttribute('data-lattice') : null,
   };
 })()`);
-await shot('se7h-addon-2-select-click-rail.png');
+await shot(`se7h-addon-2-select-click-rail.png`);
 
 // Reset: click empty canvas to deselect, reactivate Layer 1 via its row.
 await clickAt(-5, -5);
@@ -194,7 +194,7 @@ report.nodeClickOnNode = await evalJS(`(() => {
     selectedKind: e._selectedElement ? e._selectedElement.node.getAttribute('data-lattice') : null,
   };
 })()`);
-await shot('se7h-addon-3-node-click-node.png');
+await shot(`se7h-addon-3-node-click-node.png`);
 
 // Reset again, then marquee-drag across the whole generated area (Select
 // mode) — should pick elements from more than one layer at once.
@@ -221,7 +221,7 @@ report.marquee = await evalJS(`(() => {
   return { selectedCount: sel.length, distinctLayers: [...layersHit] };
 })()`);
 report.marqueeSpannedMultipleLayers = report.marquee.distinctLayers.length > 1 && report.marquee.selectedCount > 1;
-await shot('se7h-addon-4-marquee-multi-layer.png');
+await shot(`se7h-addon-4-marquee-multi-layer.png`);
 
 report.logs = logs.slice(0, 15);
 console.log(JSON.stringify(report, null, 1));

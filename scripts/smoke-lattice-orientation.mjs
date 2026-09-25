@@ -73,7 +73,7 @@ report.horizontal = await evalJS(`(() => ({
 }))()`);
 report.horizontalRailsAreHorizontalLines = report.horizontal.rails.length > 0
   && report.horizontal.rails.every(r => r.y1 === r.y2 && r.x1 !== r.x2);
-await shot('se7h-1-horizontal.png');
+await shot(`se7h-1-horizontal.png`);
 
 // --- Flip to vertical via the panel toggle ---
 await evalJS(`document.getElementById('latticeOrientVertical').click(); true`);
@@ -90,7 +90,7 @@ report.verticalRailsAreVerticalLines = report.vertical.rails.length > 0
   && report.vertical.rails.every(r => r.x1 === r.x2 && r.y1 !== r.y2);
 report.verticalTiesAreHorizontalConnectors = report.vertical.ties.length === 0
   || report.vertical.ties.every(t => t.y1 === t.y2 && t.x1 !== t.x2);
-await shot('se7h-2-vertical.png');
+await shot(`se7h-2-vertical.png`);
 await evalJS(`document.getElementById('previewCanvas')?.scrollIntoView; true`); // no-op nav aid only
 
 // --- Flip back to horizontal, confirm it reverses cleanly ---
@@ -160,7 +160,7 @@ report.handDrawnAfterVerticalColumnDrag = await evalJS(`({
 report.handToolColumnDragMadeARail =
   report.handDrawnAfterVerticalColumnDrag.rails === beforeHandDraw.rails + 1 &&
   report.handDrawnAfterVerticalColumnDrag.ties === beforeHandDraw.ties;
-await shot('se7h-3-hand-drawn-vertical-rail.png');
+await shot(`se7h-3-hand-drawn-vertical-rail.png`);
 
 // Now the SAME drag shape, but flip back to horizontal first — under
 // 'horizontal' orientation the identical column-shaped drag should
@@ -180,7 +180,7 @@ report.handDrawnAfterHorizontalColumnDrag = await evalJS(`({
 report.handToolColumnDragMadeATieUnderHorizontal =
   report.handDrawnAfterHorizontalColumnDrag.ties === beforeHandDraw2.ties + 1 &&
   report.handDrawnAfterHorizontalColumnDrag.rails === beforeHandDraw2.rails;
-await shot('se7h-4-hand-drawn-horizontal-tie.png');
+await shot(`se7h-4-hand-drawn-horizontal-tie.png`);
 
 report.logs = logs.slice(0, 15);
 console.log(JSON.stringify(report, null, 1));

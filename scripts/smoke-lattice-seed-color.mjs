@@ -80,7 +80,7 @@ report.gen1 = await evalJS(`(() => ({
   nodeColor: document.querySelector('[data-lattice=node]')?.getAttribute('fill'),
   swatchRails: getComputedStyle(document.getElementById('latticeColorRails')).backgroundColor,
 }))()`);
-await shot('se7g-1-gen1.png');
+await shot(`se7g-1-gen1.png`);
 
 // --- Second Generate (Regenerate) ---
 await evalJS(`document.getElementById('latticeGenerate').click(); true`);
@@ -93,7 +93,7 @@ report.gen2 = await evalJS(`(() => ({
 report.seedChangedBetweenPresses = report.gen1.seedPattern !== report.gen2.seedPattern;
 report.seedFieldMatchesPatternSeed = String(report.gen2.seedField) === String(report.gen2.seedPattern);
 report.tieSetChangedBetweenPresses = JSON.stringify(report.gen1.ties) !== JSON.stringify(report.gen2.ties);
-await shot('se7g-2-gen2.png');
+await shot(`se7g-2-gen2.png`);
 
 // --- Color swatch: open the shared mosaic, pick a color, confirm reuse + recolor-in-place ---
 await evalJS(`document.getElementById('latticeColorRails').click(); true`);
@@ -102,7 +102,7 @@ report.mosaicOpened = await evalJS(`!!document.querySelector('.color-mosaic-popo
 report.mosaicCellCount = await evalJS(`document.querySelectorAll('.color-mosaic-grid .color-mosaic-cell').length`);
 const railCountBefore = await evalJS(`document.querySelectorAll('[data-lattice=rail]').length`);
 const seedBeforeColorPick = await evalJS(`window.svgEditor._latticePattern.seed`);
-await shot('se7g-3-mosaic-open.png');
+await shot(`se7g-3-mosaic-open.png`);
 
 await evalJS(`document.querySelector('.color-mosaic-cell[title="#1a237e"]').click(); true`);
 await sleep(300);
@@ -118,7 +118,7 @@ report.afterPick = await evalJS(`(() => ({
 report.recolorDidNotReseed = report.afterPick.seedAfterColorPick === seedBeforeColorPick;
 report.recolorDidNotChangeCount = report.afterPick.railCount === railCountBefore;
 report.tieUnaffectedByRailRecolor = report.afterPick.tieStroke !== '#1a237e';
-await shot('se7g-4-recolored.png');
+await shot(`se7g-4-recolored.png`);
 
 // --- Undo: restores previous pattern AND seed ---
 await evalJS(`window.svgEditor.undo(); true`);
@@ -133,7 +133,7 @@ await evalJS(`window.svgEditor.undo(); true`);
 await sleep(500);
 report.afterUndo2 = await evalJS(`window.svgEditor._latticePattern ? window.svgEditor._latticePattern.seed : null`);
 report.undoRestoresPriorSeed = report.afterUndo2 === report.gen1.seedPattern;
-await shot('se7g-5-after-undo.png');
+await shot(`se7g-5-after-undo.png`);
 
 report.logs = logs.slice(0, 15);
 console.log(JSON.stringify(report, null, 1));

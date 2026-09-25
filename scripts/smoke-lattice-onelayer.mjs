@@ -78,7 +78,7 @@ report.afterGenerate = await evalJS(`(() => {
   };
 })()`);
 report.noNewLayerCreated = report.afterGenerate.layerCount === report.layerCountBeforeGenerate;
-await shot('se7i-1-layer1-generated.png');
+await shot(`se7i-1-layer1-generated.png`);
 
 // --- Live width edit: bump the Rails width stepper, confirm owned rails resize immediately ---
 await evalJS(`(() => {
@@ -89,7 +89,7 @@ await evalJS(`(() => {
 await sleep(500);
 report.widthLiveEdit = await evalJS(`+document.querySelector('[data-lattice=rail]').getAttribute('stroke-width')`);
 report.widthLiveEditWorked = report.widthLiveEdit === 0.2 && report.widthLiveEdit !== report.afterGenerate.railWidth;
-await shot('se7i-2-rail-width-bumped.png');
+await shot(`se7i-2-rail-width-bumped.png`);
 
 // --- Add a SECOND layer, activate it: the panel must show DEFAULTS, not Layer 1's pattern ---
 const layer1Seed = await evalJS(`window.svgEditor._layers.find(l => l.id === '${report.layer1Id}').pattern.seed`);
@@ -121,7 +121,7 @@ report.layersAreIndependent = report.backOnLayer1.activeLayer === report.layer1I
   && report.backOnLayer1.orientationShown === true
   && report.backOnLayer1.seedShown === String(layer1Seed)
   && report.layer2.orientation === 'vertical';
-await shot('se7i-3-layer2-independent-pattern.png');
+await shot(`se7i-3-layer2-independent-pattern.png`);
 
 // --- Regenerate sweeps a HAND-MOVED (still-owned) piece — the old detach-
 // on-move rule is retired: drag an owned rail via Select, then Regenerate
@@ -180,7 +180,7 @@ report.regenerateSweptTheMovedRail = await evalJS(`(() => {
 })()`);
 report.movedPieceWasSwept = report.railStillOwnedAfterDrag === true
   && report.regenerateSweptTheMovedRail.anyWithTransform === false;
-await shot('se7i-4-moved-rail-swept-by-regenerate.png');
+await shot(`se7i-4-moved-rail-swept-by-regenerate.png`);
 
 report.logs = logs.slice(0, 15);
 console.log(JSON.stringify(report, null, 1));
