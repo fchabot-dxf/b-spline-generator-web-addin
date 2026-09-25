@@ -503,13 +503,16 @@ function _paletteSVG() {
 /** SE10 / T26: one row renderer, two call sites — the editor's own Layers
  *  panel (#editorLayersList) and the Vector Stamping sidebar's layer
  *  browser (#stampLayersList). Same data, same handlers (select, eye,
- *  add, rename, delete, reorder); `compact` only changes presentation
- *  (row sizing, and an extra tool-summary read-out the sidebar wants that
- *  the editor's own panel has no room or need for). Exported so a
- *  container that isn't wired through renderLayersPanel's two fixed ids
- *  can still render the same list (kept minimal — no caller needs that
- *  today, but the shape is the one this codebase already declares
- *  things at: a container + editor + options, not a hardcoded id). */
+ *  add, rename, delete, reorder). MOB4 layer-row AMEND ("C1 — soft
+ *  segmented"): the row itself now looks identical at every call site and
+ *  width (Fred: desktop and phone should match) — `compact` today only
+ *  changes the empty-state copy (a shorter "No layers yet." with no
+ *  "click + to add" hint, since the sidebar's own + button is right
+ *  above the list already). Exported so a container that isn't wired
+ *  through renderLayersPanel's two fixed ids can still render the same
+ *  list (kept minimal — no caller needs that today, but the shape is the
+ *  one this codebase already declares things at: a container + editor +
+ *  options, not a hardcoded id). */
 export function renderLayerList(container, editor, { compact = false } = {}) {
   if (!container) return;
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
@@ -650,7 +653,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
 
   const vis = document.createElement('button');
   vis.type = 'button';
-  vis.className = 'layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
+  vis.className = 'layer-toggle-cell layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
   vis.innerHTML = layer.visible === false ? _eyeClosedSVG() : _eyeOpenSVG();
   vis.title = layer.visible === false ? 'Show layer' : 'Hide layer';
   vis.setAttribute('aria-pressed', String(layer.visible !== false));
@@ -667,7 +670,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   // "hidden" on its own).
   const carveActive = layer.carve !== false;
   const carveBtn = _makeToggleButton({
-    className: 'layer-carve',
+    className: 'layer-toggle-cell layer-carve',
     glyph: '3D',
     active: carveActive,
     onTitle: 'Carved into the relief (click to stop carving)',
@@ -681,7 +684,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const colorActive = layer.showColor !== false;
   const colorBtn = document.createElement('button');
   colorBtn.type = 'button';
-  colorBtn.className = 'layer-showcolor' + (colorActive ? ' active' : '');
+  colorBtn.className = 'layer-toggle-cell layer-showcolor' + (colorActive ? ' active' : '');
   colorBtn.innerHTML = _paletteSVG();
   colorBtn.title = colorActive
     ? 'Shows this layer\'s own colors (click for one neutral color)'
@@ -692,24 +695,31 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
     setLayerShowColor(editor, layer.id, !colorActive);
   });
 
+  // MOB4 layer-row AMEND ("C1 — soft segmented", Fred's pick): the three
+  // toggles now render as ONE outlined segmented group, right of the
+  // name, instead of three separate square buttons to its left.
+  const toggleGroup = document.createElement('div');
+  toggleGroup.className = 'layer-toggle-group';
+  toggleGroup.appendChild(vis);
+  toggleGroup.appendChild(carveBtn);
+  toggleGroup.appendChild(colorBtn);
+
   const name = document.createElement('span');
   name.className = 'layer-name';
   name.textContent = layer.name;
   name.title = layer.name;
 
-  // SE10: compact-only — the editor's own panel has no tooling context to
-  // show (and no room); the sidebar row is the one place a user picks a
-  // layer WITHOUT the Plunge Depth / Tool Profile controls already in
-  // view, so it gets an at-a-glance summary of what it'll carve with.
-  // SE10 AMEND: dimmed (not hidden) when the layer isn't carved — its
-  // tool spec still exists, it's just not currently cutting.
-  let toolSummary = null;
-  if (compact) {
-    toolSummary = document.createElement('span');
-    toolSummary.className = 'layer-tool-summary' + (carveActive ? '' : ' not-carved');
-    toolSummary.textContent = _formatToolSummary(layer);
-    toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
-  }
+  // MOB4 layer-row AMEND: the tool summary now renders inline right
+  // after the name ("Layer 1 · V .25\"") in EVERY row, sidebar and
+  // editor panel alike, at all widths — previously compact-only (the
+  // editor's own panel had "no room or need for" it; the redesign's
+  // whole point is that both now share one identical look). SE10 AMEND's
+  // dimming rule (not hidden) when the layer isn't carved is unchanged.
+  const toolSummary = document.createElement('span');
+  toolSummary.className = 'layer-tool-summary' + (carveActive ? '' : ' not-carved');
+  toolSummary.textContent = ` · ${_formatToolSummary(layer)}`;
+  toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
+  name.appendChild(toolSummary);
 
   const del = document.createElement('button');
   del.type = 'button';
@@ -733,14 +743,12 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
     _confirmAndRemove(editor, layer);
   });
 
-  // T27: the three toggles grouped left-to-right — 👁 · 3D · palette —
-  // per the dispatch's own row spec, ahead of the editable name.
+  // MOB4 layer-row AMEND ("C1"): grip, then the editable name (with its
+  // tool summary inline), then the segmented 👁·3D·palette group, then
+  // delete — reverses T27's old left-of-name toggle order.
   row.appendChild(handle);
-  row.appendChild(vis);
-  row.appendChild(carveBtn);
-  row.appendChild(colorBtn);
   row.appendChild(name);
-  if (toolSummary) row.appendChild(toolSummary);
+  row.appendChild(toggleGroup);
   row.appendChild(del);
 
   // Click row → activate layer.

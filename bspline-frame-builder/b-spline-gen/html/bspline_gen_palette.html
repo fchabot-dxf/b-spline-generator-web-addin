@@ -1162,6 +1162,15 @@
       const mainContent = document.querySelector('.cad-main-content');
       if (resizer && mainContent) {
         const mqlMobile = window.matchMedia('(max-width: 700px)');
+        // MOB4: landscape phone reverses the grid (styles/layout-app.css:
+        // viewport first/left, sidebar last/right, `order` + a reversed
+        // grid-template-columns) — this hand-rolled branch's own
+        // `newWidth = x` assumes sidebar-on-the-LEFT (width = cursor's
+        // raw X), which would drag BACKWARDS once the sidebar is on the
+        // right. Ceding this case to main/mobile-resizer.js's own THIRD
+        // splitter (reversed math, from-scratch for this orientation)
+        // rather than special-casing the formula here twice.
+        const mqlLandscapePhone = window.matchMedia('(pointer: coarse) and (max-height: 500px) and (min-width: 701px)');
         let isResizing = false;
 
         const getClient = (e) => {
@@ -1172,7 +1181,7 @@
         };
 
         const start = (e) => {
-          if (mqlMobile.matches) return; // mobile: main/mobile-resizer.js owns this drag
+          if (mqlMobile.matches || mqlLandscapePhone.matches) return; // mobile: main/mobile-resizer.js owns this drag
           isResizing = true;
           resizer.classList.add('resizing');
           document.body.style.cursor = 'col-resize';
@@ -1551,9 +1560,24 @@
              a bold `<span>` label — Rails/Ties/Nodes/Colors/Widths
              already look like this with zero markup changes). -->
         <div id="editorMobileDrawer">
-          <div id="editorDrawerHandle" class="editor-drawer-handle" role="button" tabindex="0" aria-label="Resize panel — drag or tap to cycle peek/half/full">
+          <div id="editorDrawerHandle" class="editor-drawer-handle" role="button" tabindex="0" aria-label="Resize panel — drag or tap to cycle peek/half/full, double-tap to jump canvas/settings">
             <div class="editor-drawer-grip" aria-hidden="true"></div>
           </div>
+          <!-- MOB4 (landscape phone: side-by-side, drawer docks on the
+               RIGHT instead of the bottom): a SEPARATE vertical grip, not
+               the same element rotated — its own drag axis (horizontal)
+               and touch-action (blocks pan-x, not pan-y) genuinely differ
+               from the portrait handle above. styles/editor.css shows
+               exactly one of the two per orientation. -->
+          <div id="editorDrawerHandleV" class="editor-drawer-handle-v" role="button" tabindex="0" aria-label="Resize panel — drag or tap to cycle canvas/half/settings, double-tap to jump canvas/settings">
+            <div class="editor-drawer-grip" aria-hidden="true"></div>
+          </div>
+          <!-- Wraps tabs+body so BOTH orientations can share one always-
+               column-internally content block — the drawer itself flips
+               row/column (styles/editor.css) but this wrapper never needs
+               to, so the tabs-bar-above-scrollable-body arrangement stays
+               identical either way. -->
+          <div id="editorDrawerContent">
           <div id="editorDrawerTabs" class="editor-drawer-tabs" role="tablist">
             <button type="button" id="editorDrawerTab-tool" class="editor-drawer-tab hidden" role="tab"></button>
             <button type="button" id="editorDrawerTab-layers" class="editor-drawer-tab" role="tab">Layers</button>
@@ -2152,6 +2176,7 @@
             <div class="layers-empty" id="editorLayersEmpty">No layers yet.<br>Click + to add one, or just start drawing.</div>
           </div>
         </aside>
+          </div>
           </div>
         </div>
 

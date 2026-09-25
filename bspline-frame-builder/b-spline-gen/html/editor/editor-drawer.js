@@ -56,6 +56,38 @@ export function drawerHeightPx(state, viewportHeight) {
   return PEEK_HEIGHT_PX; // 'peek', and the floor for any unrecognized state
 }
 
+/** MOB4: landscape phone's own side-column splitter — WIDTH snaps instead
+ *  of HEIGHT ones, "canvasMax" (narrowest column: MOB4's own "canvas-max")
+ *  through "settingsMax" ("settings-max", the widest). Declared as
+ *  fractions of viewport WIDTH, same shape as drawerHeightPx's own vh
+ *  fractions — but noticeably more conservative ones: a landscape phone's
+ *  own width (typically 700-915px) is what the CANVAS has to share, not
+ *  disposable space the way portrait's full HEIGHT is once the drawer
+ *  covers it, so even "settings-max" stops well short of half the screen.
+ *  canvasMax uses a fixed floor (220px — this panel's own long-standing
+ *  DESKTOP width, not a live content measurement the way portrait's peek
+ *  is; a side column's minimum usable width doesn't shrink/grow with
+ *  which tool happens to be open the way a bottom sheet's height does). */
+export const LANDSCAPE_SNAP_STATES = ['canvasMax', 'half', 'settingsMax'];
+const LANDSCAPE_WIDTH_STORAGE_KEY = 'bspline.editor.landscapeDrawerWidthPx';
+const LANDSCAPE_CANVAS_MAX_WIDTH_PX = 220;
+const LANDSCAPE_HALF_VW_FRACTION = 0.38;
+const LANDSCAPE_SETTINGS_MAX_VW_FRACTION = 0.45;
+// Mirrors styles/editor.css's own landscape media query exactly — a
+// landscape phone is `pointer:coarse` but WIDER than portrait's own
+// 720px breakpoint, so `min-width:721px` keeps the two from ever both
+// matching the same viewport (checked live wherever this string is used,
+// not just declared once and trusted).
+const LANDSCAPE_MEDIA_QUERY = '(pointer: coarse) and (max-height: 500px) and (min-width: 721px)';
+
+/** Pure: resolve a landscape snap state to a concrete px WIDTH for the
+ *  given viewport width — same role as drawerHeightPx, for the OTHER axis. */
+export function landscapeWidthPx(state, viewportWidth) {
+  if (state === 'half') return Math.round(viewportWidth * LANDSCAPE_HALF_VW_FRACTION);
+  if (state === 'settingsMax') return Math.round(viewportWidth * LANDSCAPE_SETTINGS_MAX_VW_FRACTION);
+  return LANDSCAPE_CANVAS_MAX_WIDTH_PX; // 'canvasMax', and the floor for any unrecognized state
+}
+
 function _loadSectionOpen(label, defaultOpen) {
   try {
     const raw = localStorage.getItem(SECTION_STATE_PREFIX + label);
@@ -78,16 +110,21 @@ function _saveSectionOpen(label, open) {
  *  a toggle per section. `data-no-collapse` opts a section OUT (the "Add"
  *  row: it must always stay visible in the peek row, never collapsed).
  *  Desktop-untouched (MOB2/MOB3's own standing rule): gated on the SAME
- *  max-width:720px structural breakpoint styles/editor.css's drawer rules
- *  use, checked ONCE here — a desktop session never gets the chevron/
- *  click affordance at all, so it can't inherit a collapsed section from
- *  a phone session sharing the same localStorage either. A live resize
+ *  structural breakpoints styles/editor.css's drawer rules use — portrait's
+ *  max-width:720px OR MOB4's own landscape query — checked ONCE here — a
+ *  desktop session never gets the chevron/click affordance at all, so it
+ *  can't inherit a collapsed section from a phone session sharing the
+ *  same localStorage either. A live resize
  *  across the breakpoint while the modal is already open won't retro-
  *  actively wire this (same one-time-check shape as this file's own
  *  drag-vs-tap threshold), an accepted, narrow edge case. */
 function _makeSectionsCollapsible(panelBodyEl) {
   if (!panelBodyEl) return;
-  if (!window.matchMedia('(max-width: 720px)').matches) return;
+  // MOB4: landscape's own side column needs this EVEN MORE than portrait
+  // (its narrowest width, canvasMax, is only 220px) — without it, every
+  // section renders stacked-open with none of MOB5's own compact-row
+  // treatment able to compensate for a whole panel's worth of content.
+  if (!window.matchMedia(`(max-width: 720px), ${LANDSCAPE_MEDIA_QUERY}`).matches) return;
   for (const section of Array.from(panelBodyEl.children)) {
     if (section.hasAttribute('data-no-collapse')) continue;
     const label = section.firstElementChild;
@@ -255,6 +292,10 @@ export function initDrawer(editor) {
   const layersTab = el('editorDrawerTab-layers');
   if (!drawer || !handle || !toolTab || !layersTab) return; // panel not present in this host — no-op, matches other init*() modules' own guard shape
 
+  // MOB4: shared by both splitters below (each is the OTHER one's
+  // `enabled()` gate) and by _makeSectionsCollapsible's own check.
+  const isLandscapeMode = () => window.matchMedia(LANDSCAPE_MEDIA_QUERY).matches;
+
   // T58: every declared TOOL_PANELS body, not just Lattice's own — each
   // follows the SAME "bold-span-first-child" section convention
   // (_makeSectionsCollapsible's own doc comment already promised this for
@@ -324,10 +365,70 @@ export function initDrawer(editor) {
     min: peekFloorPx,
     max: () => drawerHeightPx('full', window.innerHeight),
     storageKey: DRAWER_HEIGHT_STORAGE_KEY,
-    onApply: (px, snapName) => drawer.classList.toggle('is-peek', snapName === 'peek'),
+    // MOB4: `.editor-drawer-handle` is hidden in landscape (its own
+    // vertical-grip splitter takes over), so drags can't happen there
+    // anyway — this ALSO stops the init-time apply()/resize listener from
+    // writing a stale/oversized `height` onto what landscape's own CSS
+    // now lays out as a normal (non-fixed) flex row child, sized by
+    // `width` instead.
+    enabled: () => !isLandscapeMode(),
+    // Clearing the OTHER axis's own inline style here (not just skipping
+    // this one via `enabled` above) matters because INLINE styles beat
+    // an external stylesheet rule with no `!important` regardless of
+    // specificity: portrait's own CSS sets `width:100%` (no !important),
+    // which would LOSE to a stale inline `width:220px` left over from a
+    // landscape session, right up until this splitter's own next apply()
+    // — e.g. right after a rotation — clears it.
+    onApply: (px, snapName) => {
+      drawer.classList.toggle('is-peek', snapName === 'peek');
+      drawer.style.width = '';
+    },
     onDragStart: () => drawer.classList.add('is-dragging'),
     onDragEnd: () => drawer.classList.remove('is-dragging'),
   });
+
+  // MOB4: landscape phone's own side-column splitter — a SECOND
+  // makeSplitter instance on the SAME drawer element, driving `width`
+  // instead of `height`, gated to only ever engage in landscape (the
+  // portrait splitter above is likewise inert there, since a landscape
+  // session hides `.editor-drawer-handle` entirely — its own onPointerDown
+  // never fires with no visible/hittable handle; `enabled()` below just
+  // keeps its init-time apply()/resize listener from ALSO writing a
+  // (harmless but pointless) height while inert). #editorDrawerHandleV is
+  // a SEPARATE element from the portrait handle (styles/editor.css shows
+  // exactly one of the two per orientation), so both splitters can be
+  // wired unconditionally here with zero risk of double-handling one
+  // pointer gesture. Unlike portrait, landscape's own #editorMobileDrawer
+  // is a NORMAL (non-fixed) flex sibling of #editorCanvasContainer
+  // (styles/editor.css's own comment there explains why) — so applying
+  // `width` here is all that's needed for true side-by-side; no separate
+  // CSS-var/padding reservation on the canvas required.
+  const handleV = el('editorDrawerHandleV');
+  if (handleV) {
+    function currentLandscapeSnaps() {
+      const vw = window.innerWidth;
+      return LANDSCAPE_SNAP_STATES.map((name) => ({ name, px: landscapeWidthPx(name, vw) }));
+    }
+    makeSplitter(drawer, {
+      handle: handleV,
+      axis: 'width',
+      // Right-anchored: dragging LEFT (clientX decreases) GROWS the drawer.
+      computeRawSize: (clientX, { startCoord, startSize }) => startSize - (clientX - startCoord),
+      snaps: currentLandscapeSnaps,
+      min: () => landscapeWidthPx('canvasMax', window.innerWidth),
+      max: () => landscapeWidthPx('settingsMax', window.innerWidth),
+      storageKey: LANDSCAPE_WIDTH_STORAGE_KEY,
+      enabled: isLandscapeMode,
+      initialSnapName: 'canvasMax',
+      // Mirrors the portrait splitter's own onApply — clears ITS axis's
+      // stale inline value once this one is the side actually driving the
+      // drawer's size (see that splitter's own comment for why this
+      // matters, not just skipping-via-enabled).
+      onApply: () => { drawer.style.height = ''; },
+      onDragStart: () => drawer.classList.add('is-dragging'),
+      onDragEnd: () => drawer.classList.remove('is-dragging'),
+    });
+  }
 
   // Same "publish the live rendered height as a CSS custom property" idiom
   // MOB2's own --lattice-sheet-height used (properties-lattice.js) for the

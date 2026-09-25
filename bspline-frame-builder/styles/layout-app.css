@@ -518,3 +518,26 @@ aside {
         grid-template-rows: 35vh 12px 1fr;
     }
 }
+
+/* MOB4 (Fred: landscape phone side-by-side, "canvas/preview LEFT, the
+   tool panel/sidebar RIGHT") — a landscape phone matches DESKTOP's own
+   3-column grid already (>700px wide), which places sidebar FIRST,
+   viewport LAST. `min-width:701px` keeps this from also matching the
+   portrait breakpoint above (mutually exclusive, same convention
+   styles/editor.css's own MOB4 landscape query uses).
+   `order` alone does NOT move these — Section 9's own base rules give
+   each an EXPLICIT `grid-column` (sidebar:1, resizer:2, viewport:3), not
+   auto-placement, and `order` only ever reorders AUTO-placed items;
+   confirmed live (computed grid-column stayed 1/2/3 regardless of
+   `order`, only the MEASURED pixel rects looked wrong, which is what
+   actually pointed at the real cause). Overriding `grid-column`
+   explicitly, together with a reversed grid-template-columns so each
+   side keeps its OWN correct size, is what actually swaps position. */
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 701px) {
+    .cad-main-content {
+        grid-template-columns: 1fr auto var(--cad-sidebar-width);
+    }
+    .cad-main-content > .cad-viewport { grid-column: 1; }
+    .cad-main-content > .cad-resizer { grid-column: 2; }
+    .cad-main-content > .cad-sidebar { grid-column: 3; }
+}

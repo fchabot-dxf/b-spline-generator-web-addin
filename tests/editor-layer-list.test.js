@@ -62,17 +62,24 @@ describe('renderLayerList', () => {
     expect(container.querySelector('.layers-empty')).toBeTruthy();
   });
 
-  it('compact:true adds the .compact class and a .layer-tool-summary read-out; compact:false (default) has neither', () => {
+  // MOB4 layer-row AMEND ("C1 — soft segmented"): the tool summary now
+  // renders inline after the name in EVERY row, sidebar and editor panel
+  // alike — previously compact-only. `compact` still sets the .compact
+  // class (kept for the empty-state copy / call-site identification).
+  it('renders a "· <tool>" summary inline after the name in BOTH compact and non-compact rows', () => {
     const editor = mockEditor([mockLayer('0', { profile: 'ballnose', depth: 0.12 })], '0');
     renderLayerList(container, editor, { compact: true });
     const compactRow = container.querySelector('.layer-row');
     expect(compactRow.classList.contains('compact')).toBe(true);
-    expect(compactRow.querySelector('.layer-tool-summary')?.textContent).toBe('Ball .12"');
+    expect(compactRow.querySelector('.layer-tool-summary')?.textContent).toBe(' · Ball .12"');
+    // The summary is nested INSIDE .layer-name (so the whole thing
+    // ellipsis-truncates as one unit), not a separate row-level flex item.
+    expect(compactRow.querySelector('.layer-name .layer-tool-summary')).toBeTruthy();
 
     renderLayerList(container, editor, { compact: false });
     const plainRow = container.querySelector('.layer-row');
     expect(plainRow.classList.contains('compact')).toBe(false);
-    expect(plainRow.querySelector('.layer-tool-summary')).toBeNull();
+    expect(plainRow.querySelector('.layer-tool-summary')?.textContent).toBe(' · Ball .12"');
   });
 
   it('rows render top-to-bottom in REVERSE array order (top of the list = top of z-order = last in _layers)', () => {

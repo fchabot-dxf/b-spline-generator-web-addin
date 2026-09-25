@@ -12,11 +12,28 @@
  * below); its desktop/horizontal branch is untouched.
  */
 import { makeSplitter } from '../editor/splitter.js';
+// Cross-tree import — same established precedent as main/global-events.js
+// importing _isTypingTarget from ../editor/dom.js. Reuses the editor
+// drawer's OWN declared canvasMax/half/settingsMax width fractions rather
+// than a second copy of the same shape here.
+import { LANDSCAPE_SNAP_STATES, landscapeWidthPx } from '../editor/editor-drawer.js';
 
 const STORAGE_KEY = 'bspline.main.previewHeightPx';
 const MOBILE_BREAKPOINT = '(max-width: 700px)'; // matches styles/layout-app.css's own @media block
 const MIN_PREVIEW_PX = 120;
 const BOTTOM_MARGIN_PX = 120; // keeps this much of the sidebar visible below the preview, matching the resizer's pre-AMEND floor
+// MOB4: landscape phone reverses the main grid (styles/layout-app.css —
+// viewport first/left, sidebar last/right) and needs its OWN splitter,
+// separate from the portrait one above (that one drives the PREVIEW's
+// height via grid-template-rows; this one drives the SIDEBAR's width via
+// --cad-sidebar-width, and the two conditions are mutually exclusive —
+// see LANDSCAPE_MEDIA_QUERY's own min-width vs MOBILE_BREAKPOINT's
+// max-width). Reuses the SAME canvasMax/half/settingsMax shape the
+// editor's own landscape drawer splitter declares (editor-drawer.js),
+// factored out to splitter-landscape-widths.js so BOTH splitters share
+// one declared set of fractions instead of two copies drifting apart.
+const LANDSCAPE_STORAGE_KEY = 'bspline.main.landscapeSidebarWidthPx';
+const LANDSCAPE_MEDIA_QUERY = '(pointer: coarse) and (max-height: 500px) and (min-width: 701px)';
 
 export function initMobilePreviewResizer() {
   const resizer = document.getElementById('resizer');
@@ -65,5 +82,40 @@ export function initMobilePreviewResizer() {
   mqlMobile.addEventListener('change', (e) => {
     if (e.matches) splitter.reapply();
     else mainContent.style.gridTemplateRows = '';
+  });
+
+  // MOB4: the landscape-phone splitter — SIDEBAR width, not preview
+  // height, and the sidebar sits on the RIGHT now (styles/layout-app.css's
+  // own reversed grid-template-columns + order), so a rightward drag must
+  // SHRINK it: sidebarWidth = distance from the cursor to the RIGHT edge
+  // of the viewport, the mirror image of the desktop/inline script's own
+  // `newWidth = x` (sidebar-on-the-left) formula.
+  const mqlLandscapePhone = window.matchMedia(LANDSCAPE_MEDIA_QUERY);
+  function landscapeSnaps() {
+    const vw = window.innerWidth;
+    return LANDSCAPE_SNAP_STATES.map((name) => ({ name, px: landscapeWidthPx(name, vw) }));
+  }
+  const landscapeSplitter = makeSplitter(document.documentElement, {
+    handle: resizer,
+    axis: 'width',
+    enabled: () => mqlLandscapePhone.matches,
+    initialSnapName: 'canvasMax',
+    computeRawSize: (clientX) => window.innerWidth - clientX,
+    // --cad-sidebar-width, not this splitter's own inline style — the
+    // sidebar's actual width comes from that CSS var (layout-app.css),
+    // read back the same way for readSize.
+    applySize: (px) => document.documentElement.style.setProperty('--cad-sidebar-width', `${px}px`),
+    readSize: () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cad-sidebar-width')) || landscapeWidthPx('canvasMax', window.innerWidth),
+    snaps: landscapeSnaps,
+    min: () => landscapeWidthPx('canvasMax', window.innerWidth),
+    max: () => landscapeWidthPx('settingsMax', window.innerWidth),
+    storageKey: LANDSCAPE_STORAGE_KEY,
+    onDragStart: () => { resizer.classList.add('resizing'); document.body.style.cursor = 'col-resize'; },
+    onDragEnd: () => { resizer.classList.remove('resizing'); document.body.style.cursor = ''; },
+    onApply: () => { if (window.dispatchEvent) window.dispatchEvent(new Event('resize')); },
+  });
+  mqlLandscapePhone.addEventListener('change', (e) => {
+    if (e.matches) landscapeSplitter.reapply();
+    else document.documentElement.style.removeProperty('--cad-sidebar-width');
   });
 }

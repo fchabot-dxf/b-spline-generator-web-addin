@@ -499,10 +499,12 @@
    ID selector, so it actually wins there. The handle/tabs bar are plain
    `.hidden`-style until that same breakpoint shows them. */
 #editorMobileDrawer,
-#editorDrawerBody {
+#editorDrawerBody,
+#editorDrawerContent {
     display: contents;
 }
 .editor-drawer-handle,
+.editor-drawer-handle-v,
 .editor-drawer-tabs {
     display: none;
 }
@@ -525,78 +527,28 @@
    ===== Mobile ===== (editor-specific narrow viewport overrides,
    originally editor-mobile.css)
    ========================================================================= */
-@media (max-width: 720px) {
-    #svgEditorModal .modal-window>div:nth-child(2) {
-        flex-direction: column;
-    }
-
-    #editorCanvasContainer {
-        padding-inline: var(--mobile-dynamic-padding, 0px);
-        transition: padding 0.05s linear;
-        box-sizing: border-box;
+/* MOB4 (Fred: landscape phone side-by-side): the drawer's own TAB/BODY/
+   PANEL mechanics (below) are orientation-agnostic — a column of tabbed
+   content that scrolls, whether it's docked along the bottom (portrait,
+   ≤720px wide) or along the right edge (landscape phone: a coarse
+   pointer AND ≤500px tall — genuinely short, not just narrow, so a fine-
+   pointer desktop window is never caught by this regardless of its own
+   width). `min-width:721px` on the landscape half keeps the two
+   conditions from ever both matching the same viewport. Only each
+   orientation's OWN drawer POSITIONING + handle SHAPE differ — those stay
+   in their own narrower blocks below this one. */
+@media (max-width: 720px), (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+    /* Overrides the base `display:contents` — a real box, always column-
+       internally (tabs bar above the scrollable body) regardless of
+       whether the OUTER drawer itself is laid out as a column (portrait)
+       or a row (landscape, this wrapper sitting beside the vertical grip
+       instead of below the horizontal one). */
+    #editorDrawerContent {
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
+        min-width: 0;
         min-height: 0;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    #editorSVGContainer {
-        width: auto !important;
-        max-width: 100%;
-        margin: 0 auto;
-        flex: 1 1 auto;
-        min-height: 0;
-        height: auto;
-        min-width: 0 !important;
-    }
-
-    /* MOB3: the one bottom drawer, replacing SE7p/T24-T25/MOB2/MOB2b's own
-       separate "Lattice as its own collapsed bottom sheet" (the ▾
-       collapse toggle, its chevron, the 65vh cap) + "Layers squeezed into
-       a thin stacked strip" (the 30vh cap + margin-bottom clearance hack)
-       — both of THOSE mechanisms are gone, not left dead alongside this
-       one. #editorMobileDrawer (`display:contents` above, desktop) here
-       becomes the actual fixed, drag-resizable sheet; its OWN JS
-       (editor-drawer.js) sets the live `height` inline per drag/snap-
-       state, this rule supplies everything constant. */
-    #editorMobileDrawer {
-        display: flex;
-        flex-direction: column;
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        top: auto;
-        width: 100%;
-        background: #fdfdfd;
-        border-top: 1px solid var(--cad-border-standard);
-        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
-        z-index: 60;
-        transition: height 0.18s ease-out;
-    }
-    #editorMobileDrawer.is-dragging {
-        transition: none; /* live 1:1 pointer tracking while actually dragging — the transition is only for a SNAP after release/tap */
-    }
-
-    .editor-drawer-handle {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 28px;
-        cursor: grab;
-        touch-action: none; /* the handle owns vertical drag; don't let the browser also try to scroll/refresh on it */
-    }
-    .editor-drawer-handle:active {
-        cursor: grabbing;
-    }
-    .editor-drawer-grip {
-        width: 40px;
-        height: 4px;
-        border-radius: 999px;
-        background: #ccc;
     }
 
     .editor-drawer-tabs {
@@ -762,6 +714,84 @@
     .panel-widths-unlinked {
         grid-column: 1 / -1;
     }
+}
+
+/* =========================================================================
+   ===== Mobile: PORTRAIT-only (bottom drawer, narrow-width layout) =====
+   ========================================================================= */
+@media (max-width: 720px) {
+    #svgEditorModal .modal-window>div:nth-child(2) {
+        flex-direction: column;
+    }
+
+    #editorCanvasContainer {
+        padding-inline: var(--mobile-dynamic-padding, 0px);
+        transition: padding 0.05s linear;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    #editorSVGContainer {
+        width: auto !important;
+        max-width: 100%;
+        margin: 0 auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+        min-width: 0 !important;
+    }
+
+    /* MOB3: the one bottom drawer, replacing SE7p/T24-T25/MOB2/MOB2b's own
+       separate "Lattice as its own collapsed bottom sheet" (the ▾
+       collapse toggle, its chevron, the 65vh cap) + "Layers squeezed into
+       a thin stacked strip" (the 30vh cap + margin-bottom clearance hack)
+       — both of THOSE mechanisms are gone, not left dead alongside this
+       one. #editorMobileDrawer (`display:contents` above, desktop) here
+       becomes the actual fixed, drag-resizable sheet; its OWN JS
+       (editor-drawer.js) sets the live `height` inline per drag/snap-
+       state, this rule supplies everything constant. */
+    #editorMobileDrawer {
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        top: auto;
+        width: 100%;
+        background: #fdfdfd;
+        border-top: 1px solid var(--cad-border-standard);
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
+        z-index: 60;
+        transition: height 0.18s ease-out;
+    }
+    #editorMobileDrawer.is-dragging {
+        transition: none; /* live 1:1 pointer tracking while actually dragging — the transition is only for a SNAP after release/tap */
+    }
+
+    .editor-drawer-handle {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        cursor: grab;
+        touch-action: none; /* the handle owns vertical drag; don't let the browser also try to scroll/refresh on it */
+    }
+    .editor-drawer-handle:active {
+        cursor: grabbing;
+    }
+    .editor-drawer-grip {
+        width: 40px;
+        height: 4px;
+        border-radius: 999px;
+        background: #ccc;
+    }
 
     .editor-symbol-keyboard {
         position: relative !important;
@@ -813,6 +843,84 @@
     .editor-toolbar-top {
         padding: 8px 10px;
         gap: 8px;
+    }
+}
+
+/* =========================================================================
+   ===== Mobile: LANDSCAPE-only (side-by-side, coarse pointer + short) ====
+   MOB4 (Fred, real phone LANDSCAPE screenshot: the 3-column squeeze —
+   Lattice panel AND Layers panel both trying to render side-by-side with
+   the canvas, per turn 263's own fred-landscape-layerchip.png). A
+   landscape phone is `pointer:coarse` but WIDER than 720px, so none of
+   the portrait rules above ever applied to it; it fell straight through
+   to desktop's own two-simultaneous-220px-panels layout. This block gives
+   it its OWN third layout: canvas stays in its normal (row) flow on the
+   left, the SAME tabbed drawer used in portrait docks along the RIGHT
+   edge instead of the bottom, sized by a SECOND makeSplitter instance
+   (editor-drawer.js, axis:'width', its own sessionStorage key — rotating
+   between portrait and landscape keeps each their own remembered split,
+   never fighting over one value).
+   ========================================================================= */
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+    /* NOT position:fixed — a normal flex sibling in the SAME row
+       .cad-modal-body already lays .editor-sidebar/#editorCanvasContainer
+       out in (bspline_gen_palette.html's own `.cad-modal-body{display:
+       flex}`), exactly like desktop's own Lattice/Layers panels always
+       have been. #editorCanvasContainer's own pre-existing `flex:1`
+       (inline, unconditional) then shares the row correctly with zero
+       extra plumbing — true side-by-side "for free," not an overlay
+       needing a padding-right reservation the way position:fixed would.
+       A first attempt used position:fixed;top:0, which is ALWAYS
+       viewport-relative regardless of DOM nesting — it covered the
+       header (which isn't shortened in landscape the way portrait's is)
+       instead of starting below it; confirmed live via screenshot before
+       switching to this simpler approach. */
+    #editorMobileDrawer {
+        display: flex;
+        flex-direction: row; /* the vertical grip on the left edge, the tab/body column filling the rest */
+        flex-shrink: 0;
+        width: 280px; /* editor-drawer.js's own JS sets this live per drag/snap-state; this is only the pre-JS/no-JS fallback */
+        background: #fdfdfd;
+        border-left: 1px solid var(--cad-border-standard);
+        transition: width 0.18s ease-out;
+    }
+    #editorMobileDrawer.is-dragging {
+        transition: none;
+    }
+
+    /* The portrait handle (horizontal grip, vertical drag) is hidden in
+       favor of #editorDrawerHandleV (vertical grip, horizontal drag) —
+       two elements, not one CSS-rotated one, since their own touch-action
+       (pan-y-blocking vs pan-x-blocking) and cursor genuinely differ. */
+    .editor-drawer-handle {
+        display: none;
+    }
+    #editorDrawerHandleV {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        cursor: ew-resize;
+        touch-action: none; /* the handle owns horizontal drag; don't let the browser also try to pan/refresh on it */
+    }
+    #editorDrawerHandleV:active {
+        cursor: grabbing;
+    }
+    #editorDrawerHandleV .editor-drawer-grip {
+        width: 4px;
+        height: 40px;
+        border-radius: 999px;
+        background: #ccc;
+    }
+
+    /* The tabs/body column sits to the right of the vertical grip, still
+       stacked top-to-bottom internally (tabs bar, then the scrollable
+       panel body) — same shared rules from the block above, just laid out
+       as this drawer's second flex-row child instead of its only child. */
+    #editorDrawerBody {
+        flex: 1 1 auto;
+        min-width: 0;
     }
 }
 
@@ -1004,22 +1112,34 @@
 }
 .layers-add-btn:hover { background: #e7eefe; }
 
+/* MOB4 layer-row AMEND (Fred picked "C1 — soft segmented", reference
+   layerrowsC.html's .C1): a rounded, bordered card at ALL widths — the
+   old flat 28px list row + two big square 3D/palette buttons are
+   retired below in favor of one outlined segmented group. Same row in
+   the sidebar (#stampLayersList) and the editor's own Layers panel
+   (#editorLayersList) — no separate compact/coarse-pointer sizing
+   (removed the old @media (pointer:coarse) 44px block and the
+   min-width:721px narrow-panel shrink; the segmented group is compact
+   enough by construction that neither is needed any more). */
 .layer-row {
     display: flex;
     align-items: center;
-    gap: 4px;
-    height: 28px;
-    padding: 0 4px 0 2px;
-    border-radius: 3px;
+    gap: 6px;
+    height: 40px;
+    padding: 0 8px;
+    margin-bottom: 6px;
+    border: 1px solid #dde3ea;
+    border-radius: 10px;
+    background: #fff;
     cursor: pointer;
     user-select: none;
-    font-size: 11px;
-    color: #333;
+    font-size: 12px;
+    color: #222;
 }
 .layer-row:hover { background: #f3f3f3; }
 .layer-row.active {
-    background: #e0ecff;
-    outline: 1px solid #b6d0f5;
+    border-color: #8ab4f8;
+    background: #eef4ff;
 }
 .layer-row.dragging { opacity: 0.4; }
 .layer-row.drop-before { box-shadow: inset 0 2px 0 var(--cad-accent, #1e6fea); }
@@ -1036,127 +1156,72 @@
 }
 .layer-handle:active { cursor: grabbing; }
 
-.layer-visibility {
-    width: 22px;
-    height: 22px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: #555;
-    border-radius: 3px;
+/* MOB4 layer-row AMEND: the three toggles now live in ONE outlined
+   segmented group (layers.js's .layer-toggle-group), not three separate
+   square buttons — .layer-toggle-cell is the shared cell look; each
+   toggle keeps its own distinguishing class (.layer-visibility/
+   .layer-carve/.layer-showcolor) only for the on/off state + click
+   handler, per layers.js. */
+.layer-toggle-group {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    border: 1px solid #d7dbe2;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+.layer-toggle-cell {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-    padding: 0;
-}
-.layer-visibility:hover { background: #e6e6e6; }
-.layer-visibility.is-hidden { color: #c8c8c8; }
-.layer-visibility svg { width: 14px; height: 14px; }
-
-/* T27: carve (3D, fixed-glyph) / showColor (palette, SVG icon) — same
-   real-button shape as .layer-visibility above but distinguished by an
-   .active background tint rather than swapping the icon (there's no
-   natural "off" state for a 3D badge the way an eye has open/closed;
-   showColor is a single palette icon by design too — see _paletteSVG's
-   own comment). Both render in BOTH the sidebar and the editor's own
-   Layers panel. */
-.layer-carve, .layer-showcolor {
-    min-width: 20px;
-    height: 20px;
-    padding: 0 3px;
-    border: 1px solid transparent;
+    min-width: 24px;
+    padding: 0 6px;
+    border: none;
+    border-left: 1px solid #e3e6ea;
     background: transparent;
-    color: #999;
-    font-size: 9px;
+    color: #a0a5ad;
+    font-size: 10px;
     font-weight: 700;
     line-height: 1;
     cursor: pointer;
-    border-radius: 3px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
 }
-.layer-showcolor svg { width: 13px; height: 13px; }
-/* Fred: "3D and palette should have more obvious on/off states" — the
-   old pale tints read as the same pale box on or off. ON = solid fill +
-   white glyph; OFF = grey outline, faded glyph, diagonal slash (the
-   universal "disabled" mark, so off reads without comparing rows). */
-.layer-carve, .layer-showcolor {
-    color: #b0b0b0;
-    border-color: #d4d4d4;
-    background: linear-gradient(to top right, transparent calc(50% - 0.75px), #c4c4c4 calc(50% - 0.75px), #c4c4c4 calc(50% + 0.75px), transparent calc(50% + 0.75px));
+.layer-toggle-cell:first-child { border-left: none; }
+/* Enlarges the tap target vertically (to ~40px) without growing the
+   visible ~30px cell — extends into the row's own top/bottom padding,
+   never left/right, so adjacent cells' tap areas never overlap each
+   other (Fred: "overlapping hit areas are fine as long as they don't
+   overlap each other"). */
+.layer-toggle-cell::before {
+    content: '';
+    position: absolute;
+    top: -5px;
+    bottom: -5px;
+    left: 0;
+    right: 0;
 }
-.layer-carve:hover, .layer-showcolor:hover { border-color: #999; }
-.layer-carve.active     { color: #fff; background: #1f6fd1; border-color: #1f6fd1; }
-/* Fred: "palette should be a colored palette" — ON shows a real painter's
-   palette (tan board, four paint dots) on a white button; OFF stays the
-   grey outline + slash above. Classes come from layers.js's _paletteSVG. */
-.layer-showcolor.active { color: #7a5a2f; background: #fff; border-color: #b9a27f; }
+.layer-toggle-cell svg { width: 13px; height: 13px; }
+
+.layer-visibility.is-hidden { color: #a0a5ad; }
+.layer-visibility:not(.is-hidden) { color: #1f6fd1; background: #e8f0fe; }
+
+.layer-carve.active { color: #1f6fd1; background: #e8f0fe; }
+
+/* Fred: "palette should be a colored palette" — ON keeps its own real
+   painter's-palette colors (tan board, four paint dots; classes come
+   from layers.js's _paletteSVG) rather than turning flat blue like the
+   other two, plus the same light-blue cell tint. OFF can't just switch
+   `color` the way the plain currentColor eye/3D glyphs do, since the
+   on-state colors are hardcoded per-part fills — greyscale+fade mutes
+   them instead. */
+.layer-showcolor.active { background: #e8f0fe; }
 .layer-showcolor.active .pal-body { fill: #e9cfa3; }
 .layer-showcolor.active .pal-d1 { fill: #e53935; }
 .layer-showcolor.active .pal-d2 { fill: #fbc02d; }
 .layer-showcolor.active .pal-d3 { fill: #43a047; }
 .layer-showcolor.active .pal-d4 { fill: #1e88e5; }
-.layer-carve.active:hover     { background: #185bab; }
-.layer-showcolor.active:hover { background: #f6efe3; }
-/* 44px on coarse pointers is per-BUTTON, not compact-only (both toggles
-   render in both lists) — grow the row itself under (pointer:coarse) too,
-   editor panel included, so a 44px button actually fits instead of
-   clipping a still-28px row. */
-@media (pointer: coarse) {
-    .layer-row, .layer-row.compact { height: 44px; }
-    .layer-visibility, .layer-carve, .layer-showcolor {
-        min-width: 44px;
-        height: 44px;
-        font-size: 12px;
-    }
-    .layer-visibility svg { width: 20px; height: 20px; }
-    .layer-showcolor svg { width: 18px; height: 18px; }
-    /* T29: full names over truncation — on a coarse pointer (narrow
-       sidebar's usual companion) the tool summary drops to its own line
-       instead of squeezing the name into an ellipsis. Comes AFTER the
-       shared `height: 44px` line above so it wins on source order (same
-       selector, same specificity) rather than fighting it.
-       `order` (not a DOM move) pushes the tool summary visually PAST
-       .layer-delete, which sits after it in the actual markup — without
-       this, flex-wrap lays children out in DOM order, so forcing the
-       summary's flex-basis to 100% (claiming the whole second line)
-       would strand .layer-delete on its own THIRD line instead of
-       staying on the row's first line with the name (caught live via
-       CDP screenshot: delete's "x" rendered as stray debris above the
-       next row — not visible in a DOM-only check). */
-    .layer-row.compact { flex-wrap: wrap; height: auto; min-height: 44px; }
-    .layer-row.compact .layer-tool-summary { flex: 1 0 100%; order: 1; text-align: right; padding-top: 2px; }
-}
-
-/* MOB3b AMEND 2 (Fred, real phone LANDSCAPE — a coarse pointer, but wider
-   than the ≤720px drawer breakpoint, so this is the editor's OWN
-   (non-compact) 220px Layers panel, not the drawer's full-width Layers
-   tab): "the row's eye/3D/palette buttons stretch huge... the name is
-   squeezed to one letter." Confirmed live: three 44px toggles + the
-   handle + delete leave the name's own flex:1 basically nothing (measured
-   4px) in a 220px row. `min-width:721px` scopes this to exactly that
-   narrow-sidebar layout — the drawer's own Layers tab (≤720px) is
-   full-width there and 44px already fits fine (confirmed live, no dead
-   space), so this must NOT also shrink toggles in that wider context.
-   The shared 44px block above stays as-is for the compact stamp-sidebar
-   row too (AMEND 4/5's own reason for making 44px apply here doesn't hold
-   once the row itself is this narrow); `width` (not just `min-width`) so
-   nothing can grow past 32px on its own content either. */
-@media (pointer: coarse) and (min-width: 721px) {
-    #editorLayersPanel .layer-row {
-        gap: 3px;
-    }
-    #editorLayersPanel .layer-visibility,
-    #editorLayersPanel .layer-carve,
-    #editorLayersPanel .layer-showcolor {
-        width: 32px;
-        min-width: 32px;
-        height: 32px;
-    }
-}
+.layer-showcolor:not(.active) svg { filter: grayscale(1); opacity: 0.5; }
 
 /* MOB2 (Nodes checkboxes) / T49 (Border checkbox) originally grew these to
    32px with a `margin:-8px` trick to fake back the original 16px layout
@@ -1266,54 +1331,41 @@
     .layer-delete { visibility: visible; }
 }
 
-/* SE10: the sidebar's compact rows — a tap target that's honestly sized
-   on a real phone, per T16's own "44px rows on coarse pointers" rule
-   (the same signal SA-MOBILE-4's tool buttons already use — an imprecise
-   pointer is present, not a width guess). 36px on mouse/pen matches this
-   panel's other compact controls (dispatch's own examples: the stepper
-   rows, ~26-32px) closely enough to not look oversized there. The
-   pointer:coarse -> 44px override lives in the single consolidated rule
-   above (next to the 4 toggle buttons' own coarse-pointer sizing) since
-   AMEND 4/5 made it apply to the editor's own (non-compact) panel too,
-   not just compact rows. */
-.layer-row.compact { height: 36px; gap: 6px; }
+/* MOB4 layer-row AMEND: the row is now identical at ALL widths (no more
+   compact-only 36px height, or the old wrap-the-summary-to-its-own-line
+   trick — the tool summary lives INSIDE .layer-name now, so it just
+   ellipsis-truncates together with the name instead of wrapping). */
 
-/* T29: #stampLayersList (the sidebar list's own direct container) is a
-   query container on its inline axis so the narrow-sidebar wrap rule
-   below reacts to the SIDEBAR's actual rendered width — a plain
-   viewport @media query can't, since the sidebar column is user-
-   resizable (layout-app.css's --cad-sidebar-width, dragged via
-   .cad-resizer) and its width has no fixed relationship to the
-   viewport. Named so the query below is explicit about which ancestor
-   it's measuring rather than "whatever's nearest". */
-#stampLayersList { container-type: inline-size; container-name: layers-list; }
-
-@container layers-list (max-width: 360px) {
-    /* Same "tool summary drops to its own line" treatment as the
-       pointer:coarse block above, for a narrow sidebar on a FINE
-       pointer (mouse) too — the two conditions are independent ("360px
-       sidebar OR coarse pointer"), so this can't be folded into that
-       @media block; @media and @container are different at-rule kinds
-       and can't share one condition list. Same `order` fix as that block
-       too — see its own comment for why .layer-delete needs it. */
-    .layer-row.compact { flex-wrap: wrap; height: auto; min-height: 36px; }
-    .layer-row.compact .layer-tool-summary { flex: 1 0 100%; order: 1; text-align: right; padding-top: 2px; }
-}
-
-/* SE10: profile+depth read-out ("V .25"", "Ball .12"") — compact rows
-   only (editor/layers.js's _formatToolSummary), so a user picking a
-   layer in the sidebar (where the Plunge Depth / Tool Profile controls
-   aren't showing THIS layer's values until it's made active) sees what
-   it'll carve with before tapping it. SE10 AMEND: .not-carved dims it —
-   the tool spec still exists, it's just not currently cutting. */
+/* SE10: profile+depth read-out ("· V .25"", "· Ball .12""), inline right
+   after the name (editor/layers.js's _formatToolSummary) in BOTH the
+   sidebar and the editor's own Layers panel, so a user picking a layer
+   sees what it'll carve with before tapping it. SE10 AMEND: .not-carved
+   dims it — the tool spec still exists, it's just not currently cutting. */
 .layer-tool-summary {
-    flex-shrink: 0;
-    font-size: 10px;
-    color: #888;
-    padding: 0 2px;
-    white-space: nowrap;
+    color: #8a8f98;
+    font-weight: 400;
 }
 .layer-tool-summary.not-carved { opacity: 0.45; }
+
+/* MOB4 layer-row AMEND: at this app's actual DEFAULT column widths — the
+   sidebar's #stampLayersList (~207px) and the editor's own 220px Layers
+   panel — a single-line name + segmented group + inline summary leaves
+   too little room for the NAME itself (measured live: "Rails" truncated
+   to "Rail…"). Rather than reintroduce the old wrap-to-a-second-line
+   trick (which the "one line, at ALL widths" C1 spec explicitly drops),
+   drop the LEAST essential text first: hide the tool summary so the name
+   gets the full flex:1 ellipsis budget. Container query (not a viewport
+   @media) because the sidebar column is user-resizable
+   (layout-app.css's --cad-sidebar-width) and has no fixed relationship
+   to the viewport; unnamed/nearest-ancestor since both containers below
+   need the identical rule. Reappears automatically once either column is
+   wider than this (a resized sidebar, or a future wider editor panel). */
+#stampLayersList, .editor-layers-panel .layers-list {
+    container-type: inline-size;
+}
+@container (max-width: 260px) {
+    .layer-tool-summary { display: none; }
+}
 
 /* =========================================================================
    Layers Panel (right sidebar inside .cad-modal-body of the SVG editor)

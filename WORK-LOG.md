@@ -9141,3 +9141,225 @@ before/after contrast is real, not assumed.
   positive — both reproduced identically, so they stand.
 
 No amendments pending as of this pass.
+
+## Turn 267 — MOB4: landscape phone side-by-side (editor + main screen) + double-tap the handle — DONE
+
+No amendments landed mid-turn this time. Two dispatch items, both genuinely large: a THIRD responsive layout
+mode (landscape phone — coarse pointer, short) for BOTH the editor and the main screen, and a new gesture
+(double-tap) on the splitter mechanism shared by both.
+
+**Double-tap — declared once in splitter.js, every caller gets it for free.** `extremeSnap(px, snaps)` (pure,
+tested) picks whichever of the FIRST/LAST declared snaps `px` is currently farther from — a toggle between
+"canvas-max" and "settings-max", not a cycle. Wired into `makeSplitter`'s own tap handling: a single tap still
+applies its existing cycle immediately (the dispatch's own "single tap keeps its cycle" — no wait-and-see
+delay before committing to it), and a second tap within 350ms applies the extreme-jump instead. **A real bug
+caught by testing the ACTUAL gesture, not the math in isolation**: the first version also required the second
+tap to land within 40px of the first — reasonable-sounding, but wrong for exactly this feature, because a
+successful single-tap cycle MOVES the handle (that's the whole point), sometimes by 100-160px, before the
+second tap of an intended double-tap ever happens. A live test using the handle's OWN post-tap-1 position for
+tap 2 (matching how a user's finger — or a careful re-tap — actually finds a handle that just moved) reproduced
+this exactly: tap 2 landed on the handle (browser hit-testing confirmed it — pointerdown/up DID fire), but my
+own slop check then rejected it as "too far from tap 1" and it fell through to a plain third cycle-step
+instead. Fixed by dropping the position check entirely: the browser's own hit-testing already proved both taps
+landed on the handle wherever it currently is; a redundant coordinate check on top of that only ever rejects
+genuine double-taps on the splitters most likely to need the feature (ones whose handle moves a lot per tap).
+
+**Editor landscape — a real third layout, not a resize of the existing two.** New breakpoint,
+`@media (pointer:coarse) and (max-height:500px) and (min-width:721px)` — coarse pointer AND genuinely SHORT,
+regardless of width, so a landscape phone (typically 700-915px wide) is caught by height, not conflated with
+"narrow window" the way a width breakpoint would; `min-width:721px` keeps it mutually exclusive with portrait's
+own `max-width:720px`. Before this turn, a landscape phone matched NEITHER breakpoint and fell straight through
+to desktop's own layout — showing the box Lattice panel AND the Layers panel simultaneously, each 220px, next
+to a canvas squeezed to ~360px (this turn's own dispatch cites turn 263's `fred-landscape-layerchip.png` as the
+evidence). Reused the SAME tabbed-drawer mechanism portrait already has (one panel at a time — Lattice/Shape
+Lattice OR Layers, never both) rather than inventing a second one, which is also what makes "Layers becomes the
+drawer's second tab here too" true for free, no extra code. Restructured the drawer's own markup once to
+support BOTH orientations sharing it: wrapped tabs+body in a new `#editorDrawerContent` (always
+`display:flex;flex-direction:column` internally, regardless of whether the OUTER drawer itself is a column
+(portrait) or a row (landscape)), and added a SEPARATE vertical grip (`#editorDrawerHandleV`) rather than
+CSS-rotating the existing horizontal one — their own touch-action (blocks pan-y vs pan-x) and cursor genuinely
+differ, not just their visual orientation.
+
+**Two real bugs found only by taking a screenshot and looking, not by reading the CSS**:
+1. First attempt positioned the landscape drawer with `position:fixed;top:0;bottom:0;right:0` (mirroring
+   portrait's own `position:fixed` bottom-sheet shape) — this covers the HEADER, because `position:fixed` is
+   ALWAYS viewport-relative regardless of DOM nesting, and the header isn't shortened in landscape the way
+   it is in portrait. Confirmed via screenshot (Download SVG/Clear/part of the Style toggle rendered UNDER the
+   drawer). Fixed by dropping `position:fixed` entirely — `#editorMobileDrawer` is already a normal DOM sibling
+   of `#editorCanvasContainer`/`.editor-sidebar` inside `.cad-modal-body`'s own existing flex ROW (the same row
+   desktop's Lattice/Layers panels have always used) — making it a normal (non-fixed) flex child with an
+   explicit `width` gets true side-by-side "for free" via #editorCanvasContainer's own pre-existing `flex:1`,
+   no separate CSS-var/padding-reservation hack needed (an earlier version of this fix used exactly that hack;
+   deleted once the simpler approach was found).
+2. Rotating portrait <-> landscape left STALE inline dimensions: the portrait splitter's own `height` and the
+   landscape splitter's own `width` are BOTH set via inline style on the SAME `#editorMobileDrawer`, and
+   INLINE styles beat an external stylesheet rule with no `!important` regardless of specificity — so
+   portrait's own `width:100%` (no `!important`) would LOSE to a stale inline `width:220px` left over from a
+   landscape session, and landscape's own flex-row sizing would be corrupted by a stale inline `height` from
+   portrait. Fixed by having each splitter's own `onApply` clear the OTHER axis's inline value the moment IT
+   is the one actually driving the drawer's size — confirmed live via an explicit rotate-away-and-back test
+   (portrait height/width both correct after rotating in, landscape width correctly restored — not stale —
+   after rotating back out).
+
+**Main screen landscape — SAME side-by-side ask, a genuinely different (grid, not flex) layout underneath.**
+`.cad-main-content` is a 3-column CSS GRID with sidebar/resizer/viewport EXPLICITLY placed
+(`grid-column:1/2/3` on each, not auto-placed) — first attempt used `order` to swap visual position, reasoning
+that a reversed `grid-template-columns` alone would put the wrong-sized track under the wrong content.
+**That reasoning was right but incomplete — `order` doesn't do anything AT ALL here**: it only affects grid
+AUTO-placement, and these items have explicit placement, confirmed live (computed `grid-column` stayed 1/2/3
+regardless of `order`, while the MEASURED pixel rects looked scrambled — reading the rects, not just the
+`order` values, is what actually surfaced this). Fixed by overriding `grid-column` explicitly (viewport:1,
+resizer:2, sidebar:3) together with the same reversed-track-sizes idea. A THIRD `makeSplitter` instance
+(`main/mobile-resizer.js`, reusing the editor drawer's own declared canvasMax/half/settingsMax width fractions
+via a cross-tree import — same established precedent as `main/global-events.js` importing from
+`../editor/dom.js` — rather than a second copy of the same shape) drives `--cad-sidebar-width` for this
+condition specifically, with REVERSED math from the desktop/inline-script's own `newWidth = x` (sidebar now on
+the right, so `sidebarWidth = innerWidth - clientX`) — caught this sign-flip requirement by reasoning through
+the reorder's own consequences BEFORE writing the drag code, not by shipping the old formula and finding it
+backwards live. The classic inline resizer script's own `start()` now also cedes this handle for the landscape
+condition (it already ceded for portrait), same shape as the existing cession.
+
+**Verify:**
+- `tests/splitter.test.js`: 5 new `extremeSnap` cases (toward each extreme, the exact-middle tie-break,
+  a single-snap list, an empty list). `tests/editor-drawer.test.js`: 5 new `landscapeWidthPx`/
+  `LANDSCAPE_SNAP_STATES` cases, mirroring `drawerHeightPx`'s own existing shape for the new axis.
+  `npx vitest run` -> **998 passed**.
+- Live (headless Chrome via CDP, hard-reloaded with cache ignored, fresh browser profile for the final pass) at
+  both 844x390 and 915x412: editor — vertical-handle drag grows/shrinks the drawer, double-tap jumps to the
+  opposite extreme, a real touch swipe scrolls the panel body, the Layers tab switches correctly (Lattice panel
+  hidden), a full rotate-to-portrait-and-back round trip restores the landscape width exactly and leaves no
+  stale height; main screen — the SAME drag/double-tap checks against `--cad-sidebar-width`, confirming the
+  reversed math. Portrait (`scripts/smoke-mob3-drawer.mjs`/`smoke-mob3-mobile-resizer.mjs`, mobile mode) and
+  desktop (both scripts, desktop mode) re-run clean on the same fresh profile — zero regression from any of
+  this turn's changes.
+
+**Skipped, flagged rather than built**: extending `_makeSectionsCollapsible`'s section-collapse mechanism (or
+any other MOB5-era compact-row treatment) to anything beyond what MOB5 already covers — landscape reuses those
+mechanisms as-is (both already gated on a combined portrait-or-landscape media query from this turn's own
+CSS restructuring), nothing new needed there. Also did not port the main screen's DESKTOP (mouse) resize path
+to `makeSplitter` — only the NEW landscape-phone condition — matching the same "declare a candidate shape,
+don't rebuild what already works" restraint the editor's own portrait splitter has kept since MOB3.
+
+Correction to the line above ("no amendments landed mid-turn"): that was true when this entry was first
+drafted. Three amendments landed in the mailbox in the gap between finishing the write-up and polling one
+last time before committing — see the entry directly below. Nothing in the landscape/double-tap work above
+changed as a result; it's documented here exactly as built and verified.
+
+## Turn 267 AMEND — layer-row "C1 — soft segmented" redesign — DONE
+
+Three amendments arrived back-to-back after the landscape/double-tap work above was already complete and
+verified, each superseding the last:
+1. Fred, main-screen sidebar Layers, real phone: "the layer chip should be smaller in height" (screenshot
+   `fred-layerrow-tall.png` — a ~48px row plus a separate tool-summary line).
+2. HOLD the visual restyle — do landscape + double-tap first (done above); keep only the height-reduction
+   *mechanics* ready (inline tool summary, invisible enlarged hit areas), no final look yet.
+3. **Fred picked "C1 — soft segmented"** (reference mock `layerrowsC.png`/`layerrowsC.html`, class `.C1`,
+   alongside two mocks he didn't pick — `.C2` solid chips, `.C3` ghost icons). Full spec: ~40px rounded card;
+   grip, then NAME first (flex:1, ellipsis) with the tool summary inline after it in grey ("Layer 1 · V .25\"");
+   one outlined segmented group `[👁|3D|🎨]` on the right with thin dividers (on = light-blue tint + blue glyph,
+   off = grey glyph, palette greyscale+faded when off); each segmented cell ≥40px tap area via padding/`::before`,
+   visible cell ~30px; then the delete ×. **At ALL widths** — desktop and phone share one look — retiring the
+   old big square 3D/palette buttons and their now-dead CSS.
+
+Amendment 3 is the authoritative, final spec (mocks are the ground truth to copy, not just prose), and it
+explicitly reverses amendment 2's "hold" ("Use it... at ALL widths"), so this turn implements amendment 3 in
+full — not a mobile-only mechanics stub.
+
+**One row, one place it's built.** `editor/layers.js`'s `_makeLayerRow` is the single renderer for both
+`#stampLayersList` (main sidebar) and `#editorLayersList` (the SVG editor's own Layers panel) — SE10/T26's
+existing design already made this a non-issue; there was never a second copy to keep in sync. Changed:
+- The three toggles (`vis`/`carveBtn`/`colorBtn`) now share a `.layer-toggle-cell` class and live inside one
+  `.layer-toggle-group` wrapper, appended AFTER `.layer-name` instead of before it (T27's old left-of-name
+  order is gone — grip, name, group, delete).
+- The tool summary (`_formatToolSummary`, unchanged) is no longer gated on `compact` — it's built
+  unconditionally now and appended as a child of `.layer-name` itself (" · V .25\""), so the whole
+  name+summary string ellipsis-truncates as ONE unit instead of the summary being a separate flex item that
+  used to wrap to its own line under `pointer:coarse`/a narrow `@container`. `compact` still exists as a
+  parameter/class (empty-state copy, call-site identification in tests) but no longer changes the row's own
+  look — matching "desktop and phone match" literally, not just visually similarly.
+- On/off state: eye reuses the EXISTING `.is-hidden` class (no new redundant flag — `:not(.is-hidden)` IS the
+  "on" CSS hook); carve/showColor keep their existing `.active` class exactly as T27 wired it. Only the CSS
+  treatment behind those classes changed.
+- Palette's on-state deliberately KEEPS its existing colorful rendering (tan board + 4 painted dots,
+  `.layer-showcolor.active .pal-*`, unchanged from T27) rather than turning flat blue like the other two —
+  re-reading the spec's own wording, calling out "palette icon greyscale+faded when off" as a SEPARATE case
+  only makes sense if the on-state keeps its own hardcoded colors (a plain `color` swap the way eye/3D do
+  can't grey out per-part hardcoded fills, which is exactly why the off-state needs a `filter:grayscale(1)`
+  instead of a color change). Preserves Fred's earlier, still-standing "palette should be a colored palette"
+  ask (T27) rather than silently overriding it.
+
+**CSS retirement (editor.css)**: removed entirely — the old 28px flat row, the old ~20-22px square
+carve/showColor buttons and their diagonal-slash-off / tan-brown-on treatment for carve, the
+`@media (pointer:coarse){ 44px row/button bump + .compact wrap-to-own-line + order:1 }` block, the
+`min-width:721px` narrow-editor-panel 32px button shrink (MOB3b AMEND 2), `.layer-row.compact{height:36px}`,
+and the `#stampLayersList` `@container layers-list (max-width:360px)` wrap rule (plus its now-pointless
+`container-name`). Swept first for other consumers of `.layer-carve`/`.layer-showcolor`/`.layer-row.compact`
+sizing (grepped the repo) — none exist outside this file and `editor/layers.js` itself, so nothing was left
+half-connected.
+
+**New CSS**: `.layer-row` (40px, `border:1px solid #dde3ea`, `border-radius:10px`, `background:#fff`,
+`margin-bottom:6px`, active = `border-color:#8ab4f8;background:#eef4ff`) and `.layer-toggle-group`/
+`.layer-toggle-cell` (outlined group, thin `border-left` dividers, on = `background:#e8f0fe` + blue glyph,
+off = grey). Each cell's `::before{top:-5px;bottom:-5px;left:0;right:0}` grows the tap area vertically only
+(into the row's own top/bottom padding, never sideways) — confirmed this can't make adjacent cells' hit areas
+overlap EACH OTHER (Fred's own stated constraint from amendment 1) since neighboring cells occupy disjoint
+x-ranges regardless of how far either extends vertically.
+
+**Bug found and fixed live, not on paper**: the literal spec (single-line name+summary, segmented group, at
+ALL widths) truncated real layer names badly at this app's actual DEFAULT column widths — measured live,
+`#stampLayersList` renders at ~183-207px and the editor's own `.editor-layers-panel .layers-list` at ~183-191px
+(not the 220px the panel's outer box suggests — inner padding eats the rest), and the segmented group alone
+(~79px, tightened down from an initial ~94px by shrinking cell padding 8px->6px and row gaps 8px->6px) plus
+handle+delete+padding left as little as ~36px for the name — "Rails" truncated to "Rail…", worse than before.
+The C1 spec's own reference mock was built at 362px, comfortably wide; this app's real sidebar/panel are not.
+Rather than reintroduce the old wrap-to-a-second-line trick (which the spec's "one line, at ALL widths"
+wording explicitly retires), re-added a narrower, single-purpose container query: `#stampLayersList` and
+`.editor-layers-panel .layers-list` get `container-type:inline-size`, and `@container (max-width:260px){
+.layer-tool-summary{display:none} }` — drops the LEAST essential text (the tool summary) first so the name
+keeps the full `flex:1` ellipsis budget, reappearing automatically once either column is wider than that
+(a resized sidebar, or a future wider panel). Verified live: sidebar names ("Border"/"Rails"/"Layer 1") render
+in full with the container query on; without it (reverted locally to check) they truncated to 1-3 characters
+each — confirms the query is load-bearing, not decorative.
+
+**Residual, flagged rather than chased further**: even with the summary hidden, the editor's own 220px
+Layers panel still only leaves ~36px for the bare name (confirmed live: `.layer-name` computed width 35.875px
+in a 183px-wide row) — enough for a short name like "Layer 1"/"Rails"/"Border" to render mostly intact but
+still ellipsis a couple of characters early, and a longer name (e.g. "Outline Detail") will still truncate
+hard. This is NOT new: the pre-existing `MOB3b AMEND 2` comment already documented this exact panel getting
+"squeezed to one letter" under the OLD button design too (that fix only covered a `pointer:coarse` special
+case, not plain desktop/mouse). The new segmented group costs a little more width (~79px) than the old
+default-sized square buttons did on a fine pointer (~62px), so this narrows the name budget further rather
+than fixing the pre-existing issue. Didn't chase this further this turn — shrinking the segmented cells more
+would cut directly against amendment 1's own explicit ask for a real ≥40px tap target, and the dispatch's own
+instruction was the C1 look "at ALL widths," not a guarantee against ellipsis on this app's narrowest column.
+Flagging for Fred/advisor: if this 220px editor panel width is worth revisiting, that's a separate,
+pre-existing sizing decision, not a regression introduced by this redesign.
+
+**Verify:**
+- `tests/editor-layer-list.test.js`: rewrote the one test that encoded the OLD compact-only tool-summary
+  behavior (`'compact:true adds... compact:false... has neither'`) into
+  `'renders a "· <tool>" summary inline after the name in BOTH compact and non-compact rows'` — reflects the
+  actual new behavior rather than leaving a stale assertion accidentally still green. All other existing
+  tests in this file (carve/showColor `.active`+`aria-pressed`, eye `.is-hidden`, both-lists-agree, the
+  `isCarved`/`isExported`/`showsColor` truth table, `applyLayerState`'s `.layer-no-color`) needed NO changes —
+  they query by the same class names / behavior, which the redesign deliberately preserved. `npx vitest run
+  tests/editor-layer-list.test.js` -> 28/28 passed.
+- Full suite: `npx vitest run` -> **1006 passed** (up from 998 — the 5 splitter + 5 landscape-width tests from
+  the landscape/double-tap half of this turn, still all green).
+- Live (headless Chrome via CDP, hard-reloaded with cache ignored): injected 3 layers with deliberately mixed
+  states (Layer 1: all on + active; Rails: carve off + color off; Border: hidden/eye off) through the real
+  `addLayer`/`setActiveLayer` API (not a DOM mock), then screenshotted —
+  - Phone (390x844): `#stampLayersList` (main sidebar, Vector Stamping panel expanded) and the editor's own
+    Layers tab (portrait drawer) both show the full C1 look — rounded cards, blue-tinted active row, inline
+    " · V .25\"" summaries, segmented on/off states including the palette's colorful-vs-greyscale distinction.
+  - Desktop (1400x900): same 3 layers in both `#stampLayersList` and `.editor-layers-panel`'s Layers list —
+    confirmed desktop and phone render an IDENTICAL row treatment (no separate mobile-only styling survived),
+    and confirmed the narrow-width container-query fallback engages correctly (summary hidden, names legible)
+    at this app's real default column widths.
+  - Confirmed via a mid-verify discovery: opening the SVG editor modal RECONCILES `editor._layers` from the
+    live SVG/sketch content, discarding directly-injected mock layers set before the modal opened — the test
+    script re-injects the mock roster a second time AFTER opening the editor, which is what actually let the
+    editor-panel screenshots show the 3-layer mixed-state roster instead of just the reconciled default
+    "Layer 1".
+
+No further amendments as of this pass (polled immediately before this commit).

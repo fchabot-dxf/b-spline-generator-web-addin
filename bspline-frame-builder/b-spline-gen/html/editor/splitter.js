@@ -22,6 +22,7 @@ import { on } from './dom.js';
 import { INPUT_PROFILE, inputProfileFor } from './editor-input.js';
 
 const DEFAULT_SNAP_DISTANCE_PX = 24;
+const DOUBLE_TAP_MS = 350;
 
 function clamp(value, lo, hi) {
   return Math.max(lo, Math.min(hi, value));
@@ -47,6 +48,23 @@ export function nextSnap(px, snaps) {
   const near = nearestSnap(px, snaps);
   const idx = near ? snaps.findIndex((s) => s.name === near.name) : -1;
   return snaps[(idx + 1 + snaps.length) % snaps.length];
+}
+
+/** Pure: MOB4's double-tap ("jump canvas-max <-> settings-max") — whichever
+ *  of the FIRST/LAST declared snaps `px` is currently FARTHER from (a
+ *  toggle, not a cycle: tapping twice near one extreme jumps to the
+ *  other, tapping twice near the middle goes to whichever extreme is
+ *  slightly farther). Declared snap ORDER matters here — the smallest
+ *  (canvas-max: peek, or a landscape panel's own narrowest) must be
+ *  first, the largest (settings-max: full, or the widest) last, same
+ *  ascending convention every caller's own `snaps()` already follows for
+ *  nextSnap's cycle. An empty list resolves to null; a single-snap list
+ *  resolves to that one snap (both "extremes" are the same point). */
+export function extremeSnap(px, snaps) {
+  if (!snaps.length) return null;
+  const first = snaps[0];
+  const last = snaps[snaps.length - 1];
+  return Math.abs(first.px - px) <= Math.abs(last.px - px) ? last : first;
 }
 
 /**
@@ -140,6 +158,22 @@ export function makeSplitter(target, {
   let dragStartCoord = null;
   let dragStartSize = 0;
   let moved = false;
+  // MOB4: double-tap ("jump canvas-max <-> settings-max") is recognized
+  // ACROSS two separate tap gestures, not within one — the first tap of a
+  // pair still applies its OWN normal single-tap cycle immediately (per
+  // the dispatch's own "single tap keeps its cycle": no wait-and-see
+  // delay), and a second tap landing soon after ALSO applies (overriding
+  // what a plain third cycle-step would have done). TIME only, no
+  // position-slop check: the browser's own hit-testing already confirmed
+  // BOTH taps landed on `handle` before either pointerdown/pointerup ever
+  // reached this code, so there's nothing left for a coordinate check to
+  // usefully add — and this handle moves BY DESIGN on every single tap
+  // (that's the cycle), often by more than any fixed slop would tolerate
+  // (confirmed live: a real tap-then-tap-again sequence on this file's
+  // own landscape width splitter shifted the handle 160px between taps).
+  // A slop check here would reject genuine double-taps on exactly the
+  // splitters most likely to need one.
+  let lastTapAt = 0;
 
   function onPointerDown(e) {
     if (!enabled()) return;
@@ -163,9 +197,19 @@ export function makeSplitter(target, {
       const raw = doReadSize();
       const near = nearestSnap(raw, snaps());
       apply(near && Math.abs(near.px - raw) <= snapDistance ? near.px : raw);
+      lastTapAt = 0; // a real drag never counts as a tap for double-tap purposes
     } else {
-      const next = nextSnap(doReadSize(), snaps());
-      if (next) apply(next.px);
+      const now = Date.now();
+      const isDoubleTap = lastTapAt > 0 && (now - lastTapAt) <= DOUBLE_TAP_MS;
+      if (isDoubleTap) {
+        const extreme = extremeSnap(doReadSize(), snaps());
+        if (extreme) apply(extreme.px);
+        lastTapAt = 0; // consumed — a third quick tap starts a fresh pair
+      } else {
+        const next = nextSnap(doReadSize(), snaps());
+        if (next) apply(next.px);
+        lastTapAt = now;
+      }
     }
     dragStartCoord = null;
   }

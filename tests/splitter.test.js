@@ -6,7 +6,7 @@
  * instead, same split as editor-drawer.test.js's own drawerHeightPx.
  */
 import { describe, it, expect } from 'vitest';
-import { nearestSnap, nextSnap } from '../bspline-frame-builder/b-spline-gen/html/editor/splitter.js';
+import { nearestSnap, nextSnap, extremeSnap } from '../bspline-frame-builder/b-spline-gen/html/editor/splitter.js';
 
 const SNAPS = [
   { name: 'peek', px: 96 },
@@ -50,5 +50,30 @@ describe('nextSnap', () => {
 
   it('an empty snap list resolves to null rather than throwing', () => {
     expect(nextSnap(400, [])).toBeNull();
+  });
+});
+
+describe('extremeSnap', () => {
+  it('MOB4 double-tap: near canvas-max (first) jumps to settings-max (last)', () => {
+    expect(extremeSnap(96, SNAPS)).toEqual(SNAPS[2]);
+    expect(extremeSnap(150, SNAPS)).toEqual(SNAPS[2]);
+  });
+
+  it('near settings-max (last) jumps to canvas-max (first)', () => {
+    expect(extremeSnap(743, SNAPS)).toEqual(SNAPS[0]);
+    expect(extremeSnap(700, SNAPS)).toEqual(SNAPS[0]);
+  });
+
+  it('exactly in the middle resolves to whichever is checked first — deterministic, not incidental', () => {
+    const middle = (SNAPS[0].px + SNAPS[2].px) / 2;
+    expect(extremeSnap(middle, SNAPS)).toEqual(SNAPS[2]);
+  });
+
+  it('a single-snap list resolves to that one snap — both "extremes" are the same point', () => {
+    expect(extremeSnap(500, [SNAPS[1]])).toEqual(SNAPS[1]);
+  });
+
+  it('an empty snap list resolves to null rather than throwing', () => {
+    expect(extremeSnap(400, [])).toBeNull();
   });
 });

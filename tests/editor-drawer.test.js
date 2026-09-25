@@ -15,6 +15,8 @@ import {
   DRAWER_SNAP_STATES,
   TOOL_PANELS,
   drawerHeightPx,
+  LANDSCAPE_SNAP_STATES,
+  landscapeWidthPx,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-drawer.js';
 
 describe('DRAWER_SNAP_STATES / TOOL_PANELS (declared tables)', () => {
@@ -46,5 +48,29 @@ describe('drawerHeightPx', () => {
 
   it('an unrecognized state falls back to the peek floor', () => {
     expect(drawerHeightPx('bogus', 800)).toBe(96);
+  });
+});
+
+describe('MOB4: LANDSCAPE_SNAP_STATES / landscapeWidthPx (the side-column splitter)', () => {
+  it('declares exactly the three width snaps, in canvasMax -> half -> settingsMax order', () => {
+    expect(LANDSCAPE_SNAP_STATES).toEqual(['canvasMax', 'half', 'settingsMax']);
+  });
+
+  it('canvasMax is a fixed 220px, independent of viewport width', () => {
+    expect(landscapeWidthPx('canvasMax', 844)).toBe(220);
+    expect(landscapeWidthPx('canvasMax', 915)).toBe(220);
+  });
+
+  it('half is 38% of the viewport width', () => {
+    expect(landscapeWidthPx('half', 800)).toBe(304);
+  });
+
+  it('settingsMax is 45% of the viewport width — under half the screen, canvas always keeps the majority', () => {
+    expect(landscapeWidthPx('settingsMax', 1000)).toBe(450);
+    expect(landscapeWidthPx('settingsMax', 1000)).toBeLessThan(500);
+  });
+
+  it('an unrecognized state falls back to the canvasMax floor', () => {
+    expect(landscapeWidthPx('bogus', 800)).toBe(220);
   });
 });
