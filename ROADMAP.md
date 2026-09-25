@@ -774,3 +774,5 @@ Outline/inlay geometry: offsets of the constrained centerlines where feasible. A
   (+ border_width for the shape border); a piece with its own width gets its own dimension. Round caps = half-circle
   arcs tangent to the offsets, centred on the centerline ends. Verify in Fusion how the offset constraint scales to
   hundreds of pieces; fallback = per-piece width dimension driven by the same parameter.
+- Fred: "no length needed though" → NO length/position dimensions on rails/ties/nodes; only WIDTH (offset) dimensions
+  + the few shape params. Lengths/positions stay free (relationship constraints only).
