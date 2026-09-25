@@ -1,31 +1,24 @@
-# NEXT (lane-b) — T56: lattice density by COUNT — 6–7 rails, 8–10 ties that BRIDGE rails (Fred)
+# NEXT (lane-b) — T57: spread ties across the width, then SE14 Slice 3 (the Shape Lattice tool)
 
-**Ball: worker (seat B) · epoch 2 · T56.** NO FUSION. T55 reviewed + merged (874 green; your render viewed —
-hourglass tangent + inward waist, bottle S-shoulder: good, sent to Fred).
+**Ball: worker (seat B) · epoch 2 · T57.** NO FUSION. T56 merged (counts right in your t56-density.png).
 
-## Fred: "your usual lattice is much denser than what I need" → "I want 6-7 rails and 8-10 ties"
-Advisor measured on the default 7x9 board (6 seeds each): rails.every=2 → 17 rails; every=5 → 7 rails (stable).
-Ties by DENSITY are unusable for a target: density 0.4 → 9..17 ties, 0.3 → 3..13, 0.25 → 4..8 — and ties are STUBS
-(spanMin/Max 1–3 grid cells = 0.25–0.75") that don't reach the next rail once rails are 1.25" apart.
-Render: C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e\scratchpad\dens2\density-options.png
+## 1. Ties clump (advisor, your own t56-density.png)
+Seed 42: all 8 ties in the LEFT half; seed 7: most on the left. Counts are right, distribution isn't. Spread them:
+stratify the chosen tie count over equal-width column zones (one tie per zone, seeded position inside the zone,
+rail-gap chosen seeded), zones wrap if count > zones. Declared (ties.spread: 'stratified' default | 'random').
+Test: 50 seeds → no half of the board holds more than ~65% of the ties; re-render the same 3 seeds and VIEW.
 
-## Do (declare the intent, don't tune a probability)
-- `rails.count: [6,7]` (seeded pick in range) → rails evenly distributed across the extent's rows (snapped to grid
-  rows); `rails.every` stays as an alternative mode (declare `rails.mode: 'count' | 'every'`, default 'count').
-- `ties.count: [8,10]` (seeded pick in range) → exactly that many ties placed on distinct columns across the rail
-  gaps; each tie BRIDGES adjacent rails by default (`ties.span: { rails: 1 }` = from one rail to the next; optionally
-  up to 2 gaps via a declared `maxRailGaps`), ends ON the rails (nodes at both ends as today). Density stays as the
-  alternative mode (`ties.mode: 'count' | 'density'`, default 'count'). Avoid two ties in the same column+gap; spread
-  them (seeded, no clustering heuristics beyond "distinct slots").
-- Works in both orientations, Board mode and SE13 boundary mode (count applies to the rows/columns that exist inside
-  the boundary; if fewer slots than the count, place what fits).
-- Panel: Rails "count 6–7" (two small steppers or a min/max pair) replacing "every" when mode=count; Ties "count 8–10"
-  likewise; a small mode toggle to get the old controls back. Defaults change for NEW layers; an existing layer's
-  saved pattern keeps its own values (no silent re-density).
-## Verify
-vitest: 50 seeds → rails ∈ [6,7], ties ∈ [8,10], every tie's ends lie on two rails; both orientations; boundary mode
-places ≤ count. Render the same 3×3 sheet as the advisor's (7x9, 3 seeds) and VIEW it; save as t56-density.png.
+## 2. Then SE14 §10 Slice 3 — the Shape Lattice TOOL, per the design + its recorded decisions
+Own rail icon + TOOL_PANELS entry (drawer tab on phones); Shape section: preset [Hourglass | Bottle] + 🎲 + the
+preset's own sliders; per-side-segment style (straight | curve | kink) picked from a list or by tapping; AXIS-LOCKED
+PARAMETRIC HANDLES on the canvas for the preset's independent params (design "Slice 3 editing model"); Fill section =
+the box Lattice's own controls (counts from T56, Widths, Colors, Ending, Border); Generate. The box `#` Lattice loses
+its Boundary row; old boundary layers are handed to Shape Lattice (settings kept). Detach on hand node-edit
+(recompute-and-compare). Output = ordinary path + fill.
+Verify live (CDP): pick Hourglass → generate → screenshot desktop + 390x844 drawer; drag the waist handle → stays
+tangent (sampled tangent-continuity check on the live path); switch a segment to kink → screenshot; hand node-edit →
+detached; Outline export of the filled layer → no new decline kinds. VIEW every screenshot.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T56: density by count — <sha>, vitest N, render"`
-and stop.
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T57: tie spread + Shape Lattice tool — <sha>, vitest N, screenshots"`
+and stop. If slice 3 can't finish cleanly in this turn, commit part 1 + what's solid of slice 3 and pass with a note.
