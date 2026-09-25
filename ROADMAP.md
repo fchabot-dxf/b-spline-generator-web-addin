@@ -727,3 +727,12 @@ Add-in deployed 3a99ef8 (bridge back after reboot).
 - **SE7i spec settled with Fred (2026-09-24):** one 'Lattice' layer, active after Generate; connected editing in the
   Lattice tool (drag a rail → ties change LENGTH not width, nodes follow; ties slide along rails; attachments derived
   at drag start); widths default = Widths row pending Fred. Task text staged; dispatch after SE7h.
+
+## Queued — MOB2: mobile pass on today's features (Fred 2026-09-24: "make sure it's mobile friendly and deploy to cloudflare")
+Live pages.dev check at 390x844 touch (advisor, after c932646): lattice Generate/pinch/touch actions work. Found:
+- undo/redo floating pill sits ON TOP of the editor's Layers panel header (covers "LAYERS" + its add button);
+- editor header overflows: Cancel clipped, **Apply Stencils off-screen** (the one commit action);
+- editor Layers panel squeezed into a thin strip between canvas and the Pattern sheet;
+- unverified on phone yet: sidebar layer row toggles (3D/palette), Fusion geometry picker, Pattern panel Widths row
+  (desktop shot shows Widths overflowing its column: "Nc" clipped at right), rail-end checkbox.
+Next seat-A task after SE7j. Browser proof at 390x844 and 768x1024, before/after screenshots.
