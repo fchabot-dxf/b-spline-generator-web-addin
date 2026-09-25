@@ -221,6 +221,17 @@
     .editor-history {
         bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px));
     }
+    /* MOB3b: at the drawer's full height the canvas area this pill floats
+       in has shrunk to nothing (or less), and the bottom:calc() above has
+       no way to know that — it just keeps lifting the pill, landing it on
+       top of the STROKE toolbar row instead of floating above the drawer.
+       editor.js's own ResizeObserver toggles this class once there's no
+       longer room for the pill between the toolbar and the drawer's top
+       edge; simpler than docking it into the drawer header, and it comes
+       back the instant the drawer shrinks again. */
+    .editor-history.editor-history-no-room {
+        display: none;
+    }
 }
 
 /* Top View Canvas Scaling */
@@ -472,11 +483,21 @@
    with no box of their own, #editorLatticePanel/#editorLayersPanel stay
    direct flex children of .cad-modal-body exactly as if this wrapper
    didn't exist at all. Only the mobile breakpoint (below) gives
-   #editorMobileDrawer a REAL box (position:fixed, a height, etc.) — at
-   that point #editorDrawerBody stays `display:contents` throughout (its
-   OWN children just need to fill whatever box the drawer now has), which
-   is why only ONE of the two ever needs the override. The handle/tabs
-   bar are plain `.hidden`-style until that same breakpoint shows them. */
+   #editorMobileDrawer a REAL box (position:fixed, a height, etc.) AND
+   gives #editorDrawerBody its OWN real box too (a `#editorDrawerBody`
+   override there, same specificity as this rule but later in the
+   cascade) — it's the one true scroll container so a swipe on the panel
+   content scrolls it while the handle/tabs bar stays fixed above it.
+   MOB3b bug (Fred, real phone: "I can't scroll the settings" — CDP's
+   synthetic touch never caught it): the mobile override used to be
+   `.editor-drawer-body` (a CLASS selector), which LOSES to this base
+   rule's ID selector regardless of source order — #editorDrawerBody
+   silently stayed `display:contents` on mobile too, so its declared
+   `overflow-y:auto` was dead from MOB3's very first commit; content
+   just spilled past the drawer's fixed box with no scroll mechanism at
+   all. Fixed by giving the mobile override the SAME `#editorDrawerBody`
+   ID selector, so it actually wins there. The handle/tabs bar are plain
+   `.hidden`-style until that same breakpoint shows them. */
 #editorMobileDrawer,
 #editorDrawerBody {
     display: contents;
@@ -603,12 +624,23 @@
         display: none;
     }
 
-    .editor-drawer-body {
+    /* ID selector, not just `.editor-drawer-body` — needed to beat the
+       base `#editorDrawerBody{display:contents}` rule above at EQUAL
+       specificity (same selector), which an ID beats a class selector at
+       regardless of source order. See that rule's own comment for the
+       bug this fixes. */
+    #editorDrawerBody {
         flex: 1 1 auto;
         min-height: 0;
         display: flex;
         flex-direction: column;
         overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        /* Only the canvas and the drawer handle own their own gestures
+           (MOB3b's own explicit rule) — this panel scrolls with the
+           browser's native vertical pan, not custom JS. */
+        touch-action: pan-y;
     }
 
     /* The two panels become plain in-flow blocks filling the drawer body
@@ -1052,6 +1084,33 @@
        next row — not visible in a DOM-only check). */
     .layer-row.compact { flex-wrap: wrap; height: auto; min-height: 44px; }
     .layer-row.compact .layer-tool-summary { flex: 1 0 100%; order: 1; text-align: right; padding-top: 2px; }
+}
+
+/* MOB3b AMEND 2 (Fred, real phone LANDSCAPE — a coarse pointer, but wider
+   than the ≤720px drawer breakpoint, so this is the editor's OWN
+   (non-compact) 220px Layers panel, not the drawer's full-width Layers
+   tab): "the row's eye/3D/palette buttons stretch huge... the name is
+   squeezed to one letter." Confirmed live: three 44px toggles + the
+   handle + delete leave the name's own flex:1 basically nothing (measured
+   4px) in a 220px row. `min-width:721px` scopes this to exactly that
+   narrow-sidebar layout — the drawer's own Layers tab (≤720px) is
+   full-width there and 44px already fits fine (confirmed live, no dead
+   space), so this must NOT also shrink toggles in that wider context.
+   The shared 44px block above stays as-is for the compact stamp-sidebar
+   row too (AMEND 4/5's own reason for making 44px apply here doesn't hold
+   once the row itself is this narrow); `width` (not just `min-width`) so
+   nothing can grow past 32px on its own content either. */
+@media (pointer: coarse) and (min-width: 721px) {
+    #editorLayersPanel .layer-row {
+        gap: 3px;
+    }
+    #editorLayersPanel .layer-visibility,
+    #editorLayersPanel .layer-carve,
+    #editorLayersPanel .layer-showcolor {
+        width: 32px;
+        min-width: 32px;
+        height: 32px;
+    }
 }
 
 /* MOB2: the Lattice panel's Nodes checkboxes (bspline_gen_palette.html)

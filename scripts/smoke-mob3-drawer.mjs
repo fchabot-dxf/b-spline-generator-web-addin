@@ -126,6 +126,34 @@ await tapHandle();
 report.drawerHeightAfterTwoTaps = await evalJS(`Math.round(document.getElementById('editorMobileDrawer').getBoundingClientRect().height)`);
 await shot(`mob3-${MODE}-3-full.png`);
 
+// MOB3b (Fred, real phone, live site: "I can't scroll the settings") — a
+// real touch swipe (touchstart/touchmove/touchend, not the handle's own
+// tap-to-cycle above) on the DRAWER BODY's own content must move its
+// scrollTop. This is the one check that actually would have caught the
+// #editorDrawerBody `display:contents` specificity bug (a class-selector
+// mobile override always lost to the base rule's ID selector, so the
+// scroll container never existed on mobile at all) — every other check in
+// this file drives the HANDLE, never swipes the panel's own content.
+const bodyRectForScroll = await rectOf('#editorDrawerBody');
+report.bodyScrollHeightAtFull = await evalJS(`document.getElementById('editorDrawerBody').scrollHeight`);
+report.bodyClientHeightAtFull = await evalJS(`document.getElementById('editorDrawerBody').clientHeight`);
+const scrollTopBeforeSwipe = await evalJS(`document.getElementById('editorDrawerBody').scrollTop`);
+const swipeX = bodyRectForScroll.x + bodyRectForScroll.width / 2;
+const swipeStartY = bodyRectForScroll.y + bodyRectForScroll.height * 0.6;
+await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: swipeX, y: swipeStartY, id: 9 }] });
+await sleep(16);
+for (let k = 1; k <= 8; k++) {
+  await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: swipeX, y: swipeStartY - 20 * k, id: 9 }] });
+  await sleep(16);
+}
+await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+await sleep(400);
+const scrollTopAfterSwipe = await evalJS(`document.getElementById('editorDrawerBody').scrollTop`);
+report.realTouchSwipeScrollsPanelBody = scrollTopAfterSwipe > scrollTopBeforeSwipe;
+report.scrollTopBeforeSwipe = scrollTopBeforeSwipe;
+report.scrollTopAfterSwipe = scrollTopAfterSwipe;
+await shot(`mob3-${MODE}-3b-after-body-swipe.png`);
+
 // At full: every Lattice control should be reachable — spot-check a few
 // spread across the panel (Grid & rails/Ties/Nodes/Colors/Widths/Seed are
 // collapsed by default open=true, so their own fields should already be

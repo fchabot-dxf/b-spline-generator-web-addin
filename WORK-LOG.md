@@ -8835,3 +8835,141 @@ to a function — both current callers naturally want a function (viewport/conta
 number-or-function union is exactly the kind of speculative flexibility neither caller asked for.
 
 No amendments pending as of this pass.
+
+## Turn 263 — MOB3b: drawer polish at full height, real-phone scroll fix, layer-row dead space — DONE
+
+Base dispatch (NEXT-SESSION.md) plus 4 queued amendments, absorbed together: a CONTROL_TIERS proposal
+immediately superseded by its own cancellation (nothing built, nothing to remove), a layer-row dead-space fix
+(real phone landscape), and a TOP PRIORITY real-phone "can't scroll the settings" bug that CDP's own synthetic
+touch emulation had never caught.
+
+**TOP PRIORITY — the drawer's own scroll container was `display:contents` this WHOLE TIME, not just on this
+turn.** Root cause, found by measuring rather than reasoning about the CSS: `#editorDrawerBody`'s base rule
+(`#editorMobileDrawer, #editorDrawerBody { display: contents; }`, styles/editor.css, added in MOB3's very
+first commit for the desktop-passthrough trick) is an ID selector. The MOBILE-ONLY override meant to give it a
+real scrollable box (`.editor-drawer-body { display:flex; overflow-y:auto; ... }`, inside
+`@media(max-width:720px)`) used a CLASS selector — which LOSES to an ID selector at any specificity comparison,
+REGARDLESS of source order or which block comes later in the file. `#editorDrawerBody` silently stayed
+`display:contents` on mobile too, so `overflow-y:auto` was dead code from the start; its three panel children
+(`#editorLatticePanel`/`#editorShapeLatticePanel`/`#editorLayersPanel`) became direct flex items of
+`#editorMobileDrawer` itself, which has no scroll mechanism of its own either. Content taller than the drawer's
+fixed box just had nowhere to go — no clip, no scroll, nothing (only visible as a real bug once content was
+tall enough to exceed the drawer's own height, which is exactly the FULL-height Nodes-section screenshot Fred
+sent). CDP's synthetic touch swipes never caught it because my own prior smoke tests only ever drove the
+HANDLE (drag/tap), never swiped the panel BODY's own content and checked `scrollTop`. Confirmed live with a
+targeted script before touching anything (`bodyDisplay:"contents"`, `bodyClientHeight:0`) and after
+(`bodyDisplay:"flex"`, real touch swipe: `scrollTop` 0 -> 145). Fix: give the mobile override the SAME
+`#editorDrawerBody` ID selector (same specificity, later in the cascade, correctly wins) plus `touch-action:
+pan-y` and `-webkit-overflow-scrolling:touch` on it, per the finding's own explicit rule ("only the canvas and
+the handle own gestures; the panel body scrolls natively"). Corrected the base rule's own comment too, which
+had documented the INTENDED "#editorDrawerBody stays display:contents throughout" design as if it were
+current/correct — it described a state that never actually existed once mobile's own override is accounted
+for; now it explains what actually happens and why, citing this bug.
+
+**Two of the three remaining base findings turned out to be the SAME root cause, not separate bugs.** Once
+`#editorDrawerBody` had a real, height-CONSTRAINED box instead of silently deferring "how much space do my
+children get" to `#editorMobileDrawer`'s own flex column:
+- The oversized Nodes checkbox sitting under the sticky footer at FULL height (finding #2) measured correctly
+  sized (32x32, matching `#latticeNodesEnds` etc.'s own `!important` rule) and positioned well clear of the
+  footer, with zero code changes beyond the scroll fix above — the DOM-measured rect settled once its
+  container had a real, bounded height to lay out inside, rather than however much flex space happened to leak
+  through from the drawer above it. No longer speculating about WHY: verified via the same live rect
+  measurement before/after this session touched anything else.
+- Same for general layout sanity — nothing to add here beyond the scroll fix.
+
+**Finding #1 — the undo/redo pill floating over the STROKE toolbar at FULL height** (`editor.js`,
+`styles/editor.css`) needed its own real fix, unrelated to the scroll bug: the pill's `bottom:calc(...)`
+formula lifts it clear of the drawer using `--drawer-height`, with no way to know whether that still leaves it
+ABOVE the toolbar or lands it ON the toolbar once the canvas area it's meant to float in has shrunk to nothing
+(the drawer's own top edge can sit ABOVE the canvas's nominal top once it covers the canvas entirely). Picked
+"hide it" over "dock it into the drawer header" (the finding's own two named options) — simpler, no new
+markup needed, and it reappears the instant the drawer shrinks back down since the check re-runs live. A
+SECOND `ResizeObserver` (added to editor.js's existing canvas-rect one, now also observing
+`#editorMobileDrawer`) recomputes `drawerTop - canvasRect.top` (available space above the drawer) on every
+change from either side, toggling a new `.editor-history-no-room` class (`display:none`) once that's under
+the pill's own height + a 24px margin. Confirmed live: `pillOverlapsToolbar` true -> false, pill's own rect
+collapses to 0 when hidden, reappears correctly at lesser drawer heights (peek/half both still showed it in
+the same test run).
+
+**Finding #3 — Seat B's Boundary/Ending/Border rows need their own collapsible section(s) — ALREADY RESOLVED,
+by a LATER commit than the one this finding was written against.** By the time this turn started, seat B's own
+T58 (SE14 Slice 3) had already MOVED that entire section out of the box Lattice panel into a brand-new Shape
+Lattice tool's own panel (`#editorShapeLatticePanel`) — and, notably, ALSO generalized `initDrawer`'s own
+`_makeSectionsCollapsible` call from a single hardcoded `editorLatticePanelBody` into a loop over every
+declared `TOOL_PANELS` entry's own body (`for (const {panelId} of Object.values(TOOL_PANELS))
+_makeSectionsCollapsible(el(`${panelId}Body`))`) and `measuredPeekFloorPx` similarly, reading the CURRENT
+tool's own panel via `dataset.panelId` rather than a hardcoded id. This is the declared-table promise
+(`_makeSectionsCollapsible`'s own doc comment: "any FUTURE section... becomes collapsible for free") actually
+being exercised by a second real consumer, not just claimed. Verified live rather than trusting the comment:
+opened the Shape Lattice tool, clicked "Boundary", confirmed its body's `display` toggled `""` -> `"none"` —
+genuinely collapsible, no work needed here this turn.
+
+**AMEND (Fred: "the UI can be below the preview still, scrollable... don't hide anything behind 'More
+settings'") — CANCELS the prior AMEND's own CONTROL_TIERS proposal.** Nothing was built before the
+cancellation landed (this session read both amendments together via one `amendments --role worker` poll before
+starting any work), so there was no tier plumbing to remove — noted here per the cancellation's own "if you
+already built it, remove it" instruction, satisfied vacuously.
+
+**AMEND 2 (Fred, real phone LANDSCAPE screenshot: "Layers panel has a lot of dead space in the layer chip") —
+`styles/editor.css`.** The eye/3D/palette toggle buttons (`.layer-visibility`/`.layer-carve`/
+`.layer-showcolor`) are `min-width:44px` under `pointer:coarse` (a real, deliberate size from an EARLIER
+amendment, AMEND 4/5 of a prior turn, which explicitly extended 44px to the editor's own non-compact panel too)
+— three of them plus the drag handle and delete button leave `.layer-name`'s own `flex:1` almost nothing to
+work with in this panel's 220px width (measured live: 4px). This is a LANDSCAPE-PHONE-SPECIFIC problem: a
+landscape phone is `pointer:coarse` but WIDER than the drawer's 720px breakpoint, so it renders the editor's
+narrow 220px desktop-style sidebar, not the drawer's own full-width (354px) Layers tab — confirmed the SAME
+44px causes zero dead-space problem there (measured `.layer-name` at a healthy width in that wider context)
+and must NOT shrink there too. Scoped the fix to `@media (pointer:coarse) and (min-width:721px)` (mirrors the
+pill's own `@media(pointer:coarse) and (max-width:720px)` scoping, inverted) targeting `#editorLayersPanel`
+specifically — 32px fixed `width`+`height` (not `min-width`, so nothing can grow past it on its own content
+either) for the three toggles, tighter 3px gap, leaving `.layer-name`'s existing `flex:1;overflow:hidden;
+text-overflow:ellipsis` (already correct, untouched) real room to work with. Verified live at both dimensions:
+844x390 landscape now shows 32px toggles and a 34px-wide (was 4px) truncated name ("Laye…"); 390x844 portrait
+(the drawer's own full-width Layers tab) still shows 44px, unchanged, confirming the `min-width:721px` gate
+actually holds the line.
+
+**AMEND 2's own second ask — verify the Ties section shows T56 count controls for a new layer, and confirm
+which mode Fred's screenshot's layer was in.** Read `editor-lattice-pattern.js`'s own default
+(`PATTERN_DEFAULTS.ties.mode: 'count'`) and `properties-lattice.js`'s read path
+(`p.ties ? (p.ties.mode || 'density') : PATTERN_DEFAULTS.ties.mode` — an existing saved `ties` object with no
+`mode` key, i.e. anything saved before T56, falls back to `'density'`; no `ties` object at all, i.e. a brand
+new layer, gets the current default, `'count'`). Confirmed live rather than trusting the code read alone:
+added a fresh layer via the layers panel's own `+` button, opened Lattice, and `#latticeTiesCountFields`
+rendered (`display:flex`), `#latticeTiesDensityFields` stayed hidden — a new layer genuinely gets T56 count
+controls. Fred's own screenshot showed the OLD density-style fields (every/offset, density slider, span
+min/max, anchor, snap-to-rails-within-N-rows) — per the fallback logic above, that is **an old, pre-T56 saved
+layer correctly keeping its legacy density settings**, exactly the "intended" behavior the amendment named as
+a possibility, not a bug.
+
+**A test-environment false alarm, called out rather than chased as a code bug**: re-running
+`scripts/smoke-mob3-mobile-resizer.mjs` against the SAME long-lived headless Chrome tab this whole session had
+reused (~15+ script invocations without ever restarting it) showed the main-screen splitter suddenly not
+responding to a touch-drag at all. Restarting Chrome with a completely fresh profile before re-running the
+identical script reproduced the ORIGINAL passing result exactly (drag grows the preview, precise-drag snaps to
+'small', persists across reload) — confirmed as accumulated CDP/session-storage staleness from reusing one tab
+across a very long debugging session, not a regression in `splitter.js`/`main/mobile-resizer.js` (neither was
+touched this turn).
+
+**Verify:**
+- `npx vitest run` -> **925 passed** (up from 789 at last commit — seat B's T58/SE13 work landed concurrently
+  on this shared tree between turns; this turn's own changes added no new test files, since every fix here is
+  DOM/CSS behavior already covered by existing live-CDP scripts, not new pure functions).
+- Live (headless Chrome via CDP, fresh profile, no Fusion) — `scripts/smoke-mob3-drawer.mjs` mobile: full
+  regression pass, all flags green (`addVisibleAtPeek`/`generateVisibleAtPeek`/`canvasAtLeast55PctAtPeek`/
+  `orientationVisibleAfterReExpand`/`dragHandleWithTouchChangedHeight`/`customHeightFarFromEverySnap`), zero
+  console errors. Desktop: still byte-for-byte unchanged (`drawerIsDisplayContents:"contents"`,
+  `handleHiddenOnDesktop:"none"`). `scripts/smoke-mob3-mobile-resizer.mjs` desktop: horizontal sidebar drag
+  still works, no inline grid override leaks onto the desktop layout.
+- Folded the real-touch-swipe check into `scripts/smoke-mob3-drawer.mjs` itself (not left as a one-off
+  scratchpad script) — this is the one CDP check missing from the existing smoke suite that would have caught
+  the scroll bug at MOB3's own original turn, since every other check there drives the HANDLE, never swipes
+  the panel body's own content and checks `scrollTop`. **Non-vacuous, proven by mutation**: temporarily
+  reverted the `#editorDrawerBody` selector back to the old (buggy) `.editor-drawer-body` class form,
+  re-ran the suite — `realTouchSwipeScrollsPanelBody` failed (`false`, `bodyClientHeightAtFull:0`) exactly as
+  expected; restored the real fix, re-ran, green again (`true`). The new check is a real guard, not decoration.
+- Standalone scratchpad diagnostic scripts (not committed, used only to isolate root causes before writing the
+  permanent check above and the pill/layer-row fixes): a DOM-structure dump (confirmed `#editorDrawerBody`'s
+  `display:contents`/0-height before the fix), a pill/checkbox/footer rect dump at full height, a Shape
+  Lattice collapsible-section click-toggle check, and a layer-row child-rect dump at both dimensions.
+
+No amendments pending as of this pass.

@@ -189,13 +189,33 @@ export class VectorEditor {
         // column (phone) — one observer covers every reflow, no separate
         // per-breakpoint branch.
         const canvasEl = document.getElementById('editorCanvasContainer');
+        const mobileDrawerEl = document.getElementById('editorMobileDrawer');
         if (canvasEl && typeof ResizeObserver !== 'undefined') {
             const syncCanvasRectVars = () => {
                 const r = canvasEl.getBoundingClientRect();
                 document.documentElement.style.setProperty('--canvas-left', `${r.left}px`);
                 document.documentElement.style.setProperty('--canvas-bottom-offset', `${window.innerHeight - r.bottom}px`);
+                // MOB3b (Fred, real phone: the pill floated OVER the STROKE
+                // toolbar row at the drawer's full height) — the pill's own
+                // bottom:calc() formula lifts it clear of the drawer with no
+                // idea whether that leaves it ABOVE the toolbar or on top of
+                // it; the canvas area it's meant to float in had shrunk to
+                // nothing (drawer top can sit above the canvas's own nominal
+                // top once the drawer covers it entirely). Hiding it outright
+                // once there's no room is the simpler of the finding's own
+                // two options (vs. docking it into the drawer header, which
+                // would need new markup there) — it reappears the instant
+                // the drawer shrinks back down, since this recomputes live.
+                const pillEl = document.querySelector('.editor-history');
+                if (pillEl) {
+                    const drawerTop = mobileDrawerEl ? mobileDrawerEl.getBoundingClientRect().top : window.innerHeight;
+                    const availableAboveDrawer = drawerTop - r.top;
+                    const PILL_MARGIN_PX = 24; // the pill's own 12px inset, twice over, as breathing room
+                    pillEl.classList.toggle('editor-history-no-room', availableAboveDrawer < pillEl.offsetHeight + PILL_MARGIN_PX);
+                }
             };
             new ResizeObserver(syncCanvasRectVars).observe(canvasEl);
+            if (mobileDrawerEl) new ResizeObserver(syncCanvasRectVars).observe(mobileDrawerEl);
         }
     }
 
