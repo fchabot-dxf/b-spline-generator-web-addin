@@ -6046,3 +6046,73 @@ before committing, not assumed safe; the EXTERNAL `C:/Users/danse/APPS/SVG creat
 
 Amendments polled clean. Committed by explicit path (2 files: `SE14-SHAPE-LATTICE-DESIGN.md`,
 `WORK-LOG-lane-b.md`) — pushed.
+
+## T53 — SE14 Slice 1: the pure silhouette generator
+
+Built exactly SE14-SHAPE-LATTICE-DESIGN.md's own §10 Slice 1, per the dispatch's own 4 rulings (Q2 style
+vocabulary = straight/curve/kink only; Q5 region = explicit `{x,y,w,h}` param, signature fixed now; Q4 waist
+defaults = my own first guess from §7, declared once; Q3 detach detection deferred to Slice 3). New file
+`bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js` — pure function, no DOM, no
+editor object, same contract `computePattern`/`shapeToPrimitives` already set. `generateSilhouette(region,
+shape)`: seed → dimensions/widths (`lcgPoints`, not `Math.random`) → keypoints (base→waist→neck→head, mirrored)
+→ per-segment style/bulge → exact `L`/`A` primitives (this session's own center-form `{cx,cy,rx,ry,phi,theta1,
+dTheta}`, built via `arcCenterParam`, not the reference's own SVG-command form).
+
+**Two corrections made DURING the build, before any code was "done," both caught by re-reading my own design
+doc against what I'd actually written — not found later by a test:**
+
+1. My first draft inserted `headMidPts` (interior head-arc keypoints, `pathloop.js`'s own `nHd`-lerp'd points
+   between headLeft/headRight) — but §3 stage 2 explicitly says the head zone connects via ONE segment, no
+   head-arc keypoints at all ("a genuine simplification over the reference's own separate headStyle/headParam
+   machinery, justified because it was never actually wired there either"). Removed before writing any tests
+   against it. `keypointCounts.head` stays declared in `SHAPE_DEFAULTS` (naming continuity with the reference's
+   own dial) but is explicitly NOT consumed this slice — commented as such, not silently dropped.
+2. My first draft drew every segment's bulge from its own independent per-index seed, including "mirrored"
+   right-side segments — which would have made `symmetryRelax:0` produce mirrored KEYPOINTS but INDEPENDENTLY
+   RANDOM per-segment styles/bulges, failing the design doc's own Slice 1 verify criterion ("right-side points/
+   bulges equal the left's own reflection," bulges explicitly included). Traced this back to the reference
+   itself: `pathloop.js`'s own `leftBulges`/`rightBulges` are ALWAYS drawn independently, regardless of
+   `relax` — bulge-mirroring was never actually a property of the reference's own `symmetryRelax` at all, only
+   MY OWN design doc's §4 declares it should be ("editing a LEFT segment's own style/bulge auto-applies to its
+   mirror... a no-op once symmetryRelax>0"). Fixed: left-side profile segments draw independently; the
+   corresponding right-side profile segment COPIES its mirror at `relax===0` (reverse-index correspondence,
+   since left traverses bottom→top and right traverses top→bottom) and draws independently only once
+   `relax>0`. The head segment (shared, one draw) and the base-row segments (no left/right pairing) are
+   unaffected either way.
+
+**A third, disclosed-not-fixed finding, kept as a faithful port**: in the reference, the `relax`-blend target
+for neck/head (`pathloop.js:148-157`) is algebraically IDENTICAL to the exact-mirror target (`cx + (cx -
+left.x)` === `cx + w/2` always, since `left.x = cx - w/2` by construction) — so `symmetryRelax` is a
+mathematical no-op for every row except the base; only `rightBase.x` gets a real independent jitter. Ported
+AS WRITTEN (Slice 1 is a port of this mechanism, not a redesign of it) and documented in a code comment
+(`_mirrorPair`'s own doc comment) rather than silently "fixed" into behaving differently than the reference —
+and covered by a test (`symmetryRelax>0 makes the base row... independent`) that asserts BOTH halves of this:
+base moves, head does not.
+
+**Non-vacuity + mutation-test discipline.** New test file `tests/editor-shape-lattice-generator.test.js`, 16
+tests, covering the design doc's own 4-item Slice 1 verify list plus segment-persistence (§6) and the declared-
+vocabulary table (§4/§7). The independent-oracle test (item d) initially only checked arc endpoint round-trip
+(via `_arcWorldPointTangent`, a genuinely different code path from `arcCenterParam`'s own inverse) and sagitta
+MAGNITUDE — both blind to a sweep-direction (sign) bug, since the mirror-image arc through the same two
+points at the same radius satisfies both checks equally. Added a third, independent check before trusting the
+suite: 'out' must bulge the arc's own midpoint FARTHER from centerline than the straight chord's midpoint,
+'in' closer — a semantic re-derivation, not a re-read of the module's own `od`/`perpLeftIsOutward` internals.
+Mutation-tested 3 targeted breaks (backup → mutate → run → confirm exact failure set → restore → `diff`
+byte-identical): (1) removed the relax=0 mirror-copy (always independent draw) → exactly 1 failure, the
+mirroring test; (2) flipped the sweep-selection line → exactly 2 failures, both new sign-check tests (confirms
+the 3rd oracle check was necessary — the endpoint/magnitude checks alone stayed green under this exact bug);
+(3) made `kink` fall through to a single plain `L` → exactly 1 failure, the all-kink L-count test. No other
+tests moved in any of the three runs. Full suite: 859 passed (58 files), up from 844 pre-turn (15 new tests
+here + one added mid-build for the sign-check gap, net +1 file).
+
+No live CDP run this turn — pure function, no DOM, matches Slice 1's own scope and "NO FUSION." `reference/`
+confirmed still gitignored/untracked (re-read `pathloop.js`/`utils.js` directly, no `git status` changes to
+that path).
+
+Amendment polled before committing: Fred confirmed all SE14 defaults (including Q1's migration rule — an old
+boundary-configured layer is HANDED to the new tool, settings kept, not reverted to board) are now fixed in
+the design doc; explicitly "no change to your current slice." Nothing to incorporate into Slice 1 — noted for
+Slices 2/3. Polled clean again immediately before passing. Committed by explicit path (2 new files:
+`editor-shape-lattice-generator.js`, `tests/editor-shape-lattice-generator.test.js`, staged individually since
+new) + `WORK-LOG-lane-b.md` — pushed.
+
