@@ -6875,3 +6875,109 @@ JS/Python research above was read-only investigation feeding the design, not imp
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed. `reference/` confirmed still untracked, left alone.
 
+## T61 — SE15 Slice 1: the pure sketch manifest producer (dispatch bundled §8's own Slice 1+2 into one turn — NO FUSION)
+
+Dispatch text: "Build your §8 Slice 1: the pure manifest producer + its tests (entities, constraints, parameters
+for a box lattice, a Shape Lattice hourglass and bottle, widths as offsets with round caps, the >60-piece plain
+fallback flag)." Read literally this spans BOTH the design doc's own Slice 1 (shape preset) and Slice 2
+(lattice) — built both this turn, in one new module, `editor/editor-sketch-manifest.js`
+(`manifestFromLattice`/`manifestFromShape`/`buildSketchManifest`, exports `SKETCH_PIECE_THRESHOLD`). Also read
+the advisor's own new "Answers" section in SE15-CONSTRAINED-SKETCH-DESIGN.md (measured live in Fusion, T60's own
+open questions #1-3): single-open-line offset needs ONE `sketch.offset` call PER SIDE (two total per
+centerline, not one); the threshold's own number is 60 pieces. Both are load-bearing for this module's own
+`addWidthOffsetsAndCaps` (two Offset dimensions per kind-group) and `SKETCH_PIECE_THRESHOLD = 60`.
+
+**A design-doc internal inconsistency, found and resolved while actually implementing §2's own kink row, not
+assumed either way**: §2's table said a kink segment gets "none beyond the shared point" (implying NO
+constraint at all), while the doc's own "what deliberately gets NO constraint" paragraph said EVERY adjacent
+primitive pair gets an explicit Coincident. These contradict for a kink's own joints. Resolved by re-reading
+both together: the kink row's own point is "no TANGENT" (a kink is a deliberate sharp notch; declaring Tangent
+across it would smooth over the thing it exists to produce), not "no Coincident" — Coincident is universal
+(every adjacent primitive pair, always); Tangent is added only when at least one side is an arc AND neither
+side's own segment is styled 'kink'. This single rule handles every case correctly: a straight-straight 90°
+corner (never Tangent, since neither side is an arc), an arc-arc/arc-line joint (Tangent, matching T55's own
+proven invariant), and any joint touching a kink (no Tangent, regardless of what's on the other side) — tested
+directly (see "kinking segment 1" test below) rather than argued.
+
+**A genuine design decision, not in the original doc, forced by actually writing `buildSketchManifest`**:
+`PATTERN_DEFAULTS.shape.source` defaults to `'generated'` UNCONDITIONALLY (editor-lattice-pattern.js) — every
+layer's pattern carries a `.shape` sub-object, even a plain box Lattice layer that has never touched the Shape
+Lattice tool. So `.shape.source==='generated'` ALONE can't distinguish a real Shape-Lattice layer from a plain
+Lattice layer's own unused default. Found this by writing a "box lattice, no shape" test and watching it produce
+12 silhouette entities anyway. Fixed by ALSO requiring `pattern.extent?.mode === 'boundary'` — the SAME field
+the real app's own `properties-shape-lattice.js` sets when (and only when) the Shape Lattice tool's own Generate
+has actually linked a silhouette (that file's own doc comment, read directly, not assumed) — reusing an
+existing, already-true discriminator rather than inventing a second flag.
+
+**H/V constraint choice — a disclosed simplification over the design doc's own literal wording**: rather than
+threading `PATTERN.orientation` through as a second argument, `axisConstraintType` reads it directly off each
+entity's own already-computed endpoints (`a.x===b.x` -> Vertical, `a.y===b.y` -> Horizontal). Verified this is
+equivalent, not just simpler: `computePattern`'s own `orient()` transpose (editor-lattice.js) only ever produces
+an axis-aligned segment either way (a rail's own two ends always share ONE coordinate, whichever orientation),
+so reading the geometry directly is a strict refinement — and it self-verifies: a genuinely diagonal Line (which
+should never occur for a rail/tie, and DOES occur for a shape-preset kink's own apex legs) correctly gets no H/V
+constraint instead of a wrong one, for free, without a special case.
+
+**Round-cap arcs — a scope decision on where the manifest's own job ends**: §4 described a cap as "tangent to
+its own offset pair," but the offset's own result curve doesn't exist as a named entity until the add-in
+creates it live in Fusion (§5's own Pulse-before-reference rule) — there is no id in THIS manifest a Tangent
+constraint could reference. Resolved: this module emits the cap's own GEOMETRY (center/radius/180° sweep) plus a
+Radial dimension driving that radius from the SAME width parameter the offset uses (one parameter, two
+consumers, per §4's own text) — the tangent-to-offset wiring is Slice 3's own runtime job in Python, using
+object references it holds directly. Cap angle formula derived by hand (center=piece endpoint, otherEnd=the
+piece's other end, thetaD=atan2(otherEnd-center), start=thetaD+90°, sweep=+180°) and verified against a
+horizontal test case before trusting it in the module.
+
+**Mirror-Equal scope-narrowing (disclosed, not silent)**: §2's own "every right-side entity <-> its LEFT mirror"
+is implemented ONLY between segments that produce exactly ONE primitive each (straight/curve) — a kink's own
+2-primitive mirror pairing (which of its 2 lines corresponds to which of its mirror's 2 lines) isn't verified
+this turn, so it's skipped rather than guessed at. Hourglass's own shoulder<->hip cross-tie (segment 1<->3,
+completing the mirror pairs 1<->9/3<->7 into one 4-way Equal group) is gated on both still being `style==='curve'`
+— tested directly by overriding segment 1 to 'kink' and confirming both the Tangent AND this Equal/dimension
+disappear for it.
+
+**The lattice-fill's own boundary clip (composition path, `buildSketchManifest`) uses the silhouette's own RAW
+centerline, not a Border-enabled inner-stroke inset** — `_resolveBoundaryPrimitives`'s own DOM-based inset
+(`shapeToInnerBoundaryPrimitives`) is async and tied to a live element, incompatible with this module's own "no
+DOM" contract; this module instead scales `generateSilhouette`'s own primitives straight to lattice units and
+feeds them through `computePattern`'s existing `opts.extent.primitives` contract (the SAME boundary-mode
+machinery a hand-picked boundary shape already uses) — a disclosed, narrower scope than a Border-enabled live
+layer's own true behavior, named as a real follow-up, not built this turn.
+
+**Dev-only exporter**: `window.__se15Manifest(layerId?)`, wired in `main/app-init.js` (NOT inside
+editor-sketch-manifest.js itself — that module's own contract is "no DOM, no editor object", so the window/
+editor-reading glue lives at this boundary instead). Gated behind `window.__editorDebug === 'SE15'`, the SAME
+mechanism (`core/debug.js`) every other console-only hook in this codebase already uses — verified live (see
+below) that it correctly returns `null` and warns when the flag is off, and returns a real manifest when set.
+
+**Tests**: `tests/editor-sketch-manifest.test.js` (new, 20 tests) — box lattice (entities cross-checked against
+an independent `computePattern`+`fromLattice` re-run; H/V and tie-on-rail Coincident verified with an
+INDEPENDENT geometric scan over the entities' own coordinates, both a positive check — every declared constraint
+is geometrically real — and a negative one — every UNDECLARED tie-endpoint genuinely doesn't touch a rail;
+width-offset+cap geometry verified via perpendicularity/diameter checks, not by re-trusting `capArc`; the
+>=60-piece threshold flips `constrained` off while leaving the offset/cap mechanism untouched); hourglass+bottle
+(entities cross-checked against an independent `generateSilhouette` re-run; every Coincident/Equal verified
+against the entities' own coordinates/radius/length, not the constraint-producing code's own logic; the kink
+non-vacuity test above). Full suite: 986 passed (63 files), up from 966 pre-turn (T59's own end state; T60 was
+docs-only).
+
+**Mutation-tested three of the riskiest pieces of new logic** (backup, mutate, run, confirm the EXACT expected
+failure, restore, MD5-verify byte-identical): (1) disabling the kink-Tangent exemption -> exactly 1 failure (the
+dedicated kink test); (2) dropping the cap arc's own +90° offset -> exactly 1 failure (the perpendicularity
+check); (3) hard-coding `constrained=true` regardless of piece count -> exactly 1 failure (the threshold test).
+Not exhaustive (the H/V axis check, tie-on-rail scan, and Equal/radius checks were not separately mutation-run,
+given how many independent geometric assertions this suite already makes over real coordinates rather than
+re-trusting the code under test) but representative of the highest-risk, least-obvious logic in the new module.
+
+**Live-verified** (headless Chrome, CDP, real app UI — not a synthetic object): opened the Shape Lattice tool,
+clicked Generate on a real hourglass silhouette, then called `window.__se15Manifest()` for real through the
+live page. Confirmed: the layer's own `pattern.extent.mode` really is `'boundary'` once Generate has run (the
+discriminator this turn's own design decision above relies on); the manifest is non-null with 83 entities, 56
+constraints, 7 parameters, 59 dimensions; BOTH silhouette (`seg*`) and lattice (`rail*`) entities are present
+(the composition path genuinely ran both producers); `latticePieceCount`=37, correctly `constrained` (below
+60); zero console errors; the debug gate correctly returns `null` when `window.__editorDebug` is off. Chrome
+profile cleaned up after (`chrome-profile-t61`, confirmed 0 remaining processes).
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed.
+

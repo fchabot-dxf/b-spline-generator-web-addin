@@ -10,6 +10,8 @@ import { VectorEditor } from '../editor/index.js';
 import { buildDrapeSvg, nextPow2 } from '../core/preview/drape-svg.js';
 import { dbg, isDebugEnabled } from '../core/debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
+import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 
 // SE3a: snapshot of the unified editor document (P.editorSvg) captured
 // when the SVG editor modal opens. The Cancel button restores it — reloads
@@ -458,4 +460,35 @@ export function initSvgEditor(preview) {
     console.warn('[initSvgEditor] editor SVG restore failed:', e);
   }
 
+  // T61 (SE15 Slice 1, dev-only): window.__se15Manifest(layerId?) pulls a
+  // real sketch manifest (SE15-CONSTRAINED-SKETCH-DESIGN.md §1) out of the
+  // live page, built from a real layer's own PATTERN — the one way to get
+  // real JSON for the add-in build routine's own test fixtures (Slice 3,
+  // NOT built this turn — NO FUSION). Gated the SAME way every other
+  // console-only hook in this codebase is (core/debug.js's own
+  // window.__editorDebug), not always-on. To use: in devtools, run
+  // `window.__editorDebug = 'SE15'`, then `window.__se15Manifest()` (the
+  // active layer) or `window.__se15Manifest('3')` (layer id '3'); wrap in
+  // `JSON.stringify(..., null, 2)` for a copy-pasteable string. Declared
+  // here rather than inside editor-sketch-manifest.js itself — that
+  // module's own contract is "no DOM, no editor object" (its header
+  // comment), so the window/editor-reading glue lives at this boundary.
+  window.__se15Manifest = (layerId) => {
+    if (!isDebugEnabled('SE15')) {
+      console.warn("[SE15] set window.__editorDebug = 'SE15' first, then call window.__se15Manifest() again.");
+      return null;
+    }
+    const editor = window.svgEditor;
+    const layers = Array.isArray(editor._layers) ? editor._layers : [];
+    const layer = layerId != null ? layers.find((l) => l.id === layerId) : layers.find((l) => l.id === editor._activeLayer);
+    if (!layer) {
+      console.warn(`[SE15] no layer found for id=${layerId ?? '(active)'}`);
+      return null;
+    }
+    const manifest = buildSketchManifest(layer.pattern || {}, boardRegion(editor), {
+      layerId: layer.id, sketchName: `Layer ${layer.id}`,
+    });
+    console.log(`[SE15] manifest for layer ${layer.id}:`, manifest);
+    return manifest;
+  };
 }
