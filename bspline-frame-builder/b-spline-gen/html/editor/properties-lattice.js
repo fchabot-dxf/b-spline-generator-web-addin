@@ -11,23 +11,10 @@ import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
-    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind,
-    stampBoundaryRef,
+    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
-
-// T49 (SE13 Slice 3): the ending-rule table, declared once so the
-// Boundary panel's own <select> renders from this list rather than a
-// hand-typed <option> set that could drift from computePattern's own
-// dispatch (editor-lattice-pattern.js's _applyEndRule) — same "declared
-// table drives the control" shape LATTICE_DRAW_KINDS already uses.
-const BOUNDARY_END_RULES = [
-    { value: 'on-boundary', label: 'On boundary' },
-    { value: 'inset', label: 'Inset (default)' },
-    { value: 'joint', label: 'Joint' },
-    { value: 'loose', label: 'Loose' },
-];
 
 /** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
  *  not once per file — Generate/Regenerate write into whichever layer is
@@ -87,18 +74,14 @@ export function initLatticeProperties(editor) {
     const widthRailsEl = el('latticeWidthRails');
     const widthTiesEl = el('latticeWidthTies');
     const widthNodesEl = el('latticeWidthNodes');
+    // T58 ADD-ON (Fred: "I normally want ties and rails to be the same
+    // width"): the link toggle + its own linked/unlinked field groups.
+    const widthLinkedEl = el('latticeWidthLinked');
+    const widthLinkToggleEl = el('latticeWidthLinkToggle');
+    const widthUnlinkedFieldsEl = el('latticeWidthUnlinkedFields');
+    const widthLinkedRowEl = el('latticeWidthLinkedRow');
     const orientHorizontalEl = el('latticeOrientHorizontal');
     const orientVerticalEl = el('latticeOrientVertical');
-    // T49 (SE13 Slice 3): Boundary / Ending / Border controls.
-    const boundaryBoardEl = el('latticeBoundaryBoard');
-    const boundaryShapeEl = el('latticeBoundaryShape');
-    const pickShapeBtn = el('latticePickShape');
-    const boundaryStatusEl = el('latticeBoundaryStatus');
-    const endRuleEl = el('latticeEndRule');
-    const borderEnabledEl = el('latticeBorderEnabled');
-    const borderWidthEl = el('latticeBorderWidth');
-    const borderColorEl = el('latticeBorderColor');
-    const borderColorAutoEl = el('latticeBorderColorAuto');
     const toolBtn = el('toolLattice');
     const addKindEls = {};
     for (const { value } of LATTICE_DRAW_KINDS) addKindEls[value] = el(`latticeAdd-${value}`);
@@ -123,17 +106,6 @@ export function initLatticeProperties(editor) {
             opt.value = String(spacing);
             opt.textContent = `${spacing}"`;
             spacingEl.appendChild(opt);
-        }
-    }
-
-    // T49: same declared-table idiom, for the ending-rule select.
-    if (endRuleEl) {
-        endRuleEl.innerHTML = '';
-        for (const { value, label } of BOUNDARY_END_RULES) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = label;
-            endRuleEl.appendChild(opt);
         }
     }
 
@@ -176,6 +148,14 @@ export function initLatticeProperties(editor) {
     function _showTieSpanMode(mode) {
         if (tiesSpanModeCellsEl) tiesSpanModeCellsEl.classList.toggle('active', mode !== 'rails');
         if (tiesSpanModeRailsEl) tiesSpanModeRailsEl.classList.toggle('active', mode === 'rails');
+    }
+    // T58 ADD-ON: same "one function reflects AND reacts" shape as the
+    // toggles above — the chain button's own `.active` state IS whether
+    // rails/ties are linked.
+    function _showWidthLinkMode(linked) {
+        if (widthLinkToggleEl) widthLinkToggleEl.classList.toggle('active', linked);
+        if (widthUnlinkedFieldsEl) widthUnlinkedFieldsEl.style.display = linked ? 'none' : 'flex';
+        if (widthLinkedRowEl) widthLinkedRowEl.style.display = linked ? 'flex' : 'none';
     }
 
     function syncFieldsFromPattern() {
@@ -230,23 +210,23 @@ export function initLatticeProperties(editor) {
         if (colorRailsEl) colorRailsEl.style.background = colors.rails;
         if (colorTiesEl) colorTiesEl.style.background = colors.ties;
         if (colorNodesEl) colorNodesEl.style.background = colors.nodes;
-        const widths = { ...PATTERN_DEFAULTS.widths, ...p.widths };
+        const rawWidths = p.widths || {};
+        const widths = { ...PATTERN_DEFAULTS.widths, ...rawWidths };
         if (widthRailsEl) widthRailsEl.value = widths.rails;
         if (widthTiesEl) widthTiesEl.value = widths.ties;
+        if (widthLinkedEl) widthLinkedEl.value = widths.rails;
         if (widthNodesEl) widthNodesEl.value = widths.nodeRadius;
-
-        // T49 (SE13 Slice 3): Boundary / Ending / Border.
-        const boundaryMode = p.extent?.mode === 'boundary' ? 'boundary' : 'board';
-        if (boundaryBoardEl) boundaryBoardEl.classList.toggle('active', boundaryMode !== 'boundary');
-        if (boundaryShapeEl) boundaryShapeEl.classList.toggle('active', boundaryMode === 'boundary');
-        const boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary };
-        if (boundaryStatusEl) boundaryStatusEl.textContent = boundary.shapeId ? 'Shape linked' : 'No shape picked';
-        if (endRuleEl) endRuleEl.value = boundary.endRule;
-        const border = { ...PATTERN_DEFAULTS.boundary.border, ...boundary.border };
-        if (borderEnabledEl) borderEnabledEl.checked = !!border.enabled;
-        if (borderWidthEl) borderWidthEl.value = border.width == null ? '' : border.width;
-        if (borderColorEl) borderColorEl.style.background = border.color || '#ffffff';
-        if (borderColorAutoEl) borderColorAutoEl.classList.toggle('active', border.color == null);
+        // T58 ADD-ON: migration-aware, same shape rails.mode/ties.mode
+        // already use above — an EXISTING saved pattern from before this
+        // field existed has no `linkRailsTies` key at all (checked on the
+        // RAW, pre-merge object, not `widths`, which the PATTERN_DEFAULTS
+        // spread would otherwise silently backfill to `true`): it infers
+        // linked ONLY when rails/ties already happen to be equal ("no
+        // silent change" for a differing pair, per Fred's own ruling); a
+        // brand-new pattern (no `p.widths` at all) reads PATTERN_DEFAULTS'
+        // own `linkRailsTies: true` untouched.
+        const widthLinked = 'linkRailsTies' in rawWidths ? rawWidths.linkRailsTies : widths.rails === widths.ties;
+        _showWidthLinkMode(widthLinked);
 
         syncGenerateLabel();
     }
@@ -307,32 +287,38 @@ export function initLatticeProperties(editor) {
             railEnds: nodesRailEndsEl ? !!nodesRailEndsEl.checked : (p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds),
         };
         if (seedEl) p.seed = parseInt(seedEl.value, 10) || 0;
+        // T58 ADD-ON: the chain toggle's own `.active` state IS the source
+        // of truth (same shape every other toggle in this panel uses) —
+        // when linked, Ties reads from the SAME combined stepper Rails
+        // does (widthLinkedEl), not its own separate field.
+        const widthLinked = widthLinkToggleEl ? widthLinkToggleEl.classList.contains('active') : (p.widths?.linkRailsTies ?? true);
+        const railsValue = widthLinked
+            ? (widthLinkedEl ? (parseFloat(widthLinkedEl.value) || PATTERN_DEFAULTS.widths.rails) : (p.widths?.rails ?? PATTERN_DEFAULTS.widths.rails))
+            : (widthRailsEl ? (parseFloat(widthRailsEl.value) || PATTERN_DEFAULTS.widths.rails) : (p.widths?.rails ?? PATTERN_DEFAULTS.widths.rails));
+        const tiesValue = widthLinked
+            ? railsValue
+            : (widthTiesEl ? (parseFloat(widthTiesEl.value) || PATTERN_DEFAULTS.widths.ties) : (p.widths?.ties ?? PATTERN_DEFAULTS.widths.ties));
         p.widths = {
-            rails: widthRailsEl ? (parseFloat(widthRailsEl.value) || PATTERN_DEFAULTS.widths.rails) : (p.widths?.rails ?? PATTERN_DEFAULTS.widths.rails),
-            ties: widthTiesEl ? (parseFloat(widthTiesEl.value) || PATTERN_DEFAULTS.widths.ties) : (p.widths?.ties ?? PATTERN_DEFAULTS.widths.ties),
+            rails: railsValue,
+            ties: tiesValue,
             nodeRadius: widthNodesEl ? (parseFloat(widthNodesEl.value) || PATTERN_DEFAULTS.widths.nodeRadius) : (p.widths?.nodeRadius ?? PATTERN_DEFAULTS.widths.nodeRadius),
+            linkRailsTies: widthLinked,
         };
 
-        // T49: extent.mode is driven by the Board/Shape toggle's own
-        // `.active` state (same "the control IS the source of truth"
-        // shape Orientation already uses above) — Shape active means
-        // 'boundary', anything else (including no toggle wired) means
-        // 'board', so an existing saved pattern with no Boundary UI at
-        // all keeps reading as plain Board mode, unchanged.
-        const wantsBoundary = !!(boundaryShapeEl && boundaryShapeEl.classList.contains('active'));
-        p.extent = wantsBoundary ? { mode: 'boundary' } : { mode: 'board' };
-        p.boundary = {
-            ...PATTERN_DEFAULTS.boundary,
-            ...p.boundary,
-            endRule: endRuleEl ? endRuleEl.value : (p.boundary?.endRule ?? PATTERN_DEFAULTS.boundary.endRule),
-            border: {
-                ...PATTERN_DEFAULTS.boundary.border,
-                ...p.boundary?.border,
-                enabled: borderEnabledEl ? !!borderEnabledEl.checked : (p.boundary?.border?.enabled ?? false),
-                width: borderWidthEl && borderWidthEl.value !== '' ? parseFloat(borderWidthEl.value) : null,
-                color: p.boundary?.border?.color ?? null, // set only via the color-swatch picker below, never re-parsed from a text field
-            },
-        };
+        // T58 (SE14 Slice 3): this tool no longer has ANY Boundary/Ending/
+        // Border controls (moved to the new Shape Lattice tool's own
+        // panel) — p.extent/p.boundary are deliberately left UNTOUCHED
+        // here, not force-written to 'board'. Fred's own ruling
+        // (SE14-SHAPE-LATTICE-DESIGN.md, "Fred 2026-09-25"): an existing
+        // layer already in extent.mode:'boundary' from before this split
+        // is "handed to the Shape Lattice tool (settings kept), not
+        // reverted to board" — this tool's own Generate on such a layer
+        // still fills to whatever extent/boundary the pattern already has
+        // (unchanged since the LAST time anything wrote it), same as
+        // every other field this function doesn't mention. A brand-new
+        // pattern simply has no `extent` key at all, which `_resolveExtent`
+        // itself already defaults to 'board' — no explicit write needed
+        // for that case either.
         return p;
     }
 
@@ -357,41 +343,6 @@ export function initLatticeProperties(editor) {
         });
     }
 
-    /** T49: the Border piece's own color swatch — NOT wireColorSwatch
-     *  above (that one's recolorOwnedKind call is keyed by
-     *  COLOR_KIND_TO_LATTICE_ATTR's rails/ties/nodes vocabulary only, and
-     *  a live in-place border recolor isn't built this slice — a picked
-     *  color takes effect on the next Generate/Regenerate, same as every
-     *  OTHER Boundary/Ending/Border field). `autoEl` is a small reset
-     *  affordance back to `color: null` ("inherit the boundary shape's
-     *  own stroke", Fred's own default ruling). */
-    function wireBorderColorSwatch(btnEl, autoEl) {
-        if (!btnEl) return;
-        on(btnEl, 'click', (e) => {
-            e.stopPropagation();
-            const p = _currentPattern(editor);
-            openColorMosaic(btnEl, (hex) => {
-                p.boundary = {
-                    ...PATTERN_DEFAULTS.boundary, ...p.boundary,
-                    border: { ...PATTERN_DEFAULTS.boundary.border, ...p.boundary?.border, color: hex },
-                };
-                btnEl.style.background = hex;
-                if (autoEl) autoEl.classList.remove('active');
-            });
-        });
-        if (autoEl) {
-            on(autoEl, 'click', () => {
-                const p = _currentPattern(editor);
-                p.boundary = {
-                    ...PATTERN_DEFAULTS.boundary, ...p.boundary,
-                    border: { ...PATTERN_DEFAULTS.boundary.border, ...p.boundary?.border, color: null },
-                };
-                btnEl.style.background = '#ffffff';
-                autoEl.classList.add('active');
-            });
-        }
-    }
-
     /** SE7i (Section 2, "Widths"): the size-editing mirror of
      *  wireColorSwatch above — a stepper's own value edits PATTERN.widths
      *  [field] AND re-widths the ACTIVE layer's already-owned pieces of
@@ -408,6 +359,46 @@ export function initLatticeProperties(editor) {
             p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, [field]: value };
             inputEl.value = value;
             rewidthOwnedKind(editor, getActiveLayer(editor), kind, value);
+        });
+    }
+
+    /** T58 ADD-ON: the LINKED stepper's own mirror of wireWidthStepper
+     *  above — one value writes BOTH widths.rails AND widths.ties, and
+     *  re-widths BOTH kinds' owned pieces in ONE undo step
+     *  (rewidthOwnedKinds, not two rewidthOwnedKind calls — see that
+     *  function's own doc comment for why two calls wouldn't satisfy
+     *  "one undo step"). */
+    function wireLinkedWidthStepper() {
+        if (!widthLinkedEl) return;
+        on(widthLinkedEl, 'change', () => {
+            const p = _currentPattern(editor);
+            const value = parseFloat(widthLinkedEl.value) || PATTERN_DEFAULTS.widths.rails;
+            p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, rails: value, ties: value, linkRailsTies: true };
+            widthLinkedEl.value = value;
+            rewidthOwnedKinds(editor, getActiveLayer(editor), [['rails', value], ['ties', value]]);
+        });
+    }
+
+    /** T58 ADD-ON: the chain toggle itself — linking unifies rails/ties to
+     *  the CURRENT rails value (live re-width, one undo step, same shape
+     *  as wireLinkedWidthStepper above); unlinking changes no VALUE at
+     *  all, just stops a future combined edit from propagating to both —
+     *  same "the control IS the source of truth" idiom every other toggle
+     *  in this panel already follows. */
+    function wireWidthLinkToggle() {
+        if (!widthLinkToggleEl) return;
+        on(widthLinkToggleEl, 'click', () => {
+            const p = _currentPattern(editor);
+            const nowLinked = !widthLinkToggleEl.classList.contains('active');
+            _showWidthLinkMode(nowLinked);
+            if (nowLinked) {
+                const value = widthRailsEl ? (parseFloat(widthRailsEl.value) || PATTERN_DEFAULTS.widths.rails) : (p.widths?.rails ?? PATTERN_DEFAULTS.widths.rails);
+                p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, rails: value, ties: value, linkRailsTies: true };
+                if (widthLinkedEl) widthLinkedEl.value = value;
+                rewidthOwnedKinds(editor, getActiveLayer(editor), [['rails', value], ['ties', value]]);
+            } else {
+                p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, linkRailsTies: false };
+            }
         });
     }
 
@@ -428,59 +419,16 @@ export function initLatticeProperties(editor) {
     if (orientHorizontalEl) on(orientHorizontalEl, 'click', () => selectOrientation('horizontal'));
     if (orientVerticalEl) on(orientVerticalEl, 'click', () => selectOrientation('vertical'));
 
-    /** T49 (SE13 §13): the Boundary "Board | Shape" segmented toggle —
-     *  a settings field like Orientation/Rails/Ties, NOT an immediate
-     *  action (unlike Orientation, which re-projects right away) — Board/
-     *  Shape only takes effect on the next explicit Generate/Regenerate,
-     *  same as every other structural field in this panel (rails.every,
-     *  ties.density, ...). Picking a shape (below) switches to 'boundary'
-     *  automatically, since picking one only makes sense in Shape mode. */
-    function selectBoundaryMode(mode) {
-        if (boundaryBoardEl) boundaryBoardEl.classList.toggle('active', mode !== 'boundary');
-        if (boundaryShapeEl) boundaryShapeEl.classList.toggle('active', mode === 'boundary');
-    }
-    if (boundaryBoardEl) on(boundaryBoardEl, 'click', () => selectBoundaryMode('board'));
-    if (boundaryShapeEl) on(boundaryShapeEl, 'click', () => selectBoundaryMode('boundary'));
-
     // T56: rails/ties MODE toggles — a settings field like Rails' own
     // every/offset or Ties' own density, NOT an immediate re-projection
-    // (unlike Orientation) — same "only takes effect on the next explicit
-    // Generate" shape `selectBoundaryMode` above already uses, since
-    // flipping mode is exactly as structural a change as flipping
-    // every/density itself.
+    // (unlike Orientation) — takes effect on the next explicit Generate,
+    // same as every other structural field in this panel.
     if (railsModeCountEl) on(railsModeCountEl, 'click', () => _showRailsMode('count'));
     if (railsModeEveryEl) on(railsModeEveryEl, 'click', () => _showRailsMode('every'));
     if (tiesModeCountEl) on(tiesModeCountEl, 'click', () => _showTiesMode('count'));
     if (tiesModeDensityEl) on(tiesModeDensityEl, 'click', () => _showTiesMode('density'));
     if (tiesSpanModeCellsEl) on(tiesSpanModeCellsEl, 'click', () => _showTieSpanMode('cells'));
     if (tiesSpanModeRailsEl) on(tiesSpanModeRailsEl, 'click', () => _showTieSpanMode('rails'));
-
-    /** T49 (SE13 §13, "Pick shape..."): arms the editor's own one-shot
-     *  pick affordance (editor-interaction.js's handleStart, checked
-     *  before the mode dispatch) — the NEXT click anywhere on the canvas,
-     *  in whatever tool happens to be active, is consumed as a boundary
-     *  pick instead of that tool's own gesture. Stamps (or reuses)
-     *  `data-boundary-ref` on the hit element and stores its id on
-     *  `PATTERN.boundary.shapeId` — does NOT auto-Generate (same "the
-     *  explicit button is the one trigger" convention structural fields
-     *  already follow here), so the user can still adjust Ending/Border/
-     *  Rails/Ties before committing to a Generate. */
-    if (pickShapeBtn) {
-        on(pickShapeBtn, 'click', () => {
-            if (boundaryStatusEl) boundaryStatusEl.textContent = 'Click a shape on the canvas…';
-            editor._boundaryPickCallback = (hitEl) => {
-                if (!hitEl) {
-                    if (boundaryStatusEl) boundaryStatusEl.textContent = 'Pick cancelled';
-                    return;
-                }
-                const p = _currentPattern(editor);
-                const id = stampBoundaryRef(hitEl);
-                p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
-                selectBoundaryMode('boundary');
-                if (boundaryStatusEl) boundaryStatusEl.textContent = 'Shape linked';
-            };
-        });
-    }
 
     /** SE7k: which explicit kind the Lattice tool's next click/drag draws
      *  — session-only tool state (editor._lattice.drawKind, same scope as
@@ -519,7 +467,8 @@ export function initLatticeProperties(editor) {
     wireWidthStepper(widthRailsEl, 'rails', 'rails');
     wireWidthStepper(widthTiesEl, 'ties', 'ties');
     wireWidthStepper(widthNodesEl, 'nodeRadius', 'nodes');
-    wireBorderColorSwatch(borderColorEl, borderColorAutoEl);
+    wireLinkedWidthStepper();
+    wireWidthLinkToggle();
 
     on(detachAllBtn, 'click', () => {
         detachAllOwned(editor, getActiveLayer(editor));

@@ -26,6 +26,12 @@ import { makeSplitter } from './splitter.js';
  *  Layers only." */
 export const TOOL_PANELS = {
   lattice: { panelId: 'editorLatticePanel', label: 'Lattice Pattern' },
+  // T58 (SE14 Slice 3): the first REAL exercise of "a future tool with its
+  // own options panel is one entry here" — see this file's own generalized
+  // _activateTab/measuredPeekFloorPx below (they used to hardcode
+  // 'editorLatticePanel' since only one entry ever existed; a second entry
+  // is what actually proves the table generic, not just declared that way).
+  shapeLattice: { panelId: 'editorShapeLatticePanel', label: 'Shape Lattice' },
 };
 
 export const DRAWER_SNAP_STATES = ['peek', 'half', 'full'];
@@ -131,6 +137,13 @@ function _syncTabsForMode(editor, mode) {
   const toolPanel = TOOL_PANELS[mode];
   toolTab.classList.toggle('hidden', !toolPanel);
   toolTab.textContent = toolPanel ? toolPanel.label : '';
+  // T58: which panel element the tab tracks travels WITH the tab button
+  // itself (a data attribute, not a second parameter threaded through
+  // every _activateTab call site below) — now that TOOL_PANELS has a
+  // second entry, "the tool tab's panel" is no longer always
+  // #editorLatticePanel; a click on the tab (below) needs to resolve the
+  // SAME panel this call just picked, not a hardcoded one.
+  toolTab.dataset.panelId = toolPanel ? toolPanel.panelId : '';
   // A tool switch always shows THAT tool's own tab (matches the
   // dispatch's own "opening the Lattice tool opens the drawer at peek" —
   // switching tools is meant to surface the new tool's options, not
@@ -140,15 +153,27 @@ function _syncTabsForMode(editor, mode) {
   _activateTab(editor, toolPanel ? 'tool' : 'layers');
 }
 
+/** T58: generalized from a hardcoded `#editorLatticePanel` reference —
+ *  reads WHICH panel the tool tab currently represents off its own
+ *  `dataset.panelId` (set by `_syncTabsForMode` above on every mode
+ *  switch), so a second (or Nth) `TOOL_PANELS` entry shows/hides the
+ *  RIGHT panel rather than always the Lattice one. Every OTHER
+ *  `TOOL_PANELS` panel is left alone here (not force-hidden) — each one
+ *  is already gated by `editor-ui.js`'s own `TOOLBAR_GROUPS` predicate
+ *  (`currentMode === '<mode>'`), which independently hides it the moment
+ *  the mode isn't its own; this toggle only needs to pick the right
+ *  panel among the (at most one) that TOOLBAR_GROUPS already left
+ *  visible. */
 function _activateTab(editor, which) {
   const toolTab = el('editorDrawerTab-tool');
   const layersTab = el('editorDrawerTab-layers');
-  const latticePanel = el('editorLatticePanel');
   const layersPanel = el('editorLayersPanel');
   if (!toolTab || !layersTab) return;
+  const toolPanelId = toolTab.dataset.panelId;
+  const toolPanel = toolPanelId ? el(toolPanelId) : null;
   toolTab.classList.toggle('active', which === 'tool');
   layersTab.classList.toggle('active', which === 'layers');
-  if (latticePanel) latticePanel.classList.toggle('editor-drawer-tab-hidden', which !== 'tool');
+  if (toolPanel) toolPanel.classList.toggle('editor-drawer-tab-hidden', which !== 'tool');
   if (layersPanel) layersPanel.classList.toggle('editor-drawer-tab-hidden', which !== 'layers');
 }
 
@@ -218,7 +243,14 @@ export function initDrawer(editor) {
   const layersTab = el('editorDrawerTab-layers');
   if (!drawer || !handle || !toolTab || !layersTab) return; // panel not present in this host — no-op, matches other init*() modules' own guard shape
 
-  _makeSectionsCollapsible(el('editorLatticePanelBody'));
+  // T58: every declared TOOL_PANELS body, not just Lattice's own — each
+  // follows the SAME "bold-span-first-child" section convention
+  // (_makeSectionsCollapsible's own doc comment already promised this for
+  // free to "any future section"; a second real panel is what actually
+  // exercises that promise).
+  for (const { panelId } of Object.values(TOOL_PANELS)) {
+    _makeSectionsCollapsible(el(`${panelId}Body`));
+  }
 
   on(toolTab, 'click', () => _activateTab(editor, 'tool'));
   on(layersTab, 'click', () => _activateTab(editor, 'layers'));
@@ -237,11 +269,16 @@ export function initDrawer(editor) {
   // only tools).
   function measuredPeekFloorPx() {
     const chrome = handle.offsetHeight + (el('editorDrawerTabs')?.offsetHeight || 0);
-    const latticePanel = el('editorLatticePanel');
-    const latticeShowing = latticePanel && !latticePanel.classList.contains('editor-drawer-tab-hidden');
-    if (latticeShowing) {
-      const addSection = document.querySelector('#editorLatticePanelBody [data-no-collapse]');
-      const footer = el('editorLatticePanelFooter');
+    // T58: read the CURRENT tool tab's own panel (dataset.panelId, set by
+    // _syncTabsForMode) rather than hardcoding editorLatticePanel — a
+    // second TOOL_PANELS entry needs its OWN essentials measured, not
+    // Lattice's.
+    const panelId = el('editorDrawerTab-tool')?.dataset.panelId;
+    const panel = panelId ? el(panelId) : null;
+    const showing = panel && !panel.classList.contains('editor-drawer-tab-hidden');
+    if (showing) {
+      const addSection = document.querySelector(`#${panelId}Body [data-no-collapse]`);
+      const footer = el(`${panelId}Footer`);
       if (addSection && footer) return chrome + addSection.offsetHeight + footer.offsetHeight + 24;
     }
     return drawerHeightPx('peek', window.innerHeight);
@@ -304,7 +341,12 @@ export function initDrawer(editor) {
       // silently fell back to the bare 96px floor (confirmed live: Add/
       // Generate landed off-screen at peek on the very first tool-open).
       _syncTabsForMode(editor, e.detail.mode);
-      if (e.detail.mode === 'lattice') splitter.snapTo('peek');
+      // T58: generalized from `mode === 'lattice'` — ANY tool with its own
+      // TOOL_PANELS entry snaps the drawer open at peek on entry, not just
+      // the Lattice tool specifically (the dispatch's own reasoning —
+      // "surface the new tool's options" — applies equally to a second
+      // tool's own panel).
+      if (TOOL_PANELS[e.detail.mode]) splitter.snapTo('peek');
     }
   });
 }

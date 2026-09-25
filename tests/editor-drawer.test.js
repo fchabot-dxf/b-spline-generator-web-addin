@@ -22,8 +22,9 @@ describe('DRAWER_SNAP_STATES / TOOL_PANELS (declared tables)', () => {
     expect(DRAWER_SNAP_STATES).toEqual(['peek', 'half', 'full']);
   });
 
-  it('declares a Lattice tab, and nothing for a mode with no options panel', () => {
+  it('declares a Lattice tab, a Shape Lattice tab (T58), and nothing for a mode with no options panel', () => {
     expect(TOOL_PANELS.lattice).toEqual({ panelId: 'editorLatticePanel', label: 'Lattice Pattern' });
+    expect(TOOL_PANELS.shapeLattice).toEqual({ panelId: 'editorShapeLatticePanel', label: 'Shape Lattice' });
     expect(TOOL_PANELS.select).toBeUndefined();
     expect(TOOL_PANELS.draw).toBeUndefined();
   });

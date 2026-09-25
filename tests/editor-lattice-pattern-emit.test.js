@@ -385,8 +385,14 @@ describe('PATTERN_DEFAULTS.colors (SE7g amend)', () => {
 describe('PATTERN_DEFAULTS.widths (SE7i)', () => {
   it('declares the three default kind widths, derived from LATTICE_STYLE × the default spacing (0.25)', () => {
     expect(PATTERN_DEFAULTS.widths.rails).toBeCloseTo(0.07, 10);
-    expect(PATTERN_DEFAULTS.widths.ties).toBeCloseTo(0.055, 10);
+    // T58 ADD-ON (Fred: "I normally want ties and rails to be the same
+    // width"): a brand-new layer's own ties DEFAULT now equals rails'
+    // (0.07), not LATTICE_STYLE.tie's own separate 0.055 — a disclosed
+    // default-VALUE change, matching widths.linkRailsTies's own default
+    // of true for a new layer.
+    expect(PATTERN_DEFAULTS.widths.ties).toBeCloseTo(0.07, 10);
     expect(PATTERN_DEFAULTS.widths.nodeRadius).toBeCloseTo(0.075, 10);
+    expect(PATTERN_DEFAULTS.widths.linkRailsTies).toBe(true);
   });
 });
 

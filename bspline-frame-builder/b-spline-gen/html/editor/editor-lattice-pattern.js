@@ -70,8 +70,15 @@ export const BOUNDARY_REF_ATTR = 'data-boundary-ref';
  *  relaxation Select/Node mode's own hit-test already uses). Returns null
  *  if the id is unset or the element was deleted — the caller's own
  *  "declined gracefully" fallback (same shape `insideSpans` itself uses
- *  for a degenerate boundary) covers that, not an exception here. */
-function _findBoundaryElement(editor, shapeId) {
+ *  for a degenerate boundary) covers that, not an exception here.
+ *
+ *  T58 (SE14 Slice 3): exported (same underscore-kept convention as
+ *  `stampBoundaryRef`/`_resolveExtent` below) — the Shape Lattice tool's
+ *  own Generate needs to find its ALREADY-linked silhouette `<path>` (to
+ *  update its `d` in place, keeping the same link) before calling
+ *  `generatePattern`, the same lookup this file already had exactly one
+ *  internal caller for. */
+export function _findBoundaryElement(editor, shapeId) {
   if (!editor || !editor._sketchLayer || !shapeId) return null;
   const children = editor._sketchLayer.children().toArray();
   for (const ch of children) {
@@ -288,10 +295,22 @@ export const PATTERN_DEFAULTS = {
   // independently editable" shape PATTERN.colors already has). `nodeRadius`
   // matches emitNode's own internal `r` (a radius, not a diameter) — the
   // panel's "Node size" stepper edits this same value directly.
+  // T58 ADD-ON (Fred: "I normally want ties and rails to be the same
+  // width"): `linkRailsTies` (default true, a NEW layer's own starting
+  // point) ties widths.ties to widths.rails in the panel's own UI (one
+  // combined stepper) — `ties` itself is still a REAL, independent field
+  // (computePattern/emitSegment read `widths.ties` directly, unaware this
+  // link exists at all; the link is a properties-*.js-level UI/write
+  // convenience, not a new fill-engine concept). A brand-new layer's own
+  // ties DEFAULT now equals rails' own default (0.07), not its own
+  // previous 0.055 (LATTICE_STYLE.tie.widthFactor*0.25) — Fred's own
+  // explicit ruling ("rails = ties = the current rails default"), a
+  // disclosed default-VALUE change, not just an added field.
   widths: {
     rails: LATTICE_STYLE.rail.widthFactor * 0.25,       // 0.07
-    ties: LATTICE_STYLE.tie.widthFactor * 0.25,          // 0.055
+    ties: LATTICE_STYLE.rail.widthFactor * 0.25,         // 0.07 (T58: was 0.055, now == rails)
     nodeRadius: LATTICE_STYLE.node.radiusFactor * 0.25,  // 0.075
+    linkRailsTies: true,
   },
   seed: 42,
   // T48 (SE13 §1): the `extent.mode === 'boundary'` settings, declared now
@@ -320,6 +339,25 @@ export const PATTERN_DEFAULTS = {
     runs: null,
     joints: { freq: 1, shape: 'circle', size: null },
     border: { enabled: false, width: null, color: null },
+  },
+  // T58 (SE14 Slice 3): the Shape Lattice tool's own generated-silhouette
+  // state (SE14-SHAPE-LATTICE-DESIGN.md §2) — declared here alongside
+  // every other per-layer pattern field, not a parallel structure, even
+  // though `computePattern`/`generatePattern` never read it themselves
+  // (it's consumed only by properties-shape-lattice.js, which resolves it
+  // into `PATTERN.boundary.shapeId` + `PATTERN.extent.mode:'boundary'`
+  // BEFORE calling the SAME fill engine every other tool shares — "two
+  // tools sharing one engine", design doc §1). `params`/`segments` are
+  // OVERRIDES onto `editor-shape-lattice-generator.js`'s own PRESETS
+  // table — `{}`/`null` means "use that preset's own defaults + gentle
+  // seeded jitter", matching `generateSilhouette`'s own documented
+  // contract exactly (not re-described here).
+  shape: {
+    source: 'generated', // 'generated' | 'picked' — design doc §6
+    preset: 'hourglass',
+    seed: 42,
+    params: {},
+    segments: null,
   },
 };
 
@@ -1554,6 +1592,41 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
   return owned.length;
+}
+
+/**
+ * T58 ADD-ON (Fred: "I normally want ties and rails to be the same
+ * width" — `widths.linkRailsTies`): the multi-kind sibling of
+ * `rewidthOwnedKind` above — applies several kinds' width changes in ONE
+ * pass, then pushes ONE undo step total, not one per kind. Calling
+ * `rewidthOwnedKind` twice (once for 'rails', once for 'ties') would
+ * satisfy "re-width both" but NOT "one undo step" — its own single
+ * `pushState()` fires per call, so two calls would be two undo steps. A
+ * genuinely reusable batch shape (declared once, not a one-off loop
+ * inlined at the single caller this ships with), matching
+ * `generatePattern`'s own "every internal step is undo-silent by
+ * construction; pushState() fires exactly once" convention.
+ *
+ * @param {Array<[kind:string, value:number]>} kindValuePairs
+ * @returns {number} total elements re-widthed, across all kinds.
+ */
+export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
+  let total = 0;
+  for (const [kind, value] of kindValuePairs) {
+    const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
+    if (!latticeKind) continue;
+    const owned = _ownedOnLayer(editor, layerId, latticeKind);
+    for (const ch of owned) {
+      if (latticeKind === 'node') ch.attr('r', value);
+      else ch.attr('stroke-width', value);
+    }
+    total += owned.length;
+  }
+  if (total > 0) {
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  }
+  return total;
 }
 
 /**
