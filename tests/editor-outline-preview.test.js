@@ -103,9 +103,9 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
   });
 
-  it('a kind with no OUTLINE_KINDS entry (e.g. polygon — not built yet) is skipped silently, no error', () => {
-    const polygon = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [polygon] });
+  it('a kind with no OUTLINE_KINDS entry (e.g. text — not built yet) is skipped silently, no error', () => {
+    const text = { type: 'text', attr: (a) => ({ 'data-layer': '1' }[a]) };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [text] });
     expect(() => refreshOutlinePreview(editor)).not.toThrow();
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
   });
@@ -132,13 +132,13 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
 });
 
 describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amendment)', () => {
-  it('has exactly the kinds built so far: line (T37), circle/rect (T38), ellipse (T38 amend, biarc-fit) — polyline/polygon/generic-path/text and multi-segment curved paths are later work', () => {
-    expect(Object.keys(OUTLINE_KINDS).sort()).toEqual(['circle', 'ellipse', 'line', 'rect']);
+  it('has exactly the kinds built so far: line (T37), circle/rect (T38), ellipse (T38 amend, biarc-fit), polyline/polygon/path (T39, general engine) — text is later work', () => {
+    expect(Object.keys(OUTLINE_KINDS).sort()).toEqual(['circle', 'ellipse', 'line', 'path', 'polygon', 'polyline', 'rect']);
   });
 
-  it('adding a kind is a TABLE entry, not a refreshOutlinePreview change — proven by adding one temporarily (polygon: genuinely not built yet) and confirming it fires with zero edits to the function under test', () => {
-    const polygonEl = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [polygonEl] });
+  it('adding a kind is a TABLE entry, not a refreshOutlinePreview change — proven by adding one temporarily (text: genuinely not built yet) and confirming it fires with zero edits to the function under test', () => {
+    const textEl = { type: 'text', attr: (a) => ({ 'data-layer': '1' }[a]) };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [textEl] });
 
     // Before the entry exists: skipped (matches the "no OUTLINE_KINDS
     // entry" test above — restated here as the BEFORE half of the same
@@ -146,31 +146,31 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
     refreshOutlinePreview(editor);
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
 
-    // Add a throwaway 'polygon' entry (a LATER turn's actual job, not
-    // built here — this is only to prove the table IS what
-    // refreshOutlinePreview consults, not a hardcoded type check
-    // reintroduced by mistake). Not 'circle'/'rect' — those are now REAL
-    // permanent entries; overwriting-then-deleting one would corrupt the
-    // shared module-level table for every test that runs after this one.
-    OUTLINE_KINDS.polygon = () => ({ d: 'M 0 0 L 1 0 L 1 1 Z', unsupported: null });
+    // Add a throwaway 'text' entry (a LATER turn's actual job, not built
+    // here — this is only to prove the table IS what refreshOutlinePreview
+    // consults, not a hardcoded type check reintroduced by mistake). Not
+    // one of the real kinds — overwriting-then-deleting one of those would
+    // corrupt the shared module-level table for every test that runs
+    // after this one.
+    OUTLINE_KINDS.text = () => ({ d: 'M 0 0 L 1 0 L 1 1 Z', unsupported: null });
     try {
       refreshOutlinePreview(editor);
       expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
     } finally {
-      delete OUTLINE_KINDS.polygon; // leave the shared table exactly as found
+      delete OUTLINE_KINDS.text; // leave the shared table exactly as found
     }
   });
 
   it('an entry returning { unsupported } still gets no preview, even though the kind IS in the table — the table only says HOW to try, not that every attempt succeeds. Ellipse became a real (biarc-fit) entry in the T38 amendment, so this uses a throwaway table entry instead of relying on ellipse to decline', () => {
-    OUTLINE_KINDS.polygon = () => ({ d: null, unsupported: 'curve' });
+    OUTLINE_KINDS.text = () => ({ d: null, unsupported: 'curve' });
     try {
-      expect(OUTLINE_KINDS.polygon()).toEqual({ d: null, unsupported: 'curve' });
-      const el = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
+      expect(OUTLINE_KINDS.text()).toEqual({ d: null, unsupported: 'curve' });
+      const el = { type: 'text', attr: (a) => ({ 'data-layer': '1' }[a]) };
       const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
       refreshOutlinePreview(editor);
       expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
     } finally {
-      delete OUTLINE_KINDS.polygon; // leave the shared table exactly as found
+      delete OUTLINE_KINDS.text; // leave the shared table exactly as found
     }
   });
 
@@ -185,6 +185,46 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
     const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
     expect(line._d).toMatch(/^M /);
     expect(line._d).not.toContain('unsupported');
+  });
+
+  it('polygon (T39, general engine) produces a real preview through refreshOutlinePreview, reading points via .array() the same way editor-transform-handles.js already does', () => {
+    const el = {
+      type: 'polygon',
+      attr: (a) => ({ 'data-layer': '1', 'stroke-width': '0.2' }[a]),
+      array: () => [[0, 0], [10, 0], [10, 10], [0, 10]],
+    };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
+    refreshOutlinePreview(editor);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+    expect(line._d).toMatch(/^M /);
+    expect(line._d).toContain('Z'); // polygon closes -- points-to-d wiring includes the Z
+  });
+
+  it('polyline (T39) produces a real preview through refreshOutlinePreview — an OPEN source polyline still traces a single closed CAPSULE outline (matching lineOutlinePathD\'s own convention), only one M', () => {
+    const el = {
+      type: 'polyline',
+      attr: (a) => ({ 'data-layer': '1', 'stroke-width': '0.2' }[a]),
+      array: () => [[0, 0], [10, 0], [10, 10]],
+    };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
+    refreshOutlinePreview(editor);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+    expect(line._d).toMatch(/^M /);
+    expect((line._d.match(/M/g) || []).length).toBe(1);
+  });
+
+  it('path (T39) reads its own d attribute and produces a real preview through refreshOutlinePreview', () => {
+    const el = {
+      type: 'path',
+      attr: (a) => ({ 'data-layer': '1', 'stroke-width': '0.2', d: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' }[a]),
+    };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
+    refreshOutlinePreview(editor);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+    expect(line._d).toMatch(/^M /);
   });
 });
 

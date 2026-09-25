@@ -31,6 +31,7 @@
  */
 import { showsOutline } from './layers.js';
 import { lineOutlinePathD, circleOutlinePathD, rectOutlinePathD, ellipseOutlinePathD } from './editor-expand-analytic.js';
+import { pathOutlinePathD } from './editor-expand-path.js';
 
 /** Which of the 3 outline modes editor-expand-analytic.js's shape
  *  functions want, read from the element's OWN fill/stroke presentation
@@ -47,6 +48,18 @@ function _fillModeOf(el) {
   return 'stroke'; // also the safe default for a degenerate "neither set" element
 }
 
+/** svg.js's own `.array()` on a polyline/polygon returns `[[x,y], ...]`
+ *  (same shape editor-transform-handles.js's own drag helpers already
+ *  read) -- turned into an SVG path `d` string so both kinds can share
+ *  pathOutlinePathD's one general engine instead of a bespoke polyline
+ *  offsetter (Fred: "polyline, polygon (-> points to a path)... through
+ *  it"). `closed` appends `Z` for polygon; polyline stays open. */
+function _pointsToD(points, closed) {
+  if (!points || !points.length) return '';
+  const body = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ');
+  return closed ? `${body} Z` : body;
+}
+
 /**
  * SE12 T37 AMEND (Fred: "it should work on shapes in priority, but
  * eventually text" — keep this turn's scope to lines, but don't hardcode
@@ -58,14 +71,15 @@ function _fillModeOf(el) {
  * entry here is skipped in refreshOutlinePreview below, silently, same
  * as an `unsupported` result — no error either way.
  *
- * T38 added rect/circle (closed-form, no offsetting algorithm needed);
- * polyline/polygon/generic-path and text are later work (open item in
- * this module — see WORK-LOG). The TABLE was worth declaring in T37
- * before any shape existed (cheap, and it's the shape every future kind
- * plugs into identically); the
- * geometry FUNCTIONS for shapes/text are not (building them before
- * anything calls them is the "machinery for an unused case" the
- * declare-over-hand-roll rule itself warns against).
+ * T38 added rect/circle/ellipse (closed-form/biarc-fit, no general
+ * offsetting algorithm needed); T39 added polyline/polygon/path (the
+ * general engine, editor-expand-path.js). Text is still later work (open
+ * item in this module — see WORK-LOG). The TABLE was worth declaring in
+ * T37 before any shape existed (cheap, and it's the shape every future
+ * kind plugs into identically); the geometry FUNCTIONS for shapes/text
+ * are not (building them before anything calls them is the "machinery
+ * for an unused case" the declare-over-hand-roll rule itself warns
+ * against).
  */
 export const OUTLINE_KINDS = {
   line: (el) => lineOutlinePathD({
@@ -105,6 +119,22 @@ export const OUTLINE_KINDS = {
     ry: parseFloat(el.attr('ry')) || 0,
     strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
     mode: _fillModeOf(el),
+  }),
+  // T39: the deferred general-path piece (polyline/polygon/any multi-
+  // segment path with joins) -- one engine (pathOutlinePathD,
+  // editor-expand-path.js), all three kinds adapt their own attrs into a
+  // `d` string for it rather than each carrying separate geometry.
+  polyline: (el) => pathOutlinePathD(_pointsToD(el.array(), false), parseFloat(el.attr('stroke-width')) || 0, {
+    mode: _fillModeOf(el),
+    cap: el.attr('stroke-linecap') || 'round',
+  }),
+  polygon: (el) => pathOutlinePathD(_pointsToD(el.array(), true), parseFloat(el.attr('stroke-width')) || 0, {
+    mode: _fillModeOf(el),
+    cap: el.attr('stroke-linecap') || 'round',
+  }),
+  path: (el) => pathOutlinePathD(el.attr('d') || '', parseFloat(el.attr('stroke-width')) || 0, {
+    mode: _fillModeOf(el),
+    cap: el.attr('stroke-linecap') || 'round',
   }),
 };
 
