@@ -746,11 +746,15 @@ correct inch scale (rect corner arcs r = 0.05" = w/2). Side fix: SVG text render
 Also done today: SE7h/i/j connected lattice (active layer, per-layer settings, Widths, grid-point attachment, upright
 node drag), MOB2/MOB2b mobile pass, layer toggle styling. Add-in deployed at 0258941.
 
-## Queued — SE14: Silhouette tool (Fred 2026-09-25: "in my app there was an hourglass shape gen" … "a dedicated tool is better")
-A dedicated editor tool (own rail icon, own drawer tab / desktop panel) that GENERATES a closed silhouette path, seeded:
-hourglass/bust family from Fred's svgcreator — deployed builder (keypoints base→shoulder→neck→head, mirrored, per-segment
-style table straight/arc/arc-deep/arc-flat/arc-in/ellipse/sharp/step/notch/s-bend, chin/neck proportion handles, joint
-radius; exact L + circular A) driven by the simpler waist controls of the older on-disk SVG creator (waist pos/width,
-pinch, curve style). Output = an ordinary closed path (node-editable) → usable as SE13 lattice boundary; optional
-"Fill with lattice" one-click link. Source: lane-b worktree reference/svgcreator-deployed/ (pathloop.js, utils.js
-resolveGenerator, main.js chin/neck) + C:\Users\danse\APPS\SVG creator\src\envelope.js. Next: seat B design doc after T50.
+## Queued — SE14: SHAPE LATTICE tool (Fred 2026-09-25, supersedes the "Silhouette tool" note)
+Fred: "the shape lattice and lattice box are different" → TWO tools sharing one engine:
+- `#` Lattice (box): today's tool, fills the board rectangle; the SE13 Boundary row moves OUT of it.
+- Shape Lattice (new tool, own rail icon + drawer tab/panel): SHAPE section + the same Fill settings (spacing, rails,
+  ties, nodes, colors, widths, ending rule, border) + Generate. Shape source = generate a mirrored hourglass/bust
+  silhouette (seed, neck/chin/waist proportions) OR pick any closed shape drawn on the canvas.
+- Fred: "shape tool just has more settings for shape refinement, perhaps per shape segment toggle for curve, straight
+  or kinked line" → per-SEGMENT style: straight | curve (true arc, bulge in↔out) | kink (sharp corner in/out); pick a
+  segment from the list or by tapping it on canvas; mirrored pairs change together; corner rounding radius.
+- Output stays exact (L + circular A) → exact carve/Outline export/Fusion; result is an ordinary node-editable path.
+- Source: lane-b reference/svgcreator-deployed/ (pathloop.js style table, utils.js resolveGenerator, main.js chin/neck)
+  + C:/Users/danse/APPS/SVG creator/src/envelope.js (waist controls). Next: seat B design doc after T50.
