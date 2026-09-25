@@ -24,6 +24,11 @@ tool). Make the kind an explicit choice.
    instead of LATTICE_STYLE × spacing / the toolbar color. One source: the Widths row. (Fred was confused that
    hand-drawn and generated pieces differ.) A layer with no pattern yet → PATTERN_DEFAULTS.
 5. Keyboard: the lattice tool's shortcut cycles nothing new; optional 1/2/3 while the tool is active only if trivial.
+## AMEND (advisor ruling on Fred's 'spawn or drag?'): BOTH
+Click (no drag) SPAWNS a default piece at the clicked grid point — Rail: full-width row (Generate's extent); Tie: that
+column between the two nearest rails; Node: the point. Drag draws exactly. The Add button only selects the kind. Declare
+the click defaults in LATTICE_DRAW_KINDS. One undo step per spawn.
+
 ## Verify
 - Pure tests for each kind's constraint in both orientations; node click placement; width/color come from the layer
   pattern.
