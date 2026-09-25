@@ -29,15 +29,11 @@ Click (no drag) SPAWNS a default piece at the clicked grid point — Rail: full-
 column between the two nearest rails; Node: the point. Drag draws exactly. The Add button only selects the kind. Declare
 the click defaults in LATTICE_DRAW_KINDS. One undo step per spawn.
 
-## AMEND 2 (Fred: "pulling on nodes should lengthen the tie")
-Tie-END node drag → moves only that end along the tie's axis (tie lengthens/shortens, stays upright, snaps to grid +
-rail rows, min length 1 step). Mid-span crossing node → ALSO stretches (AMEND 3, Fred: "dragging the tie changes position, node stretches it"): the end on
-the side the pointer moves toward follows. SE7j's node-slide path is removed. Tie body drag → slide (unchanged).
-
-## AMEND 4 (Fred: "can we change a rail's size?")
-Rail END drag (rail-end node, or within the end-grab zone) → changes the rail's length along its own axis (snap to grid,
-min 1 step, can't pass the other end). Body drag → move row (SE7i, unchanged). Attached ties stay; ones left off the
-end keep position, no re-attach.
+## AMENDS 2-5, consolidated (Fred: "it's not about nodes, it's the feature's END that can stretch it")
+One rule for rails AND ties: grab in the END-GRAB ZONE of a piece's endpoint → STRETCH along its own axis (grid snap;
+tie ends snap to rail rows; min 1 step; can't pass the other end). Grab the BODY → MOVE (SE7i). Nodes aren't special
+grab targets: an end node is inside the end zone, a mid-span crossing node is on the body (→ move), a standalone node
+moves itself; nodes ride along. No node-specific drag branch.
 
 ## Verify
 - Pure tests for each kind's constraint in both orientations; node click placement; width/color come from the layer
