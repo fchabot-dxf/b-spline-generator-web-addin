@@ -230,7 +230,7 @@ def _apply_radial_dimensions(ctx, sketch, s_name, dimensions):
     onto dimension_step's own {"DimType":"Radius", "Target", "Expression"}
     shape — already implemented there for both Radius/Diameter (T60's own
     research). Offset-type dimension entries are handled separately, by
-    _apply_width_offsets_and_tangent_caps below — dimension_step itself
+    _apply_width_offsets below — dimension_step itself
     has NO "Offset" DimType branch (offsets are OffsetConstraints, not
     SketchDimensions, in this codebase's own established split)."""
     for d in dimensions or []:
@@ -329,22 +329,27 @@ def _do_single_offset(ctx, sketch, s_name, line_entity, side_sign, expression, s
     return result.item(0)
 
 
-def _apply_width_offsets_and_tangent_caps(ctx, sketch, s_name, offset_dims):
+def _apply_width_offsets(ctx, sketch, s_name, offset_dims):
     """§4/§5/§6: TWO classic sketch.offset() calls per centerline (one per
-    side), then a best-effort Tangent between that centerline's own
-    already-created cap arcs (<id>_capA/<id>_capB, made in the geometry
-    pass) and its nearby offset curve — the ONE relationship T61's own
-    JS-side manifest deliberately left undeclared, since the offset
-    curve has no manifest-known id until THIS function creates it live
-    (design doc §4's own reasoning, restated in editor-sketch-manifest.js's
-    header comment).
+    side). Cap arcs themselves are already created in the geometry pass
+    (<id>_capA/<id>_capB, centered on the centerline's own end, radius =
+    the SAME width/2 the offsets use) and already get a Radial dimension
+    (§1's own manifest, handled by _apply_radial_dimensions) — that alone
+    fully determines them (center on the centerline's own end point,
+    radius tied to the same parameter driving the offsets).
 
-    This cap-tangent wiring is the LEAST proven part of this module — it
-    was written without any live Fusion verification (this turn's own
-    "NO FUSION" constraint) and is wrapped per-attempt in try/except so a
-    wrong or impossible tangent pairing is skipped and reported, never
-    fatal. Flagged explicitly in WORK-LOG-lane-b.md T62 for the advisor's
-    own live check.
+    T63 fix (advisor's own real-Fusion run, `build_from_manifest_file` on
+    a live 75-entity/51-constraint hourglass+lattice fixture): T62's own
+    FIRST version of this function also added an explicit Tangent between
+    each cap and its nearby offset curve. That produced 30 "CAP TANGENT
+    SKIP ... VCS_SKETCH_OVER_CONSTRAINTS" — the cap is ALREADY fully
+    pinned by the center+radius above, so an explicit Tangent is a
+    redundant, conflicting 5th constraint on a curve that already has 0
+    remaining degrees of freedom. Per the advisor's own explicit
+    instruction ("drop the explicit cap-tangent step... the result must
+    have ZERO skips on this fixture, don't just silence the log"), the
+    addTangent call is REMOVED here, not wrapped/silenced — this function
+    no longer touches sketch.geometricConstraints at all.
 
     `offset_dims`: the manifest's own `dimensions[]` entries with
     type=='Offset' — each already {targets:[...ids], expression, id}, one
@@ -387,23 +392,8 @@ def _apply_width_offsets_and_tangent_caps(ctx, sketch, s_name, offset_dims):
                     created += 1
                 if neg_curve:
                     created += 1
-
-                gc = sketch.geometricConstraints
-                for cap_id in (f"{target_id}_capA", f"{target_id}_capB"):
-                    cap = ctx.resolve_entity(s_name, cap_id)
-                    if not cap:
-                        continue
-                    for curve, side_label in ((pos_curve, "pos"), (neg_curve, "neg")):
-                        if not curve:
-                            continue
-                        try:
-                            gc.addTangent(cap, curve)
-                        except Exception as e:
-                            msg = f"CAP TANGENT SKIP: {cap_id}<->{side_label}: {e}"
-                            issues.append(msg)
-                            ctx.logger.log(msg, "DEBUG")
             except Exception as e:
-                msg = f"OFFSET/CAP FAIL: {target_id}: {e}"
+                msg = f"OFFSET FAIL: {target_id}: {e}"
                 issues.append(msg)
                 ctx.logger.log(msg, "ERROR")
     return created, issues
@@ -440,7 +430,21 @@ def _sync_manifest_parameters(ctx, parameters):
                 existing.expression = str(value)
                 updated += 1
             else:
-                value_input = adsk.core.ValueInput.createByReal(float(value))
+                # T63 fix (advisor's own real-Fusion measurement): createByReal
+                # takes a value in Fusion's CANONICAL internal unit (cm for a
+                # length), ignoring the `unit` string passed to .add() — that
+                # arg only labels/displays the parameter, it does NOT convert
+                # the raw number. Passing 0.07 (meant as INCHES) via createByReal
+                # silently created a 0.07 CM parameter (confirmed: it measured
+                # back as 0.0276in = 0.07/2.54). A real length unit needs
+                # createByString(f"{value} {unit}") so Fusion's own expression
+                # parser does the conversion; a genuinely unitless ratio
+                # (waist_reach, corner_radius, ...) keeps createByReal exactly
+                # as before (no unit string to misinterpret).
+                if unit:
+                    value_input = adsk.core.ValueInput.createByString(f"{value} {unit}")
+                else:
+                    value_input = adsk.core.ValueInput.createByReal(float(value))
                 user_params.add(name, value_input, unit, "SE15 constrained sketch parameter")
                 created += 1
         except Exception as e:
@@ -522,7 +526,7 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
     try:
         _apply_radial_dimensions(ctx, sketch, s_name, dimensions)
         offset_dims = [d for d in dimensions if d.get("type") == "Offset"]
-        o_created, o_issues = _apply_width_offsets_and_tangent_caps(ctx, sketch, s_name, offset_dims)
+        o_created, o_issues = _apply_width_offsets(ctx, sketch, s_name, offset_dims)
     finally:
         sketch.isComputeDeferred = False
 

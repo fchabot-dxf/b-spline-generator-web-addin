@@ -7098,3 +7098,115 @@ assumed correct.
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed.
 
+## T63 — SE15 fixes from the advisor's own REAL Fusion run + wire the add-in to actually use the manifest
+
+Dispatch: the advisor ran `build_from_manifest_file` live in Fusion on a real 75-entity/51-constraint
+hourglass+lattice manifest and found exactly the two things T62's own WORK-LOG flagged as unverified — plus a
+genuine gap: the builder was never actually CALLED from `_handle_generate`. Fix all three.
+
+**Could not access the advisor's own saved fixture** (`scratchpad\se15-real-manifest.json` is inside THEIR own
+session's private scratchpad directory, not something my worktree/session can read — confirmed by searching,
+not assumed). Reproduced both bugs instead using my own smaller hand-built fixture from T62's test suite, which
+exercises the exact same code paths the advisor's report names — the dispatch's own reported symptoms (exact
+values, exact log-line text) were specific enough to fix and verify without needing their literal file.
+
+**Bug 1 — parameter units off by 2.54, confirmed and fixed.** `_sync_manifest_parameters`'s own CREATE path used
+`ValueInput.createByReal(float(value))` for every parameter regardless of unit. `createByReal` takes a value in
+Fusion's CANONICAL internal unit (cm for a length) — the `unit` string passed separately to `.add()` only labels
+the parameter for display, it does NOT convert the raw number. So `createByReal(0.07)` for `rail_width` (meant
+as 0.07 IN) silently became 0.07 CM — exactly matching the advisor's own measured 0.0276" (0.07/2.54). Fixed:
+a length parameter (non-empty `unit`) now uses `ValueInput.createByString(f"{value} {unit}")`, letting Fusion's
+own expression parser do the conversion; a genuinely unitless ratio (`waist_reach`, `corner_radius`, ...,
+`unit` is `None`) keeps `createByReal` exactly as before — no unit string to misinterpret there. Two new tests
+(`test_length_parameters_created_with_unit_bearing_expression`, `test_unitless_parameters_created_with_
+createByReal`) assert on WHICH `ValueInput` constructor gets called and with what exact string/number, via a
+small extension to the fake `_ValueInput` shim (it now logs `("valueinput:real"|"valueinput:string", value)`
+into the SAME module-level `CALL_LOG` the rest of the suite already threads through).
+
+**Bug 2 — cap tangency over-constraint, confirmed and REMOVED (not silenced).** The advisor's own live run
+produced 30 "CAP TANGENT SKIP ... VCS_SKETCH_OVER_CONSTRAINTS" — their own diagnosis: a cap arc is ALREADY
+fully determined (center pinned to the centerline's own end point, radius tied to the SAME parameter driving
+the offset), so T62's own explicit `addTangent(cap, offset_curve)` call was a redundant, conflicting 5th
+constraint on a curve with zero remaining degrees of freedom. Per the advisor's own explicit instruction ("drop
+the explicit cap-tangent step... the result must have ZERO skips on this fixture, don't just silence the log"),
+`_apply_width_offsets_and_tangent_caps` is renamed `_apply_width_offsets` and no longer touches
+`sketch.geometricConstraints` at all — not wrapped in a broader try/except, the call is GONE. The obsolete test
+(`test_cap_tangent_attempted_against_both_offset_sides`, which asserted Tangent calls WOULD happen) is replaced
+with `test_no_cap_tangent_constraint_is_ever_attempted` (asserts zero Tangent calls, full stop) — and the
+threshold test's own doc comment/assertion, which previously had to carve out an explicit exception for
+Tangent calls, is simplified to a genuine "zero constraint calls of any kind" check now that there's nothing
+left to exempt.
+
+**Bug 3 — wired the add-in to actually call the builder.** T62 built `build_constrained_sketch` +
+`build_from_manifest_file` but never called the FIRST one from `_handle_generate` — Send to Fusion still only
+ever imported the plain SVG, regardless of whether a layer carried a `sketchManifest`. Fixed in
+`b-spline-gen.py`:
+- Top-level `from sketch_manifest_builder import build_constrained_sketch` — safe as a plain import (confirmed
+  by reading `bspline-frame-builder.py`'s own `_load_submodule`: it inserts `b-spline-gen/`'s own directory into
+  `sys.path` BEFORE exec'ing `b-spline-gen.py`, so a sibling-module import resolves without any lazy/defensive
+  workaround).
+- Extracted the offset-above-peak construction-plane logic `_import_single_layer_svg` already had (steps 3-4 of
+  its own body) into a new shared `_compute_artwork_plane` method — SAME placement for both the plain-SVG path
+  (refactored to call it) and the new constrained-sketch path, matching the advisor's own "Answers" ruling to
+  keep that convention. Confirmed `project_axis` (a local the original code computed but never actually used
+  anywhere in that function) was genuinely dead before my edit too — not something I made unused, just not
+  propagated into the new shared helper.
+- `_import_all_svg_layers` gained a `design=None` param (threaded from `_handle_generate`'s own already-in-scope
+  `des`) and now branches per layer: `layer.get('sketchManifest')` present + a real `design` → new
+  `_build_constrained_sketch_for_layer` (build via `build_constrained_sketch`, log one summary line — entities,
+  constraint/dimension issue counts, offsets created, params created/updated, seconds); otherwise → the
+  UNCHANGED plain-SVG path. The carve stamp itself is untouched either way — it's driven by the STEP body's own
+  3D geometry, generated earlier in `_handle_generate`, never by this sketch-import step.
+- **Deploy/path check (confirmed, not fixed — nothing was actually wrong)**: read `DEPLOY_bspline-frame-
+  builder.py` directly. `VERIFY_FILES` is a POST-copy hash-check subset, not an inclusion allowlist — the real
+  copy is `shutil.copytree` over the WHOLE `bspline-frame-builder/` tree minus `SKIP_NAMES`/`SKIP_SUFFIXES`/
+  `SKIP_FILES_EXACT`. Neither `sketch_manifest_builder.py` nor `test_sketch_manifest_builder.py` matches any
+  skip pattern, so both already deploy automatically (the test file ships too — a pre-existing situation, since
+  `frame-builder/test_*.py` already ships the exact same way; not something this turn changed or was asked to
+  fix). `_ensure_fb_engine_importable`'s own sibling-path assumption holds in the deployed layout too, since the
+  WHOLE tree (including `frame-builder/` and `b-spline-gen/` as siblings) copies verbatim — confirmed via
+  `SRC_DIR = Path(__file__).parent.resolve()` (the `bspline-frame-builder/` folder itself) and the destination
+  tree structure `VERIFY_FILES`'s own paths already imply.
+
+**No new test for the `_handle_generate` wiring itself** — `b-spline-gen.py` has zero existing test
+infrastructure of its own (confirmed by T62's own research: no fake-adsk convention for THIS file, unlike
+fb_engine), and building one from scratch for a thin dispatch branch is out of scope for a fix-and-wire turn;
+`python -m py_compile` confirms the edit is syntactically valid. The advisor's own live Fusion run remains the
+real verification for this piece, same as T62's own builder logic.
+
+**Tests**: `test_sketch_manifest_builder.py` now 15 (was 13) — 2 new (units), 1 replaced (cap-tangent removal),
+1 simplified (threshold test's own now-unconditional zero-constraint-calls assertion). Both pytest and the
+plain-python fallback verified green (15/15, 14/14 — the `tmp_path`-fixture test skipped in fallback mode, same
+as T62). Full JS suite unaffected (991/63 files, unchanged — this turn touched no JS files).
+
+**Mutation-tested the units fix**: reverted the `createByString` branch back to unconditional `createByReal` →
+exactly 1 failure (`test_length_parameters_created_with_unit_bearing_expression`, reproducing the EXACT
+advisor-reported symptom: a `("valueinput:real", 0.07)` call instead of `("valueinput:string", "0.07 in")`).
+Restored, MD5-verified byte-identical. The cap-tangent removal's own non-vacuity is already proven by the test
+itself (asserts the exact call list is empty — a mutation putting the `addTangent` call back would trivially
+fail it, not re-run separately given the fix is a straight deletion, not new logic to mutate).
+
+**Mid-task amendment, incorporated before committing (Fred, via the advisor, mid-flight — two copies arrived,
+the second an explicit "clean resend" of the first after shell-quoting ate the parameter name the first time;
+followed the second, corrected one)**: "I would prefer a unique stroke width param." When a layer's rail/tie
+widths are LINKED (`PATTERN.widths.linkRailsTies`, the T58-era default), the manifest now emits ONE Fusion user
+parameter, `stroke_width`, driving BOTH rail and tie offsets — replacing the separate `rail_width`/`tie_width`
+pair for that case (a person editing the sketch in Fusion sees one control for "how thick is the lattice",
+matching what the panel's own linked stepper already presents). Implemented in `manifestFromLattice`
+(`editor-sketch-manifest.js`): `strokeWidthLinked = widths.linkRailsTies !== false || widths.rails ===
+widths.ties` — true whenever EITHER the link flag is on OR the two widths just happen to already match, so the
+separate-names path is reserved for the one case that genuinely needs two numbers (unlinked AND different).
+`node_radius` is untouched either way. Confirmed (grep, not assumed) the Python builder has ZERO hardcoded
+parameter-name strings anywhere in its actual logic (only in illustrative doc-comment examples) — it already
+reads `parameters[]`/`dimensions[]` generically by structure, so this rename needed no Python change at all.
+3 new JS tests (`tests/editor-sketch-manifest.test.js`, now 23): the default-linked case emits `stroke_width`
+only, both rail and tie offset dimensions reference it; a genuinely unlinked-and-different layer still gets the
+separate names (non-vacuous regression guard on the pre-existing behavior); an unlinked-but-numerically-equal
+layer ALSO gets `stroke_width` (proves the rule is "linked OR equal", not "linked flag alone"). Mutation-tested
+(`strokeWidthLinked` forced to `false`) → exactly 2 failures (the two tests that specifically expect
+`stroke_width`; the unlinked-and-different test correctly still passed, since that one was never testing the
+linked path). Restored, MD5-verified byte-identical. Full JS suite: 994 passed (63 files), up from 991.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed.
+

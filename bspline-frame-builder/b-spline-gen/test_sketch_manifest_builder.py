@@ -350,16 +350,19 @@ def _install_adsk_stubs():
     adsk_core._se15_fake = True
 
     class _ValueInput:
-        def __init__(self, value):
+        def __init__(self, value, kind):
             self.value = value
+            self.kind = kind  # "real" | "string" — lets a test tell WHICH constructor was used
 
         @classmethod
         def createByReal(cls, v):
-            return cls(v)
+            CALL_LOG.append(("valueinput:real", v))
+            return cls(v, "real")
 
         @classmethod
         def createByString(cls, s):
-            return cls(s)
+            CALL_LOG.append(("valueinput:string", s))
+            return cls(s, "string")
 
     adsk_core.Point3D = FakePoint3D
     adsk_core.ObjectCollection = FakeObjectCollection
@@ -399,6 +402,7 @@ from sketch_manifest_builder import (  # noqa: E402
     build_constrained_sketch,
     build_from_manifest_file,
     _to_point3d,
+    _sync_manifest_parameters,
     IN_TO_CM,
 )
 
@@ -515,6 +519,39 @@ def test_parameters_created_then_updated_on_a_second_build(call_log):
     assert summary2["parameters"]["updated"] == 3
 
 
+def test_length_parameters_created_with_unit_bearing_expression(call_log):
+    """T63 fix (advisor's own real-Fusion measurement): a LENGTH parameter
+    (unit=='in') must be created via ValueInput.createByString('<v> in'),
+    NOT createByReal(<v>) — createByReal takes a value in Fusion's
+    CANONICAL internal unit (cm), so createByReal(0.07) silently meant
+    0.07 CM (measured live: rail_width came back as 0.0276in ==
+    0.07/2.54). This is a genuinely non-vacuous check: before the fix,
+    this test would have seen a 'valueinput:real' call with the bare
+    0.07, not a 'valueinput:string' call with the unit suffix."""
+    design = FakeDesign()
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
+    string_calls = [c for c in call_log if c[0] == "valueinput:string"]
+    real_calls = [c for c in call_log if c[0] == "valueinput:real"]
+    assert real_calls == []
+    assert string_calls == [("valueinput:string", "0.07 in")]
+
+
+def test_unitless_parameters_created_with_createByReal(call_log):
+    """A genuinely unitless ratio parameter (waist_reach, corner_radius —
+    unit is None/absent in the manifest) has no unit string to misinterpret,
+    so createByReal is correct and unchanged — this test guards against an
+    OVER-correction (e.g. always using createByString) that would wrap a
+    unitless value in a bogus unit suffix."""
+    design = FakeDesign()
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    _sync_manifest_parameters(ctx, [{"name": "corner_radius", "value": 0.22, "unit": None}])
+    string_calls = [c for c in call_log if c[0] == "valueinput:string"]
+    real_calls = [c for c in call_log if c[0] == "valueinput:real"]
+    assert string_calls == []
+    assert real_calls == [("valueinput:real", 0.22)]
+
+
 def test_skip_and_report_a_missing_geometry_target_never_aborts_the_build(call_log):
     """A constraint referencing an entity id that doesn't exist must be
     skipped (constraint_step's own CONSTRAINT MISS path) and the REST of
@@ -544,19 +581,18 @@ def test_threshold_case_empty_constraints_builds_cleanly_with_zero_constraint_ca
     produces this: entities + width dimensions present, constraints[]
     EMPTY) must build without error and without _apply_constraints ever
     calling constraint_step for a manifest-declared relationship (H/V/
-    Coincident/Equal). Tangent calls are EXPECTED regardless — those come
-    from the width-offset+cap step, which is NOT threshold-gated (§6:
-    "not a separate code path, the SAME one, just with the per-piece
-    relationship constraints skipped") — so this test excludes Tangent
-    specifically rather than asserting zero constraint calls of ANY kind."""
+    Coincident/Equal). T63: since the cap-tangent step was REMOVED
+    (no longer any constraint call from the offset/cap path either), this
+    is now a genuine zero-constraint-calls-of-any-kind assertion, not one
+    that has to carve out an exception for Tangent."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=False)
     assert manifest["constraints"] == []
     summary = build_constrained_sketch(design.rootComponent, design, manifest)
     assert summary["latticeConstrained"] is False
     assert summary["entities"]["created"] == len(manifest["entities"])
-    manifest_driven_calls = [c for c in call_log if c[0].startswith("constraint:") and c[0] != "constraint:Tangent"]
-    assert manifest_driven_calls == []
+    constraint_calls = [c for c in call_log if c[0].startswith("constraint:")]
+    assert constraint_calls == []
     # width offsets/caps still ran (§6: "not a separate code path").
     offset_calls = [c for c in call_log if c[0] == "offset"]
     assert len(offset_calls) == 4  # 2 rails x (pos + neg)
@@ -581,14 +617,22 @@ def test_offset_dimension_expression_gets_set(call_log):
     assert "-(rail_width / 2)" in exprs
 
 
-def test_cap_tangent_attempted_against_both_offset_sides(call_log):
+def test_no_cap_tangent_constraint_is_ever_attempted(call_log):
+    """T63 (advisor's own real-Fusion run): the cap arcs are already fully
+    determined (center on the centerline's own end, radius tied to the
+    same width parameter driving the offsets) — an explicit Tangent
+    between a cap and its offset curve is a redundant, CONFLICTING 5th
+    constraint (measured live: 30 "CAP TANGENT SKIP ...
+    VCS_SKETCH_OVER_CONSTRAINTS" on a real 75-entity fixture). Fixed by
+    REMOVING the addTangent call entirely (not wrapping/silencing it) —
+    this fixture's own manifest never declares a Tangent constraint
+    either, so zero Tangent calls total is the correct, fully non-vacuous
+    assertion (before this fix, this test would have seen >=2)."""
     design = FakeDesign()
     manifest = _box_lattice_manifest(constrained=True)
     build_constrained_sketch(design.rootComponent, design, manifest)
     tangent_calls = [c for c in call_log if c[0] == "constraint:Tangent"]
-    # rail0 has 2 caps (capA/capB), each tangent-attempted against BOTH
-    # offset sides (pos+neg) -> up to 4 attempts for rail0 alone.
-    assert len(tangent_calls) >= 2
+    assert tangent_calls == []
 
 
 def test_build_from_manifest_file_reads_json_and_builds(tmp_path, call_log):
@@ -624,7 +668,9 @@ if __name__ == "__main__":
         test_threshold_case_empty_constraints_builds_cleanly_with_zero_constraint_calls,
         test_width_offsets_produce_two_calls_per_centerline,
         test_offset_dimension_expression_gets_set,
-        test_cap_tangent_attempted_against_both_offset_sides,
+        test_no_cap_tangent_constraint_is_ever_attempted,
+        test_length_parameters_created_with_unit_bearing_expression,
+        test_unitless_parameters_created_with_createByReal,
         test_build_from_manifest_file_raises_clearly_with_no_active_design,
     ]
     passed, failed = 0, 0

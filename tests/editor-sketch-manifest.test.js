@@ -172,6 +172,47 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     }
   });
 
+  it('T63: linked rail/tie widths (linkRailsTies true, the default) share ONE stroke_width param, not rail_width+tie_width', () => {
+    const linkedPattern = {
+      ...PATTERN,
+      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+    };
+    const manifest = manifestFromLattice(linkedPattern, EXTENT);
+    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
+    expect(manifest.parameters.some((p) => p.name === 'rail_width')).toBe(false);
+    expect(manifest.parameters.some((p) => p.name === 'tie_width')).toBe(false);
+
+    const railOffsetPos = manifest.dimensions.find((d) => d.id === 'rail_offset_pos');
+    const tieOffsetPos = manifest.dimensions.find((d) => d.id === 'tie_offset_pos');
+    expect(railOffsetPos.expression).toBe('stroke_width / 2');
+    expect(tieOffsetPos.expression).toBe('stroke_width / 2');
+
+    const someRailId = manifest.entities.find((e) => e.id.match(/^rail\d+$/)).id;
+    const capRadDim = manifest.dimensions.find((d) => d.type === 'Radial' && d.target === `${someRailId}_capA`);
+    expect(capRadDim.expression).toBe('stroke_width / 2');
+  });
+
+  it('T63: an UNLINKED layer whose rail/tie widths genuinely differ still gets separate rail_width/tie_width (non-vacuous: verified against the SAME fixture the default-linked test above uses, just with the flag flipped)', () => {
+    const unlinkedPattern = {
+      ...PATTERN,
+      widths: { rails: 0.07, ties: 0.05, nodeRadius: 0.075, linkRailsTies: false },
+    };
+    const manifest = manifestFromLattice(unlinkedPattern, EXTENT);
+    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(false);
+    expect(manifest.parameters.find((p) => p.name === 'rail_width').value).toBeCloseTo(0.07, 9);
+    expect(manifest.parameters.find((p) => p.name === 'tie_width').value).toBeCloseTo(0.05, 9);
+  });
+
+  it('T63: an UNLINKED layer whose rail/tie widths happen to be EQUAL still uses stroke_width (the "linked OR equal" rule, not "linked flag alone")', () => {
+    const unlinkedButEqual = {
+      ...PATTERN,
+      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: false },
+    };
+    const manifest = manifestFromLattice(unlinkedButEqual, EXTENT);
+    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
+    expect(manifest.parameters.some((p) => p.name === 'rail_width')).toBe(false);
+  });
+
   it('>=SKETCH_PIECE_THRESHOLD pieces: no per-piece H/V/Coincident constraints, but caps/dimensions still present', () => {
     const bigPattern = {
       ...PATTERN,

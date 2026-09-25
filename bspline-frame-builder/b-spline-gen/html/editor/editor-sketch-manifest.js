@@ -211,13 +211,35 @@ export function manifestFromLattice(pattern, extent) {
     groups.nodes.push(id);
   });
 
-  if (railPieces.length) {
-    parameters.push({ name: 'rail_width', value: widths.rails, unit: 'in' });
-    addWidthOffsetsAndCaps(entities, dimensions, railPieces, 'rail', 'rail_width', widths.rails);
-  }
-  if (tiePieces.length) {
-    parameters.push({ name: 'tie_width', value: widths.ties, unit: 'in' });
-    addWidthOffsetsAndCaps(entities, dimensions, tiePieces, 'tie', 'tie_width', widths.ties);
+  // T63 ADD-ON (Fred: "I would prefer a unique stroke width param"): when
+  // rails and ties are linked (PATTERN.widths.linkRailsTies, the DEFAULT
+  // since T58) they share ONE Fusion user parameter, `stroke_width`,
+  // rather than two separately-named ones that happen to carry the same
+  // value — a person editing the sketch in Fusion sees ONE control for
+  // "how thick is the lattice", matching what the panel's own linked
+  // stepper already presents. Only a genuinely UNLINKED layer whose
+  // rails/ties widths actually differ keeps the separate `rail_width`/
+  // `tie_width` names (the pre-existing behavior, still real and
+  // supported) — `linked` is true whenever EITHER the link flag is on OR
+  // the two widths just happen to already match, so "separate names"
+  // is reserved for the one case that actually NEEDS two numbers.
+  // node_radius is untouched either way (never linked to rail/tie width).
+  const strokeWidthLinked = widths.linkRailsTies !== false || widths.rails === widths.ties;
+  if (strokeWidthLinked) {
+    if (railPieces.length || tiePieces.length) {
+      parameters.push({ name: 'stroke_width', value: widths.rails, unit: 'in' });
+    }
+    if (railPieces.length) addWidthOffsetsAndCaps(entities, dimensions, railPieces, 'rail', 'stroke_width', widths.rails);
+    if (tiePieces.length) addWidthOffsetsAndCaps(entities, dimensions, tiePieces, 'tie', 'stroke_width', widths.ties);
+  } else {
+    if (railPieces.length) {
+      parameters.push({ name: 'rail_width', value: widths.rails, unit: 'in' });
+      addWidthOffsetsAndCaps(entities, dimensions, railPieces, 'rail', 'rail_width', widths.rails);
+    }
+    if (tiePieces.length) {
+      parameters.push({ name: 'tie_width', value: widths.ties, unit: 'in' });
+      addWidthOffsetsAndCaps(entities, dimensions, tiePieces, 'tie', 'tie_width', widths.ties);
+    }
   }
   if (nodePoints.length) {
     parameters.push({ name: 'node_radius', value: widths.nodeRadius, unit: 'in' });
