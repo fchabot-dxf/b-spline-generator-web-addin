@@ -1,24 +1,32 @@
-# NEXT (lane-b) — T44: fallback notice + flat/square line ends for outlines
+# NEXT (lane-b) — T45: opening a project must load its drawing into the live editor (Fred)
 
-**Ball: worker (seat B) · epoch 2 · T44.** NO FUSION for workers — browser proof only. T43 merged (0258941); the advisor
-imported its baked export into Fusion: 144 SketchArcs + 40 lines, 0 splines, 11 profiles, correct inch scale.
+**Ball: worker (seat B) · epoch 2 · T45.** NO FUSION for workers — browser proof only. T44 reviewed + merged (705987d,
+704 green). Advisor also fixed Send to Fusion dropping sketches when no layer carved (5f9f7f0).
 
-## 1. Tell the user when an element falls back to centerline
-T43 counts elements whose kind declines an outline (they export as centerline) but only logs it. After "Send to
-Fusion", show the count in the existing status/toast surface ("2 elements exported as centerline — no outline for:
-<kinds>"), nothing when the count is 0. Same count visible in the preview is optional (a dashed marker is fine).
+## Fred: "on open, a loaded project doesn't have the SVG until I open the editor and Apply Stencils"
+Root cause (advisor, main/snapshot-manager.js): `applySnapshot` is BOTH global undo/redo AND cloud-project load
+(cloud-project-manager.js `_loadFrom`). It sets `P.editorSvg` but deliberately never loads it into the live
+`window.svgEditor` (SE4c: "undo is for the heightfield, the drawing has its own undo") — correct for undo, WRONG for
+project load. `updateStampMasks` then rasterizes the OLD editor content, the drape shows the old drawing, and Send to
+Fusion / exports read the old layers — until the editor is opened (which reads P.editorSvg) and Applied.
 
-## 2. Butt and square caps (SUPPORTED_LINE_CAPS says false today)
-- Line: butt = rectangle (4 lines), square = rectangle extended by w/2 at both ends. Exact.
-- Open paths/polylines: caps at both ends of each open subpath by the same rule (perpendicular to the end tangent;
-  for a curve end use its end tangent).
-- Flip the table entries to true; the decline path stays for anything else.
-- Also `stroke-linejoin`: miter (with the SVG miter-limit fallback to bevel) and bevel, alongside round — exact
-  (lines only), declared as a SUPPORTED_LINE_JOINS table like caps.
+## Do
+1. Declare the difference instead of inferring it: `applySnapshot(snap, preview, { source: 'undo' | 'load' })` (or a
+   separate `loadProject` step) — 'load' ALSO replaces the live editor's document with `P.editorSvg` (the same open path
+   the editor uses when it's opened — editor-io.js open/restore, layer roster, per-layer pattern/fusionGeometry,
+   migrations), clears the editor's own undo stack, then refreshes masks, drape, outline preview and the sidebar layer
+   list. 'undo' stays exactly as today. Every caller passes its source (grep them all: cloud load, local session load,
+   undo/redo, anything else) — no default that silently picks one.
+2. Check the startup path too (app-init loadLastSession / refreshAllStampMasks at boot) and the Fusion palette reload:
+   after a fresh palette open with a saved session, the 3D shows the artwork without opening the editor.
+3. Loading project B after project A must not leave any of A's drawing, masks, layers or outline preview.
 ## Verify
-vitest per cap/join (exact corner coordinates, area checks); CDP screenshot of a polyline with each cap + join on an
-Outline layer; `npx vitest run` green.
+- vitest: load → live editor content == project's editorSvg, layers roster matches, editor undo empty; undo → editor
+  untouched (today's behaviour).
+- CDP: save two different projects via the real API mock or localStorage session path, load A then B without ever
+  opening the editor → the mask/drape and `exportableStampLayers()` reflect B; screenshot the 3D.
+- `npx vitest run` green.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T44: fallback notice + caps/joins — <sha>, vitest N, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T45: project load loads the drawing — <sha>, vitest N, screenshots"`
 and stop.
