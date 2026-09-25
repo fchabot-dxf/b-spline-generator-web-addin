@@ -17,6 +17,7 @@ import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
 import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
 import { LATTICE_DEFAULTS } from './editor-lattice.js';
+import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -161,6 +162,16 @@ export class VectorEditor {
         this.setMode(this._currentMode);
         setupEditorToolbar(this);
         initLayerControls(this);
+        // MOB3: the one bottom drawer (mobile only — desktop is
+        // `display:contents`, styles/editor.css) hosting the Lattice
+        // panel + Layers panel as tabs. AFTER setMode's own initial call
+        // above (which already dispatched the FIRST editorModeChanged,
+        // before this listener existed) — sync once explicitly so the
+        // drawer's tabs reflect whatever mode the editor actually opened
+        // into, not just its own 'layers'-only startup default.
+        initDrawer(this);
+        syncDrawerForMode(this, this._currentMode);
+        initHeaderOverflowMenu();
 
         // MOB2: keep the floating undo/redo pill (T32, pointer:coarse,
         // styles/editor.css's .editor-history) anchored to the CANVAS's

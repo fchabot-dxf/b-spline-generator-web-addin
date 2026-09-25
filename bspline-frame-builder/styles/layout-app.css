@@ -396,6 +396,7 @@ aside {
     justify-content: center;
     position: relative;
     z-index: 100; /* Stay above canvas */
+    touch-action: none; /* MOB3 AMEND: splitter.js's drag relies on this (not manual preventDefault) to stop touch-scroll during a drag, same as the editor drawer's own handle */
 }
 
 .cad-resizer::after {

@@ -105,6 +105,15 @@ export function setMode(editor, mode) {
     
     editor._currentMode = mode;
     updateToolbarVisibility(editor, mode, editor._selectedElement);
+    // MOB3: the mobile drawer (editor-drawer.js) needs to know a tool
+    // switch happened — whether the new mode has its own options tab, and
+    // whether to snap open at peek (Lattice only, per the dispatch) — via
+    // a custom event rather than an import here, same decoupling
+    // layers.js's own editorLayersChanged already uses for properties-
+    // lattice.js: this core module stays unaware the drawer exists at all.
+    if (typeof document !== 'undefined' && typeof CustomEvent !== 'undefined') {
+        document.dispatchEvent(new CustomEvent('editorModeChanged', { detail: { editor, mode } }));
+    }
     // SE7a: a mode switch invalidates the hover snap-cursor (it read the
     // OLD mode's policy) — clear it; handleMove redraws it on the next move.
     clearSnapCursor(editor);

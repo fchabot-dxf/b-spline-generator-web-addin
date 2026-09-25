@@ -61,36 +61,15 @@ export function initLatticeProperties(editor) {
     const toolBtn = el('toolLattice');
     const addKindEls = {};
     for (const { value } of LATTICE_DRAW_KINDS) addKindEls[value] = el(`latticeAdd-${value}`);
-    const panelEl = el('editorLatticePanel');
-    const headerBtn = el('editorLatticePanelHeader');
-
     if (!generateBtn) return; // panel not present in this host — no-op, matches other properties-*.js modules' own guard shape
 
-    // SE7p: the bottom-sheet collapse toggle (styles/editor.css gates the
-    // actual show/hide behind its own <=720px media query — this handler
-    // is wired unconditionally, same as every other control here, so
-    // there's no separate "only on mobile" JS branch to keep in sync with
-    // the CSS breakpoint).
-    if (panelEl && headerBtn) {
-        on(headerBtn, 'click', () => panelEl.classList.toggle('collapsed'));
-    }
-
-    // T32: expose this panel's own live rendered height as a CSS custom
-    // property, so the floating undo/redo pill (styles/editor.css,
-    // pointer:coarse + max-width:720px, where the panel becomes a fixed
-    // bottom sheet) can lift itself clear of the sheet without a second
-    // JS layout read of its own. ResizeObserver fires on any box-size
-    // change — sheet collapse/expand, content growth, AND per spec when
-    // the observed element's own display becomes 'none' (reports a zero
-    // size) — so one observer here covers every case (including the
-    // panel simply being hidden outside Lattice mode) without a separate
-    // visibility branch.
-    if (panelEl && typeof ResizeObserver !== 'undefined') {
-        const syncSheetHeightVar = () => {
-            document.documentElement.style.setProperty('--lattice-sheet-height', `${panelEl.offsetHeight}px`);
-        };
-        new ResizeObserver(syncSheetHeightVar).observe(panelEl);
-    }
+    // MOB3: the old bottom-sheet collapse toggle (a click on
+    // #editorLatticePanelHeader) and its --lattice-sheet-height
+    // ResizeObserver are RETIRED — editor-drawer.js's own drag/tap-to-
+    // snap mechanism and --drawer-height ResizeObserver (on
+    // #editorMobileDrawer, not this panel alone) replace both, now that
+    // the drawer — not this panel by itself — is the one thing that can
+    // cover the canvas bottom.
 
     // Spacing select populated at bind time from GRID_SPACINGS — same
     // idiom properties-shape.js's initGridToggle already uses for the

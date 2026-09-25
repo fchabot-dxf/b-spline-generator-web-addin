@@ -185,7 +185,7 @@
         /* MOB2: position:fixed against the VIEWPORT, anchored via
            --canvas-left/--canvas-bottom-offset (editor.js's initEditor,
            a ResizeObserver on #editorCanvasContainer — same idiom as
-           --lattice-sheet-height below). Previously position:absolute
+           --drawer-height below). Previously position:absolute
            against .cad-modal-window (the full 100vh modal), which put
            the pill at the bottom-LEFT OF THE MODAL rather than the
            canvas — harmless on a row layout (canvas fills the modal
@@ -208,18 +208,18 @@
 }
 
 @media (pointer: coarse) and (max-width: 720px) {
-    /* T32: lift the pill above the Pattern bottom-sheet (T24/T25) when
-       it's open — but the sheet only becomes a FIXED, viewport-bottom
-       element under this SAME width breakpoint (styles/editor.css's own
-       `@media (max-width: 720px) { .editor-lattice-panel { position:
-       fixed; ... } }`); outside it (e.g. a coarse-pointer tablet in
-       landscape) the panel is a normal side column that never overlaps
-       the canvas bottom, so this lift is scoped to exactly the condition
-       where a collision is actually possible — see properties-lattice.js
-       for where --lattice-sheet-height (0px when the panel is hidden or
-       not in sheet mode) gets kept in sync via a ResizeObserver. */
+    /* T32/MOB3: lift the pill above the mobile drawer (editor-drawer.js)
+       when it's open — but the drawer only becomes a FIXED, viewport-
+       bottom element under this SAME width breakpoint; outside it (e.g. a
+       coarse-pointer tablet in landscape) the panels are normal side
+       columns that never overlap the canvas bottom, so this lift is
+       scoped to exactly the condition where a collision is actually
+       possible. --drawer-height (0px when the drawer is hidden — MOB2's
+       own --lattice-sheet-height retired along with the old separate
+       Lattice-sheet/Layers-strip mechanism it tracked) is kept in sync by
+       editor-drawer.js's own ResizeObserver on #editorMobileDrawer. */
     .editor-history {
-        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--lattice-sheet-height, 0px));
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--drawer-height, 0px));
     }
 }
 
@@ -466,6 +466,40 @@
     .color-mosaic-custom { height: 44px; font-size: 13px; }
 }
 
+/* MOB3: the drawer wrapper and its own body wrapper are BOTH
+   `display:contents` by default — this base rule (not inside the
+   ≤720px block below) is what makes desktop byte-for-byte unaffected:
+   with no box of their own, #editorLatticePanel/#editorLayersPanel stay
+   direct flex children of .cad-modal-body exactly as if this wrapper
+   didn't exist at all. Only the mobile breakpoint (below) gives
+   #editorMobileDrawer a REAL box (position:fixed, a height, etc.) — at
+   that point #editorDrawerBody stays `display:contents` throughout (its
+   OWN children just need to fill whatever box the drawer now has), which
+   is why only ONE of the two ever needs the override. The handle/tabs
+   bar are plain `.hidden`-style until that same breakpoint shows them. */
+#editorMobileDrawer,
+#editorDrawerBody {
+    display: contents;
+}
+.editor-drawer-handle,
+.editor-drawer-tabs {
+    display: none;
+}
+
+/* MOB3: Download SVG / Clear's overflow-menu wrapper — `display:contents`
+   by default so on desktop its two buttons stay normal, always-visible
+   inline siblings inside .editor-header-actions exactly as before (this
+   wrapper adds a DOM level around them, but display:contents removes it
+   from the box tree, so nothing about their rendered position changes).
+   #editorHeaderMore (the ⋯ trigger) stays hidden until the mobile
+   breakpoint below needs it. */
+#editorHeaderMoreMenu {
+    display: contents;
+}
+#editorHeaderMore {
+    display: none;
+}
+
 /* =========================================================================
    ===== Mobile ===== (editor-specific narrow viewport overrides,
    originally editor-mobile.css)
@@ -497,95 +531,143 @@
         min-width: 0 !important;
     }
 
-    /* SE7p / T24-T25: the Pattern panel becomes a bottom sheet — taken OUT
-       of .cad-modal-body's flex flow (position:fixed) so it no longer
-       competes with #editorSVGContainer above for flex space. That
-       competition (this panel's own content-driven height, as a column
-       sibling once .cad-modal-body goes column at this same breakpoint)
-       was the actual mechanism behind "canvas is off-screen" / pinch
-       failing with the panel open — confirmed via getBoundingClientRect()
-       in a live smoke run (T25's own WORK-LOG entry), not assumed. */
-    .editor-lattice-panel {
+    /* MOB3: the one bottom drawer, replacing SE7p/T24-T25/MOB2/MOB2b's own
+       separate "Lattice as its own collapsed bottom sheet" (the ▾
+       collapse toggle, its chevron, the 65vh cap) + "Layers squeezed into
+       a thin stacked strip" (the 30vh cap + margin-bottom clearance hack)
+       — both of THOSE mechanisms are gone, not left dead alongside this
+       one. #editorMobileDrawer (`display:contents` above, desktop) here
+       becomes the actual fixed, drag-resizable sheet; its OWN JS
+       (editor-drawer.js) sets the live `height` inline per drag/snap-
+       state, this rule supplies everything constant. */
+    #editorMobileDrawer {
+        display: flex;
+        flex-direction: column;
         position: fixed;
         left: 0;
         right: 0;
         bottom: 0;
         top: auto;
-        width: 100% !important;
-        max-height: 65vh;
-        border-left: none !important;
+        width: 100%;
+        background: #fdfdfd;
         border-top: 1px solid var(--cad-border-standard);
         box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.12);
         z-index: 60;
+        transition: height 0.18s ease-out;
+    }
+    #editorMobileDrawer.is-dragging {
+        transition: none; /* live 1:1 pointer tracking while actually dragging — the transition is only for a SNAP after release/tap */
     }
 
-    .editor-lattice-panel-header {
-        cursor: pointer !important;
+    .editor-drawer-handle {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        cursor: grab;
+        touch-action: none; /* the handle owns vertical drag; don't let the browser also try to scroll/refresh on it */
+    }
+    .editor-drawer-handle:active {
+        cursor: grabbing;
+    }
+    .editor-drawer-grip {
+        width: 40px;
+        height: 4px;
+        border-radius: 999px;
+        background: #ccc;
     }
 
-    .editor-lattice-panel-chevron {
-        display: inline-block !important;
+    .editor-drawer-tabs {
+        flex-shrink: 0;
+        display: flex;
+        border-bottom: 1px solid var(--cad-border-standard);
+    }
+    .editor-drawer-tab {
+        flex: 1;
+        height: 44px; /* pointer:coarse touch target, this file's own convention (.layer-visibility etc.) */
+        border: none;
+        background: none;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #666;
+        cursor: pointer;
+    }
+    .editor-drawer-tab.active {
+        color: var(--cad-accent);
+        box-shadow: inset 0 -2px 0 var(--cad-accent);
+    }
+    .editor-drawer-tab.hidden {
+        display: none;
     }
 
-    /* Collapsed (the default on a phone — see the markup's own
-       `collapsed` class): only the header + the always-visible
-       Generate/Detach footer show. !important: #editorLatticePanelBody's
-       own inline `style="display:flex"` otherwise wins over any external
-       rule regardless of selector specificity. */
-    .editor-lattice-panel.collapsed #editorLatticePanelBody {
+    .editor-drawer-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    /* The two panels become plain in-flow blocks filling the drawer body
+       (not the row-layout flex siblings/fixed-position sheets they used
+       to be) — only the ACTIVE tab's own panel is shown. */
+    #editorMobileDrawer .editor-lattice-panel,
+    #editorMobileDrawer .editor-layers-panel {
+        width: 100% !important;
+        max-height: none !important;
+        border: none !important;
+        margin: 0 !important;
+        /* .editor-lattice-panel's OWN inline style (desktop's standalone-
+           sidebar-panel era) sets overflow-y:auto — an ancestor with any
+           overflow other than visible becomes the CSS "nearest scrolling
+           container" for sticky positioning, so #editorLatticePanelFooter's
+           sticky-bottom (below) was resolving against THIS panel instead
+           of .editor-drawer-body. Since this panel never actually needs
+           its own scroll here (.editor-drawer-body is the one true scroll
+           context for the whole drawer), overriding it to visible makes
+           the footer stick to the DRAWER's bottom as intended — confirmed
+           live: without this, Generate sat in normal flow far below the
+           viewport at peek, invisible, regardless of drawer height. */
+        overflow: visible !important;
+    }
+    .editor-drawer-tab-hidden {
         display: none !important;
     }
 
-    .editor-lattice-panel:not(.collapsed) .editor-lattice-panel-chevron {
-        transform: rotate(180deg);
+    /* The drawer's own tab already carries this panel's name — showing
+       it a second time inside the panel itself is redundant clutter at
+       this width. Desktop (outside this breakpoint) keeps it. */
+    #editorLatticePanelHeader {
+        display: none;
     }
 
-    /* MOB2: .editor-lattice-panel (above) leaves flow entirely
-       (position:fixed) once .cad-modal-body goes column, so it no longer
-       competes with #editorCanvasContainer for vertical space — but
-       .editor-layers-panel stays a normal column sibling with no height
-       of its own, so its unbounded .layers-list (flex:1) grew to fit
-       every row, squeezing the canvas into a thin strip. Kept IN-FLOW
-       (not position:fixed like the Lattice panel) — a max-height instead
-       lets .layers-list's EXISTING overflow-y:auto (line ~1006) start
-       actually scrolling once content exceeds it, same "declare the
-       bound, reuse the existing scroll" fix as the Lattice sheet's own
-       max-height above, without the multi-fixed-sheet stacking problem
-       two position:fixed panels would introduce.
-       MOB2b (Fred, live 390x844 after Generate): the max-height bound
-       alone wasn't enough to stop the overlap, and — proven live, the
-       hard way — SHRINKING it further doesn't help either: this panel is
-       the LAST in-flow child of the column, with #editorCanvasContainer
-       (flex:1, before it) absorbing all the slack, so however tall this
-       panel's own box is, it always settles flush against the bottom of
-       the column — exactly where the ALSO-bottom-anchored
-       (position:fixed) Lattice sheet sits, even collapsed (its header +
-       always-visible Generate/Detach footer is still ~118px). Shrinking
-       max-height further only grows the canvas more; it never moves this
-       panel's bottom edge, so it never stopped the overlap (confirmed
-       live via elementFromPoint at a row's own center returning the
-       Lattice footer's button, not the row). A margin-bottom is what
-       actually reserves clearance AFTER this panel, pushing its bottom
-       edge up off the container's own bottom — reusing
-       --lattice-sheet-height (properties-lattice.js's ResizeObserver,
-       already tracks the sheet's real height whether collapsed or
-       expanded, zero new JS) as that margin sizes the gap to exactly the
-       sheet's current height. This has one known limit: the margin is
-       satisfied by flex-shrinking the canvas, which has a floor
-       (min-height:0) — expand the Lattice sheet far enough (up toward
-       its own 65vh cap) and canvas hits that floor before the full
-       margin fits, so a partial overlap can reappear while the sheet is
-       substantially expanded. Not fixed further here: the dispatched,
-       verified scenario is Generate with the sheet in its default
-       collapsed state (where this margin fully covers it, confirmed
-       live), and the sheet is one tap from collapsing back to recover
-       full clearance regardless. */
-    .editor-layers-panel {
-        width: 100% !important;
-        max-height: 30vh;
-        margin-bottom: var(--lattice-sheet-height, 0px);
-        border-left: none !important;
+    /* Peek's own declared content ("Add: Rail/Tie/Node + Generate/
+       Regenerate", MOB3's dispatch) needs no DOM relocation: Add is
+       already #editorLatticePanelBody's first (non-collapsible,
+       data-no-collapse) child, and pinning the footer to the BOTTOM of
+       the drawer body's own scroll context — not the viewport — keeps
+       Generate/Regenerate reachable at ANY drawer height, including a
+       96px peek, without duplicating its markup or touching properties-
+       lattice.js's existing getElementById wiring. */
+    #editorLatticePanelFooter {
+        position: sticky;
+        bottom: 0;
+        background: #fdfdfd;
+        padding-top: 10px;
         border-top: 1px solid var(--cad-border-standard);
+    }
+
+    /* editor-drawer.js's generic collapsible-section sweep adds this
+       chevron as a real DOM node (not a ::before/::after) so its own
+       rotate transform doesn't fight the label's own text layout. */
+    .editor-drawer-section-chevron {
+        display: inline-block;
+        font-size: 12px;
+        color: #666;
+        transition: transform 0.15s ease-out;
     }
 
     .editor-symbol-keyboard {
@@ -684,9 +766,44 @@
         order: 1;
     }
 
-    #svgEditorHeader > .editor-header-actions > #editorDownload,
-    #svgEditorHeader > .editor-header-actions > #editorClear {
-        order: 2;
+    /* MOB3: Download SVG / Clear move into an explicit ⋯ overflow menu
+       (below) instead of the OLD "let them scroll off" fallback — with
+       nothing left to prioritize by scroll position, the order:2 this
+       block used to give them is retired (they're simply hidden inside
+       #editorHeaderMoreMenu until the ⋯ trigger is tapped, not competing
+       for header space at all). #editorHeaderMore (the ⋯ trigger itself)
+       sits after Cancel/Apply in DOM order already, so it needs no order
+       override to stay visually last. */
+    #editorHeaderMore {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* The actual popover: hidden until #editorHeaderMore's own click
+       handler (main/ui-bindings.js or a small dedicated wire-up) toggles
+       `.open` — anchored `position:fixed` off the trigger's own
+       getBoundingClientRect, the SAME idiom the color mosaic popover
+       (properties-shape.js, .color-mosaic-popover) already uses, so
+       there's no dependency on being a positioned-ancestor's descendant. */
+    #editorHeaderMoreMenu {
+        display: none;
+        position: fixed;
+        flex-direction: column;
+        gap: 6px;
+        background: #fff;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        padding: 8px;
+        z-index: 70; /* above the drawer's own 60 — this is a header popover, always on top of it */
+    }
+    #editorHeaderMoreMenu.open {
+        display: flex;
+    }
+    #editorHeaderMoreMenu #editorDownload,
+    #editorHeaderMoreMenu #editorClear {
+        white-space: nowrap;
     }
 
     .editor-toolbar-top {

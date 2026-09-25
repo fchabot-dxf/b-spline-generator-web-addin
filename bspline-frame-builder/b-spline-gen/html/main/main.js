@@ -18,6 +18,7 @@
  * handshake (sync_board / import_ready / reset_ui) into applyParam.
  */
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
+import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus } from '../core/fusion-bridge.js';
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 2. Resizer + mobile viewport
     initResizer(preview);
+    initMobilePreviewResizer();
     setupMobileViewportHandling();
     window.addEventListener('resize', () => resizeApp(preview));
 

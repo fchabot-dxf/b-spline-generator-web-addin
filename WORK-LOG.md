@@ -8733,3 +8733,105 @@ under MOB2's own 32-44px convention, but a retrofit of an EXISTING control is a 
 this NEW one. Flagging per that turn's own "mention adjacent gaps, don't fix them uninvited" discipline.
 
 No amendments pending as of this pass.
+
+## Turn 261 — MOB3: one bottom drawer for tool options + Layers, then AMEND: a free splitter — DONE
+
+Started as the plain MOB3 dispatch (Fred, live on his phone: "I can't see the panels — we need to revisit
+the UI in these tools, maybe a drawer?") and grew via ONE mid-task amendment (Fred: "another option is a
+draggable handle on the preview panel window") that turned the drawer's fixed peek/half/full toggle into a
+free splitter, declared once and reused on the app's main screen too. Absorbed the amendment before passing
+back, per protocol.
+
+**Base feature — new `editor/editor-drawer.js`, `bspline_gen_palette.html`, `editor.js`, `editor-ui.js`,
+`properties-lattice.js`, `styles/editor.css`.** MOB2/MOB2b's separate "Lattice panel as its own collapsed
+bottom sheet" + "Layers panel squeezed into a thin stacked strip" are replaced by ONE bottom drawer with two
+tabs (the active tool's own options, and Layers). Desktop stays untouched via the `display:contents`
+double-wrapper trick: `#editorMobileDrawer`/`#editorDrawerBody` are `display:contents` outside the
+`max-width:720px` breakpoint, so `#editorLatticePanel`/`#editorLayersPanel` remain direct flex children of
+`.cad-modal-body` exactly as before — confirmed byte-for-byte via `scripts/smoke-mob3-drawer.mjs desktop`
+(panel rects, handle/tabs `display:none`, unchanged from pre-MOB3 screenshots). `TOOL_PANELS` (declared table,
+mirrors `TOOLBAR_GROUPS`) drives which tools get an options tab; a tool with none (e.g. Select) shows Layers
+only. Collapsible sections (`_makeSectionsCollapsible`) detect SE7k/MOB2's own existing convention (a direct
+child whose first element is a bold `<span>` label) generically — any future section (seat B's own upcoming
+Boundary panel) becomes collapsible for free, zero markup changes needed on their side. A new
+`editorModeChanged` custom event (dispatched from `editor-ui.js`'s `setMode`, mirroring `editorLayersChanged`'s
+own decoupling shape) lets the drawer react to tool switches without `editor-ui.js` importing it.
+
+**Bug found and fixed before the amendment even landed**: the dispatch's own declared peek content ("Add:
+Rail/Tie/Node + Generate/Regenerate") didn't fit in the ~96px peek height once handle+tabs chrome was
+subtracted — confirmed live (`addKindGroupRectAtPeek`/`generateBtnRectAtPeek` both hundreds of px outside the
+844px viewport). Fixed by measuring the ACTUAL essentials (handle + tabs + Add section + footer offsetHeights)
+and using whichever is taller than the static 96px floor — `drawerHeightPx('peek', vh)` keeps its own pure,
+unit-tested 96px contract; the DOM-measured floor is layered on top in `initDrawer` only.
+
+**AMEND (Fred: "another option is a draggable handle on the preview panel window") — new `editor/splitter.js`,
+new `main/mobile-resizer.js`.** Declared ONE reusable free-drag splitter (`makeSplitter(target, {handle, axis,
+computeRawSize, snaps, min, max, storageKey, enabled, applySize, readSize, onApply, onDragStart, onDragEnd})`)
+instead of the fixed peek/half/full tap-cycle: drag is free between `min()`/`max()`; release soft-snaps within
+24px of a declared point, else holds the custom size; a tap (same click-vs-drag distance test as
+`editor-input.js`'s `clickThresholdPx`) cycles snap points. Settled size persists to **sessionStorage** (Fred's
+own "per session", not indefinitely like the old localStorage-based named-state). `nearestSnap`/`nextSnap` are
+the pure, DOM-free half of the module (unit-tested in `tests/splitter.test.js`), generalizing and superseding
+editor-drawer.js's own former `cycleDrawerState`/`nearestDrawerState`. The editor drawer's handle now runs
+through this; so does a SECOND, brand-new caller — `main/mobile-resizer.js` makes the main screen's existing
+`#resizer` handle (previously desktop-only-effective; its mobile branch was a hand-rolled, non-snapping,
+non-persisting absolute-position calc) also free-drag the 3D preview row's height on phones, via the SAME
+module. The classic inline resizer script in `bspline_gen_palette.html` keeps its horizontal/desktop branch
+verbatim and now just cedes the handle on mobile (`if (mqlMobile.matches) return;` in `start()`).
+
+**Two real bugs found only by driving the actual gesture live, not by reading the diff:**
+1. **Ordering bug, editor-drawer.js's `editorModeChanged` listener**: `splitter.snapTo('peek')` ran BEFORE
+   `_syncTabsForMode` un-hid the Lattice panel, so `measuredPeekFloorPx()` always measured a still-hidden panel
+   and silently fell back to the bare 96px floor — the peek-height fix above looked correct in isolation but
+   never actually engaged on the real tool-switch path. Confirmed live (Add visible flipped true only after
+   swapping the two call order), fixed by reordering.
+2. **Infinite recursion, splitter.js**: `main/mobile-resizer.js`'s `onApply` dispatches a synthetic
+   `window resize` (needed so the Three.js preview redraws to its new size, same as the OLD code did on every
+   drag move) — but `makeSplitter`'s OWN internal resize listener (re-anchors viewport-relative snaps on
+   rotation) reacted to that SAME synthetic event, called `apply()` again, which dispatched another resize:
+   `RangeError: Maximum call stack size exceeded`, caught live via the smoke script's own exception logger.
+   Fixed with an `e.isTrusted === false` guard on the internal listener — a real browser resize is trusted, a
+   script's `new Event('resize')` is not, so this is a general robustness fix in the shared module, not a
+   one-off patch for this one caller.
+3. **Sticky-footer design flaw, styles/editor.css**: `#editorLatticePanelFooter`'s `position:sticky;bottom:0`
+   (meant to keep Generate reachable at any drawer height) was resolving against `.editor-lattice-panel`
+   itself, not the drawer's own scroll context — that panel carries an inline `overflow-y:auto` from its
+   pre-MOB3 life as a standalone desktop sidebar panel, and ANY ancestor with overflow != visible becomes the
+   CSS "nearest scrolling container" for sticky purposes, even one that (on mobile, `max-height:none!important`)
+   never actually needs to scroll itself. Fixed with `overflow: visible !important` on
+   `#editorMobileDrawer .editor-lattice-panel` (and `.editor-layers-panel` for symmetry, a no-op there since it
+   never set overflow) so the ONE true scroll context (`.editor-drawer-body`) is what the footer sticks against.
+   A follow-up 8px->24px buffer bump in `measuredPeekFloorPx` cleared a residual 14px visual overlap between
+   the Add row and the now-correctly-stuck footer at the tightest peek height — found and fixed by reading the
+   actual measured rects, not by re-deriving the box model on paper (mirrors [[feedback_measure_dont_rereason]]).
+
+**Verify:**
+- `tests/editor-drawer.test.js` (rewritten: `cycleDrawerState`/`nearestDrawerState` removed, their coverage
+  moved to splitter.js's own generalized functions; `DRAWER_SNAP_STATES`/`TOOL_PANELS`/`drawerHeightPx` kept,
+  still genuinely consumed by `initDrawer`) + new `tests/splitter.test.js` (`nearestSnap`/`nextSnap`: closest
+  match, deterministic tie-break, extreme values, empty-list safety, tap-cycle wraparound) — `npx vitest run`
+  -> **789 passed** (unchanged count: -7 removed + +7 added nets to zero, confirmed deliberately, not
+  coincidentally missed).
+- Live (headless Chrome via CDP, no Fusion) — `scripts/smoke-mob3-drawer.mjs` at mobile (390x844): drawer
+  visible, tool tab syncs to the active tool, Add+Generate both visible and non-overlapping at peek (the fixed
+  bug), canvas >=55% of viewport at peek (83%), tap-to-cycle peek->half->full via real touch events, section
+  collapse/re-expand round-trips, Layers tab switch, a tool with no options shows Layers only, a real
+  touch-drag on the handle changes height, AND (new, the amendment's own explicit ask) a short drag lands on a
+  genuine free/custom height (>24px from every declared snap) with a screenshot proving it. Tablet (768x1024)
+  lands ABOVE the drawer's own 720px breakpoint, so it correctly exercises DESKTOP behavior at that width
+  (zero-height `display:contents` drawer, no collapsible sections wired) — not a bug, just what 768px means
+  relative to the declared breakpoint. Desktop (1400x900) re-confirmed byte-for-byte unchanged.
+- Live — new `scripts/smoke-mob3-mobile-resizer.mjs`: mobile (390x844) — initial preview height matches the
+  CSS default (~40% of container, no visible jump on first load), a short touch-drag holds a free custom
+  height, dragging precisely toward the 'small' snap's own px value settles EXACTLY on it (soft-snap
+  confirmed), the settled height survives a full page reload (sessionStorage, "per session" as specified), and
+  crossing back to desktop width clears the inline grid override so the CSS default reasserts. Desktop
+  (1400x900) — horizontal sidebar-width drag still works (unchanged code path), and `.cad-main-content` never
+  receives an inline `gridTemplateRows` at any point (the mobile module's own `enabled()` gate never engages).
+  Zero console errors/exceptions across every run of both scripts, in every mode.
+
+**Skipped, flagged rather than built**: making `makeSplitter`'s `min`/`max` accept a plain number in addition
+to a function — both current callers naturally want a function (viewport/container-relative), and a
+number-or-function union is exactly the kind of speculative flexibility neither caller asked for.
+
+No amendments pending as of this pass.

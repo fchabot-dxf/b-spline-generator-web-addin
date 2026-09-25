@@ -1148,23 +1148,21 @@
         closeWizX.addEventListener('click', () => wizardModal.style.display = 'none');
       }
 
-      // 3. Resizer Compatibility logic
+      // 3. Resizer Compatibility logic (desktop only — horizontal, drag X,
+      //    resizes the sidebar column via --cad-sidebar-width).
       //
-      // Two modes, picked at drag-start time from the viewport width:
-      //   horizontal  (desktop, >700px)  → drag X, resize sidebar column
-      //                                    via --cad-sidebar-width.
-      //   vertical    (mobile,  ≤700px)  → drag Y, resize preview row
-      //                                    via inline grid-template-rows.
-      // The breakpoint matches the @media block in styles/layout-app.css.
-      // Touch events are wired up for mobile too. When the viewport
-      // crosses the breakpoint we drop any inline grid-template-rows the
-      // mobile drag set, so the @media rule / desktop default reasserts.
+      // MOB3 AMEND: the mobile/vertical case (drag Y, resize the preview
+      // row) moved to main/mobile-resizer.js, which drives the SAME
+      // #resizer handle through the shared splitter.js (also used by the
+      // editor's own bottom-drawer handle) — free-drag + soft snap points
+      // + persistence, instead of this hand-rolled absolute-position
+      // branch. This code now only ever engages on desktop; `start` cedes
+      // the handle to that module below the breakpoint.
       const resizer = document.getElementById('resizer');
       const mainContent = document.querySelector('.cad-main-content');
       if (resizer && mainContent) {
         const mqlMobile = window.matchMedia('(max-width: 700px)');
         let isResizing = false;
-        let mode = 'horizontal';
 
         const getClient = (e) => {
           if (e.touches && e.touches.length > 0) {
@@ -1174,24 +1172,18 @@
         };
 
         const start = (e) => {
+          if (mqlMobile.matches) return; // mobile: main/mobile-resizer.js owns this drag
           isResizing = true;
-          mode = mqlMobile.matches ? 'vertical' : 'horizontal';
           resizer.classList.add('resizing');
-          document.body.style.cursor = mode === 'vertical' ? 'row-resize' : 'col-resize';
+          document.body.style.cursor = 'col-resize';
           if (e.cancelable) e.preventDefault();
         };
 
         const move = (e) => {
           if (!isResizing) return;
-          const { x, y } = getClient(e);
-          if (mode === 'vertical') {
-            const rect = mainContent.getBoundingClientRect();
-            const previewPx = Math.max(120, Math.min(y - rect.top, rect.height - 120));
-            mainContent.style.gridTemplateRows = `${previewPx}px 12px 1fr`;
-          } else {
-            const newWidth = Math.max(200, Math.min(x, window.innerWidth - 300));
-            document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
-          }
+          const { x } = getClient(e);
+          const newWidth = Math.max(200, Math.min(x, window.innerWidth - 300));
+          document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
           if (window.dispatchEvent) window.dispatchEvent(new Event('resize'));
           if (e.cancelable) e.preventDefault();
         };
@@ -1209,10 +1201,6 @@
         window.addEventListener('touchmove', move, { passive: false });
         window.addEventListener('mouseup', stop);
         window.addEventListener('touchend', stop);
-
-        mqlMobile.addEventListener('change', () => {
-          mainContent.style.gridTemplateRows = '';
-        });
       }
     });
   </script>
@@ -1286,17 +1274,25 @@
           </div>
           <!-- MOB2 (Fred, found on live pages.dev at 390x844 touch):
                Cancel/Apply must ALWAYS be reachable without scrolling on
-               a phone — Download SVG / Clear are lower priority and may
-               scroll off first. Pure CSS `order` (styles/editor.css's
-               #svgEditorHeader mobile rule), no markup/behavior change:
-               natural DOM/tab order is untouched, only visual position
-               shifts under the narrow-width breakpoint. -->
-          <!-- SE10 AMEND: editor/tools/action-tools.js:32 already wires
-               bind('editorDownload', ...) to saveWithTextCopies (SHOWN
-               layers only) + a file-save-as — this button just needed to
-               exist for that handler to ever fire. -->
-          <button id="editorDownload" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Download SVG</button>
-          <button id="editorClear" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Clear</button>
+               a phone — Download SVG / Clear are lower priority. MOB3
+               (Fred's own follow-up UI pass): rather than letting them
+               scroll off (MOB2's original fix), they now move into an
+               explicit ⋯ overflow menu on narrow/coarse screens, so
+               there's nothing to accidentally miss by not scrolling.
+               #editorHeaderMoreMenu is `display:contents` on desktop
+               (styles/editor.css) — its two buttons stay normal, always-
+               visible inline siblings there, byte-identical to before;
+               only the mobile breakpoint turns it into an actual hidden-
+               until-tapped popover. SE10 AMEND: editor/tools/action-
+               tools.js:32 already wires bind('editorDownload', ...) to
+               saveWithTextCopies (SHOWN layers only) + a file-save-as —
+               moving these buttons' DOM POSITION doesn't affect that
+               id-based wiring at all. -->
+          <div id="editorHeaderMoreMenu">
+            <button id="editorDownload" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Download SVG</button>
+            <button id="editorClear" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Clear</button>
+          </div>
+          <button type="button" id="editorHeaderMore" class="cad-btn cad-btn-secondary" title="More actions" aria-haspopup="true" aria-expanded="false" style="display:none; font-size:14px; font-weight:700; padding:4px 10px; line-height:1;">&#8942;</button>
           <button id="editorCancel" class="cad-btn cad-btn-secondary" style="font-size:11px; padding: 4px 12px;">Cancel</button>
           <button id="editorApply" class="cad-btn cad-btn-primary" style="font-size:11px; padding: 4px 14px;">Apply Stencils</button>
         </div>
@@ -1533,31 +1529,54 @@
           </div>
         </div>
 
+        <!-- MOB3 (Fred, live on his phone: "I can't see the panels — maybe
+             a drawer?"): ONE bottom drawer hosting the Lattice panel and
+             the Layers panel as TABS, replacing SE7p/T24-T25/MOB2/MOB2b's
+             own separate "Lattice as its own collapsed bottom sheet" +
+             "Layers squeezed into a thin stacked strip" — both those
+             mechanisms are retired (their CSS/JS removed, not left dead).
+             #editorMobileDrawer + #editorDrawerBody are BOTH
+             `display:contents` on desktop (styles/editor.css) — the two
+             <aside> panels below stay direct flex children of
+             .cad-modal-body exactly as before, so desktop is byte-for-
+             byte unaffected; only the narrow/coarse breakpoint turns this
+             wrapper into the actual fixed-position, drag-to-resize drawer
+             (editor-drawer.js). Coordinate note (seat B, lane-b, T49): the
+             two <aside> elements' OWN internal markup is UNTOUCHED by
+             this wrapper — any new section T49 adds inside
+             #editorLatticePanelBody lands exactly where it would have
+             before, and becomes collapsible for free via editor-
+             drawer.js's own generic sweep (any direct child starting with
+             a bold `<span>` label — Rails/Ties/Nodes/Colors/Widths
+             already look like this with zero markup changes). -->
+        <div id="editorMobileDrawer">
+          <div id="editorDrawerHandle" class="editor-drawer-handle" role="button" tabindex="0" aria-label="Resize panel — drag or tap to cycle peek/half/full">
+            <div class="editor-drawer-grip" aria-hidden="true"></div>
+          </div>
+          <div id="editorDrawerTabs" class="editor-drawer-tabs" role="tablist">
+            <button type="button" id="editorDrawerTab-tool" class="editor-drawer-tab hidden" role="tab"></button>
+            <button type="button" id="editorDrawerTab-layers" class="editor-drawer-tab" role="tab">Layers</button>
+          </div>
+          <div id="editorDrawerBody" class="editor-drawer-body">
         <!-- Lattice Pattern Panel (SE7b) — lives inside the modal, above
              Layers, so it sits next to the canvas it acts on. Shown only
              while the Lattice tool is active (same visibility mechanism
              as the Font group, editor-ui.js's updateToolbarVisibility).
              390px-first: every control below is a real tap target, no
-             hover-only affordance (T16 precedent).
-             SE7p: on narrow/coarse screens (styles/editor.css) this
-             becomes a fixed-position bottom sheet instead of a flex-row
-             sibling — T24/T25's own root cause was this panel's
-             content-driven height starving #editorSVGContainer's flex:1
-             once .cad-modal-body goes column at <=720px; taking it OUT
-             of flow (position:fixed) removes that competition entirely,
-             it doesn't just shrink it. Starts collapsed (class="collapsed"
-             below) so a phone shows canvas + a slim header/Generate bar
-             first; #editorLatticePanelHeader (a real <button>, always
-             wired) expands/collapses it. Desktop is unaffected — the
-             collapsed class only does anything inside that media query. -->
-        <aside class="editor-lattice-panel hidden collapsed" id="editorLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
-          <button type="button" id="editorLatticePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; padding:0; margin:0; font:inherit; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666; cursor:default;">
+             hover-only affordance (T16 precedent). -->
+        <aside class="editor-lattice-panel hidden" id="editorLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
+          <!-- MOB3: this label is now DESKTOP-only (styles/editor.css
+               hides it under the drawer breakpoint) — the drawer's own
+               tab (#editorDrawerTab-tool) carries the SAME "Lattice
+               Pattern" name there, so a phone user would otherwise see it
+               twice. No longer a <button> (the old collapse-toggle click
+               handler is retired with it, properties-lattice.js). -->
+          <div id="editorLatticePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; width:100%; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666;">
             <span>Lattice Pattern</span>
-            <span id="editorLatticePanelChevron" class="editor-lattice-panel-chevron" aria-hidden="true" style="display:none; font-size:12px; color:#666;">▾</span>
-          </button>
+          </div>
 
           <div id="editorLatticePanelBody" style="display:flex; flex-direction:column; gap:10px;">
-            <div style="display:flex; flex-direction:column; gap:3px;">
+            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Add</span>
               <!-- SE7k (Fred: "needs an add rail and add tie, add node
                    button"): explicit kind choice — the tool no longer
@@ -1579,12 +1598,17 @@
               </div>
             </div>
 
-            <label style="display:flex; flex-direction:column; gap:3px;">Spacing
-              <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-            </label>
-
             <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Rails</span>
+              <span style="font-weight:600;">Grid &amp; rails</span>
+              <!-- MOB3: Spacing folded in here (was its own standalone
+                   field, directly under Add) — the dispatch's own
+                   collapsible-section list names "Grid & rails" as one
+                   section, not two; no field IDs/wiring changed
+                   (properties-lattice.js reads #latticeSpacing exactly as
+                   before), just its position in the DOM. -->
+              <label style="display:flex; flex-direction:column; gap:3px;">Spacing
+                <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+              </label>
               <!-- SE7h (Fred: "invert rails and ties so rails are vertical"):
                    orientation toggle, same segmented-control shape/class
                    (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH group
@@ -1714,9 +1738,17 @@
                  field stays editable (a pattern can still be noted/hand-
                  set) but the title says plainly that Generate will
                  overwrite it anyway. -->
-            <label style="display:flex; flex-direction:column; gap:3px;">Seed
-              <input id="latticeSeed" type="number" step="1" value="42" title="Generate picks a new seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
-            </label>
+            <!-- MOB3: wrapped in a div+bold-span (was a bare <label>) so
+                 it matches the other sections' own convention and picks
+                 up the generic collapsible-section behavior
+                 (editor-drawer.js) for free — the dispatch's own section
+                 list names "Seed" as one of the collapsible ones. -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Seed</span>
+              <label style="display:flex; flex-direction:column; gap:3px;">
+                <input id="latticeSeed" type="number" step="1" value="42" title="Generate picks a new seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
+              </label>
+            </div>
           </div>
 
           <div id="editorLatticePanelFooter" style="display:flex; flex-direction:column; gap:10px;">
@@ -1742,6 +1774,8 @@
             <div class="layers-empty" id="editorLayersEmpty">No layers yet.<br>Click + to add one, or just start drawing.</div>
           </div>
         </aside>
+          </div>
+        </div>
 
         <!-- Symbol Keyboard (Docked) -->
         <div id="editorSymbolKeyboard" class="cad-symbol-keyboard hidden" style="position:absolute; bottom:0; left:0; right:0; height:200px; background:white; border-top:1px solid var(--cad-border-standard); box-shadow:0 -2px 10px rgba(0,0,0,0.08); z-index:100; display:flex; flex-direction:column;">
