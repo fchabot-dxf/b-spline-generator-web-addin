@@ -4347,3 +4347,127 @@ Amendments polled clean (`handoff.py amendments --role worker`) before committin
 before passing. Committed by explicit path (6 files: `editor/editor-expand-analytic.js`,
 `editor/editor-outline-preview.js`, `editor/path-layout.js`, new `editor/editor-expand-path.js`,
 `tests/editor-outline-preview.test.js`, new `tests/editor-expand-path.test.js`) — pushed.
+
+## Lane B — Turn 97 — T40 part 1: exact curve-adjacent inner joins — DONE (part 2, text outlines, deferred — capacity, see below)
+
+**The fix Fred asked for.** T39's inner-trim join used the intersection of the two pieces' own TANGENT
+LINES at the vertex — exact for a straight-straight join, only a local approximation once a curve is
+involved (a curve's tangent line only matches its true shape very close to the endpoint). Replaced with the
+TRUE intersection of each piece's own exact boundary primitive: every piece this module ever builds ends in
+either a plain `L` (a genuine line) or an `A` with `rx===ry` (every arc here is circular — the exact
+concentric case IS a circle, and a biarc-fitted curve's own segments are circular arcs BY CONSTRUCTION,
+`fitOffsetWithBiarcs`'s whole point) — so "the true primitive" is always cheaply recoverable via
+`arcCenterParam` (now reused a third time this module, after the concentric-arc offset and the collapse-
+sampling code). New `_lineCircleIntersect`/`_circleCircleIntersect` (standard closed forms) plus
+`_lastPrimitive`/`_firstPrimitive` (extract the real geometry, not just the tangent, from whichever command
+sits at a piece's own join-adjacent end) cover all four combinations (line-line already had
+`_lineIntersect`). Whichever candidate point (0, 1, or 2 — a circle-circle pair can have two) lands NEAREST
+the vertex is the real trim point; Fred's own instruction for the zero-candidate case ("if none... fall
+back to a round inner join — never a loop") is implemented directly — `_buildJoin`'s inner branch now
+returns the SAME `_roundJoinArc` construction the outer/convex branch already uses.
+
+**Never bridge through the old point — retarget it away entirely.** T39's own join, even once fed the
+better `ip`, still emitted `L ip` then `L pB` (the piece's OWN untrimmed point) before letting that piece's
+real commands continue — meaning the ring still visited the untrimmed point on its way through, which is
+exactly what let a deviation up to `strokeWidth/2` back in for a line meeting a full semicircle (the
+"mixed L+A+C" test's own worst point, `(9.25, ~0)`, sat almost exactly ON the source's own straight edge —
+zero real offset, not `half`). Root cause: the untrimmed point (which the trim exists specifically to avoid
+visiting) was still being visited. Fixed with `_retargetEnd` — rewrites a piece's own LAST command to end
+EXACTLY at `ip` (a straight `L` just gets a new endpoint, since `ip` lies on that same line by construction;
+an arc gets fully rebuilt via `_arcCommandBetween`, same center/radius/travel-direction, new end) — no
+bridge command at all. Re-measured the SAME "mixed L+A+C" case this fix was aimed at: worst deviation
+0.75 -> 0.00069 (restored to the same tight tolerance bound every other test in the file already uses,
+instead of the T39-era `<=half` disclosed-limitation bound).
+
+**A SECOND real bug found while chasing the first, via a dedicated head-on test (Fred: "add the head-on
+line-semicircle case explicitly").** A line meeting a full semicircle EXACTLY tangentially (both pieces'
+own end/start tangent vertical, a G1-continuous vertex) still measured a full 0.5 deviation — the OLD
+"tangent-continuous, cross~=0, skip the join entirely, just connect pA to pB with a plain line" shortcut
+assumed G1 continuity implies the two OFFSET pieces already coincide. They don't: G1 (tangent) continuity
+does NOT imply G2 (curvature) continuity, and an offset curve's own continuity depends on BOTH — a line
+(curvature 0) meeting an arc (curvature 1/r) tangentially is a textbook curvature discontinuity, and the
+offset genuinely has a gap right there. The naive connector, drawn between the two UNTRIMMED points, passed
+exactly through the original vertex (the connector's own midpoint). Fixed by requiring the shortcut's OTHER
+condition too — `pA` and `pB` already coincide (the ACTUAL "truly nothing to do" case, e.g. between two
+commands of the same already-continuous biarc chain) — not just a near-zero cross; anything else now falls
+through to the same round/trim logic, which handles a near-zero-but-nonzero cross safely either way (a
+tiny round join stays tiny; a trim with no intersection already falls back to round).
+
+**Both fixes MUTATION-VERIFIED independently** (revert one at a time, run the suite, confirm ONLY the
+expected tests fail, restore, confirm green again): reverting the smooth-shortcut's `pA~=pB` requirement ->
+exactly 1 failure (the head-on test, reproducing the exact 0.5); reverting `_retargetEnd` to a no-op ->
+exactly 5 failures (every test whose own join needed a real trim), nothing else.
+
+**A genuinely surprising finding, chased down rather than assumed: `_retargetStart` (curr piece's own start)
+turned out to be PROVABLY UNNECESSARY, and was REMOVED rather than kept untested.** The original design
+(matching `_retargetEnd`'s own symmetry) also rebuilt the NEXT piece's own first `A` command to start
+exactly at `ip`. Mutation-testing it the same way as `_retargetEnd` found ZERO failures — not a coverage
+gap, a genuine mathematical fact: an SVG command's shape is ALWAYS derived from wherever the CURRENT POINT
+happens to be (set by whatever ran before it) plus its own explicit payload, never from "how the pen got
+there" — a plain `L` doesn't encode its own start (already known, T39), and neither does an `A` (its ONLY
+payload is rx/ry/rot/largeArc/sweep/end) — so once `_retargetEnd` correctly retargets the PRECEDING piece's
+end to `ip`, the FOLLOWING piece's own commands are already correct, completely unmodified. Verified this
+wasn't a testing blind spot, not just trusted: wrote a throwaway script mutating a COPY of the module (regex-
+swapping `_retargetStart` for a no-op, imports rewritten to resolve correctly) and diffed its output
+against the real module's across 120+ varied geometries — major arcs (>180deg, deliberately hunting the one
+theoretical case where it COULD matter: a trim crossing the 180deg largeArc threshold, which needs an
+explicit flag recompute since sweep is direction-invariant but largeArc isn't), sharp angles, small radii,
+wide stroke widths relative to radius — zero divergences in the `d` string, byte for byte. Removed the
+function and its two call sites entirely rather than leave PROVABLY-DEAD, never-exercised code sitting in
+the module (this session's own "prove the new test isn't vacuous" rule, applied to a piece of code rather
+than a test: code no test can ever meaningfully exercise is the same problem in different clothes). The
+module's own header comment and `_retargetEnd`'s own doc comment now explain WHY, so a future reader doesn't
+independently re-add a "symmetric" retargetStart and wonder why testing it never seems to matter.
+
+**A THIRD real bug, found live (not by inspection) doing this turn's own CDP verification.** The head-on
+test path, drawn as a real `<path>` via svg.js with `.stroke({color, width})` and NO explicit
+`stroke-linecap`, produced ZERO preview shapes in the real running app — `OUTLINE_KINDS.path`'s own adapter
+declined it with `unsupported: 'butt'`. Traced to: svg.js's `el.attr('stroke-linecap')` does NOT return
+`undefined`/`null` for an element with no such attribute at all — it reports the SVG spec's own default,
+the STRING `'butt'` (confirmed: `el.node.hasAttribute('stroke-linecap') === false` while `el.attr(...)`
+still returned `'butt'`) — which is TRUTHY, silently defeating every `attr('stroke-linecap') || 'round'`
+fallback this module's OUTLINE_KINDS table has used since T37's own `line` entry. This stayed hidden through
+T37-T39 purely because every element actually tested until now (lattice rails, the pencil tool's own
+strokes, T39's own CDP polygon/path test cases) happens to set `linecap:'round'` explicitly — confirmed by
+grepping every drawing call site in the editor; the app's real freehand pencil tool (`editor-interaction.js`)
+DOES set it explicitly, so real hand-drawn strokes were never actually at risk, but any path/polyline/
+polygon that DIDN'T set it (a plausible import, or a future tool) would have silently gotten no preview.
+Fixed with `_capOf(el)` (`editor-outline-preview.js`) reading `el.node.getAttribute('stroke-linecap')` — the
+RAW DOM attribute, confirmed to correctly return `null` when genuinely unset — instead of `el.attr(...)`,
+applied to all 4 table entries that read a cap (line/polyline/polygon/path). Noted, not fixed (out of
+scope, a different file, no caller of THIS table exercises it): `editor-eraser.js` has an older, similarly-
+shaped `attr(...) || _nodeStyleProp(...) || 'round'` chain for the same two properties that carries the
+EXACT same latent bug (`attr()` still wins first and still lies) — named here so it isn't independently
+rediscovered later. Updated every test mock in `editor-outline-preview.test.js` and
+`editor-outline-preview-triggers.test.js` to give `.node.getAttribute` the same "genuinely absent -> null"
+contract the real DOM has (mocks previously only implemented `.attr()`, which is why this bug's own mutation
+shape couldn't be unit-tested — it's a property of the REAL svg.js/DOM boundary, only reachable live).
+
+**Live verification.** Dev server was still up; fresh headless Chrome on a new port (9500, own
+`chrome-profile-t40` user-data-dir) — 0 processes before launch, 8 (all mine) before stop, same discipline
+every turn. Drew the exact head-on line-meets-semicircle path from this turn's own dedicated test on a
+second Outline layer: FIRST screenshot (before the cap-reading fix was applied) showed the shape with
+NO visible outline at all, matching the `unsupported: 'butt'` diagnosis exactly (diagnosed via direct
+in-page calls to `OUTLINE_KINDS.path`, not guessed) — SECOND screenshot (`t40-headon-join-fixed.png`, after
+the fix) shows a clean, continuous white-halo outline hugging the line-to-semicircle transition smoothly,
+no pinch or gap at the join. Zero console errors/exceptions throughout.
+
+Full vitest suite: 661/661 green.
+
+**Part 2 (text outlines) deferred — capacity, disclosed rather than rushed.** This turn's part 1 alone
+surfaced and fixed THREE independent real bugs (the tangent-vs-true-primitive approximation, the G1-without-
+G2 smooth-shortcut gap, and the live-only svg.js cap-reading defect) plus a proven code REMOVAL
+(`_retargetStart`) — each required real debugging (hand-tracing geometry, a 120-case empirical scan, a live
+CDP diagnosis session), not just implementation. Text outlines (opentype.js glyph extraction via editor-
+geometry.js/editor-fonts.js, converting glyph curves to biarcs, wiring `OUTLINE_KINDS.text`, its own tests
+and CDP verification) is a comparably-sized, separately-scoped piece of work touching an entirely different
+part of the codebase this session hasn't yet read. Landing it now, on top of an already-substantial turn,
+risks the same kind of rushed, under-verified work this session's own discipline exists to prevent.
+Flagging this now (per the worker skill's own "capacity is a reportable fact" rule) rather than after a
+rushed attempt — matches T38's own advisor-sanctioned two-commit-split precedent, though this dispatch
+didn't explicitly offer one; treating it as a judgment call under that same established pattern.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (5 files: `editor/editor-expand-path.js`,
+`editor/editor-outline-preview.js`, `tests/editor-expand-path.test.js`,
+`tests/editor-outline-preview.test.js`, `tests/editor-outline-preview-triggers.test.js`) — pushed.

@@ -38,6 +38,10 @@ function mockLineEl(attrs) {
   const el = {
     type: 'line',
     attr: (a) => state[a],
+    // T40: OUTLINE_KINDS reads stroke-linecap via el.node.getAttribute,
+    // not el.attr (see editor-outline-preview.js's _capOf for why) — the
+    // mock's .node needs the same "genuinely absent -> null" contract.
+    node: { getAttribute: (a) => (a in state ? state[a] : null) },
     addClass() { return el; },
     removeClass() { return el; },
     svg() { return '<line />'; }, // stand-in: pushState's snapshot text isn't asserted on in this file

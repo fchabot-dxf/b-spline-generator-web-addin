@@ -48,6 +48,31 @@ function _fillModeOf(el) {
   return 'stroke'; // also the safe default for a degenerate "neither set" element
 }
 
+/**
+ * T40, found live (not by inspection): svg.js's `el.attr('stroke-linecap')`
+ * does NOT return `undefined`/`null` for an element with no such attribute
+ * at all — it reports the SVG spec's own default, the STRING `'butt'`
+ * (confirmed via `el.node.hasAttribute('stroke-linecap') === false` while
+ * `el.attr(...)` still returned `'butt'`), which is truthy and silently
+ * defeats every `attr('stroke-linecap') || 'round'` fallback in this
+ * table — every round-capped path/polyline/polygon a user actually drew
+ * WITHOUT an explicit linecap (this app's own pencil tool and lattice
+ * rails happen to always set one explicitly, which is why this stayed
+ * hidden through T37-T39) would get silently declined as `unsupported:
+ * 'butt'`, no preview, no error. Reading the RAW DOM attribute instead
+ * (`.node.getAttribute`, confirmed to correctly return `null` when unset)
+ * sidesteps svg.js's own default-filling behavior entirely. `editor-
+ * eraser.js` has an OLDER, similar-looking `attr(...) || _nodeStyleProp
+ * (...) || 'round'` chain for the same two properties — checked and it
+ * carries this SAME latent bug (attr() still wins first and still lies)
+ * — out of scope to fix here (untouched by this module, no caller of
+ * THIS table exercises it), but worth naming so it isn't independently
+ * rediscovered the hard way later.
+ */
+function _capOf(el) {
+  return el.node.getAttribute('stroke-linecap') || 'round';
+}
+
 /** svg.js's own `.array()` on a polyline/polygon returns `[[x,y], ...]`
  *  (same shape editor-transform-handles.js's own drag helpers already
  *  read) -- turned into an SVG path `d` string so both kinds can share
@@ -88,7 +113,7 @@ export const OUTLINE_KINDS = {
     x2: parseFloat(el.attr('x2')) || 0,
     y2: parseFloat(el.attr('y2')) || 0,
     strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
-    cap: el.attr('stroke-linecap') || 'round',
+    cap: _capOf(el),
   }),
   circle: (el) => circleOutlinePathD({
     cx: parseFloat(el.attr('cx')) || 0,
@@ -126,15 +151,15 @@ export const OUTLINE_KINDS = {
   // `d` string for it rather than each carrying separate geometry.
   polyline: (el) => pathOutlinePathD(_pointsToD(el.array(), false), parseFloat(el.attr('stroke-width')) || 0, {
     mode: _fillModeOf(el),
-    cap: el.attr('stroke-linecap') || 'round',
+    cap: _capOf(el),
   }),
   polygon: (el) => pathOutlinePathD(_pointsToD(el.array(), true), parseFloat(el.attr('stroke-width')) || 0, {
     mode: _fillModeOf(el),
-    cap: el.attr('stroke-linecap') || 'round',
+    cap: _capOf(el),
   }),
   path: (el) => pathOutlinePathD(el.attr('d') || '', parseFloat(el.attr('stroke-width')) || 0, {
     mode: _fillModeOf(el),
-    cap: el.attr('stroke-linecap') || 'round',
+    cap: _capOf(el),
   }),
 };
 

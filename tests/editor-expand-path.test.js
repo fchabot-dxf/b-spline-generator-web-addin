@@ -168,26 +168,33 @@ describe('pathOutlinePathD — closed subpaths', () => {
     expect(countM(d)).toBe(2);
   });
 
-  it('mixing L + circular A + C in one closed path: outer boundary stays a valid, non-inverted offset (within half of the source) and reduces to only M/L/A/Z', () => {
+  it('mixing L + circular A + C in one closed path: outer boundary stays within tolerance of source and reduces to only M/L/A/Z', () => {
     const strokeWidth = 1.5, half = 0.75;
     const source = 'M 0 0 L 10 0 A 5 5 0 0 1 20 0 C 22 5 22 10 20 15 L 0 15 Z';
     const { d, unsupported } = pathOutlinePathD(source, strokeWidth);
     expect(unsupported).toBeNull();
     expect(d).not.toMatch(/[CSQT]/);
     const outerD = d.split(/(?=M )/)[0];
-    // KNOWN, DISCLOSED limitation (see WORK-LOG): at the one join here
-    // where a straight line meets a full semicircular arc almost head-on
-    // (an extreme configuration -- the arc's own start tangent points
-    // nearly perpendicular to the line's), the inner-side trim (a line-
-    // tangent line-tangent intersection) is only a LOCAL approximation
-    // for a curve, and here it lands close enough to the original path
-    // that this one seam briefly touches it rather than staying a clean
-    // half away -- bounded by `half` itself (never crosses THROUGH to the
-    // opposite/wrong side), not by the tighter bound this file uses for
-    // well-behaved joins elsewhere. General exact curve-trim (matching a
-    // circle-line intersection instead of a tangent-line one) is future
-    // work, not attempted this turn.
-    expect(maxOffsetError(outerD, source, half)).toBeLessThanOrEqual(half + 1e-6);
+    // T40 (Fred: "it matters: Fred's resin INLAY needs the outline exact")
+    // fixed the T39 limitation this test used to document: the inner trim
+    // now intersects the TRUE offset primitives (line/circle), not their
+    // tangent lines, so even the head-on line-meets-semicircle joint here
+    // stays tight — restored to the same tolerance bound every other case
+    // in this file uses.
+    expect(maxOffsetError(outerD, source, half)).toBeLessThan(0.01);
+  });
+
+  it('a line meeting a semicircular arc HEAD-ON (the arc\'s own start tangent nearly perpendicular to the line\'s) stays exact — the specific configuration T39 could not (see WORK-LOG)', () => {
+    const strokeWidth = 1, half = 0.5;
+    // (0,0)->(10,0) then a FULL semicircle (chord=2r) back down to (20,0):
+    // the arc's start tangent there is straight down, perpendicular to the
+    // line's own rightward direction -- the most extreme version of this
+    // join short of a true cusp.
+    const source = 'M 0 0 L 10 0 A 5 5 0 0 0 20 0 L 20 15 L 0 15 Z';
+    const { d, unsupported } = pathOutlinePathD(source, strokeWidth);
+    expect(unsupported).toBeNull();
+    expect(d).not.toMatch(/[CSQT]/);
+    expect(maxOffsetError(d, source, half)).toBeLessThan(0.01); // tolerance(0.001) + this file's own sampling slack
   });
 
   it('a full circle traced as two semicircle A commands matches circleOutlinePathD-style concentric offset rings', () => {
