@@ -127,8 +127,9 @@ describe('getLayerSvg({geometry:"fusion"}) — declined elements fall back + are
     const editor = mockEditor(html, layers);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+      const { svg, declined, declinedKinds } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
       expect(declined).toBe(1);
+      expect(declinedKinds).toEqual(['image']);
       expect(svg).toContain('<image'); // fell back to its own centerline, not dropped
       expect(svg).not.toContain('<path');
       expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -144,9 +145,24 @@ describe('getLayerSvg({geometry:"fusion"}) — declined elements fall back + are
     const editor = mockEditor(html, layers);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+      const { svg, declined, declinedKinds } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
       expect(declined).toBe(1);
+      expect(declinedKinds).toEqual(['text']);
       expect(svg).toContain('<text');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('declinedKinds is the DISTINCT set of kinds, not one entry per declined element — 2 declined images count as 1 kind', async () => {
+    const html = '<image x="0" y="0" width="1" height="1" href="data:," data-layer="0"/><image x="2" y="0" width="1" height="1" href="data:," data-layer="0"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { declined, declinedKinds } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+      expect(declined).toBe(2);
+      expect(declinedKinds).toEqual(['image']);
     } finally {
       warnSpy.mockRestore();
     }

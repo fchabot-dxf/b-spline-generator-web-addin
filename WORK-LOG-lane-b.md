@@ -4888,3 +4888,158 @@ Amendments polled clean (`handoff.py amendments --role worker`) before committin
 before passing. Committed by explicit path (6 files: `editor/editor-io.js`, `editor/editor-expand-path.js`,
 `main/export-flow.js`, `tests/editor-io-fusion-geometry.test.js` (new), `tests/editor-expand-path.test.js`,
 `WORK-LOG-lane-b.md`) — pushed.
+
+## T44 — fallback notice + butt/square caps + miter/bevel joins
+
+**Part 1: telling the user when an element falls back to centerline.** T43's `getLayerSvg({geometry:
+'fusion'})` already counted declines and console-warned them individually; this turn added `declinedKinds`
+(the DISTINCT element-type names that declined, e.g. `['image','text']`, not one entry per element) to its
+own return shape, threaded through `export-flow.js`'s `_fusionLayerSvg` (now returns `{svg, declined,
+declinedKinds}` instead of a bare string) into a new `_reportDeclinedOutlines(results)` — sums `declined`
+and unions `declinedKinds` across EVERY exported layer, then calls the app's one existing reusable status
+surface, `setFusionStatus(text, 'warn')` (`core/fusion-bridge.js`, targeting `#fusion-status` —
+confirmed via a general-purpose research agent this was already the established "show a message, auto-
+hide" pattern main.js's own Fusion-handshake handling uses, not something to invent fresh). Called once,
+right after `sendFusionPayloadChunked` in `sendToFusion`, in the dispatch's own exact message format: `"N
+element(s) exported as centerline — no outline for: <kinds>"`. Silent when nothing declined.
+
+**Scope disclosure, not silently assumed complete:** scoped to `sendToFusion` (the "Send to Fusion" one-
+shot path) only, per the dispatch's own wording — `downloadFiles` (the non-Fusion wizard/download path)
+does NOT get this notice; `#fusion-status` is a Fusion-bridge-specific element that isn't a natural fit
+for a flow that never touches the bridge at all. Also disclosed: `kind:'warn'` persists until replaced,
+but a LATER `import_success` ping from Fusion's own handshake (main.js, `kind:'ok'`, auto-clears in 3s)
+can still overwrite this notice once the import genuinely finishes — a pre-existing single-status-line
+limitation of the app's own design, not something this slice attempts to solve. The dispatch's own
+"same count visible in the preview (a dashed marker is fine)" was explicitly marked OPTIONAL — skipped in
+favor of the required caps/joins work below, which was the larger deliverable this turn.
+
+**Part 2: exact butt/square caps.** `SUPPORTED_LINE_CAPS` (editor-expand-analytic.js) flipped
+`butt`/`square` to `true`. `lineOutlinePathD` gained the exact closed-form construction the dispatch
+itself specified: butt = the plain rectangle (4 straight banks, no arcs); square = the same rectangle
+built on a segment EXTENDED by `half` at each end first (`ext = cap==='square' ? r : 0`, shared code path
+for both — square is literally "butt on a longer segment," not a separate construction). A zero-length
+line still only has a sensible degenerate shape for ROUND (a full circle, pre-existing) — butt/square
+have no defined DIRECTION to build a rectangle from at zero length, so they decline honestly
+(`unsupported:'zero-length'`) rather than guessing an arbitrary axis.
+
+`editor-expand-path.js`'s general engine needed the SAME construction for a multi-segment open path's own
+two end-caps: `_buildCap` (previously round-only, called `_buildCap(toPoint, half)`) was generalized to
+`_buildCap(fromPoint, toPoint, tangent, half, cap)` — round/butt unchanged in spirit, square extends both
+bank endpoints outward along `tangent` by `half` before closing across (2 new corners instead of 1
+straight edge). `tangent` must be the OUTWARD direction; `_openCapsuleD` passes the subpath's own forward
+end-tangent for the end cap and the NEGATED forward start-tangent for the start cap (pointing back, before
+the path begins) — confirmed (not assumed) that both offset banks share the identical tangent at a given
+end, since a perpendicular offset never rotates it (already true for every segment kind this module
+builds — lines trivially, arcs/cubics because `_offsetArcSeg`/biarc-fit tangents depend only on parameter,
+not `side`). This generalizes past straight lines too — "for a curve end use its end tangent," per the
+dispatch — verified live via a quarter-circle arc source, not just a straight-line source (see live
+verification below).
+
+**One found bug from THIS part, corrected during the same turn:** flipping the shared `SUPPORTED_LINE_CAPS`
+table would have silently let `cubicSegmentOutlinePathD` (editor-expand-analytic.js — a single-cubic-
+segment cross-check UTILITY, only ever called from this module's own tests, never from production/
+OUTLINE_KINDS) start ACCEPTING butt/square and quietly returning a round-cap shape for them, since its own
+body never grew a butt/square construction (its docstring always said "only round is supported"; it was
+sharing the table purely by convenience). An existing test (`tests/editor-expand-biarc.test.js`) already
+asserted this function DECLINES butt — caught immediately on the first test run after the table flip.
+Fixed with its own small LOCAL gate (`_CUBIC_SEGMENT_SUPPORTED_CAPS`, round-only), decoupled from the now-
+larger shared table, rather than letting a shared declaration silently outgrow one of its own consumers.
+
+**Part 3: exact miter/bevel joins, lines only (the dispatch's own scope).** New `SUPPORTED_LINE_JOINS`
+table (editor-expand-path.js — declared HERE, not alongside `SUPPORTED_LINE_CAPS`, since joins are this
+module's own concept: a single line segment has caps but no internal joins at all). `_buildJoin`'s
+existing OUTER/INNER dispatch (cross-product sign, unchanged) now takes a `joinStyle`/`miterLimit` pair,
+threaded through the WHOLE call chain (`_appendJoin`→`_buildBank`→both `_openCapsuleD` and `_closedRing`→
+`_closedSubpathD`/`_openSubpathD`→top-level `pathOutlinePathD`). New `_outerJoinCommands` handles the
+OUTER (convex) side specifically:
+- checks BOTH adjacent pieces' own true primitive (`_lastPrimitive`/`_firstPrimitive` — T40's own line-vs-
+  circle classifier, already built for inner-trim) are `type:'line'`; a curve on either side returns
+  `null`, and the caller falls back to the EXISTING round join for that one vertex — never a decline of
+  the whole path, matching this session's established "exact where declared, never wrong elsewhere"
+  discipline (same shape as a declined cap, just per-vertex instead of per-path).
+- `bevel`: a direct `L` from pA to pB — the chamfer.
+- `miter`: reuses `_lineIntersect` (already used by T40's own `_primitiveIntersect` for inner trimming —
+  the SAME computation, opposite side: two offset edges' own true intersection IS the miter tip) to find
+  the tip, then checks SVG's own miter-limit rule — `distance(vertex,tip)/half > miterLimit` falls back to
+  bevel. Worked out algebraically (not assumed) that this ratio IS the SVG spec's own
+  `miterLength/strokeWidth` ratio directly: a turn through interior angle θ has vertex-to-tip distance
+  `half/sin(θ/2)`, so `distance/half == 1/sin(θ/2) == miterLength/strokeWidth` exactly — no rescaling
+  needed. `miterLimit` defaults to 4 (SVG's own spec default), added as a `pathOutlinePathD` option.
+- the INNER (concave) side is explicitly UNCHANGED by `joinStyle` — real SVG stroke-linejoin only ever
+  shapes the outer bulge; the inner side is always "the offset paths cross, trim the overlap," regardless
+  of join style (confirmed this is how real rasterizers treat it too, not assumed).
+
+**Wiring into OUTLINE_KINDS** (editor-outline-preview.js): new `_joinOf(el)`/`_miterLimitOf(el)` helpers,
+same `el.node.getAttribute(...)` pattern `_capOf` already established (T40's own finding: `el.attr(...)`
+lies about a spec default for a genuinely-unset attribute — same risk for `stroke-linejoin`/
+`stroke-miterlimit`, dodged the same way, not re-discovered the hard way). Added to `polyline`/`polygon`/
+`path` only — the 3 kinds that actually route through `pathOutlinePathD`'s join machinery; `line` has caps
+but no internal joins; `rect`/`circle`/`ellipse` use their own closed-form corner treatment (never this
+engine's join code) and `text`'s own fill-mode join is geometrically irrelevant (half=0 collapses every
+join to a no-op), so left untouched rather than wired for no effect.
+
+**Tests, mutation-verified throughout (established session discipline, not skipped for this larger turn):**
+- `editor-expand-analytic.test.js`: replaced the old "butt/square decline" test with T44's own supported-
+  now assertions, plus 2 new describe blocks (butt: exact rectangle area/corners; square: exact extended-
+  rectangle area + a direct "extension = exactly half, along the line direction" corner check against
+  butt's own corresponding corner) — 16 tests total (was 7).
+- `editor-expand-path.test.js`: 2 old decline tests updated to a still-nonexistent cap/join value (the
+  scope genuinely grew); 3 new describe blocks — butt/square caps on a multi-segment path (including a
+  curve-end square cap, verified via the SAME "diff against butt" technique as the line case, not hand-
+  picked coordinates after an earlier hand-derivation attempt was PROVEN WRONG by the live test run
+  itself — see below); miter/bevel joins (exact tip position for a known right-angle turn, bevel's own
+  chamfer, the miter-limit fallback via a vertex-count differential rather than a raw distance check once
+  a first distance-based attempt was ALSO proven ambiguous by its own natural-stroke-extent confound) — 27
+  tests total (was 18). **4 of the first-draft tests in this file failed on their own first run** — not
+  implementation bugs, test-authoring mistakes (an unstated default `join:'round'` still contributing an
+  arc; a wrong equal-length assumption between butt's 5-point and square's 9-point outputs; `maxOffsetError`
+  applied somewhere its own "always exactly half" invariant doesn't hold, at a bevel/butt corner specifically)
+  — each diagnosed from the ACTUAL failure output and fixed properly, not weakened to pass; disclosed here
+  per this session's own standard rather than silently presented as first-try-correct.
+- `editor-outline-preview.js` gained 2 new tests proving `stroke-linejoin`/`stroke-miterlimit` genuinely
+  reach `pathOutlinePathD` through the real OUTLINE_KINDS table (not just at the engine level) — a miter
+  join produces a real, different `d` than the round default, and a strict custom `miterLimit` produces a
+  different `d` than the default 4 would, for the identical miter-requesting source.
+- `export-flow.test.js` gained a new describe block for `_reportDeclinedOutlines` (exported for direct
+  testing, same convention `editor-io.js`'s own `_reconcileLayersFromSvg` already uses) — driven against a
+  REAL `#fusion-status` DOM element (happy-dom's own `document`, not a mock of `setFusionStatus`/
+  fusion-bridge.js — this suite has never used `vi.mock` anywhere, and a real element is a MORE faithful
+  check of the actual wiring than a mock would be) — singular/plural wording, exact message format, and
+  multi-layer sum+union-with-dedup across 2 layers sharing a declined kind.
+- `editor-io-fusion-geometry.test.js` (T43's own file) gained 3 tests for `declinedKinds` itself: single
+  kind, text's own kind, and de-duplication (2 declined images -> 1 kind, not 2).
+
+Every new mechanism mutation-verified (restored from a pre-edit backup each time, confirmed byte-identical
+via `diff` before re-running green): forcing `_buildCap` to always round — 4/27 failures, exactly the
+cap tests; disabling `_outerJoinCommands` entirely (always round) — 4/27, exactly the join tests; disabling
+just the miterLimit check (always full miter) — 2/27, exactly the 2 miterLimit-specific tests; `_joinOf`
+ignoring the element's own attribute — 2/31 in editor-outline-preview.test.js, exactly the 2 wiring tests;
+disabling `_reportDeclinedOutlines` entirely — 2/3 in its own new describe block, exactly the 2 non-empty-
+message tests (the "does nothing when 0 declined" test correctly stayed green, since disabling still does
+nothing in that case).
+
+Full vitest suite: 703/703 green (668 T43-baseline + 10 T43 fusion-geometry + 1 T43 open-subpath-fill +
+2 T44 declinedKinds-dedup-and-format additions across editor-io-fusion-geometry.test.js + 3 T44
+declinedKinds tests + 3 T44 export-flow notice tests + 9 T44 analytic cap tests + 9 T44 path cap/join
+tests + 2 T44 outline-preview wiring tests — net +24 over T43's own 679).
+
+**Live verification (CDP, fresh Chrome — port 9508, profile `chrome-profile-t44`, killed and confirmed
+mine by command-line match before stopping; 0 of that profile's processes remained after).** 5 zig-zag
+polylines (real internal joins AND 2 open ends each) on ONE Outline layer, each a different cap/join combo
+(round/round, butt/round, square/round, butt/miter, butt/bevel), driven through the REAL
+`refreshOutlinePreview` → `OUTLINE_KINDS.polyline` → `pathOutlinePathD` path (reading `stroke-linecap`/
+`stroke-linejoin` off the element itself, exactly as a user's own drawn polyline would carry them) —
+`previewCount:10` (5 halo+line pairs), zero console errors. Screenshots (`t44-caps-joins.png` wide, plus
+zoomed close-ups `t44-zoom-round-corner.png`/`t44-zoom-miter-corner.png`/`t44-zoom-bevel-corner.png`/
+`t44-zoom-square-cap.png`), each VIEWED directly (not assumed from the script's own exit code) and each
+one unambiguously distinct: round shows a smooth semicircle end-cap and a smooth rounded outer corner;
+butt shows a flush flat-cut end; square shows the SAME flat-cut shape extended visibly further out than
+butt's own end; miter shows a crisp sharp point at the outer corner (no arc); bevel shows a visible flat
+chamfer line across the corner, distinct from both the round arc and the miter's sharp point.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (6 files: `editor/editor-expand-analytic.js`,
+`editor/editor-expand-path.js`, `editor/editor-io.js`, `editor/editor-outline-preview.js`,
+`main/export-flow.js`, `WORK-LOG-lane-b.md`) plus the 5 touched/new test files (`tests/editor-expand-
+analytic.test.js`, `tests/editor-expand-path.test.js`, `tests/editor-outline-preview.test.js`,
+`tests/export-flow.test.js`, `tests/editor-io-fusion-geometry.test.js`) — pushed.

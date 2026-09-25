@@ -233,6 +233,57 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
     const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
     expect(line._d).toMatch(/^M /);
   });
+
+  it('T44: path reads its own stroke-linejoin/stroke-miterlimit attributes (same el.node.getAttribute pattern as stroke-linecap) — a miter join produces a DIFFERENT `d` than the round-join default for the identical source shape', async () => {
+    const mockPathEl = (extraAttrs) => {
+      // stroke-linecap:'butt' isolates the join under test from the two
+      // open ends' own caps, which default to round regardless of
+      // linejoin and would otherwise ALSO contribute an 'A'.
+      const state = { 'data-layer': '1', 'stroke-width': '2', 'stroke-linecap': 'butt', d: 'M 0 0 L 10 0 L 10 -10', ...extraAttrs };
+      return {
+        type: 'path',
+        attr: (a) => state[a],
+        node: { getAttribute: (a) => (a in state ? state[a] : null) },
+      };
+    };
+    const layers = [{ id: '1', visible: true, fusionGeometry: 'outline' }];
+
+    const roundEditor = mockEditor({ layers, children: [mockPathEl({})] });
+    await refreshOutlinePreview(roundEditor);
+    const roundLine = roundEditor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+
+    const miterEditor = mockEditor({ layers, children: [mockPathEl({ 'stroke-linejoin': 'miter' })] });
+    await refreshOutlinePreview(miterEditor);
+    const miterLine = miterEditor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+
+    expect(roundLine._d).toContain('A'); // default round join -- an arc at the outer corner
+    expect(miterLine._d).not.toContain('A'); // miter join -- a sharp point instead, no arc
+    expect(miterLine._d).not.toBe(roundLine._d);
+  });
+
+  it('T44: a custom stroke-miterlimit is read and actually changes the output — a strict limit forces bevel where the default (4) would keep the miter, for the SAME miter-requesting source', async () => {
+    const mockPathEl = (extraAttrs) => {
+      // Right-angle turn: miter ratio ~1.41, under the default limit (4)
+      // but over a strict limit (1).
+      const state = { 'data-layer': '1', 'stroke-width': '2', d: 'M 0 0 L 10 0 L 10 -10', 'stroke-linejoin': 'miter', ...extraAttrs };
+      return {
+        type: 'path',
+        attr: (a) => state[a],
+        node: { getAttribute: (a) => (a in state ? state[a] : null) },
+      };
+    };
+    const layers = [{ id: '1', visible: true, fusionGeometry: 'outline' }];
+
+    const defaultEditor = mockEditor({ layers, children: [mockPathEl({})] });
+    await refreshOutlinePreview(defaultEditor);
+    const defaultLine = defaultEditor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+
+    const strictEditor = mockEditor({ layers, children: [mockPathEl({ 'stroke-miterlimit': '1' })] });
+    await refreshOutlinePreview(strictEditor);
+    const strictLine = strictEditor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+
+    expect(defaultLine._d).not.toBe(strictLine._d); // the miterlimit attribute genuinely reached pathOutlinePathD
+  });
 });
 
 describe('refreshOutlinePreview — visibility fix (T38): fixed dark-over-white halo, not the element\'s own color', () => {

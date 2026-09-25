@@ -74,6 +74,20 @@ function _capOf(el) {
   return el.node.getAttribute('stroke-linecap') || 'round';
 }
 
+/** T44: same svg.js-attr-default-lying gotcha `_capOf` was built to dodge
+ *  (its own comment above) — reads the RAW DOM attribute instead of
+ *  `el.attr('stroke-linejoin')`, which could just as easily report a
+ *  spec default for an element that never set the attribute at all. */
+function _joinOf(el) {
+  return el.node.getAttribute('stroke-linejoin') || 'round';
+}
+
+/** SVG's own `stroke-miterlimit` default is 4 — same reasoning as `_joinOf`
+ *  for reading the raw attribute rather than trusting `el.attr()`. */
+function _miterLimitOf(el) {
+  return parseFloat(el.node.getAttribute('stroke-miterlimit')) || 4;
+}
+
 /** svg.js's own `.array()` on a polyline/polygon returns `[[x,y], ...]`
  *  (same shape editor-transform-handles.js's own drag helpers already
  *  read) -- turned into an SVG path `d` string so both kinds can share
@@ -150,17 +164,28 @@ export const OUTLINE_KINDS = {
   // segment path with joins) -- one engine (pathOutlinePathD,
   // editor-expand-path.js), all three kinds adapt their own attrs into a
   // `d` string for it rather than each carrying separate geometry.
+  // T44: join/miterLimit read from the element's own stroke-linejoin/
+  // stroke-miterlimit, same pattern _capOf already established for
+  // stroke-linecap — only these 3 multi-vertex kinds have internal joins
+  // at all (line has caps only; rect/circle/ellipse use their own
+  // closed-form corner treatment, never pathOutlinePathD's join machinery).
   polyline: (el) => pathOutlinePathD(_pointsToD(el.array(), false), parseFloat(el.attr('stroke-width')) || 0, {
     mode: _fillModeOf(el),
     cap: _capOf(el),
+    join: _joinOf(el),
+    miterLimit: _miterLimitOf(el),
   }),
   polygon: (el) => pathOutlinePathD(_pointsToD(el.array(), true), parseFloat(el.attr('stroke-width')) || 0, {
     mode: _fillModeOf(el),
     cap: _capOf(el),
+    join: _joinOf(el),
+    miterLimit: _miterLimitOf(el),
   }),
   path: (el) => pathOutlinePathD(el.attr('d') || '', parseFloat(el.attr('stroke-width')) || 0, {
     mode: _fillModeOf(el),
     cap: _capOf(el),
+    join: _joinOf(el),
+    miterLimit: _miterLimitOf(el),
   }),
   // T40 part 2 (Fred: "eventually text" — T37's own deferred item, and
   // this table's own last kind): a glyph outline IS just another path —

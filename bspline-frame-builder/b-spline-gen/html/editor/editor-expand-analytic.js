@@ -33,17 +33,18 @@ import { fitOffsetWithBiarcs } from './editor-expand-biarc.js';
  * Declared as data, not inferred per call site, so a NEW cap kind is one
  * line to add here (when its own closed form is built) rather than a
  * silent fallthrough somewhere else. `round` is the lattice's own case —
- * every rail/tie is drawn with linecap:'round' (editor-lattice.js). `butt`/
- * `square` are a genuinely different, still-analytic closed form (4
- * straight segments, no arcs at all) — just not yet built; declaring them
- * `false` here means a caller gets an explicit decline (see
- * lineOutlinePathD's `unsupported` return field), never a wrong shape
- * produced by treating them as round.
+ * every rail/tie is drawn with linecap:'round' (editor-lattice.js). T44:
+ * `butt`/`square` are ALSO exact closed forms (4 straight segments, no
+ * arcs at all — a plain rectangle, extended by half the stroke width at
+ * both ends for `square`) — built this turn, in both `lineOutlinePathD`
+ * (below) and `pathOutlinePathD`'s own open-subpath caps
+ * (editor-expand-path.js's `_buildCap`), so a table flip here covers
+ * both engines identically rather than needing two separate declarations.
  */
 export const SUPPORTED_LINE_CAPS = Object.freeze({
   round: true,
-  butt: false,
-  square: false,
+  butt: true,
+  square: true,
 });
 
 /**
@@ -77,6 +78,14 @@ export function lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap = 'round' })
   const len = Math.hypot(dx, dy);
 
   if (len < 1e-9) {
+    // T44: butt/square both need a line DIRECTION to build a rectangle
+    // from (butt has no extension at all, but the stroke width still
+    // applies PERPENDICULAR to a direction that a zero-length line simply
+    // doesn't have) — round alone has a direction-independent degenerate
+    // shape (a full circle), so it's the only cap with a sensible
+    // zero-length result; declined honestly for the other two rather than
+    // guessing an arbitrary direction.
+    if (cap !== 'round') return { d: null, unsupported: 'zero-length' };
     const d = `M ${x1 - r} ${y1} A ${r} ${r} 0 1 0 ${x1 + r} ${y1} A ${r} ${r} 0 1 0 ${x1 - r} ${y1} Z`;
     return { d, unsupported: null };
   }
@@ -85,6 +94,26 @@ export function lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap = 'round' })
   // one "bank" of the capsule — the other bank is the same offset negated).
   const ux = dx / len, uy = dy / len;
   const nx = -uy, ny = ux;
+
+  // T44: 'square' extends BOTH endpoints outward along the line direction
+  // by r before offsetting perpendicular — same construction as 'butt'
+  // but on an extended segment, matching the SVG spec's own "square cap
+  // = butt cap on a segment lengthened by half the stroke width at each
+  // end" definition exactly. 'butt' itself reuses (ex1,ex2) = (p1,p2)
+  // unchanged (extension 0), so both share one code path below rather
+  // than two near-duplicate rectangle constructions.
+  const ext = cap === 'square' ? r : 0;
+  const ex1 = { x: x1 - ux * ext, y: y1 - uy * ext };
+  const ex2 = { x: x2 + ux * ext, y: y2 + uy * ext };
+
+  if (cap === 'butt' || cap === 'square') {
+    const L1 = { x: ex1.x + nx * r, y: ex1.y + ny * r };
+    const L2 = { x: ex2.x + nx * r, y: ex2.y + ny * r };
+    const R1 = { x: ex1.x - nx * r, y: ex1.y - ny * r };
+    const R2 = { x: ex2.x - nx * r, y: ex2.y - ny * r };
+    const d = `M ${L1.x} ${L1.y} L ${L2.x} ${L2.y} L ${R2.x} ${R2.y} L ${R1.x} ${R1.y} Z`;
+    return { d, unsupported: null };
+  }
 
   const L1 = { x: x1 + nx * r, y: y1 + ny * r };
   const L2 = { x: x2 + nx * r, y: y2 + ny * r };
@@ -330,11 +359,17 @@ export function _cubicOffsetPoint(P0, P1, P2, P3, t, side, half, clampFactor = 0
  * S-curve bends BOTH ways along its own length, so — unlike
  * ellipseOutlinePathD's constant-sign curvature — a single "does the
  * whole ring vanish" check is wrong here; the clamp has to be local).
- * `cap`: only 'round' is supported today, matching lineOutlinePathD's
- * own SUPPORTED_LINE_CAPS scope — declined the same way for anything else.
+ * `cap`: only 'round' is built here — this function's OWN gate, decoupled
+ * from SUPPORTED_LINE_CAPS (T44 flipped that shared table's butt/square to
+ * true for lineOutlinePathD/pathOutlinePathD, which now build them for
+ * real; this function's body never grew a butt/square construction, so
+ * sharing that table would silently start accepting them and returning a
+ * round-cap shape instead of declining). Declined the same way (never
+ * throws) for anything but round.
  */
+const _CUBIC_SEGMENT_SUPPORTED_CAPS = Object.freeze({ round: true, butt: false, square: false });
 export function cubicSegmentOutlinePathD({ x1, y1, cx1, cy1, cx2, cy2, x2, y2, strokeWidth, cap = 'round', tolerance = 0.001 }) {
-  if (!SUPPORTED_LINE_CAPS[cap]) return { d: null, unsupported: cap };
+  if (!_CUBIC_SEGMENT_SUPPORTED_CAPS[cap]) return { d: null, unsupported: cap };
   const half = strokeWidth / 2;
   const P0 = { x: x1, y: y1 }, P1 = { x: cx1, y: cy1 }, P2 = { x: cx2, y: cy2 }, P3 = { x: x2, y: y2 };
 

@@ -112,6 +112,15 @@ function maxOffsetError(outputD, sourceD, half) {
 
 function countM(d) { return (d.match(/(^|\s)M(\s|$)/g) || []).length; }
 
+/** Perpendicular distance from `p` to the infinite line through p1->p2 —
+ *  same helper editor-expand-analytic.test.js already declares for the
+ *  same purpose (T44's own bank-corner checks here). */
+function perpDist(p, p1, p2) {
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy);
+  return Math.abs((p.x - p1.x) * dy - (p.y - p1.y) * dx) / len;
+}
+
 describe('pathOutlinePathD — open subpaths', () => {
   it('a single line segment matches lineOutlinePathD exactly (the capsule generalizes lineOutlinePathD\'s own 2-arc construction to N segments, so N=1 should reduce to it exactly)', () => {
     const strokeWidth = 2;
@@ -269,22 +278,170 @@ describe('pathOutlinePathD — modes', () => {
 });
 
 describe('pathOutlinePathD — declines', () => {
-  it('declines a non-round cap, same SUPPORTED_LINE_CAPS scope lineOutlinePathD itself uses', () => {
-    const { d, unsupported } = pathOutlinePathD('M 0 0 L 10 0', 2, { cap: 'square' });
+  it('T44: declines a cap outside SUPPORTED_LINE_CAPS\'s now-larger scope (round/butt/square all supported)', () => {
+    const { d, unsupported } = pathOutlinePathD('M 0 0 L 10 0', 2, { cap: 'inherit' });
     expect(d).toBeNull();
-    expect(unsupported).toBe('square');
+    expect(unsupported).toBe('inherit');
   });
 
-  it('declines a non-round join (only the round-outer/trim-inner scheme is built this turn)', () => {
-    const { d, unsupported } = pathOutlinePathD('M 0 0 L 10 0', 2, { join: 'miter' });
+  it('T44: declines a join outside SUPPORTED_LINE_JOINS\'s scope (round/miter/bevel all supported)', () => {
+    const { d, unsupported } = pathOutlinePathD('M 0 0 L 10 0', 2, { join: 'arcs' });
     expect(d).toBeNull();
-    expect(unsupported).toBe('join:miter');
+    expect(unsupported).toBe('join:arcs');
   });
 
   it('declines unparseable path data rather than throwing', () => {
     const { d, unsupported } = pathOutlinePathD('M 0 0 L garbage', 2);
     expect(d).toBeNull();
     expect(unsupported).toBe('parse');
+  });
+});
+
+describe('pathOutlinePathD — T44: butt/square caps on a multi-segment open path', () => {
+  it('butt cap: no A commands at all, the 4 bank corners are exactly half off the source line (a butt cap\'s own CLOSING EDGE legitimately dips closer than half at its midpoint -- it cuts straight across the source endpoint by design -- so this checks corners directly rather than reusing maxOffsetError, which assumes a constant-distance boundary throughout and only holds for round caps/banks)', () => {
+    const strokeWidth = 1, half = 0.5;
+    const source = 'M 0 0 L 10 0';
+    const { d, unsupported } = pathOutlinePathD(source, strokeWidth, { cap: 'butt' });
+    expect(unsupported).toBeNull();
+    expect(d).not.toMatch(/A/); // butt caps, no internal joins -- no arcs anywhere
+    const pts = sampleDense(d, 1); // [M(0,.5), L(10,.5), L(10,-.5), L(0,-.5), L(0,.5)]
+    expect(pts).toHaveLength(5);
+    const p1 = { x: 0, y: 0 }, p2 = { x: 10, y: 0 };
+    for (const pt of pts) expect(perpDist(pt, p1, p2)).toBeCloseTo(half, 9);
+    // And the bank corners' x-range is EXACTLY [0,10] -- no extension
+    // (the square-cap test below is what proves the extended case).
+    expect(Math.min(...pts.map((p) => p.x))).toBeCloseTo(0, 9);
+    expect(Math.max(...pts.map((p) => p.x))).toBeCloseTo(10, 9);
+  });
+
+  it('square cap: the FAR corners (past each open end) sit exactly half further along the path\'s own end tangent than a butt cap\'s own corresponding corner', () => {
+    const strokeWidth = 1, half = 0.5;
+    const source = 'M 0 0 L 10 0'; // single segment -- isolates the cap construction from any join
+    const butt = pathOutlinePathD(source, strokeWidth, { cap: 'butt' });
+    const square = pathOutlinePathD(source, strokeWidth, { cap: 'square' });
+    expect(square.unsupported).toBeNull();
+    const buttPts = sampleDense(butt.d, 1);   // butt: a plain 4-corner rectangle
+    const squarePts = sampleDense(square.d, 1); // square: 2 EXTRA corners at each end (8 total + closing M)
+    expect(buttPts.length).toBe(5);   // M + 4 L (2 bank corners x2 ends)
+    expect(squarePts.length).toBe(9); // M + 8 L (each end's 1 corner -> 3)
+
+    // Every one of butt's 4 non-M corners must have a square corner sitting
+    // EXACTLY half further out, in the +/-x direction (this source is
+    // horizontal) -- checked by nearest-match rather than assumed index
+    // correspondence, since square's own point ORDER differs (3 points per
+    // end instead of 1).
+    for (const bp of buttPts.slice(1)) {
+      const matches = squarePts.filter((sp) => Math.abs(Math.hypot(sp.x - bp.x, sp.y - bp.y) - half) < 1e-9 && Math.abs(sp.y - bp.y) < 1e-9);
+      expect(matches.length).toBeGreaterThan(0);
+    }
+    // And square's own x-range extends exactly half past butt's on both
+    // ends (0 -> -half, 10 -> 10+half) -- the shape genuinely grew.
+    const xs = (pts) => pts.map((p) => p.x);
+    expect(Math.min(...xs(squarePts))).toBeCloseTo(Math.min(...xs(buttPts)) - half, 9);
+    expect(Math.max(...xs(squarePts))).toBeCloseTo(Math.max(...xs(buttPts)) + half, 9);
+  });
+
+  it('a curve end (arc segment) still gets a square cap along its OWN end tangent, not a fixed axis direction — verified against the SAME butt-cap diff technique as the straight-line case above, not hand-picked coordinates', () => {
+    // A quarter-circle arc from (10,0) to (0,10), radius 10.
+    const strokeWidth = 1, half = 0.5;
+    const source = 'M 10 0 A 10 10 0 0 1 0 10';
+    const butt = pathOutlinePathD(source, strokeWidth, { cap: 'butt' });
+    const square = pathOutlinePathD(source, strokeWidth, { cap: 'square' });
+    expect(butt.unsupported).toBeNull();
+    expect(square.unsupported).toBeNull();
+    const buttPts = sampleDense(butt.d, 1);
+    const squarePts = sampleDense(square.d, 1);
+    expect(squarePts.length).toBe(buttPts.length + 4); // 2 extra corners at EACH end, same structure as the line case
+
+    // Every butt corner must have a square corner sitting EXACTLY half
+    // further out (any direction -- a curve's end tangent isn't axis-
+    // aligned), proving square genuinely extended every one of them.
+    for (const bp of buttPts.slice(1)) {
+      const matches = squarePts.filter((sp) => Math.abs(Math.hypot(sp.x - bp.x, sp.y - bp.y) - half) < 1e-9);
+      expect(matches.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('pathOutlinePathD — T44: miter/bevel joins (lines only, per the dispatch\'s own scope)', () => {
+  it('miter: with butt caps (isolating the join from the caps), the WHOLE outline is arc-free -- a fully exact miter corner, not the round join\'s own arc construction', () => {
+    // (0,0)->(10,0)->(10,-10): a right-angle turn at (10,0), half=1.
+    // Outer bank is LEFT there (same worked example _roundJoinArc's own
+    // comment already establishes) -- offset edges y=1 and x=11 meet at
+    // the exact corner (11,1).
+    const strokeWidth = 2, half = 1;
+    const source = 'M 0 0 L 10 0 L 10 -10';
+    const { d, unsupported } = pathOutlinePathD(source, strokeWidth, { join: 'miter', cap: 'butt' });
+    expect(unsupported).toBeNull();
+    expect(d).not.toMatch(/A/); // butt caps + miter join -- no arc anywhere
+  });
+
+  it('miter tip lands exactly at the analytic corner (11,1) for the same right-angle turn, isolating the join from the (round, default) caps', () => {
+    const strokeWidth = 2, half = 1;
+    const source = 'M 0 0 L 10 0 L 10 -10';
+    const { d } = pathOutlinePathD(source, strokeWidth, { join: 'miter' });
+    const pts = sampleDense(d, 1);
+    const hasTip = pts.some((p) => Math.hypot(p.x - 11, p.y - 1) < 1e-6);
+    expect(hasTip).toBe(true);
+  });
+
+  it('bevel: the outer corner is a straight chamfer directly from pA to pB — no extra vertex beyond the join line, and strictly shorter than the miter tip\'s own reach', () => {
+    const strokeWidth = 2, half = 1;
+    const source = 'M 0 0 L 10 0 L 10 -10';
+    const { d, unsupported } = pathOutlinePathD(source, strokeWidth, { join: 'bevel' });
+    expect(unsupported).toBeNull();
+    const pts = sampleDense(d, 1);
+    // The miter tip (11,1) must NOT appear in a bevel join.
+    expect(pts.some((p) => Math.hypot(p.x - 11, p.y - 1) < 1e-6)).toBe(false);
+    // pA=(10,1) and pB=(11,0) (the two banks' own corner points at the
+    // vertex) both still appear -- bevel connects them directly.
+    expect(pts.some((p) => Math.hypot(p.x - 10, p.y - 1) < 1e-6)).toBe(true);
+    expect(pts.some((p) => Math.hypot(p.x - 11, p.y - 0) < 1e-6)).toBe(true);
+  });
+
+  it('miter-limit: an acute (needle) turn exceeding the default limit (4) falls back to bevel — one FEWER vertex than an unlimited miter would add at that same join, not a raw distance check (the stroke\'s own natural extent along either segment is comparable in size to the spike itself here, so distance alone is ambiguous; vertex count isn\'t)', () => {
+    const strokeWidth = 1, half = 0.5;
+    // A near-180-degree-reversal turn (very acute INTERIOR angle) pushes
+    // the true miter ratio (1/sin(theta/2)) well past the default limit of
+    // 4 -- exactly the case miterLimit exists to catch. cap:'butt' isolates
+    // this from the (round, default) caps' own vertex count.
+    const source = 'M 0 0 L 10 0 L 0.1 1';
+    const withDefaultLimit = pathOutlinePathD(source, strokeWidth, { join: 'miter', cap: 'butt' });
+    const withHugeLimit = pathOutlinePathD(source, strokeWidth, { join: 'miter', cap: 'butt', miterLimit: 1000 });
+    expect(withDefaultLimit.unsupported).toBeNull();
+    expect(withHugeLimit.unsupported).toBeNull();
+    const cornerCount = (d) => (d.match(/L/g) || []).length;
+    // An actual miter tip adds ONE extra vertex (the tip itself, then pB)
+    // versus a bevel's single direct-to-pB vertex -- exactly one MORE L in
+    // the unlimited-miter output than the limit-4 (bevel-fallback) one.
+    expect(cornerCount(withHugeLimit.d)).toBe(cornerCount(withDefaultLimit.d) + 1);
+  });
+
+  it('a custom (lower) miterLimit forces an earlier fallback to bevel than the default 4 would', () => {
+    const strokeWidth = 2, half = 1;
+    // A turn whose miter ratio sits between 1 and 4 (so default miterLimit
+    // 4 keeps the miter, but a strict miterLimit 1 forces bevel) --
+    // (0,0)->(10,0)->(10,-10) is a right angle, ratio = 1/sin(45deg) ~= 1.41.
+    const source = 'M 0 0 L 10 0 L 10 -10';
+    const withDefault = pathOutlinePathD(source, strokeWidth, { join: 'miter' });
+    const withStrictLimit = pathOutlinePathD(source, strokeWidth, { join: 'miter', miterLimit: 1 });
+    expect(withDefault.unsupported).toBeNull();
+    expect(withStrictLimit.unsupported).toBeNull();
+    const defaultHasTip = sampleDense(withDefault.d, 1).some((p) => Math.hypot(p.x - 11, p.y - 1) < 1e-6);
+    const strictHasTip = sampleDense(withStrictLimit.d, 1).some((p) => Math.hypot(p.x - 11, p.y - 1) < 1e-6);
+    expect(defaultHasTip).toBe(true);
+    expect(strictHasTip).toBe(false); // forced to bevel instead
+  });
+
+  it('a curve-adjacent vertex falls back to round even when join:"miter" is requested (the dispatch\'s own "(lines only)" scope) -- never a wrong shape, never a decline of the whole path', () => {
+    const strokeWidth = 1, half = 0.5;
+    // A line into a circular arc: the vertex at (10,0) has one line piece
+    // and one arc piece -- not a line-line corner, so miter can't be exact
+    // there.
+    const source = 'M 0 0 L 10 0 A 5 5 0 0 1 10 10';
+    const { d, unsupported } = pathOutlinePathD(source, strokeWidth, { join: 'miter' });
+    expect(unsupported).toBeNull(); // NOT declined -- the whole path still outlines
+    expect(maxOffsetError(d, source, half)).toBeLessThan(0.05); // still a valid offset outline (round join there instead)
   });
 });
 
