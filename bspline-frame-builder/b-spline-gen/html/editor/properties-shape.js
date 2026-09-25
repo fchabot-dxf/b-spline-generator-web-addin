@@ -7,6 +7,17 @@ import { addRecentColor, openColorMosaic } from './editor-color.js';
  *  arrows, in inches (Fred: 0.05"). One declaration so both agree. */
 export const STROKE_STEP_IN = 0.05;
 
+/** Step `value` to the NEXT multiple of `step` in direction `dir` (+1/-1),
+ *  so ± lands on the step grid (0.05, 0.1, 0.15…) instead of drifting off
+ *  it from an odd start (Fred: 0.07 + 0.05 gave 0.12, not 0.1). A value
+ *  already on the grid moves one full step. */
+export function stepToGrid(value, step, dir) {
+  const k = value / step;
+  const eps = 1e-9;
+  const next = dir > 0 ? Math.floor(k + eps) + 1 : Math.ceil(k - eps) - 1;
+  return Math.round(next * step * 1000) / 1000;
+}
+
 export function initShapeProperties(editor) {
   const strokeNum = el('editorStrokeWidth');
   const minusBtn = el('editorStrokeWidthMinus');
@@ -30,8 +41,8 @@ export function initShapeProperties(editor) {
   // per click either way, so they're unaffected.
   on(strokeNum, 'change', () => syncStroke(strokeNum.value));
   strokeNum.step = String(STROKE_STEP_IN);
-  on(minusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) - STROKE_STEP_IN));
-  on(plusBtn, 'click', () => syncStroke(parseFloat(strokeNum.value) + STROKE_STEP_IN));
+  on(minusBtn, 'click', () => syncStroke(stepToGrid(parseFloat(strokeNum.value), STROKE_STEP_IN, -1)));
+  on(plusBtn, 'click', () => syncStroke(stepToGrid(parseFloat(strokeNum.value), STROKE_STEP_IN, +1)));
 
   initFillModeToggle(editor);
   initColorControl(editor);
