@@ -9,7 +9,10 @@
  * dependency and is unit-tested directly in tests/editor-view.test.js.
  */
 
-export const ZOOM_MIN = 1;
+// Fred: zoom OUT past fit (board smaller than the view, room around it).
+// zoom 1 = fit (the fit button still returns exactly here); 0.25 = the
+// board at a quarter of the view.
+export const ZOOM_MIN = 0.25;
 export const ZOOM_MAX = 16;
 
 /** px-per-model-unit under the editor root's `preserveAspectRatio="xMidYMid
