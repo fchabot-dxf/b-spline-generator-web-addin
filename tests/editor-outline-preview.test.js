@@ -132,7 +132,7 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
 });
 
 describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amendment)', () => {
-  it('has exactly the kinds built so far: line (T37), circle/rect/ellipse-decline (T38) — polyline/polygon/generic-path/text are later work', () => {
+  it('has exactly the kinds built so far: line (T37), circle/rect (T38), ellipse (T38 amend, biarc-fit) — polyline/polygon/generic-path/text and multi-segment curved paths are later work', () => {
     expect(Object.keys(OUTLINE_KINDS).sort()).toEqual(['circle', 'ellipse', 'line', 'rect']);
   });
 
@@ -161,12 +161,30 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
     }
   });
 
-  it('an entry returning { unsupported } still gets no preview, even though the kind IS in the table — the table only says HOW to try, not that every attempt succeeds. Uses the REAL ellipse entry (Fred: "not exact by nature — return {unsupported:\'curve\'}"), not a throwaway, since it already declines unconditionally', () => {
-    expect(OUTLINE_KINDS.ellipse()).toEqual({ d: null, unsupported: 'curve' });
-    const el = { type: 'ellipse', attr: (a) => ({ 'data-layer': '1' }[a]) };
+  it('an entry returning { unsupported } still gets no preview, even though the kind IS in the table — the table only says HOW to try, not that every attempt succeeds. Ellipse became a real (biarc-fit) entry in the T38 amendment, so this uses a throwaway table entry instead of relying on ellipse to decline', () => {
+    OUTLINE_KINDS.polygon = () => ({ d: null, unsupported: 'curve' });
+    try {
+      expect(OUTLINE_KINDS.polygon()).toEqual({ d: null, unsupported: 'curve' });
+      const el = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
+      const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
+      refreshOutlinePreview(editor);
+      expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
+    } finally {
+      delete OUTLINE_KINDS.polygon; // leave the shared table exactly as found
+    }
+  });
+
+  it('ellipse (T38 amend) produces a real biarc-fit preview through refreshOutlinePreview, not a decline', () => {
+    const el = {
+      type: 'ellipse',
+      attr: (a) => ({ 'data-layer': '1', cx: '5', cy: '3', rx: '3', ry: '1', 'stroke-width': '0.1' }[a]),
+    };
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+    expect(line._d).toMatch(/^M /);
+    expect(line._d).not.toContain('unsupported');
   });
 });
 

@@ -4093,3 +4093,104 @@ path (10 files: `editor/editor-expand-analytic.js`,
 `tests/editor-lattice-undo.test.js`, `tests/editor-outline-preview.test.js`, new
 `tests/editor-expand-analytic-shapes.test.js`, new `tests/editor-outline-preview-triggers.test.js`, this
 WORK-LOG) — pushed.
+
+## Lane B — Turn 93 (commit 2) — T38 amendment: biarc-fit ellipse + cubic outline support — DONE (cubic left standalone/unwired, disclosed below)
+
+**The primitive.** New module `editor/editor-expand-biarc.js`, `fitOffsetWithBiarcs(paramToPoint,
+paramToTangent, t0, t1, tolerance=0.001, maxDepth=12)`: given ANY parametric curve as two callbacks (point
+at t, unit tangent at t), recursively splits `[t0,t1]` in half and fits each half with the UNIQUE circle
+through its start point tangent to the curve there and passing through its end point
+(`_circleFromPointTangentPoint` — standard `center = P + s*N`, `s = |Q-P|^2 / (2*N.(Q-P))`, `N` = the
+tangent's own normal). Both halves of a split use the SAME computed midpoint point+tangent, so the joint is
+tangent-continuous by CONSTRUCTION, not a numerical coincidence checked after the fact. A half is accepted
+once `_maxDeviation` (12-sample check of the true curve's distance from the fitted circle's own
+center/radius) is under an INTERNAL threshold of `tolerance * 0.7` — the margin exists because discrete
+sampling can miss the true continuous-range worst point; measured directly on a full ellipse: 0.00105
+actual max deviation with no margin (over the 0.001 target) vs 0.00067 with the margin (safely under).
+Chose this over a plain "just resample more" fix because more samples alone doesn't bound the GAP between
+samples, only shrinks it — the margin bounds the actual risk directly and is empirically verified, not
+assumed.
+
+**A real bug, found by testing, not by inspection.** The sweep-direction logic in
+`_arcSegmentThroughTangent` initially read `if (dot < 0) dTheta = dTheta > 0 ? dTheta - 2*PI : dTheta +
+2*PI;` — flip whenever the tangent-direction dot product is negative, regardless of `dTheta`'s OWN sign.
+Every test up through CCW/CW quarter-circles and a full ellipse passed (curvature sign never changes on
+those shapes, so `dot` and `dTheta` never independently disagree in the one case this formula gets wrong).
+A cubic S-curve test case (curvature crossing zero at t=0.5, the amendment's own explicit ask) exposed it:
+one specific sub-segment came out as `largeArc=1`, radius 8.3, for what should have been a tiny near-straight
+arc — measured deviation ~15.4 against a ~0.0007 target, bounding-box outlier at minX=-12.6 vs an expected
+~0. Root-caused by checking the bounding box of the full sampled ring (found the outlier), then isolating to
+the one bad `A` segment, then hand-checking its own P/T/Q: `dot<0 AND dTheta<0` — already consistent,
+should NOT flip, but the old code flipped anyway. Fixed by comparing `wantsPositive = dot>0` against
+`isPositive = dTheta>0` and flipping ONLY when they disagree. Re-ran every prior-passing case afterward
+(unchanged) and the S-curve case: 0.00068 deviation, correct. This is the THIRD time this session a
+hand-derived arc-sweep formula has been wrong and only caught by numeric sampling against real geometry
+(T34 twice, this once) — same lesson each time, logged again because it keeps paying for itself.
+
+**Mutation-proof, on the real source file, not just a local comparison.** Reverted the fix in
+`editor-expand-biarc.js`, ran the full suite: exactly 3 tests failed, reproducing the SAME ~15.4-deviation /
+~470x-area bug signature the debugging session found by hand, while the CCW/CW-quarter-circle and full-
+ellipse tests correctly stayed green (confirming the bug really is invisible to constant-curvature-sign
+shapes, matching the root-cause reasoning above). Reverted the mutation, full suite green again
+(592/592) before moving on. New tests: `tests/editor-expand-biarc.test.js` (13 cases) — `fitOffsetWithBiarcs`
+tangent-continuity and tolerance on a quarter-circle (CCW+CW) and a full ellipse, `ellipseOutlinePathD`
+outer/inner ring distance-from-center checks (relative bound, not `toBeCloseTo(x,6)` — same
+kappa-approximation-tolerance lesson from T34/T35's own path-layout tests), `cubicSegmentOutlinePathD` on
+the S-curve case, and a standalone local reproduction of the sweep bug (computing P/T/Q from a real circle,
+not hand-typed approximate numbers) plus the real-source-mutation test described above.
+
+**Wired into the app.** `editor-expand-analytic.js` gained `ellipseOutlinePathD({cx,cy,rx,ry,strokeWidth,
+mode,tolerance})` (outer/inner rings via `fitOffsetWithBiarcs` over the ellipse's own parametrization, mode-
+aware exactly like circle/rect, plus a whole-ring-vanishing check using the ellipse's OWN minimum radius of
+curvature `min(ry^2/rx, rx^2/ry)` — valid because an ellipse's curvature sign never changes, same class of
+check as circle/rect's) and `cubicSegmentOutlinePathD({x1,y1,cx1,cy1,cx2,cy2,x2,y2,strokeWidth,cap,
+tolerance})` (single stroked cubic segment, banks fit via the same biarc primitive, round caps, but
+clamped PER-POINT via the segment's own signed curvature `kappa(t) = (d1.x*d2.y - d1.y*d2.x)/|d1|^3` rather
+than one whole-ring check — an S-curve bends BOTH directions along its length, so "does the whole ring
+vanish" is the wrong question for it, unlike ellipse/circle/rect where it's valid). `OUTLINE_KINDS.ellipse`
+in `editor-outline-preview.js` now calls the real `ellipseOutlinePathD` (reading `cx/cy/rx/ry/stroke-width`
++ `_fillModeOf(el)`, same adapter shape as circle/rect) — REPLACING the checkpoint-1 placeholder decline
+entry, per the amendment's own words ("include ellipses... THIS turn instead of declining them").
+Mutation-verified the wiring itself, not just the geometry function: reverted `OUTLINE_KINDS.ellipse` back
+to the decline placeholder, ran `tests/editor-outline-preview.test.js` — exactly 1 failure (the new
+"ellipse produces a real biarc-fit preview through refreshOutlinePreview" test), the other 21 in that file
+unaffected; reverted the mutation, re-confirmed green.
+
+**Scope disclosed, not silently dropped — `cubicSegmentOutlinePathD` is NOT wired to any `OUTLINE_KINDS`
+entry this turn.** It exists as a tested, reusable standalone function (the amendment's own test ask — "max
+deviation on... a cubic S-curve" — is a claim about the FITTING PRIMITIVE, verified directly against it, not
+about a full assembled path). Wiring a generic `'path'` kind that actually walks a real multi-segment
+M/L/H/V/A/C/S/Q/T path — mixing straight runs, exact arcs, and now curve-fit cubics, all needing the SAME
+join logic at each vertex (round vs. miter offset, decided by the vertex's own signed turn angle, independently
+per side since which side is "outer" flips with winding direction) — is the SAME deferred piece checkpoint
+1's WORK-LOG entry already named for polyline/polygon, for the same reason: a well-known source of subtle
+bugs (self-intersection at tight concave corners, degenerate zero-length edges) that deserves its own
+unhurried pass, not a rushed bolt-on to an already-large curve-fitting turn. `elliptical-A` inside a
+multi-segment path is the SAME deferred piece too (it's a path-segment-kind question, not a curve-fitting
+one — the biarc primitive itself is generic and would handle it once path assembly exists). Final scope this
+turn: ellipse — real, biarc-fit, wired end-to-end. Cubic/quadratic segment fitting — real, tested,
+standalone, not yet wired to a path kind. Polyline/polygon/generic-multi-segment-path (including
+elliptical-A-in-a-path) — still deferred, unchanged from checkpoint 1's own disclosure.
+
+**Live verification.** Restarted the dev server (`python -m http.server 8771 --directory .` from the
+worktree root — the prior session's server and Chrome had both exited between turns) and a fresh headless
+Chrome on a NEW port (9498) with its OWN user-data-dir (`chrome-profile-t38b`), checking
+`Get-CimInstance Win32_Process -Filter "Name='chrome.exe'"` both before launching (0 processes — clean) and
+before stopping (8 processes, all matching MY OWN `chrome-profile-t38b` path, none belonging to another
+session) — same discipline as every prior turn. Real lattice generated, a hand-drawn stroke-only ellipse
+(rx=1.6, ry=0.7, stroke 0.15) added on a second Outline layer, `refreshOutlinePreview` called directly (same
+pattern as checkpoint 1's own rect/circle script). Screenshot at fit zoom
+(`t38b-ellipse-fit-zoom.png`): the ellipse shows a clean, smooth halo+line outer AND inner ring (stroke
+mode — matches circle/rect's own two-ring stroke-mode behavior), no visible faceting, no wild loops — the
+biarc fit tracks the true offset curve closely at this scale. Zero console errors/exceptions during the
+whole run. (The zoom-in screenshot came out identical to the fit-zoom one — the ad-hoc `editor.setZoom`
+call this script tried doesn't exist on this build the way checkpoint 1's rail-specific `viewBox`-override
+technique worked around; not investigated further since the fit-zoom screenshot alone already shows the
+ring clearly and unambiguously, and re-deriving a zoom mechanism wasn't the point of this check.)
+
+Full vitest suite: 593/593 green (up from 592 — the one new end-to-end ellipse-wiring test).
+
+Amendments polled clean (`handoff.py amendments --role worker`) again, immediately before this commit.
+Committed by explicit path (5 files: `editor/editor-expand-analytic.js`,
+`editor/editor-outline-preview.js`, new `editor/editor-expand-biarc.js`,
+`tests/editor-outline-preview.test.js`, new `tests/editor-expand-biarc.test.js`) — pushed.

@@ -30,7 +30,7 @@
  * always was, showsOutline(layer) alone.
  */
 import { showsOutline } from './layers.js';
-import { lineOutlinePathD, circleOutlinePathD, rectOutlinePathD } from './editor-expand-analytic.js';
+import { lineOutlinePathD, circleOutlinePathD, rectOutlinePathD, ellipseOutlinePathD } from './editor-expand-analytic.js';
 
 /** Which of the 3 outline modes editor-expand-analytic.js's shape
  *  functions want, read from the element's OWN fill/stroke presentation
@@ -91,14 +91,21 @@ export const OUTLINE_KINDS = {
     strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
     mode: _fillModeOf(el),
   }),
-  // Fred: "Ellipses and cubic/quadratic paths: NOT exact by nature —
-  // return {unsupported:'curve'} this turn (declined, no preview); a
-  // tolerance-fit is a later turn." An EXPLICIT decline (not just a
-  // missing table entry) so a future reader sees "ellipse was
-  // considered and ruled out this turn," not "ellipse was never
-  // considered" — the same distinction lineOutlinePathD's own
-  // SUPPORTED_LINE_CAPS makes for butt/square caps.
-  ellipse: () => ({ d: null, unsupported: 'curve' }),
+  // T38 AMEND (Fred: "ellipse and curved path too please" — supersedes
+  // the T38-checkpoint-1 decline below): biarc-fit via
+  // editor-expand-biarc.js's fitOffsetWithBiarcs, tangent-continuous
+  // circular arcs to within OUTLINE_FIT's tolerance, not a spline —
+  // see ellipseOutlinePathD's own header for the fit + vanishing-ring
+  // details. Only the curved rings are fitted; still closed-form exact
+  // where the ellipse degenerates to a circle (rx===ry, same function).
+  ellipse: (el) => ellipseOutlinePathD({
+    cx: parseFloat(el.attr('cx')) || 0,
+    cy: parseFloat(el.attr('cy')) || 0,
+    rx: parseFloat(el.attr('rx')) || 0,
+    ry: parseFloat(el.attr('ry')) || 0,
+    strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
+    mode: _fillModeOf(el),
+  }),
 };
 
 export function refreshOutlinePreview(editor) {
