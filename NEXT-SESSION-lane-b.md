@@ -1,37 +1,31 @@
-# NEXT (lane-b) — T38: outline preview you can SEE + SHAPES (Fred: "shapes in priority, eventually text")
+# NEXT (lane-b) — T39: outlines for polylines, polygons and ANY path (lines + arcs + curves)
 
-**Ball: worker (seat B) · epoch 2 · T38.** NO FUSION for workers — browser proof only. Seat A is on SE7i in the main
-checkout and currently also edits editor.js / editor-io.js / layers.js, so T37 isn't merged to main yet (I'll resolve
-at merge). Keep edits in your own modules where you can.
+**Ball: worker (seat B) · epoch 2 · T39.** NO FUSION for workers — browser proof only. Seat A is on SE7i part 2
+(editor-interaction.js / editor-lattice.js). T38 reviewed + merged (9e020e3, 642 green); advisor independently measured
+the ellipse outline: max |dist − w/2| = 0.0007" over 1176 samples, only M/A/Z — good.
 
-**Measured by the advisor in Fusion:** Sketch.importSVG keeps SVG `A` arcs and `<circle>` as TRUE SketchArc/
-SketchCircle at exact radii — so exact outlines stay exact in Fusion. Emit arcs, never cubics, wherever the math allows.
-
-## 1. Preview visibility (T37 review finding — fix first)
-Your own t37-outline-preview.png shows no visible outline: a 0.02" line in the element's OWN color drawn over a stroke
-of the same color is invisible. Make it read at every zoom: `vector-effect: non-scaling-stroke`, ~1px, a contrasting
-treatment (e.g. dark 1px line over a 3px white halo, or dashed) — declare the style once (CSS class). Neutral/showColor
-rule no longer needed for the line color; drop it if the new style doesn't use element color. Also refresh the
-preview on undo/redo, layer switch and document open/restore (not only on edits) — assert each.
-
-## 2. Shapes — OUTLINE_KINDS entries (exact where the math allows)
-- Stroke-only closed shapes: outline = OUTER + INNER offset rings (±w/2), round joins, returned as one path with two
-  subpaths (evenodd). rect → rounded outer rect (4 lines + 4 quarter `A`) + inner rect (sharp corners; if w ≥ min
-  side the inner ring vanishes). circle → two concentric circles (as `A` pairs). polyline (open) / polygon (closed)
-  → straight banks + round-join `A` at convex corners, clean miter intersection at concave corners.
-- path made ONLY of M/L/H/V/A(circular, rx==ry)/Z → same exact construction (circular arcs offset to concentric arcs).
-- Filled shapes (fill mode fill/both): outline = the shape's own edge (exact, no offset); 'both' = edge offset by w/2.
-- Ellipses and cubic/quadratic paths: NOT exact by nature — return `{unsupported:'curve'}` this turn (declined, no
-  preview); a tolerance-fit is a later turn. Say so in the table's doc.
-Pure functions in editor-expand-analytic.js, one per kind, each with area/distance tests like T35 (every bank point
-exactly w/2 from the source; rect/circle ring areas analytic).
+## Do the deferred piece: path assembly
+One general `pathOutlinePathD(d, strokeWidth, {mode, cap, join, tolerance})` that walks ANY absolute path (normalize
+relative/H/V/S/T/Q first; Q → C exactly) segment by segment:
+- straight → offset line; circular A (rx==ry, similarity) → concentric A; elliptical A and C → the T38 biarc fit
+  (cubicSegmentOutlinePathD's primitive / fitOffsetWithBiarcs).
+- Joins decided per vertex by the signed turn: outer side = round join (true A, r = w/2); inner side = trim both
+  offset pieces to their intersection (no overlap loops). Smooth (tangent-continuous) vertices need no join.
+- Open subpath → left bank + end cap + right bank reversed + start cap (round caps = true A; butt/square per
+  SUPPORTED_LINE_CAPS). Closed subpath (Z) → outer ring + inner ring (evenodd), inner ring collapses where the shape
+  is thinner than w (drop the collapsed piece, don't emit loops) — test a thin spike.
+- Filled / both modes as for shapes.
+Wire OUTLINE_KINDS: `polyline`, `polygon` (→ points to a path) and `path` all through it. The existing
+line/rect/circle/ellipse entries stay (exact special cases).
 
 ## Verify
-- vitest per kind + preview refresh triggers; `npx vitest run` green.
-- CDP screenshots: lattice lines AND a stroked rect, circle, polygon on a layer set to Outline — outlines clearly
-  visible at fit zoom and zoomed in.
+- vitest: every sampled outline point within tolerance of w/2 from the source (reuse a distance sampler; this is the
+  one assertion that matters), outline contains only M/L/A/Z, a zig-zag polyline with acute + obtuse turns, a closed
+  polygon with a concave corner, a path mixing L + circular A + C, an S-curve, a thin spike (inner collapse).
+- CDP screenshot: a freehand (pencil) curve, a polygon and a mixed path on an Outline layer — preview visible.
+- `npx vitest run` green (rerun once if a whole-suite "no tests"/import flake).
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T38: visible preview + shape outlines — <sha>, vitest N, screenshots: <paths>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T39: path/polyline/polygon outlines — <sha>, vitest N, screenshots: <paths>"`
 and stop.
