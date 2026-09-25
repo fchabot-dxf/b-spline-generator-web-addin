@@ -9483,3 +9483,85 @@ the other segmented controls app-wide (see UI1 bullet above) — a deliberate sc
 flagging here in case Fred specifically wants the toolbar/panel groups to ALSO get a touch-tap boost on coarse
 pointers, since none of those currently have one beyond their own pre-existing per-control overrides (e.g.
 `#latticeAddKindGroup`'s existing `height:44px !important` under `pointer:coarse`, left untouched).
+
+## Turn 271 — UI1b: responsive column count + a line-ending guard — DONE
+
+Two items: a real bug the advisor's live check of turn 269 found (`ui-landscape-3col-tight.png`), and a
+housekeeping fix for the line-ending noise turn 269's own commit produced.
+
+**Responsive column count.** `.panel-row-2`/`.panel-row-3` (styles/editor.css, MOB5-era, shared by both the box
+Lattice and Shape Lattice panels' Grid & rails/Nodes/Widths rows) used a rigid `grid-template-columns:
+repeat(N, 1fr) !important` — N EQUAL columns regardless of how much width the row actually has. That was safe
+when this shared breakpoint meant ONE thing (portrait's own ~350-400px full-width panel, sized once against
+T56/SE7h's "Horizontal"/"Vertical" labels when they were written) but MOB4 folded the SAME breakpoint bucket to
+ALSO cover the landscape side column (turn 269's own doc comment on this exact media query), which can be
+FREELY RESIZED to any width between 236px (canvasMax) and its own settingsMax — at an in-between width like
+~450px, 1/3 of the row is narrower than "Horizontal" needs, clipping it mid-word with no ellipsis (there's none
+declared — it just silently overflows). Fixed by making the column count respond to the ROW's OWN available
+width instead of being fixed: `repeat(auto-fit, minmax(130px, 1fr))` — the browser computes how many 130px+
+tracks actually fit and wraps the rest to new rows, no viewport check needed at all (this genuinely responds
+to "the panel's own width," per the dispatch's own framing, not a second breakpoint to keep in sync with the
+first). 130px is the widest single-track need in this shared class's own instances (Orientation's 2-button
+"Horizontal"/"Vertical" group) — checked all 3 direct consumers of `.panel-row-3` (Grid & rails' Spacing/
+Orientation/RailsMode; Nodes' 3 checkboxes; Widths' Rails&ties/link/Node-size, whose own
+`.panel-widths-unlinked{grid-column:1/-1}` full-row-span rule still works unchanged with `auto-fit`, since the
+number of EXPLICIT tracks `auto-fit` creates is still a real, computed number at layout time — `1/-1` spans
+whichever count that turns out to be) — none needed a wider floor than 130px.
+
+**Verify:**
+- No test changes — this is a pure CSS layout fix with no DOM/JS behavior change; `npx vitest run` -> 1007
+  passed (unaffected, confirming no regression).
+- Live (headless Chrome via CDP, hard-reload with cache ignored), all via `scrollWidth > clientWidth` on the
+  actual `.editor-fillmode-btn` elements (a real overflow measurement, not an eyeballed screenshot) PLUS a
+  screenshot at each width:
+  - Portrait phone (390px, ~370px-wide panel): "Horizontal"/"Vertical"/"Count"/"Every" all render at ~90px
+    each, unclipped (was already fine before — confirms no regression at the width this was originally
+    designed for).
+  - Landscape at the reported ~450px width, reached via a REAL simulated touch-drag on the landscape splitter's
+    own vertical handle (not a synthetic width override) — 409px row, 3 columns (Spacing + Orientation +
+    RailsMode all on one line, same layout as the bug screenshot), all 4 buttons unclipped at 61-70px each.
+    Screenshot (`ui1b-spacing-row3-final.png`) is visually identical in composition to `ui-landscape-3col-tight.png`
+    except the labels now render in full.
+  - Landscape at its own canvasMax floor (236px): the row correctly WRAPS to a single column (Spacing full-
+    width, then Horizontal/Vertical full-width below it, then Count/Every full-width below that) — no clipping,
+    no ellipsis, each button gets 96-97px (screenshot `ui1b-row3-floor-final.png`).
+  - Nodes (3 checkboxes) and Widths (Rails&ties/link/Node-size) rows at the same 409px landscape width: both
+    render as clean 3-column rows, nothing clipped — confirming the shared 130px floor works for their
+    shorter-label content too, not just Orientation's longer one.
+  - Desktop: untouched and unchecked further this turn — `.panel-row-2`/`.panel-row-3` are a no-op outside this
+    media query (neither `max-width:720px` nor the landscape `pointer:coarse` condition ever matches a desktop/
+    mouse session), so desktop still gets the original stacked, full-width layout exactly as before.
+
+## Turn 271 (cont.) — .gitattributes line-ending guard
+
+Turn 269's own commit (23ed3c6) rewrote all 2,784 line endings of `bspline_gen_palette.html` — the repo's
+stored blob had CRLF, and `git`'s `core.autocrlf=true` normalized the WORKING-TREE file to LF the moment a
+`sed -i` edit (used for that turn's bulk `.segmented-group` wrapper replacement) touched it, then committed
+that LF version verbatim (confirmed via `git show HEAD~1:<path> | file -`, which reported CRLF for the PARENT
+commit and LF for the child). Not a content bug — every live/test check that turn passed — but a real diff-
+noise problem: the next reviewer (or a future `git blame`) sees 2,784 changed lines for what was actually a
+few dozen real edits.
+
+Added `.gitattributes` declaring the intended NORMALIZED form explicitly, so every seat (and every tool —
+`sed`, the Edit tool, a future contributor's own editor) converges on the SAME stored line ending regardless of
+what accidentally lands on disk mid-edit, rather than relying on `core.autocrlf` alone (a PER-CLONE local git
+config, not a repo-level declaration — a fresh clone or a seat with a different `autocrlf` setting wouldn't get
+the same protection):
+```
+* text=auto
+*.html text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.py text eol=lf
+```
+Then `git add --renormalize .` in its own commit, separate from the `.panel-row-3` fix above (per the dispatch's
+own instruction) — renormalizes every tracked file's stored line endings against the new `.gitattributes` rules
+in one pass, so this housekeeping change is trivially revertable/reviewable on its own, distinct from any actual
+content change.
+
+**Verify:** compared `git diff --stat` against `git diff -w --ignore-cr-at-eol --stat` for the `.panel-row-3` fix
+commit BEFORE committing it, per the dispatch's own check — both reported the SAME small diff (editor.css only,
+~15 lines), confirming that edit (made via the Edit tool, not `sed`) didn't flip any line endings. Ran the same
+comparison again after the renormalize commit to confirm it touched ONLY the files `.gitattributes` actually
+declared a form for (see the commit's own reported file count in the pass-back note) and nothing further drifted
+on top of it.
