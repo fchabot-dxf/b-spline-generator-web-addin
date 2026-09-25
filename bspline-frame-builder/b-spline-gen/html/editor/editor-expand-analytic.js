@@ -276,7 +276,7 @@ export function ellipseOutlinePathD({ cx, cy, rx, ry, strokeWidth, mode = 'strok
  *  of the curve is locally concave at t (positive = bending toward the
  *  LEFT/+90deg-normal side, using the same 2D-cross-product convention
  *  `_turnSign`-style logic elsewhere in this session already relies on). */
-function _cubicPointTangentCurvature(P0, P1, P2, P3, t) {
+export function _cubicPointTangentCurvature(P0, P1, P2, P3, t) {
   const u = 1 - t;
   const point = {
     x: u * u * u * P0.x + 3 * u * u * t * P1.x + 3 * u * t * t * P2.x + t * t * t * P3.x,
@@ -303,7 +303,7 @@ function _cubicPointTangentCurvature(P0, P1, P2, P3, t) {
  *  to reconcile (ellipseOutlinePathD's own -90deg "outward" convention
  *  is unrelated: a closed shape has a natural outward, an open segment
  *  does not — "left"/"right" is all there is here). */
-function _cubicOffsetPoint(P0, P1, P2, P3, t, side, half, clampFactor = 0.97) {
+export function _cubicOffsetPoint(P0, P1, P2, P3, t, side, half, clampFactor = 0.97) {
   const { point, tangent, curvature } = _cubicPointTangentCurvature(P0, P1, P2, P3, t);
   const normal = { x: -tangent.y, y: tangent.x };
   // side=+1 is the LEFT bank (+normal), side=-1 is RIGHT (-normal). That

@@ -67,7 +67,7 @@ const TAU = Math.PI * 2;
 /** Endpoint -> center parametrization (SVG spec appendix F.6.5). Returns
  *  null for a degenerate radius (caller falls back to a straight line —
  *  matches what a real SVG renderer does for rx/ry <= 0). */
-function _arcCenterParam(x1, y1, rx, ry, phiDeg, largeArc, sweep, x2, y2) {
+export function arcCenterParam(x1, y1, rx, ry, phiDeg, largeArc, sweep, x2, y2) {
   const phi = (phiDeg * Math.PI) / 180;
   const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
 
@@ -132,7 +132,7 @@ export function arcToCubics(prev, seg) {
   if (rx0 === 0 || ry0 === 0) return [['L', x2, y2]]; // degenerate radius = a line, per the SVG spec
   if (prev.x === x2 && prev.y === y2) return []; // identical endpoints = no-op arc
 
-  const param = _arcCenterParam(prev.x, prev.y, rx0, ry0, xRotDeg, !!largeArc, !!sweep, x2, y2);
+  const param = arcCenterParam(prev.x, prev.y, rx0, ry0, xRotDeg, !!largeArc, !!sweep, x2, y2);
   if (!param) return [['L', x2, y2]];
   const { cx, cy, rx, ry, phi, theta1, dTheta } = param;
 
@@ -201,7 +201,7 @@ export function isSimilarity(m, tol = 1e-6) {
  * degenerate arc (caller falls back to arcToCubics, which already handles
  * that case the same way).
  *
- * Goes through the arc's own center-parametrized form (_arcCenterParam,
+ * Goes through the arc's own center-parametrized form (arcCenterParam,
  * the same math arcToCubics already trusts). rx/ry scale by the
  * similarity's own uniform factor (a defining property — every length
  * scales by the same amount) and the new x-axis direction reads straight
@@ -219,7 +219,7 @@ export function isSimilarity(m, tol = 1e-6) {
  * ellipse centers (largeArc XOR sweep picks which), and both sweep
  * candidates can land on the SAME |dTheta| via the wrong one. The
  * transform's own expected center is unambiguous, so this tries both
- * sweep values through _arcCenterParam (the same oracle arcToCubics
+ * sweep values through arcCenterParam (the same oracle arcToCubics
  * already trusts) and keeps whichever reproduces that center. largeArc
  * is unaffected either way: which of the two (>180°/<180°) arcs is meant
  * doesn't depend on direction.
@@ -227,12 +227,12 @@ export function isSimilarity(m, tol = 1e-6) {
 export function bakeArcSimilar(prev, seg, m) {
   const [, rx0, ry0, xRotDeg, largeArc, sweep, x2, y2] = seg;
   // Same two degenerate cases arcToCubics itself special-cases BEFORE
-  // calling _arcCenterParam — that function's own null-return only covers
+  // calling arcCenterParam — that function's own null-return only covers
   // a near-zero radius, not these; skipping this check would feed it a
   // 0/0 direction vector and get NaN back, not a clean decline.
   if (rx0 === 0 || ry0 === 0) return null;
   if (prev.x === x2 && prev.y === y2) return null;
-  const param = _arcCenterParam(prev.x, prev.y, rx0, ry0, xRotDeg, !!largeArc, !!sweep, x2, y2);
+  const param = arcCenterParam(prev.x, prev.y, rx0, ry0, xRotDeg, !!largeArc, !!sweep, x2, y2);
   if (!param) return null;
   const { cx, cy, rx, ry, phi, dTheta } = param;
   const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
@@ -257,7 +257,7 @@ export function bakeArcSimilar(prev, seg, m) {
   // directly rather than a derived quantity both candidates can share.
   let best = null, bestDist = Infinity;
   for (const trySweep of [0, 1]) {
-    const p2 = _arcCenterParam(start.x, start.y, newRx, newRy, newPhiDeg, !!largeArc, !!trySweep, end.x, end.y);
+    const p2 = arcCenterParam(start.x, start.y, newRx, newRy, newPhiDeg, !!largeArc, !!trySweep, end.x, end.y);
     if (!p2) continue;
     const dist = Math.hypot(p2.cx - expectedCenter.x, p2.cy - expectedCenter.y);
     if (dist < bestDist) { bestDist = dist; best = trySweep; }
