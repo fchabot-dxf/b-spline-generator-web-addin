@@ -20,6 +20,7 @@ import { LATTICE_DEFAULTS } from './editor-lattice.js';
 import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { refreshBoundaryPatterns } from './editor-lattice-pattern.js';
+import { detectShapeLatticeDetach } from './properties-shape-lattice.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -125,6 +126,13 @@ export class VectorEditor {
         // Handles each updateHandles cycle, and per-drag capture on grab.
         this._transformHandles = [];
         this._transformState = null;
+        // T59: the Shape Lattice tool's own param-handle records
+        // (renderShapeLatticeHandles, each updateHandles cycle) and the
+        // in-progress drag's own param key (shapeLatticeHandler,
+        // editor-interaction.js) — same declared-up-front shape as
+        // _transformHandles/_transformState just above.
+        this._paramHandles = [];
+        this._shapeLatticeDragKey = null;
     }
 
     /** Primary selection — the most-recently clicked element. Legacy
@@ -321,6 +329,12 @@ export class VectorEditor {
      */
     _notifyChange(kind) {
         if (kind === 'commit') refreshOutlinePreview(this); // SE12 T37: commit-only, same timing as refreshDrape
+        // T59 (SE14 §6, "recompute-and-compare"): BEFORE the boundary
+        // refill below — detects a hand node-edit on a GENERATED
+        // silhouette (a real geometry change the refill itself doesn't
+        // care about either way; ordering is for readability, not
+        // correctness — refreshBoundaryPatterns never reads shape.source).
+        if (kind === 'commit') detectShapeLatticeDetach(this);
         if (kind === 'commit') refreshBoundaryPatterns(this); // T49 (SE13 §9): commit-only boundary-link refill, same hook
         if (!this._onChange) return;
         if (kind === 'commit') {

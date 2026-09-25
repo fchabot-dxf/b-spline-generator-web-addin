@@ -25,8 +25,24 @@ import {
     stampBoundaryRef, _findBoundaryElement,
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
+import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
+import { viewScale } from './editor-view.js';
+import { inputProfileFor } from './editor-input.js';
+
+// T59: the event this module dispatches after ANY programmatic change to
+// `p.shape` from OUTSIDE the panel's own field handlers (a param-handle
+// drag release, a canvas segment tap) — the panel's own
+// `syncFieldsFromPattern` listens for it (alongside the pre-existing
+// `editorLayersChanged`) so the Segments dropdown / Shape sliders never
+// drift from a canvas-driven edit. Declared once so a future THIRD writer
+// (there are only two today) has an obvious hook to reuse rather than
+// inventing its own.
+export const SHAPE_CHANGED_EVENT = 'editorShapeLatticeChanged';
+function _dispatchShapeChanged(editor) {
+    document.dispatchEvent(new CustomEvent(SHAPE_CHANGED_EVENT, { detail: { editor } }));
+}
 
 // Same declared-table idiom properties-lattice.js used to own for this —
 // moved here with the Ending select itself (T58's own panel split).
@@ -72,51 +88,33 @@ const PARAM_ROWS = {
  *  after Generate), not assumed from reading the code alone. */
 const SILHOUETTE_STROKE_WIDTH = 0.02;
 
-/** SE14 §4's own "mirrored pairs" rule: at index `i` (the right/first
- *  half of the flat array), its mirror is `n-2-i` — the two CAP edges
- *  (bottom, at `n/2-1`, and top, at `n-1`) have no partner (each is its
- *  own single edge, not a left/right pair) and map to themselves. Derived
- *  directly from the generator's own solver doc comments (both presets'
- *  `fresh` arrays: right side 0..n/2-2, bottom cap at n/2-1, left side
- *  n/2..n-2 — a mirror of the right side in REVERSE order, top cap at
- *  n-1) rather than a per-preset hardcoded table, so it can't drift if a
- *  future preset changes segment count. */
-function _mirrorSegmentIndex(i, n) {
-  if (i === n / 2 - 1 || i === n - 1) return i;
-  return n - 2 - i;
-}
-
 /** SE7i's own per-layer pattern lookup, duplicated here (not imported)
  *  the same way `_fmix32` is duplicated per-file elsewhere in this
  *  codebase — a small, private, state-free helper, not worth a shared
- *  import for two callers. */
+ *  import for two callers.
+ *
+ *  T59: EXPORTED now (dropping the underscore, matching `stampBoundaryRef`
+ *  's own no-underscore-but-exported convention for a genuine public API,
+ *  not the underscore-kept-on-export style `_findBoundaryElement` uses for
+ *  an internal helper one other module happens to need) — the canvas
+ *  interaction code (editor-interaction.js) needs the SAME lookup a
+ *  handle-drag or a segment tap reads/writes `p`/`p.shape` through. */
 function _activeLayerObj(editor) {
     const layers = Array.isArray(editor._layers) ? editor._layers : [];
     return layers.find((l) => l.id === getActiveLayer(editor)) || null;
 }
-function _currentPattern(editor) {
+export function currentPattern(editor) {
     const layer = _activeLayerObj(editor);
     if (!layer) return JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
     if (!layer.pattern) layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
     return layer.pattern;
 }
-/** Lazily materializes `p.shape` the same way `_currentPattern` itself
+/** Lazily materializes `p.shape` the same way `currentPattern` itself
  *  lazily materializes `layer.pattern` — a layer that's never touched the
  *  Shape Lattice tool has no `.shape` key at all until this is called. */
-function _currentShape(p) {
+export function currentShape(p) {
     if (!p.shape) p.shape = JSON.parse(JSON.stringify(PATTERN_DEFAULTS.shape));
     return p.shape;
-}
-
-/** SE14 §3 Q5 ruling ("explicit {x,y,w,h}, default = the board's inner
- *  rect"): v1's own region is the WHOLE board rect — the same `_mW`/`_mH`
- *  units `_resolveExtent`'s own 'board' branch already reads (inches),
- *  un-inset (no separate margin fraction is declared for this tool; the
- *  fill engine's own PATTERN.margin only applies to 'board' mode's row/
- *  column extent, not to boundary mode's own bbox — see
- *  `_resolveExtent`'s own doc comment). */
-function _boardRegion(editor) {
-  return { x: 0, y: 0, w: editor._mW || 4, h: editor._mH || 4 };
 }
 
 /** The segments array a JUST-generated silhouette would use RIGHT NOW —
@@ -131,7 +129,258 @@ function _boardRegion(editor) {
  *  PATTERN_DEFAULTS before a first Generate. */
 function _effectiveSegments(editor, shape) {
   if (Array.isArray(shape.segments)) return shape.segments;
-  return generateSilhouette(_boardRegion(editor), shape).segments;
+  return generateSilhouette(boardRegion(editor), shape).segments;
+}
+
+/**
+ * SE14 §6: regenerate the silhouette from the CURRENT `p.shape` and
+ * emit/update its linked `<path>`. In-place `d` update when this tool's
+ * own generated path is ALREADY the link (`shape.source==='generated'`
+ * AND that element still exists); otherwise mints a fresh `<path>`,
+ * `stampBoundaryRef`s it, and re-links — the same "re-picking stamps a
+ * NEW id, the old element's own tag is left in place, inert" convention
+ * T49's boundary link already established (covers BOTH "first generate
+ * ever" and "was linked to a hand-PICKED shape, now generating" — the
+ * picked element is never overwritten). Pure geometry + DOM emit only —
+ * the Fill re-run is the caller's own job (see
+ * `regenerateSilhouetteAndFill` below), matching `generatePattern`'s own
+ * "read `PATTERN.boundary.shapeId` fresh" contract exactly.
+ *
+ * T59: lifted to MODULE SCOPE (was a closure inside
+ * `initShapeLatticeProperties`) — a param-handle drag's own per-frame
+ * LIVE update (editor-interaction.js) needs this exact SYNC, no-
+ * generatePattern-call step, called on every pointermove; only `finish`
+ * additionally calls the full `regenerateSilhouetteAndFill` below. The
+ * ONE thing the old closure did that this can't (a
+ * `boundaryStatusEl.textContent` update) now reads that element fresh by
+ * id instead of via closure — harmless if the panel isn't mounted at all
+ * (`el()` returns null, the `if` guards it), matching every OTHER
+ * function in this file's own "no panel, no-op" convention.
+ */
+export function regenerateSilhouette(editor, p) {
+    const shape = currentShape(p);
+    const region = boardRegion(editor);
+    const { primitives, segments } = generateSilhouette(region, shape);
+    shape.segments = segments;
+    const d = primitivesToPathD(primitives);
+    const reuseExisting = shape.source === 'generated' && p.boundary && p.boundary.shapeId;
+    let pathEl = reuseExisting ? _findBoundaryElement(editor, p.boundary.shapeId) : null;
+    if (pathEl) {
+        pathEl.attr('d', d);
+    } else {
+        pathEl = editor._sketchLayer
+            .path(d)
+            .fill('none')
+            .stroke({ color: editor._color || '#000000', width: SILHOUETTE_STROKE_WIDTH })
+            .attr('data-layer', ensureActiveLayer(editor));
+        const id = stampBoundaryRef(pathEl);
+        p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
+    }
+    p.extent = { mode: 'boundary' };
+    shape.source = 'generated';
+    const statusEl = el('shapeLatticeBoundaryStatus');
+    if (statusEl) statusEl.textContent = 'Shape linked';
+    // T59: re-render the on-canvas param handles from the geometry this
+    // call just wrote — ONE call site for both callers (a panel slider
+    // change, a canvas handle drag's own per-frame update), rather than
+    // each caller separately remembering to re-sync them. Guarded: a test
+    // mock editor has no `_updateHandles` at all, matching every other
+    // optional-editor-method call in this file (`pushState`,
+    // `_notifyChange`).
+    if (typeof editor._updateHandles === 'function') editor._updateHandles();
+    return pathEl;
+}
+
+/** The full "regenerate + refill" step (T59: lifted to module scope, was
+ *  a closure) — calls `generatePattern` directly (not the indirect
+ *  commit-hook `refreshBoundaryPatterns` already provides) so a slider
+ *  release / drag release updates the canvas on the SAME tick, no
+ *  microtask gap. Dispatches `SHAPE_CHANGED_EVENT` at the end so ANY
+ *  mounted panel (or future listener) re-syncs, regardless of which
+ *  caller (this panel's own fields, a param-handle drag, a segment tap)
+ *  triggered it. */
+export async function regenerateSilhouetteAndFill(editor) {
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    await generatePattern(editor, p);
+    _dispatchShapeChanged(editor);
+}
+
+/**
+ * T59: writes a PATCH onto `shape.segments[index]` (mirrored per SE14
+ * §4's own rule — the two cap edges have no partner, a no-op spread in
+ * that case), then regenerates + refills — the tap-a-segment popup's own
+ * write path (editor-interaction.js), and this panel's own Segments
+ * section buttons (thin wrappers below, in `initShapeLatticeProperties`).
+ * Lifted to module scope for the SAME reason `regenerateSilhouette` was:
+ * a second real caller outside this panel's own DOM needs the identical
+ * mirror-and-regenerate logic, not a second copy of it.
+ */
+export async function writeSegmentStyle(editor, index, patch) {
+    const p = currentPattern(editor);
+    const shape = currentShape(p);
+    if (!Array.isArray(shape.segments)) shape.segments = _effectiveSegments(editor, shape);
+    const n = shape.segments.length;
+    const cur = shape.segments[index] || { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
+    const next = { ...cur, ...patch };
+    shape.segments[index] = next;
+    const mirror = mirrorSegmentIndex(index, n);
+    if (mirror !== index) shape.segments[mirror] = { ...next };
+    await regenerateSilhouetteAndFill(editor);
+}
+
+/**
+ * T59: which param handles the Shape Lattice tool should currently show
+ * on canvas — `[]` when there's nothing generated yet, or when the
+ * linked boundary is a HAND-PICKED shape (`shape.source==='picked'`: no
+ * generator params to speak of, nothing to drag). Calls
+ * `generateSilhouette` itself (pure, cheap, no DOM) to get the FULLY
+ * RESOLVED params (T59's own new `params` return field) — `shape.params`
+ * alone would be missing any key the user never explicitly pinned.
+ */
+export function paramHandleRecords(editor) {
+    const p = currentPattern(editor);
+    const shape = currentShape(p);
+    if (shape.source !== 'generated') return [];
+    const region = boardRegion(editor);
+    const { params: resolved } = generateSilhouette(region, shape);
+    if (!resolved) return [];
+    return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
+}
+
+/**
+ * Draws the current param handles into `editor._handleLayer` — same
+ * visual/sizing convention `renderTransformHandles` (editor-transform-
+ * handles.js) already established (screen-px handle size via
+ * `viewScale`/`inputProfileFor`, `pointer-events:none`, hit-tested
+ * manually) — a distinct color (purple) so a handle is never confused
+ * with a transform handle (blue) or a Lattice node (the Colors row's own
+ * per-pattern node color). Returns the hit-test records
+ * (`{key,label,axis,valueFromWorld,hx,hy,hitR}`), directly compatible
+ * with `hitTestHandle` (editor-transform-handles.js) — same shape, so
+ * editor-interaction.js reuses that function rather than a second one.
+ */
+export function renderShapeLatticeHandles(editor) {
+    if (!editor._handleLayer) return [];
+    const records = paramHandleRecords(editor);
+    if (!records.length) return [];
+    const view = (editor._draw && editor._draw.viewbox) ? editor._draw.viewbox() : null;
+    const svgEl = document.getElementById('editorSVGContainer');
+    const clientWidth = (svgEl && svgEl.clientWidth) || 800;
+    const clientHeight = (svgEl && svgEl.clientHeight) || 800;
+    const pxPerModelUnit = view ? viewScale(view, clientWidth, clientHeight) : 100;
+    const handlePx = inputProfileFor(editor._pointerType).handlePx;
+    const sz = Math.max(handlePx / pxPerModelUnit, 0.05);
+    const strokeW = sz * (0.0025 / 0.012); // matches renderTransformHandles' own ratio
+    const out = [];
+    for (const r of records) {
+        editor._handleLayer.circle(sz * 2)
+            .center(r.hx, r.hy)
+            .fill('#ffffff')
+            .stroke({ color: '#7b1fa2', width: strokeW })
+            .attr('pointer-events', 'none');
+        out.push({ ...r, hitR: sz * 1.8 });
+    }
+    return out;
+}
+
+/**
+ * T59 (SE14 §6, "recompute-and-compare"): called from `editor.js`'s own
+ * `_notifyChange('commit')` — the SAME general commit hook
+ * `refreshBoundaryPatterns` already hangs off — on EVERY commit, not just
+ * a Shape-Lattice-tool one (a hand node-edit happens in NODE mode, a
+ * different tool entirely, so there's no narrower hook to gate on without
+ * tracking "which element did this commit touch," the same cost
+ * `refreshBoundaryPatterns`'s own doc comment already declined to pay).
+ * Cheap: a same-layer check plus ONE string comparison against what
+ * `regenerateSilhouette` would ITSELF produce right now from the CURRENT
+ * `shape.params`/`segments` — genuinely unrelated commits (the overwhelming
+ * majority) bail after the first `if`. A real hand-edit (a Node-mode drag
+ * on the linked path) changes the live `d` directly, so it no longer
+ * matches this deterministic re-derivation — `shape.source` flips to
+ * 'picked' so a LATER Shape-panel edit doesn't silently overwrite the
+ * user's own hand-tuned geometry (design doc §6's own explicit ask).
+ */
+export function detectShapeLatticeDetach(editor) {
+    // Deliberately NOT `currentPattern(editor)` — that lazily MATERIALIZES
+    // a full default pattern onto the active layer the first time it's
+    // called (by design, for every OTHER caller in this file, which only
+    // ever runs while the Shape Lattice tool is genuinely in use). This
+    // hook runs on EVERY commit, tool-independent — a real, measured
+    // regression (found by the full suite, not live): plain box-Lattice-
+    // only undo tests started seeing a phantom `layer.pattern` appear
+    // after ANY commit, because this call used to materialize one. A
+    // read-only lookup that returns nothing for a layer that's never
+    // touched EITHER Lattice tool is the fix.
+    const layer = _activeLayerObj(editor);
+    const p = layer && layer.pattern;
+    const shape = p && p.shape;
+    if (!shape || shape.source !== 'generated') return;
+    if (!p.boundary || !p.boundary.shapeId) return;
+    const pathEl = _findBoundaryElement(editor, p.boundary.shapeId);
+    if (!pathEl) return;
+    const region = boardRegion(editor);
+    const { primitives } = generateSilhouette(region, shape);
+    const expectedD = primitivesToPathD(primitives);
+    if (pathEl.attr('d') !== expectedD) shape.source = 'picked';
+}
+
+/**
+ * T59: the small floating "straight | curve | kink" bar a canvas tap on a
+ * silhouette segment opens (editor-interaction.js) — appended to
+ * `document.body`, `position:fixed`, clamped to the viewport, same
+ * positioning/outside-click-close shape `openColorMosaic`
+ * (editor-color.js) already established for a floating popover, not a
+ * second mechanism. `screenX`/`screenY` are CLIENT coordinates (the tap's
+ * own `e.clientX/Y`), not model coordinates — the caller already has
+ * them from the pointer event; converting a model point through the
+ * SVG's own screen CTM would be strictly more code for the same result.
+ */
+export function openSegmentStyleBar(editor, index, screenX, screenY) {
+    document.querySelectorAll('.shape-lattice-segment-bar').forEach((el) => el.remove());
+    const p = currentPattern(editor);
+    const shape = currentShape(p);
+    const seg = (shape.segments && shape.segments[index]) || { style: 'straight' };
+    const bar = document.createElement('div');
+    bar.className = 'shape-lattice-segment-bar';
+    bar.style.cssText = 'position:fixed; z-index:10000; display:flex; gap:4px; background:#fff; '
+        + 'border:1px solid #ccc; border-radius:4px; padding:4px; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+    const STYLES = [['straight', 'Straight'], ['curve', 'Curve'], ['kink', 'Kink']];
+    for (const [value, label] of STYLES) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = label;
+        btn.className = 'editor-fillmode-btn' + (seg.style === value || (value === 'straight' && !seg.style) ? ' active' : '');
+        btn.style.cssText = 'height:32px; padding:0 10px; font-size:11px;';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const patch = value === 'straight' ? { style: 'straight', bulge: 0 }
+                : { style: value, bulge: seg.bulge > 0 ? seg.bulge : 0.5 };
+            writeSegmentStyle(editor, index, patch);
+            bar.remove();
+        });
+        bar.appendChild(btn);
+    }
+    document.body.appendChild(bar);
+    // Clamp to the viewport (same shape openColorMosaic's own positioning uses).
+    const bw = bar.offsetWidth || 120, bh = bar.offsetHeight || 40;
+    const left = Math.max(4, Math.min(screenX - bw / 2, window.innerWidth - bw - 4));
+    const top = Math.max(4, Math.min(screenY - bh - 12, window.innerHeight - bh - 4));
+    bar.style.left = `${left}px`;
+    bar.style.top = `${top}px`;
+    const close = (e) => {
+        if (!bar.contains(e.target)) {
+            bar.remove();
+            document.removeEventListener('mousedown', close, true);
+            document.removeEventListener('touchstart', close, true);
+        }
+    };
+    // Deferred one tick so the SAME tap that opened the bar doesn't also close it.
+    setTimeout(() => {
+        document.addEventListener('mousedown', close, true);
+        document.addEventListener('touchstart', close, true);
+    }, 0);
+    return bar;
 }
 
 export function initShapeLatticeProperties(editor) {
@@ -235,7 +484,7 @@ export function initShapeLatticeProperties(editor) {
     }
 
     function syncGenerateLabel() {
-        const p = _currentPattern(editor);
+        const p = currentPattern(editor);
         generateBtn.textContent = p.id ? 'Regenerate' : 'Generate';
     }
 
@@ -292,7 +541,7 @@ export function initShapeLatticeProperties(editor) {
      *  shouldn't silently jump the picker back to segment 0). */
     function _refreshSegmentList(p) {
         if (!segmentIndexEl) return;
-        const shape = _currentShape(p);
+        const shape = currentShape(p);
         const segs = _effectiveSegments(editor, shape);
         const labels = SEGMENT_LABELS[shape.preset] || [];
         const prevIndex = parseInt(segmentIndexEl.value, 10);
@@ -308,66 +557,27 @@ export function initShapeLatticeProperties(editor) {
         _syncSegmentFields(shape, validIndex);
     }
 
-    /**
-     * SE14 §6: regenerate the silhouette from the CURRENT `p.shape` and
-     * emit/update its linked `<path>`. In-place `d` update when this
-     * tool's own generated path is ALREADY the link (`shape.source
-     * ==='generated'` AND that element still exists); otherwise mints a
-     * fresh `<path>`, `stampBoundaryRef`s it, and re-links — the same
-     * "re-picking stamps a NEW id, the old element's own tag is left in
-     * place, inert" convention T49's boundary link already established
-     * (covers BOTH "first generate ever" and "was linked to a hand-PICKED
-     * shape, now generating" — the picked element is never overwritten).
-     * Pure geometry + DOM emit only — the Fill re-run is the caller's own
-     * job (see `_regenerateSilhouetteAndFill` below), matching
-     * `generatePattern`'s own "read `PATTERN.boundary.shapeId` fresh"
-     * contract exactly.
-     */
-    function _regenerateSilhouette(p) {
-        const shape = _currentShape(p);
-        const region = _boardRegion(editor);
-        const { primitives, segments } = generateSilhouette(region, shape);
-        shape.segments = segments;
-        const d = primitivesToPathD(primitives);
-        const reuseExisting = shape.source === 'generated' && p.boundary && p.boundary.shapeId;
-        let pathEl = reuseExisting ? _findBoundaryElement(editor, p.boundary.shapeId) : null;
-        if (pathEl) {
-            pathEl.attr('d', d);
-        } else {
-            pathEl = editor._sketchLayer
-                .path(d)
-                .fill('none')
-                .stroke({ color: editor._color || '#000000', width: SILHOUETTE_STROKE_WIDTH })
-                .attr('data-layer', ensureActiveLayer(editor));
-            const id = stampBoundaryRef(pathEl);
-            p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
-        }
-        p.extent = { mode: 'boundary' };
-        shape.source = 'generated';
-        if (boundaryStatusEl) boundaryStatusEl.textContent = 'Shape linked';
-        return pathEl;
-    }
-
     /** Shape-section edits (preset, reroll, a param, a segment's own
      *  style) are an IMMEDIATE re-projection — same "settings that change
      *  the shape itself take effect right away" contract Orientation
      *  already has in properties-lattice.js — because the Fill is
      *  entirely DERIVED from this boundary; leaving a stale fill against
      *  a just-changed silhouette would look broken, not just deferred.
-     *  Calls `generatePattern` directly (not the indirect commit-hook
-     *  `refreshBoundaryPatterns` already provides) so a slider release
-     *  updates the canvas on the SAME tick, no microtask gap. */
+     *  Thin wrapper over the MODULE-LEVEL `regenerateSilhouetteAndFill`
+     *  (T59: lifted out so a canvas param-handle drag's own release can
+     *  call the SAME function — see that function's own doc comment) —
+     *  this panel's own extra step is just its local UI sync. */
     async function _regenerateSilhouetteAndFill() {
-        const p = _currentPattern(editor);
-        _regenerateSilhouette(p);
-        await generatePattern(editor, p);
-        syncGenerateLabel();
-        _refreshSegmentList(p);
+        // regenerateSilhouetteAndFill's own SHAPE_CHANGED_EVENT dispatch
+        // (synchronous) already triggers this SAME panel's own
+        // syncFieldsFromPattern via the listener registered below — no
+        // separate local sync call needed here.
+        await regenerateSilhouetteAndFill(editor);
     }
 
     function syncFieldsFromPattern() {
-        const p = _currentPattern(editor);
-        const shape = _currentShape(p);
+        const p = currentPattern(editor);
+        const shape = currentShape(p);
 
         if (presetHourglassEl) presetHourglassEl.classList.toggle('active', shape.preset !== 'bottle');
         if (presetBottleEl) presetBottleEl.classList.toggle('active', shape.preset === 'bottle');
@@ -442,7 +652,7 @@ export function initShapeLatticeProperties(editor) {
      *  section writes it immediately, on its own field changes (see
      *  `_regenerateSilhouetteAndFill` above), not deferred to Generate. */
     function readFieldsIntoPattern() {
-        const p = _currentPattern(editor);
+        const p = currentPattern(editor);
         p.orientation = orientVerticalEl?.classList.contains('active') ? 'vertical' : 'horizontal';
         if (spacingEl) p.spacing = parseFloat(spacingEl.value) || PATTERN_DEFAULTS.spacing;
         const railsMode = railsModeEveryEl?.classList.contains('active') ? 'every' : 'count';
@@ -512,7 +722,7 @@ export function initShapeLatticeProperties(editor) {
         if (!btnEl) return;
         on(btnEl, 'click', (e) => {
             e.stopPropagation();
-            const p = _currentPattern(editor);
+            const p = currentPattern(editor);
             openColorMosaic(btnEl, (hex) => {
                 p.colors = { ...PATTERN_DEFAULTS.colors, ...p.colors, [kind]: hex };
                 btnEl.style.background = hex;
@@ -524,7 +734,7 @@ export function initShapeLatticeProperties(editor) {
         if (!btnEl) return;
         on(btnEl, 'click', (e) => {
             e.stopPropagation();
-            const p = _currentPattern(editor);
+            const p = currentPattern(editor);
             openColorMosaic(btnEl, (hex) => {
                 p.boundary = {
                     ...PATTERN_DEFAULTS.boundary, ...p.boundary,
@@ -536,7 +746,7 @@ export function initShapeLatticeProperties(editor) {
         });
         if (autoEl) {
             on(autoEl, 'click', () => {
-                const p = _currentPattern(editor);
+                const p = currentPattern(editor);
                 p.boundary = {
                     ...PATTERN_DEFAULTS.boundary, ...p.boundary,
                     border: { ...PATTERN_DEFAULTS.boundary.border, ...p.boundary?.border, color: null },
@@ -549,7 +759,7 @@ export function initShapeLatticeProperties(editor) {
     function wireWidthStepper(inputEl, field, kind) {
         if (!inputEl) return;
         on(inputEl, 'change', () => {
-            const p = _currentPattern(editor);
+            const p = currentPattern(editor);
             const value = parseFloat(inputEl.value) || PATTERN_DEFAULTS.widths[field];
             p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, [field]: value };
             inputEl.value = value;
@@ -562,7 +772,7 @@ export function initShapeLatticeProperties(editor) {
     function wireLinkedWidthStepper() {
         if (!widthLinkedEl) return;
         on(widthLinkedEl, 'change', () => {
-            const p = _currentPattern(editor);
+            const p = currentPattern(editor);
             const value = parseFloat(widthLinkedEl.value) || PATTERN_DEFAULTS.widths.rails;
             p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, rails: value, ties: value, linkRailsTies: true };
             widthLinkedEl.value = value;
@@ -572,7 +782,7 @@ export function initShapeLatticeProperties(editor) {
     function wireWidthLinkToggle() {
         if (!widthLinkToggleEl) return;
         on(widthLinkToggleEl, 'click', () => {
-            const p = _currentPattern(editor);
+            const p = currentPattern(editor);
             const nowLinked = !widthLinkToggleEl.classList.contains('active');
             _showWidthLinkMode(nowLinked);
             if (nowLinked) {
@@ -591,8 +801,8 @@ export function initShapeLatticeProperties(editor) {
         if (presetHourglassEl) presetHourglassEl.classList.toggle('active', preset !== 'bottle');
         if (presetBottleEl) presetBottleEl.classList.toggle('active', preset === 'bottle');
         _showPresetParams(preset);
-        const p = _currentPattern(editor);
-        const shape = _currentShape(p);
+        const p = currentPattern(editor);
+        const shape = currentShape(p);
         shape.preset = preset;
         // A different preset has a different segment COUNT/topology — an
         // override sized for the OLD preset would just be discarded by
@@ -607,8 +817,8 @@ export function initShapeLatticeProperties(editor) {
 
     if (rerollEl) {
         on(rerollEl, 'click', () => {
-            const p = _currentPattern(editor);
-            const shape = _currentShape(p);
+            const p = currentPattern(editor);
+            const shape = currentShape(p);
             shape.seed = nextSeed();
             if (shapeSeedEl) shapeSeedEl.value = shape.seed;
             _regenerateSilhouetteAndFill();
@@ -616,16 +826,16 @@ export function initShapeLatticeProperties(editor) {
     }
     if (shapeSeedEl) {
         on(shapeSeedEl, 'change', () => {
-            const p = _currentPattern(editor);
-            _currentShape(p).seed = parseInt(shapeSeedEl.value, 10) || 0;
+            const p = currentPattern(editor);
+            currentShape(p).seed = parseInt(shapeSeedEl.value, 10) || 0;
             _regenerateSilhouetteAndFill();
         });
     }
     for (const [key, inputEl] of Object.entries(PARAM_INPUTS)) {
         if (!inputEl) continue;
         on(inputEl, 'change', () => {
-            const p = _currentPattern(editor);
-            const shape = _currentShape(p);
+            const p = currentPattern(editor);
+            const shape = currentShape(p);
             shape.params = { ...shape.params, [key]: parseFloat(inputEl.value) };
             _regenerateSilhouetteAndFill();
         });
@@ -642,26 +852,17 @@ export function initShapeLatticeProperties(editor) {
         const v = parseFloat(segBulgeEl?.value);
         return v > 0 ? v : 0.5;
     }
+    /** T59: thin wrapper over the module-level `writeSegmentStyle` (the
+     *  SAME function the canvas tap-a-segment popup calls) — this panel's
+     *  own local UI resync happens for free, via the `SHAPE_CHANGED_EVENT`
+     *  listener below (`syncFieldsFromPattern`), not a direct call here. */
     function _writeSegment(patch) {
-        const p = _currentPattern(editor);
-        const shape = _currentShape(p);
-        if (!Array.isArray(shape.segments)) shape.segments = _effectiveSegments(editor, shape);
-        const n = shape.segments.length;
-        const index = _curSegmentIndex();
-        const cur = shape.segments[index] || { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
-        const next = { ...cur, ...patch };
-        shape.segments[index] = next;
-        // SE14 §4: mirrored pairs change together — the two cap edges
-        // (top/bottom) have no partner (_mirrorSegmentIndex returns the
-        // same index for them), a no-op spread in that case.
-        const mirror = _mirrorSegmentIndex(index, n);
-        if (mirror !== index) shape.segments[mirror] = { ...next };
-        _regenerateSilhouetteAndFill();
+        writeSegmentStyle(editor, _curSegmentIndex(), patch);
     }
     if (segmentIndexEl) {
         on(segmentIndexEl, 'change', () => {
-            const p = _currentPattern(editor);
-            _syncSegmentFields(_currentShape(p), _curSegmentIndex());
+            const p = currentPattern(editor);
+            _syncSegmentFields(currentShape(p), _curSegmentIndex());
         });
     }
     if (segStyleStraightEl) on(segStyleStraightEl, 'click', () => _writeSegment({ style: 'straight', bulge: 0 }));
@@ -701,7 +902,7 @@ export function initShapeLatticeProperties(editor) {
                     if (boundaryStatusEl) boundaryStatusEl.textContent = 'Pick cancelled';
                     return;
                 }
-                const p = _currentPattern(editor);
+                const p = currentPattern(editor);
                 const id = stampBoundaryRef(hitEl);
                 p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
                 p.extent = { mode: 'boundary' };
@@ -710,7 +911,7 @@ export function initShapeLatticeProperties(editor) {
                 // become inert cosmetically until the user touches one of
                 // them again (which regenerates and re-links, see
                 // _regenerateSilhouette's own `reuseExisting` guard).
-                _currentShape(p).source = 'picked';
+                currentShape(p).source = 'picked';
                 if (boundaryStatusEl) boundaryStatusEl.textContent = 'Shape linked';
             };
         });
@@ -726,7 +927,7 @@ export function initShapeLatticeProperties(editor) {
         // the CURRENT Shape state before filling — a no-op re-render when
         // nothing shape-related changed since the last edit (each Shape
         // field already regenerates immediately on its own, above).
-        _regenerateSilhouette(p);
+        regenerateSilhouette(editor, p);
         await generatePattern(editor, p);
         syncGenerateLabel();
         _refreshSegmentList(p);
@@ -749,6 +950,18 @@ export function initShapeLatticeProperties(editor) {
     }
 
     document.addEventListener('editorLayersChanged', (e) => {
+        if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
+    });
+    // T59: a canvas-driven write (a param-handle drag release, a tap-a-
+    // segment popup pick) calls the SAME module-level regenerate/write
+    // functions this panel's own fields do, then dispatches this event —
+    // re-syncing here (rather than the canvas code reaching back into
+    // THIS panel's own closures) keeps the Segments dropdown / Shape
+    // sliders in sync with zero coupling in the other direction. Fires
+    // for this panel's OWN writes too (regenerateSilhouetteAndFill has no
+    // way to know who called it) — a harmless redundant re-sync, same
+    // idempotent shape `editorLayersChanged` above already tolerates.
+    document.addEventListener(SHAPE_CHANGED_EVENT, (e) => {
         if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
     });
 }

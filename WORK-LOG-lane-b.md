@@ -6697,3 +6697,116 @@ just "didn't crash"). Screenshots saved to this session's own scratchpad (`t58-0
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed. `reference/` confirmed still untracked, left alone.
 
+## T59 — SE14's own deferred "Slice 3 editing model": axis-locked handles + tap-a-segment
+
+**Full scope landed**: axis-locked parametric handles on canvas (one per declared preset param, drag → live-
+regenerate → refill-on-release, one undo step), tap-a-segment on canvas (a floating straight|curve|kink bar,
+mirrored pairs, panel dropdown stays in sync), detach-on-hand-node-edit (recompute-and-compare). Plus a genuine
+pre-existing bug found and fixed along the way (below) — this turn's own "one undo step" requirement is what
+actually surfaced it.
+
+**A pre-existing bug, confirmed live before assuming the dispatch's own "one undo step" ask was even reachable**:
+every `generatePattern` call on a boundary-mode layer pushed TWO undo-stack entries, not one — since T49. Root
+cause: `generatePattern`'s own end calls `_notifyChange('commit')`, which (editor.js) synchronously calls
+`refreshBoundaryPatterns`, whose own re-entrancy guard was only ever SET by `refreshBoundaryPatterns` itself —
+a DIRECT caller of `generatePattern` (every "Generate" button; now also the handle-drag's own `finish`) left the
+guard clear, so its own commit re-triggered a redundant SECOND `generatePattern` run, with its own SECOND
+`pushState`. Confirmed via CDP (`editor._undoStack.length` before/after two consecutive Generate presses: +2 each,
+not +1) before touching any code. Fixed by setting the SAME guard around `generatePattern`'s own commit whenever
+it's itself boundary-mode — re-verified live: +1 per press now. New regression test in
+`tests/editor-lattice-pattern-boundary-emit.test.js` uses a mock `_notifyChange` that actually CASCADES into
+`refreshBoundaryPatterns` (every other test in that file's own mock only records the call, deliberately, to keep
+what each test isolates clean — this is the one exception, on purpose) — mutation-tested (reverted the guard,
+exactly 1 failure, the new test itself).
+
+**Handle math — `editor-shape-lattice-interaction.js` (new, pure)**: one handle per declared preset param
+(hourglass: waistReach/cornerRadius/waistCenterY; bottle: neckWidth/bodyWidth/skeletonX/neckLength), each with an
+anchor point + a single axis (`'x'` or `'y'`) + a `valueFromWorld(pt)` reading ONLY that axis, clamped to the
+SAME range `_jitteredParam` itself clamps to. **A disclosed deviation from the dispatch's own literal wording**:
+it called `cornerRadius` a "diagonal" handle; measured against the actual closed-form solver, the shoulder arc's
+own CENTER (not its 45° on-curve point) moves PURELY horizontally as cornerRadius changes — `shoulderY` algebraically
+cancels the `cornerRadius` term entirely (`waistCenterYAbs - cornerRadiusAbs - radiusWaist` reduces to
+`waistCenterYAbs - hw + waistX`, no `cornerRadius` left). Anchoring at the center instead of the on-curve point
+makes EVERY handle in both presets axis-aligned, not diagonal — simpler, and an exact derived fact, not an
+approximation. Round-trip correctness (`h.valueFromWorld(h.anchor)` recovers the exact current param value, for
+every param, across 5 seeds, and across the WHOLE 0-1 range via explicit params, not just the seed default) is
+unit-tested directly, not just visually plausible — this is what actually caught that my FIRST guess at the
+`cornerRadius` anchor (the on-curve point) would NOT have round-tripped cleanly, before ever writing live-drag
+code against it. Segment hit-testing (`hitTestSegment`) reuses this generator's own EXACT primitive shapes
+(circular, unrotated arcs only — established fact from T58) for a real point-to-line/point-to-arc distance, not
+a bbox approximation; `primitiveSegmentMap` handles the one place a primitive index and a segment index diverge
+(`kink` emits 2 `L`s per segment).
+
+**`properties-shape-lattice.js` refactored into a real public API** — `regenerateSilhouette`/
+`regenerateSilhouetteAndFill`/`writeSegmentStyle`/`paramHandleRecords`/`renderShapeLatticeHandles`/
+`detectShapeLatticeDetach`/`openSegmentStyleBar` are now MODULE-LEVEL exports (were closures inside
+`initShapeLatticeProperties`), since the canvas interaction code (editor-interaction.js) — which has no panel
+DOM at all — needs the IDENTICAL write/regenerate/mirror logic the panel's own fields use, not a second copy of
+it. The panel's own local wrappers now just call these and rely on a new `SHAPE_CHANGED_EVENT` (dispatched at
+the end of `regenerateSilhouetteAndFill`) to re-sync its own fields — works whether the write came from the
+panel or the canvas, with zero coupling in the "canvas reaches into the panel's own closures" direction.
+
+**A genuine regression, caught by the FULL suite, not the Shape-Lattice-specific one**: `detectShapeLatticeDetach`
+was wired to run on EVERY commit (`editor.js`'s `_notifyChange`, alongside `refreshBoundaryPatterns`) — its
+FIRST version called `currentPattern(editor)`, which LAZILY MATERIALIZES a full default pattern onto the active
+layer the first time it's called. Since this hook now runs tool-independent, on every commit, plain box-Lattice-
+only undo tests started seeing a phantom `layer.pattern` appear after ANY commit. Fixed with a genuinely
+read-only lookup (`_activeLayerObj` directly, no materialization) — measured with the fix reverted: 2 of the
+suite's own pre-existing `editor-lattice-undo.test.js` tests failed (951 attempted, 949 passed), both asserting
+`activeLayerPattern(editor)` stays `undefined` on a layer that never touched Lattice at all. Fixed, full suite
+green again. A dedicated regression test for this exact failure mode is now in
+`tests/properties-shape-lattice.test.js`.
+
+**A live-measured touch bug, and a genuine correction of my OWN earlier reasoning (not the research agent's)**:
+my first version of `shapeLatticeHandler` deliberately used the touch-marker-offset `pt` (not the raw pointer)
+for hit-testing, reasoning "consistent with every other touch gesture in this editor." That reasoning was WRONG,
+confirmed only by actually dragging via CDP: a handle's own hit radius (~25 screen px, touch-sized) is SMALLER
+than the marker's own 40px offset, so a finger placed exactly on the visible handle would, with the offset
+applied, always land outside the hit radius — a small PRECISION target isn't the same case as a drawing gesture,
+where the offset convention makes sense. Fixed: `start` uses the RAW pointer (`editor._getMousePoint(e)`,
+bypassing `applyTouchMarkerOffset`) for hit-testing; since `update(editor, pt)` has no access to the raw event
+(`handleMove`'s own signature), the offset's own constant delta is captured once at `start` and re-added on
+every subsequent move (the offset is a pure, fixed vertical shift — verified from reading
+`applyTouchMarkerOffset`'s own 3-line body, not assumed).
+
+**A second live-measured layout bug, found chasing the SAME touch-drag test**: the Shape section's own
+`data-no-collapse` marker (T58's own first guess, matching the box Lattice's "Add" row) made the mobile drawer's
+own measured PEEK height balloon to ~400px (preset toggle + seed row + ALL 3-4 preset sliders is a lot more
+content than Add's 3 buttons) — confirmed live: a param handle at board-center fell BEHIND the drawer, under
+`editorDrawerTab-layers`, not the canvas. `data-no-collapse` removed from Shape (now an ordinary, open-by-
+default COLLAPSIBLE section) — the drawer falls back to its own 96px floor, leaving the canvas reachable;
+re-verified live (measured, not assumed): `drawerComputedHeight` dropped to 96px, and the SAME handle became
+reachable. A `document.elementFromPoint` check on a handle circle itself is a FALSE ALARM by design (handles
+have `pointer-events:none`, same as `renderTransformHandles`'s own convention — hit-testing is done manually,
+not via native DOM hit-testing) — worth naming since it cost real debugging time before I recognized it as
+expected, not a bug.
+
+**Tests**: `tests/editor-shape-lattice-interaction.test.js` (new, 19 — handle round-trip correctness across
+seeds AND across the full param range via explicit values, axis-only-reads-its-own-coordinate, segment
+hit-testing incl. the kink-maps-to-one-segment-index case, `mirrorSegmentIndex` incl. its own involution
+property). `tests/properties-shape-lattice.test.js`: +15 (the new module-level exports, incl. the
+lazy-materialization regression test above, a non-vacuous hand-edit-detection test, and `openSegmentStyleBar`'s
+own DOM incl. "opening a second bar closes the first"). `tests/editor-lattice-pattern-boundary-emit.test.js`: +1
+(the double-pushState regression). `tests/editor-shape-lattice-generator.test.js`: +6 (the new resolved-`params`
+return field, cross-checked against an INDEPENDENT read off the keypoints themselves, not the solver's own
+internal variable). Full suite: 966 passed (62 files), up from 898 pre-turn (T58's own end state).
+
+Mutation-tested the double-pushState fix (reverted, exactly 1 failure — the dedicated regression test) and the
+`_mirrorSegmentIndex`-style involution logic is exercised structurally by its own dedicated test rather than a
+separate mutation pass (T58 already mutation-proved the identical mirroring code this reuses).
+
+**Live-verified** (headless Chrome, CDP, screenshots actually viewed): desktop mouse-drag on the waistReach
+handle — undo delta exactly 1, param changed from unpinned to an explicit value, the silhouette visibly pinched
+deeper AND the panel's own slider moved to match (confirms the `SHAPE_CHANGED_EVENT` sync works, not just the
+data write); mobile 390x844 — drawer at its own correct 96px peek height post-fix, a REAL touch drag
+(`Input.dispatchTouchEvent`, not a mouse event with a `pointerType` override, which this Chrome build silently
+ignores — confirmed by checking `e.pointerType` on the resulting event, still `'mouse'`) on the SAME handle,
+undo delta exactly 1; a real touch tap on the silhouette's own bottom edge opened the floating style bar with
+the correct default-active style, and clicking Kink produced a visibly sharp notch at that exact edge; detach-
+on-hand-edit verified through the REAL `editor.js` commit hook (mutated the linked path's own live `d`,
+`pushState()`+`_notifyChange('commit')`, confirmed `shape.source` flipped 'generated'→'picked'), not just the
+isolated function. Screenshots saved to this session's own scratchpad (`t59-01`..`t59-09`), not committed.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed. `reference/` confirmed still untracked, left alone.
+

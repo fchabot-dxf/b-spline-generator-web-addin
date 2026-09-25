@@ -40,6 +40,18 @@ import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
     shouldCancelDrawOnPointerDown, isPinching,
 } from './editor-input.js';
+// T59 (SE14's own deferred "Slice 3 editing model"): axis-locked param
+// handles + tap-a-segment. generateSilhouette/boardRegion/hitTestSegment
+// are pure; the properties-shape-lattice.js imports are its own MODULE-
+// LEVEL public API (lifted out of that panel's own closures specifically
+// so this file — which has no panel DOM at all — can call the identical
+// write/regenerate logic, not a second copy of it).
+import { generateSilhouette } from './editor-shape-lattice-generator.js';
+import { boardRegion, hitTestSegment } from './editor-shape-lattice-interaction.js';
+import {
+    currentPattern, currentShape, regenerateSilhouette, regenerateSilhouetteAndFill,
+    paramHandleRecords, renderShapeLatticeHandles, openSegmentStyleBar,
+} from './properties-shape-lattice.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -1514,6 +1526,110 @@ const latticeHandler = {
     },
 };
 
+/**
+ * T59 (SE14's own deferred "Slice 3 editing model") — the Shape Lattice
+ * tool's own canvas gestures: drag an axis-locked param handle, or tap a
+ * silhouette segment to open its style bar. Same `_isDrawing` + handler-
+ * object shape `latticeHandler` already established (not the
+ * `_isDragging` family select/node/transform use, which is hard-coded
+ * into `handleMove`/`handleEnd` and would need editing those shared
+ * functions instead) — `start` decides which of the three gestures this
+ * pointer-down is; ONLY the handle-drag case sets `_isDrawing`, so
+ * `update`/`finish` below are NEVER called for the other two (a segment
+ * tap is a one-shot action with no drag state at all; a fallback to
+ * `selectHandler.start` sets `_isDragging` itself, which `handleMove`/
+ * `handleEnd` dispatch on BEFORE ever reaching this handler again this
+ * gesture — confirmed by reading those two functions, not assumed).
+ *
+ * `pt` (handed in by handleStart/handleMove) already carries whatever
+ * touch-marker offset applies (`applyTouchMarkerOffset`, editor-grid.js)
+ * — used AS GIVEN here, not bypassed: `updateSnapCursor` (handleMove's
+ * own unconditional first step) draws that SAME offset marker ring
+ * regardless of tool, so a param handle tracks the ring the user
+ * actually sees, matching every OTHER touch-draggable thing in this
+ * editor (node-drag, lattice rail/tie drag) rather than special-casing
+ * this ONE tool to read the raw pointer position underneath the ring.
+ * `SNAP_POLICY.shapeLattice: 'none'` (editor-grid.js) already keeps grid-
+ * snap out of the way; the marker offset is a SEPARATE, deliberately-kept
+ * convention.
+ */
+const shapeLatticeHandler = {
+    start(editor, pt, e) {
+        // T59: use the RAW pointer position (bypassing applyTouchMarkerOffset,
+        // editor-grid.js), NOT the `pt` handed in — measured live, not just
+        // reasoned about: a handle's own hit radius (~25 screen px, matching
+        // INPUT_PROFILE's touch handlePx*1.8) is SMALLER than touch's own
+        // 40px marker offset, so a finger placed exactly on the visible
+        // handle circle would, with the offset applied, always land OUTSIDE
+        // the hit radius — confirmed with a live CDP touch-drag before
+        // landing on this fix (an earlier version of this comment argued the
+        // offset should stay, reasoning "consistent with every other touch
+        // gesture" — that reasoning didn't survive contact with a real
+        // touch event; a small PRECISION target isn't the same case as a
+        // drawing gesture, and this session's own house rule is to re-
+        // measure rather than re-derive the same wrong conclusion twice).
+        const rawPt = editor._getMousePoint(e);
+        const hit = hitTestHandle(editor._paramHandles || [], rawPt);
+        if (hit) {
+            editor._isDrawing = true;
+            editor._shapeLatticeDragKey = hit.key;
+            // `update(editor, pt)` below only ever gets the OFFSET point
+            // (handleMove's own signature has no `e`) — capture the
+            // offset's own constant delta here, once, and re-add it on
+            // every subsequent move (applyTouchMarkerOffset is a pure,
+            // fixed vertical shift, editor-grid.js:203-206 — no other
+            // state it could depend on mid-drag).
+            editor._shapeLatticeDragOffsetY = rawPt.y - pt.y;
+            return;
+        }
+        const shape = currentShape(currentPattern(editor));
+        if (shape.source === 'generated' && Array.isArray(shape.segments)) {
+            const { primitives } = generateSilhouette(boardRegion(editor), shape);
+            const tol = getDynamicTolerance(editor, 10, 'slopPx');
+            const segIndex = hitTestSegment(primitives, shape.segments, rawPt, tol);
+            if (segIndex != null) {
+                openSegmentStyleBar(editor, segIndex, e.clientX, e.clientY);
+                return;
+            }
+        }
+        // Neither a handle nor a segment — same fallback behavior this
+        // tool had before T59 (getModeHandler's own `|| selectHandler`,
+        // now bypassed since this entry exists): pick/move/marquee.
+        selectHandler.start(editor, pt, e);
+    },
+    /** Per-frame LIVE update — writes ONE param, re-derives the
+     *  silhouette SYNCHRONOUSLY (`regenerateSilhouette`, no
+     *  `generatePattern` call), and re-renders the handles from the
+     *  freshly-written params so the dragged handle's own on-screen
+     *  position stays exactly on its declared axis (`computeParamHandles`
+     *  recomputes every anchor from the CURRENT resolved params on every
+     *  call — there's no separate "handle position" state to drift from
+     *  the data). Never calls `generatePattern` per frame (T59's own
+     *  dispatch: "regenerates the path + refills ON RELEASE"). */
+    update(editor, pt) {
+        const key = editor._shapeLatticeDragKey;
+        if (!key) return;
+        const rawPt = { x: pt.x, y: pt.y + (editor._shapeLatticeDragOffsetY || 0) };
+        const p = currentPattern(editor);
+        const shape = currentShape(p);
+        const handle = paramHandleRecords(editor).find((h) => h.key === key);
+        if (!handle) return;
+        shape.params = { ...shape.params, [key]: handle.valueFromWorld(rawPt) };
+        regenerateSilhouette(editor, p); // its own end calls editor._updateHandles(), re-rendering from the NEW params
+        editor._notifyChange('live');
+    },
+    /** Release: the ONE full regenerate+refill (`generatePattern`'s own
+     *  single `pushState`/`commit` — T59's own fixed double-pushState bug
+     *  makes this genuinely ONE undo step now, not two). */
+    finish(editor) {
+        editor._isDrawing = false;
+        editor._shapeLatticeDragKey = null;
+        editor._shapeLatticeDragOffsetY = 0;
+        regenerateSilhouetteAndFill(editor);
+    },
+    hover(editor, pt) { if (selectHandler.hover) selectHandler.hover(editor, pt); },
+};
+
 const modeHandlers = {
     select:  selectHandler,
     node:    nodeHandler,
@@ -1524,6 +1640,7 @@ const modeHandlers = {
     circle:  circleHandler,
     erase:   eraseHandler,
     lattice: latticeHandler,
+    shapeLattice: shapeLatticeHandler,
 };
 
 function getModeHandler(mode) { return modeHandlers[mode] || selectHandler; }
@@ -1709,6 +1826,15 @@ export function updateHandles(editor) {
     if (!editor._handleLayer) return;
     editor._handleLayer.clear();
     editor._transformHandles = [];
+    // T59: the Shape Lattice tool's own param handles don't depend on
+    // `_selectedElements` at all (a generated silhouette needs no
+    // selection to be draggable) — branch BEFORE the selection-gated
+    // early-returns below, which exist for the select/node transform
+    // handles only.
+    if (editor._currentMode === 'shapeLattice') {
+        editor._paramHandles = renderShapeLatticeHandles(editor);
+        return;
+    }
     const sel = editor._selectedElements || [];
     if (!sel.length) return;
     if (editor._currentMode !== 'node' && editor._currentMode !== 'select') return;
