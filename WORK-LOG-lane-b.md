@@ -4471,3 +4471,119 @@ Amendments polled clean (`handoff.py amendments --role worker`) before committin
 before passing. Committed by explicit path (5 files: `editor/editor-expand-path.js`,
 `editor/editor-outline-preview.js`, `tests/editor-expand-path.test.js`,
 `tests/editor-outline-preview.test.js`, `tests/editor-outline-preview-triggers.test.js`) — pushed.
+
+## Lane B — Turn 99 — T40 part 2: text outlines (glyph outlines, opentype.js) — DONE
+
+**Researched first, not guessed.** A dedicated research pass (this session's own Explore-style delegation)
+corrected a wrong guessed path before any code was written: `editor-geometry.js` (named in the dispatch)
+doesn't exist — it's a STALE reference in three old comments after a refactor. The real, current logic
+lives in `editor-fonts.js` (the bundled-font registry, `FONT_MAP`) and `editor-expand-text.js`
+(`textGlyphPathD(el, m)` — loads a font via `opentype.parse`, generates the glyph path via
+`font.getPath(text,0,baselineY,fontSize)`, serializes via opentype's own `toPathData()`, bakes matrix `m`
+into every coordinate). Confirmed via file:line citations, not general opentype.js knowledge — this
+codebase never touches opentype's raw `.commands` array, only its own `toPathData()` string.
+
+**The clean design this research made possible: a glyph is just another path.** `textGlyphPathD` already
+exists, is already trusted by two real callers (interactive Expand, carve/export bake) — reusing it (not
+reimplementing font loading) means `OUTLINE_KINDS.text` only needs two small pieces: (1) get the glyph's own
+`d` string in the element's LOCAL frame, (2) hand it to `pathOutlinePathD` exactly like the `path` kind
+already does. New `localGlyphPathD(el)` (`editor-expand-text.js`) calls `textGlyphPathD(el, m)` with `m` =
+translate-by-anchor ONLY (`{a:1,b:0,c:0,d:1,e:ax,f:ay}` from `localAnchor(el)`) — NOT the full
+`el.matrix()` the two EXISTING callers compose — because `refreshOutlinePreview` already applies the
+source element's own `transform` attribute generically to every kind's preview shapes (confirmed by
+reading it directly); composing the full matrix here too would double-apply it. `OUTLINE_KINDS.text` itself
+is then genuinely small: `localGlyphPathD(el)` → `pathOutlinePathD(glyphD, strokeWidth, {mode:
+_fillModeOf(el), cap: _capOf(el)})` — filled text (mode='fill') and stroked text (mode='stroke'/'both',
+Fred's own "glyph path -> pathOutlinePathD" instruction) both fall out of the SAME existing pipeline every
+other closed-shape kind already uses, no glyph-specific geometry code at all.
+
+**A real gap this exposed, fixed as a general improvement, not a text-only hack: 'fill' mode was a raw
+passthrough.** `_closedSubpathD`'s 'fill' branch returned the ORIGINAL segments verbatim (`_passthroughD`) —
+correct for the shapes tested so far (lines/arcs only), but a glyph's OWN curves are cubic Beziers, and
+passing a raw `C` through would violate the "M/L/A/Z only" contract every OTHER mode in this module already
+honors. Fixed by making 'fill' mode `_closedRing(subpath, 1, 0, tolerance)` — literally the SAME ring-
+builder every offset mode already uses, at `half=0`: a line's own offset collapses to itself regardless of
+side: a circular arc's own radius is unchanged; a cubic's own curve gets biarc-fit (now tracing the curve
+ITSELF rather than an offset of it); every join's two pieces meet at the EXACT original vertex, hitting the
+"already coincide" shortcut — so a plain L/A path reproduces byte-identical output to the old passthrough
+(this module's own existing fill-mode test still passes unchanged), now correctly EXTENDED to paths with
+real curves. One dedicated test (an S-curve — the SAME deliberately aggressive curvature-crossing-zero
+shape T38's own biarc tests used as a stress case) confirms M/L/A/Z-only output within a documented, looser
+bound (unclamped curvature at offset=0 needs more subdivision than a clamped non-zero offset does; real
+glyph curves are far gentler than this intentionally extreme test shape). Mutation-verified: reverted to
+`_passthroughD`, exactly 1 failure (the new curve test, correctly), everything else unaffected.
+
+**Async wiring — a real, cascading change, not a footnote.** `textGlyphPathD` does a font fetch/parse
+(genuinely async, network-bound); every OTHER `OUTLINE_KINDS` entry is a plain sync function. Made
+`refreshOutlinePreview` itself `async`, `await`ing every entry uniformly (a sync entry's result resolves
+through an `await` on the very next microtask — no observable delay for the common all-non-text case, since
+nothing in that path ever actually suspends). This is genuinely NEW behavior for every EXISTING caller, not
+just an addition: even a fully-synchronous refresh no longer completes before the calling statement
+finishes (an `await` on a non-Promise value still yields a microtask tick). Every direct call in
+`editor-outline-preview.test.js` (31 call sites) needed `await` + its enclosing `it()` to become `async`;
+`editor-outline-preview-triggers.test.js` calls `setActiveLayer`/`undo`/`redo` (NOT `refreshOutlinePreview`
+directly), and production code deliberately does NOT await its own fire-and-forget call (awaiting would
+cascade `async` through `setActiveLayer`/`_notifyChange` and further, a much bigger, riskier change touching
+code Seat A may be concurrently editing) — so those 4 tests instead `await` a `flushAsync()` helper
+(a `setTimeout(resolve,0)` macrotask wait, the standard "let all pending async work settle" pattern) after
+each indirect trigger, before asserting on preview state.
+
+**A real race this async change introduces, found by reasoning it through (not by hitting it), fixed before
+it could ever surface as a bug report: a superseded refresh writing stale shapes.** `refreshOutlinePreview`
+reruns on every commit; once it can genuinely suspend (a font fetch), a SECOND call (another commit, undo, a
+layer switch) can start and finish WHILE a FIRST call is still mid-flight — the first call's delayed
+continuation would then add its own (now stale) shapes on top of the second call's already-correct, freshly
+rebuilt layer. Fixed with a generation counter: bump it at the top of every call, and if it's moved on by
+the time an `await` returns, abandon before touching the DOM. MUTATION-VERIFIED with a real, deliberately
+constructed race (a controlled slow-then-fast mock `OUTLINE_KINDS.text`, a gate `Promise` releasing the slow
+call only after the fast one has already fully completed): disabling the guard reproduces the exact failure
+mode by name — 4 shapes instead of 2, the stale call's own geometry landing on top of the current one's —
+confirming this isn't a theoretical worry, the guard is load-bearing.
+
+**A THIRD live-only bug from T40 part 1 reconfirmed relevant here too**: `_capOf`'s fix (reading
+`el.node.getAttribute` instead of svg.js's own default-filling `el.attr()`) matters for text's own
+`stroke-linecap` read the exact same way it does for line/polyline/polygon/path — no separate fix needed,
+just confirmation the SAME `_capOf` helper is reused, not a second copy.
+
+**Testing strategy — what CAN and can't run in this environment, decided honestly, not glossed over.**
+`textGlyphPathD` does `await import('https://esm.sh/opentype.js')` — a dynamic import of an `https:` URL,
+which is a BROWSER-only capability; Node's own ESM loader rejects it outright
+(`ERR_UNSUPPORTED_ESM_URL_SCHEME`, confirmed by actually trying it in this test environment before deciding
+anything, not assumed). This means the REAL glyph-extraction path can never run inside vitest here — the
+dispatch's own "glyph count, M/L/A/Z only, deviation within tolerance against the opentype path sampled"
+verification is INHERENTLY a live-CDP-only check, not a unit-testable one, and is treated as such rather
+than faked with a mock standing in for real geometry. Vitest coverage instead targets what's genuinely
+testable in Node: `OUTLINE_KINDS.text`'s own REAL failure path (declines with `unsupported:'font'`when
+extraction fails — which it always will here — proving the adapter's error handling without needing a real
+font), and the WIRING/async-race behavior via the established "temporarily overwrite a real OUTLINE_KINDS
+entry, restore in `finally`" pattern already used elsewhere in this file for circle/rect/ellipse, applied to
+a controlled stand-in for `text`.
+
+**Live verification — the real proof, run against the ACTUAL opentype.js pipeline.** Fresh headless Chrome
+(port 9501, own `chrome-profile-t40b` user-data-dir; 0 processes before launch, 8 mine before stop, same
+discipline every turn — browser network access is real here, unlike vitest). Created a real `<text>`
+element, "Fred", Arial, on a second Outline layer. Called `OUTLINE_KINDS.text` directly and measured:
+`unsupported: null` (real success, not a mock), `mCount: 6` (matches the expected minimum subpath count —
+F=1, r=1, e=2 with its own enclosed counter, d=2 with its own enclosed counter), `onlyMLAZ: true`,
+extraction+biarc-fit took ~263ms (acceptable; the font-parse cache added this same turn means only the
+FIRST text element on a given family pays the fetch/parse cost per session, not every commit). Independently
+fetched and parsed the SAME font in the SAME page, sampled opentype.js's OWN `font.getPath('Fred',...)`
+output directly (a completely separate code path from `OUTLINE_KINDS.text`'s own biarc-fit output), and
+measured the worst-case nearest-point deviation between the two: 0.014 — tight, consistent with the fill-
+mode biarc test's own documented bound. Screenshot (`t40-text-word.png`) shows the word "Fred" with a clean
+white-halo outline precisely tracing every glyph contour, INCLUDING the enclosed counters inside "e" and
+"d" — the two-ring (outer+inner) fill-mode geometry rendering correctly for real letterforms, not just the
+simple test shapes. Zero console errors/exceptions.
+
+**Scope disclosed**: stroked text (mode='stroke'/'both') was NOT separately CDP-verified — it goes through
+the exact SAME `_fillModeOf`-gated `pathOutlinePathD` call every other closed-shape kind already uses
+(circle/rect/ellipse all verified across all 3 modes in earlier turns), so this is asserted by CODE-PATH
+IDENTITY rather than a second live round-trip, a deliberate time-budget call on an already large turn, named
+here rather than silently assumed.
+
+Full vitest suite: 665/665 green.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (6 files: `editor/editor-expand-path.js`,
+`editor/editor-expand-text.js`, `editor/editor-outline-preview.js`, `tests/editor-expand-path.test.js`,
+`tests/editor-outline-preview.test.js`, `tests/editor-outline-preview-triggers.test.js`) — pushed.

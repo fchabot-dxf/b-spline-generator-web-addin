@@ -72,8 +72,22 @@ const LINE_ATTRS = { x1: 0, y1: 0, x2: 10, y2: 0, 'stroke-width': 2, 'stroke-lin
 // own HALO_AND_LINE constant for the same reasoning.
 const HALO_AND_LINE = 2;
 
+// T40 part 2: refreshOutlinePreview is now async (OUTLINE_KINDS.text does
+// a font fetch), so setActiveLayer/_notifyChange's own fire-and-forget
+// call to it (production code never awaits it — see editor-outline-
+// preview.js's own header) no longer completes before THEIR OWN caller
+// returns, even for these all-sync-kind (line-only) fixtures: `await`ing
+// a plain non-Promise value still yields one MICROtask tick, and with a
+// loop iterating multiple sketch children that's more than one tick. A
+// macrotask wait (setTimeout) is the robust way to let ALL pending
+// microtasks drain before asserting, regardless of exactly how many
+// there are — the standard "flush pending async work" pattern.
+function flushAsync() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 describe('setActiveLayer — refreshes the outline preview (covers "layer switch" AND, transitively, document open/restore via editor-io.js open()\'s own call to it)', () => {
-  it('switching the active layer rebuilds the preview from the CURRENT layer state', () => {
+  it('switching the active layer rebuilds the preview from the CURRENT layer state', async () => {
     const line = mockLineEl(LINE_ATTRS);
     const editor = {
       _layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }, { id: '2', visible: true, fusionGeometry: 'centerline' }],
@@ -83,11 +97,12 @@ describe('setActiveLayer — refreshes the outline preview (covers "layer switch
       _color: '#000',
     };
     setActiveLayer(editor, '1');
+    await flushAsync();
     expect(editor._activeLayer).toBe('1');
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE); // layer '1' is outline, line belongs to it
   });
 
-  it('non-vacuous: the preview is genuinely REBUILT, not just left alone — switching to a state with nothing to preview empties it', () => {
+  it('non-vacuous: the preview is genuinely REBUILT, not just left alone — switching to a state with nothing to preview empties it', async () => {
     const line = mockLineEl(LINE_ATTRS); // data-layer '1'
     const editor = {
       _layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }],
@@ -97,9 +112,11 @@ describe('setActiveLayer — refreshes the outline preview (covers "layer switch
       _color: '#000',
     };
     setActiveLayer(editor, '1'); // populate it once
+    await flushAsync();
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
     editor._layers[0].fusionGeometry = 'centerline'; // simulate an external change between calls
     setActiveLayer(editor, '1'); // same id — still must re-read current state, not cache
+    await flushAsync();
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
   });
 });
@@ -139,26 +156,29 @@ describe('undo/redo (_restoreState) — refreshes the outline preview via _notif
     };
   }
 
-  it('undo rebuilds the preview to match the RESTORED layer state', () => {
+  it('undo rebuilds the preview to match the RESTORED layer state', async () => {
     const editor = makeUndoableEditor('outline');
     editor.pushState(); // snapshot #1: outline, 1 preview shape once refreshed
     editor._layers[0].fusionGeometry = 'centerline';
     editor.pushState(); // snapshot #2: centerline, 0 preview shapes
 
     editor.undo(); // back to snapshot #1's layers array (deep-cloned by pushState)
+    await flushAsync();
     expect(editor._layers[0].fusionGeometry).toBe('outline');
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
   });
 
-  it('redo re-applies the LATER state and refreshes the preview again', () => {
+  it('redo re-applies the LATER state and refreshes the preview again', async () => {
     const editor = makeUndoableEditor('outline');
     editor.pushState();
     editor._layers[0].fusionGeometry = 'centerline';
     editor.pushState();
     editor.undo();
+    await flushAsync();
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
 
     editor.redo();
+    await flushAsync();
     expect(editor._layers[0].fusionGeometry).toBe('centerline');
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
   });

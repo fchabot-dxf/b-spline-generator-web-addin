@@ -32,6 +32,7 @@
 import { showsOutline } from './layers.js';
 import { lineOutlinePathD, circleOutlinePathD, rectOutlinePathD, ellipseOutlinePathD } from './editor-expand-analytic.js';
 import { pathOutlinePathD } from './editor-expand-path.js';
+import { localGlyphPathD } from './editor-expand-text.js';
 
 /** Which of the 3 outline modes editor-expand-analytic.js's shape
  *  functions want, read from the element's OWN fill/stroke presentation
@@ -98,13 +99,13 @@ function _pointsToD(points, closed) {
  *
  * T38 added rect/circle/ellipse (closed-form/biarc-fit, no general
  * offsetting algorithm needed); T39 added polyline/polygon/path (the
- * general engine, editor-expand-path.js). Text is still later work (open
- * item in this module — see WORK-LOG). The TABLE was worth declaring in
- * T37 before any shape existed (cheap, and it's the shape every future
- * kind plugs into identically); the geometry FUNCTIONS for shapes/text
- * are not (building them before anything calls them is the "machinery
- * for an unused case" the declare-over-hand-roll rule itself warns
- * against).
+ * general engine, editor-expand-path.js); T40 part 2 added text (glyph
+ * outlines, editor-expand-text.js — see that entry's own comment for the
+ * async/local-frame design). The TABLE was worth declaring in T37 before
+ * any shape existed (cheap, and it's the shape every future kind plugs
+ * into identically); the geometry FUNCTIONS for shapes/text are not
+ * (building them before anything calls them is the "machinery for an
+ * unused case" the declare-over-hand-roll rule itself warns against).
  */
 export const OUTLINE_KINDS = {
   line: (el) => lineOutlinePathD({
@@ -161,10 +162,51 @@ export const OUTLINE_KINDS = {
     mode: _fillModeOf(el),
     cap: _capOf(el),
   }),
+  // T40 part 2 (Fred: "eventually text" — T37's own deferred item, and
+  // this table's own last kind): a glyph outline IS just another path —
+  // localGlyphPathD (editor-expand-text.js) reuses the SAME opentype.js
+  // extraction the Expand tool and carve-export already trust, returned
+  // in the element's own LOCAL frame (translated by its x/y anchor only,
+  // never its full `.matrix()` — refreshOutlinePreview below applies the
+  // source's `transform` attribute itself, same as every other kind; a
+  // double-composed matrix would double-apply it), then handed straight
+  // to pathOutlinePathD exactly like any other multi-subpath path with
+  // curves (an "O" is two closed subpaths; fill mode's own `half=0`
+  // biarc-fit, added this same turn, is what turns the font's raw C
+  // curves into M/L/A/Z). Async (font fetch/parse) unlike every other
+  // entry — refreshOutlinePreview awaits every entry uniformly now.
+  // `unsupported: 'font'` covers both "no FONT_MAP mapping" and "fetch/
+  // parse failed" (textGlyphPathD's own null-on-any-failure contract) —
+  // no preview, no error, same as a declined cap elsewhere in this table.
+  text: async (el) => {
+    const glyphD = await localGlyphPathD(el);
+    if (!glyphD) return { d: null, unsupported: 'font' };
+    return pathOutlinePathD(glyphD, parseFloat(el.attr('stroke-width')) || 0, {
+      mode: _fillModeOf(el),
+      cap: _capOf(el),
+    });
+  },
 };
 
-export function refreshOutlinePreview(editor) {
+// T40 part 2: OUTLINE_KINDS.text is async (a font fetch/parse), so this
+// function now is too — every OTHER entry is still a plain sync function,
+// which `await`ing resolves through immediately (no observable delay) so
+// the loop below awaits every kind uniformly rather than special-casing
+// text. That opens a real race a purely-sync function never had: this
+// function reruns on every commit (this module's own header), so a
+// SECOND call can start (another commit, an undo, a layer switch) while a
+// FIRST call is still mid-flight awaiting a font. Without a guard, the
+// first call's delayed continuation would add its (now stale) shapes on
+// top of the second call's already-correct, freshly-rebuilt layer. A
+// generation counter makes a superseded call's own writes into a safe
+// no-op: bump it at the top of every call, and if it's moved on by the
+// time an await returns, abandon before touching the DOM — the newer
+// call already owns the layer's correct final state.
+let _refreshGeneration = 0;
+
+export async function refreshOutlinePreview(editor) {
   if (!editor || !editor._outlinePreviewLayer) return;
+  const myGeneration = ++_refreshGeneration;
   editor._outlinePreviewLayer.clear();
   if (!editor._sketchLayer || !Array.isArray(editor._layers)) return;
 
@@ -176,7 +218,8 @@ export function refreshOutlinePreview(editor) {
     const outlineFor = OUTLINE_KINDS[ch.type];
     if (!outlineFor) continue; // no table entry for this element kind — skipped, no error
 
-    const { d, unsupported } = outlineFor(ch);
+    const { d, unsupported } = await outlineFor(ch);
+    if (myGeneration !== _refreshGeneration) return; // superseded by a newer refresh while awaiting -- abandon, don't write stale shapes
     if (unsupported || !d) continue; // no preview, no error — e.g. a cap lineOutlinePathD doesn't support yet
 
     // The element's own transform, uncomposed — lineOutlinePathD works in

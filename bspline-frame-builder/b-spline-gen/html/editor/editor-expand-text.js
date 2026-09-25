@@ -23,6 +23,38 @@ import { localAnchor, transformPoint } from './editor-coords.js';
 import { commitExpandedPath } from './editor-expand-commit.js';
 
 /**
+ * T40 part 2: parsed-font cache, keyed by font FILE (not family — two
+ * families never share a file in FONT_MAP, but keying on the file is the
+ * literal cache key that matters). `textGlyphPathD` used to re-fetch and
+ * re-parse the WHOLE font on every single call, fine for its two ORIGINAL
+ * callers (a discrete, user-triggered Expand or a one-shot carve export)
+ * but not for the outline-preview's own OUTLINE_KINDS.text, which reruns
+ * on every commit (editor-outline-preview.js's own header) — an unedited
+ * word on an Outline layer would otherwise refetch/reparse its font on
+ * every unrelated edit elsewhere on the board. Caches the PROMISE, not
+ * just the resolved font, so two calls racing on the same uncached font
+ * (e.g. two text elements, same family, both on a layer whose preview is
+ * rebuilding) share one fetch instead of firing two.
+ */
+const _fontCache = new Map();
+function _loadFont(fontFile) {
+  let entry = _fontCache.get(fontFile);
+  if (entry) return entry;
+  entry = (async () => {
+    const opentypeMod = await import('https://esm.sh/opentype.js');
+    const opentype = opentypeMod.default || opentypeMod;
+    const fontUrl = new URL(`../fonts/${fontFile}`, import.meta.url).href;
+    const fontResp = await fetch(fontUrl);
+    if (!fontResp.ok) throw new Error(`Font fetch failed: ${fontResp.status} ${fontUrl}`);
+    const fontBuffer = await fontResp.arrayBuffer();
+    return opentype.parse(fontBuffer);
+  })();
+  entry.catch(() => _fontCache.delete(fontFile)); // don't cache a rejection -- a transient network failure shouldn't poison every later call
+  _fontCache.set(fontFile, entry);
+  return entry;
+}
+
+/**
  * Load the bundled font for `el`'s font-family, generate its glyph
  * outline, and bake matrix `m` into every coordinate. `m` is the FULL
  * bake matrix the caller wants applied — expandText composes
@@ -30,7 +62,10 @@ import { commitExpandedPath } from './editor-expand-commit.js';
  * carve-bake path (editor-io.js) composes carveMatrix x el.matrix()
  * translated the same way, folding the board->Fusion mapping and the
  * glyph bake into one step, exactly like bakeMatrixIntoElement does for
- * every other geometry type.
+ * every other geometry type; OUTLINE_KINDS.text (editor-outline-preview.js,
+ * T40 part 2) composes a translate-only matrix (localGlyphPathD, below)
+ * to get LOCAL-frame `d`, matching every other outline kind's own
+ * contract instead of baking a world transform in directly.
  *
  * Returns the baked path `d` string, or null on any failure (no font
  * mapping for the family, font fetch/parse error) — callers decide the
@@ -57,19 +92,7 @@ export async function textGlyphPathD(el, m) {
 
     try {
         dbg('EXPAND', `Starting: "${fontFamily}"`);
-        const opentypeMod = await import('https://esm.sh/opentype.js');
-        const opentype = opentypeMod.default || opentypeMod;
-
-        // opentype.load() is deprecated in newer opentype.js builds and
-        // the callback no longer fires reliably, which makes expand hang
-        // silently. Fetch the font ourselves and feed the buffer to
-        // opentype.parse — the supported path. URL is resolved against
-        // THIS module so it survives different host page locations.
-        const fontUrl = new URL(`../fonts/${fontFile}`, import.meta.url).href;
-        const fontResp = await fetch(fontUrl);
-        if (!fontResp.ok) throw new Error(`Font fetch failed: ${fontResp.status} ${fontUrl}`);
-        const fontBuffer = await fontResp.arrayBuffer();
-        const font = opentype.parse(fontBuffer);
+        const font = await _loadFont(fontFile);
         if (!font) return null;
 
         // Baseline mode depends on which convention the <text> was
@@ -123,6 +146,20 @@ export async function textGlyphPathD(el, m) {
         console.error("[EXPAND] Opentype logic failed:", e);
         return null;
     }
+}
+
+/**
+ * T40 part 2: glyph outline in the element's own LOCAL frame — translated
+ * by its anchor (x,y attrs) only, NOT its full `el.matrix()` — matching
+ * the contract every other OUTLINE_KINDS entry already follows
+ * (editor-outline-preview.js's own refreshOutlinePreview copies the
+ * source element's `transform` attribute onto the preview shapes itself;
+ * an entry that also baked the matrix in would double-apply it). Same
+ * null-on-failure contract as textGlyphPathD.
+ */
+export async function localGlyphPathD(el) {
+    const { x: ax, y: ay } = localAnchor(el);
+    return textGlyphPathD(el, { a: 1, b: 0, c: 0, d: 1, e: ax, f: ay });
 }
 
 export async function expandText(editor, el, { commit = true } = {}) {

@@ -229,6 +229,24 @@ describe('pathOutlinePathD — modes', () => {
     for (const p of sampleDense(d, 8)) expect(nearestDist(p, sampleDense(source, 8))).toBeLessThan(1e-6);
   });
 
+  it('fill mode on a path WITH a cubic segment biarc-fits the curve (T40 part 2, needed for glyph outlines) instead of passing the raw C through — only M/L/A/Z, tight to the source', () => {
+    const source = 'M 0 0 C 3 4 7 -4 10 0 L 10 10 L 0 10 Z';
+    const { d, unsupported } = pathOutlinePathD(source, 2, { mode: 'fill' });
+    expect(unsupported).toBeNull();
+    expect(countM(d)).toBe(1);
+    expect(d).not.toMatch(/[CSQT]/);
+    // offset 0 -- every sampled output point should sit close to the
+    // source curve (biarc-fit tolerance, no offset distance to account
+    // for). This specific S-curve (curvature crosses zero, same shape
+    // T38's own biarc tests used as a deliberate stress case) doesn't
+    // clamp its own curvature the way a non-zero offset does, so it
+    // needs a looser bound than the tighter offset cases elsewhere in
+    // this file — real glyph curves (this fix's actual target) are far
+    // gentler than this intentionally aggressive shape.
+    const sourceCloud = sampleDense(source, 500);
+    for (const p of sampleDense(d, 12)) expect(nearestDist(p, sourceCloud)).toBeLessThan(0.02);
+  });
+
   it('both mode returns the outer ring only, even for a shape whose stroke mode WOULD have a valid inner ring', () => {
     const source = 'M 0 0 L 20 0 L 20 20 L 0 20 Z';
     const { d, unsupported } = pathOutlinePathD(source, 0.5, { mode: 'both' });

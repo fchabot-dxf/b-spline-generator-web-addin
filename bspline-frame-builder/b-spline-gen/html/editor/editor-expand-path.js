@@ -742,9 +742,23 @@ function _passthroughD(subpath) {
  * Hence `outerSide = area>0 ? -1 : 1`, cross-checked in this module's own
  * tests against a concrete CCW square rather than trusted from this
  * comment alone.
+ *
+ * 'fill' mode is `_closedRing` at `half=0` (T40 part 2, needed for glyph
+ * outlines: a straight `_passthroughD` of the raw segments would leave any
+ * `C` segment as a raw cubic in the output, breaking the "M/L/A/Z only"
+ * contract every other mode already honors — a glyph's own curves need
+ * biarc-fitting even though nothing is being OFFSET). At `half=0` every
+ * segment's own offset collapses to itself regardless of `side` (line: 0
+ * either way; circular arc: same radius; elliptical arc/cubic: still
+ * biarc-fit, now fitting the curve's OWN shape rather than an offset of
+ * it) and every join's two pieces meet at the exact original vertex,
+ * hitting `_buildJoin`'s own "already coincide" shortcut — so the result
+ * is the same geometry `_passthroughD` produced for an all-L/A path (this
+ * module's own tests confirm byte-identical output on one), now correctly
+ * extended to paths with real curves too.
  */
 function _closedSubpathD(subpath, half, tolerance, mode) {
-  if (mode === 'fill') return _passthroughD(subpath);
+  if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d;
 
   const originalArea = _signedArea(_sampleOriginal(subpath));
   const outerSide = originalArea > 0 ? -1 : 1;
