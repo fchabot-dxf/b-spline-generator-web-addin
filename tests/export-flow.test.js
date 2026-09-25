@@ -20,7 +20,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
+import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 /** Editor layer mock: tooling (depth/profile/visible) lives ON the layer
@@ -42,6 +42,7 @@ function mockEditor(layers) {
       depth: l.depth,
       profile: l.profile,
       _mask: l.mask ?? null,
+      pattern: l.pattern ?? null,
     })),
   };
 }
@@ -249,5 +250,57 @@ describe('export-flow: _reportDeclinedOutlines (T44 fallback notice)', () => {
       { declined: 0, declinedKinds: [] },
     ]);
     expect(el.textContent).toBe('3 elements exported as centerline — no outline for: image, text');
+  });
+});
+
+/**
+ * T62 (SE15) — _fusionLayerManifest: a layer's own SE15 sketch manifest,
+ * gated on the layer actually HAVING a `.pattern` (declined gracefully for
+ * a hand-drawn/text layer, matching `_fusionLayerSvg`'s own convention).
+ * Own describe block, own small function, directly testable without the
+ * heavier STEP-generation/Fusion-bridge machinery `sendToFusion` itself
+ * needs — same reason `_fusionLayerSvg` is its own function here.
+ */
+describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () => {
+  it('returns null when the editor is missing', () => {
+    expect(_fusionLayerManifest(null, { id: '1' })).toBeNull();
+  });
+
+  it('returns null when the layer id is missing', () => {
+    const editor = mockEditor([{ id: '1' }]);
+    expect(_fusionLayerManifest(editor, { id: null })).toBeNull();
+  });
+
+  it('returns null for a layer with no .pattern (hand-drawn/text layer — declined gracefully)', () => {
+    const editor = mockEditor([{ id: '1' }]);
+    expect(_fusionLayerManifest(editor, { id: '1' })).toBeNull();
+  });
+
+  it('returns a real manifest for a layer that DOES carry a .pattern', () => {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 0, anchor: 'free', spanMin: 1, spanMax: 1 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+    };
+    const editor = mockEditor([{ id: '3', pattern }]);
+    const manifest = _fusionLayerManifest(editor, { id: '3' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.layerId).toBe('3');
+    expect(manifest.sketchName).toBe('Layer 3');
+    expect(manifest.units).toBe('in');
+    expect(Array.isArray(manifest.entities)).toBe(true);
+  });
+
+  it('non-vacuous: looks up the layer by id, not by array position (a stale/wrong index would silently attach the WRONG layer\'s pattern)', () => {
+    const patternA = { spacing: 0.25, rails: { mode: 'every', every: 100, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
+    const patternB = { spacing: 0.25, rails: { mode: 'every', every: 1, offset: 0 }, ties: { mode: 'density', density: 0 }, nodes: { ends: false, crossings: false, railEnds: false } };
+    const editor = mockEditor([{ id: 'A', pattern: patternA }, { id: 'B', pattern: patternB }]);
+    const manifestB = _fusionLayerManifest(editor, { id: 'B' });
+    const manifestA = _fusionLayerManifest(editor, { id: 'A' });
+    // every:1 (B) produces strictly more rails than every:100 (A) on the
+    // same 7x9 board — a real, checkable difference, not just "not null".
+    const railCount = (m) => m.entities.filter((e) => e.id.match(/^rail\d+$/)).length;
+    expect(railCount(manifestB)).toBeGreaterThan(railCount(manifestA));
   });
 });

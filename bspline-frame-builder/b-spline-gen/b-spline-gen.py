@@ -11,6 +11,13 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 import os, tempfile, json, re
 from datetime import datetime
 
+# T63 (SE15): the constrained-sketch builder — a sibling module in this
+# SAME folder, already on sys.path by the time this file loads
+# (bspline-frame-builder.py's own _load_submodule inserts 'b-spline-gen/'
+# before exec'ing this file), so a plain top-level import is safe here,
+# matching this file's own existing import style.
+from sketch_manifest_builder import build_constrained_sketch
+
 # imports check: removed diagnostic
 
 
@@ -1302,7 +1309,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         
                     sketch_target = current_import_group.component if ('current_import_group' in globals() and current_import_group and current_import_group.isValid) else root_comp
                     _send_progress('Projecting SVG Artwork...')
-                    self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params)
+                    self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params, des)
                 except Exception as e:
                     _log(f'SVG Stamp Import/Project failed: {e}')
 
@@ -1323,10 +1330,19 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f'_handle_generate EXCEPTION:\n{tb}')
             if ui: ui.messageBox('Error in generate:\n{}'.format(tb))
 
-    def _import_all_svg_layers(self, sketch_target, body_target, stamp_data, orientation='z-up', params=None):
-        """Processes multiple SVG layers if available, otherwise falls back to single SVG."""
+    def _import_all_svg_layers(self, sketch_target, body_target, stamp_data, orientation='z-up', params=None, design=None):
+        """Processes multiple SVG layers if available, otherwise falls back to single SVG.
+
+        T63 (SE15 §7): a layer carrying a `sketchManifest` (set by
+        export-flow.js's own _fusionLayerManifest, gated on the SAME
+        includeSVG toggle as `.svg`) gets a REAL constrained sketch via
+        build_constrained_sketch INSTEAD of the plain SVG import — the
+        carve stamp itself is untouched either way (it's driven by the
+        STEP body's own 3D geometry, generated earlier in _handle_generate,
+        not by this sketch-import step at all). Every other layer's own
+        plain-SVG path is byte-for-byte unchanged."""
         layers = stamp_data.get('layers', [])
-        
+
         if not layers:
             # Legacy Fallback: Single master SVG
             svg_text = stamp_data.get('svg')
@@ -1346,7 +1362,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 return
 
         _log(f'[STAMP] Processing {len(layers)} layer(s)...')
-        
+
         # We find the top face ONCE to reuse for all layer projections
         top_face = None
         if body_target.bRepBodies.count > 0:
@@ -1358,19 +1374,75 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if val > max_val:
                     max_val = val
                     top_face = face
-        
+
         for layer in layers:
             idx = layer.get('index', 1)
             cfg = layer.get('config', {})
             svg = layer.get('svg', '')
-            
+            manifest = layer.get('sketchManifest')
+
             # Generate a descriptive name for the sketch
             prof  = cfg.get('profile', 'flat')
             depth = cfg.get('depth', 0)
             sketch_name = f"L{idx} - {prof} ({depth}\")"
-            
-            _log(f'[STAMP] Starting Import: {sketch_name}')
-            self._import_single_layer_svg(sketch_target, svg, sketch_name, top_face, orientation, params)
+
+            if manifest and design:
+                _log(f'[SE15] Starting constrained-sketch build: {sketch_name}')
+                self._build_constrained_sketch_for_layer(sketch_target, design, manifest, sketch_name, top_face, orientation)
+            else:
+                if manifest and not design:
+                    _log(f'[SE15] Manifest present for {sketch_name} but no active Design in scope — falling back to plain SVG.')
+                _log(f'[STAMP] Starting Import: {sketch_name}')
+                self._import_single_layer_svg(sketch_target, svg, sketch_name, top_face, orientation, params)
+
+    def _compute_artwork_plane(self, sketch_target, sketch_name, top_face, orientation='z-up'):
+        """The SAME offset-above-peak construction plane every flat 2D
+        sketch import (SVG stamp OR, since T63, a constrained sketch)
+        lands on — extracted from _import_single_layer_svg's own steps
+        3-4 so both callers share the ONE placement decision (SE15's own
+        open question #4, kept at today's default per the advisor's
+        "Answers": "keep _import_single_layer_svg's construction-plane
+        placement... revisit after use")."""
+        if orientation == 'y-up':
+            target_plane = sketch_target.xZConstructionPlane
+        else:
+            target_plane = sketch_target.xYConstructionPlane
+
+        peak_h = 2.0
+        if top_face:
+            box = top_face.boundingBox
+            peak_h = box.maxPoint.y if orientation == 'y-up' else box.maxPoint.z
+
+        offset_val = adsk.core.ValueInput.createByReal(peak_h + 5.0)
+        planes = sketch_target.constructionPlanes
+        plane_input = planes.createInput()
+        plane_input.setByOffset(target_plane, offset_val)
+        artwork_plane = planes.add(plane_input)
+        artwork_plane.name = f"Plane for {sketch_name}"
+        return artwork_plane
+
+    def _build_constrained_sketch_for_layer(self, sketch_target, design, manifest, sketch_name, top_face, orientation='z-up'):
+        """T63 (SE15 §7): builds a real constrained sketch for one layer,
+        via sketch_manifest_builder.build_constrained_sketch — same
+        placement _import_single_layer_svg itself uses (_compute_artwork_
+        plane above). Failures here are caught and logged, never abort
+        the rest of _handle_generate's own per-layer loop (same "skip +
+        report" discipline build_constrained_sketch's own internals
+        already apply one level down)."""
+        try:
+            plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
+            summary = build_constrained_sketch(sketch_target, design, manifest, placement=plane, log_fn=_log)
+            _log(
+                f"[SE15] {sketch_name}: entities={summary['entities']['created']}/"
+                f"{summary['entities']['created'] + len(summary['entities']['skipped'])} "
+                f"constraints_issues={summary['constraints']['count']} "
+                f"dim_issues={summary['dimensions']['count']} "
+                f"offsets={summary['offsets']['created']} offset_issues={summary['offsets']['issues']['count']} "
+                f"params(created={summary['parameters']['created']},updated={summary['parameters']['updated']}) "
+                f"{summary['seconds']}s"
+            )
+        except Exception as e:
+            _log(f'[SE15] Constrained sketch build failed for {sketch_name}: {e}')
 
     def _import_single_layer_svg(self, sketch_target, svg_text, sketch_name, top_face, orientation='z-up', params=None):
         """Imports a single SVG string and projects it."""
@@ -1389,31 +1461,13 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 tmp.write(svg_text)
                 tmp_path = tmp.name
 
-            # 3. Setup Plane
-            if orientation == 'y-up':
-                target_plane = sketch_target.xZConstructionPlane
-                project_axis = sketch_target.yConstructionAxis
-            else:
-                target_plane = sketch_target.xYConstructionPlane
-                project_axis = sketch_target.zConstructionAxis
+            # 3-4. Plane (shared with the constrained-sketch path — see _compute_artwork_plane)
+            artwork_plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
 
-            # 4. Create offset plane above peak
-            peak_h = 2.0
-            if top_face:
-                box = top_face.boundingBox
-                peak_h = box.maxPoint.y if orientation == 'y-up' else box.maxPoint.z
-            
-            offset_val = adsk.core.ValueInput.createByReal(peak_h + 5.0)
-            planes = sketch_target.constructionPlanes
-            plane_input = planes.createInput()
-            plane_input.setByOffset(target_plane, offset_val)
-            artwork_plane = planes.add(plane_input)
-            artwork_plane.name = f"Plane for {sketch_name}"
-            
             # 5. Create Sketch and Import
             sketch = sketch_target.sketches.add(artwork_plane)
             sketch.name = f"Source - {sketch_name}"
-            
+
             import_mgr = adsk.core.Application.get().importManager
             svg_options = import_mgr.createSVGImportOptions(tmp_path)
             svg_options.scale = 1.0
@@ -1426,7 +1480,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # Cleanup temp file
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-                
+
         except Exception as e:
             _log(f'[STAMP] Error in layer {sketch_name}: {e}')
 

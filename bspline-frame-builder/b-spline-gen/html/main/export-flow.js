@@ -30,6 +30,8 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
 import { isCarved, isExported } from '../editor/layers.js';
+import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
+import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -108,6 +110,27 @@ async function _fusionLayerSvg(editor, l) {
     if (!editor || l.id == null) return { svg: l.svg, declined: 0, declinedKinds: [] };
     const { svg, declined, declinedKinds } = await getLayerSvg(editor, l.id, 96, { geometry: 'fusion' });
     return { svg: svg || l.svg, declined, declinedKinds };
+}
+
+/** T62 (SE15): a layer's own SE15 sketch manifest, or `null` when the
+ *  layer has no `.pattern` (a hand-drawn/text layer — declined gracefully,
+ *  same convention `_fusionLayerSvg` itself already uses). Deliberately
+ *  its OWN small function, not inlined into `sendToFusion`'s own
+ *  `bakedLayers` map, so it's directly testable without the heavier
+ *  STEP-generation/Fusion-bridge machinery — same "_fusionLayerSvg is its
+ *  own function for the same reason" convention already established here.
+ *  Gated on the SAME `includeSVG` toggle as `.svg` itself (§7's own "the
+ *  smaller change": no new checkbox — a layer's sketch manifest rides on
+ *  the SAME "ship this layer's artwork" decision the user already makes,
+ *  rather than a second, parallel toggle for a shape most users won't
+ *  distinguish from the SVG they already asked to send). */
+export function _fusionLayerManifest(editor, l) {
+    if (!editor || l.id == null) return null;
+    const editorLayer = Array.isArray(editor._layers) ? editor._layers.find((el) => el.id === l.id) : null;
+    if (!editorLayer || !editorLayer.pattern) return null;
+    return buildSketchManifest(editorLayer.pattern, boardRegion(editor), {
+        layerId: l.id, sketchName: `Layer ${l.id}`,
+    });
 }
 
 /** T44: after "Send to Fusion" completes, tell the user when any element
@@ -338,11 +361,15 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         ? await Promise.all(layersToExport.map((l) => _fusionLayerSvg(editor, l)))
         : [];
     const bakedLayers = options.includeSVG
-        ? await Promise.all(fusionResults.map(async (r, i) => ({
-            index: i + 1,
-            config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth },
-            svg: await bakeSvgForCarving(r.svg, P.widthIn, P.heightIn, 96),
-        })))
+        ? await Promise.all(fusionResults.map(async (r, i) => {
+            const manifest = _fusionLayerManifest(editor, layersToExport[i]);
+            return {
+                index: i + 1,
+                config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth },
+                svg: await bakeSvgForCarving(r.svg, P.widthIn, P.heightIn, 96),
+                ...(manifest ? { sketchManifest: manifest } : {}),
+            };
+        }))
         : [];
     const payload = JSON.stringify({
         params: { ...P },
