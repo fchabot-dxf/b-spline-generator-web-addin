@@ -1,25 +1,21 @@
-# NEXT — MOB5: mobile two-finger PAN + zoom, and the oversized checkboxes
+# NEXT — MOB4: landscape side-by-side + double-tap the handle (Fred)
 
-**Ball: worker (seat A) · epoch 2 · MOB5.** NO FUSION — browser proof with REAL touch events. MOB3b merged with seat
-B's T59 (966 green). Advisor re-ran smoke-mob3-drawer: realTouchSwipeScrollsPanelBody true (scrollTop 0→223) — the
-display:contents fix is right. Thanks for resuming after the nudge — if you ever stop mid-turn again, pass back with a
-note instead of going idle.
+**Ball: worker (seat A) · epoch 2 · MOB4.** NO FUSION — browser proof with REAL touch events. MOB5 merged (advisor
+re-checked: two-finger slide 100px → view moved 1.79", zoom unchanged; the compact 3-column Nodes/Colors/Widths rows
+look right at 390x844).
 
-## 1. Still broken (advisor, your own after-swipe shot): the Nodes checkboxes are OVERSIZED
-C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e\scratchpad\mob3b-checkbox-still-big.png
-— big blue boxes overlapping the "at tie ends / at crossings / at rail ends" labels. Normal-looking ~24px box with a
-≥44px TAP TARGET (label padding), label text clear of the box. Check every checkbox in both lattice panels + Border.
-
-## 2. Two-finger pan (ROADMAP "Queued — MOB5", authoritative)
-Fred: "pan and zoom (pan should be integrated in 2-finger interaction) doesn't work well in mobile". Root cause
-(advisor): editor-interaction.js two-pointer branch only zooms about the current midpoint; no translation term → a
-two-finger slide does nothing. Each frame: pan by Δmidpoint (screen→model) + zoom about the new midpoint; clean
-start/end. Also: one-finger drag on empty canvas in Select mode (declare pan vs marquee on touch), the main-screen 3D
-preview's touch (rotate / pinch / two-finger pan), and the page never scrolls/zooms instead of the canvas.
+## Do (ROADMAP "Queued — MOB4", authoritative)
+1. Phone LANDSCAPE (coarse pointer, height ≤ ~500px): editor AND main screen go side-by-side — canvas/preview left,
+   the tool panel/sidebar right (scrolls), a VERTICAL splitter between them (same makeSplitter, axis 'x', its own
+   persisted width). Fred's real landscape screenshot for reference (the 3-column squeeze this replaces):
+   C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e\scratchpad\fred-landscape-layerchip.png
+   The Layers panel becomes the drawer's second tab here too (no separate third column).
+2. DOUBLE-TAP the handle (either orientation): jump canvas-max ↔ settings-max; single tap keeps its cycle.
+Rotation between portrait and landscape keeps each layout's own remembered split.
 ## Verify
-CDP real touch: two-finger slide pans by the swipe distance (±2px), pinch keeps the point under the fingers fixed,
-combined gesture both; 3D preview touch; checkbox screenshot at 390x844 and landscape. `npx vitest run` green.
+CDP 844x390 and 915x412 (touch): screenshots of editor + main screen, splitter drag works, panel scrolls (real swipe
+→ scrollTop changes), double-tap jumps; portrait unchanged; desktop unchanged. `npx vitest run` green.
 ## When done
 Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB5: 2-finger pan + checkboxes — <sha>, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB4: landscape + double-tap — <sha>, screenshots"`
 and stop.
