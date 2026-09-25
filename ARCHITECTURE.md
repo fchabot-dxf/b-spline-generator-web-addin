@@ -126,7 +126,7 @@ web assets (`.html/.js/.css/.svg/.png/...`) plus the shared `styles/` into a
 build folder (`deploy_cloudflare.py:148,175-185`) — a **filtered file-copy, not a
 compiled bundle**. `--build-only` writes it to `dist/` (`:154,213`); otherwise it
 `wrangler pages deploy`s a timestamped folder to Pages project
-`symmetric-b-spline-gen` (`:296`). `dist/` on disk mirrors `html/` exactly
+`bspline-generator` (`:296`; the old `symmetric-b-spline-gen` project was deleted 2026-09-25). `dist/` on disk mirrors `html/` exactly
 (`bspline_gen_palette.html` + `core/ editor/ fonts/ main/ styles/`).
 
 **How the same code runs with no Fusion host:** `adsk` is undefined, so
@@ -275,7 +275,7 @@ All paths under `bspline-frame-builder/`.
 
 | Script | What it does |
 |--------|--------------|
-| `bspline-frame-builder/deploy_cloudflare.py` | Builds the web app (copy `html/`+`styles/` → `dist/`) and `wrangler pages deploy`s it to Pages project `symmetric-b-spline-gen`; also zips the add-in and uploads to the GitHub `latest` release. `--build-only` just emits `dist/` (used by the Pages build container). |
+| `bspline-frame-builder/deploy_cloudflare.py` | Builds the web app (copy `html/`+`styles/` → `dist/`) and `wrangler pages deploy`s it to Pages project `bspline-generator` (the old `symmetric-b-spline-gen` project was deleted 2026-09-25); also zips the add-in and uploads to the GitHub `latest` release. `--build-only` just emits `dist/` (used by the Pages build container). |
 | `bspline-frame-builder/deploy_worker.py` | Deploys the preset Worker via the Cloudflare **REST API** (no wrangler), pushing `preset-worker/src/index.js` as script `bspline-presets` with the `PRESETS` binding. |
 | `run_deploy.py` (root) | Thin PATH-fixing wrapper that shells to `deploy_cloudflare.py`, logging to `deploy_log.txt`. |
 | `release.py` (root) | Local release orchestrator: build add-in ZIP → `git add/commit/push` (push to main triggers Pages auto-rebuild of the web app) → `gh release upload latest` → refresh the local Fusion AddIns folder. |
