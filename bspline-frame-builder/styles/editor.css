@@ -660,6 +660,22 @@
         border-top: 1px solid var(--cad-border-standard);
     }
 
+    /* T58 (SE14 Slice 3): the Shape Lattice tool's own panel needs the
+       SAME two rules as the box Lattice panel above — a second real
+       TOOL_PANELS entry, same MOB3 shape (redundant header hidden, footer
+       pinned to the drawer body's own scroll context so its own Generate/
+       Detach-all footer stays reachable at any drawer height). */
+    #editorShapeLatticePanelHeader {
+        display: none;
+    }
+    #editorShapeLatticePanelFooter {
+        position: sticky;
+        bottom: 0;
+        background: #fdfdfd;
+        padding-top: 10px;
+        border-top: 1px solid var(--cad-border-standard);
+    }
+
     /* editor-drawer.js's generic collapsible-section sweep adds this
        chevron as a real DOM node (not a ::before/::after) so its own
        rotate transform doesn't fight the label's own text layout. */

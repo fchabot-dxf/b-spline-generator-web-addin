@@ -453,3 +453,71 @@ export function generateSilhouette(region, shape) {
 
   return { preset, keypoints, segments, primitives, cx };
 }
+
+/** T58 (SE14 Slice 3) — an `A` primitive's own END point, run FORWARD
+ *  through the exact same endpoint<->center parametrization
+ *  `arcCenterParam` (path-layout.js) documents and inverts — the
+ *  standard SVG-spec point(theta) = center + R(phi)*(rx cos theta, ry sin
+ *  theta) construction, at `theta1+dTheta`. `phi` is always 0 for every
+ *  arc THIS module ever produces (`_arcPrimitive`'s own two return
+ *  branches both pass literal `phi:0`/`arcCenterParam`'s own `phiDeg=0`
+ *  arg) but the general rotated form costs nothing extra and keeps this
+ *  a real inverse of `arcCenterParam`, not a special-cased one. */
+function _arcPointAt(prim, theta) {
+  const cosPhi = Math.cos(prim.phi), sinPhi = Math.sin(prim.phi);
+  const ex = prim.rx * Math.cos(theta), ey = prim.ry * Math.sin(theta);
+  return { x: prim.cx + ex * cosPhi - ey * sinPhi, y: prim.cy + ex * sinPhi + ey * cosPhi };
+}
+
+const _fmt = (n) => (Math.round(n * 1000) / 1000).toString();
+
+/**
+ * SE14 §3's own primitive list -> one SVG path `d` string (`M`, then one
+ * `L`/`A` per primitive, `Z`) — the exact shape a `<path d="...">` needs
+ * for emission (§6), and the SAME primitive list `insideSpans`/
+ * `primitivesBBox` (editor-lattice-boundary.js) already consume directly
+ * — no round-trip through that module's own `_parseD` either way (this
+ * module's own header comment already named that as worth doing, not yet
+ * built; this is it).
+ *
+ * `largeArc`/`sweep` are read straight off `dTheta`'s own sign/magnitude
+ * — the exact inverse of `arcCenterParam`'s own documented convention
+ * (path-layout.js:108-109: sweep=0 <=> dTheta<=0, sweep=1 <=> dTheta>=0),
+ * so re-parsing this `d` string through `arcCenterParam` reproduces the
+ * SAME `{cx,cy,rx,ry,phi,theta1,dTheta}` this function started from —
+ * verified directly (a round-trip test), not just argued.
+ *
+ * A degenerate (rx<=0 or ry<=0) arc primitive is skipped — same "declined
+ * gracefully" convention `arcCenterParam` itself uses for a degenerate
+ * INPUT (returns null, caller falls back to a straight line); a
+ * genuinely zero-radius arc can only arise from a zero `cornerRadius`
+ * pinned to 0 exactly (never produced by this module's own solvers,
+ * which always derive a strictly positive radius from a strictly
+ * positive `waistReach`/width-gap), so this is a defensive floor, not a
+ * path this module's own presets ever actually take.
+ */
+export function primitivesToPathD(primitives) {
+  if (!primitives || !primitives.length) return '';
+  const parts = [];
+  let started = false;
+  for (const prim of primitives) {
+    if (prim.type === 'L') {
+      if (!started) { parts.push(`M ${_fmt(prim.p0.x)} ${_fmt(prim.p0.y)}`); started = true; }
+      parts.push(`L ${_fmt(prim.p1.x)} ${_fmt(prim.p1.y)}`);
+    } else if (prim.type === 'A') {
+      if (prim.rx <= 0 || prim.ry <= 0) continue; // defensive: see doc comment above
+      if (!started) {
+        const p0 = _arcPointAt(prim, prim.theta1);
+        parts.push(`M ${_fmt(p0.x)} ${_fmt(p0.y)}`);
+        started = true;
+      }
+      const p1 = _arcPointAt(prim, prim.theta1 + prim.dTheta);
+      const largeArc = Math.abs(prim.dTheta) > Math.PI ? 1 : 0;
+      const sweep = prim.dTheta > 0 ? 1 : 0;
+      const phiDeg = (prim.phi * 180) / Math.PI;
+      parts.push(`A ${_fmt(prim.rx)} ${_fmt(prim.ry)} ${_fmt(phiDeg)} ${largeArc} ${sweep} ${_fmt(p1.x)} ${_fmt(p1.y)}`);
+    }
+  }
+  if (started) parts.push('Z');
+  return parts.join(' ');
+}

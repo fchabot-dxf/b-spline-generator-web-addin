@@ -6553,3 +6553,147 @@ Amendments polled clean before committing and again immediately before passing. 
 (`editor-lattice-pattern.js`, `tests/editor-lattice-pattern-tie-spread.test.js` (new), `WORK-LOG-lane-b.md`) —
 pushed. `reference/` confirmed still untracked.
 
+## T58 — SE14 Slice 3: the Shape Lattice TOOL
+
+**Scope actually landed, full — the whole dispatch, not a split.** The dispatch's own text explicitly permitted
+splitting "at a coherent line" if the whole slice couldn't land cleanly; it did land cleanly (own rail icon +
+`TOOL_PANELS` entry, Shape section with preset/seed/params, Segments section with per-segment style + mirroring
+via a LIST picker, Fill section reusing the box Lattice's own controls, Generate/Detach-all, box-Lattice
+Boundary-row removal). **Deliberately deferred, disclosed, not silently dropped**: axis-locked parametric
+handles on canvas (Fred's own "Slice 3 editing model" — real canvas-interaction work, its own turn), tap-a-
+segment-on-canvas to pick (sub-element hit-testing, a genuinely new primitive this codebase doesn't have),
+detach-on-hand-node-edit (recompute-and-compare — needs the SAME sub-element/element-geometry-diff machinery).
+The Segments list + per-segment style editing IS built and live-verified; only the two CANVAS-gesture pieces are
+deferred. Flagging this split now for the advisor to confirm scope, same as the dispatch's own fallback clause
+asked.
+
+**`editor-shape-lattice-generator.js` (T55's own preset generator, unchanged) gained ONE new export,
+`primitivesToPathD`** — the L/A primitive list -> one SVG path `d` string, the piece the design doc's own §3
+named as "worth doing, not yet built." `largeArc`/`sweep` read straight off `dTheta`'s sign/magnitude, the exact
+inverse of `arcCenterParam`'s own documented convention (path-layout.js:108-109) — verified as a real inverse,
+not just argued, by round-tripping through `shapeToPrimitives` (editor-lattice-boundary.js, the SAME parser the
+fill engine itself uses to consume a boundary `<path>`) and sampling points along both the original and
+reparsed primitive lists (`_arcWorldPointTangent` as the independent oracle, same one T55's own tests already
+trust). Non-vacuous: a sweep-flag-flip mutation (the exact one-bit transcription bug this shape is most exposed
+to) is caught by the point-sampling check, NOT by the primitive-count check alone — both asserted, so the test
+would fail loudly if either regressed to vacuous.
+
+**`editor-lattice-pattern.js`**: `_findBoundaryElement` exported (was already the file's own internal lookup,
+now genuinely needed by a second caller). `PATTERN_DEFAULTS.shape` declared (`source`/`preset`/`seed`/`params`/
+`segments`) — a new top-level pattern field, not a parallel structure, matching the design doc's own §2 framing;
+`computePattern`/`generatePattern` never read it themselves, only `properties-shape-lattice.js` does, resolving
+it into `PATTERN.boundary.shapeId` + `PATTERN.extent.mode:'boundary'` before calling the SAME fill engine every
+other tool shares.
+
+**New `properties-shape-lattice.js`** wires the new panel: Shape section edits (preset/seed/🎲/params) call
+`generateSilhouette` immediately and re-emit the linked `<path>`'s own `d` — in place when this tool's own
+generated path is still the link, a FRESH element (never overwriting a hand-picked one) otherwise, matching
+§6's "generated -> picked, detected by a later hand-edit" contract for what's built this slice (detach detection
+itself deferred, see above). Segments section: a per-segment style/dir/bulge editor with SE14 §4's own mirroring
+rule (`_mirrorSegmentIndex`, derived from the generator's own solver doc comments rather than a hardcoded
+per-preset table, so it can't drift). Fill/Boundary/Ending/Border: the box Lattice panel's own controls, reused
+under `shapeLattice*`-prefixed ids (duplicated markup+wiring, not shared DOM — two tools, two panels, one fill
+engine underneath).
+
+**`editor-drawer.js`'s `TOOL_PANELS` mechanism was only ever exercised by ONE entry before this turn** — its own
+doc comment claimed "a future tool... is one entry here, not a new mechanism," but `_activateTab`/
+`measuredPeekFloorPx`/`_makeSectionsCollapsible` all hardcoded `editorLatticePanel` specifically. Adding the
+SECOND real entry (`shapeLattice`) is what actually proved that claim true or false — it was false as written,
+so this turn generalizes all three: the tool tab now carries WHICH panel it represents on its own
+`dataset.panelId` (set by `_syncTabsForMode` on every mode switch), read back by `_activateTab`/
+`measuredPeekFloorPx` instead of a hardcoded id; the peek-snap-on-entry behavior generalized from `mode
+==='lattice'` to `TOOL_PANELS[mode]` (any tool with a panel, not just Lattice specifically). A real, disclosed
+refactor of EXISTING code, triggered by (not a side effect of) adding the new tool.
+
+**`editor-ui.js`**: `TOOLBAR_GROUPS.editorShapeLatticePanel` (`currentMode==='shapeLattice'`), a `MODE_HINTS`
+entry. **`tools/mode-tools.js`**: `bind('toolShapeLattice', ...)`. **`editor-controls.js`**: calls
+`initShapeLatticeProperties`. **`bspline_gen_palette.html`**: `#toolShapeLattice` sidebar button (own hourglass-
+line icon, `data-key="h"`), the box Lattice panel's own Boundary/Ending/Border section REMOVED (moved, not
+duplicated), a new `#editorShapeLatticePanel` aside with Shape/Segments/Fill/Boundary sections + footer, MOB3-
+compliant (`data-no-collapse` on Shape, `editorShapeLatticePanelBody`/`Footer` naming matching the box Lattice's
+own convention so the generalized drawer code above picks it up for free). **`styles/editor.css`**: the same two
+mobile-breakpoint rules (`#editorShapeLatticePanelHeader`/`Footer`) the box Lattice panel already had.
+
+**Migration (§1, Fred's own "Fred 2026-09-25" ruling in the design doc, NOT the doc's own earlier §1
+proposal)**: the box Lattice's `readFieldsIntoPattern` no longer writes `p.extent`/`p.boundary` AT ALL (used to
+force-write `{mode:'board'}` unconditionally under the OLD proposal) — an existing layer already in
+`extent.mode:'boundary'` from before this split keeps that data completely untouched by the box tool now;
+switching that SAME layer to the new Shape Lattice tool picks up right where it left off, "handed off," not
+reverted. Verified live (see below): the box Lattice panel shows the CORRECT trimmed section list (no Boundary/
+Ending/Border at all) while the canvas still shows the OTHER tool's own generated fill, untouched.
+
+**A genuine bug found LIVE, not caught by any unit test** (same class the codebase already fixed once for
+rails/ties, `emitSegment`'s own doc comment: "a live browser test found a 0.5in board-wide stroke on a 0.5in
+rail pitch" — found again here, independently, for the silhouette's own boundary stroke): the FIRST live
+Generate produced the correct silhouette PATH but ZERO rails/ties/nodes (confirmed via a CDP eval reading
+`data-lattice` counts directly off the DOM, not eyeballed). Root cause: `_regenerateSilhouette` used
+`editor._strokeWidth` (the general drawing tool's OWN current setting, 0.5" in this live session) for the
+silhouette's own stroke — `_effectiveBorderWidth`'s own inner-stroke inset then cut inward by HALF that, enough
+to matter at the waist. Fixed with a small, fixed, declared `SILHOUETTE_STROKE_WIDTH = 0.02` constant instead,
+matching `emitSegment`'s own precedent exactly (never inherit the general tool's stroke for a generator's own
+emitted geometry). Re-verified live: `{rail:5, tie:10, node:20, path:1}` after the fix, with each row's own
+rail span measurably narrower at the waist than at the horns (e.g. y=4.5 span 1.915-5.085 vs y=1.5 span
+0.045-6.955 on a 7"-wide board) — read off the actual DOM attributes, not eyeballed from a screenshot (this
+session's own "verify pixels, don't eyeball" rule) — confirming the boundary CLIP is real, not just a visually-
+plausible coincidence.
+
+**Tests**: `tests/properties-shape-lattice.test.js` (new, 24 — Shape section incl. non-vacuous reroll/param-
+change geometry-actually-changed checks; Segments section incl. the mirror-pair check AND a cap-segment-has-no-
+mirror check; Fill+Generate incl. the moved Ending/Border tests, adapted ids; Pick-shape incl. a check that
+generating after a hand-pick mints a FRESH element and leaves the picked one's own real geometry untouched, not
+a bare mock object that would pass trivially). `tests/editor-shape-lattice-generator.test.js`: +5
+(`primitivesToPathD` round-trip per preset at a realistic board-inches scale — REGIONS[0]'s own 200-300 scale,
+used elsewhere in this file, produced up to ~0.09 of round-trip drift purely from testing serialization
+precision at the wrong magnitude, not a real defect — switched to a dedicated 6x9 region for this describe
+block only; the sweep-flag-corruption non-vacuity check; the degenerate-input case). `tests/editor-drawer.test.js`:
++1 (the new `TOOL_PANELS.shapeLattice` entry). `tests/properties-lattice.test.js`: the OLD Boundary/Ending/
+Border describe block (8 tests) REMOVED (moved to the new file, adapted), net -8+6 this turn from the widths-
+link add-on below. Full suite: 925 passed (61 files), up from 898 pre-turn.
+
+Mutation-tested the two riskiest pieces of new logic in `properties-shape-lattice.js` (backup, mutate, run,
+confirm EXACT failure set, restore, MD5-verified byte-identical): (1) `_mirrorSegmentIndex` forced to `return i`
+(never mirror) — exactly 1 failure, the dedicated mirror-pair test; (2) `_regenerateSilhouette`'s own
+`reuseExisting` guard forced to `false` (always mint fresh, never update in place) — exactly 3 failures (the
+"one path, not a pile" test directly, plus two others that happened to `.find()` the now-STALE first path
+instead of the latest one — an honest, not cherry-picked, failure set).
+
+## T58 ADD-ON (mid-task amendment, Fred: "I normally want ties and rails to be the same width")
+
+Landed the same turn, absorbed before committing (polled via `handoff.py amendments`, arrived after the
+CDP verification above but before commit). `PATTERN_DEFAULTS.widths.linkRailsTies` (default `true` for a
+brand-new layer; a brand-new layer's own `ties` DEFAULT also now equals `rails`' — 0.07, not the old separate
+0.055 — Fred's own explicit "rails = ties = the current rails default"). New `rewidthOwnedKinds` (editor-
+lattice-pattern.js) — `rewidthOwnedKind`'s own multi-kind sibling, needed because calling the single-kind
+version twice (once per kind) would satisfy "re-width both" but NOT "one undo step" (its own `pushState()`
+fires per call) — mutation-tested directly (reverted to two per-kind `pushState()` calls inside the new
+function itself — exactly 2 failures, one per panel's own "ONE undo step" test, both asserting `pushCount:1`
+via a spy on `editor.pushState`).
+
+UI: a chain-link toggle in the SHARED Widths row (built once, wired identically in BOTH `properties-lattice.js`
+and `properties-shape-lattice.js` — genuinely the same contract, not a coincidence) — linked (default) shows one
+"Rails & ties" stepper; unlinked shows today's separate pair. Migration: an EXISTING saved pattern with no
+`linkRailsTies` key at all (checked on the RAW pre-merge `p.widths`, not the `{...PATTERN_DEFAULTS, ...p.widths}`
+merge, which would otherwise silently backfill `true`) infers linked ONLY when its own rails/ties already happen
+to be equal — a differing pair loads unlinked, Fred's own explicit "no silent change."
+
+Tests: 6 new in `properties-lattice.test.js`, 5 new in `properties-shape-lattice.test.js` — linked-by-default;
+Generate writes both fields + the flag; the live re-width-both-in-one-undo-step case (spied `pushState` count);
+unlink leaves values unchanged; both migration cases (differing -> unlinked, equal -> linked). Full suite after
+the add-on: 925 passed (61 files) — includes the widths-default-value test fix (`editor-lattice-pattern-emit.
+test.js`'s own "declares the three default kind widths" test updated for `ties===rails` now, disclosed, not a
+silently-tolerated regression).
+
+**Live-verified** (headless Chrome, CDP, screenshots actually viewed, not just captured): hourglass generate on
+a real 7x9" board (desktop 1400x1000) — silhouette + correctly-clipped rails/ties/nodes, confirmed both visually
+and via DOM attribute readout; preset switch to Bottle — correct neck-to-body S-curve silhouette, correctly
+re-clipped fill; segment 0 set to Kink — visible sharp vertex at the expected corner; box Lattice panel, same
+session — confirmed NO Boundary/Ending/Border section present, previous tool's own fill left untouched on
+canvas; mobile 390x844 viewport — drawer opens to the Shape Lattice tab (confirms the generalized `TOOL_PANELS`
+tab-tracking actually works, not just declared), panel scrollable, Generate/Detach-all reachable, fill still
+correct at this viewport too; Widths row screenshotted in both linked and unlinked states (the amendment's own
+explicit ask). Zero console errors/warnings across the whole run (Log+Runtime domain listeners attached, not
+just "didn't crash"). Screenshots saved to this session's own scratchpad (`t58-01`..`t58-09`), not committed.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed. `reference/` confirmed still untracked, left alone.
+

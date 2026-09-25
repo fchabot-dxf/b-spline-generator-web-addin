@@ -1443,6 +1443,7 @@
                auto-nodes mark the ends and crossings. A bare click does
                nothing — Circle (above) is the node tool. -->
           <button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row = rail, along a column = tie. A bare click does nothing — use Circle for a manual node." data-key="k"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M4 8h16M4 16h16M9 4v16M15 4v16"/></svg></button>
+          <button id="toolShapeLattice" class="tool-btn" title="Shape Lattice (H) — generate or pick a silhouette, edit its per-segment style, then fill it like the Lattice tool." data-key="h"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M7 4h10M7 20h10M7 4c0 5.5 5 6 5 8s-5 2.5-5 8M17 4c0 5.5-5 6-5 8s5 2.5 5 8"/></svg></button>
           <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
           <!-- Vector eraser: drag a stroke to clip filled shapes and
                split open strokes. Width follows the sidebar stroke
@@ -1759,67 +1760,45 @@
                  buttons; min/step stay on the input for programmatic
                  adjustment (e.g. up/down arrow keys), just with no
                  injected button UI eating the width. -->
+            <!-- T58 ADD-ON (Fred: "I normally want ties and rails to be
+                 the same width"): linked (default) shows ONE "Rails &
+                 ties" stepper; the chain toggle unlinks back to today's
+                 separate Rails/Ties pair. Node size is always its own
+                 stepper (Nodes keep their own size, unaffected). -->
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Widths</span>
-              <div style="display:flex; gap:6px;">
-                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
-                  <input id="latticeWidthRails" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+              <div style="display:flex; gap:6px; align-items:flex-end;">
+                <div id="latticeWidthUnlinkedFields" style="display:none; gap:6px; flex:2;">
+                  <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
+                    <input id="latticeWidthRails" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                  </label>
+                  <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
+                    <input id="latticeWidthTies" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                  </label>
+                </div>
+                <label id="latticeWidthLinkedRow" class="no-stepper" style="flex:2; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails &amp; ties
+                  <input id="latticeWidthLinked" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                 </label>
-                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
-                  <input id="latticeWidthTies" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
-                </label>
+                <button type="button" id="latticeWidthLinkToggle" class="editor-fillmode-btn active" title="Rails and ties share one width — click to set them separately" style="width:24px; height:22px; flex-shrink:0; padding:0;">&#128279;</button>
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Node size
                   <input id="latticeWidthNodes" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                 </label>
               </div>
             </div>
 
-            <!-- T49 (SE13 Slice 3): Boundary mode — "Board | Shape" toggle
-                 (same segmented shape as Orientation just above, same
-                 tier: a settings field, not a primary mode switch, so it
-                 stays 24px under pointer:coarse rather than the 44px
-                 #latticeAddKindGroup gets — see styles/editor.css's own
-                 comment on that choice). Board/Shape only takes effect on
-                 the next Generate/Regenerate, like every other structural
-                 field in this panel. -->
-            <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Boundary</span>
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
-                <button type="button" id="latticeBoundaryBoard" class="editor-fillmode-btn active" style="flex:1;" title="Fill the whole board rectangle">Board</button>
-                <button type="button" id="latticeBoundaryShape" class="editor-fillmode-btn" style="flex:1;" title="Fill a picked shape's own outline">Shape</button>
-              </div>
-              <div style="display:flex; gap:6px; align-items:center;">
-                <button type="button" id="latticePickShape" style="flex:1; height:26px; font-size:11px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Pick shape…</button>
-                <span id="latticeBoundaryStatus" style="font-size:10px; color:#666; flex:1;">No shape picked</span>
-              </div>
-            </div>
-
-            <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Ending</span>
-              <select id="latticeEndRule" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-            </div>
-
-            <!-- MOB2: latticeBorderEnabled needs the same 32px pointer:coarse
-                 touch-target rule the Nodes checkboxes already have
-                 (styles/editor.css, ID-specific — added there too, not
-                 just here, since that rule doesn't match by class). -->
-            <div style="display:flex; flex-direction:column; gap:4px;">
-              <span style="font-weight:600;">Border</span>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="latticeBorderEnabled" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> draw boundary
-              </label>
-              <div style="display:flex; gap:6px;">
-                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
-                  <input id="latticeBorderWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-                </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">color
-                  <div style="display:flex; gap:4px; width:100%;">
-                    <button id="latticeBorderColor" type="button" title="Border color" aria-label="Border color" aria-haspopup="true" aria-expanded="false" style="flex:1; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
-                    <button id="latticeBorderColorAuto" type="button" class="editor-fillmode-btn active" title="Inherit the boundary shape's own stroke" style="height:22px; font-size:9px; padding:0 4px;">auto</button>
-                  </div>
-                </label>
-              </div>
-            </div>
+            <!-- T58 (SE14 Slice 3): the Boundary/Ending/Border section that
+                 used to live here MOVED to the new Shape Lattice tool's own
+                 panel (#editorShapeLatticePanel below) — "the box # Lattice
+                 loses its Boundary row" (NEXT-SESSION-lane-b.md's own T58
+                 dispatch). This tool's own Generate never reads/writes
+                 PATTERN.extent/PATTERN.boundary at all now (see
+                 properties-lattice.js's own readFieldsIntoPattern) — an
+                 EXISTING layer that had extent.mode:'boundary' from before
+                 this split keeps that data untouched (Fred's own ruling,
+                 SE14-SHAPE-LATTICE-DESIGN.md, "Fred 2026-09-25": "handed to
+                 the Shape Lattice tool (settings kept), not reverted to
+                 board") — switching that SAME layer to the new tool picks
+                 up right where it left off. -->
 
             <!-- SE7g (Fred: "the generate button needs to automatically
                  use a new seed"): Generate/Regenerate now rolls a fresh
@@ -1856,6 +1835,255 @@
                  is a real, literal, already-working color. -->
             <button id="latticeGenerate" type="button" class="cad-btn cad-btn-primary" style="height:32px; border-radius:3px; font-weight:700; cursor:pointer;">Generate</button>
             <button id="latticeDetachAll" type="button" style="height:28px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Detach all</button>
+          </div>
+        </aside>
+
+        <!-- T58 (SE14 Slice 3): the Shape Lattice tool's own panel — a
+             generated/picked silhouette (Shape), per-segment style
+             (Segments), then the SAME Fill controls the box Lattice panel
+             above has (Grid & rails/Ties/Nodes/Colors/Widths, ids prefixed
+             shapeLattice* to stay unique), plus the Boundary/Ending/Border
+             section this tool now OWNS (moved from the box Lattice panel,
+             minus the Board/Shape toggle — this tool is ALWAYS boundary
+             mode). Same MOB3 collapsible-section shape as #editorLatticePanel
+             (a bold-span-first-child direct child of #editorShapeLatticePanelBody
+             becomes collapsible for free, editor-drawer.js). -->
+        <aside class="editor-lattice-panel hidden" id="editorShapeLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
+          <div id="editorShapeLatticePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; width:100%; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666;">
+            <span>Shape Lattice</span>
+          </div>
+
+          <div id="editorShapeLatticePanelBody" style="display:flex; flex-direction:column; gap:10px;">
+            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Shape</span>
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="shapePresetHourglass" class="editor-fillmode-btn active" style="flex:1;" title="An hourglass silhouette">Hourglass</button>
+                <button type="button" id="shapePresetBottle" class="editor-fillmode-btn" style="flex:1;" title="A bottle silhouette">Bottle</button>
+              </div>
+              <div style="display:flex; gap:6px; align-items:flex-end;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">seed
+                  <input id="shapeSeed" type="number" step="1" value="42" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <button type="button" id="shapeReroll" title="Roll a new seed and regenerate" style="height:26px; width:26px; flex-shrink:0; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">🎲</button>
+              </div>
+              <!-- Hourglass params. -->
+              <label id="shapeParamRow-waistReach" style="display:flex; flex-direction:column; gap:2px;">waist reach
+                <input id="shapeParam-waistReach" type="range" min="0.05" max="0.92" step="0.01" value="0.55" style="width:100%; height:22px;">
+              </label>
+              <label id="shapeParamRow-cornerRadius" style="display:flex; flex-direction:column; gap:2px;">corner radius
+                <input id="shapeParam-cornerRadius" type="range" min="0.04" max="0.6" step="0.01" value="0.22" style="width:100%; height:22px;">
+              </label>
+              <label id="shapeParamRow-waistCenterY" style="display:flex; flex-direction:column; gap:2px;">waist position
+                <input id="shapeParam-waistCenterY" type="range" min="-0.6" max="0.6" step="0.01" value="0" style="width:100%; height:22px;">
+              </label>
+              <!-- Bottle params. -->
+              <label id="shapeParamRow-neckWidth" style="display:none; flex-direction:column; gap:2px;">neck width
+                <input id="shapeParam-neckWidth" type="range" min="0.05" max="0.85" step="0.01" value="0.5" style="width:100%; height:22px;">
+              </label>
+              <label id="shapeParamRow-bodyWidth" style="display:none; flex-direction:column; gap:2px;">body width
+                <input id="shapeParam-bodyWidth" type="range" min="0.1" max="0.98" step="0.01" value="0.92" style="width:100%; height:22px;">
+              </label>
+              <label id="shapeParamRow-skeletonX" style="display:none; flex-direction:column; gap:2px;">S-curve tightness
+                <input id="shapeParam-skeletonX" type="range" min="0.1" max="0.95" step="0.01" value="0.72" style="width:100%; height:22px;">
+              </label>
+              <label id="shapeParamRow-neckLength" style="display:none; flex-direction:column; gap:2px;">neck length
+                <input id="shapeParam-neckLength" type="range" min="0.08" max="0.85" step="0.01" value="0.32" style="width:100%; height:22px;">
+              </label>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Segments</span>
+              <select id="shapeSegmentIndex" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="shapeSegStyleStraight" class="editor-fillmode-btn active" style="flex:1;" title="No arc">Straight</button>
+                <button type="button" id="shapeSegStyleCurve" class="editor-fillmode-btn" style="flex:1;" title="A circular arc">Curve</button>
+                <button type="button" id="shapeSegStyleKink" class="editor-fillmode-btn" style="flex:1;" title="A sharp offset vertex">Kink</button>
+              </div>
+              <div id="shapeSegCurveFields" style="display:none; flex-direction:column; gap:3px;">
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                  <button type="button" id="shapeSegDirOut" class="editor-fillmode-btn active" style="flex:1;" title="Bulges away from the centerline">Out</button>
+                  <button type="button" id="shapeSegDirIn" class="editor-fillmode-btn" style="flex:1;" title="Bulges toward the centerline">In</button>
+                </div>
+                <label style="display:flex; flex-direction:column; gap:2px;">bulge
+                  <input id="shapeSegBulge" type="range" min="0" max="0.99" step="0.01" value="0.5" style="width:100%; height:22px;">
+                </label>
+              </div>
+              <span style="font-size:9px; color:#888;">Mirrored side updates together.</span>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Grid &amp; rails</span>
+              <label style="display:flex; flex-direction:column; gap:3px;">Spacing
+                <select id="shapeLatticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+              </label>
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
+                <button type="button" id="shapeLatticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
+              </div>
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="shapeLatticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
+                <button type="button" id="shapeLatticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
+              </div>
+              <div id="shapeLatticeRailsCountFields" style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
+                  <input id="shapeLatticeRailsCountMin" type="number" min="1" step="1" value="6" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count max
+                  <input id="shapeLatticeRailsCountMax" type="number" min="1" step="1" value="7" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+              <div id="shapeLatticeRailsEveryFields" style="display:none; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
+                  <input id="shapeLatticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">offset
+                  <input id="shapeLatticeRailsOffset" type="number" min="0" step="1" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Ties</span>
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="shapeLatticeTiesModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded tie count on distinct columns">Count</button>
+                <button type="button" id="shapeLatticeTiesModeDensity" class="editor-fillmode-btn" style="flex:1;" title="Random density + span, snapping toward rails">Density</button>
+              </div>
+              <div id="shapeLatticeTiesCountFields" style="display:flex; flex-direction:column; gap:6px;">
+                <div style="display:flex; gap:6px;">
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
+                    <input id="shapeLatticeTiesCountMin" type="number" min="1" step="1" value="8" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count max
+                    <input id="shapeLatticeTiesCountMax" type="number" min="1" step="1" value="13" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                </div>
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                  <button type="button" id="shapeLatticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
+                  <button type="button" id="shapeLatticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
+                </div>
+              </div>
+              <div id="shapeLatticeTiesDensityFields" style="display:none; flex-direction:column; gap:3px;">
+                <label style="display:flex; flex-direction:column; gap:2px;">density
+                  <input id="shapeLatticeTiesDensity" type="range" min="0" max="1" step="0.05" value="0.4" style="width:100%; height:26px;">
+                </label>
+                <div style="display:flex; gap:6px;">
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span min
+                    <input id="shapeLatticeTiesSpanMin" type="number" min="1" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span max
+                    <input id="shapeLatticeTiesSpanMax" type="number" min="1" step="1" value="3" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                </div>
+                <label style="display:flex; flex-direction:column; gap:2px;">anchor
+                  <select id="shapeLatticeTiesAnchor" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
+                    <option value="free" selected>Free (snaps to rails)</option>
+                    <option value="rails">Between rails (strict)</option>
+                  </select>
+                </label>
+                <label style="display:flex; flex-direction:column; gap:2px;">snap to rails within N rows
+                  <input id="shapeLatticeTiesRailSnapRows" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Nodes</span>
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="shapeLatticeNodesEnds" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at tie ends
+              </label>
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="shapeLatticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at crossings
+              </label>
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="shapeLatticeNodesRailEnds" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> at rail ends
+              </label>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Colors</span>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
+                  <button id="shapeLatticeColorRails" type="button" title="Rails color" aria-label="Rails color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
+                  <button id="shapeLatticeColorTies" type="button" title="Ties color" aria-label="Ties color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Nodes
+                  <button id="shapeLatticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
+              </div>
+            </div>
+
+            <!-- T58 ADD-ON: same linked-widths row as the box Lattice
+                 panel above (SHARED contract, not a second design). -->
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Widths</span>
+              <div style="display:flex; gap:6px; align-items:flex-end;">
+                <div id="shapeLatticeWidthUnlinkedFields" style="display:none; gap:6px; flex:2;">
+                  <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
+                    <input id="shapeLatticeWidthRails" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                  </label>
+                  <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
+                    <input id="shapeLatticeWidthTies" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                  </label>
+                </div>
+                <label id="shapeLatticeWidthLinkedRow" class="no-stepper" style="flex:2; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails &amp; ties
+                  <input id="shapeLatticeWidthLinked" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                </label>
+                <button type="button" id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active" title="Rails and ties share one width — click to set them separately" style="width:24px; height:22px; flex-shrink:0; padding:0;">&#128279;</button>
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Node size
+                  <input id="shapeLatticeWidthNodes" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                </label>
+              </div>
+            </div>
+
+            <!-- T58: this tool's own Boundary/Ending/Border section — moved
+                 from the box Lattice panel, minus the Board/Shape toggle
+                 (this tool is ALWAYS boundary mode: "Pick shape…" lets it
+                 fill a HAND-drawn shape instead of the generated one, same
+                 T49 mechanism, unchanged). -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Boundary</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" id="shapeLatticePickShape" style="flex:1; height:26px; font-size:11px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Pick shape…</button>
+                <span id="shapeLatticeBoundaryStatus" style="font-size:10px; color:#666; flex:1;">No shape picked</span>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Ending</span>
+              <select id="shapeLatticeEndRule" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Border</span>
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="shapeLatticeBorderEnabled" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> draw boundary
+              </label>
+              <div style="display:flex; gap:6px;">
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
+                  <input id="shapeLatticeBorderWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">color
+                  <div style="display:flex; gap:4px; width:100%;">
+                    <button id="shapeLatticeBorderColor" type="button" title="Border color" aria-label="Border color" aria-haspopup="true" aria-expanded="false" style="flex:1; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                    <button id="shapeLatticeBorderColorAuto" type="button" class="editor-fillmode-btn active" title="Inherit the boundary shape's own stroke" style="height:22px; font-size:9px; padding:0 4px;">auto</button>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Fill seed</span>
+              <label style="display:flex; flex-direction:column; gap:3px;">
+                <input id="shapeLatticeSeed" type="number" step="1" value="42" title="Generate picks a new fill seed each time" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
+              </label>
+            </div>
+          </div>
+
+          <div id="editorShapeLatticePanelFooter" style="display:flex; flex-direction:column; gap:10px;">
+            <button id="shapeLatticeGenerate" type="button" class="cad-btn cad-btn-primary" style="height:32px; border-radius:3px; font-weight:700; cursor:pointer;">Generate</button>
+            <button id="shapeLatticeDetachAll" type="button" style="height:28px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Detach all</button>
           </div>
         </aside>
 

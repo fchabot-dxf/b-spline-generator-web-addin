@@ -2,6 +2,7 @@ import { initShapeProperties } from './properties-shape.js';
 import { initTextProperties } from './properties-text.js';
 import { initExpandProperties } from './properties-expand.js';
 import { initLatticeProperties } from './properties-lattice.js';
+import { initShapeLatticeProperties } from './properties-shape-lattice.js';
 import { initTouchActionsProperties } from './properties-touch-actions.js';
 import { registerEditorTools } from './tools/index.js';
 
@@ -16,6 +17,7 @@ function setupEditorToolbar(editor) {
     initTextProperties(editor);
     initExpandProperties(editor);
     initLatticeProperties(editor); // SE7b slice 3
+    initShapeLatticeProperties(editor); // T58 (SE14 Slice 3)
     initTouchActionsProperties(editor); // SE7m
 }
 

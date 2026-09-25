@@ -376,20 +376,21 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
   });
 });
 
-/** T49: a stand-alone `.attr()`-only element -- the same plain-adapter
- *  contract every SE13 test file uses (mockEl elsewhere), enough for
- *  stampBoundaryRef (reads/writes one attribute) without needing a real
- *  sketchLayer-hosted element. */
-function mockPickTarget(attrs = {}) {
-  const store = { ...attrs };
-  return { attr: (k, ...rest) => (rest.length === 0 ? store[k] : (store[k] = rest[0], undefined)) };
-}
+// T58 (SE14 Slice 3): the "Boundary / Ending / Border panel" describe
+// block that used to live here MOVED to tests/properties-shape-lattice.
+// test.js — that UI is no longer part of this tool's own panel at all
+// ("the box # Lattice loses its Boundary row").
 
-function flush() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-describe('initLatticeProperties (T49, SE13 Slice 3): Boundary / Ending / Border panel', () => {
+/**
+ * T58 ADD-ON (mid-task amendment, Fred: "I normally want ties and rails
+ * to be the same width") — widths.linkRailsTies, default true for a
+ * brand-new layer. Linked: one "Rails & ties" stepper sets both together
+ * (live re-width, ONE undo step). Unlinked: today's separate Rails/Ties
+ * steppers. Migration: an existing saved pattern (no `linkRailsTies` key
+ * at all) infers linked ONLY when its own rails/ties already happen to be
+ * equal — a differing pair loads unlinked, "no silent change".
+ */
+describe('initLatticeProperties (T58 ADD-ON): linked Rails & ties width', () => {
   let container, editor;
 
   beforeEach(() => {
@@ -401,17 +402,13 @@ describe('initLatticeProperties (T49, SE13 Slice 3): Boundary / Ending / Border 
       <button id="latticeGenerate"></button>
       <button id="latticeDetachAll"></button>
       <button id="toolLattice"></button>
-      <div role="group">
-        <button id="latticeBoundaryBoard" class="editor-fillmode-btn active"></button>
-        <button id="latticeBoundaryShape" class="editor-fillmode-btn"></button>
+      <div id="latticeWidthUnlinkedFields" style="display:none;">
+        <input id="latticeWidthRails" type="number">
+        <input id="latticeWidthTies" type="number">
       </div>
-      <button id="latticePickShape"></button>
-      <span id="latticeBoundaryStatus"></span>
-      <select id="latticeEndRule"></select>
-      <input id="latticeBorderEnabled" type="checkbox">
-      <input id="latticeBorderWidth" type="number">
-      <button id="latticeBorderColor"></button>
-      <button id="latticeBorderColorAuto" class="editor-fillmode-btn active"></button>
+      <label id="latticeWidthLinkedRow"><input id="latticeWidthLinked" type="number"></label>
+      <button id="latticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
+      <input id="latticeWidthNodes" type="number">
     `;
     document.body.appendChild(container);
     editor = makeMockEditor();
@@ -419,89 +416,69 @@ describe('initLatticeProperties (T49, SE13 Slice 3): Boundary / Ending / Border 
 
   afterEach(() => {
     container.remove();
-    document.querySelectorAll('.color-mosaic-popover').forEach((p) => p.remove());
   });
 
-  it('Board is active by default; clicking Shape then Generate writes extent.mode = "boundary"', async () => {
+  it('linked by default on a brand-new pattern: the combined stepper shows, the separate pair is hidden', () => {
     initLatticeProperties(editor);
-    expect(document.getElementById('latticeBoundaryBoard').classList.contains('active')).toBe(true);
-    document.getElementById('latticeBoundaryShape').click();
-    expect(document.getElementById('latticeBoundaryShape').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeWidthLinkToggle').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeWidthLinkedRow').style.display).not.toBe('none');
+    expect(document.getElementById('latticeWidthUnlinkedFields').style.display).toBe('none');
+    expect(document.getElementById('latticeWidthLinked').value).toBe(String(PATTERN_DEFAULTS.widths.rails));
+  });
+
+  it('Generate writes the combined stepper\'s value into BOTH widths.rails and widths.ties, plus linkRailsTies:true', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeWidthLinked').value = '0.12';
     document.getElementById('latticeGenerate').click();
-    await flush();
-    expect(activeLayerPattern(editor).extent).toEqual({ mode: 'boundary' });
+    const widths = activeLayerPattern(editor).widths;
+    expect(widths.rails).toBe(0.12);
+    expect(widths.ties).toBe(0.12);
+    expect(widths.linkRailsTies).toBe(true);
   });
 
-  it('the Ending select is populated from the 4 declared rules and defaults to "inset"', () => {
+  it('non-vacuous: editing the combined stepper LIVE re-widths BOTH already-owned rails and ties, in exactly ONE undo step', () => {
     initLatticeProperties(editor);
-    const select = document.getElementById('latticeEndRule');
-    const values = Array.from(select.options).map((o) => o.value);
-    expect(values).toEqual(['on-boundary', 'inset', 'joint', 'loose']);
-    expect(select.value).toBe('inset');
+    document.getElementById('latticeGenerate').click(); // create owned rails/ties first
+    let pushCount = 0;
+    editor.pushState = () => { pushCount++; };
+
+    document.getElementById('latticeWidthLinked').value = '0.2';
+    document.getElementById('latticeWidthLinked').dispatchEvent(new Event('change'));
+
+    const rail = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    const tie = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'tie');
+    expect(rail.attr('stroke-width')).toBe(0.2);
+    expect(tie.attr('stroke-width')).toBe(0.2);
+    expect(pushCount).toBe(1); // ONE undo step for BOTH kinds, not two
   });
 
-  it('Pick shape arms editor._boundaryPickCallback; invoking it stamps data-boundary-ref, sets PATTERN.boundary.shapeId, and switches to Shape mode', () => {
+  it('clicking the chain toggle unlinks: the separate Rails/Ties steppers reappear, with NO value change', () => {
     initLatticeProperties(editor);
-    document.getElementById('latticePickShape').click();
-    expect(typeof editor._boundaryPickCallback).toBe('function');
-
-    const target = mockPickTarget();
-    expect(target.attr('data-boundary-ref')).toBeUndefined();
-    editor._boundaryPickCallback(target);
-
-    const id = target.attr('data-boundary-ref');
-    expect(id).toBeTruthy();
-    expect(activeLayerPattern(editor).boundary.shapeId).toBe(id);
-    expect(document.getElementById('latticeBoundaryShape').classList.contains('active')).toBe(true);
-    expect(document.getElementById('latticeBoundaryStatus').textContent).toMatch(/linked/i);
-  });
-
-  it('picking the SAME already-stamped element again reuses its existing id (idempotent, no re-stamp)', () => {
-    initLatticeProperties(editor);
-    const target = mockPickTarget({ 'data-boundary-ref': 'b-existing' });
-    document.getElementById('latticePickShape').click();
-    editor._boundaryPickCallback(target);
-    expect(target.attr('data-boundary-ref')).toBe('b-existing');
-    expect(activeLayerPattern(editor).boundary.shapeId).toBe('b-existing');
-  });
-
-  it('a click on empty canvas (no hit) cancels the pick without touching PATTERN.boundary', () => {
-    initLatticeProperties(editor);
-    document.getElementById('latticePickShape').click();
-    editor._boundaryPickCallback(null);
-    expect(document.getElementById('latticeBoundaryStatus').textContent).toMatch(/cancel/i);
-    expect(activeLayerPattern(editor)?.boundary?.shapeId ?? null).toBeNull();
-  });
-
-  it('Border enabled/width checkboxes write PATTERN.boundary.border on Generate', async () => {
-    initLatticeProperties(editor);
-    document.getElementById('latticeBorderEnabled').checked = true;
-    document.getElementById('latticeBorderWidth').value = '0.1';
     document.getElementById('latticeGenerate').click();
-    await flush();
-    const border = activeLayerPattern(editor).boundary.border;
-    expect(border.enabled).toBe(true);
-    expect(border.width).toBe(0.1);
+    document.getElementById('latticeWidthLinkToggle').click();
+    expect(document.getElementById('latticeWidthLinkToggle').classList.contains('active')).toBe(false);
+    expect(document.getElementById('latticeWidthUnlinkedFields').style.display).not.toBe('none');
+    expect(document.getElementById('latticeWidthLinkedRow').style.display).toBe('none');
+    expect(activeLayerPattern(editor).widths.rails).toBe(activeLayerPattern(editor).widths.ties); // unchanged, still equal
   });
 
-  it('an empty Border width field means "auto" (null), not 0 or NaN', async () => {
+  it('an EXISTING pattern with rails !== ties (no linkRailsTies key) loads UNLINKED — "no silent change"', () => {
+    editor._layers[0].pattern = {
+      ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
+      widths: { rails: 0.1, ties: 0.04, nodeRadius: 0.075 }, // no linkRailsTies key at all — a pre-T58 saved pattern
+    };
     initLatticeProperties(editor);
-    document.getElementById('latticeBorderEnabled').checked = true;
-    document.getElementById('latticeGenerate').click();
-    await flush();
-    expect(activeLayerPattern(editor).boundary.border.width).toBeNull();
+    expect(document.getElementById('latticeWidthLinkToggle').classList.contains('active')).toBe(false);
+    expect(document.getElementById('latticeWidthUnlinkedFields').style.display).not.toBe('none');
   });
 
-  it('the Border color swatch: picking a color sets an explicit override; clicking "auto" resets it to null', () => {
+  it('an EXISTING pattern with rails === ties (no linkRailsTies key) loads LINKED', () => {
+    editor._layers[0].pattern = {
+      ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
+      widths: { rails: 0.08, ties: 0.08, nodeRadius: 0.075 },
+    };
     initLatticeProperties(editor);
-    document.getElementById('latticeBorderColor').click();
-    const targetHex = '#1a237e';
-    document.querySelector(`.color-mosaic-cell[title="${targetHex}"]`).click();
-    expect(activeLayerPattern(editor).boundary.border.color).toBe(targetHex);
-    expect(document.getElementById('latticeBorderColorAuto').classList.contains('active')).toBe(false);
-
-    document.getElementById('latticeBorderColorAuto').click();
-    expect(activeLayerPattern(editor).boundary.border.color).toBeNull();
-    expect(document.getElementById('latticeBorderColorAuto').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeWidthLinkToggle').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeWidthLinked').value).toBe('0.08');
   });
 });

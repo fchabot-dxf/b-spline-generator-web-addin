@@ -17,9 +17,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  generateSilhouette, PRESETS, ALL_STYLES, WIRED_STYLES,
+  generateSilhouette, PRESETS, ALL_STYLES, WIRED_STYLES, primitivesToPathD,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { _arcWorldPointTangent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-expand-path.js';
+import { shapeToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 const REGIONS = [
   { x: 0, y: 0, w: 200, h: 300 }, // portrait
@@ -234,5 +235,94 @@ describe('generateSilhouette — declared preset table (T55)', () => {
   it('defaults to hourglass when shape.preset is omitted', () => {
     const out = generateSilhouette(REGIONS[0], {});
     expect(out.preset).toBe('hourglass');
+  });
+});
+
+// T58 (SE14 Slice 3): primitivesToPathD — the ONE new piece of geometry
+// this turn adds to this module (everything else already existed as of
+// T55). Round-tripped through `shapeToPrimitives` (editor-lattice-
+// boundary.js), the SAME already-trusted parser the fill engine itself
+// uses to consume a boundary `<path>`'s own `d` — a genuine independent
+// oracle, not a re-check of this function's own internal math.
+function samplePoint(prim, t) {
+  if (prim.type === 'L') {
+    return { x: prim.p0.x + (prim.p1.x - prim.p0.x) * t, y: prim.p0.y + (prim.p1.y - prim.p0.y) * t };
+  }
+  return _arcWorldPointTangent(prim.cx, prim.cy, prim.rx, prim.ry, prim.phi, prim.theta1 + prim.dTheta * t).point;
+}
+function sampleAll(primitives, samplesPerPrim = 5) {
+  const pts = [];
+  for (const prim of primitives) {
+    for (let i = 0; i <= samplesPerPrim; i++) pts.push(samplePoint(prim, i / samplesPerPrim));
+  }
+  return pts;
+}
+async function roundTripPrimitives(d) {
+  return shapeToPrimitives({ type: 'path', attr: (k) => (k === 'd' ? d : undefined) });
+}
+
+// A real board-scale region (inches, matching properties-shape-lattice.
+// js's own _boardRegion) rather than REGIONS[0]'s own 200x300 arbitrary
+// scale used elsewhere in this file — primitivesToPathD's own `_fmt`
+// rounds to 3 DECIMALS (an ABSOLUTE amount), not 3 SIGNIFICANT FIGURES,
+// so the round-trip's own achievable precision scales with the shape's
+// size: at real usage scale the rounding is negligible (<0.001"), but at
+// REGIONS[0]'s 200-300 scale the SAME absolute rounding, compounded
+// through the arc endpoint<->center reconstruction (measurably more
+// sensitive near hourglass's own EXACT semicircle/quarter-circle
+// invariants, T55's own proven property), produced up to ~0.09 of
+// drift — a real, measured artifact of testing serialization precision
+// at the wrong scale, not a defect in the serializer itself.
+const D_ROUNDTRIP_REGION = { x: 0, y: 0, w: 6, h: 9 };
+
+describe.each(PRESET_NAMES)('primitivesToPathD(%s) — round-trips through shapeToPrimitives (T58)', (preset) => {
+  it('the SAME geometry comes back: sampled points along every original primitive match the reparsed ones', async () => {
+    const { primitives } = generateSilhouette(D_ROUNDTRIP_REGION, { preset });
+    const d = primitivesToPathD(primitives);
+    const reparsed = await roundTripPrimitives(d);
+    expect(reparsed.length).toBe(primitives.length);
+
+    const before = sampleAll(primitives);
+    const after = sampleAll(reparsed);
+    expect(after.length).toBe(before.length);
+    for (let i = 0; i < before.length; i++) {
+      // Precision 2 (tolerance 0.005): _fmt's own declared 3-decimal
+      // rounding gives up to ~5e-4 error per COORDINATE, and the arc
+      // endpoint<->center reconstruction combines error from BOTH
+      // endpoints (measured up to ~6e-4 at this scale) — precision 3
+      // (5e-4) cut it too close; precision 2 leaves real margin while
+      // still being tight relative to this realistic board-inches scale.
+      expect(after[i].x).toBeCloseTo(before[i].x, 2);
+      expect(after[i].y).toBeCloseTo(before[i].y, 2);
+    }
+  });
+
+  it('non-vacuous: a corrupted sweep flag (mutating the OWN serializer, not the test) is actually caught by this check', async () => {
+    // Reproduces the exact bug this test would catch: flip the emitted
+    // sweep flag for arcs, exactly the kind of one-bit transcription
+    // error `dTheta > 0 ? 1 : 0` could silently invert. A flipped sweep
+    // draws the OTHER arc through the same two endpoints — same start/end
+    // points, different midpoint — so the round-trip byte-count check
+    // above would NOT catch it, but the point-sampling check must.
+    const { primitives } = generateSilhouette(D_ROUNDTRIP_REGION, { preset });
+    const hasArc = primitives.some((p) => p.type === 'A');
+    expect(hasArc).toBe(true); // sanity: this preset actually exercises the arc path
+    const d = primitivesToPathD(primitives);
+    const corruptedD = d.replace(/A ([\d.-]+) ([\d.-]+) ([\d.-]+) (\d) (\d) /g, (m, rx, ry, phi, largeArc, sweep) =>
+      `A ${rx} ${ry} ${phi} ${largeArc} ${1 - Number(sweep)} `
+    );
+    expect(corruptedD).not.toBe(d); // sanity: the corruption actually changed something
+    const reparsed = await roundTripPrimitives(corruptedD);
+    const before = sampleAll(primitives);
+    const after = sampleAll(reparsed);
+    const anyMidpointMoved = before.some((pt, i) => Math.abs(pt.x - after[i].x) > 1e-4 || Math.abs(pt.y - after[i].y) > 1e-4);
+    expect(anyMidpointMoved).toBe(true);
+  });
+});
+
+describe('primitivesToPathD — degenerate input', () => {
+  it('an empty primitive list serializes to an empty string', () => {
+    expect(primitivesToPathD([])).toBe('');
+    expect(primitivesToPathD(null)).toBe('');
   });
 });
