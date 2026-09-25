@@ -4587,3 +4587,97 @@ Amendments polled clean (`handoff.py amendments --role worker`) before committin
 before passing. Committed by explicit path (6 files: `editor/editor-expand-path.js`,
 `editor/editor-expand-text.js`, `editor/editor-outline-preview.js`, `tests/editor-expand-path.test.js`,
 `tests/editor-outline-preview.test.js`, `tests/editor-outline-preview-triggers.test.js`) — pushed.
+
+## Lane B — Turn 101 — T41: text outline vs. drawn text mismatch — root cause found and fixed — DONE
+
+**The advisor's own catch, confirmed by re-measuring, not just trusted.** T40's own `t40-text-word.png`
+showed the outline sitting OFF the black glyphs — exactly as the advisor's own pixel measurements (from
+that same screenshot) predicted. Re-measured independently before touching anything: created the SAME
+`<text>` element live, read `getComputedStyle(node).fontFamily` — **"Inter, -apple-system,
+BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif"** — NOT "Arial", despite `font-family="Arial"` being set
+on the element. The browser was never rendering the chosen font AT ALL, for ANY text element, ever.
+
+**Root cause, found by measuring not reasoning, per the dispatch's own instruction.** `base.css` (loaded on
+EVERY page) has:
+```css
+* { font-family: inherit; }
+html, body { font-family: var(--cad-font-family); /* 'Inter', -apple-system, ... */ }
+```
+`svg.js`'s `.font({family})` sets `font-family="Arial"` as a plain SVG PRESENTATION ATTRIBUTE (confirmed:
+`node.hasAttribute('style')` was `false` on a freshly-created text element — `.font()` writes ONLY the
+attribute, never an inline style). Presentation attributes carry the LOWEST possible CSS specificity —
+weaker than literally any stylesheet rule, even a bare `*` selector — so the app-wide reset always won,
+silently substituting the UI's own Inter/system-sans stack for EVERY font choice, on EVERY text element,
+since this app has existed. This is why T40's own test didn't catch it: it compared the outline against
+opentype's OWN path (which reads the attribute directly, bypassing CSS/DOM rendering entirely, so it was
+ALWAYS correct) — never against what the BROWSER actually painted on screen, which is the thing a user
+actually looks at.
+
+**Which side was actually wrong — the important reframe.** The dispatch worried carve might be wrong (using
+a DIFFERENT font/size/spacing than what's drawn). Measuring showed the OPPOSITE: `textGlyphPathD`
+(Expand/carve/T40's own outline, all opentype-based) was ALWAYS correct — reading the CORRECT chosen
+font's REAL metrics, unaffected by CSS. It was the LIVE, ON-SCREEN `<text>` render that was wrong, for
+every font choice, this whole time — a real, pre-existing, independently-confirmed product bug T40's own
+outline work happened to expose (T40 didn't introduce it; the outline preview is simply the first feature
+that ever compared the two against each other).
+
+**Already half-discovered and worked around — for ONE narrow case.** `insertSymbol`
+(`editor-text-style.js`) already sets `editor._editingTextEl.node.style.fontFamily = appliedFamily` directly
+alongside its own `.font({family})` call, with a comment explaining exactly why (symbol fonts rendering as
+the wrong glyphs would be immediately, visibly obvious — Wingdings showing as Latin letters is impossible to
+miss — while Arial silently rendering as a similar-looking sans-serif is not). This is DIRECT, strong
+evidence: someone already hit this bug, for symbols specifically, and fixed it there — but the SAME fix was
+never applied to the other 3 places that set font-family (the general font picker's `setFontFamily`, and
+the initial text-creation in `startTextAt`), leaving every OTHER font choice still broken.
+
+**Fix: give font-family enough CSS specificity to survive the global reset, everywhere it's set — matches
+Fred's own stated preference ("prefer display what gets carved").** Added `.css({'font-family': family})`
+(an INLINE style, same method `startTextAt` already uses for `cursor`/`user-select` — verified merges with
+existing style properties rather than replacing them, not assumed) at the 2 remaining sites:
+`editor-text-session.js`'s `startTextAt` (initial creation) and `editor-text-style.js`'s `setFontFamily`
+(both the active-editing-element path and the multi-select fan-out). Chose to fix the LIVE RENDER to match
+what opentype/carve already correctly produce (not the reverse — changing opentype's own layout to match a
+CSS bug would mean encoding the bug INTO the manufactured output) — exactly the "display what gets carved"
+direction the dispatch itself named as preferred, and the only direction that doesn't require guessing at
+which of many possible browser font-substitution outcomes to replicate.
+
+**A real debugging detour, disclosed for the same reason every other one this session has been: measured,
+not guessed past.** The FIRST live check of the fix, through `startTextAt`'s real production code path via
+simulated keyboard events, showed the style STILL missing `font-family` — looked exactly like the fix
+hadn't taken effect. Traced systematically rather than assumed: confirmed the SERVER was serving the edited
+file (`curl`'d it directly), confirmed `.css()` genuinely merges rather than replaces (an isolated live
+test: call `.css({...3 props})`, then `.css({cursor:'pointer'})` again, checked all 3 survived), confirmed
+`editor._fontFamily` was correctly "Arial" at the moment of creation — then tested the ONE remaining
+hypothesis directly: killed and relaunched Chrome with a FRESH profile (not just `Page.navigate` +
+`Network.setCacheDisabled` on the SAME long-lived process, which turned out to be insufficient — the ES
+module registry persisted across navigations within that process regardless). On the fresh process, the fix
+worked immediately and consistently. This was a test-harness artifact from reusing one Chrome instance
+across many script invocations within a single long debugging session, not a second bug — named here so a
+future "Page.navigate should be enough" assumption doesn't cost someone else the same hour.
+
+**Live verification, per the dispatch's own test criteria (bbox/per-glyph within 0.01").** Fresh headless
+Chrome (port 9503, new profile; 0 processes before launch, 8 mine before stop). Three cases — Tahoma@1.5in,
+Georgia@3in, Arial@2in with `text-anchor:middle` (specifically to also cover anchor handling, not just
+family/size) — each: `getComputedStyle().fontFamily` correctly matches the CHOSEN family (not Inter) in
+every case; per-glyph X position (`getExtentOfChar`) compared directly against opentype.js's own
+`charToGlyph().advanceWidth`-based layout for the identical text/font/size (with the SAME anchor correction
+`textGlyphPathD` itself needs) — worst per-glyph deviation across all three cases: **0.0002"**, two orders of
+magnitude under the 0.01" threshold. Screenshot (`t41-text-fixed2.png`) shows the outline preview sitting
+EXACTLY on "Fred" letter-for-letter, including the counters in "e"/"d" — a dramatic, visible contrast against
+T40's own original mismatched screenshot. Zero console errors.
+
+**Regression test added** (`tests/editor-text-style.test.js`, new): confirms `setFontFamily` calls BOTH
+`.font({family})` (the attribute Expand/carve read) AND `.css({'font-family'})` (the inline style the live
+render needs), for both the actively-editing element and every selected `<text>` in a multi-select fan-out.
+Can't reproduce the actual CSS-cascade bug in this file's own mocked DOM (happy-dom doesn't load real
+external stylesheets, and the point IS real browser cascade behavior — this is a live-CDP-only class of bug,
+same as T40's own opentype-comparison work) — but CAN and DOES guard the actual regression risk: someone
+removing the inline-style call later. Mutation-verified: reverted `_applyFontFamilyStyle` to a no-op,
+exactly 2 failures (the two tests checking for the `.css()` call), everything else unaffected; restored,
+green again.
+
+Full vitest suite: 668/668 green.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (3 files: `editor/editor-text-session.js`,
+`editor/editor-text-style.js`, new `tests/editor-text-style.test.js`) — pushed.

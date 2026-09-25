@@ -17,11 +17,25 @@ export function initText(editor) {
     // Hidden input setup (currently a no-op — the markup is in the HTML).
 }
 
+// T41: base.css's own app-wide `* { font-family: inherit; }` reset beats
+// a plain SVG presentation attribute (the weakest possible CSS source),
+// so .font({family}) alone never actually changes what's ON SCREEN — only
+// what Expand/carve later read (they go through opentype.js directly,
+// bypassing the DOM/CSS entirely, so THEY were always correct; only the
+// live editor's own render was silently wrong for every font choice).
+// insertSymbol (below) already discovered and worked around this for
+// itself; every OTHER place that sets font-family needs the same inline
+// style (set via .css(), which has enough specificity to win).
+function _applyFontFamilyStyle(el, family) {
+    el.css({ 'font-family': family });
+}
+
 export function setFontFamily(editor, family) {
     dbg('COORD_STD', `editor-text: setFontFamily to "${family}"`);
     editor._fontFamily = family;
     if (editor._editingTextEl) {
         editor._editingTextEl.font({ family });
+        _applyFontFamilyStyle(editor._editingTextEl, family);
         const size = parseFloat(editor._editingTextEl.attr('font-size')) || editor._fontSize;
         reanchorTextY(editor._editingTextEl, family, size);
     }
@@ -31,6 +45,7 @@ export function setFontFamily(editor, family) {
     if (texts.length) {
         for (const el of texts) {
             el.font({ family });
+            _applyFontFamilyStyle(el, family);
             const size = parseFloat(el.attr('font-size')) || editor._fontSize;
             reanchorTextY(el, family, size);
         }
