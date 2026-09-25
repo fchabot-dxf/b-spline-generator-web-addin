@@ -1,26 +1,24 @@
-# NEXT (lane-b) — T58: SE14 Slice 3 — the Shape Lattice TOOL (its own full turn)
+# NEXT (lane-b) — T59: SE14 — axis-locked parametric handles + tap-a-segment style bar
 
-**Ball: worker (seat B) · epoch 2 · T58.** NO FUSION. T57 part 1 merged (ties spread — render viewed, good).
+**Ball: worker (seat B) · epoch 2 · T59.** NO FUSION. T58 reviewed + merged (d6ce767, 925 green; screenshots viewed:
+Shape Lattice tool, hourglass/bottle, fill clipped to the shape, phone drawer tab, widths link).
 
-## Mobile layout ruling (Fred, final): NO control tiers
-"The UI can be below the preview still, scrollable, and the preview can have a drag handle." → the Shape Lattice
-panel lives in the existing MOB3 drawer/panel below the canvas: ALL controls present, the panel scrolls, the splitter
-sets the split. Use collapsible sections like the box Lattice (seat A's MOB3b). Ignore the earlier CONTROL_TIERS
-amend. Per-segment style: tapping a segment on the canvas opens a small floating straight|curve|kink bar (the list can
-stay in the panel too).
-
-## Build SE14 §10 Slice 3 per the design + recorded decisions
-Own rail icon + TOOL_PANELS entry; Shape section: preset [Hourglass | Bottle] + 🎲 + the preset's sliders;
-per-side-segment style; AXIS-LOCKED PARAMETRIC HANDLES on canvas for the preset's independent params ("Slice 3 editing
-model"); Fill section = the box Lattice's controls (T56 counts, T57 spread, Widths, Colors, Ending, Border) reused, not
-retyped; Generate. The box # Lattice loses its Boundary row; old boundary layers are handed to Shape Lattice (settings
-kept). Detach on hand node-edit (recompute-and-compare). Output = ordinary path + fill.
-Verify live (CDP): pick Hourglass → Generate → screenshot desktop + 390x844; drag the waist handle → still tangent
-(sampled tangent-continuity on the live path) → screenshot; tap a segment → kink → screenshot; switch to Bottle →
-screenshot; hand node-edit → detached; Outline export → no new decline kinds. VIEW every screenshot.
-If the whole slice can't land cleanly, split at a coherent line (e.g. tool + presets + fill first, handles next) and
-say so.
+## Do (your disclosed deferrals — the design's "Slice 3 editing model")
+1. On-canvas AXIS-LOCKED PARAMETRIC HANDLES while the Shape Lattice tool is active on a generated shape: one handle
+   per preset param that has a natural on-canvas meaning (hourglass: waist reach — horizontal at the waist apex; waist
+   position — vertical; corner radius — along the corner diagonal; bottle: neck width, shoulder height, body width…).
+   Each handle moves ONLY along its param's axis, maps position → param (clamped to the declared range), regenerates
+   the path + refills on release (commit-only, like everything else), mirrored side follows. Every reachable position
+   is tangent by construction. Touch-sized under coarse pointer.
+2. Tap a side segment on the canvas → a small floating straight | curve | kink bar next to it (mirrored pair changes
+   together); the panel's segment dropdown stays and stays in sync.
+3. Detach on hand node-edit (recompute-and-compare) — confirm it's live (was it in T58? if yes, just a regression
+   test).
+## Verify
+CDP: drag the waist handle by real mouse events → path stays tangent (sampled tangent continuity on the live path),
+param value in the panel updated, one undo step; same on 390x844 with touch events; tap a segment → bar → kink →
+screenshot. VIEW every screenshot. `npx vitest run` green.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T58: Shape Lattice tool — <sha>, vitest N, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T59: handles + segment bar — <sha>, vitest N, screenshots"`
 and stop.
