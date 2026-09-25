@@ -46,6 +46,25 @@ import { arcCenterParam } from './path-layout.js';
 import { fitOffsetWithBiarcs } from './editor-expand-biarc.js';
 import { SUPPORTED_LINE_CAPS, _cubicPointTangentCurvature, _cubicOffsetPoint } from './editor-expand-analytic.js';
 
+/**
+ * T44: which stroke-linejoin values this engine can express EXACTLY at an
+ * outer corner. Declared here (not in editor-expand-analytic.js alongside
+ * SUPPORTED_LINE_CAPS) because joins are this module's own concept — a
+ * single line segment (lineOutlinePathD) has caps but no internal joins at
+ * all. All three are `true`: 'round' was the ONLY join this engine built
+ * before this turn; 'miter'/'bevel' are new, EXACT for a line-line corner
+ * (see `_outerJoinCommands`) and fall back to 'round' — not a decline —
+ * for a corner where either adjacent piece is a curve (the dispatch's own
+ * "(lines only)" scope: exact where declared, never a wrong shape
+ * elsewhere, same never-guess principle SUPPORTED_LINE_CAPS itself
+ * documents for a genuinely unbuilt cap).
+ */
+export const SUPPORTED_LINE_JOINS = Object.freeze({
+  round: true,
+  miter: true,
+  bevel: true,
+});
+
 /** Absolute-only segment shapes this module works with internally, after
  *  `_parseD` has normalized away relative commands, H/V, and S/T/Q (S/T
  *  resolved via the standard reflected-control-point construction, Q
@@ -453,6 +472,39 @@ function _roundJoinArc(vertex, pA, pB, half) {
 }
 
 /**
+ * T44: the EXACT outer-corner join for 'miter'/'bevel', lines only — a
+ * curve on either side (checked via the SAME `_lastPrimitive`/
+ * `_firstPrimitive` classification T40's inner-trim already uses) returns
+ * null so the caller falls back to the round join for that one vertex
+ * rather than guessing at a non-exact curve miter (the dispatch's own
+ * "(lines only)" scope). For 'miter', reuses `_primitiveIntersect` — T40's
+ * own inner-trim machinery — for the tip itself: two lines' offset edges
+ * are each a SHIFTED COPY of the original edge, so their true intersection
+ * IS the miter point, exactly the same computation the inner side already
+ * makes on the OPPOSITE pair of edges. SVG's own miter-limit rule (ratio
+ * of vertex-to-tip distance over half the stroke width, vs `miterLimit`,
+ * default 4) falls back to bevel when exceeded — worked example: a
+ * strokeWidth-wide stroke turning through interior angle theta has
+ * vertex-to-tip distance `half / sin(theta/2)`, so
+ * `distance / half == 1/sin(theta/2) == miterLength/strokeWidth`, the
+ * spec's own ratio — this function's `dist/half` comparison is that
+ * ratio directly, not a rescaled approximation of it.
+ */
+function _outerJoinCommands(vertex, pA, pB, prevPiece, currPiece, half, joinStyle, miterLimit) {
+  const primA = _lastPrimitive(prevPiece), primB = _firstPrimitive(currPiece);
+  if (primA.type !== 'line' || primB.type !== 'line') return null; // curve-adjacent -- not exact here, caller falls back to round
+
+  if (joinStyle === 'bevel') return [['L', pB.x, pB.y]];
+
+  const candidates = _lineIntersect(primA.point, primA.dir, primB.point, primB.dir);
+  if (!candidates.length) return [['L', pB.x, pB.y]]; // parallel edges -- no tip, bevel is the only sane shape
+  const tip = candidates[0];
+  const dist = Math.hypot(tip.x - vertex.x, tip.y - vertex.y);
+  if (dist / half > miterLimit) return [['L', pB.x, pB.y]]; // SVG's own miter-limit fallback
+  return [['L', tip.x, tip.y], ['L', pB.x, pB.y]];
+}
+
+/**
  * The join between two consecutive offset pieces (`prevPiece` ending at
  * the vertex, `currPiece` starting there) meeting at the path's own
  * `vertex`. Which bank is locally OUTER (convex) at THIS vertex is decided
@@ -461,7 +513,7 @@ function _roundJoinArc(vertex, pA, pB, half) {
  * convex corners and trimmed joins at its concave ones without any
  * special-casing.
  */
-function _buildJoin(vertex, prevPiece, currPiece, side, half) {
+function _buildJoin(vertex, prevPiece, currPiece, side, half, joinStyle = 'round', miterLimit = 4) {
   const pA = prevPiece.endPoint, tA = prevPiece.endTangent;
   const pB = currPiece.startPoint, tB = currPiece.startTangent;
   const cross = tA.x * tB.y - tA.y * tB.x;
@@ -486,7 +538,13 @@ function _buildJoin(vertex, prevPiece, currPiece, side, half) {
   const leftIsOuter = cross < 0;
   const thisIsOuter = side === 1 ? leftIsOuter : !leftIsOuter;
 
-  if (thisIsOuter) return { commands: [_roundJoinArc(vertex, pA, pB, half)] };
+  if (thisIsOuter) {
+    if (joinStyle !== 'round') {
+      const exact = _outerJoinCommands(vertex, pA, pB, prevPiece, currPiece, half, joinStyle, miterLimit);
+      if (exact) return { commands: exact };
+    }
+    return { commands: [_roundJoinArc(vertex, pA, pB, half)] };
+  }
 
   // Inner (concave) side: trim BOTH pieces to the TRUE intersection of
   // their own exact boundary primitives (line/circle — see
@@ -495,7 +553,10 @@ function _buildJoin(vertex, prevPiece, currPiece, side, half) {
   // head-on. Whichever candidate (0, 1, or 2 points) lands NEAREST the
   // vertex is the real trim point; no candidates at all (the two
   // primitives genuinely don't meet) falls back to a round inner join
-  // instead of a loop.
+  // instead of a loop. T44: this side is UNCHANGED by `joinStyle` —
+  // stroke-linejoin only ever shapes the OUTER bulge (real SVG rasterizers
+  // don't have a separate "inner join" concept either; the inner side is
+  // always "the offset paths cross, trim the overlap").
   const candidates = _primitiveIntersect(_lastPrimitive(prevPiece), _firstPrimitive(currPiece));
   if (!candidates.length) return { commands: [_roundJoinArc(vertex, pA, pB, half)] };
   let ip = candidates[0], best = Math.hypot(ip.x - vertex.x, ip.y - vertex.y);
@@ -515,13 +576,13 @@ function _buildJoin(vertex, prevPiece, currPiece, side, half) {
  * in T39, for a line meeting a curve near head-on). `currPiece`'s own
  * commands need no change at all — see `_retargetEnd`'s own header for why.
  */
-function _appendJoin(commands, vertex, prevPiece, currPiece, side, half) {
-  const join = _buildJoin(vertex, prevPiece, currPiece, side, half);
+function _appendJoin(commands, vertex, prevPiece, currPiece, side, half, joinStyle, miterLimit) {
+  const join = _buildJoin(vertex, prevPiece, currPiece, side, half, joinStyle, miterLimit);
   if (join.commands) { commands.push(...join.commands); return; }
   _retargetEnd(commands, prevPiece, join.trimTo);
 }
 
-function _buildBank(subpath, side, half, tolerance) {
+function _buildBank(subpath, side, half, tolerance, joinStyle, miterLimit) {
   const pieces = [];
   let curOrig = subpath.start;
   for (const seg of subpath.segs) {
@@ -538,7 +599,7 @@ function _buildBank(subpath, side, half, tolerance) {
     if (i > 0) {
       const prev = pieces[i - 1].piece;
       const curr = pieces[i].piece;
-      _appendJoin(commands, pieces[i].vertex, prev, curr, side, half);
+      _appendJoin(commands, pieces[i].vertex, prev, curr, side, half, joinStyle, miterLimit);
     }
     commands.push(...pieces[i].piece.commands);
   }
@@ -573,22 +634,46 @@ function _reverseCommands(startPoint, commands) {
   return { startPoint: pts[pts.length - 1], commands: out };
 }
 
-/** Round cap only — SUPPORTED_LINE_CAPS' own declared scope, same as
- *  lineOutlinePathD; butt/square are declined by the caller before this
- *  ever runs. Same sweep=0 convention lineOutlinePathD's own caps use
- *  (verified there against arcToCubics' sampled midpoint). */
-function _buildCap(toPoint, half) {
-  return [['A', half, half, 0, 0, 0, toPoint.x, toPoint.y]];
+/**
+ * T44: the cap that closes one end of an open subpath's outline, between
+ * the two banks' own endpoints there (`fromPoint` the current-point end,
+ * `toPoint` the other bank's end) — same sweep=0 convention
+ * lineOutlinePathD's own round caps use (verified there against
+ * arcToCubics' sampled midpoint), and the SAME "square = butt on a
+ * segment extended by half the stroke width at the end" construction
+ * lineOutlinePathD's own square cap uses, generalized to an arbitrary
+ * `tangent` (a curve's own END tangent, not just a line's direction —
+ * "for a curve end use its end tangent," per the dispatch) instead of a
+ * line's fixed ux/uy. `tangent` must point OUTWARD (away from the
+ * subpath, continuing past the endpoint) — the caller negates the
+ * subpath's own start tangent for the start cap accordingly. */
+function _buildCap(fromPoint, toPoint, tangent, half, cap) {
+  if (cap === 'round') return [['A', half, half, 0, 0, 0, toPoint.x, toPoint.y]];
+  if (cap === 'butt') return [['L', toPoint.x, toPoint.y]];
+  // 'square': extend BOTH bank endpoints outward along `tangent` by half
+  // before closing across — 2 new corners instead of 1 straight edge.
+  const ext = { x: tangent.x * half, y: tangent.y * half };
+  const c1 = { x: fromPoint.x + ext.x, y: fromPoint.y + ext.y };
+  const c2 = { x: toPoint.x + ext.x, y: toPoint.y + ext.y };
+  return [['L', c1.x, c1.y], ['L', c2.x, c2.y], ['L', toPoint.x, toPoint.y]];
 }
 
-function _openCapsuleD(subpath, half, tolerance) {
-  const left = _buildBank(subpath, 1, half, tolerance);
-  const right = _buildBank(subpath, -1, half, tolerance);
+function _openCapsuleD(subpath, half, tolerance, cap, joinStyle, miterLimit) {
+  const left = _buildBank(subpath, 1, half, tolerance, joinStyle, miterLimit);
+  const right = _buildBank(subpath, -1, half, tolerance, joinStyle, miterLimit);
   if (!left.startPoint || !right.startPoint) return null;
 
-  const endCap = _buildCap(right.endPoint, half);
+  // Both banks share the SAME tangent direction at a given end (offsetting
+  // perpendicular never rotates the tangent — confirmed for every segment
+  // kind this module builds, see _offsetArcSeg's own comment) — either
+  // bank's own endTangent/startTangent works; `left`'s is used throughout.
+  // The END cap's outward direction is the subpath's own forward end
+  // tangent; the START cap's outward direction is the REVERSE of its own
+  // forward start tangent (pointing back, before the path begins).
+  const endCap = _buildCap(left.endPoint, right.endPoint, left.endTangent, half, cap);
   const { commands: rCmds } = _reverseCommands(right.startPoint, right.commands);
-  const startCap = _buildCap(left.startPoint, half);
+  const startTangentOutward = { x: -left.startTangent.x, y: -left.startTangent.y };
+  const startCap = _buildCap(right.startPoint, left.startPoint, startTangentOutward, half, cap);
 
   const commands = [...left.commands, ...endCap, ...rCmds, ...startCap];
   return `M ${left.startPoint.x} ${left.startPoint.y} ${commands.map((c) => c.join(' ')).join(' ')} Z`;
@@ -604,11 +689,11 @@ function _openCapsuleD(subpath, half, tolerance) {
  * itself IS that explicit "current point" for the very first command, so
  * it's the one thing here that still needs to become `ip`.
  */
-function _closedRing(subpath, side, half, tolerance) {
-  const bank = _buildBank(subpath, side, half, tolerance);
+function _closedRing(subpath, side, half, tolerance, joinStyle = 'round', miterLimit = 4) {
+  const bank = _buildBank(subpath, side, half, tolerance, joinStyle, miterLimit);
   if (!bank.startPoint) return null;
 
-  const join = _buildJoin(subpath.start, bank.lastPiece, bank.firstPiece, side, half);
+  const join = _buildJoin(subpath.start, bank.lastPiece, bank.firstPiece, side, half, joinStyle, miterLimit);
   const commands = bank.commands.slice();
   let startPoint = bank.startPoint;
 
@@ -748,16 +833,16 @@ function _sampleOriginal(subpath, samples = 8) {
  * same fix to `_openSubpathD`'s own 'fill' branch below — see its header
  * for why a `_parseD`-open subpath needed it too.)
  */
-function _closedSubpathD(subpath, half, tolerance, mode) {
-  if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d;
+function _closedSubpathD(subpath, half, tolerance, mode, joinStyle, miterLimit) {
+  if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d; // half=0 -- no offset, no real corner turn -- join style doesn't matter here
 
   const originalArea = _signedArea(_sampleOriginal(subpath));
   const outerSide = originalArea > 0 ? -1 : 1;
-  const outer = _closedRing(subpath, outerSide, half, tolerance);
+  const outer = _closedRing(subpath, outerSide, half, tolerance, joinStyle, miterLimit);
   if (!outer) return null;
   if (mode === 'both') return outer.d;
 
-  const inner = _closedRing(subpath, -outerSide, half, tolerance);
+  const inner = _closedRing(subpath, -outerSide, half, tolerance, joinStyle, miterLimit);
   if (!inner) return outer.d;
   const innerPts = _sampleRing(inner.startPoint, inner.commands);
   const innerArea = _signedArea(innerPts);
@@ -799,9 +884,9 @@ function _closedSubpathD(subpath, half, tolerance, mode) {
  * (two real free ends, needing caps) is a real semantic difference from
  * a closed fill, and nothing in this fix touches that branch.
  */
-function _openSubpathD(subpath, half, tolerance, mode) {
-  if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d;
-  return _openCapsuleD(subpath, half, tolerance); // an open stroke has one boundary regardless of stroke/both
+function _openSubpathD(subpath, half, tolerance, mode, cap, joinStyle, miterLimit) {
+  if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d; // half=0 -- join style doesn't matter here either
+  return _openCapsuleD(subpath, half, tolerance, cap, joinStyle, miterLimit); // an open stroke has one boundary regardless of stroke/both
 }
 
 /**
@@ -814,9 +899,9 @@ function _openSubpathD(subpath, half, tolerance, mode) {
  * can silently skip the preview exactly like every other decline already
  * does.
  */
-export function pathOutlinePathD(d, strokeWidth, { mode = 'stroke', cap = 'round', join = 'round', tolerance = 0.001 } = {}) {
+export function pathOutlinePathD(d, strokeWidth, { mode = 'stroke', cap = 'round', join = 'round', tolerance = 0.001, miterLimit = 4 } = {}) {
   if (!SUPPORTED_LINE_CAPS[cap]) return { d: null, unsupported: cap };
-  if (join !== 'round') return { d: null, unsupported: `join:${join}` }; // only join style built this turn
+  if (!SUPPORTED_LINE_JOINS[join]) return { d: null, unsupported: `join:${join}` };
 
   let subpaths;
   try {
@@ -831,8 +916,8 @@ export function pathOutlinePathD(d, strokeWidth, { mode = 'stroke', cap = 'round
   for (const subpath of subpaths) {
     if (!subpath.segs.length) continue; // e.g. a lone "M x y" with no drawing -- nothing to outline
     const piece = subpath.closed
-      ? _closedSubpathD(subpath, half, tolerance, mode)
-      : _openSubpathD(subpath, half, tolerance, mode);
+      ? _closedSubpathD(subpath, half, tolerance, mode, join, miterLimit)
+      : _openSubpathD(subpath, half, tolerance, mode, cap, join, miterLimit);
     if (piece) parts.push(piece);
   }
   if (!parts.length) return { d: null, unsupported: 'degenerate' };

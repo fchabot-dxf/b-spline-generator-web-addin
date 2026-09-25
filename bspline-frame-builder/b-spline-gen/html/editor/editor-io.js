@@ -213,26 +213,29 @@ function _outlineAdapter(node) {
  * resolved Promise so every {geometry:'fusion'} caller has ONE calling
  * convention regardless of the layer's own pick.
  *
- * Returns { svg, declined }. `declined` counts elements this layer's
- * outline/both pick could NOT outline — no OUTLINE_KINDS entry for the
- * element type, or the entry's own decline (e.g. text with no font
- * mapping, an unsupported line cap) — each exports its centerline
+ * Returns { svg, declined, declinedKinds }. `declined` counts elements
+ * this layer's outline/both pick could NOT outline — no OUTLINE_KINDS
+ * entry for the element type, or the entry's own decline (e.g. text with
+ * no font mapping, an unsupported line cap) — each exports its centerline
  * instead (never dropped), individually console-warned, and summed here
- * for the caller to log/show.
+ * for the caller to log/show. `declinedKinds` (T44) is the DISTINCT set
+ * of element type names that declined on this layer — export-flow.js's
+ * own user-facing notice names the kinds, not just a bare count.
  */
 async function _getLayerSvgForFusion(editor, layerId, dpi) {
     const parsed = _parseLayerContent(editor, layerId, dpi);
-    if (!parsed) return { svg: '', declined: 0 };
+    if (!parsed) return { svg: '', declined: 0, declinedKinds: [] };
     const { doc, root, svgOpen, targetId } = parsed;
 
     const layer = Array.isArray(editor._layers) ? editor._layers.find((l) => String(l.id) === targetId) : null;
     const kind = (layer && layer.fusionGeometry) || 'centerline';
     if (kind === 'centerline') {
         const inner = stripSvgjsAttributes(root.innerHTML);
-        return { svg: `${svgOpen}${inner}</svg>`, declined: 0 };
+        return { svg: `${svgOpen}${inner}</svg>`, declined: 0, declinedKinds: [] };
     }
 
     let declined = 0;
+    const declinedKindSet = new Set();
     for (const ch of Array.from(root.children)) {
         const type = ch.tagName ? ch.tagName.toLowerCase() : '';
         if (NON_GEOMETRY_NODE_TYPES.includes(type)) continue; // metadata (defs/etc) — never a geometry candidate
@@ -240,6 +243,7 @@ async function _getLayerSvgForFusion(editor, layerId, dpi) {
         const result = outlineFor ? await outlineFor(_outlineAdapter(ch)) : { d: null, unsupported: 'no-outline-kind' };
         if (!result || result.unsupported || !result.d) {
             declined++;
+            declinedKindSet.add(type || '?');
             console.warn(`[EDITOR-IO] getLayerSvg: layer ${targetId} <${type || '?'}> declined outline geometry (${(result && result.unsupported) || 'no-outline-kind'}) — exporting its centerline instead.`);
             continue; // ch stays exactly as-is: its own centerline
         }
@@ -269,7 +273,7 @@ async function _getLayerSvgForFusion(editor, layerId, dpi) {
     }
 
     const inner = stripSvgjsAttributes(root.innerHTML);
-    return { svg: `${svgOpen}${inner}</svg>`, declined };
+    return { svg: `${svgOpen}${inner}</svg>`, declined, declinedKinds: [...declinedKindSet] };
 }
 
 /**

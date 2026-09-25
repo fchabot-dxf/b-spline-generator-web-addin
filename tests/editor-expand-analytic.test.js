@@ -174,19 +174,100 @@ describe('lineOutlinePathD — round cap (SE12 Slice 1)', () => {
     }
   });
 
-  it('an unsupported cap (butt/square) declines explicitly instead of silently producing a round-cap shape', () => {
-    expect(SUPPORTED_LINE_CAPS.butt).toBe(false);
-    expect(SUPPORTED_LINE_CAPS.square).toBe(false);
+  it('T44: butt and square are now supported (no longer decline)', () => {
+    expect(SUPPORTED_LINE_CAPS.butt).toBe(true);
+    expect(SUPPORTED_LINE_CAPS.square).toBe(true);
     expect(SUPPORTED_LINE_CAPS.round).toBe(true);
-    const butt = lineOutlinePathD({ x1: 0, y1: 0, x2: 5, y2: 0, strokeWidth: 1, cap: 'butt' });
-    expect(butt.d).toBeNull();
-    expect(butt.unsupported).toBe('butt');
-    const square = lineOutlinePathD({ x1: 0, y1: 0, x2: 5, y2: 0, strokeWidth: 1, cap: 'square' });
-    expect(square.d).toBeNull();
-    expect(square.unsupported).toBe('square');
   });
 
-  it('non-vacuous: a self-intersecting (bowtie) loop would fail the area check — constructed directly to prove the check can actually catch it', () => {
+  it('an unsupported cap (anything other than round/butt/square) still declines explicitly', () => {
+    const { d, unsupported } = lineOutlinePathD({ x1: 0, y1: 0, x2: 5, y2: 0, strokeWidth: 1, cap: 'inherit' });
+    expect(d).toBeNull();
+    expect(unsupported).toBe('inherit');
+  });
+});
+
+describe('lineOutlinePathD — butt cap (T44): a plain rectangle, no cap extension', () => {
+  for (const { name, x1, y1, x2, y2 } of [
+    { name: 'horizontal', x1: 0, y1: 0, x2: 10, y2: 0 },
+    { name: 'vertical', x1: 3, y1: -2, x2: 3, y2: 8 },
+    { name: 'diagonal', x1: -1, y1: -1, x2: 6, y2: 4 },
+  ]) {
+    it(`${name} line: 4 straight segments, banks exactly width/2 off centerline, area exactly length*strokeWidth (no arcs, no extension)`, () => {
+      const strokeWidth = 1.4;
+      const r = strokeWidth / 2;
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const { d, unsupported } = lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap: 'butt' });
+      expect(unsupported).toBeNull();
+      const segs = parseD(d);
+      expect(segs.map((s) => s[0])).toEqual(['M', 'L', 'L', 'L', 'Z']); // no A commands at all
+
+      const p1 = { x: x1, y: y1 }, p2 = { x: x2, y: y2 };
+      for (const s of segs) {
+        if (s[0] === 'M' || s[0] === 'L') expect(perpDist({ x: s[1], y: s[2] }, p1, p2)).toBeCloseTo(r, 9);
+      }
+      const area = Math.abs(shoelaceArea(outlinePolygon(segs)));
+      expect(area).toBeCloseTo(len * strokeWidth, 6); // exact rectangle, no semicircle terms
+    });
+  }
+
+  it('zero-length line declines (no direction to build a rectangle from)', () => {
+    const { d, unsupported } = lineOutlinePathD({ x1: 5, y1: 5, x2: 5, y2: 5, strokeWidth: 3, cap: 'butt' });
+    expect(d).toBeNull();
+    expect(unsupported).toBe('zero-length');
+  });
+});
+
+describe('lineOutlinePathD — square cap (T44): a rectangle extended by w/2 at both ends', () => {
+  for (const { name, x1, y1, x2, y2 } of [
+    { name: 'horizontal', x1: 0, y1: 0, x2: 10, y2: 0 },
+    { name: 'vertical', x1: 3, y1: -2, x2: 3, y2: 8 },
+    { name: 'diagonal', x1: -1, y1: -1, x2: 6, y2: 4 },
+  ]) {
+    it(`${name} line: 4 straight segments, area exactly (length+strokeWidth)*strokeWidth (extended by half the stroke width at EACH end)`, () => {
+      const strokeWidth = 1.4;
+      const r = strokeWidth / 2;
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      const { d, unsupported } = lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap: 'square' });
+      expect(unsupported).toBeNull();
+      const segs = parseD(d);
+      expect(segs.map((s) => s[0])).toEqual(['M', 'L', 'L', 'L', 'Z']);
+
+      // Extended rectangle: length grows by r at EACH end (2r total), width
+      // stays strokeWidth -- area = (len + 2r) * strokeWidth = (len +
+      // strokeWidth) * strokeWidth.
+      const area = Math.abs(shoelaceArea(outlinePolygon(segs)));
+      expect(area).toBeCloseTo((len + strokeWidth) * strokeWidth, 6);
+
+      // Every corner sits exactly r off the (extended) centerline AND the
+      // two "far" corners (past each original endpoint) are exactly r
+      // further along the line direction than a butt cap's own corner
+      // would be -- distinguishes "extended" from "not extended" directly,
+      // not just via total area.
+      const ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+      const buttCorner = lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap: 'butt' });
+      const buttSegs = parseD(buttCorner.d);
+      // buttSegs[1] is the L1->L2 bank's far corner (at x2,y2 offset).
+      const squareFarCorner = { x: segs[2][1], y: segs[2][2] }; // the L2-side far corner in square's own output
+      const buttFarCorner = { x: buttSegs[2][1], y: buttSegs[2][2] };
+      const extension = Math.hypot(squareFarCorner.x - buttFarCorner.x, squareFarCorner.y - buttFarCorner.y);
+      expect(extension).toBeCloseTo(r, 9);
+      // And that extension is ALONG the line direction (parallel to ux,uy),
+      // not some other direction.
+      const dot = ((squareFarCorner.x - buttFarCorner.x) * ux + (squareFarCorner.y - buttFarCorner.y) * uy) / extension;
+      expect(dot).toBeCloseTo(1, 6);
+    });
+  }
+
+  it('zero-length line declines (no direction to extend along)', () => {
+    const { d, unsupported } = lineOutlinePathD({ x1: 5, y1: 5, x2: 5, y2: 5, strokeWidth: 3, cap: 'square' });
+    expect(d).toBeNull();
+    expect(unsupported).toBe('zero-length');
+  });
+});
+
+describe('lineOutlinePathD — non-vacuous area check (round cap)', () => {
+  it('a self-intersecting (bowtie) loop would fail the area check — constructed directly to prove the check can actually catch it', () => {
     // Swap the two arc endpoints (as a wrong-sweep bug would effectively
     // do) to build a deliberately bowtied version of the horizontal case,
     // and confirm the SAME area check used above rejects it.

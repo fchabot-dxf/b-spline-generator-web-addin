@@ -18,9 +18,9 @@
  * reading `P.stampLayers` would show up as a wrong depth/profile or a
  * layer wrongly included/excluded — not just an absent field.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { activeStampLayers, exportableStampLayers } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
+import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 /** Editor layer mock: tooling (depth/profile/visible) lives ON the layer
@@ -198,5 +198,56 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(editor._layers[0].visible).toBe(true);
     expect(exportableStampLayers()).toHaveLength(1);
     expect(activeStampLayers()).toHaveLength(1);
+  });
+});
+
+/**
+ * T44 — _reportDeclinedOutlines, the "N elements exported as centerline —
+ * no outline for: <kinds>" user-facing notice, aggregated across every
+ * layer in a Fusion export. Uses a REAL `#fusion-status` DOM element (the
+ * happy-dom environment already gives every test file a real `document`)
+ * rather than mocking setFusionStatus/core/fusion-bridge.js — this
+ * codebase's own established convention (no vi.mock anywhere in this
+ * suite) is real DOM/object stand-ins over module mocking, and driving
+ * the REAL setFusionStatus against a REAL element is a more faithful
+ * check of the actual wiring than a mock would be.
+ */
+describe('export-flow: _reportDeclinedOutlines (T44 fallback notice)', () => {
+  function mockStatusEl() {
+    const el = document.createElement('div');
+    el.id = 'fusion-status';
+    el.hidden = true;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  afterEach(() => {
+    const el = document.getElementById('fusion-status');
+    if (el) el.remove();
+  });
+
+  it('does nothing (element stays hidden) when nothing declined across any layer', () => {
+    const el = mockStatusEl();
+    _reportDeclinedOutlines([{ declined: 0, declinedKinds: [] }, { declined: 0, declinedKinds: [] }]);
+    expect(el.hidden).toBe(true);
+    expect(el.textContent).toBe('');
+  });
+
+  it('reports a single declined element with singular "element" wording and the exact kind', () => {
+    const el = mockStatusEl();
+    _reportDeclinedOutlines([{ declined: 1, declinedKinds: ['text'] }]);
+    expect(el.hidden).toBe(false);
+    expect(el.textContent).toBe('1 element exported as centerline — no outline for: text');
+    expect(el.dataset.kind).toBe('warn');
+  });
+
+  it('sums declined counts and unions declinedKinds ACROSS every layer, de-duplicating repeated kinds — the exact multi-layer export scenario this notice exists for', () => {
+    const el = mockStatusEl();
+    _reportDeclinedOutlines([
+      { declined: 2, declinedKinds: ['image', 'text'] },
+      { declined: 1, declinedKinds: ['text'] }, // same kind as layer 1 -- must not duplicate in the message
+      { declined: 0, declinedKinds: [] },
+    ]);
+    expect(el.textContent).toBe('3 elements exported as centerline — no outline for: image, text');
   });
 });

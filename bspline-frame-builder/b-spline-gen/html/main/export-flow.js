@@ -24,6 +24,7 @@ import {
     fusionActionButton,
     setFusionActionState,
     FUSION_IDLE_LABEL,
+    setFusionStatus,
 } from '../core/fusion-bridge.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -96,19 +97,39 @@ function _stampExportCandidates() {
  *  it's also what wizard-availability checks and the carve mask read,
  *  and getLayerSvg's own docstring promises those stay byte-for-byte
  *  untouched by this slice. Only this one call site (the real export)
- *  asks for the geometry-aware variant. Declines are already individually
- *  console-warned inside getLayerSvg itself; this just rolls the count
- *  into the export's own fusLog line so it's visible without opening
- *  devtools. Falls back to the plain centerline svg already on `l` if
- *  the editor isn't live — shouldn't happen (export only runs with one),
- *  but matches every other defensive `editor ? ... : null` in this file. */
+ *  asks for the geometry-aware variant. Returns {svg, declined,
+ *  declinedKinds} — the caller (T44: _reportDeclinedOutlines) aggregates
+ *  across every exported layer for the ONE user-facing notice; individual
+ *  per-layer declines are already console-warned inside getLayerSvg
+ *  itself. Falls back to the plain centerline svg already on `l` if the
+ *  editor isn't live — shouldn't happen (export only runs with one), but
+ *  matches every other defensive `editor ? ... : null` in this file. */
 async function _fusionLayerSvg(editor, l) {
-    if (!editor || l.id == null) return l.svg;
-    const { svg, declined } = await getLayerSvg(editor, l.id, 96, { geometry: 'fusion' });
-    if (declined > 0 && typeof fusLog === 'function') {
-        fusLog(`[EXPORT] layer ${l.id}: ${declined} element(s) declined outline geometry — exported as centerline.`);
-    }
-    return svg || l.svg;
+    if (!editor || l.id == null) return { svg: l.svg, declined: 0, declinedKinds: [] };
+    const { svg, declined, declinedKinds } = await getLayerSvg(editor, l.id, 96, { geometry: 'fusion' });
+    return { svg: svg || l.svg, declined, declinedKinds };
+}
+
+/** T44: after "Send to Fusion" completes, tell the user when any element
+ *  had no outline available and exported as centerline instead — the
+ *  dispatch's own example format. Silent when nothing declined (the
+ *  common case). Uses the app's one reusable status-line surface
+ *  (`#fusion-status`, core/fusion-bridge.js's setFusionStatus) rather than
+ *  inventing new UI — kind:'warn' persists until replaced (unlike 'ok',
+ *  which auto-clears in 3s), so this stays visible; a later
+ *  import_success ping from Fusion's own handshake (main.js) can still
+ *  overwrite it once the import genuinely finishes — a pre-existing
+ *  single-status-line limitation this slice doesn't attempt to solve.
+ *  Exported (despite the underscore) for direct testing, same convention
+ *  editor-io.js's own `_reconcileLayersFromSvg` already uses — a pure
+ *  aggregation step, testable without mocking sendToFusion's own much
+ *  heavier STEP-generation/Fusion-bridge machinery. */
+export function _reportDeclinedOutlines(results) {
+    const totalDeclined = results.reduce((s, r) => s + (r.declined || 0), 0);
+    if (totalDeclined === 0) return;
+    const kinds = [...new Set(results.flatMap((r) => r.declinedKinds || []))];
+    const noun = totalDeclined === 1 ? 'element' : 'elements';
+    setFusionStatus(`${totalDeclined} ${noun} exported as centerline — no outline for: ${kinds.join(', ')}`, 'warn');
 }
 
 export const activeStampLayers     = () => _stampExportCandidates().filter(isCarvingLayer);
@@ -304,13 +325,18 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     // BEFORE building the payload object, not inside .map() (an async map
     // callback would hand JSON.stringify an array of unresolved Promises).
     // SE12 Slice 4: _fusionLayerSvg swaps in this layer's fusionGeometry
-    // pick before the bake — same await-before-build reasoning.
+    // pick before the bake — same await-before-build reasoning. Resolved
+    // as its own pass (not inline in the bakedLayers map) so T44's
+    // declined-outline notice can see every layer's result in one place.
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
+    const fusionResults = options.includeSVG
+        ? await Promise.all(layersToExport.map((l) => _fusionLayerSvg(editor, l)))
+        : [];
     const bakedLayers = options.includeSVG
-        ? await Promise.all(layersToExport.map(async (l, i) => ({
+        ? await Promise.all(fusionResults.map(async (r, i) => ({
             index: i + 1,
-            config: { profile: l.profile, depth: l.depth },
-            svg: await bakeSvgForCarving(await _fusionLayerSvg(editor, l), P.widthIn, P.heightIn, 96),
+            config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth },
+            svg: await bakeSvgForCarving(r.svg, P.widthIn, P.heightIn, 96),
         })))
         : [];
     const payload = JSON.stringify({
@@ -330,6 +356,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
         fusLog(`[EXPORT] variants=${stepVariants.length} bases=${stepVariants.map(v => v.name).join(',')} totalStepLen=${totalLen} layers=${layersToExport.length}`);
     }
     await sendFusionPayloadChunked(payload);
+    _reportDeclinedOutlines(fusionResults); // T44: user-facing notice, after the payload is safely on its way
     if (!isAppend) startFusionPolling();
 }
 
@@ -359,7 +386,7 @@ async function downloadFiles({ shared, heights, offsetPts, unstamped, selectedVa
         // SE12 Slice 4: swap in each layer's fusionGeometry pick first.
         const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
         for (let i = 0; i < layersToExport.length; i++) {
-            const fusionSvg = await _fusionLayerSvg(editor, layersToExport[i]);
+            const { svg: fusionSvg } = await _fusionLayerSvg(editor, layersToExport[i]);
             const bakedSvg = await bakeSvgForCarving(fusionSvg, P.widthIn, P.heightIn, 96);
             exportFiles.push({
                 name: `B-Spline-artwork-layer-${i + 1}.svg`,
