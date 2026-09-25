@@ -1,24 +1,29 @@
-# NEXT (lane-b) — T59: SE14 — axis-locked parametric handles + tap-a-segment style bar
+# NEXT (lane-b) — T60: DESIGN DOC — SE15 constrained Fusion sketches (docs only)
 
-**Ball: worker (seat B) · epoch 2 · T59.** NO FUSION. T58 reviewed + merged (d6ce767, 925 green; screenshots viewed:
-Shape Lattice tool, hourglass/bottle, fill clipped to the shape, phone drawer tab, widths link).
+**Ball: worker (seat B) · epoch 2 · T60.** DOCS ONLY. NO FUSION (the advisor does all Fusion verification). T59
+reviewed (966 green, screenshots viewed — handles + kink bar good); it merges to main as soon as seat A's in-flight
+drawer fix lands (same files).
 
-## Do (your disclosed deferrals — the design's "Slice 3 editing model")
-1. On-canvas AXIS-LOCKED PARAMETRIC HANDLES while the Shape Lattice tool is active on a generated shape: one handle
-   per preset param that has a natural on-canvas meaning (hourglass: waist reach — horizontal at the waist apex; waist
-   position — vertical; corner radius — along the corner diagonal; bottle: neck width, shoulder height, body width…).
-   Each handle moves ONLY along its param's axis, maps position → param (clamped to the declared range), regenerates
-   the path + refills on release (commit-only, like everything else), mirrored side follows. Every reachable position
-   is tangent by construction. Touch-sized under coarse pointer.
-2. Tap a side segment on the canvas → a small floating straight | curve | kink bar next to it (mirrored pair changes
-   together); the panel's segment dropdown stays and stays in sync.
-3. Detach on hand node-edit (recompute-and-compare) — confirm it's live (was it in T58? if yes, just a regression
-   test).
-## Verify
-CDP: drag the waist handle by real mouse events → path stays tangent (sampled tangent continuity on the live path),
-param value in the panel updated, one undo step; same on 390x844 with touch events; tap a segment → bar → kink →
-screenshot. VIEW every screenshot. `npx vitest run` green.
+## Fred's asks (ROADMAP "Queued — SE15", authoritative)
+Send Lattice / Shape Lattice geometry as REAL Fusion sketches with constraints instead of SVG import: PARTIALLY
+constrained ("no need to fully lock them"), relationships only (tangent, coincident, horizontal/vertical, symmetric,
+tie-end on rail), NO length/position dimensions ("no length needed"), but stroke WIDTH as a dimensioned offset driven
+by Fusion user parameters (rail_width, tie_width, node_radius, border_width) with round caps as tangent arcs; shape
+presets' own params (waist reach, corner radius, waist position, …) as user parameters where natural.
+## Deliver `SE15-CONSTRAINED-SKETCH-DESIGN.md`
+- The declared SKETCH MANIFEST (JSON): entities (ids, kind, geometry in model inches), constraints (typed, by entity
+  id), parameters (name, value, unit, which dimension drives it), per-layer grouping; how it's produced from the
+  editor model (shape preset params + lattice pieces + widths) — pure function.
+- The add-in side: read the manifest, build the sketch with the Fusion API (addByTwoPoints / addByThreePoints /
+  addByCenterRadius, geometricConstraints.addTangent/addCoincident/addHorizontal/addVertical/addSymmetry,
+  sketchDimensions + userParameters, offset for width — research the current API names in the repo's existing
+  Python (frame-builder fb_engine does most of this already — cite what's reusable), order of operations to avoid
+  solver fights, what to do on a failed constraint (skip + report, never abort the whole send).
+- Performance plan for big lattices (hundreds of pieces): what gets constrained vs plain; the plain-geometry fallback
+  switch; a size threshold.
+- How it coexists with the current SVG path (a Fusion Geometry option or a per-send toggle), and with Outline/Both.
+- Slices (manifest+tests in the browser; add-in builder verified by the advisor in Fusion), open questions.
 ## When done
-Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T59: handles + segment bar — <sha>, vitest N, screenshots"`
+Commit by path (doc + WORK-LOG), push, then (from the WORKTREE root):
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T60: SE15 design — <sha>"`
 and stop.
