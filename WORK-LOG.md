@@ -8220,3 +8220,148 @@ fully-tested unit on their own and don't block that follow-up starting fresh.
   edit/moved-piece-swept flag confirmed `true`, zero console errors.
 
 No amendments pending as of this pass.
+
+## Turn 249 — SE7i part 2, Sections 3+4: connected editing in the Lattice tool — DONE
+
+**Task.** The Sections 1+2 pass-back explicitly recommended splitting this off as its own turn, and the
+advisor dispatched it that way. Section 3: drag ON an existing rail/tie/node in the Lattice tool moves it,
+structure-aware, instead of drawing a new segment through it — a rail moves only across its own axis and
+stretches every attached tie's length (never its width) without sliding along its own length; a tie drags
+freely, not confined between rails; a node moves the tie-end it belongs to, sliding along its rail if that
+end is attached. Attachment is DERIVED at drag start from live WORLD geometry (grid-point coincidence, not
+distance) and fixed for the whole gesture. Section 4: robust to every other tool — Select's own transform-
+based move must never corrupt what a later Lattice-mode drag reads, and a Lattice-mode move must bake its
+own result into the raw attrs (no `transform` left behind).
+
+**One small fix landed first (advisor's own ask, its own commit, `0c4b218`):** the stray
+`Users…scratchpad${name}.png` file the advisor found and deleted from the repo root traced to every
+`smoke-lattice-*.mjs` script's `shot()` calls using single-quoted filename strings — a single-quoted string
+silently treats a stray `${...}` as inert literal text instead of interpolating or erroring, so a future
+copy-paste mistake would recur the exact same way with no error. Switched every `shot('...')` call to
+template literals (`` shot(`...`) ``) across all 4 scripts — the byte-identical current filenames are
+unaffected either way; this only changes what happens the NEXT time someone pastes a broken one.
+
+**Hit-test-first, not a new mode.** `latticeHandler.start` now hit-tests the click point (`getNearbyElement`,
+active-layer-only — the same scope every other drawing mode already uses) BEFORE deciding what to do: a hit
+on an existing `data-lattice` rail/tie/node begins a move gesture; anything else (empty space, or a non-
+lattice shape) falls through to the unchanged "draw new" path. This is a real, intended behavior change
+worth flagging for whoever tests this next: **starting a drag exactly ON an existing piece no longer draws
+through it — it grabs it.** Found this the hard way writing the smoke script below (a "new tie crossing an
+existing rail" test kept silently becoming a rail MOVE, because its start point was the rail's own body) —
+to draw a new tie that ends up attached to a rail by hand, start the drag from genuinely empty space and end
+exactly ON the rail; hit-testing only ever looks at the drag's START point, never its path or end.
+
+**Attachment derivation + rail move (`editor-lattice.js`, pure, exported): `isLatticePoint`, `findAttachingRail`,
+`moveRailAlongAxis`, `translateTie`.** All four run in the SAME canonical (orient()'d) frame every other
+SE7h/SE7i lattice function already conjugates through — a vertical rail's own axis is just its canonical row
+under a swapped i/j, so the whole feature gets orientation-awareness for free, no second copy of the math.
+`isLatticePoint` is the "attach should mean snapped to grid on the same point" primitive (Fred) — checked on
+the RAW world point before `toLattice` rounds it, since checking on the already-rounded coordinate would be
+vacuously true for every point and silently defeat the whole "exact, not nearest" rule (caught this while
+writing `_beginLatticeMove` below — a real design mistake in my own first draft, fixed before it ever ran).
+`moveRailAlongAxis` derives AND applies in one function: pass it the rail's own drag-START canonical geometry
+(never updated mid-gesture) plus a snapshot of candidate ties/nodes captured once at drag start, and vary
+only `newRow` on every subsequent call — "attachments are fixed at drag start; a dragged rail never picks up
+ties it crosses mid-drag" falls out of that calling discipline rather than needing a separate two-phase API.
+`translateTie` is a plain rigid `{di,dj}` translation — "drags freely... NOT confined between rails" (Fred)
+needs no row/attachment logic at all.
+
+**The DOM-touching wiring (`editor-interaction.js`).** `_collectLatticeSegments` (rail/tie only, raw un-baked
+attrs, no element reference) is renamed and extended to `_collectLatticeElements` — now also reads WORLD
+geometry via `worldPoint` (Section 4's own requirement) and returns nodes too, plus each end's own on-grid
+flag (`aOnGrid`/`bOnGrid`/`onGrid`, computed on the raw world point before rounding — the same
+`isLatticePoint` subtlety above). Its two PRE-EXISTING callers (`_existingRailRows`, `finish()`'s own auto-
+crossing search for the hand-drawn "draw new" gesture) needed zero shape changes — they already externally
+`orient()` whatever they get back — but now correctly read a Select-moved rail/tie's real position instead of
+its stale raw attrs, a latent bug in the ORIGINAL SE7a hand-tool crossing detection that this feature's own
+world-geometry requirement fixed as a side effect, not something I went looking for separately.
+`_beginLatticeMove`/`_updateLatticeMove`/`_finishLatticeMove` snapshot the gesture at drag start (per-kind:
+rail collects attached ties/nodes; tie collects nodes riding its own two ends; node finds its own tie-end
+match and, if that end is rail-attached, the rail's row), live-write the real attrs on every `update()` tick
+(no separate preview overlay — Section 4: "a Lattice-mode move BAKES its result into the attrs"), and commit
+ONE undo step at `finish()`, skipped entirely when nothing actually moved (compares the grabbed element's own
+start/end attrs, not a per-kind ad-hoc flag). `latticeHandler.hover` reuses the existing `_setHover` highlight
+mechanism (already used by select/node mode) for "the piece under the pointer highlights... so grab vs draw
+is visible" (Fred) — no new highlight rendering needed.
+
+**A real bug caught and fixed before it ever shipped: leftover transforms must be baked on GRAB, not just on
+release.** Section 4 says a Lattice-mode move bakes its OWN result into the attrs — but if the GRABBED
+element already carried a transform from a PRIOR Select-mode move, every subsequent live write in this
+feature sets x1/y1/x2/y2 (or cx/cy) directly, assuming those raw attrs already ARE the final world position;
+a leftover transform would then get double-applied on top of the new coordinates. Fixed by baking any
+existing `transform=` into the raw attrs the INSTANT an element is grabbed (`_beginLatticeMove`'s own first
+step, before anything else reads or writes them), confirmed live (`transformBakedOutAfterLatticeGrab`, below)
+by Select-moving a rail, then grabbing that SAME rail via Lattice mode and confirming its transform is gone
+afterward.
+
+**The one genuinely ambiguous spec line, documented rather than silently resolved either way:** "Node: moves
+the tie end it belongs to along its rail" is a single terse clause next to the Rail/Tie bullets' much longer
+explanations. Implemented as: find the tie (if any) with an endpoint exactly at the grabbed node's own
+position; if that endpoint is ALSO rail-attached (`findAttachingRail`), the drag is constrained to slide
+ALONG that rail (only the along-rail coordinate follows the pointer, the row stays pinned — matching "along
+its rail" literally); if the endpoint exists but isn't rail-attached, it moves freely, same as a lone tie-end
+would; if there's no tie-endpoint here at all (a bare Circle-tool dot, or a mid-span crossing with no
+endpoint), the node just moves freely on its own. Confirmed live (`nodeSlidAlongRailNotOffIt`,
+`tieEndFollowedTheDraggedNode`) that dragging a rail-attached crossing node OFF-AXIS (toward a point NOT on
+the rail's row) still correctly pins it to the row while the along-rail coordinate follows — if this
+interpretation isn't what Fred meant, it's a one-function fix (`_updateLatticeMove`'s `else` branch) with the
+reasoning laid out in `_beginLatticeMove`'s own comment for whoever revisits it.
+
+**Tests (`tests/editor-lattice.test.js`, pure, +20 — the SAME file SE7h's own orient() composition tests
+live in):** `isLatticePoint` (on-grid true, off-grid-by-a-real-amount false, tolerates only genuine floating-
+point noise not a generous range); `findAttachingRail` (attaches within row+range including exactly at an
+end, does NOT attach beyond the range — Fred's own example — nor on a different row, empty candidate list);
+`moveRailAlongAxis` (moves the rail itself with the i-range unchanged; stretches an attached tie's end while
+the OTHER end is untouched; attachment works from either tie end; a tie with neither end on the rail is
+untouched; a tie end on the row but beyond the range doesn't attach; carries a node on the rail; accepts a
+node wrapped as `{point}`; a rail with no attachments still moves cleanly; calling it twice with different
+`newRow` values never mutates its inputs — the "attachments fixed at drag start" contract expressed as a
+direct assertion); a dedicated composition test conjugating `moveRailAlongAxis` through `orient()` for the
+"vertical orientation mirror" claim (a real-i rail move stretches a real-tie's real-i span, never touching
+its stroke width — this function doesn't even have a width parameter to touch); `translateTie` (rigid
+translation preserves shape/length, zero delta is a no-op, doesn't mutate its input).
+
+**Non-vacuous, two mutations on the highest-risk pure logic, each restored from a scratch copy and
+re-confirmed green (all 60 of this file's tests) after:** (1) `isLatticePoint` hard-coded to always return
+`true` — exactly the 2 negative-case tests (off-grid-by-a-real-amount, generous-tolerance) failed. (2) the
+tie-attachment condition inside `moveRailAlongAxis` short-circuited to `false` — exactly the 3 tests
+depending on an actual tie attaching failed (both-ends-either-side, the "not on the rail at all" negative
+control correctly stayed green, and the vertical-mirror composition test — proving that ONE test really does
+exercise the shared attachment logic through `orient()`, not a parallel copy of it).
+
+**Live (browser, new standalone `scripts/smoke-lattice-connected.mjs` — no Fusion, per Fred's rule).** Built
+a known, precise configuration by hand (not Generate — exact coordinates matter): Rail A, a tie whose END
+(not a mid-span crossing) lands exactly on Rail A, and an unrelated Rail B. Every check came back `true`,
+zero console errors: hover highlights a hovered lattice piece and clears over empty space; grabbing Rail A
+away from the tie junction and dragging it to a new row moves the rail (x-range/i-range unchanged), stretches
+the tie's attached end while its other end stays put, carries every node that was exactly on the rail's row
+(the tie/rail crossing AND the rail's own two auto-placed end-nodes) to the new row, keeps it a single undo
+step, and undo/redo both correctly restore/reapply the WHOLE gesture together; grabbing the crossing node and
+dragging it off-axis correctly pins it to the rail's row while the along-rail coordinate follows, with the
+tie's own endpoint following the node exactly; grabbing the tie and dragging it translates both ends by an
+identical delta (shape/length preserved); Select-moving Rail B (writing a transform) then Lattice-dragging
+Rail A produced zero errors, and later grabbing Rail B itself via Lattice mode correctly baked its leftover
+transform out; flipping to vertical orientation on a fresh layer (see below) and dragging a vertical rail
+left/right stretched a crossing horizontal tie's length while its `stroke-width` attribute was
+byte-identical before and after.
+
+**Two debugging detours during the live proof, both resolved as test-script bugs, not product bugs — worth
+recording for whoever writes the next lattice smoke script:** (1) the CTM confusion above (getCTM() vs plain
+matrix-translation arithmetic) when computing a transform-carrying element's world midpoint for a drag target
+— `getScreenCTM()` (used by every other point-to-pixel conversion in these scripts) is the right one for
+screen coordinates, `getCTM()` alone returned something in a different scale entirely; fixed by parsing the
+known-to-be-a-pure-translate `matrix(a,b,c,d,e,f)` string directly and adding `e`/`f` to the raw midpoint,
+avoiding SVG CTM ambiguity altogether. (2) clicking the orientation-toggle BUTTON calls `generatePattern`
+(Section 1) — on a layer with hand-drawn content and no explicit Pattern-panel configuration, this fills the
+WHOLE board with a default generated pattern that collided with the vertical-orientation test's own hand-
+drawn geometry. Fixed by adding a fresh layer and setting `layer.pattern = { orientation: 'vertical' }`
+directly (bypassing the button, since `getLayerPattern` reads that field regardless of how it got there) —
+a clean, quiet layer for a test that only cares about orientation, not generation.
+
+**Verify:**
+- `node --check` on every touched production file: clean.
+- `npx vitest run` -> **642 passed**, 0 failed.
+- Live browser (`smoke-lattice-connected.mjs`, no Fusion): every rail-move/tie-move/node-move/hover/undo-
+  redo/cross-tool-robustness/vertical-mirror flag confirmed `true`, zero console errors.
+
+No amendments pending as of this pass.

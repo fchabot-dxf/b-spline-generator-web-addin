@@ -112,6 +112,110 @@ export function nearestRailRow(j, railRows, within) {
   return best;
 }
 
+/**
+ * SE7i (connected editing): is a MODEL-space point sitting EXACTLY on a
+ * lattice grid point — both coordinates within `tol` lattice units of an
+ * integer — not just "close enough to snap"? Distinguishes a genuine
+ * on-grid attachment from an off-grid nudge (Alt-drag, a Select-tool
+ * micro-move): Fred, "attach should mean snapped to grid on the same
+ * point." The default tolerance (1e-6) absorbs floating-point noise from
+ * a repeated transform bake, nothing more generous — an end even a
+ * hundredth of an inch off-grid must NOT read as attached.
+ */
+export function isLatticePoint(p, spacing, tol = 1e-6) {
+  const i = p.x / spacing, j = p.y / spacing;
+  return Math.abs(i - Math.round(i)) < tol && Math.abs(j - Math.round(j)) < tol;
+}
+
+/**
+ * SE7i: the rail (canonical {a,b}) among `railsCanon` whose row `p` sits
+ * exactly on, within that rail's own i-range — the same on-grid-row-and-
+ * range test `moveRailAlongAxis` (below) uses for a whole rail's worth of
+ * candidates, exposed standalone for a single point (a tie-end or node's
+ * own "am I attached to a rail at all" check). A grid point on a rail's
+ * row but beyond its two ends does NOT attach (Fred's own example).
+ * Returns the first match (rails don't overlap at a shared row in this
+ * model, so ties are not expected).
+ */
+export function findAttachingRail(p, railsCanon) {
+  for (const rail of railsCanon) {
+    const iMin = Math.min(rail.a.i, rail.b.i);
+    const iMax = Math.max(rail.a.i, rail.b.i);
+    if (p.j === rail.a.j && p.i >= iMin && p.i <= iMax) return rail;
+  }
+  return null;
+}
+
+/**
+ * SE7i: move a rail (canonical {a,b}) to `newRow` (its own axis is the
+ * canonical row/j — "a rail never slides along its own length," so its
+ * i-range is carried over unchanged) and compute the resulting new
+ * positions for every attached tie-end and node, derived fresh against
+ * the rail's ORIGINAL (start-of-drag) row/range — callers must pass the
+ * SAME `railCanon`/`tiesCanon`/`nodesCanon` snapshot on every call during
+ * one drag (never re-collected mid-gesture), which is what "attachments
+ * are fixed at drag start; a dragged rail never picks up ties it crosses
+ * mid-drag" means in practice: the derivation and the move share one
+ * function, but the CALLER'S discipline (reuse one snapshot, vary only
+ * `newRow`) is what keeps attachment itself fixed while the geometry
+ * livens.
+ *
+ * @param {{a:{i,j},b:{i,j}}} railCanon  the rail's OWN start-of-drag
+ *   canonical geometry (not updated between calls).
+ * @param {number} newRow  the rail's new canonical j.
+ * @param {{a:{i,j},b:{i,j}}[]} tiesCanon  every candidate tie, ALREADY
+ *   confirmed on-grid (isLatticePoint) by the caller — extra fields
+ *   (e.g. an `el` reference) pass through untouched via `tieUpdates[].tie`.
+ * @param {({i,j}|{point:{i,j}})[]} nodesCanon  every candidate node,
+ *   likewise pre-confirmed on-grid; either a bare point or a wrapper
+ *   carrying one under `.point` (whichever the caller finds convenient —
+ *   both shapes are accepted so a DOM-touching caller can pass its own
+ *   `{el, point}` records directly).
+ * @returns {{rail:{a,b}, tieUpdates:{tie,end:'a'|'b',point:{i,j}}[],
+ *            nodeUpdates:{node,point:{i,j}}[]}}
+ */
+export function moveRailAlongAxis(railCanon, newRow, tiesCanon, nodesCanon) {
+  const railJ = railCanon.a.j;
+  const iMin = Math.min(railCanon.a.i, railCanon.b.i);
+  const iMax = Math.max(railCanon.a.i, railCanon.b.i);
+
+  const tieUpdates = [];
+  for (const tie of (tiesCanon || [])) {
+    for (const end of ['a', 'b']) {
+      const pt = tie[end];
+      if (pt.j === railJ && pt.i >= iMin && pt.i <= iMax) {
+        tieUpdates.push({ tie, end, point: { i: pt.i, j: newRow } });
+      }
+    }
+  }
+
+  const nodeUpdates = [];
+  for (const node of (nodesCanon || [])) {
+    const pt = node.point ?? node;
+    if (pt.j === railJ && pt.i >= iMin && pt.i <= iMax) {
+      nodeUpdates.push({ node, point: { i: pt.i, j: newRow } });
+    }
+  }
+
+  return {
+    rail: { a: { i: railCanon.a.i, j: newRow }, b: { i: railCanon.b.i, j: newRow } },
+    tieUpdates,
+    nodeUpdates,
+  };
+}
+
+/** SE7i: rigid translation of a tie's both ends (canonical frame) by a
+ *  {di, dj} delta — a tie "drags freely... NOT confined between rails"
+ *  (Fred), so there is no row/attachment constraint here, just apply the
+ *  same delta to both ends (and, by the caller applying the identical
+ *  delta, to whichever nodes ride at its endpoints). */
+export function translateTie(tieCanon, di, dj) {
+  return {
+    a: { i: tieCanon.a.i + di, j: tieCanon.a.j + dj },
+    b: { i: tieCanon.b.i + di, j: tieCanon.b.j + dj },
+  };
+}
+
 function _segmentCrossing(rail, tie) {
   const railJ = rail.a.j; // constant on a rail
   const tieI = tie.a.i;   // constant on a tie

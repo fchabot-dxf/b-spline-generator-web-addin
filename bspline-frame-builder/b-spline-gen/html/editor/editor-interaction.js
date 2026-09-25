@@ -15,7 +15,7 @@
 import { fitCurve, ramerDouglasPeucker } from './editor-curves.js';
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer } from './layers.js';
-import { worldBbox, toLocal } from './editor-coords.js';
+import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
@@ -32,6 +32,7 @@ import { getDynamicTolerance } from './editor-hit.js';
 import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
+    isLatticePoint, findAttachingRail, moveRailAlongAxis, translateTie,
 } from './editor-lattice.js';
 import { PATTERN_DEFAULTS, getLayerPattern } from './editor-lattice-pattern.js';
 import {
@@ -846,33 +847,270 @@ const circleHandler = {
  *  rows are harmless (nearestRailRow just scans for the closest, ties
  *  broken toward the first match), so no dedup needed. */
 function _existingRailRows(editor, spacing, orientation) {
-    return _collectLatticeSegments(editor, spacing)
+    return _collectLatticeElements(editor, spacing)
         .filter((s) => s.kind === 'rail')
         .map((s) => orient(s.a, orientation).j);
 }
 
-/** Existing rail/tie segments on the sketch, as {kind, a, b} in lattice
- *  coords — the crossing set latticeCrossings needs. Gathered BEFORE the
- *  new segment is emitted so it never crosses against itself. */
-function _collectLatticeSegments(editor, spacing) {
+/**
+ * SE7i (Section 4: "attachment derivation reads each piece's WORLD
+ * geometry... never raw attrs"): every rail/tie/node on the ACTIVE layer,
+ * in REAL (un-oriented) lattice coords — reading each element's WORLD
+ * position (worldPoint bakes any transform= a Select-mode drag wrote)
+ * rather than its raw x1/y1/cx/cy attributes, the same "moved elements
+ * count where they ARE" fix SE7n already applied to findNodeAt/
+ * _elementIdentityLatticePoints. Renamed + extended from the old
+ * _collectLatticeSegments (rail/tie only, raw attrs, no `el` reference):
+ * its two existing callers (_existingRailRows above, finish()'s own
+ * crossing search below) still apply orient() themselves afterward,
+ * unchanged — this just makes what they read correct under a transform.
+ * Also now returns nodes (`{kind:'node', el, point, onGrid}`) for the
+ * connected-editing move feature below; existing rail/tie-only callers
+ * harmlessly filter those out. `excludeEl` skips the element currently
+ * being dragged so it can't attach to or collide with itself.
+ *
+ * `aOnGrid`/`bOnGrid`/`onGrid` (SE7i): whether that END's WORLD point was
+ * EXACTLY on a lattice point (isLatticePoint), checked on the RAW world
+ * point BEFORE `toLattice` rounds it — `a`/`b`/`point` are already
+ * rounded-to-nearest-cell, so checking on-grid-ness on THOSE instead
+ * would be vacuously true for every end (any point rounds to some cell)
+ * and silently defeat the whole "exact grid point, not just nearest"
+ * attachment rule. Existing rail/tie-only callers don't read these
+ * fields and are unaffected. */
+function _collectLatticeElements(editor, spacing, excludeEl = null) {
     if (!editor._sketchLayer) return [];
-    const segs = [];
+    const activeLayer = getActiveLayer(editor);
+    const out = [];
     for (const ch of editor._sketchLayer.children().toArray()) {
-        if (!ch || !ch.node) continue;
+        if (!ch || !ch.node || ch === excludeEl) continue;
+        if (getElementLayer(ch) !== activeLayer) continue;
         const kind = ch.node.getAttribute(LATTICE_ATTR);
-        if (kind !== 'rail' && kind !== 'tie') continue;
-        const x1 = parseFloat(ch.node.getAttribute('x1'));
-        const y1 = parseFloat(ch.node.getAttribute('y1'));
-        const x2 = parseFloat(ch.node.getAttribute('x2'));
-        const y2 = parseFloat(ch.node.getAttribute('y2'));
-        if ([x1, y1, x2, y2].some(Number.isNaN)) continue;
-        segs.push({
-            kind,
-            a: toLattice({ x: x1, y: y1 }, spacing),
-            b: toLattice({ x: x2, y: y2 }, spacing),
-        });
+        if (kind === 'rail' || kind === 'tie') {
+            const x1 = parseFloat(ch.node.getAttribute('x1'));
+            const y1 = parseFloat(ch.node.getAttribute('y1'));
+            const x2 = parseFloat(ch.node.getAttribute('x2'));
+            const y2 = parseFloat(ch.node.getAttribute('y2'));
+            if ([x1, y1, x2, y2].some(Number.isNaN)) continue;
+            const aWorld = worldPoint(ch, { x: x1, y: y1 });
+            const bWorld = worldPoint(ch, { x: x2, y: y2 });
+            out.push({
+                kind, el: ch,
+                a: toLattice(aWorld, spacing), b: toLattice(bWorld, spacing),
+                aOnGrid: isLatticePoint(aWorld, spacing), bOnGrid: isLatticePoint(bWorld, spacing),
+            });
+        } else if (kind === 'node') {
+            const cx = parseFloat(ch.node.getAttribute('cx'));
+            const cy = parseFloat(ch.node.getAttribute('cy'));
+            if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
+            const world = worldPoint(ch, { x: cx, y: cy });
+            out.push({ kind, el: ch, point: toLattice(world, spacing), onGrid: isLatticePoint(world, spacing) });
+        }
     }
-    return segs;
+    return out;
+}
+
+// SE7i (Section 3, "connected editing" — Fred approved the rules): a
+// sentinel lattice point that can never coincide with a real row/range —
+// used to mask OFF a tie-end that failed the on-grid check without
+// discarding the tie's OTHER end, which might still be a genuine
+// attachment. moveRailAlongAxis's own row+range comparison (`pt.j ===
+// railJ`) is false for NaN against any real number, so a masked end
+// simply never matches.
+const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
+
+/**
+ * SE7i: snapshot everything a drag-to-move gesture needs, captured ONCE
+ * at drag start — attachments derive from this frozen snapshot for the
+ * whole gesture ("attachments are fixed at drag start; a dragged rail
+ * never picks up ties it crosses mid-drag": Fred). Candidates come from
+ * _collectLatticeElements (world-geometry-aware, active-layer-scoped,
+ * excluding the grabbed element itself); a tie-end or node that isn't
+ * genuinely on-grid (isLatticePoint, computed by that function on the
+ * RAW world point) is masked to `_OFF_GRID_SENTINEL` so it can never
+ * attach — Fred: "attach should mean snapped to grid on the same point,"
+ * not merely close to one. `startAttrs` is the grabbed element's own
+ * pre-drag attrs (captured AFTER the transform-bake below), used at
+ * finish() to detect a true no-op (bare click).
+ *
+ * SE7i (Section 4: "a Lattice-mode move BAKES its result into the attrs
+ * (no transform left)"): if the grabbed element already carries a
+ * transform= (e.g. a prior Select-mode move), it's baked into its raw
+ * x1/y1/x2/y2 (or cx/cy) attrs HERE, before anything else reads or
+ * writes them — every subsequent live write in this gesture sets those
+ * raw attrs directly and would otherwise double-apply a leftover
+ * transform on top of the new coordinates. */
+function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
+    // Bake any leftover transform (a prior Select-mode move) into the
+    // grabbed element's raw attrs FIRST, once, before anything below
+    // reads or writes them — see this function's own header comment.
+    if (kind === 'node') {
+        const nodeWorld = worldPoint(hit, { x: parseFloat(hit.attr('cx')), y: parseFloat(hit.attr('cy')) });
+        if (hit.attr('transform')) { hit.attr({ transform: null }); hit.center(nodeWorld.x, nodeWorld.y); }
+    } else {
+        const aWorld = worldPoint(hit, { x: parseFloat(hit.attr('x1')), y: parseFloat(hit.attr('y1')) });
+        const bWorld = worldPoint(hit, { x: parseFloat(hit.attr('x2')), y: parseFloat(hit.attr('y2')) });
+        if (hit.attr('transform')) hit.attr({ x1: aWorld.x, y1: aWorld.y, x2: bWorld.x, y2: bWorld.y, transform: null });
+    }
+    const startAttrs = kind === 'node'
+        ? { cx: hit.attr('cx'), cy: hit.attr('cy') }
+        : { x1: hit.attr('x1'), y1: hit.attr('y1'), x2: hit.attr('x2'), y2: hit.attr('y2') };
+    // Post-bake, the raw attrs ARE the world position (identity matrix,
+    // or none) — worldPoint on them now is just a pass-through, but
+    // reading through it uniformly (rather than branching on whether a
+    // bake just happened) keeps this one code path for both cases.
+    const aWorld = kind === 'node' ? null : worldPoint(hit, { x: parseFloat(hit.attr('x1')), y: parseFloat(hit.attr('y1')) });
+    const bWorld = kind === 'node' ? null : worldPoint(hit, { x: parseFloat(hit.attr('x2')), y: parseFloat(hit.attr('y2')) });
+
+    if (kind === 'rail') {
+        const railCanon = { a: orient(toLattice(aWorld, spacing), orientation), b: orient(toLattice(bWorld, spacing), orientation) };
+        const candidates = _collectLatticeElements(editor, spacing, hit);
+        const ties = candidates.filter((c) => c.kind === 'tie').map((c) => ({
+            el: c.el,
+            a: c.aOnGrid ? orient(c.a, orientation) : _OFF_GRID_SENTINEL,
+            b: c.bOnGrid ? orient(c.b, orientation) : _OFF_GRID_SENTINEL,
+        }));
+        const nodes = candidates
+            .filter((c) => c.kind === 'node' && c.onGrid)
+            .map((c) => ({ el: c.el, point: orient(c.point, orientation) }));
+        return { kind, el: hit, orientation, spacing, startAttrs, railCanon, ties, nodes };
+    }
+
+    if (kind === 'tie') {
+        const tieCanon = { a: orient(toLattice(aWorld, spacing), orientation), b: orient(toLattice(bWorld, spacing), orientation) };
+        const startCanon = orient(toLattice(pt, spacing), orientation);
+        const candidates = _collectLatticeElements(editor, spacing, hit);
+        // Nodes riding this tie's OWN endpoints translate WITH it — found
+        // by exact coincidence with the tie's already-on-grid ends (a
+        // node can only ever legitimately sit exactly at an integer
+        // lattice cell in the first place, per emitNode's own contract).
+        const nodes = candidates
+            .filter((c) => c.kind === 'node' && c.onGrid)
+            .map((c) => ({ el: c.el, point: orient(c.point, orientation) }))
+            .filter((n) =>
+                (n.point.i === tieCanon.a.i && n.point.j === tieCanon.a.j) ||
+                (n.point.i === tieCanon.b.i && n.point.j === tieCanon.b.j));
+        return { kind, el: hit, orientation, spacing, startAttrs, tieCanon, startCanon, nodes };
+    }
+
+    // kind === 'node'. SE7i (Fred: "moves the tie end it belongs to along
+    // its rail"): find the tie (if any) with an endpoint exactly at this
+    // node's own position — dragging the node really drags THAT tie-end.
+    // If that end also sits on a rail (findAttachingRail), the drag is
+    // CONSTRAINED to slide along the rail's row (only the along-rail
+    // coordinate moves); otherwise it's a free tie-end move, same as
+    // dragging a lone tie's own end would be. A node with no tie-end
+    // here at all (a bare Circle-tool dot, or a mid-span crossing with
+    // no endpoint) has nothing to constrain it and just moves freely.
+    const nodeCanon = orient(toLattice({ x: parseFloat(startAttrs.cx), y: parseFloat(startAttrs.cy) }, spacing), orientation);
+    const candidates = _collectLatticeElements(editor, spacing, hit);
+    const railsCanon = candidates
+        .filter((c) => c.kind === 'rail')
+        .map((c) => ({ a: orient(c.a, orientation), b: orient(c.b, orientation) }));
+    let tieMatch = null;
+    for (const c of candidates) {
+        if (c.kind !== 'tie') continue;
+        const aCanon = c.aOnGrid ? orient(c.a, orientation) : _OFF_GRID_SENTINEL;
+        const bCanon = c.bOnGrid ? orient(c.b, orientation) : _OFF_GRID_SENTINEL;
+        if (aCanon.i === nodeCanon.i && aCanon.j === nodeCanon.j) { tieMatch = { el: c.el, end: 'a' }; break; }
+        if (bCanon.i === nodeCanon.i && bCanon.j === nodeCanon.j) { tieMatch = { el: c.el, end: 'b' }; break; }
+    }
+    const attachingRail = findAttachingRail(nodeCanon, railsCanon);
+    return {
+        kind, el: hit, orientation, spacing, startAttrs, nodeCanon, tieMatch,
+        attachingRailJ: attachingRail ? attachingRail.a.j : null,
+    };
+}
+
+/** Write a rail-move result (moveRailAlongAxis's own return shape) back
+ *  onto the real elements — the rail's own line, every attached tie's
+ *  ONE affected endpoint (the other is left exactly as it was, so the
+ *  tie visibly stretches), and every carried node's centre. */
+function _writeRailMove(move, result) {
+    const { orientation, spacing } = move;
+    const railA = fromLattice(orient(result.rail.a, orientation), spacing);
+    const railB = fromLattice(orient(result.rail.b, orientation), spacing);
+    move.el.attr({ x1: railA.x, y1: railA.y, x2: railB.x, y2: railB.y });
+    for (const { tie, end, point } of result.tieUpdates) {
+        const p = fromLattice(orient(point, orientation), spacing);
+        if (end === 'a') tie.el.attr({ x1: p.x, y1: p.y });
+        else tie.el.attr({ x2: p.x, y2: p.y });
+    }
+    for (const { node, point } of result.nodeUpdates) {
+        const p = fromLattice(orient(point, orientation), spacing);
+        node.el.center(p.x, p.y);
+    }
+}
+
+/** SE7i: one tick of a piece-move gesture — recomputes the live geometry
+ *  from the FIXED drag-start snapshot (`editor._latticeMove`) and the
+ *  CURRENT pointer position, writing straight to the real elements'
+ *  attrs (no separate preview overlay, no transform= — Section 4: "a
+ *  Lattice-mode move BAKES its result into the attrs"). Runs on every
+ *  mousemove; the eventual undo step is a single pushState() at
+ *  finish(), not one per tick. */
+function _updateLatticeMove(editor, pt) {
+    const move = editor._latticeMove;
+    const { spacing, orientation } = move;
+    const canonPt = orient(toLattice(pt, spacing), orientation);
+
+    if (move.kind === 'rail') {
+        // A rail moves only ACROSS its own direction — never slides
+        // along its own length — so only the row (canonical j) tracks
+        // the pointer; moveRailAlongAxis carries the i-range over as-is.
+        const result = moveRailAlongAxis(move.railCanon, canonPt.j, move.ties, move.nodes);
+        _writeRailMove(move, result);
+    } else if (move.kind === 'tie') {
+        // A tie "drags freely... NOT confined between rails" — a rigid
+        // translation of both ends by the same snapped delta.
+        const di = canonPt.i - move.startCanon.i;
+        const dj = canonPt.j - move.startCanon.j;
+        const moved = translateTie(move.tieCanon, di, dj);
+        const a = fromLattice(orient(moved.a, orientation), spacing);
+        const b = fromLattice(orient(moved.b, orientation), spacing);
+        move.el.attr({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
+        for (const node of move.nodes) {
+            // Each carried node moves by the SAME delta as whichever of
+            // the tie's own ends it started coincident with.
+            const atA = node.point.i === move.tieCanon.a.i && node.point.j === move.tieCanon.a.j;
+            const base = atA ? move.tieCanon.a : move.tieCanon.b;
+            const p = fromLattice(orient({ i: base.i + di, j: base.j + dj }, orientation), spacing);
+            node.el.center(p.x, p.y);
+        }
+    } else {
+        // 'node': free unless its own tie-end is rail-attached, in which
+        // case the drag is pinned to that rail's row (only the
+        // along-rail coordinate follows the pointer).
+        const finalCanon = (move.tieMatch && move.attachingRailJ != null)
+            ? { i: canonPt.i, j: move.attachingRailJ }
+            : canonPt;
+        const p = fromLattice(orient(finalCanon, orientation), spacing);
+        move.el.center(p.x, p.y);
+        if (move.tieMatch) {
+            const { el, end } = move.tieMatch;
+            if (end === 'a') el.attr({ x1: p.x, y1: p.y });
+            else el.attr({ x2: p.x, y2: p.y });
+        }
+    }
+}
+
+/** SE7i: commit a piece-move gesture — one undo step for EVERYTHING that
+ *  moved (the rail/tie/node itself plus every stretched tie and carried
+ *  node), skipped entirely when nothing actually changed (a bare click
+ *  on an existing piece, matching "a bare click does nothing" for the
+ *  draw-new gesture this one sits alongside). Moved pieces KEEP their
+ *  OWNERSHIP_ATTR — this function never touches it, by construction. */
+function _finishLatticeMove(editor) {
+    const move = editor._latticeMove;
+    editor._latticeMove = null;
+    editor._isDrawing = false;
+    const nowAttrs = move.kind === 'node'
+        ? { cx: move.el.attr('cx'), cy: move.el.attr('cy') }
+        : { x1: move.el.attr('x1'), y1: move.el.attr('y1'), x2: move.el.attr('x2'), y2: move.el.attr('y2') };
+    const moved = Object.keys(move.startAttrs).some((k) => move.startAttrs[k] !== nowAttrs[k]);
+    if (!moved) return;
+    applyLayerState(editor);
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (editor._onChange) editor._onChange();
 }
 
 // SE7a: Lattice — drag along a row for a rail, along a column for a tie;
@@ -883,9 +1121,26 @@ function _collectLatticeSegments(editor, spacing) {
 // callers of _snap, not for this handler's own point resolution).
 const latticeHandler = {
     start(editor, pt) {
-        editor._deselect();
         const spacing = editor._grid.spacing || 0.25;
         editor._latticeSpacing = spacing;
+
+        // SE7i (Section 3, connected editing): drag ON an existing rail/
+        // tie/node moves it, structure-aware; drag on empty space (or on
+        // a non-lattice shape) still draws a new rail/tie exactly as
+        // before. Active-layer-only, same scope every other drawing mode
+        // already uses (getNearbyElement's own default).
+        const tol = getDynamicTolerance(editor, 10, 'slopPx');
+        const hit = editor._getNearbyElement(pt, tol);
+        const hitKind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
+        if (hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node') {
+            editor._deselect();
+            editor._isDrawing = true;
+            const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
+            editor._latticeMove = _beginLatticeMove(editor, hit, hitKind, pt, spacing, orientation);
+            return;
+        }
+
+        editor._deselect();
         editor._latticeStart = toLattice(pt, spacing);
         editor._latticeEnd = editor._latticeStart;
         editor._isDrawing = true;
@@ -898,6 +1153,7 @@ const latticeHandler = {
             .attr('pointer-events', 'none');
     },
     update(editor, pt) {
+        if (editor._latticeMove) { _updateLatticeMove(editor, pt); return; }
         if (!editor._latticePreview) return;
         const spacing = editor._latticeSpacing;
         // SE7h: the hand tool conjugates through the SAME orient() the
@@ -941,6 +1197,7 @@ const latticeHandler = {
         editor._latticePreview.attr({ x2: p2.x, y2: p2.y });
     },
     finish(editor) {
+        if (editor._latticeMove) { _finishLatticeMove(editor); return; }
         editor._isDrawing = false;
         if (editor._latticePreview) { editor._latticePreview.remove(); editor._latticePreview = null; }
         const a = editor._latticeStart;
@@ -958,9 +1215,9 @@ const latticeHandler = {
         // before SE7h) so it never crosses against itself — oriented into
         // the canonical frame since the crossing math below is.
         const existing = editor._lattice.autoNodes
-            ? _collectLatticeSegments(editor, spacing).map((s) => ({
-                kind: s.kind, a: orient(s.a, orientation), b: orient(s.b, orientation),
-              }))
+            ? _collectLatticeElements(editor, spacing)
+                .filter((s) => s.kind === 'rail' || s.kind === 'tie')
+                .map((s) => ({ kind: s.kind, a: orient(s.a, orientation), b: orient(s.b, orientation) }))
             : [];
         // emitSegment draws the REAL a/b (unchanged) — only the crossing
         // math below needs the canonical conjugation, same reasoning as
@@ -976,6 +1233,19 @@ const latticeHandler = {
         applyLayerState(editor);
         if (typeof editor.pushState === 'function') editor.pushState();
         if (editor._onChange) editor._onChange();
+    },
+    // SE7i (Section 3: "Hover feedback: the piece under the pointer
+    // highlights in Lattice mode, so grab vs draw is visible"): reuses
+    // the same _setHover highlight mechanism select/node mode already
+    // use — a lattice piece under the pointer gets the highlight; a
+    // non-lattice shape (or empty space, where a drag would draw) gets
+    // none, matching "drag ON an existing piece" being the only case
+    // this tool treats specially.
+    hover(editor, pt) {
+        const tol = getDynamicTolerance(editor, 10, 'slopPx');
+        const hit = editor._getNearbyElement(pt, tol);
+        const kind = hit ? hit.node.getAttribute(LATTICE_ATTR) : null;
+        editor._setHover((kind === 'rail' || kind === 'tie' || kind === 'node') ? hit : null);
     },
 };
 

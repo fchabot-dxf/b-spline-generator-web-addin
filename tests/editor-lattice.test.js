@@ -23,6 +23,10 @@ import {
   emitSegment,
   ORIENTATIONS,
   orient,
+  isLatticePoint,
+  findAttachingRail,
+  moveRailAlongAxis,
+  translateTie,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 
 describe('toLattice / fromLattice', () => {
@@ -348,5 +352,171 @@ describe('emitSegment (SE7c)', () => {
     const { editor, calls } = mockEditorForEmit([], 1.0);
     emitSegment(editor, 'rail', { x: 0, y: 0 }, { x: 1, y: 0 });
     expect(calls.stroke[0].width).toBeCloseTo(LATTICE_STYLE.rail.widthFactor * 1.0, 10);
+  });
+});
+
+/**
+ * SE7i (connected editing, Section 3): the pure math behind "drag on an
+ * existing piece moves it, structure-aware." Fred: "attach should mean
+ * snapped to grid on the same point" — isLatticePoint is the exact-match
+ * primitive that claim rests on.
+ */
+describe('isLatticePoint (SE7i)', () => {
+  const spacing = 0.25;
+
+  it('is true for a point exactly on a lattice cell', () => {
+    expect(isLatticePoint({ x: 0.5, y: 0.75 }, spacing)).toBe(true);
+    expect(isLatticePoint({ x: 0, y: 0 }, spacing)).toBe(true);
+  });
+
+  it('is false for a point off-grid by a real amount (an Alt-drag / Select nudge)', () => {
+    expect(isLatticePoint({ x: 0.51, y: 0.75 }, spacing)).toBe(false);
+    expect(isLatticePoint({ x: 0.5, y: 0.751 }, spacing)).toBe(false);
+  });
+
+  it('tolerates only genuine floating-point noise, not a generous snap range', () => {
+    expect(isLatticePoint({ x: 0.5 + 1e-9, y: 0.75 - 1e-9 }, spacing)).toBe(true);
+    expect(isLatticePoint({ x: 0.5 + 1e-3, y: 0.75 }, spacing)).toBe(false);
+  });
+});
+
+describe('findAttachingRail (SE7i)', () => {
+  const rail = { a: { i: 0, j: 4 }, b: { i: 10, j: 4 } };
+
+  it('finds the rail when the point sits on its row, within its i-range', () => {
+    expect(findAttachingRail({ i: 5, j: 4 }, [rail])).toBe(rail);
+    expect(findAttachingRail({ i: 0, j: 4 }, [rail])).toBe(rail); // exactly at an end — still attaches
+    expect(findAttachingRail({ i: 10, j: 4 }, [rail])).toBe(rail);
+  });
+
+  it('does NOT attach a grid point on the rail\'s row but beyond its ends (Fred\'s own example)', () => {
+    expect(findAttachingRail({ i: 11, j: 4 }, [rail])).toBeNull();
+    expect(findAttachingRail({ i: -1, j: 4 }, [rail])).toBeNull();
+  });
+
+  it('does not attach a point on a different row entirely', () => {
+    expect(findAttachingRail({ i: 5, j: 3 }, [rail])).toBeNull();
+  });
+
+  it('returns null with no candidate rails', () => {
+    expect(findAttachingRail({ i: 5, j: 4 }, [])).toBeNull();
+  });
+});
+
+describe('moveRailAlongAxis (SE7i): derive attachments + apply a rail move in one step', () => {
+  const rail = { a: { i: 0, j: 4 }, b: { i: 10, j: 4 } };
+
+  it('moves the rail itself to the new row, i-range unchanged (never slides along its own length)', () => {
+    const result = moveRailAlongAxis(rail, 7, [], []);
+    expect(result.rail).toEqual({ a: { i: 0, j: 7 }, b: { i: 10, j: 7 } });
+  });
+
+  it('stretches an attached tie: the attached end follows the new row, the OTHER end is untouched (length changes)', () => {
+    const tie = { a: { i: 3, j: 4 }, b: { i: 3, j: 9 } }; // 'a' sits on the rail
+    const result = moveRailAlongAxis(rail, 7, [tie], []);
+    expect(result.tieUpdates).toEqual([{ tie, end: 'a', point: { i: 3, j: 7 } }]);
+  });
+
+  it('a tie end can be attached on EITHER side ("a" or "b") — the position along the rail (i) never changes', () => {
+    const tieA = { a: { i: 2, j: 4 }, b: { i: 2, j: 1 } };
+    const tieB = { a: { i: 8, j: 1 }, b: { i: 8, j: 4 } };
+    const result = moveRailAlongAxis(rail, 6, [tieA, tieB], []);
+    expect(result.tieUpdates).toEqual(expect.arrayContaining([
+      { tie: tieA, end: 'a', point: { i: 2, j: 6 } },
+      { tie: tieB, end: 'b', point: { i: 8, j: 6 } },
+    ]));
+  });
+
+  it('a tie with NEITHER end on the rail is not touched at all', () => {
+    const tie = { a: { i: 3, j: 2 }, b: { i: 3, j: 1 } };
+    const result = moveRailAlongAxis(rail, 7, [tie], []);
+    expect(result.tieUpdates).toHaveLength(0);
+  });
+
+  it('a tie end on the rail\'s ROW but beyond its i-RANGE is not attached (mirrors findAttachingRail)', () => {
+    const tie = { a: { i: 20, j: 4 }, b: { i: 20, j: 9 } };
+    const result = moveRailAlongAxis(rail, 7, [tie], []);
+    expect(result.tieUpdates).toHaveLength(0);
+  });
+
+  it('carries a node sitting on the rail along with it (rigidly — i unchanged, j follows)', () => {
+    const node = { i: 5, j: 4 };
+    const result = moveRailAlongAxis(rail, 7, [], [node]);
+    expect(result.nodeUpdates).toEqual([{ node, point: { i: 5, j: 7 } }]);
+  });
+
+  it('accepts a node wrapped as {point} too (the DOM-touching caller\'s own record shape)', () => {
+    const wrapped = { el: 'stand-in-for-a-real-element', point: { i: 5, j: 4 } };
+    const result = moveRailAlongAxis(rail, 7, [], [wrapped]);
+    expect(result.nodeUpdates).toEqual([{ node: wrapped, point: { i: 5, j: 7 } }]);
+  });
+
+  it('non-vacuous: a rail with NO attachments at all still moves itself, with empty update lists (not a crash)', () => {
+    const result = moveRailAlongAxis(rail, 7, [], []);
+    expect(result.rail).toBeDefined();
+    expect(result.tieUpdates).toEqual([]);
+    expect(result.nodeUpdates).toEqual([]);
+  });
+
+  it('is a pure re-derivation from the SAME start snapshot — calling it twice with different newRow values never mutates the inputs (attachments stay fixed at drag start)', () => {
+    const tie = { a: { i: 3, j: 4 }, b: { i: 3, j: 9 } };
+    const before = JSON.parse(JSON.stringify(rail));
+    moveRailAlongAxis(rail, 7, [tie], []);
+    moveRailAlongAxis(rail, 2, [tie], []);
+    expect(rail).toEqual(before); // the rail snapshot itself is never mutated
+    expect(tie.a).toEqual({ i: 3, j: 4 }); // neither is the tie's own recorded geometry
+  });
+});
+
+describe('moveRailAlongAxis composed with orient() (the vertical-orientation mirror, SE7i)', () => {
+  // Fred: "vice versa if I inverse the orientation" — with rails VERTICAL,
+  // a rail's own axis (the thing it moves ACROSS) is the real-i column,
+  // and ties run horizontally. Conjugating the SAME moveRailAlongAxis
+  // through orient() (exactly the hand-tool's own established pattern)
+  // must reproduce that mirror with zero new math.
+  it('a vertical rail moving left/right (real-i) stretches a horizontal tie\'s length, never its width, and the tie slides up/down conceptually mapped through orient()', () => {
+    const orientation = 'vertical';
+    // Real geometry: a vertical rail at real-i=4, spanning real-j 0..10;
+    // a horizontal tie whose real-i=4 end sits ON that rail at real-j=3.
+    const railReal = { a: { i: 4, j: 0 }, b: { i: 4, j: 10 } };
+    const tieReal = { a: { i: 4, j: 3 }, b: { i: 9, j: 3 } };
+
+    const railCanon = { a: orient(railReal.a, orientation), b: orient(railReal.b, orientation) };
+    const tieCanon = { a: orient(tieReal.a, orientation), b: orient(tieReal.b, orientation) };
+
+    // Drag the rail to real-i=7 (a horizontal move for a vertical rail) —
+    // in canonical frame that's the row (j) changing to 7.
+    const result = moveRailAlongAxis(railCanon, 7, [tieCanon], []);
+
+    // The tie's attached end (canonical 'a') moves to canonical j=7;
+    // translated back through orient(), that's real-i=7 — the tie's
+    // OTHER end (real-i=9) is untouched, so its LENGTH (real-i span)
+    // changed, never its stroke width (this function never touches that
+    // attribute at all).
+    const update = result.tieUpdates[0];
+    expect(update.end).toBe('a');
+    const realPoint = orient(update.point, orientation);
+    expect(realPoint).toEqual({ i: 7, j: 3 }); // real-i moved, real-j (3) unchanged — a horizontal tie stayed horizontal
+  });
+});
+
+describe('translateTie (SE7i): rigid translation, not confined between rails', () => {
+  it('moves both ends by the same delta, preserving the tie\'s shape and length', () => {
+    const tie = { a: { i: 3, j: 1 }, b: { i: 3, j: 4 } };
+    const moved = translateTie(tie, 2, -1);
+    expect(moved).toEqual({ a: { i: 5, j: 0 }, b: { i: 5, j: 3 } });
+    expect(moved.b.j - moved.a.j).toBe(tie.b.j - tie.a.j); // length unchanged
+  });
+
+  it('a zero delta is a no-op (same coordinates back)', () => {
+    const tie = { a: { i: 3, j: 1 }, b: { i: 3, j: 4 } };
+    expect(translateTie(tie, 0, 0)).toEqual(tie);
+  });
+
+  it('does not mutate the input', () => {
+    const tie = { a: { i: 3, j: 1 }, b: { i: 3, j: 4 } };
+    const before = JSON.parse(JSON.stringify(tie));
+    translateTie(tie, 5, 5);
+    expect(tie).toEqual(before);
   });
 });
