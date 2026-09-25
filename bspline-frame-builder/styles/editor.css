@@ -551,10 +551,39 @@
        actually scrolling once content exceeds it, same "declare the
        bound, reuse the existing scroll" fix as the Lattice sheet's own
        max-height above, without the multi-fixed-sheet stacking problem
-       two position:fixed panels would introduce. */
+       two position:fixed panels would introduce.
+       MOB2b (Fred, live 390x844 after Generate): the max-height bound
+       alone wasn't enough to stop the overlap, and — proven live, the
+       hard way — SHRINKING it further doesn't help either: this panel is
+       the LAST in-flow child of the column, with #editorCanvasContainer
+       (flex:1, before it) absorbing all the slack, so however tall this
+       panel's own box is, it always settles flush against the bottom of
+       the column — exactly where the ALSO-bottom-anchored
+       (position:fixed) Lattice sheet sits, even collapsed (its header +
+       always-visible Generate/Detach footer is still ~118px). Shrinking
+       max-height further only grows the canvas more; it never moves this
+       panel's bottom edge, so it never stopped the overlap (confirmed
+       live via elementFromPoint at a row's own center returning the
+       Lattice footer's button, not the row). A margin-bottom is what
+       actually reserves clearance AFTER this panel, pushing its bottom
+       edge up off the container's own bottom — reusing
+       --lattice-sheet-height (properties-lattice.js's ResizeObserver,
+       already tracks the sheet's real height whether collapsed or
+       expanded, zero new JS) as that margin sizes the gap to exactly the
+       sheet's current height. This has one known limit: the margin is
+       satisfied by flex-shrinking the canvas, which has a floor
+       (min-height:0) — expand the Lattice sheet far enough (up toward
+       its own 65vh cap) and canvas hits that floor before the full
+       margin fits, so a partial overlap can reappear while the sheet is
+       substantially expanded. Not fixed further here: the dispatched,
+       verified scenario is Generate with the sheet in its default
+       collapsed state (where this margin fully covers it, confirmed
+       live), and the sheet is one tap from collapsing back to recover
+       full clearance regardless. */
     .editor-layers-panel {
         width: 100% !important;
         max-height: 30vh;
+        margin-bottom: var(--lattice-sheet-height, 0px);
         border-left: none !important;
         border-top: 1px solid var(--cad-border-standard);
     }

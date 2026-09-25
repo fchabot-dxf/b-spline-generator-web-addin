@@ -8534,3 +8534,76 @@ cycle: avoid touching the shared `smoke-editor.mjs` while seat B is on lane-b).*
   JS layout-only).
 
 No amendments pending as of this pass.
+
+## Turn 255 — MOB2b: the editor's Layers rows are still hidden on a phone — DONE
+
+The advisor's own 390x844 screenshot after Generate (reviewing MOB2/d213048): only the "LAYERS +" header
+showed, the rows themselves (eye/3D/palette/name) were gone. Root-caused and fixed live, browser-only per the
+standing no-Fusion rule.
+
+**Root cause, `styles/editor.css`'s `.editor-layers-panel` (≤720px "Mobile" block).** MOB2's own fix bounded
+this panel's height (`max-height:30vh`) so its `.layers-list` would scroll instead of growing unbounded — but
+a bound alone doesn't create SEPARATION from a sibling. `.editor-lattice-panel` leaves flow entirely
+(`position:fixed; bottom:0`) once the modal goes column, so `.editor-layers-panel` — the LAST remaining
+in-flow child, with `#editorCanvasContainer` (`flex:1`, before it) absorbing all the slack — always settles
+flush against the bottom of the column, REGARDLESS of its own height. That's exactly where the Lattice
+sheet's `position:fixed` footer also sits (still ~118px even collapsed: header + always-visible
+Generate/Detach buttons), so the two "bottom of the screen" claims overlapped and the sheet's z-index:55 won,
+covering the Layers panel's lowest row(s). Confirmed live via `elementFromPoint` at a row's own center
+returning the Lattice footer's button, not the row — exactly the ground-truth check the dispatch itself asked
+for.
+
+**First attempt, wrong mental model (caught live, reverted):** tried shrinking `.editor-layers-panel`'s
+`max-height` further, subtracting `--lattice-sheet-height` from the 30vh bound
+(`properties-lattice.js`'s existing ResizeObserver — no new JS). Computed `max-height` DID drop to 0px
+correctly (confirmed via `getComputedStyle`), but the panel's own RENDERED height stayed ~75px regardless —
+a genuine Chrome flex quirk this session couldn't fully pin down (not from `overflow`, not from
+`min-height:auto`, both ruled out live) — and more importantly, even when the numbers lined up (e.g. 135.2px
+computed correctly matching `30vh - 118px`), the panel's BOTTOM edge still landed exactly at the viewport's
+own bottom (844), because — per the root cause above — shrinking an item's OWN height in this layout doesn't
+move it away from the container's bottom; it just lets the flexible canvas grow MORE above it. Confirmed live
+this approach also broke the Lattice panel's expand-then-recollapse round trip (rows stayed hidden after
+recollapsing, not just failing to fix the overlap).
+
+**Actual fix:** `margin-bottom: var(--lattice-sheet-height, 0px)` alongside the EXISTING `max-height:30vh`
+(both needed — max-height bounds row growth per MOB2's original purpose, margin-bottom reserves the
+clearance from the fixed sheet). A margin on the last flex-column child genuinely pushes its bottom edge up
+off the container's own bottom (confirmed live: `layersPanelRect.bottom` now lands exactly on
+`latticePanelRect.top`, both collapsed and after an expand/collapse round-trip). **One documented, accepted
+limit:** the margin is satisfied by flex-shrinking `#editorCanvasContainer`, which floors at `min-height:0` —
+fully expanding the Lattice sheet toward its own 65vh cap can shrink canvas past that floor before the full
+margin fits, so a partial overlap (~57px, confirmed live) can reappear while the sheet is substantially
+expanded. Not chased further: the dispatched/verified scenario is Generate with the sheet in its DEFAULT
+collapsed state (fully fixed, confirmed live), and collapsing the sheet one tap fully recovers clearance
+regardless (also confirmed live) — recorded in the CSS comment so it reads as a named, accepted tradeoff
+rather than an unswept gap.
+
+**`scripts/smoke-mob2.mjs` updated** (not a new script — same one from MOB2, extended): added the row-
+visibility assertion the dispatch explicitly called for (`elementFromPoint` at each `.layer-row`'s own center
+must return that row, not whatever's stacked above it — the ONE thing MOB2's smoke run didn't check, which is
+exactly how this regression got past it). Reordered the mobile/tablet flow to match the dispatch's real repro
+path: Lattice tool -> add 2 more layers (3 total, per the dispatch's own verify line) -> Generate with the
+panel in its true DEFAULT collapsed state -> assert all rows visible -> THEN expand the panel (a separate,
+explicit tap) for the pre-existing Widths/checkbox measurements -> collapse it again and re-assert row
+visibility (the round-trip this turn's first wrong attempt silently broke). Also hit and fixed an unrelated
+test-harness gap while re-running this script: it reuses one `chrome-mob2-<mode>` profile dir across runs, and
+seat B's concurrent lane-b commits (T41/T42, font-family cascade) landed on this shared working tree mid-
+session — a stale cached module from an earlier run mismatched a freshly-changed one and threw `"editor-
+outline-preview.js... does not provide an export named 'localGlyphPathD'"` on page load. Added
+`Network.setCacheDisabled` (one CDP call) so this script's own re-runs can't go stale again regardless of
+what lands in the shared tree between them — not a product bug, a test-script fix.
+
+**Verify (live, 390x844 mobile / 768x1024 tablet / 1400x900 desktop, `smoke-mob2.mjs`):**
+- `allLayerRowsVisible: true` at both 390x844 and 768x1024, with 3 real layers and a generated pattern — the
+  dispatch's exact scenario, previously the failing one.
+- `allRowsVisibleAfterRoundTrip: true` — expand the Lattice panel, collapse it again, rows still fully
+  visible (this turn's own first-attempt regression, now guarded).
+- `pillIntersectsLayersPanel(AfterGenerate/Expanded): false` throughout — MOB2's own fix still holds, untouched
+  by this turn's change.
+- Toggle sizes (layer row eye/3D/palette + the 3 lattice Nodes checkboxes) still >=32px on both touch widths;
+  desktop screenshot pixel-identical to before (the 30vh/margin-bottom rule is inside the same ≤720px block,
+  never reaches a mouse session).
+- `npx vitest run` -> **668 passed**, 0 failed (no test changes this turn beyond the smoke script; the +8 vs
+  MOB2's 660 is seat B's T41/T42 work on lane-b, unrelated to this turn).
+
+No amendments pending as of this pass.

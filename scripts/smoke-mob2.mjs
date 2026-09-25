@@ -47,7 +47,13 @@ const send = (method, params = {}) => new Promise(r => { const i = ++id; pending
 const evalJS = async (expr) => (await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })).result?.result?.value;
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(`${OUT}/${name}`, Buffer.from(r.result.data, 'base64')); };
 
-await send('Runtime.enable'); await send('Page.enable');
+await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+// Seat B (lane-b) commits land on this same shared repo mid-session, and
+// this script's OWN chrome-mob2-<mode> profile dir is reused across runs
+// — without this, a stale cached module from an earlier run can mismatch
+// a freshly-changed one (hit live: editor-outline-preview.js cached
+// pre-T42, editor-expand-text.js served fresh, "export not found").
+await send('Network.setCacheDisabled', { cacheDisabled: true });
 const coarse = MODE !== 'desktop';
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: coarse ? 2 : 1, mobile: coarse });
 if (coarse) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
@@ -180,16 +186,18 @@ report.applyFullyVisible = withinViewport(report.applyRect, W, H);
 report.cancelRect = await rectOf('#editorCancel');
 report.cancelFullyVisible = withinViewport(report.cancelRect, W, H);
 
-// Bug #3/#4: generate a lattice + open the Lattice panel so its Nodes
-// checkboxes and Layers-panel rows are all present to measure.
+// Bug #3/#4 + MOB2b: generate a lattice with the Lattice panel in its
+// REAL default state (collapsed on a coarse pointer — the exact
+// dispatched repro path: open Lattice tool, tap Generate, panel still
+// collapsed) and add 2 more layers first (3 total, matching the
+// dispatch's own verify scenario) so the Layers panel has real rows to
+// hide behind the Pattern sheet if the fix regresses.
 await evalJS(`document.getElementById('toolLattice').click(); true`);
 await sleep(800);
-if (coarse) {
-  // The Lattice panel starts collapsed under (pointer:coarse) — expand it
-  // so the Widths/Nodes controls this run measures actually exist in the DOM.
-  await evalJS(`document.getElementById('editorLatticePanel').classList.remove('collapsed'); true`);
-  await sleep(200);
-}
+await evalJS(`document.getElementById('editorAddLayer').click(); true`);
+await sleep(200);
+await evalJS(`document.getElementById('editorAddLayer').click(); true`);
+await sleep(200);
 await evalJS(`document.getElementById('latticeGenerate').click(); true`);
 await sleep(3000);
 await shot(`mob2-${MODE}-2-generated.png`);
@@ -198,6 +206,31 @@ report.layersPanelRectAfterGenerate = await rectOf('#editorLayersPanel');
 report.canvasRect = await rectOf('#editorCanvasContainer');
 report.pillRectAfterGenerate = await rectOf('.editor-history');
 report.pillIntersectsLayersPanelAfterGenerate = intersects(report.pillRectAfterGenerate, report.layersPanelRectAfterGenerate);
+
+// MOB2b (Fred's own follow-up finding): the pill-doesn't-intersect and
+// toggle-size checks above don't prove the ROWS themselves are visible —
+// a bounded-height panel can still have its lowest row(s) covered by the
+// Lattice sheet's own fixed footer sitting on top of it. Ground truth:
+// elementFromPoint at each row's own center must return that row (or a
+// descendant of it), not whatever the Lattice sheet stacked above it.
+report.layerRowVisibility = await evalJS(`(() => {
+  const rows = [...document.querySelectorAll('#editorLayersPanel .layer-row')];
+  return rows.map((row, idx) => {
+    const r = row.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const topEl = document.elementFromPoint(cx, cy);
+    return { idx, visible: row.contains(topEl) || row === topEl, fullyInViewport: r.top >= 0 && r.bottom <= window.innerHeight };
+  });
+})()`);
+report.allLayerRowsVisible = report.layerRowVisibility.length > 0 && report.layerRowVisibility.every(r => r.visible && r.fullyInViewport);
+await shot(`mob2-${MODE}-2b-layers-rows.png`);
+
+if (coarse) {
+  // Expand the Lattice panel (a separate user action, one tap) to inspect
+  // the Widths/Nodes controls that only exist in the DOM once it's open.
+  await evalJS(`document.getElementById('editorLatticePanelHeader').click(); true`);
+  await sleep(400);
+}
 
 const toggleSelectors = [
   '#editorLayersPanel .layer-visibility', '#editorLayersPanel .layer-carve', '#editorLayersPanel .layer-showcolor',
@@ -219,6 +252,33 @@ report.widthsRowFitsPanel = await evalJS(`(() => {
 })()`);
 
 await shot(`mob2-${MODE}-3-lattice-panel.png`);
+
+if (coarse) {
+  // MOB2b's own documented limit (see styles/editor.css's
+  // .editor-layers-panel comment): fully expanding the Pattern sheet (up
+  // to 65vh) can shrink the canvas past its floor before the Layers
+  // panel's reserved margin fully fits, so a partial overlap can
+  // reappear here — not asserted false, just recorded, since the
+  // dispatched/verified scenario is the default collapsed state (above,
+  // BEFORE this block). Collapsing back (below) must recover full
+  // clearance regardless — THAT round-trip IS asserted.
+  report.layersPanelRectExpanded = await rectOf('#editorLayersPanel');
+  report.latticePanelRectExpanded = await rectOf('#editorLatticePanel');
+  report.pillIntersectsLayersPanelExpanded = intersects(await rectOf('.editor-history'), report.layersPanelRectExpanded);
+
+  await evalJS(`document.getElementById('editorLatticePanelHeader').click(); true`);
+  await sleep(600);
+  report.layerRowVisibilityAfterCollapseAgain = await evalJS(`(() => {
+    const rows = [...document.querySelectorAll('#editorLayersPanel .layer-row')];
+    return rows.map(row => {
+      const r = row.getBoundingClientRect();
+      const topEl = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return row.contains(topEl) || row === topEl;
+    });
+  })()`);
+  report.allRowsVisibleAfterRoundTrip = report.layerRowVisibilityAfterCollapseAgain.length > 0 && report.layerRowVisibilityAfterCollapseAgain.every(Boolean);
+  await shot(`mob2-${MODE}-4-recollapsed.png`);
+}
 
 report.logs = logs.slice(0, 15);
 console.log(JSON.stringify(report, null, 1));
