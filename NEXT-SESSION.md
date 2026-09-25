@@ -1,24 +1,25 @@
-# NEXT — MOB3b: drawer polish at FULL height + make the new SE13 rows collapsible sections
+# NEXT — MOB5: mobile two-finger PAN + zoom, and the oversized checkboxes
 
-**Ball: worker (seat A) · epoch 2 · MOB3b.** NO FUSION — browser proof only. MOB3 reviewed + merged with seat B's SE13
-Boundary panel (T49) — both on main (820 green). Advisor re-ran your two smokes (all intended flags) and viewed the
-shots: peek is right, the main-screen resizer is right.
+**Ball: worker (seat A) · epoch 2 · MOB5.** NO FUSION — browser proof with REAL touch events. MOB3b merged with seat
+B's T59 (966 green). Advisor re-ran smoke-mob3-drawer: realTouchSwipeScrollsPanelBody true (scrollTop 0→223) — the
+display:contents fix is right. Thanks for resuming after the nudge — if you ever stop mid-turn again, pass back with a
+note instead of going idle.
 
-## Findings (advisor, your own mob3-mobile-3-full.png — copy at
-C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e\scratchpad\mob3-full-issues.png)
-1. At FULL the undo/redo pill floats over the STROKE toolbar row (the canvas is gone, the pill kept its place). Rule:
-   the pill always sits in the canvas area just above the drawer's top edge; when the canvas area is too short
-   (< pill height + margin, e.g. at full) hide it or dock it into the drawer header — pick one, declare it.
-2. At FULL a Nodes checkbox renders oversized and sits UNDER the sticky Generate/Detach footer (bottom-left blue
-   check glyph). The scroll area must end above the sticky footer (padding-bottom = footer height) and the checkbox
-   must keep its normal ≥32px touch size, not stretch.
-3. Seat B's new rows (Boundary / Ending / Border — ids latticeBoundary*, latticeEnding*, latticeBorder*) are inside
-   the drawer but not yet in your collapsible sections. Give them their own section(s) like the others, remembered
-   open/closed.
+## 1. Still broken (advisor, your own after-swipe shot): the Nodes checkboxes are OVERSIZED
+C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e\scratchpad\mob3b-checkbox-still-big.png
+— big blue boxes overlapping the "at tie ends / at crossings / at rail ends" labels. Normal-looking ~24px box with a
+≥44px TAP TARGET (label padding), label text clear of the box. Check every checkbox in both lattice panels + Border.
+
+## 2. Two-finger pan (ROADMAP "Queued — MOB5", authoritative)
+Fred: "pan and zoom (pan should be integrated in 2-finger interaction) doesn't work well in mobile". Root cause
+(advisor): editor-interaction.js two-pointer branch only zooms about the current midpoint; no translation term → a
+two-finger slide does nothing. Each frame: pan by Δmidpoint (screen→model) + zoom about the new midpoint; clean
+start/end. Also: one-finger drag on empty canvas in Select mode (declare pan vs marquee on touch), the main-screen 3D
+preview's touch (rotate / pinch / two-finger pan), and the page never scrolls/zooms instead of the canvas.
 ## Verify
-390x844 screenshots at full (Lattice) with the Nodes and Boundary sections open, scrolled to the bottom: nothing under
-the footer, pill not over the toolbar; peek unchanged; desktop unchanged. `npx vitest run` green.
+CDP real touch: two-finger slide pans by the swipe distance (±2px), pinch keeps the point under the fingers fixed,
+combined gesture both; 3D preview touch; checkbox screenshot at 390x844 and landscape. `npx vitest run` green.
 ## When done
 Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB3b: drawer polish — <sha>, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB5: 2-finger pan + checkboxes — <sha>, screenshots"`
 and stop.
