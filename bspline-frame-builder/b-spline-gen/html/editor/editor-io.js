@@ -222,6 +222,64 @@ function _outlineAdapter(node) {
  * of element type names that declined on this layer — export-flow.js's
  * own user-facing notice names the kinds, not just a bare count.
  */
+/**
+ * T45 ADD-ON (Fred, via Fusion measurement): the outline replacement
+ * node(s) for one source element — normally a single `<path>`, but when
+ * the OUTLINE_KINDS result carries `circles` (a full circle expressed as
+ * two coincident-center semicircle `A`s — SVG's own workaround for "one
+ * `A` can't express a full circle" — never a genuinely partial arc; see
+ * circleOutlinePathD/lineOutlinePathD's own zero-length case, the two
+ * producers wired up this turn), a native `<circle>` per entry instead.
+ * Fusion's importSVG turns a `<circle>` into a true SketchCircle at exact
+ * radius; two `A`s import as two separate SketchArcs — measured directly
+ * (the advisor's own Fusion sketch: 82 SketchArcs, 0 SketchCircles before
+ * this fix), not assumed. Every producer wired up this turn has its own
+ * `d` ENTIRELY composed of the same circles it declares — never a mix
+ * with other path geometry — so `circles` present means `d` is skipped
+ * here, not supplemented; a future producer that DOES mix would need its
+ * own handling, not silently assumed to fit this one.
+ */
+function _buildOutlineReplacementNodes(doc, result, ch) {
+    const dataAttrs = Array.from(ch.attributes).filter((attr) => attr.name.startsWith('data-'));
+    // Same contract as the live preview (refreshOutlinePreview): the
+    // outline geometry is in the element's own LOCAL frame, so its
+    // `transform` attribute — uncomposed — carries over unchanged.
+    const t = ch.getAttribute('transform');
+    const stroke = ch.getAttribute('stroke') || '#000000';
+    const strokeWidth = ch.getAttribute('stroke-width') || '0.01';
+
+    const decorate = (node) => {
+        if (t) node.setAttribute('transform', t);
+        // SA-ROUNDTRIP-2's _carveText already established this precedent
+        // (a text->path swap at bake time carries every data-* attr over)
+        // — followed here for the same reason: whatever metadata the
+        // source element carried stays on whatever geometry now stands in
+        // for it in the export.
+        for (const attr of dataAttrs) node.setAttribute(attr.name, attr.value);
+        return node;
+    };
+
+    if (result.circles && result.circles.length) {
+        return result.circles.map(({ cx, cy, r }) => {
+            const circle = doc.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', cx);
+            circle.setAttribute('cy', cy);
+            circle.setAttribute('r', r);
+            circle.setAttribute('fill', 'none');
+            circle.setAttribute('stroke', stroke);
+            circle.setAttribute('stroke-width', strokeWidth);
+            return decorate(circle);
+        });
+    }
+
+    const outlinePath = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    outlinePath.setAttribute('d', result.d);
+    outlinePath.setAttribute('fill', 'none');
+    outlinePath.setAttribute('stroke', stroke);
+    outlinePath.setAttribute('stroke-width', strokeWidth);
+    return [decorate(outlinePath)];
+}
+
 async function _getLayerSvgForFusion(editor, layerId, dpi) {
     const parsed = _parseLayerContent(editor, layerId, dpi);
     if (!parsed) return { svg: '', declined: 0, declinedKinds: [] };
@@ -247,28 +305,20 @@ async function _getLayerSvgForFusion(editor, layerId, dpi) {
             console.warn(`[EDITOR-IO] getLayerSvg: layer ${targetId} <${type || '?'}> declined outline geometry (${(result && result.unsupported) || 'no-outline-kind'}) — exporting its centerline instead.`);
             continue; // ch stays exactly as-is: its own centerline
         }
-        const outlinePath = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-        outlinePath.setAttribute('d', result.d);
-        outlinePath.setAttribute('fill', 'none');
-        outlinePath.setAttribute('stroke', ch.getAttribute('stroke') || '#000000');
-        outlinePath.setAttribute('stroke-width', ch.getAttribute('stroke-width') || '0.01');
-        // Same contract as the live preview (refreshOutlinePreview): the
-        // outline `d` is in the element's own LOCAL frame, so its
-        // `transform` attribute — uncomposed — carries over unchanged.
-        const t = ch.getAttribute('transform');
-        if (t) outlinePath.setAttribute('transform', t);
-        // SA-ROUNDTRIP-2's _carveText already established this precedent
-        // (a text->path swap at bake time carries every data-* attr over)
-        // — followed here for the same reason: whatever metadata the
-        // source element carried stays on whatever geometry now stands
-        // in for it in the export.
-        for (const attr of Array.from(ch.attributes)) {
-            if (attr.name.startsWith('data-')) outlinePath.setAttribute(attr.name, attr.value);
-        }
+        const nodes = _buildOutlineReplacementNodes(doc, result, ch);
         if (kind === 'both') {
-            ch.parentNode.insertBefore(outlinePath, ch.nextSibling); // keep the centerline element too
+            let anchor = ch;
+            for (const node of nodes) { // keep the centerline element too, then every replacement node after it, in order
+                anchor.parentNode.insertBefore(node, anchor.nextSibling);
+                anchor = node;
+            }
         } else {
-            ch.parentNode.replaceChild(outlinePath, ch);
+            ch.parentNode.replaceChild(nodes[0], ch);
+            let anchor = nodes[0];
+            for (let i = 1; i < nodes.length; i++) { // any remaining nodes (e.g. a stroke-mode circle's 2nd ring) go right after the first
+                anchor.parentNode.insertBefore(nodes[i], anchor.nextSibling);
+                anchor = nodes[i];
+            }
         }
     }
 

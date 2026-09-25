@@ -161,7 +161,7 @@ describe('lineOutlinePathD — round cap (SE12 Slice 1)', () => {
   it('zero-length line degenerates to a full circle of radius strokeWidth/2, as two A semicircles (SVG cannot express a full circle in one A)', () => {
     const strokeWidth = 3;
     const r = strokeWidth / 2;
-    const { d, unsupported } = lineOutlinePathD({ x1: 5, y1: 5, x2: 5, y2: 5, strokeWidth, cap: 'round' });
+    const { d, unsupported, circles } = lineOutlinePathD({ x1: 5, y1: 5, x2: 5, y2: 5, strokeWidth, cap: 'round' });
     expect(unsupported).toBeNull();
     const segs = parseD(d);
     expect(segs.map((s) => s[0])).toEqual(['M', 'A', 'A', 'Z']);
@@ -172,6 +172,15 @@ describe('lineOutlinePathD — round cap (SE12 Slice 1)', () => {
     for (const p of polygon) {
       expect(Math.hypot(p.x - 5, p.y - 5)).toBeCloseTo(r, 2);
     }
+    // T45 ADD-ON: this IS a true full circle (two coincident-center
+    // semicircle A's) — declared as `circles` so the Fusion export can
+    // emit a native <circle> instead of two SketchArcs.
+    expect(circles).toEqual([{ cx: 5, cy: 5, r }]);
+  });
+
+  it("T45 ADD-ON: a NORMAL (non-zero-length) round-capped line's two caps are genuinely SEPARATE half-circles (different centers) — no `circles` field, left as A (rail/tie caps stay exactly as before)", () => {
+    const { circles } = lineOutlinePathD({ x1: 0, y1: 0, x2: 10, y2: 0, strokeWidth: 2, cap: 'round' });
+    expect(circles).toBeUndefined();
   });
 
   it('T44: butt and square are now supported (no longer decline)', () => {

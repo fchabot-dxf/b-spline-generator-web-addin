@@ -128,6 +128,28 @@ describe('circleOutlinePathD', () => {
     expect(subpaths).toHaveLength(1);
     for (const p of outlinePolygon(subpaths[0])) expect(Math.abs(Math.hypot(p.x, p.y) - 5.5)).toBeLessThan(5.5 * 0.0004);
   });
+
+  describe('circles (T45 ADD-ON): declared full circles for the Fusion export to emit as native <circle>', () => {
+    it('mode:fill — one circle, exact radius r (no offset)', () => {
+      const { circles } = circleOutlinePathD({ cx: 1, cy: 2, r: 3, strokeWidth: 999, mode: 'fill' });
+      expect(circles).toEqual([{ cx: 1, cy: 2, r: 3 }]);
+    });
+
+    it('mode:both — one circle, at r+strokeWidth/2 (matches the single outer ring in `d`)', () => {
+      const { circles } = circleOutlinePathD({ cx: 0, cy: 0, r: 5, strokeWidth: 1, mode: 'both' });
+      expect(circles).toEqual([{ cx: 0, cy: 0, r: 5.5 }]);
+    });
+
+    it('mode:stroke (default), real annulus — TWO circles, outer and inner, matching the two subpaths in `d`', () => {
+      const { circles } = circleOutlinePathD({ cx: 3, cy: -2, r: 2, strokeWidth: 0.8 });
+      expect(circles).toEqual([{ cx: 3, cy: -2, r: 2.4 }, { cx: 3, cy: -2, r: 1.6 }]);
+    });
+
+    it('mode:stroke, inner ring vanishes — only ONE circle (the outer), matching the single subpath in `d`', () => {
+      const { circles } = circleOutlinePathD({ cx: 0, cy: 0, r: 1, strokeWidth: 3 });
+      expect(circles).toEqual([{ cx: 0, cy: 0, r: 2.5 }]);
+    });
+  });
 });
 
 describe('rectOutlinePathD', () => {

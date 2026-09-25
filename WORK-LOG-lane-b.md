@@ -5164,3 +5164,102 @@ the circle-export fix follows as its own separate commit in this same turn — s
 Committed by explicit path (5 files: `main/app-init.js`, `main/cloud-project-manager.js`,
 `main/global-events.js`, `main/snapshot-manager.js`, `WORK-LOG-lane-b.md`) plus the new
 `tests/snapshot-manager.test.js` — pushed.
+
+## T45 ADD-ON — a full circle exports as a native `<circle>`, not two SketchArcs
+
+**The amendment (Fred, via Fusion measurement, mid-turn).** A node's outline (fusionGeometry:'outline' on a
+lattice node — a small `<circle>`) imported into Fusion as TWO SketchArcs, not ONE true SketchCircle
+(Fred's own sketch: 82 SketchArcs, 0 SketchCircles). Root cause: T39's own established SVG-arc-limitation
+workaround — "one `A` command can't express a full circle" (coincident start/end is degenerate for the
+endpoint-to-center parametrization), so every full circle this session's own engine ever emits is TWO
+coincident-center semicircle `A`s instead. Fusion's `importSVG` turns a native `<circle>` element into a
+true SketchCircle at exact radius; it turns those same two `A`s into two separate SketchArcs — a real,
+measured Fusion-importer behavior difference this session had no prior reason to know about (nothing
+before this exported real circle geometry to Fusion — T43's own live-Fusion check used rect/ellipse/
+polyline/text, no bare circle).
+
+**Scoped precisely to what actually produces this exact shape — not a generic post-hoc pattern-scanner.**
+Per the amendment's own preferred design ("declare it in the engine's return shape"): rather than
+re-deriving "is this `d` string secretly 2 coincident semicircles" from already-emitted text (fragile,
+and exactly the kind of inference-from-output this session's own declare-over-hand-roll discipline argues
+against), the TWO functions that actually KNOW they're building a full circle — because they already
+compute cx/cy/r before ever stringifying it — now say so directly:
+- `circleOutlinePathD` (editor-expand-analytic.js): EVERY ring it ever produces (fill: 1, both: 1, stroke:
+  1 or 2 depending on whether the inner ring collapses) is built via `_circleLoopD`, i.e. is ALWAYS a true
+  full circle, never a partial arc. Now returns `circles: [{cx,cy,r}, ...]` — one entry per ring — alongside
+  the unchanged `d` (so the live preview, which only ever reads `d`/`unsupported`, keeps working exactly as
+  before, unaffected by the new field — confirmed by re-reading `refreshOutlinePreview`'s own destructuring,
+  not assumed).
+- `lineOutlinePathD`'s zero-length-line case (also `editor-expand-analytic.js`): a degenerate zero-length
+  round-capped line collapses to a full circle of radius `strokeWidth/2` — same `circles` treatment.
+- Explicitly did NOT touch the NORMAL (non-zero-length) round-cap case — its own two `A`s are genuinely
+  SEPARATE half-circles at DIFFERENT centers (one per end of the capsule), never a single full circle. Per
+  the amendment's own instruction ("rail/tie round caps are genuinely half-circles — leave them as A"),
+  confirmed this stays completely untouched: no `circles` field, `undefined` (tested explicitly, not just
+  "didn't break").
+- `ellipseOutlinePathD` investigated and explicitly ruled OUT of scope: read `_ellipseOffsetLoopD`'s own
+  implementation and confirmed it ALWAYS biarc-fits over 4 quarter-arcs regardless of whether `rx===ry` —
+  no fast-path circle shortcut exists, so even a true circle drawn via the ellipse tool never produces the
+  clean 2-semicircle pattern this fix targets. The amendment's own examples never mention ellipse either —
+  matches its stated scope exactly, not narrowed further than intended.
+
+**Export wiring** (`editor-io.js`'s `_getLayerSvgForFusion`): the single "build the replacement path"
+step became `_buildOutlineReplacementNodes(doc, result, ch)`, returning an ARRAY of nodes instead of one —
+when `result.circles` is present, one native `<circle fill="none" stroke=... stroke-width=...>` per entry
+(carrying the SAME `data-*` attrs and uncomposed `transform` the path replacement already carried, via one
+shared `decorate()` closure — not duplicated per-branch); otherwise the existing single `<path>`, unchanged.
+Both producers wired up this turn have their ENTIRE `d` composed of the SAME circles they declare — never a
+mix with other path geometry — so `circles` present means `d` is skipped entirely for the export, not
+supplemented (documented explicitly in the function's own comment, since a FUTURE producer that mixes
+circle + non-circle geometry in one result would need its own handling, not silently assumed to fit this
+one). The 'both'-mode insert-after and 'outline'-mode replace-in-place loops both updated to chain multiple
+new nodes in order (needed for stroke-mode's 2-circle annulus case) rather than assuming exactly one.
+
+**The bake needed NO new code at all — confirmed, not assumed.** Read `bakeMatrixIntoElement`
+(editor-transform-handles.js) directly: it ALREADY has a `type === 'circle'` branch (Slice 0, pre-existing,
+this session's own earlier work) that bakes a similarity transform into `cx`/`cy`/`r` natively — a circle
+under any similarity transform (uniform scale + rotation + translation) stays exactly circular, unlike an
+arc, which is WHY Slice 0 built this in the first place. My new `<circle>` export elements flow through
+the EXISTING `_carveChildren`/`bakeMatrixIntoElement` dispatch unchanged and get baked correctly for free —
+confirmed live (below), not just read and assumed.
+
+**Tests, mutation-verified.** `editor-expand-analytic-shapes.test.js` gained a `circles` describe block
+under the existing `circleOutlinePathD` tests (fill/both/stroke-with-annulus/stroke-with-collapsed-inner —
+4 tests, each checking the EXACT `{cx,cy,r}` array against the known analytic radius, not just "some
+circles exist"). `editor-expand-analytic.test.js` gained 2: the zero-length case now also asserts `circles`
+alongside its existing area/distance checks; a NEW test explicitly asserts the normal capsule case's
+`circles` is `undefined` (proving the exception is real, not just untested). `editor-io-fusion-geometry.
+test.js` gained 6: fill-mode circle → 1 `<circle>` no `<path>`; stroke-mode circle → 2 `<circle>`s no
+`<path>`; mode:'both' → 2 `<circle>`s (centerline kept + new outline) no `<path>`; zero-length line → 1
+`<circle>`; a NORMAL line still exports as `<path>` with `A`s (the negative case — proves the fix doesn't
+over-fire); the exported `<circle>` carries the source's own `data-*`/`transform`. 51 new/changed assertions
+total. Mutation-verified 2 ways: disabling the `circles` branch in `_buildOutlineReplacementNodes` entirely
+— exactly 4/17 failures in the export test file, precisely the circle-specific tests (the zero-length-line
+and normal-line-stays-path tests correctly stayed green, since those two are about `lineOutlinePathD`
+specifically and would only break under a DIFFERENT mutation); dropping the `circles` field from
+`circleOutlinePathD` everywhere — exactly 7 failures (4 in the shapes test file, 3 export-level), the
+remaining tests in both files (including the zero-length-line and normal-line cases, which exercise
+`lineOutlinePathD` not `circleOutlinePathD`) correctly unaffected. Both mutations restored from a pre-edit
+backup, confirmed byte-identical via `diff` before re-running the full suite green.
+
+**Live verification (CDP, fresh Chrome — port 9510, profile `chrome-profile-t45b`, killed and confirmed
+mine by command-line match before stopping; 0 of that profile's processes remained after), through the
+FULL real export pipeline, not just the unit-level engine call.** A node-like `<circle>` (fill mode,
+`fusionGeometry:'outline'`) exported via the REAL `getLayerSvg(editor, id, 96, {geometry:'fusion'})`, THEN
+piped through the REAL `bakeSvgForCarving` (the actual next step `export-flow.js` runs before sending to
+Fusion) — pre-bake: 1 `<circle>`, 0 `<path>`; post-bake: STILL 1 `<circle>`, 0 `<path>`, with `cx`/`cy`/`r`
+correctly transformed by the real carve matrix (confirmed via the baked SVG's own literal attribute values,
+not inferred) — conclusively proving the amendment's own "the bake keeps `<circle>` native under the
+similarity carve matrix" claim end-to-end, using pre-existing infrastructure this fix didn't need to touch.
+Zero console errors.
+
+Full vitest suite: 727/727 green (716 T45-baseline + 11 new circle-export tests: 4 in
+`editor-expand-analytic-shapes.test.js`, 1 new in `editor-expand-analytic.test.js` — plus a `circles`
+assertion added to its existing zero-length-line test, not counted as a new test — and 6 in
+`editor-io-fusion-geometry.test.js`).
+
+Amendments polled clean before this entry. Committed by explicit path (3 files:
+`editor/editor-expand-analytic.js`, `editor/editor-io.js`, `WORK-LOG-lane-b.md`) plus the 3 touched test
+files (`tests/editor-expand-analytic-shapes.test.js`, `tests/editor-expand-analytic.test.js`,
+`tests/editor-io-fusion-geometry.test.js`) — pushed, as the amendment's own explicit "second commit this
+turn" instruction asked for.

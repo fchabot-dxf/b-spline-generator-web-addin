@@ -87,7 +87,17 @@ export function lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap = 'round' })
     // guessing an arbitrary direction.
     if (cap !== 'round') return { d: null, unsupported: 'zero-length' };
     const d = `M ${x1 - r} ${y1} A ${r} ${r} 0 1 0 ${x1 + r} ${y1} A ${r} ${r} 0 1 0 ${x1 - r} ${y1} Z`;
-    return { d, unsupported: null };
+    // T45 ADD-ON (Fred, via Fusion measurement): this shape IS a true full
+    // circle (two coincident-center semicircle A's — SVG's own workaround
+    // for "A can't express a full circle in one command"), unlike the
+    // capsule's own two round caps below (genuinely separate half-circles,
+    // different centers). Declared here, not inferred later from the `d`
+    // string, so the Fusion export can emit a native `<circle>` (Fusion's
+    // importSVG turns that into a true SketchCircle at exact radius; two
+    // A's import as two separate SketchArcs instead — measured, not
+    // assumed, per the advisor's own Fusion sketch: 82 SketchArcs, 0
+    // SketchCircles before this fix).
+    return { d, unsupported: null, circles: [{ cx: x1, cy: y1, r }] };
   }
 
   // Unit direction p1->p2, and its +90 deg normal (offset direction for
@@ -161,15 +171,21 @@ function _circleLoopD(cx, cy, radius) {
  */
 export function circleOutlinePathD({ cx, cy, r, strokeWidth, mode = 'stroke' }) {
   const half = strokeWidth / 2;
-  if (mode === 'fill') return { d: _circleLoopD(cx, cy, r), unsupported: null };
-  if (mode === 'both') return { d: _circleLoopD(cx, cy, r + half), unsupported: null };
+  // T45 ADD-ON: every ring this function ever produces IS a true full
+  // circle (via _circleLoopD's own two-coincident-semicircle-A
+  // construction) — never a partial arc — so `circles` always covers the
+  // WHOLE of `d` here, never a mix. Declared per ring so the Fusion export
+  // can emit each as a native `<circle>` (see lineOutlinePathD's own
+  // zero-length case for the fuller "why" — same fix, same reasoning).
+  if (mode === 'fill') return { d: _circleLoopD(cx, cy, r), unsupported: null, circles: [{ cx, cy, r }] };
+  if (mode === 'both') return { d: _circleLoopD(cx, cy, r + half), unsupported: null, circles: [{ cx, cy, r: r + half }] };
 
   const outerR = r + half;
   const innerR = r - half;
   const outer = _circleLoopD(cx, cy, outerR);
-  if (innerR <= 1e-9) return { d: outer, unsupported: null };
+  if (innerR <= 1e-9) return { d: outer, unsupported: null, circles: [{ cx, cy, r: outerR }] };
   const inner = _circleLoopD(cx, cy, innerR);
-  return { d: `${outer} ${inner}`, unsupported: null };
+  return { d: `${outer} ${inner}`, unsupported: null, circles: [{ cx, cy, r: outerR }, { cx, cy, r: innerR }] };
 }
 
 /** A sharp-cornered rect boundary, 4 straight lines — the shape a rect's
