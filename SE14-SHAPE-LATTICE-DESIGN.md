@@ -372,6 +372,13 @@ Generate on an old boundary-mode layer reverts it to board-fill, per §1's own m
 4. Waist defaults: the design's first guess, one declared table.
 5. Region: explicit {x,y,w,h}, default = the board's inner rect.
 
+## Slice 3 editing model (Fred with seat B, 2026-09-25, relayed; confirm on first use)
+Post-generation editing preserves tangency by construction, not by a live solver: PARAMETRIC HANDLES bound to the
+closed-form preset's own independent params (hourglass: waist depth, corner radius, vertical position; bottle
+likewise), each handle locked to the axis (or 2 orthogonal axes) that maps to a real parameter — every reachable
+position is exactly tangent, no invalid state. Freeform node editing stays available via the §6 detach rule
+(generated → picked), without a tangency guarantee once detached.
+
 ## Open questions for Fred (defaults above; revisit after use)
 
 1. **Migration rule (§1)**: the box Lattice's own Generate force-writes `extent.mode:'board'` unconditionally
