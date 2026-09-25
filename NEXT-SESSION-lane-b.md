@@ -1,32 +1,31 @@
-# NEXT (lane-b) — T41: text outline does NOT match the drawn text — find why, make them agree
+# NEXT (lane-b) — T42: fix the font override at its SOURCE (covers opened + imported files)
 
-**Ball: worker (seat B) · epoch 2 · T41.** NO FUSION for workers — browser proof only. T40 part 2 NOT merged yet —
-held on this finding (main auto-deploys to Cloudflare).
+**Ball: worker (seat B) · epoch 2 · T42.** NO FUSION for workers. T40 part 2 + T41 reviewed and merged (668 green) —
+great root-cause work: the advisor confirmed t41-text-fixed2.png sits exactly on the glyphs.
 
-## Finding (advisor, from YOUR t40-text-word.png)
-The outline of "Fred" doesn't sit on the black glyphs: "F" outline is wider (x 180→375 vs glyph 180→330), "e" outline
-is shifted right (545→740 vs 505→660), "d" 770→950 vs 790→920. So `textGlyphPathD`'s opentype glyphs use a different
-FONT and/or SIZE/letter-spacing than the browser renders for that `<text>`. Your test didn't catch it because it
-compared the outline against the opentype path, not against what's on screen.
+## Gap
+T41 adds an inline `font-family` style at the 3 places the editor SETS a font. But the cause is a CSS rule, and every
+`<text>` that arrives any OTHER way still renders in Inter: a saved document re-opened (editor-io restore), an imported
+/pasted SVG, undo/redo snapshots restored from markup, stamp-editor pages. The bug lives in `base.css`'s
+`* { font-family: inherit; }` beating SVG presentation attributes.
 
-## Why it matters beyond the preview
-The CARVE and export also use the opentype glyph path (stamp pipeline). If that differs from the drawn `<text>`, the
-carved text ≠ what Fred sees in the editor — a real, pre-existing product bug, not just a preview one. Find out which.
+## Do (declare the rule once, then sweep the patches)
+1. Fix the cascade: scope the reset so it never applies inside SVG — e.g. `*:not(svg *) { font-family: inherit; }`
+   (or `svg text, svg tspan { font-family: revert-layer }` if you put the reset in a layer) — whatever MEASURES
+   correct; SVG text then gets its own presentation attribute, and UI text still inherits Inter.
+2. Then REMOVE the now-redundant inline `.css({'font-family'})` writes from T41 AND the older insertSymbol workaround
+   (`node.style.fontFamily = …`) — one mechanism, not two. Keep the regression tests but retarget them at the real
+   thing (computed font-family of a text element created from markup with only the attribute).
+3. Check nothing in the UI relied on the reset reaching into SVG (e.g. icons/labels inside svg) — screenshot the
+   sidebar + editor chrome before/after.
 
-## Do
-1. Measure, don't reason: for the same `<text>` element compare its browser bbox (getBBox / per-glyph via
-   getExtentOfChar / getStartPositionOfChar) against the opentype glyph path's bbox and per-glyph advance.
-   Record font-family resolved by the browser (getComputedStyle) vs the font file opentype actually parsed.
-2. Root-cause it (likely suspects: font fallback — the element's family isn't one of the bundled fonts so opentype
-   falls back to a different face; font-size units (px vs in, the editor's inch viewBox); letter-spacing /
-   text-anchor / dominant-baseline not applied in the opentype layout; kerning).
-3. Fix at the source so ONE declared truth drives both: either the editor renders text FROM the same glyph path
-   (what gets carved is what's shown), or the opentype layout honors the same family/size/spacing/anchor. Recommend
-   in WORK-LOG which you chose and why; prefer "display what gets carved".
-4. Test: for several words/fonts/sizes/anchors, glyph-path bbox == rendered bbox within 0.01" and per-glyph x within
-   0.01". CDP screenshot: outline sits exactly on the letters.
+## Verify (live, CDP)
+- A `<text font-family="Arial">` injected from MARKUP (not via the font picker), a re-opened saved doc, and an imported
+  SVG: computed font-family = the attribute; per-glyph x vs opentype within 0.01".
+- Symbol fonts (Wingdings/Webdings) still render as symbols.
+- `npx vitest run` green.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T41: text glyph path matches rendered text — <sha>, root cause: <x>, vitest N, screenshot"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T42: font cascade fixed at source — <sha>, vitest N, screenshots"`
 and stop.
