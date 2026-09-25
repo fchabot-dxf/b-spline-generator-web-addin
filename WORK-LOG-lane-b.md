@@ -6981,3 +6981,120 @@ profile cleaned up after (`chrome-profile-t61`, confirmed 0 remaining processes)
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed.
 
+## T62 — SE15 Slice 2: the add-in builder (Python) + Send-to-Fusion wiring (NO FUSION for the worker)
+
+Dispatch: build `build_constrained_sketch(sketch_target, manifest, placement)` in the b-spline-gen add-in —
+entities/constraints/parameters/dimensions/offsets+caps from T61's own JS manifest, skip-and-report failure
+handling, a `build_from_manifest_file` dev entry point, and wire it into the Send-to-Fusion path per §7. Python
+only, unit-tested with a fake `adsk` shim — the advisor runs this in real Fusion after merge.
+
+**Research first, again directly cited, not re-trusted from the design doc's own earlier summary**: delegated a
+research agent to re-read `b-spline-gen.py`'s own `_handle_generate`/`_import_single_layer_svg`/
+`_sync_user_parameters`, and `fb_engine`'s `geometry.py`/`constraints.py`/`dimensions.py`/`offsets.py`/
+`build_context.py`/`palette_scaffold.py`, plus the existing `test_deferred_compute.py`-style adsk-stub
+convention — then read the load-bearing files myself directly (geometry.py, build_context.py, constraints.py,
+dimensions.py, offsets.py in full) before writing a line of new code, since I'd be calling these functions'
+exact signatures, not just describing them.
+
+**Two genuine, disclosed departures from "just call fb_engine's existing dispatch for everything"**, both found
+by actually reading the code, not assumed from the design doc's own T60-era framing:
+1. `geometry.py`'s `geom_step` has NO `Circle`/`ArcCenterPoint` branch (confirmed — declared in
+   `parametric_engine.py`'s own `geom_types` list, never implemented) — wrote my own
+   `_create_circle_entity`/`_create_arc_center_entity`, following `_create_line`/`_create_arc3`'s own exact
+   `ctx.set_id(...)` tagging convention so `:S`/`:E`/`:C` resolution keeps working for free.
+2. `offsets.py`'s `offset_step`/`_try_parametric_offset` is built for a CLOSED multi-curve loop — its own
+   `_tag_offset_results` calls `classify_rect_lines`, which needs >=4 curves and returns `{}` (tags nothing) for
+   a single result curve. A rail/tie's own one-sided offset is exactly that single-curve case, so reusing
+   `offset_step` wholesale would silently produce an offset curve with NO `:S`/`:E` tags at all. Wrote my own
+   `_do_single_offset` instead, calling `sketch.offset()` DIRECTLY (the classic/fallback path, NOT `addOffset2`)
+   — per the advisor's own live-Fusion measurement in SE15-CONSTRAINED-SKETCH-DESIGN.md's new "Answers" section
+   ("the classic sketch.offset path is proven; use it") and T62's own dispatch text ("TWO classic
+   sketch.offset(...) calls per centerline"). `constraint_step`/`dimension_step` (Coincident/Tangent/H/V/Equal,
+   Radial) ARE fed straight through unchanged — no gap there, confirmed by direct reading, not assumed.
+
+**A design decision the dispatch left to me: "count + first few reasons in the log"**. `constraint_step`/
+`dimension_step` are fire-and-forget/log-only — neither returns success/failure, so my own summary dict can't
+just check a return value. Solved by making `_Logger` (my own `ctx.logger` adapter) ALSO accumulate every
+logged line, then filtering it for fb_engine's own established SKIP/FAIL/MISS tags after the build — an
+accurate count + first-5-reasons without needing to change fb_engine's own return contract at all.
+
+**The cap-tangent wiring is explicitly flagged as the LEAST proven part of this module.** T61's own JS manifest
+deliberately did NOT declare a Tangent constraint for a round cap against its own offset curve, because that
+curve has no manifest-known id until the add-in creates it live. This turn writes that missing piece:
+`_apply_width_offsets_and_tangent_caps` calls `sketch.geometricConstraints.addTangent(cap, offset_curve)` for
+each cap against BOTH the pos and neg offset sides, wrapped per-attempt in try/except (skip + report). Without
+any live Fusion to check WHICH cap should pair with WHICH side (or whether attempting both is even geometrically
+sound), this is a reasonable, disclosed GUESS, not a verified relationship — flagged here explicitly for the
+advisor's own live check, matching how T59/T60 already flag their own least-proven pieces rather than smoothing
+over them.
+
+**Parameter sync — a NEW generic function, not b-spline-gen's own `_sync_user_parameters`.** That function is
+hardcoded to a 2-entry `widthIn`/`heightIn` `param_map` (confirmed by direct reading) — it would silently ignore
+every manifest-declared parameter (`rail_width`, `corner_radius`, `half_width`, ...). Wrote
+`_sync_manifest_parameters`, modeled on `ParametricSketchBuilder._sync_user_parameters`
+(`frame-builder/fb_engine/parametric_engine.py`) — a generic create-or-update loop over the manifest's own
+`{name, value, unit}` list — called BEFORE any geometry/dimension/offset step, matching that same file's own
+established ordering rationale (a `.expression` string can't reference a parameter that doesn't exist yet).
+
+**Units — a disclosed, load-bearing decision, not an afterthought.** `BuildContext.resolve_val`'s own doc
+comment confirms Fusion's internal API is ALWAYS centimeters. The manifest's own coordinates are real MODEL
+INCHES (§1's own "units":"in"). Rather than routing every raw coordinate through Fusion's own expression
+evaluator (slow for hundreds of lattice points, and unnecessary — cm-per-inch is a fixed API fact, not something
+that varies by document), `_to_point3d` does a direct `* 2.54` multiply. Expression STRINGS that reference a
+named parameter (offset/dimension `.expression`, e.g. `"rail_width / 2"`) are never touched this way — those go
+through Fusion's own `ValueInput`/`.parameter.expression`, which resolves itself against the parameter's own
+declared unit.
+
+**Send-to-Fusion wiring (§7) — picked the smaller of the two options the dispatch offered, and said so**: no new
+checkbox, no new `FUSION_GEOMETRY` value. `export-flow.js`'s existing `includeSVG` toggle (already the single
+"ship this layer's artwork" decision a user makes) now ALSO gates a new `_fusionLayerManifest(editor, l)` sibling
+field (`sketchManifest`) on each `bakedLayers[i]` entry — `null`/absent for a layer with no `.pattern` (a
+hand-drawn/text layer, declined gracefully, same convention `_fusionLayerSvg` itself already uses). A layer
+therefore always carries BOTH `.svg` and (when applicable) `.sketchManifest` — matching design doc §7's own
+default assumption ("both fields present, add-in decides") — rather than the layer's Fusion Geometry table
+gaining a 4th value, which would have needed touching `layers.js`'s own declared table, the properties panel's
+dropdown, AND a per-layer Python dispatch key — genuinely more surface for the same outcome at this stage.
+Whether a SEPARATE toggle is wanted later is explicitly still open (design doc §7's own open question #5).
+
+**Tests**:
+- JS: `tests/export-flow.test.js` +5 (`_fusionLayerManifest` — null-gating for a missing editor/layer-id/pattern;
+  a real manifest for a layer that has one; a non-vacuous "looks up by id not array position" test, comparing
+  rail counts between two DIFFERENT real manifests built from two DIFFERENTLY-configured patterns, so a
+  regression to positional lookup would silently attach the wrong layer's geometry). Full JS suite: 991 passed
+  (63 files), up from 986 (T61's own end state).
+- Python: `bspline-frame-builder/b-spline-gen/test_sketch_manifest_builder.py` (new, 13 tests, `pytest` — same
+  sibling-file convention `frame-builder/test_*.py` already uses, not a `tests/` subfolder). Went DEEPER than
+  every existing fb_engine test file's own adsk-stub convention (those 4 files never call
+  `geom_step`/`constraint_step`/`dimension_step`/`offset_step` directly, per this turn's own research) — hand-
+  rolled a structurally-consistent (not geometrically faithful) fake Sketch/Lines/Arcs/Circles/Constraints/
+  Dimensions/ObjectCollection/Design/Application surface, threaded through a module-level `CALL_LOG` so tests can
+  assert on ORDER (parameters -> geometry -> constraints -> dimensions/offsets) and on skip-and-report behavior,
+  not just "did it return something." Verify list: inches->cm conversion; build order; every entity created;
+  parameter create-vs-update across two builds; a missing constraint target skipped without aborting; an unknown
+  entity type skipped without aborting; the >=threshold case (empty `constraints[]`, exactly as T61's own JS side
+  already produces above `SKETCH_PIECE_THRESHOLD`) builds cleanly with zero MANIFEST-driven constraint calls
+  while the width-offset+cap mechanism still runs (§6: "not a separate code path"); two `sketch.offset()` calls
+  per centerline; the offset dimension's own expression gets set; cap-tangent is attempted; the dev entry point
+  reads a real JSON file and a missing-active-design error is clear. Both `pytest` and the plain-`python3` dual-
+  mode convention `test_templates.py` already documents were verified to run (13/13 via pytest, 12/12 — the
+  `tmp_path`-fixture test skipped — via plain Python).
+
+**Mutation-tested two of the riskiest pieces** (backup, mutate, run, confirm the EXACT expected failure, restore,
+MD5-verify byte-identical): (1) moving the parameter-sync call to AFTER geometry creation -> exactly 1 failure
+(the dedicated build-order test); (2) turning the "unknown entity type" branch from skip-and-continue into a
+raised `ValueError` -> exactly 1 failure (the skip-and-report test's own exact-reason-string assertion) — the
+build still didn't ABORT even then, because the surrounding `except Exception` caught it too (a genuinely
+double-layered defense, not a false negative — the test caught the DIFFERENT skip-reason text, confirming it's
+sensitive to which code path produced the skip). Not exhaustive (the offset/cap/parameter-sync paths were
+proven via the ORIGINAL 13 tests' own direct call-order/count assertions over the fake's real object graph,
+rather than a separate mutation pass each).
+
+**What this turn is NOT**: no `fusion_execute`/`fusion_screenshot` call was made (this turn's own "NO FUSION",
+consistent with `skills/ndoo/SKILL.md`'s own standing hard rule found during research); the cap-tangent
+mechanics, the offset seed-distance/side-selection heuristic, and the sketch-placement-plane default are all
+UNVERIFIED against real Fusion — named explicitly above and in the module's own doc comments, not silently
+assumed correct.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed.
+
