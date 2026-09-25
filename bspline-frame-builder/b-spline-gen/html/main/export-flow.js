@@ -203,7 +203,12 @@ export function onFusionApply(preview) {
     // layer carries one — the user already designed it, there's no
     // reason to silently drop it. (The wizard download path still
     // honours the explicit `includeSVG` checkbox via readWizardOptions.)
-    const includeSVG = hasStamp && exportableStampLayers().length > 0;
+    // Fred: "send to fusion doesn't get the sketches" — this used to also
+    // require hasStamp (a CARVING layer), so a layer with 3D off (inlay /
+    // paint-only / not yet baked) silently shipped no sketch. Sketches are
+    // the layer's artwork, independent of whether it carves: ship them
+    // whenever any shown layer has any.
+    const includeSVG = exportableStampLayers().length > 0;
     const options = { ...defaultExportOptions(hasThicken, hasStamp, includeSVG), isVisible: true };
 
     if (isFusionMode) {
