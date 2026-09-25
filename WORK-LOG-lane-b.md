@@ -5263,3 +5263,83 @@ Amendments polled clean before this entry. Committed by explicit path (3 files:
 files (`tests/editor-expand-analytic-shapes.test.js`, `tests/editor-expand-analytic.test.js`,
 `tests/editor-io-fusion-geometry.test.js`) — pushed, as the amendment's own explicit "second commit this
 turn" instruction asked for.
+
+## T46 — SE13 design doc: Boundary mode for the Lattice (docs only, no code)
+
+**Scope, per the dispatch: design only, no product code.** Fred's ask: a "Boundary: Board | Shape" mode of
+the existing Lattice panel, filling any closed canvas shape with a cut rail/tie/node grid — inspired by a
+screenshot of his own `svgcreator.pages.dev` "Mondrian" effect, with his own explicit correction of scope
+("not sure you should reuse the STYLE, the LOGIC is good") and hard constraint ("Don't trim, add ending
+logic — if it's simpler than trimming").
+
+**Two parallel research passes before writing anything**, rather than designing from the dispatch's own
+summary alone: (1) a full re-read of the CURRENT Lattice implementation — not SE7b's own original design
+doc, which turned out to describe an ownership model that was never actually shipped (see below); (2) a
+read of the reference site's own deployed source at `reference/svgcreator-deployed/` (untracked per the
+dispatch's own instruction — cited by path/line throughout the doc, never copied, never staged).
+
+**A real, disclosed correction found in pass 1, not assumed from memory or from SE7b's own doc.** SE7b's
+own design proposed an auto-detach-on-touch hook (any drag strips `data-lattice-gen`) — reading the
+SHIPPED code (`editor-interaction.js`'s `_finishLatticeMove`) shows this was never built: a dragged/
+stretched owned piece keeps its ownership tag and gets swept away on the next Generate, unless the user
+explicitly runs "Detach all" first. This directly answers one of the dispatch's own open questions (a
+stretched piece leaving the boundary) for free — no new rule needed, the existing (not the originally-
+proposed) mechanism already covers it — and is called out in the doc as exactly that: an answer derived
+from what's actually shipped, not from what an earlier doc said would be shipped.
+
+**A real correction to the dispatch's own framing, found in pass 2.** The reference tool's own "boundary"
+is never an ingested arbitrary SVG shape — it's always one synthetic loop the tool builds itself from
+keypoints + circular bulge arcs, for its own humanoid-silhouette generator. There is no curve-flattening
+step anywhere in their pipeline, because their own source geometry is already only L/A. This means the
+"arbitrary rect/circle/ellipse/polygon/path/text → primitives" step the dispatch's own "cutting engine"
+line describes has NO reference implementation to lean on at all — it's this design's own original piece,
+built instead by reusing THIS session's own T39-T45 path-normalization machinery (`_parseD`,
+`_lineIntersect`, `_lineCircleIntersect`, `arcCenterParam`) rather than either re-deriving it or
+mis-attributing it to a reference that never solved it. Disclosed explicitly in the doc rather than
+silently presenting the shape-to-primitives design as if it had a model to follow.
+
+**A genuine improvement over the reference, not just a port of its logic.** The reference's own
+stored-rolls mechanism (raw `[0,1)` dice rolls persisted as `data-omit`/`data-loose`/`data-cr` attributes,
+so re-applying a slider re-checks a threshold instead of re-randomizing) has its own real asymmetry bug:
+joints don't get this treatment and reshuffle on every `patch()` call while grid lines don't. Found by
+reading `patch()`'s own branch-by-branch behavior (`mondrian.js:351-458`), not assumed from the dispatch's
+summary. The design persists rolls for every randomized draw uniformly, joints included — closing exactly
+this gap rather than reproducing it, named explicitly as a deliberate deviation from "copy the logic."
+
+**The one place I pushed back on the dispatch's own phrasing, per its own "design it, challenge it where
+wrong" instruction.** `_resolveExtent` (the dispatch's own suggested single extension point) is necessary
+but not sufficient: the rail/tie generation loop itself currently assumes a rail/tie spans the FULL
+board-box edge-to-edge once gated on/off — an arbitrary boundary can enter/exit a single scanline more than
+once (a concave shape, a shape with a hole), so `computePattern`'s own generation loop needs to accept
+MULTIPLE inside-sub-spans per row/column, not just a differently-shaped bounding box. Named as its own
+architectural point (§Ground-truth #2 in the doc) rather than folded silently into "extend `_resolveExtent`"
+the way the dispatch's own one-line summary of the advisor's plan might read.
+
+**Delivered**: `SE13-BOUNDARY-LATTICE-DESIGN.md` (repo root) — data model (`PATTERN.boundary =
+{shapeId, endRule, runs, joints, border}` plus a new `data-boundary-ref` element-identity attribute, since
+no element in this editor currently carries a stable per-element id and "linked by id, not copied" needs
+one); the cutting engine (exact closed-form for L/circular-A reusing existing primitives, numeric ≤1e-6 for
+C/elliptical-A, the half-open rule generalized to the numeric case, holes via even-odd as a genuine
+extension the reference never solved, tangency/degenerate-boundary handling); the shape→primitives table
+for all 6 requested kinds (rect/circle/ellipse/polygon/path/text — text confirmed naturally multi-region
+via disjoint glyphs, not a special case); the spans→stops→runs 3-level cut with stored per-piece rolls; the
+4-entry ending-rule table (on-boundary/inset-default/joint/loose) with ONE named case the rules can't
+handle cleanly (a span shorter than one grid cell — `loose` degrades to `inset`) per the dispatch's own
+"say which and why" instruction; joints-as-existing-nodes; the optional Border piece; carve/export
+exactness (argued AND grounded: boundary pieces are the same `<line>`/`<circle>` kinds Board-mode already
+emits, so T39-T45's own OUTLINE_KINDS/Fusion-export machinery — including T45's own circle-export fix,
+measured live in Fusion this same session — needs zero new code); commit-only link refresh reusing the
+SAME hook `refreshOutlinePreview`/`refreshDrape` already use; the move/stretch open question answered from
+the corrected ownership model; undo; save/load (also needing zero new persistence code — `layer.pattern`
+is already generic); a 390px-first ASCII panel mock; 3 browser-provable slices (predicted files + verify
+criteria each, matching SE7b's own established slice shape); and 5 open questions for Fred (most load-
+bearing: whether the color-run/"parts" sub-cutting — the single most reference-visual-specific, largest
+piece of the whole design — belongs in v1 at all, given his own "not sure about the STYLE" caution).
+
+No code changed, no tests, no live CDP run — docs-only turn, exactly as dispatched. `reference/
+svgcreator-deployed/` confirmed untracked and NOT gitignored (would be swept by a bare `git add -A`, which
+this session's own established discipline never uses) — verified via `git status`/`git check-ignore`
+immediately before committing, not assumed safe.
+
+Amendments polled clean. Committed by explicit path (2 files: `SE13-BOUNDARY-LATTICE-DESIGN.md`,
+`WORK-LOG-lane-b.md`) — pushed.
