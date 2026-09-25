@@ -6810,3 +6810,68 @@ isolated function. Screenshots saved to this session's own scratchpad (`t59-01`.
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed. `reference/` confirmed still untracked, left alone.
 
+## T60 — SE15 design doc: constrained Fusion sketches for Lattice / Shape Lattice (docs only, NO FUSION)
+
+Dispatch: write `SE15-CONSTRAINED-SKETCH-DESIGN.md` per ROADMAP.md's own "Queued — SE15" entry (Fred,
+2026-09-25) — a declared sketch manifest for sending Lattice/Shape Lattice geometry to Fusion as real,
+PARTIALLY-constrained sketches, not the flat baked SVG stamp the app sends today. Explicitly no code changes and
+no Fusion tool calls this turn — Fusion-side verification is the advisor's own job (Slice 3, §8 of the doc).
+
+**Why docs-only, and why now**: T58/T59 (SE14) shipped the Shape Lattice tool's own generation + editing model;
+SE15 is the NEXT queued item and, per Fred's own ROADMAP note, is explicitly a two-sided problem — a JS-side
+manifest-producing function (provable in the browser, no Fusion needed) and a Python add-in build routine
+(needs real Fusion to verify constraint behavior, solver load, and undo safety). Splitting the WRITING from the
+BUILDING let this turn stay entirely on the browser side of that line while still producing something the
+advisor can act on directly (Slice 3 in §8 is written as its own verify checklist, not just a TODO).
+
+**Research process — two tracks, both cited by file:line in the doc itself, neither assumed from memory**:
+1. Read this repo's own JS-side Fusion-bridge code directly this turn (`export-flow.js` in full, `layers.js`'s
+   `FUSION_GEOMETRY` table, `editor-io.js`'s `bakeSvgForCarving`, `fusion-geometry.js` in full,
+   `fusion-bridge.js`'s `sendFusionPayloadChunked`) rather than trusting earlier design docs' own framing of how
+   export works — confirmed today's export is a STEP file + an OPTIONAL, DPI-BAKED-PIXEL SVG "stamp," never a
+   real Fusion sketch entity, which is the actual gap SE15 closes.
+2. Delegated a background research agent to read the Python add-in side (`frame-builder/fb_engine/`) — its own
+   geometry/constraint/dimension/offset dispatch machinery, entity addressing, the `deferred_compute`/`Pulse`
+   build-block order, and `b-spline-gen.py`'s own current (thinner) parameter-sync and event-handling pattern.
+   Its full report is absorbed into the doc's own "Ground truth #5" and cited by file:line throughout §5-6,
+   never taken as an unverified secondhand summary — every claim I used from it names the specific file/function
+   it came from, same discipline as the JS-side reading.
+
+**Key findings that shaped the design, not just restated in it**:
+- `fb_engine` already has almost everything needed, DATA-DRIVEN and dispatch-based (`geom_step`/
+  `constraint_step`/`dimension_step`/`offset_step`), with the EXACT "skip + report, never abort" failure
+  contract the dispatch itself asked for — already shipped in production for 7 of the ~9 constraint types this
+  design needs. The real gaps are small and named precisely (§5): `Circle`/`ArcCenter` geometry dispatch,
+  `PointOnCurve` constraint dispatch — both declared in `fb_engine`'s own type lists already, just missing one
+  `elif` branch each, inheriting the existing logging for free.
+- **No `addSymmetry` exists anywhere in this repo.** The one place the source templates needed bilateral
+  symmetry, it's built as TWO `Equal` constraints instead (with an explicit comment warning a redundant Equal
+  risks `VCS_SKETCH_OVER_CONSTRAINTS`). The design reuses this SAME validated pattern for Shape Lattice mirror
+  pairs rather than reaching for an API this codebase has never actually exercised — a disclosed deviation from
+  what a naive reading of "symmetric" in Fred's own ROADMAP wording might suggest.
+- **A genuine structural divergence the design deliberately adopts**: `b-spline-gen.py`'s own current SVG-import
+  path runs the whole build directly inside the bridge event handler, not inside a Fusion command — a known
+  undo-orphaning trap for parameters created that way (documented in this codebase's own `ensure_tilt_param`
+  docstring and ROADMAP.md's own open finding A2-1). Building a constrained sketch means creating exactly that
+  class of object (parameters + dimensioned constraints), so §5 explicitly routes it through
+  `frame-builder`'s own `palette_scaffold.schedule_hidden_build` instead — reusing a pattern from the OTHER
+  add-in in this package, not from `b-spline-gen.py` itself, and said so plainly rather than silently changing
+  convention.
+- T59's own new `params` return field on `generateSilhouette` (added last turn for the param-handle editing
+  model) turns out to be exactly the value set §3's manifest-producer needs for Fusion user parameters — no new
+  resolution work, a direct example of one turn's declaration paying for the next turn's consumer for free.
+
+**Disclosed design decisions, not left implicit**: axis-aligned param handles (T59) map straightforwardly onto
+axis-aligned H/V constraints in the manifest, so no new geometric reasoning was needed there; the shape preset's
+own FIXED, small entity count (12 hourglass / 10 bottle, never scales with board size) is always fully
+constrained, no threshold — only the Lattice side (rails/ties/nodes, which DO scale with board size) needs the
+size-gated plain-geometry fallback in §6; the size threshold's actual NUMBER is explicitly left unset (a real
+Fusion timing measurement, not a guess) and named as Open question #3 for the advisor's own Slice 3 pass.
+
+**What this doc is NOT**: no code was written or changed this turn (verified via `git status --short` before
+committing — only the design doc and this WORK-LOG entry are new/modified); no Fusion tool call was made; the
+JS/Python research above was read-only investigation feeding the design, not implementation.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed. `reference/` confirmed still untracked, left alone.
+
