@@ -72,7 +72,10 @@ if not BUILD_ONLY:
             exit(1)
 
 # Always deploy to the known Pages project and avoid prompting for a stale project name.
-PROJECT_NAME = os.getenv("CLOUDFLARE_PROJECT", "symmetric-b-spline-gen")
+# `bspline-generator` is the GitHub-connected project (release.py PAGES_PROJECT) — the
+# old `symmetric-b-spline-gen` default kept silently refreshing a stale site nobody
+# reads (last upload 2026-06-22; Fred's phone was still on it, 2026-09-25).
+PROJECT_NAME = os.getenv("CLOUDFLARE_PROJECT", "bspline-generator")
 
 # Ensure node/npm global bin dirs are in PATH so wrangler.cmd can invoke node
 if sys.platform == "win32":
