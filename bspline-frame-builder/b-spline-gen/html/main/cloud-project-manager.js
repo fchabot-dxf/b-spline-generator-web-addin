@@ -998,7 +998,7 @@ async function _loadFrom(name) {
     const r    = await fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const snap = await r.json();
-    applySnapshot(unpackPoints(snap), _preview);
+    await applySnapshot(unpackPoints(snap), _preview, { source: 'load' });
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
     markClean();

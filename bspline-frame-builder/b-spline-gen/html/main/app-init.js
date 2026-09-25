@@ -295,7 +295,11 @@ function _drapeLog(msg) {
     try { fusLog('[DRAPE] ' + msg); } catch (_) {}
 }
 
-async function refreshDrape(preview) {
+// T45: exported so snapshot-manager.js's applySnapshot (its 'load' source —
+// a project load, not undo/redo) can refresh the drape after loading the
+// new document into the live editor, the same way this file's own
+// Apply/Cancel/boot-restore call sites already do below.
+export async function refreshDrape(preview) {
     if (!preview || !window.svgEditor) {
         _drapeLog(`skip: preview=${!!preview} svgEditor=${!!window.svgEditor}`);
         return;
@@ -422,15 +426,32 @@ export function initSvgEditor(preview) {
   // up the in-flight drawing instead of a blank canvas. A legacy-shaped
   // save (pre-P.editorSvg) has already been migrated by runMigrations()
   // in initApp, which runs before this — see MIGRATIONS above.
+  //
+  // T45 (Fred: "on open, a loaded project doesn't have the SVG until I
+  // open the editor and Apply Stencils"): this block's own OLD comment
+  // claimed refreshAllStampMasks ran here "same as the other call sites
+  // above" — it never actually did. initApp's own earlier
+  // refreshAllStampMasks call (this file, ~line 262) runs BEFORE
+  // window.svgEditor exists at all (see that call site's own comment),
+  // so it's a no-op; this restore call is the FIRST point in boot where
+  // the editor has both a document AND real content to mask from. Without
+  // this, only the DRAPE (a flat color texture) refreshed at boot — the
+  // actual stamp MASKS (the 3D heightfield's own carved geometry) stayed
+  // whatever initApp's own no-op left them (typically empty), invisible
+  // until the user manually opened the editor and hit Apply Stencils
+  // (which does call refreshAllStampMasks, in the onCommit callback
+  // above) — exactly Fred's own reported symptom.
   try {
     const restoreSvg = editorRestoreSvg();
     if (restoreSvg) {
       window.svgEditor.open(restoreSvg, P.widthIn, P.heightIn);
+      const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+      // Not awaited (initSvgEditor itself isn't async) — fire-and-forget,
+      // same as the Apply/Cancel paths above.
+      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
       // SE11b: a restored drawing's colours should drape immediately, not
       // only after the next edit — "editor only... survives save/reopen"
-      // (SE9) means drape survives reopen too. Not awaited (initSvgEditor
-      // itself isn't async) — fire-and-forget, same as the other
-      // refreshAllStampMasks call sites above.
+      // (SE9) means drape survives reopen too.
       refreshDrape(preview);
     }
   } catch (e) {

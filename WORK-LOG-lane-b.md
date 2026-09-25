@@ -5043,3 +5043,223 @@ before passing. Committed by explicit path (6 files: `editor/editor-expand-analy
 `main/export-flow.js`, `WORK-LOG-lane-b.md`) plus the 5 touched/new test files (`tests/editor-expand-
 analytic.test.js`, `tests/editor-expand-path.test.js`, `tests/editor-outline-preview.test.js`,
 `tests/export-flow.test.js`, `tests/editor-io-fusion-geometry.test.js`) — pushed.
+
+## T45 — opening a project now loads its drawing into the live editor
+
+**Root cause, confirmed by a dedicated research agent, not assumed from the dispatch's own framing
+alone.** `applySnapshot` (`main/snapshot-manager.js`) is the apply step for BOTH global undo/redo AND
+project load (cloud-project-manager.js's `_loadFrom`). It writes `P.editorSvg` (part of its generic
+`Object.keys(snap.P).forEach` restore loop) but never loaded that content into the LIVE
+`window.svgEditor`'s own document — correct for undo (SE4c: "the drawing has its own undo stack"), wrong
+for load. Confirmed the actual mechanism: `stamp-mask-manager.js`'s `updateStampMasks` reads
+`window.svgEditor._layers` directly — no fallback to `P.editorSvg` — so a cloud load silently rasterized
+masks from the STALE pre-load editor content, and (separately) `editor-outline-preview`/the sidebar Layers
+panel/exports all read the same stale live document. `editor.initEditor()` (editor/editor.js) itself never
+calls `.open()` — confirmed by reading the whole method — so the ONLY prior path that ever loaded content
+into the live editor was a manual "Edit" button click (`main/stamp/svg-source.js`) or boot.
+
+**A second, related bug found in the SAME investigation, also in scope (the dispatch's own item 2):**
+`app-init.js`'s `initSvgEditor` DOES call `.open(P.editorSvg, ...)` at boot when content exists — but its
+own boot-restore block only ever called `refreshDrape(preview)` afterward, NEVER
+`refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode)` — despite that block's OWN comment
+claiming "fire-and-forget, same as the other refreshAllStampMasks call sites above" (a comment describing
+behavior the code never actually had). `initApp`'s own EARLIER `refreshAllStampMasks` call (for the same
+boot) runs BEFORE `window.svgEditor` even exists (per that call site's own comment, confirmed) — a no-op.
+Net effect: at boot, the DRAPE (a flat color texture) DID refresh correctly, but the actual 3D CARVED
+GEOMETRY (the stamp masks driving the heightfield) never did — until the user manually opened the editor
+and hit Apply Stencils (which does call `refreshAllStampMasks`, in the Apply/Cancel `onCommit` path). This
+is the exact mechanism behind "the 3D shows the artwork [flatly, via drape] without opening the editor" —
+the ARTWORK COLOR showed, the actual CARVED SHAPE did not.
+
+**Fix 1 — `applySnapshot(snap, preview, {source})`, no default (Fred's own instruction: "no default that
+silently picks one").** A missing or unrecognized `source` now THROWS (`source must be 'undo' or 'load'`)
+rather than silently picking a behavior — the exact shape of bug that shipped originally (one function, one
+behavior, reused for two meanings that needed to differ). A dedicated research agent grepped every call
+site across `html/main`/`html/core` and confirmed exactly 4 exist, no others: `global-events.js`'s 3
+(Ctrl+Z/Y, the global undo/redo buttons, the sculpt top/bottom undo/redo buttons — all genuinely
+undo/redo) now pass `{source:'undo'}`; `cloud-project-manager.js`'s `_loadFrom` (the ONE project-load call
+site today) now passes `{source:'load'}` (and is now properly `await`ed — it wasn't before, meaning
+`setCurrentFile`/`markClean`/the "✓ Loaded" toast could previously fire before the snapshot had actually
+finished applying; now they wait for the real, now-heavier async work).
+
+For `source==='load'`, right after `runMigrations()` (so the FINAL, migrated `P.editorSvg` is what gets
+loaded, not a pre-migration shape): `window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn)` —
+the SAME restore call a manual editor-open already uses. Chose to REUSE `open()` rather than hand-roll a
+narrower "just swap the SVG" step, since `open()` (editor-io.js) already, by construction: clears the
+WHOLE sketch layer first (so loading B after A can never leave any of A's drawing behind — the dispatch's
+own explicit "must not leave any of A's drawing, masks, layers or outline preview" requirement, satisfied
+for free rather than re-implemented), rebuilds the layer roster from the NEW document's own
+`data-editor-layers`, resets the editor's own undo stack, and — via its own last step, `setActiveLayer()`
+— refreshes BOTH the sidebar Layers panel (`renderLayersPanel`) AND the outline preview
+(`refreshOutlinePreview`). One call covers 3 of the dispatch's 4 "must refresh" items; the EXISTING
+(already-unconditional) `updateStampMasks` call later in the SAME function now simply reads the
+freshly-loaded content for free, needing no change of its own — only DRAPE needed an explicit new call
+(`refreshDrape`, newly exported from `app-init.js` for this — `runMigrations` was already imported from
+there, no new import path, no circular-import risk confirmed by checking `app-init.js` imports nothing
+from `snapshot-manager.js`), gated the same way, since undo never changes the drawing so its derived
+texture never needs to.
+
+**Fix 2 — the boot-restore block** (`app-init.js`'s `initSvgEditor`): added the missing
+`refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode)` call, in the same position/order the
+Apply and Cancel paths already use (`.open()` → masks → drape) — matching the pattern already established
+twice in the same file rather than inventing a new one, and correcting that block's own stale comment in
+the same edit.
+
+**Tests, mutation-verified (new file, `tests/snapshot-manager.test.js`, 10 tests).** A deliberate,
+disclosed departure from this suite's own established "no vi.mock, real DOM/object stand-ins" convention
+(export-flow.test.js's own T44 notice on that convention, right above this entry): `applySnapshot`'s
+sibling-module dependency graph (engine/stamp-mask-manager/sculpt-interaction/terrain, each pulling in
+real rasterization/grid/engine machinery) is qualitatively heavier than anything tested in this session so
+far — a true orchestration function, not a pure geometry engine — and the thing actually under test here
+is the WIRING (does 'load' call `editor.open()`/`refreshDrape`, does 'undo' not), not those modules' own
+internals. `state.js`/`history.js`/`ui-utils.js` stayed REAL (their own setters/DOM lookups already guard
+safely against a happy-dom document with no matching elements — confirmed by reading each, not assumed,
+before deciding they were safe to leave real). Covers: the `source` guard (missing/unrecognized both
+throw); `'load'` calls `editor.open(editorRestoreSvg(), P.widthIn, P.heightIn)` with the exact args, calls
+`refreshDrape(preview)`, still refreshes masks; `'undo'` never calls `.open()`, never refreshes drape,
+still refreshes masks (both sources share that one). Mutation-verified 3 ways: disabling the source guard
+— exactly the 2 guard tests fail; disabling the 'load' `.open()` call — exactly 1 failure, the args-check
+test; making `.open()` run UNCONDITIONALLY (leaking into 'undo') — exactly 1 failure, the "never calls
+open()" undo test. Each mutation restored from a pre-edit backup, confirmed byte-identical via `diff`
+before re-running green. The boot-path fix (item 2) has no dedicated unit test — `initSvgEditor` is heavy
+DOM/canvas/VectorEditor-construction machinery with no prior test coverage of its own, and the dispatch's
+own vitest requirement was specifically about `applySnapshot`; verified live instead (below), consistent
+with this session's own established practice for boot/DOM-heavy code.
+
+**Live verification (CDP, fresh Chrome — port 9509, profile `chrome-profile-t45`, killed and confirmed
+mine by command-line match before stopping; 0 of that profile's processes remained after), driving the
+REAL production functions directly (not a stand-in), per the dispatch's own exact scenario.**
+- **Fix 1 (project load):** two synthetic "cloud snapshots" (A: a red rect, depth 0.3/square; B: a blue
+  circle, depth 0.6/ballnose — each its own full `data-editor-layers` roster), loaded via the real
+  `applySnapshot(snap, preview, {source:'load'})` — the EXACT function `_loadFrom` calls — with the editor
+  modal NEVER opened at any point. After A: `_sketchLayer` contains only the rect, `exportableStampLayers()`
+  reflects A's own depth/profile, undo stack freshly reset (length 1, the same "nothing to undo yet"
+  baseline `initApp`'s own comment describes). After B (loaded immediately after A, editor still never
+  opened): `_sketchLayer` contains ONLY the circle — the rect is completely gone, zero trace of A —
+  `exportableStampLayers()` now reflects B's own depth/profile, undo stack freshly reset again. Screenshot
+  (`t45-project-b-3d.png`) shows an unambiguous BLUE circular stamp mound in the 3D preview, zero trace of
+  the earlier red rectangle — both the drape color AND the actual carved heightfield geometry correct,
+  confirming masks AND drape, not just the drawing itself.
+- **Fix 2 (boot path):** re-invoked the real `initSvgEditor(preview)` (app-init.js) directly with fresh
+  `P.editorSvg` content (a green rect, depth 0.45/vbit) — exercising the exact lines this fix touched,
+  without needing to fight a separate, pre-existing, out-of-scope timing quirk in `main.js`'s own
+  unconditional `localStorage.removeItem('splineGenLastSession')` on every `DOMContentLoaded` (flagged by
+  the research agent as a second, related-but-distinct bug that would need confirming with Fred
+  separately — a genuine page reload today can't actually reach a "saved session exists at boot" state
+  through THAT mechanism at all; out of this dispatch's own stated scope, not touched). Result:
+  `exportableStampLayers()` shows `hasMask: true` for the new layer — proving the previously-missing
+  `refreshAllStampMasks` call now genuinely runs. Screenshot (`t45-boot-restore-3d.png`) shows a green,
+  sharply-beveled (vbit-profile) raised rectangular stamp in the 3D preview — the actual carved geometry,
+  not just a color overlay.
+- Zero console errors/exceptions across both CDP runs.
+
+Full vitest suite: 716/716 green (706 pre-T45 + 10 new `snapshot-manager.test.js` tests).
+
+Amendments polled clean before this entry; **one arrived at the pre-commit poll** —
+Fred (via Fusion): node outlines import as two half-circle arcs, not a true SketchCircle (his own sketch:
+82 SketchArcs, 0 SketchCircles). Per the amendment's own explicit instruction ("Finish T45 first and
+commit it, then as a SECOND commit this turn"), T45 itself is committed here unchanged by that amendment;
+the circle-export fix follows as its own separate commit in this same turn — see the NEXT entry below.
+
+Committed by explicit path (5 files: `main/app-init.js`, `main/cloud-project-manager.js`,
+`main/global-events.js`, `main/snapshot-manager.js`, `WORK-LOG-lane-b.md`) plus the new
+`tests/snapshot-manager.test.js` — pushed.
+
+## T45 ADD-ON — a full circle exports as a native `<circle>`, not two SketchArcs
+
+**The amendment (Fred, via Fusion measurement, mid-turn).** A node's outline (fusionGeometry:'outline' on a
+lattice node — a small `<circle>`) imported into Fusion as TWO SketchArcs, not ONE true SketchCircle
+(Fred's own sketch: 82 SketchArcs, 0 SketchCircles). Root cause: T39's own established SVG-arc-limitation
+workaround — "one `A` command can't express a full circle" (coincident start/end is degenerate for the
+endpoint-to-center parametrization), so every full circle this session's own engine ever emits is TWO
+coincident-center semicircle `A`s instead. Fusion's `importSVG` turns a native `<circle>` element into a
+true SketchCircle at exact radius; it turns those same two `A`s into two separate SketchArcs — a real,
+measured Fusion-importer behavior difference this session had no prior reason to know about (nothing
+before this exported real circle geometry to Fusion — T43's own live-Fusion check used rect/ellipse/
+polyline/text, no bare circle).
+
+**Scoped precisely to what actually produces this exact shape — not a generic post-hoc pattern-scanner.**
+Per the amendment's own preferred design ("declare it in the engine's return shape"): rather than
+re-deriving "is this `d` string secretly 2 coincident semicircles" from already-emitted text (fragile,
+and exactly the kind of inference-from-output this session's own declare-over-hand-roll discipline argues
+against), the TWO functions that actually KNOW they're building a full circle — because they already
+compute cx/cy/r before ever stringifying it — now say so directly:
+- `circleOutlinePathD` (editor-expand-analytic.js): EVERY ring it ever produces (fill: 1, both: 1, stroke:
+  1 or 2 depending on whether the inner ring collapses) is built via `_circleLoopD`, i.e. is ALWAYS a true
+  full circle, never a partial arc. Now returns `circles: [{cx,cy,r}, ...]` — one entry per ring — alongside
+  the unchanged `d` (so the live preview, which only ever reads `d`/`unsupported`, keeps working exactly as
+  before, unaffected by the new field — confirmed by re-reading `refreshOutlinePreview`'s own destructuring,
+  not assumed).
+- `lineOutlinePathD`'s zero-length-line case (also `editor-expand-analytic.js`): a degenerate zero-length
+  round-capped line collapses to a full circle of radius `strokeWidth/2` — same `circles` treatment.
+- Explicitly did NOT touch the NORMAL (non-zero-length) round-cap case — its own two `A`s are genuinely
+  SEPARATE half-circles at DIFFERENT centers (one per end of the capsule), never a single full circle. Per
+  the amendment's own instruction ("rail/tie round caps are genuinely half-circles — leave them as A"),
+  confirmed this stays completely untouched: no `circles` field, `undefined` (tested explicitly, not just
+  "didn't break").
+- `ellipseOutlinePathD` investigated and explicitly ruled OUT of scope: read `_ellipseOffsetLoopD`'s own
+  implementation and confirmed it ALWAYS biarc-fits over 4 quarter-arcs regardless of whether `rx===ry` —
+  no fast-path circle shortcut exists, so even a true circle drawn via the ellipse tool never produces the
+  clean 2-semicircle pattern this fix targets. The amendment's own examples never mention ellipse either —
+  matches its stated scope exactly, not narrowed further than intended.
+
+**Export wiring** (`editor-io.js`'s `_getLayerSvgForFusion`): the single "build the replacement path"
+step became `_buildOutlineReplacementNodes(doc, result, ch)`, returning an ARRAY of nodes instead of one —
+when `result.circles` is present, one native `<circle fill="none" stroke=... stroke-width=...>` per entry
+(carrying the SAME `data-*` attrs and uncomposed `transform` the path replacement already carried, via one
+shared `decorate()` closure — not duplicated per-branch); otherwise the existing single `<path>`, unchanged.
+Both producers wired up this turn have their ENTIRE `d` composed of the SAME circles they declare — never a
+mix with other path geometry — so `circles` present means `d` is skipped entirely for the export, not
+supplemented (documented explicitly in the function's own comment, since a FUTURE producer that mixes
+circle + non-circle geometry in one result would need its own handling, not silently assumed to fit this
+one). The 'both'-mode insert-after and 'outline'-mode replace-in-place loops both updated to chain multiple
+new nodes in order (needed for stroke-mode's 2-circle annulus case) rather than assuming exactly one.
+
+**The bake needed NO new code at all — confirmed, not assumed.** Read `bakeMatrixIntoElement`
+(editor-transform-handles.js) directly: it ALREADY has a `type === 'circle'` branch (Slice 0, pre-existing,
+this session's own earlier work) that bakes a similarity transform into `cx`/`cy`/`r` natively — a circle
+under any similarity transform (uniform scale + rotation + translation) stays exactly circular, unlike an
+arc, which is WHY Slice 0 built this in the first place. My new `<circle>` export elements flow through
+the EXISTING `_carveChildren`/`bakeMatrixIntoElement` dispatch unchanged and get baked correctly for free —
+confirmed live (below), not just read and assumed.
+
+**Tests, mutation-verified.** `editor-expand-analytic-shapes.test.js` gained a `circles` describe block
+under the existing `circleOutlinePathD` tests (fill/both/stroke-with-annulus/stroke-with-collapsed-inner —
+4 tests, each checking the EXACT `{cx,cy,r}` array against the known analytic radius, not just "some
+circles exist"). `editor-expand-analytic.test.js` gained 2: the zero-length case now also asserts `circles`
+alongside its existing area/distance checks; a NEW test explicitly asserts the normal capsule case's
+`circles` is `undefined` (proving the exception is real, not just untested). `editor-io-fusion-geometry.
+test.js` gained 6: fill-mode circle → 1 `<circle>` no `<path>`; stroke-mode circle → 2 `<circle>`s no
+`<path>`; mode:'both' → 2 `<circle>`s (centerline kept + new outline) no `<path>`; zero-length line → 1
+`<circle>`; a NORMAL line still exports as `<path>` with `A`s (the negative case — proves the fix doesn't
+over-fire); the exported `<circle>` carries the source's own `data-*`/`transform`. 51 new/changed assertions
+total. Mutation-verified 2 ways: disabling the `circles` branch in `_buildOutlineReplacementNodes` entirely
+— exactly 4/17 failures in the export test file, precisely the circle-specific tests (the zero-length-line
+and normal-line-stays-path tests correctly stayed green, since those two are about `lineOutlinePathD`
+specifically and would only break under a DIFFERENT mutation); dropping the `circles` field from
+`circleOutlinePathD` everywhere — exactly 7 failures (4 in the shapes test file, 3 export-level), the
+remaining tests in both files (including the zero-length-line and normal-line cases, which exercise
+`lineOutlinePathD` not `circleOutlinePathD`) correctly unaffected. Both mutations restored from a pre-edit
+backup, confirmed byte-identical via `diff` before re-running the full suite green.
+
+**Live verification (CDP, fresh Chrome — port 9510, profile `chrome-profile-t45b`, killed and confirmed
+mine by command-line match before stopping; 0 of that profile's processes remained after), through the
+FULL real export pipeline, not just the unit-level engine call.** A node-like `<circle>` (fill mode,
+`fusionGeometry:'outline'`) exported via the REAL `getLayerSvg(editor, id, 96, {geometry:'fusion'})`, THEN
+piped through the REAL `bakeSvgForCarving` (the actual next step `export-flow.js` runs before sending to
+Fusion) — pre-bake: 1 `<circle>`, 0 `<path>`; post-bake: STILL 1 `<circle>`, 0 `<path>`, with `cx`/`cy`/`r`
+correctly transformed by the real carve matrix (confirmed via the baked SVG's own literal attribute values,
+not inferred) — conclusively proving the amendment's own "the bake keeps `<circle>` native under the
+similarity carve matrix" claim end-to-end, using pre-existing infrastructure this fix didn't need to touch.
+Zero console errors.
+
+Full vitest suite: 727/727 green (716 T45-baseline + 11 new circle-export tests: 4 in
+`editor-expand-analytic-shapes.test.js`, 1 new in `editor-expand-analytic.test.js` — plus a `circles`
+assertion added to its existing zero-length-line test, not counted as a new test — and 6 in
+`editor-io-fusion-geometry.test.js`).
+
+Amendments polled clean before this entry. Committed by explicit path (3 files:
+`editor/editor-expand-analytic.js`, `editor/editor-io.js`, `WORK-LOG-lane-b.md`) plus the 3 touched test
+files (`tests/editor-expand-analytic-shapes.test.js`, `tests/editor-expand-analytic.test.js`,
+`tests/editor-io-fusion-geometry.test.js`) — pushed, as the amendment's own explicit "second commit this
+turn" instruction asked for.

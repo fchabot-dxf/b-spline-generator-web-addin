@@ -6,10 +6,24 @@ import { updateStampMasks } from './stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
-import { runMigrations } from './app-init.js';
+import { runMigrations, editorRestoreSvg, refreshDrape } from './app-init.js';
 
-export async function applySnapshot(snap, preview) {
+/**
+ * T45 (Fred: "on open, a loaded project doesn't have the SVG until I open
+ * the editor and Apply Stencils"): `source` names WHICH of this
+ * function's two meanings a call is — 'undo' (global heightfield
+ * undo/redo; the drawing has its OWN undo stack and stays untouched here,
+ * SE4c's own ruling) or 'load' (a project load — cloud load today;
+ * loading REPLACES the drawing too, not just P.editorSvg). No default:
+ * every caller must name itself explicitly, since a silent default here
+ * is exactly the shape of bug that shipped originally — one function,
+ * one behavior, reused for two meanings that needed to differ.
+ */
+export async function applySnapshot(snap, preview, { source } = {}) {
   if (!snap) return;
+  if (source !== 'undo' && source !== 'load') {
+    throw new Error(`applySnapshot: source must be 'undo' or 'load' (got ${JSON.stringify(source)})`);
+  }
   AppState.isInitializing = true;
   // UX-UNDO: syncUItoParam deliberately dispatches a real 'change' on
   // checkboxes (see its own comment) so dependent panels re-sync — but
@@ -41,6 +55,23 @@ export async function applySnapshot(snap, preview) {
   // that also flows through this function costs nothing.
   runMigrations();
 
+  // T45: 'load' also replaces the LIVE editor's own document — P.editorSvg
+  // was already overwritten above (part of the P-restore loop), but
+  // window.svgEditor's own _sketchLayer is a SEPARATE store this function
+  // never touched before (that's the whole bug). editor.open()
+  // (editor-io.js) also: clears the whole sketch layer and rebuilds the
+  // layer roster from THIS document (never a stale mix with the previous
+  // project's own layers), resets the editor's own undo stack, and — via
+  // its own last step, setActiveLayer() — refreshes the sidebar Layers
+  // panel AND the outline preview. One call covers 3 of this task's 4
+  // "must refresh on load" items; only stamp masks (below, already
+  // unconditional so it just needs fresh content to read) and drape
+  // (added below) need an explicit call of their own.
+  if (source === 'load') {
+    const editorForLoad = (typeof window !== 'undefined') ? window.svgEditor : null;
+    if (editorForLoad) editorForLoad.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+  }
+
   // Always (re)set preDelta and postDelta — including to null when the
   // snapshot doesn't have one. Previously we only assigned when truthy,
   // which let a STALE delta from the previous project leak across loads.
@@ -67,18 +98,29 @@ export async function applySnapshot(snap, preview) {
 
   // SE4c (product decision): global undo/redo is for the heightfield
   // (sculpt, seed, filters) — the drawing has the editor's OWN undo stack
-  // and is intentionally left untouched here, including on cloud project
-  // load (this function is also _loadFrom's apply step). Tooling fields
-  // (depth/profile/blur/etc.) ARE restored above as part of P.stampLayers,
-  // and rasterizeSvg bakes them into the mask at rasterize time, so the
-  // mask still needs a refresh against the (unchanged) editor content —
-  // unconditional now that there's no `.svg` field left on P.stampLayers
-  // to gate on.
+  // and is intentionally left untouched on 'undo' (T45: 'load' DOES
+  // replace it now, above — this mask refresh runs unconditionally for
+  // both, so 'load' picks up the freshly-loaded content for free here).
+  // Tooling fields (depth/profile/blur/etc.) ARE restored above as part
+  // of P.stampLayers, and rasterizeSvg bakes them into the mask at
+  // rasterize time, so the mask still needs a refresh regardless.
   const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
   try {
     await updateStampMasks(nx, nz);
   } catch (e) {
     console.warn('[applySnapshot] stamp mask regen failed:', e);
+  }
+  // T45: the drape texture is DERIVED from the editor's own drawing —
+  // 'undo' never changes the drawing (see above), so it never needs a
+  // drape refresh; 'load' does, same as editor-io.js's open() itself
+  // needing a drape refresh wherever it's called (app-init.js's own
+  // Apply/Cancel/boot-restore paths already pair every open() with one).
+  if (source === 'load') {
+    try {
+      await refreshDrape(preview);
+    } catch (e) {
+      console.warn('[applySnapshot] drape refresh failed:', e);
+    }
   }
 
   // Sync the param-manager's grid-change tracker so the NEXT slider

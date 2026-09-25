@@ -169,6 +169,73 @@ describe('getLayerSvg({geometry:"fusion"}) — declined elements fall back + are
   });
 });
 
+describe('getLayerSvg({geometry:"fusion"}) — T45 ADD-ON: a full circle exports as a native <circle>, not two SketchArc-importing A commands', () => {
+  it('a <circle> element (fill mode) exports as exactly ONE native <circle>, no <path> at all', async () => {
+    const html = '<circle cx="2" cy="3" r="1" fill="#000000" data-layer="0"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(declined).toBe(0);
+    expect(svg).not.toContain('<path');
+    expect((svg.match(/<circle/g) || []).length).toBe(1);
+    expect(svg).toContain('cx="2"');
+    expect(svg).toContain('cy="3"');
+    expect(svg).toContain('r="1"');
+  });
+
+  it('a <circle> element (stroke mode, real annulus) exports as exactly TWO native <circle> elements (outer + inner), no <path>', async () => {
+    const html = '<circle cx="0" cy="0" r="5" stroke="#000000" stroke-width="1" fill="none" data-layer="0"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(declined).toBe(0);
+    expect(svg).not.toContain('<path');
+    expect((svg.match(/<circle/g) || []).length).toBe(2);
+    expect(svg).toContain('r="5.5"'); // outer
+    expect(svg).toContain('r="4.5"'); // inner
+  });
+
+  it('mode:"both" keeps the original centerline <circle> AND adds a new outline <circle> alongside it (2 total, still no <path>)', async () => {
+    const html = '<circle cx="1" cy="1" r="2" fill="#000000" data-layer="0"/>';
+    const layers = [{ id: '0', fusionGeometry: 'both' }];
+    const editor = mockEditor(html, layers);
+    const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(declined).toBe(0);
+    expect(svg).not.toContain('<path');
+    expect((svg.match(/<circle/g) || []).length).toBe(2);
+  });
+
+  it('a zero-length <line> (round cap) exports as a native <circle> too — the OTHER producer of this same shape', async () => {
+    const html = '<line x1="3" y1="4" x2="3" y2="4" stroke-width="2" stroke-linecap="round" data-layer="0"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(declined).toBe(0);
+    expect(svg).not.toContain('<path');
+    expect(svg).toContain('<circle');
+    expect(svg).toContain('r="1"'); // strokeWidth/2
+  });
+
+  it('a NORMAL (non-zero-length) round-capped <line> still exports as a <path> with A commands — its two caps are genuinely separate half-circles, not one full circle', async () => {
+    const html = '<line x1="0" y1="0" x2="10" y2="0" stroke-width="2" stroke-linecap="round" data-layer="0"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const { svg, declined } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(declined).toBe(0);
+    expect(svg).toContain('<path');
+    expect(svg).not.toContain('<circle');
+  });
+
+  it('the exported <circle> carries the source element\'s own data-* attrs and transform, same as the <path> replacement does', async () => {
+    const html = '<circle cx="0" cy="0" r="1" fill="#000000" data-layer="0" transform="translate(2,3)"/>';
+    const layers = [{ id: '0', fusionGeometry: 'outline' }];
+    const editor = mockEditor(html, layers);
+    const { svg } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(svg).toContain('data-layer="0"');
+    expect(svg).toContain('transform="translate(2,3)"');
+  });
+});
+
 describe('getLayerSvg({geometry:"fusion"}) — edge cases mirror the default path\'s own contract', () => {
   it('returns {svg:"", declined:0} when the layer has no matching children (default path returns "")', async () => {
     const layers = [{ id: '99', fusionGeometry: 'outline' }];

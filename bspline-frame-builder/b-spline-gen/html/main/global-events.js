@@ -25,18 +25,22 @@ export function wireGlobalEvents(preview) {
         if (e.key === 'z' && !e.shiftKey) {
             e.preventDefault();
             if (editorOpen) window.svgEditor?.undo();
-            else unifiedUndo(snap => applySnapshot(snap, preview));
+            else unifiedUndo(snap => applySnapshot(snap, preview, { source: 'undo' }));
             return;
         }
         if (e.key === 'y' || (e.key === 'Z' && e.shiftKey) || (e.key === 'z' && e.shiftKey)) {
             e.preventDefault();
             if (editorOpen) window.svgEditor?.redo();
-            else unifiedRedo(snap => applySnapshot(snap, preview));
+            else unifiedRedo(snap => applySnapshot(snap, preview, { source: 'undo' }));
             return;
         }
     });
 
-    const undo = (snap) => applySnapshot(snap, preview);
+    // T45: global undo/redo (buttons + sculpt top/bottom variants below) —
+    // 'undo' for all of them, including the redo direction; applySnapshot's
+    // own `source` only distinguishes undo/redo-family FROM a project
+    // load, not undo from redo (both leave the drawing untouched).
+    const undo = (snap) => applySnapshot(snap, preview, { source: 'undo' });
     const rebuildSoon = (delay) => scheduleRebuild(
         () => rebuild(preview, updateStampMasks, updatePreviewSculptMode),
         delay,
