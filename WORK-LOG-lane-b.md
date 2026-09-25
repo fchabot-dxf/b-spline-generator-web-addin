@@ -5966,3 +5966,83 @@ shapes.test.js`, `tests/editor-expand-biarc.test.js`, `tests/editor-expand-path.
 lattice-boundary.test.js`, `tests/editor-lattice-pattern-ending.test.js`) — pushed. `reference/` confirmed
 still untracked, not swept. Still not merged to main per the same seat-A MOB3 note as T50 — this turn touched
 none of the shared panel files either.
+
+## T52 — SE14 design doc: Shape Lattice tool (docs only, no code)
+
+**Scope, per the dispatch: design only.** Fred's own decisions (ROADMAP.md's own "Queued — SE14" section,
+cited as authoritative): "the shape lattice and lattice box are different" → two tools sharing one engine —
+the box Lattice goes back to simple (SE13's own Boundary row moves out of it), a new Shape Lattice tool gets
+a SHAPE section (generate a silhouette, or pick any closed shape) + the same Fill settings + Generate.
+"Shape tool just has more settings for shape refinement, perhaps per shape segment toggle for curve, straight
+or kinked line" → per-segment style, picked from a list or by tapping the canvas, mirrored pairs, corner
+rounding radius.
+
+**Three sources read this turn, not assumed from the dispatch's own summary**: `reference/svgcreator-
+deployed/`'s `pathloop.js` (full, 273 lines — the live hourglass/bust generator), `utils.js`'s
+`resolveGenerator`/`decomposeSegment`/fillet solvers (full), `main.js`'s proportions-overlay UI and debug-
+label code (partial); plus the EXTERNAL `C:/Users/danse/APPS/SVG creator/src/envelope.js` (full, 150 lines,
+never committed, outside this repo entirely).
+
+**The core reusable piece, cross-checked before committing to porting it**: `decomposeSegment`'s own bulge→
+primitive formula — a signed `bulge` float gives either a straight `L` or, via the closed-form CAD "bulge
+factor" radius (`R = |chord/2 · (1+b²)/(2b)|`), an EXACT circular arc through the two endpoints. This is
+EXACTLY this session's own `A`-primitive shape (`arcCenterParam`'s own inverse) — the two formulas agree,
+checked by hand before proposing the port, not assumed compatible because both happen to produce "arcs."
+
+**A real, disclosed finding, found by grepping rather than assuming the reference "already does this"**:
+`PathGenerator.ALL_STYLES` (13 named per-segment styles — straight/arc/arc-deep/.../notch/s-bend) is DECLARED
+but never actually WIRED into the live generator — `leftStyles`/`rightStyles`/`headStyle` are read-only by
+dead debug-label code (`main.js`'s own segment-labeling function), never assigned anywhere in `pathloop.js`'s
+own `generate()` return value. Confirmed by grepping the whole reference for any assignment site — zero
+matches. This means Fred's own "per-segment toggle for curve, straight or kinked line" ask has NO working
+reference implementation to port; it's this design's own original piece (§4), informed by `ALL_STYLES`' own
+declared vocabulary as a naming reference, not silently presented as reused working code. Same discipline
+SE13's own design doc used for its own shape-to-primitives gap — a second instance of this pattern this
+session, not a one-off.
+
+**A genuine synthesis, not a straight port of either reference**: the dispatch's own "neck / chin / waist"
+names THREE proportions, but `pathloop.js`'s own live `proportions` field only has TWO (`neck`, `chin`) — no
+"waist" concept exists in the deployed generator at all. The EXTERNAL, older `envelope.js` DOES have a
+"waist" concept (`waistPos`/`waistW`, a continuous per-pixel width-multiplier field) but its own mechanism
+(procedural, no discrete keypoints) doesn't map onto "toggle THIS segment's style," which is what this whole
+design needs to build around. Read both, adopted neither wholesale: §7 adds a THIRD zone (waist, between the
+base and the neck) to `pathloop.js`'s own KEYPOINT model, borrowing only `envelope.js`'s own NAMING for what
+the zone represents — an original synthesis, stated as exactly that rather than attributed to either source.
+
+**Genuinely new, reusable geometry identified, not just design vocabulary**: `solveLineArcFillet`/
+`solveArcArcFillet`/`intersectRays` (`utils.js:358-431`) — an EXACT tangent-circle fillet solver (Apollonius
+circles for line-arc/arc-arc), a DIFFERENT operation from this session's own T44 join-building (which rounds
+where two OFFSET curves meet during stroke expansion, not where an ORIGINAL centerline path turns at a fixed
+radius). §5 proposes reusing this session's own `_lineIntersect`/`_lineCircleIntersect` (T44/T47, already
+exported) for the line-line and line-arc/arc-line cases directly, and porting ONLY the one case neither
+existing primitive reaches (arc-arc) as one new small solver — not re-deriving geometry this codebase already
+has correctly, and not blindly porting geometry it already covers a different way.
+
+**Delivered**: `SE14-SHAPE-LATTICE-DESIGN.md` (repo root, 382 lines) — the two-tool split (what moves where,
+plus a disclosed, flagged migration rule for an existing boundary-mode box-Lattice layer, since the dispatch
+itself didn't specify one); the silhouette data model (`PATTERN.shape = {source, seed, proportions, widths,
+symmetryRelax, keypointCounts, segments}`, a flat per-segment array reusing `pathloop.js`'s own left→head→
+right→base assembly order so array index IS segment identity, no separate zone/index pair to track); the
+generator (seed → dimensions/widths → keypoints → segments → exact L/A primitives → optional fillets); the
+per-segment style table (straight/curve/kink mapped onto the one proven bulge mechanism, the other 10
+reference names declared-but-deferred, not silently dropped); segment picking (a panel list, or a NEW
+segment-level canvas hit-test refinement, reusing T49's own pick-callback pattern); how a generated shape
+relates to the fill (the generated path IS the linked boundary via T49's own `stampBoundaryRef`, editing
+`PATTERN.shape.*` regenerates the SAME element's own `d` in place — link survives — commit-only refill T49
+already built needs zero new wiring; a hand node-edit flips `PATTERN.shape.source` to `'picked'` via a
+recompute-and-compare check on commit, named as a real precision/cost tradeoff rather than fully resolved);
+the waist zone (§7, the synthesis above); output exactness (zero new export code, same claim SE13 §8 already
+proved, to be proven live again at the wiring slice); a UI mock (desktop panel + phone drawer, ONE new
+`TOOL_PANELS` entry — MOB3's own declared table, "a future tool... is one entry here, not a new mechanism" —
+confirmed by reading `editor-drawer.js` directly, not assumed from memory of the pre-MOB3 panel shape); 3
+slices (pure generator, fillets, live wiring — matching SE7b/SE13's own established shape); 5 open questions
+for Fred (most load-bearing: the migration rule, and whether v1's style vocabulary should include any of the
+reference's own remaining declared-but-unwired names).
+
+No code changed, no tests, no live CDP run — docs-only turn, exactly as dispatched. `reference/svgcreator-
+deployed/` confirmed still gitignored (`.gitignore:90`) and untracked — verified via `git check-ignore -v`
+before committing, not assumed safe; the EXTERNAL `C:/Users/danse/APPS/SVG creator/` path was read directly
+(absolute path, outside this repo entirely) and never staged, matching how `reference/` itself is handled.
+
+Amendments polled clean. Committed by explicit path (2 files: `SE14-SHAPE-LATTICE-DESIGN.md`,
+`WORK-LOG-lane-b.md`) — pushed.
