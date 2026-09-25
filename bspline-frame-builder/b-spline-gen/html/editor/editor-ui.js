@@ -21,7 +21,7 @@ const MODE_HINTS = {
   circle: 'Circle — drag from center outward.',
   expand: 'Expand — use the Detail input + EXPAND button in the top bar to offset/outline your paths.',
   erase:  'Eraser — drag through shapes to cut them. Filled shapes get clipped; open strokes split at the cut (endcaps preserved). Width follows the stroke width.',
-  lattice: 'Lattice — drag along a row for a rail, along a column for a tie. Auto-nodes mark the ends and crossings. A bare click does nothing — use Circle for a manual dot.',
+  lattice: 'Lattice — pick Rail, Tie, or Node above, then drag (Node: just click). Auto-nodes mark the ends and crossings. Drag onto an existing piece to move it instead.',
 };
 
 // Anchor-mode hint replaces the pen mode hint while the user is actively

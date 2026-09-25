@@ -9,6 +9,7 @@
  */
 import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
+import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind,
 } from './editor-lattice-pattern.js';
@@ -58,6 +59,8 @@ export function initLatticeProperties(editor) {
     const orientHorizontalEl = el('latticeOrientHorizontal');
     const orientVerticalEl = el('latticeOrientVertical');
     const toolBtn = el('toolLattice');
+    const addKindEls = {};
+    for (const { value } of LATTICE_DRAW_KINDS) addKindEls[value] = el(`latticeAdd-${value}`);
     const panelEl = el('editorLatticePanel');
     const headerBtn = el('editorLatticePanelHeader');
 
@@ -251,6 +254,21 @@ export function initLatticeProperties(editor) {
     }
     if (orientHorizontalEl) on(orientHorizontalEl, 'click', () => selectOrientation('horizontal'));
     if (orientVerticalEl) on(orientVerticalEl, 'click', () => selectOrientation('vertical'));
+
+    /** SE7k: which explicit kind the Lattice tool's next click/drag draws
+     *  — session-only tool state (editor._lattice.drawKind, same scope as
+     *  autoNodes), NOT a per-layer pattern field, so this never touches
+     *  _currentPattern/readFieldsIntoPattern and needs no undo step of
+     *  its own (nothing is drawn by clicking the button itself). */
+    function selectDrawKind(value) {
+        editor._lattice.drawKind = value;
+        for (const { value: v } of LATTICE_DRAW_KINDS) {
+            if (addKindEls[v]) addKindEls[v].classList.toggle('active', v === value);
+        }
+    }
+    for (const { value } of LATTICE_DRAW_KINDS) {
+        if (addKindEls[value]) on(addKindEls[value], 'click', () => selectDrawKind(value));
+    }
 
     syncFieldsFromPattern();
     on(toolBtn, 'click', syncFieldsFromPattern);

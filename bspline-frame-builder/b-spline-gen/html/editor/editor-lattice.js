@@ -1,11 +1,15 @@
 /**
- * editor-lattice.js — SE7a: the Lattice tool. Drag along a row for a rail,
- * along a column for a tie; nodes are auto-placed at ends and crossings
- * (or dropped manually with the Circle tool — see SNAP_POLICY's `circle:
- * 'center'` row and editor-interaction.js's circleHandler). A bare click
- * in lattice mode does nothing (Fred: "isn't Circle enough?").
+ * editor-lattice.js — SE7a: the Lattice tool. SE7k: which of Rail/Tie/Node
+ * a drag or click produces is an EXPLICIT choice (the panel's Add:
+ * segmented control, LATTICE_DRAW_KINDS below) — Rail/Tie drag, Node
+ * places on a plain click, no drag needed. Auto-nodes are still placed at
+ * ends and crossings for a drawn rail/tie (or dropped manually with the
+ * Circle tool too — see SNAP_POLICY's `circle: 'center'` row and editor-
+ * interaction.js's circleHandler; both it and Add: Node call the same
+ * emitNode). A click that lands on empty space with neither Add: Node nor
+ * Circle active still does nothing.
  *
- * Pure lattice math (toLattice/fromLattice/classifyDrag/constrain/
+ * Pure lattice math (toLattice/fromLattice/constrainToKind/
  * latticeCrossings) has no svg.js/DOM dependency and is unit-tested
  * directly, matching editor-view.js's/editor-grid.js's own split. The emit
  * helpers below that line DO touch the DOM/svg.js — same leaf-module shape
@@ -15,7 +19,38 @@ import { ensureActiveLayer } from './layers.js';
 import { GRID_DEFAULTS } from './editor-grid.js';
 import { worldPoint } from './editor-coords.js';
 
-export const LATTICE_DEFAULTS = { autoNodes: true };
+// SE7k (Fred: "needs an add rail and add tie, add node button"): drawKind
+// is the EXPLICIT choice driving the hand-drawn tool's start/update/finish
+// (editor-interaction.js) — session-only UI state, same scope as
+// autoNodes (not persisted, not per-layer). 'rail' is the default —
+// today's most common gesture stays a single click-drag away.
+export const LATTICE_DEFAULTS = { autoNodes: true, drawKind: 'rail' };
+
+/**
+ * SE7k: the three explicit kinds the Lattice tool can draw, declared once
+ * so the panel's "Add: [Rail] [Tie] [Node]" segmented control renders
+ * from this table (properties-lattice.js) rather than three hand-listed
+ * buttons whose labels/hints could drift from what the tool actually
+ * does — same "declared table, not hand-typed" shape as layers.js's own
+ * FUSION_GEOMETRY. Replaces the old direction-guessed kind (classifyDrag
+ * on the drag vector) — the kind is now always exactly one of these
+ * three, chosen before the drag starts, never inferred from it.
+ *
+ * `clickSpawn` (AMEND 1, Fred: "spawn or drag, what's best?" — advisor
+ * ruling: BOTH, standard click-vs-drag): what a CLICK (no drag past the
+ * slop) spawns, since dragging is what draws a constrained rail/tie —
+ * 'fullRow' (a rail spanning the whole board extent on that row, same as
+ * Generate), 'betweenRails' (a tie bridging the nearest existing rails
+ * above/below, or a default-length span if fewer than two exist), 'point'
+ * (a node — click was already how Node placed, unchanged). Declared here
+ * rather than a hand-rolled if/else per kind in editor-interaction.js, so
+ * a future 4th kind's click behavior is one table edit.
+ */
+export const LATTICE_DRAW_KINDS = Object.freeze([
+  { value: 'rail', label: 'Rail', hint: 'Drag along the rail axis.', clickSpawn: 'fullRow' },
+  { value: 'tie', label: 'Tie', hint: 'Drag across the rails — snaps to them.', clickSpawn: 'betweenRails' },
+  { value: 'node', label: 'Node', hint: 'Click to place a node.', clickSpawn: 'point' },
+]);
 
 /**
  * SE7c: declared line-width/radius PROPORTIONS for lattice geometry, as a
@@ -51,7 +86,7 @@ export const ORIENTATIONS = ['horizontal', 'vertical'];
 /**
  * The one orientation mapping every lattice consumer conjugates through:
  * transpose a point INTO the canonical (horizontal) frame before running
- * classifyDrag/constrain/latticeCrossings/the generator's row-column math
+ * constrainToKind/latticeCrossings/the generator's row-column math
  * unchanged, then transpose the RESULT back out. Self-inverse (swapping
  * i/j twice is the identity), so the same call does both directions —
  * callers don't need a separate "un-orient". 'horizontal' is the
@@ -76,21 +111,32 @@ export function fromLattice(ij, spacing) {
   return { x: ij.i * spacing, y: ij.j * spacing };
 }
 
-/** Both args are lattice coords. 'node' when they're the same cell (no
- *  movement — a bare click); otherwise 'rail' when the horizontal step
- *  dominates, 'tie' when the vertical step does. */
-export function classifyDrag(a, b) {
-  if (a.i === b.i && a.j === b.j) return 'node';
-  return Math.abs(b.i - a.i) >= Math.abs(b.j - a.j) ? 'rail' : 'tie';
+/**
+ * SE7k AMEND 5: toLattice's own pre-round intermediate — model-space
+ * point -> FRACTIONAL lattice coordinates, no snapping. A proximity test
+ * against a pixel-scale tolerance (nearestEndWithin, below) needs the
+ * CONTINUOUS distance to a piece's endpoint; rounding first would
+ * collapse a small tolerance into all-or-nothing whole-cell jumps.
+ */
+export function toLatticeFractional(pt, spacing) {
+  return { i: pt.x / spacing, j: pt.y / spacing };
 }
 
-/** Both args are lattice coords. Projects b onto whichever axis dominates
- *  the drag from a, so a rail comes out exactly horizontal and a tie
- *  exactly vertical. Returns lattice coords. */
-export function constrain(a, b) {
-  return Math.abs(b.i - a.i) >= Math.abs(b.j - a.j)
-    ? { i: b.i, j: a.j }
-    : { i: a.i, j: b.j };
+/**
+ * SE7k: both args are lattice coords (canonical frame). Projects b onto
+ * the axis `kind` requires from a — a rail is always horizontal in this
+ * frame (locks j to a's row, i free), a tie always vertical (locks i to
+ * a's column, j free). `kind` is the tool's EXPLICIT choice (the Add:
+ * segmented control), never guessed from the drag's own direction —
+ * replaces the old classifyDrag+constrain pair, which picked whichever
+ * axis the drag happened to move along more. A "bare click" (a === b)
+ * still needs no special case here: the caller checks for that itself
+ * before deciding whether to emit anything (constrainToKind just
+ * returns a's own row/column, same as the no-movement case always
+ * would).
+ */
+export function constrainToKind(a, b, kind) {
+  return kind === 'rail' ? { i: b.i, j: a.j } : { i: a.i, j: b.j };
 }
 
 /** T30: the nearest rail ROW to `j`, within `within` lattice rows — or
@@ -195,6 +241,62 @@ export function translateTie(tieCanon, di, dj) {
     a: { i: tieCanon.a.i + di, j: tieCanon.a.j + dj },
     b: { i: tieCanon.b.i + di, j: tieCanon.b.j + dj },
   };
+}
+
+/**
+ * SE7k AMEND 5 (Fred: "it's not about nodes, it's the feature's END that
+ * can stretch it"): is `ptCanon` within `tol` (canonical/lattice units,
+ * already converted from a pixel tolerance by the caller) of `pieceCanon`
+ * {a,b}'s NEARER end? Returns 'a', 'b', or null (neither close enough —
+ * a body grab). Shared by rails and ties alike; a piece's own two ends
+ * are just points, so this needs no rail/tie-specific math at all.
+ */
+export function nearestEndWithin(pieceCanon, ptCanon, tol) {
+  const da = Math.hypot(ptCanon.i - pieceCanon.a.i, ptCanon.j - pieceCanon.a.j);
+  const db = Math.hypot(ptCanon.i - pieceCanon.b.i, ptCanon.j - pieceCanon.b.j);
+  if (da <= tol && da <= db) return 'a';
+  if (db <= tol) return 'b';
+  return null;
+}
+
+/**
+ * SE7k AMEND 4/5: stretch a rail's `whichEnd` to `newI` (canonical frame —
+ * a rail's own axis is i, its row/j never changes here, unlike a MOVE).
+ * Clamped so it can never pass the OTHER end (minimum length 1 lattice
+ * step), preserving whichever side of the fixed end it started on — "the
+ * end moves along the rail's own axis only... can't pass the other end."
+ * The other end (and anything attached to it) is untouched — SE7k AMEND
+ * 4: "attached ties stay where they are" when a rail is stretched, unlike
+ * a MOVE (moveRailAlongAxis, above), which drags every attached tie-end
+ * along. Returns the new {a,b}; the caller carries a rail-end NODE at
+ * `whichEnd` along separately (this function only knows about the rail's
+ * own two endpoints).
+ */
+export function stretchRailEnd(railCanon, whichEnd, newI) {
+  const fixed = whichEnd === 'a' ? railCanon.b : railCanon.a;
+  const original = railCanon[whichEnd];
+  const sign = original.i >= fixed.i ? 1 : -1;
+  const clampedI = sign > 0 ? Math.max(newI, fixed.i + 1) : Math.min(newI, fixed.i - 1);
+  const moved = { i: clampedI, j: railCanon.a.j };
+  return whichEnd === 'a' ? { a: moved, b: railCanon.b } : { a: railCanon.a, b: moved };
+}
+
+/**
+ * SE7k AMEND 4/5: stretch a tie's `whichEnd` to `newJ` (canonical frame —
+ * a tie's own axis is j, its column/i never changes here). Same clamp-
+ * against-the-other-end rule as stretchRailEnd, mirrored onto the tie's
+ * own axis. Snapping this end to the grid AND to nearby rail rows
+ * (railSnapRows) is the CALLER's job (editor-interaction.js), the same
+ * split constrainToKind/the T30 rail-row snap already use for a freshly-
+ * drawn tie's end — this function only clamps the minimum-length rule.
+ */
+export function stretchTieEnd(tieCanon, whichEnd, newJ) {
+  const fixed = whichEnd === 'a' ? tieCanon.b : tieCanon.a;
+  const original = tieCanon[whichEnd];
+  const sign = original.j >= fixed.j ? 1 : -1;
+  const clampedJ = sign > 0 ? Math.max(newJ, fixed.j + 1) : Math.min(newJ, fixed.j - 1);
+  const moved = { i: tieCanon.a.i, j: clampedJ };
+  return whichEnd === 'a' ? { a: moved, b: tieCanon.b } : { a: tieCanon.a, b: moved };
 }
 
 function _segmentCrossing(rail, tie) {

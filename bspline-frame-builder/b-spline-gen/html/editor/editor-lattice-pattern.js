@@ -20,14 +20,19 @@
  * take model-space points).
  */
 import {
-  toLattice, fromLattice, constrain, latticeCrossings,
+  toLattice, fromLattice, latticeCrossings,
   LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer } from './layers.js';
 import { lcgPoints } from '../core/terrain.js';
 
-export { toLattice, fromLattice, constrain, latticeCrossings };
+// SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
+// — this file never called it (only re-exported it), and nothing imports
+// it from HERE either (checked: every consumer of this module pulls its
+// own specific names, none of them this re-export list) — swept along
+// with its sole real caller in editor-interaction.js.
+export { toLattice, fromLattice, latticeCrossings };
 
 /** data-lattice-gen="<PATTERN.id>" marks an element as OWNED by a
  *  Generate/Regenerate run — a sibling attribute to editor-lattice.js's
@@ -380,8 +385,12 @@ export function computePattern(PATTERN, opts = {}) {
  *  §1) is honored directly, UN-inset — its stored bounds are an explicit
  *  caller-given rectangle, not the board edge, so margin doesn't apply;
  *  supporting it costs nothing extra, so both modes are handled rather
- *  than only the one this slice strictly needs. */
-function _resolveExtent(editor, PATTERN) {
+ *  than only the one this slice strictly needs.
+ *  SE7k AMEND 1: exported (despite the underscore — same convention as
+ *  this file's own nextSeed/_perfLog-style exceptions) so a Rail click-
+ *  spawn (editor-interaction.js) can size itself to "the SAME extent
+ *  Generate uses" without a second, divergent copy of this margin math. */
+export function _resolveExtent(editor, PATTERN) {
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const extentSpec = PATTERN.extent || { mode: 'board' };
   if (extentSpec.mode === 'rect') {

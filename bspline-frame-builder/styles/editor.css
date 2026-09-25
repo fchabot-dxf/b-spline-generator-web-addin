@@ -941,6 +941,23 @@
     }
 }
 
+/* SE7k: the new Add: [Rail][Tie][Node] segmented control — same MOB2
+   touch-sizing pass as the block above, for a NEW control this time
+   rather than a retrofit. `.editor-fillmode-btn` is `height:100%`
+   (base.css), so growing the group's own inline height is enough; no
+   separate button rule needed. 44px matches this file's OWN primary-
+   touch-target convention (.layer-visibility etc., line ~871) rather
+   than the 32px MINIMUM the checkboxes above settled for — this is the
+   tool's main mode switch, not a secondary option. NOT applied to the
+   pre-existing Orientation/Style segmented controls in this same panel
+   (still 24px under pointer:coarse) — a real, pre-existing gap, but
+   retrofitting those is a separate change from adding this one. */
+@media (pointer: coarse) {
+    #latticeAddKindGroup {
+        height: 44px !important; /* beats the element's own inline height:24px — confirmed live it doesn't apply without this, same gotcha MOB2 hit on the Nodes checkboxes */
+    }
+}
+
 .layer-name {
     flex: 1;
     min-width: 0;

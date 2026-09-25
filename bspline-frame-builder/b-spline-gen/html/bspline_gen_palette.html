@@ -1557,6 +1557,28 @@
           </button>
 
           <div id="editorLatticePanelBody" style="display:flex; flex-direction:column; gap:10px;">
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Add</span>
+              <!-- SE7k (Fred: "needs an add rail and add tie, add node
+                   button"): explicit kind choice — the tool no longer
+                   guesses rail vs tie from drag direction. IDs/order/
+                   labels/titles come from editor-lattice.js's
+                   LATTICE_DRAW_KINDS (properties-lattice.js wires these
+                   from that table, same "declared table drives the
+                   button group" shape as layers.js's own FUSION_GEOMETRY)
+                   — a 4th kind would be one table entry plus one button
+                   here, not new JS. Same .editor-fillmode-btn segmented-
+                   control shape as Orientation/Style elsewhere in this
+                   panel; title carries the hint text (no separate hint
+                   row — this panel is only 220px wide, no room to spare,
+                   unlike FUSION_GEOMETRY's own wider sidebar). -->
+              <div role="group" id="latticeAddKindGroup" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="latticeAdd-rail" class="editor-fillmode-btn active" style="flex:1;" title="Drag along the rail axis.">Rail</button>
+                <button type="button" id="latticeAdd-tie" class="editor-fillmode-btn" style="flex:1;" title="Drag across the rails — snaps to them.">Tie</button>
+                <button type="button" id="latticeAdd-node" class="editor-fillmode-btn" style="flex:1;" title="Click to place a node.">Node</button>
+              </div>
+            </div>
+
             <label style="display:flex; flex-direction:column; gap:3px;">Spacing
               <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
             </label>

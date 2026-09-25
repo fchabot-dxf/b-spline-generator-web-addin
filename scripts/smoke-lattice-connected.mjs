@@ -109,8 +109,17 @@ report.spacing = await evalJS(`window.svgEditor._grid.spacing`);
 //                                'b' endpoint is the one attached.
 //   Rail B: (1,6)-(4,6)         a second, unrelated rail (Section 4)
 // ============================================================
+// SE7k: the kind is now an EXPLICIT Add: choice (properties-lattice.js),
+// not guessed from drag direction — every draw-new gesture below picks
+// its kind via these buttons first (a grab-to-move/stretch gesture, by
+// contrast, never reads drawKind at all, so those need no click).
+async function addKind(kind) { await evalJS(`document.getElementById('latticeAdd-${kind}').click(); true`); await sleep(100); }
+
+await addKind('rail');
 await dragFromTo({ x: 1, y: 1 }, { x: 4, y: 1 });      // Rail A
+await addKind('tie');
 await dragFromTo({ x: 2, y: 3 }, { x: 2, y: 1 });      // Tie, 'b' end lands on Rail A
+await addKind('rail');
 await dragFromTo({ x: 1, y: 6 }, { x: 4, y: 6 });      // Rail B
 
 function findRail(x1) {
@@ -194,32 +203,65 @@ report.afterRedo = await evalJS(`(() => { const rail = ${findRail(1)}; return ra
 report.redoReappliedRailMove = report.afterRedo === 2;
 
 // ============================================================
-// NODE MOVE (SE7j, Fred: "Upright — I will slant it in direct edit mode
-// if I need" — overriding SE7i's own first cut, which slid just the
-// grabbed end and could lean the tie): grab the crossing node (currently
-// at (2,2), sitting on Rail A's row 2) and drag it OFF-AXIS on purpose —
-// the whole TIE must slide along the rail axis instead: BOTH ends' x
-// shift by the SAME snapped delta, both ends' y stay EXACTLY as they
-// were (3 and 2 — never converging, never leaning), and the node itself
-// (the tie's own end at (2,2)) moves with it, still paired with that end.
+// NODE-AT-END STRETCH (SE7k AMEND 5, superseding SE7j: "it's not about
+// nodes, it's the feature's END that can stretch it"): the node at (2,2)
+// is the tie's own 'b' endpoint (it followed Rail A there during the rail
+// move above) — grabbing it now STRETCHES that end along the tie's OWN
+// axis (j only): the i-component of the drag is ignored entirely, the
+// end moves to wherever the drag's j lands (snapped to grid/rail rows),
+// the tie's OTHER end (2,3) stays exactly put, and the node rides the
+// stretched end. This replaces SE7j's retired "whole tie slides, off-axis
+// input ignored" behavior for a node grabbed at an END specifically.
 // ============================================================
 const tieBeforeNodeMove = await evalJS(`(() => { const t = document.querySelector('[data-lattice=tie]'); return { x1:+t.getAttribute('x1'), y1:+t.getAttribute('y1'), x2:+t.getAttribute('x2'), y2:+t.getAttribute('y2') }; })()`);
-await dragFromTo({ x: 2, y: 2 }, { x: 3, y: 4 }); // deliberately off-axis — the tie must stay upright regardless
+// Deliberately off-axis in i (must be ignored) and to y=0.5 — the SAME
+// side of the fixed 'a' end (y=3) the 'b' end already started on (y=2 <
+// 3): stretchRailEnd/stretchTieEnd's own "can't pass the fixed end" clamp
+// (confirmed live while writing this: dragging to y=4.5, PAST 'a', got
+// correctly clamped to y=2.75 — one grid step short of 'a' — a real,
+// working clamp, not a bug, just the wrong target for THIS assertion,
+// which wants a clean, unclamped stretch).
+await dragFromTo({ x: 2, y: 2 }, { x: 3, y: 0.5 });
 await sleep(300);
 report.afterNodeMove = await evalJS(`(() => {
   const t = document.querySelector('[data-lattice=tie]');
-  const node = [...document.querySelectorAll('[data-lattice=node]')].find(n => Math.abs(+n.getAttribute('cy') - 2) < 0.01 && +n.getAttribute('cx') !== 1 && +n.getAttribute('cx') !== 4);
+  const node = [...document.querySelectorAll('[data-lattice=node]')].find(n => Math.abs(+n.getAttribute('cx') - 2) < 0.01 && Math.abs(+n.getAttribute('cy') - 0.5) < 0.01);
   return {
     tie: t ? { x1: +t.getAttribute('x1'), y1: +t.getAttribute('y1'), x2: +t.getAttribute('x2'), y2: +t.getAttribute('y2') } : null,
     node: node ? { cx: +node.getAttribute('cx'), cy: +node.getAttribute('cy') } : null,
   };
 })()`);
-const dx1 = report.afterNodeMove.tie ? report.afterNodeMove.tie.x1 - tieBeforeNodeMove.x1 : null;
-const dx2 = report.afterNodeMove.tie ? report.afterNodeMove.tie.x2 - tieBeforeNodeMove.x2 : null;
-report.wholeTieSliddAlongAxisEqually = dx1 !== null && dx1 === dx2 && dx1 !== 0; // non-vacuous: it actually moved, both ends equally
-report.tieStayedUpright = report.afterNodeMove.tie?.y1 === tieBeforeNodeMove.y1 && report.afterNodeMove.tie?.y2 === tieBeforeNodeMove.y2; // neither y moved — never leaned
-report.nodeMovedWithItsOwnTieEnd = report.afterNodeMove.node?.cx === report.afterNodeMove.tie?.x2 && report.afterNodeMove.node?.cy === report.afterNodeMove.tie?.y2;
+report.tieEndStretchedAlongAxisOnly = report.afterNodeMove.tie?.x2 === 2 && report.afterNodeMove.tie?.y2 === 0.5; // i untouched (still 2), j moved to 0.5
+report.tieOtherEndUntouchedByStretch = report.afterNodeMove.tie?.x1 === 2 && report.afterNodeMove.tie?.y1 === 3;
+report.nodeRodeTheStretchedEnd = report.afterNodeMove.node?.cx === report.afterNodeMove.tie?.x2 && report.afterNodeMove.node?.cy === report.afterNodeMove.tie?.y2;
 await shot('se7i-connected-2b-node-moved.png');
+
+// Undo the stretch before building the mid-span scenario below, so later
+// sections' own coordinates (written against the pre-stretch tie) hold.
+await evalJS(`window.svgEditor.undo(); true`);
+await sleep(300);
+
+// ============================================================
+// MID-SPAN CROSSING NODE (SE7k AMEND 5): a node at neither of its tie's
+// own ends is on the tie's BODY -> grabbing it MOVES the whole tie (free
+// in BOTH axes — no axis lock), same as grabbing the tie's line directly.
+// New tie at column x=5, from y=1 to y=7, crossing BOTH Rail A (row 2)
+// and Rail B (row 6) mid-span (its own ends are y=1 and y=7, neither rail
+// row) — auto-nodes puts a crossing dot at (5,2) and (5,6).
+// ============================================================
+await addKind('tie');
+await dragFromTo({ x: 5, y: 1 }, { x: 5, y: 7 });
+await sleep(300);
+const midSpanTieBefore = await evalJS(`(() => { const t = [...document.querySelectorAll('[data-lattice=tie]')].find(e => +e.getAttribute('x1') === 5); return t ? { x1:+t.getAttribute('x1'), y1:+t.getAttribute('y1'), x2:+t.getAttribute('x2'), y2:+t.getAttribute('y2') } : null; })()`);
+report.midSpanTieBuilt = !!midSpanTieBefore;
+await dragFromTo({ x: 5, y: 2 }, { x: 6, y: 3 }); // grab the (5,2) crossing node, drag off-axis on purpose
+await sleep(300);
+const midSpanTieAfter = await evalJS(`(() => { const t = [...document.querySelectorAll('[data-lattice=tie]')].find(e => Math.abs(+e.getAttribute('y2') - +e.getAttribute('y1')) === 6); return t ? { x1:+t.getAttribute('x1'), y1:+t.getAttribute('y1'), x2:+t.getAttribute('x2'), y2:+t.getAttribute('y2') } : null; })()`);
+report.midSpanGrabMovedWholeTie = !!midSpanTieAfter
+  && (midSpanTieAfter.x2 - midSpanTieAfter.x1) === (midSpanTieBefore.x2 - midSpanTieBefore.x1) // length preserved
+  && (midSpanTieAfter.y2 - midSpanTieAfter.y1) === (midSpanTieBefore.y2 - midSpanTieBefore.y1)
+  && midSpanTieAfter.x1 !== midSpanTieBefore.x1; // non-vacuous: it actually moved in i (the off-axis component was NOT ignored — free move, not a stretch)
+await shot('se7i-connected-2c-midspan-node-moved.png');
 
 // ============================================================
 // TIE MOVE: grab the tie somewhere along its own length and drag it
@@ -296,7 +338,9 @@ await evalJS(`(() => {
   layer.pattern = { orientation: 'vertical' };
 })(); true`);
 await sleep(200);
+await addKind('rail');
 await dragFromTo({ x: 4, y: 1 }, { x: 4, y: 4 });   // a VERTICAL rail (column) under vertical orientation
+await addKind('tie');
 await dragFromTo({ x: 6, y: 2 }, { x: 4, y: 2 });   // a HORIZONTAL tie starting in empty space, ENDING on the rail
 await sleep(300);
 report.verticalBuilt = await evalJS(`(() => {

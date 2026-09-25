@@ -1,8 +1,8 @@
 /**
  * SE7a — the Lattice tool (editor/editor-lattice.js).
  *
- * toLattice/fromLattice/classifyDrag/constrain/latticeCrossings are pure
- * (no svg.js/DOM) and unit-tested directly here, matching editor-view.js's
+ * toLattice/fromLattice/constrainToKind/latticeCrossings are pure (no
+ * svg.js/DOM) and unit-tested directly here, matching editor-view.js's
  * and editor-grid.js's own split between pure math and DOM-touching code.
  * emitNode/findNodeAt (DOM-touching) get a lightweight mock sketch layer,
  * same shape as editor-grid.test.js's mockGridLayer for applyGrid.
@@ -11,11 +11,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   LATTICE_DEFAULTS,
   LATTICE_STYLE,
+  LATTICE_DRAW_KINDS,
   DEFAULT_NODE_RADIUS_IN,
   toLattice,
   fromLattice,
-  classifyDrag,
-  constrain,
+  constrainToKind,
   latticeCrossings,
   nearestRailRow,
   findNodeAt,
@@ -26,6 +26,10 @@ import {
   isLatticePoint,
   moveRailAlongAxis,
   translateTie,
+  toLatticeFractional,
+  nearestEndWithin,
+  stretchRailEnd,
+  stretchTieEnd,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
 
 describe('toLattice / fromLattice', () => {
@@ -40,32 +44,40 @@ describe('toLattice / fromLattice', () => {
   });
 });
 
-describe('classifyDrag', () => {
-  it('is "node" when start and end are the same cell (a bare click)', () => {
-    expect(classifyDrag({ i: 3, j: 5 }, { i: 3, j: 5 })).toBe('node');
+describe('LATTICE_DRAW_KINDS (SE7k, declared table)', () => {
+  it('declares exactly rail, tie, node, in that order, each with a label and a hint', () => {
+    expect(LATTICE_DRAW_KINDS.map((k) => k.value)).toEqual(['rail', 'tie', 'node']);
+    for (const k of LATTICE_DRAW_KINDS) {
+      expect(typeof k.label).toBe('string');
+      expect(k.label.length).toBeGreaterThan(0);
+      expect(typeof k.hint).toBe('string');
+      expect(k.hint.length).toBeGreaterThan(0);
+    }
   });
 
-  it('is "rail" when the horizontal step dominates', () => {
-    expect(classifyDrag({ i: 0, j: 0 }, { i: 4, j: 1 })).toBe('rail');
-  });
-
-  it('is "tie" when the vertical step dominates', () => {
-    expect(classifyDrag({ i: 0, j: 0 }, { i: 1, j: 4 })).toBe('tie');
-  });
-
-  it('resolves an exact diagonal drag to the dominant axis via the >= tie-break (rail)', () => {
-    // |di| === |dj| — classifyDrag's own tie-break (>=) picks rail.
-    expect(classifyDrag({ i: 0, j: 0 }, { i: 3, j: 3 })).toBe('rail');
+  it('rail is the default drawKind (LATTICE_DEFAULTS)', () => {
+    expect(LATTICE_DEFAULTS.drawKind).toBe('rail');
   });
 });
 
-describe('constrain', () => {
-  it('keeps the dominant (rail) coordinate and locks the other to the start row', () => {
-    expect(constrain({ i: 2, j: 2 }, { i: 6, j: 3 })).toEqual({ i: 6, j: 2 });
+describe('constrainToKind (SE7k — replaces classifyDrag+constrain\'s direction guessing)', () => {
+  it('rail: locks j to a\'s row, frees i to b\'s — regardless of which way the drag actually moved', () => {
+    expect(constrainToKind({ i: 2, j: 2 }, { i: 6, j: 3 }, 'rail')).toEqual({ i: 6, j: 2 });
+    // A drag that moves MOSTLY vertically still comes out as a rail —
+    // the old constrain() would have picked 'tie' here by dominant axis;
+    // constrainToKind never looks at the drag's shape at all.
+    expect(constrainToKind({ i: 2, j: 2 }, { i: 3, j: 9 }, 'rail')).toEqual({ i: 3, j: 2 });
   });
 
-  it('keeps the dominant (tie) coordinate and locks the other to the start column', () => {
-    expect(constrain({ i: 2, j: 2 }, { i: 3, j: 7 })).toEqual({ i: 2, j: 7 });
+  it('tie: locks i to a\'s column, frees j to b\'s — regardless of drag direction', () => {
+    expect(constrainToKind({ i: 2, j: 2 }, { i: 3, j: 7 }, 'tie')).toEqual({ i: 2, j: 7 });
+    // A drag that moves MOSTLY horizontally still comes out as a tie.
+    expect(constrainToKind({ i: 2, j: 2 }, { i: 9, j: 3 }, 'tie')).toEqual({ i: 2, j: 3 });
+  });
+
+  it('a === b (no movement) returns a\'s own row/column for either kind', () => {
+    expect(constrainToKind({ i: 4, j: 4 }, { i: 4, j: 4 }, 'rail')).toEqual({ i: 4, j: 4 });
+    expect(constrainToKind({ i: 4, j: 4 }, { i: 4, j: 4 }, 'tie')).toEqual({ i: 4, j: 4 });
   });
 });
 
@@ -103,53 +115,49 @@ describe('orient (SE7h)', () => {
 });
 
 /**
- * SE7h: the exact conjugation pattern editor-interaction.js's hand tool
- * uses (orient the two drag points in, run classifyDrag/constrain
- * UNCHANGED, orient the result back out) — proven here as a pure
- * composition, independent of the DOM/pointer-event plumbing that
+ * SE7h/SE7k: the exact conjugation pattern editor-interaction.js's hand
+ * tool uses (orient the two drag points in, run constrainToKind for the
+ * EXPLICITLY chosen kind, orient the result back out) — proven here as a
+ * pure composition, independent of the DOM/pointer-event plumbing that
  * actually drives it (editor-interaction.js has no exported hook for a
  * lighter-weight test; this validates the MATH the hand tool's
- * `update`/`finish` handlers apply verbatim, which is what SE7h actually
- * changed there).
+ * `update`/`finish` handlers apply verbatim). Covers the dispatch's own
+ * "pure tests for each kind's constraint in both orientations."
  */
-describe('orient() composed with classifyDrag/constrain (the hand-tool pattern, SE7h)', () => {
-  function classifyOriented(a, b, orientation) {
-    return classifyDrag(orient(a, orientation), orient(b, orientation));
-  }
-  function constrainOriented(a, b, orientation) {
+describe('orient() composed with constrainToKind (the hand-tool pattern, SE7h/SE7k)', () => {
+  function constrainOriented(a, b, kind, orientation) {
     const aC = orient(a, orientation), bC = orient(b, orientation);
-    return orient(constrain(aC, bC), orientation);
+    return orient(constrainToKind(aC, bC, kind), orientation);
   }
 
-  it('a horizontally-dominant drag (rail today) classifies as a TIE once vertical is the rail axis', () => {
-    const a = { i: 0, j: 0 }, b = { i: 4, j: 1 }; // classifyDrag(a,b) === 'rail' in horizontal
-    expect(classifyDrag(a, b)).toBe('rail'); // sanity on the un-oriented baseline
-    expect(classifyOriented(a, b, 'vertical')).toBe('tie');
-  });
-
-  it('a vertically-dominant drag (tie today) classifies as a RAIL once vertical is the rail axis', () => {
-    const a = { i: 0, j: 0 }, b = { i: 1, j: 4 };
-    expect(classifyDrag(a, b)).toBe('tie');
-    expect(classifyOriented(a, b, 'vertical')).toBe('rail');
-  });
-
-  it('horizontal orientation reproduces classifyDrag exactly (identity — no behavior change for the default)', () => {
-    const a = { i: 0, j: 0 }, b = { i: 4, j: 1 };
-    expect(classifyOriented(a, b, 'horizontal')).toBe(classifyDrag(a, b));
-  });
-
-  it('constrainOriented reproduces plain constrain exactly under horizontal', () => {
+  it('horizontal orientation reproduces plain constrainToKind exactly (identity — no behavior change for the default)', () => {
     const a = { i: 2, j: 2 }, b = { i: 6, j: 3 };
-    expect(constrainOriented(a, b, 'horizontal')).toEqual(constrain(a, b));
+    expect(constrainOriented(a, b, 'rail', 'horizontal')).toEqual(constrainToKind(a, b, 'rail'));
+    expect(constrainOriented(a, b, 'tie', 'horizontal')).toEqual(constrainToKind(a, b, 'tie'));
   });
 
-  it('constrainOriented under vertical locks the dominant REAL-vertical drag onto a straight vertical line (constant real-i)', () => {
-    // A drag mostly along j (vertical on screen) is now the RAIL-shaped
-    // one; the constrained endpoint must share the START's real i
-    // (a straight vertical line), not its j.
-    const a = { i: 3, j: 0 }, b = { i: 3, j: 8 };
-    const result = constrainOriented(a, b, 'vertical');
-    expect(result.i).toBe(a.i); // straight vertical line: constant i
+  it('vertical orientation: a RAIL comes out as a straight vertical line (constant real-i), whichever way the drag moved', () => {
+    // In vertical orientation a rail's own axis is the real column — the
+    // constrained endpoint must share the START's real i, matching
+    // _existingRailRows' own "row here means canonical-frame row — in
+    // vertical orientation that's a real column" convention.
+    const a = { i: 3, j: 0 }, b = { i: 7, j: 8 }; // a drag that moves in BOTH real axes
+    const result = constrainOriented(a, b, 'rail', 'vertical');
+    expect(result.i).toBe(a.i);
+  });
+
+  it('vertical orientation: a TIE comes out as a straight horizontal line (constant real-j), whichever way the drag moved', () => {
+    const a = { i: 3, j: 0 }, b = { i: 7, j: 8 };
+    const result = constrainOriented(a, b, 'tie', 'vertical');
+    expect(result.j).toBe(a.j);
+  });
+
+  it('the SAME drag vector produces a rail under one explicit choice and a tie under the other — the kind is the input, not derived from the drag', () => {
+    const a = { i: 0, j: 0 }, b = { i: 1, j: 9 }; // an almost-vertical-on-screen drag
+    const asRail = constrainOriented(a, b, 'rail', 'horizontal');
+    const asTie = constrainOriented(a, b, 'tie', 'horizontal');
+    expect(asRail).toEqual({ i: 1, j: 0 }); // rail: j frozen, i free — even though the drag barely moved in i
+    expect(asTie).toEqual({ i: 0, j: 9 });  // tie: i frozen, j free
   });
 });
 
@@ -499,17 +507,18 @@ describe('translateTie (SE7i): rigid translation, not confined between rails', (
 });
 
 /**
- * SE7j (Fred, overriding SE7i's first cut of "node drag": a node drag
- * used to slide just its own tie-end along an attaching rail, which
- * could LEAN the tie — "Upright — I will slant it in direct edit mode if
- * I need"): grabbing a node on a tie now moves the WHOLE TIE along the
- * rail axis instead — exactly `translateTie` with `dj` forced to 0. No
- * new pure function: the whole behavior change is this ONE constraint,
- * composed here as its own describe block per the dispatch's own verify
- * line ("node drag -> tie translated by one along-axis delta, still
- * perpendicular, nodes carried; vertical mirror").
+ * SE7j introduced this composition (grabbing a node used to force a tie
+ * move's dj to 0, so a node-drag could never lean the tie); SE7k AMEND 5
+ * later retired that specific redirect (a node grab now either STRETCHES
+ * the piece it sits at the end of, or falls through to a plain, free-
+ * both-axes MOVE for a mid-span crossing — see editor-interaction.js's
+ * _beginLatticeMove) — no live call site passes dj=0 to translateTie any
+ * more. Left in place as a plain composition test of translateTie's own
+ * contract (a pure function; a fixed dj=0 is still a valid, meaningful
+ * input to verify, even though nothing currently calls it that way) —
+ * not a claim about current dispatch behavior.
  */
-describe('translateTie composed with dj=0 (SE7j: node-drag moves the whole tie, upright)', () => {
+describe('translateTie composed with dj=0 (a pure-math regression guard, not a live dispatch path since SE7k AMEND 5)', () => {
   it('a single along-axis delta (dj=0) shifts the tie sideways without leaning it — still perpendicular to a horizontal rail, same length', () => {
     const tie = { a: { i: 3, j: 1 }, b: { i: 3, j: 4 } };
     const moved = translateTie(tie, 2, 0);
@@ -544,5 +553,112 @@ describe('translateTie composed with dj=0 (SE7j: node-drag moves the whole tie, 
     expect(movedReal).toEqual({ a: { i: 1, j: 5 }, b: { i: 4, j: 5 } });
     expect(movedReal.a.i).toBe(tieReal.a.i);
     expect(movedReal.b.i).toBe(tieReal.b.i); // span (real-i) unchanged — still upright, not leaned
+  });
+});
+
+describe('toLatticeFractional (SE7k AMEND 5)', () => {
+  it('does NOT round — the pre-round intermediate toLattice itself rounds', () => {
+    expect(toLatticeFractional({ x: 0.6, y: -0.4 }, 0.25)).toEqual({ i: 2.4, j: -1.6 });
+  });
+
+  it('agrees with toLattice once rounded', () => {
+    const pt = { x: 1.1, y: 3.9 };
+    const frac = toLatticeFractional(pt, 0.25);
+    expect({ i: Math.round(frac.i), j: Math.round(frac.j) }).toEqual(toLattice(pt, 0.25));
+  });
+});
+
+describe('nearestEndWithin (SE7k AMEND 5 — the end-grab-zone test)', () => {
+  const piece = { a: { i: 1, j: 5 }, b: { i: 8, j: 5 } };
+
+  it('returns "a" when within tol of a and farther from b', () => {
+    expect(nearestEndWithin(piece, { i: 1.3, j: 5 }, 0.5)).toBe('a');
+  });
+
+  it('returns "b" when within tol of b and farther from a', () => {
+    expect(nearestEndWithin(piece, { i: 7.7, j: 5 }, 0.5)).toBe('b');
+  });
+
+  it('returns null (body) when outside tol of both ends', () => {
+    expect(nearestEndWithin(piece, { i: 4.5, j: 5 }, 0.5)).toBeNull();
+  });
+
+  it('prefers "a" on an exact tie (equidistant and both within tol) — deterministic, not order-dependent', () => {
+    const symmetric = { a: { i: 0, j: 0 }, b: { i: 10, j: 0 } };
+    expect(nearestEndWithin(symmetric, { i: 5, j: 0 }, 100)).toBe('a');
+  });
+
+  it('a point exactly ON an end is within tol for any tol >= 0', () => {
+    expect(nearestEndWithin(piece, { i: 1, j: 5 }, 0)).toBe('a');
+    expect(nearestEndWithin(piece, { i: 8, j: 5 }, 0)).toBe('b');
+  });
+});
+
+describe('stretchRailEnd (SE7k AMEND 4/5)', () => {
+  it('moves the given end along i, leaves the row (j) and the OTHER end untouched', () => {
+    const rail = { a: { i: 1, j: 5 }, b: { i: 8, j: 5 } };
+    const stretched = stretchRailEnd(rail, 'a', -3);
+    expect(stretched).toEqual({ a: { i: -3, j: 5 }, b: { i: 8, j: 5 } });
+  });
+
+  it('stretching "b" leaves "a" untouched', () => {
+    const rail = { a: { i: 1, j: 5 }, b: { i: 8, j: 5 } };
+    const stretched = stretchRailEnd(rail, 'b', 12);
+    expect(stretched).toEqual({ a: { i: 1, j: 5 }, b: { i: 12, j: 5 } });
+  });
+
+  it('clamps so the moving end can never reach or pass the fixed end (minimum length 1 step)', () => {
+    const rail = { a: { i: 1, j: 5 }, b: { i: 8, j: 5 } };
+    expect(stretchRailEnd(rail, 'a', 8)).toEqual({ a: { i: 7, j: 5 }, b: { i: 8, j: 5 } }); // tried to reach b
+    expect(stretchRailEnd(rail, 'a', 20)).toEqual({ a: { i: 7, j: 5 }, b: { i: 8, j: 5 } }); // tried to pass b
+  });
+
+  it('preserves which side of the fixed end the moving end started on, even near the clamp', () => {
+    // 'a' started BELOW 'b' (i=1 < i=8) — the clamp must not let it flip
+    // to the other side (i > 8) just because the pointer overshot.
+    const rail = { a: { i: 1, j: 5 }, b: { i: 8, j: 5 } };
+    const stretched = stretchRailEnd(rail, 'a', 100);
+    expect(stretched.a.i).toBeLessThan(stretched.b.i);
+  });
+
+  it('vertical orientation mirror: the SAME call, conjugated through orient(), stretches a real-vertical rail along its own real column', () => {
+    const orientation = 'vertical';
+    const railReal = { a: { i: 3, j: 1 }, b: { i: 3, j: 8 } }; // a vertical rail, real column i=3
+    const railCanon = { a: orient(railReal.a, orientation), b: orient(railReal.b, orientation) };
+    const stretched = stretchRailEnd(railCanon, 'a', -2);
+    const stretchedReal = { a: orient(stretched.a, orientation), b: orient(stretched.b, orientation) };
+    expect(stretchedReal).toEqual({ a: { i: 3, j: -2 }, b: { i: 3, j: 8 } });
+    expect(stretchedReal.a.i).toBe(railReal.a.i); // still a straight vertical line
+  });
+});
+
+describe('stretchTieEnd (SE7k AMEND 4/5)', () => {
+  it('moves the given end along j, leaves the column (i) and the OTHER end untouched', () => {
+    const tie = { a: { i: 4, j: 1 }, b: { i: 4, j: 6 } };
+    const stretched = stretchTieEnd(tie, 'b', 10);
+    expect(stretched).toEqual({ a: { i: 4, j: 1 }, b: { i: 4, j: 10 } });
+  });
+
+  it('clamps so the moving end can never reach or pass the fixed end (minimum length 1 step)', () => {
+    const tie = { a: { i: 4, j: 1 }, b: { i: 4, j: 6 } };
+    expect(stretchTieEnd(tie, 'b', 1)).toEqual({ a: { i: 4, j: 1 }, b: { i: 4, j: 2 } }); // tried to reach a
+    expect(stretchTieEnd(tie, 'b', -5)).toEqual({ a: { i: 4, j: 1 }, b: { i: 4, j: 2 } }); // tried to pass a
+  });
+
+  it('vertical orientation mirror: the SAME call, conjugated through orient(), stretches a real-horizontal tie along its own real row', () => {
+    const orientation = 'vertical';
+    const tieReal = { a: { i: 1, j: 3 }, b: { i: 6, j: 3 } }; // a horizontal tie, real row j=3
+    const tieCanon = { a: orient(tieReal.a, orientation), b: orient(tieReal.b, orientation) };
+    const stretched = stretchTieEnd(tieCanon, 'b', 10);
+    const stretchedReal = { a: orient(stretched.a, orientation), b: orient(stretched.b, orientation) };
+    expect(stretchedReal).toEqual({ a: { i: 1, j: 3 }, b: { i: 10, j: 3 } });
+    expect(stretchedReal.a.j).toBe(tieReal.a.j); // still a straight horizontal line
+  });
+});
+
+describe('LATTICE_DRAW_KINDS.clickSpawn (SE7k AMEND 1, declared table)', () => {
+  it('declares a clickSpawn for every kind', () => {
+    const byValue = Object.fromEntries(LATTICE_DRAW_KINDS.map((k) => [k.value, k.clickSpawn]));
+    expect(byValue).toEqual({ rail: 'fullRow', tie: 'betweenRails', node: 'point' });
   });
 });

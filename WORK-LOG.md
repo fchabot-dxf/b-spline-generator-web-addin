@@ -8607,3 +8607,129 @@ what lands in the shared tree between them — not a product bug, a test-script 
   MOB2's 660 is seat B's T41/T42 work on lane-b, unrelated to this turn).
 
 No amendments pending as of this pass.
+
+## Turn 259 — SE7k: explicit Add Rail / Add Tie / Add Node, click-to-spawn, end-stretch — DONE
+
+PERF1 (previous turn) was cancelled mid-flight (Fred: "don't worry about it, it's fast") — all its uncommitted
+changes were discarded per the advisor's own instruction; nothing from it landed. This turn started as the
+plain SE7k dispatch (an explicit Add: [Rail][Tie][Node] control, replacing direction-guessed drawing) and grew
+substantially via FIVE mid-task amendments — the first four arrived in sequence as Fred iterated on the "grab
+a node" story out loud, and the fifth explicitly superseded 2-4 with one consolidated rule. Absorbed all of
+them before passing back, per the worker protocol's own "incorporate before you finalize."
+
+**Base feature — `editor-lattice.js`, `bspline_gen_palette.html`, `properties-lattice.js`.** Declared
+`LATTICE_DRAW_KINDS` (rail/tie/node: label, hint, clickSpawn — see AMEND 1 below) mirroring layers.js's own
+FUSION_GEOMETRY table-drives-a-button-group shape; `LATTICE_DEFAULTS.drawKind` (default 'rail') is the
+session-only tool state, same scope as the existing `autoNodes` flag. The panel gets a new "Add" segmented
+control at the top (`.editor-fillmode-btn`, same shape as the existing Orientation/Style groups), wired in
+properties-lattice.js by iterating the table — a 4th kind is one table entry + one button, not new JS.
+`classifyDrag`/`constrain` (the old direction-guessing pair) are REMOVED entirely — swept their sole call site
+(editor-interaction.js), their tests, AND a second, previously-unnoticed dead re-export in
+editor-lattice-pattern.js (`export { toLattice, fromLattice, constrain, latticeCrossings }` — re-exported but
+never actually called from that file; nothing else imports `constrain` through it either). **Caught this one
+the hard way**: removing `constrain`'s export without sweeping that re-export threw `SyntaxError: ... does not
+provide an export named 'constrain'` on page load — a HARD ES-module failure, not a soft undefined, so it blocked
+every live-CDP check until fixed. Replaced by `constrainToKind(a, b, kind)` — a pure function taking the
+EXPLICIT kind directly (rail locks j free i, tie locks i free j) instead of guessing from drag shape.
+
+**Requirement #4 (Fred: "confused that hand-drawn and generated pieces differ")**: hand-drawn rails/ties/nodes
+now use the ACTIVE layer's own pattern Widths and Colors — the exact numbers Generate uses — instead of
+LATTICE_STYLE-derived sizing and the general toolbar color. Reused generatePattern's OWN existing "swap
+editor._color, emit, restore" idiom (`_emitStyled`, editor-interaction.js) rather than adding a second
+color-override parameter to emitSegment/emitNode — one mechanism for both the generator and the hand tool.
+
+**AMEND 1 (Fred: "spawn or drag, what's best?" — advisor ruling: BOTH, standard click-vs-drag).** A DRAG still
+draws the exact constrained rail/tie; a CLICK (raw pointer distance <= the standard slopPx, NOT a lattice-
+cell-quantized check — see below) SPAWNS a default: Rail -> full board-extent row (reuses
+editor-lattice-pattern.js's own `_resolveExtent`, exported despite the underscore for this reuse, so a
+click-spawned rail and a Generate-drawn one on the same row are byte-identical); Tie -> bridges the two
+nearest existing rails straddling the click, or a `ties.spanMin`-length span if fewer than two exist. Tracked
+via NEW `editor._latticeRawStart`/`_latticeRawLast` (the unrounded pointer position, set in start()/update())
+— compared against `getDynamicTolerance(editor,10,'slopPx')` at finish(), the SAME base/profile the tool's own
+hit-test already uses. Deliberately NOT a lattice-cell-equality check (the OLD "bare click does nothing"
+guard): at low zoom one cell can span many screen pixels, so a real short drag could round-trip to the SAME
+cell and be wrongly called a click.
+
+**AMEND 5 (Fred: "it's not about nodes, it's the feature's END that can stretch it" — supersedes AMENDs 2-4's
+own node-specific wording, which chased the story through several iterations before landing here).** ONE rule
+for rails AND ties: grab within the declared end-grab zone of a piece's own endpoint -> STRETCH that end
+(moves along the piece's own axis only, snapped to grid — a tie's end ALSO snaps to rail rows, same as a
+freshly-drawn tie's end; clamped so it can never reach or cross the OTHER end, preserving whichever side it
+started on). Grab the body anywhere else -> MOVE (SE7i, unchanged: rail moves rows and stretches attached
+ties; tie slides freely). Nodes are NOT a special grab target any more: a node sitting at a piece's own end is
+simply inside that end's zone; a mid-span crossing node is on a tie's body -> MOVE (whole tie slides, free in
+BOTH axes); a standalone node -> moves itself. This **retires SE7j's `constrainToIAxis`** (the "node grab
+forces a tie move's dj to 0" redirect) entirely — no live call site sets it any more, since a node grab now
+either stretches or falls through to an already-free move.
+
+- **New pure functions (editor-lattice.js)**: `toLatticeFractional` (toLattice's own pre-round intermediate —
+  a pixel-scale proximity test needs continuous distance, not snap-then-compare, which would collapse a small
+  tolerance into whole-cell jumps), `nearestEndWithin(pieceCanon, ptCanon, tol)` (which end, if either, a point
+  is close enough to), `stretchRailEnd`/`stretchTieEnd` (move one end along the piece's own axis, clamped
+  against the other end). End-grab-zone tolerance reuses `INPUT_PROFILE.handlePx` (editor-input.js, unchanged)
+  — "a small control point," the same concept a transform handle already uses — rather than declaring a new
+  profile field for the same idea.
+- **`_beginLatticeMove` rewrite (editor-interaction.js)**: rail/tie branches now check `nearestEndWithin`
+  FIRST (before falling back to the existing move-candidate collection); the node branch searches ties first
+  (Fred's own framing was tie-centric throughout — "pulling on nodes should lengthen the TIE" — so a node that
+  coincides with both a tie's end and a rail's end, a rare edge case, resolves to the tie; flagging this
+  priority choice for the advisor rather than silently picking one), then rails, then falls through to a
+  standalone free move. Every returned descriptor now carries a `mode: 'move'|'stretch'` field.
+  `_updateLatticeMove`/`_finishLatticeMove` dispatch on `mode` (a new small `_updateLatticeStretch` helper
+  covers both rail and tie stretch identically — the only difference is which axis and which pure stretch
+  function, so one function serves both rather than near-duplicate copies).
+
+**A real bug caught mid-verification, not by reasoning**: my FIRST live-CDP attempt at the tie-end-stretch
+picked a drag target on the WRONG side of the tie's fixed end (dragging toward it, past it) — the clamp
+correctly stopped it one grid step short, which I initially misread as a bug before realizing the clamp was
+doing exactly its job ("can't pass the other end") and the test's own target was the problem, not the code.
+Re-verified with a target on the correct/unclamped side once diagnosed.
+
+**Verify:**
+- Pure tests (tests/editor-lattice.test.js): `constrainToKind` (rail/tie, both orientations, replacing the
+  removed classifyDrag/constrain describe blocks), `toLatticeFractional`, `nearestEndWithin` (both ends,
+  neither, exact-tie determinism), `stretchRailEnd`/`stretchTieEnd` (basic stretch, clamp, side-preservation,
+  vertical-orientation mirror), `LATTICE_DRAW_KINDS.clickSpawn` shape. The old SE7j "translateTie composed
+  with dj=0" describe block is RETAINED (translateTie itself is unchanged, still a valid pure-math call to
+  verify) but its title/comment updated to say plainly it's no longer a live dispatch path, not still-current
+  behavior. Non-vacuous: reverted `stretchRailEnd`'s clamp — 2 of the new tests failed immediately, confirming
+  they're live guards, not decoration; restored, re-confirmed green.
+- `npx vitest run` -> **720 passed**, 0 failed (720 vs 668 at turn start: seat B's own T44/export work landed
+  concurrently on this shared tree, unrelated to this turn — this turn's own net addition is the new
+  describe blocks above, offset by the two removed ones).
+- Live (browser, no Fusion): `scripts/smoke-lattice-addkind.mjs` (new, desktop + 390x844) — Add: buttons
+  render/toggle correctly, a diagonal drag under an explicit kind stays straight (rail=horizontal,
+  tie=vertical) regardless of drag shape, width/color come from a distinctive test pattern (not
+  LATTICE_STYLE/toolbar), Node-mode click places (with pattern styling) and a second click on the same spot
+  doesn't duplicate, drag-to-move still works while Node mode is active, the Add: group is 44px tall under
+  `pointer:coarse` (`!important` needed to beat its own inline `height:24px` — same gotcha MOB2 hit on the
+  Nodes checkboxes). `scripts/smoke-lattice-amend.mjs` (new, desktop) — AMEND 1: rail click-spawn is exactly
+  the board extent (margin included), tie click-spawn bridges two existing rails or falls back to
+  `spanMin` with none/one; AMEND 4/5: a DIRECT grab near a rail's own end (autoNodes off, so no node
+  intercepts the hit) stretches that end only, the other end and the row untouched, and grabbing the body
+  elsewhere still moves the whole rail (regression check). `scripts/smoke-lattice-connected.mjs` (existing,
+  UPDATED — see below) — rail move/undo/redo, node-at-end stretch (i ignored, j moves, other end untouched,
+  node rides along), a genuinely mid-span crossing node's grab still moves the whole tie freely in both axes,
+  tie body move, cross-tool Select+Lattice robustness, vertical-orientation mirror. Zero console errors across
+  all three scripts.
+- **`scripts/smoke-lattice-connected.mjs` needed real updates, not just a config tweak**, since it predates
+  SE7k and never touches the Add: buttons at all: (1) EVERY draw-new gesture in it now defaults to Rail
+  (`drawKind`'s own default) regardless of the drag's shape, so its own "Tie" and "vertical tie" builds were
+  silently drawing rails instead — added explicit `latticeAdd-rail`/`latticeAdd-tie` clicks before every
+  draw-new step (grab/move steps need none, since drawKind never gates those). (2) Its OWN "NODE MOVE" section
+  tested SE7j's now-retired axis-locked behavior on a node that (after the rail-move earlier in that exact
+  script) IS the tie's own endpoint — rewrote it to assert the new stretch behavior instead (i ignored, j
+  moves, other end fixed), and added a NEW section building a genuine mid-span crossing (a tie spanning both
+  rails) to cover the OTHER branch (free move) that the old script never actually exercised.
+
+**Skipped, flagged rather than built**: the dispatch's own "1/2/3 while the tool is active, only if trivial"
+keyboard shortcut. Not trivial: keeping the Add: buttons' `.active` highlight in sync would need
+editor-interaction.js's keydown handler to reach into properties-lattice.js's own DOM state (or a new custom
+event, mirroring `editorLayersChanged`) — real cross-module wiring for a "nice if free" ask. Skipped.
+
+**Noticed, not touched**: the PRE-EXISTING Horizontal/Vertical orientation toggle (same panel, same
+`.editor-fillmode-btn` shape as the new Add: control) is still 24px tall under `pointer:coarse` — genuinely
+under MOB2's own 32-44px convention, but a retrofit of an EXISTING control is a separate change from adding
+this NEW one. Flagging per that turn's own "mention adjacent gaps, don't fix them uninvited" discipline.
+
+No amendments pending as of this pass.
