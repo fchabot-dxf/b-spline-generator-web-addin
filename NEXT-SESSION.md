@@ -1,31 +1,31 @@
-# NEXT — SE7j: node drag slides the WHOLE tie, upright (Fred)
+# NEXT — MOB2: mobile pass on today's features (Fred: "make sure it's mobile friendly")
 
-**Ball: worker (seat A) · epoch 2 · SE7j.** NO FUSION — browser proof only. SE7i part 2 reviewed + merged (81e481e);
-advisor re-ran smoke-lattice-connected.mjs: all true, 0 errors. Seat B is on T39 (path outlines) in lane-b.
+**Ball: worker (seat A) · epoch 2 · MOB2.** NO FUSION — browser proof only. SE7j reviewed (408c076, 659 green, pushed →
+Cloudflare deploys main automatically). Seat B is on T40 (text outlines) in lane-b — stay out of editor-expand-* /
+editor-outline-preview.js.
 
-## Fred's ruling
-Your screenshot 2b showed a node drag making the tie LEAN (one end slid along the rail). Fred: **"Upright — I will
-slant it in direct edit mode if I need."**
-
-## Change (Lattice tool, node drag only)
-- Grabbing a node that sits on a tie (its end, or a tie/rail crossing) moves THE WHOLE TIE along the rail axis
-  (horizontal rails → the tie's i changes, j untouched; vertical mirrors via orient()). Both tie ends shift by the same
-  along-axis delta, so the tie stays upright and keeps its length and width.
-- Every node on that tie (both ends and any crossings along it) moves with it. Ends that were attached to a rail stay on
-  that rail's row; if the shifted end would pass a rail's drawn extent (beyond its end), it stays attached only if still
-  within range — otherwise it just keeps the row (Fred earlier: "if tie isn't on rail anymore don't worry, just keep
-  the coincidence with rail axis only").
-- Snap: the delta snaps to the lattice spacing (grid on) so ends stay on grid points.
-- One undo step. Rail drags and tie drags are unchanged. The "node slides one end" path is removed (no dead branch) and
-  its test replaced.
-- Direct edit (Node tool / Select) stays the way to slant a tie — untouched.
+## Found by the advisor on LIVE pages.dev at 390x844 touch (screenshot: generate works, pinch works)
+1. The floating undo/redo pill (T32, pointer:coarse) sits ON TOP of the editor's Layers panel header, covering
+   "LAYERS" and its + button. Keep it floating bottom-left of the CANVAS, never over panels (anchor it to the canvas
+   container, or lift/avoid the Layers panel).
+2. Editor header overflows: Cancel is clipped and **Apply Stencils is off-screen** — the one commit action must always
+   be visible on a phone (priority order / wrap / overflow menu for Download SVG + Clear).
+3. The editor's Layers panel is squeezed into a thin strip between the canvas and the Pattern sheet — give it usable
+   height (collapsible section, or share the bottom sheet with the Pattern panel as tabs).
+4. Also check and fix on phone: the Pattern panel's Widths row (it already overflows on DESKTOP — the "Nodes" stepper
+   is clipped at the right), the rail-end checkbox, the sidebar layer row (3D / palette toggles ≥ 32px touch target),
+   the Fusion Geometry segmented control, and the connected-lattice drags with touch (touchStart/Move/End).
+Declare breakpoints/touch sizes where they already live (INPUT_PROFILE / the existing pointer:coarse rules) — no new
+parallel mechanism.
 
 ## Verify
-- Pure tests: node drag → tie translated by one along-axis delta, still perpendicular, nodes carried; vertical mirror.
-- Extend smoke-lattice-connected.mjs: node drag → both tie ends' along-axis coord changed equally, other coord unchanged.
-- `npx vitest run` green (rerun once on a whole-suite load flake).
+- CDP at 390x844 (touch) and 768x1024: before/after screenshots of editor (lattice generated) and the sidebar Vector
+  Stamping section; assert Apply Stencils is inside the viewport, the pill doesn't intersect the Layers panel rect,
+  every toggle ≥ 32px; a touch drag of a rail stretches its tie.
+- Desktop unchanged (one 1400x900 screenshot).
+- `npx vitest run` green.
 
 ## When done
 Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7j: node drag slides whole tie upright — <sha>, vitest N"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB2: mobile pass — <sha>, vitest N, screenshots: <paths>"`
 and stop.
