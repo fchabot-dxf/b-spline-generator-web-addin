@@ -1,31 +1,28 @@
-# NEXT (lane-b) — T42: fix the font override at its SOURCE (covers opened + imported files)
+# NEXT (lane-b) — T43: SE12 Slice 4 — the Fusion export USES the layer's Fusion Geometry pick
 
-**Ball: worker (seat B) · epoch 2 · T42.** NO FUSION for workers. T40 part 2 + T41 reviewed and merged (668 green) —
-great root-cause work: the advisor confirmed t41-text-fixed2.png sits exactly on the glyphs.
+**Ball: worker (seat B) · epoch 2 · T43.** NO FUSION for workers — browser proof only; the advisor does the one Fusion
+import check after merge. T42 reviewed + merged (dce151f, 668 green; advisor confirmed a markup-only
+`<text font-family="Courier New">` now computes "Courier New" while the UI stays Inter).
 
-## Gap
-T41 adds an inline `font-family` style at the 3 places the editor SETS a font. But the cause is a CSS rule, and every
-`<text>` that arrives any OTHER way still renders in Inter: a saved document re-opened (editor-io restore), an imported
-/pasted SVG, undo/redo snapshots restored from markup, stamp-editor pages. The bug lives in `base.css`'s
-`* { font-family: inherit; }` beating SVG presentation attributes.
-
-## Do (declare the rule once, then sweep the patches)
-1. Fix the cascade: scope the reset so it never applies inside SVG — e.g. `*:not(svg *) { font-family: inherit; }`
-   (or `svg text, svg tspan { font-family: revert-layer }` if you put the reset in a layer) — whatever MEASURES
-   correct; SVG text then gets its own presentation attribute, and UI text still inherits Inter.
-2. Then REMOVE the now-redundant inline `.css({'font-family'})` writes from T41 AND the older insertSymbol workaround
-   (`node.style.fontFamily = …`) — one mechanism, not two. Keep the regression tests but retarget them at the real
-   thing (computed font-family of a text element created from markup with only the attribute).
-3. Check nothing in the UI relied on the reset reaching into SVG (e.g. icons/labels inside svg) — screenshot the
-   sidebar + editor chrome before/after.
-
-## Verify (live, CDP)
-- A `<text font-family="Arial">` injected from MARKUP (not via the font picker), a re-opened saved doc, and an imported
-  SVG: computed font-family = the attribute; per-glyph x vs opentype within 0.01".
-- Symbol fonts (Wingdings/Webdings) still render as symbols.
+## Do (design Slice 4, keyed on the ONE field)
+- `getLayerSvg` has TWO consumers: the carve mask (stamp-mask-manager.js — rasterized relief) and the Fusion export
+  (export-flow.js). Only the EXPORT swaps geometry. Make it an explicit option (e.g. `getLayerSvg(editor, id, dpi,
+  { geometry: 'fusion' })`), default = today's output byte-for-byte, so the carve mask is untouched.
+- For each element on a layer: 'centerline' → today's element; 'outline' → the OUTLINE_KINDS path (same engine as the
+  preview — ONE function produces both, never a second copy), stroke-only, no fill; 'both' → both. An element whose
+  kind declines (`unsupported`) exports its centerline and is reported (console warning + a count the caller can show).
+- Text → its glyph outline (already exact). Async (text) must be awaited in the export path — export-flow is already
+  async or make it so; don't fire-and-forget.
+- The exported SVG stays in the carve/export coordinate space: run outline paths through the SAME bake (Slice 0 keeps
+  A arcs exact under the similarity carve matrix — assert the output still has A commands, no C).
+## Verify
+- vitest: centerline byte-identical to before; outline → path with only M/L/A/Z; both → element + path; declined kind
+  falls back + counted; mask path unchanged.
+- CDP: a layer with lattice + rect + ellipse + text set to Outline → the export SVG string (what export-flow sends)
+  saved to scratchpad as `t43-export.svg`, so the advisor can import it into Fusion.
 - `npx vitest run` green.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T42: font cascade fixed at source — <sha>, vitest N, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T43: Fusion export honors fusionGeometry — <sha>, vitest N, export svg: <path>"`
 and stop.
