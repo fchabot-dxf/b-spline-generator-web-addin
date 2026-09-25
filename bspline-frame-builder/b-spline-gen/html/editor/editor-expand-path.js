@@ -855,11 +855,21 @@ function _closedSubpathD(subpath, half, tolerance, mode, joinStyle, miterLimit) 
   if (mode === 'both') return outer.d;
 
   const inner = _closedRing(subpath, -outerSide, half, tolerance, joinStyle, miterLimit);
-  if (!inner) return outer.d;
+  // T51 (SE13 boundary-fill fix): 'inner' mode wants ONLY the inner ring
+  // (or null if it collapses) — the boundary-cutting engine's own "true
+  // inward-offset boundary" need (editor-lattice-boundary.js), reusing
+  // this SAME per-subpath offsetting rather than approximating a
+  // per-crossing shrink (T50's own dead end, deleted). Same validity
+  // check 'stroke' mode already runs below (sign flip / near-zero area /
+  // self-intersection = "thinner than strokeWidth somewhere") — just
+  // returning null instead of falling back to the outer ring.
+  if (!inner) return mode === 'inner' ? null : outer.d;
   const innerPts = _sampleRing(inner.startPoint, inner.commands);
   const innerArea = _signedArea(innerPts);
   const outerArea = _signedArea(_sampleRing(outer.startPoint, outer.commands));
-  if (Math.sign(innerArea) !== Math.sign(outerArea) || Math.abs(innerArea) < 1e-9 || _hasSelfIntersection(innerPts)) {
+  const collapsed = Math.sign(innerArea) !== Math.sign(outerArea) || Math.abs(innerArea) < 1e-9 || _hasSelfIntersection(innerPts);
+  if (mode === 'inner') return collapsed ? null : inner.d;
+  if (collapsed) {
     return outer.d; // collapsed (thinner than strokeWidth somewhere) -- drop the inner ring, don't emit a bowtie
   }
   return `${outer.d} ${inner.d}`;
@@ -898,6 +908,9 @@ function _closedSubpathD(subpath, half, tolerance, mode, joinStyle, miterLimit) 
  */
 function _openSubpathD(subpath, half, tolerance, mode, cap, joinStyle, miterLimit) {
   if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d; // half=0 -- join style doesn't matter here either
+  // T51: an open stroke has ONE boundary (both banks + end caps form a
+  // single loop) — no separate inner/outer split exists to ask for.
+  if (mode === 'inner') return null;
   return _openCapsuleD(subpath, half, tolerance, cap, joinStyle, miterLimit); // an open stroke has one boundary regardless of stroke/both
 }
 
@@ -910,6 +923,17 @@ function _openSubpathD(subpath, half, tolerance, mode, cap, joinStyle, miterLimi
  * than throwing, so a caller (editor-outline-preview.js's OUTLINE_KINDS)
  * can silently skip the preview exactly like every other decline already
  * does.
+ *
+ * T51: `mode:'inner'` (alongside the existing 'stroke'/'fill'/'both') —
+ * ONLY the inner ring(s), per original subpath independently (a
+ * multi-subpath source, e.g. two disjoint letters, keeps whichever
+ * subpaths still have a valid inner ring and drops the rest on their
+ * own — no special-casing needed here, since the per-subpath loop below
+ * already calls `_closedSubpathD`/`_openSubpathD` once per subpath and
+ * simply skips a `null` piece). `unsupported:'degenerate'` when EVERY
+ * subpath's own inner ring collapsed (the stroke swallows the whole
+ * shape everywhere) — the boundary-cutting engine's own "declined
+ * gracefully" case (editor-lattice-boundary.js).
  */
 export function pathOutlinePathD(d, strokeWidth, { mode = 'stroke', cap = 'round', join = 'round', tolerance = 0.001, miterLimit = 4 } = {}) {
   if (!SUPPORTED_LINE_CAPS[cap]) return { d: null, unsupported: cap };
