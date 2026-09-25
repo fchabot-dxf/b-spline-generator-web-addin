@@ -64,13 +64,16 @@ export function drawerHeightPx(state, viewportHeight) {
  *  own width (typically 700-915px) is what the CANVAS has to share, not
  *  disposable space the way portrait's full HEIGHT is once the drawer
  *  covers it, so even "settings-max" stops well short of half the screen.
- *  canvasMax uses a fixed floor (220px — this panel's own long-standing
+ *  canvasMax uses a fixed floor (236px — this panel's own long-standing
  *  DESKTOP width, not a live content measurement the way portrait's peek
  *  is; a side column's minimum usable width doesn't shrink/grow with
- *  which tool happens to be open the way a bottom sheet's height does). */
+ *  which tool happens to be open the way a bottom sheet's height does).
+ *  UI1 fix-first #2: raised from 220 to 236 alongside the desktop panels'
+ *  own width bump (styles/editor.css's `.editor-layers-panel`) — same
+ *  narrow-column name-truncation fix applies here too. */
 export const LANDSCAPE_SNAP_STATES = ['canvasMax', 'half', 'settingsMax'];
 const LANDSCAPE_WIDTH_STORAGE_KEY = 'bspline.editor.landscapeDrawerWidthPx';
-const LANDSCAPE_CANVAS_MAX_WIDTH_PX = 220;
+const LANDSCAPE_CANVAS_MAX_WIDTH_PX = 236;
 const LANDSCAPE_HALF_VW_FRACTION = 0.38;
 const LANDSCAPE_SETTINGS_MAX_VW_FRACTION = 0.45;
 // Mirrors styles/editor.css's own landscape media query exactly — a
@@ -459,7 +462,19 @@ export function initDrawer(editor) {
       // the Lattice tool specifically (the dispatch's own reasoning —
       // "surface the new tool's options" — applies equally to a second
       // tool's own panel).
-      if (TOOL_PANELS[e.detail.mode]) splitter.snapTo('peek');
+      // UI1 fix-first #1: `splitter.snapTo()` applies unconditionally —
+      // it doesn't check ITS OWN `enabled` gate (splitter.js's `snapTo` is
+      // a thin wrapper around `apply()`, same as `setSize`/`reapply`).
+      // Un-guarded, this call set `drawer.style.height` to peek's ~96-140px
+      // even in landscape (opening a tool while already landscape, no
+      // rotation involved) — landscape's own CSS never sets height at all
+      // (a normal flex-row sibling, sized by width only), so that stray
+      // inline height silently capped the WHOLE side column, leaving
+      // everything past Add+Regenerate blank (confirmed live via
+      // screenshot: ui-landscape-peek.png). Peek/half/full are a portrait
+      // bottom-drawer concept only — landscape's side column always shows
+      // full content (scrolling), so this must never fire there.
+      if (TOOL_PANELS[e.detail.mode] && !isLandscapeMode()) splitter.snapTo('peek');
     }
   });
 }

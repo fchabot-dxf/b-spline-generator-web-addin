@@ -45,12 +45,17 @@ function _dispatchShapeChanged(editor) {
 }
 
 // Same declared-table idiom properties-lattice.js used to own for this —
-// moved here with the Ending select itself (T58's own panel split).
+// moved here with the Ending control itself (T58's own panel split).
+// UI1: `label` is the segmented button's own text (short — 4 buttons
+// need to fit this panel's ~236px width); `title` keeps the fuller
+// wording (incl. "(default)") the old <select>'s option text carried,
+// same "title carries the hint text" convention latticeAddKindGroup's
+// own comment already established for a width-constrained panel.
 const BOUNDARY_END_RULES = [
-    { value: 'on-boundary', label: 'On boundary' },
-    { value: 'inset', label: 'Inset (default)' },
-    { value: 'joint', label: 'Joint' },
-    { value: 'loose', label: 'Loose' },
+    { value: 'on-boundary', label: 'Boundary', title: 'On boundary' },
+    { value: 'inset', label: 'Inset', title: 'Inset (default)' },
+    { value: 'joint', label: 'Joint', title: 'Joint' },
+    { value: 'loose', label: 'Loose', title: 'Loose' },
 ];
 
 // SE14 §2's own flat-array ordering (generator's own solver doc comments,
@@ -342,16 +347,19 @@ export function openSegmentStyleBar(editor, index, screenX, screenY) {
     const shape = currentShape(p);
     const seg = (shape.segments && shape.segments[index]) || { style: 'straight' };
     const bar = document.createElement('div');
-    bar.className = 'shape-lattice-segment-bar';
-    bar.style.cssText = 'position:fixed; z-index:10000; display:flex; gap:4px; background:#fff; '
-        + 'border:1px solid #ccc; border-radius:4px; padding:4px; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
+    // UI1: the shared segmented-group look (styles/base.css), not this
+    // popup's own border/radius — a floating context still gets its own
+    // position/elevation via role=group's own box-shadow addition below.
+    bar.className = 'shape-lattice-segment-bar segmented-group';
+    bar.setAttribute('role', 'group');
+    bar.style.cssText = 'position:fixed; z-index:10000; height:32px; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
     const STYLES = [['straight', 'Straight'], ['curve', 'Curve'], ['kink', 'Kink']];
     for (const [value, label] of STYLES) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = label;
         btn.className = 'editor-fillmode-btn' + (seg.style === value || (value === 'straight' && !seg.style) ? ' active' : '');
-        btn.style.cssText = 'height:32px; padding:0 10px; font-size:11px;';
+        btn.style.cssText = 'padding:0 10px; font-size:11px;';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const patch = value === 'straight' ? { style: 'straight', bulge: 0 }
@@ -473,13 +481,34 @@ export function initShapeLatticeProperties(editor) {
             spacingEl.appendChild(opt);
         }
     }
+    // UI1: `endRuleEl` is now the segmented GROUP div, not a <select> —
+    // "its value" is whichever child button carries .active (get/set
+    // helpers right below double as this control's own get/set, same
+    // role .value used to play).
+    function getEndRule() {
+        return endRuleEl?.querySelector('.editor-fillmode-btn.active')?.dataset.value
+            ?? PATTERN_DEFAULTS.boundary.endRule;
+    }
+    function setEndRule(value) {
+        if (!endRuleEl) return;
+        for (const btn of endRuleEl.children) btn.classList.toggle('active', btn.dataset.value === value);
+    }
     if (endRuleEl) {
         endRuleEl.innerHTML = '';
-        for (const { value, label } of BOUNDARY_END_RULES) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = label;
-            endRuleEl.appendChild(opt);
+        for (const { value, label, title } of BOUNDARY_END_RULES) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'editor-fillmode-btn';
+            btn.dataset.value = value;
+            btn.textContent = label;
+            btn.title = title;
+            btn.style.flex = '1';
+            // Same passive-until-Generate behavior the old <select> had
+            // (no 'change' listener at all — readFieldsIntoPattern below
+            // reads whichever is .active only when Generate/Regenerate
+            // actually runs) — a visual restyle, not a new live-update.
+            on(btn, 'click', () => setEndRule(value));
+            endRuleEl.appendChild(btn);
         }
     }
 
@@ -633,7 +662,7 @@ export function initShapeLatticeProperties(editor) {
 
         const boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary };
         if (boundaryStatusEl) boundaryStatusEl.textContent = boundary.shapeId ? 'Shape linked' : 'No shape picked';
-        if (endRuleEl) endRuleEl.value = boundary.endRule;
+        setEndRule(boundary.endRule);
         const border = { ...PATTERN_DEFAULTS.boundary.border, ...boundary.border };
         if (borderEnabledEl) borderEnabledEl.checked = !!border.enabled;
         if (borderWidthEl) borderWidthEl.value = border.width == null ? '' : border.width;
@@ -706,7 +735,7 @@ export function initShapeLatticeProperties(editor) {
         p.boundary = {
             ...PATTERN_DEFAULTS.boundary,
             ...p.boundary,
-            endRule: endRuleEl ? endRuleEl.value : (p.boundary?.endRule ?? PATTERN_DEFAULTS.boundary.endRule),
+            endRule: endRuleEl ? getEndRule() : (p.boundary?.endRule ?? PATTERN_DEFAULTS.boundary.endRule),
             border: {
                 ...PATTERN_DEFAULTS.boundary.border,
                 ...p.boundary?.border,

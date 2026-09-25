@@ -178,7 +178,7 @@ function fixtureHTML() {
 
     <button id="shapeLatticePickShape"></button>
     <span id="shapeLatticeBoundaryStatus">No shape picked</span>
-    <select id="shapeLatticeEndRule"></select>
+    <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeBorderEnabled" type="checkbox">
     <input id="shapeLatticeBorderWidth" type="number">
     <button id="shapeLatticeBorderColor"></button>
@@ -360,12 +360,22 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     expect(btn.textContent).toBe('Regenerate');
   });
 
-  it('the Ending select is populated from the 4 declared rules and defaults to "inset"', () => {
+  it('the Ending segmented group is populated from the 4 declared rules and defaults to "inset"', () => {
     initShapeLatticeProperties(editor);
-    const select = document.getElementById('shapeLatticeEndRule');
-    const values = Array.from(select.options).map((o) => o.value);
+    const group = document.getElementById('shapeLatticeEndRule');
+    const values = Array.from(group.children).map((b) => b.dataset.value);
     expect(values).toEqual(['on-boundary', 'inset', 'joint', 'loose']);
-    expect(select.value).toBe('inset');
+    expect(group.querySelector('.active').dataset.value).toBe('inset');
+  });
+
+  it('clicking an Ending button moves .active to it, and Generate reads that value into the pattern', async () => {
+    initShapeLatticeProperties(editor);
+    const group = document.getElementById('shapeLatticeEndRule');
+    group.querySelector('[data-value="loose"]').click();
+    expect(group.querySelector('.active').dataset.value).toBe('loose');
+    document.getElementById('shapeLatticeGenerate').click();
+    await flush();
+    expect(activeLayerPattern(editor).boundary.endRule).toBe('loose');
   });
 
   it('Border enabled/width checkboxes write PATTERN.boundary.border on Generate', async () => {

@@ -651,7 +651,7 @@
                downstream reads this yet (Slice 3/4) — see that module's
                own doc comment. -->
           <label class="cad-label">Fusion Geometry</label>
-          <div style="display:flex; gap:4px; margin-bottom:4px;">
+          <div role="group" class="segmented-group" style="margin-bottom:4px;">
             <button type="button" id="stampFusionGeometry-centerline" class="editor-fillmode-btn active" style="flex:1;">Centerline</button>
             <button type="button" id="stampFusionGeometry-outline" class="editor-fillmode-btn" style="flex:1;">Outline</button>
             <button type="button" id="stampFusionGeometry-both" class="editor-fillmode-btn" style="flex:1;">Both</button>
@@ -1348,7 +1348,7 @@
         <div id="editorGridGroup" style="display:flex; align-items:center; gap:6px;">
           <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
           <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Grid</span>
-          <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+          <div role="group" class="segmented-group">
             <button type="button" id="editorGridShow" class="editor-fillmode-btn" data-key="g"
                     title="Show grid (G)">SHOW</button>
             <button type="button" id="editorGridSnap" class="editor-fillmode-btn"
@@ -1374,7 +1374,7 @@
         <div id="editorFillModeGroup" style="display:flex; align-items:center; gap:6px;">
           <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
           <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Style</span>
-          <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+          <div role="group" class="segmented-group">
             <button type="button" id="editorFillModeStroke" class="editor-fillmode-btn active"
                     title="Stroke only — outline">STROKE</button>
             <button type="button" id="editorFillModeFill" class="editor-fillmode-btn"
@@ -1426,7 +1426,7 @@
              precedent for (hover: none). -->
         <div id="editorTouchActionsGroup" class="editor-touch-actions-group" style="display:none; align-items:center; gap:6px;">
           <div class="property-divider" style="width:1px; height:20px; background:#ddd;"></div>
-          <div role="group" style="display:flex; height:28px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+          <div role="group" class="segmented-group" style="height:28px;">
             <button type="button" id="editorTouchCopy" class="editor-fillmode-btn" title="Copy selection" style="width:32px;">⧉</button>
             <button type="button" id="editorTouchPaste" class="editor-fillmode-btn" title="Paste" style="width:32px;">⎘</button>
             <button type="button" id="editorTouchSelectAll" class="editor-fillmode-btn" title="Select all" style="width:32px;">⛶</button>
@@ -1589,7 +1589,7 @@
              as the Font group, editor-ui.js's updateToolbarVisibility).
              390px-first: every control below is a real tap target, no
              hover-only affordance (T16 precedent). -->
-        <aside class="editor-lattice-panel hidden" id="editorLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
+        <aside class="editor-lattice-panel hidden" id="editorLatticePanel" style="width:236px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
           <!-- MOB3: this label is now DESKTOP-only (styles/editor.css
                hides it under the drawer breakpoint) — the drawer's own
                tab (#editorDrawerTab-tool) carries the SAME "Lattice
@@ -1616,7 +1616,7 @@
                    panel; title carries the hint text (no separate hint
                    row — this panel is only 220px wide, no room to spare,
                    unlike FUSION_GEOMETRY's own wider sidebar). -->
-              <div role="group" id="latticeAddKindGroup" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+              <div role="group" id="latticeAddKindGroup" class="segmented-group">
                 <button type="button" id="latticeAdd-rail" class="editor-fillmode-btn active" style="flex:1;" title="Drag along the rail axis.">Rail</button>
                 <button type="button" id="latticeAdd-tie" class="editor-fillmode-btn" style="flex:1;" title="Drag across the rails — snaps to them.">Tie</button>
                 <button type="button" id="latticeAdd-node" class="editor-fillmode-btn" style="flex:1;" title="Click to place a node.">Node</button>
@@ -1648,7 +1648,7 @@
                      above — no new CSS. Flipping this regenerates with the
                      CURRENT seed (it's a re-projection, not a reshuffle — only
                      Generate itself rolls a new one, per SE7g). -->
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                <div role="group" class="segmented-group" style="align-self:end;">
                   <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
                   <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
                 </div>
@@ -1657,7 +1657,7 @@
                      (default) picks a seeded rail count, evenly spread; Every
                      is the ORIGINAL fixed-stride control, kept as a real
                      alternative, not removed. -->
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                <div role="group" class="segmented-group" style="align-self:end;">
                   <button type="button" id="latticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
                   <button type="button" id="latticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
                 </div>
@@ -1687,7 +1687,7 @@
                    (default) picks a seeded tie count on distinct
                    columns; Density is the ORIGINAL free-anchor/density
                    control, kept as a real alternative. -->
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+              <div role="group" class="segmented-group">
                 <button type="button" id="latticeTiesModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded tie count on distinct columns">Count</button>
                 <button type="button" id="latticeTiesModeDensity" class="editor-fillmode-btn" style="flex:1;" title="Random density + span, snapping toward rails">Density</button>
               </div>
@@ -1706,7 +1706,7 @@
                      cells, snapped toward a nearby rail); Rails (every tie
                      bridges adjacent rails exactly, ends land ON a rail)
                      is a real, declared alternative, not the default. -->
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <div role="group" class="segmented-group">
                   <button type="button" id="latticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="latticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
@@ -1900,7 +1900,7 @@
              mode). Same MOB3 collapsible-section shape as #editorLatticePanel
              (a bold-span-first-child direct child of #editorShapeLatticePanelBody
              becomes collapsible for free, editor-drawer.js). -->
-        <aside class="editor-lattice-panel hidden" id="editorShapeLatticePanel" style="width:220px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
+        <aside class="editor-lattice-panel hidden" id="editorShapeLatticePanel" style="width:236px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
           <div id="editorShapeLatticePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; width:100%; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666;">
             <span>Shape Lattice</span>
           </div>
@@ -1923,7 +1923,7 @@
                  itself to reach the sliders. -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Shape</span>
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+              <div role="group" class="segmented-group">
                 <button type="button" id="shapePresetHourglass" class="editor-fillmode-btn active" style="flex:1;" title="An hourglass silhouette">Hourglass</button>
                 <button type="button" id="shapePresetBottle" class="editor-fillmode-btn" style="flex:1;" title="A bottle silhouette">Bottle</button>
               </div>
@@ -1961,13 +1961,13 @@
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Segments</span>
               <select id="shapeSegmentIndex" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+              <div role="group" class="segmented-group">
                 <button type="button" id="shapeSegStyleStraight" class="editor-fillmode-btn active" style="flex:1;" title="No arc">Straight</button>
                 <button type="button" id="shapeSegStyleCurve" class="editor-fillmode-btn" style="flex:1;" title="A circular arc">Curve</button>
                 <button type="button" id="shapeSegStyleKink" class="editor-fillmode-btn" style="flex:1;" title="A sharp offset vertex">Kink</button>
               </div>
               <div id="shapeSegCurveFields" style="display:none; flex-direction:column; gap:3px;">
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <div role="group" class="segmented-group">
                   <button type="button" id="shapeSegDirOut" class="editor-fillmode-btn active" style="flex:1;" title="Bulges away from the centerline">Out</button>
                   <button type="button" id="shapeSegDirIn" class="editor-fillmode-btn" style="flex:1;" title="Bulges toward the centerline">In</button>
                 </div>
@@ -1986,11 +1986,11 @@
                 <label style="display:flex; flex-direction:column; gap:3px;">Spacing
                   <select id="shapeLatticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
                 </label>
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                <div role="group" class="segmented-group" style="align-self:end;">
                   <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
                   <button type="button" id="shapeLatticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
                 </div>
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                <div role="group" class="segmented-group" style="align-self:end;">
                   <button type="button" id="shapeLatticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
                   <button type="button" id="shapeLatticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
                 </div>
@@ -2015,7 +2015,7 @@
 
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Ties</span>
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+              <div role="group" class="segmented-group">
                 <button type="button" id="shapeLatticeTiesModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded tie count on distinct columns">Count</button>
                 <button type="button" id="shapeLatticeTiesModeDensity" class="editor-fillmode-btn" style="flex:1;" title="Random density + span, snapping toward rails">Density</button>
               </div>
@@ -2028,7 +2028,7 @@
                     <input id="shapeLatticeTiesCountMax" type="number" min="1" step="1" value="13" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                   </label>
                 </div>
-                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <div role="group" class="segmented-group">
                   <button type="button" id="shapeLatticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="shapeLatticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
@@ -2129,10 +2129,13 @@
               </div>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:3px;">
-              <span style="font-weight:600;">Ending</span>
-              <select id="shapeLatticeEndRule" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-            </div>
+            <!-- UI1: was a <select> — converted to the shared segmented
+                 look (properties-shape-lattice.js builds its 4 buttons
+                 from BOUNDARY_END_RULES, same declared-table shape
+                 FUSION_GEOMETRY already uses). Same id, so el() call
+                 sites needed no change; only how its "current value" is
+                 read/written changed (whichever button has .active). -->
+            <div role="group" class="segmented-group" id="shapeLatticeEndRule" style="height:26px;"></div>
 
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Border</span>

@@ -9363,3 +9363,123 @@ pre-existing sizing decision, not a regression introduced by this redesign.
     "Layer 1".
 
 No further amendments as of this pass (polled immediately before this commit).
+
+## Turn 269 — UI1: fix landscape peek + name truncation, then ONE segmented-control style app-wide — DONE
+
+Dispatch had two "fix first" bugs (both from the advisor's own live check of turn 267's merged MOB4 work) plus the
+main UI1 task from ROADMAP's "Queued — UI1" (Fred 2026-09-25: "I guess it can be the general look too, right").
+
+**Fix #1 — landscape editor panel stuck in PEEK.** Root cause found by reading `splitter.js`'s own `snapTo()`
+(`editor/splitter.js:247`): it calls `apply()` directly with NO `enabled()` check — unlike drag/tap/resize, which
+all gate on it. `editor-drawer.js`'s `editorModeChanged` listener called `splitter.snapTo('peek')` (the PORTRAIT,
+height-axis splitter) unconditionally on every tool switch, including while already in landscape (no rotation
+needed to trigger it — just opening the Lattice tool with landscape already active, exactly Fred's repro). That
+set `#editorMobileDrawer`'s inline `height` to peek's ~96-140px; landscape's own CSS never sets height at all (a
+normal flex-row sibling, sized by width only via the OTHER splitter), so the stray inline height silently capped
+the whole side column — Add+Regenerate visible, everything else blank below. Fixed with a one-line guard:
+`if (TOOL_PANELS[e.detail.mode] && !isLandscapeMode()) splitter.snapTo('peek')`. Peek/half/full stays a portrait-
+only concept; landscape was already relying on "just don't set an inline height" for full-content-scrolling, so
+no new landscape-side code was needed once the leak was plugged.
+
+**Fix #2 — layer names truncating to "Lay…" in the ~190px desktop editor Layers column.** This is the SAME
+residual flagged in turn 267's own WORK-LOG entry ("editor's 220px Layers panel still ellipsis-truncates... not
+chased further this turn") — the advisor's dispatch turned that flag into an actual fix-first item. Two-part fix,
+per the dispatch's own two suggestions:
+1. Widened the shared editor side-column from 220px to 236px — `.editor-layers-panel` (styles/editor.css),
+   `#editorLatticePanel`/`#editorShapeLatticePanel`'s own inline widths (bspline_gen_palette.html — all three
+   swap into the SAME drawer slot, so a mismatch would visibly resize the column on every tab switch), and
+   `LANDSCAPE_CANVAS_MAX_WIDTH_PX` (editor-drawer.js, whose own comment already ties it to "this panel's own
+   long-standing DESKTOP width" — raised alongside it, with the two matching `tests/editor-drawer.test.js`
+   assertions updated).
+2. Shrank the segmented cells specifically (`.editor-fillmode-btn`/the group wrapper, see UI1 below) — padding
+   8px->6px, row gap 8px->6px, min-width 30px->24px — freeing more of the row for the name on ANY fine or coarse
+   pointer (the dispatch's own "desktop can use ~24px cells since the 40px tap rule is for touch" suggestion
+   folded into the shared component itself rather than a desktop-only override, since 24px reads fine on touch
+   too once the `::before` trick handles the actual tap area).
+Verified live: "Layer 12" (the dispatch's own literal target string) now renders in FULL at the default desktop
+width in both `#stampLayersList` and `#editorLayersList` — confirmed via `firstRowNameText` reading the exact
+un-truncated text node, not just eyeballing a screenshot.
+
+**UI1 — one declared segmented component, app-wide.** Turned out to be a smaller change than the scope initially
+suggested, because this codebase had ALREADY declared one shared button class for every choice control
+(`.editor-fillmode-btn`, styles/base.css, SE3b-era) — it just wasn't visually "C1" yet, and its WRAPPER
+(`<div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden;
+background:#f9f9f9;">`) was duplicated inline ~16 times instead of being its own class. So this was a restyle +
+a wrapper consolidation, not a from-scratch rebuild:
+- **Declared `.segmented-group`** (base.css) — the outlined/rounded C1 wrapper (`border:#d7dbe2`,
+  `border-radius:8px`, `background:#fff`, `flex-shrink:0`) — and replaced every one of the 16 duplicated inline
+  wrapper strings across `bspline_gen_palette.html` with `class="segmented-group"` (+ a small trailing
+  `style="align-self:end;"` or `style="height:28px;"` for the 5 instances that had one), via exact-string `sed`
+  (each pattern's occurrence count checked before/after — 0 old strings left, 15 new class attributes landed,
+  matching 14 plain + 1 id-attribute variant). Fusion Geometry's own group had NO wrapper box at all before
+  (`gap:4px`, individual buttons with visible gaps, not an outlined pill) — given its own class too, so it now
+  matches every other instance instead of being the one visual outlier.
+- **Restyled `.editor-fillmode-btn`/`.active`** in place (base.css) to the exact C1 colors (`#e8f0fe`/`#1f6fd1`
+  on, `#a0a5ad` off, `#e3e6ea` divider) — one change, cascades to literally every consumer at once. Chose NOT to
+  rename this class (only ~50 HTML/JS references, all by element ID, not by this class as a selector, except one
+  dynamic `btn.className = 'editor-fillmode-btn' + ...` line in properties-shape-lattice.js's floating segment-
+  style bar) — a purely cosmetic rename would have been pure risk (touching every one of those ~50 spots) for
+  zero behavioral or visual benefit over keeping the established name and just changing what it LOOKS like.
+- **The layer row** (editor/layers.js, turn 267's own "C1" build) is the one place that DID need a class swap,
+  not just a color change — it had its own parallel `.layer-toggle-group`/`.layer-toggle-cell` (since it was
+  built before this generalization existed). Repointed to `.segmented-group`/`.editor-fillmode-btn` and deleted
+  the now-fully-redundant CSS underneath (including `.layer-carve.active`'s and `.layer-showcolor.active`'s own
+  `background:#e8f0fe`, which `.editor-fillmode-btn.active` now provides for free) — kept ONLY what's genuinely
+  layer-row-specific as scoped `.layer-row .editor-fillmode-btn` add-ons: the icon SVG sizing, and the `::before`
+  tap-area enlargement (deliberately NOT applied to the other segmented controls app-wide — those sit in denser
+  toolbar rows where a blanket vertical bleed risks stealing taps from a neighboring control, not just an
+  adjacent cell in the same group; the layer row's own isolated-card layout is what makes that trick safe there).
+- **The floating "straight/curve/kink" popup** (properties-shape-lattice.js's `openSegmentStyleBar` — a canvas-
+  tap popup appended to `document.body`, NOT part of the static HTML the sed pass touched) got the same
+  `.segmented-group` class + `role="group"`, with its own inline `cssText` trimmed down to just what's genuinely
+  popup-specific (position/z-index/box-shadow) instead of re-declaring border/radius/background that the shared
+  class now owns.
+- **Boundary/Ending**: this was a `<select>`, not a button group — the ONE control in the named list that needed
+  actual new markup, not just a restyle. Converted to a 4-button `.segmented-group` (same id, `shapeLatticeEndRule`,
+  so no other call site needed touching) built from `BOUNDARY_END_RULES` (already a declared table — added a
+  short `label` field alongside the existing `value`/fuller `title` text, since 4 buttons with the old select's
+  full option text, e.g. "Inset (default)", would overflow this panel's own ~236px width; the "(default)" hint
+  moved into `title`, same "title carries the hint text" convention `latticeAddKindGroup`'s own comment already
+  used for this exact panel). Preserved the EXISTING passive behavior exactly (no 'change'-style live trigger —
+  `readFieldsIntoPattern` only reads whichever button is `.active` when Generate/Regenerate actually runs, same
+  as the old `<select>`'s `.value` was only read there too) — this was a visual/markup change, not a new
+  live-update behavior, so it shouldn't silently start auto-regenerating on every click.
+- **Actions kept their own look** — `.cad-btn`/`.cad-btn-primary` (Generate, Apply Stencils, Regenerate, Detach
+  all) were never touched; confirmed via every screenshot below that they still render as solid/outlined buttons,
+  not segmented cells.
+
+**Verify:**
+- `tests/editor-drawer.test.js`: updated the two `LANDSCAPE_CANVAS_MAX_WIDTH_PX`-dependent assertions (220->236).
+- `tests/properties-shape-lattice.test.js`: rewrote the one test that asserted `<select>`-specific DOM
+  (`select.options`/`select.value`) into the new button-group shape, PLUS a genuinely new non-vacuous test
+  (clicking an Ending button moves `.active` to it, then Generate reads that value into the pattern — proven by
+  driving the real click + real Generate button, not by asserting on data alone). `npx vitest run
+  tests/properties-shape-lattice.test.js` -> 40/40 passed.
+- Full suite: `npx vitest run` -> **1007 passed** (0 regressions from the base.css restyle cascading across every
+  consumer, or from the Ending select->buttons conversion).
+- Live (headless Chrome via CDP, hard-reloaded with cache ignored):
+  - **Bug #1**: reproduced Fred's exact repro (click the Lattice TOOL while landscape is ALREADY active, no
+    rotation) at 844x390 — `#editorMobileDrawer`'s own inline `height` stayed empty (`""`), the Lattice panel's
+    measured height matched its full `scrollHeight` (715px) inside a scrolling 304px-tall box, and the
+    screenshot shows the ENTIRE panel (Add, Grid & rails, Spacing, Horizontal/Vertical, Count/Every, all the way
+    to Generate/Detach all) with a visible scrollbar — not the ~140px-tall Add+Regenerate-only peek from
+    `ui-landscape-peek.png`.
+  - **Bug #2**: "Layer 12"/"Rails"/"Border" all render in FULL (no ellipsis) in the desktop editor's own Layers
+    panel at its default width — confirmed by reading the actual DOM text node, not just a screenshot glance.
+  - **UI1, desktop (1400x900)**: screenshotted the top toolbar (Grid Show/Snap, Style Stroke/Fill/Both), the box
+    Lattice panel (Add Rail/Tie/Node, Horizontal/Vertical, Count/Every, Count/Density, Cells/Rails), the Shape
+    Lattice panel (Hourglass/Bottle, Straight/Curve/Kink, its own Horizontal/Vertical etc., and the new Boundary/
+    Ending 4-button group with "Inset" correctly active) — every one shows the identical rounded/outlined/
+    light-blue-tint C1 look, and Generate/Detach all visibly keep their own distinct button styling.
+  - **UI1, phone portrait (390x844) and landscape (844x390)**: same GRID/STYLE toolbar toggles and the Lattice
+    panel's Add/Orientation/Count groups render with the identical look as desktop — same component, same CSS,
+    no separate mobile variant left to drift.
+  - **The floating segment-style popup**: invoked `openSegmentStyleBar` directly and screenshotted the resulting
+    `.shape-lattice-segment-bar` — confirmed it carries `segmented-group` + `editor-fillmode-btn active` classes
+    and renders the same soft-segmented look as the static side-panel version of the same control.
+
+**Skipped, flagged rather than built**: did NOT apply the layer row's `::before` tap-enlargement trick to any of
+the other segmented controls app-wide (see UI1 bullet above) — a deliberate scope decision, not an oversight;
+flagging here in case Fred specifically wants the toolbar/panel groups to ALSO get a touch-tap boost on coarse
+pointers, since none of those currently have one beyond their own pre-existing per-control overrides (e.g.
+`#latticeAddKindGroup`'s existing `height:44px !important` under `pointer:coarse`, left untouched).

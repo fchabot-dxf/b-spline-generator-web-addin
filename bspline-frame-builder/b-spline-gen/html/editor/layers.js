@@ -653,7 +653,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
 
   const vis = document.createElement('button');
   vis.type = 'button';
-  vis.className = 'layer-toggle-cell layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
+  vis.className = 'editor-fillmode-btn layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
   vis.innerHTML = layer.visible === false ? _eyeClosedSVG() : _eyeOpenSVG();
   vis.title = layer.visible === false ? 'Show layer' : 'Hide layer';
   vis.setAttribute('aria-pressed', String(layer.visible !== false));
@@ -670,7 +670,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   // "hidden" on its own).
   const carveActive = layer.carve !== false;
   const carveBtn = _makeToggleButton({
-    className: 'layer-toggle-cell layer-carve',
+    className: 'editor-fillmode-btn layer-carve',
     glyph: '3D',
     active: carveActive,
     onTitle: 'Carved into the relief (click to stop carving)',
@@ -684,7 +684,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const colorActive = layer.showColor !== false;
   const colorBtn = document.createElement('button');
   colorBtn.type = 'button';
-  colorBtn.className = 'layer-toggle-cell layer-showcolor' + (colorActive ? ' active' : '');
+  colorBtn.className = 'editor-fillmode-btn layer-showcolor' + (colorActive ? ' active' : '');
   colorBtn.innerHTML = _paletteSVG();
   colorBtn.title = colorActive
     ? 'Shows this layer\'s own colors (click for one neutral color)'
@@ -695,11 +695,14 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
     setLayerShowColor(editor, layer.id, !colorActive);
   });
 
-  // MOB4 layer-row AMEND ("C1 — soft segmented", Fred's pick): the three
-  // toggles now render as ONE outlined segmented group, right of the
-  // name, instead of three separate square buttons to its left.
+  // MOB4/UI1: the three toggles render as ONE outlined segmented group
+  // (the shared app-wide .segmented-group/.editor-fillmode-btn look,
+  // styles/base.css — this row's own "C1" look is what that shared
+  // component was generalized FROM), right of the name, instead of three
+  // separate square buttons to its left.
   const toggleGroup = document.createElement('div');
-  toggleGroup.className = 'layer-toggle-group';
+  toggleGroup.setAttribute('role', 'group');
+  toggleGroup.className = 'segmented-group';
   toggleGroup.appendChild(vis);
   toggleGroup.appendChild(carveBtn);
   toggleGroup.appendChild(colorBtn);

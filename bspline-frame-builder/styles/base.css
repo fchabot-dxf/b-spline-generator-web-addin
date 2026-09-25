@@ -1360,12 +1360,42 @@ header {
     background-color: #eee;
 }
 
-/* Segmented text control (e.g. the SVG editor's STROKE/FILL/BOTH style
-   picker, SE3b) — NOT a .cad-icon-btn: text labels, not a 16px icon. */
+/* UI1 (Fred 2026-09-25, "I guess it can be the general look too, right"):
+   ONE declared segmented-control component, app-wide — the "C1 — soft
+   segmented" look picked for the layer row (editor/layers.js,
+   styles/editor.css) generalized to every choice control that used to be
+   its own slightly-different variant: the SVG editor's STROKE/FILL/BOTH
+   style picker (SE3b) and Show/Snap, Lattice's Add/Orientation/Count-
+   Every/Count-Density/Cells-Rails groups, Shape Lattice's Hourglass/
+   Bottle + segment-style groups (both the side-panel one and the
+   floating canvas popup, properties-shape-lattice.js's
+   openSegmentStyleBar), Fusion Geometry, and the Boundary/Ending picker.
+   `.segmented-group` is the outlined/rounded wrapper (replaces ~16
+   duplicated inline `style="display:flex; height:24px; border:1px solid
+   #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;"`
+   strings — declared once so every consumer's look moves together, per-
+   instance sizing like `height:28px` or `align-self:end` stays as a
+   small trailing inline override, not a wrapper variant); `.editor-
+   fillmode-btn` is the cell (name kept — renaming ~50 existing id-based
+   button references across the app for a purely cosmetic class rename
+   would be pure risk with no benefit). Actions (Generate, Apply
+   Stencils, Regenerate, Detach) are NOT segmented controls and keep
+   their own `.cad-btn` look untouched. */
+.segmented-group {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    height: 24px;
+    border: 1px solid #d7dbe2;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+
 .editor-fillmode-btn {
     border: none;
     background: transparent;
-    color: #555;
+    color: #a0a5ad;
     padding: 0 8px;
     height: 100%;
     font-size: 10px;
@@ -1375,12 +1405,12 @@ header {
 }
 
 .editor-fillmode-btn + .editor-fillmode-btn {
-    border-left: 1px solid #ddd;
+    border-left: 1px solid #e3e6ea;
 }
 
 .editor-fillmode-btn.active {
-    background: #e8f0ff;
-    color: #1a55b8;
+    background: #e8f0fe;
+    color: #1f6fd1;
 }
 
 .cad-btn {

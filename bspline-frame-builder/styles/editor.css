@@ -1156,44 +1156,31 @@
 }
 .layer-handle:active { cursor: grabbing; }
 
-/* MOB4 layer-row AMEND: the three toggles now live in ONE outlined
-   segmented group (layers.js's .layer-toggle-group), not three separate
-   square buttons — .layer-toggle-cell is the shared cell look; each
-   toggle keeps its own distinguishing class (.layer-visibility/
-   .layer-carve/.layer-showcolor) only for the on/off state + click
-   handler, per layers.js. */
-.layer-toggle-group {
-    display: flex;
-    align-items: stretch;
-    flex-shrink: 0;
-    border: 1px solid #d7dbe2;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #fff;
-}
-.layer-toggle-cell {
+/* UI1: the three toggles share the APP-WIDE .segmented-group/
+   .editor-fillmode-btn look (styles/base.css) now, not their own
+   .layer-toggle-group/.layer-toggle-cell — this WAS the reference C1
+   look every other segmented control just adopted, so it's the one
+   consumer that only needed its group/cell classes swapped, no visual
+   change. Each toggle keeps its own distinguishing class
+   (.layer-visibility/.layer-carve/.layer-showcolor) for on/off state +
+   click handler (layers.js) and for the layer-row-only additions below
+   (icon sizing, the enlarged tap target) that don't belong on every
+   text-label segmented button app-wide. */
+.layer-row .segmented-group { height: auto; }
+.layer-row .editor-fillmode-btn {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     min-width: 24px;
-    padding: 0 6px;
-    border: none;
-    border-left: 1px solid #e3e6ea;
-    background: transparent;
-    color: #a0a5ad;
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 1;
-    cursor: pointer;
+    padding: 6px;
 }
-.layer-toggle-cell:first-child { border-left: none; }
 /* Enlarges the tap target vertically (to ~40px) without growing the
    visible ~30px cell — extends into the row's own top/bottom padding,
    never left/right, so adjacent cells' tap areas never overlap each
    other (Fred: "overlapping hit areas are fine as long as they don't
-   overlap each other"). */
-.layer-toggle-cell::before {
+   overlap each other"). Layer-row only: the app's other segmented
+   controls sit in denser toolbar rows where a blanket vertical bleed
+   risks stealing taps from a NEIGHBORING control, not just an adjacent
+   cell in the same group. */
+.layer-row .editor-fillmode-btn::before {
     content: '';
     position: absolute;
     top: -5px;
@@ -1201,21 +1188,19 @@
     left: 0;
     right: 0;
 }
-.layer-toggle-cell svg { width: 13px; height: 13px; }
+.layer-row .editor-fillmode-btn svg { width: 13px; height: 13px; }
 
 .layer-visibility.is-hidden { color: #a0a5ad; }
 .layer-visibility:not(.is-hidden) { color: #1f6fd1; background: #e8f0fe; }
 
-.layer-carve.active { color: #1f6fd1; background: #e8f0fe; }
-
 /* Fred: "palette should be a colored palette" — ON keeps its own real
    painter's-palette colors (tan board, four paint dots; classes come
    from layers.js's _paletteSVG) rather than turning flat blue like the
-   other two, plus the same light-blue cell tint. OFF can't just switch
-   `color` the way the plain currentColor eye/3D glyphs do, since the
-   on-state colors are hardcoded per-part fills — greyscale+fade mutes
-   them instead. */
-.layer-showcolor.active { background: #e8f0fe; }
+   other two (the shared light-blue CELL tint still applies —
+   .editor-fillmode-btn.active, base.css). OFF can't just switch `color`
+   the way the plain currentColor eye/3D glyphs do, since the on-state
+   colors are hardcoded per-part fills — greyscale+fade mutes them
+   instead. */
 .layer-showcolor.active .pal-body { fill: #e9cfa3; }
 .layer-showcolor.active .pal-d1 { fill: #e53935; }
 .layer-showcolor.active .pal-d2 { fill: #fbc02d; }
@@ -1375,7 +1360,14 @@
    lives in editor/layers.js (editor._layers array).
    ========================================================================= */
 .editor-layers-panel {
-    width: 220px;
+    /* UI1 fix-first #2 (Fred, real desktop: names truncate to "Lay…" at
+       220px, the C1 segmented group's own width leaves too little room)
+       — widened from 220px; the canvas can spare 16px at any realistic
+       desktop window size. #editorLatticePanel/#editorShapeLatticePanel
+       (bspline_gen_palette.html's own inline widths) share this same
+       number — all three swap into the SAME drawer slot, so a mismatch
+       would visibly resize the column on every tab switch. */
+    width: 236px;
     flex-shrink: 0;
     background: #fdfdfd;
     border-left: 1px solid var(--cad-border-standard);

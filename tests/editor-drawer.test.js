@@ -56,9 +56,9 @@ describe('MOB4: LANDSCAPE_SNAP_STATES / landscapeWidthPx (the side-column splitt
     expect(LANDSCAPE_SNAP_STATES).toEqual(['canvasMax', 'half', 'settingsMax']);
   });
 
-  it('canvasMax is a fixed 220px, independent of viewport width', () => {
-    expect(landscapeWidthPx('canvasMax', 844)).toBe(220);
-    expect(landscapeWidthPx('canvasMax', 915)).toBe(220);
+  it('canvasMax is a fixed 236px (UI1: matches the desktop panels\' own widened default), independent of viewport width', () => {
+    expect(landscapeWidthPx('canvasMax', 844)).toBe(236);
+    expect(landscapeWidthPx('canvasMax', 915)).toBe(236);
   });
 
   it('half is 38% of the viewport width', () => {
@@ -71,6 +71,6 @@ describe('MOB4: LANDSCAPE_SNAP_STATES / landscapeWidthPx (the side-column splitt
   });
 
   it('an unrecognized state falls back to the canvasMax floor', () => {
-    expect(landscapeWidthPx('bogus', 800)).toBe(220);
+    expect(landscapeWidthPx('bogus', 800)).toBe(236);
   });
 });
