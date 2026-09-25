@@ -736,3 +736,12 @@ Live pages.dev check at 390x844 touch (advisor, after c932646): lattice Generate
 - unverified on phone yet: sidebar layer row toggles (3D/palette), Fusion geometry picker, Pattern panel Widths row
   (desktop shot shows Widths overflowing its column: "Nc" clipped at right), rail-end checkbox.
 Next seat-A task after SE7j. Browser proof at 390x844 and 768x1024, before/after screenshots.
+
+## DONE 2026-09-24 — SE12 live expand, end to end (0258941)
+Per-layer Fusion Geometry pick (Centerline / Outline / Both, never automatic) → visible commit-only preview → Fusion
+export swap. Outlines: lines, rect, circle, ellipse (biarc), any path (exact L/A, curves biarc-fit ≤ 0.001"), text
+(glyphs). Advisor-verified in Fusion: the baked export imports as 144 SketchArcs + 40 lines, 0 splines, 11 profiles,
+correct inch scale (rect corner arcs r = 0.05" = w/2). Side fix: SVG text rendered in the UI font for years
+(base.css `*` reset beat presentation attributes) — fixed at source (T42); carve was always right.
+Also done today: SE7h/i/j connected lattice (active layer, per-layer settings, Widths, grid-point attachment, upright
+node drag), MOB2/MOB2b mobile pass, layer toggle styling. Add-in deployed at 0258941.
