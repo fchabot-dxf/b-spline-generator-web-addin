@@ -30,8 +30,14 @@ import { lcgPoints } from '../core/terrain.js';
 // 'boundary' extent branch calls insideSpans directly (no re-derivation of
 // L/A/C crossing math here); primitivesBBox is _resolveExtent's own
 // boundary-bbox pre-filter, same reuse discipline as everything else in
-// this file's own header comment.
-import { insideSpans, primitivesBBox } from './editor-lattice-boundary.js';
+// this file's own header comment. collinearSpans is T49's own "fix first"
+// (an edge-collinear scan line's own span, unioned in unless Border is on).
+// shapeToPrimitives is T49's own live-wiring need: generatePattern's own
+// 'boundary' branch calls it on the linked element (see BOUNDARY_REF_ATTR
+// below) — the ONE place in this codebase that actually does the async
+// DOM lookup _resolveExtent's own doc comment defers to "Slice 3's own
+// live-wiring caller".
+import { insideSpans, primitivesBBox, collinearSpans, shapeToPrimitives } from './editor-lattice-boundary.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -45,6 +51,102 @@ export { toLattice, fromLattice, latticeCrossings };
  *  own LATTICE_ATTR (data-lattice="rail"|"tie"|"node"), not a new
  *  element shape. See SE7B design §2 for the ownership/detach rules. */
 export const OWNERSHIP_ATTR = 'data-lattice-gen';
+
+/** T49 (SE13 §1): the boundary-shape LINK — "linked by id, not copied;
+ *  editing it refills with the same seed" needs a stable per-element
+ *  identity, which nothing in this editor carried before this (`data-layer`
+ *  is layer MEMBERSHIP, not identity). Stamped once, on first pick, onto
+ *  the chosen element (`stampBoundaryRef` below); `PATTERN.boundary.shapeId`
+ *  stores the same value. Picking a different shape later stamps a NEW id
+ *  onto the new element and updates `shapeId` — the OLD element's own tag
+ *  is left in place, inert (nothing reads an orphaned one), matching this
+ *  codebase's own "don't retroactively clean up unrelated content"
+ *  convention (design doc §1). */
+export const BOUNDARY_REF_ATTR = 'data-boundary-ref';
+
+/** T49: find the live element a PATTERN.boundary.shapeId links to, on
+ *  ANY visible layer (a boundary shape need not live on the SAME layer
+ *  the Lattice pattern itself generates into — same "anyVisibleLayer"
+ *  relaxation Select/Node mode's own hit-test already uses). Returns null
+ *  if the id is unset or the element was deleted — the caller's own
+ *  "declined gracefully" fallback (same shape `insideSpans` itself uses
+ *  for a degenerate boundary) covers that, not an exception here. */
+function _findBoundaryElement(editor, shapeId) {
+  if (!editor || !editor._sketchLayer || !shapeId) return null;
+  const children = editor._sketchLayer.children().toArray();
+  for (const ch of children) {
+    if (ch && ch.node && ch.node.getAttribute(BOUNDARY_REF_ATTR) === shapeId) return ch;
+  }
+  return null;
+}
+
+/** T49: stamp (or reuse) a stable id on a freshly-PICKED boundary element
+ *  — idempotent (re-picking the SAME element keeps its existing id rather
+ *  than minting a second one, so a stale `PATTERN.boundary.shapeId` from
+ *  before a re-pick can't orphan the link by accident). Same id shape
+ *  `PATTERN.id` itself already uses (design doc §1). */
+export function stampBoundaryRef(el) {
+  if (!el) return null;
+  let id = el.attr(BOUNDARY_REF_ATTR);
+  if (!id) {
+    id = `b-${Date.now().toString(36)}`;
+    el.attr(BOUNDARY_REF_ATTR, id);
+  }
+  return id;
+}
+
+/** T49: a SE13 Slice 1 primitive list, in a boundary element's own LOCAL
+ *  frame (shapeToPrimitives' own contract), baked into WORLD/model-space
+ *  inches — `worldPoint` (editor-coords.js) already bakes a live element's
+ *  transform for a single point (used elsewhere in this file for a
+ *  detached lattice piece's own identity points); this applies the same
+ *  bake to every primitive's own point-like field. CIRCLE/A radii and A's
+ *  own `phi` are scaled/rotated by the transform's effective UNIFORM
+ *  scale/rotation (measured once, from how the origin and the local
+ *  +x-axis unit point both move under the SAME `worldPoint` bake) — exact
+ *  for the common case (translate + uniform scale + rotation, everything
+ *  a Select-mode drag on a rect/circle/ellipse/polygon/path produces
+ *  today), a disclosed simplification for a non-uniform-scale transform
+ *  (WORK-LOG-lane-b.md, T49). */
+function _bakeWorldTransform(el, primitives) {
+  const origin = worldPoint(el, { x: 0, y: 0 });
+  const xTip = worldPoint(el, { x: 1, y: 0 });
+  const scale = Math.hypot(xTip.x - origin.x, xTip.y - origin.y) || 1;
+  const rot = Math.atan2(xTip.y - origin.y, xTip.x - origin.x);
+  const wp = (p) => worldPoint(el, p);
+  return primitives.map((prim) => {
+    switch (prim.type) {
+      case 'L': return { type: 'L', p0: wp(prim.p0), p1: wp(prim.p1) };
+      case 'C': return { type: 'C', p0: wp(prim.p0), p1: wp(prim.p1), p2: wp(prim.p2), p3: wp(prim.p3) };
+      case 'CIRCLE': {
+        const c = wp({ x: prim.cx, y: prim.cy });
+        return { type: 'CIRCLE', cx: c.x, cy: c.y, r: prim.r * scale };
+      }
+      case 'A': {
+        const c = wp({ x: prim.cx, y: prim.cy });
+        return {
+          type: 'A', cx: c.x, cy: c.y, rx: prim.rx * scale, ry: prim.ry * scale,
+          phi: prim.phi + rot, theta1: prim.theta1, dTheta: prim.dTheta,
+        };
+      }
+      default: return prim;
+    }
+  });
+}
+
+/** T49: PATTERN.boundary.shapeId -> resolved WORLD-space primitive list,
+ *  or `[]` if unlinked/deleted (declined gracefully, same convention as
+ *  everywhere else in this design). The ONE place `shapeToPrimitives`
+ *  (async) is actually called against a LIVE element — see this file's
+ *  own import comment for why that's deliberately not inside
+ *  `_resolveExtent` itself. */
+async function _resolveBoundaryPrimitives(editor, PATTERN) {
+  const shapeId = PATTERN.boundary && PATTERN.boundary.shapeId;
+  const boundaryEl = _findBoundaryElement(editor, shapeId);
+  if (!boundaryEl) return { boundaryEl: null, primitives: [] };
+  const localPrimitives = await shapeToPrimitives(boundaryEl);
+  return { boundaryEl, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
+}
 
 /** Strip OWNERSHIP_ATTR from each given element that carries it. Pure DOM
  *  mutation only — no undo/pushState/_notifyChange; callers decide when
@@ -258,21 +360,93 @@ function _occupiedHas(occupied, i, j, kind) {
 /**
  * T48 (SE13 Slice 2): intersect [lo,hi] against a sorted, non-overlapping
  * `spans` list (insideSpans' own output shape), returning every non-empty
- * overlap as its own [a,b] piece — 0, 1, or many. Board/rect mode never
- * calls this (its "span" is already the whole extent); boundary mode uses
- * it for BOTH rails (clip the full row width to the boundary) and ties
- * (clip the drawn random span to the boundary) — one function, not two,
- * since "shorten this range to what's actually inside" is the same
- * operation either way (Ground-truth #2's own "multiple inside-sub-spans
- * per row/column" restructuring).
+ * overlap as its own {a,b,aIsCrossing,bIsCrossing} piece — 0, 1, or many.
+ * Board/rect mode never calls this (its "span" is already the whole
+ * extent); boundary mode uses it for BOTH rails (clip the full row width
+ * to the boundary) and ties (clip the drawn random span to the boundary)
+ * — one function, not two, since "shorten this range to what's actually
+ * inside" is the same operation either way (Ground-truth #2's own
+ * "multiple inside-sub-spans per row/column" restructuring).
+ *
+ * T49 (SE13 Slice 3): `aIsCrossing`/`bIsCrossing` (piece bound strictly
+ * inside the ORIGINAL [lo,hi], i.e. this end was actually pulled in by
+ * the boundary, not left at the caller's own [lo,hi] limit) is exactly
+ * the signal §5's ending-rule dispatch needs — a RAIL's [lo,hi] is the
+ * bbox pre-filter (virtually always both ends ARE real crossings, a rail
+ * crossing a boundary shape); a TIE's [lo,hi] is its own already-drawn
+ * random span (an end stays a plain "free" end, today's Board-mode
+ * behavior, exactly when the boundary never touched it).
  */
 function _clipToSpans(lo, hi, spans) {
   const out = [];
   for (const [sLo, sHi] of spans) {
     const a = Math.max(lo, sLo), b = Math.min(hi, sHi);
-    if (b - a > 1e-9) out.push([a, b]);
+    if (b - a > 1e-9) {
+      out.push({ a, b, aIsCrossing: sLo > lo + 1e-9, bIsCrossing: sHi < hi - 1e-9 });
+    }
   }
   return out;
+}
+
+/** T49: union two sorted-or-unsorted [lo,hi] span lists into one sorted,
+ *  non-overlapping list — merges `insideSpans`' own output with
+ *  `collinearSpans`' own "kept edge" spans (the "fix first" item), so a
+ *  row/column that's both genuinely crossed AND collinear with an edge
+ *  elsewhere on the same line gets one clean combined span list rather
+ *  than two independently-clipped ones downstream. */
+function _unionSpans(a, b) {
+  const all = [...a, ...b].sort((x, y) => x[0] - y[0]);
+  if (!all.length) return [];
+  const out = [all[0].slice()];
+  for (let i = 1; i < all.length; i++) {
+    const last = out[out.length - 1];
+    if (all[i][0] <= last[1] + 1e-9) last[1] = Math.max(last[1], all[i][1]);
+    else out.push(all[i].slice());
+  }
+  return out;
+}
+
+/**
+ * T49 (SE13 §5): the ending-rule dispatch for ONE clipped piece's own two
+ * ends — only an end that `_clipToSpans` marked as a real boundary
+ * crossing is touched at all; a plain "free" tie end (today's Board-mode
+ * behavior) is left exactly as `_clipToSpans` already computed it.
+ * `on-boundary` needs no branch (the crossing point computed by `insideSpans`
+ * IS the final endpoint already — §5's own "zero extra geometry" case).
+ * `inset` pulls the endpoint back by `halfWidth` along the run's own axis
+ * — a plain subtraction, not a clip/boolean op, per §5's own bar.
+ * `joint` leaves the geometry at `on-boundary` and instead flags a NODE
+ * for the caller to emit there (reuses the existing node machinery
+ * verbatim, per the design doc's own "no new node code" claim).
+ * `loose` picks the nearest GRID-integer stop strictly inside the span as
+ * the new endpoint instead of the true crossing (§4's own "purely a
+ * choice of which stop to cut at"); when the span is shorter than one
+ * grid cell (no stop exists between the two ends), it degrades to
+ * `inset` for that end — the one named case §5's own text calls out.
+ * A degenerate result (both ends pulled past each other) collapses to a
+ * single point at the span's own midpoint rather than inverting.
+ */
+function _applyEndRule(a, b, aIsCrossing, bIsCrossing, endRule, halfWidth) {
+  let na = a, nb = b, aJoint = false, bJoint = false;
+  if (aIsCrossing) {
+    if (endRule === 'inset') na = a + halfWidth;
+    else if (endRule === 'joint') aJoint = true;
+    else if (endRule === 'loose') {
+      const stop = Math.ceil(a + 1e-9);
+      na = stop < b - 1e-9 ? stop : a + halfWidth; // no stop fits -> degrade to inset
+    }
+    // 'on-boundary': na stays exactly `a`.
+  }
+  if (bIsCrossing) {
+    if (endRule === 'inset') nb = b - halfWidth;
+    else if (endRule === 'joint') bJoint = true;
+    else if (endRule === 'loose') {
+      const stop = Math.floor(b - 1e-9);
+      nb = stop > a + 1e-9 ? stop : b - halfWidth; // no stop fits -> degrade to inset
+    }
+  }
+  if (na >= nb) { const mid = (a + b) / 2; na = mid; nb = mid; }
+  return { a: na, b: nb, aJoint, bJoint };
 }
 
 /**
@@ -332,6 +506,13 @@ export function computePattern(PATTERN, opts = {}) {
   const rails = { ...PATTERN_DEFAULTS.rails, ...(PATTERN.rails || {}) };
   const ties = { ...PATTERN_DEFAULTS.ties, ...(PATTERN.ties || {}) };
   const nodes = { ...PATTERN_DEFAULTS.nodes, ...(PATTERN.nodes || {}) };
+  // T49 (SE13 Slice 3): `widths` merged HERE now too (previously only in
+  // generatePattern, the DOM-touching sibling) — the `inset` ending rule's
+  // own pull-back-by-halfWidth math is PURE (a subtraction along an
+  // already-known direction, §5), so it belongs in computePattern, not
+  // duplicated/deferred to the emit step.
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(PATTERN.widths || {}) };
+  const boundary = { ...PATTERN_DEFAULTS.boundary, ...(PATTERN.boundary || {}) };
   const seed = P.seed;
   // SE7h: everything from here to the `return` below runs in the ONE
   // canonical (horizontal) frame this algorithm was always written in —
@@ -356,6 +537,13 @@ export function computePattern(PATTERN, opts = {}) {
   // row/column) changes with orientation, via _rowScanLine/_colScanLine.
   const isBoundary = rawExtent.mode === 'boundary';
   const boundaryPrimitives = rawExtent.primitives || [];
+  // T49: Border-piece gating for the "fix first" collinear-edge span (an
+  // edge-collinear rail/tie is DROPPED when Border draws that same edge
+  // itself — no double stroke) — and the ending-rule/halfWidth inputs
+  // every boundary-crossing end now needs. `halfWidth` is in the SAME
+  // lattice-unit space as everything else here (inches / spacing).
+  const borderEnabled = isBoundary && !!(boundary.border && boundary.border.enabled);
+  const endRule = boundary.endRule || PATTERN_DEFAULTS.boundary.endRule;
   // "i,j,kind" occupied keys are always built from REAL (un-oriented)
   // lattice coordinates (_collectOccupied, below) — re-key them into the
   // SAME canonical frame the rest of this function reads i/j in, once,
@@ -390,13 +578,26 @@ export function computePattern(PATTERN, opts = {}) {
   // rule, the only one this slice implements (the other three are
   // Slice 3's own emission-time dispatch).
   const railRows = _railRows(jMin, jMax, rails.every, rails.offset);
+  const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
-    const spans = isBoundary
-      ? _clipToSpans(iMin, iMax, insideSpans(_rowScanLine(j, orientation), boundaryPrimitives))
-      : [[iMin, iMax]];
-    for (const [a, b] of spans) {
+    let pieces;
+    if (isBoundary) {
+      const rowScan = _rowScanLine(j, orientation);
+      const inside = insideSpans(rowScan, boundaryPrimitives);
+      // T49 "fix first": union in the collinear-edge span UNLESS Border
+      // will draw that same edge itself (then insideSpans alone is right
+      // — the edge-collinear rail is dropped, no double stroke).
+      const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(rowScan, boundaryPrimitives));
+      pieces = _clipToSpans(iMin, iMax, combined);
+    } else {
+      pieces = [{ a: iMin, b: iMax, aIsCrossing: false, bIsCrossing: false }];
+    }
+    for (const piece of pieces) {
+      const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
       if (_occupiedHas(occupied, a, j, 'rail')) continue;
       segments.push({ kind: 'rail', a: { i: a, j }, b: { i: b, j } });
+      if (aJoint && !_occupiedHas(occupied, a, j, 'node')) addNode(a, j);
+      if (bJoint && !_occupiedHas(occupied, b, j, 'node')) addNode(b, j);
     }
   }
 
@@ -437,6 +638,7 @@ export function computePattern(PATTERN, opts = {}) {
     : Array.from({ length: iMax - iMin + 1 }, (_, k) => iMin + k);
   const forcedSet = Array.isArray(ties.columns) ? new Set(ties.columns) : null;
 
+  const halfTie = widths.ties / 2 / P.spacing;
   for (const i of columns) {
     const forced = forcedSet ? forcedSet.has(i) : false;
     const span = _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced);
@@ -445,15 +647,19 @@ export function computePattern(PATTERN, opts = {}) {
     // boundary mode doesn't touch WHETHER or how far a tie is drawn, only
     // clips the result to what's actually inside the shape, same "shorten,
     // don't re-decide" split as the rails loop above. Board/rect mode:
-    // `pieces` is exactly `[[span.jStart, span.jEnd]]`, so this reduces to
-    // today's single segment/end-node pair byte-for-byte.
-    const pieces = isBoundary
-      ? _clipToSpans(
-          Math.min(span.jStart, span.jEnd), Math.max(span.jStart, span.jEnd),
-          insideSpans(_colScanLine(i, orientation), boundaryPrimitives),
-        )
-      : [[span.jStart, span.jEnd]];
-    for (const [a, b] of pieces) {
+    // `pieces` is exactly one un-clipped piece, so this reduces to today's
+    // single segment/end-node pair byte-for-byte.
+    let pieces;
+    if (isBoundary) {
+      const colScan = _colScanLine(i, orientation);
+      const inside = insideSpans(colScan, boundaryPrimitives);
+      const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
+      pieces = _clipToSpans(Math.min(span.jStart, span.jEnd), Math.max(span.jStart, span.jEnd), combined);
+    } else {
+      pieces = [{ a: span.jStart, b: span.jEnd, aIsCrossing: false, bIsCrossing: false }];
+    }
+    for (const piece of pieces) {
+      const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfTie);
       if (_occupiedHas(occupied, i, a, 'tie')) continue;
       segments.push({ kind: 'tie', a: { i, j: a }, b: { i, j: b } });
 
@@ -461,6 +667,8 @@ export function computePattern(PATTERN, opts = {}) {
         if (!_occupiedHas(occupied, i, a, 'node')) addNode(i, a);
         if (!_occupiedHas(occupied, i, b, 'node')) addNode(i, b);
       }
+      if (aJoint && !_occupiedHas(occupied, i, a, 'node')) addNode(i, a);
+      if (bJoint && !_occupiedHas(occupied, i, b, 'node')) addNode(i, b);
     }
   }
 
@@ -662,8 +870,17 @@ function _collectOccupied(editor, layerId, spacing) {
  *   (ownership itself is layer-based, not id-based — see below).
  * @returns {{segments, nodePoints}} the same shape computePattern returns,
  *   for callers that want to inspect what was just drawn (e.g. a test).
+ *
+ * T49 (SE13 Slice 3): now ASYNC. `PATTERN.extent.mode === 'boundary'`
+ * needs `shapeToPrimitives` (SE13 Slice 1), which is itself async (the
+ * `text` boundary kind awaits a font fetch) — rather than a second,
+ * sync-only code path, every caller now awaits this one. Board/rect mode
+ * still resolves synchronously internally (no real await point is hit),
+ * so the observable timing for every EXISTING caller is unchanged; only
+ * boundary mode's own callers (the Boundary panel, the commit-refill
+ * hook below) need to actually care that this returns a Promise now.
  */
-export function generatePattern(editor, PATTERN) {
+export async function generatePattern(editor, PATTERN) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
 
@@ -683,9 +900,19 @@ export function generatePattern(editor, PATTERN) {
   // LATTICE_STYLE-derived sizing, emitSegment/emitNode's own default).
   const widths = { ...PATTERN_DEFAULTS.widths, ...(PATTERN.widths || {}) };
   PATTERN.widths = widths;
+  const boundary = { ...PATTERN_DEFAULTS.boundary, ...(PATTERN.boundary || {}) };
 
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
-  const extent = _resolveExtent(editor, PATTERN);
+  const isBoundary = PATTERN.extent && PATTERN.extent.mode === 'boundary';
+  let boundaryEl = null;
+  let extent;
+  if (isBoundary) {
+    const resolved = await _resolveBoundaryPrimitives(editor, PATTERN);
+    boundaryEl = resolved.boundaryEl;
+    extent = _resolveExtent(editor, PATTERN, resolved.primitives);
+  } else {
+    extent = _resolveExtent(editor, PATTERN);
+  }
   const occupied = _collectOccupied(editor, targetLayer, spacing);
 
   // Remove every element the ACTIVE LAYER already owns — the "replace",
@@ -724,10 +951,77 @@ export function generatePattern(editor, PATTERN) {
   }
   editor._color = previousColor;
 
+  // T49 (SE13 §7, "the Border piece"): "the SAME d/shape geometry, just
+  // re-stroked" — clone the LINKED boundary element itself rather than
+  // re-deriving its geometry from the primitive list, so it decodes
+  // through the SAME OUTLINE_KINDS export path the source element already
+  // does (§8's own "zero new export code" claim, not just argued). Fred's
+  // own ruling (T49 dispatch, "Border defaults to the boundary shape's
+  // own stroke"): a null width/color inherits the LIVE boundary element's
+  // own current stroke-width/stroke, not a Lattice color.
+  if (isBoundary && boundary.border && boundary.border.enabled && boundaryEl) {
+    const borderColor = boundary.border.color || boundaryEl.attr('stroke') || '#000000';
+    const borderWidth = boundary.border.width != null
+      ? boundary.border.width
+      : (parseFloat(boundaryEl.attr('stroke-width')) || widths.rails);
+    const clone = boundaryEl.clone();
+    clone.attr(BOUNDARY_REF_ATTR, null); // the clone is a COPY, not the link itself
+    clone.attr('data-layer', targetLayer);
+    clone.attr(LATTICE_ATTR, 'border');
+    clone.fill('none');
+    clone.stroke({ color: borderColor, width: borderWidth });
+    clone.attr(OWNERSHIP_ATTR, PATTERN.id);
+    editor._sketchLayer.add(clone);
+  }
+
   if (typeof editor.pushState === 'function') editor.pushState();
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
 
   return { segments, nodePoints };
+}
+
+// T49 re-entrancy guard for refreshBoundaryPatterns, below — generatePattern
+// itself calls _notifyChange('commit') at its own end (just above), which
+// is the SAME hook refreshBoundaryPatterns hangs off; without this guard
+// every boundary-mode refill would re-trigger itself forever. Module-level
+// (not per-editor) is fine: this codebase runs one editor instance per page.
+let _boundaryRefillInProgress = false;
+
+/**
+ * T49 (SE13 §9, "commit-only link refresh"): re-run Generate for the
+ * ACTIVE layer's own pattern whenever ANYTHING commits, but only when
+ * that layer is actually in `extent.mode === 'boundary'` with a linked
+ * shape — every other commit (the overwhelming majority) is a same-tick
+ * no-op check, not a real regenerate. Reuses the SAME hook
+ * `refreshOutlinePreview`/`refreshDrape` already fire from (`editor.js`'s
+ * `_notifyChange('commit')`), per the design doc's own §9 instruction,
+ * rather than a second, divergent "watch for boundary-shape edits" hook.
+ *
+ * Deliberately regenerates on EVERY commit while boundary mode is active,
+ * not just a commit that touched the linked shape specifically — finding
+ * "did THIS commit touch the linked element" would need its own tracking;
+ * regenerating unconditionally is simpler, always correct (Generate is
+ * idempotent for an unchanged boundary/seed), and "commit-only" already
+ * rules out the truly expensive case (recomputing on every drag FRAME) —
+ * see WORK-LOG-lane-b.md, T49, for the full disclosed tradeoff.
+ *
+ * Fire-and-forget: `editor.js`'s `_notifyChange` is synchronous and this
+ * needs `generatePattern`'s own async boundary-resolution, so the refill
+ * itself completes on a later microtask, not before `_notifyChange`
+ * returns — an inherent consequence of `shapeToPrimitives`' own async
+ * contract (the `text` boundary kind awaits a font fetch), not something
+ * this function can avoid.
+ */
+export function refreshBoundaryPatterns(editor) {
+  if (_boundaryRefillInProgress) return;
+  if (!editor) return;
+  const pattern = getLayerPattern(editor);
+  if (!pattern || !pattern.extent || pattern.extent.mode !== 'boundary') return;
+  if (!pattern.boundary || !pattern.boundary.shapeId) return;
+  _boundaryRefillInProgress = true;
+  generatePattern(editor, pattern)
+    .catch((err) => console.warn('[editor-lattice-pattern] boundary refill failed:', err))
+    .finally(() => { _boundaryRefillInProgress = false; });
 }
 
 /** PATTERN.colors' kind names ('rails'/'ties'/'nodes') to LATTICE_ATTR's

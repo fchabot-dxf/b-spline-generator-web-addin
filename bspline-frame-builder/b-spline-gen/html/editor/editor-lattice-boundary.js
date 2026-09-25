@@ -394,3 +394,55 @@ export function primitivesBBox(primitives) {
   if (xMin > xMax) return null; // no primitives considered -- empty/degenerate
   return { xMin, yMin, xMax, yMax };
 }
+
+/**
+ * T49 (SE13 Slice 3, "fix first"): a scan line exactly COLLINEAR with a
+ * boundary edge — not just crossing it, lying exactly ON it (a snapped
+ * rect/polygon boundary, Snap being on by default, routinely has an edge
+ * on an exact grid row/column). `_lineIntersect`'s own parallel guard
+ * (`Math.abs(denom) < 1e-9`) already reports zero crossings for that edge
+ * — correct for the general "is this line segment merely PARALLEL"
+ * question `insideSpans` asks, but it silently drops the edge from the
+ * inside/outside computation entirely rather than answering "the edge IS
+ * the boundary here." `insideSpans` itself is left untouched (already
+ * reviewed, tested, independently parity-checked by the advisor) — this
+ * is a SEPARATE, additive query the caller (`editor-lattice-pattern.js`)
+ * unions in on top of `insideSpans`' own result, per the declared product
+ * rule: a collinear edge yields a span along itself (the edge row is
+ * kept), UNLESS the boundary is DRAWN separately (the Border piece) —
+ * that gating is the caller's own decision, not this function's.
+ *
+ * Only `L` primitives are considered: a curve can be TANGENT to a scan
+ * line at a single point (already a legitimate zero-length span,
+ * correctly dropped by `insideSpans` itself) but "runs collinear with it
+ * over a whole span" is a straight-edge-only degeneracy.
+ */
+export function collinearSpans(scanLine, primitives) {
+  const { point, dir } = scanLine;
+  const raw = [];
+  for (const prim of primitives) {
+    if (prim.type !== 'L') continue;
+    if (!_onScanLine(point, dir, prim.p0) || !_onScanLine(point, dir, prim.p1)) continue;
+    const t0 = _alongScan(point, dir, prim.p0);
+    const t1 = _alongScan(point, dir, prim.p1);
+    const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+    if (hi - lo > 1e-9) raw.push([lo, hi]);
+  }
+  if (!raw.length) return [];
+  raw.sort((a, b) => a[0] - b[0]);
+  const merged = [raw[0].slice()];
+  for (let i = 1; i < raw.length; i++) {
+    const last = merged[merged.length - 1];
+    if (raw[i][0] <= last[1] + 1e-9) last[1] = Math.max(last[1], raw[i][1]);
+    else merged.push(raw[i].slice());
+  }
+  return merged;
+}
+
+/** Is world point `p` on the scan line's own infinite extension (not just
+ *  parallel to it, but the SAME line)? Cross-product of (p - scanPoint)
+ *  against the unit direction `dir` is exactly 0 only on the line itself. */
+function _onScanLine(scanPoint, dir, p) {
+  const dx = p.x - scanPoint.x, dy = p.y - scanPoint.y;
+  return Math.abs(dx * dir.y - dy * dir.x) < 1e-7;
+}

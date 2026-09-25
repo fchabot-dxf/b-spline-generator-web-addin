@@ -117,10 +117,13 @@ describe('generatePattern: first Generate', () => {
     for (const el of emitted) expect(el.attr('data-layer')).toBe('0');
   });
 
-  it('assigns PATTERN.id when absent, and every emitted element carries both data-lattice and the ownership tag', () => {
+  it('assigns PATTERN.id when absent, and every emitted element carries both data-lattice and the ownership tag', async () => {
+    // T49: generatePattern is now async (boundary mode needs
+    // shapeToPrimitives) -- board mode itself never hits a real await, so
+    // this `await` doesn't change timing, only unwraps the Promise.
     const pattern = { ...PATTERN_DEFAULTS, seed: 2, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
     expect(pattern.id).toBeUndefined();
-    const { segments, nodePoints } = generatePattern(editor, pattern);
+    const { segments, nodePoints } = await generatePattern(editor, pattern);
     expect(pattern.id).toBeTruthy();
 
     const emittedRailsAndTies = editor._sketchLayer.children().filter((el) => el.attr('x1') !== undefined);
@@ -149,10 +152,10 @@ describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () 
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('produces byte-identical geometry to the first Generate when nothing changed', () => {
+  it('produces byte-identical geometry to the first Generate when nothing changed', async () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 6, ties: { ...PATTERN_DEFAULTS.ties, density: 0.6 } };
-    const first = generatePattern(editor, pattern);
-    const second = generatePattern(editor, pattern);
+    const first = await generatePattern(editor, pattern);
+    const second = await generatePattern(editor, pattern);
     expect(second.segments).toEqual(first.segments);
     expect(second.nodePoints).toEqual(first.nodePoints);
   });

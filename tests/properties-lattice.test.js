@@ -137,11 +137,19 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
     expect(second).not.toBe(first);
   });
 
-  it('the Generate button label flips to Regenerate after the first press', () => {
+  it('the Generate button label flips to Regenerate after the first press', async () => {
+    // T49: generatePattern (and this click handler) are now async — board
+    // mode itself never hits a real await inside generatePattern, but
+    // `await`ing ANY promise (even an already-settled one) still defers
+    // by at least one microtask per spec, so syncGenerateLabel() no
+    // longer runs synchronously within the click dispatch. A macrotask
+    // flush (setTimeout 0) is the robust way to wait past every pending
+    // microtask without hand-counting how many ticks await desugars to.
     initLatticeProperties(editor);
     const btn = document.getElementById('latticeGenerate');
     expect(btn.textContent).toBe('Generate');
     btn.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(btn.textContent).toBe('Regenerate');
   });
 });
@@ -355,5 +363,135 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
     document.getElementById('latticeGenerate').click();
     const node = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'node');
     expect(node).toBeUndefined();
+  });
+});
+
+/** T49: a stand-alone `.attr()`-only element -- the same plain-adapter
+ *  contract every SE13 test file uses (mockEl elsewhere), enough for
+ *  stampBoundaryRef (reads/writes one attribute) without needing a real
+ *  sketchLayer-hosted element. */
+function mockPickTarget(attrs = {}) {
+  const store = { ...attrs };
+  return { attr: (k, ...rest) => (rest.length === 0 ? store[k] : (store[k] = rest[0], undefined)) };
+}
+
+function flush() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('initLatticeProperties (T49, SE13 Slice 3): Boundary / Ending / Border panel', () => {
+  let container, editor;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.innerHTML = `
+      <input id="latticeRailsEvery" type="number" value="2">
+      <input id="latticeTiesDensity" type="range" value="0">
+      <input id="latticeSeed" type="number" value="42">
+      <button id="latticeGenerate"></button>
+      <button id="latticeDetachAll"></button>
+      <button id="toolLattice"></button>
+      <div role="group">
+        <button id="latticeBoundaryBoard" class="editor-fillmode-btn active"></button>
+        <button id="latticeBoundaryShape" class="editor-fillmode-btn"></button>
+      </div>
+      <button id="latticePickShape"></button>
+      <span id="latticeBoundaryStatus"></span>
+      <select id="latticeEndRule"></select>
+      <input id="latticeBorderEnabled" type="checkbox">
+      <input id="latticeBorderWidth" type="number">
+      <button id="latticeBorderColor"></button>
+      <button id="latticeBorderColorAuto" class="editor-fillmode-btn active"></button>
+    `;
+    document.body.appendChild(container);
+    editor = makeMockEditor();
+  });
+
+  afterEach(() => {
+    container.remove();
+    document.querySelectorAll('.color-mosaic-popover').forEach((p) => p.remove());
+  });
+
+  it('Board is active by default; clicking Shape then Generate writes extent.mode = "boundary"', async () => {
+    initLatticeProperties(editor);
+    expect(document.getElementById('latticeBoundaryBoard').classList.contains('active')).toBe(true);
+    document.getElementById('latticeBoundaryShape').click();
+    expect(document.getElementById('latticeBoundaryShape').classList.contains('active')).toBe(true);
+    document.getElementById('latticeGenerate').click();
+    await flush();
+    expect(activeLayerPattern(editor).extent).toEqual({ mode: 'boundary' });
+  });
+
+  it('the Ending select is populated from the 4 declared rules and defaults to "inset"', () => {
+    initLatticeProperties(editor);
+    const select = document.getElementById('latticeEndRule');
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toEqual(['on-boundary', 'inset', 'joint', 'loose']);
+    expect(select.value).toBe('inset');
+  });
+
+  it('Pick shape arms editor._boundaryPickCallback; invoking it stamps data-boundary-ref, sets PATTERN.boundary.shapeId, and switches to Shape mode', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticePickShape').click();
+    expect(typeof editor._boundaryPickCallback).toBe('function');
+
+    const target = mockPickTarget();
+    expect(target.attr('data-boundary-ref')).toBeUndefined();
+    editor._boundaryPickCallback(target);
+
+    const id = target.attr('data-boundary-ref');
+    expect(id).toBeTruthy();
+    expect(activeLayerPattern(editor).boundary.shapeId).toBe(id);
+    expect(document.getElementById('latticeBoundaryShape').classList.contains('active')).toBe(true);
+    expect(document.getElementById('latticeBoundaryStatus').textContent).toMatch(/linked/i);
+  });
+
+  it('picking the SAME already-stamped element again reuses its existing id (idempotent, no re-stamp)', () => {
+    initLatticeProperties(editor);
+    const target = mockPickTarget({ 'data-boundary-ref': 'b-existing' });
+    document.getElementById('latticePickShape').click();
+    editor._boundaryPickCallback(target);
+    expect(target.attr('data-boundary-ref')).toBe('b-existing');
+    expect(activeLayerPattern(editor).boundary.shapeId).toBe('b-existing');
+  });
+
+  it('a click on empty canvas (no hit) cancels the pick without touching PATTERN.boundary', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticePickShape').click();
+    editor._boundaryPickCallback(null);
+    expect(document.getElementById('latticeBoundaryStatus').textContent).toMatch(/cancel/i);
+    expect(activeLayerPattern(editor)?.boundary?.shapeId ?? null).toBeNull();
+  });
+
+  it('Border enabled/width checkboxes write PATTERN.boundary.border on Generate', async () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeBorderEnabled').checked = true;
+    document.getElementById('latticeBorderWidth').value = '0.1';
+    document.getElementById('latticeGenerate').click();
+    await flush();
+    const border = activeLayerPattern(editor).boundary.border;
+    expect(border.enabled).toBe(true);
+    expect(border.width).toBe(0.1);
+  });
+
+  it('an empty Border width field means "auto" (null), not 0 or NaN', async () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeBorderEnabled').checked = true;
+    document.getElementById('latticeGenerate').click();
+    await flush();
+    expect(activeLayerPattern(editor).boundary.border.width).toBeNull();
+  });
+
+  it('the Border color swatch: picking a color sets an explicit override; clicking "auto" resets it to null', () => {
+    initLatticeProperties(editor);
+    document.getElementById('latticeBorderColor').click();
+    const targetHex = '#1a237e';
+    document.querySelector(`.color-mosaic-cell[title="${targetHex}"]`).click();
+    expect(activeLayerPattern(editor).boundary.border.color).toBe(targetHex);
+    expect(document.getElementById('latticeBorderColorAuto').classList.contains('active')).toBe(false);
+
+    document.getElementById('latticeBorderColorAuto').click();
+    expect(activeLayerPattern(editor).boundary.border.color).toBeNull();
+    expect(document.getElementById('latticeBorderColorAuto').classList.contains('active')).toBe(true);
   });
 });

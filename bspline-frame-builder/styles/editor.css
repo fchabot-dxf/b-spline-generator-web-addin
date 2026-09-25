@@ -941,6 +941,17 @@
     }
 }
 
+/* T49 (SE13 Slice 3): the Border piece's own "draw boundary" checkbox —
+   same MOB2 gap/fix as the Nodes checkboxes immediately above (ID-specific
+   rule, since that block doesn't match by class either). */
+@media (pointer: coarse) {
+    #latticeBorderEnabled {
+        width: 32px !important;
+        height: 32px !important;
+        margin: -8px;
+    }
+}
+
 /* SE7k: the new Add: [Rail][Tie][Node] segmented control — same MOB2
    touch-sizing pass as the block above, for a NEW control this time
    rather than a retrofit. `.editor-fillmode-btn` is `height:100%`
