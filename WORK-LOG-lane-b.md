@@ -5527,3 +5527,224 @@ Amendments polled clean before committing and again immediately before passing. 
 `tests/editor-lattice-boundary.test.js` [primitivesBBox tests]) plus `tests/editor-lattice-pattern-
 boundary.test.js` [new] and `WORK-LOG-lane-b.md` — the new test file staged individually first (`git add`)
 — pushed. `reference/` confirmed still untracked, not swept.
+
+## T49 — SE13 Slice 3: emission, ending rules, panel UI, live link, Border
+
+**Scope, per the dispatch**: fix the T48-discovered edge-collinear-row product gap FIRST (a named "product issue,
+not a finding"), then build the rest of §14 Slice 3 as designed — ending rules, Border piece, shape-pick UI +
+`data-boundary-ref` link, commit-only refill, panel markup, save/load (already free). Fred's own SE13 answers,
+recorded by the advisor: "agree with your bracket propositions" — no runs yet, stretch/boundary-move needs no new
+rule, one Node-size field (no separate joint size), curved boundaries supported, Border defaults to the boundary
+shape's own stroke. This is the single largest turn this session — the WORK-LOG below is longer than usual to match.
+
+### Fix first: edge-collinear rows must not vanish
+
+**The real product bug, traced to its exact root cause, not just described.** Snap is on by default, so a
+hand-drawn rect/polygon boundary routinely has an edge EXACTLY on a grid row/column. `insideSpans` (T47) already
+has a documented, intentional degenerate case for this (`tests/editor-lattice-boundary.test.js`'s own
+"flat-edge-collinear" test): a scan line collinear with a boundary edge reports ZERO crossings from that edge
+(the parallel-line guard in `_lineIntersect`) — correct for "is this edge merely parallel", but it silently drops
+the edge from the inside/outside computation. Traced by hand for a rect at y=0..10 with a rail scanning y=0: only
+ONE of the two vertical side edges contributes a crossing (the other's own t=1 is the "excluded" half-open end,
+per the design's own convention) — an ODD crossing count can't pair, so the row returns `[]` and the entire
+top/bottom rail silently vanishes.
+
+**The fix, kept SEPARATE from Slice 1's own proven math rather than touching it.** Slice 1 (`insideSpans`) is
+already reviewed, merged, and independently parity-checked by the advisor against a dense-polyline oracle —
+re-opening its own half-open pairing logic to patch this was the wrong place to fix it (real risk of breaking
+something already proven). Instead, a NEW, independent query: `collinearSpans(scanLine, primitives)` (T49, same
+module) — for every `L` primitive exactly collinear with the scan line (not just parallel — the SAME infinite
+line, checked via a cross-product-against-direction test), report its own extent as a span, merging overlapping/
+touching ones. The CALLER (`computePattern`'s boundary branch) unions this in on top of `insideSpans`' own result
+— Fred's own declared rule, turned directly into the gating condition: **Border OFF -> union in (the edge row is
+kept); Border ON -> `insideSpans` alone (the edge is dropped, since Border already draws that exact line — no
+double stroke)**. `insideSpans` itself is untouched, byte-for-byte — confirmed via `git diff` on
+`editor-lattice-boundary.js` showing only an ADDED function, no changed lines in the existing one.
+
+**Verified two ways**: a unit test built the KNOWN-collinear case
+(`tests/editor-lattice-pattern-ending.test.js`) — Border off keeps the edge row/column, Border on drops it,
+an interior (non-collinear) row is byte-identical either way. Live: the CDP session's own real rect (drawn with
+the actual Rect tool, Snap on) produced a working, visibly-clipped lattice with no vanished edges either way —
+see the live-verification section below for why THIS particular draw didn't happen to land exactly on a rail
+row (an honest disclosure, not a claim this specific live run exercised the collinear branch — the unit tests
+carry that proof; the live run's own job was proving the end-to-end pipeline doesn't break, which it didn't).
+
+### §5 — the ending-rule table (on-boundary / inset / joint / loose)
+
+**The real design problem**: `_clipToSpans` (T48) already told the caller WHERE a span was clipped, but not
+WHICH of its two ends was a genuine boundary crossing vs. a plain "free" end (a tie's own un-clipped random draw
+end, today's Board-mode behavior). Fixed by widening its own return shape from `[a,b]` pairs to
+`{a,b,aIsCrossing,bIsCrossing}` (`aIsCrossing`/`bIsCrossing` = "this bound came from the boundary, not from the
+caller's own [lo,hi] limit") — every existing call site updated, board/rect mode's own single un-clipped piece
+now carries `aIsCrossing:bIsCrossing:false` and reduces byte-identically (confirmed: the existing T48 suite
+needed zero behavioral changes, only 3 tests needed an explicit `endRule:'on-boundary'` pin once `inset` became
+the real default — see below).
+
+New `_applyEndRule(a,b,aIsCrossing,bIsCrossing,endRule,halfWidth)`: `on-boundary` is a no-op (the crossing point
+IS the endpoint, §5's own "zero extra geometry" case); `inset` (**now the real default**) pulls a crossing end
+back by `halfWidth` (a plain subtraction along an already-known axis, not a clip); `joint` leaves the geometry
+alone and flags a node for the caller to emit there (reuses `addNode` verbatim — no new node code); `loose`
+picks the nearest INTEGER grid stop strictly inside the span as the new end instead of the true crossing,
+degrading to `inset` when no stop fits (the one named unhandled case §5's own text calls out — a span shorter
+than one grid cell) — proven with a deliberately-constructed too-short chord (a circle centered on a
+HALF-integer so no stop lands inside its own span at all, not just "an integer happens to be excluded" — the
+first draft of this test picked a circle centered ON an integer and it accidentally passed the wrong way,
+caught by re-reading the math before trusting the green result, not by luck).
+
+`widths` is now merged inside `computePattern` itself (previously only in the DOM-touching `generatePattern`) —
+the inset math is pure, so it belongs in the pure function per this file's own established split.
+
+**A self-inflicted, self-caught test bug found DURING this turn, not before**: my first "loose degrades to
+inset" test picked a circle centered on `cx=5` with `r=0.3` (chord `[4.7,5.3]`) expecting "no stop fits" — it
+failed, because `5` (an exact integer) sits STRICTLY inside that span, which IS a valid loose stop, not the
+"nothing fits" case the test meant to isolate. Re-read the geometry, switched to `cx=5.5` (chord `[5.2,5.8]`,
+straddling no integer at all) — a real correction to my own test's premise, not a code bug, caught by the test
+FAILING FOR THE RIGHT REASON (the code was already correct) rather than blindly loosening the assertion.
+
+### §7 — the Border piece
+
+"The SAME `d`/shape geometry, just re-stroked" (design doc's own words) implemented literally: `boundaryEl.clone()`
+(svg.js), not a re-derivation from the primitive list — the clone decodes through the SAME `OUTLINE_KINDS` export
+path the source element already does, so §8's "zero new export code" claim is inherited automatically rather than
+re-earned. Strips `data-boundary-ref` from the clone (the clone is a COPY, not the link itself — leaving the
+attribute would create a second element answering to the same id), re-tags `data-layer`/`data-lattice="border"`/
+the ownership attr, sets `fill:none` + `stroke`. Fred's own ruling this turn ("Border defaults to the boundary
+shape's own stroke"): a null width/color reads the LIVE element's own current `stroke`/`stroke-width` at Generate
+time, not a Lattice color — confirmed live (a rect with `stroke:#336699, stroke-width:0.15` produced a Border
+piece with exactly those values when left on Auto).
+
+### The live-wiring problem: `generatePattern` becomes async, and why that's the right shape
+
+`shapeToPrimitives` (Slice 1) is async — the `text` boundary kind awaits a font fetch — while `_resolveExtent`
+and `generatePattern` were both synchronous. Rather than a second, boundary-only sync-incompatible code path,
+`generatePattern` is now `async function` end to end; every caller (`properties-lattice.js`'s Generate button
+and orientation-flip handler) now `await`s it. Board/rect mode never hits a real `await` internally, so its own
+OBSERVABLE DOM mutations still happen synchronously within the same tick — confirmed by NOT needing to touch 43
+of 45 existing `generatePattern`-calling tests in `editor-lattice-pattern-emit.test.js` (only the 2 that
+destructured the RETURN VALUE directly needed an `await`; every "fire and forget, then check `_sketchLayer`"
+test kept working unchanged, since that DOM mutation still completes before the `await` boundary in the caller).
+One new panel test (`properties-lattice.test.js`) needed a macrotask flush (`setTimeout 0`) after `.click()`
+before checking `btn.textContent`, since `await`ing even an already-resolved promise still defers by spec — not
+guessed, confirmed by first seeing exactly that one test fail and tracing why.
+
+New `_resolveBoundaryPrimitives(editor, PATTERN)`: finds the linked element (`_findBoundaryElement`, by
+`data-boundary-ref`, `anyVisibleLayer` — a boundary shape need not live on the pattern's own target layer),
+calls `shapeToPrimitives`, bakes the element's own WORLD transform via `_bakeWorldTransform` — a DISCLOSED
+simplification, not silently assumed exact: `worldPoint` bakes L/C point-like fields exactly (any affine
+transform), but CIRCLE/A radii and A's own `phi` are scaled/rotated by a single measured UNIFORM scale+rotation
+(sampled once, from how the local origin and +x-axis tip both move under the same `worldPoint` bake) — exact for
+translate+uniform-scale+rotation (everything a Select-mode drag produces today), not exact under non-uniform
+scale. Named explicitly here and in the code's own comment rather than left to be discovered later.
+
+### §9 — commit-only link refresh
+
+`refreshBoundaryPatterns(editor)`, hung off the SAME hook `refreshOutlinePreview` already uses
+(`editor.js`'s `_notifyChange('commit')`, per the design doc's own instruction) — re-runs Generate for the
+ACTIVE layer whenever ANYTHING commits, gated to a same-tick no-op unless that layer is actually
+`extent.mode==='boundary'` with a linked shape. A REAL re-entrancy risk, solved with a module-level guard flag
+(`_boundaryRefillInProgress`): `generatePattern` itself calls `_notifyChange('commit')` at its own end — without
+the guard, every boundary refill would re-trigger itself forever. Traced through by hand (not just tested):
+since `generatePattern`'s own internal `_notifyChange('commit')` call happens BEFORE its returned promise
+settles, the guard (set before calling it, cleared only in `.finally()`) is still `true` at the exact moment
+that internal call fires, so the re-entrant call is a correct no-op — confirmed live (the drag-then-commit test
+below shows exactly ONE `notifyChangeCalls` entry, not an unbounded chain) and in a dedicated vitest case.
+
+Deliberately regenerates on EVERY commit while boundary mode is active, not just a commit that touched the
+linked shape specifically — a disclosed tradeoff (simpler, always correct since Generate is idempotent for an
+unchanged boundary/seed, at the cost of some redundant recompute on unrelated edits) rather than building a
+"did this specific commit touch the linked element" tracker for marginal benefit this slice.
+
+### Shape-pick UI: reusing the one hit-test primitive that already exists, building the "arm and consume" part fresh
+
+Searched first, not assumed: no "click canvas once, get a callback with the hit element" primitive exists
+anywhere in this codebase (checked `editor-interaction.js`, `skeleton-editor.js`). What DOES exist and gets
+reused: `editor._getNearbyElement(pt, tol, {anyVisibleLayer:true})`, the SAME hit-test Select/Node mode already
+share. New: `editor._boundaryPickCallback` — a one-shot flag checked in `handleStart` BEFORE the mode dispatch
+(same placement/reasoning as the existing pan-check: it must intercept the click no matter which tool is active
+when Pick is pressed), consuming the click and calling back with the hit (or `null` on empty space — the panel
+decides what "picked nothing" means, not the dispatcher). `stampBoundaryRef` is idempotent (re-picking the SAME
+element keeps its existing id) per design doc §1's own "linked by id" contract.
+
+### Panel UI — Boundary / Ending / Border, inside the existing panel body
+
+Three new sections (Boundary: Board/Shape toggle + Pick-shape + status; Ending: a declared 4-row `<select>`,
+same "table drives the control" shape `LATTICE_DRAW_KINDS` already uses; Border: checkbox + width + color
+swatch with an "auto" reset) added as ordinary `#editorLatticePanelBody` sections — same markup idioms as every
+existing section (labeled div, `.editor-fillmode-btn` segmented toggles, `no-stepper` on the packed width row).
+**Mid-task amendment, absorbed before commit**: seat A is building a mobile bottom drawer (MOB3) that will HOST
+this panel's existing DOM on phones — instructed to keep the new rows as normal sections (one wrapper + heading
+each) with no mobile-specific LAYOUT of my own, since the drawer makes sections collapsible itself. Checked
+against what was already built: compliant as written (each new section is already exactly one wrapper div with
+a `font-weight:600` heading span, structurally identical to Rails/Ties/Nodes/Colors/Widths, inside the same
+`#editorLatticePanelBody`) — no changes needed, confirmed by re-reading the actual markup after the amendment
+arrived, not assumed compliant from memory. The one new MOB2-style rule I DID add (`#latticeBorderEnabled`'s
+32px pointer:coarse touch target, styles/editor.css) is a widget-level a11y convention matching the EXISTING
+Nodes-checkbox precedent, not a section-layout decision, so it's unaffected by the amendment's own scope.
+
+Board/Shape and Ending are settings fields (take effect on the next Generate), matching every other structural
+field in this panel — NOT an immediate re-project the way Orientation is, since picking a shape and tuning
+Ending/Border before the first Generate is the more natural flow than re-running on every toggle.
+
+### Non-vacuity — 3 targeted mutation tests this turn, each isolating one new mechanism
+
+1. Ending-rule dispatch (`_applyEndRule`) short-circuited to a no-op: 4 of 17 `editor-lattice-pattern-ending`
+   tests failed — exactly inset/joint/loose/loose-degrade, the four whose own claim depends on the dispatch
+   doing anything; on-boundary and every edge-collinear test correctly stayed green (they don't touch this path).
+2. Border-gating (`borderEnabled ? inside : union(...)`) forced to always union: exactly the 1 "Border ON drops
+   the edge" test failed, everything else (including "Border OFF keeps it") stayed green — proves the GATE
+   specifically, not just that collinearSpans exists.
+3. Border-piece emission gate short-circuited to `if (false)`: exactly the 3 tests asserting a Border piece's
+   own PRESENCE failed (`TypeError`/length mismatches); the 7 tests about geometry/other behavior stayed green.
+
+All three: backed up, mutated, ran the targeted file, confirmed the EXACT expected failure set (not just "some
+failures"), restored from backup, confirmed byte-identical via `diff`, re-ran to green.
+
+### Live verification (CDP, fresh Chrome + profile `chrome-profile-t49`, killed and confirmed at 0 processes after)
+
+Ran the REAL app, not a proxy for it — the dispatch's own explicit ask, "Browser proof per your Slice 3 verify
+list." All via a real `Page.navigate` to `bspline_gen_palette.html` (server already running, confirmed serving
+this turn's own edited files via `curl` before starting), `Input.dispatchMouseEvent` for actual pointer gestures
+(not synthesized DOM events), screenshots saved to `t49-shots/`.
+
+- **A genuine environment finding, not assumed**: `#editorSVGContainer` reads 0×0 until `#svgEditorModal` (the
+  editor's own host, `display:none` by default — opened by the Stamp panel's "Edit" button in the real app flow)
+  is shown. Traced by walking the live DOM's own parent chain rather than guessing; the modal was shown directly
+  for this test (`window.svgEditor` was already `initEditor()`'d into that container at page boot regardless of
+  the modal's own visibility, confirmed before relying on it).
+- **Real Rect tool drag, Snap on** (the dispatch's own explicit "snapped rect drawn by the real rect tool"
+  check): produced x/y/width/height all exact multiples of the grid spacing (0.25") — confirmed by direct
+  division, not eyeballed. Picked via the real Pick-shape button + a real canvas click (screen coords derived
+  from the SAME viewBox math the editor itself uses, not hand-guessed). Generated: 7 rails, 6 ties, 13 nodes, 0
+  border — screenshot shows rails/ties VISIBLY clipped to the rect's own bounds, not spanning the canvas.
+- **Border toggled on**: a real Border piece appeared (`data-lattice="border"`, `stroke:#000000` — no shape
+  color override, this rect's own default), screenshot confirms a visible outline stroke at the shape's edge.
+- **A real circle boundary, all 4 ending rules, screenshotted each**: `on-boundary` (chords flush to the
+  circle), `inset` (each end visibly pulled back), `joint` (a node dotted at every single crossing — 42 nodes
+  for 21 rails, exactly 2 per rail, forming a visible "beaded" outline), `loose` (visibly short of the edge,
+  snapped to the nearest whole grid line) — all four are visually DISTINCT in the saved screenshots, the design
+  doc's own explicit verify bar, not just numerically different.
+- **Drag-then-commit refit (§9), the load-bearing timing claim**: mid-drag (a real `mouseMoved` held, screenshot
+  taken), rails were BYTE-IDENTICAL to pre-drag (x1/x2 unchanged) — confirmed NO live refit. After `mouseReleased`
+  (commit) + a settle wait, rails had SHIFTED to match the circle's new position — screenshot shows the lattice
+  correctly re-fit around the moved shape, Select handles visible around it. `notifyChangeCalls` unit test
+  confirms exactly one `'commit'`, not a re-entrant chain.
+- **Outline export (§8)**: `import('./editor/editor-io.js')` then a real `getLayerSvg(editor, layerId, 96,
+  {geometry:'fusion'})` call against the boundary-filled layer — `declined:0, declinedKinds:[]`. Zero new
+  decline kinds, proven by actually calling the export path, not argued from the shared-OUTLINE_KINDS claim alone.
+- **Save/load round-trip (§12)**: serialized `layer.pattern` (via `JSON.stringify`), simulated the exact
+  restore shape `editor-io.js`'s own `open()` uses (full object spread, only `id`/`name`/`visible` overridden),
+  compared before/after — byte-identical, `PATTERN.boundary.shapeId` survives. Zero new persistence code needed,
+  confirmed by actually round-tripping, not just citing that `.pattern` is already a generic persisted field.
+
+Chrome killed and re-verified at 0 matching processes afterward (own-profile match, `chrome-profile-t49`, before
+`Stop-Process`).
+
+Full vitest suite: 807/807 green (762 T47 baseline + 14 T48 + 31 T49 new: 5 collinearSpans + 8 ending-rule/
+edge-collinear + 8 panel wiring + 10 boundary-emit/Border/refill).
+
+Amendments polled clean before committing (the MOB3 heads-up above was absorbed into this same turn, not
+deferred) and again immediately before passing. Committed by explicit path (11 modified files:
+`bspline_gen_palette.html`, `editor-interaction.js`, `editor-lattice-boundary.js`, `editor-lattice-pattern.js`,
+`editor.js`, `properties-lattice.js`, `styles/editor.css`, plus 4 touched test files) + 2 new test files
+(`editor-lattice-pattern-ending.test.js`, `editor-lattice-pattern-boundary-emit.test.js`, staged individually
+first) + `WORK-LOG-lane-b.md` — pushed. `reference/` confirmed still untracked, not swept.

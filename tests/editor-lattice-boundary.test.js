@@ -12,7 +12,7 @@
  * lose and hardest to notice from output alone).
  */
 import { describe, it, expect } from 'vitest';
-import { shapeToPrimitives, insideSpans, primitivesBBox } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import { shapeToPrimitives, insideSpans, primitivesBBox, collinearSpans } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 // Minimal mock matching the SAME plain-DOM-adapter contract editor-io.js's
 // own _outlineAdapter provides to OUTLINE_KINDS (el.type / el.attr(name) /
@@ -305,5 +305,45 @@ describe('primitivesBBox (T48) — the conservative pre-filter bbox editor-latti
 
   it('an empty primitive list (a declined/degenerate shape) returns null, not a bogus inverted or zero box', () => {
     expect(primitivesBBox([])).toBeNull();
+  });
+});
+
+describe('collinearSpans (T49, "fix first") — a scan line exactly on a boundary edge', () => {
+  it('a rail exactly along a rect\'s own top edge reports that edge as a span (the case insideSpans itself intentionally drops)', async () => {
+    const el = mockEl('rect', { x: '0', y: '0', width: '10', height: '10' });
+    const prims = await shapeToPrimitives(el);
+    // insideSpans itself still reports [] here (the module's own
+    // documented degenerate case, unchanged) -- collinearSpans answers a
+    // DIFFERENT question ("which edges lie exactly on this line").
+    expect(insideSpans(horizontalRail(0), prims)).toEqual([]);
+    expect(collinearSpans(horizontalRail(0), prims)).toEqual([[0, 10]]);
+  });
+
+  it('a tie exactly along a rect\'s own left edge reports that edge as a span too (both axes, not rails-only)', async () => {
+    const el = mockEl('rect', { x: '0', y: '0', width: '10', height: '10' });
+    const prims = await shapeToPrimitives(el);
+    expect(collinearSpans(verticalTie(0), prims)).toEqual([[0, 10]]);
+  });
+
+  it('a rail NOT collinear with any edge (a genuine interior crossing) returns no collinear spans', async () => {
+    const el = mockEl('rect', { x: '0', y: '0', width: '10', height: '10' });
+    const prims = await shapeToPrimitives(el);
+    expect(collinearSpans(horizontalRail(5), prims)).toEqual([]);
+  });
+
+  it('a curve (CIRCLE/A/C) is never reported as collinear -- only straight L edges can lie exactly on a line', async () => {
+    const el = mockEl('circle', { cx: '0', cy: '0', r: '5' });
+    const prims = await shapeToPrimitives(el);
+    expect(collinearSpans(horizontalRail(0), prims)).toEqual([]);
+  });
+
+  it('two collinear edges on the same line (a slotted/notched shape) merge into one span when they overlap or touch', () => {
+    // Two L primitives both lying on y=0: [0,4] and [4,10] -- touching at
+    // x=4, must merge into ONE [0,10] span, not report a spurious gap.
+    const prims = [
+      { type: 'L', p0: { x: 0, y: 0 }, p1: { x: 4, y: 0 } },
+      { type: 'L', p0: { x: 4, y: 0 }, p1: { x: 10, y: 0 } },
+    ];
+    expect(collinearSpans(horizontalRail(0), prims)).toEqual([[0, 10]]);
   });
 });

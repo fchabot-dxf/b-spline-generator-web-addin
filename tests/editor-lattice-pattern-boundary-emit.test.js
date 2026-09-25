@@ -1,0 +1,256 @@
+/**
+ * SE13 Slice 3 (T49) — the DOM-touching half of boundary mode:
+ * generatePattern's own 'boundary' branch (async boundary-primitive
+ * resolution via a live `data-boundary-ref` element, §9's commit-only
+ * refill via refreshBoundaryPatterns) and the Border piece (§7).
+ *
+ * `worldPoint` (editor-coords.js) falls back to the IDENTITY transform
+ * whenever `el.matrix` isn't a function (its own documented contract) —
+ * this mock deliberately never defines `.matrix()`, so every boundary
+ * element here is implicitly untransformed; the WORLD-transform bake
+ * itself (`_bakeWorldTransform`) is exercised for its identity case only,
+ * which is suficient to prove the wiring without re-testing svg.js's own
+ * matrix math.
+ */
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  generatePattern, refreshBoundaryPatterns, stampBoundaryRef, OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, PATTERN_DEFAULTS,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+
+function _makeMockEditor() {
+  let elements = [];
+
+  function makeElement(type, initial) {
+    const store = { ...initial };
+    const el = {
+      type,
+      node: {
+        getAttribute: (k) => (store[k] !== undefined ? store[k] : null),
+        hasAttribute: (k) => store[k] !== undefined,
+      },
+      attr(k, ...rest) {
+        if (rest.length === 0) return store[k];
+        const v = rest[0];
+        if (v === null || v === undefined) delete store[k];
+        else store[k] = v;
+        return el;
+      },
+      stroke(v) {
+        if (typeof v === 'object' && v !== null) {
+          if ('color' in v) store.stroke = v.color;
+          if ('width' in v) store['stroke-width'] = v.width;
+        }
+        return el;
+      },
+      fill(v) { if (v !== undefined) store.fill = v; return el; },
+      center(x, y) { store.cx = x; store.cy = y; return el; },
+      addClass() { return el; },
+      removeClass() { return el; },
+      hasClass() { return false; },
+      remove() { elements = elements.filter((e) => e !== el); },
+      // T49: the two additions boundary-mode generatePattern needs beyond
+      // the SAME mock editor-lattice-pattern-emit.test.js already uses —
+      // .clone() for the Border piece, .type for shapeToPrimitives.
+      clone() { return makeElement(type, { ...store }); },
+    };
+    return el;
+  }
+
+  const sketchLayer = {
+    line(x1, y1, x2, y2) { const el = makeElement('line', { x1, y1, x2, y2 }); elements.push(el); return el; },
+    circle(d) { const el = makeElement('circle', { r: d / 2 }); elements.push(el); return el; },
+    children() { const arr = elements.slice(); arr.toArray = () => arr; return arr; },
+    add(el) { elements.push(el); return el; },
+    node: {},
+  };
+
+  const editor = {
+    _mW: 10, _mH: 8,
+    _sketchLayer: sketchLayer,
+    _layers: [{ id: '0', name: 'Layer 1', visible: true }],
+    _activeLayer: '0',
+    _color: '#000', _strokeWidth: 0.02,
+    _selectedElements: [],
+    pushStateCalls: 0,
+    notifyChangeCalls: [],
+    pushState() { editor.pushStateCalls++; },
+    _notifyChange(kind) { editor.notifyChangeCalls.push(kind); },
+    // Test-only helper: add a "live" boundary shape directly (bypasses
+    // the Pick-shape UI flow, already covered in tests/properties-
+    // lattice.test.js — this file is about generatePattern's own
+    // consumption of an already-linked element).
+    _addBoundaryRect(x, y, w, h) {
+      const el = makeElement('rect', { x: String(x), y: String(y), width: String(w), height: String(h) });
+      elements.push(el);
+      return el;
+    },
+  };
+  return editor;
+}
+
+function activeLayerPattern(editor) {
+  return editor._layers.find((l) => l.id === editor._activeLayer)?.pattern;
+}
+
+describe('generatePattern: boundary mode, end to end (async boundary-primitive resolution)', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('a linked rect boundary (matching the whole 10x8 board) produces the SAME rails as rect mode over the SAME bounds', async () => {
+    // Compared against RECT mode, not BOARD mode: board mode insets by
+    // PATTERN.margin (SE7c, "nothing generated sits exactly on the board
+    // edge") while boundary mode's own bbox is the shape's EXACT extent,
+    // un-inset -- the two are deliberately NOT the same box (a difference
+    // already established at the computePattern level, tests/editor-
+    // lattice-pattern-boundary.test.js). This test's own job is proving
+    // the DOM-level async pipeline (shapeToPrimitives -> bake -> resolve
+    // -> computePattern) wires together correctly end to end, matching
+    // rect mode's own already-proven span math over the identical box.
+    const spacing = PATTERN_DEFAULTS.spacing;
+    const iMax = 10 / spacing, jMax = 8 / spacing; // 40, 32
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    const shapeId = stampBoundaryRef(boundaryEl);
+
+    const rectPattern = { ...PATTERN_DEFAULTS, seed: 3, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+    const rectResult = await generatePattern(editor, { ...rectPattern, extent: { mode: 'rect', iMin: 0, jMin: 0, iMax, jMax } });
+    // Reset the mock layer between the two generates (separate editors is
+    // simpler than un-generating) -- a fresh editor per call, same pattern.
+    const editor2 = _makeMockEditor();
+    const boundaryEl2 = editor2._addBoundaryRect(0, 0, 10, 8);
+    const boundaryPattern = {
+      ...rectPattern,
+      extent: { mode: 'boundary' },
+      boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl2), endRule: 'on-boundary' },
+    };
+    const boundaryResult = await generatePattern(editor2, boundaryPattern);
+
+    const railsRect = rectResult.segments.filter((s) => s.kind === 'rail').map((s) => [s.a.i, s.a.j, s.b.i, s.b.j]).sort();
+    const railsBoundary = boundaryResult.segments.filter((s) => s.kind === 'rail').map((s) => [s.a.i, s.a.j, s.b.i, s.b.j]).sort();
+    expect(railsBoundary).toEqual(railsRect);
+    expect(railsBoundary.length).toBeGreaterThan(0); // non-vacuous
+    expect(shapeId).toBeTruthy();
+  });
+
+  it('an unlinked boundary (no shapeId) declines gracefully -- empty pattern, no crash', async () => {
+    const pattern = { ...PATTERN_DEFAULTS, extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: null } };
+    const { segments, nodePoints } = await generatePattern(editor, pattern);
+    expect(segments).toEqual([]);
+    expect(nodePoints).toEqual([]);
+  });
+});
+
+describe('generatePattern: the Border piece (§7)', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('Border OFF (default): no extra element beyond rails/ties/nodes', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
+    };
+    await generatePattern(editor, pattern);
+    const borders = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'border');
+    expect(borders).toHaveLength(0);
+  });
+
+  it('Border ON with no explicit width/color: inherits the LIVE boundary shape\'s own current stroke', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    boundaryEl.attr('stroke', '#336699');
+    boundaryEl.attr('stroke-width', '0.15');
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' },
+      boundary: {
+        ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
+        border: { enabled: true, width: null, color: null },
+      },
+    };
+    await generatePattern(editor, pattern);
+    const border = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'border');
+    expect(border).toBeDefined();
+    expect(border.attr('stroke')).toBe('#336699');
+    expect(border.attr('stroke-width')).toBe(0.15);
+    expect(border.attr('fill')).toBe('none');
+    expect(border.attr(OWNERSHIP_ATTR)).toBe(pattern.id);
+    // The clone is a COPY -- carries the shape's own geometry (type
+    // 'rect', x/y/width/height) but NOT the link attribute itself.
+    expect(border.type).toBe('rect');
+    expect(border.attr(BOUNDARY_REF_ATTR)).toBeUndefined();
+  });
+
+  it('Border ON with an explicit width/color: overrides the shape\'s own stroke', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    boundaryEl.attr('stroke', '#336699');
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' },
+      boundary: {
+        ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
+        border: { enabled: true, width: 0.2, color: '#ff0000' },
+      },
+    };
+    await generatePattern(editor, pattern);
+    const border = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'border');
+    expect(border.attr('stroke')).toBe('#ff0000');
+    expect(border.attr('stroke-width')).toBe(0.2);
+  });
+
+  it('Regenerate sweeps the OLD Border piece before emitting a fresh one (ownership, not a leaked duplicate)', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' },
+      boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary', border: { enabled: true, width: null, color: '#000000' } },
+    };
+    await generatePattern(editor, pattern);
+    await generatePattern(editor, pattern); // Regenerate, SAME pattern object (PATTERN.id already assigned)
+    const borders = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'border');
+    expect(borders).toHaveLength(1); // not 2
+  });
+});
+
+describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('does nothing when the active layer is not in boundary mode', () => {
+    editor._layers[0].pattern = { ...PATTERN_DEFAULTS, extent: { mode: 'board' } };
+    refreshBoundaryPatterns(editor);
+    expect(editor.notifyChangeCalls).toEqual([]); // no generatePattern call was fired at all
+  });
+
+  it('does nothing when boundary mode is set but no shape is linked yet', () => {
+    editor._layers[0].pattern = { ...PATTERN_DEFAULTS, extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: null } };
+    refreshBoundaryPatterns(editor);
+    expect(editor.notifyChangeCalls).toEqual([]);
+  });
+
+  it('re-generates the active layer\'s pattern when boundary mode IS active with a linked shape', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    editor._layers[0].pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
+    };
+    refreshBoundaryPatterns(editor);
+    await new Promise((resolve) => setTimeout(resolve, 0)); // the refill itself is fire-and-forget/async
+    const rails = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'rail');
+    expect(rails.length).toBeGreaterThan(0); // non-vacuous: something was actually (re)generated
+  });
+
+  it('non-vacuous: the re-entrancy guard prevents infinite recursion (generatePattern\'s own commit doesn\'t re-trigger a refill)', async () => {
+    // Proven indirectly: generatePattern's own _notifyChange('commit') call
+    // (at its end) would, without the guard, call refreshBoundaryPatterns
+    // again, which would call generatePattern again, forever. This test
+    // simply confirms a real boundary-mode refill completes (doesn't hang
+    // the test runner / blow the stack) within one macrotask flush.
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    editor._layers[0].pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
+    };
+    refreshBoundaryPatterns(editor);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(editor.notifyChangeCalls).toEqual(['commit']); // exactly one commit, not an unbounded chain
+  });
+});

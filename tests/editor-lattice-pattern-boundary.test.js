@@ -122,9 +122,17 @@ describe('computePattern: boundary mode, determinism', () => {
 });
 
 describe('computePattern: a circular boundary shortens rail rows near top/bottom (chords), exact against the circle\'s own equation', () => {
+  // endRule pinned to 'on-boundary' (T48-era default) -- this describe
+  // block is about the CUTTING geometry itself (insideSpans -> spans),
+  // not T49's own new ending-rule layer (which defaults to 'inset' and
+  // would pull every crossing back by halfWidth, confounding these exact
+  // chord-length assertions). Ending rules get their own describe block.
   const cx = 5, cy = 4, r = 4;
   const primitives = [{ type: 'CIRCLE', cx, cy, r }];
-  const PATTERN = { ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+  const PATTERN = {
+    ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+    boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' },
+  };
   const extent = { iMin: 1, jMin: 0, iMax: 9, jMax: 8, mode: 'boundary', primitives };
 
   it('the center row spans the full diameter; a row 3 above center is a shorter, exact chord', () => {
@@ -158,7 +166,10 @@ describe('computePattern: a concave/holed boundary produces MULTIPLE segments fo
     // here via the real function rather than re-typing the primitive list,
     // so this test also proves the two modules compose correctly end to end.
     return shapeToPrimitives(mockEl('path', { d })).then((primitives) => {
-      const PATTERN = { ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+      const PATTERN = {
+        ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+        boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' }, // isolate cutting geometry, see above
+      };
       const extent = { iMin: -10, jMin: -10, iMax: 10, jMax: 10, mode: 'boundary', primitives };
       const { segments } = computePattern(PATTERN, { extent });
       const rowZero = segments.filter((s) => s.kind === 'rail' && s.a.j === 0);
@@ -183,6 +194,7 @@ describe('computePattern: ties are clipped to the boundary, not just rails', () 
       seed: 99,
       rails: { every: 0, offset: 0 }, // no rails -- isolate ties
       ties: { density: 1, spanMin: 1, spanMax: 8, columns: [column], anchor: 'free', railSnapRows: 0 },
+      boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' }, // isolate cutting geometry, see above
     };
 
     // The RAW (unclipped) draw for this exact seed/column, from rect mode

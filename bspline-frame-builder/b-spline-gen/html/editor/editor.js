@@ -19,6 +19,7 @@ import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.
 import { LATTICE_DEFAULTS } from './editor-lattice.js';
 import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
+import { refreshBoundaryPatterns } from './editor-lattice-pattern.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 
@@ -300,6 +301,7 @@ export class VectorEditor {
      */
     _notifyChange(kind) {
         if (kind === 'commit') refreshOutlinePreview(this); // SE12 T37: commit-only, same timing as refreshDrape
+        if (kind === 'commit') refreshBoundaryPatterns(this); // T49 (SE13 §9): commit-only boundary-link refill, same hook
         if (!this._onChange) return;
         if (kind === 'commit') {
             if (this._pendingChangeFrame != null) {

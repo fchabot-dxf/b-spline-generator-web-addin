@@ -1726,6 +1726,53 @@
               </div>
             </div>
 
+            <!-- T49 (SE13 Slice 3): Boundary mode — "Board | Shape" toggle
+                 (same segmented shape as Orientation just above, same
+                 tier: a settings field, not a primary mode switch, so it
+                 stays 24px under pointer:coarse rather than the 44px
+                 #latticeAddKindGroup gets — see styles/editor.css's own
+                 comment on that choice). Board/Shape only takes effect on
+                 the next Generate/Regenerate, like every other structural
+                 field in this panel. -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Boundary</span>
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="latticeBoundaryBoard" class="editor-fillmode-btn active" style="flex:1;" title="Fill the whole board rectangle">Board</button>
+                <button type="button" id="latticeBoundaryShape" class="editor-fillmode-btn" style="flex:1;" title="Fill a picked shape's own outline">Shape</button>
+              </div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" id="latticePickShape" style="flex:1; height:26px; font-size:11px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Pick shape…</button>
+                <span id="latticeBoundaryStatus" style="font-size:10px; color:#666; flex:1;">No shape picked</span>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
+              <span style="font-weight:600;">Ending</span>
+              <select id="latticeEndRule" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+            </div>
+
+            <!-- MOB2: latticeBorderEnabled needs the same 32px pointer:coarse
+                 touch-target rule the Nodes checkboxes already have
+                 (styles/editor.css, ID-specific — added there too, not
+                 just here, since that rule doesn't match by class). -->
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Border</span>
+              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                <input id="latticeBorderEnabled" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> draw boundary
+              </label>
+              <div style="display:flex; gap:6px;">
+                <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px;">width
+                  <input id="latticeBorderWidth" type="number" min="0" step="0.05" placeholder="auto" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">color
+                  <div style="display:flex; gap:4px; width:100%;">
+                    <button id="latticeBorderColor" type="button" title="Border color" aria-label="Border color" aria-haspopup="true" aria-expanded="false" style="flex:1; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                    <button id="latticeBorderColorAuto" type="button" class="editor-fillmode-btn active" title="Inherit the boundary shape's own stroke" style="height:22px; font-size:9px; padding:0 4px;">auto</button>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <!-- SE7g (Fred: "the generate button needs to automatically
                  use a new seed"): Generate/Regenerate now rolls a fresh
                  seed on every press (editor-lattice-pattern.js's
