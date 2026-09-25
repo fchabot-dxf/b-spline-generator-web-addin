@@ -776,3 +776,10 @@ Outline/inlay geometry: offsets of the constrained centerlines where feasible. A
   hundreds of pieces; fallback = per-piece width dimension driven by the same parameter.
 - Fred: "no length needed though" → NO length/position dimensions on rails/ties/nodes; only WIDTH (offset) dimensions
   + the few shape params. Lengths/positions stay free (relationship constraints only).
+
+## Queued — MOB4 (seat A, after MOB3b): landscape side-by-side + double-tap handle (Fred 2026-09-25: "yes ok")
+1. Phone in LANDSCAPE (coarse pointer, height ≤ ~500px): editor and main screen go side-by-side — canvas/preview left,
+   the tool panel/sidebar right (scrollable), a vertical splitter handle between them (same makeSplitter, axis 'x').
+2. DOUBLE-TAP the handle (either orientation): jump to canvas-max ↔ settings-max (declared snap targets), single tap
+   keeps its current cycle behaviour.
+Later if still needed: floating mini-preview while adjusting a slider with the panel tall; Sparse/Medium/Dense presets.
