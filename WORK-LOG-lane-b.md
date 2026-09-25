@@ -5043,3 +5043,124 @@ before passing. Committed by explicit path (6 files: `editor/editor-expand-analy
 `main/export-flow.js`, `WORK-LOG-lane-b.md`) plus the 5 touched/new test files (`tests/editor-expand-
 analytic.test.js`, `tests/editor-expand-path.test.js`, `tests/editor-outline-preview.test.js`,
 `tests/export-flow.test.js`, `tests/editor-io-fusion-geometry.test.js`) — pushed.
+
+## T45 — opening a project now loads its drawing into the live editor
+
+**Root cause, confirmed by a dedicated research agent, not assumed from the dispatch's own framing
+alone.** `applySnapshot` (`main/snapshot-manager.js`) is the apply step for BOTH global undo/redo AND
+project load (cloud-project-manager.js's `_loadFrom`). It writes `P.editorSvg` (part of its generic
+`Object.keys(snap.P).forEach` restore loop) but never loaded that content into the LIVE
+`window.svgEditor`'s own document — correct for undo (SE4c: "the drawing has its own undo stack"), wrong
+for load. Confirmed the actual mechanism: `stamp-mask-manager.js`'s `updateStampMasks` reads
+`window.svgEditor._layers` directly — no fallback to `P.editorSvg` — so a cloud load silently rasterized
+masks from the STALE pre-load editor content, and (separately) `editor-outline-preview`/the sidebar Layers
+panel/exports all read the same stale live document. `editor.initEditor()` (editor/editor.js) itself never
+calls `.open()` — confirmed by reading the whole method — so the ONLY prior path that ever loaded content
+into the live editor was a manual "Edit" button click (`main/stamp/svg-source.js`) or boot.
+
+**A second, related bug found in the SAME investigation, also in scope (the dispatch's own item 2):**
+`app-init.js`'s `initSvgEditor` DOES call `.open(P.editorSvg, ...)` at boot when content exists — but its
+own boot-restore block only ever called `refreshDrape(preview)` afterward, NEVER
+`refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode)` — despite that block's OWN comment
+claiming "fire-and-forget, same as the other refreshAllStampMasks call sites above" (a comment describing
+behavior the code never actually had). `initApp`'s own EARLIER `refreshAllStampMasks` call (for the same
+boot) runs BEFORE `window.svgEditor` even exists (per that call site's own comment, confirmed) — a no-op.
+Net effect: at boot, the DRAPE (a flat color texture) DID refresh correctly, but the actual 3D CARVED
+GEOMETRY (the stamp masks driving the heightfield) never did — until the user manually opened the editor
+and hit Apply Stencils (which does call `refreshAllStampMasks`, in the Apply/Cancel `onCommit` path). This
+is the exact mechanism behind "the 3D shows the artwork [flatly, via drape] without opening the editor" —
+the ARTWORK COLOR showed, the actual CARVED SHAPE did not.
+
+**Fix 1 — `applySnapshot(snap, preview, {source})`, no default (Fred's own instruction: "no default that
+silently picks one").** A missing or unrecognized `source` now THROWS (`source must be 'undo' or 'load'`)
+rather than silently picking a behavior — the exact shape of bug that shipped originally (one function, one
+behavior, reused for two meanings that needed to differ). A dedicated research agent grepped every call
+site across `html/main`/`html/core` and confirmed exactly 4 exist, no others: `global-events.js`'s 3
+(Ctrl+Z/Y, the global undo/redo buttons, the sculpt top/bottom undo/redo buttons — all genuinely
+undo/redo) now pass `{source:'undo'}`; `cloud-project-manager.js`'s `_loadFrom` (the ONE project-load call
+site today) now passes `{source:'load'}` (and is now properly `await`ed — it wasn't before, meaning
+`setCurrentFile`/`markClean`/the "✓ Loaded" toast could previously fire before the snapshot had actually
+finished applying; now they wait for the real, now-heavier async work).
+
+For `source==='load'`, right after `runMigrations()` (so the FINAL, migrated `P.editorSvg` is what gets
+loaded, not a pre-migration shape): `window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn)` —
+the SAME restore call a manual editor-open already uses. Chose to REUSE `open()` rather than hand-roll a
+narrower "just swap the SVG" step, since `open()` (editor-io.js) already, by construction: clears the
+WHOLE sketch layer first (so loading B after A can never leave any of A's drawing behind — the dispatch's
+own explicit "must not leave any of A's drawing, masks, layers or outline preview" requirement, satisfied
+for free rather than re-implemented), rebuilds the layer roster from the NEW document's own
+`data-editor-layers`, resets the editor's own undo stack, and — via its own last step, `setActiveLayer()`
+— refreshes BOTH the sidebar Layers panel (`renderLayersPanel`) AND the outline preview
+(`refreshOutlinePreview`). One call covers 3 of the dispatch's 4 "must refresh" items; the EXISTING
+(already-unconditional) `updateStampMasks` call later in the SAME function now simply reads the
+freshly-loaded content for free, needing no change of its own — only DRAPE needed an explicit new call
+(`refreshDrape`, newly exported from `app-init.js` for this — `runMigrations` was already imported from
+there, no new import path, no circular-import risk confirmed by checking `app-init.js` imports nothing
+from `snapshot-manager.js`), gated the same way, since undo never changes the drawing so its derived
+texture never needs to.
+
+**Fix 2 — the boot-restore block** (`app-init.js`'s `initSvgEditor`): added the missing
+`refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode)` call, in the same position/order the
+Apply and Cancel paths already use (`.open()` → masks → drape) — matching the pattern already established
+twice in the same file rather than inventing a new one, and correcting that block's own stale comment in
+the same edit.
+
+**Tests, mutation-verified (new file, `tests/snapshot-manager.test.js`, 10 tests).** A deliberate,
+disclosed departure from this suite's own established "no vi.mock, real DOM/object stand-ins" convention
+(export-flow.test.js's own T44 notice on that convention, right above this entry): `applySnapshot`'s
+sibling-module dependency graph (engine/stamp-mask-manager/sculpt-interaction/terrain, each pulling in
+real rasterization/grid/engine machinery) is qualitatively heavier than anything tested in this session so
+far — a true orchestration function, not a pure geometry engine — and the thing actually under test here
+is the WIRING (does 'load' call `editor.open()`/`refreshDrape`, does 'undo' not), not those modules' own
+internals. `state.js`/`history.js`/`ui-utils.js` stayed REAL (their own setters/DOM lookups already guard
+safely against a happy-dom document with no matching elements — confirmed by reading each, not assumed,
+before deciding they were safe to leave real). Covers: the `source` guard (missing/unrecognized both
+throw); `'load'` calls `editor.open(editorRestoreSvg(), P.widthIn, P.heightIn)` with the exact args, calls
+`refreshDrape(preview)`, still refreshes masks; `'undo'` never calls `.open()`, never refreshes drape,
+still refreshes masks (both sources share that one). Mutation-verified 3 ways: disabling the source guard
+— exactly the 2 guard tests fail; disabling the 'load' `.open()` call — exactly 1 failure, the args-check
+test; making `.open()` run UNCONDITIONALLY (leaking into 'undo') — exactly 1 failure, the "never calls
+open()" undo test. Each mutation restored from a pre-edit backup, confirmed byte-identical via `diff`
+before re-running green. The boot-path fix (item 2) has no dedicated unit test — `initSvgEditor` is heavy
+DOM/canvas/VectorEditor-construction machinery with no prior test coverage of its own, and the dispatch's
+own vitest requirement was specifically about `applySnapshot`; verified live instead (below), consistent
+with this session's own established practice for boot/DOM-heavy code.
+
+**Live verification (CDP, fresh Chrome — port 9509, profile `chrome-profile-t45`, killed and confirmed
+mine by command-line match before stopping; 0 of that profile's processes remained after), driving the
+REAL production functions directly (not a stand-in), per the dispatch's own exact scenario.**
+- **Fix 1 (project load):** two synthetic "cloud snapshots" (A: a red rect, depth 0.3/square; B: a blue
+  circle, depth 0.6/ballnose — each its own full `data-editor-layers` roster), loaded via the real
+  `applySnapshot(snap, preview, {source:'load'})` — the EXACT function `_loadFrom` calls — with the editor
+  modal NEVER opened at any point. After A: `_sketchLayer` contains only the rect, `exportableStampLayers()`
+  reflects A's own depth/profile, undo stack freshly reset (length 1, the same "nothing to undo yet"
+  baseline `initApp`'s own comment describes). After B (loaded immediately after A, editor still never
+  opened): `_sketchLayer` contains ONLY the circle — the rect is completely gone, zero trace of A —
+  `exportableStampLayers()` now reflects B's own depth/profile, undo stack freshly reset again. Screenshot
+  (`t45-project-b-3d.png`) shows an unambiguous BLUE circular stamp mound in the 3D preview, zero trace of
+  the earlier red rectangle — both the drape color AND the actual carved heightfield geometry correct,
+  confirming masks AND drape, not just the drawing itself.
+- **Fix 2 (boot path):** re-invoked the real `initSvgEditor(preview)` (app-init.js) directly with fresh
+  `P.editorSvg` content (a green rect, depth 0.45/vbit) — exercising the exact lines this fix touched,
+  without needing to fight a separate, pre-existing, out-of-scope timing quirk in `main.js`'s own
+  unconditional `localStorage.removeItem('splineGenLastSession')` on every `DOMContentLoaded` (flagged by
+  the research agent as a second, related-but-distinct bug that would need confirming with Fred
+  separately — a genuine page reload today can't actually reach a "saved session exists at boot" state
+  through THAT mechanism at all; out of this dispatch's own stated scope, not touched). Result:
+  `exportableStampLayers()` shows `hasMask: true` for the new layer — proving the previously-missing
+  `refreshAllStampMasks` call now genuinely runs. Screenshot (`t45-boot-restore-3d.png`) shows a green,
+  sharply-beveled (vbit-profile) raised rectangular stamp in the 3D preview — the actual carved geometry,
+  not just a color overlay.
+- Zero console errors/exceptions across both CDP runs.
+
+Full vitest suite: 716/716 green (706 pre-T45 + 10 new `snapshot-manager.test.js` tests).
+
+Amendments polled clean before this entry; **one arrived at the pre-commit poll** —
+Fred (via Fusion): node outlines import as two half-circle arcs, not a true SketchCircle (his own sketch:
+82 SketchArcs, 0 SketchCircles). Per the amendment's own explicit instruction ("Finish T45 first and
+commit it, then as a SECOND commit this turn"), T45 itself is committed here unchanged by that amendment;
+the circle-export fix follows as its own separate commit in this same turn — see the NEXT entry below.
+
+Committed by explicit path (5 files: `main/app-init.js`, `main/cloud-project-manager.js`,
+`main/global-events.js`, `main/snapshot-manager.js`, `WORK-LOG-lane-b.md`) plus the new
+`tests/snapshot-manager.test.js` — pushed.
