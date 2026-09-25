@@ -777,6 +777,17 @@ Outline/inlay geometry: offsets of the constrained centerlines where feasible. A
 - Fred: "no length needed though" → NO length/position dimensions on rails/ties/nodes; only WIDTH (offset) dimensions
   + the few shape params. Lengths/positions stay free (relationship constraints only).
 
+## Queued — MOB5 (seat A, NEXT after MOB3b, before MOB4): mobile pan & zoom (Fred 2026-09-25: "pan and zoom
+(pan should be integrated in 2-finger interaction) doesn't work well in mobile")
+Root cause (advisor, editor-interaction.js ~:160-175): the two-pointer handler only ZOOMS — zoomAbout(view, pivot at
+the current midpoint, factor) — with no TRANSLATION term, so sliding two fingers without spreading them (factor ≈ 1)
+does nothing: there is no two-finger pan. Fix: each frame apply pan = Δmidpoint (screen → model units) AND zoom
+about the new midpoint; clean start/end (no jump, no stray draw when a finger lifts). Also check: one-finger drag on
+empty canvas in Select mode (pan or marquee — declare which on touch), the main-screen 3D preview's touch controls
+(rotate / pinch / two-finger pan), and that the PAGE never scrolls/zooms instead of the canvas (touch-action,
+viewport meta). CDP touch tests: two-finger slide pans by the right amount, pinch keeps the point under the fingers
+fixed, combined gesture both.
+
 ## Queued — MOB4 (seat A, after MOB3b): landscape side-by-side + double-tap handle (Fred 2026-09-25: "yes ok")
 1. Phone in LANDSCAPE (coarse pointer, height ≤ ~500px): editor and main screen go side-by-side — canvas/preview left,
    the tool panel/sidebar right (scrollable), a vertical splitter handle between them (same makeSplitter, axis 'x').
