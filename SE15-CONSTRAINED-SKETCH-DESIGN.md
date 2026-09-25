@@ -566,6 +566,20 @@ reading `constraint_step`'s own code); a real "hundreds of pieces" lattice send,
 
 ---
 
+## Answers (advisor, MEASURED in Fusion 2026-09-25, scratch sketch deleted after)
+1+2. `sketch.offset(ObjectCollection[oneOpenLine], directionPoint, dist)` works on a SINGLE OPEN line: ONE side per
+   call → two calls per centerline; each creates a SketchOffsetConstraint + a SketchOffsetCurvesDimension. Setting
+   that dimension's `parameter.expression = 'rail_width / 2'` (a user parameter) WORKS: changing the parameter from
+   0.1→0.3 in moved the offsets to ±0.15 in. `geometricConstraints.createOffsetInput/addOffset2` exist but take a
+   std::vector (a Python list), not an ObjectCollection — the classic `sketch.offset` path is proven; use it.
+3. Timing: 100 rails × 2 offsets = 20.6 s (~0.1 s per piece, before caps/param wiring). A typical lattice (6-7 rails +
+   8-13 ties ≈ 20 pieces) ≈ 2-4 s — fine. Threshold default: 60 pieces constrained; above → plain geometry (declared,
+   tunable).
+4. Placement: keep `_import_single_layer_svg`'s construction-plane placement (advisor default; revisit after use).
+5. Default: a constrained-sketch send REPLACES that layer's plain SVG sketch, and the carve STAMP still runs
+   (relief + editable sketch from one send). Revisit after use.
+6. Noted as extension points; nothing to build.
+
 ## Open questions for Fred / the advisor (this doc's own defaults above; revisit after Slice 3's own live pass)
 
 1. **Two-sided offset (§4)**: does `createOffsetInput`/`addOffset2` accept a SINGLE call for both sides of an
