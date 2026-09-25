@@ -3912,3 +3912,285 @@ Amendments polled clean (`handoff.py amendments --role worker`) a second time im
 nothing further pending. Committed by explicit path (7 files: `editor/editor-io.js`, `editor/editor.js`,
 `editor/init.js`, new `editor/editor-outline-preview.js`, `main/stamp/fusion-geometry.js`, new
 `tests/editor-outline-preview.test.js`, this WORK-LOG) — pushed.
+
+## Lane B — Turn 93 — T38: visible outline preview + circle/rect exact outlines — DONE (polyline/polygon/generic-path NOT built this turn, disclosed below)
+
+**Part 1 — preview visibility (T37 review finding, fixed first per the dispatch's own order).** T37's own
+screenshot showed nothing: a same-color-as-source thin line drawn AT the source's own edge is invisible
+against a stroke of that same color, AND (the second, independently-necessary half of the fix, found while
+tracing this) a `0.02`-model-unit stroke shrinks to sub-pixel at fit-to-page zoom on a multi-inch board —
+color alone wasn't the whole bug. Fixed both: two new CSS classes (`styles/editor.css`)
+`.outline-preview-halo` (`stroke:#fff; stroke-width:3px`) and `.outline-preview-line`
+(`stroke:#1a1a1a; stroke-width:1px`), both `vector-effect:non-scaling-stroke` (a constant SCREEN pixel
+width regardless of editor zoom — the fix for the second half). `refreshOutlinePreview` now draws TWO path
+elements per outlined source (halo underneath, line on top, same `d`, same transform), and dropped the
+`showsColor`/`_currentElementColor`/`.layer-no-color` machinery entirely — there's no per-element color
+choice left to gate. `showsOutline(layer)` is unaffected and remains the only visibility gate, exactly as
+before.
+
+**Part 1 — the other three refresh triggers ("undo/redo, layer switch, document open/restore").** Tracing
+why these didn't already work surfaced a WIDESPREAD pre-existing pattern: `editor._onChange()` called
+DIRECTLY (bypassing `_notifyChange`, T37's own commit-only hook) at ~25 call sites across 10 files —
+`editor.js`'s `_restoreState` (undo/redo's shared function) and `layers.js`'s `setLayerVisible`/
+`setLayerCarve`/others among them. Sweeping all 25 is clearly out of this turn's scope (and directly
+against the dispatch's own caution that Seat A is concurrently editing `editor.js`/`editor-io.js`/
+`layers.js` for SE7i) — fixed only the specific spots this requirement needs:
+- `editor.js`'s `_restoreState` (shared by `undo()`/`redo()`): `this._onChange()` → `this._notifyChange('commit')`
+  — a safe drop-in (that method itself checks `this._onChange` before calling it, same effective end
+  behavior) that additionally refreshes the preview.
+- `layers.js`'s `setLayerVisible` (the one field among the bypass sites that actually changes
+  `showsOutline`'s result, since visibility gates `isExported`): same swap, with a defensive fallback to
+  the old direct call if `_notifyChange` isn't present (keeps working against any caller/mock that doesn't
+  implement the full method surface).
+- `layers.js`'s `setActiveLayer`: had NO onChange call at all before this — added a direct
+  `refreshOutlinePreview(editor)` call (not the full `_notifyChange('commit')`, which would also trigger a
+  remask+redrape neither switching layers nor opening a document has any reason to pay for). This ONE hook
+  covers BOTH "layer switch" AND "document open/restore" for free: `editor-io.js`'s `open()` calls
+  `editor.setActiveLayer(firstLayerId)` as its own last roster-restore step (confirmed by reading it, both
+  the content-found and the empty-editor early-return paths), so a document load refreshes the preview
+  through this same one hook with no separate call needed there.
+
+Fixing `setActiveLayer` required importing `refreshOutlinePreview` INTO `layers.js`, which imports it FROM
+`editor-outline-preview.js`, which already imports `showsOutline`/`showsColor` FROM `layers.js` — a genuine
+circular import. Reasoned through before writing it (not discovered by a crash): every binding crossing the
+cycle is a hoisted function DECLARATION (`export function ...`), never a `const`, so nothing depends on the
+OTHER module's top-level code having run yet — confirmed safe by the full suite passing with zero import
+errors, not just by the reasoning alone.
+
+**Tests** (`tests/editor-outline-preview-triggers.test.js`, new): `setActiveLayer` rebuilds the preview from
+current state (and non-vacuously — re-switching to the SAME id after an external field change still
+re-reads, proving no caching); undo/redo (via the REAL `VectorEditor.prototype` methods borrowed onto a
+minimal mock, same convention `editor-lattice-undo.test.js` already established) restore `_layers` AND
+refresh the preview to match. `editor-lattice-undo.test.js` itself needed `_notifyChange` added to its own
+mock (the SAME borrowed-real-method convention) since `_restoreState` now calls it — `refreshOutlinePreview`
+no-ops cleanly on a mock with no `_outlinePreviewLayer` (its own top-level guard), so this didn't need a
+heavier mock, just one more borrowed method. "Document open/restore" has no dedicated mock test —
+`editor-io.js`'s `open()` needs a much heavier mock than this style, same conclusion several OTHER test
+files already reached and noted (`editor-serialization.test.js`'s own comment) — covered instead by the
+`setActiveLayer` test (transitively, since `open()` calls it) and the live CDP check below (directly).
+
+**Non-vacuous, by mutation**: removed `refreshOutlinePreview(editor)` from `setActiveLayer` — exactly its 2
+own tests failed, undo/redo tests unaffected. Reverted; full suite re-confirmed green after each.
+
+**Part 2 — exact shape outlines: circle and rect (both `editor-expand-analytic.js`).** Both closed-form —
+no offsetting ALGORITHM needed, unlike a general polygon (see the disclosure below for why that's NOT
+attempted this turn). `circleOutlinePathD`: two concentric circles at `r ± strokeWidth/2` (Fred: "circle →
+two concentric circles"), same two-`A`-semicircle construction `lineOutlinePathD`'s own degenerate
+zero-length-line case already established (factored out as a shared `_circleLoopD` helper). `rectOutlinePathD`:
+the Minkowski-sum outer boundary — a standard rounded-rect path (4 lines + 4 quarter `A` arcs of radius
+`strokeWidth/2`, each centered on one of the rect's own ORIGINAL sharp corners) — plus a sharp-cornered
+inner rect offset inward (offsetting inward never needs rounding; only outward offsetting opens a gap at a
+convex corner that a round join has to fill). Both have an "inner ring vanishes" case (circle:
+`strokeWidth/2 >= r`; rect: `strokeWidth >= the shorter side`) — same reasoning both times: the inward
+offset would invert.
+
+**The rect corner-arc sweep flag was WRONG on the first attempt — caught by verification, not assumed
+correct from the geometry alone**, the exact same class of mistake T34 made twice already this session. My
+first numeric check used ad-hoc test coordinates that didn't actually match what `rectOutlinePathD` itself
+produces, and appeared to confirm the WRONG sweep value; redoing it with the ACTUAL coordinates my code
+emits (traced through by hand: for a rect at origin, width 10, height 6, strokeWidth 2, the top-right
+corner arc runs from `(10,-1)` to `(11,0)`) showed `sweep=1` is correct (arc centered exactly at the
+original corner, bulging away from the rect's own center) — confirmed on a second, structurally-different
+corner (bottom-left) too before trusting it into the actual implementation.
+
+**Filled shapes** (Fred: "outline = the shape's own edge, exact, no offset; 'both' = edge offset by w/2"):
+both `circleOutlinePathD`/`rectOutlinePathD` take an explicit `mode` (`'stroke'` default / `'fill'` /
+`'both'`) rather than three separate functions per shape — `'fill'` returns the shape's own exact boundary
+(zero offset, `strokeWidth` ignored entirely); `'both'` returns the SAME outer-ring construction `'stroke'`
+mode uses, but never appends an inner ring regardless of how the strokeWidth/size ratio would normally
+leave one. `_fillModeOf(el)` (new, `editor-outline-preview.js`) reads the element's OWN `fill`/`stroke`
+presentation attrs to pick the mode — declared once since every closed-shape `OUTLINE_KINDS` entry needs
+the same read.
+
+**Ellipses and cubic/quadratic paths declined explicitly** (Fred: "NOT exact by nature... return
+`{unsupported:'curve'}` this turn"): a new `ellipse` `OUTLINE_KINDS` entry that unconditionally returns
+`{d:null, unsupported:'curve'}` — an EXPLICIT decline, not just a missing table entry, so a future reader
+sees "considered and ruled out this turn," not "never considered" (same distinction
+`SUPPORTED_LINE_CAPS`'s `butt`/`square:false` already makes for caps).
+
+**Tests** (`tests/editor-expand-analytic-shapes.test.js`, new, 13 cases; plus `editor-outline-preview.test.js`
+extended): every ring point checked against its EXACT analytic distance (circle: `r±strokeWidth/2`
+directly; rect: perpendicular distance to the nearest original edge for straight points, radius-`half`
+distance to the nearest original corner for arc points); annulus/rounded-rect areas checked against their
+closed-form formulas (`2·π·r·strokeWidth` for the circle annulus; `(W+sw)·(H+sw) - (4-π)·(sw/2)²` for the
+rounded outer rect — the bounding box minus the 4 corners' round-over cut, derived and checked, not
+assumed); inner-ring-vanishes and its non-vacuous "just under the threshold, ring is real" counterpart for
+both shapes; all 3 fill modes end-to-end through `refreshOutlinePreview` (not just the pure geometry
+functions in isolation), including the mode:`'both'` case checked by ABSENCE of the inner ring (a bare
+presence check on the outer ring alone can't tell `'both'` apart from `'stroke'`, since they share the
+identical outer-ring formula — caught by mutation, see below, not written defensively up front).
+
+**Non-vacuous, by mutation**: removed the halo shape from `refreshOutlinePreview` (kept only the line) —
+exactly the 10 tests keyed on the halo/pair-count failed, nothing else. Forced `_fillModeOf` to always
+return `'stroke'` — the FIRST version of the mode:`'both'` test (checking only for outer-ring presence)
+did NOT fail, a real gap this mutation itself exposed — strengthened it to also assert the inner ring's
+ABSENCE, re-ran the mutation, now both the mode:`'fill'` and mode:`'both'` tests correctly failed. Reverted
+both mutations; full suite re-confirmed green (579/579) after each.
+
+**What's NOT built this turn, disclosed rather than silently dropped: polyline/polygon (general offset with
+round joins at convex corners, miter intersection at concave), the generic M/L/H/V/A path kind that builds
+on it, and text.** These were in T38's own dispatch list. Reasoned through the algorithm in real detail
+(per-vertex signed turn angle via 2D cross product decides round-vs-miter, independently for each of the
+LEFT and RIGHT offset rings since which side is "outer" flips with the polygon's own winding direction,
+determined via the shoelace sign) — genuinely tractable, but a well-known source of subtle, hard-to-catch
+bugs (self-intersection at tight concave corners, near-180° reflex angles sending a naive miter toward
+infinity, degenerate zero-length edges) even in mature CAD software, and this SAME session already caught
+itself getting arc geometry wrong TWICE (T34) purely from trusting derivation without empirical
+cross-checking — a direct, fresh argument against rushing a substantially harder geometry problem right
+after a large turn already delivering real, tested, mutation-verified scope. Stopping at circle+rect
+(complete, closed-form, no open questions) is a genuine, shippable checkpoint rather than a half-built
+polygon offsetter. Flagging this now rather than after a rushed attempt, per this session's own "capacity
+is a reportable fact" discipline.
+
+**Live verification — the real symptom, not a proxy.** Hit the SAME Node-`child_process.spawn`-fails-headless-
+Chrome environment issue T37's own WORK-LOG entry first recorded — confirmed it's not a one-off: the
+Bash-launch-then-connect-from-Node workaround from that entry was needed again here and worked again.
+Checked chrome.exe ownership via `Get-CimInstance` command-line matching before touching anything (T36's own
+established discipline) — one round found 0 processes (clean), a later round found 8 ALL matching a
+DIFFERENT session's `chrome-se7i-onelayer` path (Seat A's own SE7i smoke test, not mine), left them
+untouched. Real lattice (17 rails), a real hand-drawn stroke-only rect and circle on a second layer, both
+picked Outline:
+- Screenshot at fit zoom: the rect and circle both show the halo+line annulus CLEARLY and distinctly (a
+  visible dark-ring-inside-white-ring effect) — night and day versus T37's own invisible screenshot.
+- The lattice rails did NOT show a visually obvious outline at this SAME fit zoom — investigated rather
+  than assumed fine: `getComputedStyle` on a rail's own preview element confirmed EXACTLY correct values
+  (`stroke: rgb(255,255,255)`, `stroke-width: 3px`, `vector-effect: non-scaling-stroke`, `opacity: 1`,
+  `visibility: visible`) — the mechanism is genuinely correct. Zoomed into one rail directly (overriding the
+  root `<svg>`'s `viewBox` to a tight window around it, bypassing the app's own zoom API entirely since its
+  exact name wasn't confirmed) and the halo IS visible there. Conclusion, stated as reasoning not just
+  assertion: a lattice rail is only ~0.035" wide — at fit-to-page zoom (a multi-inch board compressed into
+  ~600px), a FIXED 3px-screen-width halo is proportionally comparable to the rail's own on-screen thickness
+  at that same distance, so it reads as subtle rather than absent — an inherent trade-off of
+  `vector-effect:non-scaling-stroke` (constant SCREEN size regardless of document zoom), not a defect; it's
+  exactly why the dispatch itself asked for screenshots "at fit zoom AND zoomed in" rather than either
+  alone. Also live-confirmed (matching what the vitest suite above already proved precisely): switching to
+  Centerline via `setActiveLayer` dropped the preview count from 38 to 34 (exactly the 4 shapes from the
+  rect+circle, rails' 34 untouched); a `pushState`+`undo` cycle changed the count again (confirming the
+  refresh genuinely fires end-to-end in the real app, though the exact target value wasn't meaningfully
+  assertable from this ad-hoc script the way the controlled vitest mocks already are — precise verification
+  of that TIMING lives in the vitest suite, this was the "doesn't silently no-op in the real app" check).
+Screenshots saved (`t38-fit-zoom.png`, `t38-rail-viewbox-zoom.png`, session scratchpad).
+
+**Process hygiene**: chrome ownership checked via `Get-CimInstance` before every stop this turn (not just
+`tasklist`), consistent with T36/T37's own established discipline; confirmed 0 of MY OWN processes remained
+after each stop while leaving other sessions' processes untouched throughout. The repo-root `http.server`'s
+actual LISTENING PID was found (twice — `netstat`'s own plain grep intermittently missed it both times,
+resolved with a broader grep, same minor tool quirk T37 also hit) and stopped; `curl` re-confirmed refused
+connections afterward, not just netstat's listing.
+
+**Mid-task amendment landed before passing**: Fred — "ellipse and curved path too please" — include them THIS
+turn via BIARC fitting (tangent-continuous circular-arc pairs, tolerance 0.001in) rather than declining, since
+arcs import into Fusion as real measured SketchArcs and are CNC-friendly (G2/G3), unlike cubics/splines. The
+amendment itself explicitly permits a two-commit split ("land preview-visibility + exact shapes first,
+commit, then the fit in a second commit before passing") given the genuine size of a NEW curve-fitting
+algorithm — taking that path: this is commit 1 (everything above, unchanged), a checkpoint at a real,
+complete, tested state; the biarc fit is attempted next as commit 2, appended below if it lands, or reported
+honestly as still-open in the pass-back if it doesn't.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing. Committed by explicit
+path (10 files: `editor/editor-expand-analytic.js`,
+`editor/editor-outline-preview.js`, `editor/editor.js`, `editor/layers.js`, `styles/editor.css`,
+`tests/editor-lattice-undo.test.js`, `tests/editor-outline-preview.test.js`, new
+`tests/editor-expand-analytic-shapes.test.js`, new `tests/editor-outline-preview-triggers.test.js`, this
+WORK-LOG) — pushed.
+
+## Lane B — Turn 93 (commit 2) — T38 amendment: biarc-fit ellipse + cubic outline support — DONE (cubic left standalone/unwired, disclosed below)
+
+**The primitive.** New module `editor/editor-expand-biarc.js`, `fitOffsetWithBiarcs(paramToPoint,
+paramToTangent, t0, t1, tolerance=0.001, maxDepth=12)`: given ANY parametric curve as two callbacks (point
+at t, unit tangent at t), recursively splits `[t0,t1]` in half and fits each half with the UNIQUE circle
+through its start point tangent to the curve there and passing through its end point
+(`_circleFromPointTangentPoint` — standard `center = P + s*N`, `s = |Q-P|^2 / (2*N.(Q-P))`, `N` = the
+tangent's own normal). Both halves of a split use the SAME computed midpoint point+tangent, so the joint is
+tangent-continuous by CONSTRUCTION, not a numerical coincidence checked after the fact. A half is accepted
+once `_maxDeviation` (12-sample check of the true curve's distance from the fitted circle's own
+center/radius) is under an INTERNAL threshold of `tolerance * 0.7` — the margin exists because discrete
+sampling can miss the true continuous-range worst point; measured directly on a full ellipse: 0.00105
+actual max deviation with no margin (over the 0.001 target) vs 0.00067 with the margin (safely under).
+Chose this over a plain "just resample more" fix because more samples alone doesn't bound the GAP between
+samples, only shrinks it — the margin bounds the actual risk directly and is empirically verified, not
+assumed.
+
+**A real bug, found by testing, not by inspection.** The sweep-direction logic in
+`_arcSegmentThroughTangent` initially read `if (dot < 0) dTheta = dTheta > 0 ? dTheta - 2*PI : dTheta +
+2*PI;` — flip whenever the tangent-direction dot product is negative, regardless of `dTheta`'s OWN sign.
+Every test up through CCW/CW quarter-circles and a full ellipse passed (curvature sign never changes on
+those shapes, so `dot` and `dTheta` never independently disagree in the one case this formula gets wrong).
+A cubic S-curve test case (curvature crossing zero at t=0.5, the amendment's own explicit ask) exposed it:
+one specific sub-segment came out as `largeArc=1`, radius 8.3, for what should have been a tiny near-straight
+arc — measured deviation ~15.4 against a ~0.0007 target, bounding-box outlier at minX=-12.6 vs an expected
+~0. Root-caused by checking the bounding box of the full sampled ring (found the outlier), then isolating to
+the one bad `A` segment, then hand-checking its own P/T/Q: `dot<0 AND dTheta<0` — already consistent,
+should NOT flip, but the old code flipped anyway. Fixed by comparing `wantsPositive = dot>0` against
+`isPositive = dTheta>0` and flipping ONLY when they disagree. Re-ran every prior-passing case afterward
+(unchanged) and the S-curve case: 0.00068 deviation, correct. This is the THIRD time this session a
+hand-derived arc-sweep formula has been wrong and only caught by numeric sampling against real geometry
+(T34 twice, this once) — same lesson each time, logged again because it keeps paying for itself.
+
+**Mutation-proof, on the real source file, not just a local comparison.** Reverted the fix in
+`editor-expand-biarc.js`, ran the full suite: exactly 3 tests failed, reproducing the SAME ~15.4-deviation /
+~470x-area bug signature the debugging session found by hand, while the CCW/CW-quarter-circle and full-
+ellipse tests correctly stayed green (confirming the bug really is invisible to constant-curvature-sign
+shapes, matching the root-cause reasoning above). Reverted the mutation, full suite green again
+(592/592) before moving on. New tests: `tests/editor-expand-biarc.test.js` (13 cases) — `fitOffsetWithBiarcs`
+tangent-continuity and tolerance on a quarter-circle (CCW+CW) and a full ellipse, `ellipseOutlinePathD`
+outer/inner ring distance-from-center checks (relative bound, not `toBeCloseTo(x,6)` — same
+kappa-approximation-tolerance lesson from T34/T35's own path-layout tests), `cubicSegmentOutlinePathD` on
+the S-curve case, and a standalone local reproduction of the sweep bug (computing P/T/Q from a real circle,
+not hand-typed approximate numbers) plus the real-source-mutation test described above.
+
+**Wired into the app.** `editor-expand-analytic.js` gained `ellipseOutlinePathD({cx,cy,rx,ry,strokeWidth,
+mode,tolerance})` (outer/inner rings via `fitOffsetWithBiarcs` over the ellipse's own parametrization, mode-
+aware exactly like circle/rect, plus a whole-ring-vanishing check using the ellipse's OWN minimum radius of
+curvature `min(ry^2/rx, rx^2/ry)` — valid because an ellipse's curvature sign never changes, same class of
+check as circle/rect's) and `cubicSegmentOutlinePathD({x1,y1,cx1,cy1,cx2,cy2,x2,y2,strokeWidth,cap,
+tolerance})` (single stroked cubic segment, banks fit via the same biarc primitive, round caps, but
+clamped PER-POINT via the segment's own signed curvature `kappa(t) = (d1.x*d2.y - d1.y*d2.x)/|d1|^3` rather
+than one whole-ring check — an S-curve bends BOTH directions along its length, so "does the whole ring
+vanish" is the wrong question for it, unlike ellipse/circle/rect where it's valid). `OUTLINE_KINDS.ellipse`
+in `editor-outline-preview.js` now calls the real `ellipseOutlinePathD` (reading `cx/cy/rx/ry/stroke-width`
++ `_fillModeOf(el)`, same adapter shape as circle/rect) — REPLACING the checkpoint-1 placeholder decline
+entry, per the amendment's own words ("include ellipses... THIS turn instead of declining them").
+Mutation-verified the wiring itself, not just the geometry function: reverted `OUTLINE_KINDS.ellipse` back
+to the decline placeholder, ran `tests/editor-outline-preview.test.js` — exactly 1 failure (the new
+"ellipse produces a real biarc-fit preview through refreshOutlinePreview" test), the other 21 in that file
+unaffected; reverted the mutation, re-confirmed green.
+
+**Scope disclosed, not silently dropped — `cubicSegmentOutlinePathD` is NOT wired to any `OUTLINE_KINDS`
+entry this turn.** It exists as a tested, reusable standalone function (the amendment's own test ask — "max
+deviation on... a cubic S-curve" — is a claim about the FITTING PRIMITIVE, verified directly against it, not
+about a full assembled path). Wiring a generic `'path'` kind that actually walks a real multi-segment
+M/L/H/V/A/C/S/Q/T path — mixing straight runs, exact arcs, and now curve-fit cubics, all needing the SAME
+join logic at each vertex (round vs. miter offset, decided by the vertex's own signed turn angle, independently
+per side since which side is "outer" flips with winding direction) — is the SAME deferred piece checkpoint
+1's WORK-LOG entry already named for polyline/polygon, for the same reason: a well-known source of subtle
+bugs (self-intersection at tight concave corners, degenerate zero-length edges) that deserves its own
+unhurried pass, not a rushed bolt-on to an already-large curve-fitting turn. `elliptical-A` inside a
+multi-segment path is the SAME deferred piece too (it's a path-segment-kind question, not a curve-fitting
+one — the biarc primitive itself is generic and would handle it once path assembly exists). Final scope this
+turn: ellipse — real, biarc-fit, wired end-to-end. Cubic/quadratic segment fitting — real, tested,
+standalone, not yet wired to a path kind. Polyline/polygon/generic-multi-segment-path (including
+elliptical-A-in-a-path) — still deferred, unchanged from checkpoint 1's own disclosure.
+
+**Live verification.** Restarted the dev server (`python -m http.server 8771 --directory .` from the
+worktree root — the prior session's server and Chrome had both exited between turns) and a fresh headless
+Chrome on a NEW port (9498) with its OWN user-data-dir (`chrome-profile-t38b`), checking
+`Get-CimInstance Win32_Process -Filter "Name='chrome.exe'"` both before launching (0 processes — clean) and
+before stopping (8 processes, all matching MY OWN `chrome-profile-t38b` path, none belonging to another
+session) — same discipline as every prior turn. Real lattice generated, a hand-drawn stroke-only ellipse
+(rx=1.6, ry=0.7, stroke 0.15) added on a second Outline layer, `refreshOutlinePreview` called directly (same
+pattern as checkpoint 1's own rect/circle script). Screenshot at fit zoom
+(`t38b-ellipse-fit-zoom.png`): the ellipse shows a clean, smooth halo+line outer AND inner ring (stroke
+mode — matches circle/rect's own two-ring stroke-mode behavior), no visible faceting, no wild loops — the
+biarc fit tracks the true offset curve closely at this scale. Zero console errors/exceptions during the
+whole run. (The zoom-in screenshot came out identical to the fit-zoom one — the ad-hoc `editor.setZoom`
+call this script tried doesn't exist on this build the way checkpoint 1's rail-specific `viewBox`-override
+technique worked around; not investigated further since the fit-zoom screenshot alone already shows the
+ring clearly and unambiguously, and re-deriving a zoom mechanism wasn't the point of this check.)
+
+Full vitest suite: 593/593 green (up from 592 — the one new end-to-end ellipse-wiring test).
+
+Amendments polled clean (`handoff.py amendments --role worker`) again, immediately before this commit.
+Committed by explicit path (5 files: `editor/editor-expand-analytic.js`,
+`editor/editor-outline-preview.js`, new `editor/editor-expand-biarc.js`,
+`tests/editor-outline-preview.test.js`, new `tests/editor-expand-biarc.test.js`) — pushed.

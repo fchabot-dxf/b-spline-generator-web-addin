@@ -66,13 +66,19 @@ function mockEditor({ layers, children, activeColor = '#000' }) {
 
 const LINE_ATTRS = { x1: 0, y1: 0, x2: 10, y2: 0, 'stroke-width': 2, 'stroke-linecap': 'round', 'data-layer': '1', stroke: '#3366ff', fill: 'none' };
 
+// SE12 T38: every previewed element draws TWO shapes now (a wide white
+// halo, then a thin dark line on top — the "visible at every zoom"
+// fix), not one. Counted explicitly (HALO_AND_LINE = 2) everywhere below
+// rather than a bare "2", so a reader isn't left guessing why.
+const HALO_AND_LINE = 2;
+
 describe('refreshOutlinePreview — which elements get a preview', () => {
-  it('a visible layer picked outline: its round-cap line gets a preview path', () => {
+  it('a visible layer picked outline: its round-cap line gets a halo+line preview pair', () => {
     const line = mockLineEl(LINE_ATTRS);
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [line] });
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes).toHaveLength(1);
-    expect(editor._outlinePreviewLayer._shapes[0]._d).toMatch(/^M /);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    for (const s of editor._outlinePreviewLayer._shapes) expect(s._d).toMatch(/^M /);
   });
 
   it('both centerline (default) and a missing layer entirely produce NO preview', () => {
@@ -87,7 +93,7 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
     const line = mockLineEl(LINE_ATTRS);
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'both' }], children: [line] });
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes).toHaveLength(1);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
   });
 
   it('a HIDDEN layer gets no preview even when picked outline — the master visible gate wins, same as isCarved/showsColor', () => {
@@ -97,9 +103,9 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
   });
 
-  it('a kind with no OUTLINE_KINDS entry (e.g. circle — T38\'s job, not this turn\'s) is skipped silently, no error', () => {
-    const circle = { type: 'circle', attr: (a) => ({ 'data-layer': '1' }[a]) };
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [circle] });
+  it('a kind with no OUTLINE_KINDS entry (e.g. polygon — not built yet) is skipped silently, no error', () => {
+    const polygon = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [polygon] });
     expect(() => refreshOutlinePreview(editor)).not.toThrow();
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
   });
@@ -110,7 +116,7 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
     refreshOutlinePreview(editor);
     refreshOutlinePreview(editor);
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes).toHaveLength(1); // not 3
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE); // not 6
   });
 
   it('picking Centerline empties a layer\'s preview on the next call — the "counts as a commit" property, proven by construction (no cache to go stale)', () => {
@@ -118,7 +124,7 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
     const layer = { id: '1', visible: true, fusionGeometry: 'outline' };
     const editor = mockEditor({ layers: [layer], children: [line] });
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes).toHaveLength(1);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
     layer.fusionGeometry = 'centerline';
     refreshOutlinePreview(editor);
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
@@ -126,13 +132,13 @@ describe('refreshOutlinePreview — which elements get a preview', () => {
 });
 
 describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amendment)', () => {
-  it('has exactly one entry today: line', () => {
-    expect(Object.keys(OUTLINE_KINDS)).toEqual(['line']);
+  it('has exactly the kinds built so far: line (T37), circle/rect (T38), ellipse (T38 amend, biarc-fit) — polyline/polygon/generic-path/text and multi-segment curved paths are later work', () => {
+    expect(Object.keys(OUTLINE_KINDS).sort()).toEqual(['circle', 'ellipse', 'line', 'rect']);
   });
 
-  it('adding a kind is a TABLE entry, not a refreshOutlinePreview change — proven by adding one temporarily and confirming it fires with zero edits to the function under test', () => {
-    const circleEl = { type: 'circle', attr: (a) => ({ 'data-layer': '1', cx: '2', cy: '3', r: '1' }[a]) };
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [circleEl] });
+  it('adding a kind is a TABLE entry, not a refreshOutlinePreview change — proven by adding one temporarily (polygon: genuinely not built yet) and confirming it fires with zero edits to the function under test', () => {
+    const polygonEl = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [polygonEl] });
 
     // Before the entry exists: skipped (matches the "no OUTLINE_KINDS
     // entry" test above — restated here as the BEFORE half of the same
@@ -140,63 +146,141 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
     refreshOutlinePreview(editor);
     expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
 
-    // Add a throwaway 'circle' entry (T38's actual job, not built here —
-    // this is only to prove the table IS what refreshOutlinePreview
-    // consults, not a hardcoded type check reintroduced by mistake).
-    OUTLINE_KINDS.circle = (el) => ({ d: `M ${el.attr('cx')} ${el.attr('cy')} m -1 0 a 1 1 0 1 0 2 0 a 1 1 0 1 0 -2 0`, unsupported: null });
+    // Add a throwaway 'polygon' entry (a LATER turn's actual job, not
+    // built here — this is only to prove the table IS what
+    // refreshOutlinePreview consults, not a hardcoded type check
+    // reintroduced by mistake). Not 'circle'/'rect' — those are now REAL
+    // permanent entries; overwriting-then-deleting one would corrupt the
+    // shared module-level table for every test that runs after this one.
+    OUTLINE_KINDS.polygon = () => ({ d: 'M 0 0 L 1 0 L 1 1 Z', unsupported: null });
     try {
       refreshOutlinePreview(editor);
-      expect(editor._outlinePreviewLayer._shapes).toHaveLength(1);
+      expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
     } finally {
-      delete OUTLINE_KINDS.circle; // leave the shared table exactly as found
+      delete OUTLINE_KINDS.polygon; // leave the shared table exactly as found
     }
   });
 
-  it('an entry returning { unsupported } still gets no preview, even though the kind IS in the table — the table only says HOW to try, not that every attempt succeeds', () => {
-    const el = { type: 'ellipse', attr: (a) => ({ 'data-layer': '1' }[a]) };
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
-    OUTLINE_KINDS.ellipse = () => ({ d: null, unsupported: 'ellipse' });
+  it('an entry returning { unsupported } still gets no preview, even though the kind IS in the table — the table only says HOW to try, not that every attempt succeeds. Ellipse became a real (biarc-fit) entry in the T38 amendment, so this uses a throwaway table entry instead of relying on ellipse to decline', () => {
+    OUTLINE_KINDS.polygon = () => ({ d: null, unsupported: 'curve' });
     try {
+      expect(OUTLINE_KINDS.polygon()).toEqual({ d: null, unsupported: 'curve' });
+      const el = { type: 'polygon', attr: (a) => ({ 'data-layer': '1' }[a]) };
+      const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
       refreshOutlinePreview(editor);
       expect(editor._outlinePreviewLayer._shapes).toHaveLength(0);
     } finally {
-      delete OUTLINE_KINDS.ellipse;
+      delete OUTLINE_KINDS.polygon; // leave the shared table exactly as found
     }
+  });
+
+  it('ellipse (T38 amend) produces a real biarc-fit preview through refreshOutlinePreview, not a decline', () => {
+    const el = {
+      type: 'ellipse',
+      attr: (a) => ({ 'data-layer': '1', cx: '5', cy: '3', rx: '3', ry: '1', 'stroke-width': '0.1' }[a]),
+    };
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
+    refreshOutlinePreview(editor);
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    const line = editor._outlinePreviewLayer._shapes.find((s) => s._classes.includes('outline-preview-line'));
+    expect(line._d).toMatch(/^M /);
+    expect(line._d).not.toContain('unsupported');
   });
 });
 
-describe('refreshOutlinePreview — color follows showsColor, same rule as the element itself', () => {
-  it('showColor on (default): preview stroke uses the element\'s OWN current color, no neutral-color class', () => {
+describe('refreshOutlinePreview — visibility fix (T38): fixed dark-over-white halo, not the element\'s own color', () => {
+  it('every preview element gets exactly one .outline-preview-halo shape and one .outline-preview-line shape, halo first (drawn underneath)', () => {
     const line = mockLineEl(LINE_ATTRS);
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline', showColor: true }], children: [line] });
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [line] });
     refreshOutlinePreview(editor);
-    const shape = editor._outlinePreviewLayer._shapes[0];
-    expect(shape._stroke.color).toBe('#3366ff'); // the line's own stroke attr
-    expect(shape._classes).not.toContain('layer-no-color');
+    const [halo, dark] = editor._outlinePreviewLayer._shapes;
+    expect(halo._classes).toContain('outline-preview-halo');
+    expect(dark._classes).toContain('outline-preview-line');
   });
 
-  it('showColor off: preview gets .layer-no-color — the SAME CSS override class applyLayerState already puts on the source element, not a second neutral-color constant', () => {
+  it('showColor(layer) no longer affects the preview at all — same halo+line pair whether the layer shows its own color or not (there is no per-element color choice left to gate)', () => {
+    const lineA = mockLineEl(LINE_ATTRS);
+    const editorShowColor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline', showColor: true }], children: [lineA] });
+    refreshOutlinePreview(editorShowColor);
+    const withColor = editorShowColor._outlinePreviewLayer._shapes.map((s) => s._classes);
+
+    const lineB = mockLineEl(LINE_ATTRS);
+    const editorNoColor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline', showColor: false }], children: [lineB] });
+    refreshOutlinePreview(editorNoColor);
+    const withoutColor = editorNoColor._outlinePreviewLayer._shapes.map((s) => s._classes);
+
+    expect(withColor).toEqual(withoutColor);
+    expect(withColor.flat()).not.toContain('layer-no-color'); // the OLD mechanism, fully retired
+  });
+
+  it('non-vacuous: no .fill()/.stroke() calls at all — color/width live entirely in CSS now, not per-element attrs', () => {
     const line = mockLineEl(LINE_ATTRS);
-    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline', showColor: false }], children: [line] });
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [line] });
     refreshOutlinePreview(editor);
-    const shape = editor._outlinePreviewLayer._shapes[0];
-    expect(shape._classes).toContain('layer-no-color');
+    for (const s of editor._outlinePreviewLayer._shapes) {
+      expect(s._fill).toBeNull();
+      expect(s._stroke).toBeNull();
+    }
   });
 });
 
 describe('refreshOutlinePreview — geometry: local frame, own transform carried over, not baked', () => {
-  it('the preview path gets the SAME transform attribute the source line carries', () => {
+  it('BOTH the halo and line shapes get the SAME transform attribute the source line carries', () => {
     const line = mockLineEl({ ...LINE_ATTRS, transform: 'matrix(1,0,0,1,5,5)' });
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [line] });
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes[0]._transform).toBe('matrix(1,0,0,1,5,5)');
+    for (const s of editor._outlinePreviewLayer._shapes) expect(s._transform).toBe('matrix(1,0,0,1,5,5)');
   });
 
-  it('no transform on the source: none written to the preview either (not "identity" busywork)', () => {
+  it('no transform on the source: none written to either preview shape (not "identity" busywork)', () => {
     const line = mockLineEl(LINE_ATTRS);
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [line] });
     refreshOutlinePreview(editor);
-    expect(editor._outlinePreviewLayer._shapes[0]._transform).toBeNull();
+    for (const s of editor._outlinePreviewLayer._shapes) expect(s._transform).toBeNull();
+  });
+});
+
+function mockShapeEl(type, attrs) {
+  const state = { ...attrs };
+  return { type, attr: (a) => state[a] };
+}
+
+describe('OUTLINE_KINDS.circle / .rect — wired end-to-end through refreshOutlinePreview, including fill-mode detection from the element\'s OWN attrs (T38)', () => {
+  it('a stroke-only circle (fill="none") gets the stroke-mode annulus (halo+line PAIR for each of 2 subpaths = 4 shapes)', () => {
+    const circle = mockShapeEl('circle', { cx: '0', cy: '0', r: '5', 'stroke-width': '2', stroke: '#000', fill: 'none', 'data-layer': '1' });
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [circle] });
+    refreshOutlinePreview(editor);
+    // stroke mode -> 2 subpaths (outer+inner) in ONE `d` string -> still
+    // exactly one halo + one line PATH ELEMENT (the `d` carries both
+    // subpaths together, matching circleOutlinePathD's own single-string
+    // multi-subpath return) -> HALO_AND_LINE, not doubled.
+    expect(editor._outlinePreviewLayer._shapes).toHaveLength(HALO_AND_LINE);
+    expect(editor._outlinePreviewLayer._shapes[0]._d).toContain('M -6 0'); // outer ring (r+half=5+1=6) starts at cx-outerR
+    expect(editor._outlinePreviewLayer._shapes[0]._d).toContain('M -4 0'); // inner ring (r-half=5-1=4)
+  });
+
+  it('a FILLED circle (fill set, stroke="none") gets mode:fill — its own exact edge, not the annulus', () => {
+    const circle = mockShapeEl('circle', { cx: '0', cy: '0', r: '5', 'stroke-width': '2', stroke: 'none', fill: '#f00', 'data-layer': '1' });
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [circle] });
+    refreshOutlinePreview(editor);
+    expect(editor._outlinePreviewLayer._shapes[0]._d).toContain('M -5 0'); // exact edge (r=5), NOT r+half=6 or r-half=4
+  });
+
+  it('a circle with BOTH fill and stroke gets mode:both — outer ring only, no inner (non-vacuous: checked by ABSENCE of the inner ring, not just presence of the outer — a bare substring check on the outer ring alone can\'t tell "both" apart from "stroke", since both share the same outer-ring formula)', () => {
+    const circle = mockShapeEl('circle', { cx: '0', cy: '0', r: '5', 'stroke-width': '2', stroke: '#000', fill: '#f00', 'data-layer': '1' });
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [circle] });
+    refreshOutlinePreview(editor);
+    const d = editor._outlinePreviewLayer._shapes[0]._d;
+    expect(d).toContain('M -6 0'); // outer, r+half=6
+    expect(d).not.toContain('M -4 0'); // the stroke-mode annulus's inner ring (r-half=4) must be ABSENT
+    expect(d).not.toContain(' M '); // a second subpath would introduce a mid-string " M " separator
+  });
+
+  it('a stroke-only rect gets the stroke-mode outer+inner pair', () => {
+    const rect = mockShapeEl('rect', { x: '0', y: '0', width: '10', height: '6', 'stroke-width': '2', stroke: '#000', fill: 'none', 'data-layer': '1' });
+    const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [rect] });
+    refreshOutlinePreview(editor);
+    expect(editor._outlinePreviewLayer._shapes[0]._d).toContain(' Z M '); // two subpaths present in one `d`
   });
 });
 

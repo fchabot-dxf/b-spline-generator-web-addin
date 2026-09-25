@@ -57,6 +57,16 @@ function makeUndoMockEditor() {
     undo: VectorEditor.prototype.undo,
     redo: VectorEditor.prototype.redo,
     _restoreState: VectorEditor.prototype._restoreState,
+    // SE12 T38: _restoreState now calls this._notifyChange('commit')
+    // (was a direct this._onChange() call) so undo/redo also refresh the
+    // outline preview. Borrowed from the real prototype, same as the
+    // other four methods above — refreshOutlinePreview no-ops cleanly on
+    // a mock with no _outlinePreviewLayer (its own top-level guard), and
+    // _notifyChange's own `if (!this._onChange) return` after that
+    // matches this mock's `_onChange: null` exactly as the old direct
+    // call did, so this file's own scope (latticePattern round-tripping)
+    // is unaffected.
+    _notifyChange: VectorEditor.prototype._notifyChange,
   };
 }
 

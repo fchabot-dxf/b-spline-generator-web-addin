@@ -55,6 +55,7 @@
  * `.options` can't be ruled out from this repo alone.
  */
 import { el, on } from './dom.js';
+import { refreshOutlinePreview } from './editor-outline-preview.js';
 
 /**
  * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
@@ -359,7 +360,16 @@ export function setLayerVisible(editor, id, visible) {
   renderLayersPanel(editor);
   applyLayerState(editor);
   if (typeof editor.pushState === 'function') editor.pushState();
-  if (editor._onChange) editor._onChange();
+  // SE12 T38: was `editor._onChange()` directly — a bypass of
+  // _notifyChange (widespread pre-existing pattern across this file and
+  // several others, not something to sweep in this turn's scope; flagged
+  // in WORK-LOG). Fixed HERE specifically because visibility is the one
+  // field that actually changes showsOutline's result (isExported gates
+  // on it) — routing through _notifyChange('commit') keeps the exact
+  // same onChange-triggered pipeline this already ran, and additionally
+  // refreshes the outline preview through the same mechanism edits use.
+  if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  else if (editor._onChange) editor._onChange();
   _notifyLayerToolingCommit('visible');
 }
 
@@ -412,6 +422,15 @@ export function setActiveLayer(editor, layerId) {
   _syncActiveLabel(editor);
   renderLayersPanel(editor);
   applyLayerState(editor);
+  // SE12 T38: covers BOTH "layer switch" and "document open/restore" —
+  // editor-io.js's open() calls editor.setActiveLayer(...) as its own
+  // last roster-restore step, so a document load refreshes the preview
+  // through this same one hook, no separate call needed there. A direct
+  // call, not editor._notifyChange('commit') (which setLayerVisible below
+  // uses) — switching the ACTIVE layer doesn't itself change any layer's
+  // visible/fusionGeometry, so the heavier remask+redrape pipeline that
+  // 'commit' would also trigger has nothing to actually do here.
+  refreshOutlinePreview(editor);
   return normalized;
 }
 
