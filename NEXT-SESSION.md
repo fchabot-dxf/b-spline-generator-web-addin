@@ -1,4 +1,11 @@
-# NEXT — SE7i: a connected lattice on ONE layer — the Lattice tool moves pieces and the structure follows (Fred)
+# NEXT — SE7i part 2: connected editing (Sections 3 + 4) — the Lattice tool moves pieces and the structure follows (Fred)
+
+> **Advisor at dispatch:** Sections 1+2 reviewed and merged (c2b59b4, 570 green; now 586 on main with seat B's outline
+> preview merged in e9f13eb — `editor._outlinePreviewLayer` refreshes on commit; your moves must go through the normal
+> commit so it follows). Do ONLY Sections 3 + 4 below (1+2 are done). Your smoke script left a stray file named
+> `Users…scratchpad${name}.png` in the repo root (an un-interpolated `${name}` in a single-quoted path) — I deleted it;
+> fix the script's path so it can't recur. Seat B is on T38 (outline shapes) in lane-b. NO FUSION — browser proof only.
+> When done: `handoff.py pass --to advisor --note "SE7i part 2: connected editing — <sha>, vitest N, screenshots"`.
 
 > **Advisor notes at dispatch (after SE7h review):** SE7h + add-ons are merged (4a1e319, 861d780; 561 green). Select/Node
 > now reach any visible layer — keep that. Generate must now write into the ACTIVE layer (section 1) and stop
