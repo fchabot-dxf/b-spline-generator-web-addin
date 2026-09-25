@@ -29,6 +29,10 @@ Click (no drag) SPAWNS a default piece at the clicked grid point — Rail: full-
 column between the two nearest rails; Node: the point. Drag draws exactly. The Add button only selects the kind. Declare
 the click defaults in LATTICE_DRAW_KINDS. One undo step per spawn.
 
+## AMEND 2 (Fred: "pulling on nodes should lengthen the tie")
+Tie-END node drag → moves only that end along the tie's axis (tie lengthens/shortens, stays upright, snaps to grid +
+rail rows, min length 1 step). Mid-span crossing node → SE7j slide (unchanged). Tie body drag → slide (unchanged).
+
 ## Verify
 - Pure tests for each kind's constraint in both orientations; node click placement; width/color come from the layer
   pattern.
