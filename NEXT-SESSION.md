@@ -1,24 +1,30 @@
-# NEXT — MOB2b: the editor's Layers rows are still hidden on a phone
+# NEXT — PERF1: lattice drag must redraw live, every frame, even in Fusion (Fred)
 
-**Ball: worker (seat A) · epoch 2 · MOB2b.** NO FUSION — browser proof only. MOB2 reviewed (d213048, 660 green):
-Apply Stencils visible and the pill off the panels — confirmed by the advisor's own 390x844 run. Seat B is on T41 (text
-glyph mismatch) in lane-b.
+**Ball: worker (seat A) · epoch 2 · PERF1.** NO FUSION for workers — browser proof only (with CPU throttling to mimic
+Fusion's slower webview). Seat B idle.
 
-## Remaining finding (advisor's 390x844 screenshot after Generate)
-Only the "LAYERS  +" header shows; the layer ROWS (eye / 3D / palette / name) are not visible — the Pattern bottom
-sheet sits right under the header and the rows are clipped or behind it. A phone user can't switch layers or toggle 3D
-in the editor. Your smoke asserted the pill doesn't intersect the panel and the toggles are ≥ touch size, but not that
-the rows are actually VISIBLE — add that assertion (at least the active layer's row fully inside the viewport and not
-covered: elementFromPoint at its center returns the row).
-Fix: give the Layers panel real height on coarse/narrow (e.g. rows visible with the Pattern sheet collapsed by default
-to its header, or Layers + Pattern as two tabs in the same sheet). Pick the simplest that keeps both reachable; say
-which in WORK-LOG.
+## Fred (trying the build): "works great but the preview of move isn't fast enough — I don't see geometry until release"
+Advisor measured in headless Chrome with smoke-lattice-connected.mjs (3 pieces): attrs DO update mid-drag. So it's
+cost, not logic — with a real generated lattice (~40–60 pieces) in Fusion's webview something per-pointermove is heavy
+enough that painting starves until release.
 
+## Do
+1. MEASURE first: generate a real pattern (default settings, 7x9 board), CDP `Emulation.setCPUThrottlingRate {rate: 4}`,
+   drag a rail and a tie-node with 30+ mouseMoved steps; record per-event handler time (Performance.getMetrics /
+   performance.now() around the handler, or a CDP trace) and what runs per move: hover hit-testing
+   (_getNearbyElement over all children), snap cursor, applyLayerState, _notifyChange('live') / CHANGE_PIPELINE live
+   consumers (drape/relief rebuild?), outline preview, selection highlight clone, getLayerPattern lookups,
+   _existingRailRows scans. Write the numbers in WORK-LOG.
+2. Fix at the cause: during a lattice move do the minimum per frame — coalesce pointermoves to one update per
+   requestAnimationFrame, skip hover/highlight work while `_latticeMove` is active, never trigger live 3D/drape/mask
+   work mid-drag (commit on release only — declare it in CHANGE_PIPELINE if a consumer is misfiled), precompute
+   anything the move needs at drag START (the snapshot already exists).
+3. Check the same for Select-tool drags and HANDLE_EDIT (Fred says "move" generally) — fix if the same cause.
 ## Verify
-390x844 and 768x1024 screenshots after Generate with 3 layers: every row visible and tappable, Pattern still reachable
-with one tap; desktop unchanged. `npx vitest run` green.
-
+- Before/after table: median + p95 ms per move event at 4x throttle, frames painted during the drag (count rAF ticks
+  that saw changed attrs). Target: p95 < 16 ms, a visible update on every rAF during the drag.
+- `npx vitest run` green; the connected-lattice smoke still all true.
 ## When done
 Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB2b: layer rows visible on phone — <sha>, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "PERF1: live drag — <sha>, before/after ms"`
 and stop.
