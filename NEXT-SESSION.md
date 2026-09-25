@@ -1,46 +1,34 @@
-# NEXT — SE7k: explicit Add Rail / Add Tie / Add Node in the Lattice tool (Fred)
+# NEXT — MOB3: one bottom DRAWER for tool options + layers on phones (Fred)
 
-**Ball: worker (seat A) · epoch 2 · SE7k.** NO FUSION — browser proof only. PERF1 cancelled (Fred: fast after all).
-Advisor meanwhile shipped: grid visible by default (83f02a9) and width steppers on the 0.05 grid (b4b4c43). Seat B is
-on T44 (outline caps/joins + fallback notice) in lane-b.
+**Ball: worker (seat A) · epoch 2 · MOB3.** NO FUSION — browser proof only. Seat B is on T49 (SE13 Boundary panel UI
++ ending rules) in lane-b and ADDS controls to #editorLatticePanel — coordinate: build the drawer as a CONTAINER
+that hosts the existing panels' DOM, so seat B's new rows land inside it without rework.
 
-## Fred: "needs an add rail and add tie, add node button"
-Today the Lattice tool GUESSES rail vs tie from drag direction and has no node placement (Circle tool is the node
-tool). Make the kind an explicit choice.
+## Fred (on his phone, live site): "I can't see the panels — we need to revisit the UI in these tools, maybe a drawer?"
+Advisor's live 390x844 screenshot (after Generate): the Lattice panel is collapsed to its title + Regenerate/Detach;
+Add Rail/Tie/Node and every setting are hidden behind a tiny ▾; the Layers panel sits in between; no obvious way in.
+Screenshot: C:\Users\danse\AppData\Local\Temp\claude\c--Users-danse-APPS-b-spline-generator-web-addin\3e3f0b14-6c58-4c85-afb5-23d3fcfd5c2e\scratchpad\mob-before-drawer.png
 
-## Do
-1. Declare `LATTICE_DRAW_KINDS` (rail / tie / node: label, icon, hint) and render a 3-button segmented control
-   "Add: [Rail] [Tie] [Node]" at the TOP of the Lattice panel (from the table, like FUSION_GEOMETRY). One is always
-   active; default Rail. Touch-sized under pointer:coarse like the other panel controls (MOB2 rules).
-2. Drawing respects the chosen kind (orientation-aware via orient()):
-   - Rail: drag → a rail constrained to its row (horizontal rails) / column (vertical), whatever the drag direction.
-   - Tie: drag → a tie constrained across the rails, ends snapping to rail rows (railSnapRows, as today).
-   - Node: click → a node at the snapped grid point (no drag needed); click on an existing node does nothing.
-   - Auto-nodes behaviour unchanged for rails/ties.
-   Remove the direction-guessing path (classifyDrag for new pieces) — no dead branch; keep it only if something else
-   still needs it (say so).
-3. Dragging ON an existing piece still MOVES it (SE7i/SE7j), in every Add mode.
-4. Hand-drawn pieces use the ACTIVE layer's pattern Widths and Colors (rails/ties/nodes) — same numbers Generate uses —
-   instead of LATTICE_STYLE × spacing / the toolbar color. One source: the Widths row. (Fred was confused that
-   hand-drawn and generated pieces differ.) A layer with no pattern yet → PATTERN_DEFAULTS.
-5. Keyboard: the lattice tool's shortcut cycles nothing new; optional 1/2/3 while the tool is active only if trivial.
-## AMEND (advisor ruling on Fred's 'spawn or drag?'): BOTH
-Click (no drag) SPAWNS a default piece at the clicked grid point — Rail: full-width row (Generate's extent); Tie: that
-column between the two nearest rails; Node: the point. Drag draws exactly. The Add button only selects the kind. Declare
-the click defaults in LATTICE_DRAW_KINDS. One undo step per spawn.
-
-## AMENDS 2-5, consolidated (Fred: "it's not about nodes, it's the feature's END that can stretch it")
-One rule for rails AND ties: grab in the END-GRAB ZONE of a piece's endpoint → STRETCH along its own axis (grid snap;
-tie ends snap to rail rows; min 1 step; can't pass the other end). Grab the BODY → MOVE (SE7i). Nodes aren't special
-grab targets: an end node is inside the end zone, a mid-span crossing node is on the body (→ move), a standalone node
-moves itself; nodes ride along. No node-specific drag branch.
-
+## Design (advisor, Fred to react on screenshots)
+Under the existing narrow/coarse breakpoint ONLY (desktop untouched):
+- ONE bottom drawer, three snap heights declared as data: peek (~96px: tabs + essentials row), half (~50vh), full
+  (~88vh). Drag the handle to snap (touch + mouse), tap the handle to cycle. Canvas keeps the rest of the height;
+  the undo pill and status line sit above the drawer, never under it.
+- Tabs: [<active tool's options>] [Layers]. Declare a TOOL_PANELS table (tool mode → panel element + label +
+  peek-row controls). Lattice's peek row = Add: Rail/Tie/Node + Generate/Regenerate. Tools with no options → the
+  tab shows Layers only.
+- Inside a tab at half/full: the panel's sections become collapsible (Boundary, Grid & rails, Ties, Nodes, Colors,
+  Widths, Seed) — remember open/closed per section (localStorage, try/catch).
+- Drawer height persisted per session; opening the Lattice tool opens the drawer at peek.
+- Header: the Download/Clear buttons move into an overflow ⋯ so Cancel + Apply always fit (MOB2 kept Apply visible;
+  keep that).
+Remove the old mobile-only collapse ▾ and the separate stacked Layers block on phones (no dead CSS/JS).
 ## Verify
-- Pure tests for each kind's constraint in both orientations; node click placement; width/color come from the layer
-  pattern.
-- CDP: pick each button, draw, screenshot the panel + result (desktop and 390x844); drag-to-move still works.
-- `npx vitest run` green.
+CDP 390x844 and 768x1024: screenshots at peek / half / full for Lattice and for a tool with no options; assert Add
+buttons + Generate visible at peek, every Lattice control reachable at full, Layers tab rows tappable, canvas area
+≥ 55% of viewport at peek, drag handle works with touch events; desktop 1400x900 unchanged (pixel diff of the editor
+chrome). `npx vitest run` green.
 ## When done
 Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "SE7k: Add Rail/Tie/Node — <sha>, vitest N, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB3: bottom drawer — <sha>, screenshots"`
 and stop.
