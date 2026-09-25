@@ -1,31 +1,24 @@
-# NEXT — MOB2: mobile pass on today's features (Fred: "make sure it's mobile friendly")
+# NEXT — MOB2b: the editor's Layers rows are still hidden on a phone
 
-**Ball: worker (seat A) · epoch 2 · MOB2.** NO FUSION — browser proof only. SE7j reviewed (408c076, 659 green, pushed →
-Cloudflare deploys main automatically). Seat B is on T40 (text outlines) in lane-b — stay out of editor-expand-* /
-editor-outline-preview.js.
+**Ball: worker (seat A) · epoch 2 · MOB2b.** NO FUSION — browser proof only. MOB2 reviewed (d213048, 660 green):
+Apply Stencils visible and the pill off the panels — confirmed by the advisor's own 390x844 run. Seat B is on T41 (text
+glyph mismatch) in lane-b.
 
-## Found by the advisor on LIVE pages.dev at 390x844 touch (screenshot: generate works, pinch works)
-1. The floating undo/redo pill (T32, pointer:coarse) sits ON TOP of the editor's Layers panel header, covering
-   "LAYERS" and its + button. Keep it floating bottom-left of the CANVAS, never over panels (anchor it to the canvas
-   container, or lift/avoid the Layers panel).
-2. Editor header overflows: Cancel is clipped and **Apply Stencils is off-screen** — the one commit action must always
-   be visible on a phone (priority order / wrap / overflow menu for Download SVG + Clear).
-3. The editor's Layers panel is squeezed into a thin strip between the canvas and the Pattern sheet — give it usable
-   height (collapsible section, or share the bottom sheet with the Pattern panel as tabs).
-4. Also check and fix on phone: the Pattern panel's Widths row (it already overflows on DESKTOP — the "Nodes" stepper
-   is clipped at the right), the rail-end checkbox, the sidebar layer row (3D / palette toggles ≥ 32px touch target),
-   the Fusion Geometry segmented control, and the connected-lattice drags with touch (touchStart/Move/End).
-Declare breakpoints/touch sizes where they already live (INPUT_PROFILE / the existing pointer:coarse rules) — no new
-parallel mechanism.
+## Remaining finding (advisor's 390x844 screenshot after Generate)
+Only the "LAYERS  +" header shows; the layer ROWS (eye / 3D / palette / name) are not visible — the Pattern bottom
+sheet sits right under the header and the rows are clipped or behind it. A phone user can't switch layers or toggle 3D
+in the editor. Your smoke asserted the pill doesn't intersect the panel and the toggles are ≥ touch size, but not that
+the rows are actually VISIBLE — add that assertion (at least the active layer's row fully inside the viewport and not
+covered: elementFromPoint at its center returns the row).
+Fix: give the Layers panel real height on coarse/narrow (e.g. rows visible with the Pattern sheet collapsed by default
+to its header, or Layers + Pattern as two tabs in the same sheet). Pick the simplest that keeps both reachable; say
+which in WORK-LOG.
 
 ## Verify
-- CDP at 390x844 (touch) and 768x1024: before/after screenshots of editor (lattice generated) and the sidebar Vector
-  Stamping section; assert Apply Stencils is inside the viewport, the pill doesn't intersect the Layers panel rect,
-  every toggle ≥ 32px; a touch drag of a rail stretches its tie.
-- Desktop unchanged (one 1400x900 screenshot).
-- `npx vitest run` green.
+390x844 and 768x1024 screenshots after Generate with 3 layers: every row visible and tappable, Pattern still reachable
+with one tap; desktop unchanged. `npx vitest run` green.
 
 ## When done
 Append WORK-LOG.md, commit by path, push, then
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB2: mobile pass — <sha>, vitest N, screenshots: <paths>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB2b: layer rows visible on phone — <sha>, screenshots"`
 and stop.
