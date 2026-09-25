@@ -90,6 +90,11 @@ export function gridHoverExtents(i, j, spacing, boardW, boardH) {
 export const SNAP_POLICY = {
   select: 'point', node: 'point', draw: 'anchors', line: 'point', rect: 'point',
   circle: 'center', text: 'point', erase: 'none', expand: 'none', lattice: 'always',
+  // T59: axis-locked param handles and segment taps both need the RAW
+  // pointer position (the handle's own axis IS the quantization; a grid
+  // snap underneath it would fight/jitter the drag), same reasoning
+  // erase/expand already use for their own freehand gestures.
+  shapeLattice: 'none',
 };
 
 /** The one place `_snap` derives its behaviour from SNAP_POLICY + phase

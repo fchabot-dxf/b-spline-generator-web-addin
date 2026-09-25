@@ -260,6 +260,41 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(editor.notifyChangeCalls).toEqual(['commit']); // exactly one commit, not an unbounded chain
   });
+
+  /**
+   * T59: a genuine, PRE-EXISTING bug (since T49), found live via CDP, not
+   * from reading the code — confirmed by counting `editor._undoStack`
+   * entries in a real browser session: EVERY Generate press on a
+   * boundary-mode layer pushed TWO undo-stack entries, not one. Every
+   * OTHER test in this file's own mock `_notifyChange` only RECORDS the
+   * call kind — it never actually cascades into `refreshBoundaryPatterns`
+   * the way `editor.js`'s REAL `_notifyChange` does — so this specific
+   * bug was structurally invisible to the whole rest of this file. This
+   * mock's own `_notifyChange` is the one exception: it mimics the REAL
+   * wiring (`if (kind==='commit') refreshBoundaryPatterns(editor)`) so a
+   * DIRECT `generatePattern` call (what every "Generate" button, and
+   * T59's own new handle-drag `finish`, actually does) is tested the way
+   * it really runs, not through `refreshBoundaryPatterns` itself (already
+   * covered by the OTHER tests above).
+   */
+  it('non-vacuous regression (T59): calling generatePattern DIRECTLY on a boundary-mode pattern pushes exactly ONE undo step, not two', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+      extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
+    };
+    editor._layers[0].pattern = pattern;
+    // Override _notifyChange for THIS test only, to mimic editor.js's own
+    // real cascade (every other test in this file uses the record-only
+    // version, deliberately, so as not to blur what each is checking).
+    editor._notifyChange = (kind) => {
+      editor.notifyChangeCalls.push(kind);
+      if (kind === 'commit') refreshBoundaryPatterns(editor);
+    };
+    await generatePattern(editor, pattern);
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the (suppressed) refill settle
+    expect(editor.pushStateCalls).toBe(1);
+  });
 });
 
 describe('generatePattern: T50 -- which stroke width the fill\'s own inner-stroke edge-shrink resolves to', () => {

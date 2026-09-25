@@ -1854,7 +1854,22 @@
           </div>
 
           <div id="editorShapeLatticePanelBody" style="display:flex; flex-direction:column; gap:10px;">
-            <div data-no-collapse style="display:flex; flex-direction:column; gap:3px;">
+            <!-- T59 (live-measured, not just reasoned about): this section
+                 used to be `data-no-collapse` (T58's own first guess,
+                 matching the box Lattice's own minimal "Add" row) — but
+                 unlike Add's 3 buttons, Shape's own preset+seed+ALL preset
+                 sliders is enough content that the drawer's own measured
+                 peek floor (editor-drawer.js's measuredPeekFloorPx) grew to
+                 ~400px on a real phone-sized viewport, covering the SAME
+                 canvas area a param handle (this turn's own new feature)
+                 needs to be reachable in — confirmed live via CDP: a
+                 handle at board-center fell BEHIND the drawer at that
+                 height. An ordinary (collapsible, open-by-default) section
+                 falls back to the drawer's own small 96px peek floor
+                 instead, leaving the canvas reachable; the user can still
+                 collapse it to reclaim scroll space, or expand the drawer
+                 itself to reach the sliders. -->
+            <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Shape</span>
               <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
                 <button type="button" id="shapePresetHourglass" class="editor-fillmode-btn active" style="flex:1;" title="An hourglass silhouette">Hourglass</button>

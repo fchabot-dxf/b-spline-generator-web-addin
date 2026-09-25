@@ -326,3 +326,46 @@ describe('primitivesToPathD — degenerate input', () => {
     expect(primitivesToPathD(null)).toBe('');
   });
 });
+
+// T59 (SE14 axis-locked handles) — generateSilhouette's own new `params`
+// return field: the FULLY RESOLVED param set (explicit or default+
+// jitter), which an on-canvas handle needs to seed its own drag-start
+// value and anchor position.
+describe.each(PRESET_NAMES)('generateSilhouette(%s) — the new `params` return field (T59)', (preset) => {
+  it('an explicit param passes through UNCHANGED in the resolved set', () => {
+    const key = Object.keys(PRESETS[preset].params)[0];
+    const explicitValue = PRESETS[preset].params[key] * 0.5; // deliberately off-default
+    const out = generateSilhouette(REGIONS[0], { preset, params: { [key]: explicitValue } });
+    expect(out.params[key]).toBeCloseTo(explicitValue, 9);
+  });
+
+  it('an UNPINNED param resolves to a real number (default + seeded jitter), not undefined', () => {
+    const out = generateSilhouette(REGIONS[0], { preset });
+    for (const key of Object.keys(PRESETS[preset].params)) {
+      expect(typeof out.params[key]).toBe('number');
+      expect(Number.isFinite(out.params[key])).toBe(true);
+    }
+  });
+
+  it('non-vacuous: the resolved param ACTUALLY matches the geometry it produced, not a stale/default echo', () => {
+    // Cross-check against an INDEPENDENT read of the same quantity off the
+    // keypoints themselves (not the solver's own internal variable) — the
+    // same "never trust the primitive's own internals, use a different
+    // code path" discipline this file's own tangency checks already use.
+    const out = generateSilhouette(REGIONS[0], { preset, seed: 777 });
+    const hw = REGIONS[0].w / 2, cx = out.cx;
+    if (preset === 'hourglass') {
+      // keypoints[1] = rShoulderHorn = (cx+hw, cy+shoulderY); its own X is
+      // ALWAYS cx+hw regardless of params, so cross-check cornerRadius via
+      // keypoints[2].x (rShoulderWaistJct, at world x = cx+skelX):
+      // skelX = hw - cornerRadius*hw -> cornerRadius = 1 - (kp2.x-cx)/hw.
+      const skelXWorld = out.keypoints[2].x;
+      const crFromGeometry = 1 - (skelXWorld - cx) / hw;
+      expect(out.params.cornerRadius).toBeCloseTo(crFromGeometry, 6);
+    } else {
+      // rNeckHorn = keypoints[1] = (cx+neckHalfW, ...) -> neckWidth = (kp1.x-cx)/hw.
+      const nwFromGeometry = (out.keypoints[1].x - cx) / hw;
+      expect(out.params.neckWidth).toBeCloseTo(nwFromGeometry, 6);
+    }
+  });
+});

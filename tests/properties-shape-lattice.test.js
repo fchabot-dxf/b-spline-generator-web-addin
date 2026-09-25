@@ -11,7 +11,11 @@
  * needed) and `.clone()` (generatePattern's own Border-piece branch).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { initShapeLatticeProperties } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
+import {
+  initShapeLatticeProperties, regenerateSilhouette, regenerateSilhouetteAndFill, writeSegmentStyle,
+  paramHandleRecords, renderShapeLatticeHandles, detectShapeLatticeDetach, openSegmentStyleBar,
+  currentPattern, currentShape,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 function makeMockEditor() {
@@ -64,14 +68,24 @@ function makeMockEditor() {
     children() { const arr = elements.slice(); arr.toArray = () => arr; return arr; },
     node: {},
   };
+  // T59: a minimal handle layer — renderShapeLatticeHandles only ever
+  // calls .circle(), same makeElement shape as the sketch layer's own.
+  let handleElements = [];
+  const handleLayer = {
+    circle(d) { const e = makeElement('circle', { r: d / 2 }); handleElements.push(e); return e; },
+    clear() { handleElements = []; },
+    children() { const arr = handleElements.slice(); arr.toArray = () => arr; return arr; },
+  };
   return {
     _mW: 4, _mH: 6, // deliberately non-square: catches an aspect-ratio-dependent bug a square board would hide
     _sketchLayer: sketchLayer,
+    _handleLayer: handleLayer,
     _layers: [{ id: '0', name: 'Layer 1', visible: true }],
     _activeLayer: '0',
     _color: '#000',
     _strokeWidth: 0.02,
     _selectedElements: [],
+    _pointerType: 'mouse',
     pushState() {},
     _notifyChange() {},
   };
@@ -490,5 +504,151 @@ describe('initShapeLatticeProperties (T58 ADD-ON): linked Rails & ties width', (
     };
     initShapeLatticeProperties(editor);
     expect(document.getElementById('shapeLatticeWidthLinkToggle').classList.contains('active')).toBe(false);
+  });
+});
+
+/**
+ * T59 (axis-locked handles + tap-a-segment) — the module-level exports
+ * the canvas interaction code (editor-interaction.js) calls directly,
+ * without a mounted panel. No `initShapeLatticeProperties(editor)` call
+ * in this describe block — proving these genuinely work standalone, the
+ * whole point of lifting them out of the panel's own closures.
+ */
+describe('properties-shape-lattice.js: module-level exports (T59)', () => {
+  it('regenerateSilhouette creates the linked path; a second call updates it IN PLACE (same element)', () => {
+    const p = currentPattern(editor);
+    regenerateSilhouette(editor, p);
+    const first = editor._sketchLayer.children().find((e) => e.attr('d'));
+    expect(first).toBeDefined();
+    currentShape(p).params = { waistReach: 0.8 };
+    regenerateSilhouette(editor, p);
+    const paths = editor._sketchLayer.children().filter((e) => e.attr('d'));
+    expect(paths.length).toBe(1);
+    expect(paths[0]).toBe(first);
+  });
+
+  it('regenerateSilhouetteAndFill fills AND dispatches SHAPE_CHANGED_EVENT', async () => {
+    let fired = 0;
+    document.addEventListener('editorShapeLatticeChanged', () => { fired++; });
+    await regenerateSilhouetteAndFill(editor);
+    const rail = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
+    expect(rail).toBeDefined();
+    expect(fired).toBe(1);
+  });
+
+  it('writeSegmentStyle writes + mirrors, matching the panel\'s own SE14 §4 rule', async () => {
+    await regenerateSilhouetteAndFill(editor); // establish shape.segments (hourglass, n=12)
+    await writeSegmentStyle(editor, 0, { style: 'kink', bulge: 0.4, dir: 'in' });
+    const shape = currentShape(currentPattern(editor));
+    expect(shape.segments[0].style).toBe('kink');
+    expect(shape.segments[10].style).toBe('kink'); // mirror of 0 in a 12-segment hourglass
+    expect(shape.segments[10].bulge).toBe(0.4);
+  });
+
+  describe('paramHandleRecords / renderShapeLatticeHandles', () => {
+    it('returns [] before any Generate (source defaults to \'generated\' but nothing exists to anchor against — still computes fine, just an empty DOM)', () => {
+      // Actually: PATTERN_DEFAULTS.shape.source IS 'generated' by default,
+      // so records ARE computed even pre-Generate (paramHandleRecords is
+      // pure/cheap, no DOM needed) — this is the REAL contract, verified
+      // directly rather than assumed.
+      const records = paramHandleRecords(editor);
+      expect(records.length).toBe(3); // hourglass's own 3 declared params
+    });
+
+    it('returns [] once the linked shape is hand-PICKED (source==\'picked\') — nothing to drag', () => {
+      const p = currentPattern(editor);
+      regenerateSilhouette(editor, p); // link a generated shape first
+      currentShape(p).source = 'picked';
+      expect(paramHandleRecords(editor)).toEqual([]);
+    });
+
+    it('one handle per declared param, for the CURRENT preset (bottle: 4)', () => {
+      const p = currentPattern(editor);
+      currentShape(p).preset = 'bottle';
+      const records = paramHandleRecords(editor);
+      expect(records.length).toBe(4);
+      expect(records.map((r) => r.key).sort()).toEqual(['bodyWidth', 'neckLength', 'neckWidth', 'skeletonX']);
+    });
+
+    it('non-vacuous: renderShapeLatticeHandles draws exactly one circle per record into _handleLayer', () => {
+      const drawn = renderShapeLatticeHandles(editor);
+      expect(drawn.length).toBe(3);
+      const circles = editor._handleLayer.children();
+      expect(circles.length).toBe(3);
+    });
+
+    it('each returned record is hitTestHandle-compatible (has hx/hy/hitR) and hitR is a real positive number', () => {
+      const drawn = renderShapeLatticeHandles(editor);
+      for (const r of drawn) {
+        expect(typeof r.hx).toBe('number');
+        expect(typeof r.hy).toBe('number');
+        expect(r.hitR).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('detectShapeLatticeDetach (SE14 §6, "recompute-and-compare")', () => {
+    it('does NOT materialize a pattern on a layer that never touched either Lattice tool (regression: the exact bug the full suite caught)', () => {
+      expect(editor._layers[0].pattern).toBeUndefined();
+      detectShapeLatticeDetach(editor);
+      expect(editor._layers[0].pattern).toBeUndefined();
+    });
+
+    it('no-op when the linked shape is already \'picked\' (nothing generated to compare against)', () => {
+      const p = currentPattern(editor);
+      regenerateSilhouette(editor, p);
+      currentShape(p).source = 'picked';
+      detectShapeLatticeDetach(editor);
+      expect(currentShape(p).source).toBe('picked'); // unchanged
+    });
+
+    it('stays \'generated\' when the linked path\'s own `d` still matches (idempotent — no false positive)', () => {
+      const p = currentPattern(editor);
+      regenerateSilhouette(editor, p);
+      detectShapeLatticeDetach(editor);
+      expect(currentShape(p).source).toBe('generated');
+    });
+
+    it('non-vacuous: flips to \'picked\' when the linked path\'s own `d` has been hand-edited (a real Node-mode drag, simulated)', () => {
+      const p = currentPattern(editor);
+      const pathEl = regenerateSilhouette(editor, p);
+      pathEl.attr('d', pathEl.attr('d') + ' L 0.01 0.01'); // simulate a hand node-drag mutating the live d
+      detectShapeLatticeDetach(editor);
+      expect(currentShape(p).source).toBe('picked');
+    });
+  });
+
+  describe('openSegmentStyleBar', () => {
+    afterEach(() => {
+      document.querySelectorAll('.shape-lattice-segment-bar').forEach((el) => el.remove());
+    });
+
+    it('opens a floating bar with 3 style buttons, straight active by default', async () => {
+      await regenerateSilhouetteAndFill(editor);
+      openSegmentStyleBar(editor, 1, 100, 100); // segment 1 = the shoulder arc, a 'curve' by the generator's own fresh default
+      const bar = document.querySelector('.shape-lattice-segment-bar');
+      expect(bar).toBeTruthy();
+      const buttons = Array.from(bar.querySelectorAll('button'));
+      expect(buttons.map((b) => b.textContent)).toEqual(['Straight', 'Curve', 'Kink']);
+      expect(buttons[1].classList.contains('active')).toBe(true); // 'Curve', matching segment 1's own fresh default
+    });
+
+    it('clicking a style button writes it via writeSegmentStyle and closes the bar', async () => {
+      await regenerateSilhouetteAndFill(editor);
+      openSegmentStyleBar(editor, 0, 100, 100);
+      const bar = document.querySelector('.shape-lattice-segment-bar');
+      const kinkBtn = Array.from(bar.querySelectorAll('button')).find((b) => b.textContent === 'Kink');
+      kinkBtn.click();
+      await flush();
+      expect(currentShape(currentPattern(editor)).segments[0].style).toBe('kink');
+      expect(document.querySelector('.shape-lattice-segment-bar')).toBeNull();
+    });
+
+    it('opening a SECOND bar closes the first (no stacking popups)', async () => {
+      await regenerateSilhouetteAndFill(editor);
+      openSegmentStyleBar(editor, 0, 100, 100);
+      openSegmentStyleBar(editor, 1, 200, 200);
+      expect(document.querySelectorAll('.shape-lattice-segment-bar').length).toBe(1);
+    });
   });
 });

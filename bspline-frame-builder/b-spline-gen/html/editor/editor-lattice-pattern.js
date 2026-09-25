@@ -1363,6 +1363,15 @@ function _collectOccupied(editor, layerId, spacing) {
  * boundary mode's own callers (the Boundary panel, the commit-refill
  * hook below) need to actually care that this returns a Promise now.
  */
+// T59: moved up from just below generatePattern (originally declared only
+// for refreshBoundaryPatterns' own re-entrancy) — generatePattern itself
+// now ALSO sets this flag around its own commit (see its own end, below),
+// so a caller that invokes generatePattern DIRECTLY on a boundary-mode
+// pattern (every "Generate" button; T59's own new handle-drag `finish`)
+// doesn't trigger a REDUNDANT extra refill-and-pushState of itself via
+// the commit hook. Needed before generatePattern can reference it.
+let _boundaryRefillInProgress = false;
+
 export async function generatePattern(editor, PATTERN) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
@@ -1460,17 +1469,27 @@ export async function generatePattern(editor, PATTERN) {
   }
 
   if (typeof editor.pushState === 'function') editor.pushState();
+  // T59 (a genuine, measured, PRE-EXISTING bug — confirmed live via CDP,
+  // not assumed: 2 undo-stack entries per Generate press on a boundary-
+  // mode layer, ever since T49 introduced boundary mode): this call's OWN
+  // `_notifyChange('commit')` (editor.js) synchronously calls
+  // `refreshBoundaryPatterns`, which — since `_boundaryRefillInProgress`
+  // was never set by a DIRECT caller of generatePattern, only by
+  // `refreshBoundaryPatterns` itself — sees the guard clear and re-runs
+  // this SAME generatePattern a second time, which pushes a SECOND undo
+  // step for one user gesture. Setting the guard around this call's own
+  // commit (whenever this run is itself boundary-mode, the only case
+  // refreshBoundaryPatterns would otherwise act on) suppresses that
+  // redundant self-triggered refill — restored, not just cleared
+  // afterward, in case a future caller ever invokes generatePattern from
+  // INSIDE an already-in-progress refill.
+  const wasRefilling = _boundaryRefillInProgress;
+  if (isBoundary) _boundaryRefillInProgress = true;
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  _boundaryRefillInProgress = wasRefilling;
 
   return { segments, nodePoints };
 }
-
-// T49 re-entrancy guard for refreshBoundaryPatterns, below — generatePattern
-// itself calls _notifyChange('commit') at its own end (just above), which
-// is the SAME hook refreshBoundaryPatterns hangs off; without this guard
-// every boundary-mode refill would re-trigger itself forever. Module-level
-// (not per-editor) is fine: this codebase runs one editor instance per page.
-let _boundaryRefillInProgress = false;
 
 /**
  * T49 (SE13 §9, "commit-only link refresh"): re-run Generate for the

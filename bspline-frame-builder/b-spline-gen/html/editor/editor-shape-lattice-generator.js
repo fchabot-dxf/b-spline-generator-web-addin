@@ -321,7 +321,17 @@ function _solveHourglass(region, params, segmentsOverride, seed) {
     ? segmentsOverride.map(_normalizeSegment)
     : fresh;
 
-  return { keypoints, segments, cx: cxWorld };
+  // T59 (SE14 Slice 3's own deferred "axis-locked parametric handles"):
+  // the RESOLVED params (explicit value, or default+jitter, already
+  // clamped) — a param handle on canvas needs these to seed its own
+  // drag-start value and compute its anchor point; PATTERN.shape.params
+  // alone only has whatever the user has EXPLICITLY pinned, not a
+  // seed-jittered one still sitting at its default. Same fraction units
+  // `PATTERN.shape.params` itself stores (0-1, not the `hw`-scaled real-
+  // unit values computed just above).
+  const resolvedParams = { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac };
+
+  return { keypoints, segments, cx: cxWorld, params: resolvedParams };
 }
 
 function _normalizeSegment(seg) {
@@ -411,14 +421,17 @@ function _solveBottle(region, params, segmentsOverride, seed) {
     ? segmentsOverride.map(_normalizeSegment)
     : fresh;
 
-  return { keypoints, segments, cx: cx0 };
+  // T59: see _solveHourglass's own doc comment on why this is returned.
+  const resolvedParams = { neckWidth, bodyWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac };
+
+  return { keypoints, segments, cx: cx0, params: resolvedParams };
 }
 
 /**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
- * `{ keypoints, segments, primitives, cx }`. `shape.preset` selects
- * `'hourglass'` (default) or `'bottle'`; `shape.params` overrides that
- * preset's own declared params (each falls back to its own default +
+ * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
+ * selects `'hourglass'` (default) or `'bottle'`; `shape.params` overrides
+ * that preset's own declared params (each falls back to its own default +
  * gentle seeded jitter — see `PRESETS`); `shape.segments`, if an array
  * of exactly the preset's own expected length, is REUSED verbatim (a
  * per-segment style override survives a param/seed change), else the
@@ -431,7 +444,11 @@ function _solveBottle(region, params, segmentsOverride, seed) {
  * `primitives` is `shapeToPrimitives`' own `{type:'L'|'A',...}` shape —
  * no fillets this slice (`cornerRadius` on a segment is read/passed
  * through but never applied — Slice 2's own job, unstarted, see
- * WORK-LOG).
+ * WORK-LOG). `params` (T59) is the FULLY RESOLVED param set this call
+ * actually used — explicit `shape.params` values pass through unchanged,
+ * an unpinned one reflects its own default+jitter draw — the only way a
+ * caller (an on-canvas param handle, T59) learns a param's CURRENT value
+ * when it was never explicitly pinned.
  */
 export function generateSilhouette(region, shape) {
   const preset = (shape && shape.preset) || 'hourglass';
@@ -444,14 +461,14 @@ export function generateSilhouette(region, shape) {
       ? _solveBottle(region, params, segmentsOverride, seed)
       : _solveHourglass(region, params, segmentsOverride, seed);
 
-  const { keypoints, segments, cx } = solved;
+  const { keypoints, segments, cx, params: resolvedParams } = solved;
   const n = keypoints.length;
   const primitives = [];
   for (let i = 0; i < n; i++) {
     primitives.push(..._segmentToPrimitives(keypoints[i], keypoints[(i + 1) % n], segments[i], cx));
   }
 
-  return { preset, keypoints, segments, primitives, cx };
+  return { preset, keypoints, segments, primitives, cx, params: resolvedParams };
 }
 
 /** T58 (SE14 Slice 3) — an `A` primitive's own END point, run FORWARD
