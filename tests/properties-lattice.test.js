@@ -53,14 +53,29 @@ function makeMockEditor() {
   return {
     _mW: 4, _mH: 4,
     _sketchLayer: sketchLayer,
-    _layers: [],
-    _activeLayer: null,
+    // SE7i: the real app ALWAYS has a layer by the time the Lattice panel
+    // can be used at all (layers.js's initLayerControls pre-creates
+    // "Layer 1" synchronously — BUG-10) — seeded here to match that real
+    // invariant, not left empty. Settings now live on THIS layer's own
+    // `.pattern` (properties-lattice.js's _currentPattern), so a mock with
+    // no real layer object would never actually persist anything a real
+    // editor session couldn't reproduce.
+    _layers: [{ id: '0', name: 'Layer 1', visible: true }],
+    _activeLayer: '0',
     _color: '#000',
     _strokeWidth: 0.02,
     _selectedElements: [],
     pushState() {},
     _notifyChange() {},
   };
+}
+
+/** SE7i: editor._latticePattern retired — settings live on the active
+ *  layer's own `.pattern` now. Test helper mirroring properties-lattice.
+ *  js's own _currentPattern lookup (by id, not by array position), so
+ *  assertions read the SAME place the real code writes to. */
+function activeLayerPattern(editor) {
+  return editor._layers.find((l) => l.id === editor._activeLayer)?.pattern;
 }
 
 describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', () => {
@@ -107,7 +122,7 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
     const before = seedField.value;
     document.getElementById('latticeGenerate').click();
     expect(seedField.value).not.toBe(before);
-    expect(editor._latticePattern.seed).toBe(Number(seedField.value));
+    expect(activeLayerPattern(editor).seed).toBe(Number(seedField.value));
   });
 
   it('non-vacuous: two Generate presses roll two DIFFERENT seeds (not a fixed re-read of the same field)', () => {
@@ -179,7 +194,7 @@ describe('initLatticeProperties (SE7g amend): Colors row swatches', () => {
     document.querySelector(`.color-mosaic-cell[title="${targetHex}"]`).click();
 
     expect(document.getElementById('latticeColorRails').style.background).toBe(targetHex);
-    expect(editor._latticePattern.colors.rails).toBe(targetHex);
+    expect(activeLayerPattern(editor).colors.rails).toBe(targetHex);
     expect(railBefore.attr('stroke')).toBe(targetHex);
   });
 
@@ -243,8 +258,8 @@ describe('initLatticeProperties (SE7h): orientation toggle', () => {
     document.getElementById('latticeOrientVertical').click();
     expect(document.getElementById('latticeOrientVertical').classList.contains('active')).toBe(true);
     expect(document.getElementById('latticeOrientHorizontal').classList.contains('active')).toBe(false);
-    expect(editor._latticePattern.orientation).toBe('vertical');
-    expect(editor._latticePattern.id).toBeTruthy(); // it DID generate, not just flip a flag
+    expect(activeLayerPattern(editor).orientation).toBe('vertical');
+    expect(activeLayerPattern(editor).id).toBeTruthy(); // it DID generate, not just flip a flag
   });
 
   it('non-vacuous: the rail geometry actually changes shape when orientation flips (proves it really regenerated, not just relabeled)', () => {
@@ -262,20 +277,20 @@ describe('initLatticeProperties (SE7h): orientation toggle', () => {
   it('flipping orientation does NOT roll a new seed (a re-projection, not a reshuffle — SE7g: only Generate rolls)', () => {
     initLatticeProperties(editor);
     document.getElementById('latticeGenerate').click();
-    const seedAfterGenerate = editor._latticePattern.seed;
+    const seedAfterGenerate = activeLayerPattern(editor).seed;
 
     document.getElementById('latticeOrientVertical').click();
-    expect(editor._latticePattern.seed).toBe(seedAfterGenerate);
+    expect(activeLayerPattern(editor).seed).toBe(seedAfterGenerate);
 
     document.getElementById('latticeOrientHorizontal').click();
-    expect(editor._latticePattern.seed).toBe(seedAfterGenerate);
+    expect(activeLayerPattern(editor).seed).toBe(seedAfterGenerate);
   });
 
   it('clicking Horizontal after Vertical flips back (PATTERN.orientation === "horizontal")', () => {
     initLatticeProperties(editor);
     document.getElementById('latticeOrientVertical').click();
     document.getElementById('latticeOrientHorizontal').click();
-    expect(editor._latticePattern.orientation).toBe('horizontal');
+    expect(activeLayerPattern(editor).orientation).toBe('horizontal');
     expect(document.getElementById('latticeOrientHorizontal').classList.contains('active')).toBe(true);
   });
 });
@@ -326,7 +341,7 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
     document.getElementById('latticeTiesDensity').value = '0';
     document.getElementById('latticeNodesRailEnds').checked = true;
     document.getElementById('latticeGenerate').click();
-    expect(editor._latticePattern.nodes.railEnds).toBe(true);
+    expect(activeLayerPattern(editor).nodes.railEnds).toBe(true);
     const rail = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail');
     const nodes = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'node');
     expect(rail).toBeDefined();

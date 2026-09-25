@@ -21,10 +21,10 @@
  */
 import {
   toLattice, fromLattice, constrain, latticeCrossings,
-  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient,
+  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
-import { addLayer, setActiveLayer } from './layers.js';
+import { getActiveLayer } from './layers.js';
 import { lcgPoints } from '../core/terrain.js';
 
 export { toLattice, fromLattice, constrain, latticeCrossings };
@@ -54,18 +54,6 @@ export function detachOwnership(elements) {
     }
     return count;
 }
-
-/** Sensible starting tooling per generated layer — "the color mapping of
- *  the piece" (ROADMAP:519): rails/ties both V-bit (ties shallower — a
- *  connector, not a structural line), nodes ballnose (a rounded dot,
- *  matching the auto-node/Circle-tool dot shape already drawn this way
- *  interactively). Fred tunes these live later (design doc §6, Q2) —
- *  this is a starting point, not a final answer. */
-export const LATTICE_LAYER_DEFAULTS = {
-  rails: { name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90 },
-  ties:  { name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90 },
-  nodes: { name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90 },
-};
 
 export const PATTERN_DEFAULTS = {
   spacing: 0.25,
@@ -105,6 +93,20 @@ export const PATTERN_DEFAULTS = {
   // PATTERN (editor-io.js's data-lattice-pattern is a whole-object
   // JSON.stringify, no field whitelist, so this needs no changes there).
   colors: { rails: '#c62828', ties: '#f9c80e', nodes: '#1a237e' },
+  // SE7i: absolute INCH values (not factors) — "0.05" steppers" per the
+  // dispatch, so a user nudges a real physical width, not a proportion of
+  // spacing. Defaults are LATTICE_STYLE's own proportions × this file's
+  // default spacing (0.25), computed once here rather than re-derived from
+  // the CURRENT spacing on every read: changing Spacing later must not
+  // silently re-widen an already-tuned Widths value (same "declared once,
+  // independently editable" shape PATTERN.colors already has). `nodeRadius`
+  // matches emitNode's own internal `r` (a radius, not a diameter) — the
+  // panel's "Node size" stepper edits this same value directly.
+  widths: {
+    rails: LATTICE_STYLE.rail.widthFactor * 0.25,       // 0.07
+    ties: LATTICE_STYLE.tie.widthFactor * 0.25,          // 0.055
+    nodeRadius: LATTICE_STYLE.node.radiusFactor * 0.25,  // 0.075
+  },
   seed: 42,
 };
 
@@ -420,22 +422,25 @@ function _elementIdentityLatticePoints(el, kind, spacing) {
   return pts;
 }
 
-/** Every DETACHED lattice element (carries LATTICE_ATTR, lacks
- *  OWNERSHIP_ATTR) becomes one or more "i,j,kind" occupied keys —
- *  computePattern skips generating fresh content there (design doc §2's
- *  detach-overlap mitigation). Elements still owned by THIS pattern are
- *  excluded here because they're about to be removed and regenerated,
- *  not because they aren't real — an element owned by a DIFFERENT
- *  pattern id would still count as "detached" from this one's point of
- *  view, though today's scope is one pattern per document (design §1). */
-function _collectOccupied(editor, patternId, spacing) {
+/** SE7i: every DETACHED lattice element ON THE TARGET LAYER (carries
+ *  LATTICE_ATTR, lacks OWNERSHIP_ATTR) becomes one or more "i,j,kind"
+ *  occupied keys — computePattern skips generating fresh content there
+ *  (design doc §2's detach-overlap mitigation). Scoped to `layerId` now
+ *  that a pattern lives on ONE layer (SE7i, "I don't mind if all lattice
+ *  geometry is in one layer"): a DIFFERENT layer's own lattice content is
+ *  a physically separate pass and never blocks this one. Elements still
+ *  OWNED (about to be removed and regenerated in the same call) are
+ *  excluded here, not because they aren't real, but because they won't
+ *  exist by the time the fresh pattern is emitted. */
+function _collectOccupied(editor, layerId, spacing) {
   const occupied = new Set();
   if (!editor._sketchLayer) return occupied;
   editor._sketchLayer.children().toArray().forEach((ch) => {
     if (!ch || !ch.node) return;
+    if (ch.node.getAttribute('data-layer') !== layerId) return;
     const kind = ch.node.getAttribute(LATTICE_ATTR);
     if (!kind) return;
-    if (ch.node.getAttribute(OWNERSHIP_ATTR) === patternId) return;
+    if (ch.node.hasAttribute(OWNERSHIP_ATTR)) return;
     for (const pt of _elementIdentityLatticePoints(ch, kind, spacing)) {
       occupied.add(`${pt.i},${pt.j},${kind}`);
     }
@@ -443,40 +448,27 @@ function _collectOccupied(editor, patternId, spacing) {
   return occupied;
 }
 
-/** Create-or-reuse the 3 pattern layers, storing their ids into
- *  `PATTERN.layers` (mutated in place — the same object gets persisted
- *  via editor-io.js's data-lattice-pattern afterward, design §1/§3).
- *  Reuse check is by id existing in editor._layers, not by name, so a
- *  user rename doesn't force a duplicate on Regenerate. skipUndo:true on
- *  every addLayer — Generate is exactly one undo step (design §4), not
- *  one per layer created. */
-function _ensurePatternLayers(editor, PATTERN) {
-  PATTERN.layers = PATTERN.layers || { rails: null, ties: null, nodes: null };
-  const existing = Array.isArray(editor._layers) ? editor._layers : [];
-  for (const kind of ['rails', 'ties', 'nodes']) {
-    const id = PATTERN.layers[kind];
-    const found = id != null && existing.some((l) => l.id === id);
-    if (found) continue;
-    const created = addLayer(editor, { ...LATTICE_LAYER_DEFAULTS[kind], skipUndo: true });
-    PATTERN.layers[kind] = created.id;
-  }
-  return PATTERN.layers;
-}
-
 /**
- * Generate (first run) or Regenerate (subsequent runs, same PATTERN.id):
- * replace every element THIS pattern owns with a fresh computation, and
- * never touch anything it doesn't own (hand-drawn SE7a content, or a
- * previously-owned element the user detached by editing it — design §2).
- * One undo step total (design §4): every internal step below is undo-
- * silent by construction; pushState() fires exactly once, at the end.
+ * SE7i (Fred: "I don't mind if all lattice geometry is in one layer" +
+ * "regenerate should clear and use the same layer, I'll create a new one
+ * if I want"): Generate/Regenerate write rails, ties and nodes into the
+ * CURRENT ACTIVE layer — never creating a layer of its own. A second,
+ * independent lattice is the user's own choice: make a new layer,
+ * activate it, Generate. First clears EVERY element the active layer
+ * already carries an OWNERSHIP_ATTR for (including pieces moved by hand
+ * since — SE7i retires the old "detach on move" rule), then emits the
+ * fresh computation there. Hand-drawn content in that layer (no
+ * OWNERSHIP_ATTR) is untouched. One undo step total: every internal step
+ * below is undo-silent by construction; pushState() fires exactly once,
+ * at the end.
  *
  * @param {object} editor  a live VectorEditor instance (`editor._sketchLayer`,
- *   `editor._layers`, `editor._mW`/`_mH`, `editor.pushState`,
- *   `editor._notifyChange` all required).
- * @param {object} PATTERN  see PATTERN_DEFAULTS / SE7B-PATTERN-GENERATOR-
- *   DESIGN.md §1. `PATTERN.id` and `PATTERN.layers` are read AND written
- *   (mutated in place) — first Generate assigns them if absent.
+ *   `editor._layers`, `editor._activeLayer`, `editor._mW`/`_mH`,
+ *   `editor.pushState`, `editor._notifyChange` all required).
+ * @param {object} PATTERN  see PATTERN_DEFAULTS. `PATTERN.id` is read AND
+ *   written (mutated in place) — first Generate on a layer assigns it if
+ *   absent; used only for the Generate/Regenerate button label now
+ *   (ownership itself is layer-based, not id-based — see below).
  * @returns {{segments, nodePoints}} the same shape computePattern returns,
  *   for callers that want to inspect what was just drawn (e.g. a test).
  */
@@ -484,12 +476,8 @@ export function generatePattern(editor, PATTERN) {
   if (!editor || !editor._sketchLayer) return null;
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
 
-  // SE7b slice 3 (T19's own note): setActiveLayer is called 3 times below
-  // (Rails, Ties, Nodes) while emitting each kind — captured here and
-  // restored right before the commit so Generate/Regenerate doesn't
-  // silently leave the user's active layer on "Nodes" as a side effect
-  // of how emission happens to be sequenced.
-  const previousActiveLayer = editor._activeLayer;
+  const targetLayer = getActiveLayer(editor);
+
   // SE7g AMEND: emitSegment/emitNode (editor-lattice.js) paint from
   // editor._color — the general drawing-tool color, shared with the
   // hand-drawn Lattice tool — so each kind's own PATTERN.colors value is
@@ -499,61 +487,54 @@ export function generatePattern(editor, PATTERN) {
   const previousColor = editor._color;
   const colors = { ...PATTERN_DEFAULTS.colors, ...(PATTERN.colors || {}) };
   PATTERN.colors = colors;
+  // SE7i: per-kind physical sizes (inches) — generator-only, exactly the
+  // same scope as colors above (the hand-drawn tool keeps its own
+  // LATTICE_STYLE-derived sizing, emitSegment/emitNode's own default).
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(PATTERN.widths || {}) };
+  PATTERN.widths = widths;
 
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const extent = _resolveExtent(editor, PATTERN);
-  const occupied = _collectOccupied(editor, PATTERN.id, spacing);
+  const occupied = _collectOccupied(editor, targetLayer, spacing);
 
-  // Remove every element this pattern currently owns — the "replace",
-  // not "diff", half of one-way generation (design §2).
+  // Remove every element the ACTIVE LAYER already owns — the "replace",
+  // not "diff", half of one-way generation, now scoped by layer rather
+  // than by matching PATTERN.id (SE7i: "clears every generated piece in
+  // that layer... including pieces moved by hand since" — ownership is
+  // "has OWNERSHIP_ATTR at all", not "has THIS id", since a layer only
+  // ever holds one pattern's generated content at a time).
   editor._sketchLayer.children().toArray().forEach((ch) => {
-    if (ch && ch.node && ch.node.getAttribute(OWNERSHIP_ATTR) === PATTERN.id) ch.remove();
+    if (ch && ch.node && ch.node.getAttribute('data-layer') === targetLayer && ch.node.hasAttribute(OWNERSHIP_ATTR)) {
+      ch.remove();
+    }
   });
 
   const { segments, nodePoints } = computePattern(PATTERN, { extent, occupied });
-  const layerIds = _ensurePatternLayers(editor, PATTERN);
 
   const tagOwned = (el) => { if (el) el.attr(OWNERSHIP_ATTR, PATTERN.id); return el; };
 
-  setActiveLayer(editor, layerIds.rails);
   editor._color = colors.rails;
   for (const seg of segments) {
     if (seg.kind !== 'rail') continue;
-    tagOwned(emitSegment(editor, 'rail', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing)));
+    tagOwned(emitSegment(editor, 'rail', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing), widths.rails));
   }
-  setActiveLayer(editor, layerIds.ties);
   editor._color = colors.ties;
   for (const seg of segments) {
     if (seg.kind !== 'tie') continue;
-    tagOwned(emitSegment(editor, 'tie', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing)));
+    tagOwned(emitSegment(editor, 'tie', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing), widths.ties));
   }
-  setActiveLayer(editor, layerIds.nodes);
   editor._color = colors.nodes;
   for (const p of nodePoints) {
     // emitNode dedupes against an existing node at the same lattice cell
     // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
     // occupied-detection already steered clear of it; returns null if so,
     // which tagOwned's own null-check handles.
-    tagOwned(emitNode(editor, fromLattice(p, spacing)));
+    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeRadius));
   }
   editor._color = previousColor;
 
-  // Restore the layer that was active before Generate — but only when
-  // there WAS one; a totally fresh editor (previousActiveLayer === null,
-  // no layers existed yet) is better left on Nodes (the emit loop's
-  // natural end state) than forced back to "no active layer at all"
-  // right after 3 real layers were just created. setActiveLayer's own
-  // invalid-id fallback (first available layer) still applies if the
-  // previous id no longer exists for some other reason.
-  if (previousActiveLayer != null) setActiveLayer(editor, previousActiveLayer);
-
   if (typeof editor.pushState === 'function') editor.pushState();
   if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-
-  // Stash for persistence (editor-io.js's data-lattice-pattern, design
-  // §1) and for a future Regenerate call to find. Plain property — no
-  // editor.js class change needed for this slice's scope.
-  editor._latticePattern = PATTERN;
 
   return { segments, nodePoints };
 }
@@ -564,33 +545,41 @@ export function generatePattern(editor, PATTERN) {
  *  the same kind names the rest of the Colors panel does. */
 const COLOR_KIND_TO_LATTICE_ATTR = { rails: 'rail', ties: 'tie', nodes: 'node' };
 
+/** SE7i: every OWNED element (has OWNERSHIP_ATTR) sitting on `layerId` —
+ *  the shared filter `recolorOwnedKind`/`rewidthOwnedKind`/`detachAllOwned`
+ *  all apply, now that ownership is layer-scoped rather than id-matched
+ *  (a layer only ever holds one pattern's generated content at a time). */
+function _ownedOnLayer(editor, layerId, latticeKind) {
+  if (!editor || !editor._sketchLayer || !layerId) return [];
+  return editor._sketchLayer.children().toArray().filter(
+    (ch) => ch && ch.node
+      && ch.node.getAttribute('data-layer') === layerId
+      && ch.node.hasAttribute(OWNERSHIP_ATTR)
+      && (!latticeKind || ch.node.getAttribute(LATTICE_ATTR) === latticeKind)
+  );
+}
+
 /**
- * SE7g AMEND: recolor every element THIS pattern owns of ONE kind, IN
- * PLACE — no reseed, no regeneration, just a stroke/fill rewrite (SE9's
- * rule: stroke === fill for a node's fill-only shape, stroke-only for
- * rail/tie lines). Filters by BOTH OWNERSHIP_ATTR (this pattern) AND
- * LATTICE_ATTR (this kind), so a detached (hand-edited) piece — which
- * lost OWNERSHIP_ATTR the moment it was touched — is automatically
- * excluded and keeps its own color, exactly the "detached pieces keep
- * their own color" rule, for free from the ownership mechanism that
- * already existed for a different reason (design §2). One undo step,
- * skipped entirely (no pushState) when there was nothing owned of that
- * kind to recolor.
+ * SE7g AMEND (SE7i: layer-scoped, not id-matched): recolor every element
+ * the given LAYER owns of ONE kind, IN PLACE — no reseed, no
+ * regeneration, just a stroke/fill rewrite (SE9's rule: stroke === fill
+ * for a node's fill-only shape, stroke-only for rail/tie lines). A
+ * detached (hand-edited) piece — which lost OWNERSHIP_ATTR the moment it
+ * was touched — is automatically excluded and keeps its own color,
+ * exactly the "detached pieces keep their own color" rule, for free from
+ * the ownership mechanism that already existed for a different reason.
+ * One undo step, skipped entirely (no pushState) when there was nothing
+ * owned of that kind to recolor.
  *
  * @returns {number} how many elements were recolored (0 = nothing owned
  *   of this kind yet, e.g. the color was changed before the first
  *   Generate — the caller still keeps the new color in PATTERN.colors
  *   for the NEXT Generate to use).
  */
-export function recolorOwnedKind(editor, patternId, kind, color) {
-  if (!editor || !editor._sketchLayer || !patternId) return 0;
+export function recolorOwnedKind(editor, layerId, kind, color) {
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
-  const owned = editor._sketchLayer.children().toArray().filter(
-    (ch) => ch && ch.node
-      && ch.node.getAttribute(OWNERSHIP_ATTR) === patternId
-      && ch.node.getAttribute(LATTICE_ATTR) === latticeKind
-  );
+  const owned = _ownedOnLayer(editor, layerId, latticeKind);
   for (const ch of owned) {
     if (latticeKind === 'node') {
       ch.fill(color);
@@ -606,29 +595,69 @@ export function recolorOwnedKind(editor, patternId, kind, color) {
 }
 
 /**
- * "Detach all" (design §5 panel action): strips OWNERSHIP_ATTR from
- * every element the given pattern currently owns, WITHOUT moving or
- * deleting anything — the bulk, gesture-free counterpart to the
- * handleEnd per-drag detach hook (editor-interaction.js), for a user who
- * wants to keep the generated content as a starting point and stop
- * Regenerate from ever touching it again, without individually nudging
- * every element. One undo step, same shape as generatePattern's own
- * single pushState()/_notifyChange('commit') at the end of a batch of
- * otherwise-silent mutations.
+ * SE7i (Section 2, "Widths"): the size-editing mirror of recolorOwnedKind
+ * above — re-widths every element the given LAYER owns of ONE kind, IN
+ * PLACE, no reseed. Rails/ties: `stroke-width` (inches, same unit
+ * PATTERN.widths.rails/ties already stores). Nodes: `r` (the circle's own
+ * radius attribute) — PATTERN.widths.nodeRadius is already a radius, so
+ * no ×2/÷2 conversion here; only emitNode's OWN construction call needs
+ * `r*2` (svg.js's circle() takes a diameter), a detail that stays local
+ * to that one call site. One undo step, skipped when nothing was owned.
+ *
+ * @returns {number} how many elements were re-widthed.
+ */
+export function rewidthOwnedKind(editor, layerId, kind, value) {
+  const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
+  if (!latticeKind) return 0;
+  const owned = _ownedOnLayer(editor, layerId, latticeKind);
+  for (const ch of owned) {
+    if (latticeKind === 'node') {
+      ch.attr('r', value);
+    } else {
+      ch.attr('stroke-width', value);
+    }
+  }
+  if (owned.length > 0) {
+    if (typeof editor.pushState === 'function') editor.pushState();
+    if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  }
+  return owned.length;
+}
+
+/**
+ * "Detach all" (panel action): strips OWNERSHIP_ATTR from every element
+ * the given LAYER currently owns, WITHOUT moving or deleting anything —
+ * the bulk, gesture-free counterpart to the per-drag detach a user might
+ * otherwise want, for someone who wants to keep the generated content as
+ * a starting point and stop Regenerate from ever touching it again,
+ * without individually nudging every element. One undo step, same shape
+ * as generatePattern's own single pushState()/_notifyChange('commit') at
+ * the end of a batch of otherwise-silent mutations.
  *
  * @returns {number} how many elements were detached (0 if none were
  *   owned — callers can use this to skip the undo push entirely when
  *   there was nothing to do).
  */
-export function detachAllOwned(editor, patternId) {
-  if (!editor || !editor._sketchLayer || !patternId) return 0;
-  const owned = editor._sketchLayer.children().toArray().filter(
-    (ch) => ch && ch.node && ch.node.getAttribute(OWNERSHIP_ATTR) === patternId
-  );
+export function detachAllOwned(editor, layerId) {
+  const owned = _ownedOnLayer(editor, layerId, null);
   const count = detachOwnership(owned);
   if (count > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
   return count;
+}
+
+/** SE7i: the ACTIVE layer's own Pattern settings — the one per-layer
+ *  source of truth (retires the old file-level editor._latticePattern,
+ *  which put every layer's Generate behind one shared seed/orientation/
+ *  ...  regardless of which layer was active). Returns null when the
+ *  active layer doesn't exist yet, or hasn't been given settings (a fresh
+ *  layer starts with no `.pattern` at all — PATTERN_DEFAULTS fills the
+ *  gap at every read site, same "missing = defaults" convention this file
+ *  already uses for a legacy saved PATTERN missing a newer field). */
+export function getLayerPattern(editor) {
+  const layers = Array.isArray(editor._layers) ? editor._layers : [];
+  const layer = layers.find((l) => l.id === getActiveLayer(editor));
+  return (layer && layer.pattern) || null;
 }

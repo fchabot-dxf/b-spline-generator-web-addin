@@ -7,6 +7,7 @@ import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../cor
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { applyToolingDefaults, addLayer, setActiveLayer, isExported } from './layers.js';
+import { OWNERSHIP_ATTR } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { textGlyphPathD } from './editor-expand-text.js';
@@ -83,6 +84,11 @@ const _PERSISTED_LAYER_FIELDS = [
     'tx', 'ty', 'rotation', 'scale', 'mirrorX', 'mirrorY',
     'blur', 'smoothing', 'suppression',
     'edgeFilletRadius', 'filletPower',
+    // SE7i: this layer's own Lattice PATTERN (if it's ever run Generate) —
+    // a plain nested object, no special-casing needed in the loop below
+    // (JSON.stringify handles it directly, same as any other field this
+    // list's generic `l[field] !== undefined` branch already copies).
+    'pattern',
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto
@@ -116,24 +122,6 @@ function _serializeLayersAttr(editor) {
         return JSON.stringify(minimal).replace(/"/g, '&quot;');
     } catch (e) {
         console.warn('[editor-io] _serializeLayersAttr failed', e);
-        return '';
-    }
-}
-
-/** SE7b: the declared Lattice PATTERN (editor._latticePattern, set by
- *  editor-lattice-pattern.js's generatePattern) persisted on the root
- *  <svg> as data-lattice-pattern — one JSON blob at the document level,
- *  mirroring data-editor-layers exactly (same escaping, same "" for
- *  nothing to write, same 3-save/1-open wiring below), NOT a per-layer
- *  field: a pattern spans the 3 layers it generates into, so it isn't
- *  any one of them's property (SE7B-PATTERN-GENERATOR-DESIGN.md §1). */
-function _serializeLatticePatternAttr(editor) {
-    const pattern = editor._latticePattern;
-    if (!pattern) return '';
-    try {
-        return JSON.stringify(pattern).replace(/"/g, '&quot;');
-    } catch (e) {
-        console.warn('[editor-io] _serializeLatticePatternAttr failed', e);
         return '';
     }
 }
@@ -335,9 +323,7 @@ export function save(editor, dpi = 96) {
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const latticePatternAttr = _serializeLatticePatternAttr(editor);
-    const latticePatternAttrStr = latticePatternAttr ? ` data-lattice-pattern="${latticePatternAttr}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}${latticePatternAttrStr}>${content}</svg>`;
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${content}</svg>`;
     return svgString;
 }
 
@@ -472,9 +458,7 @@ export async function saveForRasterization(editor, dpi = 96) {
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const latticePatternAttr = _serializeLatticePatternAttr(editor);
-    const latticePatternAttrStr = latticePatternAttr ? ` data-lattice-pattern="${latticePatternAttr}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}${latticePatternAttrStr}>${styleBlock}${content}</svg>`;
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}</svg>`;
     return svgString;
 }
 
@@ -514,9 +498,7 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     const layersAttr = _serializeLayersAttr(editor);
     const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const latticePatternAttr = _serializeLatticePatternAttr(editor);
-    const latticePatternAttrStr = latticePatternAttr ? ` data-lattice-pattern="${latticePatternAttr}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}${latticePatternAttrStr}>${styleBlock}${content}${textContent}</svg>`;
+    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}${textContent}</svg>`;
     return svgString;
 }
 
@@ -622,6 +604,36 @@ export function _reconcileLayersFromSvg(editor) {
     return anchor.id;
 }
 
+/** SE7i MIGRATION: attach a COPY of a legacy (pre-SE7i, file-level)
+ *  Lattice pattern to every layer that actually holds that pattern's
+ *  generated pieces (data-lattice-gen) — under the old 3-layer-per-
+ *  pattern model (Rails/Ties/Nodes) that can be more than one layer; each
+ *  gets its own independent copy (not a shared reference) so editing one
+ *  later doesn't retroactively change another's settings. No-op when
+ *  there's no legacy pattern to migrate, or once ANY layer already
+ *  carries a `.pattern` (a document saved AFTER this migration shipped)
+ *  — so this only ever runs once per legacy file. Extracted as its own
+ *  function (called from open(), below) so the DECISION — which layers
+ *  qualify — is unit-testable without open()'s own heavy DOMParser/svg.js
+ *  machinery: only `editor._sketchLayer.children()` and `editor._layers`
+ *  are read here. */
+export function _migrateLegacyPatternOntoLayers(editor, legacyPattern) {
+    if (!legacyPattern || !Array.isArray(editor._layers)) return;
+    if (editor._layers.some(l => l.pattern)) return;
+    if (!editor._sketchLayer) return;
+    const ownedLayerIds = new Set(
+        editor._sketchLayer.children().toArray()
+            .filter(ch => ch && ch.node && ch.node.hasAttribute(OWNERSHIP_ATTR))
+            .map(ch => ch.node.getAttribute('data-layer'))
+    );
+    for (const layer of editor._layers) {
+        if (ownedLayerIds.has(layer.id)) {
+            layer.pattern = JSON.parse(JSON.stringify(legacyPattern));
+        }
+    }
+    if (ownedLayerIds.size) _ioLog(`open: migrated legacy pattern onto layer(s) [${[...ownedLayerIds].join(',')}]`);
+}
+
 export function open(editor, svgString, w, h) {
     _ioLog(`open() called  svgLen=${(svgString || '').length}  w=${w} h=${h}`);
     editor.setModelMetrics(w, h);
@@ -652,11 +664,6 @@ export function open(editor, svgString, w, h) {
     // _reconcileLayersFromSvg below will rebuild it from the loaded SVG.
     editor._layers = [];
     editor._activeLayer = null;
-    // SE7b: same reason — a fresh/different session's Lattice pattern
-    // (if any) is restored below from THIS document's own
-    // data-lattice-pattern, never carried over from whatever was open
-    // before.
-    editor._latticePattern = null;
 
     if (!svgString) {
         _ioLog('open: no svgString -> empty editor');
@@ -710,18 +717,24 @@ export function open(editor, svgString, w, h) {
                 }
             }
 
-            // SE7b: same pull-before-injection reason as data-editor-layers
-            // above — read and stash editor._latticePattern so a later
-            // Regenerate (slice 3) has PATTERN.id/.layers to find and
-            // replace by, exactly mirroring the layers-roster restore.
+            // SE7i MIGRATION: data-lattice-pattern was the OLD file-level
+            // pattern attribute (one shared PATTERN for the whole document,
+            // SE7b) — settings now live per-layer (layer.pattern,
+            // persisted inside data-editor-layers instead). Pulled into a
+            // local here, BEFORE injecting innerHTML (same reason as
+            // data-editor-layers above), and attached to whichever
+            // layer(s) actually hold this pattern's generated pieces once
+            // the roster is restored below — never assigned to a live
+            // editor._latticePattern field, which retires entirely.
+            let legacyPattern = null;
             const latticePatternJson = svgEl.getAttribute('data-lattice-pattern');
             if (latticePatternJson) {
                 try {
-                    editor._latticePattern = JSON.parse(latticePatternJson);
-                    _ioLog(`open: found data-lattice-pattern (id="${editor._latticePattern && editor._latticePattern.id}")`);
+                    legacyPattern = JSON.parse(latticePatternJson);
+                    _ioLog(`open: found LEGACY data-lattice-pattern (id="${legacyPattern && legacyPattern.id}") — migrating to per-layer`);
                 } catch (e) {
                     _ioLog(`open: data-lattice-pattern JSON parse failed (${e.message})`);
-                    editor._latticePattern = null;
+                    legacyPattern = null;
                 }
             }
 
@@ -771,6 +784,9 @@ export function open(editor, svgString, w, h) {
                 firstLayerId = _reconcileLayersFromSvg(editor);
                 _ioLog(`open: reconciled (no persisted attr)  firstLayer=${firstLayerId}`);
             }
+
+            _migrateLegacyPatternOntoLayers(editor, legacyPattern);
+
             if (typeof editor.setActiveLayer === 'function') {
                 editor.setActiveLayer(firstLayerId);
             }

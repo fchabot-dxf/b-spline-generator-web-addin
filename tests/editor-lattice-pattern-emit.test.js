@@ -6,13 +6,26 @@
  * addLayer/setActiveLayer/emitSegment/emitNode round-tripping through
  * attr()/remove(), since generatePattern calls all of those for real —
  * not reimplemented here).
+ *
+ * SE7i (Fred: "I don't mind if all lattice geometry is in one layer" +
+ * "regenerate should clear and use the same layer"): Generate/Regenerate
+ * now write into the ACTIVE layer directly — no more auto-created Rails/
+ * Ties/Nodes layers, no more PATTERN.layers, no more "restore the
+ * previously-active layer" dance (there's nothing to restore FROM —
+ * the active layer never changes). Ownership (`recolorOwnedKind`/
+ * `rewidthOwnedKind`/`detachAllOwned`) is layer-scoped now, not id-
+ * matched. The mock editor below seeds a real starter layer (id '0',
+ * active) to match the REAL app's own invariant (layers.js's
+ * initLayerControls always pre-creates "Layer 1" before any tool, incl.
+ * Lattice, can run — BUG-10) — a bare `_layers: []` would never occur in
+ * a real session.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   generatePattern, detachAllOwned, detachOwnership, OWNERSHIP_ATTR, PATTERN_DEFAULTS,
-  nextSeed, recolorOwnedKind,
+  nextSeed, recolorOwnedKind, rewidthOwnedKind,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
-import { save } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
+import { save, _migrateLegacyPatternOntoLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 
 function _makeMockEditor() {
   let elements = [];
@@ -31,12 +44,16 @@ function _makeMockEditor() {
         else store[k] = v;
         return el;
       },
-      // Real svg.js shape: .stroke({color}) / .fill(hex) actually paint —
-      // recorded into `store` (readable back via .attr('stroke'/'fill'))
-      // so SE7g's per-kind coloring is verifiable, same convention as
+      // Real svg.js shape: .stroke({color, width}) / .fill(hex) actually
+      // paint — recorded into `store` (readable back via .attr('stroke'/
+      // 'stroke-width'/'fill')) so SE7g's per-kind coloring AND SE7i's
+      // per-kind widths are verifiable, same convention as
       // editor-color.test.js's mockAttrEl.
       stroke(v) {
-        if (typeof v === 'object' && v !== null && 'color' in v) store.stroke = v.color;
+        if (typeof v === 'object' && v !== null) {
+          if ('color' in v) store.stroke = v.color;
+          if ('width' in v) store['stroke-width'] = v.width;
+        }
         return el;
       },
       fill(v) { if (v !== undefined) store.fill = v; return el; },
@@ -71,8 +88,11 @@ function _makeMockEditor() {
   const editor = {
     _mW: 4, _mH: 4,
     _sketchLayer: sketchLayer,
-    _layers: [],
-    _activeLayer: null,
+    // SE7i: seeded with a real starter layer — matches the real app's own
+    // invariant (see file header). generatePattern reads getActiveLayer
+    // (layers.js) directly now, no auto-create of its own.
+    _layers: [{ id: '0', name: 'Layer 1', visible: true }],
+    _activeLayer: '0',
     _color: '#000', _strokeWidth: 0.02,
     _selectedElements: [],
     pushStateCalls: 0,
@@ -87,17 +107,14 @@ describe('generatePattern: first Generate', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('creates exactly 3 layers (Rails/Ties/Nodes) and stores their ids in PATTERN.layers', () => {
+  it('writes rails/ties/nodes into the ACTIVE layer — no new layer is created (SE7i)', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
     generatePattern(editor, pattern);
 
-    expect(editor._layers).toHaveLength(3);
-    const names = editor._layers.map((l) => l.name).sort();
-    expect(names).toEqual(['Nodes', 'Rails', 'Ties']);
-    expect(pattern.layers.rails).toBeDefined();
-    expect(pattern.layers.ties).toBeDefined();
-    expect(pattern.layers.nodes).toBeDefined();
-    expect(editor._layers.some((l) => l.id === pattern.layers.rails)).toBe(true);
+    expect(editor._layers).toHaveLength(1); // still just Layer 1 — Generate never creates one
+    const emitted = editor._sketchLayer.children();
+    expect(emitted.length).toBeGreaterThan(0); // non-vacuous: something WAS generated
+    for (const el of emitted) expect(el.attr('data-layer')).toBe('0');
   });
 
   it('assigns PATTERN.id when absent, and every emitted element carries both data-lattice and the ownership tag', () => {
@@ -120,33 +137,15 @@ describe('generatePattern: first Generate', () => {
     }
   });
 
-  it('rails land on the Rails layer, ties on Ties, nodes on Nodes (data-layer matches the right id)', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 3, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
-    generatePattern(editor, pattern);
-    const rails = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
-    const ties = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'tie');
-    const nodes = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
-    expect(rails.length).toBeGreaterThan(0);
-    for (const el of rails) expect(el.attr('data-layer')).toBe(pattern.layers.rails);
-    for (const el of ties) expect(el.attr('data-layer')).toBe(pattern.layers.ties);
-    for (const el of nodes) expect(el.attr('data-layer')).toBe(pattern.layers.nodes);
-  });
-
   it('is exactly ONE undo step: pushState called once, notifyChange("commit") called once, regardless of element count', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 4, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
     generatePattern(editor, pattern);
     expect(editor.pushStateCalls).toBe(1);
     expect(editor.notifyChangeCalls).toEqual(['commit']);
   });
-
-  it('stashes the pattern onto editor._latticePattern for persistence', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 5 };
-    generatePattern(editor, pattern);
-    expect(editor._latticePattern).toBe(pattern);
-  });
 });
 
-describe('generatePattern: Regenerate (same PATTERN.id)', () => {
+describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
@@ -156,25 +155,15 @@ describe('generatePattern: Regenerate (same PATTERN.id)', () => {
     const second = generatePattern(editor, pattern);
     expect(second.segments).toEqual(first.segments);
     expect(second.nodePoints).toEqual(first.nodePoints);
-    // still exactly 3 layers — reused, not duplicated
-    expect(editor._layers).toHaveLength(3);
-  });
-
-  it('reuses the SAME 3 layer ids across Regenerate, not new ones', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 7 };
-    generatePattern(editor, pattern);
-    const idsBefore = { ...pattern.layers };
-    generatePattern(editor, pattern);
-    expect(pattern.layers).toEqual(idsBefore);
   });
 
   it("does NOT touch hand-drawn content lacking data-lattice at all", () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 8 };
     generatePattern(editor, pattern);
     // Simulate a hand-drawn SE7a-unrelated shape (e.g. drawn with the pen
-    // tool) sitting in the sketch layer — no data-lattice attribute.
+    // tool) sitting in the SAME layer — no data-lattice attribute.
     const handDrawn = editor._sketchLayer.line(0, 0, 1, 1);
-    handDrawn.attr('data-layer', pattern.layers.rails);
+    handDrawn.attr('data-layer', editor._activeLayer);
     // no data-lattice, no ownership tag — a plain drawn line
 
     generatePattern(editor, pattern);
@@ -212,56 +201,29 @@ describe('generatePattern: Regenerate (same PATTERN.id)', () => {
     expect(atSameStart).toHaveLength(1);
     expect(atSameStart[0].attr(OWNERSHIP_ATTR)).toBeUndefined(); // still detached, not re-owned
   });
-});
 
-describe('data-lattice-pattern persistence (editor-io.js)', () => {
-  // save()'s own lightweight mock shape, matching tests/b6-hidden-layer-
-  // save.test.js exactly (save() only reads _draw/_sketchLayer.node.
-  // innerHTML/_mW/_mH/_layers/_activeLayer — no svg.js instance needed,
-  // per that file's own docstring).
-  function mockSaveEditor(latticePattern) {
-    return {
-      _draw: {},
-      _sketchLayer: { node: { innerHTML: '' } },
-      _mW: 7, _mH: 9,
-      _layers: [],
-      _activeLayer: null,
-      _latticePattern: latticePattern,
-    };
-  }
+  /**
+   * SE7i (Fred: "regenerate should clear and use the same layer" —
+   * "including pieces moved by hand since"): the OLD rule stripped
+   * OWNERSHIP_ATTR the instant a piece was dragged (editor-interaction.js's
+   * handleEnd), so Regenerate would never touch it again. That hook is
+   * retired this turn — a moved-but-still-owned piece is exactly what
+   * Regenerate is now supposed to sweep away, regardless of where it
+   * currently sits.
+   */
+  it('sweeps an owned piece that was MOVED BY HAND (still carries OWNERSHIP_ATTR, geometry changed) — the old detach-on-move rule is retired', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 11, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [2] } };
+    generatePattern(editor, pattern);
+    const tie = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'tie');
+    expect(tie.attr(OWNERSHIP_ATTR)).toBe(pattern.id); // sanity: still owned
 
-  it('save() writes data-lattice-pattern when editor._latticePattern is set', () => {
-    const pattern = { ...PATTERN_DEFAULTS, id: 'lattice-1', seed: 3, layers: { rails: '0', ties: '1', nodes: '2' } };
-    const out = save(mockSaveEditor(pattern));
-    expect(out).toContain('data-lattice-pattern=');
-    // XML-escaped like data-editor-layers (same _serialize*/entity pattern) —
-    // the JSON quotes read back as &quot;.
-    expect(out).toMatch(/&quot;id&quot;:&quot;lattice-1&quot;/);
-  });
+    // Simulate a completed Select-mode drag WITHOUT stripping ownership —
+    // exactly what handleEnd does today (post-retirement of the old hook).
+    tie.attr('x1', 99); tie.attr('y1', 99);
 
-  it('save() writes nothing (no attribute at all) when no pattern has been generated', () => {
-    const out = save(mockSaveEditor(null));
-    expect(out).not.toContain('data-lattice-pattern');
-  });
+    generatePattern(editor, pattern);
 
-  it('the exact save() -> DOM round trip open() relies on: getAttribute + JSON.parse recovers the same PATTERN', () => {
-    // Exercises the real encoding (_serializeLatticePatternAttr's escape)
-    // against the real decoding (open()'s getAttribute+JSON.parse) via an
-    // actual DOMParser — the same two-sided contract data-editor-layers
-    // already relies on, proven directly rather than assumed symmetric.
-    // (A full open()-level integration test would need the same heavy
-    // clear()/svg()/setModelMetrics editor mock this suite doesn't build
-    // anywhere yet — out of scope to construct fresh in this slice; this
-    // targets the actual encode/decode contract precisely instead.)
-    const pattern = { id: 'lattice-2', seed: 9, layers: { rails: 'r', ties: 't', nodes: 'n' } };
-    const savedSvg = save(mockSaveEditor(pattern));
-
-    const parsed = new DOMParser().parseFromString(savedSvg, 'image/svg+xml');
-    const svgEl = parsed.querySelector('svg');
-    const raw = svgEl.getAttribute('data-lattice-pattern');
-    expect(raw).toBeTruthy();
-    const restored = JSON.parse(raw);
-    expect(restored).toEqual(pattern);
+    expect(editor._sketchLayer.children()).not.toContain(tie); // swept away
   });
 });
 
@@ -298,20 +260,20 @@ describe('detachOwnership: the shared strip-the-tag primitive (T21 slice 3)', ()
   });
 });
 
-describe('detachAllOwned: the bulk "Detach all" panel action', () => {
+describe('detachAllOwned: the bulk "Detach all" panel action (SE7i: layer-scoped, not id-matched)', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('strips ownership from every element owned by the given pattern id, leaves others alone', () => {
+  it('strips ownership from every element on the given LAYER, leaves others alone', () => {
     const pattern = { ...PATTERN_DEFAULTS, seed: 20, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
     generatePattern(editor, pattern);
     const ownedBefore = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR) === pattern.id);
     expect(ownedBefore.length).toBeGreaterThan(0); // sanity — Generate must have actually made owned content
 
-    const count = detachAllOwned(editor, pattern.id);
+    const count = detachAllOwned(editor, editor._activeLayer);
 
     expect(count).toBe(ownedBefore.length);
-    const stillOwned = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR) === pattern.id);
+    const stillOwned = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR));
     expect(stillOwned).toHaveLength(0);
     // nothing was removed or moved — same element count, same geometry
     expect(editor._sketchLayer.children()).toHaveLength(ownedBefore.length);
@@ -323,46 +285,17 @@ describe('detachAllOwned: the bulk "Detach all" panel action', () => {
     editor.pushStateCalls = 0;
     editor.notifyChangeCalls = [];
 
-    detachAllOwned(editor, pattern.id);
+    detachAllOwned(editor, editor._activeLayer);
 
     expect(editor.pushStateCalls).toBe(1);
     expect(editor.notifyChangeCalls).toEqual(['commit']);
   });
 
-  it('does nothing (no undo push) when nothing is owned', () => {
-    const count = detachAllOwned(editor, 'lattice-nonexistent');
+  it('does nothing (no undo push) when nothing is owned on that layer', () => {
+    const count = detachAllOwned(editor, 'layer-nonexistent');
     expect(count).toBe(0);
     expect(editor.pushStateCalls).toBe(0);
     expect(editor.notifyChangeCalls).toEqual([]);
-  });
-});
-
-describe('generatePattern: restores the previously-active layer (T20/T21 note)', () => {
-  let editor;
-  beforeEach(() => { editor = _makeMockEditor(); });
-
-  it('restores the layer that was active before Generate, not left on Nodes', () => {
-    // First Generate creates the 3 layers; second Generate simulates the
-    // user having switched to a DIFFERENT (non-pattern) layer in between.
-    const pattern = { ...PATTERN_DEFAULTS, seed: 22 };
-    generatePattern(editor, pattern);
-    const userLayer = { id: 'user-layer-1', name: 'My Drawing', visible: true };
-    editor._layers.push(userLayer);
-    editor._activeLayer = userLayer.id;
-
-    generatePattern(editor, pattern); // Regenerate
-
-    expect(editor._activeLayer).toBe(userLayer.id);
-  });
-
-  it('a first Generate on a totally fresh editor (no previous active layer) is left on Nodes, not forced to null', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 23 };
-    expect(editor._activeLayer).toBeNull();
-
-    generatePattern(editor, pattern);
-
-    expect(editor._activeLayer).toBe(pattern.layers.nodes);
-    expect(editor._activeLayer).not.toBeNull();
   });
 });
 
@@ -441,6 +374,19 @@ describe('PATTERN_DEFAULTS.colors (SE7g amend)', () => {
   });
 });
 
+/**
+ * SE7i (Section 2, "Widths"): PATTERN.widths declared with defaults
+ * derived from LATTICE_STYLE's own proportions — see editor-lattice-
+ * pattern.js's own comment on why these are absolute inches, not factors.
+ */
+describe('PATTERN_DEFAULTS.widths (SE7i)', () => {
+  it('declares the three default kind widths, derived from LATTICE_STYLE × the default spacing (0.25)', () => {
+    expect(PATTERN_DEFAULTS.widths.rails).toBeCloseTo(0.07, 10);
+    expect(PATTERN_DEFAULTS.widths.ties).toBeCloseTo(0.055, 10);
+    expect(PATTERN_DEFAULTS.widths.nodeRadius).toBeCloseTo(0.075, 10);
+  });
+});
+
 describe('generatePattern: per-kind colors (SE7g amend)', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
@@ -498,11 +444,62 @@ describe('generatePattern: per-kind colors (SE7g amend)', () => {
   });
 });
 
-describe('recolorOwnedKind (SE7g amend): recolor owned pieces in place, no reseed', () => {
+/**
+ * SE7i (Section 2, "Widths"): the size-editing mirror of the colors tests
+ * above — generator-only (the hand-drawn tool keeps LATTICE_STYLE's own
+ * proportions, untouched by PATTERN.widths).
+ */
+describe('generatePattern: per-kind widths (SE7i)', () => {
   let editor;
   beforeEach(() => { editor = _makeMockEditor(); });
 
-  it('recolors every OWNED element of the given kind, leaves other kinds alone', () => {
+  it('sizes rails/ties stroke-width and node radius from PATTERN.widths', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 34,
+      rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      widths: { rails: 0.11, ties: 0.09, nodeRadius: 0.2 },
+    };
+    generatePattern(editor, pattern);
+
+    const rails = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    const ties = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'tie');
+    const nodes = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
+    expect(rails.length).toBeGreaterThan(0);
+    expect(ties.length).toBeGreaterThan(0);
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const el of rails) expect(el.attr('stroke-width')).toBe(0.11);
+    for (const el of ties) expect(el.attr('stroke-width')).toBe(0.09);
+    for (const el of nodes) expect(el.attr('r')).toBe(0.2);
+  });
+
+  it('falls back to PATTERN_DEFAULTS.widths when PATTERN.widths is absent', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 35, rails: { every: 2, offset: 0 } };
+    delete pattern.widths;
+    generatePattern(editor, pattern);
+    const rail = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'rail');
+    expect(rail.attr('stroke-width')).toBeCloseTo(PATTERN_DEFAULTS.widths.rails, 10);
+  });
+
+  it('a partial PATTERN.widths (only rails set) still fills in ties/nodeRadius from defaults', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 36,
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      widths: { rails: 0.3 },
+    };
+    generatePattern(editor, pattern);
+    const rail = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'rail');
+    const tie = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'tie');
+    expect(rail.attr('stroke-width')).toBe(0.3);
+    expect(tie.attr('stroke-width')).toBeCloseTo(PATTERN_DEFAULTS.widths.ties, 10);
+  });
+});
+
+describe('recolorOwnedKind (SE7g amend, SE7i: layer-scoped): recolor owned pieces in place, no reseed', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('recolors every OWNED element of the given kind on the ACTIVE layer, leaves other kinds alone', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 40,
       rails: { every: 2, offset: 0 },
@@ -515,7 +512,7 @@ describe('recolorOwnedKind (SE7g amend): recolor owned pieces in place, no resee
     expect(tiesBefore.length).toBeGreaterThan(0);
     const tieColorBefore = tiesBefore[0].attr('stroke');
 
-    const count = recolorOwnedKind(editor, pattern.id, 'rails', '#999999');
+    const count = recolorOwnedKind(editor, editor._activeLayer, 'rails', '#999999');
 
     expect(count).toBe(railsBefore.length);
     for (const el of railsBefore) expect(el.attr('stroke')).toBe('#999999');
@@ -529,7 +526,7 @@ describe('recolorOwnedKind (SE7g amend): recolor owned pieces in place, no resee
     const nodesBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
     expect(nodesBefore.length).toBeGreaterThan(0);
 
-    recolorOwnedKind(editor, pattern.id, 'nodes', '#00ff00');
+    recolorOwnedKind(editor, editor._activeLayer, 'nodes', '#00ff00');
     for (const el of nodesBefore) expect(el.attr('fill')).toBe('#00ff00');
   });
 
@@ -543,12 +540,12 @@ describe('recolorOwnedKind (SE7g amend): recolor owned pieces in place, no resee
     const originalColor = rail.attr('stroke');
     rail.attr(OWNERSHIP_ATTR, undefined); // detach, same mechanic as SE7b's own detach tests
 
-    const count = recolorOwnedKind(editor, pattern.id, 'rails', '#ffffff');
+    const count = recolorOwnedKind(editor, editor._activeLayer, 'rails', '#ffffff');
 
     expect(rail.attr('stroke')).toBe(originalColor);
     // The detached rail must not be counted either.
     const stillOwnedRails = editor._sketchLayer.children().filter(
-      (el) => el.attr('data-lattice') === 'rail' && el.attr(OWNERSHIP_ATTR) === pattern.id
+      (el) => el.attr('data-lattice') === 'rail' && el.attr(OWNERSHIP_ATTR)
     );
     expect(count).toBe(stillOwnedRails.length);
   });
@@ -559,16 +556,188 @@ describe('recolorOwnedKind (SE7g amend): recolor owned pieces in place, no resee
     editor.pushStateCalls = 0;
     editor.notifyChangeCalls = [];
 
-    recolorOwnedKind(editor, pattern.id, 'rails', '#101010');
+    recolorOwnedKind(editor, editor._activeLayer, 'rails', '#101010');
 
     expect(editor.pushStateCalls).toBe(1);
     expect(editor.notifyChangeCalls).toEqual(['commit']);
   });
 
-  it('does nothing (no undo push) when nothing of that kind is owned yet', () => {
-    const count = recolorOwnedKind(editor, 'lattice-nonexistent', 'rails', '#101010');
+  it('does nothing (no undo push) when nothing of that kind is owned yet on that layer', () => {
+    const count = recolorOwnedKind(editor, 'layer-nonexistent', 'rails', '#101010');
     expect(count).toBe(0);
     expect(editor.pushStateCalls).toBe(0);
     expect(editor.notifyChangeCalls).toEqual([]);
+  });
+});
+
+/**
+ * SE7i (Section 2, "Widths"): the size-editing mirror of recolorOwnedKind
+ * above — same layer-scoped ownership filter, same "no reseed, one undo
+ * step" contract.
+ */
+describe('rewidthOwnedKind (SE7i): re-width owned pieces in place, no reseed', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  it('re-widths every OWNED element of the given kind on the ACTIVE layer, leaves other kinds alone', () => {
+    const pattern = {
+      ...PATTERN_DEFAULTS, seed: 50,
+      rails: { every: 2, offset: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+    };
+    generatePattern(editor, pattern);
+    const railsBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    const tiesBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'tie');
+    expect(railsBefore.length).toBeGreaterThan(0);
+    expect(tiesBefore.length).toBeGreaterThan(0);
+    const tieWidthBefore = tiesBefore[0].attr('stroke-width');
+
+    const count = rewidthOwnedKind(editor, editor._activeLayer, 'rails', 0.5);
+
+    expect(count).toBe(railsBefore.length);
+    for (const el of railsBefore) expect(el.attr('stroke-width')).toBe(0.5);
+    for (const el of tiesBefore) expect(el.attr('stroke-width')).toBe(tieWidthBefore); // untouched
+  });
+
+  it('re-widths nodes via the `r` (radius) attribute', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 51, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    const nodesBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'node');
+    expect(nodesBefore.length).toBeGreaterThan(0);
+
+    rewidthOwnedKind(editor, editor._activeLayer, 'nodes', 0.25);
+    for (const el of nodesBefore) expect(el.attr('r')).toBe(0.25);
+  });
+
+  it('a DETACHED piece of that kind keeps its own width — untouched', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 52, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    const rail = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'rail');
+    const originalWidth = rail.attr('stroke-width');
+    rail.attr(OWNERSHIP_ATTR, undefined);
+
+    rewidthOwnedKind(editor, editor._activeLayer, 'rails', 0.9);
+
+    expect(rail.attr('stroke-width')).toBe(originalWidth);
+  });
+
+  it('is exactly one undo step (not one per re-widthed element)', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 53, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    editor.pushStateCalls = 0;
+    editor.notifyChangeCalls = [];
+
+    rewidthOwnedKind(editor, editor._activeLayer, 'rails', 0.12);
+
+    expect(editor.pushStateCalls).toBe(1);
+    expect(editor.notifyChangeCalls).toEqual(['commit']);
+  });
+
+  it('does nothing (no undo push) when nothing of that kind is owned yet on that layer', () => {
+    const count = rewidthOwnedKind(editor, 'layer-nonexistent', 'rails', 0.12);
+    expect(count).toBe(0);
+    expect(editor.pushStateCalls).toBe(0);
+    expect(editor.notifyChangeCalls).toEqual([]);
+  });
+});
+
+describe('save() persists a layer\'s own .pattern inside data-editor-layers (SE7i)', () => {
+  function mockSaveEditor(layers) {
+    return {
+      _draw: {},
+      _sketchLayer: { node: { innerHTML: '' } },
+      _mW: 7, _mH: 9,
+      _layers: layers,
+      _activeLayer: layers[0]?.id ?? null,
+    };
+  }
+
+  it('a layer with a pattern round-trips it through data-editor-layers, XML-escaped like every other field', () => {
+    const layers = [{ id: '0', name: 'Layer 1', visible: true, pattern: { id: 'lattice-1', seed: 3 } }];
+    const out = save(mockSaveEditor(layers));
+    expect(out).toContain('data-editor-layers=');
+    expect(out).toMatch(/&quot;pattern&quot;:\{&quot;id&quot;:&quot;lattice-1&quot;/);
+    expect(out).not.toContain('data-lattice-pattern'); // the OLD file-level attribute is gone entirely
+  });
+
+  it('a layer with NO pattern yet omits the field entirely (not a null placeholder)', () => {
+    const layers = [{ id: '0', name: 'Layer 1', visible: true }];
+    const out = save(mockSaveEditor(layers));
+    expect(out).not.toMatch(/&quot;pattern&quot;/);
+  });
+});
+
+/**
+ * SE7i MIGRATION: an OLD file's document-level data-lattice-pattern
+ * attaches onto whichever layer(s) actually hold that pattern's generated
+ * pieces — _migrateLegacyPatternOntoLayers is editor-io.js's own extracted
+ * decision function (called from open(), which needs much heavier DOM
+ * machinery this suite doesn't build), so the migration DECISION is
+ * tested directly here with the same lightweight _sketchLayer shape the
+ * rest of this file already uses.
+ */
+describe('_migrateLegacyPatternOntoLayers (SE7i migration)', () => {
+  function mockMigrationEditor(children, layers) {
+    return {
+      _sketchLayer: { children: () => { const arr = children.slice(); arr.toArray = () => arr; return arr; } },
+      _layers: layers,
+    };
+  }
+  function ownedChild(layerId) {
+    const store = { 'data-layer': layerId, [OWNERSHIP_ATTR]: 'lattice-old' };
+    return { node: { getAttribute: (k) => store[k] ?? null, hasAttribute: (k) => store[k] !== undefined } };
+  }
+
+  it('attaches a COPY of the legacy pattern to the one layer holding its generated pieces', () => {
+    const legacy = { id: 'lattice-old', seed: 7 };
+    const layers = [{ id: 'rails-layer', name: 'Rails', visible: true }, { id: 'other', name: 'Layer 1', visible: true }];
+    const editor = mockMigrationEditor([ownedChild('rails-layer')], layers);
+
+    _migrateLegacyPatternOntoLayers(editor, legacy);
+
+    expect(editor._layers.find((l) => l.id === 'rails-layer').pattern).toEqual(legacy);
+    expect(editor._layers.find((l) => l.id === 'other').pattern).toBeUndefined();
+  });
+
+  it('attaches an INDEPENDENT copy to EACH layer under the old 3-layer-per-pattern model (Rails/Ties/Nodes)', () => {
+    const legacy = { id: 'lattice-old', seed: 8 };
+    const layers = [{ id: 'r' }, { id: 't' }, { id: 'n' }];
+    const editor = mockMigrationEditor([ownedChild('r'), ownedChild('t'), ownedChild('n')], layers);
+
+    _migrateLegacyPatternOntoLayers(editor, legacy);
+
+    expect(layers[0].pattern).toEqual(legacy);
+    expect(layers[1].pattern).toEqual(legacy);
+    expect(layers[2].pattern).toEqual(legacy);
+    // Independent copies, not the same object reference — mutating one
+    // later must not silently change the others.
+    layers[0].pattern.seed = 999;
+    expect(layers[1].pattern.seed).toBe(8);
+  });
+
+  it('does nothing when there is no legacy pattern to migrate', () => {
+    const layers = [{ id: 'r' }];
+    const editor = mockMigrationEditor([ownedChild('r')], layers);
+    _migrateLegacyPatternOntoLayers(editor, null);
+    expect(layers[0].pattern).toBeUndefined();
+  });
+
+  it('is skipped entirely once ANY layer already carries its own .pattern (a document saved after this migration shipped)', () => {
+    const legacy = { id: 'lattice-old', seed: 9 };
+    const layers = [{ id: 'r', pattern: { id: 'already-here', seed: 1 } }, { id: 't' }];
+    const editor = mockMigrationEditor([ownedChild('r'), ownedChild('t')], layers);
+
+    _migrateLegacyPatternOntoLayers(editor, legacy);
+
+    expect(layers[0].pattern).toEqual({ id: 'already-here', seed: 1 }); // untouched
+    expect(layers[1].pattern).toBeUndefined(); // NOT migrated either — the whole pass is skipped
+  });
+
+  it('a layer with NO owned pieces at all never gets the legacy pattern attached', () => {
+    const legacy = { id: 'lattice-old', seed: 10 };
+    const layers = [{ id: 'empty-layer' }];
+    const editor = mockMigrationEditor([], layers);
+    _migrateLegacyPatternOntoLayers(editor, legacy);
+    expect(layers[0].pattern).toBeUndefined();
   });
 });

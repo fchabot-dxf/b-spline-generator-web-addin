@@ -179,11 +179,17 @@ export function findNodeAt(editor, p) {
  *  (the general drawing-tool stroke setting; a live browser test found a
  *  0.5" board-wide stroke on a 0.5" rail pitch, so neighbouring rails
  *  merged into one mass). Color/data-layer via the same ensureActiveLayer
- *  path makeDrawingHandler uses in editor-interaction.js. */
-export function emitSegment(editor, kind, a, b) {
+ *  path makeDrawingHandler uses in editor-interaction.js.
+ *
+ *  @param {number} [widthOverride] SE7i: the generator's own PATTERN.
+ *   widths[kind] (inches), when given — the hand-drawn Lattice tool never
+ *   passes this, so its own segments keep today's LATTICE_STYLE-derived
+ *   sizing exactly (Widths, like Colors before it, is a generator-only
+ *   setting; the hand tool has no per-piece width control). */
+export function emitSegment(editor, kind, a, b, widthOverride) {
   const layer = ensureActiveLayer(editor);
   const spacing = editor._grid?.spacing || GRID_DEFAULTS.spacing;
-  const width = LATTICE_STYLE[kind].widthFactor * spacing;
+  const width = widthOverride != null ? widthOverride : LATTICE_STYLE[kind].widthFactor * spacing;
   return editor._sketchLayer
     .line(a.x, a.y, b.x, b.y)
     .stroke({ color: editor._color, width, linecap: 'round' })
@@ -197,12 +203,18 @@ export function emitSegment(editor, kind, a, b) {
  *  null) if a node already sits at that lattice cell. Radius comes from
  *  LATTICE_STYLE.node.radiusFactor × grid spacing (SE7c) when the grid is
  *  on — off-grid (Circle tool with no grid active) falls back to the
- *  fixed DEFAULT_NODE_RADIUS_IN, unchanged from before. */
-export function emitNode(editor, p) {
+ *  fixed DEFAULT_NODE_RADIUS_IN, unchanged from before.
+ *
+ *  @param {number} [radiusOverride] SE7i: the generator's own PATTERN.
+ *   widths.nodeRadius (inches), same generator-only scope as
+ *   emitSegment's widthOverride above. */
+export function emitNode(editor, p, radiusOverride) {
   if (findNodeAt(editor, p)) return null;
   const grid = editor._grid;
   const gridOn = !!(grid && grid.visible);
-  const r = gridOn ? LATTICE_STYLE.node.radiusFactor * (grid.spacing || GRID_DEFAULTS.spacing) : DEFAULT_NODE_RADIUS_IN;
+  const r = radiusOverride != null
+    ? radiusOverride
+    : (gridOn ? LATTICE_STYLE.node.radiusFactor * (grid.spacing || GRID_DEFAULTS.spacing) : DEFAULT_NODE_RADIUS_IN);
   const layer = ensureActiveLayer(editor);
   const fillColor = editor._color || '#000000';
   return editor._sketchLayer

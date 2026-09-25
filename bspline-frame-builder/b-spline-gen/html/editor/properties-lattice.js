@@ -2,26 +2,36 @@
  * properties-lattice.js — SE7b slice 3: wires the Lattice Pattern panel
  * (bspline_gen_palette.html's #editorLatticePanel, shown only while the
  * Lattice tool is active — editor-ui.js's updateToolbarVisibility) to
- * editor._latticePattern and PATTERN_DEFAULTS. Same per-panel-module
- * shape as properties-shape.js / properties-text.js / properties-expand.js.
+ * the ACTIVE layer's own `.pattern` (SE7i — see _currentPattern below)
+ * and PATTERN_DEFAULTS. Same per-panel-module shape as properties-shape.js
+ * / properties-text.js / properties-expand.js.
  * See SE7B-PATTERN-GENERATOR-DESIGN.md §5 for the mockup this markup follows.
  */
 import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
 import {
-    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind,
+    PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
+import { getActiveLayer } from './layers.js';
 
-/** editor._latticePattern is set by generatePattern, or restored by
- *  editor-io.js's open() from a document's data-lattice-pattern — never
- *  invented here. A fresh deep-cloned default is used only until the
- *  user's first Generate ever runs. */
+/** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
+ *  not once per file — Generate/Regenerate write into whichever layer is
+ *  active, so each layer keeps its own seed/orientation/rails/ties/nodes/
+ *  colors/widths independently (retires the old file-level
+ *  editor._latticePattern, which forced every layer through one shared
+ *  pattern). A fresh layer with no `.pattern` yet gets a deep-cloned
+ *  default the FIRST time this is called for it (lazily, not at layer-
+ *  creation time — most layers never touch the Lattice tool at all). */
+function _activeLayerObj(editor) {
+    const layers = Array.isArray(editor._layers) ? editor._layers : [];
+    return layers.find((l) => l.id === getActiveLayer(editor)) || null;
+}
 function _currentPattern(editor) {
-    if (!editor._latticePattern) {
-        editor._latticePattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
-    }
-    return editor._latticePattern;
+    const layer = _activeLayerObj(editor);
+    if (!layer) return JSON.parse(JSON.stringify(PATTERN_DEFAULTS)); // defensive: no layers at all yet
+    if (!layer.pattern) layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
+    return layer.pattern;
 }
 
 export function initLatticeProperties(editor) {
@@ -42,6 +52,9 @@ export function initLatticeProperties(editor) {
     const colorRailsEl = el('latticeColorRails');
     const colorTiesEl = el('latticeColorTies');
     const colorNodesEl = el('latticeColorNodes');
+    const widthRailsEl = el('latticeWidthRails');
+    const widthTiesEl = el('latticeWidthTies');
+    const widthNodesEl = el('latticeWidthNodes');
     const orientHorizontalEl = el('latticeOrientHorizontal');
     const orientVerticalEl = el('latticeOrientVertical');
     const toolBtn = el('toolLattice');
@@ -95,11 +108,14 @@ export function initLatticeProperties(editor) {
         generateBtn.textContent = p.id ? 'Regenerate' : 'Generate';
     }
 
-    /** Reflect editor._latticePattern onto every field. Called at bind
-     *  time and again whenever the Lattice tool button is clicked (the
-     *  panel's own show trigger) — a document opened with a different
-     *  saved pattern (editor-io.js's open()) shouldn't show stale field
-     *  values from whatever was on screen before. */
+    /** Reflect the active layer's own pattern onto every field. Called at
+     *  bind time, whenever the Lattice tool button is clicked (the panel's
+     *  own show trigger), and whenever the active layer itself changes
+     *  (SE7i: settings are per-layer now — switching layers must reload
+     *  THAT layer's own values, not keep showing the previous layer's). A
+     *  document opened with a different saved pattern (editor-io.js's
+     *  open()) shouldn't show stale field values from whatever was on
+     *  screen before either. */
     function syncFieldsFromPattern() {
         const p = _currentPattern(editor);
         // SE7h: reflect the current orientation onto the segmented
@@ -133,11 +149,15 @@ export function initLatticeProperties(editor) {
         if (colorRailsEl) colorRailsEl.style.background = colors.rails;
         if (colorTiesEl) colorTiesEl.style.background = colors.ties;
         if (colorNodesEl) colorNodesEl.style.background = colors.nodes;
+        const widths = { ...PATTERN_DEFAULTS.widths, ...p.widths };
+        if (widthRailsEl) widthRailsEl.value = widths.rails;
+        if (widthTiesEl) widthTiesEl.value = widths.ties;
+        if (widthNodesEl) widthNodesEl.value = widths.nodeRadius;
         syncGenerateLabel();
     }
 
-    /** Read every field back into editor._latticePattern (mutated in
-     *  place, matching generatePattern's own mutate-PATTERN-in-place
+    /** Read every field back into the active layer's own pattern (mutated
+     *  in place, matching generatePattern's own mutate-PATTERN-in-place
      *  contract) and return it. */
     function readFieldsIntoPattern() {
         const p = _currentPattern(editor);
@@ -167,17 +187,22 @@ export function initLatticeProperties(editor) {
             railEnds: nodesRailEndsEl ? !!nodesRailEndsEl.checked : (p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds),
         };
         if (seedEl) p.seed = parseInt(seedEl.value, 10) || 0;
+        p.widths = {
+            rails: widthRailsEl ? (parseFloat(widthRailsEl.value) || PATTERN_DEFAULTS.widths.rails) : (p.widths?.rails ?? PATTERN_DEFAULTS.widths.rails),
+            ties: widthTiesEl ? (parseFloat(widthTiesEl.value) || PATTERN_DEFAULTS.widths.ties) : (p.widths?.ties ?? PATTERN_DEFAULTS.widths.ties),
+            nodeRadius: widthNodesEl ? (parseFloat(widthNodesEl.value) || PATTERN_DEFAULTS.widths.nodeRadius) : (p.widths?.nodeRadius ?? PATTERN_DEFAULTS.widths.nodeRadius),
+        };
         return p;
     }
 
-    /** SE7g AMEND: wire one Colors swatch button to the shared color
-     *  mosaic. Picking a color updates PATTERN.colors[kind] (so the NEXT
-     *  Generate/Regenerate uses it even if nothing is owned yet) and, if
-     *  this pattern has already generated at least once (p.id exists),
-     *  recolors the OWNED pieces of that kind in place — no reseed, one
-     *  undo step (recolorOwnedKind's own pushState). A detached piece
-     *  keeps its own color for free, via the same ownership check that
-     *  already excludes it. */
+    /** SE7g AMEND (SE7i: layer-scoped): wire one Colors swatch button to
+     *  the shared color mosaic. Picking a color updates PATTERN.colors
+     *  [kind] (so the NEXT Generate/Regenerate uses it even if nothing is
+     *  owned yet) and recolors the ACTIVE layer's already-OWNED pieces of
+     *  that kind in place — no reseed, one undo step (recolorOwnedKind's
+     *  own pushState; a no-op, no pushState, when nothing is owned yet).
+     *  A detached piece keeps its own color for free, via the same
+     *  ownership check that already excludes it. */
     function wireColorSwatch(btnEl, kind) {
         if (!btnEl) return;
         on(btnEl, 'click', (e) => {
@@ -186,8 +211,27 @@ export function initLatticeProperties(editor) {
             openColorMosaic(btnEl, (hex) => {
                 p.colors = { ...PATTERN_DEFAULTS.colors, ...p.colors, [kind]: hex };
                 btnEl.style.background = hex;
-                if (p.id) recolorOwnedKind(editor, p.id, kind, hex);
+                recolorOwnedKind(editor, getActiveLayer(editor), kind, hex);
             });
+        });
+    }
+
+    /** SE7i (Section 2, "Widths"): the size-editing mirror of
+     *  wireColorSwatch above — a stepper's own value edits PATTERN.widths
+     *  [field] AND re-widths the ACTIVE layer's already-owned pieces of
+     *  that kind in place (rewidthOwnedKind), same "no reseed, just a
+     *  live rewrite" contract as Colors. `field` is the PATTERN.widths key
+     *  ('rails'/'ties'/'nodeRadius'); `kind` is recolorOwnedKind's own
+     *  kind name ('rails'/'ties'/'nodes') — rewidthOwnedKind shares that
+     *  same kind vocabulary. */
+    function wireWidthStepper(inputEl, field, kind) {
+        if (!inputEl) return;
+        on(inputEl, 'change', () => {
+            const p = _currentPattern(editor);
+            const value = parseFloat(inputEl.value) || PATTERN_DEFAULTS.widths[field];
+            p.widths = { ...PATTERN_DEFAULTS.widths, ...p.widths, [field]: value };
+            inputEl.value = value;
+            rewidthOwnedKind(editor, getActiveLayer(editor), kind, value);
         });
     }
 
@@ -227,9 +271,20 @@ export function initLatticeProperties(editor) {
     wireColorSwatch(colorRailsEl, 'rails');
     wireColorSwatch(colorTiesEl, 'ties');
     wireColorSwatch(colorNodesEl, 'nodes');
+    wireWidthStepper(widthRailsEl, 'rails', 'rails');
+    wireWidthStepper(widthTiesEl, 'ties', 'ties');
+    wireWidthStepper(widthNodesEl, 'nodeRadius', 'nodes');
 
     on(detachAllBtn, 'click', () => {
-        const p = _currentPattern(editor);
-        if (p.id) detachAllOwned(editor, p.id);
+        detachAllOwned(editor, getActiveLayer(editor));
+    });
+
+    // SE7i: settings are per-LAYER now — switching the active layer must
+    // reload ITS OWN pattern into the panel, not keep showing whatever the
+    // previously-active layer had. editorLayersChanged already fires on
+    // every active-layer switch (layers.js's setActiveLayer ->
+    // renderLayersPanel), so this re-syncs for free without a new event.
+    document.addEventListener('editorLayersChanged', (e) => {
+        if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
     });
 }

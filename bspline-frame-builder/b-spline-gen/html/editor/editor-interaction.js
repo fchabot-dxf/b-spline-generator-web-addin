@@ -33,7 +33,7 @@ import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
 } from './editor-lattice.js';
-import { detachOwnership, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, getLayerPattern } from './editor-lattice-pattern.js';
 import {
     INPUT_PROFILE, inputProfileFor, computePinchUpdate,
     shouldCancelDrawOnPointerDown, isPinching,
@@ -492,20 +492,16 @@ function handleEnd(editor, e) {
             return;
         }
         if (editor._dragMoved) {
-            // SE7b slice 3 / design §2: any completed drag detaches the
-            // elements it touched from their Lattice pattern (if owned) —
-            // strip data-lattice-gen BEFORE pushState() so the detach and
-            // the move land in the SAME undo step (one Ctrl+Z reverts
-            // both the position and re-establishes ownership together,
-            // rather than a split state where undo restores the position
-            // but leaves it detached, or vice versa). Node-drag targets
-            // editor._selectedElement (singular); translate and transform
-            // both target editor._selectedElements (plural) — covers all
-            // 3 gestures that converge here.
-            const dragged = wasNodeDrag
-                ? (editor._selectedElement ? [editor._selectedElement] : [])
-                : (editor._selectedElements || []);
-            detachOwnership(dragged);
+            // SE7b slice 3 / design §2 retired this turn (SE7i, Fred: "I'll
+            // create a new one if I want"): a completed drag used to
+            // detach the elements it touched from their Lattice pattern
+            // (strip data-lattice-gen) so Regenerate would never re-sweep
+            // a hand-moved piece. SE7i's own generatePattern now clears
+            // EVERY owned piece in the active layer on Generate/Regenerate
+            // — "including pieces moved by hand since" — which only holds
+            // if a plain move no longer strips ownership first; keeping
+            // both rules active would silently re-detach every dragged
+            // piece before Regenerate ever got a chance to sweep it.
             editor.pushState();
             // SE8b / SA-UNDO-1: the move-handlers now only ever fire
             // 'live' (rAF-coalesced) — this is the one 'commit' per
@@ -909,7 +905,7 @@ const latticeHandler = {
         // canonical (horizontal) frame, run constrain/the tie-shape test/
         // the rail-row snap EXACTLY as written for horizontal, then
         // transpose the result back out. See orient()'s own doc comment.
-        const orientation = editor._latticePattern?.orientation ?? PATTERN_DEFAULTS.orientation;
+        const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
         const a = editor._latticeStart;
         const bLat = toLattice(pt, spacing);
         const aCanon = orient(a, orientation);
@@ -926,16 +922,15 @@ const latticeHandler = {
         // canonical-frame row — in vertical orientation that's a REAL
         // column, per _existingRailRows' own doc comment.
         // T30 AMEND (Fred): ONE setting for both surfaces — reads the
-        // Pattern panel's own railSnapRows field (editor._latticePattern.
-        // ties.railSnapRows, persisted with the pattern) rather than a
-        // second, hand-tool-only default; initLatticeProperties() (called
-        // unconditionally at editor setup, editor-controls.js) guarantees
-        // editor._latticePattern already exists by the time any tool can
-        // be used, so the PATTERN_DEFAULTS fallback below is only ever
-        // for a still-uninitialized editor in a test harness.
+        // Pattern panel's own railSnapRows field (SE7i: the ACTIVE layer's
+        // own pattern, via getLayerPattern — persisted per layer now, not
+        // once per file) rather than a second, hand-tool-only default; a
+        // layer with no `.pattern` yet (never Generated on) falls back to
+        // PATTERN_DEFAULTS, same "missing = defaults" convention as every
+        // other read of a possibly-absent pattern field.
         const isTieShaped = Math.abs(bCanon.i - aCanon.i) < Math.abs(bCanon.j - aCanon.j);
         if (isTieShaped) {
-            const railSnapRows = editor._latticePattern?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+            const railSnapRows = getLayerPattern(editor)?.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
             const railRows = _existingRailRows(editor, spacing, orientation);
             const snapped = nearestRailRow(constrainedCanon.j, railRows, railSnapRows);
             if (snapped != null) constrainedCanon = { i: constrainedCanon.i, j: snapped };
@@ -953,7 +948,7 @@ const latticeHandler = {
         editor._latticeStart = null;
         editor._latticeEnd = null;
         if (!a) return;
-        const orientation = editor._latticePattern?.orientation ?? PATTERN_DEFAULTS.orientation;
+        const orientation = getLayerPattern(editor)?.orientation ?? PATTERN_DEFAULTS.orientation;
         const aCanon = orient(a, orientation);
         const bCanon = orient(b, orientation);
         const kind = classifyDrag(aCanon, bCanon);

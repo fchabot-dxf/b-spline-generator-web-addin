@@ -32,6 +32,15 @@
  *   - tx/ty/rotation/scale/mirrorX/mirrorY: per-pass transform
  *   - blur, smoothing, suppression, edgeFilletRadius, filletPower:
  *     rasterizer knobs
+ *   - pattern (SE7i, optional): this layer's own Lattice generator
+ *     settings (see editor-lattice-pattern.js's PATTERN_DEFAULTS shape),
+ *     set the first time Generate/Regenerate runs on this layer. Absent
+ *     on every layer that has never used the Lattice tool — read via
+ *     that file's own getLayerPattern(editor), never a raw field access,
+ *     so a missing pattern reads as PATTERN_DEFAULTS everywhere
+ *     consistently. Per-layer (not once per file) so two layers can each
+ *     run their own independent lattice with their own seed/orientation/
+ *     colors/widths.
  *
  * editor._activeLayer is the id of the active (editable) layer.
  *

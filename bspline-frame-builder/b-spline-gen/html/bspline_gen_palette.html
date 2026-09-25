@@ -1640,6 +1640,26 @@
               </div>
             </div>
 
+            <!-- SE7i (Section 2, "Widths"): mirrors the Colors row above —
+                 one stepper per kind, changing one re-widths that kind's
+                 OWNED pieces in place (no reseed). Node's value is a
+                 RADIUS (matches emitNode's own internal unit), labeled
+                 "size" per the dispatch's own row spec. -->
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <span style="font-weight:600;">Widths</span>
+              <div style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
+                  <input id="latticeWidthRails" type="number" min="0.01" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
+                  <input id="latticeWidthTies" type="number" min="0.01" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Node size
+                  <input id="latticeWidthNodes" type="number" min="0.01" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
+                </label>
+              </div>
+            </div>
+
             <!-- SE7g (Fred: "the generate button needs to automatically
                  use a new seed"): Generate/Regenerate now rolls a fresh
                  seed on every press (editor-lattice-pattern.js's
