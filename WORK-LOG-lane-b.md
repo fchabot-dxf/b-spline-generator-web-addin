@@ -4756,3 +4756,135 @@ before passing. Chrome (port 9505, profile `chrome-profile-t42b`) confirmed mine
 before stopping; 0 of that profile's processes remained after. Committed by explicit path (5 files:
 `bspline-frame-builder/styles/base.css`, `editor/editor-text-session.js`, `editor/editor-text-style.js`,
 `tests/editor-text-style.test.js`, `WORK-LOG-lane-b.md`) — pushed.
+
+## T43 — SE12 Slice 4: the Fusion export honors a layer's fusionGeometry pick
+
+**Design, keyed on the ONE field, exactly as dispatched.** `getLayerSvg(editor, layerId, dpi, options)`
+gained a 4th param: `options.geometry === 'fusion'` swaps in the layer's own `fusionGeometry` pick
+(outline/both) right before export; every other call (no options — `stamp-mask-manager.js`'s carve mask,
+`export-flow.js`'s own wizard-availability `_stampExportCandidates()`) is byte-for-byte untouched, same
+code path as before this slice (refactored the shared parse+filter step into `_parseLayerContent` so
+there's one parse, not two copies, but the DEFAULT branch's own output construction is the identical
+lines in the identical order — confirmed via a direct `diff` against the pre-refactor file, not just "the
+tests still pass"). The two calling conventions are deliberate: the plain call returns a string
+(unchanged); `{geometry:'fusion'}` always returns a Promise `{svg, declined}` — even for a
+`fusionGeometry:'centerline'` layer that needs no async work — so every 'fusion' caller has ONE contract
+regardless of the layer's own pick (text glyph outlines need an async font fetch; nothing else does).
+
+**Reused OUTLINE_KINDS — one geometry engine, not a second copy, per the dispatch's own instruction.**
+`_getLayerSvgForFusion` (editor-io.js) walks the DOMParser'd, already-layer-filtered content (the same
+parse `_parseLayerContent` already does for the plain path) and, for each child, calls
+`OUTLINE_KINDS[type]` — the EXACT table `editor-outline-preview.js`'s live on-canvas preview already
+uses — via a small adapter (`_outlineAdapter`) that gives a plain DOM element the `.attr()`/`.array()`/
+`.type`/`.node`/`.text()` shape those table entries expect (mirrors svg.js's own points-attribute parsing
+for polyline/polygon). Couldn't hand OUTLINE_KINDS the preview's own LIVE svg.js children directly — this
+runs off a DOMParser'd copy of serialized content, same as getLayerSvg's default path always has — but
+the geometry FUNCTIONS themselves (lineOutlinePathD, pathOutlinePathD, ellipseOutlinePathD, ...) are the
+identical code either way; only the wrapper differs, same reasoning `_carveText`'s own bake-time text→path
+swap already established for a different consumer of the same functions.
+
+**outline replaces, both joins, declines fall back + are counted + are console-warned.** For each child:
+'outline' swaps it for a `<path fill="none">` carrying the outline `d`, the source's own `stroke`/
+`stroke-width`/`transform` (uncomposed, same contract `refreshOutlinePreview` already uses — the outline
+is computed in the element's LOCAL frame), and every `data-*` attr (following `_carveText`'s own
+established precedent for a geometry-swap-at-export carrying metadata over). 'both' keeps the original
+element AND adds the path alongside it. An element with no OUTLINE_KINDS entry for its type, or whose
+entry itself declines (an unsupported cap, no font mapping), keeps its own centerline untouched, is
+individually `console.warn`'d, and counted — `export-flow.js`'s new `_fusionLayerSvg` helper rolls that
+count into the export's own `fusLog` line (`[EXPORT] layer <id>: N element(s) declined...`) so it's
+visible in the Fusion log without opening devtools, satisfying "a count the caller can show" without
+inventing new UI this slice didn't ask for.
+
+**Wiring in export-flow.js.** `_stampExportCandidates()` gained one field — `id: layer.id` — the minimum
+needed to re-derive the geometry-aware SVG later; its own `.svg` field stays the plain centerline read
+(wizard-availability checks and `hasShippableSvg` don't need geometry awareness — a layer either has
+content or it doesn't, regardless of which geometry it exports as). The actual swap happens exactly once,
+right before baking, in a new `_fusionLayerSvg(editor, l)` helper called from both `sendToFusion` and
+`downloadFiles` (the two real export builders) — `await bakeSvgForCarving(await _fusionLayerSvg(editor, l), ...)`
+— so `getLayerSvg`'s own async 'fusion' branch is awaited before `JSON.stringify`/Blob construction ever
+sees it, same await-before-build discipline SE8d's own comment already established for the text-glyph
+bake. `onGenerate`'s modal-open availability check and `onFusionApply`'s `hasStamp` check were
+DELIBERATELY left reading the plain centerline `.svg` (no geometry swap, no extra font-fetch) — they only
+need to know content EXISTS, not what geometry it will export as, so paying the async cost there (a real
+font fetch on every modal open) would be pure waste for zero behavioral benefit.
+
+**A real bug found live, not by inspection — the same discipline as T40's cap bug and T41's CSS bug.**
+The dispatch's own verify criteria demanded "run outline paths through the SAME bake... assert the output
+still has A commands, no C." The first live CDP check (a layer with rect+ellipse+polyline+text, all set
+to Outline, driven through the REAL `getLayerSvg(editor, id, 96, {geometry:'fusion'})`) found exactly one
+forbidden `C` — the TEXT outline. Root cause, traced rather than assumed: `pathOutlinePathD`'s
+`_openSubpathD` (editor-expand-path.js) had a 'fill'-mode branch (`_passthroughD`) that re-emitted a
+subpath's raw parsed segments verbatim whenever `_parseD` marked that subpath OPEN (no literal `Z`
+token) — and opentype.js's own `toPathData()` (used by `textGlyphPathD`/`localGlyphPathD`, the SAME glyph
+extraction both Expand and this outline kind already trust) NEVER emits a literal `Z` for a closed glyph
+contour: it relies on the SVG spec's own implicit-closure-for-fill rule (a filled subpath is closed at
+render time regardless of a literal Z) instead. So `_parseD` mislabeled every one of "Fred"'s glyph
+contours as open, and the OPEN dispatch's fill branch had no biarc-fit step — unlike `_closedSubpathD`'s
+own fill branch, which T40 part 2 already fixed for exactly this reason (its own comment: "a straight
+`_passthroughD`... would leave any `C` segment as a raw cubic... breaking the M/L/A/Z only contract").
+T40 part 2's own tests never caught this because they only ever stubbed `OUTLINE_KINDS.text`'s success
+path with a fake M/L/Z string (the real glyph fetch always declines in vitest's environment — confirmed,
+not assumed, same finding T42's own WORK-LOG entry already documented for a different reason) — nothing
+had actually asserted command-letter purity against REAL opentype output before this turn's live check.
+
+**Fix, scoped to exactly the branch that was wrong.** `_openSubpathD`'s fill branch now calls the SAME
+`_closedRing(subpath, 1, 0, tolerance)` `_closedSubpathD`'s own fill branch already uses — confirmed by
+reading `_closedRing`/`_buildBank` (not assumed) that NEITHER ever reads `subpath.closed` at all, so this
+is behavior-identical to what a literally-Z-terminated version of the same contour would produce, and
+correct per the SVG spec's own fill semantics (a filled subpath is closed whether or not it carries a
+literal Z). Scoped to 'fill' mode only — 'stroke'/'both' still route through `_openCapsuleD` unchanged: a
+genuinely open STROKE (two real free ends needing caps) is a real semantic difference from a closed fill,
+and nothing about this fix touches that distinction. `_passthroughD` and its own helper `_segToD` became
+fully dead after this change (grepped the whole repo — zero remaining references) and were deleted rather
+than left as untested code, per this session's own established standard; the 2 comments elsewhere in the
+file that referenced `_passthroughD` by name were reworded, not left dangling.
+
+**Regression test, mutation-verified.** `tests/editor-expand-path.test.js`'s 'modes' describe block gained
+one test: the exact shape opentype.js hands this code (a fill-mode subpath with a real curve and NO
+trailing Z) — asserts only M/L/A/Z, and that every sampled output point sits tight to the source curve
+(same tolerance style the existing "WITH a cubic segment" fill-mode test already uses). Mutation-verified:
+reverted `_openSubpathD`'s fill branch to the old raw re-emit (restored `_segToD` under a mutation-only
+name), ran the suite — exactly 1 failure, this new test, everything else (including the sibling CLOSED-
+subpath fill test) unaffected; restored via the pre-edit backup (not `git checkout HEAD`, since none of
+this was committed yet — this session's own established discipline), confirmed byte-identical via `diff`.
+
+**`tests/editor-io-fusion-geometry.test.js` (NEW, 10 tests)** covers `getLayerSvg`'s own new contract
+directly: the default call ignores `fusionGeometry` entirely (a direct differential assertion — the same
+call WITH a non-centerline layer object present vs WITHOUT one produces byte-identical output — proving
+the field is never even read on that path, not just "looks the same"); centerline pick under
+`{geometry:'fusion'}` returns the exact same bytes the plain call would (wrapped in a Promise); outline
+replaces (path only, M/L/A/Z, `data-*` and `transform` carried over); both keeps the element AND adds the
+path; a no-OUTLINE_KINDS-entry element (`<image>`) and text (declines in vitest's environment, same
+established reason) both fall back to centerline, count as 1 declined, and warn exactly once; the two
+"editor not drawn" / "no matching children" edge cases match the plain path's own `""` contract, now as
+`{svg:'', declined:0}`. Mutation-verified 3 separate ways: (1) forced `kind` to always resolve
+'centerline' — 4 failures, exactly the outline/both/decline-under-outline tests, centerline/default tests
+correctly unaffected; (2) forced 'both' to behave like 'outline' (never keep the centerline element) — 1
+failure, exactly the "both" test; (3) disabled decline counting/warning — 2 failures, exactly the two
+decline tests. All 3 mutations restored from the pre-edit backup, confirmed byte-identical via `diff`
+before re-running the full suite green.
+
+**Live verification (CDP, fresh Chrome each time per T41's own established lesson about stale module
+caches in a reused process).** First pass (port 9506, profile `chrome-profile-t43`): a real editor layer
+with rect+ellipse+polyline (lattice-rail stand-in — lattice pieces are themselves just lines/paths once
+generated, already covered by these same OUTLINE_KINDS entries)+text, `fusionGeometry:'outline'`, driven
+through the REAL `getLayerSvg(editor, id, 96, {geometry:'fusion'})` — found the C-command bug above.
+Second pass (killed and relaunched, port 9507, profile `chrome-profile-t43b`, confirmed mine by
+command-line match before stopping the first): same script, post-fix — `declined:0`, `pathCount:4` (all
+four elements swapped), zero forbidden command letters, all four originals correctly absent (pure
+'outline' mode, not 'both'). A third check ran the SAME output through the REAL `bakeSvgForCarving` (Slice
+0's own similarity-carve bake, the actual next step in the real export pipeline) — still zero forbidden
+letters, and confirmed real `A` arcs survive the bake (`hasArcAfterBake: true`), directly satisfying the
+dispatch's own "assert the output still has A commands, no C" criterion against the FULL pipeline, not
+just the pre-bake output. Saved to scratchpad as `t43-export.svg` (12023 bytes) for the advisor's own
+Fusion import check. Zero console errors/exceptions across both passes. Chrome (9506/`chrome-profile-t43`
+then 9507/`chrome-profile-t43b`) confirmed mine by command-line match before each stop; 0 of either
+profile's processes remained after.
+
+Full vitest suite: 679/679 green (668 + 10 new fusion-geometry tests + 1 new open-subpath-fill regression
+test).
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (6 files: `editor/editor-io.js`, `editor/editor-expand-path.js`,
+`main/export-flow.js`, `tests/editor-io-fusion-geometry.test.js` (new), `tests/editor-expand-path.test.js`,
+`WORK-LOG-lane-b.md`) — pushed.

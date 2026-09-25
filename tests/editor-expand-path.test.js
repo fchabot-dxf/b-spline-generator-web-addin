@@ -253,6 +253,19 @@ describe('pathOutlinePathD — modes', () => {
     expect(unsupported).toBeNull();
     expect(countM(d)).toBe(1);
   });
+
+  it('T43: fill mode on a subpath with NO trailing Z (still biarc-fits a curve, only M/L/A/Z) — the exact shape opentype.js\'s own toPathData() hands localGlyphPathD for every closed glyph contour (it relies on SVG\'s implicit fill-closure and never emits a literal Z), which a real live export caught rendering raw C through this same path before this fix', () => {
+    // Same source as the "WITH a cubic segment" test above, MINUS the
+    // trailing Z — _parseD marks this subpath open (no literal Z token)
+    // even though it geometrically returns to its own start point, same
+    // as every glyph contour opentype.js emits.
+    const source = 'M 0 0 C 3 4 7 -4 10 0 L 10 10 L 0 10 L 0 0';
+    const { d, unsupported } = pathOutlinePathD(source, 2, { mode: 'fill' });
+    expect(unsupported).toBeNull();
+    expect(d).not.toMatch(/[CSQT]/);
+    const sourceCloud = sampleDense(source + ' Z', 500);
+    for (const p of sampleDense(d, 12)) expect(nearestDist(p, sourceCloud)).toBeLessThan(0.02);
+  });
 });
 
 describe('pathOutlinePathD — declines', () => {

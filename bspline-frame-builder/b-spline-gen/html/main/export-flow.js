@@ -73,8 +73,13 @@ function _stampExportCandidates() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : [];
     return editorLayers.map((layer) => {
-        if (!layer) return { enabled: false, carve: false, depth: 0, profile: null, mask: null, svg: null };
+        if (!layer) return { id: null, enabled: false, carve: false, depth: 0, profile: null, mask: null, svg: null };
         return {
+            // SE12 Slice 4: the layer id, so the actual export step (below)
+            // can re-derive this layer's fusionGeometry-aware SVG right
+            // before baking — this candidate's own `svg` stays the plain
+            // centerline read (availability checks only; see _fusionLayerSvg).
+            id: layer.id,
             enabled: isExported(layer),
             carve: isCarved(layer),
             depth: layer.depth,
@@ -83,6 +88,27 @@ function _stampExportCandidates() {
             svg: editor ? (getLayerSvg(editor, layer.id) || null) : null,
         };
     });
+}
+
+/** SE12 Slice 4: swap in this layer's OWN fusionGeometry pick
+ *  (outline/both) right before baking for the actual export payload.
+ *  The plain `l.svg` from _stampExportCandidates stays centerline-only —
+ *  it's also what wizard-availability checks and the carve mask read,
+ *  and getLayerSvg's own docstring promises those stay byte-for-byte
+ *  untouched by this slice. Only this one call site (the real export)
+ *  asks for the geometry-aware variant. Declines are already individually
+ *  console-warned inside getLayerSvg itself; this just rolls the count
+ *  into the export's own fusLog line so it's visible without opening
+ *  devtools. Falls back to the plain centerline svg already on `l` if
+ *  the editor isn't live — shouldn't happen (export only runs with one),
+ *  but matches every other defensive `editor ? ... : null` in this file. */
+async function _fusionLayerSvg(editor, l) {
+    if (!editor || l.id == null) return l.svg;
+    const { svg, declined } = await getLayerSvg(editor, l.id, 96, { geometry: 'fusion' });
+    if (declined > 0 && typeof fusLog === 'function') {
+        fusLog(`[EXPORT] layer ${l.id}: ${declined} element(s) declined outline geometry — exported as centerline.`);
+    }
+    return svg || l.svg;
 }
 
 export const activeStampLayers     = () => _stampExportCandidates().filter(isCarvingLayer);
@@ -277,11 +303,14 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     // glyph bake loads a font over the network) — await every layer's bake
     // BEFORE building the payload object, not inside .map() (an async map
     // callback would hand JSON.stringify an array of unresolved Promises).
+    // SE12 Slice 4: _fusionLayerSvg swaps in this layer's fusionGeometry
+    // pick before the bake — same await-before-build reasoning.
+    const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const bakedLayers = options.includeSVG
         ? await Promise.all(layersToExport.map(async (l, i) => ({
             index: i + 1,
             config: { profile: l.profile, depth: l.depth },
-            svg: await bakeSvgForCarving(l.svg, P.widthIn, P.heightIn, 96),
+            svg: await bakeSvgForCarving(await _fusionLayerSvg(editor, l), P.widthIn, P.heightIn, 96),
         })))
         : [];
     const payload = JSON.stringify({
@@ -327,8 +356,11 @@ async function downloadFiles({ shared, heights, offsetPts, unstamped, selectedVa
     if (layersToExport.length > 0) {
         // SE8d: bakeSvgForCarving is now async (see sendToFusion's own note
         // on why) — a plain .forEach can't await, so a for-of loop instead.
+        // SE12 Slice 4: swap in each layer's fusionGeometry pick first.
+        const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
         for (let i = 0; i < layersToExport.length; i++) {
-            const bakedSvg = await bakeSvgForCarving(layersToExport[i].svg, P.widthIn, P.heightIn, 96);
+            const fusionSvg = await _fusionLayerSvg(editor, layersToExport[i]);
+            const bakedSvg = await bakeSvgForCarving(fusionSvg, P.widthIn, P.heightIn, 96);
             exportFiles.push({
                 name: `B-Spline-artwork-layer-${i + 1}.svg`,
                 blob: new Blob([bakedSvg], { type: 'image/svg+xml' }),
