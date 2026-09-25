@@ -5425,3 +5425,105 @@ Amendments polled clean before committing and again immediately before passing. 
 boundary.test.js` [new], `WORK-LOG-lane-b.md`) — the two new files staged individually first (`git add`)
 since `git commit <paths>` can't pathspec-stage untracked files, then committed together with the rest by
 path — pushed. `reference/` confirmed still untracked, not swept.
+
+## T48 — SE13 Slice 2: computePattern's boundary mode (no runs/parts yet)
+
+**Scope, per the dispatch and its own ruling on SE13 open question 1** (advisor default = my own T46
+recommendation): build boundary mode + spans + the grid-cell pre-filter, uniform per-kind color exactly
+like Board mode — `runs.stepLen` stays null, no omit/loose/palette, no stored-roll generation. NO FUSION —
+vitest proof only. Advisor's own T48 note: T47 independently re-checked against a 4000-step dense-polyline
+parity oracle on an irregular cubic+concave boundary, 0 span-count mismatches over 150 rows — confirms
+Slice 1's own cutting engine is solid ground to build on.
+
+**The core architectural change, exactly Ground-truth #2's own prediction**: `computePattern`'s rail/tie
+loops assumed a rail/tie spans the FULL extent edge-to-edge once gated on/off. Boundary mode replaces that
+with each row/column's own `insideSpans(scanLine, boundaryPrimitives)` (SE13 Slice 1, T47), clipped to the
+extent's own iMin..iMax/jMin..jMax defensively — 0, 1, or several segments per row/column instead of always
+exactly one. One new helper, `_clipToSpans(lo, hi, spans)`, does the clipping for BOTH rails (clip the full
+row width to the boundary) and ties (clip the tie's own already-drawn random span to the boundary) — the
+SAME operation either way, not two copies. Ties' own density/span/anchor RNG draw is completely unchanged;
+boundary mode only shortens the result, never re-decides whether/how far a tie is drawn — "shorten, don't
+re-decide" keeps the existing, already-tested tie-placement logic untouched.
+
+**Endpoints use the raw boundary-crossing point directly** — §5's `on-boundary` ending rule, the only one
+of the four this slice implements (the ending-rule TABLE — inset/joint/loose — is explicitly Slice 3's own
+emission-time dispatch, not built here). Declared, not silently skipped: the rails-loop comment says so
+explicitly, so a future reader doesn't mistake "no ending-rule code yet" for an oversight.
+
+**A real design problem, solved without touching Slice 1's own primitives.** `computePattern` works in
+LATTICE coordinates throughout (its own established contract); a boundary shape's primitives naturally live
+in world-space inches. Rather than converting per-row/column (repeated work) or reflecting primitives into
+`orient()`'s canonical frame for `orientation:'vertical'` (real risk: reflecting a rotated ellipse/arc's own
+phi/theta across the diagonal is genuinely error-prone, and not needed) — two decisions instead:
+1. **Scale once**: `_resolveExtent`'s new 'boundary' branch scales every primitive coordinate by `1/spacing`
+   (a uniform scalar — rx/ry scale together, phi/theta stay exact, not approximated) into the SAME
+   lattice-unit space `computePattern` already reasons in, so `insideSpans`' own output IS the fractional
+   i/j span directly, no per-call conversion.
+2. **Never reflect primitives — reflect the QUERY.** `_rowScanLine(j, orientation)`/`_colScanLine(i,
+   orientation)` build the REAL (un-oriented) scan line for a CANONICAL row/column via `orient()` itself
+   (the same self-inverse function every other lattice quantity in this file already goes through — two
+   canonical points `orient()`-mapped to real space give the scan line's point + unit direction). Boundary
+   primitives stay in ONE fixed, real, never-reflected frame throughout; only which direction is queried
+   changes with orientation. Verified directly: a rect boundary reduces byte-identically to `mode:'rect'`
+   under `orientation:'vertical'` too, not just the horizontal default — proves the algebra, not just the
+   identity case (own test, not asserted from memory).
+
+**`_resolveExtent`'s own 'boundary' branch — one disclosed scope decision.** `shapeToPrimitives` (Slice 1)
+is async (the `text` case awaits a font fetch); `_resolveExtent` and every existing caller are synchronous.
+Rather than making every board/rect caller `await` a code path it never uses, `_resolveExtent` now takes an
+OPTIONAL 3rd arg, `boundaryPrimitives` — already resolved, in world-space inches. Finding the live
+`data-boundary-ref` element and calling `shapeToPrimitives` on it (the actual async DOM lookup) is left to
+Slice 3's own live-wiring caller; THIS function's job stays synchronous — the lattice-unit scale plus the
+bbox pre-filter (new `primitivesBBox` export, Slice 1's own module, since it's pure primitive geometry:
+tight for L, exact for CIRCLE, conservative-but-always-valid for C/A via the convex-hull/max-radius
+properties), rounded OUT to whole lattice cells via floor/ceil. Flagged here explicitly as the one real
+interface-design call I made unilaterally, since the design doc's own Slice 2 bullet just says "calls Slice
+1" without specifying the async/sync split.
+
+**A genuine finding during test-writing, not assumed**: a boundary rect whose own edges land EXACTLY on the
+tested extent's iMin/jMin/iMax/jMax hits Slice 1's own already-tested, intentional degenerate case (a scan
+line exactly collinear with a boundary edge reports no crossing — `tests/editor-lattice-boundary.test.js`'s
+own "flat-edge-collinear" test) — the outermost rail row / tie column would silently vanish. This is NOT a
+Slice 2 bug; it's Slice 1's own documented half-open convention, inherited correctly. Rather than re-testing
+that already-proven behavior under a new name, the "byte-identical to rect mode" tests pad the boundary rect
+one lattice unit beyond the box under test, so every row/column actually visited sits strictly inside it —
+isolating what Slice 2 actually adds (clipping to a boundary that doesn't constrain anything must be a
+no-op) from what Slice 1 already owns and has already proven.
+
+**Data model**: `PATTERN_DEFAULTS.boundary` declared (§1's full shape: `shapeId`/`endRule`/`joints`/
+`border`), with `runs: null` exactly as the dispatch specified — a slot that costs nothing until Slice 3
+reads it, additive later without a breaking-change migration. `computePattern` itself doesn't read
+`PATTERN.boundary` at all yet (it consumes `opts.extent.mode`/`opts.extent.primitives` instead, resolved
+separately) — the field exists purely for Slice 3's own live wiring to read.
+
+**New tests**: `tests/editor-lattice-pattern-boundary.test.js` (9 tests) — byte-identical-to-rect-mode
+(plain + vertical-orientation + full `_resolveExtent`-through-`shapeToPrimitives` end-to-end); determinism
+with a non-rectangular boundary; circular-boundary chord shortening (exact analytic check) plus the
+tangent-row-emits-nothing edge case; a donut (hole) boundary producing exactly TWO rail segments for one
+row — the core new capability, directly proven; a forced tie column shortened to the boundary's own inside
+span, checked against an independent oracle, with an explicit "the raw draw actually straddles the
+boundary" sanity assertion so the test can't pass vacuously; `_resolveExtent`'s own degenerate/empty-
+primitive-list case. Plus 5 new `primitivesBBox` tests added to `tests/editor-lattice-boundary.test.js`
+(rect exact, circle exact, rotated-arc conservative-but-valid, cubic convex-hull bound, empty-list -> null).
+
+**Mutation test**: backed up `editor-lattice-pattern.js`, replaced `_clipToSpans`'s own body with
+`return [[lo, hi]];` (ignore the boundary's spans entirely — "clip to nothing" mutation), ran the new
+boundary test file: exactly 4 of 9 failed — chord-shortening (both its own assertions), the tangent-row-
+empty case, the donut two-segment case, and the tie-clipping case — precisely the tests whose own claim
+depends on real clipping. The byte-identical-to-rect-mode tests and the determinism test correctly stayed
+green (their own padded-boundary construction means "clip to nothing" and "clip correctly" are
+indistinguishable there by design — confirms those tests check the scan-line/bbox math, not clipping,
+exactly as intended, not a blind spot). Restored from backup, confirmed byte-identical via `diff`, re-ran:
+9/9 green again.
+
+Full vitest suite: 776/776 green (762 T47 baseline + 9 new pattern-boundary + 5 new primitivesBBox).
+
+No live CDP session — pure module, no DOM, no live editor wiring yet (that's Slice 3's job), matching the
+dispatch's own "NO FUSION" instruction.
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(3 files: `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js`,
+`bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js` [primitivesBBox add-on],
+`tests/editor-lattice-boundary.test.js` [primitivesBBox tests]) plus `tests/editor-lattice-pattern-
+boundary.test.js` [new] and `WORK-LOG-lane-b.md` — the new test file staged individually first (`git add`)
+— pushed. `reference/` confirmed still untracked, not swept.

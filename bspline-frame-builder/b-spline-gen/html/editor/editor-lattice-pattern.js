@@ -26,6 +26,12 @@ import {
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer } from './layers.js';
 import { lcgPoints } from '../core/terrain.js';
+// T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
+// 'boundary' extent branch calls insideSpans directly (no re-derivation of
+// L/A/C crossing math here); primitivesBBox is _resolveExtent's own
+// boundary-bbox pre-filter, same reuse discipline as everything else in
+// this file's own header comment.
+import { insideSpans, primitivesBBox } from './editor-lattice-boundary.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -113,6 +119,25 @@ export const PATTERN_DEFAULTS = {
     nodeRadius: LATTICE_STYLE.node.radiusFactor * 0.25,  // 0.075
   },
   seed: 42,
+  // T48 (SE13 §1): the `extent.mode === 'boundary'` settings, declared now
+  // (this slot costs nothing until a consumer reads it — "declare over
+  // hand-roll") even though only `computePattern`'s own span-clipping
+  // (this slot's `shapeId`/`endRule`/`joints`/`border` are NOT read yet)
+  // exists so far. `runs: null` is a DELIBERATE, explicit scope cut for
+  // this slice (advisor ruling on SE13 open question 1, T48 dispatch):
+  // the color-run/parts sub-cut and its per-piece stored rolls are NOT
+  // built — a boundary-filled row/column emits one uniformly-colored
+  // segment per inside span, i.e. today's Board-mode look, just shaped to
+  // the boundary. Additive later: turning `runs` into the full §1 object
+  // (`{stepLen,omitPct,loosePct,palette}`) is new code, not a breaking
+  // change to this shape.
+  boundary: {
+    shapeId: null,
+    endRule: 'inset',
+    runs: null,
+    joints: { freq: 1, shape: 'circle', size: null },
+    border: { enabled: false, width: null, color: null },
+  },
 };
 
 /** SE7g (Fred: "the generate button needs to automatically use a new
@@ -231,17 +256,69 @@ function _occupiedHas(occupied, i, j, kind) {
 }
 
 /**
+ * T48 (SE13 Slice 2): intersect [lo,hi] against a sorted, non-overlapping
+ * `spans` list (insideSpans' own output shape), returning every non-empty
+ * overlap as its own [a,b] piece — 0, 1, or many. Board/rect mode never
+ * calls this (its "span" is already the whole extent); boundary mode uses
+ * it for BOTH rails (clip the full row width to the boundary) and ties
+ * (clip the drawn random span to the boundary) — one function, not two,
+ * since "shorten this range to what's actually inside" is the same
+ * operation either way (Ground-truth #2's own "multiple inside-sub-spans
+ * per row/column" restructuring).
+ */
+function _clipToSpans(lo, hi, spans) {
+  const out = [];
+  for (const [sLo, sHi] of spans) {
+    const a = Math.max(lo, sLo), b = Math.min(hi, sHi);
+    if (b - a > 1e-9) out.push([a, b]);
+  }
+  return out;
+}
+
+/**
+ * T48: the REAL (un-oriented) scan line for a CANONICAL row `j` — a rail
+ * in the canonical (horizontal) frame. Built via `orient()` rather than a
+ * hand-written horizontal/vertical branch so 'vertical' orientation (SE7h:
+ * "rails become vertical") is correct for free: two canonical points
+ * {i:0,j} and {i:1,j}, mapped to real space by the SAME `orient()` every
+ * other lattice quantity in this function already goes through, give the
+ * scan line's point + unit direction directly — no primitive ever needs
+ * reflecting, only the QUERY direction changes with orientation. Boundary
+ * primitives themselves stay in one fixed, real, un-oriented frame
+ * throughout (see `_resolveExtent`'s 'boundary' branch below).
+ */
+function _rowScanLine(j, orientation) {
+  const p0 = orient({ i: 0, j }, orientation);
+  const p1 = orient({ i: 1, j }, orientation);
+  return { point: { x: p0.i, y: p0.j }, dir: { x: p1.i - p0.i, y: p1.j - p0.j } };
+}
+
+/** T48: same as `_rowScanLine`, for a CANONICAL column `i` (a tie). */
+function _colScanLine(i, orientation) {
+  const p0 = orient({ i, j: 0 }, orientation);
+  const p1 = orient({ i, j: 1 }, orientation);
+  return { point: { x: p0.i, y: p0.j }, dir: { x: p1.i - p0.i, y: p1.j - p0.j } };
+}
+
+/**
  * PATTERN -> { segments: [{kind:'rail'|'tie', a:{i,j}, b:{i,j}}],
  *              nodePoints: [{i,j}] } — all in LATTICE coordinates.
  *
  * @param {object} PATTERN     see PATTERN_DEFAULTS / SE7B-PATTERN-
  *                              GENERATOR-DESIGN.md §1 for the full shape.
  * @param {object} opts
- * @param {{iMin,jMin,iMax,jMax}} opts.extent  ALREADY-resolved lattice
- *   bounds (the design doc's `{mode:'board'}`/`{mode:'rect'}` -> concrete
- *   numbers resolution happens in the DOM-touching caller, which is the
- *   one place with access to `editor._mW`/`_mH` — this function never
- *   reaches for the editor object).
+ * @param {{iMin,jMin,iMax,jMax,mode?,primitives?}} opts.extent  ALREADY-
+ *   resolved lattice bounds (the design doc's `{mode:'board'}`/
+ *   `{mode:'rect'}` -> concrete numbers resolution happens in the DOM-
+ *   touching caller, which is the one place with access to
+ *   `editor._mW`/`_mH` — this function never reaches for the editor
+ *   object). T48 (SE13 Slice 2): `mode:'boundary'` (plus `primitives`, the
+ *   boundary shape's own SE13 Slice 1 primitive list, already scaled into
+ *   this SAME lattice-unit space and left UN-oriented — see
+ *   `_resolveExtent`'s 'boundary' branch below) restricts each rail row /
+ *   tie column to the primitives' own `insideSpans` instead of the full
+ *   `iMin..iMax`/`jMin..jMax` width — iMin/jMin/iMax/jMax still gate WHICH
+ *   rows/columns are considered at all (the bbox pre-filter, §4).
  * @param {Set<string>} [opts.occupied]  "i,j,kind" keys to skip emitting
  *   at — SE5/SA-LAYER-1-style occupied-cell check for the detach-overlap
  *   rough edge (SE7B design §2). Slice 1 scope: accept it and skip by it;
@@ -273,6 +350,12 @@ export function computePattern(PATTERN, opts = {}) {
   const extentMin = orient({ i: rawExtent.iMin, j: rawExtent.jMin }, orientation);
   const extentMax = orient({ i: rawExtent.iMax, j: rawExtent.jMax }, orientation);
   const iMin = extentMin.i, jMin = extentMin.j, iMax = extentMax.i, jMax = extentMax.j;
+  // T48: boundary mode's own primitives are ALREADY in real, un-oriented,
+  // lattice-unit space (`_resolveExtent`'s 'boundary' branch) — they are
+  // never transposed; only the QUERY (the scan line for a given canonical
+  // row/column) changes with orientation, via _rowScanLine/_colScanLine.
+  const isBoundary = rawExtent.mode === 'boundary';
+  const boundaryPrimitives = rawExtent.primitives || [];
   // "i,j,kind" occupied keys are always built from REAL (un-oriented)
   // lattice coordinates (_collectOccupied, below) — re-key them into the
   // SAME canonical frame the rest of this function reads i/j in, once,
@@ -294,11 +377,27 @@ export function computePattern(PATTERN, opts = {}) {
     nodePoints.push({ i, j });
   };
 
-  // Rails — every row where (j - offset) % every === 0, full extent width.
+  // Rails — every row where (j - offset) % every === 0. Board/rect mode:
+  // one segment, the full extent width (unchanged). T48 (SE13 Slice 2)
+  // boundary mode: the row's own insideSpans against the boundary
+  // primitives, clipped to iMin..iMax defensively — 0, 1, or several
+  // segments per row (Ground-truth #2's own "multiple inside-sub-spans"),
+  // instead of always exactly one. `runs`/`parts`/stored rolls (§4) are
+  // explicitly OUT of this slice's scope (T48 dispatch) — each span here
+  // IS the emitted segment, uncut, i.e. today's Board-mode "one part per
+  // run" default (`runs.stepLen: null`) applied uniformly. Endpoints use
+  // the RAW boundary-crossing point directly — §5's `on-boundary` ending
+  // rule, the only one this slice implements (the other three are
+  // Slice 3's own emission-time dispatch).
   const railRows = _railRows(jMin, jMax, rails.every, rails.offset);
   for (const j of railRows) {
-    if (_occupiedHas(occupied, iMin, j, 'rail')) continue;
-    segments.push({ kind: 'rail', a: { i: iMin, j }, b: { i: iMax, j } });
+    const spans = isBoundary
+      ? _clipToSpans(iMin, iMax, insideSpans(_rowScanLine(j, orientation), boundaryPrimitives))
+      : [[iMin, iMax]];
+    for (const [a, b] of spans) {
+      if (_occupiedHas(occupied, a, j, 'rail')) continue;
+      segments.push({ kind: 'rail', a: { i: a, j }, b: { i: b, j } });
+    }
   }
 
   // SE7h ADD-ON 2 (Fred: nodes "at rail ends"): its own step, deliberately
@@ -307,11 +406,27 @@ export function computePattern(PATTERN, opts = {}) {
   // comment), so a bare rail end only ever gets a node here, gated by this
   // flag alone. Canonical frame like everything else in this function;
   // orient() at the `return` transposes these back out same as any other
-  // nodePoint.
+  // nodePoint. Board/rect mode: unchanged, one node pair per RAIL ROW
+  // (matches today's behavior exactly, including for a row whose rail was
+  // itself skipped by `occupied` — iterating `railRows`, not the emitted
+  // segments, preserves that). T48 boundary mode: a node pair per EMITTED
+  // rail SEGMENT instead (a row may have 0, 1, or several), since "the
+  // extent's own iMin/iMax" isn't a meaningful single pair of endpoints
+  // any more — this is the natural generalization, not a behavior change,
+  // and reduces to the board/rect case exactly when there's one full-width
+  // segment per row.
   if (nodes.railEnds) {
-    for (const j of railRows) {
-      if (!_occupiedHas(occupied, iMin, j, 'node')) addNode(iMin, j);
-      if (!_occupiedHas(occupied, iMax, j, 'node')) addNode(iMax, j);
+    if (isBoundary) {
+      for (const seg of segments) {
+        if (seg.kind !== 'rail') continue;
+        if (!_occupiedHas(occupied, seg.a.i, seg.a.j, 'node')) addNode(seg.a.i, seg.a.j);
+        if (!_occupiedHas(occupied, seg.b.i, seg.b.j, 'node')) addNode(seg.b.i, seg.b.j);
+      }
+    } else {
+      for (const j of railRows) {
+        if (!_occupiedHas(occupied, iMin, j, 'node')) addNode(iMin, j);
+        if (!_occupiedHas(occupied, iMax, j, 'node')) addNode(iMax, j);
+      }
     }
   }
 
@@ -326,12 +441,26 @@ export function computePattern(PATTERN, opts = {}) {
     const forced = forcedSet ? forcedSet.has(i) : false;
     const span = _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced);
     if (!span) continue;
-    if (_occupiedHas(occupied, i, span.jStart, 'tie')) continue;
-    segments.push({ kind: 'tie', a: { i, j: span.jStart }, b: { i, j: span.jEnd } });
+    // T48: the tie's own density/span/anchor draw (above) is UNCHANGED —
+    // boundary mode doesn't touch WHETHER or how far a tie is drawn, only
+    // clips the result to what's actually inside the shape, same "shorten,
+    // don't re-decide" split as the rails loop above. Board/rect mode:
+    // `pieces` is exactly `[[span.jStart, span.jEnd]]`, so this reduces to
+    // today's single segment/end-node pair byte-for-byte.
+    const pieces = isBoundary
+      ? _clipToSpans(
+          Math.min(span.jStart, span.jEnd), Math.max(span.jStart, span.jEnd),
+          insideSpans(_colScanLine(i, orientation), boundaryPrimitives),
+        )
+      : [[span.jStart, span.jEnd]];
+    for (const [a, b] of pieces) {
+      if (_occupiedHas(occupied, i, a, 'tie')) continue;
+      segments.push({ kind: 'tie', a: { i, j: a }, b: { i, j: b } });
 
-    if (nodes.ends) {
-      if (!_occupiedHas(occupied, i, span.jStart, 'node')) addNode(i, span.jStart);
-      if (!_occupiedHas(occupied, i, span.jEnd, 'node')) addNode(i, span.jEnd);
+      if (nodes.ends) {
+        if (!_occupiedHas(occupied, i, a, 'node')) addNode(i, a);
+        if (!_occupiedHas(occupied, i, b, 'node')) addNode(i, b);
+      }
     }
   }
 
@@ -389,13 +518,46 @@ export function computePattern(PATTERN, opts = {}) {
  *  SE7k AMEND 1: exported (despite the underscore — same convention as
  *  this file's own nextSeed/_perfLog-style exceptions) so a Rail click-
  *  spawn (editor-interaction.js) can size itself to "the SAME extent
- *  Generate uses" without a second, divergent copy of this margin math. */
-export function _resolveExtent(editor, PATTERN) {
+ *  Generate uses" without a second, divergent copy of this margin math.
+ *
+ *  T48 (SE13 Slice 2) 'boundary' branch: takes an OPTIONAL 3rd arg,
+ *  `boundaryPrimitives` — the boundary shape's own SE13 Slice 1 primitive
+ *  list, in WORLD/model-space inches (the SAME frame `worldPoint` bakes a
+ *  live element's transform into elsewhere in this file). Finding the
+ *  live `data-boundary-ref` element and calling `shapeToPrimitives` on it
+ *  is deliberately NOT done here: `shapeToPrimitives` is async (the
+ *  `text` case awaits a font fetch) while every other `_resolveExtent`
+ *  caller today is synchronous — rather than making every existing
+ *  board/rect caller `await` for a code path they never use, the async
+ *  DOM lookup is left to Slice 3's own live-wiring caller, which resolves
+ *  `boundaryPrimitives` once (baking the element's own transform) and
+ *  passes the result in here. This function's own job, staying
+ *  synchronous, is just the lattice-unit SCALE (divide every primitive
+ *  coordinate by `spacing`, exact for a uniform scale — rx/ry/phi/theta
+ *  all stay geometrically correct, not approximated) plus the bbox
+ *  pre-filter (`primitivesBBox`, SE13 Slice 1/T48) rounded OUT to whole
+ *  lattice cells so a boundary that doesn't land exactly on a grid line
+ *  still gets every row/column it actually touches considered. An empty/
+ *  degenerate primitive list (deleted boundary element, self-intersecting
+ *  shape) resolves to an inverted, empty extent — `computePattern`'s own
+ *  row loop (`jMin > jMax`) then naturally emits nothing, same "declined
+ *  gracefully" shape §2 already establishes for `insideSpans` itself. */
+export function _resolveExtent(editor, PATTERN, boundaryPrimitives) {
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const extentSpec = PATTERN.extent || { mode: 'board' };
   if (extentSpec.mode === 'rect') {
     const { iMin, jMin, iMax, jMax } = extentSpec;
     return { iMin, jMin, iMax, jMax };
+  }
+  if (extentSpec.mode === 'boundary') {
+    const primitives = (boundaryPrimitives || []).map((p) => _scalePrimitiveToLattice(p, spacing));
+    const bbox = primitivesBBox(primitives);
+    if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };
+    return {
+      iMin: Math.floor(bbox.xMin), jMin: Math.floor(bbox.yMin),
+      iMax: Math.ceil(bbox.xMax), jMax: Math.ceil(bbox.yMax),
+      mode: 'boundary', primitives,
+    };
   }
   const margin = PATTERN.margin ?? PATTERN_DEFAULTS.margin;
   const topLeft = toLattice({ x: 0, y: 0 }, spacing);
@@ -404,6 +566,26 @@ export function _resolveExtent(editor, PATTERN) {
     iMin: topLeft.i + margin, jMin: topLeft.j + margin,
     iMax: bottomRight.i - margin, jMax: bottomRight.j - margin,
   };
+}
+
+/** T48: one SE13 Slice 1 primitive, WORLD-space inches -> lattice-UNIT
+ *  space (divide every coordinate by `spacing`) — a uniform scalar scale,
+ *  so an ellipse/arc's rx/ry scale together and its phi/theta stay exact
+ *  (angles are scale-invariant), not an approximation. Mirrors `toLattice`
+ *  itself (`{x,y} -> {i,j}` is the same division, just not rounded to an
+ *  integer here — `insideSpans` needs the CONTINUOUS position). */
+function _scalePrimitiveToLattice(prim, spacing) {
+  const pt = (p) => ({ x: p.x / spacing, y: p.y / spacing });
+  switch (prim.type) {
+    case 'L': return { type: 'L', p0: pt(prim.p0), p1: pt(prim.p1) };
+    case 'C': return { type: 'C', p0: pt(prim.p0), p1: pt(prim.p1), p2: pt(prim.p2), p3: pt(prim.p3) };
+    case 'CIRCLE': return { type: 'CIRCLE', cx: prim.cx / spacing, cy: prim.cy / spacing, r: prim.r / spacing };
+    case 'A': return {
+      type: 'A', cx: prim.cx / spacing, cy: prim.cy / spacing,
+      rx: prim.rx / spacing, ry: prim.ry / spacing, phi: prim.phi, theta1: prim.theta1, dTheta: prim.dTheta,
+    };
+    default: return prim;
+  }
 }
 
 /** A DETACHED lattice element's identity point(s), in lattice coords, at

@@ -12,7 +12,7 @@
  * lose and hardest to notice from output alone).
  */
 import { describe, it, expect } from 'vitest';
-import { shapeToPrimitives, insideSpans } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import { shapeToPrimitives, insideSpans, primitivesBBox } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 // Minimal mock matching the SAME plain-DOM-adapter contract editor-io.js's
 // own _outlineAdapter provides to OUTLINE_KINDS (el.type / el.attr(name) /
@@ -261,5 +261,49 @@ describe('insideSpans — numeric case (cubic), matched against an INDEPENDENT d
     const moduleX = spans.flat().find((x) => Math.abs(x - bestX) < 0.01);
     expect(moduleX).toBeDefined();
     expect(Math.abs(moduleX - bestX)).toBeLessThan(1e-4); // dense-sample oracle's own resolution floor, not the module's 1e-6 target
+  });
+});
+
+describe('primitivesBBox (T48) — the conservative pre-filter bbox editor-lattice-pattern.js\'s own boundary branch needs', () => {
+  it('a rect\'s own 4 L primitives give the EXACT bbox (tight for straight edges)', async () => {
+    const el = mockEl('rect', { x: '2', y: '-3', width: '5', height: '4' });
+    const prims = await shapeToPrimitives(el);
+    expect(primitivesBBox(prims)).toEqual({ xMin: 2, yMin: -3, xMax: 7, yMax: 1 });
+  });
+
+  it('a circle gives the exact cx/cy +/- r box', async () => {
+    const el = mockEl('circle', { cx: '3', cy: '-1', r: '2.5' });
+    const prims = await shapeToPrimitives(el);
+    expect(primitivesBBox(prims)).toEqual({ xMin: 0.5, yMin: -3.5, xMax: 5.5, yMax: 1.5 });
+  });
+
+  it('a rotated arc (A primitive) gives a CONSERVATIVE box (a circle of radius max(rx,ry) about its own center, never tighter than the arc\'s true extent)', async () => {
+    const rotatedD = 'M 0 5 A 5 2 90 0 1 0 -5 A 5 2 90 0 1 0 5';
+    const prims = await shapeToPrimitives(mockEl('path', { d: rotatedD }));
+    const bbox = primitivesBBox(prims);
+    // True extent of a rot=90 (rx=5,ry=2) ellipse centered at 0,0 is a
+    // 4x10 box (major axis 5 now vertical) -- the conservative box must be
+    // AT LEAST that large (never smaller), proving it never excludes real
+    // geometry, even though it's not the tight box.
+    expect(bbox.xMin).toBeLessThanOrEqual(-2);
+    expect(bbox.xMax).toBeGreaterThanOrEqual(2);
+    expect(bbox.yMin).toBeLessThanOrEqual(-5);
+    expect(bbox.yMax).toBeGreaterThanOrEqual(5);
+  });
+
+  it('a cubic\'s bbox is bounded by its own 4 control points (the convex-hull property) -- never tighter, but always valid', async () => {
+    const d = 'M 0 0 C 2 8 8 -4 10 4 L 10 -5 L 0 -5 Z';
+    const el = mockEl('path', { d });
+    const prims = await shapeToPrimitives(el);
+    const bbox = primitivesBBox(prims);
+    // The C segment's own 4 control points: (0,0),(2,8),(8,-4),(10,4).
+    expect(bbox.xMin).toBeLessThanOrEqual(0);
+    expect(bbox.xMax).toBeGreaterThanOrEqual(10);
+    expect(bbox.yMin).toBeLessThanOrEqual(-5); // the L 10 -5 / 0 -5 edges
+    expect(bbox.yMax).toBeGreaterThanOrEqual(8); // the C's own control point (2,8)
+  });
+
+  it('an empty primitive list (a declined/degenerate shape) returns null, not a bogus inverted or zero box', () => {
+    expect(primitivesBBox([])).toBeNull();
   });
 });
