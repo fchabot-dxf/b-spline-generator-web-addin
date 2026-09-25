@@ -47,6 +47,11 @@ function mockLineEl(attrs) {
       calls.push(['get', a]);
       return state[a];
     },
+    // T40: OUTLINE_KINDS reads stroke-linecap via el.node.getAttribute
+    // (not el.attr — see _capOf's own header for why), so the mock's
+    // .node needs the SAME "genuinely absent -> null" contract the real
+    // DOM has, not svg.js's own attr()-level default-filling behavior.
+    node: { getAttribute: (a) => (a in state ? state[a] : null) },
     _state: state,
   };
 }
@@ -192,6 +197,7 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
       type: 'polygon',
       attr: (a) => ({ 'data-layer': '1', 'stroke-width': '0.2' }[a]),
       array: () => [[0, 0], [10, 0], [10, 10], [0, 10]],
+      node: { getAttribute: () => null },
     };
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
     refreshOutlinePreview(editor);
@@ -206,6 +212,7 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
       type: 'polyline',
       attr: (a) => ({ 'data-layer': '1', 'stroke-width': '0.2' }[a]),
       array: () => [[0, 0], [10, 0], [10, 10]],
+      node: { getAttribute: () => null },
     };
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
     refreshOutlinePreview(editor);
@@ -219,6 +226,7 @@ describe('OUTLINE_KINDS — table-driven, not a hardcoded <line> check (T37 amen
     const el = {
       type: 'path',
       attr: (a) => ({ 'data-layer': '1', 'stroke-width': '0.2', d: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' }[a]),
+      node: { getAttribute: () => null },
     };
     const editor = mockEditor({ layers: [{ id: '1', visible: true, fusionGeometry: 'outline' }], children: [el] });
     refreshOutlinePreview(editor);

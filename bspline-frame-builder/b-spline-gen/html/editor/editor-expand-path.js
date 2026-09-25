@@ -14,10 +14,15 @@
  * is on the OUTER (convex) side of that turn — it gets a round join (a true
  * `A`, radius = strokeWidth/2, centered on the vertex). The OTHER bank is on
  * the INNER (concave) side — the two offset pieces there would otherwise
- * overlap in a small loop, so instead they're TRIMMED to their own
- * intersection point (a local line-line miter, using each piece's own
- * tangent at the vertex) rather than emitting the loop. A tangent-
- * continuous (smooth) vertex needs neither — the two pieces already meet.
+ * overlap in a small loop, so instead they're TRIMMED to the TRUE
+ * intersection of their own exact boundary primitives (T40, Fred: "Fred's
+ * resin INLAY needs the outline exact" — line/circle, whichever each piece
+ * genuinely is, not merely their tangent LINES; see `_lastPrimitive`'s own
+ * header) rather than emitting the loop. A tangent-continuous (G1) vertex
+ * whose pieces already coincide needs no join at all — but G1 alone does
+ * NOT guarantee that (a curvature-discontinuous G1 vertex, e.g. a line
+ * meeting an arc exactly tangentially, still has a real offset gap — found
+ * by testing, not assumed; see `_buildJoin`'s own comment).
  *
  * Open subpath -> a single capsule: left bank + end cap + right bank
  * (reversed) + start cap, same shape lineOutlinePathD's own 2-arc capsule
@@ -283,91 +288,237 @@ function _offsetSegment(p0, seg, side, half, tolerance) {
 
 function _lineIntersect(p1, d1, p2, d2) {
   const denom = d1.x * d2.y - d1.y * d2.x;
-  if (Math.abs(denom) < 1e-9) return null; // parallel/near-colinear tangents
+  if (Math.abs(denom) < 1e-9) return []; // parallel/near-colinear
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
   const t = (dx * d2.y - dy * d2.x) / denom;
-  return { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
+  return [{ x: p1.x + t * d1.x, y: p1.y + t * d1.y }];
+}
+
+/** Standard line(point p, UNIT direction d)-circle intersection via the
+ *  quadratic in t (p + t*d): up to 2 points, none if the line misses. */
+function _lineCircleIntersect(p, d, center, radius) {
+  const fx = p.x - center.x, fy = p.y - center.y;
+  const b = 2 * (fx * d.x + fy * d.y);
+  const c = fx * fx + fy * fy - radius * radius;
+  const disc = b * b - 4 * c; // a=1 since d is unit
+  if (disc < 0) return [];
+  const sq = Math.sqrt(disc);
+  const t1 = (-b - sq) / 2, t2 = (-b + sq) / 2;
+  return [{ x: p.x + t1 * d.x, y: p.y + t1 * d.y }, { x: p.x + t2 * d.x, y: p.y + t2 * d.y }];
+}
+
+/** Standard circle-circle intersection (up to 2 points, none if disjoint
+ *  or one contains the other without touching, [] also for concentric —
+ *  either 0 or infinite intersections there, neither usable as a trim
+ *  point). */
+function _circleCircleIntersect(c1, r1, c2, r2) {
+  const dx = c2.x - c1.x, dy = c2.y - c1.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1e-9 || d > r1 + r2 || d < Math.abs(r1 - r2)) return [];
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h2 = r1 * r1 - a * a;
+  const h = h2 > 0 ? Math.sqrt(h2) : 0;
+  const mx = c1.x + (a * dx) / d, my = c1.y + (a * dy) / d;
+  const rx = -dy * (h / d), ry = dx * (h / d);
+  return [{ x: mx + rx, y: my + ry }, { x: mx - rx, y: my - ry }];
+}
+
+/** The point immediately BEFORE a piece's own LAST command (needed to
+ *  reconstruct that command's TRUE circle via arcCenterParam, which wants
+ *  the arc's start point) -- the piece's own startPoint if it has only one
+ *  command, else the endpoint of its own second-to-last command. */
+function _pointBeforeLast(piece) {
+  const cmds = piece.commands;
+  if (cmds.length < 2) return piece.startPoint;
+  const c = cmds[cmds.length - 2];
+  return c[0] === 'L' ? { x: c[1], y: c[2] } : { x: c[6], y: c[7] };
 }
 
 /**
- * The join between two consecutive offset pieces meeting at the path's own
- * `vertex`. Worked example fixing the round join's sweep flag (an L-shaped
- * RIGHT turn, (0,0)->(10,0)->(10,-10), vertex=(10,0), half=1): tA=(1,0),
- * tB=(0,-1), cross = tA.x*tB.y - tA.y*tB.x = -1 -> leftIsOuter=true (a
- * right turn's outer/convex bulge is on the LEFT, matching everyday
- * intuition: turning right, the outside of the turn is your left). For the
- * LEFT bank there (side=+1, genuinely outer): pA = vertex + leftNormal(tA)
- * = (10,1), pB = vertex + leftNormal(tB) = (11,0); toA=(0,1) at angle
- * pi/2, toB=(1,0) at angle 0; dTheta = 0 - pi/2 = -pi/2 -> sweep=0. NOT
- * hand-trusted: this module's own tests sample that exact arc via
- * arcCenterParam and confirm its midpoint (10.71, 0.71) lands up-and-right
- * of the vertex — away from the turn's own interior (down-left) — i.e. a
- * genuine outward bulge, not just that the formula ran.
+ * The EXACT geometric primitive (line or circle) a piece's boundary
+ * actually is, right at its own end (T40, Fred: "true intersections of the
+ * two OFFSET pieces" — replacing T39's tangent-LINE approximation, which
+ * is only locally accurate near a curve's endpoint. Every piece this
+ * module builds ends in either a plain `L` — genuinely a line, the
+ * approximation was already exact there — or an `A` with rx===ry (every
+ * arc command here is circular: the exact concentric-arc case IS a
+ * circle, and a biarc-fitted curve's own segments are BY CONSTRUCTION
+ * circular arcs too, fitOffsetWithBiarcs's whole point) — so "the true
+ * primitive" is always cheaply recoverable via arcCenterParam, never an
+ * approximation of a genuinely non-circular curve. */
+function _lastPrimitive(piece) {
+  const last = piece.commands[piece.commands.length - 1];
+  if (last[0] === 'L') return { type: 'line', point: piece.endPoint, dir: piece.endTangent };
+  const p0 = _pointBeforeLast(piece);
+  const [, rx, ry, rot, largeArc, sweep, ex, ey] = last;
+  const param = arcCenterParam(p0.x, p0.y, rx, ry, rot, !!largeArc, !!sweep, ex, ey);
+  if (!param) return { type: 'line', point: piece.endPoint, dir: piece.endTangent }; // degenerate arc: line, same fallback arcToCubics itself uses
+  return { type: 'circle', center: { x: param.cx, y: param.cy }, radius: param.rx, travelSign: param.dTheta > 0 ? 1 : -1 };
+}
+
+function _firstPrimitive(piece) {
+  const first = piece.commands[0];
+  if (first[0] === 'L') return { type: 'line', point: piece.startPoint, dir: piece.startTangent };
+  const [, rx, ry, rot, largeArc, sweep, ex, ey] = first;
+  const param = arcCenterParam(piece.startPoint.x, piece.startPoint.y, rx, ry, rot, !!largeArc, !!sweep, ex, ey);
+  if (!param) return { type: 'line', point: piece.startPoint, dir: piece.startTangent };
+  return { type: 'circle', center: { x: param.cx, y: param.cy }, radius: param.rx, travelSign: param.dTheta > 0 ? 1 : -1 };
+}
+
+/** Build the `A` command tracing a KNOWN circle (center, radius) from
+ *  `fromPoint` to `toPoint`, preserving a KNOWN travel direction
+ *  (`travelSign`, already known from the piece's OWN original arc — never
+ *  re-derived from a tangent) — used to rebuild a piece's own boundary arc
+ *  so it starts/ends EXACTLY at a join's trim point instead of its
+ *  original untrimmed point, still on the SAME circle. Same wraparound-
+ *  correction shape editor-expand-biarc.js's own (mutation-tested, bug-
+ *  fixed) sweep logic uses: flip only when the shortest-path angle's own
+ *  sign disagrees with the KNOWN travel sign, never unconditionally. */
+function _arcCommandBetween(center, radius, fromPoint, toPoint, travelSign) {
+  const toFrom = { x: fromPoint.x - center.x, y: fromPoint.y - center.y };
+  const toTo = { x: toPoint.x - center.x, y: toPoint.y - center.y };
+  let dTheta = Math.atan2(toTo.y, toTo.x) - Math.atan2(toFrom.y, toFrom.x);
+  while (dTheta <= -Math.PI) dTheta += 2 * Math.PI;
+  while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
+  const wantsPositive = travelSign > 0;
+  const isPositive = dTheta > 0;
+  if (wantsPositive !== isPositive) dTheta = isPositive ? dTheta - 2 * Math.PI : dTheta + 2 * Math.PI;
+  const largeArc = Math.abs(dTheta) > Math.PI ? 1 : 0;
+  const sweep = dTheta > 0 ? 1 : 0;
+  return ['A', radius, radius, 0, largeArc, sweep, toPoint.x, toPoint.y];
+}
+
+/**
+ * Retarget a piece's own LAST command to end EXACTLY at `ip` (mutating
+ * `commandsArray`'s own last slot) — a straight `L` just gets a new
+ * endpoint (still the same line, `ip` lies on it by construction); an arc
+ * gets fully rebuilt on the SAME circle via `_arcCommandBetween`, never
+ * bridged through its old, untrimmed endpoint.
+ *
+ * The OTHER side of a join (the NEXT piece's own FIRST command) never
+ * needs this treatment, for either command kind: an SVG command's shape
+ * is always derived from wherever the CURRENT point happens to be
+ * (context, set by whatever ran before it) plus its own explicit payload
+ * — never from "how the pen got there." A plain `L` obviously doesn't
+ * encode its own start; an `A` doesn't either (rx/ry/rot/largeArc/sweep/
+ * end are its ONLY payload) — so once THIS function retargets the
+ * PRECEDING piece's end to `ip`, the following piece's own commands are
+ * already correct, completely unmodified, reparametrizing themselves
+ * from the new current point automatically (exactly how arcCenterParam
+ * itself already treats every arc in this codebase — this isn't a new
+ * exception, just this fact applied at a join). An EARLIER version of
+ * this module had a symmetric `_retargetStart` that rebuilt the next
+ * piece's own first `A` command too — removed after it proved to leave
+ * ZERO cases where its output actually differed (a mutation reverting
+ * just `_retargetEnd`'s half was caught immediately by this module's own
+ * tests; the `_retargetStart` half survived over 120 varied geometries,
+ * including major (>180deg) arcs meeting lines at steep angles,
+ * specifically hunting the one theoretical case — a trim crossing the
+ * 180deg largeArc threshold — where it could have mattered).
  */
-function _buildJoin(vertex, pA, tA, pB, tB, side, half) {
+function _retargetEnd(commandsArray, piece, ip) {
+  const idx = commandsArray.length - 1;
+  const last = commandsArray[idx];
+  if (last[0] === 'L') { commandsArray[idx] = ['L', ip.x, ip.y]; return; }
+  const prim = _lastPrimitive(piece);
+  commandsArray[idx] = _arcCommandBetween(prim.center, prim.radius, _pointBeforeLast(piece), ip, prim.travelSign);
+}
+
+function _primitiveIntersect(a, b) {
+  if (a.type === 'line' && b.type === 'line') return _lineIntersect(a.point, a.dir, b.point, b.dir);
+  if (a.type === 'line') return _lineCircleIntersect(a.point, a.dir, b.center, b.radius);
+  if (b.type === 'line') return _lineCircleIntersect(b.point, b.dir, a.center, a.radius);
+  return _circleCircleIntersect(a.center, a.radius, b.center, b.radius);
+}
+
+/** True circular round join (radius=half, centered on `vertex`, from pA to
+ *  pB) — the OUTER-side construction; also T40's fallback for an INNER
+ *  join whose two true primitives don't actually intersect (Fred: "if none
+ *  ... fall back to a round inner join — never a loop"). Worked example
+ *  fixing the sweep flag (an L-shaped RIGHT turn, (0,0)->(10,0)->(10,-10),
+ *  vertex=(10,0), half=1): tA=(1,0), tB=(0,-1), cross=-1 -> outer bank is
+ *  LEFT there; pA=(10,1), pB=(11,0); toA angle=pi/2, toB angle=0; dTheta=
+ *  0-pi/2=-pi/2 -> sweep=0. NOT hand-trusted: this module's own tests
+ *  sample that exact arc via arcCenterParam and confirm its midpoint
+ *  (10.71, 0.71) lands up-and-right of the vertex — a genuine outward
+ *  bulge, not just that the formula ran. */
+function _roundJoinArc(vertex, pA, pB, half) {
+  const toA = { x: pA.x - vertex.x, y: pA.y - vertex.y };
+  const toB = { x: pB.x - vertex.x, y: pB.y - vertex.y };
+  let dTheta = Math.atan2(toB.y, toB.x) - Math.atan2(toA.y, toA.x);
+  while (dTheta <= -Math.PI) dTheta += 2 * Math.PI;
+  while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
+  const sweep = dTheta > 0 ? 1 : 0;
+  return ['A', half, half, 0, 0, sweep, pB.x, pB.y];
+}
+
+/**
+ * The join between two consecutive offset pieces (`prevPiece` ending at
+ * the vertex, `currPiece` starting there) meeting at the path's own
+ * `vertex`. Which bank is locally OUTER (convex) at THIS vertex is decided
+ * purely from the local tangent cross product — never from the whole
+ * subpath's own winding — so a single polygon can mix round joins at its
+ * convex corners and trimmed joins at its concave ones without any
+ * special-casing.
+ */
+function _buildJoin(vertex, prevPiece, currPiece, side, half) {
+  const pA = prevPiece.endPoint, tA = prevPiece.endTangent;
+  const pB = currPiece.startPoint, tB = currPiece.startTangent;
   const cross = tA.x * tB.y - tA.y * tB.x;
-  if (Math.abs(cross) < 1e-7) return { commands: [['L', pB.x, pB.y]] }; // tangent-continuous: no join needed
+  // Tangent-continuous (G1) does NOT imply the two OFFSET pieces already
+  // meet -- only curvature continuity (G2) would guarantee that. A line
+  // meeting an arc exactly tangentially (e.g. a racetrack shape) is G1 but
+  // NOT G2: the offset pieces genuinely have a gap right there (found via
+  // testing, not assumed -- a naive "tangent, so just connect pA to pB"
+  // connector was observed to pass EXACTLY through the original vertex,
+  // 0.5 off target where `half` was expected). So the true no-join
+  // shortcut requires pA and pB to ALREADY be the same point (the actual
+  // "nothing to do" case — e.g. between two commands of the SAME biarc-
+  // fitted chain, already stitched by fitOffsetWithBiarcs itself before
+  // this function ever sees them); a small-but-nonzero cross with pA != pB
+  // falls through to the SAME round/trim logic below, which handles it
+  // safely either way (a near-zero round join stays tiny and bounded; a
+  // trim that finds no intersection already falls back to round).
+  if (Math.abs(cross) < 1e-7 && Math.hypot(pA.x - pB.x, pA.y - pB.y) < 1e-6) {
+    return { commands: [['L', pB.x, pB.y]] };
+  }
 
   const leftIsOuter = cross < 0;
   const thisIsOuter = side === 1 ? leftIsOuter : !leftIsOuter;
 
-  if (thisIsOuter) {
-    const toA = { x: pA.x - vertex.x, y: pA.y - vertex.y };
-    const toB = { x: pB.x - vertex.x, y: pB.y - vertex.y };
-    let dTheta = Math.atan2(toB.y, toB.x) - Math.atan2(toA.y, toA.x);
-    while (dTheta <= -Math.PI) dTheta += 2 * Math.PI;
-    while (dTheta > Math.PI) dTheta -= 2 * Math.PI;
-    const sweep = dTheta > 0 ? 1 : 0;
-    return { commands: [['A', half, half, 0, 0, sweep, pB.x, pB.y]] };
-  }
+  if (thisIsOuter) return { commands: [_roundJoinArc(vertex, pA, pB, half)] };
 
-  // Inner (concave) side: trim BOTH pieces to the intersection of their own
-  // local tangent lines through pA/pB, rather than emit the small overlap
-  // loop a naive pA->ip->pB concatenation would produce (that overlap is
-  // real, not cosmetic -- e.g. for a closed rect this was observed to
-  // retrace the same line segment backward-then-forward, a degenerate
-  // zero-width sliver an evenodd fill renders as a visible notch). A
-  // collapse (near-parallel tangents, or an intersection absurdly far from
-  // the vertex -- a thin-spike-style near-cusp) falls back to a direct
-  // connector instead of a wild miter spike.
-  const ip = _lineIntersect(pA, tA, pB, tB);
-  if (!ip || Math.hypot(ip.x - vertex.x, ip.y - vertex.y) > 8 * half) {
-    return { commands: [['L', pB.x, pB.y]] };
+  // Inner (concave) side: trim BOTH pieces to the TRUE intersection of
+  // their own exact boundary primitives (line/circle — see
+  // _lastPrimitive's own header), not merely their tangent lines, so this
+  // stays exact even when a curve meets a line (or another curve) near
+  // head-on. Whichever candidate (0, 1, or 2 points) lands NEAREST the
+  // vertex is the real trim point; no candidates at all (the two
+  // primitives genuinely don't meet) falls back to a round inner join
+  // instead of a loop.
+  const candidates = _primitiveIntersect(_lastPrimitive(prevPiece), _firstPrimitive(currPiece));
+  if (!candidates.length) return { commands: [_roundJoinArc(vertex, pA, pB, half)] };
+  let ip = candidates[0], best = Math.hypot(ip.x - vertex.x, ip.y - vertex.y);
+  for (let k = 1; k < candidates.length; k++) {
+    const dist = Math.hypot(candidates[k].x - vertex.x, candidates[k].y - vertex.y);
+    if (dist < best) { best = dist; ip = candidates[k]; }
   }
-  return { trimTo: ip, pB };
+  return { trimTo: ip };
 }
 
 /**
- * Append one join's contribution to an in-progress command list, resolving
- * `_buildJoin`'s `trimTo` case against the ACTUAL shape of what's on each
- * side of it: a straight `L` boundary can be silently retargeted to `ip`
- * (still the exact same line, just shorter/longer), but a curved boundary
- * (an `A` from an exact circular offset, or any biarc-fitted chain) was
- * built assuming its own real endpoint, so retargeting it would distort
- * the curve -- an explicit connector segment is required there instead.
- * Four cases, decided independently per side:
- *   prev=L,  curr=L (single cmd): mutate prev's endpoint to ip, emit nothing
- *     (curr's own lone `L <endpoint>` already continues correctly from ip,
- *     since a straight command doesn't care what point precedes it).
- *   prev=L,  curr=curve: mutate prev's endpoint to ip, then bridge `L pB`
- *     so curr's own precomputed curve still starts from its real pB.
- *   prev=curve, curr=L (single cmd): bridge `L ip` only (curr continues
- *     from ip directly, same reasoning as the first case).
- *   prev=curve, curr=curve: bridge `L ip` then `L pB` (the original,
- *     fully general 2-point connector), preserving both curves untouched.
+ * Append one join's contribution to an in-progress command list. For an
+ * inner trim, `prevPiece`'s own end gets retargeted EXACTLY to `ip` (T40:
+ * never bridged through its old, untrimmed endpoint via an approximating
+ * connector — `_retargetEnd` rebuilds an arc side on its own true circle,
+ * which is what let a real deviation up to half the stroke width through
+ * in T39, for a line meeting a curve near head-on). `currPiece`'s own
+ * commands need no change at all — see `_retargetEnd`'s own header for why.
  */
-function _appendJoin(commands, vertex, pA, tA, pB, tB, side, half, currCommands) {
-  const join = _buildJoin(vertex, pA, tA, pB, tB, side, half);
+function _appendJoin(commands, vertex, prevPiece, currPiece, side, half) {
+  const join = _buildJoin(vertex, prevPiece, currPiece, side, half);
   if (join.commands) { commands.push(...join.commands); return; }
-
-  const last = commands[commands.length - 1];
-  const prevIsLine = last && last[0] === 'L';
-  const currIsLine = currCommands.length === 1 && currCommands[0][0] === 'L';
-
-  if (prevIsLine) { last[1] = join.trimTo.x; last[2] = join.trimTo.y; }
-  else commands.push(['L', join.trimTo.x, join.trimTo.y]);
-
-  if (!currIsLine) commands.push(['L', join.pB.x, join.pB.y]);
+  _retargetEnd(commands, prevPiece, join.trimTo);
 }
 
 function _buildBank(subpath, side, half, tolerance) {
@@ -379,7 +530,7 @@ function _buildBank(subpath, side, half, tolerance) {
     curOrig = { x: seg.x, y: seg.y };
   }
   if (!pieces.length) {
-    return { startPoint: null, endPoint: null, startTangent: null, endTangent: null, commands: [], firstPieceCommands: null };
+    return { startPoint: null, endPoint: null, startTangent: null, endTangent: null, commands: [], firstPiece: null, lastPiece: null };
   }
 
   const commands = [];
@@ -387,7 +538,7 @@ function _buildBank(subpath, side, half, tolerance) {
     if (i > 0) {
       const prev = pieces[i - 1].piece;
       const curr = pieces[i].piece;
-      _appendJoin(commands, pieces[i].vertex, prev.endPoint, prev.endTangent, curr.startPoint, curr.startTangent, side, half, curr.commands);
+      _appendJoin(commands, pieces[i].vertex, prev, curr, side, half);
     }
     commands.push(...pieces[i].piece.commands);
   }
@@ -397,7 +548,8 @@ function _buildBank(subpath, side, half, tolerance) {
     startTangent: pieces[0].piece.startTangent,
     endTangent: pieces[pieces.length - 1].piece.endTangent,
     commands,
-    firstPieceCommands: pieces[0].piece.commands,
+    firstPiece: pieces[0].piece,
+    lastPiece: pieces[pieces.length - 1].piece,
   };
 }
 
@@ -444,34 +596,27 @@ function _openCapsuleD(subpath, half, tolerance) {
 
 /**
  * The wrap-around join (last piece -> first piece) can't reuse
- * `_appendJoin` as-is: an internal join's "curr" piece hasn't been emitted
- * yet, so skipping its start is just "emit nothing, let it run next" — but
- * the FIRST piece here was already emitted at the very front of
- * `bank.commands`, before the ring's own `M`. So when the first piece is a
- * skippable single `L` (see `_appendJoin`'s own comment), the equivalent
- * trim is to retarget the ring's OWN starting point (M) to `ip` instead of
- * `bank.startPoint` — geometrically exact, since `ip` lies on that first
- * piece's own line by construction (same reasoning, applied to the one
- * point this module represents implicitly via `M` rather than a command).
+ * `_appendJoin` verbatim: the FIRST piece here was already emitted at the
+ * very front of `bank.commands`, before the ring's own `M`. An internal
+ * join's "next piece" needs no retargeting at all (see `_retargetEnd`'s
+ * own header) because its shape is derived from the CURRENT point at
+ * render time, not from any point tracked explicitly — but the ring's `M`
+ * itself IS that explicit "current point" for the very first command, so
+ * it's the one thing here that still needs to become `ip`.
  */
 function _closedRing(subpath, side, half, tolerance) {
   const bank = _buildBank(subpath, side, half, tolerance);
   if (!bank.startPoint) return null;
 
-  const join = _buildJoin(subpath.start, bank.endPoint, bank.endTangent, bank.startPoint, bank.startTangent, side, half);
+  const join = _buildJoin(subpath.start, bank.lastPiece, bank.firstPiece, side, half);
   const commands = bank.commands.slice();
   let startPoint = bank.startPoint;
 
   if (join.commands) {
     commands.push(...join.commands);
   } else {
-    const last = commands[commands.length - 1];
-    const prevIsLine = last && last[0] === 'L';
-    const currIsLine = bank.firstPieceCommands.length === 1 && bank.firstPieceCommands[0][0] === 'L';
-    if (prevIsLine) { last[1] = join.trimTo.x; last[2] = join.trimTo.y; }
-    else commands.push(['L', join.trimTo.x, join.trimTo.y]);
-    if (currIsLine) startPoint = join.trimTo;
-    else commands.push(['L', join.pB.x, join.pB.y]);
+    _retargetEnd(commands, bank.lastPiece, join.trimTo);
+    startPoint = join.trimTo;
   }
 
   return { startPoint, commands, d: `M ${startPoint.x} ${startPoint.y} ${commands.map((c) => c.join(' ')).join(' ')} Z` };
