@@ -222,7 +222,17 @@ export const PATTERN_DEFAULTS = {
   // x=0, cut in half by the edge). Only 'board' mode is inset — a 'rect'
   // extent is an explicit caller-given rectangle and is used as given.
   margin: 1,
-  rails: { every: 2, offset: 0 },
+  // T56 (Fred: "your usual lattice is much denser than what I need... I
+  // want 6-7 rails and 8-10 ties"): `mode:'count'` is the new default —
+  // a seeded pick within `count`, evenly distributed across the extent's
+  // own rows (see `_railRowsByCount`) — declared alongside `every`/
+  // `offset` rather than replacing them, so `mode:'every'` (the ORIGINAL
+  // behavior) stays a real, supported alternative, not a removed one.
+  // `computePattern`'s own merge (below) is careful NOT to let an
+  // EXISTING saved pattern's `rails` object (written before `mode`
+  // existed, so it never got serialized) silently inherit this new
+  // 'count' default — see that merge's own comment.
+  rails: { mode: 'count', count: [6, 7], every: 2, offset: 0 },
   // T30 (Fred: "don't limit it to rails, but do snap to them"): default
   // anchor flips 'rails' -> 'free' + railSnapRows (a free end within this
   // many rows of a rail moves onto it; 0 = off). 'rails' strict mode
@@ -232,7 +242,25 @@ export const PATTERN_DEFAULTS = {
   // hand-drawn Lattice tool's live tie-drag snap (editor-interaction.js)
   // reads THIS same PATTERN.ties.railSnapRows too, not a second default
   // of its own, so the Pattern panel's field drives both surfaces.
-  ties: { density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1 },
+  // T56: `mode:'count'` is the new default (same "declare both modes,
+  // don't remove the old one" shape as `rails` above) — `density`/
+  // `anchor` are still read, but only when `mode:'density'`.
+  // T56 AMEND (Fred, having viewed the advisor's own rendered options and
+  // picked "B" — 7 rails, 13 SHORT-stub ties — as fine): count-mode's own
+  // DEFAULT tie SPAN is `span.mode:'cells'` — the ORIGINAL spanMin/spanMax
+  // grid-cell stub behavior (still `_applyRailSnap`'d toward a nearby
+  // rail, same as today), just with COUNT-based column selection (a
+  // seeded count of DISTINCT columns) standing in for the old per-column
+  // density gate. `span.mode:'rails'` (every tie bridges exactly
+  // `span.rails` adjacent rail rows, ends always ON a rail — my own FIRST
+  // guess at the default, before Fred actually viewed the rendered
+  // options) is now a declared, real ALTERNATIVE, not the default —
+  // named here as a correction, not silently dropped. `maxRailGaps:1`
+  // (rails-mode only) means no gap-size variety unless raised.
+  ties: {
+    mode: 'count', count: [8, 13], span: { mode: 'cells', rails: 1 }, maxRailGaps: 1,
+    density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1,
+  },
   // SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end"):
   // default false — the crossings loop below deliberately SKIPS rail
   // endpoints (see its own comment), so a rail with no crossing tie ends
@@ -313,6 +341,60 @@ function _railRows(jMin, jMax, every, offset) {
   const rows = [];
   for (let j = jMin; j <= jMax; j++) if (_isRailRow(j, every, offset)) rows.push(j);
   return rows;
+}
+
+// Large, fixed salts for the "meta" seeded draws below (how MANY rails/
+// ties) — offset far past any realistic column or row index so they can
+// never collide with a real `_columnSeed(seed, i)` call for an actual
+// column/row. Each is combined with `seed` (the only varying operand)
+// via a SINGLE `_columnSeed` application — safe, verified directly (see
+// _TIES_GEOMETRY_SALT's own comment for the failure mode this avoids).
+const _RAILS_COUNT_SALT = 900001;
+const _TIES_COUNT_SALT = 900002;
+// A column's own tie-GEOMETRY draw (gap size + start position) must NOT
+// share a seed with its SELECTION-score draw (`_tieSlotsByCount`'s own
+// doc comment) — self-caught bug, found by measuring, not assumed: my
+// first attempt combined them as `_columnSeed(seed, col +
+// _TIES_GEOMETRY_SALT)` with a large additive salt (matching the OTHER
+// two salts above) — but there `col` is the ONLY varying operand and
+// it's tiny (a handful of columns) next to a million-scale salt, so
+// `Math.imul(col+salt+1, const)` barely moves at all across columns,
+// and XORing a small `seed` into THAT nearly-constant, already-large
+// product left `draws[0].u` on the SAME side of 0.5 in 650/650 samples
+// (measured directly) — silently collapsing `maxRailGaps>1` to always
+// picking the SAME gap size. Fixed by NESTING instead of adding:
+// `_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT)` re-mixes
+// the column's own ALREADY-WELL-SPREAD seed through a second
+// independent salt, rather than letting one huge constant dominate a
+// tiny one — re-measured after the fix: 359/650 (a real, working spread,
+// not the exact 50/50 a larger sample would show, but nowhere near the
+// original's total collapse).
+const _TIES_GEOMETRY_SALT = 777;
+
+/** T56 (Fred: "I want 6-7 rails"): `rails.mode:'count'` — a seeded pick
+ *  within `[countMin,countMax]` (clamped to however many rows the extent
+ *  actually has, "place what fits"), then that many rows EVENLY spread
+ *  across `[jMin,jMax]` (rounded to integer rows) — the COUNT is seeded,
+ *  WHICH rows get chosen is not (rails are a regular structural grid,
+ *  not organic placement the way ties are). A single rail (the degenerate
+ *  countMin<=1 case) lands at the extent's own vertical center. */
+function _railRowsByCount(jMin, jMax, countRange, seed) {
+  const totalRows = jMax - jMin + 1;
+  const [countMin, countMax] = countRange;
+  const draw = lcgPoints(_columnSeed(seed, _RAILS_COUNT_SALT), 1)[0].u;
+  const count = Math.min(totalRows, Math.max(0, countMin + Math.floor(draw * (countMax - countMin + 1))));
+  if (count <= 0) return [];
+  if (count === 1) return [Math.round((jMin + jMax) / 2)];
+  const rows = [];
+  const seen = new Set();
+  for (let k = 0; k < count; k++) {
+    let row = Math.round(jMin + (k / (count - 1)) * (jMax - jMin));
+    while (seen.has(row) && row < jMax) row++; // rounding collision: nudge toward the far end first
+    while (seen.has(row) && row > jMin) row--; // still colliding (extent too small): nudge the other way
+    seen.add(row);
+    rows.push(row);
+  }
+  return rows.sort((a, b) => a - b);
 }
 
 /** Per-column independent seed derivation — mirrors core/terrain.js's own
@@ -399,6 +481,103 @@ function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced) {
   if (candidates.length === 0) return null; // spacing/span combo can't bridge any rail pair here
   const jEnd = candidates[Math.min(candidates.length - 1, Math.floor(pick.u * candidates.length))];
   return { jStart, jEnd };
+}
+
+/**
+ * T56 (Fred: "I want... 8-10 ties"), AMENDED after Fred viewed the
+ * advisor's own rendered options and picked "B" (7 rails, 13 SHORT-stub
+ * ties) as fine: `ties.mode:'count'` — a seeded pick within
+ * `[countMin,countMax]` (clamped to however many candidate columns
+ * actually exist, "place what fits"), each landing on its OWN DISTINCT
+ * column (never two ties sharing a column, so "spread across distinct
+ * columns" holds by construction, no separate anti-clustering pass
+ * needed). What each chosen column's own tie actually LOOKS like is
+ * `ties.span.mode`:
+ *   'cells' (DEFAULT, per Fred's own pick): a short stub, `spanMin`..
+ *     `spanMax` GRID CELLS, `_applyRailSnap`'d toward a nearby rail —
+ *     the EXACT pre-T56 span mechanic (`_tieSpanForColumn`'s own 'free'
+ *     anchor branch), just with COUNT-based column selection standing in
+ *     for the old per-column density gate.
+ *   'rails': every tie bridges `ties.span.rails` rail-to-rail gaps
+ *     exactly (1 = the very next rail, ends always land ON a rail row;
+ *     `maxRailGaps` optionally widens this per-tie, seeded, for variety)
+ *     — my own FIRST guess at the default before Fred actually viewed
+ *     the rendered options; kept as a real, declared alternative.
+ *
+ * Column SELECTION: every candidate column gets its own independent
+ * seeded score (`_columnSeed`, same per-item convention `_tieSpanForColumn`
+ * already uses) and the lowest `count` scores are kept — deliberately NOT
+ * a Fisher-Yates shuffle, whose own result depends on the FULL candidate
+ * array's length/order (adding one more candidate column could reshuffle
+ * every earlier pick); per-item independent scoring keeps the same
+ * reproducibility property `_columnSeed`'s own doc comment already
+ * establishes for the rest of this file.
+ *
+ * That SELECTION score is drawn from `_columnSeed(seed, col)` directly —
+ * a chosen column's own geometry draws below must NOT reuse that same
+ * seed (caught before writing a test: `lcgPoints(s,1)[0]` and
+ * `lcgPoints(s,2)[0]` are the SAME first draw from the SAME stream, so
+ * reusing the seed would make the geometry a function of the selection
+ * score — currently invisible in 'rails' mode's own default
+ * (`maxRailGaps:1`, where gap size is constant regardless of the draw),
+ * but it would silently bias which columns get which geometry the
+ * moment a caller widens the range — so the geometry draw below uses
+ * its own distinct salt, nested rather than added — see
+ * `_TIES_GEOMETRY_SALT`'s own doc comment for why nested, not added).
+ */
+function _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed) {
+  if (columns.length === 0) return [];
+  const spanMode = ties.span?.mode || 'cells';
+  if (spanMode === 'rails' && railRows.length < 2) return []; // nothing to bridge between
+  const [countMin, countMax] = ties.count;
+  const countDraw = lcgPoints(_columnSeed(seed, _TIES_COUNT_SALT), 1)[0].u;
+  const count = Math.min(
+    columns.length,
+    Math.max(0, countMin + Math.floor(countDraw * (countMax - countMin + 1)))
+  );
+  if (count <= 0) return [];
+
+  const scored = columns.map((col) => ({ col, score: lcgPoints(_columnSeed(seed, col), 1)[0].u }));
+  scored.sort((a, b) => a.score - b.score);
+  const chosen = scored.slice(0, count).map((s) => s.col).sort((a, b) => a - b);
+
+  const slots = [];
+
+  if (spanMode === 'rails') {
+    const numGaps = railRows.length - 1;
+    const minGaps = Math.max(1, Math.min(numGaps, ties.span?.rails || 1));
+    const maxGaps = Math.max(minGaps, Math.min(numGaps, ties.maxRailGaps || minGaps));
+    for (const col of chosen) {
+      const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT), 2);
+      const gapSize = minGaps + Math.floor(draws[0].u * (maxGaps - minGaps + 1));
+      const maxStartIdx = numGaps - gapSize;
+      const startIdx = Math.floor(draws[1].u * (maxStartIdx + 1));
+      slots.push({ i: col, jStart: railRows[startIdx], jEnd: railRows[startIdx + gapSize] });
+    }
+    return slots;
+  }
+
+  // 'cells' (default): the EXACT pre-T56 free-anchor span draw
+  // (`_tieSpanForColumn`'s own 'free' branch), reused here rather than
+  // re-derived — same formula, same `_applyRailSnap` call, just fed by
+  // this function's own (nested) geometry seed instead of the density
+  // gate's own `gate`/`pick` pair.
+  const spanMin = Math.max(1, ties.spanMin || 1);
+  const spanMax = Math.max(spanMin, ties.spanMax || spanMin);
+  const railSnapRows = ties.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+  for (const col of chosen) {
+    const draws = lcgPoints(_columnSeed(_columnSeed(seed, col), _TIES_GEOMETRY_SALT), 2);
+    const span = spanMin + Math.floor(draws[0].u * (spanMax - spanMin + 1));
+    const clampedSpan = Math.min(span, spanMax, jMax - jMin);
+    if (clampedSpan < 0) continue;
+    const maxStart = jMax - clampedSpan;
+    if (maxStart < jMin) continue; // doesn't fit in this extent at all — skip this column
+    const jStart = jMin + Math.floor(draws[1].u * (maxStart - jMin + 1));
+    const jEnd = jStart + clampedSpan;
+    const snapped = _applyRailSnap(jStart, jEnd, railRows, railSnapRows, spanMin, spanMax);
+    slots.push({ i: col, jStart: snapped.jStart, jEnd: snapped.jEnd });
+  }
+  return slots;
 }
 
 function _occupiedHas(occupied, i, j, kind) {
@@ -571,8 +750,27 @@ function _colScanLine(i, orientation) {
  */
 export function computePattern(PATTERN, opts = {}) {
   const P = { ...PATTERN_DEFAULTS, ...PATTERN };
-  const rails = { ...PATTERN_DEFAULTS.rails, ...(PATTERN.rails || {}) };
-  const ties = { ...PATTERN_DEFAULTS.ties, ...(PATTERN.ties || {}) };
+  // T56: an EXISTING saved pattern's `rails`/`ties` object, written
+  // before `mode` existed, never got that key serialized — reading it
+  // back today must NOT let it silently inherit the NEW 'count' default
+  // (Fred's own explicit requirement: "an existing layer's saved pattern
+  // keeps its own values, no silent re-density"). So `mode` gets its OWN
+  // fallback to the OLD implicit behavior ('every'/'density') whenever
+  // the caller supplied a real `rails`/`ties` object that itself lacks
+  // it — the plain `{...DEFAULTS, ...(PATTERN.x||{})}` merge every OTHER
+  // field here already uses is fine for them (T30/SE7h's own established
+  // "missing key reads as its old default" pattern) because THEIR old
+  // default already matches the new one; `mode`'s does not, so it alone
+  // needs the explicit branch. No `PATTERN.rails`/`.ties` at all (a
+  // brand-new layer, or a synthetic/test PATTERN) gets the plain new
+  // default, `mode:'count'` included — there is no "old value" to
+  // preserve there.
+  const rails = PATTERN.rails
+    ? { ...PATTERN_DEFAULTS.rails, ...PATTERN.rails, mode: PATTERN.rails.mode || 'every' }
+    : { ...PATTERN_DEFAULTS.rails };
+  const ties = PATTERN.ties
+    ? { ...PATTERN_DEFAULTS.ties, ...PATTERN.ties, mode: PATTERN.ties.mode || 'density' }
+    : { ...PATTERN_DEFAULTS.ties };
   const nodes = { ...PATTERN_DEFAULTS.nodes, ...(PATTERN.nodes || {}) };
   // T49 (SE13 Slice 3): `widths` merged HERE now too (previously only in
   // generatePattern, the DOM-touching sibling) — the `inset` ending rule's
@@ -645,7 +843,12 @@ export function computePattern(PATTERN, opts = {}) {
   // the RAW boundary-crossing point directly — §5's `on-boundary` ending
   // rule, the only one this slice implements (the other three are
   // Slice 3's own emission-time dispatch).
-  const railRows = _railRows(jMin, jMax, rails.every, rails.offset);
+  // T56: `mode:'count'` (default) picks rail rows via `_railRowsByCount`
+  // (a seeded count, evenly spread) instead of the fixed `every`/`offset`
+  // stride — 'every' stays available as an explicit alternative mode.
+  const railRows = rails.mode === 'every'
+    ? _railRows(jMin, jMax, rails.every, rails.offset)
+    : _railRowsByCount(jMin, jMax, rails.count, seed);
   const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
     let pieces;
@@ -703,32 +906,46 @@ export function computePattern(PATTERN, opts = {}) {
     }
   }
 
-  // Ties — one per column (hand-picked list, or density-gated across the
-  // full extent width).
+  // Ties — one per column (hand-picked list, or density-gated/count-based
+  // across the full extent width).
   const columns = Array.isArray(ties.columns) && ties.columns.length
     ? ties.columns
     : Array.from({ length: iMax - iMin + 1 }, (_, k) => iMin + k);
   const forcedSet = Array.isArray(ties.columns) ? new Set(ties.columns) : null;
 
+  // T56: WHICH columns get a tie is a GLOBAL decision in count-mode (it
+  // has to see every candidate at once to pick `count` of them), unlike
+  // density-mode's own independent per-column gate — so the slot list is
+  // computed up front here, then fed through the SAME emission loop below
+  // either way (only how `tieSlots` gets built differs by mode).
+  let tieSlots;
+  if (ties.mode === 'count') {
+    tieSlots = _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed);
+  } else {
+    tieSlots = [];
+    for (const i of columns) {
+      const forced = forcedSet ? forcedSet.has(i) : false;
+      const span = _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced);
+      if (span) tieSlots.push({ i, jStart: span.jStart, jEnd: span.jEnd });
+    }
+  }
+
   const halfTie = widths.ties / 2 / P.spacing;
-  for (const i of columns) {
-    const forced = forcedSet ? forcedSet.has(i) : false;
-    const span = _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced);
-    if (!span) continue;
-    // T48: the tie's own density/span/anchor draw (above) is UNCHANGED —
-    // boundary mode doesn't touch WHETHER or how far a tie is drawn, only
-    // clips the result to what's actually inside the shape, same "shorten,
-    // don't re-decide" split as the rails loop above. Board/rect mode:
-    // `pieces` is exactly one un-clipped piece, so this reduces to today's
-    // single segment/end-node pair byte-for-byte.
+  for (const { i, jStart, jEnd } of tieSlots) {
+    // T48: the tie's own density/span/anchor (or T56 count) draw (above)
+    // is UNCHANGED here — boundary mode doesn't touch WHETHER or how far
+    // a tie is drawn, only clips the result to what's actually inside the
+    // shape, same "shorten, don't re-decide" split as the rails loop
+    // above. Board/rect mode: `pieces` is exactly one un-clipped piece,
+    // so this reduces to today's single segment/end-node pair byte-for-byte.
     let pieces;
     if (isBoundary) {
       const colScan = _colScanLine(i, orientation);
       const inside = insideSpans(colScan, boundaryPrimitives);
       const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
-      pieces = _clipToSpans(Math.min(span.jStart, span.jEnd), Math.max(span.jStart, span.jEnd), combined);
+      pieces = _clipToSpans(Math.min(jStart, jEnd), Math.max(jStart, jEnd), combined);
     } else {
-      pieces = [{ a: span.jStart, b: span.jEnd, aIsCrossing: false, bIsCrossing: false }];
+      pieces = [{ a: jStart, b: jEnd, aIsCrossing: false, bIsCrossing: false }];
     }
     for (const piece of pieces) {
       // T51: same as the rails loop above — no separate shrink step.

@@ -6304,3 +6304,156 @@ Amendments polled clean before committing and again immediately before passing. 
 (`editor-shape-lattice-generator.js`, `tests/editor-shape-lattice-generator.test.js`, `WORK-LOG-lane-b.md`)
 — pushed. `reference/` confirmed still untracked (unrelated to this turn's own files, not touched).
 
+## T56 — lattice density by COUNT (6-7 rails, 8-10 ties that BRIDGE rails)
+
+**Scope**: `editor-lattice-pattern.js` (the box-Lattice engine — a DIFFERENT module from T53-55's own shape-
+lattice generator, this turn's own dispatch was a fresh, unrelated task), per Fred's own review: "your usual
+lattice is much denser than what I need... I want 6-7 rails and 8-10 ties." The advisor's own measurement
+(density-options.png, viewed) showed WHY tuning the existing density-based controls can't hit a target count
+reliably (density 0.4 → 9-17 ties, 0.3 → 3-13, 0.25 → 4-8) and — the real visual bug — that density-mode's own
+ties are 1-3 GRID-CELL stubs, which can't physically reach an adjacent rail once rails are spaced further
+apart than that, leaving them floating disconnected in the render.
+
+**Design**: declared BOTH new modes ADDITIVELY (`rails.mode: 'count'|'every'`, `ties.mode: 'count'|'density'`),
+default `'count'` for new layers — the OLD `every`/`density`/`anchor`/`spanMin`/`spanMax`/`railSnapRows`
+mechanisms are untouched, real, working alternatives, not replaced. `rails.count:[6,7]` picks a seeded count in
+range, evenly spread across the extent's own rows (`_railRowsByCount` — new). `ties.count:[8,10]` picks a
+seeded count of DISTINCT columns (never two ties sharing a column — guaranteed by construction, not a separate
+anti-clustering pass) and each bridges `ties.span.rails` (default 1) adjacent rail rows exactly — ends land ON
+real rail rows, never a disconnected stub (`_tieSlotsByCount` — new). `maxRailGaps` (default = span.rails, i.e.
+no variety) optionally lets a tie bridge more than 1 gap, seeded per column.
+
+**Migration (Fred's own explicit requirement: "an existing layer's saved pattern keeps its own values, no
+silent re-density")**: a saved pattern's `rails`/`ties` object from before `mode` existed never got that key
+serialized — `computePattern`'s own merge gives `mode` its OWN fallback (`PATTERN.rails.mode || 'every'`,
+`PATTERN.ties.mode || 'density'`) rather than the plain `{...DEFAULTS, ...PATTERN.x}` spread every OTHER field
+here already uses (whose OLD implicit default already matched the new one — `mode`'s doesn't, so it alone
+needs the explicit branch). Verified directly: a bare `{every:4,offset:1}` object with no mode key reads as
+'every', not 'count'; same for ties/density. A genuinely NEW pattern (no `rails`/`ties` key at all) gets the
+new default, `mode:'count'` included.
+
+**Two self-caught bugs, both found by measuring the actual output, not assumed correct from reading the code**:
+1. A column's own tie-GEOMETRY draw (gap size + start position) initially reused
+   `_columnSeed(seed, col + LARGE_SALT)` (the SAME "large additive offset" convention the two meta-count draws
+   already use safely) — but there `col` is the ONLY varying operand and it's tiny next to a million-scale
+   salt, so `Math.imul(col+salt+1, const)` barely moves across columns, and XOR-ing a small `seed` into that
+   nearly-constant, already-large product left `draws[0].u` on the SAME side of 0.5 in 650/650 sampled draws
+   (measured directly via a standalone probe before touching the test suite) — silently collapsing
+   `maxRailGaps>1` to always the SAME gap size, invisible under the default (`maxRailGaps:1`, where gap size
+   is constant regardless of the draw anyway). Fixed by NESTING instead of adding:
+   `_columnSeed(_columnSeed(seed,col), SALT)` re-mixes the column's own already-well-spread seed through a
+   second salt, rather than letting one huge constant dominate a tiny one — re-measured: 359/650, a real,
+   working spread. Same FAMILY of bug T54 found in the shape-lattice generator's own seed hash, a different
+   manifestation (there it was two SMALL varying operands XORed together with a weak mix; here it was one
+   TINY operand drowned out by one HUGE one) — not the same code, but the same underlying lesson ("measure the
+   actual draw distribution, don't assume XOR-based mixing is fine because it worked somewhere else").
+2. Nearly EVERY pre-existing test in this file (and 4 sibling test files) constructs its own `ties` object via
+   `{...PATTERN_DEFAULTS.ties, density: X, ...}` — spreading the CURRENT `PATTERN_DEFAULTS.ties`, which NOW
+   includes `mode:'count'`, silently switching ~24+ existing density-mode tests over to count-mode (where
+   `density` is simply unread). Not a bug in the migration logic itself (these are FRESH object constructions
+   in test code written today, not persisted old patterns) — a mechanical consequence of adding a new default
+   field that a `replace_all` can't distinguish from "this test's own intent." Fixed with a `replace_all` per
+   file (`...PATTERN_DEFAULTS.ties, density:` → `...PATTERN_DEFAULTS.ties, mode: 'density', density:`), plus 2
+   rails-specific tests that relied on the BARE `{...PATTERN_DEFAULTS}` spread (rails.mode:'count' inherited
+   the same way) fixed individually with an explicit `rails:{mode:'every',...}` override, matching each test's
+   own already-stated title/intent.
+
+**A third, disclosed-not-fixed finding** (found while writing the boundary-mode test, NOT a T56 regression —
+a property of the EXISTING shared clipping infrastructure rails/density-mode ties already used, T48-51): a
+tie's own `[jStart,jEnd]` window gets clipped to "whatever portion is inside the boundary along that COLUMN"
+— that clip does not verify the result still touches a rail that itself survived as a visible segment
+elsewhere. For an ordinary, reasonably-shaped boundary this is invisible (a tie's own candidate window and a
+surviving rail's own row naturally agree). For a boundary shaped as a thin strip perpendicular to the rail
+direction (a pathological case, not a realistic user shape), a tie can get clipped to a real, correctly-bounded
+segment that doesn't correspond to any surviving rail. Adjusted my own test to assert what's ACTUALLY
+guaranteed (count never exceeds the declared max; every emitted tie's own endpoints stay within the boundary's
+declared bounds) rather than an incorrect "must be exactly 0 ties" premise — reworking the shared clipping code
+itself is out of this turn's own scope.
+
+**Panel UI** (`bspline_gen_palette.html` + `properties-lattice.js`): a Rails mode toggle (Count/Every, same
+segmented-control shape as Orientation) + count-min/max fields, replacing "every"/"offset" as the default-
+visible group; a Ties mode toggle (Count/Density) + count-min/max fields, wrapping the ORIGINAL density/
+spanMin/spanMax/anchor/railSnapRows fields as one group shown only in Density mode. `_showRailsMode`/
+`_showTiesMode` (new, shared by `syncFieldsFromPattern` and the toggle click handlers, so the shown group can
+never drift from the `.active` button). Toggling mode is a SETTINGS field (same "only takes effect on next
+Generate" shape `selectBoundaryMode` already established), not an immediate re-projection like Orientation.
+`readFieldsIntoPattern` now writes `mode`/`count` for both, reading each toggle's own `.active` state as the
+source of truth (same convention every other segmented control in this panel already uses).
+
+**Tests**: new `tests/editor-lattice-pattern-density-count.test.js` (14 tests) — 50 seeds: rail count always
+in [6,7] and evenly spread (first/last row at the extent's own edges); 50 seeds: tie count always in [8,10];
+50 seeds: every tie's own ends land on a real rail row, never a floating stub; 50 seeds: no two ties share a
+column; holds under `orientation:'vertical'`; boundary mode never exceeds the declared max and clips
+correctly; `maxRailGaps` produces REAL variety across the population (the exact property T56's own self-caught
+bug #1 would have silently broken); `mode:'every'`/`'density'` still work as real alternatives, ignoring count
+entirely; the migration fallback (no `mode` key reads as the OLD behavior; no `rails`/`ties` key at all reads
+as the NEW default). Plus the `properties-lattice.test.js` panel suite's own "at rail ends" tests fixed to
+select Density mode explicitly via the new toggle before relying on `density:0` (T56 changed what `density:0`
+means outside Density mode: nothing, since count-mode ignores it) — a genuine behavior change these tests
+needed to catch up to, not a workaround. Full suite: 888 passed (59 files), up from 874 pre-turn (14 new here
++ 0 net elsewhere, since the ~24 `mode:'density'` insertions and 2 rails-mode fixes were EXISTING tests
+restored to green, not new ones).
+
+Mutation-tested 3 pieces of new/changed logic (backup, mutate, run, confirm exact failure set, restore, `diff`
+byte-identical): (1) the migration fallback removed (`{...DEFAULTS,...PATTERN.x}` plain spread) — 16 failures
+across 4 test files, extensively load-bearing, confirming nearly the WHOLE pre-existing suite implicitly
+depends on it; (2) `_railRowsByCount`'s own even-spread formula replaced with a clustered one — exactly 1
+failure, the dedicated even-spread test; (3) the geometry-salt nesting fix reverted to the original broken
+additive version — exactly 1 failure, the `maxRailGaps` variety test (the SAME test that caught the real bug
+originally, now proven to catch a REVERT of the fix too, not just the forward case). No unexpected tests moved
+in any run.
+
+**Live-verified**: (a) rendered the SAME shape of sheet the advisor's own render used (7x9 board, 3 seeds:
+42/7/1234), screenshotted via headless Chrome and viewed directly — 6-7 rails, 8-9 ties per board, every tie
+visibly bridging exactly one rail-to-rail gap (no floating stubs), saved to this session's own scratchpad as
+`t56-density.png` (dispatch's own requested filename, different scratchpad than the advisor's `dens2/` one).
+(b) a focused live-DOM check (CDP, headless Chrome, a fresh profile) of the NEW panel markup specifically —
+confirmed all 12 new element IDs exist, default visibility matches the SERVER-RENDERED HTML (count-mode fields
+shown, every/density fields hidden, before any JS runs), and clicking each toggle button correctly flips BOTH
+the shown field group AND the `.active` class in the real browser DOM (not just asserted from reading the
+code) — did not attempt a full Generate-and-inspect-real-geometry live run (would need a fuller editor/board
+bootstrap than this focused check needed; the pure-function level is already covered by 14 new vitest tests
+plus the rendered/viewed screenshot above).
+
+**MID-TASK AMENDMENT** (polled right after the above was built and live-verified, before committing anything):
+Fred had, in parallel, actually VIEWED the advisor's own rendered options (`density-options.png`, the same
+image I'd read at the start of this turn) and picked "B" — 7 rails, 13 SHORT-stub ties — as fine. This
+reverses my own default choice: the "ties should BRIDGE rails" framing in the dispatch's own text was the
+ADVISOR's inference from Fred's earlier complaint, not Fred's own stated visual preference once he actually
+saw both options side by side. Corrected: `ties.count` widened to `[8,13]`; count-mode's own DEFAULT tie span
+becomes `ties.span.mode:'cells'` — the ORIGINAL pre-T56 spanMin/spanMax grid-cell stub mechanic
+(`_tieSpanForColumn`'s own 'free'-anchor draw, `_applyRailSnap`'d toward a nearby rail), reused directly rather
+than re-derived, just fed by count-based column selection instead of the old per-column density gate;
+`ties.span.mode:'rails'` (my own original bridging design) is KEPT as a real, declared alternative, not
+dropped — a genuine design idea that turned out not to be what Fred wanted as the default, not a mistake to
+erase.
+
+**Rework required**: `_tieSlotsByCount` restructured to dispatch on `ties.span.mode` (`jMin`/`jMax` added to
+its own signature, needed for cells-mode's own span draw) — the 'rails' branch is the ORIGINAL code, untouched
+in substance; the 'cells' branch is new, reusing `_applyRailSnap` (already exported/tested) rather than
+re-deriving the snap math. `PATTERN_DEFAULTS.ties` updated (`count:[8,13]`, `span:{mode:'cells',rails:1}`).
+Panel: added a THIRD, nested toggle (Cells/Rails) inside the Ties Count-mode field group specifically
+(`latticeTiesSpanModeCells`/`latticeTiesSpanModeRails`, `_showTieSpanMode`, wired the same "settings field, not
+an immediate re-projection" way as the other T56 toggles) — Count-vs-Density and Cells-vs-Rails are
+INDEPENDENT axes (the span sub-toggle only matters/shows within Count mode), not folded into one 4-way
+control. `readFieldsIntoPattern` writes `ties.span.mode` from that toggle's own `.active` state, preserving
+`span.rails` (no dedicated stepper for the gap COUNT yet — declared, not built, since nothing asked for it
+this turn).
+
+**Tests rewritten** (not just patched) to match the corrected default: "every tie's span is spanMin..spanMax
+grid cells" (NEW, tests the actual default now); "tie count in [8,13]" (widened from [8,10]); the "every tie
+lands on a rail row" assertion MOVED into its own `ties.span.mode:'rails'`-specific describe block (still
+tested, just no longer implied as the default); boundary-mode tests' own count bound widened to 13. Mutation-
+tested the new span-mode dispatch (forced `spanMode` to always `'rails'` regardless of the declared mode) —
+exactly 1 failure, the dedicated cells-mode-default span test, nothing else — confirms the dispatch is live
+and the OTHER tests don't accidentally depend on which branch runs. Full suite re-run clean: 889 passed.
+Re-rendered `t56-density.png` under the corrected default and viewed it again — now visibly matches Fred's own
+picked "B" panel's look (short stubs snapped near rails, not full bridges).
+
+Amendments polled clean before committing (this correction ITSELF, since it arrived mid-turn) and again
+immediately before passing. Committed by explicit path (`editor-lattice-pattern.js`, `properties-lattice.js`,
+`bspline_gen_palette.html`, `tests/editor-lattice-pattern.test.js`, `tests/editor-lattice-pattern-boundary.test.js`,
+`tests/editor-lattice-pattern-boundary-emit.test.js`, `tests/editor-lattice-pattern-emit.test.js`,
+`tests/editor-lattice-pattern-ending.test.js`, `tests/editor-lattice-pattern-density-count.test.js` (new),
+`tests/properties-lattice.test.js`, `WORK-LOG-lane-b.md`) — pushed. `reference/` confirmed still untracked.
+

@@ -317,6 +317,12 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
     container.innerHTML = `
       <input id="latticeRailsEvery" type="number" value="2">
       <input id="latticeRailsOffset" type="number" value="0">
+      <!-- T56: ties mode toggle — these two tests isolate "railEnds
+           behavior alone, ties fully suppressed" via density:0, which
+           only has any effect once mode:'density' is actually selected
+           (mode defaults to 'count', which ignores density entirely). -->
+      <button id="latticeTiesModeCount" class="active"></button>
+      <button id="latticeTiesModeDensity"></button>
       <input id="latticeTiesDensity" type="range" value="0">
       <input id="latticeNodesEnds" type="checkbox" checked>
       <input id="latticeNodesCrossings" type="checkbox" checked>
@@ -345,7 +351,10 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
     // syncFieldsFromPattern (run at init) already reflected the fresh
     // pattern's default density (0.4) onto the field, clobbering this
     // fixture's own value="0" — zero it again here so ties can't also
-    // contribute end/crossing nodes and blur what's under test.
+    // contribute end/crossing nodes and blur what's under test. T56:
+    // density only takes effect in mode:'density' (default is 'count',
+    // which ignores it) — select that mode explicitly.
+    document.getElementById('latticeTiesModeDensity').click();
     document.getElementById('latticeTiesDensity').value = '0';
     document.getElementById('latticeNodesRailEnds').checked = true;
     document.getElementById('latticeGenerate').click();
@@ -359,6 +368,7 @@ describe('initLatticeProperties (SE7h add-on 2): "at rail ends" checkbox', () =>
 
   it('non-vacuous: leaving it unchecked produces no nodes at all (ends/crossings have nothing to attach to with density:0)', () => {
     initLatticeProperties(editor);
+    document.getElementById('latticeTiesModeDensity').click(); // T56: density is a no-op outside mode:'density'
     document.getElementById('latticeTiesDensity').value = '0';
     document.getElementById('latticeGenerate').click();
     const node = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'node');

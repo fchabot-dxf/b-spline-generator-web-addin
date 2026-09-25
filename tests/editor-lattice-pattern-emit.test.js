@@ -108,7 +108,7 @@ describe('generatePattern: first Generate', () => {
   beforeEach(() => { editor = _makeMockEditor(); });
 
   it('writes rails/ties/nodes into the ACTIVE layer — no new layer is created (SE7i)', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     generatePattern(editor, pattern);
 
     expect(editor._layers).toHaveLength(1); // still just Layer 1 — Generate never creates one
@@ -121,7 +121,7 @@ describe('generatePattern: first Generate', () => {
     // T49: generatePattern is now async (boundary mode needs
     // shapeToPrimitives) -- board mode itself never hits a real await, so
     // this `await` doesn't change timing, only unwraps the Promise.
-    const pattern = { ...PATTERN_DEFAULTS, seed: 2, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 2, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     expect(pattern.id).toBeUndefined();
     const { segments, nodePoints } = await generatePattern(editor, pattern);
     expect(pattern.id).toBeTruthy();
@@ -141,7 +141,7 @@ describe('generatePattern: first Generate', () => {
   });
 
   it('is exactly ONE undo step: pushState called once, notifyChange("commit") called once, regardless of element count', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 4, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 4, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
     generatePattern(editor, pattern);
     expect(editor.pushStateCalls).toBe(1);
     expect(editor.notifyChangeCalls).toEqual(['commit']);
@@ -153,7 +153,7 @@ describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () 
   beforeEach(() => { editor = _makeMockEditor(); });
 
   it('produces byte-identical geometry to the first Generate when nothing changed', async () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 6, ties: { ...PATTERN_DEFAULTS.ties, density: 0.6 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 6, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.6 } };
     const first = await generatePattern(editor, pattern);
     const second = await generatePattern(editor, pattern);
     expect(second.segments).toEqual(first.segments);
@@ -174,7 +174,7 @@ describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () 
   });
 
   it('a detached tie (data-lattice="tie", ownership tag removed) is left completely untouched by Regenerate', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 9, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [1] } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 9, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [1] } };
     generatePattern(editor, pattern);
     const tie = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'tie');
     expect(tie).toBeDefined();
@@ -189,7 +189,7 @@ describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () 
   });
 
   it('SA-LAYER-1-style regression guard: a detached tie at a given column blocks Regenerate from placing a fresh tie at the SAME start cell', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 10, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [3] } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 10, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [3] } };
     generatePattern(editor, pattern);
     const tie = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'tie');
     const detachedStart = { x1: tie.attr('x1'), y1: tie.attr('y1') };
@@ -215,7 +215,7 @@ describe('generatePattern: Regenerate (same PATTERN.id, SAME active layer)', () 
    * currently sits.
    */
   it('sweeps an owned piece that was MOVED BY HAND (still carries OWNERSHIP_ATTR, geometry changed) — the old detach-on-move rule is retired', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 11, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [2] } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 11, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [2] } };
     generatePattern(editor, pattern);
     const tie = editor._sketchLayer.children().find((el) => el.attr('data-lattice') === 'tie');
     expect(tie.attr(OWNERSHIP_ATTR)).toBe(pattern.id); // sanity: still owned
@@ -268,7 +268,7 @@ describe('detachAllOwned: the bulk "Detach all" panel action (SE7i: layer-scoped
   beforeEach(() => { editor = _makeMockEditor(); });
 
   it('strips ownership from every element on the given LAYER, leaves others alone', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 20, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 20, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
     generatePattern(editor, pattern);
     const ownedBefore = editor._sketchLayer.children().filter((el) => el.attr(OWNERSHIP_ATTR) === pattern.id);
     expect(ownedBefore.length).toBeGreaterThan(0); // sanity — Generate must have actually made owned content
@@ -283,7 +283,7 @@ describe('detachAllOwned: the bulk "Detach all" panel action (SE7i: layer-scoped
   });
 
   it('is exactly one undo step (not one per detached element)', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 21, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 21, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
     generatePattern(editor, pattern);
     editor.pushStateCalls = 0;
     editor.notifyChangeCalls = [];
@@ -307,7 +307,7 @@ describe('PATTERN.margin (SE7c): the board extent is inset so nothing sits on th
   beforeEach(() => { editor = _makeMockEditor(); }); // _mW = 4, _mH = 4
 
   it('with the default margin (1), no rail/tie endpoint or node centre sits at x/y = 0 or the board size', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 24, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 } };
     generatePattern(editor, pattern);
 
     const segments = editor._sketchLayer.children().filter((el) => el.attr('x1') !== undefined);
@@ -398,7 +398,7 @@ describe('generatePattern: per-kind colors (SE7g amend)', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 30,
       rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
       colors: { rails: '#111111', ties: '#222222', nodes: '#333333' },
     };
     generatePattern(editor, pattern);
@@ -418,7 +418,7 @@ describe('generatePattern: per-kind colors (SE7g amend)', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 31,
       rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
     };
     delete pattern.colors;
     generatePattern(editor, pattern);
@@ -436,7 +436,7 @@ describe('generatePattern: per-kind colors (SE7g amend)', () => {
   it('a partial PATTERN.colors (only rails set) still fills in ties/nodes from defaults', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 33,
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
       colors: { rails: '#444444' },
     };
     generatePattern(editor, pattern);
@@ -460,7 +460,7 @@ describe('generatePattern: per-kind widths (SE7i)', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 34,
       rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
       widths: { rails: 0.11, ties: 0.09, nodeRadius: 0.2 },
     };
     generatePattern(editor, pattern);
@@ -487,7 +487,7 @@ describe('generatePattern: per-kind widths (SE7i)', () => {
   it('a partial PATTERN.widths (only rails set) still fills in ties/nodeRadius from defaults', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 36,
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
       widths: { rails: 0.3 },
     };
     generatePattern(editor, pattern);
@@ -506,7 +506,7 @@ describe('recolorOwnedKind (SE7g amend, SE7i: layer-scoped): recolor owned piece
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 40,
       rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
     };
     generatePattern(editor, pattern);
     const railsBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
@@ -586,7 +586,7 @@ describe('rewidthOwnedKind (SE7i): re-width owned pieces in place, no reseed', (
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 50,
       rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1 },
     };
     generatePattern(editor, pattern);
     const railsBefore = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');

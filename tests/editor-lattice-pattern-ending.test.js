@@ -92,7 +92,7 @@ describe('computePattern: §5 ending-rule table, a circular boundary (non-collin
   const expectedHalfChord = Math.sqrt(r * r - (j - cy) * (j - cy));
   const rawLo = cx - expectedHalfChord, rawHi = cx + expectedHalfChord;
   const extent = { iMin: 1, jMin: 0, iMax: 9, jMax: 8, mode: 'boundary', primitives };
-  const basePattern = { ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+  const basePattern = { ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } };
 
   function railAtJ(endRule) {
     const pattern = { ...basePattern, boundary: { ...PATTERN_DEFAULTS.boundary, endRule } };
@@ -141,7 +141,7 @@ describe('computePattern: §5 ending-rule table, a circular boundary (non-collin
     const tinyPrimitives = [{ type: 'CIRCLE', cx: 5.5, cy: 4, r: 0.3 }];
     const tinyExtent = { iMin: 4, jMin: 3, iMax: 7, jMax: 5, mode: 'boundary', primitives: tinyPrimitives };
     const pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'loose' },
     };
     const { segments } = computePattern(pattern, { extent: tinyExtent });

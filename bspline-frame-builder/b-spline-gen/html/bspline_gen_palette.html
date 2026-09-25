@@ -1619,7 +1619,24 @@
                 <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
                 <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
               </div>
-              <div style="display:flex; gap:6px;">
+              <!-- T56 (Fred: "I want 6-7 rails"): mode toggle, same
+                   segmented-control shape as Orientation above. Count
+                   (default) picks a seeded rail count, evenly spread; Every
+                   is the ORIGINAL fixed-stride control, kept as a real
+                   alternative, not removed. -->
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="latticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
+                <button type="button" id="latticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
+              </div>
+              <div id="latticeRailsCountFields" style="display:flex; gap:6px;">
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
+                  <input id="latticeRailsCountMin" type="number" min="1" step="1" value="6" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count max
+                  <input id="latticeRailsCountMax" type="number" min="1" step="1" value="7" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
+              </div>
+              <div id="latticeRailsEveryFields" style="display:none; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px;">every
                   <input id="latticeRailsEvery" type="number" min="1" step="1" value="2" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
@@ -1631,32 +1648,63 @@
 
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Ties</span>
-              <label style="display:flex; flex-direction:column; gap:2px;">density
-                <input id="latticeTiesDensity" type="range" min="0" max="1" step="0.05" value="0.4" style="width:100%; height:26px;">
-              </label>
-              <div style="display:flex; gap:6px;">
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span min
-                  <input id="latticeTiesSpanMin" type="number" min="1" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              <!-- T56 (Fred: "I want... 8-10 ties" that BRIDGE rails):
+                   mode toggle, same shape as Rails' own above. Count
+                   (default) picks a seeded tie count on distinct
+                   columns; Density is the ORIGINAL free-anchor/density
+                   control, kept as a real alternative. -->
+              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                <button type="button" id="latticeTiesModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded tie count on distinct columns">Count</button>
+                <button type="button" id="latticeTiesModeDensity" class="editor-fillmode-btn" style="flex:1;" title="Random density + span, snapping toward rails">Density</button>
+              </div>
+              <div id="latticeTiesCountFields" style="display:flex; flex-direction:column; gap:6px;">
+                <div style="display:flex; gap:6px;">
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
+                    <input id="latticeTiesCountMin" type="number" min="1" step="1" value="8" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count max
+                    <input id="latticeTiesCountMax" type="number" min="1" step="1" value="13" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                </div>
+                <!-- T56 AMEND (Fred, having viewed the rendered options and
+                     picked the short-stub panel): Cells (default) is
+                     today's ORIGINAL span behavior (spanMin/spanMax grid
+                     cells, snapped toward a nearby rail); Rails (every tie
+                     bridges adjacent rails exactly, ends land ON a rail)
+                     is a real, declared alternative, not the default. -->
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
+                  <button type="button" id="latticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
+                  <button type="button" id="latticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
+                </div>
+              </div>
+              <div id="latticeTiesDensityFields" style="display:none; flex-direction:column; gap:3px;">
+                <label style="display:flex; flex-direction:column; gap:2px;">density
+                  <input id="latticeTiesDensity" type="range" min="0" max="1" step="0.05" value="0.4" style="width:100%; height:26px;">
                 </label>
-                <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span max
-                  <input id="latticeTiesSpanMax" type="number" min="1" step="1" value="3" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                <div style="display:flex; gap:6px;">
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span min
+                    <input id="latticeTiesSpanMin" type="number" min="1" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                  <label style="flex:1; display:flex; flex-direction:column; gap:2px;">span max
+                    <input id="latticeTiesSpanMax" type="number" min="1" step="1" value="3" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                  </label>
+                </div>
+                <label style="display:flex; flex-direction:column; gap:2px;">anchor
+                  <select id="latticeTiesAnchor" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
+                    <option value="free" selected>Free (snaps to rails)</option>
+                    <option value="rails">Between rails (strict)</option>
+                  </select>
+                </label>
+                <!-- T30 (Fred: "don't limit it to rails, but do snap to
+                     them"), amended: ONE setting for BOTH the generator
+                     (anchor:'free' only — 'rails' strict mode ignores it,
+                     already exact) AND the hand-drawn Lattice tool's live
+                     tie-drag snap — no second field/default for the hand
+                     tool. 0 = off for both. -->
+                <label style="display:flex; flex-direction:column; gap:2px;">snap to rails within N rows
+                  <input id="latticeTiesRailSnapRows" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
               </div>
-              <label style="display:flex; flex-direction:column; gap:2px;">anchor
-                <select id="latticeTiesAnchor" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;">
-                  <option value="free" selected>Free (snaps to rails)</option>
-                  <option value="rails">Between rails (strict)</option>
-                </select>
-              </label>
-              <!-- T30 (Fred: "don't limit it to rails, but do snap to
-                   them"), amended: ONE setting for BOTH the generator
-                   (anchor:'free' only — 'rails' strict mode ignores it,
-                   already exact) AND the hand-drawn Lattice tool's live
-                   tie-drag snap — no second field/default for the hand
-                   tool. 0 = off for both. -->
-              <label style="display:flex; flex-direction:column; gap:2px;">snap to rails within N rows
-                <input id="latticeTiesRailSnapRows" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
-              </label>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px;">

@@ -118,7 +118,7 @@ describe('generatePattern: boundary mode, end to end (async boundary-primitive r
     const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
     const shapeId = stampBoundaryRef(boundaryEl);
 
-    const rectPattern = { ...PATTERN_DEFAULTS, seed: 3, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+    const rectPattern = { ...PATTERN_DEFAULTS, seed: 3, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } };
     const rectResult = await generatePattern(editor, { ...rectPattern, extent: { mode: 'rect', iMin: 0, jMin: 0, iMax, jMax } });
     // Reset the mock layer between the two generates (separate editors is
     // simpler than un-generating) -- a fresh editor per call, same pattern.
@@ -153,7 +153,7 @@ describe('generatePattern: the Border piece (§7)', () => {
   it('Border OFF (default): no extra element beyond rails/ties/nodes', async () => {
     const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
     const pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
     };
     await generatePattern(editor, pattern);
@@ -166,7 +166,7 @@ describe('generatePattern: the Border piece (§7)', () => {
     boundaryEl.attr('stroke', '#336699');
     boundaryEl.attr('stroke-width', '0.15');
     const pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' },
       boundary: {
         ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
@@ -190,7 +190,7 @@ describe('generatePattern: the Border piece (§7)', () => {
     const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
     boundaryEl.attr('stroke', '#336699');
     const pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' },
       boundary: {
         ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
@@ -206,7 +206,7 @@ describe('generatePattern: the Border piece (§7)', () => {
   it('Regenerate sweeps the OLD Border piece before emitting a fresh one (ownership, not a leaked duplicate)', async () => {
     const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
     const pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' },
       boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary', border: { enabled: true, width: null, color: '#000000' } },
     };
@@ -236,7 +236,7 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
   it('re-generates the active layer\'s pattern when boundary mode IS active with a linked shape', async () => {
     const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
     editor._layers[0].pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
     };
     refreshBoundaryPatterns(editor);
@@ -253,7 +253,7 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
     // the test runner / blow the stack) within one macrotask flush.
     const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
     editor._layers[0].pattern = {
-      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
     };
     refreshBoundaryPatterns(editor);
@@ -272,7 +272,7 @@ describe('generatePattern: T50 -- which stroke width the fill\'s own inner-strok
       // spacing:1 -- keeps world inches == lattice units 1:1, so the
       // circle's own world cx/cy/r (5,5,2) can be compared directly
       // against segment i/j without a second /spacing conversion here.
-      ...PATTERN_DEFAULTS, spacing: 1, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ...PATTERN_DEFAULTS, spacing: 1, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' },
       boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary', ...overrides },
     };

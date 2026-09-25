@@ -50,8 +50,26 @@ function _currentPattern(editor) {
 
 export function initLatticeProperties(editor) {
     const spacingEl = el('latticeSpacing');
+    // T56: rails/ties mode toggles (same segmented-control shape as
+    // Orientation) + their own field groups, shown/hidden together.
+    const railsModeCountEl = el('latticeRailsModeCount');
+    const railsModeEveryEl = el('latticeRailsModeEvery');
+    const railsCountFieldsEl = el('latticeRailsCountFields');
+    const railsEveryFieldsEl = el('latticeRailsEveryFields');
+    const railsCountMinEl = el('latticeRailsCountMin');
+    const railsCountMaxEl = el('latticeRailsCountMax');
     const railsEveryEl = el('latticeRailsEvery');
     const railsOffsetEl = el('latticeRailsOffset');
+    const tiesModeCountEl = el('latticeTiesModeCount');
+    const tiesModeDensityEl = el('latticeTiesModeDensity');
+    const tiesCountFieldsEl = el('latticeTiesCountFields');
+    const tiesDensityFieldsEl = el('latticeTiesDensityFields');
+    const tiesCountMinEl = el('latticeTiesCountMin');
+    const tiesCountMaxEl = el('latticeTiesCountMax');
+    // T56 AMEND: count-mode's own tie SPAN sub-toggle (Cells, the
+    // default per Fred's own pick / Rails, bridging, an alternative).
+    const tiesSpanModeCellsEl = el('latticeTiesSpanModeCells');
+    const tiesSpanModeRailsEl = el('latticeTiesSpanModeRails');
     const tiesDensityEl = el('latticeTiesDensity');
     const tiesSpanMinEl = el('latticeTiesSpanMin');
     const tiesSpanMaxEl = el('latticeTiesSpanMax');
@@ -132,6 +150,34 @@ export function initLatticeProperties(editor) {
      *  document opened with a different saved pattern (editor-io.js's
      *  open()) shouldn't show stale field values from whatever was on
      *  screen before either. */
+    // T56: show exactly one of the two field groups per toggle, and
+    // reflect which is active onto the buttons — one function shared by
+    // syncFieldsFromPattern (reflecting the PATTERN) and the toggle
+    // click handlers (reflecting a user's own click) so the two can never
+    // drift apart into showing a group that doesn't match the `.active`
+    // button.
+    function _showRailsMode(mode) {
+        if (railsModeCountEl) railsModeCountEl.classList.toggle('active', mode !== 'every');
+        if (railsModeEveryEl) railsModeEveryEl.classList.toggle('active', mode === 'every');
+        if (railsCountFieldsEl) railsCountFieldsEl.style.display = mode === 'every' ? 'none' : 'flex';
+        if (railsEveryFieldsEl) railsEveryFieldsEl.style.display = mode === 'every' ? 'flex' : 'none';
+    }
+    function _showTiesMode(mode) {
+        if (tiesModeCountEl) tiesModeCountEl.classList.toggle('active', mode !== 'density');
+        if (tiesModeDensityEl) tiesModeDensityEl.classList.toggle('active', mode === 'density');
+        if (tiesCountFieldsEl) tiesCountFieldsEl.style.display = mode === 'density' ? 'none' : 'flex';
+        if (tiesDensityFieldsEl) tiesDensityFieldsEl.style.display = mode === 'density' ? 'flex' : 'none';
+    }
+    // T56 AMEND: count-mode's own tie SPAN sub-toggle — only reflects the
+    // `.active` state (both buttons live inside `#latticeTiesCountFields`,
+    // whose OWN visibility is already driven by `_showTiesMode` above, so
+    // this never needs its own show/hide of a field GROUP, just the two
+    // buttons' own active state).
+    function _showTieSpanMode(mode) {
+        if (tiesSpanModeCellsEl) tiesSpanModeCellsEl.classList.toggle('active', mode !== 'rails');
+        if (tiesSpanModeRailsEl) tiesSpanModeRailsEl.classList.toggle('active', mode === 'rails');
+    }
+
     function syncFieldsFromPattern() {
         const p = _currentPattern(editor);
         // SE7h: reflect the current orientation onto the segmented
@@ -143,6 +189,25 @@ export function initLatticeProperties(editor) {
         if (orientHorizontalEl) orientHorizontalEl.classList.toggle('active', orientation !== 'vertical');
         if (orientVerticalEl) orientVerticalEl.classList.toggle('active', orientation === 'vertical');
         if (spacingEl) spacingEl.value = String(p.spacing ?? PATTERN_DEFAULTS.spacing);
+        // T56: same migration-aware fallback computePattern's own merge
+        // uses (editor-lattice-pattern.js's own comment on this exact
+        // point) — a saved `rails`/`ties` object from before `mode`
+        // existed reads as the OLD implicit mode, not the new default.
+        const railsMode = p.rails ? (p.rails.mode || 'every') : PATTERN_DEFAULTS.rails.mode;
+        const tiesMode = p.ties ? (p.ties.mode || 'density') : PATTERN_DEFAULTS.ties.mode;
+        _showRailsMode(railsMode);
+        _showTiesMode(tiesMode);
+        // T56 AMEND: span.mode has its OWN "no key yet" fallback too — a
+        // saved pattern from before this field existed (or a fresh one,
+        // which materializes straight from PATTERN_DEFAULTS anyway)
+        // reads as PATTERN_DEFAULTS.ties.span.mode ('cells').
+        _showTieSpanMode(p.ties?.span?.mode || PATTERN_DEFAULTS.ties.span.mode);
+        const railsCount = p.rails?.count ?? PATTERN_DEFAULTS.rails.count;
+        if (railsCountMinEl) railsCountMinEl.value = railsCount[0];
+        if (railsCountMaxEl) railsCountMaxEl.value = railsCount[1];
+        const tiesCount = p.ties?.count ?? PATTERN_DEFAULTS.ties.count;
+        if (tiesCountMinEl) tiesCountMinEl.value = tiesCount[0];
+        if (tiesCountMaxEl) tiesCountMaxEl.value = tiesCount[1];
         if (railsEveryEl) railsEveryEl.value = p.rails?.every ?? PATTERN_DEFAULTS.rails.every;
         if (railsOffsetEl) railsOffsetEl.value = p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset;
         if (tiesDensityEl) tiesDensityEl.value = p.ties?.density ?? PATTERN_DEFAULTS.ties.density;
@@ -198,13 +263,38 @@ export function initLatticeProperties(editor) {
         // wired) reads as horizontal.
         p.orientation = orientVerticalEl?.classList.contains('active') ? 'vertical' : 'horizontal';
         if (spacingEl) p.spacing = parseFloat(spacingEl.value) || PATTERN_DEFAULTS.spacing;
+        // T56: same "the control's own `.active` state IS the source of
+        // truth" shape as Orientation above — Every/Density active means
+        // that mode, anything else (including a fresh panel with neither
+        // toggle wired) means Count, this tool's own new default.
+        const railsMode = railsModeEveryEl?.classList.contains('active') ? 'every' : 'count';
+        const tiesMode = tiesModeDensityEl?.classList.contains('active') ? 'density' : 'count';
+        // T56 AMEND: Rails active means bridging, anything else (including
+        // no toggle wired) means Cells — this tool's own new default,
+        // matching Fred's own pick.
+        const tieSpanMode = tiesSpanModeRailsEl?.classList.contains('active') ? 'rails' : 'cells';
+        const railsCountMin = railsCountMinEl ? (parseInt(railsCountMinEl.value, 10) || 1) : (p.rails?.count?.[0] ?? PATTERN_DEFAULTS.rails.count[0]);
+        const railsCountMax = railsCountMaxEl ? (parseInt(railsCountMaxEl.value, 10) || railsCountMin) : (p.rails?.count?.[1] ?? PATTERN_DEFAULTS.rails.count[1]);
+        const tiesCountMin = tiesCountMinEl ? (parseInt(tiesCountMinEl.value, 10) || 1) : (p.ties?.count?.[0] ?? PATTERN_DEFAULTS.ties.count[0]);
+        const tiesCountMax = tiesCountMaxEl ? (parseInt(tiesCountMaxEl.value, 10) || tiesCountMin) : (p.ties?.count?.[1] ?? PATTERN_DEFAULTS.ties.count[1]);
         p.rails = {
+            mode: railsMode,
+            // count is a [min,max] PAIR — swap defensively if a user
+            // types them backwards rather than silently emitting an
+            // inverted (empty) seeded range.
+            count: railsCountMin <= railsCountMax ? [railsCountMin, railsCountMax] : [railsCountMax, railsCountMin],
             every: railsEveryEl ? (parseInt(railsEveryEl.value, 10) || 1) : (p.rails?.every ?? PATTERN_DEFAULTS.rails.every),
             offset: railsOffsetEl ? (parseInt(railsOffsetEl.value, 10) || 0) : (p.rails?.offset ?? PATTERN_DEFAULTS.rails.offset),
         };
         p.ties = {
             ...PATTERN_DEFAULTS.ties,
             ...p.ties,
+            mode: tiesMode,
+            count: tiesCountMin <= tiesCountMax ? [tiesCountMin, tiesCountMax] : [tiesCountMax, tiesCountMin],
+            // T56 AMEND: span.rails (the bridge-gap count, 1..maxRailGaps)
+            // has no dedicated stepper yet — kept at whatever it already
+            // was (or the default) — only span.MODE has a control so far.
+            span: { ...PATTERN_DEFAULTS.ties.span, ...p.ties?.span, mode: tieSpanMode },
             density: tiesDensityEl ? parseFloat(tiesDensityEl.value) : (p.ties?.density ?? PATTERN_DEFAULTS.ties.density),
             spanMin: tiesSpanMinEl ? (parseInt(tiesSpanMinEl.value, 10) || 1) : (p.ties?.spanMin ?? PATTERN_DEFAULTS.ties.spanMin),
             spanMax: tiesSpanMaxEl ? (parseInt(tiesSpanMaxEl.value, 10) || 1) : (p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax),
@@ -351,6 +441,19 @@ export function initLatticeProperties(editor) {
     }
     if (boundaryBoardEl) on(boundaryBoardEl, 'click', () => selectBoundaryMode('board'));
     if (boundaryShapeEl) on(boundaryShapeEl, 'click', () => selectBoundaryMode('boundary'));
+
+    // T56: rails/ties MODE toggles — a settings field like Rails' own
+    // every/offset or Ties' own density, NOT an immediate re-projection
+    // (unlike Orientation) — same "only takes effect on the next explicit
+    // Generate" shape `selectBoundaryMode` above already uses, since
+    // flipping mode is exactly as structural a change as flipping
+    // every/density itself.
+    if (railsModeCountEl) on(railsModeCountEl, 'click', () => _showRailsMode('count'));
+    if (railsModeEveryEl) on(railsModeEveryEl, 'click', () => _showRailsMode('every'));
+    if (tiesModeCountEl) on(tiesModeCountEl, 'click', () => _showTiesMode('count'));
+    if (tiesModeDensityEl) on(tiesModeDensityEl, 'click', () => _showTiesMode('density'));
+    if (tiesSpanModeCellsEl) on(tiesSpanModeCellsEl, 'click', () => _showTieSpanMode('cells'));
+    if (tiesSpanModeRailsEl) on(tiesSpanModeRailsEl, 'click', () => _showTieSpanMode('rails'));
 
     /** T49 (SE13 §13, "Pick shape..."): arms the editor's own one-shot
      *  pick affordance (editor-interaction.js's handleStart, checked

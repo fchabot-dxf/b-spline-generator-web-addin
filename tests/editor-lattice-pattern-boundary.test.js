@@ -56,7 +56,7 @@ describe('computePattern: boundary mode reduces to rect mode for a rectangular b
   const PATTERN = {
     ...PATTERN_DEFAULTS,
     seed: 7,
-    ties: { ...PATTERN_DEFAULTS.ties, density: 0.6 },
+    ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.6 },
     nodes: { ends: true, crossings: true, railEnds: true },
   };
 
@@ -113,7 +113,7 @@ describe('computePattern: boundary mode reduces to rect mode for a rectangular b
 describe('computePattern: boundary mode, determinism', () => {
   it('same PATTERN + same boundary (including a non-rectangular one) -> byte-identical output across two calls', () => {
     const primitives = [{ type: 'CIRCLE', cx: 5, cy: 4, r: 4 }];
-    const PATTERN = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
+    const PATTERN = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     const extent = { iMin: 1, jMin: 0, iMax: 9, jMax: 8, mode: 'boundary', primitives };
     const a = computePattern(PATTERN, { extent });
     const b = computePattern(PATTERN, { extent });
@@ -130,7 +130,7 @@ describe('computePattern: a circular boundary shortens rail rows near top/bottom
   const cx = 5, cy = 4, r = 4;
   const primitives = [{ type: 'CIRCLE', cx, cy, r }];
   const PATTERN = {
-    ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+    ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
     boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' },
   };
   const extent = { iMin: 1, jMin: 0, iMax: 9, jMax: 8, mode: 'boundary', primitives };
@@ -167,7 +167,7 @@ describe('computePattern: a concave/holed boundary produces MULTIPLE segments fo
     // so this test also proves the two modules compose correctly end to end.
     return shapeToPrimitives(mockEl('path', { d })).then((primitives) => {
       const PATTERN = {
-        ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+        ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
         boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' }, // isolate cutting geometry, see above
       };
       const extent = { iMin: -10, jMin: -10, iMax: 10, jMax: 10, mode: 'boundary', primitives };

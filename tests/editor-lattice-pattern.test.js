@@ -17,9 +17,15 @@ describe('computePattern: determinism', () => {
     expect(a).toEqual(b);
   });
 
-  it('different seed -> different ties, but IDENTICAL rails (rails are deterministic from every/offset only)', () => {
-    const a = computePattern({ ...PATTERN_DEFAULTS, seed: 1 }, { extent: EXTENT });
-    const b = computePattern({ ...PATTERN_DEFAULTS, seed: 2 }, { extent: EXTENT });
+  it('different seed -> different ties, but IDENTICAL rails in mode:\'every\' (deterministic from every/offset only)', () => {
+    // T56: the DEFAULT rails mode is now 'count' (seed-DEPENDENT — a
+    // different seed can legitimately pick a different count within its
+    // declared range). This test's own invariant ("rails don't move with
+    // the seed") is specific to mode:'every', so it's pinned explicitly
+    // rather than relying on whatever the bare default happens to be.
+    const railsEvery = { mode: 'every', every: 2, offset: 0 };
+    const a = computePattern({ ...PATTERN_DEFAULTS, rails: railsEvery, seed: 1 }, { extent: EXTENT });
+    const b = computePattern({ ...PATTERN_DEFAULTS, rails: railsEvery, seed: 2 }, { extent: EXTENT });
     const railsA = a.segments.filter(s => s.kind === 'rail');
     const railsB = b.segments.filter(s => s.kind === 'rail');
     expect(railsA).toEqual(railsB);
@@ -33,7 +39,11 @@ describe('computePattern: determinism', () => {
 describe('computePattern: rails', () => {
   it('every=2, offset=0 on a 9-row (0..8) extent produces exactly 5 rails, each spanning the full width', () => {
     const { segments } = computePattern(
-      { ...PATTERN_DEFAULTS, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } },
+      {
+        ...PATTERN_DEFAULTS,
+        rails: { mode: 'every', every: 2, offset: 0 },
+        ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+      },
       { extent: EXTENT }
     );
     const rails = segments.filter(s => s.kind === 'rail');
@@ -48,7 +58,7 @@ describe('computePattern: rails', () => {
 
   it('offset=1 shifts which rows are rails', () => {
     const { segments } = computePattern(
-      { ...PATTERN_DEFAULTS, rails: { every: 2, offset: 1 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } },
+      { ...PATTERN_DEFAULTS, rails: { every: 2, offset: 1 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } },
       { extent: EXTENT }
     );
     const rows = segments.filter(s => s.kind === 'rail').map(r => r.a.j);
@@ -61,7 +71,7 @@ describe('computePattern: rails', () => {
       { extent: EXTENT }
     )).not.toThrow();
     const { segments } = computePattern(
-      { ...PATTERN_DEFAULTS, rails: { every: 0, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } },
+      { ...PATTERN_DEFAULTS, rails: { every: 0, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } },
       { extent: EXTENT }
     );
     expect(segments.filter(s => s.kind === 'rail')).toHaveLength(0);
@@ -71,7 +81,7 @@ describe('computePattern: rails', () => {
 describe('computePattern: ties.columns (hand-picked)', () => {
   it('explicit columns produce a tie in EXACTLY those columns, bypassing density entirely (density:0 still ties)', () => {
     const { segments } = computePattern(
-      { ...PATTERN_DEFAULTS, ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [2, 5, 9] } },
+      { ...PATTERN_DEFAULTS, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0, columns: [2, 5, 9] } },
       { extent: EXTENT }
     );
     const tieColumns = segments.filter(s => s.kind === 'tie').map(s => s.a.i).sort((a, b) => a - b);
@@ -100,8 +110,8 @@ describe('computePattern: ties.columns (hand-picked)', () => {
     // nearby rail — confirmed this doesn't collapse the two seeds' spans
     // to the same value for these specific seeds (1, 2); not a structural
     // guarantee, just verified to still hold after T30's change.
-    const patternA = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [3], anchor: 'free', spanMin: 1, spanMax: 5 } };
-    const patternB = { ...PATTERN_DEFAULTS, seed: 2, ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [3], anchor: 'free', spanMin: 1, spanMax: 5 } };
+    const patternA = { ...PATTERN_DEFAULTS, seed: 1, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0, columns: [3], anchor: 'free', spanMin: 1, spanMax: 5 } };
+    const patternB = { ...PATTERN_DEFAULTS, seed: 2, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0, columns: [3], anchor: 'free', spanMin: 1, spanMax: 5 } };
     const a = computePattern(patternA, { extent: EXTENT }).segments.find(s => s.kind === 'tie');
     const b = computePattern(patternB, { extent: EXTENT }).segments.find(s => s.kind === 'tie');
     expect(a.a.i).toBe(3);
@@ -114,7 +124,7 @@ describe('computePattern: ties.columns (hand-picked)', () => {
 
 describe('computePattern: ties.anchor', () => {
   it("anchor:'rails' (strict mode, explicit — 'free' is the default since T30) — every generated tie starts AND ends exactly on a rail row", () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1, anchor: 'rails', spanMin: 1, spanMax: 3 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, anchor: 'rails', spanMin: 1, spanMax: 3 } };
     const { segments } = computePattern(pattern, { extent: EXTENT });
     const railRows = new Set(segments.filter(s => s.kind === 'rail').map(s => s.a.j));
     const ties = segments.filter(s => s.kind === 'tie');
@@ -129,7 +139,7 @@ describe('computePattern: ties.anchor', () => {
   });
 
   it("anchor:'free' — span length respects spanMin/spanMax and stays within jMin..jMax, without requiring rail rows", () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1, anchor: 'free', spanMin: 1, spanMax: 3 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 3 } };
     const { segments } = computePattern(pattern, { extent: EXTENT });
     const ties = segments.filter(s => s.kind === 'tie');
     expect(ties.length).toBeGreaterThan(0);
@@ -144,7 +154,7 @@ describe('computePattern: ties.anchor', () => {
   });
 
   it("anchor:'rails' with no rails at all produces no ties (nothing to bridge between) rather than throwing", () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 5, rails: { every: 1000, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1, anchor: 'rails' } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 5, rails: { every: 1000, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, anchor: 'rails' } };
     expect(() => computePattern(pattern, { extent: EXTENT })).not.toThrow();
     const { segments } = computePattern(pattern, { extent: EXTENT });
     expect(segments.filter(s => s.kind === 'tie')).toHaveLength(0);
@@ -178,8 +188,17 @@ describe("computePattern: ties.anchor 'free' + railSnapRows (T30)", () => {
     return {
       ...PATTERN_DEFAULTS,
       seed: RAW_SEED,
-      rails: { every: 1000, offset: railOffset }, // every:1000 within a 20-row extent -> exactly one rail row, at `railOffset`
-      ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [RAW_COLUMN], anchor: 'free', spanMin, spanMax, railSnapRows },
+      // T56: this whole block tests the DENSITY-mode 'free' anchor + snap
+      // mechanism specifically (a forced single column via `density:0` +
+      // `columns`) — explicit `mode:'density'` so it isn't silently routed
+      // through the new count-mode default (which doesn't read density/
+      // anchor/spanMin/spanMax/railSnapRows at all, and needs >=2 real
+      // rails to place anything, unlike this block's own sparse `every:1000`
+      // rails setup).
+      rails: { mode: 'every', every: 1000, offset: railOffset }, // every:1000 within a 20-row extent -> exactly one rail row, at `railOffset`
+      ties: {
+        ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0, columns: [RAW_COLUMN], anchor: 'free', spanMin, spanMax, railSnapRows,
+      },
     };
   }
 
@@ -217,7 +236,7 @@ describe("computePattern: ties.anchor 'free' + railSnapRows (T30)", () => {
     const pattern = {
       ...PATTERN_DEFAULTS, seed: 1,
       rails: { every: 1000, offset: 9 }, // one row past this seed's raw b.j (8) — verified via computePattern before writing this test
-      ties: { ...PATTERN_DEFAULTS.ties, density: 0, columns: [3], anchor: 'free', spanMin: 3, spanMax: 3, railSnapRows: 1 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0, columns: [3], anchor: 'free', spanMin: 3, spanMax: 3, railSnapRows: 1 },
     };
     const tie = computePattern(pattern, { extent: EXTENT_TALL }).segments.find(s => s.kind === 'tie');
     expect(tie.a.j).toBe(5);
@@ -226,7 +245,7 @@ describe("computePattern: ties.anchor 'free' + railSnapRows (T30)", () => {
   });
 
   it("anchor:'rails' (strict mode) ignores railSnapRows entirely — already exact, nothing to snap", () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 1, anchor: 'rails', spanMin: 1, spanMax: 3, railSnapRows: 1 } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 11, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, anchor: 'rails', spanMin: 1, spanMax: 3, railSnapRows: 1 } };
     const { segments } = computePattern(pattern, { extent: EXTENT });
     const railRows = new Set(segments.filter(s => s.kind === 'rail').map(s => s.a.j));
     const ties = segments.filter(s => s.kind === 'tie');
@@ -240,7 +259,7 @@ describe("computePattern: ties.anchor 'free' + railSnapRows (T30)", () => {
 
 describe('computePattern: nodes', () => {
   it('nodes.ends places a node at both endpoints of every generated tie', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 3, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [4] }, nodes: { ends: true, crossings: false } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 3, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [4] }, nodes: { ends: true, crossings: false } };
     const { segments, nodePoints } = computePattern(pattern, { extent: EXTENT });
     const tie = segments.find(s => s.kind === 'tie');
     const keys = new Set(nodePoints.map(p => `${p.i},${p.j}`));
@@ -249,7 +268,7 @@ describe('computePattern: nodes', () => {
   });
 
   it('nodes.ends:false places no tie-end nodes', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 3, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [4] }, nodes: { ends: false, crossings: false } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 3, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [4] }, nodes: { ends: false, crossings: false } };
     const { nodePoints } = computePattern(pattern, { extent: EXTENT });
     expect(nodePoints).toHaveLength(0);
   });
@@ -287,7 +306,7 @@ describe('computePattern: nodes.railEnds (SE7h add-on 2)', () => {
   it('railEnds:false (default) places no nodes at rail ends', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       nodes: { ends: false, crossings: false, railEnds: false },
     };
     const { segments, nodePoints } = computePattern(pattern, { extent: EXTENT });
@@ -298,7 +317,7 @@ describe('computePattern: nodes.railEnds (SE7h add-on 2)', () => {
   it('railEnds:true places exactly 2 nodes per rail, at its own a/b endpoints', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       nodes: { ends: false, crossings: false, railEnds: true },
     };
     const { segments, nodePoints } = computePattern(pattern, { extent: EXTENT });
@@ -316,7 +335,7 @@ describe('computePattern: nodes.railEnds (SE7h add-on 2)', () => {
     const extent = { iMin: 0, iMax: 6, jMin: 0, jMax: 8 };
     const pattern = {
       ...PATTERN_DEFAULTS, orientation: 'vertical', rails: { every: 2, offset: 0 },
-      ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       nodes: { ends: false, crossings: false, railEnds: true },
     };
     const { segments, nodePoints } = computePattern(pattern, { extent });
@@ -334,7 +353,7 @@ describe('computePattern: nodes.railEnds (SE7h add-on 2)', () => {
 
 describe('computePattern: occupied skipping', () => {
   it('skips a rail whose start cell is in `occupied`', () => {
-    const pattern = { ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+    const pattern = { ...PATTERN_DEFAULTS, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } };
     const occupied = new Set([`${EXTENT.iMin},4,rail`]);
     const { segments } = computePattern(pattern, { extent: EXTENT, occupied });
     const rows = segments.filter(s => s.kind === 'rail').map(s => s.a.j);
@@ -343,7 +362,7 @@ describe('computePattern: occupied skipping', () => {
   });
 
   it('skips a tie whose start cell is in `occupied`, without affecting other columns', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 4, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [2, 5] } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 4, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [2, 5] } };
     const first = computePattern(pattern, { extent: EXTENT });
     const tieAt2 = first.segments.find(s => s.kind === 'tie' && s.a.i === 2);
     expect(tieAt2).toBeDefined();
@@ -356,7 +375,7 @@ describe('computePattern: occupied skipping', () => {
   });
 
   it('skips a node whose cell is in `occupied`', () => {
-    const pattern = { ...PATTERN_DEFAULTS, seed: 3, ties: { ...PATTERN_DEFAULTS.ties, density: 1, columns: [4] }, nodes: { ends: true, crossings: false } };
+    const pattern = { ...PATTERN_DEFAULTS, seed: 3, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 1, columns: [4] }, nodes: { ends: true, crossings: false } };
     const first = computePattern(pattern, { extent: EXTENT });
     const tie = first.segments.find(s => s.kind === 'tie');
     const occupied = new Set([`${tie.a.i},${tie.a.j},node`]);
@@ -390,7 +409,7 @@ describe('computePattern: orientation (SE7h)', () => {
   const SQUARE_EXTENT = { iMin: 0, jMin: 0, iMax: 8, jMax: 8 };
 
   it('vertical output = horizontal output with i/j swapped, on a square extent (the dispatch\'s own verify line)', () => {
-    const base = { ...PATTERN_DEFAULTS, seed: 55, ties: { ...PATTERN_DEFAULTS.ties, density: 0.6 } };
+    const base = { ...PATTERN_DEFAULTS, seed: 55, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.6 } };
     const horizontal = computePattern({ ...base, orientation: 'horizontal' }, { extent: SQUARE_EXTENT });
     const vertical = computePattern({ ...base, orientation: 'vertical' }, { extent: SQUARE_EXTENT });
 
@@ -407,7 +426,7 @@ describe('computePattern: orientation (SE7h)', () => {
   });
 
   it('non-vacuous: horizontal and vertical outputs actually DIFFER (rules out orient() silently being a no-op)', () => {
-    const base = { ...PATTERN_DEFAULTS, seed: 55, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+    const base = { ...PATTERN_DEFAULTS, seed: 55, rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } };
     const horizontal = computePattern({ ...base, orientation: 'horizontal' }, { extent: SQUARE_EXTENT });
     const vertical = computePattern({ ...base, orientation: 'vertical' }, { extent: SQUARE_EXTENT });
     expect(vertical.segments).not.toEqual(horizontal.segments);
@@ -418,7 +437,7 @@ describe('computePattern: orientation (SE7h)', () => {
     // a 7"x9" board is iMin..iMax = 0..6 (7 wide), jMin..jMax = 0..8 (9 tall).
     const extent = { iMin: 0, iMax: 6, jMin: 0, jMax: 8 };
     const { segments } = computePattern(
-      { ...PATTERN_DEFAULTS, orientation: 'vertical', rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } },
+      { ...PATTERN_DEFAULTS, orientation: 'vertical', rails: { every: 2, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 } },
       { extent }
     );
     const rails = segments.filter((s) => s.kind === 'rail');
@@ -434,7 +453,7 @@ describe('computePattern: orientation (SE7h)', () => {
   });
 
   it('an old saved pattern with no `orientation` key at all reads as horizontal (no migration needed)', () => {
-    const base = { ...PATTERN_DEFAULTS, seed: 77, ties: { ...PATTERN_DEFAULTS.ties, density: 0.5 } };
+    const base = { ...PATTERN_DEFAULTS, seed: 77, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0.5 } };
     const legacy = { ...base };
     delete legacy.orientation;
     expect(legacy.orientation).toBeUndefined(); // sanity: the field really is absent
