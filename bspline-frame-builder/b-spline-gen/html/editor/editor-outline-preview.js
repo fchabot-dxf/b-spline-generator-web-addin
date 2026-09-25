@@ -9,19 +9,43 @@
  *
  * Rebuilt on COMMIT only (see editor.js's _notifyChange — a 'live' drag
  * frame never calls this), same timing refreshDrape already uses, per
- * the SE12 design doc's own item 2. A layer's fusionGeometry picker lives
- * outside the editor (the stamp panel sidebar, main/stamp/fusion-
- * geometry.js) — that module calls refreshOutlinePreview directly on a
- * pick (not the full _notifyChange('commit') cascade, which would also
- * re-persist/remask/re-drape for a field nothing else reads yet), so
- * "picking Centerline empties the preview" holds without waiting for an
- * unrelated edit.
+ * the SE12 design doc's own item 2. Also refreshed on undo/redo
+ * (editor.js's _restoreState → _notifyChange), layer switch, and
+ * document open/restore (both via layers.js's setActiveLayer — open()
+ * calls editor.setActiveLayer() as its own last roster-restore step) —
+ * T37 only wired the edit/commit path; T38 closed the other three. A
+ * layer's fusionGeometry picker lives outside the editor (the stamp
+ * panel sidebar, main/stamp/fusion-geometry.js) — that module calls
+ * refreshOutlinePreview directly on a pick (not the full
+ * _notifyChange('commit') cascade, which would also re-persist/remask/
+ * re-drape for a field nothing else reads yet), so "picking Centerline
+ * empties the preview" holds without waiting for an unrelated edit.
+ *
+ * SE12 T38 (review finding on T37's own screenshot): draws a fixed
+ * dark-over-white halo (styles/editor.css's .outline-preview-halo/-line),
+ * not the source element's own color — a same-color thin line over a
+ * same-color stroke was invisible. showsColor(layer) no longer gates the
+ * preview's own color choice (there isn't one to gate); it still gates
+ * nothing else here since it never did — the visibility gate is, and
+ * always was, showsOutline(layer) alone.
  */
-import { showsOutline, showsColor } from './layers.js';
-import { lineOutlinePathD } from './editor-expand-analytic.js';
-import { _currentElementColor } from './properties-shape.js';
+import { showsOutline } from './layers.js';
+import { lineOutlinePathD, circleOutlinePathD, rectOutlinePathD } from './editor-expand-analytic.js';
 
-const PREVIEW_STROKE_WIDTH = 0.02;
+/** Which of the 3 outline modes editor-expand-analytic.js's shape
+ *  functions want, read from the element's OWN fill/stroke presentation
+ *  attrs (Fred: "Filled shapes (fill mode fill/both): outline = the
+ *  shape's own edge... 'both' = edge offset by w/2"). Declared once here
+ *  since every closed-shape OUTLINE_KINDS entry needs the same read. */
+function _fillModeOf(el) {
+  const fill = el.attr('fill');
+  const stroke = el.attr('stroke');
+  const hasFill = !!fill && fill !== 'none';
+  const hasStroke = !!stroke && stroke !== 'none';
+  if (hasFill && hasStroke) return 'both';
+  if (hasFill) return 'fill';
+  return 'stroke'; // also the safe default for a degenerate "neither set" element
+}
 
 /**
  * SE12 T37 AMEND (Fred: "it should work on shapes in priority, but
@@ -34,9 +58,11 @@ const PREVIEW_STROKE_WIDTH = 0.02;
  * entry here is skipped in refreshOutlinePreview below, silently, same
  * as an `unsupported` result — no error either way.
  *
- * T38 is shapes (rect/circle/polyline/polygon/path); text after that.
- * Only 'line' exists today — the TABLE is worth declaring now (cheap,
- * and it's the shape every future kind will plug into identically); the
+ * T38 added rect/circle (closed-form, no offsetting algorithm needed);
+ * polyline/polygon/generic-path and text are later work (open item in
+ * this module — see WORK-LOG). The TABLE was worth declaring in T37
+ * before any shape existed (cheap, and it's the shape every future kind
+ * plugs into identically); the
  * geometry FUNCTIONS for shapes/text are not (building them before
  * anything calls them is the "machinery for an unused case" the
  * declare-over-hand-roll rule itself warns against).
@@ -50,6 +76,29 @@ export const OUTLINE_KINDS = {
     strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
     cap: el.attr('stroke-linecap') || 'round',
   }),
+  circle: (el) => circleOutlinePathD({
+    cx: parseFloat(el.attr('cx')) || 0,
+    cy: parseFloat(el.attr('cy')) || 0,
+    r: parseFloat(el.attr('r')) || 0,
+    strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
+    mode: _fillModeOf(el),
+  }),
+  rect: (el) => rectOutlinePathD({
+    x: parseFloat(el.attr('x')) || 0,
+    y: parseFloat(el.attr('y')) || 0,
+    width: parseFloat(el.attr('width')) || 0,
+    height: parseFloat(el.attr('height')) || 0,
+    strokeWidth: parseFloat(el.attr('stroke-width')) || 0,
+    mode: _fillModeOf(el),
+  }),
+  // Fred: "Ellipses and cubic/quadratic paths: NOT exact by nature —
+  // return {unsupported:'curve'} this turn (declined, no preview); a
+  // tolerance-fit is a later turn." An EXPLICIT decline (not just a
+  // missing table entry) so a future reader sees "ellipse was
+  // considered and ruled out this turn," not "ellipse was never
+  // considered" — the same distinction lineOutlinePathD's own
+  // SUPPORTED_LINE_CAPS makes for butt/square caps.
+  ellipse: () => ({ d: null, unsupported: 'curve' }),
 };
 
 export function refreshOutlinePreview(editor) {
@@ -68,15 +117,6 @@ export function refreshOutlinePreview(editor) {
     const { d, unsupported } = outlineFor(ch);
     if (unsupported || !d) continue; // no preview, no error — e.g. a cap lineOutlinePathD doesn't support yet
 
-    const color = _currentElementColor(ch, editor._color);
-    const preview = editor._outlinePreviewLayer.path(d)
-      .fill('none')
-      .stroke({ color, width: PREVIEW_STROKE_WIDTH });
-    // Reuse the SAME display-only neutral-color override the sketch
-    // layer itself uses (styles/editor.css's .layer-no-color, applied by
-    // applyLayerState) rather than computing a second neutral value here
-    // — one CSS rule, one color, whichever element carries it.
-    if (!showsColor(layer)) preview.addClass('layer-no-color');
     // The element's own transform, uncomposed — lineOutlinePathD works in
     // the element's LOCAL frame (its raw x1/y1/x2/y2), so the preview
     // needs the SAME transform the source carries to land in the same
@@ -84,6 +124,13 @@ export function refreshOutlinePreview(editor) {
     // WORLD transform into this kind of arc-bearing path at bake time —
     // not this module's job.
     const t = ch.attr('transform');
-    if (t) preview.attr('transform', t);
+    // Halo drawn FIRST (underneath), then the dark line on top — same
+    // `d` for both, same transform. Both classes are the sole source of
+    // color/width/vector-effect (styles/editor.css); no attrs set here,
+    // so there's nothing per-element to keep in sync with the CSS.
+    const halo = editor._outlinePreviewLayer.path(d).addClass('outline-preview-halo');
+    if (t) halo.attr('transform', t);
+    const line = editor._outlinePreviewLayer.path(d).addClass('outline-preview-line');
+    if (t) line.attr('transform', t);
   }
 }

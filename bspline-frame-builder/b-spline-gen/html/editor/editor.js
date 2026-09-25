@@ -470,7 +470,14 @@ export class VectorEditor {
             _undoLog(`restoreState  POST-applyLayerState  child[${i}] class="${cls}" computedDisplay=${display}`);
         });
         _undoLog( `restoreState done  children=${this._sketchLayer.children().toArray().length}  layers=${(this._layers||[]).length}  active=${this._activeLayer}`);
-        if (this._onChange) this._onChange();
+        // SE12 T38: was `this._onChange()` directly — bypassed
+        // _notifyChange, so undo/redo (the two callers of _restoreState)
+        // never refreshed the outline preview. _notifyChange('commit')
+        // is a safe drop-in here: it checks `this._onChange` itself
+        // before calling it (same effective call this already made),
+        // and additionally cancels any pending 'live' frame + refreshes
+        // the preview.
+        this._notifyChange('commit');
     }
 
     // Delegation Helpers

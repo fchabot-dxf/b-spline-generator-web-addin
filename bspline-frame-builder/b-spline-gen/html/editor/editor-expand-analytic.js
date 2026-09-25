@@ -93,3 +93,96 @@ export function lineOutlinePathD({ x1, y1, x2, y2, strokeWidth, cap = 'round' })
   const d = `M ${L1.x} ${L1.y} L ${L2.x} ${L2.y} A ${r} ${r} 0 0 0 ${R2.x} ${R2.y} L ${R1.x} ${R1.y} A ${r} ${r} 0 0 0 ${L1.x} ${L1.y} Z`;
   return { d, unsupported: null };
 }
+
+/** A closed loop tracing a circle of radius `radius` centered at (cx,cy),
+ *  as two `A` semicircles — same construction lineOutlinePathD's own
+ *  zero-length-line case already uses (SVG's `A` can't express a full
+ *  circle in one command; two half-circles is the standard workaround),
+ *  factored out here since both a stroked circle's rings AND the
+ *  degenerate-line case need exactly this shape. */
+function _circleLoopD(cx, cy, radius) {
+  return `M ${cx - radius} ${cy} A ${radius} ${radius} 0 1 0 ${cx + radius} ${cy} A ${radius} ${radius} 0 1 0 ${cx - radius} ${cy} Z`;
+}
+
+/**
+ * The analytic outline of a circle (center cx,cy, radius r), gated by
+ * `mode` — the same three-way split every shape kind in this module
+ * follows (Fred's dispatch, item "Filled shapes"):
+ *   'stroke' (default): the shape is unfilled — two concentric circles
+ *     at r ± strokeWidth/2 ("circle → two concentric circles"), ONE path
+ *     with two subpaths so a later evenodd fill renders the annulus as a
+ *     ring, not a solid disk. If the stroke is wide enough to swallow
+ *     the whole circle (strokeWidth/2 >= r), only the outer ring is
+ *     returned (one subpath) — the hole would have zero/negative radius.
+ *   'fill': the shape is filled, no stroke — the outline IS the circle's
+ *     own exact edge, radius r, no offset at all.
+ *   'both': filled AND stroked — the combined visual boundary is the
+ *     edge offset OUTWARD by strokeWidth/2 only (no inner ring: the
+ *     shape is already solid, there's no hole to trace).
+ * `r ± strokeWidth/2` is exact by construction in every mode — no
+ * offsetting algorithm needed, unlike a general shape.
+ */
+export function circleOutlinePathD({ cx, cy, r, strokeWidth, mode = 'stroke' }) {
+  const half = strokeWidth / 2;
+  if (mode === 'fill') return { d: _circleLoopD(cx, cy, r), unsupported: null };
+  if (mode === 'both') return { d: _circleLoopD(cx, cy, r + half), unsupported: null };
+
+  const outerR = r + half;
+  const innerR = r - half;
+  const outer = _circleLoopD(cx, cy, outerR);
+  if (innerR <= 1e-9) return { d: outer, unsupported: null };
+  const inner = _circleLoopD(cx, cy, innerR);
+  return { d: `${outer} ${inner}`, unsupported: null };
+}
+
+/** A sharp-cornered rect boundary, 4 straight lines — the shape a rect's
+ *  own edge already is (mode:'fill'), and what its offset-INWARD ring
+ *  looks like too (offsetting a corner inward never needs rounding —
+ *  only outward offsetting opens a gap at a convex corner that a round
+ *  join has to fill). */
+function _rectLoopD(x, y, w, h) {
+  return `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
+}
+
+/** The Minkowski-sum outward offset of a rect's own edge by `half`: a
+ *  standard rounded-rect path (4 straight edges + 4 quarter `A` arcs of
+ *  radius `half`, each centered on one of the rect's own original sharp
+ *  corners — verified numerically against arcToCubics, not assumed, see
+ *  WORK-LOG) — exactly what offsetting a sharp corner OUTWARD by a round
+ *  amount produces (Fred: "round joins"). */
+function _rectRoundedOuterD(x, y, w, h, half) {
+  const oX = x - half, oY = y - half, oW = w + 2 * half, oH = h + 2 * half;
+  return `M ${oX + half} ${oY} `
+    + `L ${oX + oW - half} ${oY} `
+    + `A ${half} ${half} 0 0 1 ${oX + oW} ${oY + half} `
+    + `L ${oX + oW} ${oY + oH - half} `
+    + `A ${half} ${half} 0 0 1 ${oX + oW - half} ${oY + oH} `
+    + `L ${oX + half} ${oY + oH} `
+    + `A ${half} ${half} 0 0 1 ${oX} ${oY + oH - half} `
+    + `L ${oX} ${oY + half} `
+    + `A ${half} ${half} 0 0 1 ${oX + half} ${oY} Z`;
+}
+
+/**
+ * The analytic outline of an axis-aligned rect (x,y,width,height), gated
+ * by `mode` (same three-way split circleOutlinePathD follows):
+ *   'stroke' (default): the Minkowski-sum outer boundary (rect inflated
+ *     by strokeWidth/2, ROUND corners) plus a sharp-cornered inner rect
+ *     offset INWARD by strokeWidth/2. The inner ring vanishes ("if w >=
+ *     min side the inner ring vanishes") when the stroke is wide enough
+ *     that the inward offset would invert (strokeWidth >= the rect's own
+ *     shorter side).
+ *   'fill': the outline IS the rect's own exact edge, no offset.
+ *   'both': the outer (rounded) ring only, no inner — already solid.
+ */
+export function rectOutlinePathD({ x, y, width, height, strokeWidth, mode = 'stroke' }) {
+  const half = strokeWidth / 2;
+  if (mode === 'fill') return { d: _rectLoopD(x, y, width, height), unsupported: null };
+  if (mode === 'both') return { d: _rectRoundedOuterD(x, y, width, height, half), unsupported: null };
+
+  const outer = _rectRoundedOuterD(x, y, width, height, half);
+  const iW = width - strokeWidth, iH = height - strokeWidth;
+  if (Math.min(iW, iH) <= 1e-9) return { d: outer, unsupported: null };
+  const inner = _rectLoopD(x + half, y + half, iW, iH);
+  return { d: `${outer} ${inner}`, unsupported: null };
+}

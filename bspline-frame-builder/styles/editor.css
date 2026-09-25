@@ -1015,6 +1015,31 @@
     fill: #999 !important;
 }
 
+/* SE12 T38: the outline preview's contrasting treatment (T37 review
+   finding: a same-color-as-source thin line was invisible over a
+   same-color stroke). Declared once, applied by editor/editor-outline-
+   preview.js to every preview path — a fixed dark-over-white halo, not
+   the element's own color (dropped the showColor/neutral-color rule
+   entirely; a fixed high-contrast pair reads over ANY source color,
+   which "own color, or neutral when showColor is off" never guaranteed).
+   vector-effect:non-scaling-stroke keeps both strokes a constant SCREEN
+   width regardless of editor zoom — without it, a 0.02"-in-model-units
+   stroke shrinks to sub-pixel at fit-to-page zoom on a multi-inch board,
+   which is the OTHER half of why T37's preview read as invisible, not
+   just the color match. */
+#editorSVGContainer .outline-preview-halo {
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 3px;
+    vector-effect: non-scaling-stroke;
+}
+#editorSVGContainer .outline-preview-line {
+    fill: none;
+    stroke: #1a1a1a;
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
+}
+
 /* Mobile: narrower panel; on very narrow viewports the panel hides behind
    a toggle. For now keep it visible but slimmer. */
 @media (max-width: 700px) {
