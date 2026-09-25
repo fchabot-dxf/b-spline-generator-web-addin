@@ -4681,3 +4681,78 @@ Full vitest suite: 668/668 green.
 Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
 before passing. Committed by explicit path (3 files: `editor/editor-text-session.js`,
 `editor/editor-text-style.js`, new `tests/editor-text-style.test.js`) — pushed.
+
+## T42 — font-family fix moved to its SOURCE: the CSS cascade, not per-call-site patches
+
+**The gap in T41, exactly as the dispatch named it.** T41 patched the 3 places the EDITOR ITSELF sets a
+font (`startTextAt`, `setFontFamily`'s two paths) with an inline `.css({'font-family'})` override, strong
+enough to beat `base.css`'s `* { font-family: inherit; }`. But that's a patch at every KNOWN call site, not
+a fix of the rule that causes the collision — any `<text>` arriving by a path that never calls those
+functions stays broken: a saved document re-opened (editor-io's restore inserts markup, doesn't call
+`setFontFamily`), an imported/pasted SVG, an undo/redo snapshot restored from serialized markup, stamp-editor
+pages. T41 could only ever be as complete as the list of places someone remembered to patch.
+
+**Fix: scope the reset instead of fighting it.** `base.css`'s rule became:
+```css
+*:not(svg *) { font-family: inherit; }
+```
+(previously `* { font-family: inherit; }`). This never reaches a `<text>`/`<tspan>` inside an `<svg>` at
+all, so the element's own `font-family="..."` presentation attribute is no longer beaten by anything —
+regardless of HOW that attribute got there (JS call, markup restore, paste). Grepped the whole app for any
+`<text>` living inside an svg-based ICON (sidebar buttons, toolbar glyphs) that might have relied on the
+reset reaching in for its own UI font — none found; icons are all `<path>`/`<use>`, no `<text>`.
+
+**Swept the now-redundant patches — one mechanism, not two.** Removed all 3 T41 `.css({'font-family'})`
+call sites (`startTextAt`, `setFontFamily`'s editing-element and fan-out paths) AND the older, narrower
+`insertSymbol` workaround (`node.style.fontFamily = appliedFamily`, which pre-dates T41 and was the first,
+partial discovery of this same bug for symbol fonts specifically — see T41's own log entry). Left
+`insertSymbol`'s pre-existing `.attr('font-family', appliedFamily)` redundancy with `.font({family})`
+untouched (pre-existing, unrelated to this bug, not mine to clean up per the surgical-changes rule).
+
+**Live verification (fresh Chrome, port 9505, profile `chrome-profile-t42b` — killed and relaunched before
+testing, applying T41's own lesson about stale ES-module caches in a reused process rather than re-learning
+it):**
+- Markup-only `<text font-family="Arial">` injected via `insertAdjacentHTML` — deliberately bypassing every
+  JS font-application call, to isolate that the CSS fix ALONE (not any leftover inline-style patch) makes it
+  work — rendered with the correct family and its outline preview (`refreshOutlinePreview`) sat exactly on
+  the glyphs. Screenshot `t42-markup-text-outline.png`, viewed directly: the white outline traces "Fred"
+  letter-for-letter, including the counters in "r"/"e"/"d", matching T41's own key visual — but now proven
+  for text the editor's own JS never touched.
+- Simulated "re-opened saved doc" (`<text font-family="Georgia">` inserted the same markup-only way,
+  standing in for editor-io's restore path) and "imported/pasted SVG" (`<text font-family="Verdana">`,
+  same mechanism, different font) — both cases: `getComputedStyle(el).fontFamily` measured against the
+  correct family. This is the exact case T41 structurally could not cover, since neither path calls
+  `setFontFamily`.
+- Symbol font via the REAL `insertSymbol` path with its own `node.style` workaround now removed: Wingdings
+  glyph still resolved correctly (the presentation attribute alone is sufficient, matching the prediction
+  that the CSS fix subsumes the narrower workaround it replaces).
+- UI chrome unaffected: grepped for any `<text>` inside an svg icon (none), and live-measured 8 sidebar/
+  toolbar buttons' `getComputedStyle().fontFamily` before/after — all still resolve to the Inter/system-sans
+  stack via `*:not(svg *)`, since none of that UI lives inside an `<svg>`.
+- Zero console errors/exceptions across all runs.
+
+**A real empirical finding, not an assumption: happy-dom doesn't implement CSS cascade resolution for
+`font-family` at all.** The dispatch suggested retargeting the regression test at "computed font-family of a
+text element created from markup with only the attribute" — tried exactly that first, injecting the actual
+`base.css` rule text (both the broken `*` version and the fixed `*:not(svg *)` version) plus a
+`font-family` attribute into a happy-dom document. `getComputedStyle(el).fontFamily` returned the literal
+unresolved keyword string `"inherit"` for BOTH variants — happy-dom doesn't run this resolution step, so the
+test couldn't distinguish broken from fixed no matter which CSS text was injected. Confirmed this rather than
+guessing past it (same measure-don't-assume discipline as T41's own Chrome-caching detour). Pivoted
+`tests/editor-text-style.test.js` to check the one thing that CAN be checked here and that DOES gate the real
+regression risk: `setFontFamily` still calls `.font({family})` (the attribute — now the ONLY font-family
+mechanism), and does NOT call the now-deleted `.css({'font-family'})` path. Documented the happy-dom
+limitation directly in the test file's own header comment so a future reader doesn't rediscover it. The real
+proof of the fix itself is the live-CDP measurements above, not this file.
+
+**Mutation-verified the rewritten test:** re-added a `.css({'font-family': family})` call to `setFontFamily`
+(simulating the T41 patch coming back) — exactly 1 failure (the "NOT a redundant `.css()` call" assertion),
+everything else unaffected; reverted, green again.
+
+Full vitest suite: 668/668 green.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Chrome (port 9505, profile `chrome-profile-t42b`) confirmed mine by command-line match
+before stopping; 0 of that profile's processes remained after. Committed by explicit path (5 files:
+`bspline-frame-builder/styles/base.css`, `editor/editor-text-session.js`, `editor/editor-text-style.js`,
+`tests/editor-text-style.test.js`, `WORK-LOG-lane-b.md`) — pushed.

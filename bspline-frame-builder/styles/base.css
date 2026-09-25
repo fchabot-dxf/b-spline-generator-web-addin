@@ -29,7 +29,26 @@
     box-sizing: border-box;
 }
 
-* {
+/* T42: excludes SVG content (`:not(svg *)`) so this reset never reaches a
+   <text>/<tspan> inside the editor's own sketch canvas — those declare
+   their OWN font via the standard SVG presentation attribute
+   (font-family="..."), and a presentation attribute is the WEAKEST
+   possible CSS source, beaten by literally any stylesheet rule including
+   a bare `*` selector. A blanket `* { font-family: inherit; }` silently
+   substituted this UI's own font (--cad-font-family) for EVERY <text>
+   element's own chosen font, regardless of how it was created (typed via
+   the font picker, restored from a saved doc, pasted/imported SVG
+   markup) — T41 patched the 3 places the EDITOR itself sets a font with
+   an inline style (strong enough to survive this reset), but any text
+   arriving another way was still silently wrong. This fixes the
+   CASCADE itself instead, so every <text>'s own attribute just works,
+   the way SVG presentation attributes are meant to (no competing
+   stylesheet rule at all now covers them) — verified live (WORK-LOG),
+   not assumed from the CSS spec alone. Confirmed no UI chrome anywhere
+   in this app puts a <text> element inside an SVG icon/label (grepped),
+   so nothing outside the editor's own canvas relied on this reset
+   reaching into SVG. */
+*:not(svg *) {
     font-family: inherit;
 }
 

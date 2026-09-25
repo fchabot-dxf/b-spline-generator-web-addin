@@ -42,19 +42,15 @@ export function startTextAt(editor, pt, pointerEvent) {
             'data-layer': activeLayerId,
             'data-anchor-y': pt.y,
         })
-        // T41: font-family set via .font() above is a plain SVG
-        // presentation attribute — the WEAKEST possible CSS source, so
-        // base.css's own app-wide `* { font-family: inherit; }` reset
-        // silently overrides it (confirmed live: getComputedStyle showed
-        // the UI's own Inter/sans-serif stack, not the chosen font, for
-        // EVERY text element — the on-screen render never matched what
-        // Expand/carve actually produce, which read the presentation
-        // attribute directly via opentype, bypassing CSS entirely). An
-        // inline style (set via .css(), same method this line already
-        // uses for cursor/user-select) has high enough specificity to
-        // win — insertSymbol (editor-text-style.js) already discovered
-        // and worked around this same issue, but only for itself.
-        .css({ cursor: 'text', 'user-select': 'none', 'font-family': editor._fontFamily });
+        // T42: font-family="..." (set via .font() above) is now enough on
+        // its own — base.css's `*:not(svg *) { font-family: inherit; }`
+        // no longer reaches into SVG, so this presentation attribute is
+        // the ONLY font-family source for a <text>, same as any other SVG
+        // presentation attribute. T41's own inline `.css({'font-family'})`
+        // patch (here and in editor-text-style.js) was a per-call-site
+        // workaround for the CSS bug itself; removed once the cascade fix
+        // made it redundant — see base.css's own comment.
+        .css({ cursor: 'text', 'user-select': 'none' });
 
     editor._editingTextEl.attr({ x: pt.x, y: baselineY });
     editor._currentText = '';

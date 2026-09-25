@@ -17,25 +17,17 @@ export function initText(editor) {
     // Hidden input setup (currently a no-op — the markup is in the HTML).
 }
 
-// T41: base.css's own app-wide `* { font-family: inherit; }` reset beats
-// a plain SVG presentation attribute (the weakest possible CSS source),
-// so .font({family}) alone never actually changes what's ON SCREEN — only
-// what Expand/carve later read (they go through opentype.js directly,
-// bypassing the DOM/CSS entirely, so THEY were always correct; only the
-// live editor's own render was silently wrong for every font choice).
-// insertSymbol (below) already discovered and worked around this for
-// itself; every OTHER place that sets font-family needs the same inline
-// style (set via .css(), which has enough specificity to win).
-function _applyFontFamilyStyle(el, family) {
-    el.css({ 'font-family': family });
-}
-
 export function setFontFamily(editor, family) {
     dbg('COORD_STD', `editor-text: setFontFamily to "${family}"`);
     editor._fontFamily = family;
     if (editor._editingTextEl) {
+        // T42: .font({family}) sets font-family="..." as a presentation
+        // attribute, which is now the ONLY font-family source that
+        // matters — base.css's `*:not(svg *) { font-family: inherit; }`
+        // no longer reaches into SVG (see that rule's own comment). T41's
+        // extra `.css({'font-family'})` inline-style patch was a per-
+        // call-site workaround for the CSS bug itself, redundant now.
         editor._editingTextEl.font({ family });
-        _applyFontFamilyStyle(editor._editingTextEl, family);
         const size = parseFloat(editor._editingTextEl.attr('font-size')) || editor._fontSize;
         reanchorTextY(editor._editingTextEl, family, size);
     }
@@ -45,7 +37,6 @@ export function setFontFamily(editor, family) {
     if (texts.length) {
         for (const el of texts) {
             el.font({ family });
-            _applyFontFamilyStyle(el, family);
             const size = parseFloat(el.attr('font-size')) || editor._fontSize;
             reanchorTextY(el, family, size);
         }
@@ -86,12 +77,16 @@ export function insertSymbol(editor, symbol, fontFamily) {
     // turn into Greek/icon glyphs at expand time because expandCurrent's
     // PUA mapping kicks in on font-family="Symbol".
     if (editor._editingTextEl) {
+        // T42: the node.style.fontFamily workaround this used to also set
+        // (alongside the attribute) is no longer needed — base.css's
+        // `*:not(svg *) { font-family: inherit; }` no longer reaches into
+        // SVG, so the presentation attribute alone is enough. This was
+        // the ONE place that had already discovered and worked around the
+        // underlying CSS bug (garbled symbol glyphs are impossible to
+        // miss); the cascade fix now covers it structurally instead.
         try {
             editor._editingTextEl.font({ family: appliedFamily });
             editor._editingTextEl.attr('font-family', appliedFamily);
-            if (editor._editingTextEl.node && editor._editingTextEl.node.style) {
-                editor._editingTextEl.node.style.fontFamily = appliedFamily;
-            }
         } catch (err) {
             console.warn('[EDITOR] insertSymbol: failed to apply font family', err);
         }
