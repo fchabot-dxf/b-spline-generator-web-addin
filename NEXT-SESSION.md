@@ -34,6 +34,11 @@ Tie-END node drag → moves only that end along the tie's axis (tie lengthens/sh
 rail rows, min length 1 step). Mid-span crossing node → ALSO stretches (AMEND 3, Fred: "dragging the tie changes position, node stretches it"): the end on
 the side the pointer moves toward follows. SE7j's node-slide path is removed. Tie body drag → slide (unchanged).
 
+## AMEND 4 (Fred: "can we change a rail's size?")
+Rail END drag (rail-end node, or within the end-grab zone) → changes the rail's length along its own axis (snap to grid,
+min 1 step, can't pass the other end). Body drag → move row (SE7i, unchanged). Attached ties stay; ones left off the
+end keep position, no re-attach.
+
 ## Verify
 - Pure tests for each kind's constraint in both orientations; node click placement; width/color come from the layer
   pattern.
