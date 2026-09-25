@@ -454,7 +454,14 @@ implementation detail for whoever builds Slice 3, not fixed here.
 
 ---
 
-## Open questions for Fred
+## Fred's answers (2026-09-25: "agree with your bracket propositions")
+1. Runs: plain per-kind colors first; runs later, only if wanted (slot stays declared: boundary.runs = null).
+2. Stretch/boundary-move: no new rule — pieces stay until next Generate/refill; boundary refits on release.
+3. Joint size = the one Node size.
+4. Curved/freehand boundaries: supported (numeric path kept).
+5. Border piece defaults to the boundary shape's own stroke width + color.
+
+## Open questions for Fred (answered above)
 
 1. **Runs/parts for v1, or defer?** `runs.stepLen`/`omitPct`/`loosePct`/`palette` (§4) is the most
    reference-visual-specific piece (color speckling) and the LARGEST slice-3 surface. Given "not sure you
