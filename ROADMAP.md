@@ -769,3 +769,8 @@ it drags coherently in Fusion; don't dimension everything (no over-constraint, l
 Order: shape presets first (small, clear win), lattice second (+ plain-geometry fallback for huge lattices).
 Outline/inlay geometry: offsets of the constrained centerlines where feasible. After SE14. Needs Fusion verification
 (advisor) — workers stay browser/no-Fusion.
+- Fred: "if possible add a dimension for stroke width and make it a param" → stroke = DIMENSIONED OFFSET of each
+  centerline (distance = width/2), driven by Fusion USER PARAMETERS per kind: rail_width, tie_width, node_radius
+  (+ border_width for the shape border); a piece with its own width gets its own dimension. Round caps = half-circle
+  arcs tangent to the offsets, centred on the centerline ends. Verify in Fusion how the offset constraint scales to
+  hundreds of pieces; fallback = per-piece width dimension driven by the same parameter.
