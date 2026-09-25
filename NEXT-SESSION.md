@@ -31,7 +31,8 @@ the click defaults in LATTICE_DRAW_KINDS. One undo step per spawn.
 
 ## AMEND 2 (Fred: "pulling on nodes should lengthen the tie")
 Tie-END node drag → moves only that end along the tie's axis (tie lengthens/shortens, stays upright, snaps to grid +
-rail rows, min length 1 step). Mid-span crossing node → SE7j slide (unchanged). Tie body drag → slide (unchanged).
+rail rows, min length 1 step). Mid-span crossing node → ALSO stretches (AMEND 3, Fred: "dragging the tie changes position, node stretches it"): the end on
+the side the pointer moves toward follows. SE7j's node-slide path is removed. Tie body drag → slide (unchanged).
 
 ## Verify
 - Pure tests for each kind's constraint in both orientations; node click placement; width/color come from the layer
