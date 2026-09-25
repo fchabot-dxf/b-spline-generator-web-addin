@@ -1,25 +1,32 @@
-# NEXT (lane-b) — T40: exact inner joins next to curves, then TEXT outlines
+# NEXT (lane-b) — T41: text outline does NOT match the drawn text — find why, make them agree
 
-**Ball: worker (seat B) · epoch 2 · T40.** NO FUSION for workers — browser proof only. T39 reviewed + merged (660 green).
+**Ball: worker (seat B) · epoch 2 · T41.** NO FUSION for workers — browser proof only. T40 part 2 NOT merged yet —
+held on this finding (main auto-deploys to Cloudflare).
 
-## 1. Fix T39's disclosed limitation first (it matters: Fred's resin INLAY needs the outline exact)
-Inner-side trim next to a curve uses the tangent-LINE intersection → up to `half` wrong (touches the source) when a line
-meets an arc near head-on. Replace with true intersections of the two OFFSET pieces: line∩line (as now), line∩circle
-and circle∩circle closed form for circular A; for biarc-fitted curves intersect against the fitted arcs (they ARE
-circles). Pick the intersection nearest the vertex on the correct side; if none (pieces don't meet), fall back to a
-round inner join — never a loop. Restore the tight test bound (every sampled point within tolerance of w/2) on the
-L+A+C case and add the head-on line→semicircle case explicitly.
+## Finding (advisor, from YOUR t40-text-word.png)
+The outline of "Fred" doesn't sit on the black glyphs: "F" outline is wider (x 180→375 vs glyph 180→330), "e" outline
+is shifted right (545→740 vs 505→660), "d" 770→950 vs 790→920. So `textGlyphPathD`'s opentype glyphs use a different
+FONT and/or SIZE/letter-spacing than the browser renders for that `<text>`. Your test didn't catch it because it
+compared the outline against the opentype path, not against what's on screen.
 
-## 2. Text outlines (Fred: "eventually text")
-- Filled text (the usual case): outline = the glyph outlines themselves, exact from the font (opentype.js path, already
-  used by the stamp pipeline — editor-geometry.js / editor-fonts.js). Emit them as a path; curves stay the font's own
-  curves converted to biarcs within OUTLINE_FIT.tolerance so the output is M/L/A/Z like everything else.
-- Stroked text: glyph path → pathOutlinePathD.
-- OUTLINE_KINDS gets `text`; it follows the element's transform like the others.
-Verify with a CDP screenshot of a word on an Outline layer + tests (glyph count, M/L/A/Z only, deviation within
-tolerance against the opentype path sampled).
+## Why it matters beyond the preview
+The CARVE and export also use the opentype glyph path (stamp pipeline). If that differs from the drawn `<text>`, the
+carved text ≠ what Fred sees in the editor — a real, pre-existing product bug, not just a preview one. Find out which.
+
+## Do
+1. Measure, don't reason: for the same `<text>` element compare its browser bbox (getBBox / per-glyph via
+   getExtentOfChar / getStartPositionOfChar) against the opentype glyph path's bbox and per-glyph advance.
+   Record font-family resolved by the browser (getComputedStyle) vs the font file opentype actually parsed.
+2. Root-cause it (likely suspects: font fallback — the element's family isn't one of the bundled fonts so opentype
+   falls back to a different face; font-size units (px vs in, the editor's inch viewBox); letter-spacing /
+   text-anchor / dominant-baseline not applied in the opentype layout; kerning).
+3. Fix at the source so ONE declared truth drives both: either the editor renders text FROM the same glyph path
+   (what gets carved is what's shown), or the opentype layout honors the same family/size/spacing/anchor. Recommend
+   in WORK-LOG which you chose and why; prefer "display what gets carved".
+4. Test: for several words/fonts/sizes/anchors, glyph-path bbox == rendered bbox within 0.01" and per-glyph x within
+   0.01". CDP screenshot: outline sits exactly on the letters.
 
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T40: exact curve-adjacent joins + text outlines — <sha>, vitest N, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T41: text glyph path matches rendered text — <sha>, root cause: <x>, vitest N, screenshot"`
 and stop.
