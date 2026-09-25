@@ -5343,3 +5343,85 @@ immediately before committing, not assumed safe.
 
 Amendments polled clean. Committed by explicit path (2 files: `SE13-BOUNDARY-LATTICE-DESIGN.md`,
 `WORK-LOG-lane-b.md`) — pushed.
+
+## T47 — SE13 Slice 1: the pure boundary-cutting engine
+
+**Scope, per the dispatch: build EXACTLY §14 Slice 1 of the T46 design** — `shapeToPrimitives(el)` and
+`insideSpans(scanLine, primitives)`, pure functions, no DOM/editor object, no product wiring. NO FUSION —
+vitest/browser proof only, no live CDP session needed for a pure module with no DOM surface. Advisor's own
+ruling on Q4 (numeric-vs-closed-form for curves), given before this turn started: keep the numeric path in
+v1 — pen/freehand boundaries are cubic paths, the most common shape Fred will pick, so numeric line×curve
+is load-bearing, not optional; rotated ellipses route through it too, no bbox fallback.
+
+**Declare over hand-roll, applied at the primitive level, not just the data-shape level.** The design doc's
+own §2/§3 already named the reusable pieces; this turn's own job was making them ACTUALLY reusable rather
+than re-derived. Exported 4 existing `editor-expand-path.js` internals with zero logic changes — `_parseD`,
+`_lineIntersect`, `_lineCircleIntersect`, `_arcWorldPointTangent` (plus `arcCenterParam`, already exported
+from `path-layout.js`) — so the new module's own path-normalization and line/circle crossing math is the
+SAME code this session's own offset/join engine (T39-T44) already trusts, not a second copy that could
+silently drift. Confirmed via `git diff` on the export commit: exactly 4 `export` keyword additions plus
+their own one-line rationale comments, no other change to any function body.
+
+**New module**: `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js` (349 lines).
+`shapeToPrimitives(el)` handles all 6 boundary kinds the design doc names — rect/circle/ellipse/polygon/
+path/text — returning a flat `{type:'L'|'A'|'C'|'CIRCLE', ...}` primitive list in the element's own local
+frame (`[]` for an unsupported/degenerate source, same decline-gracefully contract every OutlinePathD
+function in this codebase already uses). `text` reuses `localGlyphPathD` (editor-expand-text.js, T-earlier
+work) to get a glyph outline `d`, then routes through the same `_primitivesFromD` path every `path` element
+uses — no separate glyph-primitive code. Every path/polygon subpath is treated as implicitly closed whether
+or not it carries a literal `Z`, reapplying T43's own finding this same session (SVG fill semantics close
+every subpath regardless of a literal Z; opentype.js's own glyph contours never emit one) — a boundary is
+exactly a fill-rule concept, so the same convention applies here on purpose, not by coincidence. A
+degenerate `A` (`arcCenterParam` returns null) falls back to a straight line, the same fallback
+`_offsetArcSeg` already uses for the identical case.
+
+`insideSpans(scanLine, primitives)` is the actual cut: every primitive's own crossing(s) with the scan
+line, half-open per the design doc's own §2 rule, sorted and paired even-odd across the WHOLE crossing
+list with no per-subpath bookkeeping — which is what makes holes (a donut boundary) fall out for free
+rather than needing separate inside/outside subpath tracking. Exact closed-form for `L` (via `_lineIntersect`
++ a projected-t half-open test) and circular `A` (rx≈ry, via `_lineCircleIntersect` + an angle-based
+half-open test); numeric (64-point dense sample + 40-iteration bisection on every sign-changing bracket,
+no derivative needed) for `C` and for elliptical/rotated `A` (rx≠ry), per the advisor's own ruling above.
+
+**Self-caught correction, found before any test ran, not reported back to me.** My own first-draft comment
+on the `ellipse` shape case claimed it used "exact closed-form (§2's own line × ellipse quadratic)" — but
+tracing my own `insideSpans` dispatch shows the `isCircular` check (`|rx-ry| < 1e-6·max`) fails for any
+real ellipse, so an ellipse boundary ALWAYS falls to the numeric branch; I never built a separate exact
+quadratic solver. Caught by re-reading my own code critically before running tests, not by a failing test
+or outside review. Fixed the source comment and the matching test description to state the real (numeric)
+behavior, with the reasoning for not building a second solver made explicit: the numeric path is already
+proven robust and correct, and a second solver would be untested surface area for marginal benefit — not
+worth the added maintenance for a case the numeric path already handles correctly.
+
+**New test file**: `tests/editor-lattice-boundary.test.js` (265 lines, 21 tests) — 6 shapeToPrimitives kinds
+plus a declined-polyline and a declined-degenerate-rect case; insideSpans exact cases (L rect, circular-A
+circle, both cross-checked against independent analytic oracles) plus the numeric-routed ellipse case
+(cross-checked against a rotated-vs-swapped-unrotated-ellipse identity, not just eyeballed); holes via
+even-odd (donut, both hitting and missing the inner ring); the half-open rule, proven non-vacuous (below);
+and the numeric cubic case, matched against a 200,000-sample independent oracle within 1e-4.
+
+**Mutation test — proving the half-open-rule tests are non-vacuous**, matching the dispatch's own explicit
+verify wording ("mutation-test by disabling the half-open exclusion and confirming a spurious span
+appears"). Backed up `editor-lattice-boundary.js` to `$TEMP/editor-lattice-boundary-t47.js.bak`, then
+mutated `_crossLine`'s own half-open guard from `if (t < -1e-9 || t >= 1 - 1e-9) return;` to `if (false)
+return;` (exclusion fully disabled). Ran `tests/editor-lattice-boundary.test.js`: exactly 3 of 21 failed,
+and they were precisely the 3 half-open-rule tests — the tangent-vertex-returns-zero-spans test (diamond
+corner, expected `[]`, got a spurious wide span), its own non-vacuous companion (the "just off vertex"
+differential check, whose own small-span assertion blew up once the mutation broke ALL L-crossing behavior
+near a shared vertex, not just the exact-tangent case), and the flat-edge-collinear-rail case (rail exactly
+along a rectangle's own top edge, expected `[]`, got a spurious full-width span from the two side-edge
+endpoints sitting exactly on the rail). The other 18 tests (rect/circle/ellipse/donut/cubic cases not
+hinging on this exact code path) stayed green, as expected. Restored from the backup, confirmed
+byte-identical via `diff`, re-ran the file: 21/21 green again.
+
+Full vitest suite: 762/762 green (741 pre-T47 baseline + 21 new).
+
+No live CDP session this turn — pure module, no DOM surface, matching the dispatch's own "NO FUSION —
+browser/vitest proof" and the design's own "no DOM, no svg.js, no `editor` object" contract for this slice.
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(4 files: `bspline-frame-builder/b-spline-gen/html/editor/editor-expand-path.js` [4 export additions],
+`bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js` [new], `tests/editor-lattice-
+boundary.test.js` [new], `WORK-LOG-lane-b.md`) — the two new files staged individually first (`git add`)
+since `git commit <paths>` can't pathspec-stage untracked files, then committed together with the rest by
+path — pushed. `reference/` confirmed still untracked, not swept.

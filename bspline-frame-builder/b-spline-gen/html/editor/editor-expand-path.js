@@ -75,7 +75,11 @@ export const SUPPORTED_LINE_JOINS = Object.freeze({
  *  `{cmd:'C',x1,y1,x2,y2,x,y}` remain. */
 const NUMBER_RE = /[-+]?(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?/y;
 
-function _parseD(d) {
+// T47: exported so editor-lattice-boundary.js can normalize a boundary
+// shape's own `d` (polygon/path/glyph-outline) into the SAME absolute
+// L/A/C segment list this module's own offsetting engine already walks —
+// one parser, not a second copy.
+export function _parseD(d) {
   const s = String(d || '').trim();
   let i = 0;
 
@@ -199,7 +203,10 @@ function _parseD(d) {
  *  arcToCubics itself already uses (path-layout.js), generalized to also
  *  return the tangent so offset-curve callbacks don't need a second
  *  formula. */
-function _arcWorldPointTangent(cx, cy, rx, ry, phi, theta) {
+// T47: exported so editor-lattice-boundary.js's own numeric elliptical-arc
+// crossing search can evaluate the SAME forward arc parametrization this
+// module's own biarc machinery already trusts, rather than re-deriving it.
+export function _arcWorldPointTangent(cx, cy, rx, ry, phi, theta) {
   const cosPhi = Math.cos(phi), sinPhi = Math.sin(phi);
   const cosT = Math.cos(theta), sinT = Math.sin(theta);
   const lx = rx * cosT, ly = ry * sinT;
@@ -305,7 +312,10 @@ function _offsetSegment(p0, seg, side, half, tolerance) {
   return null;
 }
 
-function _lineIntersect(p1, d1, p2, d2) {
+// T47 (SE13 Slice 1): exported for editor-lattice-boundary.js's own line ×
+// closed-boundary cutting engine — the SAME line-line intersection this
+// module's own inner-join trimming already uses, not a second copy.
+export function _lineIntersect(p1, d1, p2, d2) {
   const denom = d1.x * d2.y - d1.y * d2.x;
   if (Math.abs(denom) < 1e-9) return []; // parallel/near-colinear
   const dx = p2.x - p1.x, dy = p2.y - p1.y;
@@ -314,8 +324,10 @@ function _lineIntersect(p1, d1, p2, d2) {
 }
 
 /** Standard line(point p, UNIT direction d)-circle intersection via the
- *  quadratic in t (p + t*d): up to 2 points, none if the line misses. */
-function _lineCircleIntersect(p, d, center, radius) {
+ *  quadratic in t (p + t*d): up to 2 points, none if the line misses.
+ *  T47: also exported for editor-lattice-boundary.js — same reasoning as
+ *  _lineIntersect above. */
+export function _lineCircleIntersect(p, d, center, radius) {
   const fx = p.x - center.x, fy = p.y - center.y;
   const b = 2 * (fx * d.x + fy * d.y);
   const c = fx * fx + fy * fy - radius * radius;
