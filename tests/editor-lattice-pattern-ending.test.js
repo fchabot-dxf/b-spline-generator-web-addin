@@ -156,3 +156,86 @@ describe('computePattern: §5 ending-rule table, a circular boundary (non-collin
     expect(rail.b.i).toBeCloseTo(rawChordHi - halfRail, 9);
   });
 });
+
+describe('computePattern: T50 -- the fill cuts at the boundary\'s own inner-stroke edge, not the raw centerline', () => {
+  // The dispatch's own exact test case: circle r=2, stroke 0.8 -> the
+  // center row's own rail endpoints land at radius 1.6 (2 - 0.8/2), BEFORE
+  // whatever the ending rule itself does on top of that.
+  const cx = 5, cy = 5, r = 2;
+  const primitives = [{ type: 'CIRCLE', cx, cy, r }];
+  const extentBase = { iMin: 2, jMin: 2, iMax: 8, jMax: 8, mode: 'boundary', primitives };
+  const basePattern = { ...PATTERN_DEFAULTS, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 } };
+
+  it('on-boundary: the shrunk (inner-stroke) crossing, not the raw r=2 crossing', () => {
+    const pattern = { ...basePattern, boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' } };
+    const { segments } = computePattern(pattern, { extent: { ...extentBase, edgeShrink: 0.4 } }); // half of 0.8
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - 1.6, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + 1.6, 9);
+  });
+
+  it('inset: the ending rule\'s own pullback applies ON TOP of the inner-stroke shrink, not instead of it', () => {
+    const pattern = { ...basePattern, boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'inset' } };
+    const halfRail = PATTERN_DEFAULTS.widths.rails / 2 / PATTERN_DEFAULTS.spacing;
+    const { segments } = computePattern(pattern, { extent: { ...extentBase, edgeShrink: 0.4 } });
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - 1.6 + halfRail, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + 1.6 - halfRail, 9);
+  });
+
+  it('edgeShrink: 0 (unstroked boundary, or boundary.edge==="centerline") reduces to the pre-T50 raw-crossing behavior', () => {
+    const pattern = { ...basePattern, boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' } };
+    const { segments } = computePattern(pattern, { extent: { ...extentBase, edgeShrink: 0 } });
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - r, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + r, 9);
+  });
+
+  it('a chord shorter than the full shrink on both ends collapses to a point rather than inverting', () => {
+    // A tiny circle (r=0.5) with a huge shrink (0.4, i.e. a 0.8"-wide
+    // stroke on a 1"-diameter circle) -- the center row's own shrink from
+    // both ends (0.4 + 0.4 = 0.8) very nearly consumes the whole chord (1.0).
+    const tinyPrimitives = [{ type: 'CIRCLE', cx: 5, cy: 5, r: 0.5 }];
+    const pattern = { ...basePattern, boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' } };
+    const { segments } = computePattern(pattern, {
+      extent: { iMin: 4, jMin: 4, iMax: 6, jMax: 6, mode: 'boundary', primitives: tinyPrimitives, edgeShrink: 0.6 },
+    });
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === 5);
+    // shrink (0.6) on each end exceeds the half-chord (0.5) -- must
+    // collapse to a single point at the center, not invert past it.
+    expect(centerRail).toBeDefined();
+    expect(centerRail.a.i).toBeCloseTo(centerRail.b.i, 9);
+    expect(centerRail.a.i).toBeCloseTo(5, 9);
+  });
+
+  it('a "free" tie end (not a boundary crossing) is never shrunk, even when edgeShrink is nonzero', () => {
+    // Column i=5 is the circle's own CENTER column -- its own natural
+    // boundary span is the full diameter [3,7]. Narrowing the QUERY
+    // window to jMin:4,jMax:6 (strictly inside [3,7], with real margin on
+    // both sides) guarantees any 1-cell tie drawn there is comfortably
+    // interior regardless of the random seed -- not an assumption about
+    // exactly where the draw happens to land (a real, self-caught bug
+    // this same turn: the ORIGINAL version of this test used the full
+    // [2,8] window, where the free 'anchor' draw could land with an end
+    // EXACTLY on the boundary's own edge by chance -- which, per T50's
+    // own fix below, correctly SHOULD be shrunk in that case too, since
+    // it's genuinely at the boundary regardless of why).
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 0, offset: 0 },
+      ties: { density: 1, spanMin: 1, spanMax: 1, columns: [5], anchor: 'free', railSnapRows: 0 },
+      boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary' },
+    };
+    const narrowExtent = { ...extentBase, jMin: 4, jMax: 6 };
+    const unshrunkResult = computePattern(pattern, { extent: { ...narrowExtent, edgeShrink: 0 } });
+    const shrunkResult = computePattern(pattern, { extent: { ...narrowExtent, edgeShrink: 0.4 } });
+    const tieBefore = unshrunkResult.segments.find((s) => s.kind === 'tie');
+    const tieAfter = shrunkResult.segments.find((s) => s.kind === 'tie');
+    expect(tieBefore).toBeDefined();
+    // Sanity: the drawn span must genuinely sit STRICTLY inside the
+    // boundary's own [3,7] span (real margin, not touching either end)
+    // for this test to prove anything about "free" ends specifically.
+    expect(Math.min(tieBefore.a.j, tieBefore.b.j)).toBeGreaterThan(3);
+    expect(Math.max(tieBefore.a.j, tieBefore.b.j)).toBeLessThan(7);
+    expect(tieAfter).toEqual(tieBefore); // unaffected -- neither end is a real crossing
+  });
+});

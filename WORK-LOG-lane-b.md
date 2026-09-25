@@ -5748,3 +5748,103 @@ deferred) and again immediately before passing. Committed by explicit path (11 m
 `editor.js`, `properties-lattice.js`, `styles/editor.css`, plus 4 touched test files) + 2 new test files
 (`editor-lattice-pattern-ending.test.js`, `editor-lattice-pattern-boundary-emit.test.js`, staged individually
 first) + `WORK-LOG-lane-b.md` — pushed. `reference/` confirmed still untracked, not swept.
+
+## T50 — boundary fill respects the boundary shape's own stroke (inner-stroke edge)
+
+**The finding, verified by re-reading the geometry, not taken on faith.** The advisor's own note, from viewing
+T49's own `04-ending-*.png` screenshots: a stroked circle boundary's fill was cut at the raw path CENTERLINE
+(`<circle r>`, the SVG attribute itself), so rails ran visibly into the stroke — a stroke is drawn CENTERED on
+its path by default, so a circle `r=2, stroke-width=0.8` visually spans radius 1.6 (inner edge) to 2.4 (outer),
+while the fill cut at exactly `r=2` — squarely inside that stroke ring. "A person reads a stroked shape's
+inside as the stroke's inner edge" — confirmed by looking at my own screenshots fresh, not disputed.
+
+**Declared, not hard-coded, per the dispatch's own instruction**: `PATTERN_DEFAULTS.boundary.edge = 'inner-
+stroke' | 'centerline'`, default `'inner-stroke'` — `'centerline'` is an explicit opt-out back to T49's own
+raw behavior, for a caller that wants it. No new panel control this turn (the dispatch's own "small change
+only" scope) — set via `PATTERN.boundary.edge` directly (JS/a saved pattern), same as several other declared-
+but-not-yet-wired-to-a-control fields already in this shape (`joints.size`, etc.).
+
+**Which width wins, exactly the dispatch's own rule, factored into ONE shared helper so the visible Border
+stroke and the fill's own cut point can never disagree**: `_effectiveBorderWidth(boundaryEl, boundary, widths)`
+— the Border piece's OWN width when Border is on (it's the thing actually drawn, so it's authoritative); else
+the LIVE boundary element's own current `stroke-width`, IF it's visibly stroked (`stroke` set, not `'none'`,
+width>0); else 0. Reused verbatim by the Border piece's own emission (previously duplicated inline, now calls
+the shared helper — a real, small refactor, not just new code) and by the new `_effectiveEdgeShrink` (half of
+that same width, 0 under `edge:'centerline'` or an unstroked boundary).
+
+**The shrink is applied at the SAME layer the ending-rule pullback already lives at, not inside `insideSpans`
+itself.** Re-opening Slice 1's own proven crossing math for this was the wrong place (same reasoning T49's own
+"fix first" item used for the collinear-edge fix) — instead, a new `_applyEdgeShrink(a,b,aIsCrossing,
+bIsCrossing,shrink)` runs on each `_clipToSpans`-produced piece BEFORE `_applyEndRule`, pulling a genuine
+crossing end in by `shrink` along the scan direction (only ends `_clipToSpans` already marked real — a plain
+"free" tie end is untouched). Matches the dispatch's own given test exactly: circle r=2/stroke=0.8, `on-
+boundary` → rail endpoints at radius 1.6 (2 − 0.4); `inset` → 1.6 further pulled back by half the rail's own
+width — the SAME two-stage composition (shrink first, ending rule second) the dispatch's own wording described.
+
+**Disclosed exactness scope, per the dispatch's own "say which, keep ≤ tolerance" instruction**: shrinking
+along the SCAN direction (not each primitive's own true local normal) is EXACT for a crossing perpendicular to
+the boundary at that point — a circular arc's own center row/column (the dispatch's own test case), or an
+axis-aligned edge crossed by a perpendicular rail/tie. For a steeply-angled crossing it's a bounded UNDER-
+shrink (the true perpendicular offset needs a larger scan-direction move than a flat `shrink` gives) — a
+disclosed simplification for this "small change," not a claimed general solve; a full per-primitive local-
+normal offset was scoped out as unnecessary complexity for what this turn actually needed to fix.
+
+**A second, deeper, pre-existing bug self-caught while testing THIS one — found by testing against the REAL
+pipeline, not just hand-built extents.** `_clipToSpans`'s own `aIsCrossing`/`bIsCrossing` flags (T49) used a
+STRICT `sLo > lo` to distinguish "a genuine boundary crossing" from "just hit the query window's own limit" —
+correct in general, but wrong at the EXACT row/column where a circle/ellipse's own crossing reaches precisely
+as far as the bbox pre-filter itself, which is UNAVOIDABLE at that shape's own widest extent (the bbox IS
+derived from that same widest reach, via `primitivesBBox`). At that one row, `aIsCrossing` came back `false`
+— silently skipping BOTH the new edge-shrink AND (already, since T49, unnoticed until now) the ending rule
+itself for the widest row of every single circular/elliptical boundary in this whole feature, not just T50's
+own new code. My own FIRST pure-`computePattern` tests for this all used a PADDED extent (a leftover habit
+from T48/T49's own byte-identical tests) and never exercised the coincidence; a NEW DOM-level test — going
+through the REAL, un-padded `_resolveExtent` — failed with an unshrunk result, traced by hand (added targeted
+`console.error`s, ran a standalone Node repro OUTSIDE vitest to rule out a test-harness artifact, confirmed
+the SAME wrong value both ways) down to this exact root cause, not guessed. Fixed by comparing `sLo`/`sHi`
+against `lo`/`hi` with a symmetric epsilon (`sLo > lo - eps` / `sHi < hi + eps`) — exact equality now correctly
+reads as "yes, a crossing," which is provably always safe for rails (a REAL, `_resolveExtent`-derived bbox can
+never have `sLo < lo`, only a hand-built test extent can construct that) and still correctly reads "free end"
+for a tie whose own drawn span sits non-trivially inside the boundary (nowhere near the epsilon). One of my
+OWN new tests ("a free tie end is never shrunk") then failed for the SAME reason on ITS OWN premise — its
+forced tie's own random draw happened to land with an end exactly ON the boundary, which, once fixed, correctly
+DOES get shrunk now (the same visual bug either way, whether the end got there by clipping or by lucky
+placement) — re-derived the test to use a query window strictly narrower than the boundary's own true reach,
+so it can no longer coincidentally touch, with an explicit sanity assertion proving the setup itself before
+trusting the conclusion.
+
+**New tests**: 5 pure `computePattern` cases (`editor-lattice-pattern-ending.test.js`) — the dispatch's own
+exact circle r=2/stroke=0.8 case for `on-boundary` and `inset`; `edgeShrink:0` reduces to raw-crossing;
+a too-short chord collapses to a point rather than inverting; the corrected free-tie-end case. 5 DOM-level
+`generatePattern` cases (`editor-lattice-pattern-boundary-emit.test.js`, new `_addBoundaryCircle` mock helper)
+— visibly-stroked (Border off), unstroked (no shrink), `edge:'centerline'` (explicit opt-out), Border ON
+overriding with its OWN width (not the shape's raw stroke), Border ON with no explicit width falling back to
+the shape's own stroke — the exact same fallback chain the Border piece itself already used, now shared.
+
+**Mutation-tested, 2 rounds**: (1) `_applyEdgeShrink` short-circuited to a no-op — exactly the 6 tests
+asserting a real nonzero shrink failed (3 pure + 3 DOM-level), the other 22 (including the `edgeShrink:0`/
+`centerline`/free-tie-end cases, which SHOULD stay green under this mutation) correctly passed. (2) the
+crossing-detection epsilon fix reverted to the old strict `>` — exactly the 3 DOM-level tests hitting the
+real, un-padded tight-bbox coincidence failed (814/817 suite-wide), while every pure test (all padded)
+stayed green, confirming the padded/un-padded distinction is exactly what separates "catches this" from
+"doesn't." Both restored, confirmed byte-identical via `diff`, re-ran to 817/817.
+
+**Live verification (CDP, fresh Chrome + profile `chrome-profile-t50`, killed and confirmed at 0 after)**:
+the SAME live scenario as T49's own `04-ending-*.png` — a real Circle-tool drag, default stroke-width 0.5
+(confirmed live, not assumed — matches the advisor's own "~0.8" estimate as "a real, materially thick
+stroke," not a precise value match, which was never the claim), picked as the boundary, Generated with the
+NEW default (`edge:'inner-stroke'`). Screenshot (`07-inner-stroke-default.png`) shows rails now stopping
+CLEANLY at the stroke's own inner edge, flush against the visible ring, not running into it. A direct
+side-by-side: `PATTERN.boundary.edge` set to `'centerline'` on the SAME live pattern, re-Generated,
+screenshot (`08-centerline-comparison.png`) reproduces the ORIGINAL bug exactly (rails visibly running into
+the stroke, x1/x2 measured at the RAW `cx±r`, confirmed numerically: `x2−x1 = 2r` exactly) — an unambiguous
+before/after, not just a single "looks fixed" shot.
+
+Full vitest suite: 817/817 green (807 T49 baseline + 10 T50 new: 5 pure + 5 DOM-level).
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(2 modified files: `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js`,
+`WORK-LOG-lane-b.md`) plus 2 touched test files (`tests/editor-lattice-pattern-ending.test.js`,
+`tests/editor-lattice-pattern-boundary-emit.test.js`) — pushed. `reference/` confirmed still untracked, not
+swept. Not merged to main yet, per the dispatch's own note (seat A's in-flight MOB3 drawer edits the same
+panel files) — this turn touched none of those panel files, only `editor-lattice-pattern.js` and tests.
