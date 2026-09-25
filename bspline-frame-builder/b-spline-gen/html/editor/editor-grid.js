@@ -13,7 +13,7 @@ import { inputProfileFor } from './editor-input.js';
 
 /** Board is in inches — spacing/coords here are all in the same model
  *  units as editor._mW/_mH (see editor-view.js's own note on this). */
-export const GRID_DEFAULTS = { visible: false, snap: true, spacing: 0.25 }; // snap ON by default (Fred 2026-09-24)
+export const GRID_DEFAULTS = { visible: true, snap: true, spacing: 0.25 }; // grid shown + snap ON by default (Fred 2026-09-24/25)
 
 /** The customisable spacing choices (inches). The toolbar select derives
  *  its options from this list — no hand-written <option>s to drift. */
