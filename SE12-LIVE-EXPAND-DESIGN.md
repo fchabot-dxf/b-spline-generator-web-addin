@@ -290,6 +290,7 @@ Exactness is limited by the math, not the choice: an offset of lines and circula
 ellipse or a Bezier curve is NOT an ellipse or a Bezier, so those get a tolerance-bounded curve fit (declared tolerance),
 while their straight parts stay straight and their circular parts stay true arcs. Filled shapes (and filled text) need no
 offset: the shape's own edge IS its outline, already exact. Stroked text = glyph curves offset → the fitted case.
+Fred 2026-09-24: "ellipse and curved path too please" — fitted in T38 with BIARCS (true tangent-continuous circular arcs, declared OUTLINE_FIT tolerance 0.001") rather than cubics: arcs land in Fusion as real SketchArcs and cut as G2/G3.
 Engine is a per-element-kind table (OUTLINE_KINDS) so each kind plugs in without touching the preview/export.
 
 ## STOP conditions (scope boundaries for this design, not promises of a later slice)
