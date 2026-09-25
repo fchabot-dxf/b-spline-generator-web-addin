@@ -128,25 +128,6 @@ export function isLatticePoint(p, spacing, tol = 1e-6) {
 }
 
 /**
- * SE7i: the rail (canonical {a,b}) among `railsCanon` whose row `p` sits
- * exactly on, within that rail's own i-range — the same on-grid-row-and-
- * range test `moveRailAlongAxis` (below) uses for a whole rail's worth of
- * candidates, exposed standalone for a single point (a tie-end or node's
- * own "am I attached to a rail at all" check). A grid point on a rail's
- * row but beyond its two ends does NOT attach (Fred's own example).
- * Returns the first match (rails don't overlap at a shared row in this
- * model, so ties are not expected).
- */
-export function findAttachingRail(p, railsCanon) {
-  for (const rail of railsCanon) {
-    const iMin = Math.min(rail.a.i, rail.b.i);
-    const iMax = Math.max(rail.a.i, rail.b.i);
-    if (p.j === rail.a.j && p.i >= iMin && p.i <= iMax) return rail;
-  }
-  return null;
-}
-
-/**
  * SE7i: move a rail (canonical {a,b}) to `newRow` (its own axis is the
  * canonical row/j — "a rail never slides along its own length," so its
  * i-range is carried over unchanged) and compute the resulting new

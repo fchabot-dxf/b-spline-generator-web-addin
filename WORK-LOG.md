@@ -8365,3 +8365,81 @@ a clean, quiet layer for a test that only cares about orientation, not generatio
   redo/cross-tool-robustness/vertical-mirror flag confirmed `true`, zero console errors.
 
 No amendments pending as of this pass.
+
+## Turn 251 — SE7j: node drag slides the WHOLE tie, upright — DONE
+
+**Fred's ruling.** The previous turn's own screenshot (`se7i-connected-2b-node-moved.png`) showed a node drag
+making the tie LEAN — my own documented interpretation of the SE7i spec's terse "moves the tie end it
+belongs to along its rail" turned out to be wrong. Fred: **"Upright — I will slant it in direct edit mode if
+I need."** This turn replaces that behavior outright.
+
+**The fix is one constraint on machinery that already existed, not new machinery.** Grabbing a node that
+sits ANYWHERE on a tie's line — its own end, OR a mid-span rail crossing — now REDIRECTS the whole gesture
+into a `kind: 'tie'` move (the exact same move kind and `_updateLatticeMove`/`_finishLatticeMove` logic
+grabbing the tie's own body already uses), with one new flag, `constrainToIAxis`, forcing `dj` to `0` in
+`translateTie`'s own `{di, dj}` call. That's the entire behavior change: `_beginLatticeMove`'s `'node'`
+branch now searches for a tie whose FULL LENGTH (not just its two endpoints — a broader test than the
+retired one) the grabbed node's canonical point lies on; if found, it returns a `'tie'`-shaped move
+descriptor (the TIE is `move.el` now, not the node) with `startCanon` set to the node's own position and
+`constrainToIAxis: true`; if no tie is found at all (a bare Circle-tool dot), it falls back to a plain free
+single-point move, unchanged in spirit from before. "Rail drags and tie drags are unchanged" holds exactly:
+grabbing a tie's own body still gets the free `{di, dj}` translate it always did; only a NODE grab is now
+axis-constrained. The old "slide one end along an attaching rail" branch, and the now-dead
+`findAttachingRail` pure function it was the only caller of, are both removed entirely (swept from
+`editor-lattice.js`, its own describe block in `tests/editor-lattice.test.js`, and the interaction-layer
+import) — "no dead branch," per the dispatch.
+
+**Two real bugs caught and fixed before this ever reached the live proof, both artifacts of the SAME
+oversight (mid-span nodes are a genuinely new case the old endpoint-only logic never had to handle):**
+(1) the existing "carry a node with the tie" write logic assumed every carried node sat at one of the tie's
+own two endpoints (`atA ? tieCanon.a : tieCanon.b`) — true under the OLD endpoint-only collection, but wrong
+now that a mid-span crossing (with no coincidence to either endpoint) can be carried too. Fixed by applying
+the delta to each node's OWN recorded starting point instead of re-deriving a base from the tie's ends —
+identical result for an endpoint-coincident node (its own point already equals `tieCanon.a`/`.b` exactly),
+and now correct for a mid-span one too. (2) `_collectLatticeElements`'s `excludeEl` parameter (there so a
+grabbed RAIL/TIE can't attach to or collide with itself) was being passed the grabbed NODE in this new
+redirect path — but the node is a DIFFERENT kind than what the gesture now moves (a tie), so excluding it
+silently dropped the very node the user grabbed from its own "nodes riding this tie" collection: the tie
+moved correctly, but the grabbed node itself never got its `.center()` called and was left behind. Caught
+by the live proof (`nodeMovedWithItsOwnTieEnd: false` on the first run), not a unit test — this file's own
+established convention (SE7h, SE7i) is pure math unit-tested, DOM orchestration live-proved, and this is
+exactly the kind of wiring mistake that convention is meant to catch. Fixed by passing `null` instead of
+`hit` for this one candidate-collection call.
+
+**Tests (`tests/editor-lattice.test.js`): -4 (the removed `findAttachingRail` describe block), +3.** No new
+pure function was needed — the whole behavior is `translateTie` with `dj` forced to `0` — so the 3 new tests
+are a composition describe block matching the dispatch's own verify line ("node drag -> tie translated by one
+along-axis delta, still perpendicular, nodes carried; vertical mirror") exactly: a single along-axis delta
+shifts the tie sideways without leaning it (still perpendicular, same length); applying that SAME delta to a
+mid-span crossing point (not just the two endpoints) keeps it exactly coincident with the moved tie; and a
+vertical-orientation-mirror composition (the identical `translateTie(tieCanon, 2, 0)` call, conjugated through
+`orient()`) shifts a real-horizontal tie's ROW instead of its span — still upright, still perpendicular to
+the now-vertical rail, with zero new math for the mirror.
+
+**Non-vacuous:** the 4 `findAttachingRail` tests failing immediately on removal (proving they were live,
+not already-vacuous) confirms the sweep was clean, not silent. The two bugs above were each caught then
+verified fixed by the SAME live-browser assertions before and after — no separate mutation pass needed on
+top of that, since the live proof's own before/after (bug present -> specific flags false; bug fixed -> the
+same flags true) already IS the non-vacuous demonstration. Additionally mutated `constrainToIAxis`'s own
+check (forced the free, unconstrained `dj` branch) purely to confirm the live smoke script would actually
+catch a regression here: exactly `tieStayedUpright` and `nodeMovedWithItsOwnTieEnd` flipped to `false`
+(dragging off-axis let the tie lean again), `wholeTieSliddAlongAxisEqually` stayed `true` correctly (the
+along-axis component still moved, only the "never leans" guarantee broke) — restored, re-confirmed green.
+
+**Live (browser, extended `scripts/smoke-lattice-connected.mjs` — no Fusion, per Fred's rule).** Replaced the
+turn-250 "NODE MOVE" section's assertions with the new expected shape: grab the crossing node and drag it
+deliberately OFF-AXIS (toward a point that is NOT on the rail's row) — the whole tie's `x1`/`x2` both shift
+by the identical snapped delta (`wholeTieSliddAlongAxisEqually`), its `y1`/`y2` stay byte-identical to before
+the drag (`tieStayedUpright` — the tie never leans, whatever direction the mouse actually moved), and the
+grabbed node itself ends up exactly coincident with its own tie-end afterward (`nodeMovedWithItsOwnTieEnd`).
+Every other section from turn 250's own proof (rail move, undo/redo, tie-body drag, Section 4 cross-tool
+robustness, vertical mirror) re-ran unchanged and stayed green, confirming this turn's fix didn't disturb
+anything "Rail drags and tie drags are unchanged" promised to leave alone. Zero console errors.
+
+**Verify:**
+- `node --check` on the touched production file: clean.
+- `npx vitest run` -> **659 passed**, 0 failed (re-ran once, no flake).
+- Live browser (`smoke-lattice-connected.mjs`, no Fusion): every flag — including the 3 new node-move-
+  specific ones and the 17 carried over from turn 250 — confirmed `true`, zero console errors.
+
+No amendments pending as of this pass.

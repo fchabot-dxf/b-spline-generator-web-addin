@@ -24,7 +24,6 @@ import {
   ORIENTATIONS,
   orient,
   isLatticePoint,
-  findAttachingRail,
   moveRailAlongAxis,
   translateTie,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
@@ -380,28 +379,6 @@ describe('isLatticePoint (SE7i)', () => {
   });
 });
 
-describe('findAttachingRail (SE7i)', () => {
-  const rail = { a: { i: 0, j: 4 }, b: { i: 10, j: 4 } };
-
-  it('finds the rail when the point sits on its row, within its i-range', () => {
-    expect(findAttachingRail({ i: 5, j: 4 }, [rail])).toBe(rail);
-    expect(findAttachingRail({ i: 0, j: 4 }, [rail])).toBe(rail); // exactly at an end — still attaches
-    expect(findAttachingRail({ i: 10, j: 4 }, [rail])).toBe(rail);
-  });
-
-  it('does NOT attach a grid point on the rail\'s row but beyond its ends (Fred\'s own example)', () => {
-    expect(findAttachingRail({ i: 11, j: 4 }, [rail])).toBeNull();
-    expect(findAttachingRail({ i: -1, j: 4 }, [rail])).toBeNull();
-  });
-
-  it('does not attach a point on a different row entirely', () => {
-    expect(findAttachingRail({ i: 5, j: 3 }, [rail])).toBeNull();
-  });
-
-  it('returns null with no candidate rails', () => {
-    expect(findAttachingRail({ i: 5, j: 4 }, [])).toBeNull();
-  });
-});
 
 describe('moveRailAlongAxis (SE7i): derive attachments + apply a rail move in one step', () => {
   const rail = { a: { i: 0, j: 4 }, b: { i: 10, j: 4 } };
@@ -433,7 +410,7 @@ describe('moveRailAlongAxis (SE7i): derive attachments + apply a rail move in on
     expect(result.tieUpdates).toHaveLength(0);
   });
 
-  it('a tie end on the rail\'s ROW but beyond its i-RANGE is not attached (mirrors findAttachingRail)', () => {
+  it('a tie end on the rail\'s ROW but beyond its i-RANGE is not attached', () => {
     const tie = { a: { i: 20, j: 4 }, b: { i: 20, j: 9 } };
     const result = moveRailAlongAxis(rail, 7, [tie], []);
     expect(result.tieUpdates).toHaveLength(0);
@@ -518,5 +495,54 @@ describe('translateTie (SE7i): rigid translation, not confined between rails', (
     const before = JSON.parse(JSON.stringify(tie));
     translateTie(tie, 5, 5);
     expect(tie).toEqual(before);
+  });
+});
+
+/**
+ * SE7j (Fred, overriding SE7i's first cut of "node drag": a node drag
+ * used to slide just its own tie-end along an attaching rail, which
+ * could LEAN the tie — "Upright — I will slant it in direct edit mode if
+ * I need"): grabbing a node on a tie now moves the WHOLE TIE along the
+ * rail axis instead — exactly `translateTie` with `dj` forced to 0. No
+ * new pure function: the whole behavior change is this ONE constraint,
+ * composed here as its own describe block per the dispatch's own verify
+ * line ("node drag -> tie translated by one along-axis delta, still
+ * perpendicular, nodes carried; vertical mirror").
+ */
+describe('translateTie composed with dj=0 (SE7j: node-drag moves the whole tie, upright)', () => {
+  it('a single along-axis delta (dj=0) shifts the tie sideways without leaning it — still perpendicular to a horizontal rail, same length', () => {
+    const tie = { a: { i: 3, j: 1 }, b: { i: 3, j: 4 } };
+    const moved = translateTie(tie, 2, 0);
+    expect(moved).toEqual({ a: { i: 5, j: 1 }, b: { i: 5, j: 4 } });
+    expect(moved.a.i).toBe(moved.b.i); // still a straight vertical line — never leaned
+    expect(moved.b.j - moved.a.j).toBe(tie.b.j - tie.a.j); // length unchanged
+  });
+
+  it('nodes carried: applying the SAME delta to every point on the tie (both ends AND a mid-span crossing) keeps them all coincident with the moved tie', () => {
+    const tie = { a: { i: 3, j: 1 }, b: { i: 3, j: 4 } };
+    const midSpanCrossing = { i: 3, j: 2 }; // e.g. where another rail crosses this tie
+    const di = 2;
+    const moved = translateTie(tie, di, 0);
+    const movedCrossing = { i: midSpanCrossing.i + di, j: midSpanCrossing.j };
+    // The moved crossing point still lies exactly on the moved tie's line
+    // (same i, j within the moved tie's span) — it rode along correctly.
+    expect(movedCrossing.i).toBe(moved.a.i);
+    expect(movedCrossing.j).toBeGreaterThanOrEqual(Math.min(moved.a.j, moved.b.j));
+    expect(movedCrossing.j).toBeLessThanOrEqual(Math.max(moved.a.j, moved.b.j));
+  });
+
+  it('vertical orientation mirror: the SAME dj=0 composition, conjugated through orient(), shifts a real-vertical tie up/down instead of sideways — still upright, still perpendicular to the (now vertical) rail', () => {
+    const orientation = 'vertical';
+    // Real geometry: a horizontal tie at real-j=3, spanning real-i 1..4.
+    const tieReal = { a: { i: 1, j: 3 }, b: { i: 4, j: 3 } };
+    const tieCanon = { a: orient(tieReal.a, orientation), b: orient(tieReal.b, orientation) };
+    const moved = translateTie(tieCanon, 2, 0); // the exact same call a node-drag makes
+    const movedReal = { a: orient(moved.a, orientation), b: orient(moved.b, orientation) };
+    // Real-j (the row) shifted by 2; real-i (the span) is untouched —
+    // under vertical orientation this IS "along the rail axis" (rails run
+    // real-i, ties run real-j), so the mirror holds with zero new math.
+    expect(movedReal).toEqual({ a: { i: 1, j: 5 }, b: { i: 4, j: 5 } });
+    expect(movedReal.a.i).toBe(tieReal.a.i);
+    expect(movedReal.b.i).toBe(tieReal.b.i); // span (real-i) unchanged — still upright, not leaned
   });
 });

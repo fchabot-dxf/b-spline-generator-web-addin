@@ -32,7 +32,7 @@ import { getDynamicTolerance } from './editor-hit.js';
 import {
     toLattice, fromLattice, classifyDrag, constrain, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
-    isLatticePoint, findAttachingRail, moveRailAlongAxis, translateTie,
+    isLatticePoint, moveRailAlongAxis, translateTie,
 } from './editor-lattice.js';
 import { PATTERN_DEFAULTS, getLayerPattern } from './editor-lattice-pattern.js';
 import {
@@ -924,13 +924,17 @@ const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
  * whole gesture ("attachments are fixed at drag start; a dragged rail
  * never picks up ties it crosses mid-drag": Fred). Candidates come from
  * _collectLatticeElements (world-geometry-aware, active-layer-scoped,
- * excluding the grabbed element itself); a tie-end or node that isn't
- * genuinely on-grid (isLatticePoint, computed by that function on the
- * RAW world point) is masked to `_OFF_GRID_SENTINEL` so it can never
- * attach — Fred: "attach should mean snapped to grid on the same point,"
- * not merely close to one. `startAttrs` is the grabbed element's own
- * pre-drag attrs (captured AFTER the transform-bake below), used at
- * finish() to detect a true no-op (bare click).
+ * excluding the grabbed element itself — EXCEPT the 'node' branch below,
+ * which needs its own grabbed node to remain a candidate so it can be
+ * carried along with whichever tie it turns out to belong to); a tie-end
+ * or node that isn't genuinely on-grid (isLatticePoint, computed by that
+ * function on the RAW world point) is masked to `_OFF_GRID_SENTINEL` so
+ * it can never attach — Fred: "attach should mean snapped to grid on the
+ * same point," not merely close to one. `startAttrs` is normally the
+ * grabbed element's own pre-drag attrs (captured AFTER the transform-bake
+ * below), used at finish() to detect a true no-op (bare click) — SE7j's
+ * node-on-a-tie redirect (below) is the one exception, where it's the
+ * TIE's attrs instead, since that's what actually ends up moving.
  *
  * SE7i (Section 4: "a Lattice-mode move BAKES its result into the attrs
  * (no transform left)"): if the grabbed element already carries a
@@ -992,33 +996,54 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
         return { kind, el: hit, orientation, spacing, startAttrs, tieCanon, startCanon, nodes };
     }
 
-    // kind === 'node'. SE7i (Fred: "moves the tie end it belongs to along
-    // its rail"): find the tie (if any) with an endpoint exactly at this
-    // node's own position — dragging the node really drags THAT tie-end.
-    // If that end also sits on a rail (findAttachingRail), the drag is
-    // CONSTRAINED to slide along the rail's row (only the along-rail
-    // coordinate moves); otherwise it's a free tie-end move, same as
-    // dragging a lone tie's own end would be. A node with no tie-end
-    // here at all (a bare Circle-tool dot, or a mid-span crossing with
-    // no endpoint) has nothing to constrain it and just moves freely.
+    // kind === 'node'. SE7j (Fred, overriding SE7i's own first cut — a
+    // node drag used to slide just its OWN tie-end along an attaching
+    // rail, which could LEAN the tie; Fred: "Upright — I will slant it in
+    // direct edit mode if I need"): grabbing a node that sits ANYWHERE on
+    // a tie's line — its own end, OR a mid-span rail crossing — moves the
+    // WHOLE TIE along the rail axis (canonical i only, j untouched), so
+    // it keeps its length, width, and stays upright. That's really a TIE
+    // move, so it's built as one (`kind: 'tie'`, reusing every bit of
+    // that branch's update/finish logic below) with `constrainToIAxis`
+    // forcing dj to 0 — the only thing that differs from grabbing the
+    // tie's own body directly (still free in both axes, unchanged) is
+    // WHICH nodes get carried: every node along the tie's FULL length
+    // (both ends and any crossings), not just the two it owns outright,
+    // since dragging by a crossing point should carry whatever else rides
+    // that same tie too. A node with no tie under it at all (a bare
+    // Circle-tool dot) has nothing to move but itself.
     const nodeCanon = orient(toLattice({ x: parseFloat(startAttrs.cx), y: parseFloat(startAttrs.cy) }, spacing), orientation);
-    const candidates = _collectLatticeElements(editor, spacing, hit);
-    const railsCanon = candidates
-        .filter((c) => c.kind === 'rail')
-        .map((c) => ({ a: orient(c.a, orientation), b: orient(c.b, orientation) }));
+    // No excludeEl here (unlike the rail/tie branches above): `hit` is a
+    // NODE, a different kind than the tie this gesture ends up moving, so
+    // excluding it would silently drop the very node the user grabbed
+    // from the "nodes riding this tie" collection below — it would never
+    // get carried along with its own tie-end.
+    const candidates = _collectLatticeElements(editor, spacing, null);
     let tieMatch = null;
     for (const c of candidates) {
-        if (c.kind !== 'tie') continue;
-        const aCanon = c.aOnGrid ? orient(c.a, orientation) : _OFF_GRID_SENTINEL;
-        const bCanon = c.bOnGrid ? orient(c.b, orientation) : _OFF_GRID_SENTINEL;
-        if (aCanon.i === nodeCanon.i && aCanon.j === nodeCanon.j) { tieMatch = { el: c.el, end: 'a' }; break; }
-        if (bCanon.i === nodeCanon.i && bCanon.j === nodeCanon.j) { tieMatch = { el: c.el, end: 'b' }; break; }
+        if (c.kind !== 'tie' || !c.aOnGrid || !c.bOnGrid) continue;
+        const aCanon = orient(c.a, orientation), bCanon = orient(c.b, orientation);
+        if (aCanon.i !== nodeCanon.i) continue; // must be the tie's own column
+        const jMin = Math.min(aCanon.j, bCanon.j), jMax = Math.max(aCanon.j, bCanon.j);
+        if (nodeCanon.j >= jMin && nodeCanon.j <= jMax) { tieMatch = { el: c.el, a: aCanon, b: bCanon }; break; }
     }
-    const attachingRail = findAttachingRail(nodeCanon, railsCanon);
-    return {
-        kind, el: hit, orientation, spacing, startAttrs, nodeCanon, tieMatch,
-        attachingRailJ: attachingRail ? attachingRail.a.j : null,
-    };
+    if (tieMatch) {
+        const tieStartAttrs = {
+            x1: tieMatch.el.attr('x1'), y1: tieMatch.el.attr('y1'),
+            x2: tieMatch.el.attr('x2'), y2: tieMatch.el.attr('y2'),
+        };
+        const jMin = Math.min(tieMatch.a.j, tieMatch.b.j), jMax = Math.max(tieMatch.a.j, tieMatch.b.j);
+        const nodes = candidates
+            .filter((c) => c.kind === 'node' && c.onGrid)
+            .map((c) => ({ el: c.el, point: orient(c.point, orientation) }))
+            .filter((n) => n.point.i === tieMatch.a.i && n.point.j >= jMin && n.point.j <= jMax);
+        return {
+            kind: 'tie', el: tieMatch.el, orientation, spacing, startAttrs: tieStartAttrs,
+            tieCanon: { a: tieMatch.a, b: tieMatch.b }, startCanon: nodeCanon, nodes,
+            constrainToIAxis: true,
+        };
+    }
+    return { kind: 'node', el: hit, orientation, spacing, startAttrs, nodeCanon };
 }
 
 /** Write a rail-move result (moveRailAlongAxis's own return shape) back
@@ -1061,35 +1086,31 @@ function _updateLatticeMove(editor, pt) {
         _writeRailMove(move, result);
     } else if (move.kind === 'tie') {
         // A tie "drags freely... NOT confined between rails" — a rigid
-        // translation of both ends by the same snapped delta.
+        // translation of both ends by the same snapped delta. SE7j:
+        // triggered via a NODE grab instead of the tie's own body,
+        // `constrainToIAxis` forces dj to 0 — the tie only ever slides
+        // along the rail axis, never leans (Fred: "Upright").
         const di = canonPt.i - move.startCanon.i;
-        const dj = canonPt.j - move.startCanon.j;
+        const dj = move.constrainToIAxis ? 0 : (canonPt.j - move.startCanon.j);
         const moved = translateTie(move.tieCanon, di, dj);
         const a = fromLattice(orient(moved.a, orientation), spacing);
         const b = fromLattice(orient(moved.b, orientation), spacing);
         move.el.attr({ x1: a.x, y1: a.y, x2: b.x, y2: b.y });
         for (const node of move.nodes) {
-            // Each carried node moves by the SAME delta as whichever of
-            // the tie's own ends it started coincident with.
-            const atA = node.point.i === move.tieCanon.a.i && node.point.j === move.tieCanon.a.j;
-            const base = atA ? move.tieCanon.a : move.tieCanon.b;
-            const p = fromLattice(orient({ i: base.i + di, j: base.j + dj }, orientation), spacing);
+            // SE7j: `move.nodes` can now include a MID-SPAN crossing (not
+            // just the tie's own 2 endpoints) when triggered via a node
+            // grab — applying the delta to the node's OWN starting point
+            // (rather than assuming it sits at tieCanon.a or .b) handles
+            // both cases identically and costs nothing for the endpoint
+            // case, where node.point already equals tieCanon.a/b exactly.
+            const p = fromLattice(orient({ i: node.point.i + di, j: node.point.j + dj }, orientation), spacing);
             node.el.center(p.x, p.y);
         }
     } else {
-        // 'node': free unless its own tie-end is rail-attached, in which
-        // case the drag is pinned to that rail's row (only the
-        // along-rail coordinate follows the pointer).
-        const finalCanon = (move.tieMatch && move.attachingRailJ != null)
-            ? { i: canonPt.i, j: move.attachingRailJ }
-            : canonPt;
-        const p = fromLattice(orient(finalCanon, orientation), spacing);
+        // 'node': no tie under it at all — a plain free single-point
+        // move, snapped to the lattice.
+        const p = fromLattice(orient(canonPt, orientation), spacing);
         move.el.center(p.x, p.y);
-        if (move.tieMatch) {
-            const { el, end } = move.tieMatch;
-            if (end === 'a') el.attr({ x1: p.x, y1: p.y });
-            else el.attr({ x2: p.x, y2: p.y });
-        }
     }
 }
 

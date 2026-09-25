@@ -194,26 +194,31 @@ report.afterRedo = await evalJS(`(() => { const rail = ${findRail(1)}; return ra
 report.redoReappliedRailMove = report.afterRedo === 2;
 
 // ============================================================
-// NODE MOVE (Fred: "moves the tie end it belongs to along its rail"):
-// grab the crossing node (currently at (2,2), the tie's own attached end,
-// itself sitting on Rail A's row 2) and drag it. Since it's rail-
-// attached, the drag must be CONSTRAINED to slide ALONG the rail — only
-// the along-rail coordinate (x) follows the pointer; the row (y) stays
-// pinned at 2. The tie's own endpoint must move WITH the node (same
-// point, always).
+// NODE MOVE (SE7j, Fred: "Upright — I will slant it in direct edit mode
+// if I need" — overriding SE7i's own first cut, which slid just the
+// grabbed end and could lean the tie): grab the crossing node (currently
+// at (2,2), sitting on Rail A's row 2) and drag it OFF-AXIS on purpose —
+// the whole TIE must slide along the rail axis instead: BOTH ends' x
+// shift by the SAME snapped delta, both ends' y stay EXACTLY as they
+// were (3 and 2 — never converging, never leaning), and the node itself
+// (the tie's own end at (2,2)) moves with it, still paired with that end.
 // ============================================================
-await dragFromTo({ x: 2, y: 2 }, { x: 3, y: 4 }); // deliberately off-axis — constraint should still pin y=2
+const tieBeforeNodeMove = await evalJS(`(() => { const t = document.querySelector('[data-lattice=tie]'); return { x1:+t.getAttribute('x1'), y1:+t.getAttribute('y1'), x2:+t.getAttribute('x2'), y2:+t.getAttribute('y2') }; })()`);
+await dragFromTo({ x: 2, y: 2 }, { x: 3, y: 4 }); // deliberately off-axis — the tie must stay upright regardless
 await sleep(300);
 report.afterNodeMove = await evalJS(`(() => {
+  const t = document.querySelector('[data-lattice=tie]');
   const node = [...document.querySelectorAll('[data-lattice=node]')].find(n => Math.abs(+n.getAttribute('cy') - 2) < 0.01 && +n.getAttribute('cx') !== 1 && +n.getAttribute('cx') !== 4);
-  const tie = document.querySelector('[data-lattice=tie]');
   return {
+    tie: t ? { x1: +t.getAttribute('x1'), y1: +t.getAttribute('y1'), x2: +t.getAttribute('x2'), y2: +t.getAttribute('y2') } : null,
     node: node ? { cx: +node.getAttribute('cx'), cy: +node.getAttribute('cy') } : null,
-    tie: tie ? { x2: +tie.getAttribute('x2'), y2: +tie.getAttribute('y2') } : null,
   };
 })()`);
-report.nodeSlidAlongRailNotOffIt = report.afterNodeMove.node?.cy === 2 && report.afterNodeMove.node?.cx !== 2; // y pinned, x actually moved
-report.tieEndFollowedTheDraggedNode = report.afterNodeMove.tie?.x2 === report.afterNodeMove.node?.cx && report.afterNodeMove.tie?.y2 === 2;
+const dx1 = report.afterNodeMove.tie ? report.afterNodeMove.tie.x1 - tieBeforeNodeMove.x1 : null;
+const dx2 = report.afterNodeMove.tie ? report.afterNodeMove.tie.x2 - tieBeforeNodeMove.x2 : null;
+report.wholeTieSliddAlongAxisEqually = dx1 !== null && dx1 === dx2 && dx1 !== 0; // non-vacuous: it actually moved, both ends equally
+report.tieStayedUpright = report.afterNodeMove.tie?.y1 === tieBeforeNodeMove.y1 && report.afterNodeMove.tie?.y2 === tieBeforeNodeMove.y2; // neither y moved — never leaned
+report.nodeMovedWithItsOwnTieEnd = report.afterNodeMove.node?.cx === report.afterNodeMove.tie?.x2 && report.afterNodeMove.node?.cy === report.afterNodeMove.tie?.y2;
 await shot('se7i-connected-2b-node-moved.png');
 
 // ============================================================
