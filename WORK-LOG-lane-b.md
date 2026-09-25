@@ -6457,3 +6457,99 @@ immediately before passing. Committed by explicit path (`editor-lattice-pattern.
 `tests/editor-lattice-pattern-ending.test.js`, `tests/editor-lattice-pattern-density-count.test.js` (new),
 `tests/properties-lattice.test.js`, `WORK-LOG-lane-b.md`) — pushed. `reference/` confirmed still untracked.
 
+## T57 (part 1) — spread ties across the width; Slice 3 (Shape Lattice tool) NOT started this turn
+
+**Scope**: fix the tie-clustering the advisor caught directly in T56's own render (`t56-density.png`: "seed 42:
+all 8 ties in the LEFT half; seed 7: most on the left. Counts are right, distribution isn't"), per the
+dispatch's own declared design: `ties.spread: 'stratified' | 'random'`, stratifying the chosen tie count over
+equal-width column zones. Slice 3 (the full Shape Lattice tool UI — own rail icon, TOOL_PANELS entry, preset/
+segment-style panel, axis-locked parametric canvas handles, Fill-section reuse, box-Lattice migration, detach-
+on-edit, live CDP verification with screenshots) was NOT started — see the dispatch's own explicit fallback
+("if slice 3 can't finish cleanly in this turn, commit part 1 + what's solid of slice 3 and pass with a
+note"). Part 1 alone surfaced and fixed THREE distinct instances of the same underlying RNG weakness (below),
+each requiring its own measure-fix-reverify cycle, several redesign iterations on the zone-assignment logic
+itself, and thorough mutation testing — a full, well-verified turn on its own; starting Slice 3's own
+genuinely large surface (comparable to or exceeding T49, this session's own largest prior turn) on top of that
+risked short-changing either piece's own verification standard. Passing back now so Slice 3 gets dispatched
+as its own properly-scoped turn.
+
+**Design**: `_chooseTieColumns(columns, count, countMin, spread, seed)` (new) — `'random'` is T56's own original
+per-column-scored selection, kept as a real, declared alternative. `'stratified'` (new default) divides the
+column range into `zones = ties.count[0]` (the declared range's own MINIMUM — the one zone count that's always
+`<= count`, so the first `zones` ties always land one-per-zone with guaranteed full-width coverage) and
+distributes `count` ties across them as evenly as possible (`base = floor(count/zones)` per zone, `count -
+base*zones` zones get one more).
+
+**Three self-caught RNG bugs, chained, each found by measuring — not assumed correct from reading the code**:
+
+1. **The within-zone position draw collapsed for this session's own typical small seeds.** `_columnSeed(seed,
+   _TIES_SPREAD_SALT+k)`'s own single `lcgPoints` draw put seeds 1/2/7/42 all within [0.35,0.55] at every `k`
+   — close enough that `Math.floor(draw*zoneWidth)` landed on the SAME integer offset regardless of seed,
+   producing IDENTICAL chosen columns across different seeds. Root cause, measured directly and disclosed as a
+   genuinely more fundamental finding than T56's own "large additive salt dominates a tiny one" bug:
+   `lcgPoints`'s own LCG (`s = imul(seed,1664525)+1013904223`) is LINEAR in a SMALL seed — `lcgPoints(seed,1).u`
+   for seed in {1,2,7,42,100} all landed in [0.236,0.275] while seed=999999 landed at 0.788 — the weakness is
+   in the RAW LCG's own response to a small seed, not any one salt scheme built on it. Fixed with Murmur3's own
+   `fmix32` finalizer (same finalizer T54 already used for a different bug in a different file) applied to the
+   combined seed before drawing — new helper `_fmix32`, applied ONLY at the specific call sites that needed it
+   (see finding #2), not to `_columnSeed` itself, which is used pervasively by code well outside this turn's
+   own scope.
+2. **The SAME weakness was already present in T56's own (already-merged) `_RAILS_COUNT_SALT`/
+   `_TIES_COUNT_SALT` draws.** Measured directly while investigating #1: seeds 1-30 against `_TIES_COUNT_SALT`
+   all landed in [0.011,0.023] — a run of CONSECUTIVE small seeds clustering near the SAME near-zero value, not
+   independently spread — meaning `count` collapsed to `countMin` for this whole seed range. T56's own "50
+   seeds: count always in [6,7]" test happened to still pass only because that range has exactly 2 possible
+   values and the FULL 50-seed sweep crossed the 0.5 threshold often enough by chance (verified: the actual
+   per-seed draws are NOT independently uniform, they cluster in long runs near 0 or near 1, only jumping at
+   scattered points) — not because the draws were genuinely well-distributed for NEARBY seeds, which is this
+   session's own actual usage pattern (1, 2, 3, 7, 42...). Applied `_fmix32` to both call sites too — a real,
+   disclosed correction to already-shipped T56 code, found only because this turn's own work happened to
+   re-exercise the same salt-derivation shape and I measured rather than assumed it was already proven.
+3. **A naive `zone = k % zones` wrap order is a fixed, seed-INDEPENDENT bias toward the low-indexed zones —
+   not a real fix for "all ties on one side" at all, just a subtler version of the same bug.** Self-caught
+   while measuring the FIRST implementation's own actual output (not from reading the code): with
+   `ties.count:[8,13]` (zones=8) and a typical drawn count of 9-13, the wrap-around "extra" ties (count-8 of
+   them) ALWAYS land in zones 0,1,2,...(count-9) — the LOWEST, i.e. LEFTMOST, zones — every single run,
+   regardless of seed. Measured end-to-end: the default config's own worst-case left/right split across 50
+   seeds was 66.7%, still failing the dispatch's own "~65%" criterion, DESPITE zone assignment nominally
+   "wrapping". Fixed: WHICH zones get the extra tie is now its own independent seeded score per zone (the same
+   score-and-sort shape `spread:'random'` already uses one level up, at the zone level instead of the column
+   level) — re-measured: worst-case split across 50 seeds is now 63.6%.
+
+**A genuine test-design lesson, also self-caught**: my own FIRST test for finding #3 ("wrapping is a TRUE
+round-robin, diff<=1 always") was itself vacuous — re-bucketing OUTPUT columns into a zone scheme computed
+independently in the test can't distinguish "zones fixed at countMin" from "zones=count" (a finer partition
+re-bucketed into a coarser one can coincidentally show the same aggregate shape). Rebuilt using an EXTREME
+`ties.count:[2,15]` range specifically to make the distinction unambiguous. Even then, a SECOND, more subtle
+issue surfaced: a strict per-seed `diff<=1` assertion occasionally failed for a reason UNRELATED to the bias
+bug — the de-dup guard (needed so two ties never share a column) can legitimately push a tie across a zone
+boundary when its own assigned zone is nearly saturated at high density, an acceptable side effect of
+collision-avoidance, not a bias bug. Relaxed to an AGGREGATE (across-seed) balance check, which is ROBUST to
+occasional legitimate spillover while still catching the SYSTEMATIC skew (which shows as a consistent, large
+average bias, not an occasional one-off) — the dispatch's own actual criterion (the 65%-per-seed check) still
+runs per-seed and is what ultimately proves the real-world behavior.
+
+**Tests**: new `tests/editor-lattice-pattern-tie-spread.test.js` (9 tests) — the dispatch's own criterion (50
+seeds, no half holds >~65%); different small seeds produce genuinely different column sets (finding #1's own
+regression guard); no two ties share a column (T56's own guarantee, unaffected); tie count stays in the
+declared range; the aggregate zone-balance check (finding #3's own guard, described above); `spread:'random'`
+still works as a real alternative; a dedicated describe block for finding #2 (wide-range counts vary across 30
+consecutive seeds, for BOTH rails and ties). Mutation-tested 3 pieces of new/changed logic (backup, mutate,
+run, confirm exact failure set, restore, `diff` byte-identical — with an extra round of care this time: a
+mid-sequence backup/restore mismatch was caught and corrected before it could silently validate broken code,
+by re-verifying the restored file's own MD5 against a fresh backup rather than trusting an untimestamped
+"restored" claim): (1) the `_fmix32` spread-draw fix reverted — exactly 1 failure, the dedicated collapse-
+detection test; (2) the zone-bonus-selection fix reverted to `k % zones` — exactly 1 failure, the dispatch's
+own actual 65% criterion (the aggregate-balance test did NOT catch this specific mutation, an honestly-reported
+gap in that test's own sensitivity, though the criterion that actually matters did); (3) both count-salt
+`_fmix32` fixes reverted — exactly 2 failures, one per salt, each in its own dedicated test. Full suite: 898
+passed (60 files), up from 889 pre-turn.
+
+**Live-verified**: re-rendered the SAME 3 seeds (42, 7, 1234) on the SAME 7x9 board the advisor's own T56
+screenshot used, screenshotted via headless Chrome and viewed directly — ties now visibly spread across the
+FULL board width (previously clustered left), saved to this session's own scratchpad as `t57-density.png`.
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(`editor-lattice-pattern.js`, `tests/editor-lattice-pattern-tie-spread.test.js` (new), `WORK-LOG-lane-b.md`) —
+pushed. `reference/` confirmed still untracked.
+

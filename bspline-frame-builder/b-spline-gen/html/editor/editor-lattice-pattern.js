@@ -257,8 +257,13 @@ export const PATTERN_DEFAULTS = {
   // options) is now a declared, real ALTERNATIVE, not the default —
   // named here as a correction, not silently dropped. `maxRailGaps:1`
   // (rails-mode only) means no gap-size variety unless raised.
+  // T57 (advisor, from viewing T56's own render: ties clustered in one
+  // half of the board): `spread:'stratified'` (default) — one tie per
+  // equal-width column zone, wrapping past the declared minimum count
+  // (see `_chooseTieColumns`'s own doc comment); `'random'` (T56's own
+  // original per-column-scored selection) is kept as a real alternative.
   ties: {
-    mode: 'count', count: [8, 13], span: { mode: 'cells', rails: 1 }, maxRailGaps: 1,
+    mode: 'count', count: [8, 13], spread: 'stratified', span: { mode: 'cells', rails: 1 }, maxRailGaps: 1,
     density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1,
   },
   // SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end"):
@@ -370,6 +375,13 @@ const _TIES_COUNT_SALT = 900002;
 // not the exact 50/50 a larger sample would show, but nowhere near the
 // original's total collapse).
 const _TIES_GEOMETRY_SALT = 777;
+// T57 (advisor, from viewing T56's own render: "seed 42: all 8 ties in
+// the LEFT half"): `_chooseTieColumns`' own 'stratified' branch salts
+// each tie's own position-within-zone draw by that tie's GLOBAL index
+// (0..count-1, unique even across a wrapped zone), a distinct salt from
+// both the (retired-by-default, still used in 'random' spread mode)
+// selection score and the geometry draw above.
+const _TIES_SPREAD_SALT = 555;
 
 /** T56 (Fred: "I want 6-7 rails"): `rails.mode:'count'` — a seeded pick
  *  within `[countMin,countMax]` (clamped to however many rows the extent
@@ -381,7 +393,7 @@ const _TIES_GEOMETRY_SALT = 777;
 function _railRowsByCount(jMin, jMax, countRange, seed) {
   const totalRows = jMax - jMin + 1;
   const [countMin, countMax] = countRange;
-  const draw = lcgPoints(_columnSeed(seed, _RAILS_COUNT_SALT), 1)[0].u;
+  const draw = lcgPoints(_fmix32(_columnSeed(seed, _RAILS_COUNT_SALT)), 1)[0].u;
   const count = Math.min(totalRows, Math.max(0, countMin + Math.floor(draw * (countMax - countMin + 1))));
   if (count <= 0) return [];
   if (count === 1) return [Math.round((jMin + jMax) / 2)];
@@ -407,6 +419,54 @@ function _railRowsByCount(jMin, jMax, countRange, seed) {
  *  can't retroactively change an already-placed tie two columns over). */
 function _columnSeed(seed, i) {
   return ((seed ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0);
+}
+
+/** T57 (advisor, from viewing T56's own render — measured, not assumed):
+ *  a genuine, more fundamental finding than T56's own "large-additive-
+ *  salt dominates a tiny one" bug. `lcgPoints`'s own LCG (`s =
+ *  imul(seed,1664525)+1013904223`) is LINEAR in a SMALL seed — for two
+ *  small seeds (say 1 and 2), `s` differs by only `imul(1,1664525)`, a
+ *  tiny fraction of the full 32-bit range, so the FIRST draw stays
+ *  close for EVERY small seed regardless of how `_columnSeed` salts it.
+ *  Measured directly: `lcgPoints(seed,1).u` for seed in {1,2,7,42,100}
+ *  all landed in [0.236,0.275], while seed=999999 landed at 0.788 —
+ *  confirms the weakness is in the RAW LCG's own response to a SMALL
+ *  seed, not specific to any one salt scheme built on top of it.
+ *
+ *  Found via `_chooseTieColumns`'s own 'stratified' branch (its
+ *  within-zone position draw visibly collapsed for this session's own
+ *  typical small seeds, e.g. 1/2/7/42 all picking the identical
+ *  column) — but the SAME weakness turned out to already be present in
+ *  T56's own (already-merged) `_RAILS_COUNT_SALT`/`_TIES_COUNT_SALT`
+ *  draws too: measured directly, seeds 1-30 against `_TIES_COUNT_SALT`
+ *  all landed in [0.011,0.023] (a run of CONSECUTIVE small seeds
+ *  clustering near the SAME value, not independently spread) — T56's
+ *  own "50 seeds: count always in [6,7]" test happened to still pass
+ *  only because that range has just 2 possible values and the full 50-
+ *  seed sweep crossed the 0.5 threshold often enough by chance, not
+ *  because the draws were genuinely well-distributed for NEARBY seeds
+ *  (this session's own actual usage pattern — 1,2,3,7,42... — is
+ *  exactly the adjacency this bug bites hardest). Applied here too,
+ *  fixing a real, disclosed gap in already-shipped code, not just the
+ *  new T57 mechanism that happened to surface it.
+ *
+ *  NOT applied to `_columnSeed` itself, which is used pervasively
+ *  throughout this file by code well outside T56/T57's own scope;
+ *  fixing it at each of these 3 specific call sites rather than
+ *  changing a shared primitive's own behavior for callers that were
+ *  never reported broken (and are validated by their own, separately-
+ *  passing tests already). Murmur3's own `fmix32` finalizer — takes ANY
+ *  32-bit input, including an already-small or poorly-diffused one, and
+ *  avalanches it — same finalizer T54 already used for the shape-
+ *  lattice generator's own seed hash, a DIFFERENT bug in a DIFFERENT
+ *  file, same fix shape. */
+function _fmix32(h) {
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
 }
 
 /** T30: given a FREE-anchor span {jStart, jEnd} (jEnd >= jStart), snap
@@ -484,6 +544,106 @@ function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced) {
 }
 
 /**
+ * T57 (advisor, from viewing T56's own render: seed 42 clustered all 8
+ * ties in the left half of a 7x9 board) — WHICH `count` columns get a
+ * tie, declared as `ties.spread: 'stratified' | 'random'`.
+ *
+ * 'random' (T56's own original mechanism, kept as a real alternative):
+ * every candidate column gets its own independent seeded score, the
+ * `count` lowest are kept — genuinely random per column, but with no
+ * guarantee about how those `count` picks distribute across the WIDTH
+ * (T56's own `count` draws are independent of each other, so a run of
+ * low scores can cluster anywhere, including all on one side — exactly
+ * what the advisor's own screenshot showed).
+ *
+ * 'stratified' (new default): divide `columns` into `zones` EQUAL-WIDTH
+ * groups (`zones = ties.count[0]`, the declared range's own MINIMUM —
+ * the one zone count that's ALWAYS <= the actual seeded `count`, since
+ * `count` is drawn from `[countMin,countMax]`) and place `count` ties
+ * across them as EVENLY as possible: `base = floor(count/zones)` ties
+ * in every zone, plus one more ("the extra") in `count - base*zones`
+ * of the zones. Self-caught bug (measured, not assumed): a naive
+ * `zone = k % zones` always assigns the extras to the LOWEST-indexed
+ * zones first (0, 1, 2, ...) — a fixed, seed-INDEPENDENT bias toward
+ * one side of the board on every run once `count` exceeds `zones`
+ * (which is MOST runs, since `zones` is only the range's own floor) —
+ * not a fix for "all ties in the left half" at all, just a subtler
+ * version of the same bug. Fixed: WHICH zones get the extra tie is its
+ * own independent seeded score per zone (same score-and-sort shape
+ * `spread:'random'` above already uses, one level up — at the zone
+ * level instead of the column level).
+ *
+ * Within a zone, the tie's own column is a seeded pick keyed by ITS OWN
+ * GLOBAL INDEX `k` (0..count-1, unique even for a second, wrapped
+ * occurrence in the same zone) — NOT by column identity (there isn't
+ * one yet, that's what's being chosen) and NOT by zone index alone
+ * (which would make every tie in the same zone pick the identical
+ * position). A defensive de-dup (linear probe forward, wrapping through
+ * the FULL column list) guards the rare case where two draws in a
+ * narrow zone would otherwise land on the same column — global
+ * distinctness (T56's own "no two ties share a column") is preserved
+ * either way.
+ */
+function _chooseTieColumns(columns, count, countMin, spread, seed) {
+  if (spread === 'random') {
+    const scored = columns.map((col) => ({ col, score: lcgPoints(_columnSeed(seed, col), 1)[0].u }));
+    scored.sort((a, b) => a.score - b.score);
+    return scored.slice(0, count).map((s) => s.col).sort((a, b) => a - b);
+  }
+
+  // `zones` is FIXED at the declared range's own minimum, NOT at this
+  // particular run's own (possibly larger) `count` — using `count`
+  // itself here would make `k % zones` always equal `k` (since k<count
+  // always), so wrapping could never trigger at all.
+  const zones = Math.max(1, Math.min(countMin, columns.length));
+
+  // Self-caught bug (measured, not assumed — see WORK-LOG): a plain
+  // `zone = k % zones` always fills zone 0 first, then zone 1, etc. —
+  // for `count` ANYWHERE above `zones` (which is MOST of the time,
+  // given `zones` is the declared range's own MINIMUM), the wrap-around
+  // "extra" ties always land in the LOWEST-indexed zones, a fixed,
+  // seed-INDEPENDENT bias toward one side of the board every single
+  // run — not a real fix for the "all ties in the left half" bug this
+  // whole mechanism exists to solve, just a subtler version of it.
+  // Fixed: distribute `count` ties across `zones` as evenly as possible
+  // (`base` each, `extra` zones get one more) and pick WHICH zones get
+  // that extra tie via their own independent seeded score — the same
+  // score-and-sort selection `spread:'random'` above already uses, at
+  // the ZONE level instead of the column level.
+  const base = Math.floor(count / zones);
+  const extra = count - base * zones;
+  const zoneScored = Array.from({ length: zones }, (_, z) => ({
+    z, score: lcgPoints(_fmix32(_columnSeed(seed, _TIES_SPREAD_SALT + 10000 + z)), 1)[0].u,
+  }));
+  zoneScored.sort((a, b) => a.score - b.score);
+  const bonusZones = new Set(zoneScored.slice(0, extra).map((s) => s.z));
+  const zoneOfTie = [];
+  for (let z = 0; z < zones; z++) {
+    const n = base + (bonusZones.has(z) ? 1 : 0);
+    for (let i = 0; i < n; i++) zoneOfTie.push(z);
+  }
+
+  const used = new Set();
+  const chosen = [];
+  for (let k = 0; k < count; k++) {
+    const zone = zoneOfTie[k];
+    const zoneLo = Math.floor((zone / zones) * columns.length);
+    const zoneHi = Math.min(columns.length, Math.floor(((zone + 1) / zones) * columns.length)) - 1;
+    const draw = lcgPoints(_fmix32(_columnSeed(seed, _TIES_SPREAD_SALT + k)), 1)[0].u;
+    let idx = zoneLo + Math.floor(draw * Math.max(1, zoneHi - zoneLo + 1));
+    idx = Math.min(idx, columns.length - 1);
+    let guard = 0;
+    while (used.has(columns[idx]) && guard < columns.length) {
+      idx = (idx + 1) % columns.length;
+      guard++;
+    }
+    used.add(columns[idx]);
+    chosen.push(columns[idx]);
+  }
+  return chosen.sort((a, b) => a - b);
+}
+
+/**
  * T56 (Fred: "I want... 8-10 ties"), AMENDED after Fred viewed the
  * advisor's own rendered options and picked "B" (7 rails, 13 SHORT-stub
  * ties) as fine: `ties.mode:'count'` — a seeded pick within
@@ -504,42 +664,33 @@ function _tieSpanForColumn(i, seed, ties, railRows, jMin, jMax, forced) {
  *     — my own FIRST guess at the default before Fred actually viewed
  *     the rendered options; kept as a real, declared alternative.
  *
- * Column SELECTION: every candidate column gets its own independent
- * seeded score (`_columnSeed`, same per-item convention `_tieSpanForColumn`
- * already uses) and the lowest `count` scores are kept — deliberately NOT
- * a Fisher-Yates shuffle, whose own result depends on the FULL candidate
- * array's length/order (adding one more candidate column could reshuffle
- * every earlier pick); per-item independent scoring keeps the same
- * reproducibility property `_columnSeed`'s own doc comment already
- * establishes for the rest of this file.
- *
- * That SELECTION score is drawn from `_columnSeed(seed, col)` directly —
- * a chosen column's own geometry draws below must NOT reuse that same
- * seed (caught before writing a test: `lcgPoints(s,1)[0]` and
- * `lcgPoints(s,2)[0]` are the SAME first draw from the SAME stream, so
- * reusing the seed would make the geometry a function of the selection
- * score — currently invisible in 'rails' mode's own default
- * (`maxRailGaps:1`, where gap size is constant regardless of the draw),
- * but it would silently bias which columns get which geometry the
- * moment a caller widens the range — so the geometry draw below uses
- * its own distinct salt, nested rather than added — see
- * `_TIES_GEOMETRY_SALT`'s own doc comment for why nested, not added).
+ * Column SELECTION (`ties.spread`, T57): the T56-era scheme (score every
+ * candidate column independently, keep the `count` lowest — a real,
+ * declared `'random'` alternative, still in `_chooseTieColumns` below)
+ * looked "spread" per-column but wasn't spread across the WIDTH — the
+ * advisor caught it directly in T56's own render (`t56-density.png`,
+ * "seed 42: all 8 ties in the LEFT half"). `'stratified'` (the new
+ * default) divides the column range into `zones` (= `ties.count[0]`,
+ * this preset's own declared minimum — the one value guaranteed to fit
+ * with exactly one tie per zone and no wrap) and assigns tie `k`
+ * (0..count-1) to zone `k % zones` — WRAPPING (a second tie per zone)
+ * only when `count` actually exceeds `zones`, which happens whenever the
+ * seeded count lands above the range's own minimum. See
+ * `_chooseTieColumns`'s own doc comment for the full derivation.
  */
 function _tieSlotsByCount(railRows, columns, ties, jMin, jMax, seed) {
   if (columns.length === 0) return [];
   const spanMode = ties.span?.mode || 'cells';
   if (spanMode === 'rails' && railRows.length < 2) return []; // nothing to bridge between
   const [countMin, countMax] = ties.count;
-  const countDraw = lcgPoints(_columnSeed(seed, _TIES_COUNT_SALT), 1)[0].u;
+  const countDraw = lcgPoints(_fmix32(_columnSeed(seed, _TIES_COUNT_SALT)), 1)[0].u;
   const count = Math.min(
     columns.length,
     Math.max(0, countMin + Math.floor(countDraw * (countMax - countMin + 1)))
   );
   if (count <= 0) return [];
 
-  const scored = columns.map((col) => ({ col, score: lcgPoints(_columnSeed(seed, col), 1)[0].u }));
-  scored.sort((a, b) => a.score - b.score);
-  const chosen = scored.slice(0, count).map((s) => s.col).sort((a, b) => a - b);
+  const chosen = _chooseTieColumns(columns, count, countMin, ties.spread || 'stratified', seed);
 
   const slots = [];
 
