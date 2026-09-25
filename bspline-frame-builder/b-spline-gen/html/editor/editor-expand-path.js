@@ -717,17 +717,6 @@ function _sampleOriginal(subpath, samples = 8) {
   return pts;
 }
 
-function _segToD(seg) {
-  if (seg.cmd === 'L') return `L ${seg.x} ${seg.y}`;
-  if (seg.cmd === 'A') return `A ${seg.rx} ${seg.ry} ${seg.rot} ${seg.largeArc ? 1 : 0} ${seg.sweep ? 1 : 0} ${seg.x} ${seg.y}`;
-  return `C ${seg.x1} ${seg.y1} ${seg.x2} ${seg.y2} ${seg.x} ${seg.y}`;
-}
-
-function _passthroughD(subpath) {
-  const body = subpath.segs.map(_segToD).join(' ');
-  return `M ${subpath.start.x} ${subpath.start.y} ${body}${subpath.closed ? ' Z' : ''}`;
-}
-
 /**
  * Closed subpath, mode-gated exactly like every shape kind in this session
  * (circleOutlinePathD etc.): 'fill' = the path's own exact edge (no
@@ -744,7 +733,7 @@ function _passthroughD(subpath) {
  * comment alone.
  *
  * 'fill' mode is `_closedRing` at `half=0` (T40 part 2, needed for glyph
- * outlines: a straight `_passthroughD` of the raw segments would leave any
+ * outlines: a straight re-emit of the raw parsed segments would leave any
  * `C` segment as a raw cubic in the output, breaking the "M/L/A/Z only"
  * contract every other mode already honors — a glyph's own curves need
  * biarc-fitting even though nothing is being OFFSET). At `half=0` every
@@ -753,9 +742,11 @@ function _passthroughD(subpath) {
  * biarc-fit, now fitting the curve's OWN shape rather than an offset of
  * it) and every join's two pieces meet at the exact original vertex,
  * hitting `_buildJoin`'s own "already coincide" shortcut — so the result
- * is the same geometry `_passthroughD` produced for an all-L/A path (this
- * module's own tests confirm byte-identical output on one), now correctly
- * extended to paths with real curves too.
+ * is the same geometry a raw re-emit would produce for an all-L/A path
+ * (this module's own tests confirm byte-identical output on one), now
+ * correctly extended to paths with real curves too. (T43 extended this
+ * same fix to `_openSubpathD`'s own 'fill' branch below — see its header
+ * for why a `_parseD`-open subpath needed it too.)
  */
 function _closedSubpathD(subpath, half, tolerance, mode) {
   if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d;
@@ -777,8 +768,39 @@ function _closedSubpathD(subpath, half, tolerance, mode) {
   return `${outer.d} ${inner.d}`;
 }
 
+/**
+ * T43, found live (not by inspection — the same discipline as T40's own
+ * cap bug and T41's CSS bug): 'fill' mode on a subpath `_parseD` marked
+ * OPEN (no literal `Z` token) used to fall through to a raw re-emit of
+ * the parsed segments as-is — including any `C` a curve was internally
+ * elevated to (T39's own Q->C tokenizer step) — breaking
+ * the "M/L/A/Z only" contract every other mode/kind in this session
+ * honors. This was never exercised by a REAL curve before T43: T40 part
+ * 2's own tests only ever stubbed OUTLINE_KINDS.text's success path with
+ * a fake M/L/Z string (the real glyph fetch always declines in the test
+ * environment — see that file's own comment), so nothing had actually
+ * asserted command-letter purity against real opentype output. T43's own
+ * live CDP export check (a real "Fred" in Arial) did, and failed it:
+ * opentype.js's `toPathData()` NEVER emits `Z` for a closed glyph
+ * contour — it relies on the SVG spec's own implicit-closure-for-fill
+ * rule (a filled subpath is closed at render time whether or not it
+ * carries a literal Z), so `_parseD`'s literal-Z-only closed detection
+ * mislabeled every one of "Fred"'s contours as open.
+ *
+ * Fix: for 'fill' mode SPECIFICALLY, use the exact same `_closedRing`
+ * path `_closedSubpathD` already uses for its own 'fill' branch (T40
+ * part 2's own established fix for this exact problem, just not wired
+ * into the OPEN dispatch too) — `_closedRing`/`_buildBank` never read
+ * `subpath.closed` at all (confirmed by reading them, not assumed), so
+ * this is behavior-identical to a "properly" Z-terminated version of the
+ * same contour, and correct per the SVG spec's own fill semantics (fill
+ * always treats a subpath as closed, Z or not). Scoped to 'fill' only —
+ * 'stroke'/'both' keep `_openCapsuleD` unchanged: a genuinely open stroke
+ * (two real free ends, needing caps) is a real semantic difference from
+ * a closed fill, and nothing in this fix touches that branch.
+ */
 function _openSubpathD(subpath, half, tolerance, mode) {
-  if (mode === 'fill') return _passthroughD(subpath);
+  if (mode === 'fill') return _closedRing(subpath, 1, 0, tolerance).d;
   return _openCapsuleD(subpath, half, tolerance); // an open stroke has one boundary regardless of stroke/both
 }
 

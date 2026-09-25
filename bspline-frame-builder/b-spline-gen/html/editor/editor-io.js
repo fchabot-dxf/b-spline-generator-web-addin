@@ -14,6 +14,7 @@ import { textGlyphPathD } from './editor-expand-text.js';
 import { resetPanState } from './editor-interaction.js';
 import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
+import { OUTLINE_KINDS } from './editor-outline-preview.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -126,6 +127,151 @@ function _serializeLayersAttr(editor) {
     }
 }
 
+/** Shared parse+filter step for getLayerSvg's two modes (the plain
+ *  centerline output below, and _getLayerSvgForFusion's geometry-aware
+ *  swap) — one parse, not two copies. Returns null if there's nothing
+ *  to export for this layer.
+ *
+ *  Route the raster content through the one serializer (EDM3b): forRaster:true
+ *  strips data-original-* (legacy raw <>-markup would break the strict parse
+ *  below — the fill=none cause, EDM2) AND svg.js attrs BEFORE the parse. We then
+ *  filter to the requested layer. Stripping svgjs BEFORE the parse also fixes a
+ *  latent bug: an undeclared `svgjs:` attr made this strict parse error and return
+ *  "" (empty stamp); a clean parse now returns the content. Real sketch children
+ *  carry no svgjs: attrs, so output stays byte-identical there.
+ */
+function _parseLayerContent(editor, layerId, dpi) {
+    if (!editor || !editor._draw || !editor._sketchLayer) return null;
+    const targetId = String(layerId);
+    const raw = serializeEditor(editor, { forRaster: true });
+    if (!raw) return null;
+
+    // Walk a parsed copy and keep only children whose data-layer matches.
+    // Using DOMParser keeps the original markup's quoting/entities intact.
+    const wrapper = `<svg xmlns="http://www.w3.org/2000/svg">${raw}</svg>`;
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(wrapper, 'image/svg+xml');
+    } catch {
+        return null;
+    }
+    const root = doc.documentElement;
+    if (!root) return null;
+
+    let kept = 0;
+    Array.from(root.children).forEach(ch => {
+        const lid = ch.getAttribute('data-layer');
+        if (lid == null || String(lid) !== targetId) ch.remove();
+        else kept++;
+    });
+    if (kept === 0) return null;
+
+    const wPx = editor._mW * dpi;
+    const hPx = editor._mH * dpi;
+    const svgOpen = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">`;
+    return { doc, root, svgOpen, targetId };
+}
+
+/** A DOMParser'd element (plain DOM, not a live svg.js instance) adapted
+ *  to the small interface OUTLINE_KINDS' table entries need (`.attr()`,
+ *  `.array()`, `.type`, `.node`, `.text()`) — see _getLayerSvgForFusion's
+ *  own header for why this adapter exists instead of reusing the preview's
+ *  live svg.js children directly. `.array()` mirrors svg.js's own
+ *  points-attribute parsing (comma AND/OR whitespace separated pairs). */
+function _outlineAdapter(node) {
+    return {
+        type: node.tagName ? node.tagName.toLowerCase() : '',
+        node,
+        attr: (name) => node.getAttribute(name),
+        text: () => node.textContent || '',
+        array: () => {
+            const raw = (node.getAttribute('points') || '').trim();
+            if (!raw) return [];
+            const nums = raw.split(/[\s,]+/).filter(Boolean).map(Number);
+            const pts = [];
+            for (let i = 0; i + 1 < nums.length; i += 2) pts.push([nums[i], nums[i + 1]]);
+            return pts;
+        },
+    };
+}
+
+/**
+ * SE12 Slice 4: the Fusion-export geometry swap — for a layer whose
+ * fusionGeometry pick is 'outline' or 'both', each exportable element is
+ * replaced (outline) or joined by (both) its true offset outline, via
+ * OUTLINE_KINDS — the SAME table (editor-outline-preview.js) that drives
+ * the live, on-canvas outline preview, so there is exactly one geometry
+ * engine, not a second copy for export. This function can't hand
+ * OUTLINE_KINDS the preview's own live svg.js children (it works from a
+ * DOMParser'd copy of the serialized layer content, same as getLayerSvg's
+ * default path) — _outlineAdapter bridges that gap; the geometry
+ * functions themselves (lineOutlinePathD, pathOutlinePathD, ...) are
+ * identical code either way.
+ *
+ * 'centerline' (the default, and any layer never given a pick) returns
+ * the same bytes getLayerSvg's default path would, just wrapped in a
+ * resolved Promise so every {geometry:'fusion'} caller has ONE calling
+ * convention regardless of the layer's own pick.
+ *
+ * Returns { svg, declined }. `declined` counts elements this layer's
+ * outline/both pick could NOT outline — no OUTLINE_KINDS entry for the
+ * element type, or the entry's own decline (e.g. text with no font
+ * mapping, an unsupported line cap) — each exports its centerline
+ * instead (never dropped), individually console-warned, and summed here
+ * for the caller to log/show.
+ */
+async function _getLayerSvgForFusion(editor, layerId, dpi) {
+    const parsed = _parseLayerContent(editor, layerId, dpi);
+    if (!parsed) return { svg: '', declined: 0 };
+    const { doc, root, svgOpen, targetId } = parsed;
+
+    const layer = Array.isArray(editor._layers) ? editor._layers.find((l) => String(l.id) === targetId) : null;
+    const kind = (layer && layer.fusionGeometry) || 'centerline';
+    if (kind === 'centerline') {
+        const inner = stripSvgjsAttributes(root.innerHTML);
+        return { svg: `${svgOpen}${inner}</svg>`, declined: 0 };
+    }
+
+    let declined = 0;
+    for (const ch of Array.from(root.children)) {
+        const type = ch.tagName ? ch.tagName.toLowerCase() : '';
+        if (NON_GEOMETRY_NODE_TYPES.includes(type)) continue; // metadata (defs/etc) — never a geometry candidate
+        const outlineFor = OUTLINE_KINDS[type];
+        const result = outlineFor ? await outlineFor(_outlineAdapter(ch)) : { d: null, unsupported: 'no-outline-kind' };
+        if (!result || result.unsupported || !result.d) {
+            declined++;
+            console.warn(`[EDITOR-IO] getLayerSvg: layer ${targetId} <${type || '?'}> declined outline geometry (${(result && result.unsupported) || 'no-outline-kind'}) — exporting its centerline instead.`);
+            continue; // ch stays exactly as-is: its own centerline
+        }
+        const outlinePath = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+        outlinePath.setAttribute('d', result.d);
+        outlinePath.setAttribute('fill', 'none');
+        outlinePath.setAttribute('stroke', ch.getAttribute('stroke') || '#000000');
+        outlinePath.setAttribute('stroke-width', ch.getAttribute('stroke-width') || '0.01');
+        // Same contract as the live preview (refreshOutlinePreview): the
+        // outline `d` is in the element's own LOCAL frame, so its
+        // `transform` attribute — uncomposed — carries over unchanged.
+        const t = ch.getAttribute('transform');
+        if (t) outlinePath.setAttribute('transform', t);
+        // SA-ROUNDTRIP-2's _carveText already established this precedent
+        // (a text->path swap at bake time carries every data-* attr over)
+        // — followed here for the same reason: whatever metadata the
+        // source element carried stays on whatever geometry now stands
+        // in for it in the export.
+        for (const attr of Array.from(ch.attributes)) {
+            if (attr.name.startsWith('data-')) outlinePath.setAttribute(attr.name, attr.value);
+        }
+        if (kind === 'both') {
+            ch.parentNode.insertBefore(outlinePath, ch.nextSibling); // keep the centerline element too
+        } else {
+            ch.parentNode.replaceChild(outlinePath, ch);
+        }
+    }
+
+    const inner = stripSvgjsAttributes(root.innerHTML);
+    return { svg: `${svgOpen}${inner}</svg>`, declined };
+}
+
 /**
  * Build a self-contained SVG string that contains ONLY the children of
  * the editor's sketch layer that carry `data-layer="<layerId>"`. Used
@@ -135,44 +281,23 @@ function _serializeLayersAttr(editor) {
  * Returns "" if the editor isn't drawn yet, or if the layer has no
  * matching children — the caller is expected to treat empty content as
  * "skip this pass" rather than rasterize a blank mask.
+ *
+ * SE12 Slice 4: `options.geometry === 'fusion'` swaps in the layer's OWN
+ * fusionGeometry pick (outline/both) instead of always emitting the raw
+ * centerline — see _getLayerSvgForFusion. Every OTHER caller (the
+ * default, no options — the carve mask in stamp-mask-manager.js in
+ * particular) is untouched: same code path, same bytes, as before this
+ * slice. `options.geometry === 'fusion'` returns a Promise ({svg,
+ * declined}) instead of a plain string — text glyph outlines need an
+ * async font fetch, so any 'fusion' caller must await regardless of
+ * whether THIS layer's own pick happens to need one.
  */
-export function getLayerSvg(editor, layerId, dpi = 96) {
-    if (!editor || !editor._draw || !editor._sketchLayer) return "";
-    const targetId = String(layerId);
-    // Route the raster content through the one serializer (EDM3b): forRaster:true
-    // strips data-original-* (legacy raw <>-markup would break the strict parse
-    // below — the fill=none cause, EDM2) AND svg.js attrs BEFORE the parse. We then
-    // filter to the requested layer. Stripping svgjs BEFORE the parse also fixes a
-    // latent bug: an undeclared `svgjs:` attr made this strict parse error and return
-    // "" (empty stamp); a clean parse now returns the content. Real sketch children
-    // carry no svgjs: attrs, so output stays byte-identical there.
-    const raw = serializeEditor(editor, { forRaster: true });
-    if (!raw) return "";
-
-    // Walk a parsed copy and keep only children whose data-layer matches.
-    // Using DOMParser keeps the original markup's quoting/entities intact.
-    const wrapper = `<svg xmlns="http://www.w3.org/2000/svg">${raw}</svg>`;
-    let doc;
-    try {
-        doc = new DOMParser().parseFromString(wrapper, 'image/svg+xml');
-    } catch {
-        return "";
-    }
-    const root = doc.documentElement;
-    if (!root) return "";
-
-    let kept = 0;
-    Array.from(root.children).forEach(ch => {
-        const lid = ch.getAttribute('data-layer');
-        if (lid == null || String(lid) !== targetId) ch.remove();
-        else kept++;
-    });
-    if (kept === 0) return "";
-
-    const wPx = editor._mW * dpi;
-    const hPx = editor._mH * dpi;
-    const inner = stripSvgjsAttributes(root.innerHTML);
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${inner}</svg>`;
+export function getLayerSvg(editor, layerId, dpi = 96, options = {}) {
+    if (options.geometry === 'fusion') return _getLayerSvgForFusion(editor, layerId, dpi);
+    const parsed = _parseLayerContent(editor, layerId, dpi);
+    if (!parsed) return "";
+    const inner = stripSvgjsAttributes(parsed.root.innerHTML);
+    return `${parsed.svgOpen}${inner}</svg>`;
 }
 
 /**
