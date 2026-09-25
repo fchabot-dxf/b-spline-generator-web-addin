@@ -25,15 +25,30 @@ import { arcCenterParam } from './path-layout.js';
 
 const MIX = (a, b, t) => a + (b - a) * t;
 
-/** Same per-item derived-sub-seed convention `editor-lattice-pattern.js`'s
- *  own `_columnSeed` already established (module-private there, so
- *  duplicated here rather than imported) — every logical random value
- *  draws from its OWN seed, so which zone widths are explicit (and thus
- *  skip their own draw) never perturbs any OTHER value's own draw. A
- *  stronger reproducibility property than one shared advancing stream
- *  (the reference's own `random()` closure) would give. */
+/** Per-item derived-sub-seed convention (same ROLE as `editor-lattice-
+ *  pattern.js`'s own `_columnSeed`: every logical random value draws from
+ *  its OWN seed, so which zone widths are explicit — and thus skip their
+ *  own draw — never perturbs any OTHER value's own draw) — but NOT that
+ *  function's own XOR-with-a-per-salt-constant mix, which T54's own
+ *  review caught: XOR is linear, so `_subSeed(seedA,salt) ^
+ *  _subSeed(seedB,salt) === seedA ^ seedB` for EVERY salt — two nearby
+ *  seeds (e.g. 42 and 7, `42^7===45`, a small fixed delta) stay a small,
+ *  near-fixed delta apart after mixing, and `lcgPoints`' own single-
+ *  multiply LCG doesn't avalanche a small input delta into a large
+ *  output delta in one step — confirmed by RENDERING seeds 42 and 7 and
+ *  seeing near-identical silhouettes, not just reasoned about. Fixed
+ *  with a proper two-multiply avalanche hash (Murmur3's own `fmix32`
+ *  finalizer, applied after combining seed+salt via two DIFFERENT
+ *  multiplicative constants so the combine step itself doesn't lose
+ *  information the way a single XOR can). */
 function _subSeed(seed, salt) {
-  return (seed ^ Math.imul(salt, 0x9e3779b1)) >>> 0;
+  let h = (Math.imul(seed, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b)) >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
 }
 function _draw(seed, salt) {
   return lcgPoints(_subSeed(seed, salt), 1)[0].u;
@@ -82,7 +97,7 @@ export const SHAPE_DEFAULTS = {
 };
 
 const SALT = {
-  fullW: 1, fullH: 2,
+  fullW: 1, topFrac: 2,
   widthShoulder: 10, widthWaist: 11, widthNeck: 12, widthHead: 13,
   relax: 20,
   segmentLeft: 100, // + left segment index (bottom -> top)
@@ -222,13 +237,6 @@ export function generateSilhouette(region, shape) {
 
   // ── 1. Dimensions + widths ─────────────────────────────────────────
   const fullW = region.w * MIX(0.48, 0.84, _draw(seed, SALT.fullW));
-  const fullH = region.h * MIX(0.68, 0.94, _draw(seed, SALT.fullH));
-  // Reference's own `bottomY = cy + innerH*0.44` (`pathloop.js:115`),
-  // translated to this module's own region form: cy===region.y+region.h/2,
-  // innerH===region.h, so bottomY = region.y + region.h*0.5 + region.h*0.44
-  // = region.y + region.h*0.94 — the SAME 6%-from-the-true-bottom margin,
-  // not a new guess.
-  const bottomY = region.y + region.h * 0.94;
 
   const wShoulder = fullW * _zoneWidth(s.widths, 'shoulder', seed, SALT.widthShoulder);
   const wWaist = fullW * _zoneWidth(s.widths, 'waist', seed, SALT.widthWaist);
@@ -242,6 +250,24 @@ export function generateSilhouette(region, shape) {
   const waistT = Math.min(raw.waist, raw.neck - 5, raw.chin - 10) / 100;
   const neckT = Math.min(Math.max(raw.neck, raw.waist + 5), raw.chin - 5) / 100;
   const chinT = Math.max(raw.chin, raw.neck + 5, raw.waist + 10) / 100;
+
+  // T54 fix: the reference's own `fullH = innerH*mix(0.68,0.94,random())`
+  // (an independently-random height, ported as-is in Slice 1's first
+  // draft) interacts with `chinT` multiplicatively (`yHead = bottomY -
+  // fullH*chinT`) — for chinT well under 1 (the default proportions give
+  // 0.74), that combination left the head reaching only ~25-45% up the
+  // region, confirmed by rendering 8 seeds (advisor's own T54 note).
+  // Fixed by making the size draw a DIRECT target — how far up the
+  // region the head itself should reach (`topFrac`, a declared 6-15%-
+  // from-the-region-top range) — and deriving `fullH` FROM that target
+  // and the actual `chinT`, so the visual result is correct BY
+  // CONSTRUCTION regardless of chinT's own value, rather than the two
+  // interacting unpredictably.
+  const bottomFrac = 0.94; // base: unchanged, 6% margin from the region's true bottom
+  const topFrac = MIX(0.06, 0.15, _draw(seed, SALT.topFrac));
+  const bottomY = region.y + region.h * bottomFrac;
+  const yHeadTarget = region.y + region.h * topFrac;
+  const fullH = (bottomY - yHeadTarget) / chinT;
 
   const yBase = bottomY;
   const yWaist = bottomY - fullH * waistT;
@@ -306,19 +332,34 @@ export function generateSilhouette(region, shape) {
   // ── 3. Segments -> primitives ───────────────────────────────────────
   // Flat order: left (bottom->top), head, right (top->bottom), base —
   // §2's own declared ordering, matching `resolveGenerator`'s own
-  // assembly (`utils.js:122-135`). No special case for the base-close
-  // segment (the reference hardcodes it sharp; this design's own §2/§3
-  // declare no such exception, so it's an ordinary segment here — a
-  // disclosed, deliberate deviation, not an oversight).
+  // assembly (`utils.js:122-135`).
+  const nLeftSeg = leftKpts.length - 1;
+  const nBaseSeg = rightKpts.length - nLeftSeg; // trailing base-row subdivisions + the final base-close segment
   const expectedSegmentCount = leftKpts.length + rightKpts.length;
+  // T54 fix: the reference hardcodes its own base edge sharp
+  // (`utils.js` resolveGenerator: "Base - always sharp", bulge 0) — my
+  // first draft treated it as an ordinary styleable segment, which
+  // rendered as a visibly curved/scalloped base (confirmed by the
+  // advisor's own render) and also matters for carving (a flat base
+  // sits on an edge). Fixed: EVERY base-row segment (the subdivisions,
+  // when keypointCounts.base>2, plus the one closing segment) is FORCED
+  // to this constant, in BOTH the fresh and the reuse path — excluded
+  // from per-segment styling entirely, not just defaulted to it (a
+  // user-edited `segments` entry at a base-row index is overridden too).
+  const BASE_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
+
   let segments;
   if (Array.isArray(s.segments) && s.segments.length === expectedSegmentCount) {
-    segments = s.segments.map((seg) => ({
-      style: (seg && seg.style) || 'straight',
-      bulge: (seg && seg.bulge) || 0,
-      dir: (seg && seg.dir) || 'out',
-      cornerRadius: (seg && seg.cornerRadius) || 0,
-    }));
+    segments = s.segments.map((seg, i) =>
+      i >= expectedSegmentCount - nBaseSeg
+        ? { ...BASE_SEGMENT }
+        : {
+            style: (seg && seg.style) || 'straight',
+            bulge: (seg && seg.bulge) || 0,
+            dir: (seg && seg.dir) || 'out',
+            cornerRadius: (seg && seg.cornerRadius) || 0,
+          }
+    );
   } else {
     // Reference's own `randB = () => (random()-0.5)*0.6` (pathloop.js:228),
     // mapped onto this design's own unsigned-bulge + dir storage.
@@ -328,7 +369,6 @@ export function generateSilhouette(region, shape) {
         ? { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 }
         : { style: 'curve', bulge: Math.abs(bulge), dir: bulge > 0 ? 'out' : 'in', cornerRadius: 0 };
 
-    const nLeftSeg = leftKpts.length - 1;
     const leftSegs = [];
     for (let i = 0; i < nLeftSeg; i++) leftSegs.push(bulgeToSeg(freshBulge(SALT.segmentLeft + i)));
 
@@ -347,16 +387,13 @@ export function generateSilhouette(region, shape) {
       );
     }
 
-    // Trailing base-row subdivision gaps (only nonzero when B>2 — not
-    // part of the "mirrored pairs" concept, there's no left/right
-    // distinction on the shared bottom edge) + the one final base-close
-    // segment (rightKpts' own last point -> leftKpts[0]).
-    const nBaseSub = rightKpts.length - 1 - nLeftSeg;
-    const baseSubSegs = [];
-    for (let i = 0; i < nBaseSub; i++) baseSubSegs.push(bulgeToSeg(freshBulge(SALT.segmentBaseSub + i)));
-    const baseCloseSeg = bulgeToSeg(freshBulge(SALT.segmentBaseClose));
+    // Every base-row segment (subdivisions, when B>2, + the final
+    // base-close segment) is the fixed constant — no random draw at all
+    // (not drawn-then-discarded; per-item independent sub-seeds mean
+    // skipping a draw here has zero effect on any other value's draw).
+    const baseSegs = Array.from({ length: nBaseSeg }, () => ({ ...BASE_SEGMENT }));
 
-    segments = [...leftSegs, headSeg, ...rightProfileSegs, ...baseSubSegs, baseCloseSeg];
+    segments = [...leftSegs, headSeg, ...rightProfileSegs, ...baseSegs];
   }
 
   // Reference's own `baseCx` (`utils.js:113`): the midpoint of the two

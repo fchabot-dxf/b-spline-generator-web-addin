@@ -118,15 +118,66 @@ describe('generateSilhouette — (c) primitives are L or A only', () => {
     for (const p of out.primitives) expect(['L', 'A']).toContain(p.type);
   });
 
-  it('an explicit all-kink segment set also stays L-only (2 Ls per kinked segment)', () => {
+  it('an explicit all-kink segment set also stays L-only (2 Ls per kinked NON-base segment)', () => {
     const probe = generateSilhouette(REGION, baseShape());
     const n = probe.segments.length;
+    const nLeftSeg = probe.leftKpts.length - 1;
+    const nBaseSeg = probe.rightKpts.length - nLeftSeg;
     const kinkSegments = Array.from({ length: n }, () => ({
       style: 'kink', bulge: 0.3, dir: 'out', cornerRadius: 0,
     }));
     const out = generateSilhouette(REGION, baseShape({ segments: kinkSegments }));
     for (const p of out.primitives) expect(p.type).toBe('L');
-    expect(out.primitives.length).toBe(n * 2);
+    // Base-row entries are FORCED straight (T54) even though the input
+    // requested kink for them too — (n-nBaseSeg) kinked segments each
+    // give 2 Ls, nBaseSeg forced-straight base segments each give 1.
+    expect(out.primitives.length).toBe((n - nBaseSeg) * 2 + nBaseSeg);
+  });
+});
+
+describe('generateSilhouette — (T54) the base edge is always straight, never styleable', () => {
+  it('a fresh-generated shape never assigns a non-straight style to a base-row segment', () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const out = generateSilhouette(REGION, baseShape({ seed }));
+      const nLeftSeg = out.leftKpts.length - 1;
+      const nBaseSeg = out.rightKpts.length - nLeftSeg;
+      const baseSegs = out.segments.slice(out.segments.length - nBaseSeg);
+      for (const seg of baseSegs) {
+        expect(seg.style).toBe('straight');
+        expect(seg.bulge).toBe(0);
+      }
+    }
+  });
+
+  it('an explicit segments array requesting a curved/kinked base is overridden back to straight', () => {
+    const probe = generateSilhouette(REGION, baseShape());
+    const n = probe.segments.length;
+    const nLeftSeg = probe.leftKpts.length - 1;
+    const nBaseSeg = probe.rightKpts.length - nLeftSeg;
+    const requested = probe.segments.map((seg, i) =>
+      i >= n - nBaseSeg ? { style: 'curve', bulge: 0.5, dir: 'out', cornerRadius: 0 } : seg
+    );
+    const out = generateSilhouette(REGION, baseShape({ segments: requested }));
+    const baseSegs = out.segments.slice(n - nBaseSeg);
+    for (const seg of baseSegs) expect(seg.style).toBe('straight');
+    // The final primitive (the base-close segment) is a plain L, not an A.
+    expect(out.primitives[out.primitives.length - 1].type).toBe('L');
+  });
+
+  it('with keypointCounts.base>2, EVERY base-row subdivision segment is straight, not just the final close', () => {
+    const out = generateSilhouette(
+      REGION,
+      baseShape({ keypointCounts: { ...SHAPE_DEFAULTS.keypointCounts, base: 4 } })
+    );
+    const nLeftSeg = out.leftKpts.length - 1;
+    const nBaseSeg = out.rightKpts.length - nLeftSeg; // subdivisions (2, for base=4) + the close segment (1) = 3
+    expect(nBaseSeg).toBe(3);
+    const baseSegs = out.segments.slice(out.segments.length - nBaseSeg);
+    for (const seg of baseSegs) expect(seg.style).toBe('straight');
+    // Last nBaseSeg primitives are each a single L (straight segments
+    // never expand to more than one primitive).
+    const basePrims = out.primitives.slice(out.primitives.length - nBaseSeg);
+    for (const p of basePrims) expect(p.type).toBe('L');
   });
 });
 
@@ -219,6 +270,64 @@ describe('generateSilhouette — segment persistence (§6)', () => {
     );
     expect(changed.segments.length).not.toBe(first.segments.length);
     expect(changed.segments).not.toEqual(first.segments.slice(0, changed.segments.length));
+  });
+});
+
+describe('generateSilhouette — (T54) seed mixing actually diffuses (no near-identical neighbors)', () => {
+  // Advisor's own dispatch check, made statistically meaningful rather
+  // than a bare inequality: the FIRST hash (a per-salt XOR) is LINEAR,
+  // so `_subSeed(a,salt) ^ _subSeed(b,salt) === a ^ b` for every salt —
+  // two seeds always differ SOME nonzero amount after it, so a plain
+  // "not exactly equal" check passes even for the broken hash (measured:
+  // it does). What actually distinguishes "mixes well" from "barely
+  // mixes" is the SIZE of that difference. Empirically measured via the
+  // real generator, seeds 1-50, leftKpts[0].x (encodes fullW+wShoulder,
+  // itself downstream of 2 chained draws): mean |diff| between
+  // CONSECUTIVE seeds is ~0.04 with the old XOR mix (own range ~[3,65])
+  // vs ~14 with the fixed hash — a ~300x gap, so a threshold of 2 has
+  // wide margin on both sides without being a fragile exact-tuned value.
+  it('mean |diff| between CONSECUTIVE seeds is large, not a near-zero jitter', () => {
+    const xs = [];
+    for (let seed = 1; seed <= 50; seed++) {
+      xs.push(generateSilhouette(REGION, baseShape({ seed })).leftKpts[0].x);
+    }
+    let sum = 0;
+    for (let i = 0; i < xs.length - 1; i++) sum += Math.abs(xs[i + 1] - xs[i]);
+    const mean = sum / (xs.length - 1);
+    expect(mean).toBeGreaterThan(2);
+  });
+
+  it('seed 42 vs seed 7 (the advisor\'s own reported near-identical pair) now differ substantially', () => {
+    const a = generateSilhouette(REGION, baseShape({ seed: 42 }));
+    const b = generateSilhouette(REGION, baseShape({ seed: 7 }));
+    expect(Math.abs(a.leftKpts[0].x - b.leftKpts[0].x)).toBeGreaterThan(2);
+  });
+});
+
+describe('generateSilhouette — (T54) the silhouette spans most of the region height', () => {
+  it('the head reaches the declared 6-15%-from-top target for a spread of seeds', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const out = generateSilhouette(REGION, baseShape({ seed }));
+      const headY = out.leftKpts[out.leftKpts.length - 1].y; // headLeft
+      const topFrac = (headY - REGION.y) / REGION.h;
+      expect(topFrac).toBeGreaterThanOrEqual(0.06 - 1e-9);
+      expect(topFrac).toBeLessThanOrEqual(0.15 + 1e-9);
+    }
+  });
+
+  it('yHead lands EXACTLY on the declared target regardless of chinT (derived, not coincidental)', () => {
+    // A deliberately extreme proportions set (chinT far from the
+    // default 0.74) — if fullH were still independently random (T53's
+    // bug), this would produce a wildly wrong head position; derived
+    // fullH must still hit the target exactly.
+    const out = generateSilhouette(
+      REGION,
+      baseShape({ proportions: { waist: 5, neck: 15, chin: 25 } })
+    );
+    const headY = out.leftKpts[out.leftKpts.length - 1].y;
+    const topFrac = (headY - REGION.y) / REGION.h;
+    expect(topFrac).toBeGreaterThanOrEqual(0.06 - 1e-9);
+    expect(topFrac).toBeLessThanOrEqual(0.15 + 1e-9);
   });
 });
 

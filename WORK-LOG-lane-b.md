@@ -6116,3 +6116,77 @@ Slices 2/3. Polled clean again immediately before passing. Committed by explicit
 `editor-shape-lattice-generator.js`, `tests/editor-shape-lattice-generator.test.js`, staged individually since
 new) + `WORK-LOG-lane-b.md` — pushed.
 
+## T54 — generator review fixes (seed mixing, straight base, shape sizing), then SE14 Slice 2
+
+**Review fixes, from the advisor's own render of 8 seeds against a 7x9 region (`silh-t53.png`,
+`scratchpad/silh.mjs` reused as-is — the renderer's own `toD` already matched this module's `{p0,p1}`/
+`{cx,cy,rx,ry,theta1,dTheta}` primitive shape, zero changes needed there):**
+
+1. **Seed mixing was too weak.** T53's own `_subSeed(seed,salt) = (seed ^ imul(salt,const)) >>> 0` is LINEAR
+   in `seed` — `_subSeed(a,salt) ^ _subSeed(b,salt) === a ^ b` for every salt, so two seeds stay a small,
+   near-fixed XOR delta apart through every single draw. Measured directly (a probe script computing `_draw`
+   for seeds 42/7 across every salt in use): every pair differed by only ~0.7-1.7% in the `[0,1)` output —
+   never zero, but consistently tiny, which is why the RENDERED shapes looked like minor jitter of each other
+   rather than independent draws. Worse for adjacent integers specifically: probed seeds 1-50's own
+   `leftKpts[0].x` (fullW+wShoulder combined) — mean |diff| between CONSECUTIVE seeds was 0.042 against an
+   observed range of roughly [3,65], i.e. next-to-nothing. Fixed with a proper two-multiply avalanche hash
+   (Murmur3's own `fmix32` finalizer, applied after combining seed+salt via two DIFFERENT multiplicative
+   constants). Same probe after the fix: mean adjacent |diff| = 13.997 — a ~330x improvement, empirically
+   measured, not assumed from "it's a real hash now."
+   **My first test for this ("50 seeds pairwise EXACTLY distinct") was itself VACUOUS** — caught by mutation-
+   testing it against the OLD hash and watching it still pass (a tiny-but-nonzero difference still satisfies
+   "not exactly equal"). Rewrote it as a statistical mean-adjacent-diff threshold (>2, ~150x margin below the
+   good hash's 14 and ~7x above the bad hash's 0.04) calibrated from the SAME probe measurements above, not a
+   guessed number.
+2. **The base was curved.** T53's own design doc (§2/§3) never carved out an exception for the base segment,
+   so it was treated like any other styleable segment — but the reference (`utils.js` `resolveGenerator`:
+   `// Base - always sharp`) hardcodes it straight, and a flat base matters for carving (sits on an edge).
+   Fixed: a `BASE_SEGMENT` constant now overrides EVERY base-row segment (the final closing segment, plus any
+   base-row subdivisions when `keypointCounts.base>2`) in BOTH the fresh-generation path and the explicit-
+   segments-reuse path — genuinely excluded from styling, not just defaulted (a user-edited `segments` entry
+   at a base-row index is silently overridden back to straight, by design).
+3. **Shapes sat small and low.** T53's own `fullH = region.h*mix(0.68,0.94,random())` (a direct, unexamined
+   port of `pathloop.js`'s own formula) interacts MULTIPLICATIVELY with `chinT` (`yHead = bottomY -
+   fullH*chinT`) — for the default proportions (`chinT=0.74`), the head only ever reached ~25-44% down from
+   the region's own top edge, confirmed by both hand-derivation and the advisor's own render. Redesigned: the
+   random draw now targets `topFrac` DIRECTLY (where the head should sit, 6-15% from the region's own top —
+   a declared range) and `fullH` is DERIVED from that target and the actual `chinT` (`fullH = (bottomY -
+   yHeadTarget) / chinT`), so the visual result is correct BY CONSTRUCTION regardless of `chinT`'s own value,
+   instead of the two interacting unpredictably. Verified algebraically (`yHead` reduces to exactly
+   `yHeadTarget`) and with a deliberately extreme `proportions` set in a test (`chinT` far from the default).
+
+**Live-verified by re-rendering the SAME 8 seeds** (fixed generator, same `silh.mjs`, headless Chrome
+screenshot since the advisor's own scratchpad had no direct PNG-from-Node path available here): seeds 42/7 are
+now visibly distinct shapes; every one of the 8 has a perfectly flat base; every one now spans nearly the full
+panel height, head reaching close to the top. Screenshot at
+`scratchpad/silh-t54.png` (this session's own scratchpad, not the advisor's — the advisor's `silh-t53.png` is
+kept as the before/after baseline).
+
+**Mutation-tested all 4 pieces of new/changed logic independently** (backup, mutate, run, confirm exact
+failure set, restore, `diff` byte-identical): (1) reverted the hash to T53's own weak XOR — exactly the 2
+recalibrated seed-mixing tests failed; (2) reverted the FRESH-path base override — the 2 dedicated base tests
+failed PLUS 1 cascading failure in the segment-persistence test (the reused-array comparison diverged because
+the REUSE-path's own override, left intact, still re-forced the base straight on the second call while the
+first call's own output no longer had it forced — a genuine, expected interaction between the two independent
+safeguards, not a false positive); (3) reverted the REUSE-path override specifically (fresh-path left intact)
+— exactly 2 different tests failed, cleanly isolating that path's own coverage; (4) reverted `fullH` to the
+old independent-random formula — exactly the 2 sizing tests failed. No unexpected tests moved in any run.
+
+Test file grew from 22 to 22 (net: 2 removed as vacuous + rewritten, 9 added: 3 base-straight, 2 seed-mixing,
+2 sizing, plus the all-kink primitive-count test updated for the now-forced-straight base). Full suite: 866
+passed (58 files), up from 859 pre-turn.
+
+**Stopped here — did NOT start Slice 2.** Polling amendments right after finishing the fixes above (before
+starting fillets) surfaced a PAUSE: Fred reviewed the same 8-seed render this turn's fixes produced and
+doesn't like the bust/silhouette look at all — he wants a SIMPLE parametric hourglass instead, modeled on
+frame-builder Template 1/2 (straight top/bottom, tangent arcs at shoulder/waist/hip, or a neck S-curve), and
+is choosing the exact look before the next dispatch. This means SE14 §3/§4's own bust-silhouette model
+(keypoints/zones/bulge-styling ported from `pathloop.js`) is likely to be REPLACED, not extended — so
+building Slice 2's fillets on top of it now would be building on geometry about to change. Per the amendment's
+own explicit instruction: stopped, committing what's already clean (the 3 fixes above, fully tested and
+mutation-tested — real infrastructure, `lcgPoints`-based hashing/straight-base/derived-sizing, that most
+likely carries into whatever generator comes next), and passing back now rather than starting Slice 2.
+
+Amendments polled clean before this commit. Committed by explicit path (`editor-shape-lattice-generator.js`,
+`tests/editor-shape-lattice-generator.test.js`, `WORK-LOG-lane-b.md`) — pushed.
+
