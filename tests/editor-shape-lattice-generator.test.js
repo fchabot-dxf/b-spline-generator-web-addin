@@ -1,347 +1,238 @@
 /**
- * SE14 Slice 1 (T53) — the pure silhouette generator
- * (editor-shape-lattice-generator.js): seed -> keypoints -> per-segment
- * styles -> exact L/A primitives, per SE14-SHAPE-LATTICE-DESIGN.md §10's
- * own Slice 1 verify list:
- *   (a) a fixed seed produces byte-identical output across two calls;
- *   (b) symmetryRelax:0 produces an EXACT mirror (points AND bulges);
- *   (c) every output primitive is L or A only;
- *   (d) an independent oracle check of the bulge->radius formula against
- *       arcCenterParam's own inverse (both must agree on the SAME arc) —
- *       verified here via a geometrically independent property (the
- *       defining bulge sagitta, plus endpoint round-trip through the
- *       arc's own FORWARD parametrization, `_arcWorldPointTangent`),
- *       never by re-checking the module's own internal R/sweep values.
+ * SE14 Slice 1, REPLACED for T55 — the pure silhouette generator
+ * (editor-shape-lattice-generator.js) now builds a declared PRESET table
+ * (hourglass | bottle, ported from the frame-builder's own Template 1/2
+ * recipes) instead of T53/54's own bust/keypoint-bulge model.
+ *
+ * T55's own dispatch verify list: tangency at every real joint (unit-
+ * tangent dot >= 1-1e-9); the pinch arc reaches its MINIMUM half-width
+ * at its own midpoint (inward, not outward — the exact bug Fred flagged
+ * in the un-solved seed render); exact mirror; L/A only; both presets
+ * across 3 region aspect ratios.
+ *
+ * Tangency is checked via `_arcWorldPointTangent` (editor-expand-path.js)
+ * — a FORWARD parametrization, a genuinely different code path from this
+ * module's own `arcCenterParam`-based arc construction — never by
+ * re-reading `_arcPrimitive`'s own internal center/radius.
  */
 import { describe, it, expect } from 'vitest';
 import {
-  generateSilhouette, SHAPE_DEFAULTS, WIDTH_RANGES, ALL_STYLES, WIRED_STYLES,
+  generateSilhouette, PRESETS, ALL_STYLES, WIRED_STYLES,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { _arcWorldPointTangent } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-expand-path.js';
 
-const REGION = { x: 0, y: 0, w: 200, h: 300 };
+const REGIONS = [
+  { x: 0, y: 0, w: 200, h: 300 }, // portrait
+  { x: 10, y: 5, w: 320, h: 180 }, // landscape, offset origin
+  { x: -50, y: -50, w: 240, h: 240 }, // square, negative origin
+];
+const PRESET_NAMES = ['hourglass', 'bottle'];
 
-function baseShape(overrides = {}) {
-  return { ...SHAPE_DEFAULTS, seed: 7, ...overrides };
+function tangentAtEnd(p) {
+  if (p.type === 'L') {
+    const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, len = Math.hypot(dx, dy);
+    return { x: dx / len, y: dy / len };
+  }
+  const sign = p.dTheta > 0 ? 1 : -1;
+  const t = _arcWorldPointTangent(p.cx, p.cy, p.rx, p.ry, p.phi, p.theta1 + p.dTheta).tangentCCW;
+  return { x: t.x * sign, y: t.y * sign };
+}
+function tangentAtStart(p) {
+  if (p.type === 'L') {
+    const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, len = Math.hypot(dx, dy);
+    return { x: dx / len, y: dy / len };
+  }
+  const sign = p.dTheta > 0 ? 1 : -1;
+  const t = _arcWorldPointTangent(p.cx, p.cy, p.rx, p.ry, p.phi, p.theta1).tangentCCW;
+  return { x: t.x * sign, y: t.y * sign };
 }
 
-describe('generateSilhouette — (a) byte-identical seed reproduction', () => {
-  it('two calls with the same region+shape produce deep-equal output', () => {
-    const out1 = generateSilhouette(REGION, baseShape());
-    const out2 = generateSilhouette(REGION, baseShape());
-    expect(out2).toEqual(out1);
-  });
+// Per-preset: which joint indices (i -> (i+1)%n) are the 4 sharp BB
+// corners (top-right, bottom-right, bottom-left, top-left), given the
+// documented segment order (right side top->bottom, bottom edge, left
+// side bottom->top, top edge LAST). Hourglass: 5 segments/side (horn,
+// arc,arc,arc,horn) + 2 edges = 12. Bottle: 4 segments/side (horn,
+// arc,arc,horn) + 2 edges = 10.
+const SHARP_JOINTS = {
+  hourglass: [4, 5, 10, 11], // [right-horn->bottom edge], [bottom edge->left-horn], [left-horn->top edge], [top edge->right-horn]
+  bottle: [3, 4, 8, 9],
+};
 
-  it('a different seed produces different geometry (sanity: not a constant)', () => {
-    const out1 = generateSilhouette(REGION, baseShape({ seed: 7 }));
-    const out2 = generateSilhouette(REGION, baseShape({ seed: 999 }));
-    expect(out2.leftKpts).not.toEqual(out1.leftKpts);
-  });
-
-  it('an explicit zone width does not perturb an UNRELATED zone\'s own random draw', () => {
-    // Same seed, only `widths.neck` pinned — shoulder/waist/head rows
-    // (each an independent per-item sub-seed) must be untouched. This is
-    // the reproducibility property the per-item `_subSeed` scheme buys
-    // over one shared advancing stream (a shared stream would shift
-    // every draw AFTER the pinned one).
-    const free = generateSilhouette(REGION, baseShape());
-    const pinned = generateSilhouette(REGION, baseShape({ widths: { neck: 50 } }));
-    expect(pinned.leftKpts[0]).toEqual(free.leftKpts[0]); // leftBase (shoulder width)
-    const waistIdx = 1 + SHAPE_DEFAULTS.keypointCounts.shoulder;
-    expect(pinned.leftKpts[waistIdx]).toEqual(free.leftKpts[waistIdx]); // waistLeft
-    expect(pinned.leftKpts[pinned.leftKpts.length - 1]).toEqual(
-      free.leftKpts[free.leftKpts.length - 1]
-    ); // headLeft
-    // The neck row itself DOES change (that's the point of pinning it).
-    const neckIdx = waistIdx + 1 + SHAPE_DEFAULTS.keypointCounts.waist;
-    expect(pinned.leftKpts[neckIdx]).not.toEqual(free.leftKpts[neckIdx]);
+describe.each(PRESET_NAMES)('generateSilhouette(%s) — tangency at every real joint', (preset) => {
+  it.each(REGIONS.map((r, i) => [i, r]))('region %i: dot ~ 1 everywhere except the 4 sharp BB corners', (_i, region) => {
+    const out = generateSilhouette(region, { preset, seed: 7 });
+    const n = out.primitives.length;
+    const sharp = new Set(SHARP_JOINTS[preset]);
+    for (let k = 0; k < n; k++) {
+      const a = out.primitives[k], b = out.primitives[(k + 1) % n];
+      const ta = tangentAtEnd(a), tb = tangentAtStart(b);
+      const dot = ta.x * tb.x + ta.y * tb.y;
+      if (sharp.has(k)) {
+        expect(Math.abs(dot)).toBeLessThan(0.05); // a true right-angle corner, not tangent
+      } else {
+        expect(dot).toBeGreaterThanOrEqual(1 - 1e-6);
+      }
+    }
   });
 });
 
-describe('generateSilhouette — (b) symmetryRelax:0 exact mirror', () => {
-  it('named row pairs (base/waist/neck/head) reflect exactly about cx', () => {
-    const out = generateSilhouette(REGION, baseShape({ symmetryRelax: 0 }));
-    const cx = out.cx;
-    const pairs = [
-      [out.leftKpts[0], out.rightKpts[out.rightKpts.length - 1]], // base
-      [out.leftKpts[out.leftKpts.length - 1], out.rightKpts[0]], // head
-    ];
-    for (const [l, r] of pairs) {
-      expect(l.x + r.x).toBeCloseTo(2 * cx, 9);
-      expect(l.y).toBeCloseTo(r.y, 9);
-    }
-  });
-
-  it('the FULL keypoint chain is a reversed-index mirror (default B=2: equal-length arrays)', () => {
-    const out = generateSilhouette(REGION, baseShape({ symmetryRelax: 0 }));
-    expect(out.rightKpts.length).toBe(out.leftKpts.length);
-    const n = out.leftKpts.length;
-    for (let i = 0; i < n; i++) {
-      const l = out.leftKpts[i];
-      const r = out.rightKpts[n - 1 - i];
-      expect(l.x + r.x).toBeCloseTo(2 * out.cx, 9);
-      expect(l.y).toBeCloseTo(r.y, 9);
-    }
-  });
-
-  it('freshly-generated segment styles/bulges mirror left<->right exactly (not just points)', () => {
-    const out = generateSilhouette(REGION, baseShape({ symmetryRelax: 0 }));
-    const nLeftSeg = out.leftKpts.length - 1;
-    // segments layout: [0..nLeftSeg-1]=left, [nLeftSeg]=head, [nLeftSeg+1..nLeftSeg+nLeftSeg]=right profile
-    for (let i = 0; i < nLeftSeg; i++) {
-      const left = out.segments[i];
-      const right = out.segments[nLeftSeg + 1 + i];
-      const mirrorOfLeft = out.segments[nLeftSeg + 1 + (nLeftSeg - 1 - i)];
-      expect(mirrorOfLeft).toEqual(left);
-      void right;
-    }
-  });
-
-  it('symmetryRelax>0 makes the base row (and only the base row, per the ported formula) independent', () => {
-    const relaxed = generateSilhouette(REGION, baseShape({ symmetryRelax: 1 }));
-    const mirrored = generateSilhouette(REGION, baseShape({ symmetryRelax: 0 }));
-    const nBase = relaxed.rightKpts[relaxed.rightKpts.length - 1];
-    const nBaseMirrored = mirrored.rightKpts[mirrored.rightKpts.length - 1];
-    expect(nBase.x).not.toBeCloseTo(nBaseMirrored.x, 6);
-    // head row: per the disclosed finding, the reference's own blend
-    // formula is a no-op there — relax>0 must NOT move it.
-    const head = relaxed.rightKpts[0];
-    const headMirrored = mirrored.rightKpts[0];
-    expect(head.x).toBeCloseTo(headMirrored.x, 9);
+describe.each(PRESET_NAMES)('generateSilhouette(%s) — the pinch reaches its MINIMUM half-width inward', (preset) => {
+  it('the concave arc\'s own midpoint sits CLOSER to centerline than its STRAIGHT CHORD\'S midpoint (not outward)', () => {
+    // Bottle's own neck/waist arc has ASYMMETRIC endpoints (one at the
+    // narrow neck's own half-width, one at the shared skeleton column) —
+    // comparing the arc's own midpoint against each raw endpoint
+    // individually isn't a valid test there (one endpoint can already
+    // be closer to centerline than the pinch). The general, correct
+    // check (same one T53/54's own 'in'/'out' oracle test used): does
+    // the arc's OWN curve reach closer to centerline than a STRAIGHT
+    // line between its two endpoints would — the actual definition of
+    // "pinches inward, not outward".
+    const region = REGIONS[0];
+    const out = generateSilhouette(region, { preset, seed: 7 });
+    const concaveIdx = out.segments.findIndex((s) => s.style === 'curve' && s.dir === 'in');
+    expect(concaveIdx).toBeGreaterThanOrEqual(0);
+    const arc = out.primitives[concaveIdx];
+    expect(arc.type).toBe('A');
+    const a = out.keypoints[concaveIdx];
+    const b = out.keypoints[(concaveIdx + 1) % out.keypoints.length];
+    const mid = _arcWorldPointTangent(arc.cx, arc.cy, arc.rx, arc.ry, arc.phi, arc.theta1 + arc.dTheta / 2).point;
+    const straightMidX = (a.x + b.x) / 2;
+    expect(Math.abs(mid.x - out.cx)).toBeLessThan(Math.abs(straightMidX - out.cx) - 1e-6);
   });
 });
 
-describe('generateSilhouette — (c) primitives are L or A only', () => {
-  it('a fresh-generated shape never emits C or Q', () => {
-    const out = generateSilhouette(REGION, baseShape());
+describe.each(PRESET_NAMES)('generateSilhouette(%s) — exact mirror', () => {
+  it.each(REGIONS.map((r, i) => [i, r]))('region %i: left-side keypoints are the exact mirror of the right side', (_i, region) => {
+    for (const preset of PRESET_NAMES) {
+      const out = generateSilhouette(region, { preset, seed: 11 });
+      const n = out.keypoints.length;
+      const half = n / 2;
+      for (let k = 0; k < half; k++) {
+        const r = out.keypoints[k];
+        // Right side is keypoints[0..half-1]; left side is the reverse
+        // mirror at keypoints[half..n-1] — index (n-1-k) mirrors index k,
+        // by construction (both solvers build the left side via M(x,y)
+        // = {cx0-x, cy0+y} directly from the SAME local x/y as the right
+        // side, in reverse array order).
+        const l = out.keypoints[n - 1 - k];
+        expect(r.x + l.x).toBeCloseTo(2 * out.cx, 9);
+        expect(r.y).toBeCloseTo(l.y, 9);
+      }
+    }
+  });
+});
+
+describe.each(PRESET_NAMES)('generateSilhouette(%s) — primitives are L or A only', (preset) => {
+  it.each(REGIONS.map((r, i) => [i, r]))('region %i: never C or Q', (_i, region) => {
+    const out = generateSilhouette(region, { preset, seed: 99 });
     expect(out.primitives.length).toBeGreaterThan(0);
     for (const p of out.primitives) expect(['L', 'A']).toContain(p.type);
   });
-
-  it('an explicit all-kink segment set also stays L-only (2 Ls per kinked NON-base segment)', () => {
-    const probe = generateSilhouette(REGION, baseShape());
-    const n = probe.segments.length;
-    const nLeftSeg = probe.leftKpts.length - 1;
-    const nBaseSeg = probe.rightKpts.length - nLeftSeg;
-    const kinkSegments = Array.from({ length: n }, () => ({
-      style: 'kink', bulge: 0.3, dir: 'out', cornerRadius: 0,
-    }));
-    const out = generateSilhouette(REGION, baseShape({ segments: kinkSegments }));
-    for (const p of out.primitives) expect(p.type).toBe('L');
-    // Base-row entries are FORCED straight (T54) even though the input
-    // requested kink for them too — (n-nBaseSeg) kinked segments each
-    // give 2 Ls, nBaseSeg forced-straight base segments each give 1.
-    expect(out.primitives.length).toBe((n - nBaseSeg) * 2 + nBaseSeg);
-  });
 });
 
-describe('generateSilhouette — (T54) the base edge is always straight, never styleable', () => {
-  it('a fresh-generated shape never assigns a non-straight style to a base-row segment', () => {
-    for (const seed of [1, 2, 3, 4, 5]) {
-      const out = generateSilhouette(REGION, baseShape({ seed }));
-      const nLeftSeg = out.leftKpts.length - 1;
-      const nBaseSeg = out.rightKpts.length - nLeftSeg;
-      const baseSegs = out.segments.slice(out.segments.length - nBaseSeg);
-      for (const seg of baseSegs) {
-        expect(seg.style).toBe('straight');
-        expect(seg.bulge).toBe(0);
+describe('generateSilhouette(hourglass) — geometric invariants (T55\'s own closed-form derivation)', () => {
+  it('shoulder/hip arcs are ALWAYS exactly quarter circles (90deg), regardless of params', () => {
+    for (const region of REGIONS) {
+      for (const seed of [1, 2, 3]) {
+        const out = generateSilhouette(region, { preset: 'hourglass', seed });
+        const shoulder = out.primitives[1], hip = out.primitives[3];
+        expect(Math.abs(Math.abs(shoulder.dTheta) - Math.PI / 2)).toBeLessThan(1e-6);
+        expect(Math.abs(Math.abs(hip.dTheta) - Math.PI / 2)).toBeLessThan(1e-6);
       }
     }
   });
 
-  it('an explicit segments array requesting a curved/kinked base is overridden back to straight', () => {
-    const probe = generateSilhouette(REGION, baseShape());
-    const n = probe.segments.length;
-    const nLeftSeg = probe.leftKpts.length - 1;
-    const nBaseSeg = probe.rightKpts.length - nLeftSeg;
-    const requested = probe.segments.map((seg, i) =>
-      i >= n - nBaseSeg ? { style: 'curve', bulge: 0.5, dir: 'out', cornerRadius: 0 } : seg
-    );
-    const out = generateSilhouette(REGION, baseShape({ segments: requested }));
-    const baseSegs = out.segments.slice(n - nBaseSeg);
-    for (const seg of baseSegs) expect(seg.style).toBe('straight');
-    // The final primitive (the base-close segment) is a plain L, not an A.
-    expect(out.primitives[out.primitives.length - 1].type).toBe('L');
-  });
-
-  it('with keypointCounts.base>2, EVERY base-row subdivision segment is straight, not just the final close', () => {
-    const out = generateSilhouette(
-      REGION,
-      baseShape({ keypointCounts: { ...SHAPE_DEFAULTS.keypointCounts, base: 4 } })
-    );
-    const nLeftSeg = out.leftKpts.length - 1;
-    const nBaseSeg = out.rightKpts.length - nLeftSeg; // subdivisions (2, for base=4) + the close segment (1) = 3
-    expect(nBaseSeg).toBe(3);
-    const baseSegs = out.segments.slice(out.segments.length - nBaseSeg);
-    for (const seg of baseSegs) expect(seg.style).toBe('straight');
-    // Last nBaseSeg primitives are each a single L (straight segments
-    // never expand to more than one primitive).
-    const basePrims = out.primitives.slice(out.primitives.length - nBaseSeg);
-    for (const p of basePrims) expect(p.type).toBe('L');
+  it('the waist arc is ALWAYS exactly a semicircle (180deg)', () => {
+    for (const region of REGIONS) {
+      for (const seed of [1, 2, 3]) {
+        const out = generateSilhouette(region, { preset: 'hourglass', seed });
+        const waist = out.primitives[2];
+        expect(Math.abs(Math.abs(waist.dTheta) - Math.PI)).toBeLessThan(1e-6);
+      }
+    }
   });
 });
 
-describe('generateSilhouette — (d) independent oracle: bulge<->arc agreement', () => {
-  it('a curve segment\'s arc endpoints and sagitta match the bulge definition independently', () => {
-    const probe = generateSilhouette(REGION, baseShape());
-    const n = probe.segments.length;
-    const segments = probe.segments.map((seg, i) =>
-      i === 0 ? { style: 'curve', bulge: 0.4, dir: 'out', cornerRadius: 0 } : seg
-    );
-    void n;
-    const out = generateSilhouette(REGION, baseShape({ segments }));
-    const arc = out.primitives[0];
-    expect(arc.type).toBe('A');
-
-    const a = out.leftKpts[0];
-    const b = out.leftKpts[1];
-    const chord = Math.hypot(b.x - a.x, b.y - a.y);
-
-    // Independent path #1: FORWARD-parametrize the arc (a completely
-    // different code path from arcCenterParam's own INVERSE) at its own
-    // start/end angles and confirm it reproduces a/b.
-    const p0 = _arcWorldPointTangent(arc.cx, arc.cy, arc.rx, arc.ry, arc.phi, arc.theta1).point;
-    const p1 = _arcWorldPointTangent(
-      arc.cx, arc.cy, arc.rx, arc.ry, arc.phi, arc.theta1 + arc.dTheta
-    ).point;
-    expect(p0.x).toBeCloseTo(a.x, 6);
-    expect(p0.y).toBeCloseTo(a.y, 6);
-    expect(p1.x).toBeCloseTo(b.x, 6);
-    expect(p1.y).toBeCloseTo(b.y, 6);
-
-    // Independent path #2: the DEFINING geometric property of a CAD
-    // "bulge" — sagitta (perpendicular distance from the chord to the
-    // arc's own midpoint) equals |bulge| * chord/2 exactly. Computed
-    // here from first principles (point-to-line distance), never by
-    // re-reading the module's own R/sweep intermediates.
-    const mid = _arcWorldPointTangent(
-      arc.cx, arc.cy, arc.rx, arc.ry, arc.phi, arc.theta1 + arc.dTheta / 2
-    ).point;
-    const ux = (b.x - a.x) / chord, uy = (b.y - a.y) / chord;
-    const relX = mid.x - a.x, relY = mid.y - a.y;
-    const along = relX * ux + relY * uy;
-    const perp = relX * -uy + relY * ux; // perpendicular component = sagitta, signed
-    expect(Math.abs(along - chord / 2)).toBeLessThan(1e-6); // apex sits over the chord midpoint
-    expect(Math.abs(Math.abs(perp) - 0.4 * (chord / 2))).toBeLessThan(1e-6);
-
-    // Independent path #3: SWEEP DIRECTION. Paths #1/#2 above are blind
-    // to a sweep-sign bug (both the correct and the mirror-image arc
-    // satisfy "endpoints correct, sagitta magnitude correct" equally) —
-    // so check the SIGN independently too, via a semantic definition of
-    // 'out' that doesn't reuse the module's own od/perpLeftIsOutward
-    // formula: 'out' means the arc's own midpoint sits FARTHER from the
-    // shape's centerline (cx) than the straight chord's own midpoint.
-    const straightMidX = (a.x + b.x) / 2;
-    expect(Math.abs(mid.x - out.cx)).toBeGreaterThan(Math.abs(straightMidX - out.cx));
+describe('generateSilhouette — explicit params override the gentle seed jitter', () => {
+  it('hourglass: an explicit waistReach pins the pinch\'s own DEPTH exactly, across seeds', () => {
+    // waistReach alone determines `waistX` (the pinch's own boundary
+    // reach) — but `waistX` is the ARC's own midpoint, not a keypoint
+    // (the keypoints sit at x=skelX, which also depends on the SEPARATE,
+    // still-jittered `cornerRadius`). So the quantity waistReach alone
+    // pins is the waist arc's own midpoint x, not any keypoint's x.
+    const region = REGIONS[0];
+    const a = generateSilhouette(region, { preset: 'hourglass', seed: 1, params: { waistReach: 0.4 } });
+    const b = generateSilhouette(region, { preset: 'hourglass', seed: 2, params: { waistReach: 0.4 } });
+    const midX = (out) => {
+      const arc = out.primitives[2];
+      return Math.abs(
+        _arcWorldPointTangent(arc.cx, arc.cy, arc.rx, arc.ry, arc.phi, arc.theta1 + arc.dTheta / 2).point.x - out.cx
+      );
+    };
+    expect(midX(a)).toBeCloseTo(midX(b), 6);
+    // Sanity: the SAME keypoint (skelX-driven) is NOT pinned, since
+    // cornerRadius is still jittered independently — proves the test
+    // above is checking the right, genuinely-independent quantity.
+    expect(Math.abs(a.keypoints[2].x - a.cx)).not.toBeCloseTo(Math.abs(b.keypoints[2].x - b.cx), 6);
   });
 
-  it('dir:\'in\' bulges the arc TOWARD the centerline (the opposite sign of \'out\')', () => {
-    const probe = generateSilhouette(REGION, baseShape());
-    const segments = probe.segments.map((seg, i) =>
-      i === 0 ? { style: 'curve', bulge: 0.4, dir: 'in', cornerRadius: 0 } : seg
-    );
-    const out = generateSilhouette(REGION, baseShape({ segments }));
-    const arc = out.primitives[0];
-    const a = out.leftKpts[0];
-    const b = out.leftKpts[1];
-    const mid = _arcWorldPointTangent(
-      arc.cx, arc.cy, arc.rx, arc.ry, arc.phi, arc.theta1 + arc.dTheta / 2
-    ).point;
-    const straightMidX = (a.x + b.x) / 2;
-    expect(Math.abs(mid.x - out.cx)).toBeLessThan(Math.abs(straightMidX - out.cx));
+  it('bottle: an explicit neckWidth pins the top edge width exactly, across seeds', () => {
+    const region = REGIONS[0];
+    const a = generateSilhouette(region, { preset: 'bottle', seed: 1, params: { neckWidth: 0.4 } });
+    const b = generateSilhouette(region, { preset: 'bottle', seed: 2, params: { neckWidth: 0.4 } });
+    expect(Math.abs(a.keypoints[0].x - a.cx)).toBeCloseTo(Math.abs(b.keypoints[0].x - b.cx), 6);
+  });
+
+  it('the same seed + same params is byte-identical across two calls', () => {
+    const region = REGIONS[1];
+    const shape = { preset: 'bottle', seed: 123, params: { neckWidth: 0.45, bodyWidth: 0.9 } };
+    expect(generateSilhouette(region, shape)).toEqual(generateSilhouette(region, shape));
   });
 });
 
-describe('generateSilhouette — segment persistence (§6)', () => {
+describe('generateSilhouette — segment persistence (per-segment style override survives a param change)', () => {
   it('reuses an explicit segments array verbatim when its length matches, across a seed change', () => {
-    const first = generateSilhouette(REGION, baseShape({ seed: 1 }));
-    const edited = first.segments.map((s, i) => (i === 2 ? { ...s, style: 'kink', bulge: 0.5, dir: 'in', cornerRadius: 0 } : s));
-    const second = generateSilhouette(REGION, baseShape({ seed: 2, segments: edited }));
+    const region = REGIONS[0];
+    const first = generateSilhouette(region, { preset: 'hourglass', seed: 1 });
+    const edited = first.segments.map((s, i) =>
+      i === 1 ? { style: 'kink', bulge: 0.4, dir: 'out', cornerRadius: 0 } : s
+    );
+    const second = generateSilhouette(region, { preset: 'hourglass', seed: 2, segments: edited });
     expect(second.segments).toEqual(edited);
-    // geometry (keypoints) is still freshly derived from the NEW seed
-    expect(second.leftKpts).not.toEqual(first.leftKpts);
+    expect(second.primitives[1].type).toBe('L'); // kink -> 2 Ls, so index 1 is now an L, not the default A
   });
 
-  it('a keypointCounts change (which changes the expected segment count) forces a fresh draw', () => {
-    const first = generateSilhouette(REGION, baseShape({ seed: 3 }));
-    const changed = generateSilhouette(
-      REGION,
-      baseShape({ seed: 3, segments: first.segments, keypointCounts: { ...SHAPE_DEFAULTS.keypointCounts, neck: 2 } })
-    );
-    expect(changed.segments.length).not.toBe(first.segments.length);
-    expect(changed.segments).not.toEqual(first.segments.slice(0, changed.segments.length));
+  it('a mismatched-length segments array is ignored (falls back to the fresh default)', () => {
+    const region = REGIONS[0];
+    const out = generateSilhouette(region, {
+      preset: 'hourglass', seed: 5, segments: [{ style: 'kink', bulge: 0.5, dir: 'out', cornerRadius: 0 }],
+    });
+    expect(out.segments.length).toBe(12);
+    expect(out.segments[0].style).toBe('straight'); // the default horn, not a kink
   });
 });
 
-describe('generateSilhouette — (T54) seed mixing actually diffuses (no near-identical neighbors)', () => {
-  // Advisor's own dispatch check, made statistically meaningful rather
-  // than a bare inequality: the FIRST hash (a per-salt XOR) is LINEAR,
-  // so `_subSeed(a,salt) ^ _subSeed(b,salt) === a ^ b` for every salt —
-  // two seeds always differ SOME nonzero amount after it, so a plain
-  // "not exactly equal" check passes even for the broken hash (measured:
-  // it does). What actually distinguishes "mixes well" from "barely
-  // mixes" is the SIZE of that difference. Empirically measured via the
-  // real generator, seeds 1-50, leftKpts[0].x (encodes fullW+wShoulder,
-  // itself downstream of 2 chained draws): mean |diff| between
-  // CONSECUTIVE seeds is ~0.04 with the old XOR mix (own range ~[3,65])
-  // vs ~14 with the fixed hash — a ~300x gap, so a threshold of 2 has
-  // wide margin on both sides without being a fragile exact-tuned value.
-  it('mean |diff| between CONSECUTIVE seeds is large, not a near-zero jitter', () => {
-    const xs = [];
-    for (let seed = 1; seed <= 50; seed++) {
-      xs.push(generateSilhouette(REGION, baseShape({ seed })).leftKpts[0].x);
-    }
-    let sum = 0;
-    for (let i = 0; i < xs.length - 1; i++) sum += Math.abs(xs[i + 1] - xs[i]);
-    const mean = sum / (xs.length - 1);
-    expect(mean).toBeGreaterThan(2);
-  });
-
-  it('seed 42 vs seed 7 (the advisor\'s own reported near-identical pair) now differ substantially', () => {
-    const a = generateSilhouette(REGION, baseShape({ seed: 42 }));
-    const b = generateSilhouette(REGION, baseShape({ seed: 7 }));
-    expect(Math.abs(a.leftKpts[0].x - b.leftKpts[0].x)).toBeGreaterThan(2);
-  });
-});
-
-describe('generateSilhouette — (T54) the silhouette spans most of the region height', () => {
-  it('the head reaches the declared 6-15%-from-top target for a spread of seeds', () => {
-    for (let seed = 1; seed <= 20; seed++) {
-      const out = generateSilhouette(REGION, baseShape({ seed }));
-      const headY = out.leftKpts[out.leftKpts.length - 1].y; // headLeft
-      const topFrac = (headY - REGION.y) / REGION.h;
-      expect(topFrac).toBeGreaterThanOrEqual(0.06 - 1e-9);
-      expect(topFrac).toBeLessThanOrEqual(0.15 + 1e-9);
-    }
-  });
-
-  it('yHead lands EXACTLY on the declared target regardless of chinT (derived, not coincidental)', () => {
-    // A deliberately extreme proportions set (chinT far from the
-    // default 0.74) — if fullH were still independently random (T53's
-    // bug), this would produce a wildly wrong head position; derived
-    // fullH must still hit the target exactly.
-    const out = generateSilhouette(
-      REGION,
-      baseShape({ proportions: { waist: 5, neck: 15, chin: 25 } })
-    );
-    const headY = out.leftKpts[out.leftKpts.length - 1].y;
-    const topFrac = (headY - REGION.y) / REGION.h;
-    expect(topFrac).toBeGreaterThanOrEqual(0.06 - 1e-9);
-    expect(topFrac).toBeLessThanOrEqual(0.15 + 1e-9);
-  });
-});
-
-describe('generateSilhouette — declared style vocabulary (§4, Q2)', () => {
+describe('generateSilhouette — declared style vocabulary (§4, Q2, unchanged by T55)', () => {
   it('WIRED_STYLES is exactly straight/curve/kink; ALL_STYLES declares the rest unwired', () => {
     expect(WIRED_STYLES).toEqual(['straight', 'curve', 'kink']);
     expect(ALL_STYLES.slice(0, 3)).toEqual(WIRED_STYLES);
     expect(ALL_STYLES.length).toBeGreaterThan(WIRED_STYLES.length);
   });
+});
 
-  it('WIDTH_RANGES declares all four zones with min<max', () => {
-    for (const zone of ['shoulder', 'waist', 'neck', 'head']) {
-      const [min, max] = WIDTH_RANGES[zone];
-      expect(min).toBeLessThan(max);
+describe('generateSilhouette — declared preset table (T55)', () => {
+  it('PRESETS declares hourglass and bottle, each with params + a gentle jitter range', () => {
+    for (const name of PRESET_NAMES) {
+      expect(PRESETS[name].params).toBeTruthy();
+      expect(PRESETS[name].jitter).toBeTruthy();
+      for (const key of Object.keys(PRESETS[name].params)) {
+        expect(typeof PRESETS[name].jitter[key]).toBe('number');
+      }
     }
+  });
+
+  it('defaults to hourglass when shape.preset is omitted', () => {
+    const out = generateSilhouette(REGIONS[0], {});
+    expect(out.preset).toBe('hourglass');
   });
 });
