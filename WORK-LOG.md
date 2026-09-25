@@ -8443,3 +8443,94 @@ anything "Rail drags and tie drags are unchanged" promised to leave alone. Zero 
   specific ones and the 17 carried over from turn 250 — confirmed `true`, zero console errors.
 
 No amendments pending as of this pass.
+
+## Turn 253 — MOB2: mobile pass on today's features — DONE
+
+Fred's own live find on pages.dev at 390x844 touch: the T32 undo/redo pill sat on top of the Layers panel
+header, the editor header clipped Cancel and put Apply Stencils fully off-screen, the Layers panel was
+squeezed to a thin strip, and (also flagged) the Widths row already clipped its "Nodes" stepper on desktop
+and the rail-end checkbox had no touch target. Browser-only per the standing no-Fusion rule; declared every
+fix where its analogous mechanism already lives, per the dispatch's own instruction, rather than inventing a
+second one.
+
+**Bug #1 (pill overlap), `editor/editor.js` + `styles/editor.css`.** The pill's `position:absolute` (pointer:
+coarse) resolved against `.cad-modal-window` — the whole 100vh modal — not the canvas, which is harmless in
+row layout (canvas fills the modal below the header) but wrong once `.cad-modal-body` goes column at
+<=720px and the Layers panel shares the modal's old "bottom" territory. First attempt: move `.editor-history`
+markup into `#editorCanvasContainer` so the existing CSS anchor would resolve correctly — caught before
+committing that this breaks DESKTOP (the pill has no `position` override on a fine pointer, so it would
+become an in-flow flex child of the canvas's own centering layout there). Reverted the markup move; instead
+added a `ResizeObserver` on `#editorCanvasContainer` in `initEditor` publishing `--canvas-left` /
+`--canvas-bottom-offset` custom properties — the exact same idiom `properties-lattice.js` already uses for
+`--lattice-sheet-height`, so this is a second instance of an established pattern, not a new mechanism. The
+pill's pointer:coarse rule switched from `position:absolute` (against the modal) to `position:fixed` (against
+the viewport) anchored via those two properties; fallback values keep the pre-existing 12px offsets if the
+observer hasn't fired yet. Verified live at both 390x844 (column layout) and 768x1024 (still row layout,
+>720px) — `pillIntersectsLayersPanel: false` in both, confirming the fix works in either layout mode because
+it's driven by the canvas's own real rect, not a layout-mode assumption.
+
+**Bug #2 (header overflow), `styles/editor.css`.** The existing `@media (max-width:700px)` block for
+`#svgEditorHeader` put `overflow-x:auto` on the WHOLE header (Active Layer label included) with no ordering,
+so Apply Stencils — last in DOM order — started scrolled out of view. Renamed the header's button div to
+`.editor-header-actions` (bspline_gen_palette.html) to give this rule a hook, fixed the breakpoint to 720px
+(matching this file's own stated convention — flagged by the advisor's research as a missed 700-vs-720 spot),
+moved `overflow-x:auto` off the header onto `.editor-header-actions` specifically (`flex:1 1 auto; min-width:
+0`, which needed the ID+class combinator to out-specificity the existing shared `#svgEditorHeader>div` rule),
+and added `order:1` on `#editorCancel`/`#editorApply` vs `order:2` on `#editorDownload`/`#editorClear`, scoped
+inside the same media query so desktop's DOM order is untouched. Cancel/Apply now sit first in the scrollable
+cluster's visual order, guaranteed on-screen at scrollLeft=0.
+
+**Bug #3 (Layers panel height), `styles/editor.css`.** `.editor-layers-panel` had `flex-shrink:0` and no
+height bound; once `.cad-modal-body` goes column its `.layers-list` (already `flex:1; overflow-y:auto`) had
+nothing to actually overflow against, so it grew to fit every row and squeezed the canvas. Added `max-height:
+30vh` + `width:100% !important` + `border-top` (swapped from `border-left`) inside the SAME "Mobile" ≤720px
+block that already gives `.editor-lattice-panel` its bottom-sheet treatment — kept the Layers panel IN-FLOW
+(not `position:fixed` like the Lattice panel) per the dispatch's own suggestion, avoiding a two-fixed-sheets
+stacking problem. This made the OLD `@media (max-width:700px) { .editor-layers-panel { width:170px } }` rule
+a dead no-op (700 is a subset of 720, and the new rule's `!important` always wins) — deleted it rather than
+leaving silent debt, since my own change is what orphaned it.
+
+**Bug #4 (Widths row + rail-ends checkbox), `bspline_gen_palette.html` + `styles/editor.css`.** Root cause
+(confirmed by the advisor's research, re-verified live): `main/ui-bindings.js`'s global `attachNumberSteppers`
+auto-wraps every `input[type=number]` lacking a `no-stepper` opt-out (an ALREADY-declared mechanism, used once
+before by SE7p for a retired field) in a `.cad-stepper` (`min-width:75px`) — 3 of those plus gaps needed 237px
+against the panel's 220px, clipping "Node size" on DESKTOP too, not just mobile. Added `class="no-stepper"` to
+the 3 Widths `<label>`s. For `#latticeNodesRailEnds`/`Ends`/`Crossings` (16x16px, no touch enlargement
+anywhere): first tried the standard `padding` + negative-`margin` enlargement trick (matches how a checkbox's
+hit target is normally grown without resizing its visual box) — **confirmed live it does NOT work in Chrome**:
+`getComputedStyle` showed `padding: 0px` despite the rule applying (margin DID apply) — Chrome's UA stylesheet
+resets `padding` specifically on `input[type=checkbox]` regardless of author rules. Switched to `width`/
+`height: 32px !important` (verified live this DOES resize the actual rendered widget, unlike padding), kept
+the negative `margin:-8px` so the row's visual layout footprint nets back to the original 16px gap.
+
+**Verify — `scripts/smoke-mob2.mjs` (new, standalone, same reasoning as every other smoke-lattice-*.mjs this
+cycle: avoid touching the shared `smoke-editor.mjs` while seat B is on lane-b).** CDP against the local build
+(`python -m http.server 8765` from repo root) at 390x844, 768x1024, and 1400x900:
+- `pillIntersectsLayersPanel`: `false` at all three widths, before AND after Generate.
+- `applyFullyVisible` / `cancelFullyVisible`: `true` at 390x844 (both were the reported failure).
+- Every toggle (`.layer-visibility`/`.layer-carve`/`.layer-showcolor` in the Layers panel, plus the 3 lattice
+  Nodes checkboxes) measured >=32px under `pointer:coarse` at 390x844 and 768x1024; unchanged (mouse-sized) at
+  1400x900 desktop, confirming the enlargement is coarse-pointer-gated, not a blanket resize.
+- `widthsRowFitsPanel.clipped: false` at all three widths (was clipped before the `no-stepper` fix).
+- 1400x900 desktop screenshot: header/pill/toolbar pixel-identical layout to before this turn — the pill still
+  renders inline in the header next to Download SVG, confirming the `position:fixed` branch is genuinely
+  gated behind `pointer:coarse` and never reaches a mouse session.
+- **Touch-drag verify (dispatch's explicit ask, "a touch drag of a rail stretches its tie")**: a `touch-drag`
+  mode hand-draws a rail + attaching tie via real `Input.dispatchTouchEvent` sequences (not mouse), then
+  grabs and drags the rail via touch to a new row. First attempt showed a spurious "grabbed a node instead of
+  the rail" — root-caused to touch's own WIDER grab tolerance (28px, ~0.5 model units at this zoom, vs mouse's
+  15px/~0.27) reaching a neighboring auto-placed node from a grab point that was safely clear for mouse — not
+  an app bug, a test-construction gap (copied the mouse-proven scenario's exact coordinates without touch's
+  bigger tolerance in mind). Also had to account for SE7m's own documented touch marker offset
+  (`INPUT_PROFILE.touch.markerOffsetPx = 40`, "commits at the MARKER position, not the raw finger position")
+  when computing dispatch coordinates — confirmed via direct instrumentation of `editor._draw.point()` that
+  every touch-to-model conversion during the live gesture was mathematically exact (no coordinate bug
+  anywhere), the offset is working exactly as designed. With the grab point moved to a node-clear spot and the
+  marker offset accounted for: `tieAttachedToRailViaTouch`, `railMovedViaTouch`, `tieStretchedViaTouch` all
+  `true` — the tie's attached end followed the rail's new row exactly, its other end untouched. Confirms the
+  research finding that Pointer Events + `getDynamicTolerance`'s touch profile already support this "for
+  free" — no new app code was needed or written for this item.
+- `npx vitest run` -> **660 passed**, 0 failed, both before and after (no test changes this turn — CSS/HTML/
+  JS layout-only).
+
+No amendments pending as of this pass.

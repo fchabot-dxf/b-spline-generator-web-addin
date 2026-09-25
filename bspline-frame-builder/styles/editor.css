@@ -182,15 +182,22 @@
         padding: 5px;
     }
     .editor-history {
-        /* .cad-modal-window.overhauled (bspline_gen_palette.html:1251) is
-           position:relative and spans the full 100vh modal — the nearest
-           positioned ancestor between here and the viewport regardless of
-           whether .editor-history physically lives in the header (top) or
-           would ever move elsewhere in markup, so this resolves against
-           the WHOLE modal, landing at its bottom-left, not the header's. */
-        position: absolute;
-        left: 12px;
-        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        /* MOB2: position:fixed against the VIEWPORT, anchored via
+           --canvas-left/--canvas-bottom-offset (editor.js's initEditor,
+           a ResizeObserver on #editorCanvasContainer — same idiom as
+           --lattice-sheet-height below). Previously position:absolute
+           against .cad-modal-window (the full 100vh modal), which put
+           the pill at the bottom-LEFT OF THE MODAL rather than the
+           canvas — harmless on a row layout (canvas fills the modal
+           below the header) but wrong once .cad-modal-body goes column
+           at <=720px and the Layers panel takes the canvas's old "bottom
+           of modal" territory, landing the pill on top of it. The
+           --canvas-left/--canvas-bottom-offset default to 0 (canvas
+           flush with the viewport) so a page that hasn't run the
+           observer yet still renders at the same 12px inset as before. */
+        position: fixed;
+        left: calc(var(--canvas-left, 0px) + 12px);
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px));
         z-index: 55; /* above #editorSVGContainer's z-index:2, below the Pattern sheet's z-index:60 */
         background: rgba(255, 255, 255, 0.92);
         border-radius: 999px;
@@ -212,7 +219,7 @@
        for where --lattice-sheet-height (0px when the panel is hidden or
        not in sheet mode) gets kept in sync via a ResizeObserver. */
     .editor-history {
-        bottom: calc(12px + env(safe-area-inset-bottom, 0px) + var(--lattice-sheet-height, 0px));
+        bottom: calc(var(--canvas-bottom-offset, 0px) + 12px + env(safe-area-inset-bottom, 0px) + var(--lattice-sheet-height, 0px));
     }
 }
 
@@ -533,6 +540,25 @@
         transform: rotate(180deg);
     }
 
+    /* MOB2: .editor-lattice-panel (above) leaves flow entirely
+       (position:fixed) once .cad-modal-body goes column, so it no longer
+       competes with #editorCanvasContainer for vertical space — but
+       .editor-layers-panel stays a normal column sibling with no height
+       of its own, so its unbounded .layers-list (flex:1) grew to fit
+       every row, squeezing the canvas into a thin strip. Kept IN-FLOW
+       (not position:fixed like the Lattice panel) — a max-height instead
+       lets .layers-list's EXISTING overflow-y:auto (line ~1006) start
+       actually scrolling once content exceeds it, same "declare the
+       bound, reuse the existing scroll" fix as the Lattice sheet's own
+       max-height above, without the multi-fixed-sheet stacking problem
+       two position:fixed panels would introduce. */
+    .editor-layers-panel {
+        width: 100% !important;
+        max-height: 30vh;
+        border-left: none !important;
+        border-top: 1px solid var(--cad-border-standard);
+    }
+
     .editor-symbol-keyboard {
         position: relative !important;
         bottom: auto !important;
@@ -586,7 +612,7 @@
     }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 720px) {
     #svgEditorHeader {
         flex-direction: row;
         align-items: center !important;
@@ -595,7 +621,6 @@
         gap: 12px;
         width: 100%;
         flex-wrap: nowrap;
-        overflow-x: auto;
     }
 
     #svgEditorHeader h3 {
@@ -610,6 +635,29 @@
         flex: 0 0 auto;
         display: flex;
         align-items: center;
+    }
+
+    /* MOB2: the button cluster, not the whole header, scrolls when it
+       doesn't fit — Cancel/Apply (the one commit action, per Fred) must
+       always land in the visible portion without the user scrolling, so
+       `order` pins them first while Download/Clear may scroll off to the
+       right. Higher specificity than `#svgEditorHeader>div` above
+       (ID+class beats ID+type) so this overrides its flex:0 0 auto
+       without needing !important. */
+    #svgEditorHeader > .editor-header-actions {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-x: auto;
+    }
+
+    #svgEditorHeader > .editor-header-actions > #editorCancel,
+    #svgEditorHeader > .editor-header-actions > #editorApply {
+        order: 1;
+    }
+
+    #svgEditorHeader > .editor-header-actions > #editorDownload,
+    #svgEditorHeader > .editor-header-actions > #editorClear {
+        order: 2;
     }
 
     .editor-toolbar-top {
@@ -844,6 +892,26 @@
     .layer-row.compact .layer-tool-summary { flex: 1 0 100%; order: 1; text-align: right; padding-top: 2px; }
 }
 
+/* MOB2: the Lattice panel's Nodes checkboxes (bspline_gen_palette.html)
+   are 16x16px inline with no touch enlargement anywhere — well under the
+   ~32px minimum touch target, same class of gap the block above already
+   closes for the layer-row toggles. `!important` needed to beat the
+   inline width:16px/height:16px on the element itself. Confirmed live
+   (padding+negative-margin, the usual native-checkbox enlargement trick,
+   does NOT work here — Chrome's UA stylesheet resets `padding` back to
+   0 on input[type=checkbox] regardless of author rules; width/height
+   are NOT reset the same way and do resize the actual rendered widget).
+   The negative margin keeps the row's visual alignment/gap unchanged —
+   32px grown, 8px pulled back on each side nets back to the original
+   16px layout footprint. */
+@media (pointer: coarse) {
+    #latticeNodesEnds, #latticeNodesCrossings, #latticeNodesRailEnds {
+        width: 32px !important;
+        height: 32px !important;
+        margin: -8px;
+    }
+}
+
 .layer-name {
     flex: 1;
     min-width: 0;
@@ -1040,8 +1108,9 @@
     vector-effect: non-scaling-stroke;
 }
 
-/* Mobile: narrower panel; on very narrow viewports the panel hides behind
-   a toggle. For now keep it visible but slimmer. */
-@media (max-width: 700px) {
-    .editor-layers-panel { width: 170px; }
-}
+/* MOB2: the ≤700px `width: 170px` narrowing this block used to do is now
+   fully superseded — the ≤720px column-mode rule above
+   (`.editor-layers-panel { width: 100% !important; ... }`) always wins at
+   any width this block could fire at (700 is a subset of 720), so it was
+   a dead no-op left behind by that change; removed rather than kept as
+   silent, misleading debt. */

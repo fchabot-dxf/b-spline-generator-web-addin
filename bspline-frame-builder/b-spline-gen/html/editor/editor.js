@@ -161,6 +161,30 @@ export class VectorEditor {
         this.setMode(this._currentMode);
         setupEditorToolbar(this);
         initLayerControls(this);
+
+        // MOB2: keep the floating undo/redo pill (T32, pointer:coarse,
+        // styles/editor.css's .editor-history) anchored to the CANVAS's
+        // own rendered rect, not the whole modal window — the pill's old
+        // position:absolute resolved against .cad-modal-window (the full
+        // 100vh modal), so once .cad-modal-body goes column at <=720px
+        // the Layers panel shares the canvas's old "bottom of modal"
+        // territory and the pill landed on top of it. Same ResizeObserver
+        // idiom properties-lattice.js already uses for
+        // --lattice-sheet-height: publish the canvas container's live
+        // viewport rect as CSS custom properties; the pill's CSS then
+        // resolves itself with position:fixed against the viewport using
+        // them, correct whether the layout is row (desktop/tablet) or
+        // column (phone) — one observer covers every reflow, no separate
+        // per-breakpoint branch.
+        const canvasEl = document.getElementById('editorCanvasContainer');
+        if (canvasEl && typeof ResizeObserver !== 'undefined') {
+            const syncCanvasRectVars = () => {
+                const r = canvasEl.getBoundingClientRect();
+                document.documentElement.style.setProperty('--canvas-left', `${r.left}px`);
+                document.documentElement.style.setProperty('--canvas-bottom-offset', `${window.innerHeight - r.bottom}px`);
+            };
+            new ResizeObserver(syncCanvasRectVars).observe(canvasEl);
+        }
     }
 
 
