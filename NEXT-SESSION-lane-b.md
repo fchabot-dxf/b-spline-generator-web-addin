@@ -1,23 +1,23 @@
-# NEXT (lane-b) — T49: SE13 Slice 3 — emission, ending rules, panel UI, live link, Border
+# NEXT (lane-b) — T50: Boundary fill respects the boundary shape's own STROKE width
 
-**Ball: worker (seat B) · epoch 2 · T49.** NO FUSION for workers. T48 reviewed + merged. Fred answered the SE13 open
-questions — "agree with your bracket propositions" (recorded in the doc): no runs yet; stretch/boundary-move = no new
-rule; one Node size; curved boundaries supported; Border defaults to the boundary shape's own stroke.
+**Ball: worker (seat B) · epoch 2 · T50.** NO FUSION for workers. T49 reviewed (807 green, screenshots viewed: each
+ending rule distinct, commit-only refit proven). Not merged to main yet ONLY because seat A's in-flight MOB3 drawer
+edits the same panel files — the advisor merges both after seat A passes. Keep lane-b as is; small change only.
 
-## Fix first (your T48 finding, but it's a product issue): edge-collinear rows must NOT vanish
-Snap is ON by default, so a rect/polygon boundary drawn by hand has its edges EXACTLY on grid rows/columns — every
-such boundary would silently lose its outermost rails/ties. Decide the rule explicitly and declare it: a scan line
-collinear with a boundary edge yields a span ALONG that edge (closed-interval on the edge), so the edge row is kept;
-with the Border piece ON, an edge-collinear rail/tie is dropped instead (the Border already draws that line — no
-double stroke). Test both, plus a snapped rect drawn by the real rect tool.
-
-## Then build your §14 Slice 3 as designed
-Ending rules table (on-boundary / inset default / joint / loose, loose→inset fallback), Border piece, shape-pick UI +
-data-boundary-ref link, commit-only refill, panel markup (Boundary / Ending / Border; no Runs block yet), save/load.
-Mobile rules from MOB2 apply to the new controls. Browser proof per your Slice 3 verify list, incl. an Outline export
-of a boundary-filled layer with no new decline kinds.
-Don't commit `reference/`.
+## Finding (advisor, from your own 04-ending-*.png)
+The boundary circle carries a thick stroke (~0.8"), and the fill is cut against its CENTERLINE — so rails run halfway
+into the stroke (they show orange through the translucent ring). A person reads a stroked shape's inside as the stroke's
+INNER edge.
+## Do
+Cut against the boundary offset INWARD by half its own effective stroke width: effective = the Border piece width
+when Border is ON, else the shape's own stroke-width when its layer/element is visibly stroked, else 0. Declare it
+(e.g. boundary.edge = 'inner-stroke' | 'centerline', default 'inner-stroke') rather than hard-coding. Ending rules then
+apply from that inner edge (inset = inner edge − half the piece width, on-boundary = on the inner edge, joint node on
+the inner edge). Implementation: shrink the scan crossings by the stroke half-width along the scan direction ONLY
+where that's exact (lines/arcs); for curves use the local normal at the crossing — say which, keep ≤ tolerance.
+Test: circle r=2 stroke 0.8 → rail endpoints at radius 1.6 (inset: 1.6 − w/2); Border on overrides with its width.
+Screenshot the same circle as your 04 shots.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T49: SE13 slice 3 — <sha>, vitest N, screenshots"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T50: boundary respects stroke — <sha>, vitest N, screenshot"`
 and stop.
