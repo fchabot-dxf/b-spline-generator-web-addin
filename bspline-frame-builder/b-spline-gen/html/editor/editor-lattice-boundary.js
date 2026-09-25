@@ -347,3 +347,50 @@ export function insideSpans(scanLine, primitives) {
   }
   return spans;
 }
+
+/**
+ * T48 (SE13 Slice 2): a conservative axis-aligned bounding box over a
+ * primitive list — the cheap pre-filter `editor-lattice-pattern.js`'s own
+ * boundary branch needs ("compute insideSpans only for rows/columns whose
+ * lattice cell range overlaps the boundary's own bbox", §4). Deliberately
+ * LOOSE, never tight, for the two curved kinds: a cubic's true extrema
+ * aren't computed (its 4 control points bound it via the convex-hull
+ * property, so min/max over them is always a valid, if sometimes slightly
+ * wider, box) and a rotated/elliptical arc uses the full circle of radius
+ * max(rx,ry) about its own center (every point on ANY ellipse is within
+ * max(rx,ry) of its center, regardless of phi or the arc's own sweep) —
+ * a pre-filter only needs to never EXCLUDE a row/column that has real
+ * geometry; a few extra empty rows/columns checked and discarded cost
+ * nothing observable. Returns `null` for an empty primitive list (the
+ * degenerate/no-boundary case `computePattern`'s caller already declines
+ * gracefully for, same convention as `insideSpans` returning `[]`).
+ */
+export function primitivesBBox(primitives) {
+  let xMin = Infinity, yMin = Infinity, xMax = -Infinity, yMax = -Infinity;
+  const consider = (x, y) => {
+    if (x < xMin) xMin = x;
+    if (x > xMax) xMax = x;
+    if (y < yMin) yMin = y;
+    if (y > yMax) yMax = y;
+  };
+  for (const prim of primitives) {
+    if (prim.type === 'L') {
+      consider(prim.p0.x, prim.p0.y);
+      consider(prim.p1.x, prim.p1.y);
+    } else if (prim.type === 'C') {
+      consider(prim.p0.x, prim.p0.y);
+      consider(prim.p1.x, prim.p1.y);
+      consider(prim.p2.x, prim.p2.y);
+      consider(prim.p3.x, prim.p3.y);
+    } else if (prim.type === 'CIRCLE') {
+      consider(prim.cx - prim.r, prim.cy - prim.r);
+      consider(prim.cx + prim.r, prim.cy + prim.r);
+    } else if (prim.type === 'A') {
+      const R = Math.max(prim.rx, prim.ry);
+      consider(prim.cx - R, prim.cy - R);
+      consider(prim.cx + R, prim.cy + R);
+    }
+  }
+  if (xMin > xMax) return null; // no primitives considered -- empty/degenerate
+  return { xMin, yMin, xMax, yMax };
+}
