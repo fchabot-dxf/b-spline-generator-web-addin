@@ -97,6 +97,18 @@ function _makeSectionsCollapsible(panelBodyEl) {
     section.dataset.collapsibleInit = '1';
 
     const body = Array.from(section.children).filter((c) => c !== label);
+    // Captured BEFORE any toggle ever runs — most of these rows declare
+    // their own layout inline (`style="display:flex; ..."`, no CSS class
+    // backing it), so `node.style.display = ''` does NOT restore "flex"
+    // the way it would for a class-driven display; it just clears the
+    // inline override entirely and the element falls back to its TAG's
+    // own default (`block` for a bare `<div>`). Confirmed live (MOB5): the
+    // Colors row's 3 swatches silently stacked into a column instead of
+    // staying a row, on the very FIRST render — not just after a manual
+    // collapse/re-expand — because `applyOpen(true)` below runs
+    // unconditionally at init too. Restoring the ORIGINAL captured value
+    // (not bare '') fixes every section this way, not just Colors.
+    const bodyOriginalDisplay = body.map((node) => node.style.display);
     const chevron = document.createElement('span');
     chevron.className = 'editor-drawer-section-chevron';
     chevron.setAttribute('aria-hidden', 'true');
@@ -108,7 +120,7 @@ function _makeSectionsCollapsible(panelBodyEl) {
     label.appendChild(chevron);
 
     const applyOpen = (open) => {
-      for (const node of body) node.style.display = open ? '' : 'none';
+      body.forEach((node, i) => { node.style.display = open ? bodyOriginalDisplay[i] : 'none'; });
       chevron.style.transform = open ? 'rotate(0deg)' : 'rotate(-90deg)';
     };
     let open = _loadSectionOpen(title, true);

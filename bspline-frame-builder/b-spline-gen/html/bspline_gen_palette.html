@@ -1607,27 +1607,36 @@
                    section, not two; no field IDs/wiring changed
                    (properties-lattice.js reads #latticeSpacing exactly as
                    before), just its position in the DOM. -->
-              <label style="display:flex; flex-direction:column; gap:3px;">Spacing
-                <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-              </label>
-              <!-- SE7h (Fred: "invert rails and ties so rails are vertical"):
-                   orientation toggle, same segmented-control shape/class
-                   (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH group
-                   above — no new CSS. Flipping this regenerates with the
-                   CURRENT seed (it's a re-projection, not a reshuffle — only
-                   Generate itself rolls a new one, per SE7g). -->
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
-                <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
-                <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
-              </div>
-              <!-- T56 (Fred: "I want 6-7 rails"): mode toggle, same
-                   segmented-control shape as Orientation above. Count
-                   (default) picks a seeded rail count, evenly spread; Every
-                   is the ORIGINAL fixed-stride control, kept as a real
-                   alternative, not removed. -->
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
-                <button type="button" id="latticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
-                <button type="button" id="latticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
+              <!-- MOB5 ADD-ON: Spacing + Orientation + the rails mode
+                   toggle packed into ONE 3-column row on phones
+                   (.panel-row-3, styles/editor.css) instead of three
+                   separate full-width rows — desktop keeps the original
+                   stacked layout (the class is a no-op outside the mobile
+                   breakpoint). No field IDs moved out of this group, so
+                   properties-lattice.js's own wiring is untouched. -->
+              <div class="panel-row-3">
+                <label style="display:flex; flex-direction:column; gap:3px;">Spacing
+                  <select id="latticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+                </label>
+                <!-- SE7h (Fred: "invert rails and ties so rails are vertical"):
+                     orientation toggle, same segmented-control shape/class
+                     (.editor-fillmode-btn) as the Style STROKE/FILL/BOTH group
+                     above — no new CSS. Flipping this regenerates with the
+                     CURRENT seed (it's a re-projection, not a reshuffle — only
+                     Generate itself rolls a new one, per SE7g). -->
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                  <button type="button" id="latticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
+                  <button type="button" id="latticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
+                </div>
+                <!-- T56 (Fred: "I want 6-7 rails"): mode toggle, same
+                     segmented-control shape as Orientation above. Count
+                     (default) picks a seeded rail count, evenly spread; Every
+                     is the ORIGINAL fixed-stride control, kept as a real
+                     alternative, not removed. -->
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                  <button type="button" id="latticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
+                  <button type="button" id="latticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
+                </div>
               </div>
               <div id="latticeRailsCountFields" style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
@@ -1716,28 +1725,39 @@
                    neither of these two labels overrode it inline — that's
                    what stacked each checkbox on top of its own text instead
                    of beside it. flex-direction:row fixes it directly. -->
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="latticeNodesEnds" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at tie ends
-              </label>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="latticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at crossings
-              </label>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="latticeNodesRailEnds" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> at rail ends
-              </label>
+              <!-- MOB5 ADD-ON: the 3 checkboxes as one 3-column row on
+                   phones (.panel-row-3) instead of 3 stacked rows — each
+                   label keeps its own row/checkbox layout unchanged. -->
+              <div class="panel-row-3">
+                <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                  <input id="latticeNodesEnds" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at tie ends
+                </label>
+                <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                  <input id="latticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at crossings
+                </label>
+                <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                  <input id="latticeNodesRailEnds" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> at rail ends
+                </label>
+              </div>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Colors</span>
+              <!-- MOB5 ADD-ON: already one row (desktop keeps display:flex
+                   here — no .panel-row-3 needed since there's no stacking
+                   to fix); Fred's own ask was the SWATCH itself ("~44px
+                   wide, not full-width bars") — .panel-color-swatch below
+                   caps its width on phones only, replacing the old
+                   width:100% stretch-to-fill-the-flex-cell. -->
               <div style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
-                  <button id="latticeColorRails" type="button" title="Rails color" aria-label="Rails color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                  <button id="latticeColorRails" type="button" title="Rails color" aria-label="Rails color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
-                  <button id="latticeColorTies" type="button" title="Ties color" aria-label="Ties color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                  <button id="latticeColorTies" type="button" title="Ties color" aria-label="Ties color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Nodes
-                  <button id="latticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                  <button id="latticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
               </div>
             </div>
@@ -1767,8 +1787,16 @@
                  stepper (Nodes keep their own size, unaffected). -->
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Widths</span>
-              <div style="display:flex; gap:6px; align-items:flex-end;">
-                <div id="latticeWidthUnlinkedFields" style="display:none; gap:6px; flex:2;">
+              <!-- MOB5 ADD-ON: Rails & ties | link | Node size as one
+                   3-column row on phones (.panel-row-3), same width ratio
+                   this already used via flex — the link toggle just
+                   centers in its own equal column instead of a tiny fixed
+                   slice. The (rarer, off-by-default) unlinked state has 2
+                   fields of its own; .panel-widths-unlinked spans the
+                   whole row when it's what's showing, and link-toggle +
+                   Node size wrap to their own row below it. -->
+              <div class="panel-row-3" style="display:flex; gap:6px; align-items:flex-end;">
+                <div id="latticeWidthUnlinkedFields" class="panel-widths-unlinked" style="display:none; gap:6px; flex:2;">
                   <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
                     <input id="latticeWidthRails" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                   </label>
@@ -1779,7 +1807,7 @@
                 <label id="latticeWidthLinkedRow" class="no-stepper" style="flex:2; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails &amp; ties
                   <input id="latticeWidthLinked" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                 </label>
-                <button type="button" id="latticeWidthLinkToggle" class="editor-fillmode-btn active" title="Rails and ties share one width — click to set them separately" style="width:24px; height:22px; flex-shrink:0; padding:0;">&#128279;</button>
+                <button type="button" id="latticeWidthLinkToggle" class="editor-fillmode-btn active" title="Rails and ties share one width — click to set them separately" style="width:24px; height:22px; flex-shrink:0; padding:0; align-self:center;">&#128279;</button>
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Node size
                   <input id="latticeWidthNodes" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                 </label>
@@ -1928,16 +1956,20 @@
 
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Grid &amp; rails</span>
-              <label style="display:flex; flex-direction:column; gap:3px;">Spacing
-                <select id="shapeLatticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
-              </label>
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
-                <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
-                <button type="button" id="shapeLatticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
-              </div>
-              <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9;">
-                <button type="button" id="shapeLatticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
-                <button type="button" id="shapeLatticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
+              <!-- MOB5 ADD-ON: same 3-column packing as the box Lattice
+                   panel's own Grid & rails (.panel-row-3, phones only). -->
+              <div class="panel-row-3">
+                <label style="display:flex; flex-direction:column; gap:3px;">Spacing
+                  <select id="shapeLatticeSpacing" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none;"></select>
+                </label>
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                  <button type="button" id="shapeLatticeOrientHorizontal" class="editor-fillmode-btn active" style="flex:1;" title="Rails run horizontally">Horizontal</button>
+                  <button type="button" id="shapeLatticeOrientVertical" class="editor-fillmode-btn" style="flex:1;" title="Rails run vertically">Vertical</button>
+                </div>
+                <div role="group" style="display:flex; height:24px; border:1px solid #ccc; border-radius:3px; overflow:hidden; background:#f9f9f9; align-self:end;">
+                  <button type="button" id="shapeLatticeRailsModeCount" class="editor-fillmode-btn active" style="flex:1;" title="A seeded rail count, evenly spread">Count</button>
+                  <button type="button" id="shapeLatticeRailsModeEvery" class="editor-fillmode-btn" style="flex:1;" title="A rail every Nth row">Every</button>
+                </div>
               </div>
               <div id="shapeLatticeRailsCountFields" style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px;">count min
@@ -2003,28 +2035,34 @@
 
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Nodes</span>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="shapeLatticeNodesEnds" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at tie ends
-              </label>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="shapeLatticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at crossings
-              </label>
-              <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
-                <input id="shapeLatticeNodesRailEnds" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> at rail ends
-              </label>
+              <!-- MOB5 ADD-ON: same 3-column packing as the box Lattice
+                   panel's own Nodes (.panel-row-3, phones only). -->
+              <div class="panel-row-3">
+                <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                  <input id="shapeLatticeNodesEnds" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at tie ends
+                </label>
+                <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                  <input id="shapeLatticeNodesCrossings" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> at crossings
+                </label>
+                <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+                  <input id="shapeLatticeNodesRailEnds" type="checkbox" style="width:16px; height:16px; flex-shrink:0;"> at rail ends
+                </label>
+              </div>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Colors</span>
+              <!-- MOB5 ADD-ON: swatch capped to ~44px (.panel-color-swatch,
+                   phones only), same as the box Lattice panel's own Colors. -->
               <div style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
-                  <button id="shapeLatticeColorRails" type="button" title="Rails color" aria-label="Rails color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                  <button id="shapeLatticeColorRails" type="button" title="Rails color" aria-label="Rails color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Ties
-                  <button id="shapeLatticeColorTies" type="button" title="Ties color" aria-label="Ties color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                  <button id="shapeLatticeColorTies" type="button" title="Ties color" aria-label="Ties color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Nodes
-                  <button id="shapeLatticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                  <button id="shapeLatticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
               </div>
             </div>
@@ -2033,8 +2071,10 @@
                  panel above (SHARED contract, not a second design). -->
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Widths</span>
-              <div style="display:flex; gap:6px; align-items:flex-end;">
-                <div id="shapeLatticeWidthUnlinkedFields" style="display:none; gap:6px; flex:2;">
+              <!-- MOB5 ADD-ON: same 3-column packing as the box Lattice
+                   panel's own Widths (.panel-row-3, phones only). -->
+              <div class="panel-row-3" style="display:flex; gap:6px; align-items:flex-end;">
+                <div id="shapeLatticeWidthUnlinkedFields" class="panel-widths-unlinked" style="display:none; gap:6px; flex:2;">
                   <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails
                     <input id="shapeLatticeWidthRails" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                   </label>
@@ -2045,7 +2085,7 @@
                 <label id="shapeLatticeWidthLinkedRow" class="no-stepper" style="flex:2; display:flex; flex-direction:column; gap:2px; align-items:center;">Rails &amp; ties
                   <input id="shapeLatticeWidthLinked" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                 </label>
-                <button type="button" id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active" title="Rails and ties share one width — click to set them separately" style="width:24px; height:22px; flex-shrink:0; padding:0;">&#128279;</button>
+                <button type="button" id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active" title="Rails and ties share one width — click to set them separately" style="width:24px; height:22px; flex-shrink:0; padding:0; align-self:center;">&#128279;</button>
                 <label class="no-stepper" style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Node size
                   <input id="shapeLatticeWidthNodes" type="number" min="0" step="0.05" style="width:100%; height:22px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; text-align:center;">
                 </label>

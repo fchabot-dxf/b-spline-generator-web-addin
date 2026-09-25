@@ -177,8 +177,16 @@ function handlePointerMove(editor, e) {
             p1: editor._activePointers.get(ids[0]),
             p2: editor._activePointers.get(ids[1]),
         };
-        const { factor, midpoint } = computePinchUpdate(editor._pinchPrev, next);
+        const { factor, midpoint, panDx, panDy } = computePinchUpdate(editor._pinchPrev, next);
         if (editor._draw && typeof editor._draw.point === 'function') {
+            // Pan by the midpoint's own movement FIRST — zoomAbout alone
+            // never translates the view when factor is ~1 (a pure slide),
+            // see computePinchUpdate's own doc comment — THEN zoom about
+            // the new midpoint, so a combined pinch+slide zooms about
+            // where the fingers ended up this frame, not where they were.
+            const { dx, dy } = _screenDeltaToModel(editor, panDx, panDy);
+            editor._view.cx -= dx;
+            editor._view.cy -= dy;
             const pivot = editor._draw.point(midpoint.x, midpoint.y);
             editor._view = zoomAbout(editor._view, pivot, factor);
             applyView(editor);
@@ -488,16 +496,23 @@ function handleMove(editor, e) {
     if (handler.hover) handler.hover(editor, pt);
 }
 
-function _panBy(editor, dxClient, dyClient) {
+// Shared by the single-finger drag-pan (_panBy) and the two-finger pinch's
+// own pan term (handlePointerMove) — screen-px delta -> model-space delta,
+// using the editor SVG root's CURRENT rendered size and uniform scale
+// (preserveAspectRatio="meet" on the editor root — see editor-view.js's
+// viewScale docstring; NOT clientWidth/clientHeight divided per-axis,
+// which disagrees with the actual render on whichever axis is
+// letterboxed).
+function _screenDeltaToModel(editor, dxClient, dyClient) {
     const vb = viewboxFor(editor._view, editor._mW, editor._mH);
     const svgEl = document.getElementById('editorSVGContainer');
     const clientWidth  = (svgEl && svgEl.clientWidth)  || 1;
     const clientHeight = (svgEl && svgEl.clientHeight) || 1;
-    // Uniform scale (preserveAspectRatio="meet" on the editor root — see
-    // editor-view.js's viewScale docstring), not clientWidth/clientHeight
-    // divided per-axis: that disagrees with the actual render on whichever
-    // axis is letterboxed.
-    const { dx, dy } = screenToModelDelta(vb, clientWidth, clientHeight, dxClient, dyClient);
+    return screenToModelDelta(vb, clientWidth, clientHeight, dxClient, dyClient);
+}
+
+function _panBy(editor, dxClient, dyClient) {
+    const { dx, dy } = _screenDeltaToModel(editor, dxClient, dyClient);
     editor._view.cx = editor._panStart.cx - dx;
     editor._view.cy = editor._panStart.cy - dy;
     applyView(editor);
@@ -585,7 +600,27 @@ const selectHandler = {
             else if (!(editor._selectedElements || []).includes(hit)) editor._select(hit);
             return;
         }
+        // MOB5 (Fred: "pan and zoom doesn't work well in mobile") — a
+        // one-finger drag on EMPTY canvas in Select mode used to always
+        // start a marquee, on every pointer type. On touch that competes
+        // with the far more commonly wanted "let me look around" gesture:
+        // a mouse user already has Space+drag or a scroll wheel to pan; a
+        // touch user has no one-finger equivalent without this. Declaring
+        // touch = pan, mouse/pen = marquee (unchanged) reuses the SAME
+        // _isPanning/_panStart state Space+drag/middle-click already
+        // drive — handleMove/handleEnd's own pan branches (above) pick
+        // this up with no new plumbing.
         if (!shift) editor._deselect();
+        if (editor._pointerType === 'touch') {
+            editor._isPanning = true;
+            editor._panStart = {
+                clientX: e.clientX, clientY: e.clientY,
+                cx: editor._view.cx, cy: editor._view.cy,
+            };
+            const c = el('editorSVGContainer');
+            if (c) c.classList.add('panning');
+            return;
+        }
         editor._isDragging      = true;
         editor._lastDragPt      = pt;
         editor._marqueeStart    = { x: pt.x, y: pt.y };

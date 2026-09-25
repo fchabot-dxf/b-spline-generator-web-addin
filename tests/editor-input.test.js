@@ -78,6 +78,27 @@ describe('computePinchUpdate: pinch geometry', () => {
     expect(midpoint).toEqual({ x: 100, y: 40 });
   });
 
+  // MOB5 (Fred: "pan doesn't work well in mobile") — a pure two-finger
+  // SLIDE (same spread, factor 1) used to fall through zoomAbout with no
+  // effect at all (ratio===1 there leaves cx/cy untouched); panDx/panDy is
+  // the separate translation term the caller now applies BEFORE zooming.
+  it('panDx/panDy is the midpoint\'s OWN screen-space movement since the previous frame', () => {
+    const prev = { p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 } };
+    const next = { p1: { x: 30, y: 40 }, p2: { x: 130, y: 40 } }; // same spread, slid by (30,40)
+    const { factor, panDx, panDy } = computePinchUpdate(prev, next);
+    expect(factor).toBeCloseTo(1, 10); // confirms this really is the "zoomAbout is a no-op" case
+    expect(panDx).toBeCloseTo(30, 10);
+    expect(panDy).toBeCloseTo(40, 10);
+  });
+
+  it('panDx/panDy is zero when the midpoint does not move (a pure pinch, no slide)', () => {
+    const prev = { p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 } };
+    const next = { p1: { x: 25, y: 0 }, p2: { x: 75, y: 0 } }; // spread shrinks, midpoint stays at (50,0)
+    const { panDx, panDy } = computePinchUpdate(prev, next);
+    expect(panDx).toBe(0);
+    expect(panDy).toBe(0);
+  });
+
   it('degenerate previous distance (both fingers on the same point) returns factor 1, not NaN/Infinity', () => {
     const prev = { p1: { x: 50, y: 50 }, p2: { x: 50, y: 50 } };
     const next = { p1: { x: 40, y: 40 }, p2: { x: 60, y: 60 } };

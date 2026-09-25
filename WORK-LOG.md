@@ -8973,3 +8973,171 @@ touched this turn).
   Lattice collapsible-section click-toggle check, and a layer-row child-rect dump at both dimensions.
 
 No amendments pending as of this pass.
+
+## Turn 265 — MOB5: mobile two-finger pan + zoom, and the oversized checkboxes — DONE
+
+Two independent fixes named in NEXT-SESSION.md, taken in the order Fred cared about (checkboxes were "still
+broken" from the prior turn's own attempt; pan is the ROADMAP's own authoritative queued item).
+
+**Checkboxes — actually still oversized, but not for the reason turn 263 assumed.** Turn 263's own live
+measurement (`getBoundingClientRect()` reporting 32x32) was CORRECT but incomplete — the `margin:-8px` trick
+(MOB2-era: grow the checkbox to 32px, then pull it back with negative margin so its LAYOUT footprint still
+reads as ~16px to the surrounding flex row) grows the PAINTED box symmetrically in all four directions, but
+the row only had ~6px of gap before the label text and an even smaller left inset before the panel's own edge
+— both narrower than the 8px bleed, so the checkbox visually painted OVER the row's own left edge and the
+first letter of its label. Confirmed live with a screenshot cropped to the checkbox's own measured rect (not
+visible in a full-panel screenshot at normal viewing scale — this is exactly why the advisor's own follow-up
+screenshot caught it and a bare rect measurement alone did not). **Fixed at the ask, not a bigger negative-
+margin fudge**: dropped the margin trick entirely, sized the checkbox itself a normal-looking 24px (nothing
+left for it to overlap into), and grew the TAP TARGET by giving its own wrapping `<label>` a 44px height
+instead — labels already toggle their child checkbox on any tap within them (native browser behavior, the
+exact thing the margin trick was trying to fake by inflating the input itself), so this is literally the
+mechanism the dispatch named ("label padding") rather than the input's own box. `:has()` scopes each label
+rule to exactly the ONE checkbox it wraps. Extended coverage while in there: T58's Shape Lattice panel has its
+own copies of all three Nodes checkboxes PLUS a Border checkbox that had never gotten ANY touch-enlargement
+pass at all (still 16px, unfixed since T58 shipped) — folded into the same consolidated rule rather than a
+second copy-pasted block. The box Lattice's OWN `#latticeBorderEnabled` selector no longer matched anything
+(T58 moved Border to Shape Lattice entirely) — dropped rather than carried forward as dead CSS.
+
+**Two-finger pan — a genuinely dead code path since SE7m first shipped pinch-zoom, not a regression.**
+Root-caused by the advisor before this turn started: `computePinchUpdate`'s own doc comment claimed
+recomputing the zoom pivot from the CURRENT midpoint every frame was "what makes a two-finger slide... pan the
+view... no separate pan formula needed" — reading `zoomAbout`'s own math (editor-view.js) shows this is false:
+when `factor` is ~1 (fingers slide together, spread unchanged), `zoomAbout` computes `ratio =
+oldZoom/newZoom = 1`, which leaves `cx`/`cy` completely UNCHANGED regardless of which point was passed as the
+pivot. A pure two-finger slide was a complete no-op from day one — the comment asserted a mechanism that
+doesn't exist, and nothing had exercised "slide without also changing pinch distance" to notice. Fixed by
+adding the missing translation term: `computePinchUpdate` now ALSO returns `panDx`/`panDy` (the midpoint's own
+screen-space movement since the previous frame); the caller (`editor-interaction.js`) converts that to model
+space and applies it to `cx`/`cy` BEFORE calling `zoomAbout` with the new midpoint, so a combined pinch+slide
+pans first and then zooms about where the fingers ended up this frame. Extracted `_screenDeltaToModel` (the
+"screen px delta -> model px delta via the SVG root's live rendered size" boilerplate `_panBy`'s own
+single-finger pan already had inline) so both call sites share the one conversion instead of a second copy.
+
+**One-finger drag on empty canvas, Select mode — declared, not left ambiguous.** Previously always started a
+marquee-select rectangle regardless of pointer type — on touch that competes with the far more commonly
+wanted "let me look around" gesture (a mouse user already has Space+drag or a scroll wheel for that; a touch
+user had no one-finger equivalent). Declared: touch = pan (reuses the SAME `_isPanning`/`_panStart` state
+Space+drag/middle-click already drive, so `handleMove`/`handleEnd`'s existing pan branches pick it up with no
+new plumbing), mouse/pen = marquee, unchanged. Checked via `editor._pointerType` (SE7m's own already-tracked
+global), gated at the ONE "empty canvas, no element hit" branch in `selectHandler.start` — element-hit and
+transform-handle-grab paths are untouched on every pointer type.
+
+**Main-screen 3D preview's own touch (rotate/pinch/pan) — audited, found ALREADY correct, no changes made.**
+`core/preview/orbit-controller.js`'s `handleTouchPinchMove` computes pan and zoom TOGETHER from a pinch-START
+snapshot (`beginTouchPinch` records the midpoint/distance/target ONCE; every subsequent move computes both
+`target` and `r` relative to that same snapshot) — a different but equally valid shape from the SVG editor's
+incremental-per-frame approach, and one that never had the SVG editor's own missing-translation-term bug.
+Live DOM-dispatched touch confirmed single-finger rotate works (`_targetOrb.q` changes). CDP's synthetic touch
+could NOT be made to reliably deliver a genuine 2-touch `touchstart` to this raw-Touch-Events (not Pointer
+Events) handler — confirmed via instrumented listener: a `touchStart` dispatch with 2 NEW touch points in one
+call, and a progressive 1-then-2 dispatch, both fired only ONE native `touchstart` with `touches.length===1`;
+this is the SAME class of CDP multi-touch limitation hit (and, in that case, worked around by adjusting
+coordinates) with the SVG editor's own Pointer-Events-based pinch earlier in this turn, but here neither
+adjustment made CDP deliver a second touch point at all. Verified the underlying MATH directly instead —
+calling `beginTouchPinch`/`handleTouchPinchMove` on the live `_orbit` instance with synthetic touch-like
+`{clientX,clientY}` objects, bypassing DOM dispatch entirely — a combined slide+spread gesture correctly
+changed BOTH `target` (pan) and `r` (zoom, halved for a 2x distance increase, exactly as expected). No app bug
+found; no code changed for this item.
+
+**Touch-action audit — already correctly scoped, confirmed by the gesture tests actually working.**
+`#previewCanvas, #editorSVGContainer, #resizer { touch-action: none; }` (base.css, SA-MOBILE-13) already keeps
+native browser pan/zoom off exactly the three surfaces that own custom gesture handling, while everything else
+stays pinch-zoomable per the page's own viewport-meta contract. Rather than re-deriving this from reading CSS
+alone, treated the successful live gesture tests above as the actual proof: if the browser's own native
+pan/zoom were intercepting these surfaces, the custom JS would never have received the touchmove/pointermove
+events needed to produce the measured rotate/pan/zoom effects it did.
+
+**Verify:**
+- `tests/editor-input.test.js`: two new cases for `panDx`/`panDy` (a pure slide reports the movement AND
+  `factor≈1` — explicitly naming the "this is the case zoomAbout alone cannot handle" scenario; a pure pinch
+  with a fixed midpoint reports zero pan). `npx vitest run` -> **968 passed**.
+- Live (headless Chrome via CDP, real touch/mouse dispatch, no Fusion): checkbox screenshot crop confirms no
+  overlap (before/after), all 7 Nodes/Border checkboxes measured 24x24, tap on the label's own text (not the
+  checkbox) toggles it; two-finger slide on the SVG editor canvas moves `cx`/`cy` in the expected direction
+  with zoom unchanged, a pinch-apart zooms in while the model-space point under the fingers' midpoint stays
+  fixed (`{2.423,-1.2526}` before -> `{2.443,-1.2526}` after, well within a discrete 5-step gesture's expected
+  drift); Select-mode touch-drag on empty canvas pans without ever starting a marquee, a same-shape mouse drag
+  still marquees (regression check); 3D preview single-finger touch rotates the camera live, and its pinch+pan
+  math verified directly as described above. `scripts/smoke-mob3-drawer.mjs` (mobile + desktop) re-run clean
+  after these changes — no regression in the drawer/scroll/pill work from turn 263.
+- **A test-environment trap hit twice this turn, worth naming explicitly**: (1) `Network.setCacheDisabled`
+  made the SVG editor's external CDN scripts (three.js/svg.js) slow enough to load that `window.svgEditor`
+  never existed within a generous wait window — dropped it for these particular scripts once the symptom was
+  isolated (an outright `undefined` after clicking the editor-open button, not a wrong value). (2) A
+  long-reused Chrome tab had the mobile drawer's height persisted in sessionStorage from an earlier turn's
+  tests; a canvas-center touch coordinate landed on the DRAWER instead of the canvas because the persisted
+  height covered far more of the screen than a fresh session's default 'peek' would. Fixed by clearing
+  `sessionStorage` before opening the editor and, for anything canvas-related, using a Y coordinate near the
+  canvas's own TOP rather than its vertical center — the drawer only ever grows up from the bottom, so a
+  top-anchored point is safe regardless of whatever height it happens to be at.
+
+**Skipped, flagged rather than built**: extending the `:has()` label-sizing pattern to any other undersized
+touch control while in the neighborhood — the dispatch named exactly Nodes + Border, and a broader touch-
+target sweep across the whole panel is a separate, larger pass (this file's own WORK-LOG has flagged the
+Orientation/Style segmented controls as a known pre-existing gap since MOB2; still true, still not this
+turn's scope).
+
+**AMEND + AMEND 2 (Fred, on the phone drawer: "I feel like this could have a few 2-column sections", then "2
+or even 3 columns") — absorbed together as ONE design, since AMEND 2 is a refinement of AMEND 1's own ask, not
+a cancellation.** Compacted the Lattice panel's own controls on phones only (`@media (max-width:720px)`,
+matching every other drawer-specific rule this file already uses — desktop keeps the exact stacked layout it
+always had). Declared TWO grid helper classes (`styles/editor.css`) rather than a per-control inline style each
+time a row needed to pack tighter, per the amendment's own explicit instruction:
+- `.panel-row-2` / `.panel-row-3` — `display:grid!important` (beats each row's own inline `display:flex`,
+  this file's established pattern for a mobile-only override of an inline style) with 2 or 3 equal columns.
+- `.panel-color-swatch` — caps a color-swatch button to a normal ~44px width instead of stretching to fill its
+  flex cell (Colors was already one row; the swatches themselves were the "full-width bar" problem).
+- `.panel-widths-unlinked` — the Widths row's rarer, off-by-default unlinked state (2 fields instead of 1)
+  claims the WHOLE 3-column row instead of squeezing into one cell; the link-toggle button and Node size
+  naturally wrap to their own row below it in that state.
+
+Applied identically to BOTH the box Lattice panel and T58's Shape Lattice panel (verified they share the exact
+same markup shape, just `shapeLattice*`-prefixed ids, before writing the change once and copying it — not
+re-deriving a second design): Grid & rails' Spacing dropdown + Orientation toggle + rails mode toggle merged
+into one 3-column row (previously 3 separate full-width rows); Nodes' 3 checkboxes into one 3-column row
+(previously stacked); Widths' Rails&ties-stepper + link-toggle + Node-size-stepper into one 3-column row
+(previously an ad hoc flex-ratio row achieving a similar but undeclared result). Count/Every and Count/Density
+mode toggles were deliberately NOT merged onto the same row as their section's own bold label (AMEND 1's
+literal wording) — `_makeSectionsCollapsible`'s own collapse detection requires that bold `<span>` to stay the
+section's true first child with nothing wrapping it, and merging the toggle into a shared row would need
+either that or a DOM reorder ahead of Spacing/Orientation for Grid & rails specifically. AMEND 2's own concrete
+examples (a 3-column row of Spacing/Orientation/mode-toggle) achieve the same compactness goal without that
+risk, so that's the interpretation implemented — noted here as a deliberate scope decision, not an oversight.
+
+**A real, pre-existing bug found in the course of this work, not introduced by it**: verifying the Colors row
+actually rendered as a horizontal row (not just checking its OWN swatch width) turned up
+`_makeSectionsCollapsible`'s own `applyOpen` doing `node.style.display = open ? '' : 'none'` — clearing a
+child's inline `display` to restore it assumes something ELSE (a CSS class) declares that child's real layout,
+which is true for NOTHING in this panel; every section's own content rows declare their layout via a bare
+inline `style="display:flex; ..."` with no class backing it. Clearing that to `''` doesn't restore "flex" — it
+removes the ONLY declaration of it, and the element falls back to its tag's bare default (`block` for a
+`<div>`). This ran on the very FIRST render too (`applyOpen(open)` is called unconditionally at init, not just
+on a manual collapse/re-expand), so the Colors row's 3 swatches have likely been stacking into a column
+instead of staying a row on every phone since MOB3/T58 shipped — invisible in this turn's own earlier full-
+panel screenshots because nobody had zoomed into that ONE row's actual computed `display` specifically. Fixed
+by capturing each section body child's ORIGINAL inline `display` value once (before any toggle ever runs) and
+restoring THAT specific value on re-open, instead of assuming empty-string works universally. Verified live:
+collapse Colors -> `none`; re-expand -> `flex` (not `block`) — confirmed both before AND after this fix, so the
+before/after contrast is real, not assumed.
+
+**Verify (this amendment):**
+- Live (headless Chrome via CDP, hard-reloaded with cache ignored — see the caching note below) at 390x844:
+  before/after screenshots of the full open Lattice panel (both box and Shape Lattice) show the redesigned
+  Grid & rails / Nodes / Colors / Widths rows, each now one compact row instead of 3-6 stacked ones. Desktop
+  (1400x900) re-confirmed byte-for-byte behaviorally unchanged: the same rows compute `display:block`/`flex`
+  exactly as before (the new wrapper divs have no inline `display` of their own, so they're inert outside the
+  mobile breakpoint), the Every/Count and linked/unlinked mode toggles still show/hide their own fields
+  correctly, and the color swatch measures its OLD flex-stretched width (not the mobile-only 44px cap).
+- `npx vitest run` -> **988 passed**.
+- **A SECOND test-environment trap, distinct from the one already logged below**: after editing
+  `editor-drawer.js` (the collapsible-section fix), re-running an UNCHANGED test script against the SAME
+  browser tab kept reading the OLD (pre-fix) module — regular navigation (`Page.navigate`) does not guarantee
+  a JS ES module gets re-fetched over a plain HTTP cache hit the way the top-level HTML document does. Caught
+  it by getting a result that didn't match the fix I'd just made, not by the test silently passing wrong.
+  Fixed by using `Page.reload({ ignoreCache: true })` after every JS (not just CSS/HTML) edit from that point
+  on, and RE-RAN the two-finger pan/zoom and Select-mode-touch-pans checks (which had been verified BEFORE
+  this was caught) under a forced hard reload too, to confirm those specific results weren't the same false
+  positive — both reproduced identically, so they stand.
+
+No amendments pending as of this pass.

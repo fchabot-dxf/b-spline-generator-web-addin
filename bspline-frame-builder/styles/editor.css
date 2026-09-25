@@ -718,6 +718,51 @@
         transition: transform 0.15s ease-out;
     }
 
+    /* MOB5 ADD-ON (Fred: "I feel like this could have a few 2-column
+       sections", then "2 or even 3 columns") — ONE declared grid shape per
+       column count, used by the Lattice panel's own Grid & rails/Nodes/
+       Colors/Widths rows below (both the box Lattice and Shape Lattice
+       panels, identical markup) instead of a per-control inline style
+       each time a row needs to pack tighter. `!important` beats each
+       row's own inline `display:flex` (this file's own established
+       pattern for a mobile-only override of an inline style). Grid items
+       don't shrink their own content the way `flex:1` does, so
+       `min-width:0` is needed on every cell or a number input's own
+       intrinsic width can force its column wider than the track. Desktop
+       (outside this breakpoint) never sees these classes at all — the
+       rows stay exactly the stacked, full-width layout they always were. */
+    .panel-row-2, .panel-row-3 {
+        display: grid !important;
+        gap: 6px;
+        align-items: end;
+    }
+    .panel-row-2 { grid-template-columns: repeat(2, 1fr) !important; }
+    .panel-row-3 { grid-template-columns: repeat(3, 1fr) !important; }
+    .panel-row-2 > *, .panel-row-3 > * {
+        min-width: 0;
+    }
+
+    /* MOB5 ADD-ON (Fred: "swatch ~44px wide, not full-width bars") — the
+       Colors row is already one flex row (no stacking to fix), but each
+       swatch button stretches to `width:100%` of its own flex:1 cell,
+       reading as a wide color bar rather than a compact swatch. Caps it
+       to a normal-looking width, centered in its own cell via the
+       label's existing `align-items:center`. */
+    .panel-color-swatch {
+        width: 44px !important;
+    }
+
+    /* MOB5 ADD-ON: the Widths row's rarer (off-by-default) unlinked state
+       has 2 fields of its own — too cramped in a single 1-of-3 column, so
+       it claims the WHOLE row instead when it's the one actually showing
+       (properties-lattice.js's own _showWidthLinkMode still owns the
+       display:none/flex toggle between this and the linked row; this only
+       decides how much of the grid it claims WHEN visible). The link
+       toggle + Node size then naturally wrap to their own row below. */
+    .panel-widths-unlinked {
+        grid-column: 1 / -1;
+    }
+
     .editor-symbol-keyboard {
         position: relative !important;
         bottom: auto !important;
@@ -1113,34 +1158,48 @@
     }
 }
 
-/* MOB2: the Lattice panel's Nodes checkboxes (bspline_gen_palette.html)
-   are 16x16px inline with no touch enlargement anywhere — well under the
-   ~32px minimum touch target, same class of gap the block above already
-   closes for the layer-row toggles. `!important` needed to beat the
-   inline width:16px/height:16px on the element itself. Confirmed live
-   (padding+negative-margin, the usual native-checkbox enlargement trick,
-   does NOT work here — Chrome's UA stylesheet resets `padding` back to
-   0 on input[type=checkbox] regardless of author rules; width/height
-   are NOT reset the same way and do resize the actual rendered widget).
-   The negative margin keeps the row's visual alignment/gap unchanged —
-   32px grown, 8px pulled back on each side nets back to the original
-   16px layout footprint. */
+/* MOB2 (Nodes checkboxes) / T49 (Border checkbox) originally grew these to
+   32px with a `margin:-8px` trick to fake back the original 16px layout
+   footprint — Chrome's UA stylesheet resets `padding` on
+   input[type=checkbox] regardless of author rules, so padding-based
+   enlargement doesn't work, but width/height do resize the actual
+   rendered widget. MOB5 (Fred, real phone: the grown checkbox overlaps
+   its own label text): that negative margin visually grows the checkbox
+   in EVERY direction, including toward the row's own left inset and the
+   6px gap before the label text — both narrower than 8px, so the box
+   painted straight over the row's edge and the first letter of the label.
+   Confirmed live (cropped screenshot around the checkbox's own measured
+   rect) before touching anything.
+   Fixed at the actual ask, not a bigger negative-margin fudge: keep the
+   checkbox itself a normal-looking 24px (no margin trick at all — nothing
+   for it to overlap into), and grow the TAP TARGET by giving its own
+   wrapping `<label>` a 44px height instead. Labels already toggle their
+   checkbox on any tap within them (native behavior — the SAME thing the
+   MOB2-era negative-margin trick was trying to fake by inflating the
+   input itself), so this is the mechanism the dispatch itself named
+   ("label padding") rather than the input's own box. `:has()` scopes each
+   rule to exactly the label wrapping that one checkbox, not every label
+   in the panel. Covers ALL SIX Nodes checkboxes (box Lattice + T58's
+   Shape Lattice, which never got the box Lattice's own touch-enlargement
+   pass at all — 16px inline, unfixed until now) plus Shape Lattice's own
+   Border checkbox; the box Lattice's OWN `#latticeBorderEnabled` no
+   longer exists in the DOM (T58 moved Border to Shape Lattice entirely),
+   so that dead selector is dropped rather than carried forward. */
 @media (pointer: coarse) {
-    #latticeNodesEnds, #latticeNodesCrossings, #latticeNodesRailEnds {
-        width: 32px !important;
-        height: 32px !important;
-        margin: -8px;
+    #latticeNodesEnds, #latticeNodesCrossings, #latticeNodesRailEnds,
+    #shapeLatticeNodesEnds, #shapeLatticeNodesCrossings, #shapeLatticeNodesRailEnds,
+    #shapeLatticeBorderEnabled {
+        width: 24px !important;
+        height: 24px !important;
     }
-}
-
-/* T49 (SE13 Slice 3): the Border piece's own "draw boundary" checkbox —
-   same MOB2 gap/fix as the Nodes checkboxes immediately above (ID-specific
-   rule, since that block doesn't match by class either). */
-@media (pointer: coarse) {
-    #latticeBorderEnabled {
-        width: 32px !important;
-        height: 32px !important;
-        margin: -8px;
+    label:has(> #latticeNodesEnds),
+    label:has(> #latticeNodesCrossings),
+    label:has(> #latticeNodesRailEnds),
+    label:has(> #shapeLatticeNodesEnds),
+    label:has(> #shapeLatticeNodesCrossings),
+    label:has(> #shapeLatticeNodesRailEnds),
+    label:has(> #shapeLatticeBorderEnabled) {
+        height: 44px !important;
     }
 }
 

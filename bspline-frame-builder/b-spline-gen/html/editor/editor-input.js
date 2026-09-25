@@ -55,15 +55,23 @@ function _midpoint(a, b) {
  * Two-pointer pinch update: given the PREVIOUS frame's two pointer
  * positions and the CURRENT frame's, returns the incremental zoom
  * `factor` (distance ratio since the previous frame, not since pinch
- * start — so repeated calls compose correctly frame over frame) and the
+ * start — so repeated calls compose correctly frame over frame), the
  * CURRENT screen-space `midpoint` (client coords) to use as the zoom
- * pivot. The caller converts `midpoint` to a model-space point (via
- * `editor._draw.point(x,y)`, the same conversion getPointerPos already
- * does) and calls `zoomAbout(view, thatModelPoint, factor)` — recomputing
- * the pivot from the CURRENT midpoint every frame, rather than a pivot
- * fixed at pinch-start, is what makes a two-finger slide-while-pinching
- * pan the view along with the fingers instead of only zooming in place;
- * no separate pan formula needed, `zoomAbout` already does the rest.
+ * pivot, and `panDx`/`panDy` — the midpoint's OWN screen-space movement
+ * since the previous frame. The caller pans the view by `panDx`/`panDy`
+ * (screen->model, same sign convention as `_panBy`'s single-finger drag)
+ * FIRST, then converts `midpoint` to a model-space point and calls
+ * `zoomAbout(view, thatModelPoint, factor)` — zoom alone never moves the
+ * view when `factor` is 1 (a pure slide with no change in finger spread:
+ * `zoomAbout` returns `cx`/`cy` UNCHANGED whenever `newZoom === oldZoom`,
+ * by its own `ratio = oldZoom/newZoom = 1` math), so a two-finger PAN
+ * needs this separate translation term — MOB5 (Fred: "pan doesn't work
+ * well in mobile"), a real bug, not a missing polish pass: the previous
+ * version of this doc comment claimed recomputing the pivot from the
+ * current midpoint alone was "what makes a two-finger slide... pan the
+ * view," which is false (confirmed by reading `zoomAbout`'s own math, not
+ * just asserted) — a pure slide (factor≈1) through that path was a
+ * complete no-op.
  *
  * `prev`/`next` are `{ p1: {x,y}, p2: {x,y} }` in any consistent screen
  * coordinate space (client px). Returns `factor: 1` (no-op zoom) if the
@@ -74,7 +82,14 @@ export function computePinchUpdate(prev, next) {
   const prevDist = _distance(prev.p1, prev.p2);
   const nextDist = _distance(next.p1, next.p2);
   const factor = prevDist > 0 ? nextDist / prevDist : 1;
-  return { factor, midpoint: _midpoint(next.p1, next.p2) };
+  const prevMidpoint = _midpoint(prev.p1, prev.p2);
+  const midpoint = _midpoint(next.p1, next.p2);
+  return {
+    factor,
+    midpoint,
+    panDx: midpoint.x - prevMidpoint.x,
+    panDy: midpoint.y - prevMidpoint.y,
+  };
 }
 
 /**
