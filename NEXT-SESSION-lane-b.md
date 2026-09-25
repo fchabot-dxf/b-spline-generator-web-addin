@@ -1,28 +1,24 @@
-# NEXT (lane-b) — T43: SE12 Slice 4 — the Fusion export USES the layer's Fusion Geometry pick
+# NEXT (lane-b) — T44: fallback notice + flat/square line ends for outlines
 
-**Ball: worker (seat B) · epoch 2 · T43.** NO FUSION for workers — browser proof only; the advisor does the one Fusion
-import check after merge. T42 reviewed + merged (dce151f, 668 green; advisor confirmed a markup-only
-`<text font-family="Courier New">` now computes "Courier New" while the UI stays Inter).
+**Ball: worker (seat B) · epoch 2 · T44.** NO FUSION for workers — browser proof only. T43 merged (0258941); the advisor
+imported its baked export into Fusion: 144 SketchArcs + 40 lines, 0 splines, 11 profiles, correct inch scale.
 
-## Do (design Slice 4, keyed on the ONE field)
-- `getLayerSvg` has TWO consumers: the carve mask (stamp-mask-manager.js — rasterized relief) and the Fusion export
-  (export-flow.js). Only the EXPORT swaps geometry. Make it an explicit option (e.g. `getLayerSvg(editor, id, dpi,
-  { geometry: 'fusion' })`), default = today's output byte-for-byte, so the carve mask is untouched.
-- For each element on a layer: 'centerline' → today's element; 'outline' → the OUTLINE_KINDS path (same engine as the
-  preview — ONE function produces both, never a second copy), stroke-only, no fill; 'both' → both. An element whose
-  kind declines (`unsupported`) exports its centerline and is reported (console warning + a count the caller can show).
-- Text → its glyph outline (already exact). Async (text) must be awaited in the export path — export-flow is already
-  async or make it so; don't fire-and-forget.
-- The exported SVG stays in the carve/export coordinate space: run outline paths through the SAME bake (Slice 0 keeps
-  A arcs exact under the similarity carve matrix — assert the output still has A commands, no C).
+## 1. Tell the user when an element falls back to centerline
+T43 counts elements whose kind declines an outline (they export as centerline) but only logs it. After "Send to
+Fusion", show the count in the existing status/toast surface ("2 elements exported as centerline — no outline for:
+<kinds>"), nothing when the count is 0. Same count visible in the preview is optional (a dashed marker is fine).
+
+## 2. Butt and square caps (SUPPORTED_LINE_CAPS says false today)
+- Line: butt = rectangle (4 lines), square = rectangle extended by w/2 at both ends. Exact.
+- Open paths/polylines: caps at both ends of each open subpath by the same rule (perpendicular to the end tangent;
+  for a curve end use its end tangent).
+- Flip the table entries to true; the decline path stays for anything else.
+- Also `stroke-linejoin`: miter (with the SVG miter-limit fallback to bevel) and bevel, alongside round — exact
+  (lines only), declared as a SUPPORTED_LINE_JOINS table like caps.
 ## Verify
-- vitest: centerline byte-identical to before; outline → path with only M/L/A/Z; both → element + path; declined kind
-  falls back + counted; mask path unchanged.
-- CDP: a layer with lattice + rect + ellipse + text set to Outline → the export SVG string (what export-flow sends)
-  saved to scratchpad as `t43-export.svg`, so the advisor can import it into Fusion.
-- `npx vitest run` green.
-
+vitest per cap/join (exact corner coordinates, area checks); CDP screenshot of a polyline with each cap + join on an
+Outline layer; `npx vitest run` green.
 ## When done
 Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T43: Fusion export honors fusionGeometry — <sha>, vitest N, export svg: <path>"`
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T44: fallback notice + caps/joins — <sha>, vitest N, screenshots"`
 and stop.
