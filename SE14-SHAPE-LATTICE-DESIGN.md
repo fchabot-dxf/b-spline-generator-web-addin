@@ -365,7 +365,14 @@ Generate on an old boundary-mode layer reverts it to board-fill, per §1's own m
 
 ---
 
-## Open questions for Fred
+## Fred 2026-09-25: "make it and we decide after" — build all slices with these defaults, tune from use
+1. Migration: an old boundary-configured layer is HANDED to the Shape Lattice tool (settings kept), not reverted to board.
+2. Styles: straight / curve / kink only; others declared, not wired.
+3. Detach: recompute-and-compare on commit for the one linked element.
+4. Waist defaults: the design's first guess, one declared table.
+5. Region: explicit {x,y,w,h}, default = the board's inner rect.
+
+## Open questions for Fred (defaults above; revisit after use)
 
 1. **Migration rule (§1)**: the box Lattice's own Generate force-writes `extent.mode:'board'` unconditionally
    on an old boundary-configured layer — confirm, or should it warn/ask first instead of silently reverting?
