@@ -758,3 +758,14 @@ Fred: "the shape lattice and lattice box are different" → TWO tools sharing on
 - Output stays exact (L + circular A) → exact carve/Outline export/Fusion; result is an ordinary node-editable path.
 - Source: lane-b reference/svgcreator-deployed/ (pathloop.js style table, utils.js resolveGenerator, main.js chin/neck)
   + C:/Users/danse/APPS/SVG creator/src/envelope.js (waist controls). Next: seat B design doc after T50.
+
+## Queued — SE15: send Lattice/Shape as real Fusion CONSTRAINED sketches (Fred 2026-09-25)
+Fred: "when using lattice and shape we could send the sketches as actual Fusion constrained sketches" … "no need to
+fully lock them though". Instead of SVG import (plain curves), the app writes a declared SKETCH MANIFEST
+(entities: lines/arcs/circles; constraints: tangent, coincident, horizontal/vertical, symmetric, equal, tie-end-on-rail;
+a few named parameters where natural, e.g. waist_depth, spacing) and the add-in builds it via the Fusion API —
+reuse frame-builder's fb_engine sketch-building where it fits. PARTIALLY constrained by design: keep relationships so
+it drags coherently in Fusion; don't dimension everything (no over-constraint, light solver load on big lattices).
+Order: shape presets first (small, clear win), lattice second (+ plain-geometry fallback for huge lattices).
+Outline/inlay geometry: offsets of the constrained centerlines where feasible. After SE14. Needs Fusion verification
+(advisor) — workers stay browser/no-Fusion.
