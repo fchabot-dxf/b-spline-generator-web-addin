@@ -173,6 +173,31 @@ describe('ellipseOutlinePathD', () => {
     const { d } = ellipseOutlinePathD({ cx: 0, cy: 0, rx, ry, strokeWidth: 0.4 }); // half=0.2 < 0.25
     expect(splitSubpaths(parseD(d))).toHaveLength(2);
   });
+
+  describe('mode:inner (T51 — the TRUE inner ring alone, biarc-fit, not an rx-half/ry-half analytic shortcut)', () => {
+    it('a single ring, matching the SAME true-offset ground truth the stroke-mode inner ring already does', () => {
+      const { d, unsupported } = ellipseOutlinePathD({ ...ELLIPSE, mode: 'inner' });
+      expect(unsupported).toBeNull();
+      const subpaths = splitSubpaths(parseD(d));
+      expect(subpaths).toHaveLength(1);
+      const half = ELLIPSE.strokeWidth / 2;
+      const trueInner = (t) => {
+        const dx = -ELLIPSE.rx * Math.sin(t), dy = ELLIPSE.ry * Math.cos(t);
+        const mag = Math.hypot(dx, dy);
+        const nx = dy / mag, ny = -dx / mag;
+        return { x: ELLIPSE.cx + ELLIPSE.rx * Math.cos(t) - half * nx, y: ELLIPSE.cy + ELLIPSE.ry * Math.sin(t) - half * ny };
+      };
+      const pts = sampleChain({ x: subpaths[0][0][1], y: subpaths[0][0][2] }, subpaths[0].slice(1));
+      expect(maxDeviationAgainstGroundTruth(pts, trueInner, 0, 2 * Math.PI)).toBeLessThan(0.001);
+    });
+
+    it('collapses to null when strokeWidth/2 meets or exceeds the ellipse\'s own minimum curvature radius', () => {
+      const rx = 4, ry = 1; // min radius = ry^2/rx = 0.25
+      const result = ellipseOutlinePathD({ cx: 0, cy: 0, rx, ry, strokeWidth: 0.6, mode: 'inner' }); // half=0.3 >= 0.25
+      expect(result.d).toBeNull();
+      expect(result.unsupported).toBe('collapsed');
+    });
+  });
 });
 
 describe('cubicSegmentOutlinePathD', () => {

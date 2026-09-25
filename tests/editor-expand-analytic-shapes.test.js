@@ -150,6 +150,28 @@ describe('circleOutlinePathD', () => {
       expect(circles).toEqual([{ cx: 0, cy: 0, r: 2.5 }]);
     });
   });
+
+  describe('mode:inner (T51 — SE13 boundary-fill fix: the TRUE inner ring alone, for the boundary-cutting engine)', () => {
+    it('the dispatch\'s own exact case: r=2, strokeWidth=0.8 -> a single ring at exactly r=1.6, no outer ring emitted', () => {
+      const { d, unsupported, circles } = circleOutlinePathD({ cx: 5, cy: 5, r: 2, strokeWidth: 0.8, mode: 'inner' });
+      expect(unsupported).toBeNull();
+      const subpaths = splitSubpaths(parseD(d));
+      expect(subpaths).toHaveLength(1);
+      for (const p of outlinePolygon(subpaths[0])) expect(Math.abs(Math.hypot(p.x - 5, p.y - 5) - 1.6)).toBeLessThan(1.6 * 0.0004);
+      expect(circles).toEqual([{ cx: 5, cy: 5, r: 1.6 }]);
+    });
+
+    it('collapses to null (not a fallback to the outer ring) when the stroke swallows the whole circle', () => {
+      const result = circleOutlinePathD({ cx: 0, cy: 0, r: 1, strokeWidth: 3, mode: 'inner' }); // half=1.5 >= r=1
+      expect(result.d).toBeNull();
+      expect(result.unsupported).toBe('collapsed');
+    });
+
+    it('non-vacuous: strokeWidth/2 just UNDER r still produces a real (non-null) inner ring', () => {
+      const { d } = circleOutlinePathD({ cx: 0, cy: 0, r: 1, strokeWidth: 1.9, mode: 'inner' }); // half=0.95 < r=1
+      expect(d).not.toBeNull();
+    });
+  });
 });
 
 describe('rectOutlinePathD', () => {
@@ -234,5 +256,23 @@ describe('rectOutlinePathD', () => {
     const expected = bbox - (4 - Math.PI) * half * half;
     const area = Math.abs(shoelaceArea(outlinePolygon(subpaths[0])));
     expect(Math.abs(area - expected) / expected).toBeLessThan(0.001);
+  });
+
+  describe('mode:inner (T51 — the TRUE inner ring alone)', () => {
+    it('a single sharp-cornered inner ring, area = (W-sw)*(H-sw), no outer ring emitted', () => {
+      const { d, unsupported } = rectOutlinePathD({ ...RECT, mode: 'inner' });
+      expect(unsupported).toBeNull();
+      const subpaths = splitSubpaths(parseD(d));
+      expect(subpaths).toHaveLength(1);
+      expect(subpaths[0].map((s) => s[0])).toEqual(['M', 'L', 'L', 'L', 'Z']);
+      const area = Math.abs(shoelaceArea(outlinePolygon(subpaths[0])));
+      expect(area).toBeCloseTo((RECT.width - RECT.strokeWidth) * (RECT.height - RECT.strokeWidth), 6);
+    });
+
+    it('collapses to null when strokeWidth >= the shorter side', () => {
+      const result = rectOutlinePathD({ x: 0, y: 0, width: 10, height: 4, strokeWidth: 4, mode: 'inner' });
+      expect(result.d).toBeNull();
+      expect(result.unsupported).toBe('collapsed');
+    });
   });
 });

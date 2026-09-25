@@ -25,8 +25,14 @@
  * plain data out, same contract editor-lattice-pattern.js's own
  * computePattern already sets for this codebase's "pure" modules.
  */
-import { _parseD, _lineIntersect, _lineCircleIntersect, _arcWorldPointTangent } from './editor-expand-path.js';
+import { _parseD, _lineIntersect, _lineCircleIntersect, _arcWorldPointTangent, pathOutlinePathD } from './editor-expand-path.js';
 import { arcCenterParam } from './path-layout.js';
+// T51 (SE13 boundary-fill fix): the Expand tool's own analytic offset
+// engine, now understanding `mode:'inner'` (editor-expand-analytic.js) —
+// the TRUE inward-offset boundary for a stroked boundary shape, reused
+// here rather than approximating it as a per-crossing shrink (T50's own
+// dead end, deleted — see shapeToInnerBoundaryPrimitives' own doc comment).
+import { rectOutlinePathD, ellipseOutlinePathD } from './editor-expand-analytic.js';
 
 const TAU = Math.PI * 2;
 
@@ -192,6 +198,110 @@ export async function shapeToPrimitives(el) {
     return _primitivesFromD(glyphD);
   }
   return []; // polyline (never closed) and any other kind: not a valid boundary
+}
+
+/** An SVG `points` list -> a closed `M x0 y0 L x1 y1 ... Z` path string —
+ *  what `pathOutlinePathD` (a `d`-string-in API) needs from a polygon,
+ *  which `shapeToPrimitives` itself never has to build (it goes straight
+ *  to primitives via `_ringFromPoints`). */
+function _ringD(pts) {
+  const [first, ...rest] = pts;
+  return `M ${first[0]} ${first[1]} ${rest.map((p) => `L ${p[0]} ${p[1]}`).join(' ')} Z`;
+}
+
+/**
+ * T51 (SE13 boundary-fill fix, advisor review of T50): a boundary source
+ * element's own TRUE INWARD-OFFSET boundary — `d`, or `null` if it
+ * collapses (the stroke swallows the whole shape, or every subpath of a
+ * multi-subpath source does) — reusing the SAME analytic/biarc offset
+ * engine the Expand tool already built (`rectOutlinePathD`/
+ * `ellipseOutlinePathD`/`pathOutlinePathD`, now understanding
+ * `mode:'inner'`) rather than a second offsetting implementation. NOT
+ * called for `circle` — see `shapeToInnerBoundaryPrimitives`'s own
+ * special-case comment for why. `strokeHalfWidth` is in the SAME
+ * local-frame units as the element's own geometry (world-space inches,
+ * once the caller bakes the element's transform — same split
+ * `shapeToPrimitives` itself uses).
+ */
+async function _innerRingD(el, half) {
+  const type = el.type;
+  const strokeWidth = half * 2;
+  if (type === 'rect') {
+    const x = parseFloat(el.attr('x')) || 0;
+    const y = parseFloat(el.attr('y')) || 0;
+    const w = parseFloat(el.attr('width')) || 0;
+    const h = parseFloat(el.attr('height')) || 0;
+    if (w <= 0 || h <= 0) return null;
+    return rectOutlinePathD({ x, y, width: w, height: h, strokeWidth, mode: 'inner' }).d;
+  }
+  if (type === 'ellipse') {
+    const cx = parseFloat(el.attr('cx')) || 0;
+    const cy = parseFloat(el.attr('cy')) || 0;
+    const rx = parseFloat(el.attr('rx')) || 0;
+    const ry = parseFloat(el.attr('ry')) || 0;
+    if (rx <= 0 || ry <= 0) return null;
+    return ellipseOutlinePathD({ cx, cy, rx, ry, strokeWidth, mode: 'inner' }).d;
+  }
+  if (type === 'polygon') {
+    const pts = _pointsOf(el);
+    if (pts.length < 3) return null;
+    return pathOutlinePathD(_ringD(pts), strokeWidth, { mode: 'inner' }).d;
+  }
+  if (type === 'path') {
+    return pathOutlinePathD(el.attr('d') || '', strokeWidth, { mode: 'inner' }).d;
+  }
+  if (type === 'text') {
+    const { localGlyphPathD } = await import('./editor-expand-text.js');
+    const glyphD = await localGlyphPathD(el);
+    if (!glyphD) return null;
+    return pathOutlinePathD(glyphD, strokeWidth, { mode: 'inner' }).d;
+  }
+  return null; // polyline etc: not a valid boundary kind (matches shapeToPrimitives)
+}
+
+/**
+ * Like `shapeToPrimitives`, but cuts against the shape's own TRUE
+ * inward-offset boundary instead of its raw edge — the fix for T50's own
+ * dead end (a per-crossing scan-direction shrink that only happened to be
+ * exact at a circle's own center row, letting rails survive INSIDE the
+ * stroke band elsewhere — see WORK-LOG-lane-b.md, T51). `strokeHalfWidth
+ * <= 0` (an unstroked boundary, or `boundary.edge==='centerline'`)
+ * delegates straight to `shapeToPrimitives` — no offset to apply, and no
+ * reason to route through the offset engine at all. A collapsed inner
+ * ring (stroke swallows the shape, or a thin feature swallows just its
+ * own region — see `pathOutlinePathD`'s own T51 doc comment for the
+ * "whole subpath, not a local trim" scope of that collapse) returns `[]`,
+ * same "declined gracefully" convention as everywhere else in this file.
+ */
+export async function shapeToInnerBoundaryPrimitives(el, strokeHalfWidth) {
+  if (!strokeHalfWidth || strokeHalfWidth <= 0) return shapeToPrimitives(el);
+  // A circle's own inner offset is a smaller CONCENTRIC CIRCLE, exactly —
+  // built directly rather than routed through circleOutlinePathD's own
+  // `d`-string (2 semicircle `A` commands meeting at the LEFT/RIGHT
+  // poles) and back through `_parseD`/`arcCenterParam`. Found live (not
+  // assumed): `arcCenterParam`'s own endpoint->center reconstruction is
+  // not bit-exact (an inverse trig/sqrt computation), landing each arc's
+  // own reconstructed center ~1e-8 off the true one — for a scan line at
+  // EXACTLY y=cy (the poles' own shared y, and exactly where a rail is
+  // likely to land for a grid-centered circle), that tiny asymmetry
+  // pushed BOTH poles' own half-open `t` just past their own inclusion
+  // boundary, silently producing a ZERO-span row through the shape's own
+  // widest, most visible diameter — a regression this test file's own
+  // "THE T50 REGRESSION ITSELF" case would not have caught (it checks a
+  // row BEYOND the inner radius, not exactly AT the center). The single-
+  // primitive `type:'CIRCLE'` path (`insideSpans`' own `_crossCircle`)
+  // has no seam and no such reconstruction step, so it has no such error
+  // to trigger in the first place.
+  if (el.type === 'circle') {
+    const cx = parseFloat(el.attr('cx')) || 0;
+    const cy = parseFloat(el.attr('cy')) || 0;
+    const r = parseFloat(el.attr('r')) || 0;
+    if (r <= 0) return [];
+    const innerR = r - strokeHalfWidth;
+    return innerR > 1e-9 ? [{ type: 'CIRCLE', cx, cy, r: innerR }] : [];
+  }
+  const innerD = await _innerRingD(el, strokeHalfWidth);
+  return innerD ? _primitivesFromD(innerD) : [];
 }
 
 /** The primitive's own two ends, in "low"/"high" scan-parameter order —

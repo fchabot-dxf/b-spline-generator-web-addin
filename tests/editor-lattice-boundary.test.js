@@ -12,7 +12,9 @@
  * lose and hardest to notice from output alone).
  */
 import { describe, it, expect } from 'vitest';
-import { shapeToPrimitives, insideSpans, primitivesBBox, collinearSpans } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
+import {
+  shapeToPrimitives, insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 // Minimal mock matching the SAME plain-DOM-adapter contract editor-io.js's
 // own _outlineAdapter provides to OUTLINE_KINDS (el.type / el.attr(name) /
@@ -345,5 +347,63 @@ describe('collinearSpans (T49, "fix first") — a scan line exactly on a boundar
       { type: 'L', p0: { x: 4, y: 0 }, p1: { x: 10, y: 0 } },
     ];
     expect(collinearSpans(horizontalRail(0), prims)).toEqual([[0, 10]]);
+  });
+});
+
+describe('shapeToInnerBoundaryPrimitives (T51 — the TRUE inward-offset boundary, not T50\'s own per-crossing shrink)', () => {
+  it('strokeHalfWidth <= 0 delegates straight to shapeToPrimitives (no offset engine involved at all)', async () => {
+    const el = mockEl('circle', { cx: '0', cy: '0', r: '5' });
+    const raw = await shapeToPrimitives(el);
+    expect(await shapeToInnerBoundaryPrimitives(el, 0)).toEqual(raw);
+    expect(await shapeToInnerBoundaryPrimitives(el, -1)).toEqual(raw);
+  });
+
+  it("the dispatch's own exact case: circle r=2, stroke 0.8 -> a rail at the center exactly at radius 1.6 (on-boundary math against it)", async () => {
+    const cx = 5, cy = 5, r = 2, half = 0.4; // strokeWidth 0.8
+    const el = mockEl('circle', { cx: String(cx), cy: String(cy), r: String(r) });
+    const prims = await shapeToInnerBoundaryPrimitives(el, half);
+    const spans = insideSpans(horizontalRail(cy), prims);
+    expect(spans).toHaveLength(1);
+    expect(spans[0][0]).toBeCloseTo(cx - 1.6, 9);
+    expect(spans[0][1]).toBeCloseTo(cx + 1.6, 9);
+  });
+
+  it('THE T50 REGRESSION ITSELF: a row beyond the inner radius (|y-cy| > 1.6) now produces NO span at all — T50\'s own per-crossing shrink instead left a spurious span lying entirely inside the stroke band there', async () => {
+    const cx = 5, cy = 5, r = 2, half = 0.4;
+    const el = mockEl('circle', { cx: String(cx), cy: String(cy), r: String(r) });
+    const prims = await shapeToInnerBoundaryPrimitives(el, half);
+    const spans = insideSpans(horizontalRail(cy + 1.8), prims); // 1.8 > inner radius 1.6, but < outer r=2
+    expect(spans).toEqual([]);
+  });
+
+  it('a row within the inner radius (but off-center) lands exactly on the TRUE inner circle: x = cx +/- sqrt(1.6^2 - dy^2)', async () => {
+    const cx = 5, cy = 5, r = 2, half = 0.4;
+    const el = mockEl('circle', { cx: String(cx), cy: String(cy), r: String(r) });
+    const prims = await shapeToInnerBoundaryPrimitives(el, half);
+    const dy = 1.0;
+    const spans = insideSpans(horizontalRail(cy + dy), prims);
+    const expectedHalf = Math.sqrt(1.6 * 1.6 - dy * dy); // independent oracle against the INNER radius, not r
+    expect(spans).toHaveLength(1);
+    expect(spans[0][0]).toBeCloseTo(cx - expectedHalf, 6);
+    expect(spans[0][1]).toBeCloseTo(cx + expectedHalf, 6);
+  });
+
+  it('collapses to [] (declined gracefully) when the stroke swallows the whole circle', async () => {
+    const el = mockEl('circle', { cx: '0', cy: '0', r: '1' });
+    expect(await shapeToInnerBoundaryPrimitives(el, 1.5)).toEqual([]); // half=1.5 >= r=1
+  });
+
+  it('a rect boundary: the inner ring is a smaller, sharp-cornered rect, exact', async () => {
+    const el = mockEl('rect', { x: '0', y: '0', width: '10', height: '6' });
+    const half = 1;
+    const prims = await shapeToInnerBoundaryPrimitives(el, half);
+    const spans = insideSpans(horizontalRail(3), prims); // mid-height
+    expect(spans).toEqual([[1, 9]]); // [x+half, x+width-half]
+  });
+
+  it('a polygon with a thin arm narrower than the stroke: the WHOLE shape declines (matches pathOutlinePathD\'s own documented whole-subpath collapse, not a local trim)', async () => {
+    const d = 'M 0 0 L 10 0 L 10 10 L 0 10 L 0 6 L -5 6 L -5 5.7 L 0 5.7 Z';
+    const el = mockEl('path', { d });
+    expect(await shapeToInnerBoundaryPrimitives(el, 0.4)).toEqual([]); // strokeWidth 0.8, arm is 0.3 wide
   });
 });

@@ -5748,3 +5748,221 @@ deferred) and again immediately before passing. Committed by explicit path (11 m
 `editor.js`, `properties-lattice.js`, `styles/editor.css`, plus 4 touched test files) + 2 new test files
 (`editor-lattice-pattern-ending.test.js`, `editor-lattice-pattern-boundary-emit.test.js`, staged individually
 first) + `WORK-LOG-lane-b.md` — pushed. `reference/` confirmed still untracked, not swept.
+
+## T50 — boundary fill respects the boundary shape's own stroke (inner-stroke edge)
+
+**The finding, verified by re-reading the geometry, not taken on faith.** The advisor's own note, from viewing
+T49's own `04-ending-*.png` screenshots: a stroked circle boundary's fill was cut at the raw path CENTERLINE
+(`<circle r>`, the SVG attribute itself), so rails ran visibly into the stroke — a stroke is drawn CENTERED on
+its path by default, so a circle `r=2, stroke-width=0.8` visually spans radius 1.6 (inner edge) to 2.4 (outer),
+while the fill cut at exactly `r=2` — squarely inside that stroke ring. "A person reads a stroked shape's
+inside as the stroke's inner edge" — confirmed by looking at my own screenshots fresh, not disputed.
+
+**Declared, not hard-coded, per the dispatch's own instruction**: `PATTERN_DEFAULTS.boundary.edge = 'inner-
+stroke' | 'centerline'`, default `'inner-stroke'` — `'centerline'` is an explicit opt-out back to T49's own
+raw behavior, for a caller that wants it. No new panel control this turn (the dispatch's own "small change
+only" scope) — set via `PATTERN.boundary.edge` directly (JS/a saved pattern), same as several other declared-
+but-not-yet-wired-to-a-control fields already in this shape (`joints.size`, etc.).
+
+**Which width wins, exactly the dispatch's own rule, factored into ONE shared helper so the visible Border
+stroke and the fill's own cut point can never disagree**: `_effectiveBorderWidth(boundaryEl, boundary, widths)`
+— the Border piece's OWN width when Border is on (it's the thing actually drawn, so it's authoritative); else
+the LIVE boundary element's own current `stroke-width`, IF it's visibly stroked (`stroke` set, not `'none'`,
+width>0); else 0. Reused verbatim by the Border piece's own emission (previously duplicated inline, now calls
+the shared helper — a real, small refactor, not just new code) and by the new `_effectiveEdgeShrink` (half of
+that same width, 0 under `edge:'centerline'` or an unstroked boundary).
+
+**The shrink is applied at the SAME layer the ending-rule pullback already lives at, not inside `insideSpans`
+itself.** Re-opening Slice 1's own proven crossing math for this was the wrong place (same reasoning T49's own
+"fix first" item used for the collinear-edge fix) — instead, a new `_applyEdgeShrink(a,b,aIsCrossing,
+bIsCrossing,shrink)` runs on each `_clipToSpans`-produced piece BEFORE `_applyEndRule`, pulling a genuine
+crossing end in by `shrink` along the scan direction (only ends `_clipToSpans` already marked real — a plain
+"free" tie end is untouched). Matches the dispatch's own given test exactly: circle r=2/stroke=0.8, `on-
+boundary` → rail endpoints at radius 1.6 (2 − 0.4); `inset` → 1.6 further pulled back by half the rail's own
+width — the SAME two-stage composition (shrink first, ending rule second) the dispatch's own wording described.
+
+**Disclosed exactness scope, per the dispatch's own "say which, keep ≤ tolerance" instruction**: shrinking
+along the SCAN direction (not each primitive's own true local normal) is EXACT for a crossing perpendicular to
+the boundary at that point — a circular arc's own center row/column (the dispatch's own test case), or an
+axis-aligned edge crossed by a perpendicular rail/tie. For a steeply-angled crossing it's a bounded UNDER-
+shrink (the true perpendicular offset needs a larger scan-direction move than a flat `shrink` gives) — a
+disclosed simplification for this "small change," not a claimed general solve; a full per-primitive local-
+normal offset was scoped out as unnecessary complexity for what this turn actually needed to fix.
+
+**A second, deeper, pre-existing bug self-caught while testing THIS one — found by testing against the REAL
+pipeline, not just hand-built extents.** `_clipToSpans`'s own `aIsCrossing`/`bIsCrossing` flags (T49) used a
+STRICT `sLo > lo` to distinguish "a genuine boundary crossing" from "just hit the query window's own limit" —
+correct in general, but wrong at the EXACT row/column where a circle/ellipse's own crossing reaches precisely
+as far as the bbox pre-filter itself, which is UNAVOIDABLE at that shape's own widest extent (the bbox IS
+derived from that same widest reach, via `primitivesBBox`). At that one row, `aIsCrossing` came back `false`
+— silently skipping BOTH the new edge-shrink AND (already, since T49, unnoticed until now) the ending rule
+itself for the widest row of every single circular/elliptical boundary in this whole feature, not just T50's
+own new code. My own FIRST pure-`computePattern` tests for this all used a PADDED extent (a leftover habit
+from T48/T49's own byte-identical tests) and never exercised the coincidence; a NEW DOM-level test — going
+through the REAL, un-padded `_resolveExtent` — failed with an unshrunk result, traced by hand (added targeted
+`console.error`s, ran a standalone Node repro OUTSIDE vitest to rule out a test-harness artifact, confirmed
+the SAME wrong value both ways) down to this exact root cause, not guessed. Fixed by comparing `sLo`/`sHi`
+against `lo`/`hi` with a symmetric epsilon (`sLo > lo - eps` / `sHi < hi + eps`) — exact equality now correctly
+reads as "yes, a crossing," which is provably always safe for rails (a REAL, `_resolveExtent`-derived bbox can
+never have `sLo < lo`, only a hand-built test extent can construct that) and still correctly reads "free end"
+for a tie whose own drawn span sits non-trivially inside the boundary (nowhere near the epsilon). One of my
+OWN new tests ("a free tie end is never shrunk") then failed for the SAME reason on ITS OWN premise — its
+forced tie's own random draw happened to land with an end exactly ON the boundary, which, once fixed, correctly
+DOES get shrunk now (the same visual bug either way, whether the end got there by clipping or by lucky
+placement) — re-derived the test to use a query window strictly narrower than the boundary's own true reach,
+so it can no longer coincidentally touch, with an explicit sanity assertion proving the setup itself before
+trusting the conclusion.
+
+**New tests**: 5 pure `computePattern` cases (`editor-lattice-pattern-ending.test.js`) — the dispatch's own
+exact circle r=2/stroke=0.8 case for `on-boundary` and `inset`; `edgeShrink:0` reduces to raw-crossing;
+a too-short chord collapses to a point rather than inverting; the corrected free-tie-end case. 5 DOM-level
+`generatePattern` cases (`editor-lattice-pattern-boundary-emit.test.js`, new `_addBoundaryCircle` mock helper)
+— visibly-stroked (Border off), unstroked (no shrink), `edge:'centerline'` (explicit opt-out), Border ON
+overriding with its OWN width (not the shape's raw stroke), Border ON with no explicit width falling back to
+the shape's own stroke — the exact same fallback chain the Border piece itself already used, now shared.
+
+**Mutation-tested, 2 rounds**: (1) `_applyEdgeShrink` short-circuited to a no-op — exactly the 6 tests
+asserting a real nonzero shrink failed (3 pure + 3 DOM-level), the other 22 (including the `edgeShrink:0`/
+`centerline`/free-tie-end cases, which SHOULD stay green under this mutation) correctly passed. (2) the
+crossing-detection epsilon fix reverted to the old strict `>` — exactly the 3 DOM-level tests hitting the
+real, un-padded tight-bbox coincidence failed (814/817 suite-wide), while every pure test (all padded)
+stayed green, confirming the padded/un-padded distinction is exactly what separates "catches this" from
+"doesn't." Both restored, confirmed byte-identical via `diff`, re-ran to 817/817.
+
+**Live verification (CDP, fresh Chrome + profile `chrome-profile-t50`, killed and confirmed at 0 after)**:
+the SAME live scenario as T49's own `04-ending-*.png` — a real Circle-tool drag, default stroke-width 0.5
+(confirmed live, not assumed — matches the advisor's own "~0.8" estimate as "a real, materially thick
+stroke," not a precise value match, which was never the claim), picked as the boundary, Generated with the
+NEW default (`edge:'inner-stroke'`). Screenshot (`07-inner-stroke-default.png`) shows rails now stopping
+CLEANLY at the stroke's own inner edge, flush against the visible ring, not running into it. A direct
+side-by-side: `PATTERN.boundary.edge` set to `'centerline'` on the SAME live pattern, re-Generated,
+screenshot (`08-centerline-comparison.png`) reproduces the ORIGINAL bug exactly (rails visibly running into
+the stroke, x1/x2 measured at the RAW `cx±r`, confirmed numerically: `x2−x1 = 2r` exactly) — an unambiguous
+before/after, not just a single "looks fixed" shot.
+
+Full vitest suite: 817/817 green (807 T49 baseline + 10 T50 new: 5 pure + 5 DOM-level).
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(2 modified files: `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js`,
+`WORK-LOG-lane-b.md`) plus 2 touched test files (`tests/editor-lattice-pattern-ending.test.js`,
+`tests/editor-lattice-pattern-boundary-emit.test.js`) — pushed. `reference/` confirmed still untracked, not
+swept. Not merged to main yet, per the dispatch's own note (seat A's in-flight MOB3 drawer edits the same
+panel files) — this turn touched none of those panel files, only `editor-lattice-pattern.js` and tests.
+
+## T51 — T50 review fix: cut against the boundary's own TRUE inner-offset ring, not a per-crossing shrink
+
+**The advisor's own finding, from re-reading my OWN `07-inner-stroke-default.png` screenshot**: the CENTER
+rails stopped correctly at the inner edge, but the top/bottom rows (still shown running through the visible
+stroke band) did NOT — T50's own per-crossing scan-direction shrink only happened to be EXACT at a circle's
+own center row (where the scan direction and the circle's own radial normal coincide); everywhere else it
+under-shrank, leaving rails sitting entirely INSIDE the stroke. The fix, exactly as instructed: cut against
+the boundary's own TRUE inward-offset ring — reuse the Expand tool's own analytic/biarc offset engine
+(`circleOutlinePathD` etc.) rather than approximate the offset per crossing. **Deleted T50's own
+`_applyEdgeShrink` and `extent.edgeShrink` plumbing entirely** — no dead branch — per the advisor's own
+explicit instruction.
+
+### The outline engine gains `mode:'inner'` — a genuinely reusable addition, not a one-off
+
+`circleOutlinePathD`/`rectOutlinePathD`/`ellipseOutlinePathD` (editor-expand-analytic.js) and
+`pathOutlinePathD`'s own per-subpath dispatch (`_closedSubpathD`/`_openSubpathD`, editor-expand-path.js) all
+now understand a 4th mode alongside `stroke`/`fill`/`both`: `'inner'` — the SAME inner-ring computation
+`stroke` mode already does internally (an outward+inward ring pair, the inner one dropped when it collapses)
+now exposed on its own, without needing to emit or discard the outer ring. Purely additive — every existing
+caller only ever passes `stroke`/`fill`/`both`, confirmed unaffected (full suite green before touching
+anything downstream). `pathOutlinePathD` itself needed ZERO top-level changes: its own per-subpath loop
+already calls `_closedSubpathD`/`_openSubpathD` once per ORIGINAL subpath and skips a `null` result — so a
+multi-subpath source (two disjoint letters, or a thick square + a separate thin sliver) resolves each
+subpath's own inner ring independently for free, verified directly (a thick square keeps its own ring while
+a disjoint thin sliver in the SAME `d` string collapses, and the combined output has exactly one subpath).
+
+**A real, disclosed finding about WHAT "collapse" means for a single closed subpath, verified empirically,
+not assumed**: `_hasSelfIntersection` (the existing collapse check `stroke` mode already used) operates on
+the WHOLE sampled ring for one subpath, not per-edge — so a "lollipop" (one closed polygon: a thick body
+with a thin arm attached, one continuous loop) collapses its ENTIRE inner ring when the arm alone is
+narrower than the stroke, not just the arm's own local region. Probed directly before writing the test (not
+guessed): this DOES satisfy the dispatch's own "arm gets no rails" bar (nothing gets rails, since the whole
+ring is gone), just not via a LOCAL trim — disclosed explicitly as the EXISTING engine's own established,
+reused-as-is behavior, not something T51 redesigned. A separate test proves the SAME body, as its OWN
+disconnected subpath (no arm attached), keeps a real inner ring at the identical strokeWidth — isolating
+that the collapse above is really about the arm, not the stroke width alone.
+
+### `shapeToInnerBoundaryPrimitives` (editor-lattice-boundary.js) — the new boundary-cutting entry point
+
+Dispatches by shape kind exactly like `shapeToPrimitives` itself, calling the matching `*OutlinePathD`
+function in `mode:'inner'`, feeding the resulting `d` through the SAME `_primitivesFromD` the raw-shape path
+already uses. `strokeHalfWidth <= 0` (unstroked, or `boundary.edge==='centerline'`) delegates straight to
+`shapeToPrimitives` — no offset engine touched at all for that (the common, unstroked-boundary) case.
+
+**A second, DEEPER, pre-existing-pattern bug self-caught while testing the dispatch's own exact case (r=2,
+stroke=0.8) — found by testing the CENTER row specifically, which none of my earlier padded/off-center tests
+exercised.** `circleOutlinePathD`'s own inner ring (`mode:'inner'`) is built the SAME way `stroke` mode's
+inner ring always has been: `_circleLoopD`'s own 2-semicircle-`A` construction, seamed at the LEFT and RIGHT
+poles. Routing that `d` back through `_parseD`/`arcCenterParam` to recover primitives is NOT bit-exact — an
+inverse trig/sqrt reconstruction of each arc's own center lands ~1e-8 off the true one. For a scan line at
+EXACTLY the circle's own center row (precisely where a rail is most likely to land for a grid-centered
+circle — and precisely the row the dispatch's own test case specifies), that tiny per-arc asymmetry pushed
+BOTH poles' own half-open `t` just past their own inclusion boundary, producing a **spurious ZERO-span row
+through the shape's own widest, most visible diameter** — worse than T50's own bug, and one my initial test
+(assert center-row is `[cx-1.6,cx+1.6]`) caught immediately as a hard failure, not a near-miss. Verified the
+mechanism by hand (printed the two arcs' own reconstructed `cx`/`cy`, confirmed the ~1e-8 mismatch) before
+fixing it, not patched blind. **Fix**: `shapeToInnerBoundaryPrimitives` special-cases `circle` — a circle's
+own inward offset IS a smaller CONCENTRIC circle, exactly, so it's built directly as a single `{type:
+'CIRCLE',...}` primitive, bypassing `circleOutlinePathD`/`_parseD`/`arcCenterParam` entirely for this one
+shape kind. `insideSpans`' own `_crossCircle` path has no seam and no reconstruction step, so it has no such
+error to trigger. Checked whether ellipse has the analogous problem (its own inner ring is seamed at 4
+quarter-boundaries, also axis-aligned poles) — probed directly (both a horizontal rail AND a vertical tie
+through the exact center): no failure found for that case, so left unchanged rather than "fixing" something
+not shown to be broken; disclosed as checked, not assumed safe.
+
+### Wiring: `_resolveBoundaryPrimitives` now does the inset itself, in the element's own LOCAL frame
+
+The inset happens BEFORE `_bakeWorldTransform` now (using the boundary element's own LOCAL `stroke-width`,
+the same units SVG's own default stroke rendering already scales with an element's transform) — a small,
+correct-by-construction improvement over T50's own world-space-only shrink: a scaled boundary element's own
+effective stroke width now scales right along with the rest of its geometry, not computed independently of
+it. `_effectiveBorderWidth` (the "which width wins" resolver — Border's own width when Border is on, else
+the shape's own visible stroke-width, else 0 — T50's own rule, unchanged) is now shared by BOTH the Border
+piece's own emission AND this inset, guaranteeing they can never independently disagree.
+
+**A real bug in my own first-draft wiring, caught by the FIRST test run, not shipped**: `_effectiveBorderWidth`
+returns the FULL stroke width (e.g. 0.8), but I passed it straight through as `strokeHalfWidth` without
+dividing by 2 — every T50-era test that happened to still assert the SAME numeric target (radius 1.6)
+immediately caught it as a wrong-by-2x failure (got 3.8/1.2 instead of 3.4/1.6). Fixed by adding the missing
+`/ 2`, re-ran to confirm.
+
+### Non-vacuity — 2 targeted mutations, each isolating the fix that actually mattered this turn
+
+1. The circle special-case removed (routed back through the general `mode:'inner'` `d`-string path):
+   exactly the 4 tests scanning through the circle's own EXACT center row failed; every off-center/beyond-
+   radius test (which this session's own earlier, less-precise T50-era tests happened to rely on) stayed
+   green — confirms the special-case is load-bearing specifically for the center-row case, not a redundant
+   belt-and-suspenders addition.
+2. `_resolveBoundaryPrimitives` reverted to the raw shape (simulating T50's own original bug, no inset at
+   all): exactly the 3 tests asserting a real inset failed; the unstroked/centerline tests (which SHOULD
+   reduce to the raw shape anyway) correctly stayed green.
+
+Both restored, confirmed byte-identical via `diff`, re-ran to full green.
+
+### Live re-verification (CDP, fresh Chrome + profile `chrome-profile-t51`, killed and confirmed at 0 after)
+
+The SAME circle-boundary scenario as T49's `04-ending-*.png` / T50's `07-inner-stroke-default.png` (real
+Circle-tool drag, default stroke-width 0.5, picked as boundary, Generated with `on-boundary`). Beyond a
+screenshot, a PROGRAMMATIC conformance check against every emitted rail (not just eyeballing one row): for
+each of the 19 rails, computed the analytically-expected chord at the TRUE inner radius
+(`r - strokeWidth/2`) from the circle's own live `cx`/`cy`/`r`/`stroke-width`, compared against that rail's
+own actual `x1`/`x2` — **zero violations across all 19 rails**, not just the center one T50's own bug also
+happened to get right. Screenshot (`07-inner-stroke-default-RESHOT.png`) shows the rails now visibly flush
+with the inner disk's own edge at every row, including near the top/bottom, where the previous screenshot
+showed them running into the stroke band.
+
+Full vitest suite: 831/831 green (817 T50 baseline + 5 outline-engine `mode:'inner'` tests × 4 shape kinds
+[circle/rect/ellipse/path, 4+2+2+5=13] + 7 `shapeToInnerBoundaryPrimitives` tests − 5 obsolete T50-era
+`computePattern`-level `edgeShrink` tests removed).
+
+Amendments polled clean before committing and again immediately before passing. Committed by explicit path
+(5 modified files: `editor-expand-analytic.js`, `editor-expand-path.js`, `editor-lattice-boundary.js`,
+`editor-lattice-pattern.js`, `WORK-LOG-lane-b.md`) plus 4 touched test files (`tests/editor-expand-analytic-
+shapes.test.js`, `tests/editor-expand-biarc.test.js`, `tests/editor-expand-path.test.js`, `tests/editor-
+lattice-boundary.test.js`, `tests/editor-lattice-pattern-ending.test.js`) — pushed. `reference/` confirmed
+still untracked, not swept. Still not merged to main per the same seat-A MOB3 note as T50 — this turn touched
+none of the shared panel files either.

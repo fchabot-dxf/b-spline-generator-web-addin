@@ -32,12 +32,12 @@ import { lcgPoints } from '../core/terrain.js';
 // boundary-bbox pre-filter, same reuse discipline as everything else in
 // this file's own header comment. collinearSpans is T49's own "fix first"
 // (an edge-collinear scan line's own span, unioned in unless Border is on).
-// shapeToPrimitives is T49's own live-wiring need: generatePattern's own
-// 'boundary' branch calls it on the linked element (see BOUNDARY_REF_ATTR
-// below) — the ONE place in this codebase that actually does the async
-// DOM lookup _resolveExtent's own doc comment defers to "Slice 3's own
-// live-wiring caller".
-import { insideSpans, primitivesBBox, collinearSpans, shapeToPrimitives } from './editor-lattice-boundary.js';
+// shapeToInnerBoundaryPrimitives (T51) is generatePattern's own live-wiring
+// need: generatePattern's own 'boundary' branch calls it on the linked
+// element (see BOUNDARY_REF_ATTR below) — the ONE place in this codebase
+// that actually does the async DOM lookup _resolveExtent's own doc comment
+// defers to "Slice 3's own live-wiring caller".
+import { insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives } from './editor-lattice-boundary.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -78,6 +78,30 @@ function _findBoundaryElement(editor, shapeId) {
     if (ch && ch.node && ch.node.getAttribute(BOUNDARY_REF_ATTR) === shapeId) return ch;
   }
   return null;
+}
+
+/**
+ * T50: the effective stroke width a boundary shape actually renders with —
+ * shared by the Border piece's own emission (below) AND
+ * `_resolveBoundaryPrimitives`'s own inward-offset amount (T51), so the
+ * two always agree (if Border's own visible width changes, the fill's
+ * cut point moves with it, never independently). Advisor's own rule,
+ * verbatim: the Border piece's OWN width when Border is on (it's the
+ * thing actually drawn, so it's authoritative); else the LIVE boundary
+ * element's own current `stroke-width`, IF it's visibly stroked (`stroke`
+ * set and not `'none'`, width > 0); else 0 (an unstroked/fill-only
+ * boundary has no stroke to cut inside of).
+ */
+function _effectiveBorderWidth(boundaryEl, boundary, widths) {
+  if (boundary.border && boundary.border.enabled) {
+    return boundary.border.width != null
+      ? boundary.border.width
+      : (parseFloat(boundaryEl.attr('stroke-width')) || widths.rails);
+  }
+  const strokeAttr = boundaryEl.attr('stroke');
+  const sw = parseFloat(boundaryEl.attr('stroke-width'));
+  if (strokeAttr && strokeAttr !== 'none' && sw > 0) return sw;
+  return 0;
 }
 
 /** T49: stamp (or reuse) a stable id on a freshly-PICKED boundary element
@@ -134,17 +158,33 @@ function _bakeWorldTransform(el, primitives) {
   });
 }
 
-/** T49: PATTERN.boundary.shapeId -> resolved WORLD-space primitive list,
- *  or `[]` if unlinked/deleted (declined gracefully, same convention as
- *  everywhere else in this design). The ONE place `shapeToPrimitives`
- *  (async) is actually called against a LIVE element — see this file's
- *  own import comment for why that's deliberately not inside
- *  `_resolveExtent` itself. */
-async function _resolveBoundaryPrimitives(editor, PATTERN) {
+/**
+ * T49/T51: PATTERN.boundary.shapeId -> resolved WORLD-space primitive
+ * list, or `[]` if unlinked/deleted (declined gracefully, same convention
+ * as everywhere else in this design). The ONE place `shapeToPrimitives`/
+ * `shapeToInnerBoundaryPrimitives` (async) is actually called against a
+ * LIVE element — see this file's own import comment for why that's
+ * deliberately not inside `_resolveExtent` itself.
+ *
+ * T51 (advisor review of T50): cuts against the shape's own TRUE
+ * inward-offset boundary now (`shapeToInnerBoundaryPrimitives`), not the
+ * raw shape — T50's own per-crossing scan-direction shrink is gone
+ * entirely (it only happened to be exact at a circle's own center row;
+ * elsewhere it left rails sitting INSIDE the visible stroke band — see
+ * WORK-LOG-lane-b.md, T51). The inset happens HERE, in the element's own
+ * LOCAL frame, using its own LOCAL `stroke-width` — same units SVG's own
+ * default (non-`vector-effect`) stroke rendering already scales with the
+ * element's transform, so `_bakeWorldTransform` below correctly scales
+ * the inset amount right along with the rest of the shape's own geometry
+ * for a scaled boundary element, not just its raw path coordinates.
+ */
+async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   const shapeId = PATTERN.boundary && PATTERN.boundary.shapeId;
   const boundaryEl = _findBoundaryElement(editor, shapeId);
   if (!boundaryEl) return { boundaryEl: null, primitives: [] };
-  const localPrimitives = await shapeToPrimitives(boundaryEl);
+  const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
+  const halfWidth = edge === 'centerline' ? 0 : _effectiveBorderWidth(boundaryEl, boundary, widths) / 2;
+  const localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
   return { boundaryEl, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
 }
 
@@ -236,6 +276,14 @@ export const PATTERN_DEFAULTS = {
   boundary: {
     shapeId: null,
     endRule: 'inset',
+    // T50 (advisor finding, from T49's own 04-ending-*.png screenshots): a
+    // visibly-stroked boundary shape's fill was cut at the raw path
+    // CENTERLINE, so rails ran halfway into the stroke itself (visible
+    // through a translucent stroke). 'inner-stroke' (default) cuts the
+    // fill at the stroke's own INNER edge instead — what a person actually
+    // reads as "inside" a stroked shape. 'centerline' keeps the pre-T50
+    // behavior (ignore stroke width entirely) for a caller that wants it.
+    edge: 'inner-stroke',
     runs: null,
     joints: { freq: 1, shape: 'circle', size: null },
     border: { enabled: false, width: null, color: null },
@@ -368,21 +416,41 @@ function _occupiedHas(occupied, i, j, kind) {
  * inside" is the same operation either way (Ground-truth #2's own
  * "multiple inside-sub-spans per row/column" restructuring).
  *
- * T49 (SE13 Slice 3): `aIsCrossing`/`bIsCrossing` (piece bound strictly
- * inside the ORIGINAL [lo,hi], i.e. this end was actually pulled in by
- * the boundary, not left at the caller's own [lo,hi] limit) is exactly
+ * T49 (SE13 Slice 3): `aIsCrossing`/`bIsCrossing` — did this end come from
+ * the boundary's OWN span (`sLo`/`sHi`, a real `insideSpans` crossing),
+ * not merely left at the caller's own [lo,hi] window limit — is exactly
  * the signal §5's ending-rule dispatch needs — a RAIL's [lo,hi] is the
- * bbox pre-filter (virtually always both ends ARE real crossings, a rail
- * crossing a boundary shape); a TIE's [lo,hi] is its own already-drawn
- * random span (an end stays a plain "free" end, today's Board-mode
- * behavior, exactly when the boundary never touched it).
+ * bbox pre-filter (ALWAYS both ends ARE real crossings, a rail crossing a
+ * boundary shape — see the T50 fix below for why); a TIE's [lo,hi] is its
+ * own already-drawn random span (an end stays a plain "free" end, today's
+ * Board-mode behavior, exactly when the boundary never touched it).
+ *
+ * T50 (self-caught while testing the stroke-width fix, a genuine
+ * pre-existing gap, not introduced by T50 itself): the ORIGINAL check
+ * used a strict `sLo > lo` — wrong at the row/column where the boundary's
+ * own crossing reaches exactly as far as the bbox pre-filter itself
+ * (unavoidable at a circle/ellipse's own WIDEST row, since the bbox IS
+ * derived from that same widest extent) — that row's own `aIsCrossing`
+ * came back `false`, silently skipping the ending rule AND the new
+ * edge-shrink there. Fixed by testing `sLo`/`sHi` against `lo`/`hi`
+ * directly with a symmetric epsilon (`sLo > lo - eps` / `sHi < hi + eps`)
+ * — exact equality now correctly reads as "yes, a crossing" for rails
+ * (where `sLo` can never be less than `lo` for a REAL, `_resolveExtent`-
+ * derived bbox — only a hand-built test extent could construct that), and
+ * still correctly reads "free end" for a tie whose own drawn span sits
+ * genuinely, non-trivially inside the boundary (nowhere near this
+ * epsilon). Caught by a DOM-level `generatePattern` test going through
+ * the REAL `_resolveExtent` (a tight, un-padded bbox) — the earlier pure
+ * `computePattern` tests never hit it because they all used a hand-built
+ * extent PADDED beyond the boundary's own natural bbox, which masked
+ * exactly this coincidence. See WORK-LOG-lane-b.md, T50.
  */
 function _clipToSpans(lo, hi, spans) {
   const out = [];
   for (const [sLo, sHi] of spans) {
     const a = Math.max(lo, sLo), b = Math.min(hi, sHi);
     if (b - a > 1e-9) {
-      out.push({ a, b, aIsCrossing: sLo > lo + 1e-9, bIsCrossing: sHi < hi - 1e-9 });
+      out.push({ a, b, aIsCrossing: sLo > lo - 1e-9, bIsCrossing: sHi < hi + 1e-9 });
     }
   }
   return out;
@@ -593,6 +661,10 @@ export function computePattern(PATTERN, opts = {}) {
       pieces = [{ a: iMin, b: iMax, aIsCrossing: false, bIsCrossing: false }];
     }
     for (const piece of pieces) {
+      // T51: `piece.a`/`piece.b` are ALREADY the boundary's own true
+      // inner-stroke crossing (the primitives THEMSELVES are the inset
+      // shape now, not the raw one) — the ending rule applies directly,
+      // no separate per-crossing shrink step (T50's own dead end, deleted).
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
       if (_occupiedHas(occupied, a, j, 'rail')) continue;
       segments.push({ kind: 'rail', a: { i: a, j }, b: { i: b, j } });
@@ -659,6 +731,7 @@ export function computePattern(PATTERN, opts = {}) {
       pieces = [{ a: span.jStart, b: span.jEnd, aIsCrossing: false, bIsCrossing: false }];
     }
     for (const piece of pieces) {
+      // T51: same as the rails loop above — no separate shrink step.
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfTie);
       if (_occupiedHas(occupied, i, a, 'tie')) continue;
       segments.push({ kind: 'tie', a: { i, j: a }, b: { i, j: b } });
@@ -731,13 +804,16 @@ export function computePattern(PATTERN, opts = {}) {
  *  T48 (SE13 Slice 2) 'boundary' branch: takes an OPTIONAL 3rd arg,
  *  `boundaryPrimitives` — the boundary shape's own SE13 Slice 1 primitive
  *  list, in WORLD/model-space inches (the SAME frame `worldPoint` bakes a
- *  live element's transform into elsewhere in this file). Finding the
- *  live `data-boundary-ref` element and calling `shapeToPrimitives` on it
- *  is deliberately NOT done here: `shapeToPrimitives` is async (the
- *  `text` case awaits a font fetch) while every other `_resolveExtent`
- *  caller today is synchronous — rather than making every existing
- *  board/rect caller `await` for a code path they never use, the async
- *  DOM lookup is left to Slice 3's own live-wiring caller, which resolves
+ *  live element's transform into elsewhere in this file) — T51: ALREADY
+ *  the shape's own true inward-offset boundary when it's visibly
+ *  stroked, not the raw edge (`_resolveBoundaryPrimitives`'s own job).
+ *  Finding the live `data-boundary-ref` element and calling
+ *  `shapeToPrimitives`/`shapeToInnerBoundaryPrimitives` on it is
+ *  deliberately NOT done here: both are async (the `text` case awaits a
+ *  font fetch) while every other `_resolveExtent` caller today is
+ *  synchronous — rather than making every existing board/rect caller
+ *  `await` for a code path they never use, the async DOM lookup is left
+ *  to Slice 3's own live-wiring caller, which resolves
  *  `boundaryPrimitives` once (baking the element's own transform) and
  *  passes the result in here. This function's own job, staying
  *  synchronous, is just the lattice-unit SCALE (divide every primitive
@@ -747,8 +823,9 @@ export function computePattern(PATTERN, opts = {}) {
  *  lattice cells so a boundary that doesn't land exactly on a grid line
  *  still gets every row/column it actually touches considered. An empty/
  *  degenerate primitive list (deleted boundary element, self-intersecting
- *  shape) resolves to an inverted, empty extent — `computePattern`'s own
- *  row loop (`jMin > jMax`) then naturally emits nothing, same "declined
+ *  shape, or a fully-collapsed inner offset — T51) resolves to an
+ *  inverted, empty extent — `computePattern`'s own row loop
+ *  (`jMin > jMax`) then naturally emits nothing, same "declined
  *  gracefully" shape §2 already establishes for `insideSpans` itself. */
 export function _resolveExtent(editor, PATTERN, boundaryPrimitives) {
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
@@ -907,7 +984,11 @@ export async function generatePattern(editor, PATTERN) {
   let boundaryEl = null;
   let extent;
   if (isBoundary) {
-    const resolved = await _resolveBoundaryPrimitives(editor, PATTERN);
+    // T51: the resolved primitives are ALREADY the shape's own true
+    // inward-offset boundary (or the raw shape, when unstroked/
+    // centerline) — _resolveBoundaryPrimitives does the inset itself now,
+    // reusing the SAME boundary/widths the Border piece reads below.
+    const resolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths);
     boundaryEl = resolved.boundaryEl;
     extent = _resolveExtent(editor, PATTERN, resolved.primitives);
   } else {
@@ -961,9 +1042,7 @@ export async function generatePattern(editor, PATTERN) {
   // own current stroke-width/stroke, not a Lattice color.
   if (isBoundary && boundary.border && boundary.border.enabled && boundaryEl) {
     const borderColor = boundary.border.color || boundaryEl.attr('stroke') || '#000000';
-    const borderWidth = boundary.border.width != null
-      ? boundary.border.width
-      : (parseFloat(boundaryEl.attr('stroke-width')) || widths.rails);
+    const borderWidth = _effectiveBorderWidth(boundaryEl, boundary, widths);
     const clone = boundaryEl.clone();
     clone.attr(BOUNDARY_REF_ATTR, null); // the clone is a COPY, not the link itself
     clone.attr('data-layer', targetLayer);

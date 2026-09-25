@@ -84,6 +84,13 @@ function _makeMockEditor() {
       elements.push(el);
       return el;
     },
+    // T50: same idea, a circle -- the dispatch's own exact test shape
+    // (r=2, stroke 0.8) for the inner-stroke edge-shrink tests below.
+    _addBoundaryCircle(cx, cy, r) {
+      const el = makeElement('circle', { cx: String(cx), cy: String(cy), r: String(r) });
+      elements.push(el);
+      return el;
+    },
   };
   return editor;
 }
@@ -252,5 +259,83 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
     refreshBoundaryPatterns(editor);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(editor.notifyChangeCalls).toEqual(['commit']); // exactly one commit, not an unbounded chain
+  });
+});
+
+describe('generatePattern: T50 -- which stroke width the fill\'s own inner-stroke edge-shrink resolves to', () => {
+  let editor;
+  beforeEach(() => { editor = _makeMockEditor(); });
+
+  const cx = 5, cy = 5, r = 2;
+  function basePattern(overrides = {}) {
+    return {
+      // spacing:1 -- keeps world inches == lattice units 1:1, so the
+      // circle's own world cx/cy/r (5,5,2) can be compared directly
+      // against segment i/j without a second /spacing conversion here.
+      ...PATTERN_DEFAULTS, spacing: 1, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, density: 0 },
+      extent: { mode: 'boundary' },
+      boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary', ...overrides },
+    };
+  }
+
+  it('a visibly-stroked boundary (Border off): the fill cuts at the INNER stroke edge (dispatch\'s own exact case, r=2/stroke=0.8 -> radius 1.6)', async () => {
+    const boundaryEl = editor._addBoundaryCircle(cx, cy, r);
+    boundaryEl.attr('stroke', '#333');
+    boundaryEl.attr('stroke-width', '0.8');
+    const pattern = basePattern({ shapeId: stampBoundaryRef(boundaryEl) });
+    const { segments } = await generatePattern(editor, pattern);
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - 1.6, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + 1.6, 9);
+  });
+
+  it('an UNSTROKED boundary (no stroke attr, or stroke="none"): no shrink at all -- the raw r=2 crossing', async () => {
+    const boundaryEl = editor._addBoundaryCircle(cx, cy, r);
+    // no .attr('stroke', ...) at all -- matches a fill-only shape
+    const pattern = basePattern({ shapeId: stampBoundaryRef(boundaryEl) });
+    const { segments } = await generatePattern(editor, pattern);
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - r, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + r, 9);
+  });
+
+  it('boundary.edge === "centerline": ignores the stroke entirely, even though it IS visibly stroked (explicit opt-out)', async () => {
+    const boundaryEl = editor._addBoundaryCircle(cx, cy, r);
+    boundaryEl.attr('stroke', '#333');
+    boundaryEl.attr('stroke-width', '0.8');
+    const pattern = basePattern({ shapeId: stampBoundaryRef(boundaryEl), edge: 'centerline' });
+    const { segments } = await generatePattern(editor, pattern);
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - r, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + r, 9);
+  });
+
+  it('Border ON overrides with the BORDER\'s own width, not the shape\'s raw stroke-width (advisor\'s own explicit rule)', async () => {
+    const boundaryEl = editor._addBoundaryCircle(cx, cy, r);
+    boundaryEl.attr('stroke', '#333');
+    boundaryEl.attr('stroke-width', '0.8'); // the shape's OWN stroke -- must be ignored once Border overrides
+    const pattern = basePattern({
+      shapeId: stampBoundaryRef(boundaryEl),
+      border: { enabled: true, width: 0.4, color: '#000000' }, // Border's own width, deliberately different
+    });
+    const { segments } = await generatePattern(editor, pattern);
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    // shrink = Border's own width/2 = 0.2, NOT the shape's own 0.8/2=0.4
+    expect(centerRail.a.i).toBeCloseTo(cx - (r - 0.2), 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + (r - 0.2), 9);
+  });
+
+  it('Border ON with no explicit width: falls back to the boundary shape\'s own stroke-width (same fallback the Border piece itself uses)', async () => {
+    const boundaryEl = editor._addBoundaryCircle(cx, cy, r);
+    boundaryEl.attr('stroke', '#333');
+    boundaryEl.attr('stroke-width', '0.8');
+    const pattern = basePattern({
+      shapeId: stampBoundaryRef(boundaryEl),
+      border: { enabled: true, width: null, color: '#000000' },
+    });
+    const { segments } = await generatePattern(editor, pattern);
+    const centerRail = segments.find((s) => s.kind === 'rail' && s.a.j === cy);
+    expect(centerRail.a.i).toBeCloseTo(cx - 1.6, 9);
+    expect(centerRail.b.i).toBeCloseTo(cx + 1.6, 9);
   });
 });

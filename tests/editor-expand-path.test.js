@@ -275,6 +275,63 @@ describe('pathOutlinePathD — modes', () => {
     const sourceCloud = sampleDense(source + ' Z', 500);
     for (const p of sampleDense(d, 12)) expect(nearestDist(p, sourceCloud)).toBeLessThan(0.02);
   });
+
+  describe('mode:inner (T51 — SE13 boundary-fill fix: the TRUE inner ring alone, for the boundary-cutting engine)', () => {
+    it('a simple square: a single inner ring, inset by exactly half the strokeWidth on every edge', () => {
+      const source = 'M 0 0 L 20 0 L 20 20 L 0 20 Z';
+      const { d, unsupported } = pathOutlinePathD(source, 2, { mode: 'inner' }); // half=1
+      expect(unsupported).toBeNull();
+      expect(countM(d)).toBe(1);
+      // Every sampled inner-ring point sits exactly 1 unit INSIDE the
+      // nearest original edge (an independent perpendicular-distance
+      // check, not the module's own offset math reused as its own proof).
+      for (const p of sampleDense(d, 20)) {
+        const dist = Math.min(p.x - 0, 20 - p.x, p.y - 0, 20 - p.y); // distance to nearest of the 4 original edges
+        expect(dist).toBeCloseTo(1, 6);
+      }
+    });
+
+    it('collapses to null (unsupported:"degenerate"), not a fallback to the outer ring, when the WHOLE shape is thinner than the stroke', () => {
+      const source = 'M 0 0 L 10 0 L 10 1 L 0 1 Z'; // a 10x1 sliver
+      const result = pathOutlinePathD(source, 4, { mode: 'inner' }); // half=2 > the sliver's own half-height
+      expect(result.d).toBeNull();
+      expect(result.unsupported).toBe('degenerate');
+    });
+
+    it('a "lollipop" (one closed polygon: a thick body with a thin arm narrower than the stroke) collapses ENTIRELY, not just at the arm — a real, disclosed property of the EXISTING self-intersection check (global per subpath, not a local trim), reused as-is rather than redesigned this turn', () => {
+      // 10x10 body + a 5-long, 0.3-wide arm sticking out the left side,
+      // all ONE closed loop. strokeWidth 0.8 (half=0.4) comfortably fits
+      // the body (half < 5) but not the arm (half > 0.15, its own
+      // half-width) -- the arm's own inward offset self-intersects, and
+      // since _hasSelfIntersection checks the WHOLE sampled ring (not
+      // per-edge), that invalidates the entire subpath's own inner ring.
+      const source = 'M 0 0 L 10 0 L 10 10 L 0 10 L 0 6 L -5 6 L -5 5.7 L 0 5.7 Z';
+      const result = pathOutlinePathD(source, 0.8, { mode: 'inner' });
+      expect(result.d).toBeNull();
+      expect(result.unsupported).toBe('degenerate');
+    });
+
+    it('non-vacuous: the SAME body, as its OWN separate subpath (no thin arm attached), keeps a real inner ring — proving the collapse above is about the arm, not the stroke width itself', () => {
+      const source = 'M 0 0 L 10 0 L 10 10 L 0 10 Z';
+      const result = pathOutlinePathD(source, 0.8, { mode: 'inner' });
+      expect(result.d).not.toBeNull();
+      expect(result.unsupported).toBeNull();
+    });
+
+    it('a multi-subpath source: EACH original subpath is resolved independently — one thick square keeps its own inner ring even though a SEPARATE thin one (a disjoint, disconnected shape) collapses', () => {
+      const thickSquare = 'M 0 0 L 20 0 L 20 20 L 0 20 Z'; // half=1, comfortably thick
+      const thinSliver = 'M 100 0 L 110 0 L 110 1 L 100 1 Z'; // half=1 >= the sliver's own half-height
+      const source = `${thickSquare} ${thinSliver}`;
+      const { d, unsupported } = pathOutlinePathD(source, 2, { mode: 'inner' });
+      expect(unsupported).toBeNull(); // NOT fully degenerate -- the thick square's own ring survived
+      expect(countM(d)).toBe(1); // exactly one subpath in the output: only the thick square's own inner ring
+      for (const p of sampleDense(d, 20)) {
+        // every output point belongs to the thick square's own inset ring, not the sliver's (which produced none)
+        expect(p.x).toBeGreaterThanOrEqual(-1e-6);
+        expect(p.x).toBeLessThanOrEqual(20 + 1e-6);
+      }
+    });
+  });
 });
 
 describe('pathOutlinePathD — declines', () => {

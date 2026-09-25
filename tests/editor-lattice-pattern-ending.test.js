@@ -156,3 +156,26 @@ describe('computePattern: §5 ending-rule table, a circular boundary (non-collin
     expect(rail.b.i).toBeCloseTo(rawChordHi - halfRail, 9);
   });
 });
+
+// T50's own "the fill cuts at the boundary's own inner-stroke edge" tests
+// lived here as a `computePattern`-level `extent.edgeShrink` field, applied
+// per-crossing right before the ending rule. T51 (advisor review of T50)
+// found that per-crossing scan-direction shrink only happened to be exact
+// at a circle's own center row/column — elsewhere (any row where
+// |y-cy| > the true inner radius) it left rails sitting ENTIRELY INSIDE
+// the visible stroke band, since shrinking a still-valid OUTER crossing by
+// a flat amount is not the same as re-cutting against a smaller, TRUE
+// inward-offset boundary. `extent.edgeShrink` is gone from `computePattern`
+// entirely now (deleted, not left as a dead branch, per the advisor's own
+// instruction) — the inset happens earlier, in `shapeToInnerBoundaryPrimitives`
+// (editor-lattice-boundary.js, tested in tests/editor-lattice-boundary.test.js),
+// which reuses the Expand tool's own analytic/biarc offset engine to
+// compute the shape's own TRUE inner ring before `computePattern` ever
+// sees it — so by the time a rail/tie is clipped against it, the
+// primitives themselves already ARE the correct boundary, and the ending
+// rule composes with that the same way it always did. The end-to-end
+// "which stroke width wins, and does the ending rule apply on top of the
+// inset" behavior this block used to check now lives in
+// tests/editor-lattice-pattern-boundary-emit.test.js's own "T50 -- which
+// stroke width..." describe block (through the real, async
+// `generatePattern`, not a hand-built `extent.edgeShrink`).

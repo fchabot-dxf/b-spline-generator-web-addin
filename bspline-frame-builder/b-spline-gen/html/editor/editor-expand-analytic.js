@@ -180,8 +180,21 @@ export function circleOutlinePathD({ cx, cy, r, strokeWidth, mode = 'stroke' }) 
   if (mode === 'fill') return { d: _circleLoopD(cx, cy, r), unsupported: null, circles: [{ cx, cy, r }] };
   if (mode === 'both') return { d: _circleLoopD(cx, cy, r + half), unsupported: null, circles: [{ cx, cy, r: r + half }] };
 
-  const outerR = r + half;
   const innerR = r - half;
+  // T51 (SE13 boundary-fill fix): the INNER ring alone, exact (a circle
+  // offset inward is just a smaller concentric circle, no fitting needed)
+  // — the boundary-cutting engine's own "true inward-offset boundary"
+  // need (editor-lattice-boundary.js), reusing this SAME exact-offset
+  // math rather than approximating a per-crossing shrink (T50's own dead
+  // end, deleted). `null` when the stroke swallows the whole circle, same
+  // "declined gracefully" convention as everywhere else in this codebase.
+  if (mode === 'inner') {
+    return innerR > 1e-9
+      ? { d: _circleLoopD(cx, cy, innerR), unsupported: null, circles: [{ cx, cy, r: innerR }] }
+      : { d: null, unsupported: 'collapsed' };
+  }
+
+  const outerR = r + half;
   const outer = _circleLoopD(cx, cy, outerR);
   if (innerR <= 1e-9) return { d: outer, unsupported: null, circles: [{ cx, cy, r: outerR }] };
   const inner = _circleLoopD(cx, cy, innerR);
@@ -233,8 +246,17 @@ export function rectOutlinePathD({ x, y, width, height, strokeWidth, mode = 'str
   if (mode === 'fill') return { d: _rectLoopD(x, y, width, height), unsupported: null };
   if (mode === 'both') return { d: _rectRoundedOuterD(x, y, width, height, half), unsupported: null };
 
-  const outer = _rectRoundedOuterD(x, y, width, height, half);
   const iW = width - strokeWidth, iH = height - strokeWidth;
+  // T51: the INNER ring alone (see circleOutlinePathD's own T51 comment
+  // for the "why") — exact, sharp-cornered, no offsetting algorithm
+  // needed for a rect's own inward offset.
+  if (mode === 'inner') {
+    return Math.min(iW, iH) > 1e-9
+      ? { d: _rectLoopD(x + half, y + half, iW, iH), unsupported: null }
+      : { d: null, unsupported: 'collapsed' };
+  }
+
+  const outer = _rectRoundedOuterD(x, y, width, height, half);
   if (Math.min(iW, iH) <= 1e-9) return { d: outer, unsupported: null };
   const inner = _rectLoopD(x + half, y + half, iW, iH);
   return { d: `${outer} ${inner}`, unsupported: null };
@@ -309,8 +331,19 @@ export function ellipseOutlinePathD({ cx, cy, rx, ry, strokeWidth, mode = 'strok
   if (mode === 'fill') return { d: _ellipseOffsetLoopD(cx, cy, rx, ry, 0, tolerance), unsupported: null };
   if (mode === 'both') return { d: _ellipseOffsetLoopD(cx, cy, rx, ry, half, tolerance), unsupported: null };
 
-  const outer = _ellipseOffsetLoopD(cx, cy, rx, ry, half, tolerance);
   const minCurvatureRadius = Math.min((ry * ry) / rx, (rx * rx) / ry);
+  // T51: the INNER ring alone (see circleOutlinePathD's own T51 comment)
+  // — the TRUE biarc-fit inward offset, not an analytic shortcut (an
+  // ellipse's own true parallel curve is not another ellipse, so
+  // `rx-half,ry-half` would be wrong — this module's own established
+  // finding, ellipseOutlinePathD's own header comment).
+  if (mode === 'inner') {
+    return half < minCurvatureRadius
+      ? { d: _ellipseOffsetLoopD(cx, cy, rx, ry, -half, tolerance), unsupported: null }
+      : { d: null, unsupported: 'collapsed' };
+  }
+
+  const outer = _ellipseOffsetLoopD(cx, cy, rx, ry, half, tolerance);
   if (half >= minCurvatureRadius) return { d: outer, unsupported: null };
   const inner = _ellipseOffsetLoopD(cx, cy, rx, ry, -half, tolerance);
   return { d: `${outer} ${inner}`, unsupported: null };
