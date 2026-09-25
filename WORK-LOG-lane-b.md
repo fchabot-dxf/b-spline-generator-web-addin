@@ -4471,3 +4471,213 @@ Amendments polled clean (`handoff.py amendments --role worker`) before committin
 before passing. Committed by explicit path (5 files: `editor/editor-expand-path.js`,
 `editor/editor-outline-preview.js`, `tests/editor-expand-path.test.js`,
 `tests/editor-outline-preview.test.js`, `tests/editor-outline-preview-triggers.test.js`) — pushed.
+
+## Lane B — Turn 99 — T40 part 2: text outlines (glyph outlines, opentype.js) — DONE
+
+**Researched first, not guessed.** A dedicated research pass (this session's own Explore-style delegation)
+corrected a wrong guessed path before any code was written: `editor-geometry.js` (named in the dispatch)
+doesn't exist — it's a STALE reference in three old comments after a refactor. The real, current logic
+lives in `editor-fonts.js` (the bundled-font registry, `FONT_MAP`) and `editor-expand-text.js`
+(`textGlyphPathD(el, m)` — loads a font via `opentype.parse`, generates the glyph path via
+`font.getPath(text,0,baselineY,fontSize)`, serializes via opentype's own `toPathData()`, bakes matrix `m`
+into every coordinate). Confirmed via file:line citations, not general opentype.js knowledge — this
+codebase never touches opentype's raw `.commands` array, only its own `toPathData()` string.
+
+**The clean design this research made possible: a glyph is just another path.** `textGlyphPathD` already
+exists, is already trusted by two real callers (interactive Expand, carve/export bake) — reusing it (not
+reimplementing font loading) means `OUTLINE_KINDS.text` only needs two small pieces: (1) get the glyph's own
+`d` string in the element's LOCAL frame, (2) hand it to `pathOutlinePathD` exactly like the `path` kind
+already does. New `localGlyphPathD(el)` (`editor-expand-text.js`) calls `textGlyphPathD(el, m)` with `m` =
+translate-by-anchor ONLY (`{a:1,b:0,c:0,d:1,e:ax,f:ay}` from `localAnchor(el)`) — NOT the full
+`el.matrix()` the two EXISTING callers compose — because `refreshOutlinePreview` already applies the
+source element's own `transform` attribute generically to every kind's preview shapes (confirmed by
+reading it directly); composing the full matrix here too would double-apply it. `OUTLINE_KINDS.text` itself
+is then genuinely small: `localGlyphPathD(el)` → `pathOutlinePathD(glyphD, strokeWidth, {mode:
+_fillModeOf(el), cap: _capOf(el)})` — filled text (mode='fill') and stroked text (mode='stroke'/'both',
+Fred's own "glyph path -> pathOutlinePathD" instruction) both fall out of the SAME existing pipeline every
+other closed-shape kind already uses, no glyph-specific geometry code at all.
+
+**A real gap this exposed, fixed as a general improvement, not a text-only hack: 'fill' mode was a raw
+passthrough.** `_closedSubpathD`'s 'fill' branch returned the ORIGINAL segments verbatim (`_passthroughD`) —
+correct for the shapes tested so far (lines/arcs only), but a glyph's OWN curves are cubic Beziers, and
+passing a raw `C` through would violate the "M/L/A/Z only" contract every OTHER mode in this module already
+honors. Fixed by making 'fill' mode `_closedRing(subpath, 1, 0, tolerance)` — literally the SAME ring-
+builder every offset mode already uses, at `half=0`: a line's own offset collapses to itself regardless of
+side: a circular arc's own radius is unchanged; a cubic's own curve gets biarc-fit (now tracing the curve
+ITSELF rather than an offset of it); every join's two pieces meet at the EXACT original vertex, hitting the
+"already coincide" shortcut — so a plain L/A path reproduces byte-identical output to the old passthrough
+(this module's own existing fill-mode test still passes unchanged), now correctly EXTENDED to paths with
+real curves. One dedicated test (an S-curve — the SAME deliberately aggressive curvature-crossing-zero
+shape T38's own biarc tests used as a stress case) confirms M/L/A/Z-only output within a documented, looser
+bound (unclamped curvature at offset=0 needs more subdivision than a clamped non-zero offset does; real
+glyph curves are far gentler than this intentionally extreme test shape). Mutation-verified: reverted to
+`_passthroughD`, exactly 1 failure (the new curve test, correctly), everything else unaffected.
+
+**Async wiring — a real, cascading change, not a footnote.** `textGlyphPathD` does a font fetch/parse
+(genuinely async, network-bound); every OTHER `OUTLINE_KINDS` entry is a plain sync function. Made
+`refreshOutlinePreview` itself `async`, `await`ing every entry uniformly (a sync entry's result resolves
+through an `await` on the very next microtask — no observable delay for the common all-non-text case, since
+nothing in that path ever actually suspends). This is genuinely NEW behavior for every EXISTING caller, not
+just an addition: even a fully-synchronous refresh no longer completes before the calling statement
+finishes (an `await` on a non-Promise value still yields a microtask tick). Every direct call in
+`editor-outline-preview.test.js` (31 call sites) needed `await` + its enclosing `it()` to become `async`;
+`editor-outline-preview-triggers.test.js` calls `setActiveLayer`/`undo`/`redo` (NOT `refreshOutlinePreview`
+directly), and production code deliberately does NOT await its own fire-and-forget call (awaiting would
+cascade `async` through `setActiveLayer`/`_notifyChange` and further, a much bigger, riskier change touching
+code Seat A may be concurrently editing) — so those 4 tests instead `await` a `flushAsync()` helper
+(a `setTimeout(resolve,0)` macrotask wait, the standard "let all pending async work settle" pattern) after
+each indirect trigger, before asserting on preview state.
+
+**A real race this async change introduces, found by reasoning it through (not by hitting it), fixed before
+it could ever surface as a bug report: a superseded refresh writing stale shapes.** `refreshOutlinePreview`
+reruns on every commit; once it can genuinely suspend (a font fetch), a SECOND call (another commit, undo, a
+layer switch) can start and finish WHILE a FIRST call is still mid-flight — the first call's delayed
+continuation would then add its own (now stale) shapes on top of the second call's already-correct, freshly
+rebuilt layer. Fixed with a generation counter: bump it at the top of every call, and if it's moved on by
+the time an `await` returns, abandon before touching the DOM. MUTATION-VERIFIED with a real, deliberately
+constructed race (a controlled slow-then-fast mock `OUTLINE_KINDS.text`, a gate `Promise` releasing the slow
+call only after the fast one has already fully completed): disabling the guard reproduces the exact failure
+mode by name — 4 shapes instead of 2, the stale call's own geometry landing on top of the current one's —
+confirming this isn't a theoretical worry, the guard is load-bearing.
+
+**A THIRD live-only bug from T40 part 1 reconfirmed relevant here too**: `_capOf`'s fix (reading
+`el.node.getAttribute` instead of svg.js's own default-filling `el.attr()`) matters for text's own
+`stroke-linecap` read the exact same way it does for line/polyline/polygon/path — no separate fix needed,
+just confirmation the SAME `_capOf` helper is reused, not a second copy.
+
+**Testing strategy — what CAN and can't run in this environment, decided honestly, not glossed over.**
+`textGlyphPathD` does `await import('https://esm.sh/opentype.js')` — a dynamic import of an `https:` URL,
+which is a BROWSER-only capability; Node's own ESM loader rejects it outright
+(`ERR_UNSUPPORTED_ESM_URL_SCHEME`, confirmed by actually trying it in this test environment before deciding
+anything, not assumed). This means the REAL glyph-extraction path can never run inside vitest here — the
+dispatch's own "glyph count, M/L/A/Z only, deviation within tolerance against the opentype path sampled"
+verification is INHERENTLY a live-CDP-only check, not a unit-testable one, and is treated as such rather
+than faked with a mock standing in for real geometry. Vitest coverage instead targets what's genuinely
+testable in Node: `OUTLINE_KINDS.text`'s own REAL failure path (declines with `unsupported:'font'`when
+extraction fails — which it always will here — proving the adapter's error handling without needing a real
+font), and the WIRING/async-race behavior via the established "temporarily overwrite a real OUTLINE_KINDS
+entry, restore in `finally`" pattern already used elsewhere in this file for circle/rect/ellipse, applied to
+a controlled stand-in for `text`.
+
+**Live verification — the real proof, run against the ACTUAL opentype.js pipeline.** Fresh headless Chrome
+(port 9501, own `chrome-profile-t40b` user-data-dir; 0 processes before launch, 8 mine before stop, same
+discipline every turn — browser network access is real here, unlike vitest). Created a real `<text>`
+element, "Fred", Arial, on a second Outline layer. Called `OUTLINE_KINDS.text` directly and measured:
+`unsupported: null` (real success, not a mock), `mCount: 6` (matches the expected minimum subpath count —
+F=1, r=1, e=2 with its own enclosed counter, d=2 with its own enclosed counter), `onlyMLAZ: true`,
+extraction+biarc-fit took ~263ms (acceptable; the font-parse cache added this same turn means only the
+FIRST text element on a given family pays the fetch/parse cost per session, not every commit). Independently
+fetched and parsed the SAME font in the SAME page, sampled opentype.js's OWN `font.getPath('Fred',...)`
+output directly (a completely separate code path from `OUTLINE_KINDS.text`'s own biarc-fit output), and
+measured the worst-case nearest-point deviation between the two: 0.014 — tight, consistent with the fill-
+mode biarc test's own documented bound. Screenshot (`t40-text-word.png`) shows the word "Fred" with a clean
+white-halo outline precisely tracing every glyph contour, INCLUDING the enclosed counters inside "e" and
+"d" — the two-ring (outer+inner) fill-mode geometry rendering correctly for real letterforms, not just the
+simple test shapes. Zero console errors/exceptions.
+
+**Scope disclosed**: stroked text (mode='stroke'/'both') was NOT separately CDP-verified — it goes through
+the exact SAME `_fillModeOf`-gated `pathOutlinePathD` call every other closed-shape kind already uses
+(circle/rect/ellipse all verified across all 3 modes in earlier turns), so this is asserted by CODE-PATH
+IDENTITY rather than a second live round-trip, a deliberate time-budget call on an already large turn, named
+here rather than silently assumed.
+
+Full vitest suite: 665/665 green.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (6 files: `editor/editor-expand-path.js`,
+`editor/editor-expand-text.js`, `editor/editor-outline-preview.js`, `tests/editor-expand-path.test.js`,
+`tests/editor-outline-preview.test.js`, `tests/editor-outline-preview-triggers.test.js`) — pushed.
+
+## Lane B — Turn 101 — T41: text outline vs. drawn text mismatch — root cause found and fixed — DONE
+
+**The advisor's own catch, confirmed by re-measuring, not just trusted.** T40's own `t40-text-word.png`
+showed the outline sitting OFF the black glyphs — exactly as the advisor's own pixel measurements (from
+that same screenshot) predicted. Re-measured independently before touching anything: created the SAME
+`<text>` element live, read `getComputedStyle(node).fontFamily` — **"Inter, -apple-system,
+BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif"** — NOT "Arial", despite `font-family="Arial"` being set
+on the element. The browser was never rendering the chosen font AT ALL, for ANY text element, ever.
+
+**Root cause, found by measuring not reasoning, per the dispatch's own instruction.** `base.css` (loaded on
+EVERY page) has:
+```css
+* { font-family: inherit; }
+html, body { font-family: var(--cad-font-family); /* 'Inter', -apple-system, ... */ }
+```
+`svg.js`'s `.font({family})` sets `font-family="Arial"` as a plain SVG PRESENTATION ATTRIBUTE (confirmed:
+`node.hasAttribute('style')` was `false` on a freshly-created text element — `.font()` writes ONLY the
+attribute, never an inline style). Presentation attributes carry the LOWEST possible CSS specificity —
+weaker than literally any stylesheet rule, even a bare `*` selector — so the app-wide reset always won,
+silently substituting the UI's own Inter/system-sans stack for EVERY font choice, on EVERY text element,
+since this app has existed. This is why T40's own test didn't catch it: it compared the outline against
+opentype's OWN path (which reads the attribute directly, bypassing CSS/DOM rendering entirely, so it was
+ALWAYS correct) — never against what the BROWSER actually painted on screen, which is the thing a user
+actually looks at.
+
+**Which side was actually wrong — the important reframe.** The dispatch worried carve might be wrong (using
+a DIFFERENT font/size/spacing than what's drawn). Measuring showed the OPPOSITE: `textGlyphPathD`
+(Expand/carve/T40's own outline, all opentype-based) was ALWAYS correct — reading the CORRECT chosen
+font's REAL metrics, unaffected by CSS. It was the LIVE, ON-SCREEN `<text>` render that was wrong, for
+every font choice, this whole time — a real, pre-existing, independently-confirmed product bug T40's own
+outline work happened to expose (T40 didn't introduce it; the outline preview is simply the first feature
+that ever compared the two against each other).
+
+**Already half-discovered and worked around — for ONE narrow case.** `insertSymbol`
+(`editor-text-style.js`) already sets `editor._editingTextEl.node.style.fontFamily = appliedFamily` directly
+alongside its own `.font({family})` call, with a comment explaining exactly why (symbol fonts rendering as
+the wrong glyphs would be immediately, visibly obvious — Wingdings showing as Latin letters is impossible to
+miss — while Arial silently rendering as a similar-looking sans-serif is not). This is DIRECT, strong
+evidence: someone already hit this bug, for symbols specifically, and fixed it there — but the SAME fix was
+never applied to the other 3 places that set font-family (the general font picker's `setFontFamily`, and
+the initial text-creation in `startTextAt`), leaving every OTHER font choice still broken.
+
+**Fix: give font-family enough CSS specificity to survive the global reset, everywhere it's set — matches
+Fred's own stated preference ("prefer display what gets carved").** Added `.css({'font-family': family})`
+(an INLINE style, same method `startTextAt` already uses for `cursor`/`user-select` — verified merges with
+existing style properties rather than replacing them, not assumed) at the 2 remaining sites:
+`editor-text-session.js`'s `startTextAt` (initial creation) and `editor-text-style.js`'s `setFontFamily`
+(both the active-editing-element path and the multi-select fan-out). Chose to fix the LIVE RENDER to match
+what opentype/carve already correctly produce (not the reverse — changing opentype's own layout to match a
+CSS bug would mean encoding the bug INTO the manufactured output) — exactly the "display what gets carved"
+direction the dispatch itself named as preferred, and the only direction that doesn't require guessing at
+which of many possible browser font-substitution outcomes to replicate.
+
+**A real debugging detour, disclosed for the same reason every other one this session has been: measured,
+not guessed past.** The FIRST live check of the fix, through `startTextAt`'s real production code path via
+simulated keyboard events, showed the style STILL missing `font-family` — looked exactly like the fix
+hadn't taken effect. Traced systematically rather than assumed: confirmed the SERVER was serving the edited
+file (`curl`'d it directly), confirmed `.css()` genuinely merges rather than replaces (an isolated live
+test: call `.css({...3 props})`, then `.css({cursor:'pointer'})` again, checked all 3 survived), confirmed
+`editor._fontFamily` was correctly "Arial" at the moment of creation — then tested the ONE remaining
+hypothesis directly: killed and relaunched Chrome with a FRESH profile (not just `Page.navigate` +
+`Network.setCacheDisabled` on the SAME long-lived process, which turned out to be insufficient — the ES
+module registry persisted across navigations within that process regardless). On the fresh process, the fix
+worked immediately and consistently. This was a test-harness artifact from reusing one Chrome instance
+across many script invocations within a single long debugging session, not a second bug — named here so a
+future "Page.navigate should be enough" assumption doesn't cost someone else the same hour.
+
+**Live verification, per the dispatch's own test criteria (bbox/per-glyph within 0.01").** Fresh headless
+Chrome (port 9503, new profile; 0 processes before launch, 8 mine before stop). Three cases — Tahoma@1.5in,
+Georgia@3in, Arial@2in with `text-anchor:middle` (specifically to also cover anchor handling, not just
+family/size) — each: `getComputedStyle().fontFamily` correctly matches the CHOSEN family (not Inter) in
+every case; per-glyph X position (`getExtentOfChar`) compared directly against opentype.js's own
+`charToGlyph().advanceWidth`-based layout for the identical text/font/size (with the SAME anchor correction
+`textGlyphPathD` itself needs) — worst per-glyph deviation across all three cases: **0.0002"**, two orders of
+magnitude under the 0.01" threshold. Screenshot (`t41-text-fixed2.png`) shows the outline preview sitting
+EXACTLY on "Fred" letter-for-letter, including the counters in "e"/"d" — a dramatic, visible contrast against
+T40's own original mismatched screenshot. Zero console errors.
+
+**Regression test added** (`tests/editor-text-style.test.js`, new): confirms `setFontFamily` calls BOTH
+`.font({family})` (the attribute Expand/carve read) AND `.css({'font-family'})` (the inline style the live
+render needs), for both the actively-editing element and every selected `<text>` in a multi-select fan-out.
+Can't reproduce the actual CSS-cascade bug in this file's own mocked DOM (happy-dom doesn't load real
+external stylesheets, and the point IS real browser cascade behavior — this is a live-CDP-only class of bug,
+same as T40's own opentype-comparison work) — but CAN and DOES guard the actual regression risk: someone
+removing the inline-style call later. Mutation-verified: reverted `_applyFontFamilyStyle` to a no-op,
+exactly 2 failures (the two tests checking for the `.css()` call), everything else unaffected; restored,
+green again.
+
+Full vitest suite: 668/668 green.
+
+Amendments polled clean (`handoff.py amendments --role worker`) before committing, and again immediately
+before passing. Committed by explicit path (3 files: `editor/editor-text-session.js`,
+`editor/editor-text-style.js`, new `tests/editor-text-style.test.js`) — pushed.
