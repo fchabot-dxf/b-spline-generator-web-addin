@@ -1,32 +1,44 @@
-# NEXT (lane-b) — T45: opening a project must load its drawing into the live editor (Fred)
+# NEXT (lane-b) — T46: DESIGN DOC — Boundary mode for the Lattice (Mondrian-style fill of any closed shape)
 
-**Ball: worker (seat B) · epoch 2 · T45.** NO FUSION for workers — browser proof only. T44 reviewed + merged (705987d,
-704 green). Advisor also fixed Send to Fusion dropping sketches when no layer carved (5f9f7f0).
+**Ball: worker (seat B) · epoch 2 · T46.** DOCS ONLY this turn (no code). NO FUSION. T45 + circle add-on merged
+(3cea7f5, 741 green; advisor verified in Fusion: 8 nodes → 8 true SketchCircles r=0.075").
 
-## Fred: "on open, a loaded project doesn't have the SVG until I open the editor and Apply Stencils"
-Root cause (advisor, main/snapshot-manager.js): `applySnapshot` is BOTH global undo/redo AND cloud-project load
-(cloud-project-manager.js `_loadFrom`). It sets `P.editorSvg` but deliberately never loads it into the live
-`window.svgEditor` (SE4c: "undo is for the heightfield, the drawing has its own undo") — correct for undo, WRONG for
-project load. `updateStampMasks` then rasterizes the OLD editor content, the drape shows the old drawing, and Send to
-Fusion / exports read the old layers — until the editor is opened (which reads P.editorSvg) and Applied.
+## Fred
+Screenshot of his svgcreator.pages.dev "Mondrian" effect: a closed boundary filled with a grid of lines cut into
+colored runs, with dots at junctions. "Make a new tool like lattice that can create this kind of shape system — make
+a plan." Then: "not sure you should reuse the STYLE, the LOGIC is good." Then: **"Don't trim, add ending logic — if
+it's simpler than trimming."**
 
-## Do
-1. Declare the difference instead of inferring it: `applySnapshot(snap, preview, { source: 'undo' | 'load' })` (or a
-   separate `loadProject` step) — 'load' ALSO replaces the live editor's document with `P.editorSvg` (the same open path
-   the editor uses when it's opened — editor-io.js open/restore, layer roster, per-layer pattern/fusionGeometry,
-   migrations), clears the editor's own undo stack, then refreshes masks, drape, outline preview and the sidebar layer
-   list. 'undo' stays exactly as today. Every caller passes its source (grep them all: cloud load, local session load,
-   undo/redo, anything else) — no default that silently picks one.
-2. Check the startup path too (app-init loadLastSession / refreshAllStampMasks at boot) and the Fusion palette reload:
-   after a fresh palette open with a saved session, the 3D shows the artwork without opening the editor.
-3. Loading project B after project A must not leave any of A's drawing, masks, layers or outline preview.
-## Verify
-- vitest: load → live editor content == project's editorSvg, layers roster matches, editor undo empty; undo → editor
-  untouched (today's behaviour).
-- CDP: save two different projects via the real API mock or localStorage session path, load A then B without ever
-  opening the editor → the mask/drape and `exportableStampLayers()` reflect B; screenshot the 3D.
-- `npx vitest run` green.
+## Source (the deployed site, downloaded by the advisor — the only copy; not in any repo)
+`reference/svgcreator-deployed/` in your worktree (UNTRACKED — don't commit it; cite paths/lines). Key:
+`effects/mondrian.js` (getIntersections half-open scanline rule :86-152, renderGrid :154-282, stored per-element rolls
+data-omit/data-loose/data-cr/data-ci :211 + patch() :351-458), `utils.js` resolveGenerator :110 (boundary → L +
+circular A primitives with joint-radius fillets), `pathloop.js` (keypoint/bulge STYLE table), `main.js` :174-233
+(chin/neck proportion zones).
+
+## Advisor's plan (design it, challenge it where wrong)
+- NOT a new tool: a **Boundary: Board | Shape** mode of the Lattice panel. Everything already built carries over
+  (Add Rail/Tie/Node, ends-stretch/bodies-move, Widths, Colors, per-layer pattern, Generate = new seed).
+- Boundary = any CLOSED shape on the canvas the user picks (path/rect/circle/ellipse/polygon/text), LINKED by id, not
+  copied; editing it refills with the same seed. Their boundary BUILDER (keypoints/bulge styles/zones) is out of v1.
+- **Cutting engine** (pure): line × closed path → inside spans. Exact for L and circular A (closed form), numeric
+  (≤1e-6) for C/Q/elliptical A; their half-open rule for shared vertices; holes via even-odd; tangency handled.
+- Spans cut at grid crossings (their stops logic) → rails/ties; then **runs**: segment length, omit %, loose-end %,
+  color variation % from a run palette — with **stored per-piece rolls** so sliders re-apply without reshuffling
+  (their data-* trick, as declared attrs).
+- Joints = our nodes: frequency %, circle/square, size = Widths › Node size.
+- **ENDING RULES instead of trimming** (Fred): a declared table — `on-boundary` (centerline ends on the boundary, cap
+  overhangs; pairs with the optional Border piece), `inset` (end pulled back half a width so the round cap touches
+  the boundary from inside — default), `joint` (end on boundary + node), `loose` (their loose-end: stop one step
+  early). No geometric trimming unless you find a case the rules can't handle — then say which and why.
+- Optional **Border** piece = the boundary itself at its own width/color.
+- Carve/export: everything stays plain lines + circles → exact in Outline export and in Fusion (measured).
+## Deliver
+`SE13-BOUNDARY-LATTICE-DESIGN.md` (repo root): data model (PATTERN.boundary = {shapeId, endRule, runs{...},
+joints{...}, border}), the cutting math with edge cases, the ending-rule table, how the link refreshes (commit-only),
+UI mock (ASCII) of the panel, interaction with move/stretch (a stretched end may leave the boundary — rule?), undo,
+save/load, slices (each browser-provable), and open questions for Fred. Keep it tight.
 ## When done
-Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T45: project load loads the drawing — <sha>, vitest N, screenshots"`
+Commit by path (the doc + WORK-LOG only), push, then (from the WORKTREE root):
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T46: SE13 boundary lattice design — <sha>"`
 and stop.
