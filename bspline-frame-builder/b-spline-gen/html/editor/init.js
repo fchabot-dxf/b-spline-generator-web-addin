@@ -18,8 +18,16 @@ export function createEditorCanvas(containerId) {
     // reads as a faint reference under the artwork rather than over it.
     const gridLayer = draw.group().id('grid-layer');
     const sketchLayer = draw.group().id('sketch-layer');
+    // SE12 T37: a SIBLING of sketchLayer, not a child — every reader that
+    // matters (serializeEditor/save/getLayerSvg, hit-testing, selection,
+    // pushState's undo snapshot, refreshDrape) walks ONLY
+    // sketchLayer.children(), so a sibling group is excluded from all of
+    // them by construction, the same free exclusion handleLayer/
+    // highlightLayer already get — no filtering code needed anywhere else.
+    // pointer-events:none on the group covers every descendant path.
+    const outlinePreviewLayer = draw.group().id('outlinePreview').attr('pointer-events', 'none');
     const handleLayer = draw.group().id('handle-layer');
     const highlightLayer = draw.group().id('highlight-layer');
 
-    return { draw, bgLayer, gridLayer, sketchLayer, handleLayer, highlightLayer };
+    return { draw, bgLayer, gridLayer, sketchLayer, outlinePreviewLayer, handleLayer, highlightLayer };
 }

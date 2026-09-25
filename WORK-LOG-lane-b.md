@@ -3785,3 +3785,130 @@ before passing. Committed by explicit path (8 files: `editor/layers.js`,
 `main/stamp/_dom-binders.js`, `main/stamp/index.js`, new `main/stamp/fusion-geometry.js`,
 `bspline_gen_palette.html`, `tests/ux-undo.test.js`, new `tests/layers-fusion-geometry.test.js`, this
 WORK-LOG) — pushed.
+
+## Lane B — Turn 91 — T37: SE12 slice 3 — outline preview, commit-only — DONE
+
+**Found and fixed a real T36 gap before starting T37's own work**: `editor-io.js`'s `_PERSISTED_LAYER_FIELDS`
+(the list `_serializeLayersAttr` actually filters through when writing `data-editor-layers`) never got
+`fusionGeometry` added — the field lived in `TOOLING_DEFAULTS` and round-tripped fine through a SYNTHETIC
+`JSON.stringify`/`&quot;`-escape test in T36, but that test bypassed the REAL filter list, which silently
+dropped the field on every actual save. A user's Outline/Both pick would have reverted to Centerline on
+reload. One-line fix (`_PERSISTED_LAYER_FIELDS` += `'fusionGeometry'`), caught by reading the actual
+serialize path before building anything that depends on the field surviving a commit — which T37 does.
+
+**The design, confirmed architecturally before writing any preview logic**: read `serializeEditor`/`save`
+(editor-io.js), `pushState` (editor.js), hit-testing/selection (editor-interaction.js), and `refreshDrape`
+(app-init.js, via `editor.save()`) — every one of them walks ONLY `_sketchLayer.children()`. So a NEW
+`outlinePreviewLayer`, created as a SIBLING of `_sketchLayer` (not a child — `init.js`, alongside the
+existing `handleLayer`/`highlightLayer`/`gridLayer` siblings) is excluded from getSvgString/getLayerSvg/save,
+undo snapshots, hit-testing, selection, AND the drape simultaneously, by construction — zero filtering code
+needed at any of those five call sites, matching the dispatch's own bullet list exactly. `pointer-events:none`
+on the group covers every descendant.
+
+**New `editor/editor-outline-preview.js`** — `refreshOutlinePreview(editor)`: clears the layer, walks
+`_sketchLayer.children()`, and for each element whose layer passes `showsOutline(layer)` AND is a `<line>`
+(the only kind `lineOutlinePathD` supports today — anything else is skipped silently, no error, matching the
+Slice 1 module's own `unsupported` contract) draws a thin (`0.02`) no-fill outline path. Color reuses the
+EXISTING mechanism rather than inventing a second one: `_currentElementColor` (properties-shape.js) for the
+base color, then the SAME `.layer-no-color` CSS class `applyLayerState` already puts on a no-showColor
+source element — one CSS rule (`stroke:#999 !important`), one color, whichever element carries the class.
+The preview path gets the source element's own `transform` attribute verbatim (local-frame geometry +
+uncomposed transform — Slice 0's `isSimilarity`/`bakeArcSimilar` is what composes a WORLD transform into an
+arc-bearing path, not this module's concern).
+
+**Commit-only wiring — genuinely "one import + one call" in `editor.js`**, per the dispatch's own ask given
+Seat A is mid-SE7h in that same file: one new import, one line added to `_notifyChange(kind)` —
+`if (kind === 'commit') refreshOutlinePreview(this);` — placed before the `!this._onChange` early-return so
+the preview still refreshes even in a context where no external onChange is wired (a smaller test harness,
+for instance), not coupled to app-init.js's broader pipeline at all.
+
+**"Picking Centerline counts as a commit" — resolved as a SEPARATE, deliberately lighter call, not by
+routing the picker through the full `_notifyChange('commit')` cascade.** The fusionGeometry field write and
+`_notifyChange` live in different worlds (stamp-panel sidebar vs. the editor's own internal pipeline), and
+`_notifyChange('commit')` would also re-run `serialize`+`persist`+`remask` (refreshAllStampMasks +
+refreshDrape) — expensive work for a field NOTHING outside the preview reads yet (Slice 4 is the export
+swap). `main/stamp/fusion-geometry.js`'s own click handler now calls `refreshOutlinePreview(window.svgEditor)`
+directly (guarded on `window.svgEditor` existing — the editor may never have been opened this session) —
+same underlying function the commit hook calls, so there's no duplicated logic, just two well-reasoned call
+sites for two different situations.
+
+**Tests** (`tests/editor-outline-preview.test.js`, new, 13 cases): which elements get a preview across
+fusionGeometry (centerline/outline/both) × visible × element-type (line vs. non-line) × missing-layer;
+rebuilds from scratch each call (`.clear()`, not append) — including the literal "picking Centerline empties
+the preview on the next call" property, proven by construction (the function caches nothing, so there's
+nothing to go stale); color follows `showsColor` via the shared `.layer-no-color` class, not a duplicated
+neutral constant; the source element's `transform` carries over verbatim; and the one test that stands in
+for all five "excluded from X" requirements at once — `_sketchLayer.children()` is the SAME array reference,
+untouched, before and after a call, which is the actual property that GUARANTEES every one of the five
+(re-testing each of the five consumers separately would just re-prove this same fact five times over).
+
+**Non-vacuous, by mutation**: removed the `showsOutline` gate — exactly the 3 tests keyed on it (centerline,
+hidden-layer, centerline-after-outline) failed, nothing else. Removed the `.clear()` call — exactly the 2
+tests keyed on rebuild-not-append failed. Reverted both; full suite re-confirmed green (554/554) after each.
+
+**Live verification, and a real environment gotcha worth recording**: chrome spawned via Node's
+`child_process.spawn` (this session's usual CDP pattern) failed repeatedly with "NO CDP" this turn — even
+with a clean user-data-dir and generous retry windows — while the EXACT SAME chrome binary launched directly
+via a backgrounded Bash command connected fine within 4 seconds. Root cause not chased further (out of scope
+for this task), but the WORKAROUND is durable: launch chrome via Bash (`chrome.exe ... &`), then have a
+separate Node script `fetch` its `/json/list` and connect to the existing instance's websocket rather than
+spawning chrome itself. Recording this here since every prior CDP script this session (T33-T36) used the
+Node-spawns-chrome pattern successfully — this is the FIRST time it failed, so a future turn hitting the same
+"NO CDP" symptom should try the Bash-launch workaround before assuming the app itself is broken.
+
+Also pivoted the drag-timing check itself: a literal synthetic `PointerEvent` drag (pointerdown/move/up with
+computed client coordinates) reached the app but never actually moved the rail — likely a hit-testing or
+gesture-recognition precondition this session didn't chase down, since it isn't what T37 changed. Verified
+the ACTUAL property in question — the `'live'` vs `'commit'` distinction in `_notifyChange`, the one line
+this turn added — more directly instead: moved the rail's endpoint attribute directly (as a real drag
+handler would, mid-gesture) and called `editor._notifyChange('live')` then `('commit')` through the REAL
+method. Real lattice (17 rails), real `fusionGeometry` write, real `refreshOutlinePreview` calls throughout,
+not mocked:
+- Outline picked on the rail's own layer (found via `rail.getAttribute('data-layer')`, not assumed) → 17
+  preview paths, one per rail.
+- `_notifyChange('live')` after moving the endpoint → preview `d` UNCHANGED (confirmed byte-for-byte).
+- `_notifyChange('commit')` → preview `d` updated to the new endpoint, confirmed in the screenshot too (the
+  top rail visibly extends past its original length after commit).
+- Centerline picked → preview count back to 0.
+- `showColor:false` on the layer → `getComputedStyle` on the preview path read back `stroke: rgb(153, 153,
+  153)` (`#999`, the exact `.layer-no-color` value) and `stroke-width: 0.02px` — the REAL BROWSER's OWN style
+  resolution, not just class-name presence, confirming the CSS override genuinely applies rather than just
+  being attached.
+Screenshots saved (`t37-outline-preview.png`, `t37-after-commit.png`, `t37-centerline-empty.png`, session
+scratchpad) — disclosed honestly: the preview line itself is visually subtle in these screenshots (same red
+as the rail, offset only ~0.03" outward, so it largely blends with the thick stroke's own anti-aliased edge
+at this zoom) — the `getComputedStyle` check above is the stronger, more direct proof it renders correctly;
+the screenshots mainly confirm layout/no-crash rather than being the primary evidence here. Zero console
+errors across every run.
+
+**Process hygiene, with the mixed-ownership caution this session established in T36 applied again**: before
+touching anything, checked `Get-CimInstance`'s command lines rather than assuming ownership — one round found
+0 chrome processes at all (clean start), a later round found 8 processes all matching MY OWN
+`chrome-t37final` user-data-dir (confirmed by grep on the command line before stopping any of them). Stopped
+cleanly; confirmed 0 chrome processes remained after. The repo-root `http.server`'s actual LISTENING PID
+(distinct from the harmless per-request `TIME_WAIT` sockets) was found and stopped, `curl` re-confirmed the
+port genuinely refuses connections afterward, not just netstat's own listing.
+
+**Mid-task amendment, incorporated before committing**: Fred — "it should work on shapes in priority, but
+eventually text" — keep this turn's scope to lines, but don't hardcode `<line>` in `refreshOutlinePreview`;
+route each element through a declared per-kind table instead, so T38 (shapes: rect/circle/polyline/polygon/
+path) and later text plug in as table entries with zero change to the preview function itself; an unknown
+kind is simply skipped. New `OUTLINE_KINDS` (exported from `editor-outline-preview.js`) — one entry today
+(`line`, wrapping `lineOutlinePathD`), each entry a `(el) => { d, unsupported }` function so a future entry
+adapts its own kind's DOM attrs into whichever geometry function it calls, same return shape throughout.
+Per the declare-over-hand-roll principle this session already leans on repeatedly: the TABLE is worth
+declaring now (cheap, and every future kind plugs into the identical shape); the shape/text geometry
+FUNCTIONS are not (building them before T38/T39 call them would be exactly the speculative machinery that
+rule warns against) — explicitly did NOT start on shapes this turn. Added 3 new tests proving the table is
+genuinely consulted (not a hardcoded check reintroduced by mistake): a temporary `circle` entry added at
+test time fires with zero edits to `refreshOutlinePreview`, and removed again in a `finally` so the shared
+table is left exactly as found; a `{unsupported}` result from an IN-table entry still produces no preview.
+Mutation-verified: reverted the lookup to a hardcoded `ch.type === 'line'` check — exactly the new
+extensibility test failed (the plain line/centerline/hidden-layer tests all stayed green, since a
+hardcoded check still handles the one kind that exists today; only the "is it actually table-driven" test
+can tell the difference) — reverted, full suite re-confirmed green (557/557).
+
+Amendments polled clean (`handoff.py amendments --role worker`) a second time immediately before passing —
+nothing further pending. Committed by explicit path (7 files: `editor/editor-io.js`, `editor/editor.js`,
+`editor/init.js`, new `editor/editor-outline-preview.js`, `main/stamp/fusion-geometry.js`, new
+`tests/editor-outline-preview.test.js`, this WORK-LOG) — pushed.
