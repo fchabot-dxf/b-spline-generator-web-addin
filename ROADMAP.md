@@ -794,3 +794,13 @@ fixed, combined gesture both.
 2. DOUBLE-TAP the handle (either orientation): jump to canvas-max ↔ settings-max (declared snap targets), single tap
    keeps its current cycle behaviour.
 Later if still needed: floating mini-preview while adjusting a slider with the panel tall; Sparse/Medium/Dense presets.
+
+## Queued — UI1 (seat A, after MOB4): ONE segmented-control style app-wide (Fred 2026-09-25)
+Fred picked layer-row style "C1 — soft segmented" (outlined group, thin dividers, ON = light-blue tint + blue glyph,
+OFF = grey; ~30px visible cell, ≥40px tap area) and: "I guess it can be the general look too, right". → Declare ONE
+segmented component (CSS class + tiny helper if needed) and use it for EVERY choice control: toolbar Stroke/Fill/Both
+and Show/Snap, Lattice (Add Rail/Tie/Node, Horizontal/Vertical, Count/Every, Count/Density, Cells/Rails), Shape
+Lattice (Hourglass/Bottle, straight/curve/kink bar), Fusion Geometry, Boundary/Ending choices, the layer row
+[👁|3D|🎨]. Actions (Generate, Apply Stencils, Regenerate, Detach) keep their button look. Retire the per-control
+variants' CSS (no dead styles). Reference mock: scratchpad layerrowsC.html (.C1). Before/after screenshots desktop +
+phone.
