@@ -61,6 +61,43 @@ export { toLattice, fromLattice, latticeCrossings };
  *  element shape. See SE7B design §2 for the ownership/detach rules. */
 export const OWNERSHIP_ATTR = 'data-lattice-gen';
 
+/**
+ * T76 (SE17, Fred: "I want ties on a layer and rails on another and nodes
+ * another"): a generated lattice pattern's own FOUR kinds of drawn content
+ * — Contour, Rails, Ties, Nodes — each live on their OWN ordinary layer
+ * (own visibility/colour/carve config; drag-reorder = draw stacking, eye =
+ * show/hide), one pattern record shared across all four. Declared ONCE so
+ * the layer defaults (name + starting tooling) and the Fusion sketch BUILD
+ * ORDER both read from the very same table — never two independently-
+ * drifting copies of "which kind comes first".
+ *
+ * Order here IS the Fusion build order: contour -> rails -> ties -> nodes,
+ * Fred's own FIXED dependency order (advisor-measured: a direct cross-
+ * sketch constraint is refused, so each later sketch must PROJECT the
+ * curves it relates to from an earlier one — rails project the contour's
+ * own segments, ties project rail curves, nodes project rail/tie curves).
+ * This is NOT the app's own layer STACKING order, which the user drag-
+ * reorders in the layers panel independently of anything below (ROADMAP.md
+ * SE17: "The APP stacking order is independent of the FUSION sketch build
+ * order, which stays contour -> rails -> ties -> nodes").
+ *
+ * `rails`/`ties`/`nodes` tooling is the recovered SE7b starting point
+ * (Fred tuned these live before; SE7i's own removal of the three-layer
+ * split was about the SPLIT itself, per Fred's "I don't mind if all
+ * lattice geometry is in one layer" — never a complaint about these
+ * specific numbers). `contour` has no such precedent (a NEW kind-layer,
+ * SE7b never had one) — left at `addLayer`'s own generic TOOLING_DEFAULTS
+ * rather than inventing a tuned number with no basis.
+ */
+export const LATTICE_FUSION_BUILD_ORDER = Object.freeze(['contour', 'rails', 'ties', 'nodes']);
+
+export const LATTICE_KIND_LAYER_DEFAULTS = Object.freeze({
+  contour: Object.freeze({ name: 'Contour' }),
+  rails: Object.freeze({ name: 'Rails', depth: 0.15, profile: 'vbit', angle: 90 }),
+  ties: Object.freeze({ name: 'Ties', depth: 0.08, profile: 'vbit', angle: 90 }),
+  nodes: Object.freeze({ name: 'Nodes', depth: 0.12, profile: 'ballnose', angle: 90 }),
+});
+
 /** T49 (SE13 §1): the boundary-shape LINK — "linked by id, not copied;
  *  editing it refills with the same seed" needs a stable per-element
  *  identity, which nothing in this editor carried before this (`data-layer`
