@@ -2143,15 +2143,20 @@
 
             <!-- T58: this tool's own Boundary/Ending/Border section — moved
                  from the box Lattice panel, minus the Board/Shape toggle
-                 (this tool is ALWAYS boundary mode: "Pick shape…" lets it
-                 fill a HAND-drawn shape instead of the generated one, same
-                 T49 mechanism, unchanged). -->
+                 (this tool is ALWAYS boundary mode). SE14d (Fred: "boundary
+                 pick shape isn't useful, it might just be another tool")
+                 removed the "Pick shape…" button that used to let it fill a
+                 HAND-drawn shape instead of the generated one (T49
+                 mechanism) — the underlying boundary machinery stays, since
+                 the GENERATED silhouette runs through the exact same code;
+                 a saved pattern with an old hand-picked boundary still
+                 loads and fills correctly, just with no UI to create a new
+                 one. `shapeLatticeBoundaryStatus` stays: regenerateSilhouette
+                 and syncFieldsFromPattern both still report "Shape linked"
+                 once Generate has run. -->
             <div style="display:flex; flex-direction:column; gap:3px;">
               <span style="font-weight:600;">Boundary</span>
-              <div style="display:flex; gap:6px; align-items:center;">
-                <button type="button" id="shapeLatticePickShape" style="flex:1; height:26px; font-size:11px; border-radius:3px; border:1px solid #ccc; background:#f9f9f9; cursor:pointer;">Pick shape…</button>
-                <span id="shapeLatticeBoundaryStatus" style="font-size:10px; color:#666; flex:1;">No shape picked</span>
-              </div>
+              <span id="shapeLatticeBoundaryStatus" style="font-size:10px; color:#666;"></span>
             </div>
 
             <!-- UI1: was a <select> — converted to the shared segmented

@@ -16,7 +16,7 @@ import {
   paramHandleRecords, renderShapeLatticeHandles, detectShapeLatticeDetach, openSegmentStyleBar,
   currentPattern, currentShape,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, stampBoundaryRef } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -99,11 +99,6 @@ function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mockPickTarget(attrs = {}) {
-  const store = { ...attrs };
-  return { attr: (k, ...rest) => (rest.length === 0 ? store[k] : (store[k] = rest[0], undefined)) };
-}
-
 /** The full panel markup this module reads — one shared fixture, same
  *  "one big fixture, not N tiny ones" shape properties-lattice.test.js's
  *  own per-describe-block fixtures already use, just consolidated since
@@ -178,8 +173,7 @@ function fixtureHTML() {
     <button id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
     <input id="shapeLatticeWidthNodes" type="number">
 
-    <button id="shapeLatticePickShape"></button>
-    <span id="shapeLatticeBoundaryStatus">No shape picked</span>
+    <span id="shapeLatticeBoundaryStatus"></span>
     <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeBorderEnabled" type="checkbox">
@@ -418,42 +412,24 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
   });
 });
 
-describe('initShapeLatticeProperties: Pick shape (T49 mechanism, reused)', () => {
-  it('arms editor._boundaryPickCallback; invoking it stamps data-boundary-ref, sets PATTERN.boundary.shapeId, marks shape.source picked, and does NOT auto-generate', () => {
+describe('initShapeLatticeProperties: a saved pattern with a hand-picked boundary (SE14d: no UI to create a new one, but an existing one keeps working)', () => {
+  it('generating a silhouette on a pattern with an existing hand-picked boundary mints a FRESH path, leaving the picked element untouched (never overwrites a shape the user drew)', async () => {
     initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticePickShape').click();
-    expect(typeof editor._boundaryPickCallback).toBe('function');
-
-    const target = mockPickTarget();
-    editor._boundaryPickCallback(target);
-
-    const id = target.attr('data-boundary-ref');
-    expect(id).toBeTruthy();
-    expect(activeLayerPattern(editor).boundary.shapeId).toBe(id);
-    expect(activeLayerPattern(editor).extent).toEqual({ mode: 'boundary' });
-    expect(activeLayerPattern(editor).shape.source).toBe('picked');
-    expect(document.getElementById('shapeLatticeBoundaryStatus').textContent).toMatch(/linked/i);
-    // non-vacuous: no rails/ties were emitted just from picking
-    expect(editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail')).toBeUndefined();
-  });
-
-  it('a click on empty canvas (no hit) cancels the pick without touching PATTERN.boundary', () => {
-    initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticePickShape').click();
-    editor._boundaryPickCallback(null);
-    expect(document.getElementById('shapeLatticeBoundaryStatus').textContent).toMatch(/cancel/i);
-    expect(activeLayerPattern(editor)?.boundary?.shapeId ?? null).toBeNull();
-  });
-
-  it('generating a silhouette AFTER a hand pick mints a FRESH path, leaving the picked element untouched (never overwrites a shape the user drew)', async () => {
-    initShapeLatticeProperties(editor);
-    // A REAL element the mock's own _findBoundaryElement CAN find (unlike
-    // a bare mockPickTarget, which is never in _sketchLayer's own children
-    // — using one here would let this test pass trivially even without
-    // the guard under test, since the lookup would already miss it).
+    // A REAL element the mock's own _findBoundaryElements CAN find (unlike
+    // a bare target object never added to _sketchLayer's own children —
+    // using one here would let this test pass trivially even without the
+    // guard under test, since the lookup would already miss it). SE14d
+    // removed the "Pick shape…" button; a pre-existing picked pattern
+    // (loaded from a save, or seeded directly here the way this test
+    // does) still carries this exact shape/boundary state and must still
+    // behave identically — nothing in `regenerateSilhouette`'s own
+    // `reuseExisting` guard is button-driven.
     const handDrawnCircle = editor._sketchLayer.circle(3).center(1, 1);
-    document.getElementById('shapeLatticePickShape').click();
-    editor._boundaryPickCallback(handDrawnCircle);
+    const id = stampBoundaryRef(handDrawnCircle);
+    const p = currentPattern(editor);
+    p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
+    p.extent = { mode: 'boundary' };
+    currentShape(p).source = 'picked';
     expect(handDrawnCircle.attr('r')).toBe(1.5); // the circle's own real geometry, unrelated to any path 'd'
 
     document.getElementById('shapeReroll').click();

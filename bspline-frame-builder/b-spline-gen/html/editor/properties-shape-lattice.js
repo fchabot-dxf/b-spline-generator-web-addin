@@ -13,7 +13,7 @@
  * `editor-shape-lattice-generator.js`'s pure `generateSilhouette`, then
  * emit/update the ONE linked silhouette `<path>` (§6: in-place `d` update
  * when this tool already owns the link, a fresh element + a fresh
- * `stampBoundaryRef` when it doesn't — e.g. right after "Pick shape…");
+ * `stampBoundaryRef` when it doesn't — e.g. the very first Generate);
  * (2) the Fill/Boundary/Ending/Border sections are the SAME fields the
  * box Lattice panel used to carry for Boundary mode, now living here
  * instead (T58's own "the box # Lattice loses its Boundary row").
@@ -542,7 +542,6 @@ export function initShapeLatticeProperties(editor) {
     // ── Boundary / Ending / Border (moved here from the box Lattice
     //    panel — no Board/Shape toggle: this tool is ALWAYS boundary
     //    mode). ────────────────────────────────────────────────────────
-    const pickShapeBtn = el('shapeLatticePickShape');
     const boundaryStatusEl = el('shapeLatticeBoundaryStatus');
     const endRuleEl = el('shapeLatticeEndRule');
     // T72 (SE14c): show/hide the contour's own drawn segments (rails/ties
@@ -1005,33 +1004,6 @@ export function initShapeLatticeProperties(editor) {
     if (tiesModeDensityEl) on(tiesModeDensityEl, 'click', () => _showTiesMode('density'));
     if (tiesSpanModeCellsEl) on(tiesSpanModeCellsEl, 'click', () => _showTieSpanMode('cells'));
     if (tiesSpanModeRailsEl) on(tiesSpanModeRailsEl, 'click', () => _showTieSpanMode('rails'));
-
-    // ── Boundary section wiring: "Pick shape…" — same T49 mechanism the
-    //    box Lattice panel used to own, moved here verbatim. Does NOT
-    //    auto-Generate (same "the explicit button is the one trigger"
-    //    convention), so the user can still adjust Fill before committing.
-    if (pickShapeBtn) {
-        on(pickShapeBtn, 'click', () => {
-            if (boundaryStatusEl) boundaryStatusEl.textContent = 'Click a shape on the canvas…';
-            editor._boundaryPickCallback = (hitEl) => {
-                if (!hitEl) {
-                    if (boundaryStatusEl) boundaryStatusEl.textContent = 'Pick cancelled';
-                    return;
-                }
-                const p = currentPattern(editor);
-                const id = stampBoundaryRef(hitEl);
-                p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
-                p.extent = { mode: 'boundary' };
-                // SE14 §6: a hand-picked shape is NOT this tool's own
-                // generated output — the Shape section's own controls
-                // become inert cosmetically until the user touches one of
-                // them again (which regenerates and re-links, see
-                // _regenerateSilhouette's own `reuseExisting` guard).
-                currentShape(p).source = 'picked';
-                if (boundaryStatusEl) boundaryStatusEl.textContent = 'Shape linked';
-            };
-        });
-    }
 
     // T72 (SE14c): an IMMEDIATE write+redraw, unlike the deferred-to-
     // Generate fields above — the contour is still computed/clipped
