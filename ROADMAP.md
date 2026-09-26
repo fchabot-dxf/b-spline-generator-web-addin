@@ -900,8 +900,9 @@ sketch (not live-drag across kinds); a deleted rail leaves a broken projection w
 curves add visual clutter. Declared: the kind→layer map and the sketch build order (data), not per-kind code paths. Fred: the kind-layers
 are ordinary layers — drag-reorder = draw stacking (rails over contour or vice versa) and the eye = show/hide, per kind.
 The APP stacking order is independent of the FUSION sketch build order, which stays contour → rails → ties → nodes
-(projection dependencies). A hidden kind-layer is still built in Fusion unless it's excluded from export (same rule
-as any hidden layer today — confirm + log).
+(projection dependencies). Fred confirmed the fixed build order is needed for the constraints. Hidden kind-layers are NOT exported (same rule as
+any hidden layer); a sketch whose dependency kind is hidden keeps its exact geometry but loses those cross-kind
+constraints (e.g. rails hidden → tie ends placed exactly but not linked). Declared as data, tested both ways.
 Parity: verify_sketch_against_manifest per sketch; spawn parity rule unchanged. Seat B after T74.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
