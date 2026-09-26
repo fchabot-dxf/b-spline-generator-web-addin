@@ -8645,3 +8645,106 @@ function comment rather than a map file.
 
 NO FUSION this turn, per the dispatch. Amendments polled clean immediately before this commit+pass (nothing new).
 
+### T72 (seat B, epoch 3→4) — SE15c threshold, T71's own no-lattice regression, SE14c checkbox, 3 AMEND-2/3 items, AMEND 5 sweep, and item 7's non-fix
+
+Six committed items, one commit each, pushed after every one (60a6df8, d4106f2, 591f15d, ef85e4a, 02b5f82, 25b9d9e,
+dd656cb). Epoch bumped 3→4 mid-turn (the advisor's own dedup of a duplicate seat B session, session 4a) — carrying
+"epoch 4" in this turn's own pass-back per the advisor's explicit instruction.
+
+**Item 1 (SE15c)**: `SKETCH_PIECE_THRESHOLD` 60→300, per the advisor's own live-Fusion re-measurement (16 rails/97
+pieces: plain 61s/0.139in drift/visibly tilted vs. constrained 90s/0/0.030in drift). Doc + one test's own extent
+widened to still clear the new threshold.
+
+**Item 2 (+ AMEND 1)**: root-caused and fixed the SAME bug class T71's own contour-inset margin introduced —
+`insetPathDToPrimitives`'s pre-existing "collapse to `[]` on self-intersection" behavior (correct and still tested
+for a genuinely thin HAND-PICKED boundary) was zeroing the ENTIRE lattice fill for the default Bottle preset
+specifically, because T71's new 0.5in/side margin pushed Bottle's own near-zero-radius neck fillet into
+self-intersecting territory once offset inward by the SAME half-stroke amount. Scoped the fix to GENERATED
+presets only (`insetGeneratedPresetPathDToPrimitives`, falls back to the raw boundary on collapse) — a
+hand-picked shape keeps declining to `[]`, unchanged, matching the existing "thin arm... the WHOLE shape
+declines" test's own documented intent. Also deduped `stroke_width` (declared independently, and identically, by
+BOTH `manifestFromShape` and `manifestFromLattice` when linked).
+
+**Item 3 (SE14c)**: a "show contour" checkbox — OFF still computes/clips the lattice fill against the exact same
+boundary (unconditional in `buildSketchManifest`), only the contour's own manifest entities/dims/params and its
+drawn visibility disappear. The drawn `<path>` stays a REAL element either way (`display:none` when OFF) since the
+live boundary lookup still needs it; `getLayerSvg`'s shared `_parseLayerContent` filter drops any `display:none`
+child from BOTH the plain SVG and Fusion-geometry export paths — one declared signal, two consumers, never a
+second tracked flag. Rendered both states to PNG via headless Chrome (from the pure geometry engine directly, no
+live app needed) and visually confirmed: rails/ties/nodes pixel-identical, only the black outline appears/
+disappears.
+
+**Item 4 (AMEND 2)**: fixed Fred's own reported "3 handle dots floating over an empty board before any shape
+exists" — `paramHandleRecords` gated on `shape.source === 'generated'` alone, but `PATTERN_DEFAULTS.shape.source`
+IS `'generated'` by default and `currentShape()` materializes that default the instant anything reads `p.shape`,
+so the check was true even pre-Generate. Declared the REAL check once, `hasGeneratedSilhouette(pattern)`
+(editor-lattice-pattern.js) — the same two-part condition (`source==='generated' AND extent.mode==='boundary'`)
+`buildSketchManifest`'s own `hasShape` already used — and had BOTH callers read it, rather than two copies of the
+same two-part condition silently drifting. Test: 0 handles pre-Generate, 3 after.
+
+**Item 5 (AMEND 2)**: a `contour` colour (green `#2e7d32`, declared alongside rails/ties/nodes in
+`PATTERN_DEFAULTS.colors`, never black) + a 4th swatch in the panel's own Colors row. A freshly-minted contour now
+draws in that declared colour instead of the general drawing tool's own CURRENT color (`editor._color`), which was
+its only color source before this turn. `recolorOwnedKind` gained a `'contour'` branch — genuinely different from
+rails/ties/nodes (ONE linked `<path>` found by `boundary.shapeId`, never an OWNERSHIP_ATTR/data-lattice-marked
+piece the existing filter can see), not a 4th `COLOR_KIND_TO_LATTICE_ATTR` entry. SE14b's own later per-segment
+split will need its own recolor path when that lands.
+
+**Item 6 (AMEND 3)**: Border width "auto" was silently resolving to the silhouette's own ALWAYS-hairline stroke
+(`SILHOUETTE_STROKE_WIDTH`, a real, positive, truthy number — so the `|| widths.rails` fallback in
+`_effectiveBorderWidth` never actually fired) instead of the lattice's real stroke width, for a GENERATED
+silhouette specifically. Branched on the SAME `hasGeneratedSilhouette` item 4 declared: generated+auto now means
+`widths.rails` (read fresh every Generate, so it follows live edits); a hand-picked boundary keeps inheriting its
+own live stroke, unchanged (T49's own original ruling) — fixed 2 existing tests whose own hand-built fixtures
+never set `shape.source` at all (silently defaulting to 'generated', misrepresenting what "Pick shape…" actually
+sets). Added a parity test: drawn Border stroke-width === the manifest's own `stroke_width` parameter, exactly.
+
+**AMEND 5** — a permanent sweep test (`tests/shape-lattice-param-sweep.test.js`, 126 cases: 2 presets × each
+preset's own params at {min,mid,max} × rails-count {3,7,14} × orientation {H,V}), asserting rails>0/ties>0/parity.
+Found and fixed a REAL regression of the exact same bug class as item 2: at an extreme param (e.g. hourglass
+`waistReach` near its min), a scan-line tangent to the deeply-pinched boundary can produce a genuinely
+zero-length "inside" span — `manifestFromLattice` already filtered these (T66's own `MIN_PIECE_LENGTH`, a
+different symptom of the SAME root cause), but `generatePattern`'s own rail/tie emission loop had no equivalent
+filter, so the app drew a zero-length `data-lattice="rail"` element the manifest never declared — a real
+app/manifest COUNT mismatch, not cosmetic. Fixed by declaring the threshold ONCE as `MIN_PIECE_LENGTH_IN`
+(editor-lattice.js, the lowest module both producers already import from) instead of leaving it a single,
+easily-forgotten local in the manifest producer. Separately MEASURED, not fixed: at rails=3 (only 2 adjacent-rail
+pairs to bridge) a few preset/param combinations place 0 ties at this file's own fixed seed 42 specifically —
+30/30 OTHER lattice seeds against the identical shape+rails placed ties fine, confirming this is the pre-existing,
+already-disclosed T67 Part 3 "less good at MAXIMIZING placed-tie count" trade-off (mutation-tested and accepted
+that turn, not reintroduced by T71/T72), and self-corrects on any retry since Generate always rerolls the seed.
+The sweep asserts `ties>0` everywhere except rails=3 (parity still required there) rather than either weakening
+the whole sweep or speculatively rewriting the tie-placement fallback for a narrow, self-correcting case outside
+this turn's own actual regression.
+
+**Item 7 (AMEND 4 + its own intermittent follow-up) — investigated thoroughly, NO code fix, because no bug was
+found.** Built a real, no-deps CDP driver (same pattern `scripts/smoke-editor.mjs` already established: headless
+Chrome, `Input.dispatchMouseEvent`/`dispatchTouchEvent` against a REAL local server) and reproduced the reported
+symptom on the FIRST attempt — but my own first script reused ONE page across several drag "variants," so each
+drag's own displacement accumulated on top of the PREVIOUS variant's already-dragged shape, eventually pushing
+`waistReach` into genuinely self-intersecting territory — a real degenerate shape, but caused by the test script
+itself, not the app (confirmed by screenshot: a visibly self-intersecting hourglass after 4 stacked drags).
+Rebuilt with each variant on its own fresh page load (no cross-variant drift) and a small, realistic, FIXED
+displacement: `paramsAfterDrag.waistReach` came out byte-identical across mouse/touch and 3-to-60 intermediate
+move events, confirming `valueFromWorld` is a pure function of final pointer position (not cumulative, not a
+feedback loop) — Generate correctly NEVER resets `shape.params` (by design: it only rerolls the LATTICE fill's own
+seed, `readFieldsIntoPattern` explicitly never touches `p.shape.*`), and `editor._isDrawing`/`_shapeLatticeDragKey`
+were always correctly reset before Generate ran, on every trial, with zero console errors/exceptions logged ever.
+A statistical batch (12 desktop mouse trials + 8 real mobile-viewport touch trials, `mobile:true`/390×844, not
+just touch events on a desktop-sized page) measured the "fill looks unchanged after Generate" rate at 1/12 and
+1/8 — matching, almost exactly, the ~1/12 rate PURE CHANCE predicts from `rails.count` ([6,7], 2 values) and
+`ties.count` ([8,13], 6 values) independently re-rolling to the SAME combination (row/column PLACEMENT for a
+given count is deterministic, never reseeded, so a coincidental count-match is a coincidental exact-position-
+match too). Conclusion, stated plainly rather than papered over: there is no "Generate stops working after a
+drag" mechanism in this codebase — Generate reliably rerolls and regenerates the fill every single time, on both
+desktop and a real mobile viewport; what Fred most likely experienced is the SAME shape (which Generate never
+resets, by design) combined with an occasional coincidental rail/tie-count repeat, at a rate fully explained by
+the narrow declared count ranges. Flagging for the advisor/Fred to decide whether that's worth a UX change
+(e.g. widening the count ranges, or a "regenerated" affordance) — inventing a code fix for a mechanism that isn't
+actually broken would have been the wrong call. Scratch CDP scripts removed from `scripts/` before this pass
+(throwaway investigation tooling, not permanent test infrastructure); local `http.server`/Chrome processes
+confirmed stopped, `proc_health.py watch` clean.
+
+Verify (final, after AMEND 5): 1203/1203 vitest, 33/33 pytest. Amendments polled clean immediately before this
+pass. NO FUSION this whole turn, per the dispatch.
+
