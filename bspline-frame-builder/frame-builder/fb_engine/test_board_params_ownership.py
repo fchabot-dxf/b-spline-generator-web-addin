@@ -306,6 +306,33 @@ class TestFrameParamsSingleDeclaration:
 
 
 
+
+class TestTrimOffsetIsSentNotMaster:
+    """FB-APP F9 (gate A): boundingboxoffset (the app's "Trim offset") is a
+    normal template param, not a ReadOnly MASTER. A master is created once
+    from the template default and never updated, so a value sent from the
+    app was silently ignored. Now the resolver writes it on every build."""
+
+    @pytest.mark.parametrize("style_id", ["Template 1", "Template 2"])
+    def test_an_existing_trim_offset_takes_the_sent_value(self, style_id):
+        bbo = RecordingParam("boundingboxoffset", "0.25 in")
+        fb = _skeletal_builder([FakeUserParam("widthIn", "7"), FakeUserParam("heightIn", "9"), bbo])
+        fb._create_skeletal_parameters(None, style_id, {"boundingboxoffset": 0.5})
+        assert bbo.expression == "0.5"
+        assert bbo.value_writes == []
+
+    @pytest.mark.parametrize("style_id", ["Template 1", "Template 2"])
+    def test_a_new_document_is_born_with_the_sent_value(self, style_id):
+        fb = _skeletal_builder([FakeUserParam("widthIn", "7"), FakeUserParam("heightIn", "9")])
+        fb._create_skeletal_parameters(None, style_id, {"boundingboxoffset": 0.375})
+        assert fb.user_params.itemByName("boundingboxoffset").expression == "0.375"
+
+    @pytest.mark.parametrize("style_id", ["Template 1", "Template 2"])
+    def test_without_a_sent_value_the_template_default_is_used(self, style_id):
+        fb = _skeletal_builder([FakeUserParam("widthIn", "7"), FakeUserParam("heightIn", "9")])
+        fb._create_skeletal_parameters(None, style_id, {})
+        assert fb.user_params.itemByName("boundingboxoffset").expression == "0.25"
+
 # ---------------------------------------------------------------------
 # FB-FIX (F4), engine parts: resolve_val through the ONE resolver (never a
 # silent 0), addOffset2 given the curve LIST it requires, and the declared

@@ -8,12 +8,14 @@
  *
  * Covered: the generic sidebar number fields whose handler is bind() -> applyParam (main/ui-bindings.js) — stage 1
  * (R1) proved it on Stock Width/Height, R2 extends it to every such section outside the frozen/other-seat files.
- * Deliberately NOT here (see WORK-LOG-reg-addin.md, R2): seed (an integer id, not a quantity), the FRAME section
- * (seat C), the per-layer stamp transform (tx/ty/rotation/scale — own layer-only binder, not bind()), the sculpt
+ * FRAME (FB-APP F9): the Trim offset field (its value lives in the frame record, not in P).
+ * Deliberately NOT here (see WORK-LOG-reg-addin.md, R2): seed (an integer id, not a quantity), the per-layer stamp
+ * transform (tx/ty/rotation/scale — own layer-only binder, not bind()), the sculpt
  * "hardness" fields (not in P), the lattice/editor panels (R3, frozen for seat A's UI5).
  */
 import { P } from '../core/state.js';
 import { attachFormula } from '../core/formula-field.js';
+import { FRAME_DEFS, getFrameRecord, frameParam } from '../core/frame-record.js';
 
 const IN = '"';
 const DEG = '°';
@@ -77,6 +79,11 @@ export const FORMULA_SECTIONS = Object.freeze([
       pname('fillet', 'stampEdgeFilletRadius', 'Edge fillet', IN),
       pname('sharpness', 'stampFilletPower', 'Fillet sharpness'),
     ],
+  },
+  {
+    section: 'FRAME',
+    ids: ['frameTrimOffset'],
+    names: [{ name: 'trim', label: 'Trim offset', get: () => frameParam(FRAME_DEFS, getFrameRecord(), 'boundingboxoffset'), unit: IN }],
   },
   {
     section: 'SCULPT TOP',

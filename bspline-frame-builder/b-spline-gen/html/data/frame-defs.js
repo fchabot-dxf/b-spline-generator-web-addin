@@ -56,7 +56,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "a44f9bcb0c428f385f62782b1d368e9bf456dc75bbcb86d64361d0328732bb48",
+  "sourceHash": "072e507b55b97201063fbfc587058372437693d00bd06f333e5ff78339722445",
   "templates": [
     {
       "features": [
@@ -115,10 +115,11 @@ export default {
         {
           "category": "Frame Spec",
           "default": 0.25,
+          "expose": true,
           "label": "BBox Border",
+          "min": 0.0,
           "name": "boundingboxoffset",
           "owner": "frame",
-          "readOnly": true,
           "unit": "in"
         },
         {
@@ -380,9 +381,10 @@ export default {
             },
             {
               "Category": "Frame Spec",
+              "Expose": true,
               "Label": "BBox Border",
+              "Min": 0.0,
               "Name": "boundingboxoffset",
-              "ReadOnly": true,
               "Unit": "in",
               "Val": 0.25
             }
@@ -1531,10 +1533,11 @@ export default {
         {
           "category": "Frame Spec",
           "default": 0.25,
+          "expose": true,
           "label": "BBox Border",
+          "min": 0.0,
           "name": "boundingboxoffset",
           "owner": "frame",
-          "readOnly": true,
           "unit": "in"
         },
         {
@@ -1744,9 +1747,10 @@ export default {
             },
             {
               "Category": "Frame Spec",
+              "Expose": true,
               "Label": "BBox Border",
+              "Min": 0.0,
               "Name": "boundingboxoffset",
-              "ReadOnly": true,
               "Unit": "in",
               "Val": 0.25
             }

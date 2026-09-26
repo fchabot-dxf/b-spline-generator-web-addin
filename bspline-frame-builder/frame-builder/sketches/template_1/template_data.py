@@ -29,8 +29,10 @@ SKETCH_1_PARAMETERS = [
     # stores cm internally (createByString honours the "in" suffix).
     {"Name": "widthIn",           "Label": "Width (Model)",  "Category": "Frame Spec", "Val": 5.51, "Unit": "in", "Min": 1.0, "Max": 48.0, "ReadOnly": True},
     {"Name": "heightIn",          "Label": "Height (Model)", "Category": "Frame Spec", "Val": 1.97, "Unit": "in", "Min": 1.0, "Max": 48.0, "ReadOnly": True},
-    # Read-only bounding box border display
-    {"Name": "boundingboxoffset", "Label": "BBox Border",    "Category": "Frame Spec", "Val": 0.25, "Unit": "in", "ReadOnly": True},
+    # The trim offset: the gap between the board edge and the frame's outer
+    # perimeter. FB-APP F9 (gate A): a normal template param (not ReadOnly),
+    # so the resolver writes the sent value on every build, like frame_thickness.
+    {"Name": "boundingboxoffset", "Label": "BBox Border",    "Category": "Frame Spec", "Val": 0.25, "Unit": "in", "Min": 0.0, "Expose": True},
 ]
 
 SKETCH_2_LABEL = "Shape Outline"

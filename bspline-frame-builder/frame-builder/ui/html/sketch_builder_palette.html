@@ -322,7 +322,7 @@
             </div>
           `;
         } else if (p.ReadOnly) {
-          // ReadOnly params (widthIn, heightIn, boundingboxoffset) come from
+          // ReadOnly params (widthIn, heightIn) come from
           // external sources (Fusion userParameters) and must NOT be sliderized
           // — HTML5 sliders clamp value to max (default 1), corrupting hydrated
           // values like 25.019. Hidden input carries the true value so runBuild

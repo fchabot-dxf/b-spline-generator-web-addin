@@ -22,6 +22,13 @@ import { AppState } from './app-state.js';
 
 const $ = (id) => document.getElementById(id);
 
+/** The frame's numeric param fields: field id -> the template param it edits
+ *  (limits from the generated definition), plus the row hidden with no frame. */
+export const FRAME_PARAM_FIELDS = Object.freeze([
+  { id: 'editorFrameThickness', param: 'frame_thickness', row: 'editorFrameThicknessRow' },
+  { id: 'frameTrimOffset', param: 'boundingboxoffset' }, // F9: "Trim offset (in)"
+]);
+
 function _option(value, label) {
   const o = document.createElement('option');
   o.value = value;
@@ -55,13 +62,15 @@ export function syncFramePanel() {
   // The editor's Frame tab mirrors the same record.
   if ($('editorFrameTemplate')) $('editorFrameTemplate').value = rec.templateId || '';
   if ($('editorFrameWood')) $('editorFrameWood').value = rec.appearance;
-  const th = $('editorFrameThickness');
-  if (th) {
-    const p = tpl?.params.find((q) => q.name === 'frame_thickness');
-    if (p) { th.min = p.min; th.max = p.max; }
-    if (document.activeElement !== th) th.value = tpl ? frameParam(FRAME_DEFS, rec, 'frame_thickness') : '';
+  for (const f of FRAME_PARAM_FIELDS) {
+    const el = $(f.id);
+    if (!el) continue;
+    const p = tpl?.params.find((q) => q.name === f.param);
+    for (const k of ['min', 'max']) { if (p && p[k] != null) el[k] = p[k]; else el.removeAttribute(k); }
+    if (document.activeElement !== el) el.value = tpl ? frameParam(FRAME_DEFS, rec, f.param) : '';
+    if (f.row && $(f.row)) $(f.row).style.display = tpl ? '' : 'none';
   }
-  for (const id of ['editorFrameThicknessRow', 'editorFrameWoodRow']) if ($(id)) $(id).style.display = tpl ? '' : 'none';
+  if ($('editorFrameWoodRow')) $('editorFrameWoodRow').style.display = tpl ? '' : 'none';
   if ($('frameTemplate')) $('frameTemplate').value = rec.templateId || '';
   if ($('frameBottomZ') && document.activeElement !== $('frameBottomZ')) $('frameBottomZ').value = rec.frameBottomZ;
   if ($('frameAppearance')) $('frameAppearance').value = rec.appearance;
@@ -97,11 +106,13 @@ export function initFramePanel() {
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => { setFrameRecord({ templateId: e.target.value || null, params: {} }); syncFramePanel(); });
   $('editorFrameWood')?.addEventListener('change', (e) => { setFrameRecord({ appearance: e.target.value }); syncFramePanel(); });
-  $('editorFrameThickness')?.addEventListener('change', (e) => {
-    const rec = getFrameRecord();
-    setFrameRecord({ params: { ...rec.params, frame_thickness: parseFloat(e.target.value) } });
-    syncFramePanel();
-  });
+  for (const f of FRAME_PARAM_FIELDS) {
+    $(f.id)?.addEventListener('change', (e) => {
+      const rec = getFrameRecord();
+      setFrameRecord({ params: { ...rec.params, [f.param]: parseFloat(e.target.value) } });
+      syncFramePanel();
+    });
+  }
   $('editorTabFrame')?.addEventListener('click', () => setEditorTab('frame'));
   $('editorTabArtwork')?.addEventListener('click', () => setEditorTab('artwork'));
   // Two doors, one room: "Edit frame shape" opens the editor on the Frame tab,
