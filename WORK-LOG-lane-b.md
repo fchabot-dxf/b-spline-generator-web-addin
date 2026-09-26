@@ -9487,3 +9487,56 @@ ever needs Fusion-side size editing to match Shape Lattice's own, that's a real 
 dimensioned construction rectangle first, not implied by this housekeeping item.
 
 Verify: 1254/1254 vitest, 40/40 pytest. Commit 0bd50e2, pushed. NO FUSION this whole turn.
+
+## T75 item 3 — OVR-FUSION: per-piece width override hardcodes its own dim; colour already reaches Fusion for free
+
+Seat A's own UI5 (the actual override UI, on `main`) had not landed yet — checked `origin/main` directly rather than
+assuming: `NEXT-SESSION.md` there still lists it as an OPEN checklist item (`[ ] [UI5-item-2] Declared data schema on
+the piece: data-override-color / data-override-width ...`), so per this turn's own dispatch ("if not there yet,
+build against the declared attribute names"), built against those two exact names, taken from that same spec:
+`data-override-width` carries the override VALUE itself; `data-override-color` too, "rendered live (stroke colour/
+width)" — i.e. seat A's own future UI is expected to set the piece's REAL `stroke`/`stroke-width` attribute directly,
+with the `data-override-*` attribute as a parallel, declared marker of the same value (not a separate indirection).
+
+**Width → a hardcoded manifest dimension.** `manifestFromLattice` (editor-sketch-manifest.js) gains an optional 4th
+param, `overrides` — `{rails, ties, nodes}`, each an array of override-width-or-null. The key design question was
+HOW a positional/DOM-agnostic function (it only ever consumes `pattern`+`extent`, by design, so it stays unit-
+testable without a real editor) could line up an override against the entity it just generated, since it never sees
+the real DOM at all. Resolved by POSITION: this module's own rail/tie/node loops and `generatePattern`'s own DOM-
+emit loop (editor-lattice-pattern.js) both walk the IDENTICAL seeded `computePattern` output, filtering the same
+kind and skipping the same too-short pieces, in the same order — the SAME parity guarantee this codebase already
+leans on everywhere else (parity-app-manifest.test.js's whole reason to exist). So the Nth real owned element of a
+kind on the layer corresponds EXACTLY to the Nth entity of that kind the manifest emits, without needing any new id
+scheme. An overridden piece's own `SlotWidth`/`Diameter` dimension becomes a literal `"<n> in"` Fusion expression
+(a plain, valid Fusion expression string, no named parameter at all) instead of referencing the kind's shared
+parameter; every sibling piece is byte-for-byte unchanged, and the shared parameter itself stays declared for them
+("no param" means THIS piece stops referencing it, not that the parameter disappears for everyone).
+
+`sketch_manifest_builder.py` needed **zero changes** — confirmed by reading it, not assumed: `_drive_last_dimension`
+already does `d.parameter.expression = str(expression)` unconditionally, with no validation of whether the string
+names a real parameter or is a bare numeric literal. Every existing dimension expression this module has ever
+produced (`'stroke_width'`, `'contour_height - stroke_width'`, `'node_diameter'`) already goes through this exact
+same code path — a hardcoded `'0.375 in'` is just one more string to it. The full Python suite (40/40, including
+`test_sketch_manifest_builder.py`'s own dimension-dispatch tests) stayed green untouched, which is the real proof.
+
+`export-flow.js`'s `_fusionLayerManifest` builds the `overrides` array straight from the real DOM
+(`_overridesForLayer`, new — reads each owned piece's own `data-override-width` via `_ownedOnLayer`, now exported)
+and threads it through `buildSketchManifest`'s new `opts.overrides`.
+
+**Colour needed no new code.** Read `_buildOutlineReplacementNodes`/`_parseLayerContent` (editor-io.js) before
+writing anything: they already (a) read `stroke`/`stroke-width` FRESH off the source element for every replacement
+node they build, and (b) copy EVERY `data-*` attribute onto it verbatim (`Array.from(ch.attributes).filter(a =>
+a.name.startsWith('data-'))` — a SA-ROUNDTRIP-2 precedent already established for text->path bakes, reused here for
+the same reason). Since seat A's own schema renders the override "live" as the piece's real `stroke` attribute,
+this existing, fully generic machinery already carries an override colour (and its own `data-override-color`
+marker) through unchanged — proven with two new tests (centerline pick + outline pick), both asserting the
+OVERRIDE colour survives, never silently rewritten back to the kind's shared/default one.
+
+**No manifest-side colour field was added — logged, not built.** A lattice piece built via the manifest path
+(rails/ties/nodes as Slot/Line/Circle sketch entities) has no per-curve colour concept in Fusion's own Sketch API
+at all — a dimension drives a length/diameter, never an appearance, and nothing in `sketch_manifest_builder.py`
+touches curve colour today. So colour's entire "reaches Fusion" story is the SVG path above; there was nothing
+further to add on the manifest side, matching the roadmap's own explicit split ("manifest" for width, "SVG" for
+colour) rather than inventing new Fusion-appearance machinery for a "small" item.
+
+Verify: 1261/1261 vitest (7 new), 40/40 pytest (untouched). Commit da63682, pushed. NO FUSION this whole turn.
