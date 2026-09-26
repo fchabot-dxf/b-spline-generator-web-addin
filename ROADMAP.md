@@ -879,6 +879,13 @@ the contour + its rails/ties regenerate at that size and the SAME numbers go to 
 dims, same parameter pattern — decide + log). Saved patterns without size read the default. Parity + sweep tests cover
 a non-default size. Seat B, after T74 and before SE17 (smaller; SE17 builds on the same patterns).
 
+## Queued — OVR-FUSION: per-piece width/colour overrides reach Fusion (Fred 2026-09-26)
+Seat A's UI3 adds per-piece overrides in the lattice Select tool (data-override-color / data-override-width on a
+rail/tie/node/contour piece). Fred: "overrides don't survive [regenerate] and don't get a param, just hardcode the
+dimension seed". Seat B: the manifest reads data-override-width → that piece's slot width dimension is a HARDCODED value
+(no parameter, no stroke_width expression); others unchanged. Colour override → per-segment colour in SVG/Send to
+Fusion. Parity + builder tests. Small; do with LAT-SIZE.
+
 ## Queued — SE17: lattice KINDS on separate layers → separate Fusion sketches linked by projection (Fred 2026-09-26)
 Fred: "I want ties on a layer and rails on another and nodes another" / "it's actually in Fusion that it matters most".
 App: the Lattice + Shape Lattice tools put rails, ties, nodes (and the contour) each on their OWN layer (own
