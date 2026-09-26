@@ -9121,3 +9121,53 @@ mixed roster, idempotent on a second run.
 
 Verify: 1228/1228 vitest, 151/151 pytest. Commit 6544851, pushed. NO FUSION this whole turn.
 
+
+## T74 AMEND 1 — merge "show contour" + Border's "draw boundary" into ONE Contour control
+
+Fred (mid-task amendment, "do it together with SE14d"): "if draw boundary is off I shouldn't see it at all." The
+SE14c "show contour" checkbox and the separate Border section's own "draw boundary" checkbox were two independent
+on/off switches for what reads as one thing — turning Border off left the SE14b contour segments themselves still
+visible. Retired the whole Border clone feature (`PATTERN.boundary.border = {enabled, width, color}` — a SECOND,
+independently-toggled outline drawn from the boundary element's own geometry) entirely, not just its UI: deleted
+the Border-piece emission block in `generatePattern`, the `borderEnabled` gate on the "fix first" collinear-edge
+span (now always taken — an edge-collinear rail/tie is always kept, since there's no second stroke to double up
+against), and `_effectiveBorderWidth` (renamed `_effectiveContourWidth`, drops the `border.enabled` gate, keeps its
+3-branch resolution: explicit `contour.width` override → generated-silhouette auto (`widths.rails`) → hand-picked
+live-DOM-read fallback). `editor-sketch-manifest.js`'s own `shapeHalfInset` updated to match. Border's colour
+concept was NOT duplicated into `contour` — `colors.contour` (the Colors row's own swatch) was already the one
+place for it, never relocated.
+
+HTML: one `[x] Contour` checkbox (id `shapeLatticeContourShow`, reused) + one width field (new id
+`shapeLatticeContourWidth`, renamed from `shapeLatticeBorderWidth`) under a section still titled "Contour" (was
+briefly "Boundary" post-SE14d) so seat A's own title-based `TOOL_PANEL_MOUNTS` tint still applies. Checked the box
+Lattice panel per the dispatch's own ask — it has no Border control at all (moved to Shape Lattice entirely back
+in T58), so nothing to migrate there.
+
+**Self-caught bug while wiring the width field**: the existing `contourShowEl` change handler replaced
+`p.contour` outright (`p.contour = { show: ... }`), silently dropping `segmentColors` (and now `width`) on every
+plain checkbox toggle. Fixed to spread the existing object first.
+
+Migration (`app-init.js` MIGRATIONS, `border-to-contour-width`, mirrors `node-radius-to-diameter`'s own
+gate-on-current-shape convention): an already-saved `boundary.border.width` becomes `contour.width`; the merged
+`contour.show` is `border.enabled OR (old contour.show !== false)` — an enabled Border wins, since it was the
+thing actually drawn even when SE14b's own contour segments were hidden, so a document that used to show
+something visually keeps showing it. Border's colour field is dropped, never migrated (redundant with
+`colors.contour`, which every saved pattern already carries).
+
+Tests: rewrote/removed the Border-specific describe blocks across `editor-lattice-pattern-boundary-emit.test.js`
+(the whole "Border piece (§7)" describe deleted — nothing left to test once the clone element is retired; its one
+surviving width-override behavior folded into the existing "T50" describe via `contour.width`),
+`editor-lattice-pattern-ending.test.js` ("fix first" now has one unconditional-keep behavior, not two toggled
+ones), `parity-app-manifest.test.js` (two Border-clone-specific tests removed as redundant with their sibling
+contour-segment tests), and `properties-shape-lattice.test.js` (Border checkbox/color tests → one Contour-width
+test). Added a new `border-to-contour-width` describe to `migrations.test.js` (6 cases: explicit width, Border-off
+both show states, no-border-at-all no-op, no-pattern-layer no-op, idempotent). A stale CSS touch-sizing selector
+(`#shapeLatticeBorderEnabled`, `editor.css`'s coarse-pointer media query) would have silently stopped enlarging
+the merged checkbox on touch — repointed to `#shapeLatticeContourShow`.
+
+Viewed before committing: a throwaway vitest+CDP render (real `regenerateSilhouette`/`generatePattern`, not a
+reimplementation) confirmed all three states side by side — auto-width thin contour, an explicit 0.6" override
+rendering visibly thicker with rounded corners, and OFF drawing nothing at all while rails/ties still hug the
+exact same hourglass waist.
+
+Verify: 1223/1223 vitest, 33/33 pytest. Commit 01a7c4e, pushed. NO FUSION this whole turn.
