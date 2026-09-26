@@ -1,28 +1,20 @@
-# NEXT (fb-app) — F2: verify FB-APP's UNVERIFIED items live in Fusion + S0 clean-up
+# NEXT (fb-app) — F3: fix FB-ORDER's missed solid features + S1 (generated frame-defs.json)
 
-**Ball: worker (seat C) · epoch 1 · F2.** F1 (bfc0b44) accepted. FUSION IS ALLOWED for this task (Fred: "Fusion is open,
-they can verify") — you are the ONLY seat using Fusion. Seats A/B stay NO FUSION.
-Fred's input: the face you pick for the frame extrude is actually the BOTTOM face of the core ("core.top" in the design
-is a naming problem) — rename in the design to what it really is and verify which face it is live.
-PROGRESS is automatic (commit subjects "F2 item N: …"). Save screenshots to C:\Users\danse\.bspline-status\shots\seatC\.
-
-## Fusion hygiene (hard rules — incidents behind each)
-- Work in a NEW scratch document you create; close ONLY that handle when done (never close docs by name/count). Fred's
-  own open design must not be modified.
-- If you import code from a non-installed path, afterwards remove those sys.path entries + purge those sys.modules
-  (fb_engine.*, sketch_manifest_builder, anything under your worktree) — a stale scratch fb_engine once broke Fred's
-  Frame Builder. Don't stop/deploy the installed add-in; call functions from your worktree in the scratch doc.
-- Delete anything you create; Fred's doc also hit the Fusion document limit, so don't SAVE scratch docs.
+**Ball: worker (seat C) · epoch 1 · F3.** F2 (1615d59) accepted. Fusion still ALLOWED for you only (same hygiene rules as
+F2: scratch doc, never touch/save Fred's design, purge sys.path/modules you add). PROGRESS automatic ("F3 item N: …").
+Screenshots → C:\Users\danse\.bspline-status\shots\seatC\.
 
 ## Checklist
-- [ ] [F2-item-1] Which face the BAR extrude uses (to_face / pick): measure it on a real build — confirm it's the core's
-      BOTTOM face; fix the naming in FB-APP-DESIGN.md (declared name = what it is).
-- [ ] [F2-item-2] Risk 1 re-Send: body rebuilt → does the frame extrude's to_face error/rebind? Does each Send add
-      Frame_2, Frame_3? Measure; record outcomes + what S7 must do.
-- [ ] [F2-item-3] Bar height mapping (carveZ ↔ to_face / frame_height_offset −1 in): measure what −1 in does physically.
-- [ ] [F2-item-4] FB-ORDER's Fusion glue (timeline_order._component_name_for_entity) on a real frame build: moved as a unit?
-- [ ] [F2-item-5] S0 clean-up (code, tests): drop Skel_Frame_Taper / Skel_Slot_Tolerance / the Taper unit rule; one
-      declaration of frame_thickness / boundingboxoffset — per the design's S0 row; pytest green; mutation check.
-- [ ] [F2-item-6] Update FB-APP-DESIGN.md: every UNVERIFIED item you measured becomes MEASURED (numbers), open questions
-      unchanged unless answered.
+- [ ] [F3-item-1] FB-ORDER bug you measured: the frame block move misses the SOLID features (extrudes/trim). Fix in
+      frame-builder/fb_engine/timeline_order.py (+ its Fusion glue) so occurrence + sketches + planes + extrudes + trim move
+      as ONE unit in order; any canReorder refusal -> move nothing + warn (existing rule). Unit test in the shim + verify
+      live in a scratch doc (screenshot the timeline before/after). NOTE: this file is also on main (seat A doesn't touch
+      it); your fix lands on main when fb-app merges — keep the change self-contained.
+- [ ] [F3-item-2] S1: declare FRAME_REGIONS / FRAME_FEATURES in the templates' own data (template_data.py), a generator
+      tools/gen_frame_defs.py -> frame-defs.json (templates, params with units/defaults, features, appearance options =
+      the 5 woods with Ash default, frame_height_offset = frame-bottom Z position, 'none' = default frame).
+- [ ] [F3-item-3] template_catalog.py (no consumers, your gate): if it's the natural template list, make it the
+      generator's source; otherwise delete it as a sweep. State which + why in the WORK-LOG.
+- [ ] [F3-item-4] Tests: freshness (frame-defs.json == generator output), schema, declaration (every template has its
+      regions/features), red on a renamed id; mutation check.
 Commit by path, push origin fb-app, pass back from the fb-app root with handoff.py pass --to advisor.
