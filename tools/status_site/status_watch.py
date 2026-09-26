@@ -17,6 +17,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SEATS = [  # declared: which checkout is which seat, and its task file (checklist = progress)
     {"name": "Seat A", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
     {"name": "Seat B", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
+    {"name": "Seat C", "path": ROOT + "-fb-app", "branch": "fb-app", "task": "NEXT-SESSION-fb-app.md"},
 ]
 
 
@@ -99,7 +100,7 @@ def collect():
         d, t = _checklist(s["path"], s["task"], s["branch"])
         seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
                       "updated": h.get("updated", ""), "done": d, "total": t})
-    commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b")}
+    commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b", "fb-app")}
     return seats, commits, _roadmap()
 
 
