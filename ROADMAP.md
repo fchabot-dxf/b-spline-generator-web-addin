@@ -840,4 +840,10 @@ ACCEPTANCE (Fred: "I don't want the cut tool to break the lattice structure edit
 each other on drag"): for the SAME lattice before and after cutting a rail (and a tie) at several joints, the SAME
 drag gestures must give IDENTICAL results — dragging any segment moves every collinear touching segment of that rail,
 every tie attached to ANY segment stretches exactly as before, tie drags still slide/attach, stretch-at-ends still
-works on the outer ends. Test = before/after equality of all piece coordinates after each gesture, both orientations. After SE14b/SE15b (same "one piece → segments" idea).
+works on the outer ends. Test = before/after equality of all piece coordinates after each gesture, both orientations.
+BREAK RISKS + GUARDS (advisor, for Fred's "what would break it?"): (1) a cut must make both new ends the IDENTICAL
+snapped point; "touching" is checked with a declared tolerance (drift after many drags); lattice drags re-snap ends to
+the grid. (2) CUT POINT ≠ END: grabbing at a cut point moves the JOINT (both segments' ends together, like a node);
+only the rail's true OUTER ends stretch — otherwise end-stretch would silently open a gap and split the rail.
+(3) Select-tool free move of one segment = intentional break (unchanged). (4) deleting a middle segment = two rails
+(intended). (5) membership is geometry-only — colour/width per segment never splits a rail. Test (2) explicitly. After SE14b/SE15b (same "one piece → segments" idea).
