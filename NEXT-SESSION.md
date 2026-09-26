@@ -13,6 +13,10 @@ that item, and push — the progress page (bspline-status.pages.dev) counts the 
       stay on the contour per T73 where applicable). Also: dragging a NODE on the box Lattice didn't move it and left a
       DUPLICATE node (26 -> 27 nodes). Reproduce with real CDP mouse drags (scratchpad pattern: Input.dispatchMouseEvent
       press/move x8/release on the piece's screen point via getScreenCTM). Tests for both lattice types.
+- [ ] 0b. BUG (Fred, live): CLEAR the canvas (toolbar Clear) then press Regenerate -> nothing is generated. Reproduce on both
+      lattice types; likely the pattern still references a boundary/silhouette element or piece ids that Clear deleted.
+      Regenerate after Clear must rebuild from the pattern's own declared data (re-creating the silhouette for the Shape
+      Lattice). Test: generate -> Clear -> Regenerate -> pieces present (and contour for shape).
 - [x] 1. Pinned-action style (AMEND 4b): ONE shared sticky style for the main sidebar "Generate New Seed" and both lattice
       Regenerates — top:0 with NO gap above (nothing visible above while scrolling), opaque background full column width,
       full-width button. Root-cause the gap, note it in WORK-LOG.
