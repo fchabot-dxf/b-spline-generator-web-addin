@@ -25,6 +25,7 @@ import {
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer } from './layers.js';
+import { OVERRIDE_COLOR_ATTR, OVERRIDE_WIDTH_ATTR } from './editor-piece-override.js';
 import { lcgPoints } from '../core/terrain.js';
 // T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
 // 'boundary' extent branch calls insideSpans directly (no re-derivation of
@@ -2127,18 +2128,26 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
   const owned = _ownedOnLayer(editor, layerId, latticeKind);
+  let changed = 0;
   for (const ch of owned) {
+    // UI5 items 1-4: a piece with its own colour override keeps it — the
+    // SAME "detached pieces keep their own colour" exemption OWNERSHIP_ATTR
+    // already gives a hand-moved piece, via an explicit attribute instead
+    // (an overridden piece stays fully owned — Regenerate still destroys
+    // and rebuilds it, clearing the override "for free" per item 3).
+    if (ch.node.hasAttribute(OVERRIDE_COLOR_ATTR)) continue;
     if (latticeKind === 'node') {
       ch.fill(color);
     } else {
       ch.stroke({ color });
     }
+    changed++;
   }
-  if (owned.length > 0) {
+  if (changed > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
-  return owned.length;
+  return changed;
 }
 
 /**
@@ -2159,18 +2168,22 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
   const owned = _ownedOnLayer(editor, layerId, latticeKind);
+  let changed = 0;
   for (const ch of owned) {
+    // UI5 items 1-4: same override exemption as recolorOwnedKind above.
+    if (ch.node.hasAttribute(OVERRIDE_WIDTH_ATTR)) continue;
     if (latticeKind === 'node') {
       ch.attr('r', value / 2);
     } else {
       ch.attr('stroke-width', value);
     }
+    changed++;
   }
-  if (owned.length > 0) {
+  if (changed > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
-  return owned.length;
+  return changed;
 }
 
 /**
@@ -2196,10 +2209,12 @@ export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
     if (!latticeKind) continue;
     const owned = _ownedOnLayer(editor, layerId, latticeKind);
     for (const ch of owned) {
+      // UI5 items 1-4: same override exemption as recolorOwnedKind above.
+      if (ch.node.hasAttribute(OVERRIDE_WIDTH_ATTR)) continue;
       if (latticeKind === 'node') ch.attr('r', value);
       else ch.attr('stroke-width', value);
+      total++;
     }
-    total += owned.length;
   }
   if (total > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();

@@ -453,6 +453,14 @@ function _afterSelectionChange(editor, primary) {
     editor._updateSelectionHighlight();
     updateToolbarVisibility(editor);
     if (editor._onSelect) editor._onSelect(primary);
+    // UI5 items 1-4: the ONE selection-changed signal a NEW panel section
+    // (lattice-side-column.js's per-piece override mini panel) reacts to —
+    // no selection-changed event existed before this. editor._deselect()
+    // (editor.js) fires the SAME event on its own tail, so a listener never
+    // needs a second hook to notice "nothing is selected any more".
+    document.dispatchEvent(new CustomEvent('editorSelectionChanged', {
+        detail: { editor, primary, selected: editor._selectedElements || [] },
+    }));
 }
 
 export function setHover(editor, el) {

@@ -648,5 +648,14 @@ export class VectorEditor {
         }
         this._selectionHighlights = [];
         updateToolbarVisibility(this);
+        // UI5 items 1-4: this is the ONE path that clears the selection
+        // WITHOUT going through editor-ui.js's own _afterSelectionChange
+        // (select()/selectAdd()/selectMany() all call THIS first, then set
+        // a NEW selection and fire the event themselves) — without this,
+        // a listener synced to a selected piece would never learn the
+        // piece got deselected outright (Escape, Clear, a tool switch).
+        document.dispatchEvent(new CustomEvent('editorSelectionChanged', {
+            detail: { editor: this, primary: null, selected: [] },
+        }));
     }
 }
