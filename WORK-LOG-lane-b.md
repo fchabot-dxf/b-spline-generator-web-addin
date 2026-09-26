@@ -9804,3 +9804,28 @@ Verify: 1340/1340 vitest (unchanged this item — the JS-side fields landed with
 b-spline-gen pytest (7 new: 3 ordering, 4 projection/shim), 196/196 wider frame-builder pytest (untouched).
 Commit 7ce6546, pushed. NO FUSION this whole turn (per dispatch: "NO FUSION — advisor verifies live") — built
 against frame-builder's own already-proven, real-Fusion-measured contract rather than guessing one from scratch.
+
+## T76 item 6 — hidden kind-layer not exported, dependents keep exact geometry (verified, zero new production code)
+
+Traced both halves of this item through the ACTUAL code before assuming either needed new work:
+
+**"Not exported"**: `isExported(l)` (layers.js) is `l.visible !== false` — a purely generic check, zero kind-layer
+awareness at all. `_fusionLayerManifest` is only ever called for layers already inside `layersToExport`, itself
+filtered through `isExported` upstream. A hidden kind-layer is excluded from export precisely like any other hidden
+layer already is — exactly matching the roadmap's own framing that "the kind-layers are ordinary layers." This
+whole mechanism already has generic (kind-agnostic) test coverage in `export-flow.test.js`; a kind-layer-flavored
+duplicate would exercise the identical code path with different fixture data, so none was added.
+
+**"Dependents keep exact geometry but lose those links"**: confirmed `_fusionLayerManifest` never reads ANY layer's
+own `.visible` while building a manifest for one of its siblings — visibility gating lives entirely ONE LEVEL UP
+(`sendToFusion`'s own `layersToExport` filter), fully decoupled from what a manifest contains once actually built.
+Added one test proving this isn't just true by absence of code, but true in practice: Nodes' own manifest (entities
++ projections) comes out byte-for-byte IDENTICAL whether Ties is visible or hidden — the "lose the link, keep the
+geometry" split holds by construction, not by a special case written for this item. On the Python side, item 5's
+own graceful-MISS test already covers the exact mechanism a hidden dependency would trigger (`kind_to_sketch.get
+(sourceKind)` coming back empty) — annotated with an explicit cross-reference to this item's own spec language
+rather than writing a near-duplicate: "Rails was hidden and never built" and "a caller didn't share kind_to_sketch"
+are OBSERVABLY IDENTICAL from Ties' own point of view, so the same test already proves both.
+
+Verify: 1341/1341 vitest (1 new), 52/52 b-spline-gen pytest (a docstring-only change on the Python side, still
+green). Commit 2c62362, pushed. NO FUSION this whole turn.
