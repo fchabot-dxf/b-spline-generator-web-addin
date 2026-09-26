@@ -9706,3 +9706,128 @@ actually needs. Same reasoning MOB6's `main/slider-scroll-guard.js` (this repo's
 - JS suite untouched by this turn but re-run anyway as a sanity check: `npx vitest run` -> **1209 passed** (the
   higher count than turn 273's own 1013 reflects lane-b's T64-T72 merge landing between turns, not anything from
   this one).
+
+## Turn 278 — UI2: colour-coded lattice sections + Generate pinned + hide Fill seed, then AMEND 2's ONE right-hand column — DONE
+
+Original dispatch had 3 asks (colour-coded sections, pin Generate, hide Shape Lattice's Fill seed) under a HARD
+constraint repeated in every message this turn: no edits to `bspline_gen_palette.html` (seat B owns that markup
+in lane-b for T73) — CSS plus exactly one decorator module. Two amendments landed before any code was written:
+AMEND 1 asked to move the Layers list into whichever tool panel was open; AMEND 2 (Fred: "maybe the right hand
+panel is the only panel then") REPLACED AMEND 1's own mechanism entirely — ONE right-hand column
+(`#editorLayersPanel`) that always holds Layers, with the active tool's own Generate/settings/Detach mounting
+INTO it rather than opening a second, separate middle column. Implemented AMEND 2 directly (AMEND 1 was never
+built — superseded before any code existed for it).
+
+**New file: `editor/lattice-side-column.js`** — the one decorator module, wired into `editor-controls.js`'s
+existing `setupEditorToolbar` right after the two lattice `init*Properties` calls (needs both panel bodies
+already populated). Three responsibilities:
+
+1. **Section colour-coding** (Fred's own "option B" pick from the advisor's mockup). `SECTION_KIND_BY_TITLE`
+   declared once: `'Grid & rails'`->rails, `'Ties'`->ties, `'Nodes'`->nodes, `'Contour'`/`'Border'`/`'Shape'`->
+   contour (the dispatch's own 3 names) — **added `'Boundary'`->contour too**, since that's this app's ACTUAL
+   current section title for the same "outer shape" concept (Pick shape / the Ending rule / show-contour
+   checkbox) and neither panel says "Contour" verbatim anywhere today; everything else (Add, Colors, Widths,
+   Seed, Fill seed, Segments) falls through to `'neutral'`. Tags each section (same bold-span-first-child
+   detection editor-drawer.js's own `_makeSectionsCollapsible` already established) with
+   `data-lattice-section="<kind>"`; CSS (`styles/editor.css`) does the actual tint + 5px left bar + title-colour
+   look purely from that attribute.
+   **Live colour tracking** (Fred: the bar colour "follows the Colors row live"): a `MutationObserver` on each
+   of the 3 editable swatches (`#latticeColorRails/Ties/Nodes` and their `shapeLattice` counterparts) watching
+   `style` attribute changes — properties-lattice.js/properties-shape-lattice.js already write
+   `swatchEl.style.background = colors.rails` on every pattern read-back (layer switch, Generate, a colour
+   pick) with no event of their own to hook instead, and observing the swatch keeps ALL of UI2 in this one file
+   with zero edits to either properties-*.js module. Colour is read via `.style.backgroundColor` (not
+   `getComputedStyle`, which needs a fuller layout engine than every DOM environment this module runs in
+   provides — confirmed live in a test: happy-dom's `getComputedStyle().backgroundColor` came back empty for an
+   inline `background` set programmatically, while `.style.backgroundColor` correctly reflected it) and written
+   as 2 CSS custom properties (`--kind-rails`, `--kind-rails-tint`) on the section's own ANCESTOR body element —
+   inherited by every tagged section regardless of which parent that body currently lives under, so colour
+   tracking survives AMEND 2's own mount/unmount moves for free. Contour has no swatch anywhere in the UI
+   (`PATTERN_DEFAULTS.colors.contour`, editor-lattice-pattern.js, is fixed and never user-edited) so it's just a
+   constant.
+2. **Hide Shape Lattice's "Fill seed"** section — Generate already rolls a fresh fill seed on every press (that
+   section's own title bar already said so). Found by title text among the body's direct children, `display:
+   none`. The box-Lattice's own "Seed" section is untouched.
+3. **AMEND 2's mount mechanism.** `TOOL_PANEL_MOUNTS` declared once — `{lattice: {panelId, bodyId, footerId,
+   generateId, detachAllId}, shapeLattice: {...}}` — a 3rd future tool panel is one more entry, not new
+   mount/unmount code. On `editorModeChanged`: unmount whatever was previously mounted (restore its
+   Generate/body/Detach-all to their OWN panel's own original structure, clear the inline `display:none` this
+   module itself added) if the mode changed or the viewport is no longer desktop; then, on desktop with a
+   mode that has a `TOOL_PANEL_MOUNTS` entry, mount it — `insertBefore` Generate as `#editorLayersPanel`'s own
+   first child (pinned), the tool's whole settings body right after the existing `.layers-list`, Detach-all
+   appended last, and force the now-empty original panel's `display:none` (independent of whatever
+   `editor-ui.js`'s own `TOOLBAR_GROUPS` `.hidden` class already says for that mode — its content is gone
+   either way). `_isDesktop()` reuses the SAME shared breakpoint bucket (`max-width:720px` OR the landscape
+   `pointer:coarse` query) editor-drawer.js's own landscape logic and MOB5's compact-row CSS already declare, so
+   this module can't quietly disagree with the drawer about what counts as "mobile" — on mobile this gate keeps
+   the WHOLE mechanism inert, leaving the drawer's own existing tab system (which already gives Layers and the
+   active tool their own tabs) in sole control, untouched. A `resize` listener re-runs the same sync so a live
+   resize crossing the breakpoint while a tool is mounted (or, on mobile, was never supposed to be) doesn't
+   leave a stale state.
+
+**CSS (`styles/editor.css`)**: `.editor-layers-panel` gained `overflow-y:auto` (the WHOLE column now scrolls as
+one unit — was: only `.layers-list` scrolled, in a fixed-height column) and `.editor-layers-panel .layers-list`
+lost its own `flex:1;overflow-y:auto` (no longer its own independent scroll region). New: the colour-coding
+rules (`[data-lattice-section="rails"]` etc., reading the `--kind-*`/`--kind-*-tint` custom properties with
+literal fallback colours), and a sticky rule scoping to the two possible mounted Generate ids specifically
+(`#editorLayersPanel > #latticeGenerate, #editorLayersPanel > #shapeLatticeGenerate { position:sticky; top:0;
+z-index:3; }`) — declared by id rather than a class since neither button's own markup can gain one (seat B owns
+that file).
+
+**Two real bugs found only by looking at a live screenshot, not by reading the CSS:**
+1. My first sticky rule ALSO set `background:#fdfdfd` on the button (intending an opaque backdrop behind the
+   pinned element) — but `#editorLayersPanel > #latticeGenerate` is an ID+ID selector, which beats
+   `.cad-btn-primary`'s own class-level blue background by specificity. The button silently painted `#fdfdfd`
+   with its own white text still on top of it — invisible white-on-white (looked like an empty box in the
+   screenshot; confirmed via `getComputedStyle` reading back `rgb(253,253,253)` instead of the button's real
+   blue). Fixed by dropping `background` from that rule entirely — the button already fully covers its own row
+   with its own opaque colour; nothing needed to show through behind it.
+2. The pinned Generate button rendered at 17px tall instead of its own specified 32px. Root cause: a flex
+   column with `overflow-y:auto` still runs flex-shrink calculations BEFORE overflow ever kicks in — every
+   child defaults to `flex-shrink:1`, so flexbox squeezed each mounted/existing child to fit rather than ever
+   actually scrolling. Fixed with `.editor-layers-panel > * { flex-shrink: 0; }` — every direct child (the
+   existing header/list, and whatever gets mounted in) keeps its own natural content height; `overflow-y:auto`
+   is what handles the rest via scrolling.
+
+**Verify:**
+- `tests/lattice-side-column.test.js` (new, 14 tests): `sectionKindForTitle`/`SECTION_KIND_BY_TITLE` (every
+  declared title, the neutral fallback, whitespace tolerance, every declared value is one of the 4 real kinds);
+  a DOM-fixture suite mirroring the real panel/body/footer/layers-panel shape (not bspline_gen_palette.html
+  itself) exercising `initLatticeSideColumn` end-to-end: tags every real section correctly on BOTH panels;
+  hides Shape Lattice's Fill seed only (box Lattice's own Seed stays); sets the 4 `--kind-*` vars from the
+  fixture's own swatch colours plus the fixed contour; a colour change on a swatch (the exact production write
+  shape, `swatchEl.style.background = ...`) updates the CSS var live; switching to lattice mounts
+  Generate/body/Detach in the exact right order and hides the original panel; switching away unmounts
+  everything back to its own panel in original order; switching lattice->shapeLattice directly unmounts the
+  first before mounting the second (never both); on a mocked mobile `matchMedia`, a mode change mounts NOTHING;
+  a resize crossing into mobile while mounted unmounts it back; an event for a different editor instance is
+  ignored. **Mutation-tested non-vacuous**: forced `_isDesktop()` to always return `true` (simulating a
+  forgotten mobile gate) — exactly the 2 mobile-specific tests failed, the other 12 stayed green (correctly
+  unaffected); restored, re-ran, all 14 green again.
+  Full suite: `npx vitest run` -> **1223 passed** (up from 1209 — the 14 new tests, zero regressions).
+- Live (headless Chrome via CDP, hard-reload with cache ignored), desktop (1400x900):
+  - No tool active: `#editorLayersPanel` shows only its own existing header + list (screenshot confirms —
+    just "LAYERS" + the one layer row, rest of the column blank); `#editorLatticePanel`'s own `.hidden` class
+    already covers this case (no inline override needed there).
+  - Lattice tool: screenshot at the top shows Generate pinned blue-on-blue-background (readable — the earlier
+    white-on-white bug fixed), Layers, then Add (neutral)/Grid & rails (red tint+bar)/Ties (yellow)/Nodes
+    (navy)/Colors peeking at the bottom. Scrolled to the middle: Generate is STILL pinned at the exact top while
+    everything else has scrolled underneath it, ending in Detach all at the very bottom.
+  - Changed `#latticeColorRails`'s own `style.background` live (the same write production code makes) and
+    re-read `#editorLatticePanelBody`'s own `--kind-rails` custom property — it followed immediately
+    (`rgb(198,40,40)` -> `rgb(10,200,30)`), proving the live-sync claim isn't just a design intention.
+  - Shape Lattice tool: screenshot shows Shape (green/contour tint — confirms the `'Boundary'`-> contour
+    interpretation reads right visually too, since Boundary/Border both render the same green as Shape),
+    Segments (neutral), Grid & rails/Ties/Nodes/Colours (now showing FOUR swatches — Rails/Ties/Nodes/Contour,
+    contour fixed green) /Widths/Boundary (green)/Border (green) scrolling underneath a still-pinned Generate,
+    and Fill seed is completely ABSENT from the scroll (hidden) with Detach all at the very bottom.
+  - Mobile (390x844, touch emulation on): confirmed `#editorLayersPanel`'s children stay
+    `[layers-header, editorLayersList]` after switching to the Lattice tool (AMEND 2's mount mechanism never
+    engaged) and `#editorLatticePanel`'s own inline `display` stayed `"flex"` (its own untouched markup value —
+    this module never wrote to it on mobile); the drawer's own LATTICE PATTERN / LAYERS tabs both still work
+    exactly as before. Also confirmed the colour-coding itself (a separate, non-gated part of this module) DOES
+    apply inside the mobile drawer too, per the ORIGINAL dispatch's own "desktop AND the mobile drawer" —
+    read back real computed `background-color`/`border-left-color` for the rails/ties/nodes sections inside
+    `#editorLatticePanelBody` while it was showing through the drawer, all correct.
+- No edits to `bspline_gen_palette.html` this entire turn — confirmed via `git status --short` before every
+  commit: exactly `editor-controls.js`, `styles/editor.css`, and the 2 new files, every time.

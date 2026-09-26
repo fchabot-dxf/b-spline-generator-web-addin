@@ -1392,6 +1392,26 @@
     flex-direction: column;
     z-index: 10;
     min-height: 0;
+    /* UI2 AMEND 2: this column can now ALSO host a mounted tool panel's
+       own settings body + a Detach-all button below the layers list
+       (editor/lattice-side-column.js) — the WHOLE column scrolls as one
+       unit now (was: only .layers-list scrolled, in a fixed-height
+       column) so Generate (inserted as this element's own first child,
+       sticky below) stays pinned across everything beneath it. */
+    overflow-y: auto;
+}
+
+/* A flex column with overflow:auto still runs flex-shrink BEFORE
+   overflow kicks in — every child defaults to flex-shrink:1, so
+   flexbox squeezes them (measured live: Generate rendered at 17px
+   instead of its own 32px) to fit the container's height rather than
+   ever actually scrolling. Every direct child of this column — the
+   existing header/list, and whatever lattice-side-column.js mounts in
+   (Generate, a tool's settings body, Detach all) — keeps its own
+   natural content height; overflow-y:auto (above) is what handles the
+   rest via scrolling, not shrinking. */
+.editor-layers-panel > * {
+    flex-shrink: 0;
 }
 
 .editor-layers-panel .layers-header {
@@ -1411,10 +1431,62 @@
 }
 
 .editor-layers-panel .layers-list {
-    flex: 1;
-    overflow-y: auto;
+    /* UI2 AMEND 2: no longer its own independent scroll region (the
+       column's own overflow-y:auto, above, now covers it) — a plain
+       in-flow block so it stacks naturally above a mounted tool body. */
     padding: 4px;
 }
+
+/* UI2 AMEND 2: whichever tool's Generate/Regenerate button
+   lattice-side-column.js moves in becomes this column's own first
+   child — pin it so it stays visible while Layers + the tool's own
+   settings scroll underneath. Listed by id (not a class, since neither
+   button's own markup can be touched — seat B owns bspline_gen_palette.
+   html in lane-b) — one selector per TOOL_PANEL_MOUNTS entry.
+   NO `background` here — an ID+ID selector like this one beats
+   `.cad-btn-primary`'s own class-level blue background by specificity,
+   which silently painted the button #fdfdfd (matching the panel) with
+   its OWN white text still on top — invisible white-on-white (caught
+   live via CDP: computed backgroundColor read back as rgb(253,253,253)
+   instead of the button's real blue). The button already fully covers
+   its own row with its own opaque background; nothing needs to show
+   through behind it. */
+#editorLayersPanel > #latticeGenerate,
+#editorLayersPanel > #shapeLatticeGenerate {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+
+/* =========================================================================
+   UI2 — colour-coded Lattice/Shape Lattice panel sections (Fred's own
+   "option B" pick from the advisor's mockup): a soft tint, a 5px left
+   bar, and the section's own title in the bar colour. The KIND (rails/
+   ties/nodes/contour/neutral) is decided once by editor/lattice-side-
+   column.js's own declared title->kind map and written as
+   data-lattice-section on the section element; the bar/tint colours
+   themselves are 2 CSS custom properties that module keeps live-synced
+   to the pattern's actual rails/ties/nodes/contour colours (--kind-*,
+   --kind-*-tint) on the section's own ANCESTOR body element, so they
+   apply here purely through normal CSS inheritance — no per-section JS
+   write needed when a colour changes, only the two custom properties.
+   ========================================================================= */
+[data-lattice-section] {
+    border-radius: 4px;
+    padding: 6px 8px 6px 9px;
+    margin: 0 -2px;
+    border-left: 5px solid transparent;
+}
+[data-lattice-section="rails"]   { background: var(--kind-rails-tint, rgba(198, 40, 40, 0.12));  border-left-color: var(--kind-rails, #c62828); }
+[data-lattice-section="ties"]    { background: var(--kind-ties-tint, rgba(249, 200, 14, 0.12));   border-left-color: var(--kind-ties, #f9c80e); }
+[data-lattice-section="nodes"]   { background: var(--kind-nodes-tint, rgba(26, 35, 126, 0.12));   border-left-color: var(--kind-nodes, #1a237e); }
+[data-lattice-section="contour"] { background: var(--kind-contour-tint, rgba(46, 125, 50, 0.12)); border-left-color: var(--kind-contour, #2e7d32); }
+[data-lattice-section="neutral"] { background: rgba(0, 0, 0, 0.03); border-left-color: #bbb; }
+[data-lattice-section="rails"]   > span:first-child { color: var(--kind-rails, #c62828); }
+[data-lattice-section="ties"]    > span:first-child { color: var(--kind-ties, #f9c80e); }
+[data-lattice-section="nodes"]   > span:first-child { color: var(--kind-nodes, #1a237e); }
+[data-lattice-section="contour"] > span:first-child { color: var(--kind-contour, #2e7d32); }
+[data-lattice-section="neutral"] > span:first-child { color: #666; }
 
 /* When a layer is hidden, dim and hide its SVG elements in the editor view.
    The expand-time geometry filter (task 4) makes sure hidden layers are
