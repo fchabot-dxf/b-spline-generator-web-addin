@@ -1,18 +1,19 @@
-# NEXT — MOB6: scrolling a panel full of sliders must not change values (mobile)
+# NEXT — ADD1: two add-in bugs found in the live Fusion run (Send to Fusion constrained sketches)
 
-**Ball: worker (seat A) · epoch 2 · MOB6.** NO FUSION. Seat B is on lane-b (T72) — don't touch lattice/shape logic.
-Fred (phone, live site): "On UI where there is a lot of sliders I can't scroll without changing params inadvertently"
-(screenshot: Shape Lattice panel, neck width / body width / S-curve tightness sliders spanning the panel width; also the
-main palette's Seed section: Region Scale, Offset X/Y, Rotation, Peak Shape...).
-Fix app-wide, declared once (a shared CSS rule / one helper), not per slider:
-1. Every `input[type=range]` in the palette + editor panels: `touch-action: pan-y` so a VERTICAL swipe scrolls the
-   panel and only a horizontal drag moves the thumb. (styles/editor.css:595 already uses pan-y somewhere — reuse the
-   pattern; base.css SA-MOBILE-13 explains why touch-action:none left html/body.)
-2. A tap-to-jump guard: a touch that starts on the track and moves mostly vertically (> ~8px vertical before ~8px
-   horizontal) must not change the value (Chrome Android can commit a value on touchstart; if pan-y alone doesn't stop
-   it, intercept: record the start value on pointerdown and restore it if the gesture resolved as a scroll).
-3. Keep desktop mouse behaviour unchanged.
-Verify in headless Chrome with mobile emulation (touch enabled, 390x844): a synthetic vertical touch swipe starting ON a
-slider scrolls the panel and leaves every slider value unchanged; a horizontal drag still changes it. Screenshot before/
-after. Add a unit/DOM test for the guard if feasible. Commit by path, push, then:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "MOB6: slider scroll guard — <sha>"`.
+**Ball: worker (seat A) · epoch 2 · ADD1.** NO FUSION (advisor verifies live). main is at 660f417 (lane-b T64-T72
+merged + MOB6). Both bugs are in b-spline-gen Python; don't touch lattice JS (seat B is on SE14b in lane-b).
+## 1. Stale sketch_manifest_builder after an add-in Stop/Run (MEASURED)
+After deploying new files and Stop -> Run in Fusion, `bspline_ui.build_constrained_sketch` was still the OLD module
+object from Fusion's startup (signature without `sketch_name_override`), so every constrained layer failed:
+"build_constrained_sketch() got an unexpected keyword argument 'sketch_name_override'". sys.modules kept
+'sketch_manifest_builder' (and the fb_engine.* it imports). Fix by declaration: the add-in's run() (or its existing
+reload/purge list, if there is one — find it) must purge every sibling module it owns — at least
+sketch_manifest_builder and fb_engine.* — before importing, so Stop/Run always loads the installed files. One declared
+list, not scattered pops. Test: a unit test that the purge list covers every module b-spline-gen.py imports from its
+own folder / fb_engine.
+## 2. False "Constrained sketch build failed" log (MEASURED)
+_build_constrained_sketch_for_layer's summary log reads summary['offsets'][...] — the offset step was removed in T64,
+so every SUCCESSFUL build raises KeyError('offsets') after the sketch is built and logs "[SE15] Constrained sketch
+build failed ... 'offsets'". Log only keys the summary actually has (entities, constraints, dimensions, parameters,
+parity, seconds) and include parity maxErr. Test it against build_constrained_sketch's real return shape.
+Commit by path, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "ADD1 — <sha>"`.
