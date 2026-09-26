@@ -967,6 +967,14 @@ panel). A small safe arithmetic parser, NEVER eval / new Function. Evaluated on 
 NUMBER (not parametric, Fred: "no need to make parametric in Fusion"); a bad formula shows an inline error and keeps
 the old value. AUTOCOMPLETE (Fred: "when typing a variable we can have a dropdown result appear"): typing letters in a formula field opens a dropdown of the matching named values with their CURRENT value (e.g. "height  6.000\""), filtered as you type; arrow keys + Enter/Tab insert, Esc closes, tap works on mobile. The list comes from the SAME declared names the parser uses (one source). A live preview of the result shows beside the field while typing. Tests: precedence, parentheses, names, errors, no eval path, dropdown filters/inserts from the declared names.
 
+## Queued (Fred's queue, Asus) — BOUNDARY-GUIDE: lattice boundary box shown in the editor, hidden in 3D (Fred 2026-09-26)
+Fred: "in editor show the boundary box but hide it in the 3D preview". The lattice boundary box (the Size W x H
+rectangle) is a GUIDE: always visible in the editor (dashed, non-exported, like F6's frame profile in the background
+layer), never rendered/stamped in the 3D preview. Declare it as guide geometry (one flag/role read by both the editor
+renderer and the 3D/stamp path), not a special case in the 3D code. Open point to confirm with Fred when built: when
+"Draw boundary" / the Shape Lattice contour is ON it is REAL geometry (exported to Fusion); does it still hide from 3D?
+Test: boundary present in editor DOM, absent from the 3D input; export unchanged.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
