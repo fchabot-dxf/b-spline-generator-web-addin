@@ -7,7 +7,14 @@
       "3D Pine - Unfinished",
       "3D Cherry - Unfinished",
       "3D Maple - Unfinished"
-    ]
+    ],
+    "previewColors": {
+      "3D Ash - Unfinished": "#d9c9a3",
+      "3D Cherry - Unfinished": "#9c4a2f",
+      "3D Mahogany - Unfinished": "#7a3b2e",
+      "3D Maple - Unfinished": "#ead7ad",
+      "3D Pine - Unfinished": "#e3c07a"
+    }
   },
   "defaultTemplate": null,
   "extrusion": [
@@ -48,7 +55,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "4e00e6b2ebafaa0c5b3b2039a038d0ba807ea13ec524f93a836888119991e116",
+  "sourceHash": "46c4730dc0f4ea5f0a34df078db916dcc7be103238d2be2cdeb9ad44db44fbb4",
   "templates": [
     {
       "features": [

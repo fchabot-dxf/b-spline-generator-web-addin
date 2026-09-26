@@ -67,7 +67,10 @@ def test_top_level_schema(defs):
     assert defs["frameDefsVersion"] == 1
     assert defs["units"] == "in"
     assert defs["defaultTemplate"] is None  # Fred Q2: no frame by default
-    assert defs["appearance"] == {"default": "3D Ash - Unfinished", "options": list(APPEARANCE_OPTIONS)}
+    assert defs["appearance"]["default"] == "3D Ash - Unfinished"
+    assert defs["appearance"]["options"] == list(APPEARANCE_OPTIONS)
+    # F7: every declared wood has a preview colour, and nothing else does
+    assert sorted(defs["appearance"]["previewColors"]) == sorted(APPEARANCE_OPTIONS)
     assert len(defs["sourceHash"]) == 64
 
 

@@ -12,7 +12,8 @@
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam } from '../core/frame-record.js';
 import { P } from '../core/state.js';
-import { setFrameProfileProvider, drawFrameProfile, frameFit } from '../editor/editor-frame-profile.js';
+import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec } from '../editor/editor-frame-profile.js';
+import { AppState } from './app-state.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -42,10 +43,13 @@ export function syncFramePanel() {
       + `but the frame needs more than ${fit.requiredIn.toFixed(2)} in.`;
   }
   if (typeof window !== 'undefined' && window.svgEditor) drawFrameProfile(window.svgEditor);
+  AppState.preview?.refreshFrame?.(); // F7: the 3D trimmed panel + wood bars, live
 }
 
 export function initFramePanel() {
   setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: getFrameRecord() }));
+  // F7: the 3D preview asks with the grid size it is actually drawing.
+  AppState.preview?.setFrameProvider?.((W, H) => frameSolidSpec(FRAME_DEFS, getFrameRecord(), { widthIn: W, heightIn: H }));
   const tplSel = $('frameTemplate');
   const woodSel = $('frameAppearance');
   if (!tplSel || !woodSel) return;
