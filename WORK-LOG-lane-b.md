@@ -9345,3 +9345,60 @@ cross-checking — NOT wired into an automated assertion, since the fixture stil
 attachment (it predates this fix) and asserting against it as-is would mean asserting the bug's own wrong behavior.
 
 Verify: 1232/1232 vitest, 40/40 pytest (33 pre-existing + 7 new). Commit 7d715b6, pushed. NO FUSION this whole turn.
+
+## T74 AMEND 4 — Contour section markup cleanup (Shape linked gone, settings inside one container, edge-rule audit)
+
+Fred, live screenshot after the AMEND 1 merge caught two markup leftovers in the Shape Lattice panel's own "Contour"
+section.
+
+**(1) "Shape linked" retired.** `shapeLatticeBoundaryStatus` ("Shape linked" / "No shape picked") was a Pick-shape-
+era readout. SE14d already removed the ONLY way to pick a NEW boundary shape (the "Pick shape…" button) — a saved
+pattern with an OLD picked boundary can still load (SE14d's own "decide + log" ruling), but there's no way to reach
+"No shape picked" from the UI at all any more; once Generate has run (the tool's own normal, immediate first action),
+this line could only ever say "Shape linked" — a status line that can only say one thing isn't a status line. Removed
+as a full sweep: the `<span>` element, and both JS-side writes to it (`regenerateSilhouette`'s own write right after
+minting/reusing the link, and `syncFieldsFromPattern`'s own read-back on tool-open).
+
+**(2) One container, not two.** The tinted "Contour" block's own container div ended right after the title (plus the
+now-removed status line) — the edge-rule segmented group, the Contour checkbox, and its width field sat OUTSIDE that
+div, as SIBLINGS in the panel body, not children of it. Seat A's own side-column decorator (UI2, `editor/lattice-
+side-column.js`, merged into main after this seat's own T58) tints/collapses a section by its CONTAINER DIV + title,
+matching every OTHER section in this SAME panel's own single-div convention (Widths, Fill seed, Shape, Segments,
+Ties, ...) — so those three controls rendered visually OUTSIDE the tint, exactly the "split section" bug reported.
+Fixed by moving all of it inside the one Contour div.
+
+**(3) Edge-rule audit** (Boundary/Inset/Joint/Loose, `shapeLatticeEndRule`/`BOUNDARY_END_RULES`) — done by reading
+`_applyEndRule`'s own dispatch (editor-lattice-pattern.js) rather than assumed, since T73 AMEND 3 raised a real
+question: does this control still do anything meaningfully different across its 4 options, post-"rails/ties now end
+ON the contour centerline + Coincident"? Findings, logged here as asked:
+  - **Boundary** (`on-boundary`): the rail/tie's own end lands EXACTLY at the boundary crossing point — zero pull-
+    back. In the manifest, when the contour is shown, this is the SAME point AMEND 3's own Coincident constraint
+    anchors to (that mechanism is independent of this control's own value, always applies for a shown contour).
+  - **Inset** (the stored DEFAULT): pulls the end back from the crossing by HALF THE RAIL/TIE'S OWN STROKE WIDTH —
+    a real, nonzero, genuinely different amount from Boundary (`widths.rails/2` or `widths.ties/2`, never zero for
+    any real lattice stroke).
+  - **Joint**: the SAME crossing-point geometry as Boundary, PLUS drops an actual NODE circle there — a real,
+    visually distinguishing difference from Boundary even though the two share the same endpoint coordinates.
+  - **Loose**: snaps the end back to the NEAREST WHOLE GRID-SPACING stop still inside the boundary (a full cell
+    short, not half a stroke) — degrades to Inset's own behavior when the span is too short for any such stop to
+    exist. Visibly the shortest of the four.
+  All four remain genuinely, measurably distinct from each other — **nothing removed**. What IS true, and is exactly
+  what prompted the audit: ALL FOUR only ever take effect while the contour is OFF (or a legacy picked-boundary
+  layer, `shape.source==='picked'`, which SE14d can no longer create new ones of but which still loads). Whenever
+  the contour is shown — the tool's own default, most-common state — `usesContourCenterline(pattern)` forces
+  `endRule='on-boundary'` UNCONDITIONALLY, ignoring whatever this control is set to; the control has been a
+  sometimes-silent no-op since T73 AMEND 3 landed, just never disclosed as such in its own UI. Rather than sweep
+  options that are NOT actually dead, relabeled: a new "Rail ends (contour off only)" caption above the segmented
+  group, and each option's own tooltip now states its real behavior plus the "only applies with the contour off"
+  caveat, so toggling this while the contour is on no longer reads as a silent bug.
+
+Verified with a REAL render, not just unit tests: started a local static HTTP server over the actual palette HTML
+(`main.js`'s own module bootstrap runs against a real `fred-host.js` browser shim, so the FULL app — including
+`initShapeLatticeProperties`'s own real wiring — boots outside Fusion), force-revealed the normally screen-gated
+editor panel via a small injected script (the panel and its own `BOUNDARY_END_RULES`-built buttons were ALREADY
+present/wired in the DOM even while hidden — no re-init needed), and screenshotted the real, live-rendered Shape
+Lattice panel. Confirms: the status line is gone, and the "Contour" section — title, "Rail ends" label, the 4
+edge-rule buttons, the Contour checkbox, and the width field — now renders as ONE visual block, with "Fill seed"
+correctly remaining its own separate section right after it (not accidentally merged in too).
+
+Verify: 1232/1232 vitest, 40/40 pytest (untouched by this item). Commit 41bf2d1, pushed. NO FUSION this whole turn.
