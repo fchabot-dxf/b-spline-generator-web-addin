@@ -63,7 +63,7 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    laid out from the boundary; one grid (the editor's). Old saved patterns keep their geometry.
    Do it after seat B's TIE-GAP lands (same panels).
 7. **FORMULA-FIELDS** (ROADMAP.md): number fields accept + - * / ( ) and names (width, height, stroke, count);
-   evaluated on Enter, stores the number.
+   evaluated on Enter, stores the number. Typing a name opens an autocomplete dropdown showing each value.
 8. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
 9. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 

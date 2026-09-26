@@ -965,7 +965,7 @@ field accepts expressions. ONE shared parser module used by every numeric input 
 ( ) and decimals, plus named values from the current context (lattice: width, height, stroke, count; declared per
 panel). A small safe arithmetic parser, NEVER eval / new Function. Evaluated on Enter/blur; the field stores the
 NUMBER (not parametric, Fred: "no need to make parametric in Fusion"); a bad formula shows an inline error and keeps
-the old value. Tests: precedence, parentheses, names, errors, and that no eval path exists.
+the old value. AUTOCOMPLETE (Fred: "when typing a variable we can have a dropdown result appear"): typing letters in a formula field opens a dropdown of the matching named values with their CURRENT value (e.g. "height  6.000\""), filtered as you type; arrow keys + Enter/Tab insert, Esc closes, tap works on mobile. The list comes from the SAME declared names the parser uses (one source). A live preview of the result shows beside the field while typing. Tests: precedence, parentheses, names, errors, no eval path, dropdown filters/inserts from the declared names.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
