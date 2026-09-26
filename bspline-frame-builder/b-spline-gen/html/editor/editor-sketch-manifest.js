@@ -54,7 +54,7 @@
  * simpler natural board-space it was already written and tested in.
  */
 import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
-import { toLattice, fromLattice } from './editor-lattice.js';
+import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour,
 } from './editor-lattice-boundary.js';
@@ -264,14 +264,18 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // SOURCE, rather than left for the Python builder to catch — a piece
   // this short was never going to be a real, buildable slot/line for
   // EITHER width mode, so there's no id worth reserving for it at all.
-  const MIN_PIECE_LENGTH = 1e-6;
+  // T72: this threshold is now `MIN_PIECE_LENGTH_IN` (editor-lattice.js),
+  // shared with `generatePattern`'s own IDENTICAL filter — a T72 AMEND 5
+  // sweep found the app drawing a zero-length piece THIS module already
+  // correctly excluded, an app/manifest count mismatch from two
+  // independently-maintained copies of the same threshold.
   const pieceLength = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
-    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH) return;
+    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
     groups.rails.push(id);
     railPieces.push({ id, p1, p2 });
@@ -300,7 +304,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   tiesCanon.forEach((seg, idx) => {
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
-    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH) return;
+    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
     if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
     groups.ties.push(id);
     tiePieces.push({ id, p1, p2 });

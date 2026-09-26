@@ -21,7 +21,7 @@
  */
 import {
   toLattice, fromLattice, latticeCrossings,
-  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE,
+  LATTICE_ATTR, emitSegment, emitNode, nearestRailRow, orient, LATTICE_STYLE, MIN_PIECE_LENGTH_IN,
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer } from './layers.js';
@@ -1709,16 +1709,28 @@ export async function generatePattern(editor, PATTERN) {
   const { segments, nodePoints } = computePattern(PATTERN, { extent, occupied });
 
   const tagOwned = (el) => { if (el) el.attr(OWNERSHIP_ATTR, PATTERN.id); return el; };
+  // T72 (AMEND 5's own sweep, a real parity bug): skip a genuinely
+  // zero-length piece rather than drawing a degenerate point element —
+  // manifestFromLattice's own MIN_PIECE_LENGTH_IN filter (editor-
+  // lattice.js) already excludes these from the manifest; without the
+  // identical filter here, the app used to draw a `data-lattice="rail"`/
+  // `"tie"` element the manifest never declared, an app/manifest COUNT
+  // mismatch measured live at an extreme waistReach.
+  const pieceLength = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
   editor._color = colors.rails;
   for (const seg of segments) {
     if (seg.kind !== 'rail') continue;
-    tagOwned(emitSegment(editor, 'rail', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing), widths.rails));
+    const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
+    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
+    tagOwned(emitSegment(editor, 'rail', p1, p2, widths.rails));
   }
   editor._color = colors.ties;
   for (const seg of segments) {
     if (seg.kind !== 'tie') continue;
-    tagOwned(emitSegment(editor, 'tie', fromLattice(seg.a, spacing), fromLattice(seg.b, spacing), widths.ties));
+    const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
+    if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) continue;
+    tagOwned(emitSegment(editor, 'tie', p1, p2, widths.ties));
   }
   editor._color = colors.nodes;
   for (const p of nodePoints) {

@@ -101,6 +101,21 @@ export function orient(p, orientation) {
  *  Circle tool's click-to-dot still needs a sane size off-grid. */
 export const DEFAULT_NODE_RADIUS_IN = 0.09;
 
+/** T66/T72: a rail/tie piece shorter than this (model-space inches, after
+ *  `fromLattice`) is a genuine ZERO-LENGTH degenerate — a boundary clip
+ *  landing both of a piece's own ends at the same lattice point (T66's
+ *  own original finding, a tie at an hourglass waist), or a scan-line
+ *  tangent to a deeply-pinched boundary curve producing a vanishingly
+ *  short "inside" span (T72 AMEND 5's own sweep, an EXTREME waistReach).
+ *  `editor-sketch-manifest.js`'s own `manifestFromLattice` already
+ *  filtered this at its own level (T66); `generatePattern` below needed
+ *  the IDENTICAL filter — declared once, here, in the lowest-level module
+ *  both already import from, rather than as two independently-maintained
+ *  copies of the same threshold (a real T72 parity bug: the app used to
+ *  draw a zero-length `data-lattice="rail"` element the manifest quietly
+ *  never declared, an app/manifest COUNT mismatch, not just cosmetic). */
+export const MIN_PIECE_LENGTH_IN = 1e-6;
+
 /** Model-space point -> integer lattice coordinates (nearest cell). */
 export function toLattice(pt, spacing) {
   return { i: Math.round(pt.x / spacing), j: Math.round(pt.y / spacing) };
