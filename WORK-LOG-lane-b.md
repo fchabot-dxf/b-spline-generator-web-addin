@@ -7210,3 +7210,1541 @@ linked path). Restored, MD5-verified byte-identical. Full JS suite: 994 passed (
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 Committed by explicit path — pushed.
 
+## T64 — SE15 must use the carve placement (centered, Y-flipped) + naming, from the advisor's own end-to-end test
+
+Dispatch: the advisor's own real end-to-end Fusion test (feeding `PaletteHTMLEventHandler._import_all_svg_layers`
+a real two-layer stamp payload) confirmed the wiring from T63 actually WORKS end to end (51 lines/36 arcs/16
+circles, 78 constraints, 77 dims, 11s) — but the constrained sketch landed in the WRONG place: raw board
+coordinates (bbox x −0.08..7.00, y −0.04..9.04 on a 7×9 board) instead of the SAME carve-space the plain-SVG
+path already lands in (bbox x −1..1, y 0..1.5 for the SAME rect). Plus a naming mismatch ("Layer 1" vs the
+SVG path's own "Source - L1 - vbit (0.25\")").
+
+**Traced the REAL transform, not the one a stale comment claims.** `editor-coords.js`'s own `carveMatrix`
+function has NO Y term at all (`d: dpi`, its own doc comment explicitly says "NO Y inversion... Fusion's
+importer already yields the right orientation") — yet `editor-io.js`'s `bakeSvgForCarving` doc comment, right
+next to where it calls `carveMatrix`, claims the mapping is "×dpi, flip Y, center." Read both directly rather
+than trusting either comment at face value: the MATRIX VALUES prove no flip happens in this codebase's own JS;
+the advisor's own MEASURED bbox (y 3..4.5 board -> y 0..1.5 carve, the exact negation of what "no flip" alone
+would produce) proves a flip genuinely happens somewhere in the full pipeline regardless. Conclusion, stated
+plainly rather than left ambiguous: the flip is an EMERGENT property of Fusion's own SVG import step (reading
+raw Y-down SVG pixels onto a Y-up sketch plane), not something any of this codebase's own JS or Python code
+executes — `bakeSvgForCarving`'s own doc comment is the stale one. Since `build_constrained_sketch` builds
+geometry DIRECTLY (no SVG, no importer), it never gets that implicit flip for free — it has to be baked in
+explicitly, matching the NET transform the advisor's own numbers describe: `x' = x - W/2`, `y' = H/2 - y`.
+
+**Fixed at the ONE source, per the dispatch's own instruction: the JS manifest producer, not the Python
+builder.** Added `applyCarvePlacement(manifest, region)` (`editor-sketch-manifest.js`) — ONE final pass over an
+already-built manifest's own `entities[]`, applied right before `buildSketchManifest` returns. Every OTHER
+producer (`manifestFromLattice`/`manifestFromShape`) keeps computing in the SAME natural board-space they were
+already written and tested in — `constraints[]`/`dimensions[]`/`parameters[]`/`groups` reference entities BY
+ID, never by raw coordinate, so none of them needed touching. The Python builder needed ZERO changes for
+placement — it just converts whatever coordinates the manifest hands it, inches to cm, same as before.
+
+**Worked out the arc-angle consequence by hand, not guessed.** A pure Y-reflection reverses angle sense: a point
+at `center + r*(cos theta, sin theta)` maps to `center' + r*(cos(-theta), sin(-theta))` around the transformed
+center (verified algebraically before trusting it in code — see the module's own new doc comment for the
+derivation). So every `ArcCenter` entity gets BOTH `startAngleDeg` and `sweepDeg` negated alongside the
+centered+flipped `center`; `radius` is unchanged (a reflection preserves distances). Confirmed H/V constraint
+CHOICE (computed earlier, from natural-space coordinates) needs no recomputation — a reflection that remaps y
+as a function of y alone can never turn a horizontal segment into a vertical one, so those constraints stay
+correct without touching them.
+
+**Naming fixed in the Python builder** (the actually-correct place for it, since the SVG-matching name — "L1 -
+vbit (0.25\")" — is only known to `_import_all_svg_layers`'s own per-layer loop, not to the JS-side manifest,
+which only ever sees a generic "Layer <id>" from `export-flow.js`): `build_constrained_sketch` gained an
+optional `sketch_name_override` param, taking priority over `manifest.get("sketchName")` when given.
+`_build_constrained_sketch_for_layer` (b-spline-gen.py, T63) now passes
+`f"Source - {sketch_name} [constrained]"` — matching the plain-SVG path's own `f"Source - {sketch_name}"`
+scheme plus a `[constrained]` tag so the two are visually distinguishable in Fusion's own browser tree. Omitting
+the override (the `build_from_manifest_file` dev-entry-point path) keeps the manifest's own field exactly as
+before — a real, disclosed behavior difference between the two callers, not silently unified.
+
+**Tests**:
+- JS (`tests/editor-sketch-manifest.test.js`, +4, now 27): every rail Line's own carve-space coordinates,
+  cross-checked against an INDEPENDENT `computePattern`+`fromLattice` re-run (replicating `resolveBoardExtent`'s
+  own exact formula in the test, since it isn't exported — a real bug in my FIRST version of this test caught
+  by mismatched extents, not a bug in the transform itself, fixed before trusting the result); a direct,
+  hand-computed check reproducing the advisor's own EXACT reported numbers (x 2.5..4.5, y 3..4.5 -> x −1..1,
+  y 0..1.5) independent of any producer; a Shape Lattice arc's own center+radius+negated-angles, cross-checked
+  against an independent `generateSilhouette` re-run; H/V constraint types confirmed unaffected (non-vacuous:
+  asserts a real, positive H/V count exists first). Full JS suite: 1011 passed (63 files), up from 994.
+- Python (`test_sketch_manifest_builder.py`, +1, now 16): `sketch_name_override` takes priority when given,
+  falls back to the manifest's own field when omitted — both paths checked in one test against two separate
+  builds on the same fake Design.
+
+**Mutation-tested both fixes** (backup, mutate, run, confirm the EXACT expected failure, restore, MD5-verified
+byte-identical): (1) `toCarvePoint` reduced to the identity (no transform at all) -> exactly 2 failures (the two
+tests whose own assertions depend on the transform; the hand-computed and H/V-invariance tests correctly still
+passed, since neither exercises `toCarvePoint` itself); (2) the naming override line reverted to ignore
+`sketch_name_override` entirely -> exactly 1 failure (the dedicated naming test).
+
+**Not done this turn (disclosed, not silent)**: no live CDP cross-check of the FULL SVG-bake pipeline
+(`bakeSvgForCarving`'s own real bbox) against the manifest's own bbox on the same live page — the JS unit tests
+already verify my new code against the advisor's own precisely-reported ground-truth numbers directly, and a
+live cross-check would mostly re-exercise `bakeSvgForCarving`'s own EXISTING, unchanged behavior rather than
+anything this turn touched; skipped as lower-value than the direct numeric verification already done, not
+because "NO FUSION" required skipping it (a JS-only CDP check doesn't touch Fusion at all).
+
+## T64 mid-task amendments (3, incorporated before committing) — one-sided offsets, cap-coincident redesign, box-lattice centerline mode
+
+Three amendments arrived mid-flight, all from the advisor's own further live-Fusion measurement on the SAME
+fixture, plus a priority-setting note from Fred relayed through the advisor. Order actually built (amendments'
+own #3 asked for box=centerline FIRST; carve-placement above was already done by the time these landed — no
+rework needed, the two are orthogonal: one fixes COORDINATES, the other fixes WHICH entities/dimensions exist at
+all): (1) fixed the one-sided-offset bug, (2) redesigned caps around Coincident constraints instead of
+Radial+Tangent, (3) split lattice fill into `centerline`/`offset` width modes per layer type.
+
+**Amendment 1+2 — the offset was landing on the SAME side both times.** Measured live: for a rail at y=0, both
+`sketch.offset()` calls produced lines at y=0 and y=+0.035 (never y=−0.035). Root cause (my own hypothesis, not
+independently confirmed against Fusion's own source — I have no access to it): my own direction-point distance
+was tied to the ACTUAL stroke width (~0.03-0.09 cm for a typical rail), too small for Fusion's own side-detection
+to reliably read as "on this specific side" rather than "ambiguously close to the line." Fixed by DECOUPLING the
+direction point's own distance from the real offset distance: `_perp_direction_point` now places it a fixed,
+generous `_DIR_PROBE_CM = 5.0` away, regardless of how thin the actual stroke is — the ACTUAL offset distance
+passed to `sketch.offset()` itself is unchanged. Also added `_signed_perp_distance` — a POST-HOC, log-only
+verification (never raises) that each resulting offset curve actually landed on its requested side, so if this
+fix is STILL wrong on the advisor's own next live run, it fails LOUDLY in the log instead of silently producing
+wrong geometry again.
+
+The advisor's own SEPARATE measurement of three candidate width mechanisms (addCenterToCenterSlot,
+addTwoSidesOffset, two-classic-offsets) confirmed TWO of the three grow lopsided on a parameter change
+(centerline drifts instead of staying put) and only the two-classic-offset approach (already what T62 built)
+grows evenly — so the DECISION was to keep the existing mechanism and fix its one real bug, not switch approach.
+
+**The cap redesign is the bigger change.** The advisor's own instruction: build each cap as an arc whose OWN
+center is Coincident to the centerline's own end point, and whose own two ENDPOINTS are each Coincident to the
+matching offset line's own endpoint — "radius and tangency then follow automatically." Implemented as
+`_coincident_cap_to_offsets` (3 `addCoincident` calls per cap: center, pos-end, neg-end) — REPLACING the T61-era
+Radial dimension entirely (removed from the JS producer's own `addWidthOffsetsAndCaps`, not just left unused —
+a manifest that still declared it would double-drive the same geometry two independent ways, exactly what
+produced T63's own over-constraint). Which offset curve's own end matches which cap end is resolved by NEAREST-
+POINT geometric proximity (`_nearest_endpoint`), not by assuming `sketch.offset()` preserves start/end ordering
+(untested, so not relied on). The offset curves themselves needed a NEW `ctx.set_id` registration (T62's own
+first version created them but never tagged them) so their `:S`/`:E` points are resolvable at all for this
+wiring.
+
+**Disclosed, real uncertainty**: whether THREE Coincident constraints per cap (center + 2 endpoints, 6 equations
+for a 5-DOF arc) is itself consistent for Fusion's own solver, or whether it's ANOTHER redundant-but-consistent
+case that the solver tolerates (like the analytically-exact numeric seed geometry this codebase already relies
+on elsewhere) versus one it flags — worked out the DOF count by hand (documented in the module's own new doc
+comments) but could not verify against real Fusion this turn. If the advisor's own next live run finds THIS
+combination also over-constrained, the disclosed fallback is dropping the "less informative" of the two endpoint
+coincidences (the analytically-correct numeric seed alone already places that point right, in the same way the
+node/rail geometry itself has always relied on correct-by-construction numeric placement without an explicit
+constraint for every fact).
+
+**Amendment 3 — box Lattice drops the offset/cap mechanism entirely (Fred: "offset sounds like a lot of work" →
+"work to remove the offset function in the BOX lattice tool first").** A new `SKETCH_WIDTH_MODE = {boxLattice:
+'centerline', shapeLattice: 'offset'}` (`editor-sketch-manifest.js`), chosen by `buildSketchManifest` from the
+SAME `hasShape` discriminator it already computes — a plain box Lattice layer's own rails/ties get bare
+centerlines + relationship constraints only (no Offset dimensions, no cap entities at all); a Shape Lattice
+layer's own lattice fill keeps the full offset+cap mechanism (with this turn's own fixes). The width PARAMETER
+(`stroke_width`/`rail_width`/`tie_width`) is STILL declared even in centerline mode — "a real, named reference a
+person can read for CAM," per the amendment — it just drives no geometry. `manifest.widthMode` is now a real,
+emitted field. The Python builder skips `_apply_width_offsets` ENTIRELY when `widthMode == 'centerline'` (not
+just an empty-list no-op) — verified this actually matters via a fixture that DELIBERATELY still declares an
+Offset dimension pair even in centerline mode (a defensive "what if the JS side ever regresses" check) — my
+FIRST version of this test used an empty `dimensions[]`, which passed regardless of whether the gate existed at
+all (caught by mutation, not assumed correct).
+
+**Tests**:
+- JS (`tests/editor-sketch-manifest.test.js`, +2, now 29): a plain box lattice gets `widthMode:'centerline'`
+  with the stroke_width param present but zero Offset dimensions/cap entities, while H/V/tie-on-rail constraints
+  still apply; a Shape Lattice layer keeps `widthMode:'offset'` with offsets/caps intact. Also updated the
+  existing cap tests (2) to assert NO Radial dimension exists for a cap any more, replacing the old assertion
+  that one did. Full JS suite: 1013 passed (63 files), up from 1011.
+- Python (`test_sketch_manifest_builder.py`, +5, now 20): opposite-side signed-distance verification (would have
+  caught the real bug, unlike the older, weaker "two calls happened" test); a DIRECT regression test against the
+  fake shim's own modeled failure mode (a too-close dirPt defaults to one side — proves `_DIR_PROBE_CM` is load-
+  bearing, not decorative); cap-coincident wiring (exactly 3 per cap, 0 Radial, 0 Tangent); centerline-mode skips
+  the whole offset step (fixed after catching my own first version's vacuous fixture, above). Also fixed 2
+  pre-existing tests whose own fixtures/assertions were now stale (a leftover cap-Radial-dimension entry in the
+  hand-built fixture; the threshold test's own "zero constraints of any kind" assertion, now needing to account
+  for the cap-wiring's own always-on Coincident calls).
+
+**Mutation-tested three of the riskiest new pieces** (backup, mutate, run, confirm the EXACT expected failure,
+restore, MD5-verified byte-identical): (1) `useOffsets` (JS) forced `true` regardless of widthMode -> exactly 1
+failure (the centerline-mode test); (2) `_DIR_PROBE_CM` reduced from 5.0 to 0.05 (Python) -> exactly 1 failure
+(the opposite-sides test) — reproducing the advisor's own reported symptom almost exactly; (3) the Python
+`widthMode` gate forced to always run offsets -> caught a GENUINELY VACUOUS test on the first attempt (my own
+centerline fixture had empty `dimensions[]`, so the mutation changed nothing observable) — fixed the fixture to
+deliberately include an Offset entry, re-confirmed the mutation THEN produces exactly 1 failure, restored.
+
+**Verification snippet for the advisor's own next live Fusion run** (checks: opposite-side signed distances;
+cap endpoints coincide with the matching offset line's own endpoint; zero Tangent constraints touch any cap) —
+paste into `fusion_execute` against a sketch `build_constrained_sketch` (or `build_from_manifest_file`) just
+built:
+
+```python
+import adsk.core, adsk.fusion, math
+
+app = adsk.core.Application.get()
+design = adsk.fusion.Design.cast(app.activeProduct)
+sketch = design.rootComponent.sketches.item(design.rootComponent.sketches.count - 1)  # the just-built one
+
+def signed_dist(line, pt):
+    p1, p2 = line.startSketchPoint.geometry, line.endSketchPoint.geometry
+    dx, dy = p2.x - p1.x, p2.y - p1.y
+    length = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / length, dx / length
+    return (pt.x - p1.x) * nx + (pt.y - p1.y) * ny
+
+lines_by_name = {}
+for c in sketch.sketchCurves.sketchLines:
+    try:
+        attr = c.attributes.itemByName('FrameBuilder', 'ID')
+        if attr:
+            lines_by_name[attr.value] = c
+    except Exception:
+        pass
+
+for base_id, line in list(lines_by_name.items()):
+    pos = lines_by_name.get(f"{base_id}_offset_pos")
+    neg = lines_by_name.get(f"{base_id}_offset_neg")
+    if not pos or not neg:
+        continue
+    mid = lambda l: adsk.core.Point3D.create(
+        (l.startSketchPoint.geometry.x + l.endSketchPoint.geometry.x) / 2,
+        (l.startSketchPoint.geometry.y + l.endSketchPoint.geometry.y) / 2, 0)
+    ds_pos, ds_neg = signed_dist(line, mid(pos)), signed_dist(line, mid(neg))
+    status = "OK" if ds_pos > 0 and ds_neg < 0 else "BAD (same side or wrong sign)"
+    print(f"{base_id}: pos={ds_pos:.4f}cm neg={ds_neg:.4f}cm -> {status}")
+
+tangent_on_caps = 0
+for c in sketch.geometricConstraints:
+    try:
+        if c.objectType.endswith('TangentConstraint'):
+            for prop in ('entityOne', 'entityTwo'):
+                ent = getattr(c, prop, None)
+                attr = ent.attributes.itemByName('FrameBuilder', 'ID') if ent and hasattr(ent, 'attributes') else None
+                if attr and ('_capA' in attr.value or '_capB' in attr.value):
+                    tangent_on_caps += 1
+    except Exception:
+        pass
+print(f"Tangent constraints touching a cap: {tangent_on_caps} (expect 0)")
+```
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+Committed by explicit path — pushed.
+
+## T64 wave 2 (5 more mid-task amendments) — the offset+cap mechanism above is SUPERSEDED entirely by Fusion-native anchored slots, plus a new node-to-piece Coincident feature
+
+Fred's own final call, relayed through the advisor, after wave 1 above had already fixed the offset+cap mechanism
+twice: stop patching that mechanism and REPLACE it outright. "Box lattice needs to be slots too" — so this isn't
+a narrower version of wave 1, it deletes wave 1's own cap/offset machinery wholesale, for BOTH box Lattice and
+Shape Lattice, and replaces it with ONE Fusion-native call per rail/tie: `addCenterToCenterSlot`. Per this repo's
+"declare over hand-roll" bar, this is a strictly better fit than what wave 1 kept patching — a single native
+primitive that already IS the width mechanism, instead of two offset lines plus a hand-built cap-arc wiring
+scheme standing in for one.
+
+**What got deleted, wholesale, not incrementally**: JS — `capArc`, `addWidthOffsetsAndCaps`. Python —
+`_resolve_offset_seed_distance`, `_perp_unit_vector`, `_DIR_PROBE_CM`, `_perp_direction_point`,
+`_signed_perp_distance`, `_do_single_offset`, `_nearest_endpoint`, `_coincident_cap_to_offsets`,
+`_apply_width_offsets` (~250 contiguous lines, sliced out directly). `SKETCH_WIDTH_MODE` is now `{boxLattice:
+'slot', shapeLattice: 'slot'}` — both resolve to the SAME value now, but kept as a declared per-layer-type table
+rather than one hardcoded string, because `'centerline'` (a bare undimensioned line, wave 1's own box-lattice
+default) is EXPLICITLY kept as a real, still-available, just-no-longer-default value for a possible future manual
+override — not deleted outright, since nothing asked for that.
+
+**New entity type: `Slot` `{id,type,p1,p2,width}`** (replacing Line for every rail/tie), and a new dimension type
+`SlotWidth {type,target,expression}` handled at GEOMETRY-CREATION time itself (not a separate later dimensions
+phase) — `addCenterToCenterSlot` creates its own width dimension as a side effect of creation, so there is no
+"dimensions phase" left to defer it to; `_create_slot_entity` re-drives that just-created dimension's own
+`.expression` immediately, via the SAME `_drive_last_dimension` helper (generalized from wave 1's own
+offset-specific version, identical "find the last dimension in `sketch.sketchDimensions`" logic, now used for
+one geometry-side-effect kind instead of two).
+
+**`_find_slot_centerline` — the one piece of this turn's own design with a REAL disclosed uncertainty.**
+`addCenterToCenterSlot`'s own return value is, per the advisor's own description, "2 side lines + 2 end arcs" —
+phrased as possibly NOT including the construction centerline at all. Rather than trust that return value's own
+contents (UNVERIFIED against real Fusion this turn), this searches `sketch.sketchCurves.sketchLines` directly —
+the WHOLE sketch, not just the call's own return — for the ONE line whose two endpoints match the manifest's own
+p1/p2 EXACTLY (`distanceTo < 1e-7`). The centerline sits exactly there by construction; the two side lines sit
+offset away from it, so an exact match is unambiguous with no proximity heuristic needed. The centerline (not
+the visible slot body) is what gets registered under the piece's own manifest id — every relationship
+constraint (H/V, tie-on-rail, the new node coincidences) targets rails/ties by that bare id, and the advisor's
+own instruction was explicit that those constraints act on the slot's own centerline, not its visible edges.
+
+**Anchoring, belt-and-suspenders.** An anchored slot grows evenly on a width change; an unanchored one drifts
+lopsided (the advisor's own measurement). Passed as `addCenterToCenterSlot`'s own 4th argument (`isFixed=True`,
+per the advisor's own literal example) AND set explicitly on the found centerline's own two endpoints afterward
+— since which of the two mechanisms actually does the anchoring in real Fusion is itself unverified this turn,
+both are applied rather than guessing which one to skip.
+
+**New feature, not in either original dispatch: node-to-piece Coincident constraints.** Every node (a Circle) that
+sits on a rail/tie now gets an explicit Coincident declared to it — `nodePieceCoincidences(pt)` (JS) classifies
+each node point against every rail/tie segment: an exact endpoint match emits the `:S`/`:E`-suffixed target (the
+tie-on-rail convention already established), a mid-span match emits the BARE id, which resolves to the point-
+on-curve overload via `BuildContext.resolve_entity`'s own existing convention — the SAME mechanism already used
+for tie-on-rail, so no new schema field or Python-side code was needed for this at all; `_apply_constraints`
+passes these through generically, exactly as it already did for every other declared Coincident.
+
+**No symmetry constraint, deliberately** — the advisor's own measurement: the slot is already symmetric by
+construction, an explicit symmetry constraint over-constrains. Never implemented in the first place; kept as an
+explicit regression assertion rather than trusted silently (a Tangent/Symmetric/Symmetry constraint call would
+fail this build's own test).
+
+**Tests**:
+- JS (`tests/editor-sketch-manifest.test.js`, now 30): every rail/tie is a Slot with exactly one SlotWidth
+  dimension referencing its own width param (linked and unlinked cases); the >=threshold case still creates every
+  Slot + its dimension with zero per-piece relationship constraints; a new node-to-piece-Coincident test that
+  independently re-derives end-vs-mid-span classification from the lattice's own geometry and cross-checks it
+  against the declared constraints (non-vacuous: asserts both `endMatches > 0` and `curveMatches > 0`, so a broken
+  classifier or an empty constraints list both fail it); `applyCarvePlacement` extended to handle `'Slot'` (was
+  silently skipping it before — caught by a failing carve test, `expected 0.25 to be close to -3.25`, off by
+  exactly `REGION.w/2`, i.e. the untransformed value). Full JS suite: 1014 passed (63 files).
+- Python (`test_sketch_manifest_builder.py`, now 17 — down from a peak of 20 mid-rewrite): every wave-1 test that
+  targeted the now-deleted offset/cap mechanism was either deleted outright (5: the two-offset-sides test, the
+  dirPt-probe regression test, the cap-coincident-wiring test, the width-offsets-count test, the offset-dimension-
+  expression test) or rewritten for slots (the threshold test now checks slots+SlotWidth dims still get created
+  with zero relationship constraints; a redundant Tangent-absence test was folded into the new symmetry-absence
+  test instead of kept as a separate, now largely vacuous check). New: slot creation is anchored + happens once
+  per piece (checked across ALL THREE fixture pieces, not just the first — see the mutation-testing note below for
+  why that matters); SlotWidth dimension expressions match the manifest exactly (rail_width x2, tie_width x1,
+  distinguishing rails from ties by DIFFERENT numeric values so a swapped-argument bug would be caught); the
+  no-symmetry/no-tangent regression check; `'centerline'` mode re-purposed to prove the plain-Line entity-dispatch
+  branch still works standalone (the Python side never reads `manifest.widthMode` at all — it dispatches purely
+  per-entity `type` — so this is really "adding the Slot branch didn't break the pre-existing Line branch," not a
+  widthMode gate test, since no such gate exists on the Python side). Also removed the now-fully-dead
+  `FakeSketch.offset` fake-shim method (unreferenced by any surviving test or production code path) and the
+  `_coll` helper that only existed to feed it. Both pytest and the plain-`python3` fallback mode are green
+  (17/16 respectively — the file-reading test uses `tmp_path`, excluded from the fallback list per the
+  pre-existing convention).
+
+**Real gap caught and fixed, NOT part of any dispatch**: `addSlotPieces` (JS) built every Slot entity with NO
+`width` field at all — `entities.push({ id, type: 'Slot', p1, p2 })`, no width — even though
+`_create_slot_entity` (Python) reads `ent.get("width", 0.07)` as its own seed value for `addCenterToCenterSlot`.
+Every rail/tie would have silently seeded at the hardcoded 0.07in fallback regardless of its own actual
+configured width (harmless for the FINAL geometry, since the width gets re-driven by its own expression right
+after creation anyway, but wrong/misleading as an initial seed, and the Python test fixtures had already been
+hand-written to assume `width` was present, meaning the two sides had quietly drifted apart). Fixed by threading
+the already-in-scope `widths.rails`/`widths.ties` value through `addSlotPieces`'s own new `widthValue` parameter
+at all 4 call sites. Caught by re-checking the JS producer's OWN current code directly rather than trusting the
+Python fixture's assumption — the pending-task note from before compaction flagged this as unconfirmed, and it
+turned out to be a real gap, not a false alarm.
+
+**Mutation-tested three of the riskiest new Python pieces** (backup, mutate, run, confirm the EXACT expected
+failure set, restore, MD5-verified byte-identical restore each time):
+1. `_find_slot_centerline`'s own exact-match loop, mutated to `return lines.item(0)` unconditionally (ignore
+   p1/p2 entirely) — **first attempt exposed a genuine test-coverage gap, not a clean pass**: the ORIGINAL
+   anchoring test only checked rail0 (the first slot ever created), and `item(0)` happens to BE rail0's own
+   centerline purely because it was appended first — the mutation slipped through with 17/17 still green. Fixed
+   by strengthening the test to check EVERY slot's own centerline by its own declared p1/p2 (rail0, rail1, tie0),
+   which is what actually exercises the exact-match discrimination between pieces rather than coincidentally
+   passing on construction order. Re-ran the same mutation against the strengthened test: exactly 1 failure
+   (`AttributeError: 'FakeSketchPoint' object has no attribute 'isFixed'`, since rail1's real centerline never
+   got registered or anchored under the mutation) — confirmed non-vacuous, restored, MD5-verified.
+2. The width-dimension-drive call (`_drive_last_dimension(...)` at the end of `_create_slot_entity`) deleted
+   entirely — exactly 1 failure (`assert 0 == 2` on the rail_width expression count), 16/17 passed. Restored,
+   MD5-verified.
+3. The JS-side `addSlotPieces` width-threading fix itself (the gap above) — reverted to the pre-fix version
+   (no `width` field at all) against the NEW JS test asserting `e.width` matches `PATTERN.widths.rails`/`.ties`
+   exactly (using the base fixture's own DELIBERATELY different rail/tie values, 0.07 vs 0.05, so a swapped
+   argument would also be caught): exactly 1 failure (`expected undefined to be 0.07`), 29/30 passed. Restored,
+   MD5-verified.
+
+**Disclosed, unverified against real Fusion this turn** (NO FUSION held throughout — flagged for the advisor's
+own live check, same discipline as wave 1's own disclosures above): whether `addCenterToCenterSlot`'s own return
+value actually excludes the construction centerline (the premise `_find_slot_centerline`'s whole-sketch search
+was designed around, rather than trusting the return collection); whether the `isFixed=True` 4th-argument alone
+is sufficient anchoring or whether the explicit post-hoc `SketchPoint.isFixed = True` sets are the ones actually
+doing the work (both are applied, so either way it should anchor correctly — just unconfirmed which one is
+load-bearing); whether a node-to-piece Coincident (a Circle's own bare id as one target) resolves through
+`BuildContext.resolve_entity`'s existing `:C`-suffix convention correctly without an explicit `:C` suffix in the
+declared target — this is PRE-EXISTING fb_engine machinery untouched by this turn's own changes, so it was not
+re-mutation-tested here (out of this turn's own scope — that dispatch logic has its own tests from earlier work).
+
+Per Fred's own "no merge()" rule (mentioned during the amendment relay: every joint should stay separably
+deletable), this design never calls `SketchPoint.merge()` anywhere — every coincidence, old or new, is a
+plain `addCoincident` between two still-separate points, which this architecture already did naturally without
+needing a deliberate check to keep it that way.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+
+## T65 — SE15 fixes from the advisor's REAL Fusion run of T64: every slot skipped, silhouette arcs landed outside the board
+
+T64 was NOT merged — the advisor ran lane-b's own builder on real fixtures (box + shape manifests) in real Fusion
+and found two bugs the "NO FUSION" unit-test suite could not have caught on its own, because the FAKE shim
+encoded the same wrong assumption the production code did — shim and code agreed with each other, just not with
+real Fusion. Both are now fixed in the module, the shim, AND the JS producer, with the shim fix specifically
+verified (via mutation) to actually catch the class of bug that slipped through T64.
+
+**Bug 1 — every slot was skipped.** `addCenterToCenterSlot` (and its siblings — `addThreePointArcSlot`,
+`addCenterPointArcSlot`, `addCenterPointSlot`, `addOverallSlot`, all confirmed live via `dir()`) live on `Sketch`
+itself, not on `SketchLines` — T64's call site had `curves.sketchLines.addCenterToCenterSlot(...)`, which raised
+`AttributeError` on every single call, caught one level up by `_create_geometry`'s own per-entity try/except and
+silently logged as a skip (80 on the advisor's box fixture, 94 on shape — "CONSTRAINT MISS: railN not found"
+downstream, since no rail/tie ever got registered under its own id; the box sketch ended up with 20 circles and
+ZERO lines). Fixed the call site to `sketch.addCenterToCenterSlot(...)`.
+
+The advisor's own live measurement of the return value: "a generic vector" — not reliably carrying the
+centerline as a named, indexable member. Rather than trust it at all, `_find_slot_centerline` now takes the
+advisor's own recommended technique: diff `sketch.sketchCurves.sketchLines`' own count before/after the call
+(`addCenterToCenterSlot` appends exactly 3 new lines — 2 sides + 1 centerline; the 2 end arcs land in
+`sketchArcs`, irrelevant here) and search ONLY that new slice for the exact p1/p2 match, rather than T64's own
+whole-sketch search. This is strictly narrower/safer than T64's version, not just a style change: whole-sketch
+search happened to work for the FIRST slot purely by construction-order coincidence (its own centerline WAS the
+first line in the sketch) but could mis-identify a LATER piece's centerline if two pieces' exact coordinates
+ever collided — narrowing the search window to just this call's own new lines removes that risk entirely, on top
+of now also being required by the fact that a stale whole-sketch cache could includes lines added by an
+unrelated earlier call.
+
+**Bug 2 — Shape Lattice silhouette arcs landed outside the board after the Y flip.** The advisor's own real
+measurement on a 7-wide board: arc centers at cx = 3.578, 5.189, −4.673, −6.384... (expected roughly ±3.5,
+symmetric) — left half not a mirror of the right, arc ends not meeting their neighbouring line's own end. T64's
+own `applyCarvePlacement` negated `startAngleDeg`/`sweepDeg` around the transformed center — a hand-worked
+derivation for a pure reflection that checks out symbolically (see the now-superseded comment this replaces,
+still readable via `git log`/T64's own commit) but evidently diverges from Fusion's OWN `addByCenterStartSweep`
+sweep-sign convention in a way that was never independently verifiable without a live Fusion run — angle
+representations are fragile exactly because a sign/convention mismatch can hide behind math that looks correct
+on paper.
+
+The advisor's own fix, applied directly: never re-derive an angle representation after a reflection at all.
+`toCarveArc3Point` (new, JS) computes the arc's own 3 DEFINING POINTS (start, mid-sweep, end) in the SAME natural
+board-space the silhouette generator already built and tested them in, runs each one through the IDENTICAL
+`toCarvePoint` map lines/circles already use (simple coordinate arithmetic, no angle math to get wrong), and the
+entity's own `type` mutates from `'ArcCenter'` to `'Arc3Point'` as part of the SAME pass — a genuine
+representation change (center+radius+angle isn't carryable through a reflection without this exact risk), named
+to match fb_engine's own pre-existing `'Arc3Point'` convention (`geometry.py`'s `_create_arc3`) rather than
+inventing a new name for the same concept. Python side: new `_create_arc3_entity` builds via
+`curves.sketchArcs.addByThreePoints(p1, pMid, p2)` directly off the already-resolved manifest inches (the SAME
+`_to_point3d` convention every other entity in this module uses) — a sibling to fb_engine's own `_create_arc3`,
+not a delegation to it, since that one resolves template EXPRESSION strings via `ctx.resolve_val`, a different
+calling convention entirely. `_create_arc_center_entity`/the raw `'ArcCenter'` dispatch branch is left intact —
+still correct and still used for any manifest that never goes through carve placement at all (e.g. a direct,
+non-placed `manifestFromShape` caller); only the CARVE-PLACED path changes.
+
+**Fix 3 — the shim itself, per the dispatch's own explicit instruction ("so these two bugs would have failed your
+tests. Mutation-check that.")**: moved `addCenterToCenterSlot` off `FakeSketchLines` onto `FakeSketch` (matching
+the real API), and added `FakeSketchArcs.addByThreePoints` — computes its own arc's center via a real circumcenter
+formula from the 3 given points (never given, always DERIVED, matching the real API's own semantics, the reverse
+of `addByCenterStartSweep`'s fake where center is given and the end point is derived).
+
+**Tests**:
+- Python (`test_sketch_manifest_builder.py`, now 18): a new `_shape_manifest_with_arc3point` fixture (2 lines +
+  1 Arc3Point in between) + a test that checks the arc builds via `addByThreePoints` with the correct 3 points
+  AND — per the dispatch's own explicit ask — checks by GEOMETRY, not just call-log counts: the arc's own real
+  `startSketchPoint`/`endSketchPoint` must coincide with its neighbouring lines' own real endpoints, independent
+  of ids. Both pytest (18/18) and the plain-`python3` fallback (17/17, `tmp_path`-using test excluded per the
+  pre-existing convention) are green.
+- JS (`tests/editor-sketch-manifest.test.js`, now 32, +2 net after replacing 1 stale test with 3 new ones): the
+  carve-placed arc entity becomes `Arc3Point`, its own 3 points independently re-derived from the primitive's own
+  `cx/cy/rx/theta1/dTheta` in natural space then transformed (never trusting `toCarveArc3Point`'s own internals);
+  every silhouette segment's own `:E` coincides with the NEXT segment's own `:S` around the WHOLE closed loop
+  (the dispatch's own explicit acceptance test: "every arc end coincides with its neighbour line end"); the
+  carve-placed silhouette's own bbox matches an independently-sampled natural-space bbox run through the same
+  raw transform formula, and never bulges outside the true (densely-sampled) bbox — directly targeting the
+  advisor's own reported symptom of centers landing outside the board. Full JS suite: 1016 passed (63 files).
+
+**Mutation-tested all three fixes** (backup, mutate, run, confirm the EXACT expected failure, restore, MD5-verified
+byte-identical restore each time):
+1. Reverted ONLY the Python call site back to `curves.sketchLines.addCenterToCenterSlot(...)` (bug 1's own exact
+   regression, keeping the now-fixed shim in place) — exactly 9 of 18 tests failed with `AttributeError:
+   'FakeSketchLines' object has no attribute 'addCenterToCenterSlot'`, reproducing the advisor's own reported
+   symptom almost exactly. Confirms the fixed shim WOULD have caught T64's own bug had it been in place then.
+   Restored, MD5-verified.
+2. Swapped `p1`/`p2` order in the new `addByThreePoints` call — exactly 1 failure, the new geometry-based
+   endpoint-continuity assertion (`assert (2.54, 2.54) == approx((2.54, 0.0))`), 17/18 passed. Restored,
+   MD5-verified.
+3. Reverted `applyCarvePlacement`'s own `ArcCenter` branch back to T64's angle-negation approach (keeping
+   `toCarveArc3Point` itself untouched, unused) — exactly 2 of 32 JS tests failed (the Arc3Point type-check test,
+   and the endpoint-continuity test's own non-vacuous precondition `arcs.length > 0`, since no entity was an
+   Arc3Point under the reversion). The independently-sampled bbox test did NOT fail under this mutation — an
+   honest finding, not swept under the rug: T64's angle-negation math is internally self-consistent as PURE
+   reflection math (worked by hand, see T64's own now-superseded comment), so a bbox computed in pure JS from
+   that same self-consistent math still lands in a plausible place; the advisor's own reported bug (centers
+   outside the board) most plausibly lives at the Fusion-API boundary (a sweep-sign convention mismatch in real
+   `addByCenterStartSweep`) that no amount of pure-JS testing can observe directly — which is exactly why the
+   fix moved to a representation (3 raw points) that has no angle-sign convention left to get wrong on either
+   side of that boundary, rather than trying to hunt down and patch the exact original sign error blind.
+   30/32 passed under the reversion. Restored, MD5-verified.
+
+**Disclosed, unverified against real Fusion this turn** (NO FUSION held throughout, per the dispatch): whether
+`addByThreePoints`'s own real return value behaves as assumed (start/end SketchPoints matching the given p1/p2
+exactly — a reasonable assumption for a 3-point arc, unlike `addCenterToCenterSlot`'s own murkier "generic
+vector", but not independently confirmed live); did not have access to the advisor's own exact fixture files
+(`scratchpad\t64\t64.json`, `m_box.json`, `m_shape.json` — presumably local to the advisor's own machine/session)
+so verification here relies on hand-built equivalent fixtures matching the STRUCTURE the dispatch described, not
+a byte-for-byte replay of the advisor's own real run.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+
+## T66 — SE15: never use Fix anywhere, relationship constraints carry the FULL job; a real zero-length-piece bug found and fixed; the shape bbox blowup investigated but NOT reproduced
+
+T65 was NOT merged either — the advisor's own real Fusion run of that exact commit found the slot mechanism itself
+now WORKS (every slot built, in both box and shape fixtures) but is fully OVER-CONSTRAINED: all 63 relationship
+constraints on the box fixture failed VCS_SKETCH_OVER_CONSTRAINTS, root-caused by T64's own anchoring — a Fixed
+point has 0 DOF, so ANY constraint that also touches it (Horizontal, Coincident) is automatically redundant. Fred's
+own rule, relayed through the advisor: never use Fix, anywhere, full stop.
+
+**Fix 1 — remove Fix entirely, on BOTH of T64's own mechanisms.** `_create_slot_entity`'s `addCenterToCenterSlot`
+call now always passes `False` as its own 4th argument (was `True`); the post-hoc
+`centerline.startSketchPoint.isFixed = True` / `endSketchPoint.isFixed = True` block is deleted outright, not
+just left unreachable. Pinning every piece in place is now ENTIRELY the relationship constraints' own job — the
+advisor's own measured minimal example (2 rails + 1 tie, all slots, NO Fix: rails Horizontal, tie Vertical, tie
+ends Coincident to their rail's own centerline) produced ZERO failures, plus a stable, REVERSIBLE width-parameter
+round-trip (0.07in -> 0.2in moved centerlines only 0.005in; 0.2in -> 0.07in returned EXACTLY) — evidence that an
+unanchored, purely-relationship-constrained slot is not just "not over-constrained" but genuinely well-behaved.
+
+**Fix 2 — tie-on-rail Coincident precision, brought in line with the node-wiring's own existing 3-way
+distinction.** The dispatch's own described scheme explicitly distinguishes "tie ends Coincident point-on-curve
+to their rail centerline (OR point-point Coincident when on a rail END)" — a distinction `nodePieceCoincidences`
+already made (end-match -> `:S`/`:E`, mid-span match -> bare id) but the SEPARATE, older tie-on-rail wiring never
+did (it always used the bare rail id, even when the tie's own end landed EXACTLY on the rail's own end). This
+crude 2-way check happened to still validate while every centerline end was Fixed (any ambiguity from
+point-on-curve vs point-to-point was moot against a 0-DOF point) — with Fix now gone entirely, the SAME precision
+is worth having on both call sites, not just the node one. Extracted the shared 3-way check into
+`pieceEndOrCurveTarget(pt, seg, id)` (JS), used by both `nodePieceCoincidences` and the tie-on-rail loop now —
+removes a small duplicated-logic smell as a side effect, not the primary point of the change.
+
+**Fix 3 — a REAL, reproducible bug: exactly-zero-length rail/tie pieces.** The advisor's own shape fixture hit
+"InternalValidationError : isSuccessful" building one tie's own Slot. Reproduced directly (not guessed) via a
+real run of `buildSketchManifest` against the DEFAULT hourglass preset, no exotic params needed — `tie3` (in my
+own run) comes out at EXACTLY 0.0 length, because the Shape Lattice boundary clip lands a tie's own two ends at
+the identical lattice point. `addCenterToCenterSlot`/`addByTwoPoints` both need a real, non-degenerate direction
+to build from; a zero-length piece has none. Fixed at the SOURCE (`manifestFromLattice`'s own rail/tie piece
+loops), not left for the Python builder to catch defensively: any piece whose own computed length is below
+`MIN_PIECE_LENGTH = 1e-6` inches (a tight, exact-coordinate-collision threshold, not a "merely short piece"
+cutoff) is filtered out before it becomes any entity at all, for EITHER width mode
+(a degenerate LINE would be equally meaningless). ids are simply not reserved for a filtered piece (gaps in the
+numbering are fine — nothing downstream assumes contiguity).
+
+**The shape bbox blowup — investigated thoroughly, NOT reproduced, disclosed honestly rather than guessed at.**
+The advisor's own real run reported bbox −13.29..21.87 × −39.39..38.30 on a 7×9 board (T65's own report, before
+this fix, was −6.38..5.19 — a DIFFERENT, larger kind of wrong, suggesting T65's own arc fix didn't simply fail to
+help but may have introduced or exposed something new). Checked, with a real script run against THIS module's
+own actual functions (not reasoned about blind, per this project's own "measure, don't re-reason" habit):
+- `manifestFromShape`/`applyCarvePlacement`/`toCarveArc3Point`/`buildSketchManifest` re-read line by line for a
+  units mismatch, a double-applied transform, or a segment computed in the wrong (lattice vs board-inches)
+  space — found none; `region` is the SAME object passed to every call site, never mutated or recomputed between
+  the shape producer and the carve-placement pass.
+- A default hourglass fixture (region 7×9, spacing 0.25) produces a bbox of EXACTLY ±3.5/±4.5 — board-sized,
+  correct.
+- A param sweep (hourglass at waistReach 0.05/0.95, cornerRadius 0.02/0.98; bottle at neckWidth 0.02, neckLength
+  0.98) found every silhouette arc's own circumscribed-circle radius stayed well under board scale (max ~3.08) —
+  no near-collinear/shallow-arc numerical instability, the one JS-side failure mode that COULD plausibly explain
+  an out-of-proportion derived circle from otherwise-reasonable points.
+- The SAME sweep is what surfaced Fix 3's own zero-length piece — in the DEFAULT config, with no exotic params
+  at all.
+Given the zero-length piece is CONFIRMED and reproducible, and a degenerate `addCenterToCenterSlot` call
+(direction vector normalized from a zero-length delta) is a well-known source of exactly this kind of numerical
+blowup in constructed geometry — my own fakes explicitly guard against dividing by zero here (`length = ... or
+1.0`) specifically because a raw zero-length delta is unsafe to normalize, but nothing guarantees REAL Fusion's
+own internal math has (or needs) the identical guard — my WORKING HYPOTHESIS is that Fix 3 is the same root cause
+behind the bbox blowup too, or at least a major contributor: a degenerate slot call failing partway through
+could leave partial/garbage geometry in the sketch before raising, which would corrupt the reported bbox without
+needing a separate JS-side bug. This is NOT independently confirmed against real Fusion this turn (NO FUSION) —
+flagged explicitly for the advisor's own next live run: if the bbox is still wrong even with Fix 3 in place,
+the fixture files (`m_shape.json` or equivalent) or the raw entity list would help pin down whatever's left,
+since exhaustive review of this module's own code, plus targeted param sweeps, found nothing else.
+
+**Shim fixes (dispatch's own explicit ask: "assert the builder never sets isFixed... model over-constraint...
+as a failure so this class can't pass again").** `FakeSketchPoint.isFixed` is now a real property whose SETTER
+RAISES `AssertionError` if ever set to `True` — a structural guard, not a passive assertion checked after the
+fact: if any future change reintroduces `.isFixed = True` anywhere production code runs, the very first test that
+exercises that path fails immediately, at the exact call site, with a message naming Fred's own rule directly.
+`FakeSketch.addCenterToCenterSlot` now realistically applies its own `is_fixed` argument to the centerline's own
+two endpoints (previously ignored it entirely) — so a reintroduced `True` 4th-argument is caught at the SAME
+place the real bug lived, not just via a separate check bolted on elsewhere.
+
+**Tests**:
+- Python (`test_sketch_manifest_builder.py`, now 19): the old T64 anchoring test is REWRITTEN (not just renamed)
+  to assert the OPPOSITE — every slot centerline's own `isFixed` is `False`, and the API call's own 4th argument
+  is `False`, checked across ALL THREE fixture pieces (matching the original's own non-vacuity discipline); a new
+  DIRECT test proves the shim's own `isFixed` setter raises on `True` and still accepts `False`. Both pytest
+  (19/19) and the plain-`python3` fallback (18/18) green.
+- JS (`tests/editor-sketch-manifest.test.js`, now 34): a new tie-on-rail precision test independently re-derives,
+  for every declared tie-on-rail Coincident, whether the tie's own end matches the rail's own end EXACTLY or
+  lands mid-span, and asserts the target string matches (`rail:S`/`:E` vs bare `rail`) — non-vacuous for BOTH
+  branches on the existing `PATTERN`/`EXTENT` fixture; a new zero-length-piece test reproduces the SAME default-
+  hourglass degenerate tie directly (independently re-deriving the RAW `computePattern` segments to confirm the
+  fixture genuinely contains one, not just trusting the filter's own absence-of-evidence) and asserts no built
+  Slot/Line entity ever has near-zero length. Full JS suite: 1018 passed (63 files).
+
+**Mutation-tested all three JS/shim fixes** (backup, mutate, run, confirm the EXACT expected failure, restore,
+MD5-verified byte-identical restore each time):
+1. `MIN_PIECE_LENGTH` changed from `1e-6` to `-1` (the filter never triggers) — exactly 1 failure (the new
+   zero-length test), 33/34 JS tests passed. Restored, MD5-verified.
+2. Tie-on-rail's own `pieceEndOrCurveTarget` call reverted to the old always-bare-id behavior — exactly 1 failure
+   (the new precision test, `expected 'rail3' to be 'rail3:S'`), 33/34 passed. Restored, MD5-verified.
+3. The Python call site's own `False` reverted back to `True` (simulating a future regression reintroducing T64's
+   own mistake, with the now-fixed shim in place) — 8 of 19 tests failed, cascading from the shim's own raising
+   setter through `_create_geometry`'s per-entity try/except (caught as a GEOM FAIL, corrupting entity/dimension
+   counts downstream) PLUS the direct `assert call[-1] is False` check. Strongly non-vacuous — confirms the shim
+   would have caught T64's own original mistake outright, not just this turn's own new test for it specifically.
+   Restored, MD5-verified.
+
+**Disclosed, unverified against real Fusion this turn** (NO FUSION held throughout): whether Fix 3 (the
+zero-length-piece filter) actually resolves the bbox blowup, per the working hypothesis above — genuinely
+unconfirmed, not claimed as fact; whether the relationship-constraint scheme is FULLY free of redundancy once
+Fix is removed — specifically, a NODE that coincides with a tie's own end that is ALSO wired via tie-on-rail
+could produce three separate Coincident constraints among the same 3 mutually-linked points/curves (node-to-rail,
+node-to-tie-end, tie-end-to-rail), where the third is transitively implied by the other two. `computePattern`'s
+own `addNode` calls confirm nodePoints DOES structurally overlap tie/rail endpoints (called at every tie's own
+end, at every rail joint). NOT fixed this turn: the advisor's own measured "ZERO failures" example was
+deliberately minimal (no node in it at all), so this specific triangle was never actually exercised either way,
+and NO FUSION means I can't confirm whether Fusion's own solver tolerates it (the way several OTHER
+correct-by-construction redundancies already are elsewhere in this codebase) or flags it. Flagged for the
+advisor's own next live run rather than speculatively removing a constraint relation I can't verify is safe to
+drop.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+
+## T67 — SE15: three real-Fusion-measured fixes, a dedup, the tie-span default (with two newly-discovered/fixed
+## boundary bugs), and a full "one-ended ties" redesign — amendments 2 (parity) and 5 (contour-as-slots) DEFERRED,
+## explicitly flagged for a fresh turn given their own substantial scope
+
+T66 was NOT merged either — the advisor ran it in real Fusion and confirmed the slot mechanism now WORKS end to
+end but is fully over-constrained. Separately, the SAME live run found two more real bugs in T65's own arc/node
+work. This single turn absorbed FIVE further mid-task amendments after that (an unusually long chain even by this
+project's own standard) — each is its own section below, in the order they actually landed and were incorporated.
+
+### Part 1 — the three dispatched fixes, all real-Fusion-measured by the advisor
+
+**Fix 1 — `addCenterToCenterSlot`'s own 4th argument is CREATE-WIDTH-DIMENSION, not Fix.** T66 set it `False` on
+the theory it was the SAME mechanism as T64's own post-hoc `isFixed = True` (the actual Fix bug, confirmed
+correctly removed and staying removed). Measured live: `False` means NO `SketchDiameterDimension` gets created at
+all, so `_drive_last_dimension` found nothing to re-drive (every slot's own width dimension came back "DIM MISS",
+`stroke_width` drove nothing, and 34/35 relationship constraints ALSO failed — plausibly downstream of a
+dimensionless slot's own geometry not fully resolving). Reverted to `True` — a genuinely different knob from Fix
+that happened to share T64's own anchor argument's call-site position, which is exactly what made T66's own
+diagnosis plausible without a live measurement to check it against.
+
+**Fix 2 — node Coincident targets must carry `:C`.** A bare circle id (`node0`) resolves to the Circle entity
+itself, not a point; `addCoincident`'s own first argument must be a real SketchPoint. Fixed at the JS SOURCE
+(`nodePieceCoincidences`'s own caller now emits `${id}:C`), not a Python-side special case — the `:C` suffix
+convention already existed (fb_engine's `resolve_entity`), this was a declaration bug, not a missing mechanism.
+
+**Fix 3 — Arc3Point `:S`/`:E` must be labeled by PROXIMITY, not call-argument order.** `addByThreePoints` always
+normalizes its own result to run CCW, so `arc.startSketchPoint` can legitimately be the manifest's own `p2` for a
+clockwise-ordered `(p1, pMid, p2)` input — silently swapping which physical point gets tagged `:S`/`:E`, corrupting
+every downstream continuity constraint without ever raising or logging anything (exactly why it showed up as a
+wrong-looking bbox, not a build failure — the arcs still built, just mislabeled at their own two ends). Fixed by
+labeling whichever of Fusion's own two returned points is geometrically closer to the manifest's own `p1` as `:S`.
+"This alone fixed the shape bbox" (advisor's own words).
+
+**Shim fixes for all three**: `FakeSketch.addCenterToCenterSlot`'s own 4th parameter renamed `create_width_dim`
+and now literally gates whether a `FakeDimension` gets appended (`False` -> `dims.count == 0` -> a real DIM MISS,
+reproducing the exact measured symptom); `FakeSketchArcs.addByThreePoints` now models CCW normalization via a
+real signed-area/cross-product test, swapping which of its own two returned points is `startSketchPoint` for a
+clockwise input — T65's own first version of this fake always matched start=p1/end=p2 regardless of winding,
+which is WHY this exact bug shipped once already without any test catching it.
+
+**Tests** (Python, 19->21): `test_slot_False_create_width_dim_yields_DIM_MISS...` drives the fake's own new branch
+directly; a NEW clockwise-arc fixture (mirror image of the existing CCW one) proves the S/E-by-proximity fix as a
+DIRECT unit test of `_create_arc3_entity` (not through the full orchestration — `arc.startSketchPoint`/
+`.endSketchPoint` are Fusion-internal and never reassigned by the fix itself; what the fix controls is WHICH point
+object gets registered under `:S`/`:E` in the entity map, checked here via `ctx.entity_map` directly, not the raw
+attribute). Node `:C` is covered by the dedup tests below (same fixture, same constraint list). All three
+mutation-tested (revert `True`->`False`, remove the S/E swap, revert `:C`->bare) — each caught by the EXACT test
+built for it, confirmed by an 8-test cascade for fix 1 alone (the raising isFixed-style guard plus the direct
+assertion), restored MD5-clean every time.
+
+### Part 2 — the node/tie/rail dedup, resolved (not just disclosed this time)
+
+T66's own WORK-LOG entry disclosed a real, unverified risk: a node coinciding with a tie's own end that's ALSO
+tie-on-rail-wired gets THREE Coincident constraints among the same 3 mutually-linked entities (node-to-tie-end,
+node-to-rail, tie-end-to-rail) — the third transitively implied by the other two. The advisor's own real run hit
+exactly this ("node24:C + tie12:S over-constrained", not reproducing in the FINAL run but real enough to fix).
+Fixed: `tieEndToRailTarget` (a map built during the tie-on-rail wiring pass) lets `nodePieceCoincidences` drop its
+OWN redundant leg of the same triangle. **Tests**: the existing node-coincidence test extended to tolerate (and
+explicitly track) a deduped case; a NEW dedicated test confirms the tie-end-to-rail edge the dedup relies on for
+transitivity is ALWAYS still declared (never drops BOTH legs, only the redundant third). Mutation-tested (disable
+the dedup filter) — 1 exact failure, restored.
+
+### Part 3 — the tie-span DEFAULT flip to 'rails' mode, and TWO newly-discovered, newly-fixed boundary bugs
+
+Amendment (Fred, live: "ties needs to be coincident to their rails"): `PATTERN_DEFAULTS.ties.span.mode` flips
+from `'cells'` (a short, possibly-floating stub) to `'rails'` (every tie bridges exactly one pair of adjacent
+rails, both ends ON a rail) — `'rails'` was ALREADY a fully-implemented, just-not-default alternative
+(`_tieSlotsByCount`'s own 'rails' branch, T56-era code), so this specific change was a one-line default flip plus
+test/doc updates — UNTIL "render the default box + shape lattice to PNG and VIEW it before passing" (the
+dispatch's own explicit acceptance test) caught real bugs the numeric tests alone did not:
+
+**Bug A — boundary-clipped rail coverage.** `_tieSlotsByCount`'s own 'rails' branch picks a row-pair from the RAW
+`railRows` list, assuming every row has a rail spanning the FULL extent width — true in board/rect mode, false in
+BOUNDARY mode (Shape Lattice), where each row's own rail gets independently clipped to the silhouette. A pinched/
+non-convex shape (an hourglass's own waist) can have a tie's own column dip outside the boundary somewhere BETWEEN
+two otherwise-valid rail rows. Fixed with `tieSpanIntact(i, jStart, jEnd)` — replicates the EXACT clipping
+computation the tie-emission loop itself uses, checking the WHOLE candidate span comes back unshortened, not just
+its two row values; a deterministic scan (by gap size, closest-to-drawn first) finds an alternative when the
+original seeded draw fails it. PLUS a belt-and-suspenders ground-truth filter (checked against the REAL, already-
+emitted rail segments, not a second independently-computed insideness test) — measured directly that these two
+CAN disagree at a shape's own extreme edge (seed 42's own column 0 passed the col-scan check while the real rail
+at row 12 never reached x=0 at all), so ground truth wins.
+
+**Bug B — the "on-boundary" ending rule's own pullback, applied where it shouldn't be.** Even after Bug A's own
+fix, a rails-mode tie's own rail-anchored end still ran through the SAME boundary-clip-then-`_applyEndRule` path
+as any ordinary free end — `_clipToSpans` reports a crossing whenever an end COINCIDES with the boundary's own
+crossing point (which a rail-row end near the board edge often does), and the on-boundary rule then pulls that
+end back by half the tie's own width — correct for a genuine free end meeting the boundary, wrong for an end
+that's SUPPOSED to land exactly on a rail (the tie stopped `halfTie` short of the very rail it was declared to
+bridge to). Fixed: an `anchored` slot (rails-mode, `tieSpanIntact` already proved intact) skips the whole clip-
+and-pullback branch entirely — nothing left to clip, by construction.
+
+Both bugs were found by ACTUALLY rendering (an SVG built directly from `buildSketchManifest`'s own output,
+screenshotted via headless Chrome, viewed with the Read tool) rather than trusting the numeric checks alone —
+matching this project's own "verify pixels, don't eyeball" AND "measure, don't re-reason" habits, but going one
+step further: the numeric tests I'd ALREADY written (checking row membership) were passing cleanly while the
+render showed real floating ties, because they were checking the WRONG ground truth (raw row values, not the
+real emitted rail segments).
+
+**Tests** (JS): a NEW shape-lattice-specific amendment test (the box-lattice one never exercised boundary mode at
+all) — every tie endpoint lies on a rail, for the DEFAULT hourglass, no exotic params. Mutation-tested THREE ways:
+disabling `tieSpanIntact` alone (still passes — the ground-truth filter alone is sufficient for CORRECTNESS, just
+less good at MAXIMIZING placed-tie count; an honest finding, not swept under the rug); disabling the ground-truth
+filter alone (1 exact failure); disabling the anchored-skip in the emission loop (1 exact failure, the OTHER
+bug). All restored MD5-clean.
+
+### Part 4 — amendment 3, superseded by amendment 4: `ties.oneEnded`, NOT always rail-to-rail
+
+Fred, live, twice in quick succession: first "i dont want it to be always rail to rail, in the addin we can allow
+to have one end free", then refined to "one setting: number of one ended ties; I'll usually want 1 or 2" — the
+SECOND message is the one actually implemented (the first's own design sketch is superseded, not built). Declared
+`ties.oneEnded` (default 1) in `PATTERN_DEFAULTS.ties`: exactly this many of the seeded `count` ties (clamped to
+however many actually exist) start on a rail and end FREE (a stub chosen to deliberately NOT reach the next rail —
+own seeded row + direction + span draw, falling back to the ordinary rail-to-rail path if no direction has room);
+every other tie still bridges rail-to-rail exactly as Part 3 describes. Never a tie with both ends free — the free
+end is always the second one, anchored at a real rail row on its own start. `'cells'`/`'rails'` stay declared,
+real alternatives; a saved pattern with no `oneEnded` key reads the default.
+
+**Self-caught bug, mid-implementation, via a 50-seed board-mode test (no boundary involved at all — this one had
+nothing to do with Parts 3's own bugs)**: a DOWNWARD one-ended stub (`jEnd = jStart - span`, so `jEnd < jStart`)
+tripped `_applyEndRule`'s own pre-existing degenerate-collapse safety net (`if (na >= nb) { the mid = (a+b)/2;
+na=nb=mid; }`) — since `aIsCrossing`/`bIsCrossing` are both `false` for this path, `na`/`nb` start equal to the
+ALREADY-descending `a`/`b`, tripping the guard on ENTRY, collapsing both ends to their shared midpoint (a real,
+reproduced zero-length tie at a fractional j, e.g. `4.5` between rail rows 3 and 6 — not a hypothetical). Fixed by
+ordering the pair ascending before construction (`Math.min`/`Math.max` — `a`/`b` are interchangeable labels
+everywhere downstream, so this costs nothing and matches every OTHER candidate-building path in this function,
+including the boundary-mode branch which already did this via its own `Math.min`/`max`).
+
+**Manifest wiring**: NO code changes needed — the EXISTING tie-on-rail wiring (`pointOnLatticeSegment`-driven,
+already generic) naturally emits a Coincident ONLY for whichever end genuinely touches a rail; a free end, by
+construction, simply doesn't match any rail and gets nothing, exactly as the dispatch itself asks — "declare the
+data correctly and the existing generic machinery does the right thing" rather than a new special case.
+
+**UI**: a new "one-ended ties" number stepper (0..count, step 1, matching the existing C1 style) in BOTH the box
+Lattice panel (`#latticeTiesOneEnded`) and the Shape Lattice panel (`#shapeLatticeTiesOneEnded` — confirmed they
+share the identical `PATTERN_DEFAULTS.ties`/`_tieSlotsByCount` mechanism, so both genuinely need it), wired
+read/write in `properties-lattice.js`/`properties-shape-lattice.js` following the exact existing convention every
+neighboring field already uses (`0` is a real, valid value — `|| 0` not `|| 1`, so a typed "0" isn't silently
+coerced back to the default).
+
+**Tests**: a dedicated `computePattern`-level test for `oneEnded` = 0/1/2 (50 seeds each) — exact free-ended count,
+never both-ends-floating; the box-lattice and shape-lattice amendment tests from Part 3 updated for "at least one
+end on a rail" instead of "both"; new DOM-level tests in both `properties-*.test.js` files (reads the default onto
+the field, Generate writes an edited value back into the pattern). Mutation-tested the UI write-back specifically
+(hardcode the pattern's own field instead of reading the DOM element) — 1 exact failure, restored MD5-clean.
+Render+view (a fresh SVG-from-manifest render, screenshotted, read): exactly one purple (intentional free-end)
+dot in each of the box and shape lattice defaults, zero red (both-ends-floating) dots.
+
+**Full JS suite across Parts 1-4**: 1028 passed (63 files), up from 1019 at T66. Python: 21/21 (pytest), 20/20
+(plain-`python3` fallback) — Parts 3/4 never touched the Python side at all (the tie-span/oneEnded work is
+entirely JS-side pattern generation).
+
+### Amendments 2 (parity checks) and 5 (shape contour as slots) — NOT STARTED, deliberately deferred
+
+Two more amendments landed while Part 4 was in progress (one via `handoff.py amendments`, one relayed by another
+session over the cross-session channel — both now confirmed via a final `amendments` poll before this commit):
+
+- **Amendment 2**: 5a — a JS test proving the app's own drawn layer (box AND shape, default + one non-default
+  seed) matches `buildSketchManifest`'s own entities 1:1, no extras/missing, 1e-6in tolerance. 5b — a NEW Python
+  `verify_sketch_against_manifest(sketch, manifest, tol=0.002)`, called automatically at the end of
+  `build_constrained_sketch`, reading back REAL sketch geometry (slot centerline ends, circle centres, contour
+  line ends, arc ends+radius, matching arc ends order-free since Fusion arcs are CCW) and adding
+  `summary["parity"] = {"maxErr", "mismatches"}`; logs a WARNING when non-empty. Shim test: a moved point reports,
+  an exact build reports none.
+- **Amendment 5**: the Shape Lattice's own CONTOUR (currently plain Line/Arc3Point entities) becomes SLOTS too —
+  a contour Line via `addCenterToCenterSlot`, a contour Arc3Point via `sketch.addThreePointArcSlot(p1, pMid, p2,
+  width, True)` (a DIFFERENT Fusion API method than anything built so far this turn, its own return shape
+  unverified — advisor's own measurement: "centerline arc through the 3 points, sides ±w/2, width dimension").
+  The centerline (not the visible slot body) gets registered under the segment's own id, `:S`/`:E` by the SAME
+  proximity technique as Fix 3 above, `:C` for the arc centre. Width expression = `stroke_width`. Every EXISTING
+  contour constraint (the Coincident chain, Tangent, H/V, Equal, the hourglass's own shoulder<->hip Radial) now
+  acts on the CENTERLINES instead of the plain entities — a real re-target, not additive. NO Fix, anywhere; if a
+  Tangent between two slot centerlines over-constrains, report which one rather than silently dropping it. A NEW
+  Fusion API surface (`addThreePointArcSlot`) needs its own fake-shim model from scratch (return shape unverified,
+  same disclosed-uncertainty posture as T64's own `addCenterToCenterSlot` before the advisor's own real
+  measurement corrected it) — genuinely new ground, not a variation on anything already built.
+
+**Why deferred, not rushed**: by the time both landed, this turn had already absorbed 5 mid-task amendments on
+top of 3 dispatched fixes (Parts 1-4 above), including TWO newly-discovered-and-fixed real bugs (Part 3) and a
+THIRD self-caught one (Part 4) — each requiring real investigation, not just porting a described fix. Amendment 5
+in particular is its own substantial, architecturally-significant piece of work: a brand-new Fusion API surface
+with an unverified return shape, a full re-target of every existing contour constraint onto new entities, and an
+explicit "report don't Fix" discipline for a genuinely new over-constraint risk (Tangent between two slot
+centerlines) — exactly the kind of geometry-correctness-critical change that deserves a fresh session's own full
+attention, not a rushed tail end after this turn's own already-large scope. Per this project's own "capacity is
+a reportable fact" rule: flagging this now, honestly, as unstarted and scoped for next time, rather than
+delivering a shallow or under-tested version of either amendment.
+
+Amendments polled clean immediately before this commit and will be polled again immediately before passing.
+
+## T68 — SE15/SE15b parity: a REAL app/manifest divergence found and fixed (shape-lattice boundary inset), plus the Python read-back check; contour-as-slots deliberately deferred
+
+**Dispatch**: exactly the two items T67 deferred — (1) shape contour as slots, (2) app/Fusion parity checks — with
+explicit permission to split across turns, finishing the smaller item (2) first. AMEND 1 arrived mid-task (also
+already visible in `NEXT-SESSION-lane-b.md` and re-confirmed via a fresh `handoff.py amendments` poll): the
+advisor's own live-Fusion measurement of T67's own build (3105d74) — same session, same Shape Lattice layer — found
+the app drew 4 rails/7 ties/12 nodes while the manifest produced 6 rails/11 ties/22 nodes (extra rails at the
+board's own top/bottom edge, rail x-ends off by ~0.01in each side), while the BOX manifest matched exactly and
+Fusion↔manifest agreed to 1e-15 for both — meaning the whole gap was app↔manifest, on the Shape tool only. This
+turn tackled item 2 first, per the dispatch's own instruction; item 1 was NOT started (see "why deferred" below).
+
+### Item 2a — JS parity test (`tests/parity-app-manifest.test.js`, NEW FILE) — found and fixed a real bug
+
+Wrote the test AMEND 1 asked for first (box AND shape, default + one non-default seed, `oneEnded` 0 and 2; every
+drawn rail/tie/node/contour-segment piece must have exactly one identical `buildSketchManifest` entity and vice
+versa, 1e-6in tolerance) — using a real mock editor/sketchLayer, `generatePattern`/`regenerateSilhouette` run FOR
+REAL against it, not stubbed.
+
+**Root cause (confirmed against the advisor's own numbers before touching any test)**: the app's own boundary-mode
+extent resolution (`_resolveExtent`→`shapeToInnerBoundaryPrimitives`) insets the boundary INWARD by half the
+silhouette's own live stroke width before clipping the lattice fill against it (`boundary.edge` defaults to
+`'inner-stroke'`, not `'centerline'`; a generated silhouette is always stroked at `SILHOUETTE_STROKE_WIDTH=0.02in`,
+so a 0.01in inset by default) — while the manifest-side `resolveShapeBoundaryExtent` (editor-sketch-manifest.js)
+computed its own extent from the RAW, un-inset primitives, never applying any inset at all. Two edge rails that
+the app correctly excludes (they'd sit ON or past the inset boundary) survive in the manifest instead, and every
+boundary-clipped rail's own x-ends land ~0.01in further out than what's actually drawn — exactly the advisor's own
+measured symptom, on the shape tool only (box mode has no boundary inset at all, so it was never affected).
+
+**Fix, by declaration (the advisor's own instruction: "one shared piece list ... never two computations")**:
+- Extracted `insetPathDToPrimitives(d, strokeHalfWidth)` in `editor-lattice-boundary.js` — a genuinely SHARED pure
+  function, refactored out of `shapeToInnerBoundaryPrimitives`'s own 'path' branch rather than a copy.
+- Moved `SILHOUETTE_STROKE_WIDTH` from `properties-shape-lattice.js` (DOM-touching) to `editor-lattice-boundary.js`
+  (pure, already imported by the manifest module) — one declared constant, read by both the app's own
+  `regenerateSilhouette` (via import, not re-declaration) and the manifest's own inset calculation.
+- New `shapeHalfInset(pattern)` + rewritten `resolveShapeBoundaryExtent` (editor-sketch-manifest.js): computes the
+  SAME half-inset the app's own `_effectiveBorderWidth` would resolve to for a generated silhouette (boundary.edge
+  centerline → 0; else `boundary.border.width` if explicitly overridden, else `SILHOUETTE_STROKE_WIDTH`), applies
+  `insetPathDToPrimitives` to the silhouette's own primitives (via `primitivesToPathD`, the SAME function the app
+  itself uses to draw the boundary path) BEFORE scaling to lattice units — one function, one computation, now
+  consumed by both sides instead of two independent re-derivations.
+
+**A second, unrelated bug found while proving the fix**: my own new test's mock editor never set `.type` on its
+created elements (copied from `properties-lattice.test.js`'s simpler mock, which never needs it — board mode never
+calls the boundary-primitive dispatch at all). `shapeToInnerBoundaryPrimitives`/`shapeToPrimitives` dispatch on
+`el.type` directly (a real SVG.js element's own tag name), not `el.attr('type')` — this is the EXACT same gotcha
+`properties-shape-lattice.test.js`'s own mock already has an explicit comment about ("found live: the first
+attempt at this test filed 'no rail found' against a mock missing exactly this"), just not yet applied to this
+NEW file. With `.type` unset, the boundary silently resolved to zero primitives, so `generatePattern` drew ZERO
+rails/ties/nodes for the shape-lattice case (only the boundary path itself) — which was masking whether the REAL
+fix above actually worked, since the app side of the comparison had nothing to compare. Fixed by threading a
+`type` parameter through `makeElement`/`line()`/`circle()`/`path()`/`clone()`, matching the already-proven pattern.
+Also fixed `stroke()` to capture `width` (not just `color`) into the mock's own store, since the app's own
+`_effectiveBorderWidth` reads the drawn boundary's own live `stroke-width` back — needed for the APP's side of the
+comparison to compute its own halfWidth correctly, even though the production FIX itself is pure and never reads
+the DOM (uses the declared constant directly).
+
+**Non-vacuous, by measurement, not by construction**: with the mock fixed but the production fix still in place,
+all 8 tests pass. Reverted the production fix (`shapeHalfInset` forced to return 0, simulating the exact pre-fix
+bug) and re-ran: exactly the 3 shape-lattice-fill parity tests failed (`oneEnded=0`, `oneEnded=2`, non-default seed
+17) — box-lattice tests and the two contour-primitive-only tests (which never depend on the inset) stayed green.
+Restored from the scratchpad backup, MD5-verified byte-identical. Full JS suite: 1036/1036 (64 files) — the app-
+side refactor (`insetPathDToPrimitives` extraction) alone was already confirmed safe earlier (1033/1035, only the
+2 not-yet-fixed shape-lattice tests red) before the mock fix landed.
+
+### Item 2b — Python `verify_sketch_against_manifest` (`sketch_manifest_builder.py`)
+
+New function, called automatically at the end of `build_constrained_sketch`; summary gains
+`"parity": {"maxErr", "mismatches": [ids]}`. Reads back what `ctx.entity_map` actually holds (keyed by the SAME
+manifest ids `_create_*_entity` already registers under) and compares against the manifest's own declared
+geometry, in inches: Slot/Line by centerline ends (order-preserving — `_find_slot_centerline`'s own exact-match
+search already guarantees p1→start/p2→end at CREATION time, so this is really checking whether the LATER
+constraint/dimension pass dragged it away again); Circle by center+radius; Arc3Point by ends compared ORDER-FREE
+(Fusion's own `addByThreePoints` always normalizes to CCW, so which manifest point becomes `.startSketchPoint` is
+not guaranteed — this checks the actual geometry, not `_create_arc3_entity`'s own proximity-tagged :S/:E) plus a
+radius/center derived from the manifest's own p1/pMid/p2 via a standard circumcenter formula (`_circumcircle`).
+ArcCenter is not checked — T65's own `applyCarvePlacement` always converts it to Arc3Point before a manifest
+reaches this module. Never raises: a missing/failed lookup counts as a mismatch, never aborts the rest of the
+check. Logs one WARNING (count + first 5 ids) when mismatches is non-empty.
+
+**A real fake-shim gap found while writing this**: `FakeSketchArc` (the test file's own adsk shim) never modeled
+`.radius` — no production code had ever read it back before (real `adsk.fusion.SketchArc.radius` is a genuine
+read-only property; the fake simply never needed to fake it). My own new Arc3Point radius check was the first
+caller, and it failed with an `AttributeError`-caused false mismatch until a `@property` was added (computed from
+the arc's own center/start distance, same as real Fusion) — a shim fix, not a production bug, but a real gap
+nonetheless: a `.radius` read on ANY sketch arc in this whole test suite would have silently misbehaved before now.
+
+**Tests** (`test_sketch_manifest_builder.py`, +3, 24/24 total): an end-to-end exact/unmoved build (via
+`_box_lattice_manifest`) reports zero mismatches, maxErr ~0 — FakeSketch's own `addCenterToCenterSlot`/
+`addByCenterRadius` build geometry EXACTLY at the manifest's own p1/p2/center, so this proves the "clean" path.
+A direct unit test (same ctx/sketch-construction style as the existing arc3 CCW test) builds a Slot via
+`_create_slot_entity`, then mutates its own endSketchPoint's geometry by +0.05in AFTER creation (simulating a
+constraint solve dragging it away) — confirms it comes back as the sole mismatch with `maxErr≈0.05`. A companion
+test feeds a CLOCKWISE `(p1,pMid,p2)` Arc3Point (forcing the fake's own CCW-normalization swap) and confirms
+`verify_sketch_against_manifest` reports NO mismatch despite `.startSketchPoint != p1` — proving the order-free
+comparison actually does something, not just documented intent.
+
+**Mutation-tested both new behaviors separately** (scratchpad backup/MD5-restore each time): (1) forced the
+mismatch-append line to `if False` — broke exactly the "moved point" test, nothing else. (2) forced the Arc3Point
+end comparison to direct-order-only (dropped the swapped-pairing branch) — broke exactly the "order-free" test,
+nothing else. Both restores confirmed byte-identical via `md5sum`. Full Python suite: 142/142 (up from 21 pre-T68
+in this module's own file: now 24/24 there).
+
+### Item 1 (contour as slots, SE15b) — NOT STARTED, deliberately deferred
+
+Per the dispatch's own explicit permission ("finish item 2 FIRST... then item 1... if it is too big for one turn").
+Item 2 alone required a genuine root-cause investigation (a real app/manifest divergence, confirmed against the
+advisor's own live numbers before any fix was written) plus TWO separate test-infrastructure gaps found and fixed
+along the way (the mock `.type`/`stroke-width` gap, the fake `.radius` gap) — each demanded actually understanding
+why a symptom occurred, not just porting a described fix. Item 1 is its own substantial, architecturally-significant
+piece of work on top of that: a brand-new Fusion API surface (`addThreePointArcSlot`) with an unverified return
+shape needing a from-scratch shim model (including its own CCW normalization, mirroring the discipline
+`addCenterToCenterSlot` needed before the advisor's own real measurement corrected T64), a full re-target of every
+EXISTING contour constraint (Coincident chain, Tangent, H/V, Equal, the hourglass's own Radial dims) onto new
+centerline entities instead of the plain Line/Arc3Point ones, and an explicit "report, don't Fix" discipline for a
+genuinely new over-constraint risk. Per this project's own "capacity is a reportable fact" rule: rather than rush a
+geometry-correctness-critical change with an unverified API surface into the tail end of an already-substantial
+turn, flagging it now as unstarted and scoped for a fresh turn.
+
+Amendments polled clean before this commit; will poll once more immediately before passing.
+
+## T69 — SE15b: the shape contour becomes slots too (the item T68 deferred, done in full this turn)
+
+**Dispatch**: exactly the one remaining item, "the ONE item, nothing else this turn" — Fred: "want the shape
+contour to be made of slots." A contour Line becomes a Fusion-native center-to-center slot; a contour Arc3Point
+becomes a three-point ARC slot (`addThreePointArcSlot`, a brand-new Fusion API surface — NO FUSION this turn, the
+advisor verifies live after merge). NEVER Fix; joints stay separate points + explicit Coincident, unchanged.
+
+### Design: declared, not a builder special case
+
+A new constant, `SKETCH_CONTOUR_WIDTH_MODE` (editor-sketch-manifest.js), governs the CONTOUR's own slot-vs-
+centerline choice — deliberately its OWN field, never overloading the EXISTING `widthMode`/`SKETCH_WIDTH_MODE`,
+which this module's own tests already establish as scoped to the LATTICE FILL only. Default: `'slot'`.
+`manifest.contourWidthMode` exposes the choice at the top level, `null` when there's no contour at all (a plain
+box lattice layer).
+
+- **Contour Line → `Slot`**: reuses `addSlotPieces` DIRECTLY — a contour Line-slot IS a rail/tie slot, byte-for-
+  byte the same entity/dimension shape, so this is a genuine "declare, don't hand-roll a second copy" win: zero
+  new production logic needed for this half of the mechanism.
+- **Contour Arc → `ArcCenterSlot`** (pre-carve, natural space) → **`Arc3PointSlot`** (post-carve, carve space,
+  via `applyCarvePlacement`'s new branch, a straight sibling of the existing `ArcCenter`→`Arc3Point` branch — same
+  `toCarveArc3Point` helper, reused, just re-tagged and carrying `width` through untouched).
+- **Width**: seeded from the layer's own REAL `pattern.widths.rails` (merged over `PATTERN_DEFAULTS.widths` the
+  same way `manifestFromLattice` already does), driven by the SAME `'stroke_width'` Fusion parameter rails/ties
+  use when linked — per the dispatch's own "same param as rails/ties" instruction. `manifestFromShape` declares
+  its own `stroke_width` parameter entry independently (it has no visibility into the lattice's own link state);
+  Python's existing create-or-update parameter sync harmlessly reconciles the common case where both sides
+  declare the identical name/value, and is the ONLY source of it when rails/ties are unlinked.
+- **Constraints**: the EXISTING Coincident chain / Tangent / H-V / Equal / hourglass Radial emission logic in
+  `manifestFromShape` needed ZERO changes — it only ever targets entities by bare id or `:S`/`:E`/`:C` suffix,
+  never by type, so it re-targets onto the new slot centerlines for free. This is the "re-target, not additive"
+  the dispatch asked for, achieved by NOT having written type-aware constraint logic in the first place (T61).
+- **Python**: new `_create_arc3_slot_entity` (`sketch.addThreePointArcSlot`) is the arc-shaped sibling of
+  `_create_slot_entity` — registers the CENTERLINE (never the visible body) under the seg id, `:S`/`:E` by the
+  SAME proximity technique T67 already uses for a plain Arc3Point (Fusion's own CCW normalization is expected to
+  apply to this method too, unverified live), `:C` for the centre. `_find_arc_slot_centerline` diffs
+  `sketchArcs`' own count before/after (mirroring `_find_slot_centerline`'s established "generic vector, diff the
+  collection" technique) and requires BOTH a construction-curve flag AND actually passing through all 3 given
+  points before calling something the centerline — per the dispatch's own explicit "if you can't identify it
+  robustly, log it and skip, never guess": zero or ambiguous candidates raise, caught by `_create_geometry`'s
+  existing per-entity try/except into a skip+report, never a silent wrong pick.
+- **`verify_sketch_against_manifest`** (T68) extended to treat `Arc3PointSlot` identically to `Arc3Point` — the
+  parity check is geometry-based (order-free ends + circumcircle-derived radius/center), not representation-
+  specific, so this was a 2-line addition to two existing tuples/conditions, not new logic.
+
+### Test-file surgery: an existing default changed, so existing assertions had to follow
+
+`manifestFromShape`'s own default flipped (matching the SAME precedent T64 already set for rails/ties: flip the
+default, update the tests, keep `'centerline'` real and available via an explicit `{widthMode:'centerline'}`
+override) — this touched roughly a dozen existing assertions across `tests/editor-sketch-manifest.test.js` that
+checked `e.type === 'Line'`/`'ArcCenter'`/`'Arc3Point'` for CONTOUR entities specifically. Each site's own
+GEOMETRIC claim (Coincident shares a point, Tangent touches an arc, Equal pairs matching radius/length, the H/V
+carve-transform invariant, the carve-placed bbox) was UNCHANGED — only the type-string literal needed updating,
+confirmed by reading each test's own purpose before touching it rather than mechanically search-replacing. Two
+tests needed a real rewrite, not just a type-string swap: the parameters-count test (`stroke_width` is a genuinely
+NEW parameter, so `+1` became `+2`, and the unit-null loop needed to exclude it too) and the kink-override test
+(its own `manifest.dimensions.some(...)` assertion was checking "no dimension targets a kink segment" when its
+REAL intent — per its own title — was specifically about the hourglass Radial dimension; a kink Line legitimately
+gets its OWN SlotWidth dimension now, so the assertion was narrowed to `d.type === 'Radial'` to keep testing what
+it always meant to test). Also touched `tests/parity-app-manifest.test.js` (T68): its own `checkLatticeParity`
+counted ALL `type==='Slot'` entities as lattice pieces, which now over-counts (contour Line-slots are ALSO type
+`'Slot'`) — fixed by excluding `id.startsWith('seg')`; its own contour-primitive-parity test's type check
+similarly widened to accept `'Slot'`/`'Arc3PointSlot'` alongside the old `'Line'`/`'Arc3Point'`.
+
+### Non-vacuous, both languages, by measurement
+
+**JS**: reverted `SKETCH_CONTOUR_WIDTH_MODE` to `'centerline'` (scratchpad backup, MD5-restored after) — exactly
+the 7 tests that assert the new default's own shape failed, the T68 parity suite (which reads `generateSilhouette`
+primitives directly, never a manifest type tag) stayed green throughout, confirming the two test files are
+checking genuinely different things and neither is accidentally propping up the other.
+
+**Python**: three separate mutations, each isolated and MD5-restored in turn: (1) disabling the `_create_geometry`
+dispatch branch for `Arc3PointSlot` broke exactly the one end-to-end test (`entities.created` dropped 2→1); (2)
+disabling the proximity-based S/E swap in `_create_arc3_slot_entity` broke exactly the CCW-survival test; (3)
+disabling `_find_arc_slot_centerline`'s own construction-flag check broke exactly the "never guess" test (it
+stopped raising, since the deliberately-broken fake's non-construction arc became a false match instead of no
+match at all) — confirming that test really does depend on the construction-flag gate, not just on the fake
+happening to produce zero arcs some other way.
+
+**Full suites**: JS 1039/1039 (64 files, up from 1036 at T68's own commit — 3 genuinely new tests: the
+`widthMode:'centerline'` alternative-still-works case for both hourglass/bottle, plus the box-lattice-has-no-
+contourWidthMode case; the ~7 other touched tests changed their own assertions in place, not a net addition).
+Python 146/146 (`pytest`), 27/27
+(plain-`python3` fallback — one pre-existing test, `test_build_from_manifest_file_reads_json_and_builds`, was
+already missing from that list before this turn; left alone, noted here rather than silently fixed, since it's
+unrelated to T69's own scope).
+
+### A pre-existing shim gap, closed as part of this: FakeSketchArcs never modeled `.count`/`.item()`
+
+Needed for `_find_arc_slot_centerline`'s own "diff the collection" technique — added, mirroring `FakeSketchLines`'
+own established shape exactly. Also factored the CCW-normalization signed-area test (previously inline only in
+`addByThreePoints`) into a shared `_ccw_normalized_ends` helper, now used by both that method's own fake AND the
+new `addThreePointArcSlot` fake — one declared check, not two copies of the same formula.
+
+This closes T68's own deferred item 1 in full. Both of T67's original deferrals (parity checks, contour-as-slots)
+are now done.
+
+Amendments polled clean before this commit; will poll once more immediately before passing.
+
+## T69-FIX — the arc argument order (advisor MEASURED, real bug in 02b9100) + a genuine symmetry relationship for the contour's two halves, before T70 could start
+
+**How this arrived**: mid-T70 (before any T70 code was written), a peer session (`b-spline-generator-web-addin-5c`)
+relayed two cross-session messages carrying the advisor's own live-Fusion measurements of T69 (02b9100), with an
+explicit instruction to fix these FIRST, as their own commit, before continuing SE14b. Also relayed a separate T70
+AMEND 1 (a node-parity gap on the Shape lattice) — left for T70 proper, since it's squarely inside that turn's own
+parity-test-extension scope, not urgent-blocking like the other two.
+
+### AMEND 2 — `sketch.addThreePointArcSlot`'s own argument order was wrong
+
+**Measured**: the method's real signature is `(START, END, POINT-ON-ARC)`, not `(start, mid, end)`. T69's own call
+— `addThreePointArcSlot(p1, p_mid, p2, ...)` — told Fusion the arc's own END was THIS module's own MIDPOINT, so
+every one of the 6 contour arcs built only HALF its intended sweep (start to midpoint, never reaching the real
+end). Measured fallout: 2 Tangent constraints SOLVING_FAILED, parity maxErr 2.35in across all 12 contour segments.
+
+**Fix**: swap the call to `addThreePointArcSlot(p1, p2, p_mid, ...)` — one line, in `_create_arc3_slot_entity`.
+The existing proximity-based `:S`/`:E` relabeling (kept unchanged) still handles whatever CCW-normalization
+Fusion's own solver applies regardless of argument order.
+
+**Why the FIRST version of the test shim never caught this**: a circumcenter is order-independent — feeding the
+SAME 3 raw points into the fake's own `_circumcenter` in ANY order produces the identical center/radius, so the
+OLD (buggy) call and the FIXED call looked numerically indistinguishable to a shim that only modeled "3 points
+define a circle" (the SAME mental model `addByThreePoints` genuinely uses, which this method does NOT). Rewrote
+the fake to model the REAL role-based semantics: `start`/`end` become the arc's own two ends DIRECTLY (after the
+SAME CCW-normalization signed-area check `addByThreePoints`'s own fake already uses, now factored into a shared
+`_ccw_normalized_ends` helper used by both), and the 3rd argument feeds ONLY the circumcenter. Added a dedicated
+regression test (`test_addThreePointArcSlot_shim_models_the_real_start_end_pointOnArc_argument_order`) proving the
+OLD call shape, under the NEW fake, genuinely builds an arc ending at the midpoint, not the real end — the
+dispatch's own explicit "make the shim model this order so a wrong call fails first" ask.
+
+### AMEND 3 — the contour's two halves were never actually tied to each other, only made the same size
+
+**Measured** (advisor, live, with AMEND 2's fix applied — parity was already exact by then): stroke_width
+0.07->0.25 moved the arcs ~0.1in and broke symmetry (irreversibly — going back to 0.07 did NOT restore it); a
+rigid move of the whole sketch collapsed the waist to r 0.274; Tangent seg8/seg9 came back OVER_CONSTRAINTS.
+
+**Root cause**: the OLD mirror-Equal pass (`Equal(seg_i, seg_mirror(i))`) only ever asserted the two halves were
+the SAME SIZE — nothing tied WHERE the left half sat relative to the right, so the assembly had a genuine
+unconstrained rigid-body degree of freedom between its two halves, invisible until something disturbed it.
+
+**Fix, with relationships + parameter-driven dims, never Fix** (per the dispatch's own explicit instruction):
+- A new construction Line, `mirrorAxis`, at natural-space `x = region.x + region.w/2` — confirmed (by reading
+  `_solveHourglass`/`_solveBottle` directly) to be the IDENTICAL mirror-x both presets already use for their own
+  `M()` reflection, so this generalizes across both without any preset-specific plumbing. `_create_line_entity`
+  (Python) gained an `isConstruction` flag, read from the manifest's own declared field (every OTHER Line entity
+  omits it, defaulting False, unchanged) — the FIRST manifest entity that ever needed it.
+- A genuinely NEW Fusion constraint type, `Symmetry` (`gc.addSymmetry(point, point, symmetryLine)`), added to
+  `fb_engine/constraints.py`'s own `constraint_step` (previously only Coincident/Collinear/H/V/Tangent/Parallel/
+  Equal — a real gap, not a re-guess, since `addSymmetry` genuinely didn't exist there before).
+- For a mirrored LINE pair (e.g. a horn segment and its own mirror): Symmetry on BOTH endpoints, matched to their
+  geometrically-correct counterpart by Y-proximity (mirroring only ever flips X) rather than an assumed traversal-
+  order convention — the SAME "read real coordinates, don't guess from convention" discipline `axisConstraintType`
+  already uses elsewhere in this module. This fully determines the pair's relative length too, so the OLD
+  mirror-Equal is now genuinely redundant and dropped for lines.
+- For a mirrored ARC pair (the waist, seg2<->seg8): Symmetry on ONLY the center point — its own two ENDpoints are
+  already pinned transitively via the Coincident chain through their own (now-symmetric) neighbors, so Symmetry's
+  job here is purely POSITION. The mirror-Equal STAYS for arcs (radius is a genuinely separate concern Symmetry-
+  on-a-center-point alone never implies) — exactly mirroring the EXISTING seg1<->seg3 shoulder<->hip pattern
+  (Equal + one Radial dim driving both).
+- A NEW `waist_radius` parameter + Radial dim on the right waist arc (seg2) — the waist's own radius (its third
+  degree of freedom beyond its two now-transitively-pinned endpoints) was previously undimensioned entirely; a
+  semicircle drawn 3-point-through has no OTHER constraint holding its bulge in place once built, so it was
+  drifting on every re-solve. Hourglass-only, matching the shoulder/hip Radial dim's own pre-existing scope
+  (bottle's own analogous "neck" arc stays undimensioned — a disclosed, pre-existing narrowing, not new).
+- The SPECIFIC redundant Tangent (seg8/seg9) the advisor measured: generalized into a declarative rule rather
+  than hardcoded indices (fragile under segment overrides, and meaningless for bottle's own different layout) —
+  when an adjacent-joint Tangent's OWN mirror-image joint (`mirrorSegmentIndex`, reversed order since the left
+  half is walked in the OPPOSITE traversal direction per the generator's own header comment) was ALREADY declared
+  earlier in the same pass, skip it. Verified by hand-tracing all 4 mirror-Tangent pairs in the default hourglass
+  (0,1)<->(9,10), (1,2)<->(8,9), (2,3)<->(7,8), (3,4)<->(6,7): the rule drops ALL FOUR left-side ones (each being
+  the second-encountered of its own pair, since the right side is always walked first in forward-index order) —
+  a result that CONTAINS the one specific pair (8,9) the advisor measured, not one that contradicts it, giving
+  real confidence the generalization is sound and not just a re-guess dressed as one. A dedicated test
+  (`exactly HALF the arc-adjacency Tangent joints...`) locks in the count (4, not 8) and specifically that
+  seg8/seg9 is dropped while its own mirror seg1/seg2 is kept.
+
+**Disclosed uncertainty** (this turn stays NO FUSION): whether ALL FOUR dropped Tangents are genuinely as
+redundant as the ONE the advisor actually measured, versus Fusion's solver simply never got far enough to report
+the others, is not independently confirmed here — flagged for the advisor's own next live re-measurement, which
+they already said they'd do ("Advisor will re-measure drift + reversibility live").
+
+### Tests and verification
+
+**JS** (`tests/editor-sketch-manifest.test.js`): a new describe block, 6 tests — mirror axis exists at the
+confirmed shared mirror-x and is construction; every Symmetry constraint's own 2 points are genuine mirror images
+(independent coordinate check, not re-trusting the function under test); a Line pair loses its old Equal; an Arc
+pair keeps it; exactly 4 (not 8) Tangents survive, with seg8/seg9 specifically dropped and seg1/seg2 specifically
+kept; the waist gets its own parameter+dim. 3 existing tests' own count assertions updated (mirror axis adds one
+non-`seg*` entity; hourglass gets one extra parameter) — each checked against the test's own stated PURPOSE before
+touching it, not mechanically. Mutation-tested all 3 new behaviors separately (Tangent dedup, Symmetry emission,
+waist dim), each isolated and MD5-restored: disabling each broke EXACTLY the test(s) built to catch it, nothing
+else. Full JS suite: 1045/1045 (up from 1039 — 6 new tests, 0 regressions).
+
+**Python** (`test_sketch_manifest_builder.py`): the arg-order regression test above, plus a direct
+`isConstruction` unit test, plus an end-to-end `Symmetry`-dispatch test (2 mirrored Lines + a construction axis,
+built via `build_constrained_sketch`, confirming `constraint:Symmetry` fires twice and `verify_sketch_against_
+manifest` reports zero mismatches on the untouched build). Full suite: 149/149 (`pytest`), 30/30 (plain-`python3`
+fallback — the SAME single pre-existing gap noted at T69 remains, still unrelated to this turn).
+
+Amendments polled clean before this commit; will poll once more immediately before passing, then continue into
+T70 (SE14b) proper, folding in AMEND 1 (the node-parity gap) as part of that turn's own parity-test extension.
+
+## T69-FIX-2 — the mirror axes were free-floating, and the contour had no overall size at all
+
+**How this arrived**: while investigating T70 (SE14b) proper, two MORE cross-session amendments landed in quick
+succession (peer session relaying the advisor's own live-Fusion re-measurements of the T69-FIX commit,
+2e56151), both explicitly asking for their own T69-fix-2 commit before continuing SE14b — a THIRD round of the
+same "measure live, report back, fix before moving on" cycle T69/T69-FIX already went through twice.
+
+### AMEND 4 — the mirror axis itself was unanchored
+
+**Measured**: at stroke_width 0.5, the WHOLE right half slid to x=353.9in (left half stayed put) and never came
+back. Root cause: Symmetry pins the two halves TO EACH OTHER, but nothing pinned the AXIS itself to any fixed
+absolute position — the entire two-halves-plus-axis assembly could translate/rotate as a rigid body.
+
+**Fix**: one relationship per axis, never Fix — `Coincident(sketch's own origin point, axis)`, a point-ON-line
+constraint using Fusion's own ALWAYS-fixed origin point as the anchor. Declared in the manifest as
+`{type:'Coincident', targets:['origin', axisId]}`; the Python builder resolves `'origin'` by registering
+`sketch.originPoint` directly into `ctx.entity_map[s_name]` at build start — the EXISTING generic `resolve_entity`
+lookup finds it for free, zero changes to fb_engine's own shared resolver needed.
+
+**Also dropped 2 measured OVER_CONSTRAINTS** (both re-checked by hand before touching anything, not applied
+blind):
+- `Equal(['seg1','seg9'])` (the shoulder mirror pair): once BOTH its 2 endpoints (via the pre-existing Coincident
+  chain) AND its center (via the Symmetry T69-FIX already added) are fixed, a circle through 2 known points with
+  a known center has no remaining freedom — the mirror-Equal is a duplicate of an already-fully-implied fact.
+  Deliberately NOT generalized to hip (seg3<->seg7) or the waist (seg2<->seg8), even though the SAME argument
+  seems to apply equally to them — hand-tracing could not produce a confident reason those two are ALSO safe
+  (and the advisor's own measurement didn't flag them either), so they keep their own mirror-Equal rather than
+  risk under-constraining on a guess neither reasoning nor measurement actually confirmed.
+- `Symmetry(['seg4:E','seg6:S'])`: redundant once its own sibling Symmetry pair (declared for the SAME line pair)
+  plus each line's own Vertical constraint plus the Coincident chain to their shared self-mirroring, Horizontal
+  neighbor (seg5, the bottom edge) already close the loop. Declared off `mirrorSegmentIndex`/`segMap` adjacency,
+  not a raw index literal — but empirically NARROWER than a first read suggests: the rule only ever inspects the
+  "E" side of a pair (never "S"), so it selects EXACTLY the one pair the advisor measured (seg4<->seg6, closing
+  via seg5) and leaves seg0<->seg10 alone (its own closing happens on the "S" side, via seg11, which this rule
+  doesn't inspect) — confirmed empirically by running the tests, not assumed: an earlier hand-derivation wrongly
+  predicted BOTH pairs would drop, and the test written to prove that generalization caught the mistake before
+  it shipped (see "measure, don't re-reason" — exactly the discipline this project's own memory already names).
+
+### AMEND 5 — nothing set the contour's own overall size at all
+
+**Measured** (with AMEND 4's origin anchor already in place — the arcs hold now): the straight EDGES still
+stretch at stroke_width 0.5 — the side lines move apart (7.0in -> ~7.4in) and the top/bottom edges slide in Y,
+because the contour's own mirror-symmetry + per-piece H/V pin its SHAPE but never its ABSOLUTE SCALE.
+
+**Fix**: param-driven Distance dimensions, never Fix, referencing `widthIn`/`heightIn` — the BOARD's own
+PRE-EXISTING Fusion document parameters (`b-spline-gen.py`'s own `_sync_user_parameters`, confirmed by reading
+that file directly rather than assumed) — this module only ever REFERENCES them by name, never re-declares them
+(the same "declare, don't hand-roll a duplicate" reasoning `stroke_width` already gets, just for a parameter this
+module doesn't own at all).
+- A horizontal Distance dim between the FIRST Line mirror pair encountered (`widthPairIds`, already
+  Symmetry-linked and each individually Vertical — pins their ABSOLUTE separation, not just their relative one)
+  = `widthIn`.
+- The two SELF-mirroring Horizontal segments (top/bottom edges — never processed by the mirror-pair loop at all,
+  since `mi === i` skips a self-mirror entirely) get a vertical Distance dim between them = `heightIn`, PLUS a
+  NEW Symmetry of the two edges (as whole curves, not points — Fusion's own `addSymmetry` accepts either) about a
+  SECOND new construction axis (`horizontalAxis`, also Coincident-anchored to the origin for the identical AMEND
+  4 reason) — the width/height dims alone only fix SEPARATION, not WHERE the pair sits relative to the origin.
+- `Distance` is a DIMENSION (`fb_engine.dimension_step`), not a geometric constraint — caught and fixed BEFORE
+  committing (first draft declared it into `constraints[]`, which only ever reaches `constraint_step`, a type
+  system that has no such thing): moved to `dimensions[]`, the SAME array `Radial`/`SlotWidth` already use.
+  `dimension_step`'s own existing `Targets`+`Orientation` branch (`addDistanceDimension`) already supported this
+  — a previously-unused existing path, not new fb_engine surface (unlike `Symmetry`, T69-FIX, which genuinely was
+  new). `_apply_radial_dimensions` renamed to `_apply_declared_dimensions`, reflecting its now-broader real scope.
+
+**A real fake-shim gap found while writing the Python test**: `adsk.fusion.DimensionOrientations` (the enum
+`_create_dimension`'s own Distance branch reads directly) was never stubbed — no prior manifest, in this
+module's whole history, had ever exercised that specific code path. Added with the 3 real values
+(Horizontal/Vertical/AlignedDimensionOrientation), same "opaque sentinel, never rendered" convention every other
+fb_engine enum stub in this shim already uses. Also added `originPoint` to `FakeSketch` (a real Fusion sketch's
+own always-(0,0,0) point) and a `dim:Distance` CALL_LOG entry to `addDistanceDimension` (matching
+`addRadialDimension`'s own existing logging convention, previously missing).
+
+### Tests and verification
+
+**JS**: 5 new tests (both axes Coincident-anchored; the horizontal axis's own geometry; the shoulder-Equal drop
+with its Symmetry surviving; hip/waist EXPLICITLY confirmed NOT dropped; the seg4/seg6-vs-seg0/seg10 asymmetry
+made an explicit, named fact rather than a silent side effect; the width/height dims + horizontal-axis symmetry).
+3 existing tests' own scope narrowed (the generic Coincident/Symmetry coordinate checks now explicitly exclude
+`'origin'`-involving and `horizontalAxis`-involving constraints, which need their own dedicated tests instead of
+a one-size-fits-all coordinate check). Mutation-tested all 3 new production behaviors (shoulder-Equal drop,
+width/height dim block) separately, MD5-restored each time — each disabled EXACTLY its own test(s), nothing else.
+Full suite: 1051/1051 (up from 1045 — 6 net new tests).
+
+**Python**: origin registration + `Distance` dispatch both mutation-tested (disabling each broke exactly the one
+new end-to-end test built to catch it). Full suite: 150/150 (`pytest`).
+
+**Disclosed, not independently re-verified this turn** (NO FUSION): whether hip/waist's own mirror-Equal are
+ALSO safe to drop (structurally they look similar to the dropped shoulder pair, but neither hand-tracing nor the
+advisor's own measurement confirms it) and whether seg0/seg10's own second Symmetry is ALSO genuinely redundant
+(the rule's own asymmetry is a real, disclosed limitation, not a proven boundary) are BOTH left as open questions
+for the advisor's own next live check, exactly as flagged in the previous T69-FIX entry — this turn added NO new
+unconfirmed generalizations beyond what was already flagged, and corrected one specific wrong hand-derivation
+(seg0/seg10) with an empirical test before it could ship silently wrong.
+
+Amendments polled clean before this commit; will poll once more immediately before passing, then continue into
+T70 (SE14b) proper.
+
+## Capacity report — stopping here; T69-fix-3 (a large amendment cascade) and T70 (SE14b) itself both queued, neither started
+
+**What happened**: right after T69-fix-2 (aa30f5b) was pushed, and while starting the T70 (SE14b) investigation
+below, NINE more amendments (T70 AMEND 6 through 14) landed in rapid succession — the advisor iterating live in
+Fusion with Fred, several amendments explicitly SUPERSEDING earlier ones in the SAME cascade (12 replaces 9/10/11;
+11 was even proposed then HELD after Fred said the advisor had misread him). Asked the user directly whether to
+push through T70's own substantial remaining implementation or stop and report capacity, given the turn had
+already produced 3 commits (T69, T69-fix, T69-fix-2) before this cascade even arrived — the user chose to stop and
+report. This entry is that report: a synthesized, ACTIONABLE spec for the next session (not a re-hash of the raw
+amendment chain), followed by the T70/SE14b investigation already completed, followed by the capacity call itself.
+
+### T69-fix-3 — the synthesized FINAL spec (not the raw amendment chain)
+
+Reading amendments 6-13 in isolation and implementing them in arrival order would be actively wrong — several
+supersede earlier ones outright. The FINAL state, after resolving every supersession:
+
+**Contour constraints — a near-total rollback of T69-FIX's own AMEND 3/4/5** (Fred: "dont use symmetry either",
+"no radius dim though, leave the sketch loose for now"):
+- REMOVE entirely: the `Symmetry` constraints on the contour (both the L/R mirror-pass ones AND the top/bottom
+  Symmetry-about-`horizontalAxis`), the `mirrorAxis`/`horizontalAxis` construction-Line entities, the
+  `Coincident(['origin', axisId])` anchors, the Radial dims (`corner_radius*half_width` on the shoulder,
+  `waist_radius` on the waist).
+- KEEP unchanged: Slot/Arc3PointSlot entities + their own `stroke_width` SlotWidth dims (T69's own mechanism,
+  untouched by any of this), the Coincident joint chain (always existed, pre-T69-FIX), H/V on straight segments.
+- **My own flagged judgment call, NOT yet confirmed by the advisor**: the mirror-Tangent DEDUP (dropping
+  Tangent(seg4,seg6) specifically) and the shoulder mirror-Equal DROP (dropping Equal(seg1,seg9)) were BOTH
+  justified purely by "redundant given the NEW Symmetry constraints" — with Symmetry now gone entirely, that
+  justification no longer holds, so BOTH should almost certainly be REVERTED (restore all 8 Tangents; restore
+  Equal(seg1,seg9), matching hip/waist's own unconditional Equal treatment) as PART of this same rollback, not
+  left half-applied. The advisor's own wording ("keep the redundant-Tangent dedupe IF STILL NEEDED") explicitly
+  leaves this as a judgment call for the implementer — flagging my own read here, not applying it myself.
+- Net effect: the mirror-pass logic collapses back to something close to T69's ORIGINAL, pre-AMEND-3 shape (plain
+  Equal for both Line and Arc mirror pairs, no Symmetry/axes/Radial) — geometry is inserted symmetric (by
+  construction, from the manifest's own coordinates) and left LOOSE, not explicitly re-constrained to stay so.
+
+**Contour overall size — KEPT, but redesigned twice more** (Fred: "W and H is good", then two value changes, then
+a parameter-design change):
+- Two Distance dims survive: width and height, but targeting CORNER POINTS on the contour centerline (e.g.
+  `seg11:S`/`seg11:E` and `seg4:E`/`seg0:S`-style pairs — whichever segment pair actually shares each corner via
+  the existing Coincident chain), NEVER whole curves — AMEND 6's own real measurement: `addDistanceDimension`'s
+  real signature is `(SketchPoint, SketchPoint, DimensionOrientations, textPoint[, isDriving])`, and passing
+  curves crashes with "Wrong number or type of arguments." **The shim's own `addDistanceDimension` must be
+  updated to REJECT curves** (so this exact regression fails in tests, matching the dispatch's own explicit ask)
+  — currently the fake accepts anything positionally; needs a type check against whatever this shim's own
+  SketchPoint-shaped objects are (`FakeSketchPoint`), raising/erroring for a `FakeSketchLine`/`FakeSketchArc`.
+- **FINAL parameter design** (AMEND 12, explicitly replacing 9/10/11 — 11 was proposed as a `contour_margin`
+  param, briefly HELD after a misread, then fully replaced by 12's own different shape, so do NOT implement
+  `contour_margin` at all): two NEW, INDEPENDENT user parameters, `contour_width`/`contour_height`, declared as
+  PLAIN NUMBERS (never an expression referencing `widthIn`/`heightIn`) — value = board size minus a margin.
+- **FINAL margin value** (AMEND 13, replacing 12's own 0.25in default): margin = **1 in** total (0.5in inset per
+  side) — on the standard 7x9 test board, `contour_width=6`, `contour_height=8`. Declare this ONE default margin
+  constant once in JS, consumed by BOTH the app's own drawn-contour inset (0.5in per side) and the manifest's
+  `contour_width`/`contour_height` parameter VALUES — one declaration, two consumers, the same discipline every
+  other shared constant in this module already follows.
+- Dims: `{type:'Distance', targets:[cornerPointIdA, cornerPointIdB], orientation:'Horizontal', expression:
+  'contour_width'}` (and the Vertical/`contour_height` sibling) — expression is the BARE parameter name now, no
+  arithmetic (AMEND 12 dropped the earlier `'widthIn - 0.25 in'` inline-arithmetic design from AMEND 9/10 too).
+- App-side: the drawn contour itself must ALSO be inset by the SAME margin (0.5in per side, centred) — meaning
+  `regenerateSilhouette`'s own boundary generation needs to actually shrink the silhouette's own region by the
+  declared margin before calling `generateSilhouette`, not just change what the MANIFEST claims — otherwise the
+  app draws one size and the manifest declares another, breaking parity (T68's own parity test must catch this;
+  the dispatch's own AMEND 9 text was explicit: "the build's parity check must still read 0").
+
+**Required test**: "the manifest declares no Symmetry, Radial, or Distance-targeting-a-curve for the contour" —
+the dispatch's own explicit ask (AMEND 7), still valid after 8/12/13's own partial reinstatement of Distance (now
+point-targeted, not curve-targeted — the test should assert Distance dims exist but with 2-point, not-a-bare-
+segment-id targets).
+
+**Tangential, separate item — T70 AMEND 14** (Fred: "Stroke width default to .25"): the LATTICE stroke default
+(`PATTERN_DEFAULTS.widths.rails`/`.ties`, still linked-equal by default) changes from 0.07in to 0.25in — covers
+rails, ties, AND (since T69) the Shape Lattice's own contour slot width, all via the SAME `stroke_width` manifest
+parameter's own seed value. ONE declared default, changed in ONE place (`editor-lattice-pattern.js`'s own
+`PATTERN_DEFAULTS`). A saved pattern with its own already-set width is UNCHANGED (defaults only affect a NEW/
+unset pattern). Every existing test asserting the literal `0.07` as "the default" needs updating to `0.25` — a
+mechanical but WIDE-reaching sweep (rails/ties/node-radius tests, shape-lattice tests, the manifest tests, the
+Python builder's own `stroke_width` parameter-value assertions) — grep for `0.07` across `tests/*.js` and
+`test_sketch_manifest_builder.py` before touching anything, since not every `0.07` literal is necessarily THIS
+default (a few tests intentionally pass a NON-default width to prove the mechanism is generic) — read each hit's
+own context before changing it, don't mechanically replace.
+
+**None of T69-fix-3 or AMEND 14 has been implemented** — this whole section is a synthesized spec for whoever
+picks this up next (fresh session or this same one, resumed), so they don't have to re-read and re-reconcile 9
+raw, partially-superseded amendment messages themselves.
+
+### T70 (SE14b) — investigation completed, zero implementation started
+
+Fred: "we should also represent those separations in the add-in preview, to be able to select segments and color
+them." Dispatched as: the generated silhouette becomes N separate selectable/colourable SVG elements (one per
+segment, round caps, stroke=stroke_width) instead of one path; the per-segment list must be the SAME piece list
+`buildSketchManifest` reads (T68's own parity test extended to cover it); the fill boundary is the segments
+chained into one closed loop, DERIVED at render time; styling (straight/curve/kink) stays mirrored per L/R pair,
+COLOUR is per-segment (L can differ from R); colour survives a same-count regenerate, keyed by segment id/index;
+drape/3D preview/SVG export also show per-segment colour; a visual PNG check (2 recoloured segments, hourglass +
+bottle) before passing.
+
+**Findings from a full investigation (an Explore agent's own survey, cross-checked against the actual source)**:
+- Rails/ties/nodes today are colour-per-KIND, not per-piece (`generatePattern` swaps `editor._color` before
+  looping over one whole kind; `recolorOwnedKind` bulk-recolours a WHOLE kind identically) — there is NO existing
+  per-piece colour override anywhere in this codebase to mirror; this is genuinely new ground.
+- Selectability is fully generic (`getNearbyElement`, editor-hit.js): any direct child of `_sketchLayer` with
+  `data-layer` and a declared `ELEMENT_CAPS` entry (line/path/circle/etc.) is automatically selectable — a `<line>`
+  or per-segment `<path>` needs NO new attribute to become genuinely selectable via the normal select tool.
+- A SEPARATE, already-existing per-segment interaction already exists for this exact silhouette:
+  `hitTestSegment`/`primitiveSegmentMap` (editor-shape-lattice-interaction.js) — a pure geometric, ARRAY-INDEX-
+  keyed distance test driving the EXISTING segment-tap style popup (straight/curve/kink/bulge/dir/cornerRadius).
+  Making segments real DOM elements creates a SECOND, independent "which segment did I click" answer (DOM
+  bbox-select vs. index-based geometric tap) that needs EXPLICIT reconciling — decide whether the tap-popup keeps
+  using the index-based test while marquee/click-select uses the new DOM elements, or unify them. Not resolved.
+- The ONE real, hard blocking dependency: `_findBoundaryElement` (editor-lattice-pattern.js) assumes exactly ONE
+  element per boundary-ref id, and `shapeToPrimitives`/`shapeToInnerBoundaryPrimitives` (editor-lattice-
+  boundary.js) both dispatch on a SINGLE element's own `.type` — the Shape Lattice's own LATTICE-FILL CLIPPING
+  (an entirely separate, already-shipped feature) reads the boundary through EXACTLY this path. N sibling
+  elements need: `_findBoundaryElement` to become plural (return ALL matches, ordered), and a NEW combining
+  function — concretely, `elements.flatMap(el => _primitivesFromD(el.attr('d')))` re-chained through the
+  ALREADY-EXISTING `primitivesToPathD` (editor-shape-lattice-generator.js) back into ONE closed-loop `d` string,
+  then through the ALREADY-EXISTING `insetPathDToPrimitives` (T68's own shared extraction) — reusing two already-
+  built functions, no new offset/geometry math needed. This is the change that most needs care: get it wrong and
+  the ALREADY-SHIPPED lattice-fill-clipping feature silently breaks for every Shape Lattice layer, not just new
+  per-segment-colour ones.
+- Drape (`core/preview/drape-svg.js`, `buildDrapeSvg`) and SVG export/save (`editor-io.js`) both already read the
+  live/serialized DOM GENERICALLY, one level of `_sketchLayer` children, no `<g>` recursion — N flat sibling
+  segment elements (each with its OWN `stroke`/`fill`) will already work for drape/export/3D-preview with ZERO
+  changes there, PROVIDED they are never wrapped in a `<g>` (the one recursion depth this whole area relies on).
+- Colour storage: `PATTERN.shape.segments[i]` already exists (style/bulge/dir/cornerRadius per index, mirror-
+  aware via `writeSegmentStyle`) — adding `color` as a new sibling key on each `segments[i]` object is the
+  cleanest, collision-free spot (no separate id system needed; segments have no id besides their own array
+  index, which this object is already keyed by). Open product question, not yet decided: should a MIRRORED
+  segment's colour auto-follow its own partner the way style/bulge/dir/cornerRadius already do, or deliberately
+  NOT mirror (so L/R can be coloured differently, which is what the dispatch's own wording implies is wanted)?
+
+**Nothing has been written for T70** — no rendering change, no boundary-resolution refactor, no colour-storage
+field, no UI, no tests, no visual check. The investigation above is a complete, actionable starting point, not a
+partial implementation to continue mid-stream.
+
+### The capacity call itself
+
+By the time the AMEND 6-14 cascade landed, this turn had already produced 3 real commits (T69 contour-as-slots,
+T69-FIX arg-order+symmetry, T69-fix-2 origin-anchor+size-dims) — each involving genuine, careful reasoning about
+constraint redundancy I could not independently verify without live Fusion access. T69-fix-3 (the cascade's own
+synthesized spec above) is ITSELF a substantial rework — a near-total rollback of the last commit's own
+Symmetry/axis/Radial mechanism, a NEW two-parameter size design that's already been revised 4 times in the
+cascade alone, plus a real shim gap (curve-rejection) to add correctly. T70 (SE14b) proper, on top of that, is a
+full rendering-architecture change with one genuinely hazardous dependency (the boundary-resolution refactor an
+ALREADY-SHIPPED feature relies on) plus a persistence-design decision plus a required visual verification step.
+Asked the user directly whether to push through or stop; the user chose to stop. Passing back now with this
+synthesized spec so the next turn — whether a fresh session or this same one resumed — can start implementing
+T69-fix-3 immediately without first re-deriving it from 9 raw, partially-superseded amendment messages, and can
+pick up T70 with the investigation already done.
+
+Amendments polled clean before this pass (10 new absorbed into the synthesis above, nothing left unaddressed in
+the mailbox). No code changed in this section — nothing to commit for it.
+
+### T71 — T69-fix-3 implemented (loose contour + contour_width/height) + stroke default 0.25
+
+Implemented the synthesized spec above exactly, epoch 3, fresh session. `editor-sketch-manifest.js`'s
+`manifestFromShape`: removed the mirror axis, horizontal axis, every Symmetry constraint, and their
+Coincident-to-origin anchors entirely; reverted the mirror-Tangent dedup (all 8 Tangents again, not 4) and the
+shoulder-pair Equal drop (Equal(seg1,seg9) restored) — both exactly as flagged/confirmed, since neither
+exception's own justification ("redundant given Symmetry") survives Symmetry's removal. The mirror pass is now
+back to T69's own ORIGINAL shape: one plain Equal per valid mirror pair (Line or Arc alike), no exceptions.
+Both Radial dims (shoulder's `corner_radius * half_width`, waist's `waist_radius`) are gone, along with the
+`waist_radius` parameter that only ever existed to drive one — the shoulder<->hip Equal itself stays ("no radius
+dims" means no driving DIMENSION, not no relationship).
+
+Overall size: kept, per Fred's "W and H is good", but redesigned to match the AMEND 6 real-Fusion finding
+(`addDistanceDimension` only accepts 2 SketchPoints, "Wrong number or type of arguments" on a curve) — the
+Distance dims now target `id:S` points on the SAME `widthPairIds`/`selfMirrorHorizontalIds` entities the old code
+already discovered (a representative Line mirror pair, and the 2 self-mirroring horizontal edges), never the bare
+curve id. Driven by two NEW, independent parameters (`contour_width`/`contour_height`, plain numbers, never an
+expression referencing `widthIn`/`heightIn`) — declared once `region.w`/`region.h` are known, which is why I moved
+the `if (widthPairIds)`/`if (selfMirrorHorizontalIds.length === 2)` blocks to AFTER the `parameters` const
+declaration (a TDZ crash the first vitest run caught immediately: `parameters` wasn't a plain accumulator array
+from the top of the function the way `entities`/`constraints`/`dimensions` are — it's built from
+`Object.entries(params)` partway through — moving just the two `if` blocks down, not the `widthPairIds`/
+`selfMirrorHorizontalIds` *discovery* loops, fixed it with the smallest possible diff).
+
+Margin: one declared constant, `CONTOUR_SIZE_INSET_IN = 0.5` (+ a paired `insetRegionForContour` helper), in
+`editor-lattice-boundary.js` — the SAME neutral home `SILHOUETTE_STROKE_WIDTH` already established for exactly
+this "both the app's drawing and the manifest producer import this" reason. `buildSketchManifest` computes the
+inset contour region ONCE and threads it into BOTH `resolveShapeBoundaryExtent` (so the lattice fill clips to the
+NEW smaller contour, not the old board-wide one) and `manifestFromShape` (so `region.w`/`region.h` — already
+consumed for `half_width` — become `contour_width`/`contour_height` for free, no separate arithmetic). Verified:
+on the standard 7x9 test board this comes out to 6/8 exactly, matching the spec's own worked example.
+
+App-side parity turned out to need FOUR call sites, not the one the dispatch named (`regenerateSilhouette`) — a
+grep for `generateSilhouette(` in `properties-shape-lattice.js` plus a chase through `editor-interaction.js`
+found `_effectiveSegments` (segment list before a first Generate), `paramHandleRecords` (the draggable param
+handles' own anchor positions), and `detectShapeLatticeDetach` (the "did a hand-edit diverge from what
+Generate would produce" check) all independently re-derive the SAME silhouette from `boardRegion(editor)`
+directly. Missing any of them would have left a real, user-visible bug (handles misaligned with the now-smaller
+drawn contour, or `detectShapeLatticeDetach` permanently misfiring "picked" on every commit since its own
+recomputed `d` would never again match what's actually drawn) even though no test in the existing suite would
+have caught it — none of them assert against an oracle built from the OLD uninset region. Declared one shared
+`_shapeContourRegion(editor)` helper (properties-shape-lattice.js) — exported (same underscore-kept-while-exported
+convention `_findBoundaryElement` already uses in this file) since `editor-interaction.js`'s own segment-tap
+hit-test (`shapeLatticeHandler.start`) needed the identical region too; that call site's own `boardRegion` import
+became dead and was removed.
+
+Python: `test_sketch_manifest_builder.py`'s `FakeSketchDimensions.addDistanceDimension` now type-checks both args
+against `FakeSketchPoint`, raising the same "Wrong number or type of arguments" real Fusion gives for a curve —
+this immediately turned up ONE existing test (`_mirror_anchor_and_size_manifest`, T70 AMEND 4/5's own end-to-end
+fixture) that was itself feeding the exact bug the fix now catches (`targets: ["segR", "segL"]`, bare ids) —
+fixed to `["segR:S", "segL:S"]`, matching what a correct manifest actually looks like; the mirror-axis/Symmetry
+machinery it exercises is unrelated, still-generic fb_engine capability (T71 only stops the JS PRODUCER from
+emitting it for the contour) so that fixture and its Symmetry-only sibling test are otherwise untouched. Added
+`test_distance_dim_targeting_a_bare_curve_id_is_rejected_not_silently_accepted` proving the regression is now
+caught as a graceful DIM CRASH (skip-and-report, never a hard crash) — confirmed non-vacuous by construction
+(the pre-fix shim unconditionally logged `dim:Distance` and returned success for the identical input).
+
+AMEND 14 (stroke default 0.25): `PATTERN_DEFAULTS.widths.rails`/`.ties` changed from
+`LATTICE_STYLE.rail.widthFactor * 0.25` (=0.07) to a plain `0.25`. Swept `0.07` across `tests/*.js` and
+`test_sketch_manifest_builder.py` per the dispatch's own instruction — only ONE hit was actually testing THIS
+default symbolically (`editor-lattice-pattern-emit.test.js`'s own "declares the three default kind widths");
+every other hit either hardcodes an explicit non-default width on its own test pattern (unaffected by the
+JS-side default at all) or belongs to an unrelated function (`emitSegment`'s own `LATTICE_STYLE`-derived
+fallback, `stepToGrid`'s rounding-grid samples). One MORE non-`0.07`-literal casualty the grep couldn't catch:
+`editor-lattice-pattern-ending.test.js`'s own circular-boundary ending-rule suite reads
+`PATTERN_DEFAULTS.widths.rails` *symbolically* (not a literal), and its "loose degrades to inset" test used a
+hand-picked tiny circle (chord 0.6) that was safely bigger than 2×the OLD half-width (0.14) but smaller than
+2×the NEW one (0.5, i.e. now exactly one full grid cell) — the pullback started overshooting into a clamped/
+midpoint fallback the test never anticipated. Not a production bug (the clamp is the CORRECT defensive
+behavior once a rail is a full grid cell wide) — decoupled that whole describe block from the evolving UI
+default with an explicit local `RAIL_WIDTH_IN = 0.07`, the same "a few tests intentionally pass a non-default
+width" pattern already used elsewhere in this codebase.
+
+Required test (AMEND 7, still valid per 8/12/13's partial Distance reinstatement): added, asserting every
+Distance dim's targets end in `:S`/`:E`. Also replaced the entire obsolete "T70 AMEND 3"/"T70 AMEND 4/5" describe
+blocks in `tests/editor-sketch-manifest.test.js` (mirrorAxis/Symmetry/waist_radius assertions that would now
+either throw — reading `.expression` off a dim that no longer exists — or simply assert the wrong thing) with a
+new "T71 (T69-fix-3): loose contour" block covering the reverted behavior directly, plus a new `buildSketchManifest`
+describe block proving the 7x9-board contour_width=6/contour_height=8 example end-to-end. Updated 2 buildSketchManifest+
+shape tests and both `parity-app-manifest.test.js` contour tests that independently re-derive expected geometry via
+`generateSilhouette(REGION, ...)` to use `insetRegionForContour(REGION)` instead, matching what the manifest/app
+now actually build from.
+
+Verify: 1048/1048 vitest, 33/33 pytest (`bspline-frame-builder/b-spline-gen`), both full suites, twice (once before
+the comment cleanup below, once after). `proc_health.py watch` showed nothing lingering — no dev server or
+watch-mode process was started this turn.
+
+One thing caught only by re-reading my own diff, not by any test: my first draft of the T71 doc comment above the
+wraparound-joint loop duplicated the PRE-EXISTING "Coincident at EVERY adjacent primitive joint..." paragraph
+verbatim right after itself (I'd meant to ADD to that comment, not restate it) — trimmed to just the new,
+T71-specific delta before committing. Nothing behavioral, but worth naming since it's exactly the kind of stale/
+redundant doc-comment drift the worker skill's own architecture-map guidance warns against, just inside a
+function comment rather than a map file.
+
+NO FUSION this turn, per the dispatch. Amendments polled clean immediately before this commit+pass (nothing new).
+
+### T72 (seat B, epoch 3→4) — SE15c threshold, T71's own no-lattice regression, SE14c checkbox, 3 AMEND-2/3 items, AMEND 5 sweep, and item 7's non-fix
+
+Six committed items, one commit each, pushed after every one (60a6df8, d4106f2, 591f15d, ef85e4a, 02b5f82, 25b9d9e,
+dd656cb). Epoch bumped 3→4 mid-turn (the advisor's own dedup of a duplicate seat B session, session 4a) — carrying
+"epoch 4" in this turn's own pass-back per the advisor's explicit instruction.
+
+**Item 1 (SE15c)**: `SKETCH_PIECE_THRESHOLD` 60→300, per the advisor's own live-Fusion re-measurement (16 rails/97
+pieces: plain 61s/0.139in drift/visibly tilted vs. constrained 90s/0/0.030in drift). Doc + one test's own extent
+widened to still clear the new threshold.
+
+**Item 2 (+ AMEND 1)**: root-caused and fixed the SAME bug class T71's own contour-inset margin introduced —
+`insetPathDToPrimitives`'s pre-existing "collapse to `[]` on self-intersection" behavior (correct and still tested
+for a genuinely thin HAND-PICKED boundary) was zeroing the ENTIRE lattice fill for the default Bottle preset
+specifically, because T71's new 0.5in/side margin pushed Bottle's own near-zero-radius neck fillet into
+self-intersecting territory once offset inward by the SAME half-stroke amount. Scoped the fix to GENERATED
+presets only (`insetGeneratedPresetPathDToPrimitives`, falls back to the raw boundary on collapse) — a
+hand-picked shape keeps declining to `[]`, unchanged, matching the existing "thin arm... the WHOLE shape
+declines" test's own documented intent. Also deduped `stroke_width` (declared independently, and identically, by
+BOTH `manifestFromShape` and `manifestFromLattice` when linked).
+
+**Item 3 (SE14c)**: a "show contour" checkbox — OFF still computes/clips the lattice fill against the exact same
+boundary (unconditional in `buildSketchManifest`), only the contour's own manifest entities/dims/params and its
+drawn visibility disappear. The drawn `<path>` stays a REAL element either way (`display:none` when OFF) since the
+live boundary lookup still needs it; `getLayerSvg`'s shared `_parseLayerContent` filter drops any `display:none`
+child from BOTH the plain SVG and Fusion-geometry export paths — one declared signal, two consumers, never a
+second tracked flag. Rendered both states to PNG via headless Chrome (from the pure geometry engine directly, no
+live app needed) and visually confirmed: rails/ties/nodes pixel-identical, only the black outline appears/
+disappears.
+
+**Item 4 (AMEND 2)**: fixed Fred's own reported "3 handle dots floating over an empty board before any shape
+exists" — `paramHandleRecords` gated on `shape.source === 'generated'` alone, but `PATTERN_DEFAULTS.shape.source`
+IS `'generated'` by default and `currentShape()` materializes that default the instant anything reads `p.shape`,
+so the check was true even pre-Generate. Declared the REAL check once, `hasGeneratedSilhouette(pattern)`
+(editor-lattice-pattern.js) — the same two-part condition (`source==='generated' AND extent.mode==='boundary'`)
+`buildSketchManifest`'s own `hasShape` already used — and had BOTH callers read it, rather than two copies of the
+same two-part condition silently drifting. Test: 0 handles pre-Generate, 3 after.
+
+**Item 5 (AMEND 2)**: a `contour` colour (green `#2e7d32`, declared alongside rails/ties/nodes in
+`PATTERN_DEFAULTS.colors`, never black) + a 4th swatch in the panel's own Colors row. A freshly-minted contour now
+draws in that declared colour instead of the general drawing tool's own CURRENT color (`editor._color`), which was
+its only color source before this turn. `recolorOwnedKind` gained a `'contour'` branch — genuinely different from
+rails/ties/nodes (ONE linked `<path>` found by `boundary.shapeId`, never an OWNERSHIP_ATTR/data-lattice-marked
+piece the existing filter can see), not a 4th `COLOR_KIND_TO_LATTICE_ATTR` entry. SE14b's own later per-segment
+split will need its own recolor path when that lands.
+
+**Item 6 (AMEND 3)**: Border width "auto" was silently resolving to the silhouette's own ALWAYS-hairline stroke
+(`SILHOUETTE_STROKE_WIDTH`, a real, positive, truthy number — so the `|| widths.rails` fallback in
+`_effectiveBorderWidth` never actually fired) instead of the lattice's real stroke width, for a GENERATED
+silhouette specifically. Branched on the SAME `hasGeneratedSilhouette` item 4 declared: generated+auto now means
+`widths.rails` (read fresh every Generate, so it follows live edits); a hand-picked boundary keeps inheriting its
+own live stroke, unchanged (T49's own original ruling) — fixed 2 existing tests whose own hand-built fixtures
+never set `shape.source` at all (silently defaulting to 'generated', misrepresenting what "Pick shape…" actually
+sets). Added a parity test: drawn Border stroke-width === the manifest's own `stroke_width` parameter, exactly.
+
+**AMEND 5** — a permanent sweep test (`tests/shape-lattice-param-sweep.test.js`, 126 cases: 2 presets × each
+preset's own params at {min,mid,max} × rails-count {3,7,14} × orientation {H,V}), asserting rails>0/ties>0/parity.
+Found and fixed a REAL regression of the exact same bug class as item 2: at an extreme param (e.g. hourglass
+`waistReach` near its min), a scan-line tangent to the deeply-pinched boundary can produce a genuinely
+zero-length "inside" span — `manifestFromLattice` already filtered these (T66's own `MIN_PIECE_LENGTH`, a
+different symptom of the SAME root cause), but `generatePattern`'s own rail/tie emission loop had no equivalent
+filter, so the app drew a zero-length `data-lattice="rail"` element the manifest never declared — a real
+app/manifest COUNT mismatch, not cosmetic. Fixed by declaring the threshold ONCE as `MIN_PIECE_LENGTH_IN`
+(editor-lattice.js, the lowest module both producers already import from) instead of leaving it a single,
+easily-forgotten local in the manifest producer. Separately MEASURED, not fixed: at rails=3 (only 2 adjacent-rail
+pairs to bridge) a few preset/param combinations place 0 ties at this file's own fixed seed 42 specifically —
+30/30 OTHER lattice seeds against the identical shape+rails placed ties fine, confirming this is the pre-existing,
+already-disclosed T67 Part 3 "less good at MAXIMIZING placed-tie count" trade-off (mutation-tested and accepted
+that turn, not reintroduced by T71/T72), and self-corrects on any retry since Generate always rerolls the seed.
+The sweep asserts `ties>0` everywhere except rails=3 (parity still required there) rather than either weakening
+the whole sweep or speculatively rewriting the tie-placement fallback for a narrow, self-correcting case outside
+this turn's own actual regression.
+
+**Item 7 (AMEND 4 + its own intermittent follow-up) — investigated thoroughly, NO code fix, because no bug was
+found.** Built a real, no-deps CDP driver (same pattern `scripts/smoke-editor.mjs` already established: headless
+Chrome, `Input.dispatchMouseEvent`/`dispatchTouchEvent` against a REAL local server) and reproduced the reported
+symptom on the FIRST attempt — but my own first script reused ONE page across several drag "variants," so each
+drag's own displacement accumulated on top of the PREVIOUS variant's already-dragged shape, eventually pushing
+`waistReach` into genuinely self-intersecting territory — a real degenerate shape, but caused by the test script
+itself, not the app (confirmed by screenshot: a visibly self-intersecting hourglass after 4 stacked drags).
+Rebuilt with each variant on its own fresh page load (no cross-variant drift) and a small, realistic, FIXED
+displacement: `paramsAfterDrag.waistReach` came out byte-identical across mouse/touch and 3-to-60 intermediate
+move events, confirming `valueFromWorld` is a pure function of final pointer position (not cumulative, not a
+feedback loop) — Generate correctly NEVER resets `shape.params` (by design: it only rerolls the LATTICE fill's own
+seed, `readFieldsIntoPattern` explicitly never touches `p.shape.*`), and `editor._isDrawing`/`_shapeLatticeDragKey`
+were always correctly reset before Generate ran, on every trial, with zero console errors/exceptions logged ever.
+A statistical batch (12 desktop mouse trials + 8 real mobile-viewport touch trials, `mobile:true`/390×844, not
+just touch events on a desktop-sized page) measured the "fill looks unchanged after Generate" rate at 1/12 and
+1/8 — matching, almost exactly, the ~1/12 rate PURE CHANCE predicts from `rails.count` ([6,7], 2 values) and
+`ties.count` ([8,13], 6 values) independently re-rolling to the SAME combination (row/column PLACEMENT for a
+given count is deterministic, never reseeded, so a coincidental count-match is a coincidental exact-position-
+match too). Conclusion, stated plainly rather than papered over: there is no "Generate stops working after a
+drag" mechanism in this codebase — Generate reliably rerolls and regenerates the fill every single time, on both
+desktop and a real mobile viewport; what Fred most likely experienced is the SAME shape (which Generate never
+resets, by design) combined with an occasional coincidental rail/tie-count repeat, at a rate fully explained by
+the narrow declared count ranges. Flagging for the advisor/Fred to decide whether that's worth a UX change
+(e.g. widening the count ranges, or a "regenerated" affordance) — inventing a code fix for a mechanism that isn't
+actually broken would have been the wrong call. Scratch CDP scripts removed from `scripts/` before this pass
+(throwaway investigation tooling, not permanent test infrastructure); local `http.server`/Chrome processes
+confirmed stopped, `proc_health.py watch` clean.
+
+Verify (final, after AMEND 5): 1203/1203 vitest, 33/33 pytest. Amendments polled clean immediately before this
+pass. NO FUSION this whole turn, per the dispatch.
+

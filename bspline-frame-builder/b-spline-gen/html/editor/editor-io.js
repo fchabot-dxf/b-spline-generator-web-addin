@@ -158,10 +158,19 @@ function _parseLayerContent(editor, layerId, dpi) {
     const root = doc.documentElement;
     if (!root) return null;
 
+    // T72 (SE14c, Fred: "sometimes don't want the contour profile"): a
+    // contour hidden via PATTERN.contour.show=false stays a REAL, live
+    // element (regenerateSilhouette only ever sets `display:none` on it,
+    // never removes it — the lattice fill's own boundary lookup still
+    // needs a live element to read stroke-width/`d` from) but must never
+    // appear in an exported/Fusion-bound SVG. One declared signal
+    // (`display:none`), two consumers: the browser's own renderer skips
+    // it for free on-canvas; this export path drops it explicitly here,
+    // since a serialized SVG string has no renderer of its own to rely on.
     let kept = 0;
     Array.from(root.children).forEach(ch => {
         const lid = ch.getAttribute('data-layer');
-        if (lid == null || String(lid) !== targetId) ch.remove();
+        if (lid == null || String(lid) !== targetId || ch.getAttribute('display') === 'none') ch.remove();
         else kept++;
     });
     if (kept === 0) return null;

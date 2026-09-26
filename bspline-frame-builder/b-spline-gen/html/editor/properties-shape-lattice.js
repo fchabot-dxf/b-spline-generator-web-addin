@@ -22,10 +22,11 @@ import { el, on } from './dom.js';
 import { GRID_SPACINGS } from './editor-grid.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
-    stampBoundaryRef, _findBoundaryElement,
+    stampBoundaryRef, _findBoundaryElement, hasGeneratedSilhouette,
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
+import { SILHOUETTE_STROKE_WIDTH, insetRegionForContour } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
@@ -81,17 +82,10 @@ const PARAM_ROWS = {
   bottle: Object.keys(PRESETS.bottle.params),
 };
 
-/** The generated silhouette's own stroke width — a small, FIXED value,
- *  deliberately NOT `editor._strokeWidth` (the general drawing tool's own
- *  CURRENT setting). Same bug class `emitSegment` (editor-lattice.js) was
- *  already fixed for once: "a live browser test found a 0.5in board-wide
- *  stroke on a 0.5in rail pitch" — found again live here, this turn: a
- *  0.5in default stroke on the silhouette's own pinched waist inset the
- *  boundary's own inner-fill cut (`_effectiveBorderWidth`/`edge:
- *  'inner-stroke'`, editor-lattice-pattern.js) far enough inward to leave
- *  ZERO room for any rail/tie at all — confirmed live (0 rails/0 ties
- *  after Generate), not assumed from reading the code alone. */
-const SILHOUETTE_STROKE_WIDTH = 0.02;
+// T68 AMEND 1: SILHOUETTE_STROKE_WIDTH moved to editor-lattice-boundary.js
+// (its own doc comment there has the full history) — imported here now,
+// not declared, so the manifest producer can read the identical number
+// from that same neutral, DOM-free home.
 
 /** SE7i's own per-layer pattern lookup, duplicated here (not imported)
  *  the same way `_fmix32` is duplicated per-file elsewhere in this
@@ -122,6 +116,21 @@ export function currentShape(p) {
     return p.shape;
 }
 
+/** T71: the region a GENERATED shape's own silhouette actually builds
+ *  from — the board region, inset by the declared contour-size margin
+ *  (editor-lattice-boundary.js's own `insetRegionForContour`, the SAME
+ *  helper `buildSketchManifest` uses on the manifest side) — every caller
+ *  below that builds OR re-derives a generated silhouette must use this,
+ *  never the raw `boardRegion`, so the drawn contour, its param handles,
+ *  and the manifest's own contour entities always agree on where the
+ *  shape actually sits. Exported (same underscore-kept-while-exported
+ *  convention `_findBoundaryElement` already uses in this file) — editor-
+ *  interaction.js's own segment-tap hit-test needs this SAME region too,
+ *  not a second copy of the formula. */
+export function _shapeContourRegion(editor) {
+  return insetRegionForContour(boardRegion(editor));
+}
+
 /** The segments array a JUST-generated silhouette would use RIGHT NOW —
  *  `shape.segments` once the tool has generated at least once (an
  *  explicit override, `generateSilhouette`'s own contract), else a pure,
@@ -134,7 +143,7 @@ export function currentShape(p) {
  *  PATTERN_DEFAULTS before a first Generate. */
 function _effectiveSegments(editor, shape) {
   if (Array.isArray(shape.segments)) return shape.segments;
-  return generateSilhouette(boardRegion(editor), shape).segments;
+  return generateSilhouette(_shapeContourRegion(editor), shape).segments;
 }
 
 /**
@@ -164,7 +173,7 @@ function _effectiveSegments(editor, shape) {
  */
 export function regenerateSilhouette(editor, p) {
     const shape = currentShape(p);
-    const region = boardRegion(editor);
+    const region = _shapeContourRegion(editor);
     const { primitives, segments } = generateSilhouette(region, shape);
     shape.segments = segments;
     const d = primitivesToPathD(primitives);
@@ -173,16 +182,31 @@ export function regenerateSilhouette(editor, p) {
     if (pathEl) {
         pathEl.attr('d', d);
     } else {
+        // T72 (AMEND 2, Fred: "I want the contour to be colored too"): a
+        // freshly-minted contour draws in PATTERN.colors.contour, the SAME
+        // declared per-kind color rails/ties/nodes already use — never the
+        // general drawing tool's own CURRENT color (editor._color), which
+        // was this path's only color source before this turn.
+        const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
         pathEl = editor._sketchLayer
             .path(d)
             .fill('none')
-            .stroke({ color: editor._color || '#000000', width: SILHOUETTE_STROKE_WIDTH })
+            .stroke({ color: contourColor, width: SILHOUETTE_STROKE_WIDTH })
             .attr('data-layer', ensureActiveLayer(editor));
         const id = stampBoundaryRef(pathEl);
         p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
     }
     p.extent = { mode: 'boundary' };
     shape.source = 'generated';
+    // T72 (SE14c, Fred: "sometimes don't want the contour profile"): the
+    // contour keeps existing as a REAL, live element either way — the
+    // lattice fill's own boundary lookup (_resolveBoundaryPrimitives)
+    // needs it regardless of this flag — only its VISIBILITY (`display`)
+    // changes. `getLayerSvg`'s own export filter (editor-io.js) drops any
+    // `display:none` child, so "not drawn" and "not in SVG export" are the
+    // SAME one declared signal, not two separately-tracked states.
+    const contourShow = ({ ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) }).show !== false;
+    pathEl.attr('display', contourShow ? null : 'none');
     const statusEl = el('shapeLatticeBoundaryStatus');
     if (statusEl) statusEl.textContent = 'Shape linked';
     // T59: re-render the on-canvas param handles from the geometry this
@@ -242,12 +266,19 @@ export async function writeSegmentStyle(editor, index, patch) {
  * `generateSilhouette` itself (pure, cheap, no DOM) to get the FULLY
  * RESOLVED params (T59's own new `params` return field) — `shape.params`
  * alone would be missing any key the user never explicitly pinned.
+ *
+ * T72 (AMEND 2): `hasGeneratedSilhouette` (editor-lattice-pattern.js) is
+ * the REAL "has Generate actually run" check — `shape.source ===
+ * 'generated'` alone is true on an untouched layer too (it's just
+ * PATTERN_DEFAULTS.shape's own default value), which is exactly why this
+ * used to show 3 handles floating over an empty board before any shape
+ * existed.
  */
 export function paramHandleRecords(editor) {
     const p = currentPattern(editor);
     const shape = currentShape(p);
-    if (shape.source !== 'generated') return [];
-    const region = boardRegion(editor);
+    if (!hasGeneratedSilhouette(p)) return [];
+    const region = _shapeContourRegion(editor);
     const { params: resolved } = generateSilhouette(region, shape);
     if (!resolved) return [];
     return computeParamHandles(shape.preset, region, resolved).map((h) => ({ ...h, hx: h.anchor.x, hy: h.anchor.y }));
@@ -324,7 +355,7 @@ export function detectShapeLatticeDetach(editor) {
     if (!p.boundary || !p.boundary.shapeId) return;
     const pathEl = _findBoundaryElement(editor, p.boundary.shapeId);
     if (!pathEl) return;
-    const region = boardRegion(editor);
+    const region = _shapeContourRegion(editor);
     const { primitives } = generateSilhouette(region, shape);
     const expectedD = primitivesToPathD(primitives);
     if (pathEl.attr('d') !== expectedD) shape.source = 'picked';
@@ -441,6 +472,7 @@ export function initShapeLatticeProperties(editor) {
     const tiesSpanMaxEl = el('shapeLatticeTiesSpanMax');
     const tiesAnchorEl = el('shapeLatticeTiesAnchor');
     const tiesRailSnapRowsEl = el('shapeLatticeTiesRailSnapRows');
+    const tiesOneEndedEl = el('shapeLatticeTiesOneEnded');
     const nodesEndsEl = el('shapeLatticeNodesEnds');
     const nodesCrossingsEl = el('shapeLatticeNodesCrossings');
     const nodesRailEndsEl = el('shapeLatticeNodesRailEnds');
@@ -449,6 +481,7 @@ export function initShapeLatticeProperties(editor) {
     const colorRailsEl = el('shapeLatticeColorRails');
     const colorTiesEl = el('shapeLatticeColorTies');
     const colorNodesEl = el('shapeLatticeColorNodes');
+    const colorContourEl = el('shapeLatticeColorContour'); // T72 (AMEND 2)
     const widthRailsEl = el('shapeLatticeWidthRails');
     const widthTiesEl = el('shapeLatticeWidthTies');
     const widthNodesEl = el('shapeLatticeWidthNodes');
@@ -467,6 +500,11 @@ export function initShapeLatticeProperties(editor) {
     const pickShapeBtn = el('shapeLatticePickShape');
     const boundaryStatusEl = el('shapeLatticeBoundaryStatus');
     const endRuleEl = el('shapeLatticeEndRule');
+    // T72 (SE14c): show/hide the contour's own drawn segments (rails/ties
+    // still clip/fit to it either way) — unlike most of this section,
+    // wired for an IMMEDIATE effect (below), not deferred to Generate,
+    // since toggling it changes nothing about the fill geometry itself.
+    const contourShowEl = el('shapeLatticeContourShow');
     const borderEnabledEl = el('shapeLatticeBorderEnabled');
     const borderWidthEl = el('shapeLatticeBorderWidth');
     const borderColorEl = el('shapeLatticeBorderColor');
@@ -641,6 +679,7 @@ export function initShapeLatticeProperties(editor) {
         if (tiesSpanMaxEl) tiesSpanMaxEl.value = p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax;
         if (tiesAnchorEl) tiesAnchorEl.value = p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor;
         if (tiesRailSnapRowsEl) tiesRailSnapRowsEl.value = p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
+        if (tiesOneEndedEl) tiesOneEndedEl.value = p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
@@ -649,6 +688,7 @@ export function initShapeLatticeProperties(editor) {
         if (colorRailsEl) colorRailsEl.style.background = colors.rails;
         if (colorTiesEl) colorTiesEl.style.background = colors.ties;
         if (colorNodesEl) colorNodesEl.style.background = colors.nodes;
+        if (colorContourEl) colorContourEl.style.background = colors.contour;
         const rawWidths = p.widths || {};
         const widths = { ...PATTERN_DEFAULTS.widths, ...rawWidths };
         if (widthRailsEl) widthRailsEl.value = widths.rails;
@@ -663,6 +703,7 @@ export function initShapeLatticeProperties(editor) {
         const boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary };
         if (boundaryStatusEl) boundaryStatusEl.textContent = boundary.shapeId ? 'Shape linked' : 'No shape picked';
         setEndRule(boundary.endRule);
+        if (contourShowEl) contourShowEl.checked = ({ ...PATTERN_DEFAULTS.contour, ...p.contour }).show !== false;
         const border = { ...PATTERN_DEFAULTS.boundary.border, ...boundary.border };
         if (borderEnabledEl) borderEnabledEl.checked = !!border.enabled;
         if (borderWidthEl) borderWidthEl.value = border.width == null ? '' : border.width;
@@ -708,6 +749,7 @@ export function initShapeLatticeProperties(editor) {
             spanMax: tiesSpanMaxEl ? (parseInt(tiesSpanMaxEl.value, 10) || 1) : (p.ties?.spanMax ?? PATTERN_DEFAULTS.ties.spanMax),
             anchor: tiesAnchorEl ? tiesAnchorEl.value : (p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor),
             railSnapRows: tiesRailSnapRowsEl ? (parseInt(tiesRailSnapRowsEl.value, 10) || 0) : (p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows),
+            oneEnded: tiesOneEndedEl ? (parseInt(tiesOneEndedEl.value, 10) || 0) : (p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),
@@ -946,6 +988,19 @@ export function initShapeLatticeProperties(editor) {
         });
     }
 
+    // T72 (SE14c): an IMMEDIATE write+redraw, unlike the deferred-to-
+    // Generate fields above — the contour is still computed/clipped
+    // against exactly the same either way (regenerateSilhouetteAndFill
+    // reruns the SAME fill), only its own drawn visibility changes, so
+    // there's no reason to make the user press Generate to see it.
+    if (contourShowEl) {
+        on(contourShowEl, 'change', async () => {
+            const p = currentPattern(editor);
+            p.contour = { show: !!contourShowEl.checked };
+            await regenerateSilhouetteAndFill(editor);
+        });
+    }
+
     syncFieldsFromPattern();
     if (toolBtn) on(toolBtn, 'click', syncFieldsFromPattern);
 
@@ -965,6 +1020,7 @@ export function initShapeLatticeProperties(editor) {
     wireColorSwatch(colorRailsEl, 'rails');
     wireColorSwatch(colorTiesEl, 'ties');
     wireColorSwatch(colorNodesEl, 'nodes');
+    wireColorSwatch(colorContourEl, 'contour'); // T72 (AMEND 2): recolorOwnedKind's own 'contour' special case
     wireWidthStepper(widthRailsEl, 'rails', 'rails');
     wireWidthStepper(widthTiesEl, 'ties', 'ties');
     wireWidthStepper(widthNodesEl, 'nodeRadius', 'nodes');

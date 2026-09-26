@@ -168,6 +168,14 @@ describe('generatePattern: the Border piece (§7)', () => {
     const pattern = {
       ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' },
+      // T72 (AMEND 3): a HAND-PICKED boundary shape -- source:'picked' is
+      // what the real "Pick shape…" flow always sets, and is exactly the
+      // signal _effectiveBorderWidth now uses to keep inheriting the
+      // picked shape's own live stroke (vs. a generated silhouette's
+      // widths.rails). Omitting it here would default to 'generated' via
+      // PATTERN_DEFAULTS.shape and misrepresent this as the Shape Lattice
+      // tool's own silhouette, which this test is deliberately NOT.
+      shape: { ...PATTERN_DEFAULTS.shape, source: 'picked' },
       boundary: {
         ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
         border: { enabled: true, width: null, color: null },
@@ -184,6 +192,49 @@ describe('generatePattern: the Border piece (§7)', () => {
     // 'rect', x/y/width/height) but NOT the link attribute itself.
     expect(border.type).toBe('rect');
     expect(border.attr(BOUNDARY_REF_ATTR)).toBeUndefined();
+  });
+
+  it('T72 (AMEND 3, Fred: "boundary width auto doesnt seem to apply"): for a GENERATED silhouette, Border ON with no explicit width uses widths.rails, NEVER the silhouette\'s own fixed hairline stroke', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    boundaryEl.attr('stroke', '#000000');
+    boundaryEl.attr('stroke-width', '0.02'); // SILHOUETTE_STROKE_WIDTH -- a generated contour's own ALWAYS-hairline stroke (regenerateSilhouette's own T68 AMEND1 rule)
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+      extent: { mode: 'boundary' },
+      shape: { ...PATTERN_DEFAULTS.shape, source: 'generated' },
+      widths: { ...PATTERN_DEFAULTS.widths, rails: 0.25, ties: 0.25 },
+      boundary: {
+        ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
+        border: { enabled: true, width: null, color: null },
+      },
+    };
+    await generatePattern(editor, pattern);
+    const border = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'border');
+    expect(border).toBeDefined();
+    expect(border.attr('stroke-width')).toBe(0.25); // widths.rails -- matches rails/ties and the Fusion contour slots
+    expect(border.attr('stroke-width')).not.toBe(0.02); // non-vacuous: the OLD (buggy) fallback value
+  });
+
+  it('T72 (AMEND 3): the generated-silhouette auto-width follows live when the lattice stroke width changes -- read fresh on every Generate, never cached', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    const pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+      extent: { mode: 'boundary' },
+      shape: { ...PATTERN_DEFAULTS.shape, source: 'generated' },
+      widths: { ...PATTERN_DEFAULTS.widths, rails: 0.25, ties: 0.25 },
+      boundary: {
+        ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary',
+        border: { enabled: true, width: null, color: null },
+      },
+    };
+    await generatePattern(editor, pattern); // assigns pattern.id
+    let border = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'border');
+    expect(border.attr('stroke-width')).toBe(0.25);
+
+    pattern.widths = { ...pattern.widths, rails: 0.4, ties: 0.4 };
+    await generatePattern(editor, pattern); // Regenerate, SAME pattern.id -- sweeps the old Border piece
+    border = editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'border');
+    expect(border.attr('stroke-width')).toBe(0.4);
   });
 
   it('Border ON with an explicit width/color: overrides the shape\'s own stroke', async () => {
@@ -309,6 +360,12 @@ describe('generatePattern: T50 -- which stroke width the fill\'s own inner-strok
       // against segment i/j without a second /spacing conversion here.
       ...PATTERN_DEFAULTS, spacing: 1, rails: { every: 1, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
       extent: { mode: 'boundary' },
+      // T72 (AMEND 3): every test in this describe block hand-picks a
+      // boundary circle (editor._addBoundaryCircle) -- source:'picked',
+      // matching the real "Pick shape…" flow, so _effectiveBorderWidth's
+      // new generated-vs-picked branch keeps inheriting the picked
+      // shape's own live stroke here, not widths.rails.
+      shape: { ...PATTERN_DEFAULTS.shape, source: 'picked' },
       boundary: { ...PATTERN_DEFAULTS.boundary, endRule: 'on-boundary', ...overrides },
     };
   }

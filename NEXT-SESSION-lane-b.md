@@ -1,31 +1,21 @@
-# NEXT (lane-b) — T63: SE15 fixes from the advisor's REAL Fusion run + wire the add-in to use the manifest
+# NEXT (lane-b) — T72: SE15c threshold + deep-waist no-lattice bug + SE14c contour checkbox
 
-**Ball: worker (seat B) · epoch 2 · T63.** NO FUSION for you (advisor re-verifies). T62 not merged yet — it merges
-with this fix.
-
-## Advisor's real Fusion run (build_from_manifest_file on a live hourglass+lattice manifest, 75 entities / 51
-## constraints; manifest saved at scratchpad\se15-real-manifest.json — use it as a fixture)
-Built in 18.8 s. Entities 75/75. Manifest constraints + dimensions: 0 failures. 7 user params created. 30 width
-offsets (15 centerlines × 2). Changing rail_width in Fusion DID move the rail offsets — param-driven width works.
-Constraint mix in the result: Vertical 13, Horizontal 8, Coincident 16, Tangent 38, Equal 6, Offset 30; 79 dims;
-59 profiles; not fully constrained (as intended).
-### Bugs
-1. **Parameter UNITS off by 2.54**: rail_width = 0.0276" (should 0.07"), tie_width 0.0276", node_radius 0.0295"
-   (should 0.075"), half_width 1.378" (should 3.5"). Length params are created from inch numbers as if they were
-   cm (e.g. ValueInput.createByReal(0.07) = 0.07 cm). Create/update length params with
-   `ValueInput.createByString(f"{v} in")` (or ×2.54 into createByReal) and the 'in' unit; keep unitless params
-   (waist_reach ratio etc.) unitless. Test with the fake shim asserting the ValueInput string/number.
-2. **30 "CAP TANGENT SKIP … VCS_SKETCH_OVER_CONSTRAINTS"**: the cap arcs are already fully determined by the
-   offsets (coincident ends + center on the centerline end), so adding tangency over-constrains. Drop the explicit
-   cap-tangent step (or build caps so exactly the needed constraints are added) — the result must have ZERO skips
-   on this fixture. Don't just silence the log.
-3. **Not wired**: b-spline-gen.py never reads `sketchManifest` — Send to Fusion still imports only the plain SVG.
-   Per SE15 §7 + the recorded default: when a layer carries `sketchManifest`, build the constrained sketch with
-   `build_constrained_sketch` (same placement as _import_single_layer_svg) INSTEAD of that layer's plain SVG
-   sketch; the carve stamp still runs. Log a one-line summary (entities, constraints applied/skipped, seconds).
-   Make sure the add-in package includes sketch_manifest_builder.py (check release/deploy file lists, the
-   sync/copy scripts, and `_ensure_fb_engine_importable` paths in the DEPLOYED layout, not just the repo layout).
-## When done
-Append WORK-LOG-lane-b.md, commit by path, push, then (from the WORKTREE root):
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T63: SE15 units + caps + wiring — <sha>, tests"`
-and stop.
+**Ball: worker (seat B) · epoch 3 · T72.** NO FUSION. T71 (8566623) is being verified live by the advisor; if it needs a
+fix you get an `amend`. Three items, in this order, one commit each:
+## 1. SE15c — raise SKETCH_PIECE_THRESHOLD 60 → 300 (editor-sketch-manifest.js)
+Advisor MEASURED in Fusion, 16 rails / 97 pieces: plain (current) 61 s, drift 0.139" at stroke 0.5, rails visibly
+tilted; constrained 90 s, 0 fails, exact parity, drift 0.030". A 14-rail hourglass (101 pieces, 170 constraints) built
+with 0 constraint fails. Update the SE15 doc number + any test that pins 60.
+## 2. Bug — Shape Lattice, Hourglass with waistReach 0.8 + cornerRadius 0.4 generates NO rails/ties at all
+Advisor reproduced (headless, default 7x9 board, Hourglass preset, shapeParam-waistReach=0.8, shapeParam-cornerRadius=0.4,
+Generate): the contour draws correctly (deep waist), the layer has 0 rail/tie/node elements, manifest has only the 12
+contour segs. Find why (boundary resolution? inset polygon self-intersecting / empty? rails clipped to nothing?), fix
+the root cause, and add a test with these params that asserts rails > 0.
+## 3. SE14c — "Contour" checkbox in the Shape Lattice panel (Fred)
+Fred: "I'd want a checkbox for the actual contour, I still want rails and ties to be contoured but sometimes don't
+want the contour profile". Declared flag (e.g. contour.show, default true) + checkbox in the C1 style. OFF = the contour
+is still computed and still clips/fits rails & ties exactly as now, but its segments are not drawn, not in SVG export /
+Send to Fusion, and not in the manifest (no contour slots, no contour_width/height params/dims). Saved patterns without
+the key read true. Parity test covers both states. Render ON and OFF to PNG and view before passing.
+Pass back: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T72: SE15c + deep-waist fix + SE14c — <shas>, tests"`.
+SE14b (contour segments selectable/colourable) is the task after this.

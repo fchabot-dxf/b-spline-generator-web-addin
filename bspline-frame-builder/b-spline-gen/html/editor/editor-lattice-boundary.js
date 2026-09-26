@@ -36,6 +36,50 @@ import { rectOutlinePathD, ellipseOutlinePathD } from './editor-expand-analytic.
 
 const TAU = Math.PI * 2;
 
+/** The generated silhouette's own stroke width — a small, FIXED value,
+ *  deliberately NOT `editor._strokeWidth` (the general drawing tool's own
+ *  CURRENT setting). Same bug class `emitSegment` (editor-lattice.js) was
+ *  already fixed for once: "a live browser test found a 0.5in board-wide
+ *  stroke on a 0.5in rail pitch" — found again live once, this project's
+ *  own history: a 0.5in default stroke on the silhouette's own pinched
+ *  waist inset the boundary's own inner-fill cut (`_effectiveBorderWidth`/
+ *  `edge:'inner-stroke'`, editor-lattice-pattern.js) far enough inward to
+ *  leave ZERO room for any rail/tie at all — confirmed live (0 rails/0
+ *  ties after Generate), not assumed from reading the code alone.
+ *  T68 AMEND 1: declared HERE (a pure, DOM-free module both the app's own
+ *  drawing AND the manifest producer already import from) rather than in
+ *  `properties-shape-lattice.js` (which re-exports it for its own local
+ *  use) — a manifest-producer module importing a constant FROM a DOM-
+ *  touching properties panel would invert this codebase's own established
+ *  dependency direction; this way each side genuinely reads the SAME
+ *  declared number from a neutral home instead. */
+export const SILHOUETTE_STROKE_WIDTH = 0.02;
+
+/** T71 (SE15 T69-fix-3, Fred: "W and H is good" + AMEND 13's own final
+ *  margin value): the Shape Lattice contour's own overall size is the
+ *  board minus a fixed 1in margin (0.5in inset per side, centred) —
+ *  declared HERE for the SAME reason SILHOUETTE_STROKE_WIDTH is (a pure,
+ *  DOM-free module both the app's own drawing, `properties-shape-
+ *  lattice.js`'s `regenerateSilhouette`, AND the manifest producer,
+ *  `editor-sketch-manifest.js`'s `buildSketchManifest`, already import
+ *  from) — one declaration, two consumers, never two divergent margin
+ *  numbers. */
+export const CONTOUR_SIZE_INSET_IN = 0.5;
+
+/** The board `region` ({x,y,w,h}), shrunk by CONTOUR_SIZE_INSET_IN on
+ *  every side and re-centred — the ONE region BOTH the app's own drawn
+ *  contour and the manifest's own contour entities must build their
+ *  geometry from, so neither ever draws/declares a different size than
+ *  the other (T68's own parity discipline, extended to this margin). */
+export function insetRegionForContour(region) {
+  return {
+    x: region.x + CONTOUR_SIZE_INSET_IN,
+    y: region.y + CONTOUR_SIZE_INSET_IN,
+    w: region.w - 2 * CONTOUR_SIZE_INSET_IN,
+    h: region.h - 2 * CONTOUR_SIZE_INSET_IN,
+  };
+}
+
 /** Same plain-DOM-element adapter contract OUTLINE_KINDS' own callers use
  *  (editor-io.js's `_outlineAdapter`) — `el.attr(name)` / `el.array()` /
  *  `el.type`. Accepts either that adapter shape directly, or a live
@@ -146,6 +190,61 @@ function _primitivesFromD(d) {
  * than throwing — same "decline gracefully" contract every OutlinePathD
  * function in this session already uses.
  */
+/** T68 AMEND 1 (advisor, measured live on the DEFAULT Shape Lattice
+ *  layer): `editor-sketch-manifest.js`'s own `resolveShapeBoundaryExtent`
+ *  was computing the lattice-fill's own extent from the RAW, un-inset
+ *  boundary primitives, while the app's own drawing
+ *  (`shapeToInnerBoundaryPrimitives` below, via `generatePattern`) insets
+ *  by half the boundary's own stroke width FIRST — a real, measured
+ *  divergence (extra rails at the board's own outer edge, every rail's
+ *  own x-extent off by exactly the inset amount), not a hypothetical.
+ *  `shapeToInnerBoundaryPrimitives`'s own 'path' case (below) is exactly
+ *  "offset this d string inward, then re-parse it into primitives" — for
+ *  a GENERATED preset (`manifestFromShape`'s own ONLY supported case),
+ *  the drawn boundary element is ALWAYS a plain `<path>` built directly
+ *  from `primitivesToPathD`'s own output (`regenerateSilhouette`), so
+ *  this exact 2-step computation applies with no DOM needed at all (no
+ *  rect/ellipse/polygon/text dispatch to make, unlike the general case
+ *  below). Extracted here as its own pure, exported function so BOTH the
+ *  live-DOM path (`shapeToInnerBoundaryPrimitives`'s own 'path' branch)
+ *  and the manifest producer call the IDENTICAL implementation — the
+ *  advisor's own fix instruction, "one function... never two
+ *  computations" — rather than two independently-written copies of the
+ *  same offset-then-reparse steps that could silently drift apart again. */
+export function insetPathDToPrimitives(d, strokeHalfWidth) {
+  if (!strokeHalfWidth || strokeHalfWidth <= 0) return _primitivesFromD(d);
+  const innerD = pathOutlinePathD(d, strokeHalfWidth * 2, { mode: 'inner' }).d;
+  return innerD ? _primitivesFromD(innerD) : [];
+}
+
+/** T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
+ *  own contour-size inset): `insetPathDToPrimitives` above declines to `[]`
+ *  on a collapsed inner ring (self-intersection, or "thinner than
+ *  strokeWidth somewhere" — pathOutlinePathD's own T51 doc comment), and
+ *  BOTH its callers' own onward math treats an EMPTY inset boundary
+ *  exactly like a genuinely degenerate shape (an empty primitive list
+ *  bboxes to null), silently discarding the WHOLE lattice fill — the
+ *  CORRECT, deliberate behavior for a hand-picked boundary (a real thin
+ *  arm the user actually drew; using the raw, un-inset edge there would
+ *  put rails ON TOP of the drawn stroke — `editor-lattice-boundary.test.js`
+ *  own "the WHOLE shape declines... not a local trim" case documents
+ *  exactly this), but the WRONG one for a GENERATED preset silhouette:
+ *  measured live, Bottle's own near-zero-radius neck fillet self-
+ *  intersects at this half-stroke inset amount once the overall contour
+ *  shrinks by T71's own margin, even though the rest of the shape's own
+ *  interior offsets fine — a numerical artifact of curve-fitting math, not
+ *  a feature the user actually drew thin on purpose. This wrapper is for
+ *  that ONE narrower, generated-preset-only case: fall back to the RAW
+ *  (un-inset) boundary, the direct analog of `_closedSubpathD`'s own
+ *  'both'-mode fallback ("collapsed — drop the inner ring, don't emit a
+ *  bowtie", returning `outer.d` instead of nothing). Never call this for a
+ *  hand-picked boundary shape — that path keeps calling
+ *  `insetPathDToPrimitives` directly, unchanged. */
+export function insetGeneratedPresetPathDToPrimitives(d, strokeHalfWidth) {
+  const inset = insetPathDToPrimitives(d, strokeHalfWidth);
+  return inset.length ? inset : _primitivesFromD(d);
+}
+
 export async function shapeToPrimitives(el) {
   const type = el.type;
   if (type === 'rect') {
@@ -299,6 +398,15 @@ export async function shapeToInnerBoundaryPrimitives(el, strokeHalfWidth) {
     if (r <= 0) return [];
     const innerR = r - strokeHalfWidth;
     return innerR > 1e-9 ? [{ type: 'CIRCLE', cx, cy, r: innerR }] : [];
+  }
+  // T68 AMEND 1: routes through the SAME shared `insetPathDToPrimitives`
+  // the manifest producer now calls directly, rather than the generic
+  // `_innerRingD` + `_primitivesFromD` two-step — identical result for
+  // 'path' (the only type a generated Shape Lattice preset ever draws),
+  // now genuinely ONE implementation instead of two that happened to
+  // agree.
+  if (el.type === 'path') {
+    return insetPathDToPrimitives(el.attr('d') || '', strokeHalfWidth);
   }
   const innerD = await _innerRingD(el, strokeHalfWidth);
   return innerD ? _primitivesFromD(innerD) : [];

@@ -1710,6 +1710,18 @@
                   <button type="button" id="latticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="latticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
+                <!-- T67 AMEND 3+4 (Fred: "i dont want it to be always rail
+                     to rail... one setting: number of one ended ties;
+                     I'll usually want 1 or 2"): in Rails span mode, this
+                     many of the seeded ties start on a rail and end FREE
+                     (a stub that deliberately doesn't reach the next
+                     rail) instead of bridging rail-to-rail — never BOTH
+                     ends free. Meaningful only when span mode is Rails;
+                     left visible either way rather than adding a THIRD
+                     show/hide state to track. -->
+                <label style="display:flex; flex-direction:column; gap:2px;">one-ended ties
+                  <input id="latticeTiesOneEnded" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
               </div>
               <div id="latticeTiesDensityFields" style="display:none; flex-direction:column; gap:3px;">
                 <label style="display:flex; flex-direction:column; gap:2px;">density
@@ -2032,6 +2044,14 @@
                   <button type="button" id="shapeLatticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="shapeLatticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
+                <!-- T67 AMEND 3+4 — same field as the box Lattice panel's
+                     own #latticeTiesOneEnded; Shape Lattice's own ties
+                     generate through the identical PATTERN_DEFAULTS.ties/
+                     _tieSlotsByCount mechanism, so it needs the same
+                     control. -->
+                <label style="display:flex; flex-direction:column; gap:2px;">one-ended ties
+                  <input id="shapeLatticeTiesOneEnded" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+                </label>
               </div>
               <div id="shapeLatticeTiesDensityFields" style="display:none; flex-direction:column; gap:3px;">
                 <label style="display:flex; flex-direction:column; gap:2px;">density
@@ -2088,6 +2108,11 @@
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Nodes
                   <button id="shapeLatticeColorNodes" type="button" title="Nodes color" aria-label="Nodes color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
+                <!-- T72 (AMEND 2, Fred: "I want the contour to be colored
+                     too"): a 4th swatch, same C1 style as the other three. -->
+                <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">Contour
+                  <button id="shapeLatticeColorContour" type="button" title="Contour color" aria-label="Contour color" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
+                </label>
               </div>
             </div>
 
@@ -2136,6 +2161,15 @@
                  sites needed no change; only how its "current value" is
                  read/written changed (whichever button has .active). -->
             <div role="group" class="segmented-group" id="shapeLatticeEndRule" style="height:26px;"></div>
+
+            <!-- T72 (SE14c, Fred: "I'd want a checkbox for the actual
+                 contour, I still want rails and ties to be contoured but
+                 sometimes don't want the contour profile"): OFF still
+                 computes/clips against the contour exactly as ON does —
+                 only its own drawn segments/manifest entities disappear. -->
+            <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+              <input id="shapeLatticeContourShow" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> show contour
+            </label>
 
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Border</span>

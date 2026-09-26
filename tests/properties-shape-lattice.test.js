@@ -159,6 +159,7 @@ function fixtureHTML() {
     <input id="shapeLatticeTiesSpanMax" type="number" value="3">
     <select id="shapeLatticeTiesAnchor"><option value="free" selected>free</option></select>
     <input id="shapeLatticeTiesRailSnapRows" type="number" value="1">
+    <input id="shapeLatticeTiesOneEnded" type="number" value="1">
     <input id="shapeLatticeNodesEnds" type="checkbox" checked>
     <input id="shapeLatticeNodesCrossings" type="checkbox" checked>
     <input id="shapeLatticeNodesRailEnds" type="checkbox">
@@ -168,6 +169,7 @@ function fixtureHTML() {
     <button id="shapeLatticeColorRails"></button>
     <button id="shapeLatticeColorTies"></button>
     <button id="shapeLatticeColorNodes"></button>
+    <button id="shapeLatticeColorContour"></button>
     <div id="shapeLatticeWidthUnlinkedFields" style="display:none;">
       <input id="shapeLatticeWidthRails" type="number">
       <input id="shapeLatticeWidthTies" type="number">
@@ -179,6 +181,7 @@ function fixtureHTML() {
     <button id="shapeLatticePickShape"></button>
     <span id="shapeLatticeBoundaryStatus">No shape picked</span>
     <div role="group" id="shapeLatticeEndRule"></div>
+    <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeBorderEnabled" type="checkbox">
     <input id="shapeLatticeBorderWidth" type="number">
     <button id="shapeLatticeBorderColor"></button>
@@ -360,6 +363,15 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     expect(btn.textContent).toBe('Regenerate');
   });
 
+  it('T67 AMEND 3+4: a fresh pattern reads PATTERN_DEFAULTS.ties.oneEnded (1) onto the One-ended ties field, and Generate writes an edited value back into PATTERN.ties.oneEnded', async () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeTiesOneEnded').value).toBe(String(PATTERN_DEFAULTS.ties.oneEnded));
+    document.getElementById('shapeLatticeTiesOneEnded').value = '2';
+    document.getElementById('shapeLatticeGenerate').click();
+    await flush();
+    expect(activeLayerPattern(editor).ties.oneEnded).toBe(2);
+  });
+
   it('the Ending segmented group is populated from the 4 declared rules and defaults to "inset"', () => {
     initShapeLatticeProperties(editor);
     const group = document.getElementById('shapeLatticeEndRule');
@@ -454,6 +466,48 @@ describe('initShapeLatticeProperties: Pick shape (T49 mechanism, reused)', () =>
   });
 });
 
+describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () => {
+  it('checked by default; syncs to the pattern\'s own contour.show on tool-open', () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeContourShow').checked).toBe(true);
+  });
+
+  it('unchecking it IMMEDIATELY writes contour.show=false and hides the drawn contour -- no Generate click needed', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click(); // Shape section fields regenerate immediately (T59) -- links a real contour path first
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    expect(pathEl).toBeDefined();
+    expect(pathEl.attr('display')).not.toBe('none'); // non-vacuous: genuinely visible beforehand
+
+    const cb = document.getElementById('shapeLatticeContourShow');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(activeLayerPattern(editor).contour).toEqual({ show: false });
+    expect(pathEl.attr('display')).toBe('none'); // SAME element, still live -- just hidden
+  });
+
+  it('re-checking it shows the contour again (display attribute cleared)', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const cb = document.getElementById('shapeLatticeContourShow');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    expect(pathEl.attr('display')).toBe('none');
+
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(activeLayerPattern(editor).contour).toEqual({ show: true });
+    expect(pathEl.attr('display')).not.toBe('none');
+  });
+});
+
 /**
  * T58 ADD-ON (mid-task amendment, Fred: "I normally want ties and rails
  * to be the same width") — the SAME shared widths.linkRailsTies contract
@@ -537,6 +591,21 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
     expect(paths[0]).toBe(first);
   });
 
+  it('T72 (AMEND 2): a freshly-minted contour draws in PATTERN.colors.contour, not the general drawing tool\'s current color', () => {
+    const p = currentPattern(editor);
+    editor._color = '#ff00ff'; // a DIFFERENT color -- proves the contour does NOT inherit this
+    const pathEl = regenerateSilhouette(editor, p);
+    expect(pathEl.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
+    expect(pathEl.attr('stroke')).not.toBe('#ff00ff');
+  });
+
+  it('T72 (AMEND 2): a custom PATTERN.colors.contour is honored for a freshly-minted path', () => {
+    const p = currentPattern(editor);
+    p.colors = { ...PATTERN_DEFAULTS.colors, contour: '#ab12cd' };
+    const pathEl = regenerateSilhouette(editor, p);
+    expect(pathEl.attr('stroke')).toBe('#ab12cd');
+  });
+
   it('regenerateSilhouetteAndFill fills AND dispatches SHAPE_CHANGED_EVENT', async () => {
     let fired = 0;
     document.addEventListener('editorShapeLatticeChanged', () => { fired++; });
@@ -556,13 +625,17 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
   });
 
   describe('paramHandleRecords / renderShapeLatticeHandles', () => {
-    it('returns [] before any Generate (source defaults to \'generated\' but nothing exists to anchor against — still computes fine, just an empty DOM)', () => {
-      // Actually: PATTERN_DEFAULTS.shape.source IS 'generated' by default,
-      // so records ARE computed even pre-Generate (paramHandleRecords is
-      // pure/cheap, no DOM needed) — this is the REAL contract, verified
-      // directly rather than assumed.
-      const records = paramHandleRecords(editor);
-      expect(records.length).toBe(3); // hourglass's own 3 declared params
+    it('T72 (AMEND 2, Fred\'s phone screenshot): returns [] before any Generate, even though shape.source already reads \'generated\' (PATTERN_DEFAULTS\' own default, materialized the first time anything touches p.shape) -- source alone was never enough to prove a silhouette actually exists', () => {
+      const p = currentPattern(editor);
+      expect(currentShape(p).source).toBe('generated'); // non-vacuous: the misleading default this bug hinges on is genuinely present
+      expect(p.extent).toBeUndefined(); // and Generate genuinely hasn't run -- no {mode:'boundary'} yet
+      expect(paramHandleRecords(editor)).toEqual([]);
+    });
+
+    it('T72 (AMEND 2): 0 handles pre-Generate, 3 after -- the dispatch\'s own exact acceptance test', () => {
+      expect(paramHandleRecords(editor).length).toBe(0);
+      regenerateSilhouette(editor, currentPattern(editor));
+      expect(paramHandleRecords(editor).length).toBe(3); // hourglass's own 3 declared params
     });
 
     it('returns [] once the linked shape is hand-PICKED (source==\'picked\') — nothing to drag', () => {
@@ -575,12 +648,14 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
     it('one handle per declared param, for the CURRENT preset (bottle: 4)', () => {
       const p = currentPattern(editor);
       currentShape(p).preset = 'bottle';
+      regenerateSilhouette(editor, p); // T72: a real Generate must have run first
       const records = paramHandleRecords(editor);
       expect(records.length).toBe(4);
       expect(records.map((r) => r.key).sort()).toEqual(['bodyWidth', 'neckLength', 'neckWidth', 'skeletonX']);
     });
 
     it('non-vacuous: renderShapeLatticeHandles draws exactly one circle per record into _handleLayer', () => {
+      regenerateSilhouette(editor, currentPattern(editor)); // T72: a real Generate must have run first
       const drawn = renderShapeLatticeHandles(editor);
       expect(drawn.length).toBe(3);
       const circles = editor._handleLayer.children();
