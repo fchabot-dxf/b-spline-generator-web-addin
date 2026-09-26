@@ -9,6 +9,8 @@
  * dependency and is unit-tested directly in tests/editor-view.test.js.
  */
 
+import { frameFitRegion } from './editor-frame-profile.js';
+
 // Fred: zoom OUT past fit (board smaller than the view, room around it).
 // zoom 1 = fit (the fit button still returns exactly here); 0.25 = the
 // board at a quarter of the view.
@@ -80,6 +82,10 @@ export function applyView(editor) {
 /** Reset to the fitted view (zoom 1, centered on the whole board) and
  *  apply it immediately. */
 export function fitView(editor) {
-    editor._view = { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };
+    // FB-APP F7: with a frame, fit its cut profile's region, not the stock.
+    const r = frameFitRegion(editor);
+    editor._view = r
+        ? { zoom: Math.min(editor._mW / r.w, editor._mH / r.h), cx: r.x + r.w / 2, cy: r.y + r.h / 2 }
+        : { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };
     applyView(editor);
 }
