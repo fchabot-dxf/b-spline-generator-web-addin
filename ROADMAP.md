@@ -912,6 +912,10 @@ features as they are from the different add-ins". Shape: DEFINITION (templates/p
 the add-ins' Python (one source); PREVIEW in the app (2D guide layer in the editor + straight-extruded 3D solid in the
 three.js view); REAL parametric features stay Python (fb_engine) invoked by ONE Send in the order body → frame → inlay.
 Parity test per feature (app preview vs Fusion build). Frame Builder first; other add-ins only if Fred wants.
+CORE REQUIREMENT (Fred: "once a frame is cut and we go in the SVG editor, it should show the new profile — that's
+the whole point, make it good"): with a frame chosen, the editor's board shape IS the frame's trimmed outline (outside
+shaded as cut away, artwork untouched), the 3D preview trims the panel to it with bars in the chosen wood, live on
+param change, one outline source shared with the Fusion build. Design + stages on branch fb-app (FB-APP-DESIGN.md).
 Fred confirmed no tapers: `Skel_Frame_Taper` exists but extrusion_engine hard-codes 0° — drop the param, don't port it.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
