@@ -76,6 +76,33 @@ COMMON_FRAME_FEATURES = (
 )
 
 
+# FB-FIX (F4): "board too small for this frame". Measured on the S4 goldens:
+# at 5.51 x 1.97 in the safe zone is 1.97 - 2*0.25 = 1.47 in < 2*0.75 in, the
+# inner offset collapses, and the build gives 0 bars with no error. Declared
+# once; the app evaluates `rule` (it is in frame-defs.json) and fb_engine calls
+# frame_fit() before building. The hourglass waist can be stricter than this
+# bounding-box rule; that is a known gap, not covered here.
+FRAME_FIT = {
+    "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset",
+    "message": ("Board too small for this frame: the safe zone is {safe:.2f} in "
+                "but the frame needs more than {need:.2f} in (2 x frame thickness). "
+                "Use a bigger board or a thinner frame."),
+}
+
+
+def frame_fit(width_in, height_in, frame_thickness_in, bbox_offset_in):
+    """Evaluate FRAME_FIT. Returns {"ok", "safeZoneIn", "requiredIn", "message"}."""
+    safe = min(width_in, height_in) - 2 * bbox_offset_in
+    need = 2 * frame_thickness_in
+    ok = need < safe
+    return {
+        "ok": ok,
+        "safeZoneIn": round(safe, 4),
+        "requiredIn": round(need, 4),
+        "message": None if ok else FRAME_FIT["message"].format(safe=safe, need=need),
+    }
+
+
 def _param_entry(p_info):
     from fb_engine.parameter_schema import ParameterSchema
     name = p_info["Name"]
@@ -119,5 +146,6 @@ def build_frame_defs(source_hash):
         "defaultTemplate": DEFAULT_TEMPLATE,
         "appearance": {"default": DEFAULT_APPEARANCE, "options": list(APPEARANCE_OPTIONS)},
         "extrusion": [dict(s) for s in EXTRUSION_SETTINGS],
+        "fit": dict(FRAME_FIT),
         "templates": templates,
     }

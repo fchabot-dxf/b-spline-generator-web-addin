@@ -6,6 +6,7 @@ instance rather than importing each other. This eliminates circular dependencies
 and keeps every module independently testable.
 """
 import adsk.core, adsk.fusion
+from fb_engine.parameter_schema import ParameterSchema, ResolveError
 
 
 class BuildContext:
@@ -53,18 +54,27 @@ class BuildContext:
             try:
                 return float(val)
             except ValueError:
+                pass
+            # SHADOW STATE (UI active_vars) first for direct name matches.
+            # FB-FIX (F4): parsed with the param's DECLARED unit through the
+            # one resolver (ParameterSchema.to_cm), so '0.75 in' is 1.905 cm
+            # and a bare UI number is inches, not cm. Toggles (en_/ck_) are
+            # unitless and pass through as floats.
+            if val in self.active_vars:
                 try:
-                    # Check SHADOW STATE (UI active_vars) first for direct matches
-                    if val in self.active_vars:
-                        # Convert UI value (usually 0.0 to 100.0 or toggle bits) to float
-                        return float(self.active_vars[val])
-
-                    resolved = self.design.unitsManager.evaluateExpression(val, "cm")
-                    self.logger.log(f"RESOLVED: {val} -> {resolved:.3f} cm")
-                    return resolved
-                except Exception:
-                    self.logger.log_error(f"FAIL RESOLVE: {val}")
-                    return 0.0
+                    return ParameterSchema.to_cm(self.active_vars[val], ParameterSchema.default_unit(val))
+                except ResolveError as e:
+                    self.logger.log_error(f"FAIL RESOLVE: {val} = {self.active_vars[val]!r}: {e}")
+                    raise
+            try:
+                resolved = self.design.unitsManager.evaluateExpression(val, "cm")
+            except Exception as e:
+                # Never a silent 0: the sketch-level handler in
+                # parametric_engine.build_template reports it (CRASH in Sketch).
+                self.logger.log_error(f"FAIL RESOLVE: {val}: {e}")
+                raise ResolveError(f"cannot resolve {val!r}: {e}") from e
+            self.logger.log(f"RESOLVED: {val} -> {resolved:.3f} cm")
+            return resolved
         return 0.0
 
     # ------------------------------------------------------------------

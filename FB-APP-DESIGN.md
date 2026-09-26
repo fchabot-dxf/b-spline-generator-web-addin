@@ -624,15 +624,31 @@ tolerance and it must go red.
    (`FB/fb_engine/build_context.py:58`) does `float(ui_data[name])` before evaluating any expression.
    So `frame_thickness: '0.75 in'` raises, is logged as `FAIL RESOLVE` and becomes 0 cm, and the
    enclosure offset then "created no geometry": no bars, with no error surfaced. A bare number is
-   taken as **cm**, not inches. For S5, Send must pass the frame params in a form this path gets
-   right, or this path must evaluate with units. Not fixed in F3.
+   taken as **cm**, not inches.
+   **FIXED in code (F4, verified with fakes; live check is F4 item 4).**
+   - There is now ONE declared unit table and resolver: `ParameterSchema.UNIT_TO_CM` / `to_cm`.
+     The UI shadow values are parsed with the param's declared unit, so `'0.75 in'` → 1.905 cm and a
+     bare `0.75` → inches.
+   - A failed resolve raises `ResolveError`, logged `FAIL RESOLVE`. `offset_step` re-raises it, so
+     `build_template` reports `CRASH in Sketch`. It is never a silent 0.
 8. **The offset is often not parametric (MEASURED F3).**
    - `addOffset2` fails with "argument 2 of type std::vector<SketchCurve>" (`p01_02` and `p03_02`)
      in most builds, and the engine falls back to a non-parametric offset.
    - In those builds `frame_thickness` / `boundingboxoffset` may not drive the offset live in
      Fusion, which undercuts "features genuinely parametric".
-   - Only T1 at 7×9 took the parametric path once. That case is UNVERIFIED as to why.
-   - Needs its own task: the Python API wants a typed curve collection.
+   - **FIXED in code (F4; live check is F4 item 4):**
+     - `createOffsetInput` now gets a Python **list** of `SketchCurve` (the `std::vector` it names)
+       instead of an `ObjectCollection`.
+     - A declared `OFFSET_SIDE = "inward"` check flips the driving expression to
+       `-(frame_thickness)` if Fusion put the curves outside. Which sign Fusion picks is
+       **UNVERIFIED** until live.
+     - The fallback is now a logged WARNING ("FALLING BACK to a NON-parametric offset"), not DEBUG.
+10. **Board too small for the frame (MEASURED F3, rule declared F4).** `frame_definition.FRAME_FIT`
+    (in `frame-defs.json` as `fit`) says `2·frame_thickness < min(W, H) − 2·boundingboxoffset`.
+    - `FrameBuilder._check_frame_fit` warns `FRAME FIT: Board too small …` and returns the result
+      from `build_frame_logic` / `build_sketch_logic_v3`.
+    - The rule predicts all 6 live goldens (0 bars ⇔ too small).
+    - The hourglass waist can be stricter than this bounding-box rule; that is a known gap.
 9. **Waist arcs can invert (Fred, F3 AMEND 7), NOT reproduced yet.** All 12 waist arcs in the six F3
    goldens pinch correctly (midpoint inside the ends, e.g. T1 7×9: 2.211 vs 2.754 in). The
    parameters that trigger it are unknown. S8 declares the check and hunts for the reproduction.
