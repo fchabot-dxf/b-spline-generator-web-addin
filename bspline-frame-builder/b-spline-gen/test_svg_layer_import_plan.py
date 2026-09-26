@@ -119,6 +119,7 @@ def _load_bspline_gen_module():
 
 _bspline_gen = _load_bspline_gen_module()
 _svg_layer_import_plan = _bspline_gen._svg_layer_import_plan
+_ordered_svg_layer_import_plan = _bspline_gen._ordered_svg_layer_import_plan
 
 
 def _layer(index=1, profile='flat', depth=0.1, svg='', manifest=None):
@@ -225,3 +226,64 @@ def test_multiple_layers_each_get_their_own_independent_decision_the_real_bug_re
     assert plan[1]['build_constrained'] is False
     assert plan[1]['import_svg'] is True
     assert plan[1]['manifest'] is None
+
+
+# ---------------------------------------------------------------------------
+# T76 (SE17, item 5) — _ordered_svg_layer_import_plan: a pattern's own
+# kind-layers build in LATTICE_FUSION_BUILD_ORDER (contour->rails->ties->
+# nodes), regardless of the layers' own array position (the app's own
+# layer stacking order, independently user-drag-reorderable).
+# ---------------------------------------------------------------------------
+def _kind_layer(index, kind, build_order, pattern_id='p1'):
+    return _layer(index=index, profile='vbit', depth=0.1, svg='',
+                  manifest={'entities': [{'id': f'{kind}0'}], 'kind': kind,
+                            'buildOrder': build_order, 'patternId': pattern_id})
+
+
+def test_ordered_plan_sorts_a_kind_split_pattern_by_buildOrder_even_when_the_layers_array_lists_them_out_of_order():
+    """The app's own layer stacking order (drag-reorder in the layers
+    panel) is INDEPENDENT of the Fusion build order (ROADMAP.md's own
+    SE17 entry) -- here the raw `layers` array lists nodes, then contour,
+    then ties, then rails (a plausible real stacking a user dragged into),
+    but the Fusion build MUST still run contour -> rails -> ties -> nodes."""
+    layers = [
+        _kind_layer(1, 'nodes', build_order=3),
+        _kind_layer(2, 'contour', build_order=0),
+        _kind_layer(3, 'ties', build_order=2),
+        _kind_layer(4, 'rails', build_order=1),
+    ]
+    ordered = _ordered_svg_layer_import_plan(layers, design_available=True)
+    assert [step['manifest']['kind'] for step in ordered] == ['contour', 'rails', 'ties', 'nodes']
+
+
+def test_ordered_plan_leaves_ungrouped_steps_in_their_own_original_relative_order():
+    """A hand-drawn layer (no manifest at all) and a pre-SE17 single-layer
+    lattice (a manifest with no patternId) are each their own independent
+    step -- this function must never reorder them relative to each other,
+    only reorder steps that share the SAME patternId."""
+    layers = [
+        _layer(index=1, svg='<path d="M0 0 L1 1"/>'),  # hand-drawn, no manifest
+        _layer(index=2, manifest={'entities': [{'id': 'rail0'}]}),  # pre-SE17, no patternId
+        _layer(index=3, svg='<path d="M2 2 L3 3"/>'),  # hand-drawn, no manifest
+    ]
+    ordered = _ordered_svg_layer_import_plan(layers, design_available=True)
+    assert [step['sketch_name'] for step in ordered] == [s['sketch_name'] for s in _svg_layer_import_plan(layers, design_available=True)]
+
+
+def test_ordered_plan_handles_two_independent_pattern_groups_without_mixing_them():
+    """Two separate generated lattices in the same document, each with
+    their own 4 (or 3) kind-layers -- grouped and ordered independently,
+    by their own distinct patternId, never interleaved incorrectly."""
+    layers = [
+        _kind_layer(1, 'ties', build_order=2, pattern_id='pA'),
+        _kind_layer(2, 'rails', build_order=1, pattern_id='pB'),
+        _kind_layer(3, 'rails', build_order=1, pattern_id='pA'),
+        _kind_layer(4, 'ties', build_order=2, pattern_id='pB'),
+    ]
+    ordered = _ordered_svg_layer_import_plan(layers, design_available=True)
+    pattern_ids_in_order = [step['manifest']['patternId'] for step in ordered]
+    # within EACH pattern's own two entries, rails (buildOrder 1) precedes ties (buildOrder 2).
+    for pid in ('pA', 'pB'):
+        kinds_for_pid = [step['manifest']['kind'] for step in ordered if step['manifest']['patternId'] == pid]
+        assert kinds_for_pid == ['rails', 'ties']
+    assert set(pattern_ids_in_order) == {'pA', 'pB'}

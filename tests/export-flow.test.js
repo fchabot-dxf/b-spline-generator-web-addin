@@ -60,6 +60,9 @@ function mockEditor(layers) {
       profile: l.profile,
       _mask: l.mask ?? null,
       pattern: l.pattern ?? null,
+      // T76 (SE17): a sibling kind-layer carries only this pointer, never
+      // its own `.pattern` — see resolvePatternLayer's own doc comment.
+      ...(l.patternOwner !== undefined ? { patternOwner: l.patternOwner } : {}),
     })),
   };
 }
@@ -314,6 +317,29 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     expect(_fusionLayerManifest(editor, { id: '2' })).toBeNull();
   });
 
+  it('T75 item 3 (OVR-FUSION): a real owned rail element carrying data-override-width produces a HARDCODED SlotWidth expression on that piece\'s manifest entity', () => {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 0, anchor: 'free', spanMin: 1, spanMax: 1 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
+    };
+    const editor = mockEditor([{
+      id: '3', pattern,
+      owned: [
+        { 'data-layer': '3', 'data-lattice-gen': 'anything', 'data-lattice': 'rail', 'data-override-width': '0.5' },
+      ],
+    }]);
+    const manifest = _fusionLayerManifest(editor, { id: '3' });
+    const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
+    expect(rail0Dim.expression).toBe('0.5 in');
+    // a sibling rail with no mock override at all keeps referencing the
+    // shared parameter, exactly like every rail did before this feature.
+    const rail1Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail1');
+    expect(rail1Dim.expression).toBe('stroke_width');
+  });
+
   it('returns a real manifest for a layer that DOES carry a .pattern AND owned pieces', () => {
     const pattern = {
       spacing: 0.25,
@@ -343,5 +369,97 @@ describe('export-flow: _fusionLayerManifest (T62 — SE15 manifest gating)', () 
     // same 7x9 board — a real, checkable difference, not just "not null".
     const railCount = (m) => m.entities.filter((e) => e.id.match(/^rail\d+$/)).length;
     expect(railCount(manifestB)).toBeGreaterThan(railCount(manifestA));
+  });
+});
+
+/**
+ * T76 (SE17, item 4) — a pattern already split across its own kind-layers
+ * (`pattern.layers`, item 2's own `_ensureKindLayers`) builds ONE manifest
+ * PER KIND-LAYER via splitManifestByKind, not one combined manifest for
+ * whichever layer happens to be asked about.
+ */
+describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kind-layer)', () => {
+  function makeKindSplitEditor() {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
+      nodes: { ends: true, crossings: true, railEnds: false },
+      widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
+      layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
+    };
+    return mockEditor([
+      { id: 'railsL', pattern, owned: [{ 'data-layer': 'railsL', 'data-lattice-gen': 'p', 'data-lattice': 'rail' }] },
+      { id: 'tiesL', patternOwner: 'railsL', owned: [{ 'data-layer': 'tiesL', 'data-lattice-gen': 'p', 'data-lattice': 'tie' }] },
+      { id: 'nodesL', patternOwner: 'railsL', owned: [{ 'data-layer': 'nodesL', 'data-lattice-gen': 'p', 'data-lattice': 'node' }] },
+    ]);
+  }
+
+  it('the Rails layer\'s own manifest contains ONLY rail entities (no ties/nodes mixed in)', () => {
+    const editor = makeKindSplitEditor();
+    const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.layerId).toBe('railsL');
+    expect(manifest.entities.length).toBeGreaterThan(0);
+    expect(manifest.entities.every((e) => e.id.startsWith('rail'))).toBe(true);
+  });
+
+  it('the Ties layer\'s own manifest (a SIBLING with no .pattern of its own) still resolves the shared pattern and contains ONLY tie entities', () => {
+    const editor = makeKindSplitEditor();
+    const manifest = _fusionLayerManifest(editor, { id: 'tiesL' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.layerId).toBe('tiesL');
+    expect(manifest.entities.length).toBeGreaterThan(0);
+    expect(manifest.entities.every((e) => e.id.startsWith('tie'))).toBe(true);
+    // its own cross-kind tie-on-rail links became projections, not raw rail ids.
+    expect(manifest.projections.length).toBeGreaterThan(0);
+    expect(manifest.projections.every((p) => p.sourceKind === 'rails')).toBe(true);
+  });
+
+  it('the Nodes layer\'s own manifest resolves the shared pattern too, with projections sourced from rails and/or ties', () => {
+    const editor = makeKindSplitEditor();
+    const manifest = _fusionLayerManifest(editor, { id: 'nodesL' });
+    expect(manifest).not.toBeNull();
+    expect(manifest.entities.every((e) => e.id.startsWith('node'))).toBe(true);
+    expect(manifest.projections.length).toBeGreaterThan(0);
+    for (const p of manifest.projections) expect(['rails', 'ties']).toContain(p.sourceKind);
+  });
+
+  it('T76 item 6 (hidden kind-layer, dependents keep exact geometry): a SIBLING kind-layer\'s own visible/hidden state has NO effect on another kind-layer\'s own manifest at all -- Nodes\' own entities/projections come out byte-for-byte identical whether Ties is visible or hidden', () => {
+    const editorTiesVisible = makeKindSplitEditor();
+    const editorTiesHidden = makeKindSplitEditor();
+    editorTiesHidden._layers.find((l) => l.id === 'tiesL').visible = false;
+
+    const manifestA = _fusionLayerManifest(editorTiesVisible, { id: 'nodesL' });
+    const manifestB = _fusionLayerManifest(editorTiesHidden, { id: 'nodesL' });
+    // _fusionLayerManifest itself never reads ANY layer's own `.visible` --
+    // visibility gating happens one level up, in sendToFusion's own
+    // layersToExport filter (isExported), which decides WHETHER this
+    // function ever gets called for a given layer at all, not what it
+    // returns once called. Nodes' own geometry/projections are therefore
+    // computed the SAME way regardless -- "dependents keep exact
+    // geometry" holds by construction, not by a special case added here.
+    expect(manifestB).toEqual(manifestA);
+    expect(manifestB.entities.length).toBeGreaterThan(0);
+    expect(manifestB.projections.length).toBeGreaterThan(0);
+  });
+
+  it('a per-kind-layer manifest\'s own overrides are read from THAT KIND\'s own owned elements, not whichever layer id was asked about', () => {
+    const pattern = {
+      spacing: 0.25,
+      rails: { mode: 'every', every: 2, offset: 0 },
+      ties: { mode: 'density', density: 0 },
+      nodes: { ends: false, crossings: false, railEnds: false },
+      widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
+      layers: { rails: 'railsL', ties: 'tiesL', nodes: 'nodesL' },
+    };
+    const editor = mockEditor([
+      { id: 'railsL', pattern, owned: [{ 'data-layer': 'railsL', 'data-lattice-gen': 'p', 'data-lattice': 'rail', 'data-override-width': '0.5' }] },
+      { id: 'tiesL', patternOwner: 'railsL', owned: [] },
+      { id: 'nodesL', patternOwner: 'railsL', owned: [] },
+    ]);
+    const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
+    const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
+    expect(rail0Dim.expression).toBe('0.5 in'); // hardcoded, from the Rails layer's own override
   });
 });

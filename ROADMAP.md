@@ -941,6 +941,24 @@ param (hourglass + bottle, both orientations, several board sizes) asserting sim
 positive sweep per arc, tangency at joints; reproduce Fred's case first (red before the fix). The inversion detector
 (F3 AMEND 7b) becomes a guard, not the fix. Coordinate: seat B (T76) edits lattice layers, not the silhouette solver.
 
+## Queued (seat B, T77, after T76) — TIE-GAP: minimum spacing between ties (Fred 2026-09-26)
+Fred: "in ties I want a minimum space apart". Declared `ties.minSpacing` (default 0.5 in, a 'Min spacing' field in the
+Ties section of BOTH lattice panels): Generate never places two ties closer than this measured along the rail direction
+(ties in the same rail gap, and across adjacent gaps if they'd visually pair up — decide + log); if the count range
+can't fit, generate FEWER (spacing wins over count). Hand-added / dragged ties are exempt. Sweep test: no pair of
+generated ties closer than minSpacing across seeds/counts/presets; parity unchanged.
+
+## Queued (Fred's queue, Asus) — RAIL-SPACING: "Spacing" means rail-to-rail distance (Fred 2026-09-26)
+Fred: "to me spacing isn't that" / "rail to rail, yes". Today `PATTERN.spacing` (the "Spacing" select in Grid & rails,
+both lattice panels) is the lattice's GRID STEP, a second grid next to the editor's toolbar grid (both default 0.25").
+Change: (1) the lattice grid step comes from the editor grid (GRID_DEFAULTS / toolbar), one grid, no lattice-side
+setting; (2) a declared `rails.spacing` (inches, rail-to-rail) becomes the "Spacing" field, a rails mode next to
+Count ('spacing' | 'count'; 'every' folds into 'spacing'); the rail count follows from the lattice size. Fred: "it's either set spacing or count": ONE toggle [Spacing | Count], only the chosen field shown; the other value is derived, never both set. Fred: "on generate it is evenly spaced": BOTH modes give exactly equal gaps on the grid. Count mode picks gap = whole grid steps nearest span/(count-1) (never larger than fits) and CENTRES the group (leftover split equally at both ends), replacing today's _railRowsByCount edge-to-edge rounding (gaps that differ by a grid step). Test: every generated rail gap is identical, both modes, across sizes/orientations/presets. Spacing must be a
+whole number of grid steps (round to one, show the result), which gives exactly even gaps. Both panels. MIGRATION:
+a saved pattern's old `spacing` is read as its grid step and keeps its exact geometry (no silent re-layout). Tests:
+spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
+the one grid.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):

@@ -357,3 +357,98 @@ describe('runMigrations: border-to-contour-width', () => {
     expect(P.editorSvg).toBe(first);
   });
 });
+
+/**
+ * T75 (LAT-SIZE) — box-lattice-margin-to-size. The advisor's own decision
+ * B: ONE shared `PATTERN.size` (real inches) concept for BOTH lattice
+ * tools, retiring the old `PATTERN.margin` (lattice CELLS, box Lattice
+ * only) as a driver entirely. An already-saved BOX LATTICE pattern's own
+ * margin+spacing converts to an EQUIVALENT explicit `size` exactly once,
+ * so an existing save's own rendered extent never moves.
+ */
+describe('runMigrations: box-lattice-margin-to-size', () => {
+  function editorSvgWithLayers(roster) {
+    const attr = JSON.stringify(roster).replace(/"/g, '&quot;');
+    return `<svg xmlns="http://www.w3.org/2000/svg" data-editor-layers="${attr}"></svg>`;
+  }
+  function rosterOf(p) {
+    const root = new DOMParser().parseFromString(p.editorSvg, 'image/svg+xml').documentElement;
+    return JSON.parse(root.getAttribute('data-editor-layers'));
+  }
+
+  it('an old save with margin=1 at spacing=0.25 on a 7x9 board converts to size = 6.5 x 8.5 (the SAME real-inches extent the old cell-margin formula already produced, 1e-9)', () => {
+    const P = {
+      widthIn: 7, heightIn: 9,
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { spacing: 0.25, margin: 1 } }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.size.width).toBeCloseTo(6.5, 9); // 7 - 2*(1*0.25)
+    expect(pat.size.height).toBeCloseTo(8.5, 9); // 9 - 2*(1*0.25)
+    expect(pat.margin).toBeUndefined(); // retired key, deleted after conversion
+  });
+
+  it('an old save with NEITHER margin nor spacing stored (both implicit defaults) converts using the historical defaults (margin=1, spacing=0.25) — the same as if they\'d been written out explicitly', () => {
+    const P = {
+      widthIn: 7, heightIn: 9,
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { rails: { every: 2, offset: 0 } } }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.size.width).toBeCloseTo(6.5, 9);
+    expect(pat.size.height).toBeCloseTo(8.5, 9);
+  });
+
+  it('a NON-default margin (2 cells) converts losslessly too, not just the default', () => {
+    const P = {
+      widthIn: 10, heightIn: 10,
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { spacing: 0.5, margin: 2 } }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    // margin(cells)*spacing = 2*0.5 = 1in per side, 2in total, each axis.
+    expect(pat.size.width).toBeCloseTo(8, 9);
+    expect(pat.size.height).toBeCloseTo(8, 9);
+  });
+
+  it('a Shape Lattice pattern (extent.mode==="boundary") is left completely untouched — its own region mechanism is unrelated to margin/size entirely', () => {
+    const P = {
+      widthIn: 7, heightIn: 9,
+      editorSvg: editorSvgWithLayers([{
+        id: '0', name: 'Layer 1',
+        pattern: { spacing: 0.25, margin: 1, extent: { mode: 'boundary' }, shape: { source: 'generated', preset: 'hourglass' } },
+      }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.size).toBeUndefined(); // never migrated -- reads PATTERN_DEFAULTS.size (null/null) naturally
+    expect(pat.margin).toBe(1); // untouched, not even deleted
+  });
+
+  it('a layer that already has a size is left exactly as saved, never re-derived from a stale margin', () => {
+    const P = {
+      widthIn: 7, heightIn: 9,
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { spacing: 0.25, margin: 1, size: { width: 5, height: 5 } } }]),
+    };
+    runMigrations(P);
+    const pat = rosterOf(P)[0].pattern;
+    expect(pat.size).toEqual({ width: 5, height: 5 });
+  });
+
+  it('a layer with no pattern (a plain non-lattice layer) is left untouched, no throw', () => {
+    const P = { widthIn: 7, heightIn: 9, editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1' }]) };
+    expect(() => runMigrations(P)).not.toThrow();
+    expect(rosterOf(P)[0].pattern).toBeUndefined();
+  });
+
+  it('is idempotent — running twice does not change the result', () => {
+    const P = {
+      widthIn: 7, heightIn: 9,
+      editorSvg: editorSvgWithLayers([{ id: '0', name: 'Layer 1', pattern: { spacing: 0.25, margin: 1 } }]),
+    };
+    runMigrations(P);
+    const first = P.editorSvg;
+    runMigrations(P);
+    expect(P.editorSvg).toBe(first);
+  });
+});
