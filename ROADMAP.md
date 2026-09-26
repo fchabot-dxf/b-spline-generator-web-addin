@@ -825,6 +825,19 @@ segment in the drape/3D preview and exported per segment (→ one Fusion slot ea
 segments chained into one closed loop (derived, not stored twice). Straight/curve/kink styling stays mirrored per pair;
 COLOUR is per segment (left ≠ right allowed). Hand node-edit still detaches from the generator. Pair with SE15b.
 
+## Queued — SE14c: Shape Lattice "Contour" checkbox (Fred 2026-09-26)
+Fred: "in shaped lattice I'd want a checkbox for the actual contour, I still want rails and ties to be contoured but
+sometimes don't want the contour profile". → a declared `contour.show` flag (default on) + a checkbox in the Shape
+Lattice panel. Off = the contour is still COMPUTED and still clips/fits the rails and ties exactly as now, but the
+contour segments are not drawn, not exported (SVG / Send to Fusion) and not in the manifest (no contour slots, no
+contour_width/height dims). Parity test covers both states. Do after T71 (and alongside or after SE14b, which draws the
+contour as segments).
+
+## Queued — SE15c: raise the SKETCH_PIECE_THRESHOLD (advisor MEASURED 2026-09-26)
+Above 60 pieces the manifest sends plain, unconstrained geometry (SE15 §8 guess). Measured in Fusion, 16 rails / 97
+pieces: plain 61 s, drift 0.139" at stroke 0.5 (0.013" not recovered), rails visibly tilted; CONSTRAINED 90 s, 0 fails,
+exact parity, drift 0.030" (0.0004" recovered). Raise the threshold (e.g. 300) so dense lattices stay constrained.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
