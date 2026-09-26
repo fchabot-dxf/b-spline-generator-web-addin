@@ -56,7 +56,7 @@
 import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
 } from './editor-lattice-boundary.js';
 import { generateContourSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
@@ -1050,6 +1050,28 @@ function dedupeParametersByName(parameters) {
  * `applyCarvePlacement`), not the natural board-inches space the two
  * producers above compute in internally.
  */
+/** BOUNDARY-GUIDE (L1, Fred: "it's geometry but construction geometry in
+ *  Fusion"): a declared GUIDE record (editor-lattice-boundary.js's
+ *  `latticeBoundaryGuide`) as a closed rectangle of 4 Line entities
+ *  (`${guide.id}0..3`, corner Coincidents + H/V, no dims, never Fix).
+ *  `isConstruction` is read off the record's own role — the builder
+ *  (sketch_manifest_builder.py) applies it generically to any entity, so
+ *  the box is never a profile and never extruded, yet stays usable for
+ *  constraints/dims. `isConstruction` (not a new `construction` key) is
+ *  the field the builder and the T70 manifest already declared. */
+function manifestFromGuide(guide) {
+  const { x, y, w, h } = guide.rect;
+  const corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  const ids = corners.map((_, i) => `${guide.id}${i}`);
+  const isConstruction = guide.role === GUIDE_ROLE;
+  const entities = ids.map((id, i) => ({ id, type: 'Line', p1: corners[i], p2: corners[(i + 1) % 4], isConstruction }));
+  const constraints = [
+    ...ids.map((id, i) => ({ type: 'Coincident', targets: [`${id}:E`, `${ids[(i + 1) % 4]}:S`] })),
+    ...ids.map((id, i) => ({ type: i % 2 ? 'Vertical' : 'Horizontal', targets: [id] })),
+  ];
+  return { entities, constraints };
+}
+
 export function buildSketchManifest(pattern, region, opts = {}) {
   // PATTERN_DEFAULTS.shape.source defaults to 'generated' UNCONDITIONALLY
   // (editor-lattice-pattern.js) — every pattern carries a `.shape`
@@ -1114,6 +1136,9 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   const shape = contourVisible
     ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: _effectiveContourStrokeWidth(pattern) })
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
+  // BOUNDARY-GUIDE: the Size box, always sent (both tools, contour on or
+  // off), as construction geometry — the SAME record the editor draws.
+  const guide = manifestFromGuide(latticeBoundaryGuide(pattern, region));
 
   const manifest = {
     version: 1,
@@ -1123,8 +1148,8 @@ export function buildSketchManifest(pattern, region, opts = {}) {
     sketchName: opts.sketchName || 'Sketch',
     units: 'in',
     region: { x: region.x, y: region.y, w: region.w, h: region.h },
-    entities: [...shape.entities, ...lattice.entities],
-    constraints: [...shape.constraints, ...lattice.constraints],
+    entities: [...shape.entities, ...lattice.entities, ...guide.entities],
+    constraints: [...shape.constraints, ...lattice.constraints, ...guide.constraints],
     // T72 (advisor, measured on 8566623): `stroke_width` was declared
     // TWICE when a shape's own contour and its lattice fill are BOTH
     // linked to the SAME name — `manifestFromShape` always declares its
@@ -1155,6 +1180,10 @@ function _kindOfEntityId(rawId) {
   if (base.startsWith('tie')) return 'ties';
   if (base.startsWith('node')) return 'nodes';
   if (base.startsWith('seg')) return 'contour';
+  // BOUNDARY-GUIDE: the Size box rides in the RAILS sketch — the one kind
+  // BOTH tools always build (Box Lattice has no contour sketch), and the
+  // box bounds the fill the rails belong to.
+  if (base.startsWith('bnd')) return 'rails';
   return null;
 }
 

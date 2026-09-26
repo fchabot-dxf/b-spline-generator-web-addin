@@ -401,7 +401,11 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
     expect(manifest).not.toBeNull();
     expect(manifest.layerId).toBe('railsL');
     expect(manifest.entities.length).toBeGreaterThan(0);
-    expect(manifest.entities.every((e) => e.id.startsWith('rail'))).toBe(true);
+    // BOUNDARY-GUIDE: plus the Size box's own 4 construction Lines (bnd0..3), which ride in the rails sketch.
+    const rails = manifest.entities.filter((e) => !e.id.startsWith('bnd'));
+    expect(rails.length).toBeGreaterThan(0);
+    expect(rails.every((e) => e.id.startsWith('rail'))).toBe(true);
+    expect(manifest.entities.filter((e) => e.id.startsWith('bnd')).map((e) => e.isConstruction)).toEqual([true, true, true, true]);
   });
 
   it('the Ties layer\'s own manifest (a SIBLING with no .pattern of its own) still resolves the shared pattern and contains ONLY tie entities', () => {

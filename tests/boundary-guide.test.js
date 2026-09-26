@@ -146,3 +146,55 @@ describe('BOUNDARY-GUIDE: the editor renderer', () => {
     expect([placed[0].rects[0].w, placed[0].rects[0].h]).toEqual([10, 6]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fusion side: the SAME record becomes 4 construction Lines in the manifest
+// ---------------------------------------------------------------------------
+import {
+  buildSketchManifest, splitManifestByKind,
+} from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
+import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+
+const REGION = { x: 0, y: 0, w: 7, h: 9 };
+const BOX = {
+  ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42, id: 'bg-box', size: { width: 5, height: 6 },
+  rails: { mode: 'every', every: 2, offset: 0 },
+};
+const SHAPE = {
+  ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42, id: 'bg-shape', size: { width: 5, height: 6 },
+  extent: { mode: 'boundary' },
+  shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+};
+const bnd = (m) => m.entities.filter((e) => e.id.startsWith('bnd'));
+const bbox = (lines) => {
+  const xs = lines.flatMap((l) => [l.p1[0], l.p2[0]]), ys = lines.flatMap((l) => [l.p1[1], l.p2[1]]);
+  return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+};
+
+describe('BOUNDARY-GUIDE: Fusion manifest', () => {
+  for (const [name, pattern] of [['Box Lattice', BOX], ['Shape Lattice', SHAPE],
+    ['Shape Lattice, contour off', { ...SHAPE, contour: { ...PATTERN_DEFAULTS.contour, show: false } }]]) {
+    it(`${name}: the Size box is 4 closed construction Lines at the declared Size`, () => {
+      const m = buildSketchManifest(pattern, REGION, {});
+      const lines = bnd(m);
+      expect(lines.map((e) => e.id)).toEqual(['bnd0', 'bnd1', 'bnd2', 'bnd3']);
+      expect(lines.every((e) => e.type === 'Line' && e.isConstruction === true)).toBe(true);
+      const b = bbox(lines);
+      expect(b.w).toBeCloseTo(5, 9);
+      expect(b.h).toBeCloseTo(6, 9);
+      const closing = m.constraints.filter((c) => c.type === 'Coincident' && c.targets[0].startsWith('bnd'));
+      expect(closing).toHaveLength(4);
+      // nothing else in the manifest is construction
+      expect(m.entities.filter((e) => e.isConstruction).length).toBe(4);
+    });
+
+    it(`${name}: split per kind, the box rides in the RAILS sketch only`, () => {
+      const split = splitManifestByKind(pattern, REGION, {});
+      for (const [kind, km] of Object.entries(split)) {
+        expect(bnd(km).length).toBe(kind === 'rails' ? 4 : 0);
+      }
+      const railsBoxConstraints = split.rails.constraints.filter((c) => c.targets.every((t) => t.startsWith('bnd')));
+      expect(railsBoxConstraints).toHaveLength(8); // 4 corner Coincidents + 2 Horizontal + 2 Vertical
+    });
+  }
+});

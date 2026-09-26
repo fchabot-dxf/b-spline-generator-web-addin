@@ -39,6 +39,7 @@ function entityKind(id) {
   if (base.startsWith('tie')) return 'ties';
   if (base.startsWith('node')) return 'nodes';
   if (base.startsWith('seg')) return 'contour';
+  if (base.startsWith('bnd')) return 'rails'; // BOUNDARY-GUIDE: the Size box rides in the rails sketch
   return null;
 }
 
