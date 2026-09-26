@@ -9,6 +9,7 @@ import { initStampPanel } from './stamp/index.js';
 import { AppState } from './app-state.js';
 import { scheduleUndoSnapshot } from '../core/history.js';
 import { attachSliderScrollGuard } from './slider-scroll-guard.js';
+import { attachFormulaFields } from './formula-fields.js';
 
 export function bindControls(preview) {
   // UX-UNDO: the layer row's 👁/3D/palette toggles (editor/layers.js —
@@ -141,6 +142,8 @@ export function bindControls(preview) {
   };
 
   attachNumberSteppers();
+  // FORMULA-FIELDS: after the steppers (they only wrap type="number" inputs; the binder switches its fields to text).
+  attachFormulaFields();
   attachSliderScrollGuard();
 
   // All stamp-panel controls are now owned by main/stamp/* — one module

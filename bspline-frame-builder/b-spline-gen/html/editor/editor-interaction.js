@@ -1009,26 +1009,23 @@ function _collectLatticeElements(editor, spacing, excludeEl = null) {
                 kind, el: ch,
                 a: toLattice(aWorld, spacing), b: toLattice(bWorld, spacing),
                 aOnGrid: isLatticePoint(aWorld, spacing), bOnGrid: isLatticePoint(bWorld, spacing),
+                // UI5 item 5: the RAW world endpoints too, alongside the
+                // rounded-to-grid a/b above — a contour-anchored end sits
+                // at a genuine FRACTIONAL lattice position, so matching
+                // "is THIS the same point as that piece's own end" needs
+                // the real coordinate, not the nearest integer cell.
+                aWorld, bWorld,
             });
         } else if (kind === 'node') {
             const cx = parseFloat(ch.node.getAttribute('cx'));
             const cy = parseFloat(ch.node.getAttribute('cy'));
             if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
             const world = worldPoint(ch, { x: cx, y: cy });
-            out.push({ kind, el: ch, point: toLattice(world, spacing), onGrid: isLatticePoint(world, spacing) });
+            out.push({ kind, el: ch, point: toLattice(world, spacing), onGrid: isLatticePoint(world, spacing), world });
         }
     }
     return out;
 }
-
-// SE7i (Section 3, "connected editing" — Fred approved the rules): a
-// sentinel lattice point that can never coincide with a real row/range —
-// used to mask OFF a tie-end that failed the on-grid check without
-// discarding the tie's OTHER end, which might still be a genuine
-// attachment. moveRailAlongAxis's own row+range comparison (`pt.j ===
-// railJ`) is false for NaN against any real number, so a masked end
-// simply never matches.
-const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
 
 /**
  * SE7i/SE7k: snapshot everything a drag-to-move-or-stretch gesture needs,
@@ -1043,11 +1040,19 @@ const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
  * (world-geometry-aware, active-layer-scoped, excluding the grabbed
  * element itself — EXCEPT the node-classification branch, which needs its
  * own grabbed node to remain a candidate so it can be carried along with
- * whichever piece it turns out to belong to); a tie-end or node that isn't
- * genuinely on-grid (isLatticePoint, computed by that function on the RAW
- * world point) is masked to `_OFF_GRID_SENTINEL` so it can never attach —
- * Fred: "attach should mean snapped to grid on the same point," not merely
- * close to one. `startAttrs` is normally the grabbed element's own
+ * whichever piece it turns out to belong to). UI5 item 5 (advisor,
+ * generalizing T73's own fix beyond the contour): "attach" means the
+ * candidate's own REAL WORLD position exactly matches (tolerance, not
+ * `===`) what it's claimed to attach to — Fred's original SE7i ruling,
+ * "attach should mean snapped to grid on the same point, not merely close
+ * to one," is preserved by that tolerance being tight (1e-6): a hand-
+ * nudged tie a visible distance off its row still fails it exactly as it
+ * failed the old isLatticePoint/`_OFF_GRID_SENTINEL` gate this replaced —
+ * the difference is only that the "grid" a genuine attachment can sit on
+ * is no longer assumed to be the standard integer one (a Shape Lattice's
+ * on-boundary end, or a future off-grid RAIL-SPACING row, are exact,
+ * intentional positions too). `startAttrs` is normally the grabbed
+ * element's own
  * pre-drag attrs (captured AFTER the transform-bake below), used at
  * finish() to detect a true no-op (bare click) — the node-classification
  * branches are the exception, where it's the MATCHED piece's attrs
@@ -1069,6 +1074,25 @@ const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
  *  before a NEW lattice-mode grab, or one Select mode itself just applied
  *  via translateSelection), folds it into the raw x1/y1/x2/y2 (or cx/cy)
  *  attrs and clears it — a no-op if there's no transform to bake. */
+/** UI5 item 5 (Fred: "the node likely drops because the contour is not on
+ *  the grid... node matching uses the declared tolerance, not exact grid
+ *  coords"): is `p1` genuinely the SAME point as `p2`, in real WORLD
+ *  (model-inch) space? The one comparison every "does this node belong to
+ *  THIS piece's end" check below should use instead of rounding both
+ *  sides to the nearest INTEGER lattice cell first (isLatticePoint/
+ *  onGrid) and comparing THOSE — correct for an ordinary board-mode piece
+ *  (always integer-aligned already), but silently wrong for a Shape
+ *  Lattice piece anchored to the contour's own FRACTIONAL crossing: two
+ *  points 0.4 cells apart can round to the SAME integer cell (a false
+ *  match) while a genuinely-attached node sitting exactly at a fractional
+ *  end (0 real distance away) gets rejected outright by the on-grid gate
+ *  (a false miss — confirmed live, T73's own contour-anchored ties). 1e-6
+ *  matches this file's own established float-compare tolerance elsewhere
+ *  (_clampStretchToContour's span check, etc). */
+function _sameWorldPoint(p1, p2, tol = 1e-6) {
+    return Math.abs(p1.x - p2.x) < tol && Math.abs(p1.y - p2.y) < tol;
+}
+
 function _bakeLatticeTransform(hit, kind) {
     if (kind === 'node') {
         const nodeWorld = worldPoint(hit, { x: parseFloat(hit.attr('cx')), y: parseFloat(hit.attr('cy')) });
@@ -1126,9 +1150,11 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
 
         if (end) {
             const candidates = _collectLatticeElements(editor, spacing, hit);
-            const endPointCanon = pieceCanon[end];
-            const endNodeMatch = candidates.find((c) => c.kind === 'node' && c.onGrid
-                && orient(c.point, orientation).i === endPointCanon.i && orient(c.point, orientation).j === endPointCanon.j);
+            // UI5 item 5: match against the grabbed piece's own REAL end
+            // (aWorld/bWorld), not the on-grid-gated canonical point — see
+            // _sameWorldPoint's own doc comment.
+            const endWorld = end === 'a' ? aWorld : bWorld;
+            const endNodeMatch = candidates.find((c) => c.kind === 'node' && _sameWorldPoint(c.world, endWorld));
             return {
                 kind, mode: 'stretch', el: hit, orientation, spacing, startAttrs,
                 pieceCanon, end, endNode: endNodeMatch ? endNodeMatch.el : null,
@@ -1137,14 +1163,30 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
 
         if (kind === 'rail') {
             const candidates = _collectLatticeElements(editor, spacing, hit);
+            // UI5 item 5 (advisor: "write the fix GENERALLY — an end
+            // attached to something... snaps to that thing... not a
+            // contour-only special case" — RAIL-SPACING will put rails
+            // themselves off-grid next): moveRailAlongAxis now matches by
+            // real-world TOLERANCE (its own doc comment), not `===` on an
+            // isLatticePoint-gated, toLattice-ROUNDED value — the SAME
+            // "compare exact positions, not the nearest integer cell"
+            // fix as every other node/piece match in this file. The old
+            // aOnGrid/bOnGrid/onGrid gate (and its _OFF_GRID_SENTINEL) was
+            // there to stop a coincidentally-ROUNDED near-miss from
+            // reading as attached; an exact fractional comparison can't
+            // produce that false positive in the first place (a hand-
+            // nudged tie 0.01in off its row fails a 1e-6 tolerance just as
+            // it failed integer rounding), so the gate is now redundant
+            // for this purpose and dropped rather than kept as dead
+            // weight — every candidate's own REAL end goes straight in.
             const ties = candidates.filter((c) => c.kind === 'tie').map((c) => ({
                 el: c.el,
-                a: c.aOnGrid ? orient(c.a, orientation) : _OFF_GRID_SENTINEL,
-                b: c.bOnGrid ? orient(c.b, orientation) : _OFF_GRID_SENTINEL,
+                a: orient(toLatticeFractional(c.aWorld, spacing), orientation),
+                b: orient(toLatticeFractional(c.bWorld, spacing), orientation),
             }));
             const nodes = candidates
-                .filter((c) => c.kind === 'node' && c.onGrid)
-                .map((c) => ({ el: c.el, point: orient(c.point, orientation) }));
+                .filter((c) => c.kind === 'node')
+                .map((c) => ({ el: c.el, point: orient(toLatticeFractional(c.world, spacing), orientation) }));
             return { kind, mode: 'move', el: hit, orientation, spacing, startAttrs, railCanon: pieceCanon, ties, nodes };
         }
 
@@ -1154,12 +1196,19 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
         // move, and nodes no longer redirect into a tie move at all).
         const startCanon = orient(toLattice(pt, spacing), orientation);
         const candidates = _collectLatticeElements(editor, spacing, hit);
+        // UI5 item 5: match against the tie's own REAL ends (aWorld/
+        // bWorld), not the on-grid-gated canonical point — a node sitting
+        // exactly at a contour-anchored (fractional) tie end used to be
+        // silently excluded here (onGrid false for a non-integer point),
+        // so it was left behind, DETACHED, when the tie's body was
+        // dragged. The OUTPUT point is fractional too (toLatticeFractional,
+        // not the rounded c.point) — _updateLatticeMove's own per-frame
+        // `node.point.i + di` just adds an integer delta, so a rounded
+        // starting point here would silently drift the node a fraction of
+        // a cell off its own true attachment on every subsequent move.
         const nodes = candidates
-            .filter((c) => c.kind === 'node' && c.onGrid)
-            .map((c) => ({ el: c.el, point: orient(c.point, orientation) }))
-            .filter((n) =>
-                (n.point.i === pieceCanon.a.i && n.point.j === pieceCanon.a.j) ||
-                (n.point.i === pieceCanon.b.i && n.point.j === pieceCanon.b.j));
+            .filter((c) => c.kind === 'node' && (_sameWorldPoint(c.world, aWorld) || _sameWorldPoint(c.world, bWorld)))
+            .map((c) => ({ el: c.el, point: orient(toLatticeFractional(c.world, spacing), orientation) }));
         return { kind, mode: 'move', el: hit, orientation, spacing, startAttrs, tieCanon: pieceCanon, startCanon, nodes };
     }
 
@@ -1171,42 +1220,56 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
     // tie (whole slide); else a rail's own end -> STRETCH that rail's end;
     // else standalone (a bare Circle-tool dot, or a rail's mid-span node
     // with no tie there) -> free node move.
-    const nodeCanon = orient(toLattice({ x: parseFloat(startAttrs.cx), y: parseFloat(startAttrs.cy) }, spacing), orientation);
+    // UI5 item 5: toLatticeFractional, not toLattice -- the grabbed node
+    // itself can be a contour-anchored end-node (a fractional position),
+    // and rounding it here would misfile it against the wrong row/column
+    // below exactly like pieceCanon's own earlier fractional fix.
+    const nodeWorld = { x: parseFloat(startAttrs.cx), y: parseFloat(startAttrs.cy) };
+    const nodeCanon = orient(toLatticeFractional(nodeWorld, spacing), orientation);
     // No excludeEl: `hit` is a NODE, a different kind than whatever piece
     // this gesture ends up touching, so excluding it would silently drop
     // it from that piece's own "nodes riding along" collection.
     const candidates = _collectLatticeElements(editor, spacing, null);
 
     for (const c of candidates) {
-        if (c.kind !== 'tie' || !c.aOnGrid || !c.bOnGrid) continue;
-        const tieCanon = { a: orient(c.a, orientation), b: orient(c.b, orientation) };
-        if (tieCanon.a.i !== nodeCanon.i) continue; // must be the tie's own column
+        if (c.kind !== 'tie') continue;
+        // UI5 item 5: the tie's own REAL ends (fractional-safe), not the
+        // on-grid-gated canonical a/b -- a tie stretched to the contour
+        // (T73) has a genuinely fractional end, and the old `!c.aOnGrid ||
+        // !c.bOnGrid` gate skipped this tie ENTIRELY in that case, so
+        // grabbing its own end-node fell through to "standalone node" —
+        // detaching it from the tie instead of stretching the tie's end.
+        const tieCanon = { a: orient(toLatticeFractional(c.aWorld, spacing), orientation), b: orient(toLatticeFractional(c.bWorld, spacing), orientation) };
+        if (Math.abs(tieCanon.a.i - nodeCanon.i) > 1e-6) continue; // must be the tie's own column
         const jMin = Math.min(tieCanon.a.j, tieCanon.b.j), jMax = Math.max(tieCanon.a.j, tieCanon.b.j);
-        if (nodeCanon.j < jMin || nodeCanon.j > jMax) continue;
+        if (nodeCanon.j < jMin - 1e-6 || nodeCanon.j > jMax + 1e-6) continue;
 
         const tieStartAttrs = { x1: c.el.attr('x1'), y1: c.el.attr('y1'), x2: c.el.attr('x2'), y2: c.el.attr('y2') };
-        if (nodeCanon.j === tieCanon.a.j) {
+        if (_sameWorldPoint(nodeWorld, c.aWorld)) {
             return { kind: 'tie', mode: 'stretch', el: c.el, orientation, spacing, startAttrs: tieStartAttrs, pieceCanon: tieCanon, end: 'a', endNode: hit };
         }
-        if (nodeCanon.j === tieCanon.b.j) {
+        if (_sameWorldPoint(nodeWorld, c.bWorld)) {
             return { kind: 'tie', mode: 'stretch', el: c.el, orientation, spacing, startAttrs: tieStartAttrs, pieceCanon: tieCanon, end: 'b', endNode: hit };
         }
         // Mid-span crossing -> MOVE the whole tie, carrying every node
         // along its full length (both ends and any other crossings), same
         // "grabbing anywhere on it carries everything it carries" rule a
-        // direct body-grab already gets.
+        // direct body-grab already gets. Fractional throughout (not the
+        // rounded `point`/`onGrid` fields) — same reasoning as the column/
+        // range check just above.
         const nodes = candidates
-            .filter((cc) => cc.kind === 'node' && cc.onGrid)
-            .map((cc) => ({ el: cc.el, point: orient(cc.point, orientation) }))
-            .filter((n) => n.point.i === tieCanon.a.i && n.point.j >= jMin && n.point.j <= jMax);
+            .filter((cc) => cc.kind === 'node')
+            .map((cc) => ({ el: cc.el, point: orient(toLatticeFractional(cc.world, spacing), orientation) }))
+            .filter((n) => Math.abs(n.point.i - tieCanon.a.i) < 1e-6 && n.point.j >= jMin - 1e-6 && n.point.j <= jMax + 1e-6);
         return { kind: 'tie', mode: 'move', el: c.el, orientation, spacing, startAttrs: tieStartAttrs, tieCanon, startCanon: nodeCanon, nodes };
     }
 
     for (const c of candidates) {
-        if (c.kind !== 'rail' || !c.aOnGrid || !c.bOnGrid) continue;
-        const railCanon = { a: orient(c.a, orientation), b: orient(c.b, orientation) };
+        if (c.kind !== 'rail') continue;
+        // UI5 item 5: same real-world-end match as the tie loop above.
+        const railCanon = { a: orient(toLatticeFractional(c.aWorld, spacing), orientation), b: orient(toLatticeFractional(c.bWorld, spacing), orientation) };
         for (const end of ['a', 'b']) {
-            if (railCanon[end].i === nodeCanon.i && railCanon[end].j === nodeCanon.j) {
+            if (_sameWorldPoint(nodeWorld, end === 'a' ? c.aWorld : c.bWorld)) {
                 const railStartAttrs = { x1: c.el.attr('x1'), y1: c.el.attr('y1'), x2: c.el.attr('x2'), y2: c.el.attr('y2') };
                 return { kind: 'rail', mode: 'stretch', el: c.el, orientation, spacing, startAttrs: railStartAttrs, pieceCanon: railCanon, end, endNode: hit };
             }

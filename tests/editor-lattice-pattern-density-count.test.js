@@ -49,9 +49,13 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
     }
   });
 
+  // T77 (TIE-GAP): `minSpacing:0` isolates these two tests from the new
+  // default gap constraint -- their own purpose (the seeded COUNT draw;
+  // oneEnded coincidence) is independent of spacing, tested on its own
+  // merits below (tests/editor-lattice-pattern-tie-gap.test.js).
   it('50 seeds: tie count is always in [8,13]', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
       const ties = tieSegs(result);
       expect(ties.length).toBeGreaterThanOrEqual(8);
       expect(ties.length).toBeLessThanOrEqual(13);
@@ -60,7 +64,7 @@ describe('computePattern: rails.mode/ties.mode default to \'count\' (T56)', () =
 
   it('50 seeds: every default tie has AT LEAST ONE end on a real rail row, and exactly PATTERN_DEFAULTS.ties.oneEnded (1) of them has the OTHER end free — never a tie with BOTH ends floating (T67 AMEND 3+4\'s own explicit goal, refining the earlier "always both ends" version)', () => {
     for (let seed = 1; seed <= 50; seed++) {
-      const result = computePattern({ ...PATTERN_DEFAULTS, seed }, { extent: EXTENT });
+      const result = computePattern({ ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, minSpacing: 0 } }, { extent: EXTENT });
       const rows = new Set(railRows(result));
       let oneEndedCount = 0;
       for (const tie of tieSegs(result)) {
@@ -148,7 +152,9 @@ describe('computePattern: ties.oneEnded (T67 AMEND 3+4, Fred: "one setting: numb
   for (const oneEnded of [0, 1, 2]) {
     it(`oneEnded: ${oneEnded} — exactly that many ties have a free end, every other tie has BOTH ends on rails, and no tie ever has both ends free (50 seeds)`, () => {
       for (let seed = 1; seed <= 50; seed++) {
-        const pattern = { ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, oneEnded } };
+        // T77 (TIE-GAP): minSpacing:0 -- this describe block's own purpose
+        // is oneEnded placement, independent of the new gap constraint.
+        const pattern = { ...PATTERN_DEFAULTS, seed, ties: { ...PATTERN_DEFAULTS.ties, oneEnded, minSpacing: 0 } };
         const result = computePattern(pattern, { extent: EXTENT });
         const rows = new Set(railRows(result));
         const ties = tieSegs(result);

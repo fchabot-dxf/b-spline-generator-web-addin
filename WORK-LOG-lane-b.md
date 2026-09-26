@@ -9872,3 +9872,111 @@ Verify: 1343/1343 vitest (3 new), 52/52 b-spline-gen pytest (2 new assertions on
 pushed. NO FUSION this whole turn.
 
 # T76 — SE17 complete: all 7 items landed (merge + items 1-7). Passing back to the advisor.
+
+# T77 — TIE-GAP: minimum spacing between generated ties
+
+Spec read in full from `ROADMAP.md` on main, "TIE-GAP" entry, before starting: `ties.minSpacing` (app setting only,
+never a Fusion parameter — Fred: "in the add-in, not Fusion"), default 0.5in, a "Min spacing" field in the Ties
+section of BOTH lattice panels; Generate never places two generated ties closer than this along the rail direction
+(same rail gap, and adjacent gaps where they'd visually pair — decide + log); spacing wins over count (generate
+FEWER rather than violate it); hand-added/dragged ties exempt; sweep test across seeds/counts/presets, parity
+unchanged.
+
+## T77 item 1 — declared ties.minSpacing (default 0.5in) + Min spacing field in both lattice panels
+
+`PATTERN_DEFAULTS.ties.minSpacing = 0.5` (real inches, matching Widths' own decimal-inch fields, not a lattice-cell
+count) plus a "min spacing (in)" field in the Ties section of both Box Lattice (`latticeTiesMinSpacing`) and Shape
+Lattice (`shapeLatticeTiesMinSpacing`) panels — same plain `type="number"` C1 stepper style as the existing
+`oneEnded` fields (WORK-LOG:7926 confirmed that's what "C1 style" means here). Wired into both
+`properties-lattice.js` and `properties-shape-lattice.js` with the same "deferred to Generate" convention as
+`oneEnded`/`railSnapRows`: an element ref, a sync-on-open line reading `p.ties?.minSpacing ??
+PATTERN_DEFAULTS.ties.minSpacing` (so an old saved pattern with no key at all reads the declared default, no
+silent behavior change), and a read-on-Generate line using `parseFloat` (not `parseInt`, since this is a decimal
+inch value) with `|| 0` — 0 is a genuinely valid "no minimum" value, same reasoning `oneEnded`'s own `|| 0` comment
+already gives.
+
+UI tests added to both `properties-lattice.test.js` and `properties-shape-lattice.test.js`, mirroring the existing
+`oneEnded` field tests exactly: a fresh pattern reads the declared default onto the field, and editing the field +
+pressing Generate writes the edited value into `PATTERN.ties.minSpacing`.
+
+Verified live via headless Chrome (styled server, `bspline-frame-builder/` root): both fields render in their own
+panel's Ties section, visible and non-zero-sized, reading back "0.5", zero console errors. Screenshots:
+`C:\Users\danse\.bspline-status\shots\seatB\1807_T77-item-1_box-lattice-min-spacing.png` and
+`..._shape-lattice-min-spacing.png`.
+
+Verify: 1346/1346 vitest (3 new). Commit 3977d71, pushed. NO FUSION this whole turn.
+
+## T77 item 2 — generator enforces minSpacing (span overlap-or-touch rule)
+
+New `_enforceTieMinSpacing(tieSlots, minSpacingIn, spacing)` (editor-lattice-pattern.js), wired into `computePattern`
+right after `tieSlots` is finalized — after boundary-intactness filtering (count mode) and per-column generation
+(density mode) both already converge to one `{i, jStart, jEnd, ...}` array, so ONE filter covers count mode,
+density mode, one-ended stub ties, and Shape Lattice boundary-clipped ties, with no per-mode branch.
+
+**Decide + log** (the roadmap's own explicit open point — "same rail gap; and adjacent gaps where they'd visually
+pair"): two candidates conflict when their own `[jStart,jEnd]` spans OVERLAP OR TOUCH, AND their column (`i`)
+distance is under `minSpacing`. This single range-intersection rule covers both named cases at once — two ties in
+the exact same gap trivially have identical (fully overlapping) spans; two ties in adjacent gaps have spans that
+just touch at the one rail row they share — while correctly EXCLUDING two ties that are nowhere near each other
+vertically, however close their columns happen to be, since those could never visually "pair". Checked against the
+spans as drawn by the seeded selection, before any later boundary-clip shortens them further — a clip can only ever
+shrink a span, never grow one, so this is a conservative (never under-restrictive) proxy for the final drawn
+geometry. Candidates are accepted greedily in their own existing (seeded) draw order — the first-drawn of any
+conflicting pair wins — so which tie survives a conflict stays fully seed-deterministic, not an arbitrary tie-break.
+
+Own test file `tests/editor-lattice-pattern-tie-gap.test.js` (14 tests): 6 direct unit tests against
+`_enforceTieMinSpacing` itself (no-op at minSpacing:0, later-candidate-dropped, non-overlapping-spans-both-kept,
+overlapping-but-far-enough-kept, adjacent-gaps-touching-still-conflict, a 3+-way greedy-chain case) plus an
+independent oracle (`findViolation`, re-deriving the same overlap-or-touch+distance rule directly from
+`computePattern`'s own returned segments, never trusting the function under test's own bookkeeping) driving: a
+50-seed no-violation sweep at the default 0.5in; a non-vacuous control proving the SAME 50 seeds genuinely DO
+violate 0.5in with the filter turned off (minSpacing:0) — proving the filter does real work, not passing by
+coincidence; a "spacing wins over count" test (minSpacing:2in on a 12-column board) proving fewer-than-declared-
+minimum ties generate without throwing or overlapping; one-ended ties; density mode (using a fixed `rails.every`
+stride, mirroring an existing precedent test, to guarantee non-vacuous candidates every seed); an old-saved-pattern-
+with-no-minSpacing-key case; and 20 seeds against a real clipped rectangular boundary (Shape Lattice mode).
+
+Adding the new 0.5in default legitimately changed `computePattern`'s own output for the UNMODIFIED
+`PATTERN_DEFAULTS` fixture at the default 0.25in spacing (some existing adjacent-column ties, 0.25in apart, now
+violate the new minimum and get dropped) — 7 pre-existing tests across
+`editor-lattice-pattern-density-count.test.js` (×3), `editor-lattice-pattern-tie-spread.test.js` (×1), and
+`editor-sketch-manifest.test.js` (×2) got an explicit `minSpacing: 0` override added to their own pattern fixtures,
+isolating each from the new variable since their own documented purpose (count range, oneEnded placement, tie-rail
+coincidence, node-dedup-triangle) is orthogonal to spacing — same "variable conflation" fix precedent T74 AMEND3
+already established. `editor-sketch-manifest.test.js`'s shared `PATTERN` fixture itself was left untouched (only the
+one call site that needed isolating got a spread override), so no other test in that describe block was affected.
+
+Verify: 1360/1360 vitest (14 new). Commit 9862107, pushed. NO FUSION this whole turn.
+
+## T77 item 3 — sweep test across seeds x counts x presets x orientations; parity + kind-layer split unaffected
+
+Item 2's own test file already ran a deep SEED sweep (50 seeds) at a fixed count range/orientation/no-shape. This
+item crosses the OTHER three dimensions the dispatch names explicitly — new
+`tests/editor-lattice-pattern-tie-gap-sweep.test.js`:
+
+**Seeds x counts x presets x orientations** (36 cases: 2 presets [hourglass, bottle] x 2 orientations x 3 tie-count
+ranges x 3 seeds), through the REAL `generatePattern` + mock-editor pipeline — same harness
+`shape-lattice-param-sweep.test.js`'s own T72 AMEND 5 sweep already established, copied rather than shared (this
+codebase's own per-sweep-file convention). Checks the ACTUALLY DRAWN tie `<line>` elements' real model-space
+coordinates, via a NEW orientation-agnostic oracle (`findDrawnViolation`): a tie's own two endpoints always share
+exactly one coordinate (its column axis) and differ along the other (its own span), regardless of orientation, so
+the oracle needs no separate horizontal/vertical branch and never has to consult `pattern.orientation` itself —
+determined per-pair straight from the drawn geometry. Verified this oracle is doing real work (not vacuously
+passing) before trusting it: printed real generated tie geometry from both a box-lattice and a shape-lattice
+(hourglass, vertical) pattern, found a genuine pre-existing 0.25in adjacent-gap pair in the raw (minSpacing:0)
+output, and confirmed the oracle correctly flags it as a violation at 0.5in and correctly clears it at 0.1in.
+
+**Parity app==manifest unchanged**: a dedicated test forces real drops (`minSpacing: 1.5`, well above the 0.5
+default) and confirms `buildSketchManifest`'s own tie entities still match the drawn ties 1:1 — not just "some
+ties", the EXACT same count, proving the manifest and the app agree on WHICH ties survived the filter, not only how
+many.
+
+**Kind-layer split (SE17) unaffected**: same forced-drop scenario, confirming the pattern still splits into exactly
+Rails/Ties/Nodes (`pattern.layers` populated, 3 layers) and every SURVIVING drawn tie is still correctly owned by
+the Ties layer (`data-layer` matches) — the drop-some-candidates behavior doesn't confuse T76's own per-kind
+partitioning, which only ever looks at each element's own `data-lattice` kind, never the count.
+
+Verify: 1398/1398 vitest (38 new), 52/52 b-spline-gen pytest, 196/196 frame-builder pytest (both pre-existing,
+untouched by this item). Commit ba84ef4, pushed. NO FUSION this whole turn.
+
+# T77 — TIE-GAP complete: all 3 items landed. Passing back to the advisor.

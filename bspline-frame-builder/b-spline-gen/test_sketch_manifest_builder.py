@@ -325,6 +325,7 @@ class FakeParameter:
     def __init__(self, name):
         self.name = name
         self.expression = "0"
+        self.attributes = FakeAttributes()  # STALE-PARAMS R4 item 2: stamp-at-create target
 
 
 class FakeDimension:
@@ -1031,6 +1032,54 @@ def test_length_parameters_created_with_unit_bearing_expression(call_log):
     real_calls = [c for c in call_log if c[0] == "valueinput:real"]
     assert real_calls == []
     assert string_calls == [("valueinput:string", "0.07 in")]
+
+
+def test_a_freshly_created_lattice_param_is_stamped_bspline_owner(call_log):
+    """STALE-PARAMS R4 item 2: a param CREATED by _sync_manifest_parameters
+    carries the Bspline.owner=1 attribute — the cleanup pass (R4 item 3)
+    reads this for its audit trail (ruling 5 makes the REGISTRY, not the
+    stamp, the ownership decision — see the module's own docstring)."""
+    design = FakeDesign()
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
+    p = design.userParameters.itemByName("rail_width")
+    tag = p.attributes.itemByName("Bspline", "owner")
+    assert tag is not None and tag.value == "1"
+
+
+def test_updating_an_existing_UNSTAMPED_registered_param_ADOPTS_it(call_log):
+    """AMENDED (Fred, ruling 5, "take over existing params"): a param that
+    already exists with a REGISTERED name but was never stamped (e.g. it
+    predates this feature, or Fred happened to type a parameter called
+    'rail_width' himself) IS stamped the next time a Send syncs it —
+    "registered name = ours, whether or not an older version stamped it."
+    This reverses the first-committed version of this test (which asserted
+    the opposite, create-only, behaviour) per the advisor's amendment."""
+    design = FakeDesign()
+    pre_existing = design.userParameters.add("rail_width", types.SimpleNamespace(value=0.05), "in", "pre-existing")
+    assert pre_existing.attributes.itemByName("Bspline", "owner") is None  # sanity: add() alone never stamps
+
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    created, updated, failed = _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.09, "unit": "in"}])
+
+    assert (created, updated, failed) == (0, 1, [])
+    assert pre_existing.expression == "0.09"
+    tag = pre_existing.attributes.itemByName("Bspline", "owner")
+    assert tag is not None and tag.value == "1"  # adopted on this touch
+
+
+def test_a_second_sync_of_the_same_param_keeps_its_stamp(call_log):
+    """The normal create-then-update-on-rebuild path (already covered by
+    test_parameters_created_then_updated_on_a_second_build) must still
+    carry the stamp after the SECOND (update) call — and the stamp helper
+    is idempotent (no double-add) on that second touch."""
+    design = FakeDesign()
+    ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
+    _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.09, "unit": "in"}])
+    p = design.userParameters.itemByName("rail_width")
+    assert p.attributes.itemByName("Bspline", "owner").value == "1"
+    assert p.expression == "0.09"
 
 
 def test_unitless_parameters_created_with_createByReal(call_log):

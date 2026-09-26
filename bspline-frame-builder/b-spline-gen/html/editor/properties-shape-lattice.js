@@ -35,6 +35,8 @@ import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
+import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
+import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 
 // T59: the event this module dispatches after ANY programmatic change to
 // `p.shape` from OUTSIDE the panel's own field handlers (a param-handle
@@ -591,6 +593,7 @@ export function initShapeLatticeProperties(editor) {
     const tiesAnchorEl = el('shapeLatticeTiesAnchor');
     const tiesRailSnapRowsEl = el('shapeLatticeTiesRailSnapRows');
     const tiesOneEndedEl = el('shapeLatticeTiesOneEnded');
+    const tiesMinSpacingEl = el('shapeLatticeTiesMinSpacing');
     const nodesEndsEl = el('shapeLatticeNodesEnds');
     const nodesCrossingsEl = el('shapeLatticeNodesCrossings');
     const nodesRailEndsEl = el('shapeLatticeNodesRailEnds');
@@ -834,6 +837,10 @@ export function initShapeLatticeProperties(editor) {
         if (tiesAnchorEl) tiesAnchorEl.value = p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor;
         if (tiesRailSnapRowsEl) tiesRailSnapRowsEl.value = p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows;
         if (tiesOneEndedEl) tiesOneEndedEl.value = p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded;
+        // T77 (TIE-GAP): a saved pattern with no `minSpacing` key reads
+        // the declared default (0.5in) — same "absent key = default"
+        // convention every other field here follows.
+        if (tiesMinSpacingEl) tiesMinSpacingEl.value = p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
@@ -901,6 +908,10 @@ export function initShapeLatticeProperties(editor) {
             anchor: tiesAnchorEl ? tiesAnchorEl.value : (p.ties?.anchor ?? PATTERN_DEFAULTS.ties.anchor),
             railSnapRows: tiesRailSnapRowsEl ? (parseInt(tiesRailSnapRowsEl.value, 10) || 0) : (p.ties?.railSnapRows ?? PATTERN_DEFAULTS.ties.railSnapRows),
             oneEnded: tiesOneEndedEl ? (parseInt(tiesOneEndedEl.value, 10) || 0) : (p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded),
+            // T77 (TIE-GAP): a real-inch decimal value, so parseFloat (not
+            // parseInt). 0 is also a genuinely valid minSpacing (no minimum
+            // at all), so a typed "0" is preserved as-is, not coerced up.
+            minSpacing: tiesMinSpacingEl ? (parseFloat(tiesMinSpacingEl.value) || 0) : (p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),
@@ -1186,4 +1197,24 @@ export function initShapeLatticeProperties(editor) {
     document.addEventListener(SHAPE_CHANGED_EVENT, (e) => {
         if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
     });
+
+    // UI5 items 1/3/4: shared with properties-lattice.js — see
+    // lattice-piece-panel.js's own header comment.
+    const shapeLatticeScopeThunk = () => latticeScope(editor, currentPattern);
+    mountSelectedPiecePanel(editor, el('editorShapeLatticePanelBody'), shapeLatticeScopeThunk);
+
+    // R5: same shared scope as the box Lattice panel (lattice-formula-fields.js)
+    // — this panel's own `currentPattern` (exported above) is the live
+    // accessor. `contourWidthEl` (this panel only, no box-Lattice
+    // equivalent) uses the base scope as-is: its own current value has a
+    // nullable "auto" default with no single obvious fallback number to
+    // expose as a name, so it wasn't worth declaring one just for this
+    // one cosmetic field — see WORK-LOG-reg-addin.md's R5 entry. Excluded:
+    // `tiesDensityEl` (`#shapeLatticeTiesDensity` is `type="range"`, same
+    // reason as the box Lattice panel).
+    attachLatticeFormulaFields([
+        sizeWidthEl, sizeHeightEl, railsCountMinEl, railsCountMaxEl, railsEveryEl, railsOffsetEl,
+        tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
+        tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl, contourWidthEl,
+    ], shapeLatticeScopeThunk);
 }

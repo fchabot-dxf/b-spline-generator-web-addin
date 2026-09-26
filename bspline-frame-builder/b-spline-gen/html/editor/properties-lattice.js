@@ -16,6 +16,8 @@ import {
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
+import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
+import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 
 /** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
  *  not once per file — Generate/Regenerate write into whichever layer is
@@ -45,6 +47,10 @@ function _currentPattern(editor) {
     layer.pattern = JSON.parse(JSON.stringify(PATTERN_DEFAULTS));
     return layer.pattern;
 }
+// R5: exported under a clearer name for lattice-formula-fields.js (the
+// declared per-panel formula scope) — same live pattern accessor this
+// panel already uses internally, not a second one.
+export { _currentPattern as currentPatternLattice };
 
 export function initLatticeProperties(editor) {
     const spacingEl = el('latticeSpacing');
@@ -74,6 +80,7 @@ export function initLatticeProperties(editor) {
     const tiesAnchorEl = el('latticeTiesAnchor');
     const tiesRailSnapRowsEl = el('latticeTiesRailSnapRows');
     const tiesOneEndedEl = el('latticeTiesOneEnded');
+    const tiesMinSpacingEl = el('latticeTiesMinSpacing');
     const nodesEndsEl = el('latticeNodesEnds');
     const nodesCrossingsEl = el('latticeNodesCrossings');
     const nodesRailEndsEl = el('latticeNodesRailEnds');
@@ -226,6 +233,10 @@ export function initLatticeProperties(editor) {
         // declared default (1) — same "absent key = default, no silent
         // behavior change" convention every other field here follows.
         if (tiesOneEndedEl) tiesOneEndedEl.value = p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded;
+        // T77 (TIE-GAP): a saved pattern with no `minSpacing` key reads
+        // the declared default (0.5in) — same "absent key = default"
+        // convention every other field here follows.
+        if (tiesMinSpacingEl) tiesMinSpacingEl.value = p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing;
         if (nodesEndsEl) nodesEndsEl.checked = p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends;
         if (nodesCrossingsEl) nodesCrossingsEl.checked = p.nodes?.crossings ?? PATTERN_DEFAULTS.nodes.crossings;
         if (nodesRailEndsEl) nodesRailEndsEl.checked = p.nodes?.railEnds ?? PATTERN_DEFAULTS.nodes.railEnds;
@@ -344,6 +355,10 @@ export function initLatticeProperties(editor) {
             // rail, no one-ended ties at all) — `|| 0` (not `|| 1`) so a
             // typed "0" isn't coerced back up to the default.
             oneEnded: tiesOneEndedEl ? (parseInt(tiesOneEndedEl.value, 10) || 0) : (p.ties?.oneEnded ?? PATTERN_DEFAULTS.ties.oneEnded),
+            // T77 (TIE-GAP): a real-inch decimal value, so parseFloat (not
+            // parseInt). 0 is also a genuinely valid minSpacing (no minimum
+            // at all), so a typed "0" is preserved as-is, not coerced up.
+            minSpacing: tiesMinSpacingEl ? (parseFloat(tiesMinSpacingEl.value) || 0) : (p.ties?.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing),
         };
         p.nodes = {
             ends: nodesEndsEl ? !!nodesEndsEl.checked : (p.nodes?.ends ?? PATTERN_DEFAULTS.nodes.ends),
@@ -569,4 +584,25 @@ export function initLatticeProperties(editor) {
     document.addEventListener('editorLayersChanged', (e) => {
         if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
     });
+
+    // UI5 items 1/3/4: the per-piece colour/width override panel — shared
+    // with properties-shape-lattice.js (lattice-piece-panel.js), mounted
+    // into THIS panel's own body via runtime DOM creation (no edits to
+    // bspline_gen_palette.html).
+    const latticeScopeThunk = () => latticeScope(editor, _currentPattern);
+    mountSelectedPiecePanel(editor, el('editorLatticePanelBody'), latticeScopeThunk);
+
+    // R5: every numeric field in this panel becomes formula-capable, over
+    // ONE shared scope (lattice-formula-fields.js) — see that module's own
+    // doc comment for the excluded fields (Seed; the mode/anchor/end-rule
+    // controls, which aren't number inputs to begin with). ALSO excluded
+    // here: `tiesDensityEl` — `#latticeTiesDensity` is `type="range"` (a
+    // slider), not a typeable number field; attachFormula's own
+    // type==='number' check would leave it untouched anyway, but it's
+    // named explicitly rather than silently omitted.
+    attachLatticeFormulaFields([
+        sizeWidthEl, sizeHeightEl, railsCountMinEl, railsCountMaxEl, railsEveryEl, railsOffsetEl,
+        tiesCountMinEl, tiesCountMaxEl, tiesSpanMinEl, tiesSpanMaxEl, tiesRailSnapRowsEl,
+        tiesOneEndedEl, tiesMinSpacingEl, widthRailsEl, widthTiesEl, widthNodesEl, widthLinkedEl,
+    ], latticeScopeThunk);
 }

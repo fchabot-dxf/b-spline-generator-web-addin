@@ -1813,6 +1813,16 @@
                   <input id="latticeTiesRailSnapRows" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
               </div>
+              <!-- T77 (TIE-GAP, Fred: "in ties I want a minimum space
+                   apart"): a UNIVERSAL Ties field (outside both the Count
+                   and Density field groups above -- it applies to
+                   whichever mode is active, since _enforceTieMinSpacing
+                   runs on the final tie-slot list either way). Real
+                   inches, same "0.05" steppers per the dispatch" C1 style
+                   as the Widths section's own fields. -->
+              <label style="display:flex; flex-direction:column; gap:2px;">min spacing (in)
+                <input id="latticeTiesMinSpacing" type="number" min="0" step="0.05" value="0.5" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              </label>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px;">
@@ -2159,6 +2169,13 @@
                   <input id="shapeLatticeTiesRailSnapRows" type="number" min="0" step="1" value="1" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                 </label>
               </div>
+              <!-- T77 (TIE-GAP) — same universal field as the box Lattice
+                   panel's own #latticeTiesMinSpacing; Shape Lattice's own
+                   ties generate through the identical PATTERN_DEFAULTS.
+                   ties/_enforceTieMinSpacing mechanism. -->
+              <label style="display:flex; flex-direction:column; gap:2px;">min spacing (in)
+                <input id="shapeLatticeTiesMinSpacing" type="number" min="0" step="0.05" value="0.5" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
+              </label>
             </div>
 
             <div style="display:flex; flex-direction:column; gap:4px;">

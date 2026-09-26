@@ -698,6 +698,50 @@ def verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002):
     return {"maxErr": round(max_err, 6), "mismatches": mismatches}
 
 
+def _stamp_bspline_owner(ctx, param, name):
+    """STALE-PARAMS R4 item 2 — AMENDED (Fred, ruling 5, "take over existing
+    params"): stamp ``Bspline.owner = '1'`` on EVERY touch of a registered
+    lattice/constrained-sketch parameter — create AND update — exactly
+    matching board params' own `_ensure_bspline_param_tag`
+    (b-spline-gen.py:660-676, also stamped on every touch). Ruling 5: "a
+    param whose name is in the registry is the add-in's, whether or not an
+    older version stamped it" — so an update is exactly where a
+    PRE-EXISTING, previously-unstamped registered-name param (one that
+    predates this feature, or one Fred happened to type by hand with a
+    registered name) gets ADOPTED: the next Send claims it. The original
+    (first-committed) version of this helper stamped at create only,
+    leaving an unstamped-but-registered param permanently unmanaged; Fred
+    overturned that (see STALE-PARAMS-DESIGN.md's own R4-rulings section)
+    in favour of "registered name = ours, always" — the cleanup pass (item
+    3) no longer needs the stamp to decide ownership at all (it reads the
+    registry directly, ruling 5), so this stamp is now closer to a
+    breadcrumb ("we've touched this") than an ownership gate — kept for
+    the audit trail (`adopted` in last_send.json is emitted by the
+    cleanup pass, not by this helper).
+
+    Idempotent (an already-stamped param is a cheap no-op) — checked so a
+    hot rebuild loop never repeats redundant `attributes.add` calls.
+
+    Not imported from b-spline-gen.py's own tag helper: that module imports
+    THIS one (build_constrained_sketch), so importing back would be
+    circular; the two helpers stamp the same group/attribute pair by
+    convention (kept deliberately tiny and easy to eyeball side by side)
+    rather than sharing code across that boundary.
+
+    Wrapped in try/except for the same reason b-spline-gen.py's own tag
+    helper is: UserParameter.attributes is occasionally flaky across Fusion
+    versions, and tagging is never worth failing the sync over."""
+    try:
+        if not param or not hasattr(param, "attributes"):
+            return
+        existing_tag = param.attributes.itemByName("Bspline", "owner")
+        if existing_tag and existing_tag.value:
+            return
+        param.attributes.add("Bspline", "owner", "1")
+    except Exception as tag_err:
+        ctx.logger.log(f"PARAM TAG SKIP on {name}: {tag_err}", "WARNING")
+
+
 # ---------------------------------------------------------------------------
 # User parameters — create-or-update, arbitrary manifest-declared names
 # ---------------------------------------------------------------------------
@@ -727,6 +771,9 @@ def _sync_manifest_parameters(ctx, parameters):
             existing = user_params.itemByName(name)
             if existing:
                 existing.expression = str(value)
+                # STALE-PARAMS R4 item 2 (ruling 5, "take over existing
+                # params"): stamp on update too, same as board params.
+                _stamp_bspline_owner(ctx, existing, name)
                 updated += 1
             else:
                 # T63 fix (advisor's own real-Fusion measurement): createByReal
@@ -744,7 +791,8 @@ def _sync_manifest_parameters(ctx, parameters):
                     value_input = adsk.core.ValueInput.createByString(f"{value} {unit}")
                 else:
                     value_input = adsk.core.ValueInput.createByReal(float(value))
-                user_params.add(name, value_input, unit, "SE15 constrained sketch parameter")
+                new_param = user_params.add(name, value_input, unit, "SE15 constrained sketch parameter")
+                _stamp_bspline_owner(ctx, new_param, name)
                 created += 1
         except Exception as e:
             failed.append(f"{name}: {e}")

@@ -10,33 +10,66 @@ Run:  python tools/status_site/status_watch.py          (loop, every 60 s)
 Env:  CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID from the repo's .env
       (never printed). Project: STATUS_PROJECT below.
 """
-import hashlib, html, os, re, shutil, subprocess, sys, time
+import glob, hashlib, html, json, os, re, shutil, subprocess, sys, time
 from datetime import datetime
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SEATS = [  # declared: which checkout is which seat, and its task file (checklist = progress)
-    {"name": "Seat A", "key": "seatA", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
-    {"name": "Seat B", "key": "seatB", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
-    {"name": "Seat C", "key": "seatC", "path": ROOT + "-fb-app", "branch": "fb-app", "task": "NEXT-SESSION-fb-app.md"},
-]
+# Declared seats (tools/status_site/seats.json): each names its STATION. Seats on this watcher's own station are read
+# from their local checkout; seats on another station from origin (their HANDOFF.md never leaves that machine).
+STATION = os.environ.get("BSPLINE_STATION", "home-pc")
+_SEATS_DOC = json.load(open(os.path.join(os.path.dirname(__file__), "seats.json"), encoding="utf-8"))
+STATIONS = _SEATS_DOC["stations"]
+SEATS = [{**s, "path": (ROOT + s.get("checkout", "")) if s["station"] == STATION else None} for s in _SEATS_DOC["seats"]]
 
 
 def _checklist(path, task, branch):
     """(done, total): items are the task file's `[TAG]` checklist lines; an item is DONE when any commit on the
     seat's branch has `[TAG]` in its subject. Fully automatic — nobody ticks anything."""
-    f = os.path.join(path, task)
-    if not os.path.exists(f):
-        return 0, 0
-    tags = re.findall(r"^\s*- \[[ xX]\] \[([A-Za-z0-9_-]+)\]", open(f, encoding="utf-8", errors="replace").read(), re.M)
+    text = _task_text(path, task, branch)
+    tags = re.findall(r"^\s*- \[[ xX]\] \[([A-Za-z0-9_-]+)\]", text, re.M)
     if not tags:
         return 0, 0
-    subjects = _git(ROOT, "log", "--format=%s", "-300", "origin/" + branch) + _git(path, "log", "--format=%s", "-300")
+    subjects = _git(ROOT, "log", "--format=%s", "-300", "origin/" + branch) + (_git(path, "log", "--format=%s", "-300") if path else "")
     norm = lambda x: re.sub(r"[\s_-]+", " ", x).strip().lower()
     # advisor dispatch/doc commits mention the same tags — only real work commits count
     work = [l for l in subjects.splitlines() if not re.match(r"\s*docs", l, re.I)]
     subj = norm(" | ".join(work))
     # a tag counts when its words appear as a whole phrase in any commit subject ("T74-AMEND-0" ~ "T74 AMEND 0 ...")
     return sum(bool(re.search(r"(?<![a-z0-9])" + re.escape(norm(t)) + r"(?![a-z0-9])", subj)) for t in tags), len(tags)
+
+
+def _task_text(path, task, branch):
+    """A seat's task file: from its checkout, or (remote seat, path None) from origin."""
+    if path is None:
+        return _git(ROOT, "show", "origin/" + branch + ":" + task)
+    f = os.path.join(path, task)
+    return open(f, encoding="utf-8", errors="replace").read() if os.path.exists(f) else ""
+
+
+def _remote_state(s):
+    """What a remote seat's HANDOFF.md would say, reconstructed from origin: the task file's Ball line + its last commit."""
+    ball = re.search(r"\*\*Ball:\s*([^*]+)\*\*", _task_text(None, s["task"], s["branch"]))
+    last = next((l for l in _git(ROOT, "log", "--format=%cr|%s", "-100", "origin/" + s["branch"]).splitlines()
+                 if re.match(s["commits"], l.split("|", 1)[1])), "")
+    when, subj = (last.split("|", 1) + [""])[:2] if last else ("", "")
+    return {"turn": "-", "who": "remote (" + STATIONS.get(s["station"], s["station"]) + ")", "note": (ball.group(1).strip() if ball else "") +
+            (f"  | last: {subj}" if subj else ""), "updated": when}
+
+
+def _session_url(seat):
+    """A seat's Claude link: its declared url, or its local session's CURRENT Remote Control id (looked up by name)."""
+    if seat.get("url"):
+        return seat["url"]
+    if not seat.get("session"):
+        return ""
+    for f in glob.glob(os.path.join(os.path.expanduser("~"), ".claude", "sessions", "*.json")):
+        try:
+            d = json.load(open(f, encoding="utf-8"))
+        except Exception:
+            continue
+        if d.get("name") == seat["session"] and d.get("bridgeSessionId"):
+            return "https://claude.ai/code/" + d["bridgeSessionId"]
+    return ""
 
 
 def _bar(done, total, width=10):
@@ -98,13 +131,20 @@ def collect():
     _git(ROOT, "fetch", "-q", "origin")
     seats = []
     for s in SEATS:
-        h = _handoff(s["path"])
-        who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
+        if s["path"] is None:
+            r = _remote_state(s)
+            h, who = r, r["who"]
+        else:
+            h = _handoff(s["path"])
+            who = ("finished (stood down)" if h.get("to") == "done"
+                   else "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)")
         d, t = _checklist(s["path"], s["task"], s["branch"])
+        if who.startswith("finished") and t:
+            d = t
         sd = os.path.join(SHOTS_DIR, s["key"])
         shots = sorted((f for f in (os.listdir(sd) if os.path.isdir(sd) else []) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
                        key=lambda f: os.path.getmtime(os.path.join(sd, f)), reverse=True)[:SHOTS_PER_SEAT]
-        seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
+        seats.append({**s, "url": _session_url(s), "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
                       "updated": h.get("updated", ""), "done": d, "total": t, "shots": shots})
     commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b", "fb-app")}
     return seats, commits, _roadmap()
@@ -126,13 +166,16 @@ def render(seats, commits, roadmap):
         pct = round(100 * done / total)
         return (f'<div class="bar"><div class="track"><div class="fill" style="width:{pct}%"></div></div>'
                 f'<span class="lbl">{e(label)} {done}/{total} · {pct}%</span></div>')
-    cards = "".join(
-        f'<section class="seat"><h2>{e(s["name"])} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
+    card = lambda s: (
+        f'<section class="seat"><h2>{(f'<a href="{e(s["url"])}" target="_blank" rel="noopener">{e(s["name"])} ↗</a>' if s.get("url") else e(s["name"]))} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
         + ('<div class="shots">' + "".join(f'<img class="thumb" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for x in s["shots"]) + "</div>" if s["shots"] else "")
-        + '</section>' for s in seats)
+        + '</section>')
+    cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
+                    + "".join(card(s) for s in seats if s["station"] == st) + "</div>"
+                    for st in STATIONS if any(s["station"] == st for s in seats))
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
     com = "".join(f'<details><summary>Commits — {e(b)} ({len(cs)})</summary><ul class="c">' + "".join(
@@ -155,7 +198,7 @@ dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cu
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
-<div class="grid">{cards}</div>{com}
+{cards}{com}
 <dialog id="lb"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></dialog>
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');

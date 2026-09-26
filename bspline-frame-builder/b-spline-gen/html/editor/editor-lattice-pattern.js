@@ -25,6 +25,7 @@ import {
 } from './editor-lattice.js';
 import { worldPoint } from './editor-coords.js';
 import { getActiveLayer, addLayer, setActiveLayer } from './layers.js';
+import { OVERRIDE_COLOR_ATTR, OVERRIDE_WIDTH_ATTR } from './editor-piece-override.js';
 import { lcgPoints } from '../core/terrain.js';
 // T48 (SE13 Slice 2): the pure boundary-cutting engine (T47) — computePattern's
 // 'boundary' extent branch calls insideSpans directly (no re-derivation of
@@ -463,6 +464,20 @@ export const PATTERN_DEFAULTS = {
     mode: 'count', count: [8, 13], spread: 'stratified', span: { mode: 'rails', rails: 1 }, maxRailGaps: 1,
     oneEnded: 1,
     density: 0.4, spanMin: 1, spanMax: 3, columns: null, anchor: 'free', railSnapRows: 1,
+    // T77 (TIE-GAP, Fred: "in ties I want a minimum space apart"): real
+    // INCHES (not a lattice-cell count, matching Widths' own "0.05"
+    // steppers per the dispatch" convention above) -- the LEAST distance
+    // allowed, measured along the rail direction, between two GENERATED
+    // ties whose own spans occupy the same or an adjacent rail gap (see
+    // `_enforceTieMinSpacing`'s own doc comment for the exact rule and why
+    // "adjacent gaps" is included). Hand-added/dragged ties are exempt --
+    // this only ever filters `computePattern`'s own seeded candidate list.
+    // A saved pattern with no `minSpacing` key reads this same default
+    // (0.5), same "declare the new field, don't silently change old
+    // behavior for a key that's absent" convention this file already uses
+    // throughout -- 0.5in is also loose enough that most EXISTING seeded
+    // patterns already satisfy it without ever dropping a tie.
+    minSpacing: 0.5,
   },
   // SE7h ADD-ON 2 (Fred: "add a check box for nodes at rail end"):
   // default false — the crossings loop below deliberately SKIPS rail
@@ -925,6 +940,61 @@ function _chooseTieColumns(columns, count, countMin, spread, seed) {
     chosen.push(columns[idx]);
   }
   return chosen.sort((a, b) => a - b);
+}
+
+/**
+ * T77 (TIE-GAP, Fred: "in ties I want a minimum space apart"): drops
+ * whichever GENERATED tie candidates would otherwise sit closer than
+ * `minSpacingIn` (real inches) to an ALREADY-ACCEPTED one, "along the
+ * rail direction" (the tie's own `i`/column position) — never moves a
+ * tie to make room, only removes it ("if the count range can't fit,
+ * generate FEWER" — spacing wins over count, per the roadmap's own
+ * wording).
+ *
+ * Two candidates are checked against each other only when their own
+ * [jStart,jEnd] spans OVERLAP OR TOUCH — this is the declared,
+ * logged answer to the roadmap's own explicit "same rail gap; and
+ * adjacent gaps where they'd visually pair — decide + log" open point:
+ * two ties in the exact SAME gap trivially have identical (fully
+ * overlapping) spans; two ties in ADJACENT gaps (one ending where the
+ * other starts, at the rail row they share) have spans that just TOUCH
+ * at that one shared point — both cases are covered by one simple range-
+ * intersection test, and it naturally EXCLUDES two ties that are nowhere
+ * near each other vertically (non-overlapping spans), even if their own
+ * columns happen to be close, since those could never visually "pair" in
+ * the first place. Checked against the spans AS DRAWN BY THE SEEDED
+ * SELECTION ABOVE, before boundary-clipping shortens them further (a
+ * later Shape Lattice clip can only ever SHRINK a span, never grow one,
+ * so this is a conservative, never under-restrictive, proxy for the
+ * final drawn geometry — occasionally dropping a tie a human eye would
+ * have judged fine post-clip, never the reverse).
+ *
+ * Kept the candidates in their own EXISTING order (the seeded selection's
+ * own draw order, `_chooseTieColumns`/`columns`) and accepting greedily —
+ * the FIRST-drawn of any conflicting pair wins, later ones are dropped —
+ * so which tie survives is still fully seed-deterministic, not an
+ * arbitrary tie-break.
+ *
+ * Works identically for every mode this function's own caller already
+ * unifies to ONE `tieSlots` array before calling this (count mode, cells/
+ * density mode, one-ended stubs, Shape Lattice boundary-clipped ties) —
+ * no per-mode branch needed, since every slot shape already carries the
+ * same `{i, jStart, jEnd}` fields regardless of how it got there.
+ */
+export function _enforceTieMinSpacing(tieSlots, minSpacingIn, spacing) {
+  const minSpacingCells = minSpacingIn / spacing;
+  if (minSpacingCells <= 0) return tieSlots;
+  const accepted = [];
+  for (const slot of tieSlots) {
+    const lo1 = Math.min(slot.jStart, slot.jEnd), hi1 = Math.max(slot.jStart, slot.jEnd);
+    const conflict = accepted.some((a) => {
+      const lo2 = Math.min(a.jStart, a.jEnd), hi2 = Math.max(a.jStart, a.jEnd);
+      const spansOverlapOrTouch = lo1 <= hi2 && lo2 <= hi1;
+      return spansOverlapOrTouch && Math.abs(slot.i - a.i) < minSpacingCells;
+    });
+    if (!conflict) accepted.push(slot);
+  }
+  return accepted;
 }
 
 /**
@@ -1584,6 +1654,13 @@ export function computePattern(PATTERN, opts = {}) {
     }
   }
 
+  // T77 (TIE-GAP): runs on the FINAL candidate list, after every other
+  // filter above (boundary-intactness, one-ended placement, ...) has
+  // already settled it -- both count-mode and density-mode/Shape-Lattice
+  // (boundary-clipped) ties converge to this one `tieSlots` array before
+  // it, so one filter covers every mode, never a per-mode copy.
+  tieSlots = _enforceTieMinSpacing(tieSlots, ties.minSpacing ?? PATTERN_DEFAULTS.ties.minSpacing, P.spacing);
+
   const halfTie = widths.ties / 2 / P.spacing;
   for (const { i, jStart, jEnd, anchored, oneEndedFree } of tieSlots) {
     // T48: the tie's own density/span/anchor (or T56 count) draw (above)
@@ -2228,18 +2305,26 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
   const owned = _ownedOnLayer(editor, targetLayerId, latticeKind);
+  let changed = 0;
   for (const ch of owned) {
+    // UI5 items 1-4: a piece with its own colour override keeps it — the
+    // SAME "detached pieces keep their own colour" exemption OWNERSHIP_ATTR
+    // already gives a hand-moved piece, via an explicit attribute instead
+    // (an overridden piece stays fully owned — Regenerate still destroys
+    // and rebuilds it, clearing the override "for free" per item 3).
+    if (ch.node.hasAttribute(OVERRIDE_COLOR_ATTR)) continue;
     if (latticeKind === 'node') {
       ch.fill(color);
     } else {
       ch.stroke({ color });
     }
+    changed++;
   }
-  if (owned.length > 0) {
+  if (changed > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
-  return owned.length;
+  return changed;
 }
 
 /**
@@ -2263,18 +2348,22 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
   const patternLayer = resolvePatternLayer(editor, layerId);
   const targetLayerId = _kindLayerId(patternLayer && patternLayer.pattern, layerId, kind);
   const owned = _ownedOnLayer(editor, targetLayerId, latticeKind);
+  let changed = 0;
   for (const ch of owned) {
+    // UI5 items 1-4: same override exemption as recolorOwnedKind above.
+    if (ch.node.hasAttribute(OVERRIDE_WIDTH_ATTR)) continue;
     if (latticeKind === 'node') {
       ch.attr('r', value / 2);
     } else {
       ch.attr('stroke-width', value);
     }
+    changed++;
   }
-  if (owned.length > 0) {
+  if (changed > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
   }
-  return owned.length;
+  return changed;
 }
 
 /**
@@ -2305,10 +2394,12 @@ export function rewidthOwnedKinds(editor, layerId, kindValuePairs) {
     if (!latticeKind) continue;
     const owned = _ownedOnLayer(editor, _kindLayerId(pattern, layerId, kind), latticeKind);
     for (const ch of owned) {
+      // UI5 items 1-4: same override exemption as recolorOwnedKind above.
+      if (ch.node.hasAttribute(OVERRIDE_WIDTH_ATTR)) continue;
       if (latticeKind === 'node') ch.attr('r', value);
       else ch.attr('stroke-width', value);
+      total++;
     }
-    total += owned.length;
   }
   if (total > 0) {
     if (typeof editor.pushState === 'function') editor.pushState();

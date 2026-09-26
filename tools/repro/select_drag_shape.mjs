@@ -231,11 +231,29 @@ async function runSharedScenario(kind) {
   // Rather than guess which end/delta clears it, this tries both ends
   // against a spread of distances and accepts the first combination that
   // actually produces a clean, grid-aligned, single-end stretch.
+  // Box Lattice's default "rails-to-rails" span mode means MOST ties have
+  // BOTH ends exactly coincident with a rail's own endpoint -- a genuine
+  // geometric tie (0 distance to each), not a near-miss, so no amount of
+  // nearby-fraction retrying reliably favors the tie over the rail there.
+  // `ties.oneEnded` (default >=1) guarantees at least one tie has a FREE
+  // end that touches no rail at all -- prefer THAT tie/end when one
+  // exists, sidestepping the ambiguity entirely rather than fighting it.
+  const allRails = Object.entries(a2).filter(([, v]) => v.k === 'rail').map(([, v]) => v);
+  const endIsFree = (p, ex, ey) => !allRails.some((r) => connected({ x1: ex, y1: ey, x2: ex, y2: ey }, r));
   let endTid = pick.att.find((t) => t !== tid) || tid;
+  let preferredT = null;
+  for (const [id, p] of Object.entries(a2)) {
+    if (p.k !== 'tie') continue;
+    if (endIsFree(p, p.x1, p.y1)) { endTid = id; preferredT = 0.0; break; }
+    if (endIsFree(p, p.x2, p.y2)) { endTid = id; preferredT = 1.0; break; }
+  }
   let stretched = null;
-  outer: for (const t of [0.0, 1.0]) {
+  const tOrder = preferredT != null ? [preferredT] : [0.0, 1.0];
+  outer: for (const t of tOrder) {
     for (const dy of [-40, -90, -150]) {
-      const tries = t === 0 ? [0, 0.03, 0.06] : [1, 0.97, 0.94];
+      // A coincident (non-free) end still gets a wider fraction spread as
+      // a fallback, in case no free end exists on this generation at all.
+      const tries = t === 0 ? [0, 0.03, 0.06, 0.1, 0.15, 0.2] : [1, 0.97, 0.94, 0.9, 0.85, 0.8];
       if (!(await robustDrag(endTid, tries, 0, dy, { expectMode: 'stretch', label: `${kind} tie end t=${t} dy=${dy}` }))) continue;
       const snapAfter = JSON.parse(await evalJS(snap))[endTid];
       const [movedKey, stillKey] = t === 0 ? ['y1', 'y2'] : ['y2', 'y1'];
@@ -348,6 +366,75 @@ for (let attempt = 1; attempt <= 3; attempt++) {
 // scenario's own assumption.
 await setupShape();
 await runContourClampScenario();
+
+// UI5 item 5 (Fred, blocker: "when a tie's end lands ON THE CONTOUR,
+// Select-dragging that tie makes it LOSE ITS NODES"). No PRESET reliably
+// generates a tie whose own end lands on the contour under default
+// settings (ties only bridge rail-to-rail there) -- rigged directly
+// instead: a real generated tie's end is pushed to a FRACTIONAL position
+// away from every rail row (standing in for "landed on the contour",
+// which is what actually makes it fractional), with a node placed exactly
+// there (standing in for an "at crossings"/end node the real feature would
+// draw). Same real _beginLatticeMove/_updateLatticeMove code the app
+// itself runs on a genuine drag -- only the SETUP is synthetic, not the
+// mechanism under test.
+await setupShape();
+const nodeScenarioResult = await evalJS(`(()=>{
+  const tie = document.querySelector('[data-lattice="tie"]');
+  const layer = tie.getAttribute('data-layer');
+  const railYs = [...document.querySelectorAll('[data-lattice="rail"]')].map(r => +r.getAttribute('y1'));
+  const x1 = +tie.getAttribute('x1'), y1 = +tie.getAttribute('y1');
+  const y2 = y1 + 0.6375; // fractional @0.25 spacing, deliberately off every rail row
+  tie.setAttribute('x2', x1); tie.setAttribute('y2', y2);
+  tie.id = 'lt_rig_tie';
+  const node = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  node.setAttribute('cx', x1); node.setAttribute('cy', y2); node.setAttribute('r', '0.05');
+  node.setAttribute('data-lattice', 'node'); node.setAttribute('data-layer', layer);
+  node.setAttribute('fill', '#333'); node.id = 'lt_rignode';
+  tie.parentNode.appendChild(node);
+  const nearestRailDist = Math.min(...railYs.map((ry) => Math.abs(ry - y2)));
+  return JSON.stringify({ x1, y1, y2, nearestRailDist });
+})()`);
+const rigged = JSON.parse(nodeScenarioResult);
+console.log(`=== shape: item 5, contour-anchored tie end keeps its node === (nearest rail ${rigged.nearestRailDist.toFixed(3)} away, genuinely off-grid)`);
+check(rigged.nearestRailDist > 0.05, 'item5: rigged end is genuinely away from any rail row (not an accidental grid coincidence)');
+
+// 1) grab the end-NODE directly -> must redirect into a TIE STRETCH
+// (carrying that same node), never a standalone/detached node move.
+const nodeToScreen = `(()=>{ const n=document.getElementById('lt_rignode'); const svg=n.ownerSVGElement; const p=svg.createSVGPoint(); p.x=+n.getAttribute('cx'); p.y=+n.getAttribute('cy'); const q=p.matrixTransform(n.getScreenCTM()); return JSON.stringify([q.x,q.y]); })()`;
+let [nx, ny] = JSON.parse(await evalJS(nodeToScreen));
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nx, y: ny });
+await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: nx, y: ny, button: 'left', clickCount: 1 });
+await sleep(50);
+const grabInfo = JSON.parse(await evalJS(`(()=>{ const m = window.svgEditor._latticeMove; if(!m) return 'null'; return JSON.stringify({kind:m.kind, mode:m.mode, endNodeId: m.endNode&&m.endNode.node&&m.endNode.node.id}); })()`));
+check(grabInfo.kind === 'tie' && grabInfo.mode === 'stretch' && grabInfo.endNodeId === 'lt_rignode',
+  `item5: grabbing the contour-anchored end-node redirects into a tie stretch that carries it (got ${JSON.stringify(grabInfo)})`);
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nx, y: ny - 60, button: 'left', buttons: 1 });
+await sleep(50);
+await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: nx, y: ny - 60, button: 'left', clickCount: 1 });
+await sleep(300);
+const afterNodeGrab = JSON.parse(await evalJS(`(()=>{ const t=document.getElementById('lt_rig_tie'); const n=document.getElementById('lt_rignode'); return JSON.stringify({tieY2:+t.getAttribute('y2'), nodeCy:+n.getAttribute('cy')}); })()`));
+check(Math.abs(afterNodeGrab.tieY2 - afterNodeGrab.nodeCy) < 1e-6,
+  `item5: after the stretch, the tie's end and its node still coincide (tieY2=${afterNodeGrab.tieY2}, nodeCy=${afterNodeGrab.nodeCy})`);
+
+// 2) body-drag the SAME tie sideways -> the node must follow it exactly,
+// not get left behind at its old position.
+const beforeBody = await evalJS(`(()=>{ const t=document.getElementById('lt_rig_tie'); const n=document.getElementById('lt_rignode'); return JSON.stringify({x1:+t.getAttribute('x1'), nodeCx:+n.getAttribute('cx')}); })()`);
+const { x1: x1Before, nodeCx: nodeCxBefore } = JSON.parse(beforeBody);
+const tieBodyToScreen = `(()=>{ const el=document.getElementById('lt_rig_tie'); const svg=el.ownerSVGElement; const p=svg.createSVGPoint(); const x1=+el.getAttribute('x1'),y1=+el.getAttribute('y1'),x2=+el.getAttribute('x2'),y2=+el.getAttribute('y2'); p.x=x1+(x2-x1)*0.4; p.y=y1+(y2-y1)*0.4; const q=p.matrixTransform(el.getScreenCTM()); return JSON.stringify([q.x,q.y]); })()`;
+let [tx, ty] = JSON.parse(await evalJS(tieBodyToScreen));
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tx, y: ty });
+await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: tx, y: ty, button: 'left', clickCount: 1 });
+for (let i = 1; i <= 8; i++) { await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tx + 40 * i / 8, y: ty, button: 'left', buttons: 1 }); await sleep(30); }
+await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: tx + 40, y: ty, button: 'left', clickCount: 1 });
+await sleep(300);
+const afterBody = JSON.parse(await evalJS(`(()=>{ const t=document.getElementById('lt_rig_tie'); const n=document.getElementById('lt_rignode'); return JSON.stringify({x1:+t.getAttribute('x1'), nodeCx:+n.getAttribute('cx'), nodeExists: !!n}); })()`));
+const tieDx = afterBody.x1 - x1Before;
+const nodeDx = afterBody.nodeCx - nodeCxBefore;
+check(afterBody.nodeExists, 'item5: the end-node still exists after a body-drag (not silently removed)');
+check(Math.abs(tieDx) > 1e-6, `item5: tie body drag actually moved it (dx=${tieDx.toFixed(3)})`);
+check(Math.abs(nodeDx - tieDx) < 1e-6, `item5: the node followed the tie's own delta exactly (tieDx=${tieDx.toFixed(3)}, nodeDx=${nodeDx.toFixed(3)})`);
+await shot('item5_contour_tie_node.png');
 
 console.log(logs.slice(0, 10).join('\n'));
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nALL CHECKS PASSED');

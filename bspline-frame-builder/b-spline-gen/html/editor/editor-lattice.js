@@ -210,10 +210,11 @@ export function isLatticePoint(p, spacing, tol = 1e-6) {
  *   canonical geometry (not updated between calls).
  * @param {number} newRow  the rail's new canonical j.
  * @param {{a:{i,j},b:{i,j}}[]} tiesCanon  every candidate tie, ALREADY
- *   confirmed on-grid (isLatticePoint) by the caller — extra fields
- *   (e.g. an `el` reference) pass through untouched via `tieUpdates[].tie`.
+ *   confirmed genuinely attached (or the caller's own off-grid sentinel)
+ *   by the caller — extra fields (e.g. an `el` reference) pass through
+ *   untouched via `tieUpdates[].tie`.
  * @param {({i,j}|{point:{i,j}})[]} nodesCanon  every candidate node,
- *   likewise pre-confirmed on-grid; either a bare point or a wrapper
+ *   likewise pre-confirmed attached; either a bare point or a wrapper
  *   carrying one under `.point` (whichever the caller finds convenient —
  *   both shapes are accepted so a DOM-touching caller can pass its own
  *   `{el, point}` records directly).
@@ -224,12 +225,24 @@ export function moveRailAlongAxis(railCanon, newRow, tiesCanon, nodesCanon) {
   const railJ = railCanon.a.j;
   const iMin = Math.min(railCanon.a.i, railCanon.b.i);
   const iMax = Math.max(railCanon.a.i, railCanon.b.i);
+  // UI5 item 5 (advisor: "write the fix generally... RAILS soon, since
+  // RAIL-SPACING will put rails off-grid"): a small tolerance, not `===`
+  // -- `railJ` and a genuinely-attached tie/node's own `pt.j` are both
+  // derived independently through toLatticeFractional/worldPoint, so an
+  // exact bitwise match isn't guaranteed even for two values that are
+  // conceptually the identical real-world point. Strictly a superset of
+  // the old `===` for today's always-integer rows (no behavior change
+  // there); the actual fix is that the CALLER (editor-interaction.js's
+  // _beginLatticeMove) now passes fractionally-exact tie/node positions
+  // instead of toLattice-rounded ones, so a fractional row can match at
+  // all. Same 1e-6 epsilon this file's own siblings already standardize on.
+  const sameRow = (j) => Math.abs(j - railJ) < 1e-6;
 
   const tieUpdates = [];
   for (const tie of (tiesCanon || [])) {
     for (const end of ['a', 'b']) {
       const pt = tie[end];
-      if (pt.j === railJ && pt.i >= iMin && pt.i <= iMax) {
+      if (sameRow(pt.j) && pt.i >= iMin && pt.i <= iMax) {
         tieUpdates.push({ tie, end, point: { i: pt.i, j: newRow } });
       }
     }
@@ -238,7 +251,7 @@ export function moveRailAlongAxis(railCanon, newRow, tiesCanon, nodesCanon) {
   const nodeUpdates = [];
   for (const node of (nodesCanon || [])) {
     const pt = node.point ?? node;
-    if (pt.j === railJ && pt.i >= iMin && pt.i <= iMax) {
+    if (sameRow(pt.j) && pt.i >= iMin && pt.i <= iMax) {
       nodeUpdates.push({ node, point: { i: pt.i, j: newRow } });
     }
   }

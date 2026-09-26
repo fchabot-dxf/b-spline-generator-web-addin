@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, tempfile, json, re
+import os, tempfile, json, re, types
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -18,6 +18,9 @@ from datetime import datetime
 # matching this file's own existing import style.
 from sketch_manifest_builder import build_constrained_sketch, BuildContext
 from constrained_sketch_log import format_constrained_sketch_log
+# STALE-PARAMS R4 item 4: the Bspline-group cleanup pass — a sibling module,
+# same sys.path story as sketch_manifest_builder above.
+from param_ownership import compute_stale_params
 
 # imports check: removed diagnostic
 
@@ -161,6 +164,27 @@ def _dump_last_send(data):
             json.dump(slim, f, indent=1)
     except Exception as e:
         _log(f'[LAST_SEND] could not write {LAST_SEND_FILE}: {e}')
+
+
+def _merge_last_send_key(key, value):
+    """STALE-PARAMS R4 item 4: adds/overwrites ONE key in the already-written
+    last_send.json. _dump_last_send(data) runs early (right after the param
+    sync, before geometry) — the stale-param pass runs LATE (end of
+    _handle_generate, ruling 7, after geometry exists — see
+    compute_stale_params's own module docstring for why), so this can only
+    ever ADD to that file, never replace the payload snapshot it already
+    holds. Same guarded-log-and-continue discipline as _dump_last_send —
+    a failure here must never surface to the user."""
+    try:
+        existing = {}
+        if os.path.exists(LAST_SEND_FILE):
+            with open(LAST_SEND_FILE, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+        existing[key] = value
+        with open(LAST_SEND_FILE, 'w', encoding='utf-8') as f:
+            json.dump(existing, f, indent=1)
+    except Exception as e:
+        _log(f'[LAST_SEND] could not merge key {key!r}: {e}')
 
 # ── Palette constants ─────────────────────────────────────────────────────────
 PALETTE_ID   = 'fusionHybridPalette'
@@ -1414,6 +1438,30 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
+                # STALE-PARAMS R4 item 4 (ruling 7, "ONE call ... after
+                # geometry"): board + lattice params created/updated by
+                # THIS Send are already synced (params sync ran near the
+                # top of this function; the lattice manifests' own params
+                # were synced inside _import_all_svg_layers above, which
+                # has now returned) — so `des.userParameters` reflects the
+                # post-Send state the reference guard needs to see (2d).
+                # Guarded exactly like every other post-import step in this
+                # function: a failure here is logged, never shown to Fred,
+                # never blocks the Send that already succeeded.
+                try:
+                    payload_names = set(params.keys())
+                    for layer in (stamp_data.get('layers', []) if stamp_data else []):
+                        manifest = layer.get('manifest') or {}
+                        for p in manifest.get('parameters', []) or []:
+                            if p.get('name'):
+                                payload_names.add(p['name'])
+                    stale = compute_stale_params(des.userParameters, payload_names, logger=types.SimpleNamespace(log=_log))
+                    _merge_last_send_key('stale_params', stale)
+                    if stale['deleted'] or stale['failed']:
+                        _log(f'[STALE PARAMS] deleted={stale["deleted"]} adopted={stale["adopted"]} '
+                             f'kept_referenced={[k["name"] for k in stale["kept_referenced"]]} failed={stale["failed"]}')
+                except Exception as e:
+                    _log(f'[STALE PARAMS] cleanup pass failed (Send itself unaffected): {e}')
                 importing_done = True
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')

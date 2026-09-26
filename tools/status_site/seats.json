@@ -1,0 +1,53 @@
+{
+  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change. Card title links to the seat's Claude session: 'url' (fixed link, e.g. a remote station's Remote Control session) or 'session' (a local session NAME: the watcher looks up its current Remote Control id in ~/.claude/sessions, so a restarted session only needs its new name here).",
+  "stations": {
+    "home-pc": "Home PC",
+    "asus": "Asus"
+  },
+  "seats": [
+    {
+      "key": "seatA",
+      "name": "Seat A",
+      "station": "home-pc",
+      "branch": "main",
+      "task": "NEXT-SESSION.md",
+      "checkout": "",
+      "session": "b-spline-generator-web-addin-b1"
+    },
+    {
+      "key": "seatB",
+      "name": "Seat B",
+      "station": "home-pc",
+      "branch": "lane-b",
+      "task": "NEXT-SESSION-lane-b.md",
+      "checkout": "-lane-b",
+      "session": "b-spline-generator-web-addin-51"
+    },
+    {
+      "key": "seatC",
+      "name": "Seat C",
+      "station": "home-pc",
+      "branch": "fb-app",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-fb-app",
+      "session": "b-spline-generator-web-addin-9f"
+    },
+    {
+      "key": "asus",
+      "name": "Reg-addin (advisor)",
+      "station": "asus",
+      "branch": "main",
+      "task": "NEXT-SESSION-reg-addin.md",
+      "commits": "^(R\\d|docs\\(reg-addin\\))",
+      "url": "https://claude.ai/code/session_015NmKa8YAS4WHj5jjsPeiUh"
+    },
+    {
+      "key": "asus-lane2",
+      "name": "Lane2",
+      "station": "asus",
+      "branch": "lane2",
+      "task": "NEXT-SESSION-lane2.md",
+      "commits": "^(L\\d|docs\\(lane2\\))"
+    }
+  ]
+}

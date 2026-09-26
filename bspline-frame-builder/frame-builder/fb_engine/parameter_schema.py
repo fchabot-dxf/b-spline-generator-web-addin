@@ -36,6 +36,23 @@ _UNITLESS_PREFIXES = ('en_', 'is_', 'ck_')
 # string literals that could silently drift apart.
 _BOARD_OWNED_PARAMS = ('widthIn', 'heightIn')
 
+# STALE-PARAMS R4 (advisor ruling, 2026-09-26): the Shape Lattice / constrained-
+# sketch parameters b-spline-gen's OWN sketch_manifest_builder.py creates
+# (`_sync_manifest_parameters`), declared here for the SAME reason as
+# _BOARD_OWNED_PARAMS above — one list every "is this ours" check reads,
+# rather than each call site (b-spline-gen/param_ownership.py, tests, …)
+# hand-rolling its own copy of these 7 literal names
+# (html/editor/editor-sketch-manifest.js:506,512,516,526,759,772,787,795).
+# Ruling: this registry is the ONLY change allowed in frame-builder/ for
+# R4 — the cleanup LOGIC lives in b-spline-gen/ and reads this list; it
+# never holds its own name list. Tag group: 'Bspline' (same group as the
+# board params — one Send surface, one tag; see STALE-PARAMS-DESIGN.md
+# "R4 rulings").
+_LATTICE_OWNED_PARAMS = (
+    'stroke_width', 'rail_width', 'tie_width', 'node_diameter',
+    'half_width', 'contour_width', 'contour_height',
+)
+
 # FB-FIX (F4): the ONE unit table for parsing a unit-suffixed value
 # ('0.75 in', '19 mm', '0.75"') to Fusion's internal cm. Before this,
 # BuildContext.resolve_val did float('0.75 in'), which raised and was swallowed
@@ -61,12 +78,20 @@ class ParameterSchema:
 
     UNITLESS_PREFIXES = _UNITLESS_PREFIXES
     BOARD_OWNED_PARAMS = _BOARD_OWNED_PARAMS
+    LATTICE_OWNED_PARAMS = _LATTICE_OWNED_PARAMS
 
     @classmethod
     def is_board_owned(cls, name):
         """True for a param the frame builder must never create or
         write — only Send to Fusion (b-spline-gen) owns these."""
         return name in cls.BOARD_OWNED_PARAMS
+
+    @classmethod
+    def is_lattice_owned(cls, name):
+        """True for a Shape Lattice / constrained-sketch parameter name
+        (STALE-PARAMS R4) — the accessor every 'is this ours' check
+        reads instead of holding its own copy of LATTICE_OWNED_PARAMS."""
+        return name in cls.LATTICE_OWNED_PARAMS
 
     # ------------------------------------------------------------------
     # Unit resolution

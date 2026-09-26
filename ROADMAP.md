@@ -953,11 +953,55 @@ Fred: "to me spacing isn't that" / "rail to rail, yes". Today `PATTERN.spacing` 
 both lattice panels) is the lattice's GRID STEP, a second grid next to the editor's toolbar grid (both default 0.25").
 Change: (1) the lattice grid step comes from the editor grid (GRID_DEFAULTS / toolbar), one grid, no lattice-side
 setting; (2) a declared `rails.spacing` (inches, rail-to-rail) becomes the "Spacing" field, a rails mode next to
-Count ('spacing' | 'count'; 'every' folds into 'spacing'); the rail count follows from the lattice size. Fred: "it's either set spacing or count": ONE toggle [Spacing | Count], only the chosen field shown; the other value is derived, never both set. Fred: "on generate it is evenly spaced": BOTH modes give exactly equal gaps on the grid. Count mode picks gap = whole grid steps nearest span/(count-1) (never larger than fits) and CENTRES the group (leftover split equally at both ends), replacing today's _railRowsByCount edge-to-edge rounding (gaps that differ by a grid step). Test: every generated rail gap is identical, both modes, across sizes/orientations/presets. Spacing must be a
+Count ('spacing' | 'count'; 'every' folds into 'spacing'); the rail count follows from the lattice size. (The exclusive [Spacing | Count] toggle was superseded by RAIL ANCHOR below.) Fred: "on generate it is evenly spaced" + "if we have boundary size fields we need another solution" -> option A (advisor recommendation, recorded on Fred's "first section should be boundary"): GENERATED RAILS ARE LAID OUT FROM THE BOUNDARY, NOT THE GRID. RAIL ANCHOR (Fred: "no margin" / "an origin" / "origin anchor is top center bottom edge"): a declared `rails.anchor` = start | center | end, shown as [Top | Center | Bottom] for horizontal rails and [Left | Center | Right] for vertical ones. Top/Bottom: the first rail sits ON that boundary edge and the rails repeat toward the other edge until the boundary ends (whatever is left over lands at the far side: Fred sizes the box). Center: a rail on the boundary centre line, repeating symmetrically both ways. SPACING + COUNT TOGETHER (Fred: "so count and spacing can both be used at the same time now"): the step is always the Spacing value; Count is OPTIONAL: N rails from the anchor (Center: N rails centred on the centre line); empty Count = fill the boundary. Rails that would fall outside the boundary are dropped. This SUPERSEDES the earlier exclusive [Spacing | Count] toggle. No margin field. Off-grid is fine. Fred: "no need to make it parametric in Fusion": rails are sent at their computed positions, no step expression. The grid is only for hand-drawing / dragging. This supersedes "rails on the grid by nature" for GENERATED rails. PANEL ORDER (Fred): the FIRST section of both lattice panels is BOUNDARY (Size W x H, contour on/off, its stroke), then Rails [Spacing|Count], Ties, Nodes. Test: every generated gap identical, the first rail exactly on the chosen anchor (top/bottom edge or centre line), both panels, sizes, orientations, presets. Spacing must be a
 whole number of grid steps (round to one, show the result), which gives exactly even gaps. Both panels. MIGRATION:
 a saved pattern's old `spacing` is read as its grid step and keeps its exact geometry (no silent re-layout). Tests:
 spacing mode gives equal gaps across sizes/orientations, Box + Shape Lattice; old patterns unchanged; drag snaps to
 the one grid.
+
+## Queued (Fred's queue, Asus) — FORMULA-FIELDS: type a formula in a number field (Fred 2026-09-26)
+Fred: "if I want a rail exactly on the boundary I just math it out" / "can we enter formula in the fields". Today no
+field accepts expressions. ONE shared parser module used by every numeric input (declared, not per-field): + - * /
+( ) and decimals, plus named values from the current context (lattice: width, height, stroke, count; declared per
+panel). A small safe arithmetic parser, NEVER eval / new Function. Evaluated on Enter/blur; the field stores the
+NUMBER (not parametric, Fred: "no need to make parametric in Fusion"); a bad formula shows an inline error and keeps
+the old value. AUTOCOMPLETE (Fred: "when typing a variable we can have a dropdown result appear"): typing letters in a formula field opens a dropdown of the matching named values with their CURRENT value (e.g. "height  6.000\""), filtered as you type; arrow keys + Enter/Tab insert, Esc closes, tap works on mobile. The list comes from the SAME declared names the parser uses (one source). A live preview of the result shows beside the field while typing. Tests: precedence, parentheses, names, errors, no eval path, dropdown filters/inserts from the declared names.
+
+## Queued (Fred's queue, Asus) — BOUNDARY-GUIDE: lattice boundary box shown in the editor, hidden in 3D (Fred 2026-09-26)
+Fred: "in editor show the boundary box but hide it in the 3D preview". The lattice boundary box (the Size W x H
+rectangle) is a GUIDE: always visible in the editor (dashed, non-exported, like F6's frame profile in the background
+layer), never rendered/stamped in the 3D preview. Declare it as guide geometry (one flag/role read by both the editor
+renderer and the 3D/stamp path), not a special case in the 3D code. Fred: "don't toggle draw boundary, it's by default": the boundary
+is ALWAYS drawn in the editor, so REMOVE the "Draw boundary" toggle (a removal: sweep the whole chain, field -> pattern key ->
+readers -> tests; old saved patterns read it as ignored). The Shape Lattice "Contour" checkbox (SE14c, real exported geometry) is a
+separate thing and stays. IN FUSION (Fred: "it's geometry but construction geometry in Fusion"): the boundary box IS sent, as CONSTRUCTION geometry (isConstruction = True) in the lattice sketch: never a profile, never extruded, still usable for constraints/dims. Declared as a role on the manifest entity (e.g. `construction: true`), read by the builder; not a special case.
+Test: boundary present in editor DOM, absent from the 3D input; export unchanged.
+
+## Shipped — STALE-PARAMS: delete the add-in's own stale Fusion user parameters on Send (reg-addin, R4, 2026-09-26)
+DESIGN in `STALE-PARAMS-DESIGN.md` (repo root; R3 design + its "R4 rulings" section, the living amended version).
+IMPLEMENTED (R4, Bspline group: board + lattice; frame/`FrameBuilder.owner` is seat C's and out of scope here).
+Declared registry: `ParameterSchema.LATTICE_OWNED_PARAMS` (`stroke_width`/`rail_width`/`tie_width`/`node_diameter`/
+`half_width`/`contour_width`/`contour_height`) beside the existing `BOARD_OWNED_PARAMS`
+(`frame-builder/fb_engine/parameter_schema.py`), sharing the board's `Bspline.owner` tag group. **Fred amended the
+rule live twice during R4:** (1) delete is ON, not log-only; (2) a REGISTERED NAME is ours whether or not an older
+build stamped it ("take over existing params") — the stamp is now written on every touch (create+update, matching
+the board) but is a breadcrumb, not the ownership gate; the registry name is. Delete rule = registered name + not
+in this Send's payload + no `Parameter.dependentParameters` → delete (logged `deleted`, or `adopted`+`deleted` if
+it was found unstamped); referenced → `kept_referenced` + reason; a `deleteMe()` failure → `failed`, never breaks
+Send. New: `b-spline-gen/param_ownership.py` (pure, tested). Wired: one call in `_handle_generate`'s Finalise
+block; `stale_params` merged into `last_send.json`. NO FUSION this loop — Fred live-checks it (see
+`WORK-LOG-reg-addin.md`'s R4 entry for the recipe: what to Send, what to read back).
+
+## Queued (seat C, fb-app, after F9 frame handles) — SHAPE-PARAMS: more Shape Lattice shape params, each with a handle (Fred 2026-09-26)
+Fred: "for lattice I think more is better". Add to the shared silhouette solver (editor-shape-lattice-generator.js),
+each a DECLARED param in PARAM_ORDER + BASE_RANGES + feasibleParamRanges, with its own handle (computeParamHandles)
+and slider: (1) hourglass WAIST RADIUS, independent of the corner radius (replaces the fixed WAIST_MIN_RADIUS_OF_DEPTH
+coupling; gives the "subtle but large radius" waist); (2) hourglass TOP and BOTTOM corner radius separately (today one
+cornerRadius; the old value migrates to both); (3) bottle BODY SHOULDER radius (the neck-to-body transition). Old saved
+patterns keep their exact shape (migration test). F5 guarantees hold (dense sweep: simple outline, tangent joints).
+Shape Lattice first. Frames get handles for their EXISTING template params in F9. Frames NEVER get the new params (Fred: "we don't need to add new
+parameters that aren't in the add-in right now"): frame handles drive ONLY the params the Frame Builder add-in already has.
+Fusion Shape Lattice export unchanged in kind (the geometry changes, no new radius dims: Fred's SE15 rule).
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
@@ -970,7 +1014,7 @@ principle as SE7i's derived tie-on-rail attachment, no second source of truth; d
 Join = tap the joint again (or "Join" action). Fred: "like a cut tool" → tap ANYWHERE on a line to cut there (snaps to joints then grid points; Alt / Snap-off =
 free); Fred: "we don't need it in lattice if it's not needed for keeping structure" → main rail only, NO lattice-panel
 button and NO "Cut all at joints"; the tool itself preserves lattice membership when cutting a rail/tie; tap a cut point again with the tool = Join. Default: cut
-segments move together as one rail (Fred to confirm vs fully independent). Works on any plain line too (main tool).
+segments move together as one rail (CONFIRMED Fred 2026-09-26: "in lattice move together"; plain lines in DIRECT EDIT (main tool rail, non-lattice): NOT together, each segment moves independently, Fred 2026-09-26: "lattice keeps the structure but normal mode is indiscriminate" - a cut in normal mode leaves plain, unrelated segments). Works on any plain line too (main tool).
 ACCEPTANCE (Fred: "I don't want the cut tool to break the lattice structure editability — rails and ties following
 each other on drag"): for the SAME lattice before and after cutting a rail (and a tie) at several joints, the SAME
 drag gestures must give IDENTICAL results — dragging any segment moves every collinear touching segment of that rail,
