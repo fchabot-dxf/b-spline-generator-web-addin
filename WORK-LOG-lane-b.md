@@ -9872,3 +9872,36 @@ Verify: 1343/1343 vitest (3 new), 52/52 b-spline-gen pytest (2 new assertions on
 pushed. NO FUSION this whole turn.
 
 # T76 — SE17 complete: all 7 items landed (merge + items 1-7). Passing back to the advisor.
+
+# T77 — TIE-GAP: minimum spacing between generated ties
+
+Spec read in full from `ROADMAP.md` on main, "TIE-GAP" entry, before starting: `ties.minSpacing` (app setting only,
+never a Fusion parameter — Fred: "in the add-in, not Fusion"), default 0.5in, a "Min spacing" field in the Ties
+section of BOTH lattice panels; Generate never places two generated ties closer than this along the rail direction
+(same rail gap, and adjacent gaps where they'd visually pair — decide + log); spacing wins over count (generate
+FEWER rather than violate it); hand-added/dragged ties exempt; sweep test across seeds/counts/presets, parity
+unchanged.
+
+## T77 item 1 — declared ties.minSpacing (default 0.5in) + Min spacing field in both lattice panels
+
+`PATTERN_DEFAULTS.ties.minSpacing = 0.5` (real inches, matching Widths' own decimal-inch fields, not a lattice-cell
+count) plus a "min spacing (in)" field in the Ties section of both Box Lattice (`latticeTiesMinSpacing`) and Shape
+Lattice (`shapeLatticeTiesMinSpacing`) panels — same plain `type="number"` C1 stepper style as the existing
+`oneEnded` fields (WORK-LOG:7926 confirmed that's what "C1 style" means here). Wired into both
+`properties-lattice.js` and `properties-shape-lattice.js` with the same "deferred to Generate" convention as
+`oneEnded`/`railSnapRows`: an element ref, a sync-on-open line reading `p.ties?.minSpacing ??
+PATTERN_DEFAULTS.ties.minSpacing` (so an old saved pattern with no key at all reads the declared default, no
+silent behavior change), and a read-on-Generate line using `parseFloat` (not `parseInt`, since this is a decimal
+inch value) with `|| 0` — 0 is a genuinely valid "no minimum" value, same reasoning `oneEnded`'s own `|| 0` comment
+already gives.
+
+UI tests added to both `properties-lattice.test.js` and `properties-shape-lattice.test.js`, mirroring the existing
+`oneEnded` field tests exactly: a fresh pattern reads the declared default onto the field, and editing the field +
+pressing Generate writes the edited value into `PATTERN.ties.minSpacing`.
+
+Verified live via headless Chrome (styled server, `bspline-frame-builder/` root): both fields render in their own
+panel's Ties section, visible and non-zero-sized, reading back "0.5", zero console errors. Screenshots:
+`C:\Users\danse\.bspline-status\shots\seatB\1807_T77-item-1_box-lattice-min-spacing.png` and
+`..._shape-lattice-min-spacing.png`.
+
+Verify: 1346/1346 vitest (3 new). Commit 3977d71, pushed. NO FUSION this whole turn.
