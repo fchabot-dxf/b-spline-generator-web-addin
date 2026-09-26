@@ -596,8 +596,8 @@ on the slot centerline end points. Offsets removed.
 
 ## LOOSE CONTOUR (Fred 2026-09-26: "dont use symmetry either" / "no radius dim though, leave the sketch loose for now")
 Constraint vocabulary for SE15/SE15b sketches: NO Fix, NO Symmetry, NO radius dims, NO length dims. Allowed:
-slots + the `stroke_width` width dim, the contour's overall width/height dims = `widthIn - 0.25 in` / `heightIn - 0.25 in` (Fred:
-"W and H is good" + "-.25 then"; point-to-point on corner points; the app draws the contour 1/8" inside
+slots + the `stroke_width` width dim, the contour's overall width/height dims = `widthIn - contour_margin` / `heightIn - contour_margin`, with a NEW user
+parameter `contour_margin` = 0.25 in (Fred: "W and H is good", "-.25 then", "instead of a param lets make a new one"); point-to-point on corner points; the app draws the contour 1/8" inside
 the board so both sides match), Coincident joints (separate points), Tangent at contour joints, Horizontal /
 Vertical. Geometry is INSERTED in position (symmetric by coordinates) and left loose — drift on a width edit is accepted.
 Measured before this ruling (for the record): Symmetry needed an origin-anchored axis, and without size dims the edges
