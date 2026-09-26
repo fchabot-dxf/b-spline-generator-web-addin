@@ -60,7 +60,7 @@ export function computeParamHandles(preset, region, resolvedParams) {
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
   if (preset === 'bottle') {
-    const { neckWidth, bodyWidth, skeletonX, neckLength } = resolvedParams;
+    const { neckWidth, skeletonX, neckLength } = resolvedParams;
     const neckHalfW = hw * neckWidth;
     const skelX = hw * skeletonX;
     const neckCenterY = -hh + hh * 2 * neckLength;
@@ -71,14 +71,13 @@ export function computeParamHandles(preset, region, resolvedParams) {
         valueFromWorld: (pt) => clamp((pt.x - cx0) / hw, 0.05, 0.85),
       },
       {
-        key: 'bodyWidth', label: 'Body width', axis: 'x',
-        anchor: { x: cx0 + hw * bodyWidth, y: region.y + region.h }, // the bottom-right corner itself: its own Y (region.y+h) never depends on bodyWidth
-        valueFromWorld: (pt) => clamp((pt.x - cx0) / hw, Math.min(0.98, neckWidth + 0.08), 0.98),
-      },
-      {
+        // T74 AMEND 3 (Fred: "it needs to fill the box same as hourglass"):
+        // the 'bodyWidth' handle (dragged the bottom-right corner along
+        // the outer edge) is RETIRED along with the param itself — the
+        // body always spans the full half-width now, nothing left to drag.
         key: 'skeletonX', label: 'S-curve tightness', axis: 'x',
         anchor: { x: cx0 + skelX, y: cy0 + neckCenterY }, // the neck arc's own CENTER — pure horizontal move, same reasoning as hourglass's cornerRadius
-        valueFromWorld: (pt) => clamp((pt.x - cx0) / hw, neckWidth + (bodyWidth - neckWidth) * 0.15, neckWidth + (bodyWidth - neckWidth) * 0.85),
+        valueFromWorld: (pt) => clamp((pt.x - cx0) / hw, neckWidth + (1 - neckWidth) * 0.15, neckWidth + (1 - neckWidth) * 0.85),
       },
       {
         key: 'neckLength', label: 'Shoulder height', axis: 'y',

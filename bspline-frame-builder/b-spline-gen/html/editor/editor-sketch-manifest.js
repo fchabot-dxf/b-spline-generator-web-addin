@@ -58,7 +58,7 @@ import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
 } from './editor-lattice-boundary.js';
-import { generateSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
+import { generateContourSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
 /** §6: below this many rails+ties+nodes, every piece gets its own H/V +
@@ -508,21 +508,32 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
 // and each preset's own params are named deliberately, not mechanically.
 const PARAM_FUSION_NAMES = {
   hourglass: { waistReach: 'waist_reach', cornerRadius: 'corner_radius', waistCenterY: 'waist_center_y' },
-  bottle: { neckWidth: 'neck_width', bodyWidth: 'body_width', skeletonX: 'skeleton_x', neckLength: 'neck_length' },
+  bottle: { neckWidth: 'neck_width', skeletonX: 'skeleton_x', neckLength: 'neck_length' },
 };
 
 // T74 AMEND 0: `PRESETS[preset].widthExpr` (editor-shape-lattice-
-// generator.js — declared once, alongside the params that determine it)
-// is written in THIS module's own camelCase param names; translate each
-// token to its Fusion name via the SAME `nameTable` `parameters` itself
-// already uses below, so the two never drift apart. A token that isn't a
-// resolved param (`contour_width` itself) passes through unchanged.
+// generator.js — declared once, alongside the params that determine it,
+// kept as a slot for a FUTURE preset whose body is a genuine fraction of
+// the contour width, though neither current preset uses it since AMEND 3
+// retired the bottle's own `bodyWidth`) is written in THIS module's own
+// camelCase param names; translate each token to its Fusion name via the
+// SAME `nameTable` `parameters` itself already uses below, so the two
+// never drift apart. A token that isn't a resolved param (`contour_width`
+// itself) passes through unchanged.
+//
+// T74 AMEND 2 (Fred, confirmed after back-and-forth): contour_width/
+// contour_height now declare the OUTSIDE edge of the drawn stroke, never
+// its centerline — the Distance dim itself stays targeted on the
+// centerline (generateContourSilhouette's own already-inset geometry, see
+// its doc comment), so its own DRIVING expression must compensate by
+// subtracting stroke_width, uniformly, regardless of preset.
 function resolveWidthExpr(preset, nameTable) {
   const raw = (PRESETS[preset] && PRESETS[preset].widthExpr) || 'contour_width';
-  return raw.split('*').map((tok) => {
+  const translated = raw.split('*').map((tok) => {
     const name = tok.trim();
     return nameTable[name] || name;
   }).join(' * ');
+  return `${translated} - stroke_width`;
 }
 
 /**
@@ -530,9 +541,11 @@ function resolveWidthExpr(preset, nameTable) {
  * `PATTERN.shape` object, `generateSilhouette`'s own 2nd arg) + `region`
  * (`{x,y,w,h}`, model inches, `generateSilhouette`'s own 1st arg) ->
  * `{entities, constraints, parameters, dimensions, groups}`. Pure: calls
- * `generateSilhouette` (unchanged) then walks its own `primitives` list —
- * the SAME flat list `primitivesToPathD` already walks — building one
- * manifest entity per primitive.
+ * `generateContourSilhouette` (T74 AMEND 2/3 — insets `generateSilhouette`'s
+ * own raw geometry by half the contour's own stroke width, see that
+ * function's own doc comment) then walks its own `primitives` list — the
+ * SAME flat list `primitivesToPathD` already walks — building one manifest
+ * entity per primitive.
  *
  * T69: `opts.widthMode` (default `SKETCH_CONTOUR_WIDTH_MODE`, i.e. 'slot')
  * decides whether each primitive becomes a Fusion-native SLOT (`Slot` for
@@ -556,7 +569,12 @@ export function manifestFromShape(shape, region, opts = {}) {
   const widthMode = opts.widthMode ?? SKETCH_CONTOUR_WIDTH_MODE;
   const strokeWidth = opts.strokeWidth ?? PATTERN_DEFAULTS.widths.rails;
   const isSlotMode = widthMode !== 'centerline';
-  const result = generateSilhouette(region, shape);
+  // T74 AMEND 2/3: generateContourSilhouette (not bare generateSilhouette)
+  // insets the raw geometry inward by half THIS SAME strokeWidth, so the
+  // entities/dims built below already sit on the contour's own true
+  // centerline (outside/declared size minus stroke), never the raw,
+  // un-inset outside line itself.
+  const result = generateContourSilhouette(region, shape, strokeWidth);
   const { preset, segments, primitives, params } = result;
   const n = segments.length;
   const segMap = primitiveSegmentMap(segments);
@@ -715,7 +733,14 @@ export function manifestFromShape(shape, region, opts = {}) {
   // Python's create-OR-UPDATE parameter sync (_sync_manifest_parameters)
   // harmlessly reconciles a duplicate declaration of the same name/value
   // in the common linked case, and is the ONLY source of it when unlinked.
-  if (isSlotMode && entities.length) parameters.push({ name: 'stroke_width', value: strokeWidth, unit: 'in' });
+  // T74 AMEND 2: the width/height Distance dims below now reference
+  // `stroke_width` in THEIR OWN expression too (never just the Slot
+  // entities) — declared whenever EITHER needs it, not just in slot mode,
+  // so a 'centerline' (non-slot) mode manifest never emits a dim
+  // expression referencing an undeclared parameter.
+  if ((isSlotMode && entities.length) || widthPairIds || heightPairIds.length === 2) {
+    parameters.push({ name: 'stroke_width', value: strokeWidth, unit: 'in' });
+  }
 
   // T71: the contour's overall size — KEPT (Fred: "W and H is good"), but
   // now a point-to-point Distance (never a curve target) driven by a NEW,
@@ -725,6 +750,9 @@ export function manifestFromShape(shape, region, opts = {}) {
   // the contour's own inset region (buildSketchManifest passes it in, see
   // that function's own doc comment) — CONTOUR_SIZE_INSET_IN's margin is
   // baked into `region.w`/`region.h` for free, no separate arithmetic here.
+  // T74 AMEND 2: `region.w`/`region.h` are the OUTSIDE (declared) size,
+  // UNCHANGED from before — the dim's own expression (not this value) is
+  // what now compensates for the stroke inset, see resolveWidthExpr.
   if (widthPairIds) {
     parameters.push({ name: 'contour_width', value: region.w, unit: 'in' });
     dimensions.push({
@@ -737,7 +765,7 @@ export function manifestFromShape(shape, region, opts = {}) {
     parameters.push({ name: 'contour_height', value: region.h, unit: 'in' });
     dimensions.push({
       type: 'Distance', targets: [`${topId}:S`, `${bottomId}:S`],
-      orientation: 'Vertical', expression: 'contour_height',
+      orientation: 'Vertical', expression: 'contour_height - stroke_width',
     });
   }
 
@@ -788,6 +816,16 @@ function resolveBoardExtent(pattern, region) {
   };
 }
 
+// T74 AMEND 1: the ONE contour stroke width (null=auto=widths.rails, an
+// explicit `contour.width` override otherwise) — shared by `shapeHalfInset`
+// below AND `resolveShapeBoundaryExtent`'s own call into
+// `generateContourSilhouette` (AMEND 2/3), so the two never drift apart.
+function _effectiveContourStrokeWidth(pattern) {
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
+  const contour = { ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) };
+  return contour.width != null ? contour.width : widths.rails;
+}
+
 // T68 AMEND 1 (advisor, measured live on the DEFAULT Shape Lattice layer
 // — this WORK-LOG's own T61 entry had already disclosed this exact gap
 // as "a real, named follow-up, not built this turn"; now built): the
@@ -807,21 +845,22 @@ function shapeHalfInset(pattern) {
   // see usesContourCenterline's own doc comment (editor-lattice-
   // pattern.js) for why this is unconditional (never gated on the
   // now-retired Border feature) and why "contour hidden" alone keeps
-  // today's inset behavior below.
+  // today's inset behavior below. T74 AMEND 2: "the contour's own RAW
+  // centerline" is now ALREADY stroke-inset from the outside/declared size
+  // (generateContourSilhouette, called by resolveShapeBoundaryExtent
+  // below) — this function's own job is UNCHANGED, a FURTHER half-stroke
+  // pull-back on top of that, only when the contour is hidden.
   if (usesContourCenterline(pattern)) return 0;
   const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
   if (edge === 'centerline') return 0;
-  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
-  const contour = { ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) };
-  const contourWidth = contour.width != null ? contour.width : widths.rails;
-  return contourWidth / 2;
+  return _effectiveContourStrokeWidth(pattern) / 2;
 }
 
 // Mirrors `_resolveExtent`'s own 'boundary' branch, fed the silhouette's
-// OWN primitives directly (already pure, from `generateSilhouette`) rather
-// than a live DOM element's — "two tools sharing one engine" (T58 design)
-// without the DOM lookup `_resolveBoundaryPrimitives` needs for a
+// OWN primitives directly (already pure, from `generateContourSilhouette`)
+// rather than a live DOM element's — "two tools sharing one engine" (T58
+// design) without the DOM lookup `_resolveBoundaryPrimitives` needs for a
 // HAND-PICKED boundary shape. T68: now applies the SAME inward inset
 // (editor-lattice-boundary.js, shared with the app's own drawing — "one
 // function, never two computations", the advisor's own fix instruction)
@@ -833,9 +872,15 @@ function shapeHalfInset(pattern) {
 // generated-preset-only `insetGeneratedPresetPathDToPrimitives` (falls
 // back to the raw boundary if the inset collapses) rather than the plain
 // `insetPathDToPrimitives` a hand-picked shape still uses unchanged.
+// T74 AMEND 2/3: `generateContourSilhouette` (not bare `generateSilhouette`)
+// is now the source of the "raw" primitives here, so this function's own
+// idea of the contour's centerline already sits stroke/2 inside the
+// declared outside size, matching the app's own drawing (properties-shape-
+// lattice.js's own `regenerateSilhouette`) and the manifest's own entities
+// (`manifestFromShape`) exactly — one shared computation, never three.
 function resolveShapeBoundaryExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
-  const { primitives } = generateSilhouette(region, pattern.shape);
+  const { primitives } = generateContourSilhouette(region, pattern.shape, _effectiveContourStrokeWidth(pattern));
   const halfInset = shapeHalfInset(pattern);
   // T73 AMEND 3: ALWAYS round-trip through the d-string (even at
   // halfInset===0, insetGeneratedPresetPathDToPrimitives's own
@@ -1010,7 +1055,11 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // PATTERN_DEFAULTS.widths the SAME way manifestFromLattice's own
   // `widths` local already does) — "same param as rails/ties" (the
   // dispatch's own instruction), not manifestFromShape's own no-pattern-
-  // visibility fallback default.
+  // visibility fallback default. T74 AMEND 1: an explicit `contour.width`
+  // override (if set) wins over `widths.rails` here too — `manifestFromShape`
+  // itself has no visibility into `pattern` at all, so this is the ONE place
+  // that must resolve it, the SAME `_effectiveContourStrokeWidth` helper
+  // `resolveShapeBoundaryExtent` above already uses (never re-derived).
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
   // T72 (SE14c, Fred: "sometimes don't want the contour profile"): OFF
   // (`pattern.contour.show === false`) suppresses ONLY the contour's own
@@ -1022,7 +1071,7 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   const contourVisible = hasShape && ({ ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) }).show !== false;
   const contourWidthMode = contourVisible ? SKETCH_CONTOUR_WIDTH_MODE : null;
   const shape = contourVisible
-    ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: widths.rails })
+    ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: _effectiveContourStrokeWidth(pattern) })
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
 
   const manifest = {

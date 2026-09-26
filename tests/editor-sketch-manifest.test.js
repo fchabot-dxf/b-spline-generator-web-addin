@@ -15,7 +15,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { computePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { fromLattice, toLattice } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice.js';
-import { generateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { generateSilhouette, generateContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { primitivesBBox, insetRegionForContour } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
@@ -494,7 +494,12 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
 describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
   it('T69: entities match generateSilhouette primitives 1:1 (independent re-run) -- default contour width mode is now slot', () => {
     const shape = { preset, seed: 42, params: {} };
-    const { primitives } = generateSilhouette(REGION, shape);
+    // T74 AMEND 2: manifestFromShape (no opts.strokeWidth override here)
+    // builds its entities from generateContourSilhouette's own
+    // stroke-inset geometry (default strokeWidth = PATTERN_DEFAULTS.widths.
+    // rails) -- the independent oracle must reproduce the SAME inset, not
+    // bare generateSilhouette's raw, un-inset primitives.
+    const { primitives } = generateContourSilhouette(REGION, shape, PATTERN_DEFAULTS.widths.rails);
     const manifest = manifestFromShape(shape, REGION);
     // T70 AMEND 3: manifest.entities can ALSO carry a non-primitive-derived
     // mirror-axis construction Line now -- filter to the per-primitive
@@ -530,7 +535,11 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
       expect(e.width).toBeUndefined();
     });
     expect(manifest.dimensions.some((d) => d.type === 'SlotWidth')).toBe(false);
-    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(false);
+    // T74 AMEND 2: stroke_width is now ALSO referenced by the width/height
+    // Distance dims' own expressions (`contour_width - stroke_width`),
+    // unconditionally -- declared here even in 'centerline' (non-slot)
+    // mode, so those dims never reference an undeclared parameter.
+    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
   });
 
   it('every Coincident constraint is a genuinely shared point (independent coordinate check)', () => {
@@ -608,13 +617,15 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
 
   it('T73 AMEND 1 (advisor, measured live in Fusion on main 660f417): the contour_width/contour_height Distance dims are anchored on the contour\'s OWN geometric extremes (min-x/max-x, min-y/max-y), never merely the first mirror pair a search happens to visit -- Bottle\'s NECK (narrower than its body) previously got forced to the full contour_width', () => {
     const shape = { preset, seed: 42, params: {} };
-    const { primitives } = generateSilhouette(REGION, shape);
+    // T74 AMEND 2: independent oracle must match manifestFromShape's own
+    // stroke-inset geometry (see the "T69: entities match..." test above).
+    const { primitives } = generateContourSilhouette(REGION, shape, PATTERN_DEFAULTS.widths.rails);
     const manifest = manifestFromShape(shape, REGION);
 
-    // T74 AMEND 0: the width dim's own expression is now PER-PRESET (the
-    // bottle's own body is a bodyWidth FRACTION of contour_width, so its
-    // expression is 'contour_width * body_width', not the bare name) --
-    // found by orientation, not by matching a specific expression string.
+    // T74 AMEND 3: the bottle's own body now always spans the FULL contour
+    // width (bodyWidth retired) -- its width dim's own expression is the
+    // SAME bare default BOTH presets share ('contour_width - stroke_width'),
+    // found by orientation below, not by matching a specific string.
     const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Horizontal');
     const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Vertical');
     expect(widthDim).toBeDefined(); // non-vacuous
@@ -628,13 +639,13 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     // "parameters carry..." test above) is NOT the same claim as "the raw,
     // undriven geometry already measures region.w/h apart" -- a Distance
     // dim is a DRIVING dimension; its whole job is to STRETCH whatever the
-    // raw generated geometry measured (params like bodyWidth jitter narrower
-    // than the full region on purpose) out to the declared value once Fusion
-    // solves it. The bug was never "wrong VALUE" -- it's "wrong POINTS":
-    // independent oracle, the anchor points must sit at the contour's own
-    // TRUE geometric extremes (every Line primitive's own endpoints), never
-    // an incidental mirror pair narrower than the shape's real widest/
-    // tallest point (e.g. Bottle's neck).
+    // raw generated geometry measured (a jittered param can narrow a
+    // feature on purpose) out to the declared value once Fusion solves it.
+    // The bug was never "wrong VALUE" -- it's "wrong POINTS": independent
+    // oracle, the anchor points must sit at the contour's own TRUE
+    // geometric extremes (every Line primitive's own endpoints), never an
+    // incidental mirror pair narrower than the shape's real widest/tallest
+    // point (e.g. Bottle's neck).
     const xs = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.x, p.p1.x] : []));
     const ys = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.y, p.p1.y] : []));
     expect(Math.min(wA.x, wB.x)).toBeCloseTo(Math.min(...xs), 9);
@@ -647,11 +658,21 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     const shape = { preset, seed: 42, params: {} };
     const manifest = manifestFromShape(shape, REGION);
     const paramValue = Object.fromEntries(manifest.parameters.map((p) => [p.name, p.value]));
-    const evalExpr = (expr) => expr.split('*').map((tok) => {
-      const name = tok.trim();
-      expect(name in paramValue).toBe(true); // non-vacuous: every token must be a REAL declared parameter
-      return paramValue[name];
-    }).reduce((a, b) => a * b, 1);
+    // T74 AMEND 2: the expression can now be "<product> - stroke_width" --
+    // split the subtraction off first (at most one, always trailing, per
+    // resolveWidthExpr/the hardcoded height expression), then the
+    // multiplicative product exactly as before.
+    const evalExpr = (expr) => {
+      const [product, subtrahend] = expr.split(' - ').map((s) => s.trim());
+      const productValue = product.split('*').map((tok) => {
+        const name = tok.trim();
+        expect(name in paramValue).toBe(true); // non-vacuous: every token must be a REAL declared parameter
+        return paramValue[name];
+      }).reduce((a, b) => a * b, 1);
+      if (subtrahend === undefined) return productValue;
+      expect(subtrahend in paramValue).toBe(true);
+      return productValue - paramValue[subtrahend];
+    };
 
     const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Horizontal');
     const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Vertical');
@@ -771,14 +792,18 @@ describe('manifestFromShape — T71 (T69-fix-3): loose contour -- Symmetry/mirro
 
   it('a horizontal point-to-point Distance dim (=contour_width, a NEW independent parameter) ties the contour\'s own left/right extreme corners, and a vertical one (=contour_height) ties its top/bottom extreme corners -- both driven by region.w/region.h, never widthIn/heightIn', () => {
     const shape = { preset: 'hourglass', seed: 42, params: {} };
-    const { primitives } = generateSilhouette(REGION, shape);
+    // T74 AMEND 2: independent oracle must match manifestFromShape's own
+    // stroke-inset geometry.
+    const { primitives } = generateContourSilhouette(REGION, shape, PATTERN_DEFAULTS.widths.rails);
     const manifest = manifestFromShape(shape, REGION);
     const widthDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Horizontal');
     expect(widthDim).toBeDefined();
-    expect(widthDim.expression).toBe('contour_width');
+    // T74 AMEND 2/3: the centerline dim now compensates for the outside-
+    // declared contour_width/height by subtracting stroke_width.
+    expect(widthDim.expression).toBe('contour_width - stroke_width');
     const heightDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Vertical');
     expect(heightDim).toBeDefined();
-    expect(heightDim.expression).toBe('contour_height');
+    expect(heightDim.expression).toBe('contour_height - stroke_width');
     // T73 AMEND 1: which SPECIFIC segment anchors each dim is no longer
     // asserted by hardcoded id -- the hourglass's 4 horn segments (the
     // top/bottom horn on each side) all sit at the identical left/right
@@ -877,7 +902,10 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     // INSET by the declared contour-size margin (editor-lattice-boundary.js's
     // own insetRegionForContour) -- this independent re-derivation must use
     // the SAME region the manifest itself actually built from.
-    const { primitives } = generateSilhouette(insetRegionForContour(REGION), shapePattern.shape);
+    // T74 AMEND 2: independent oracle must match manifestFromShape's own
+    // stroke-inset geometry (buildSketchManifest resolves this SAME
+    // effective width via _effectiveContourStrokeWidth internally).
+    const { primitives } = generateContourSilhouette(insetRegionForContour(REGION), shapePattern.shape, shapePattern.widths.rails);
     const arcPrim = primitives.find((p) => p.type === 'A');
     expect(arcPrim).toBeTruthy(); // non-vacuous: the hourglass preset genuinely has arcs to check
 
@@ -934,8 +962,9 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
     };
-    // T71: same inset region substitution as the arc test above.
-    const { primitives } = generateSilhouette(insetRegionForContour(REGION), shapePattern.shape);
+    // T71: same inset region substitution as the arc test above. T74
+    // AMEND 2: same stroke-inset oracle substitution too.
+    const { primitives } = generateContourSilhouette(insetRegionForContour(REGION), shapePattern.shape, shapePattern.widths.rails);
     // Sample many points along the ORIGINAL (natural-space) primitives --
     // lines by their 2 endpoints, arcs by a dense angle sweep -- and bbox
     // those, entirely independent of buildSketchManifest/applyCarvePlacement.
@@ -1090,7 +1119,9 @@ describe('buildSketchManifest — T72 (SE14c) + T73 AMEND 3: contour.show=false 
     expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(true);
     expect(manifest.contourWidthMode).toBe('slot');
     expect(manifest.parameters.some((p) => p.name === 'contour_width')).toBe(true);
-    expect(manifest.dimensions.some((d) => d.expression === 'contour_width')).toBe(true);
+    // T74 AMEND 2: the dim's own expression now compensates for the
+    // outside-declared size by subtracting stroke_width.
+    expect(manifest.dimensions.some((d) => d.expression === 'contour_width - stroke_width')).toBe(true);
   });
 
   it('OFF (contour.show:false): no seg* entities, no contour_width/height params/dims, contourWidthMode is null (matching the box-lattice "no contour" case exactly)', () => {
@@ -1098,7 +1129,7 @@ describe('buildSketchManifest — T72 (SE14c) + T73 AMEND 3: contour.show=false 
     expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
     expect(manifest.constraints.some((c) => c.targets?.some?.((t) => typeof t === 'string' && t.startsWith('seg')))).toBe(false);
     expect(manifest.parameters.some((p) => p.name === 'contour_width' || p.name === 'contour_height')).toBe(false);
-    expect(manifest.dimensions.some((d) => d.expression === 'contour_width' || d.expression === 'contour_height')).toBe(false);
+    expect(manifest.dimensions.some((d) => d.expression?.startsWith('contour_width') || d.expression?.startsWith('contour_height'))).toBe(false);
     expect(manifest.contourWidthMode).toBeNull();
   });
 

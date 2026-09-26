@@ -24,7 +24,7 @@ import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
 } from './editor-lattice-pattern.js';
-import { PRESETS, generateSilhouette, primitiveToPathD } from './editor-shape-lattice-generator.js';
+import { PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
 import { insetRegionForContour, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
@@ -184,7 +184,6 @@ function _effectiveSegments(editor, shape) {
 export function regenerateSilhouette(editor, p) {
     const shape = currentShape(p);
     const region = _shapeContourRegion(editor);
-    const { primitives, segments } = generateSilhouette(region, shape);
 
     const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
     p.contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
@@ -197,6 +196,14 @@ export function regenerateSilhouette(editor, p) {
     // shapeHalfInset, updated in lockstep so the lattice-fill's own default
     // inset amount still agrees between the app and the manifest.
     const contourWidth = p.contour.width != null ? p.contour.width : widths.rails;
+    // T74 AMEND 2/3 (Fred, confirmed after back-and-forth): the region's
+    // own w/h are the OUTSIDE (declared) size — generateContourSilhouette
+    // (not bare generateSilhouette) insets the actual drawn geometry
+    // inward by half the contour's own stroke width, so the drawn stroke's
+    // OUTER edge lands exactly on the region, matching the manifest's own
+    // parity (editor-sketch-manifest.js's manifestFromShape, called with
+    // the SAME contourWidth as its own strokeWidth).
+    const { primitives, segments } = generateContourSilhouette(region, shape, contourWidth);
     const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
     const contourShow = p.contour.show !== false;
 
@@ -393,7 +400,16 @@ export function detectShapeLatticeDetach(editor) {
     const segEls = _findBoundaryElements(editor, p.boundary.shapeId);
     if (!segEls.length) return;
     const region = _shapeContourRegion(editor);
-    const { primitives } = generateSilhouette(region, shape);
+    // T74 AMEND 2/3: must match `regenerateSilhouette`'s OWN actually-drawn
+    // geometry exactly (generateContourSilhouette's stroke-inset centerline,
+    // not the raw outside line) — a bare `generateSilhouette` call here
+    // would flag EVERY freshly-generated pattern as "hand-edited" (its own
+    // raw, un-inset `d` never matches what was actually drawn), silently
+    // flipping `shape.source` to 'picked' right after a normal Generate.
+    const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
+    const contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
+    const contourWidth = contour.width != null ? contour.width : widths.rails;
+    const { primitives } = generateContourSilhouette(region, shape, contourWidth);
     // T73 (SE14b): the contour is N per-segment elements now — a genuine
     // hand-edit of ANY one of them (a NODE-mode drag moving its endpoint,
     // now that a segment is a real, selectable element) is still real
