@@ -881,8 +881,16 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // dispatch's own instruction), not manifestFromShape's own no-pattern-
   // visibility fallback default.
   const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
-  const contourWidthMode = hasShape ? SKETCH_CONTOUR_WIDTH_MODE : null;
-  const shape = hasShape
+  // T72 (SE14c, Fred: "sometimes don't want the contour profile"): OFF
+  // (`pattern.contour.show === false`) suppresses ONLY the contour's own
+  // manifest entities/constraints/dimensions/parameters (no contour slots,
+  // no contour_width/height) — `extent`/`lattice` above are computed
+  // UNCONDITIONALLY, so rails/ties still clip/fit to the SAME boundary
+  // either way. A saved pattern with no `contour` key reads `show: true`
+  // via the same merge every other field already uses.
+  const contourVisible = hasShape && ({ ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) }).show !== false;
+  const contourWidthMode = contourVisible ? SKETCH_CONTOUR_WIDTH_MODE : null;
+  const shape = contourVisible
     ? manifestFromShape(pattern.shape, contourRegion, { widthMode: contourWidthMode, strokeWidth: widths.rails })
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
 

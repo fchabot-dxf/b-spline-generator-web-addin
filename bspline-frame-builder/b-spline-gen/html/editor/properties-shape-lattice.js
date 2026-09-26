@@ -192,6 +192,15 @@ export function regenerateSilhouette(editor, p) {
     }
     p.extent = { mode: 'boundary' };
     shape.source = 'generated';
+    // T72 (SE14c, Fred: "sometimes don't want the contour profile"): the
+    // contour keeps existing as a REAL, live element either way — the
+    // lattice fill's own boundary lookup (_resolveBoundaryPrimitives)
+    // needs it regardless of this flag — only its VISIBILITY (`display`)
+    // changes. `getLayerSvg`'s own export filter (editor-io.js) drops any
+    // `display:none` child, so "not drawn" and "not in SVG export" are the
+    // SAME one declared signal, not two separately-tracked states.
+    const contourShow = ({ ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) }).show !== false;
+    pathEl.attr('display', contourShow ? null : 'none');
     const statusEl = el('shapeLatticeBoundaryStatus');
     if (statusEl) statusEl.textContent = 'Shape linked';
     // T59: re-render the on-canvas param handles from the geometry this
@@ -477,6 +486,11 @@ export function initShapeLatticeProperties(editor) {
     const pickShapeBtn = el('shapeLatticePickShape');
     const boundaryStatusEl = el('shapeLatticeBoundaryStatus');
     const endRuleEl = el('shapeLatticeEndRule');
+    // T72 (SE14c): show/hide the contour's own drawn segments (rails/ties
+    // still clip/fit to it either way) — unlike most of this section,
+    // wired for an IMMEDIATE effect (below), not deferred to Generate,
+    // since toggling it changes nothing about the fill geometry itself.
+    const contourShowEl = el('shapeLatticeContourShow');
     const borderEnabledEl = el('shapeLatticeBorderEnabled');
     const borderWidthEl = el('shapeLatticeBorderWidth');
     const borderColorEl = el('shapeLatticeBorderColor');
@@ -674,6 +688,7 @@ export function initShapeLatticeProperties(editor) {
         const boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary };
         if (boundaryStatusEl) boundaryStatusEl.textContent = boundary.shapeId ? 'Shape linked' : 'No shape picked';
         setEndRule(boundary.endRule);
+        if (contourShowEl) contourShowEl.checked = ({ ...PATTERN_DEFAULTS.contour, ...p.contour }).show !== false;
         const border = { ...PATTERN_DEFAULTS.boundary.border, ...boundary.border };
         if (borderEnabledEl) borderEnabledEl.checked = !!border.enabled;
         if (borderWidthEl) borderWidthEl.value = border.width == null ? '' : border.width;
@@ -955,6 +970,19 @@ export function initShapeLatticeProperties(editor) {
                 currentShape(p).source = 'picked';
                 if (boundaryStatusEl) boundaryStatusEl.textContent = 'Shape linked';
             };
+        });
+    }
+
+    // T72 (SE14c): an IMMEDIATE write+redraw, unlike the deferred-to-
+    // Generate fields above — the contour is still computed/clipped
+    // against exactly the same either way (regenerateSilhouetteAndFill
+    // reruns the SAME fill), only its own drawn visibility changes, so
+    // there's no reason to make the user press Generate to see it.
+    if (contourShowEl) {
+        on(contourShowEl, 'change', async () => {
+            const p = currentPattern(editor);
+            p.contour = { show: !!contourShowEl.checked };
+            await regenerateSilhouetteAndFill(editor);
         });
     }
 

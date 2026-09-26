@@ -993,6 +993,58 @@ describe('buildSketchManifest — T72: the default Bottle preset (and a deep-wai
   });
 });
 
+describe('buildSketchManifest — T72 (SE14c): contour.show=false omits the contour from the manifest but leaves the lattice fill byte-for-byte identical', () => {
+  function shapePattern(contour) {
+    return {
+      ...PATTERN_DEFAULTS, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      ...(contour ? { contour } : {}),
+    };
+  }
+
+  it('ON (default, no contour key at all): contour entities/dims/params are present', () => {
+    const manifest = buildSketchManifest(shapePattern(), REGION, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(true);
+    expect(manifest.contourWidthMode).toBe('slot');
+    expect(manifest.parameters.some((p) => p.name === 'contour_width')).toBe(true);
+    expect(manifest.dimensions.some((d) => d.expression === 'contour_width')).toBe(true);
+  });
+
+  it('OFF (contour.show:false): no seg* entities, no contour_width/height params/dims, contourWidthMode is null (matching the box-lattice "no contour" case exactly)', () => {
+    const manifest = buildSketchManifest(shapePattern({ show: false }), REGION, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
+    expect(manifest.constraints.some((c) => c.targets?.some?.((t) => typeof t === 'string' && t.startsWith('seg')))).toBe(false);
+    expect(manifest.parameters.some((p) => p.name === 'contour_width' || p.name === 'contour_height')).toBe(false);
+    expect(manifest.dimensions.some((d) => d.expression === 'contour_width' || d.expression === 'contour_height')).toBe(false);
+    expect(manifest.contourWidthMode).toBeNull();
+  });
+
+  it('the lattice fill is UNCHANGED by the toggle -- same rail/tie/node entities, same latticePieceCount, ON vs OFF (the dispatch\'s own "clips/fits exactly as now" requirement)', () => {
+    const on = buildSketchManifest(shapePattern(), REGION, {});
+    const off = buildSketchManifest(shapePattern({ show: false }), REGION, {});
+    expect(on.latticePieceCount).toBeGreaterThan(0); // non-vacuous
+    expect(off.latticePieceCount).toBe(on.latticePieceCount);
+    const latticeOnly = (m) => m.entities.filter((e) => !e.id.startsWith('seg'));
+    expect(latticeOnly(off)).toEqual(latticeOnly(on));
+  });
+
+  it('a saved pattern with no `contour` key at all reads as shown (true) -- pre-T72 patterns are unaffected', () => {
+    // Simulates a pattern saved BEFORE T72 ever existed: PATTERN_DEFAULTS
+    // itself always carries `contour` now, so `shapePattern()`'s own spread
+    // would too -- this fixture explicitly omits it instead.
+    const { contour: _unused, ...legacyDefaults } = PATTERN_DEFAULTS;
+    const pattern = {
+      ...legacyDefaults, spacing: 0.25,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    expect(pattern.contour).toBeUndefined(); // non-vacuous: genuinely absent, not defaulted by the test fixture
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(true);
+  });
+});
+
 describe('buildSketchManifest — composition', () => {
   it('a box lattice (no shape) has empty shape-groups and a populated lattice', () => {
     const pattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };

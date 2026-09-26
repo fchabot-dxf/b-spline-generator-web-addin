@@ -180,6 +180,7 @@ function fixtureHTML() {
     <button id="shapeLatticePickShape"></button>
     <span id="shapeLatticeBoundaryStatus">No shape picked</span>
     <div role="group" id="shapeLatticeEndRule"></div>
+    <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeBorderEnabled" type="checkbox">
     <input id="shapeLatticeBorderWidth" type="number">
     <button id="shapeLatticeBorderColor"></button>
@@ -461,6 +462,48 @@ describe('initShapeLatticeProperties: Pick shape (T49 mechanism, reused)', () =>
     expect(generatedPath).not.toBe(handDrawnCircle); // a DIFFERENT, new element
     expect(activeLayerPattern(editor).boundary.shapeId).toBe(generatedPath.attr('data-boundary-ref'));
     expect(activeLayerPattern(editor).shape.source).toBe('generated');
+  });
+});
+
+describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () => {
+  it('checked by default; syncs to the pattern\'s own contour.show on tool-open', () => {
+    initShapeLatticeProperties(editor);
+    expect(document.getElementById('shapeLatticeContourShow').checked).toBe(true);
+  });
+
+  it('unchecking it IMMEDIATELY writes contour.show=false and hides the drawn contour -- no Generate click needed', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click(); // Shape section fields regenerate immediately (T59) -- links a real contour path first
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    expect(pathEl).toBeDefined();
+    expect(pathEl.attr('display')).not.toBe('none'); // non-vacuous: genuinely visible beforehand
+
+    const cb = document.getElementById('shapeLatticeContourShow');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+
+    expect(activeLayerPattern(editor).contour).toEqual({ show: false });
+    expect(pathEl.attr('display')).toBe('none'); // SAME element, still live -- just hidden
+  });
+
+  it('re-checking it shows the contour again (display attribute cleared)', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const cb = document.getElementById('shapeLatticeContourShow');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    const pathEl = editor._sketchLayer.children().find((e) => e.attr('d'));
+    expect(pathEl.attr('display')).toBe('none');
+
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(activeLayerPattern(editor).contour).toEqual({ show: true });
+    expect(pathEl.attr('display')).not.toBe('none');
   });
 });
 

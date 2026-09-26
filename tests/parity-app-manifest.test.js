@@ -255,3 +255,68 @@ describe('parity: shape lattice (bottle) — T72 regression: the default Bottle 
     checkLatticeParity(editor, manifest, region);
   });
 });
+
+describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice parity; OFF hides/omits the contour only', () => {
+  function shapePattern(contour) {
+    return {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      ...(contour ? { contour } : {}),
+    };
+  }
+
+  for (const [label, contour] of [['ON (default)', undefined], ['OFF', { show: false }]]) {
+    it(`${label}: lattice fill parity holds exactly as it does for the plain hourglass suite above`, async () => {
+      const editor = makeMockEditor(7, 9);
+      const pattern = shapePattern(contour);
+      regenerateSilhouette(editor, pattern);
+      await generatePattern(editor, pattern);
+      const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+      const manifest = buildSketchManifest(pattern, region, {});
+      checkLatticeParity(editor, manifest, region);
+    });
+  }
+
+  it('ON draws a visible contour path (no display:none) with matching manifest seg* entities', async () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = shapePattern();
+    regenerateSilhouette(editor, pattern);
+    await generatePattern(editor, pattern);
+    const pathEl = editor._sketchLayer.children().toArray().find((e) => e.attr('d'));
+    expect(pathEl).toBeDefined();
+    expect(pathEl.attr('display')).not.toBe('none');
+    const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+    const manifest = buildSketchManifest(pattern, region, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(true);
+  });
+
+  it('OFF hides the drawn contour path (display:none, still a real live element) and the manifest carries no seg* entities', async () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = shapePattern({ show: false });
+    regenerateSilhouette(editor, pattern);
+    await generatePattern(editor, pattern);
+    const pathEl = editor._sketchLayer.children().toArray().find((e) => e.attr('d'));
+    expect(pathEl).toBeDefined(); // still a real element -- the lattice fill's own boundary lookup needs it
+    expect(pathEl.attr('display')).toBe('none');
+    const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
+    const manifest = buildSketchManifest(pattern, region, {});
+    expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
+  });
+
+  it('rail/tie/node counts are IDENTICAL between ON and OFF -- the toggle changes nothing about the fill', async () => {
+    const editorOn = makeMockEditor(7, 9);
+    const patternOn = shapePattern();
+    regenerateSilhouette(editorOn, patternOn);
+    await generatePattern(editorOn, patternOn);
+    const editorOff = makeMockEditor(7, 9);
+    const patternOff = shapePattern({ show: false });
+    regenerateSilhouette(editorOff, patternOff);
+    await generatePattern(editorOff, patternOff);
+    const countByKind = (editor, kind) => editor._sketchLayer.children().toArray().filter((e) => e.attr('data-lattice') === kind).length;
+    for (const kind of ['rail', 'tie', 'node']) {
+      expect(countByKind(editorOn, kind)).toBeGreaterThan(0); // non-vacuous
+      expect(countByKind(editorOff, kind)).toBe(countByKind(editorOn, kind));
+    }
+  });
+});

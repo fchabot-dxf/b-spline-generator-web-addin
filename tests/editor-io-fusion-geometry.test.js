@@ -251,3 +251,30 @@ describe('getLayerSvg({geometry:"fusion"}) — edge cases mirror the default pat
     expect(declined).toBe(0);
   });
 });
+
+describe('getLayerSvg — T72 (SE14c): a display:none child is dropped from BOTH export paths', () => {
+  it('the default (non-fusion) export omits a display:none child but keeps a visible sibling', () => {
+    const html = '<path data-layer="0" d="M0 0 L1 1" display="none"/>'
+      + '<line x1="0" y1="0" x2="2" y2="0" stroke-width="0.2" data-layer="0"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const svg = getLayerSvg(editor, '0');
+    expect(svg).not.toContain('<path');
+    expect(svg).toContain('<line');
+  });
+
+  it('the fusion-geometry export ALSO omits a display:none child (same shared _parseLayerContent filter)', async () => {
+    const html = '<path data-layer="0" d="M0 0 L1 1" display="none"/>'
+      + '<line x1="0" y1="0" x2="2" y2="0" stroke-width="0.2" data-layer="0"/>';
+    const editor = mockEditor(html, [{ id: '0', fusionGeometry: 'centerline' }]);
+    const { svg } = await getLayerSvg(editor, '0', 96, { geometry: 'fusion' });
+    expect(svg).not.toContain('<path');
+    expect(svg).toContain('<line');
+  });
+
+  it('a visible (no display attribute) child is unaffected — non-vacuous: this is genuinely opt-in, not a blanket drop', () => {
+    const html = '<path data-layer="0" d="M0 0 L1 1"/>';
+    const editor = mockEditor(html, [{ id: '0' }]);
+    const svg = getLayerSvg(editor, '0');
+    expect(svg).toContain('<path');
+  });
+});

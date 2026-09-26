@@ -403,6 +403,16 @@ export const PATTERN_DEFAULTS = {
     params: {},
     segments: null,
   },
+  // T72 (SE14c, Fred: "I'd want a checkbox for the actual contour, I still
+  // want rails and ties to be contoured but sometimes don't want the
+  // contour profile"): OFF still computes the contour and still clips/
+  // fits rails+ties to it exactly as ON does (regenerateSilhouette/
+  // buildSketchManifest both keep resolving the boundary unconditionally)
+  // — only the contour's own drawn segments/manifest entities disappear.
+  // A saved pattern with no `contour` key at all (every pattern before
+  // this turn) reads `show` as true via the SAME `{ ...PATTERN_DEFAULTS,
+  // ...PATTERN }` merge every other field already relies on.
+  contour: { show: true },
 };
 
 /** SE7g (Fred: "the generate button needs to automatically use a new

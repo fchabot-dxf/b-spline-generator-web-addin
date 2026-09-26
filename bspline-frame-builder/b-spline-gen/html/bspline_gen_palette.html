@@ -2157,6 +2157,15 @@
                  read/written changed (whichever button has .active). -->
             <div role="group" class="segmented-group" id="shapeLatticeEndRule" style="height:26px;"></div>
 
+            <!-- T72 (SE14c, Fred: "I'd want a checkbox for the actual
+                 contour, I still want rails and ties to be contoured but
+                 sometimes don't want the contour profile"): OFF still
+                 computes/clips against the contour exactly as ON does —
+                 only its own drawn segments/manifest entities disappear. -->
+            <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
+              <input id="shapeLatticeContourShow" type="checkbox" checked style="width:16px; height:16px; flex-shrink:0;"> show contour
+            </label>
+
             <div style="display:flex; flex-direction:column; gap:4px;">
               <span style="font-weight:600;">Border</span>
               <label style="display:flex; flex-direction:row; align-items:center; gap:6px; height:26px;">
