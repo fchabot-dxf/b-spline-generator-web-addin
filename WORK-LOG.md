@@ -10601,3 +10601,56 @@ Pulled the advisor's own fb-app F1-F3 merge (`a132bad`, Python-only: FB-ORDER fi
 this entry's own commit — clean fast-forward, no conflicts with this file's own JS changes.
 
 No edits to `bspline_gen_palette.html`.
+
+## Turn 290 — UI5 item 5 AMEND: generalized the node/tie-attachment fix to the RAIL-move path too — DONE — NO FUSION
+
+The advisor's own follow-up (mailbox), after item 5 landed: "write the fix GENERALLY - an end
+attached to something (contour segment now; RAILS soon, since RAIL-SPACING will put rails off-grid,
+see ROADMAP) snaps to that thing, and node matching uses the declared tolerance. Not a contour-only
+special case."
+
+Item 5's own fix (previous entry) was already kind-agnostic in its MECHANISM (`_sameWorldPoint`
+doesn't know or care why a point is fractional) — but it only touched the TIE-move and node-grab
+paths, the ones the reported bug actually reached. The one path deliberately left alone at the time —
+a RAIL's own body-move carrying its attached ties/nodes (`_beginLatticeMove`'s `kind==='rail'`
+branch, `moveRailAlongAxis`) — still built its candidate list from `_collectLatticeElements`'s
+ROUNDED `a`/`b`/`point` fields, gated on `aOnGrid`/`bOnGrid`/`onGrid` (a hand-drawn tie/node's
+position rounds to the nearest INTEGER cell before deciding whether it's "attached"). Confirmed live
+with the same rig-a-fractional-position technique as item 5 (a rail's own row pushed off the standard
+grid, a tie's end placed exactly there): the tie did NOT follow the rail's move at all — same root
+cause, different code path, exactly the gap the advisor's own amendment named ("RAILS soon").
+
+**Fix, at the two places that actually decide it:**
+- `moveRailAlongAxis` (`editor-lattice.js`) now matches a tie/node's own row against the rail's via a
+  1e-6 tolerance (`sameRow`), not `pt.j === railJ`. Strictly a superset of the old exact-integer
+  comparison for every existing (always-integer) case; the doc comment's own contract ("every
+  candidate ALREADY confirmed on-grid") is updated to "genuinely attached," since on-grid is no
+  longer the test.
+- `_beginLatticeMove`'s rail-move branch (`editor-interaction.js`) now feeds it every candidate's
+  REAL fractional position (`toLatticeFractional` off the raw world point) unconditionally, dropping
+  the `aOnGrid`/`bOnGrid`/`onGrid` gate and its `_OFF_GRID_SENTINEL` (now dead code, removed — a
+  literal repo-wide grep confirmed nothing else references it). That gate existed to stop a
+  coincidentally-ROUNDED near-miss from reading as attached (Fred's own SE7i ruling: "attach should
+  mean snapped to grid on the same point, not merely close to one") — an exact, tight-tolerance
+  real-world comparison can't produce that false positive in the first place (a hand-nudged tie
+  visibly off its row still fails a 1e-6 check exactly as it failed integer rounding), so the gate
+  was redundant for this purpose, not just superseded.
+
+Verified live (rig-a-fractional-rail-row + attached-tie, same technique as item 5's own repro): before
+this fix, dragging the rigged rail moved the rail alone (tieDy=0, tie left behind); after, both move
+together (tieDy === railDy exactly). Full box/shape/T73-contour/item-5 CDP scenario suite still 6/6
+green (`tools/repro/select_drag_shape.mjs`, unchanged by this entry — its own item-5 scenario already
+exercises the TIE-move path this fix's sibling covers; the rail-move path is new-code-with-no-
+generation-path-to-reach-it-yet, same "rigged, not generated" situation item 5's own scenario was in
+before RAIL-SPACING exists to generate it for real).
+
+`npx vitest run` -> **1458 passed**, zero regressions (up from 1269 pre-merge: seat B's own T75-T77 +
+fb-app F6/F7 work, landed via two clean `git pull` merges this turn — one 3-line import/loop-body
+conflict in `editor-lattice-pattern.js` — `recolorOwnedKind`/`rewidthOwnedKind`'s own `_ownedOnLayer`
+call needed BOTH my override-skip counter and seat B's SE17 kind-layer resolution — resolved by
+keeping both; `rewidthOwnedKinds` auto-merged clean). One transient flake on the FIRST post-merge full
+run (`properties-shape-lattice.test.js`'s own reroll-produces-different-geometry test, not in an area
+either seat touched) — re-ran per this repo's own "an argued flake still trains the wrong habit" rule,
+came back 1458/1458 clean.
+
+No edits to `bspline_gen_palette.html`.

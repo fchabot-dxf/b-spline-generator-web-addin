@@ -1026,15 +1026,6 @@ function _collectLatticeElements(editor, spacing, excludeEl = null) {
     return out;
 }
 
-// SE7i (Section 3, "connected editing" — Fred approved the rules): a
-// sentinel lattice point that can never coincide with a real row/range —
-// used to mask OFF a tie-end that failed the on-grid check without
-// discarding the tie's OTHER end, which might still be a genuine
-// attachment. moveRailAlongAxis's own row+range comparison (`pt.j ===
-// railJ`) is false for NaN against any real number, so a masked end
-// simply never matches.
-const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
-
 /**
  * SE7i/SE7k: snapshot everything a drag-to-move-or-stretch gesture needs,
  * captured ONCE at drag start — attachments derive from this frozen
@@ -1048,11 +1039,19 @@ const _OFF_GRID_SENTINEL = { i: NaN, j: NaN };
  * (world-geometry-aware, active-layer-scoped, excluding the grabbed
  * element itself — EXCEPT the node-classification branch, which needs its
  * own grabbed node to remain a candidate so it can be carried along with
- * whichever piece it turns out to belong to); a tie-end or node that isn't
- * genuinely on-grid (isLatticePoint, computed by that function on the RAW
- * world point) is masked to `_OFF_GRID_SENTINEL` so it can never attach —
- * Fred: "attach should mean snapped to grid on the same point," not merely
- * close to one. `startAttrs` is normally the grabbed element's own
+ * whichever piece it turns out to belong to). UI5 item 5 (advisor,
+ * generalizing T73's own fix beyond the contour): "attach" means the
+ * candidate's own REAL WORLD position exactly matches (tolerance, not
+ * `===`) what it's claimed to attach to — Fred's original SE7i ruling,
+ * "attach should mean snapped to grid on the same point, not merely close
+ * to one," is preserved by that tolerance being tight (1e-6): a hand-
+ * nudged tie a visible distance off its row still fails it exactly as it
+ * failed the old isLatticePoint/`_OFF_GRID_SENTINEL` gate this replaced —
+ * the difference is only that the "grid" a genuine attachment can sit on
+ * is no longer assumed to be the standard integer one (a Shape Lattice's
+ * on-boundary end, or a future off-grid RAIL-SPACING row, are exact,
+ * intentional positions too). `startAttrs` is normally the grabbed
+ * element's own
  * pre-drag attrs (captured AFTER the transform-bake below), used at
  * finish() to detect a true no-op (bare click) — the node-classification
  * branches are the exception, where it's the MATCHED piece's attrs
@@ -1163,14 +1162,30 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation) {
 
         if (kind === 'rail') {
             const candidates = _collectLatticeElements(editor, spacing, hit);
+            // UI5 item 5 (advisor: "write the fix GENERALLY — an end
+            // attached to something... snaps to that thing... not a
+            // contour-only special case" — RAIL-SPACING will put rails
+            // themselves off-grid next): moveRailAlongAxis now matches by
+            // real-world TOLERANCE (its own doc comment), not `===` on an
+            // isLatticePoint-gated, toLattice-ROUNDED value — the SAME
+            // "compare exact positions, not the nearest integer cell"
+            // fix as every other node/piece match in this file. The old
+            // aOnGrid/bOnGrid/onGrid gate (and its _OFF_GRID_SENTINEL) was
+            // there to stop a coincidentally-ROUNDED near-miss from
+            // reading as attached; an exact fractional comparison can't
+            // produce that false positive in the first place (a hand-
+            // nudged tie 0.01in off its row fails a 1e-6 tolerance just as
+            // it failed integer rounding), so the gate is now redundant
+            // for this purpose and dropped rather than kept as dead
+            // weight — every candidate's own REAL end goes straight in.
             const ties = candidates.filter((c) => c.kind === 'tie').map((c) => ({
                 el: c.el,
-                a: c.aOnGrid ? orient(c.a, orientation) : _OFF_GRID_SENTINEL,
-                b: c.bOnGrid ? orient(c.b, orientation) : _OFF_GRID_SENTINEL,
+                a: orient(toLatticeFractional(c.aWorld, spacing), orientation),
+                b: orient(toLatticeFractional(c.bWorld, spacing), orientation),
             }));
             const nodes = candidates
-                .filter((c) => c.kind === 'node' && c.onGrid)
-                .map((c) => ({ el: c.el, point: orient(c.point, orientation) }));
+                .filter((c) => c.kind === 'node')
+                .map((c) => ({ el: c.el, point: orient(toLatticeFractional(c.world, spacing), orientation) }));
             return { kind, mode: 'move', el: hit, orientation, spacing, startAttrs, railCanon: pieceCanon, ties, nodes };
         }
 
