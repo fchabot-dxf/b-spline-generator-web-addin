@@ -607,6 +607,13 @@ Vertical. Geometry is INSERTED in position (symmetric by coordinates) and left l
 Measured before this ruling (for the record): Symmetry needed an origin-anchored axis, and without size dims the edges
 ran off on a width edit; revisit only if Fred asks for a held shape.
 
+## A coincident follows ONE curve, never a path (advisor MEASURED 2026-09-26; Fred agreed)
+Rail end Coincident (point-on-curve) to a quarter arc, rail x driven by a dimension across the arc's end: on the arc
+r=1.000 at x=0.9/0.5/0.1; past the end (x=-0.3) it stayed on the arc's EXTENDED CIRCLE (-0.3, 0.954), at x=-1.0 it
+went to the far side of that circle (-1, 0) — it never hands over to the next (tangent) segment. So a rail end is
+bound to the contour segment it was generated on (option A). Moving a rail to another segment = regenerate in the
+app, or re-add that one Coincident in Fusion. A single-spline centerline (slidable) was rejected: not a slot.
+
 ## ACCEPTANCE = SPAWN PARITY (Fred 2026-09-26: "not a problem leave it, as long as spawn is very close to intended drawing")
 The test is the sketch AS INSERTED: every piece within tolerance of the app drawing (builder's parity check, maxErr
 ~0). Editing `stroke_width` later in Fusion re-solves a LOOSE sketch (no Fix, no position dims) and may shuffle it —
