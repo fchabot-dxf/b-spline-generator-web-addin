@@ -14,10 +14,27 @@ import hashlib, html, os, re, shutil, subprocess, sys, time
 from datetime import datetime
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SEATS = [  # declared: which checkout is which seat
-    {"name": "Seat A", "path": ROOT, "branch": "main"},
-    {"name": "Seat B", "path": ROOT + "-lane-b", "branch": "lane-b"},
+SEATS = [  # declared: which checkout is which seat, and its task file (checklist = progress)
+    {"name": "Seat A", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
+    {"name": "Seat B", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
 ]
+
+
+def _checklist(path, task):
+    """(done, total) from the task file's markdown checkboxes; (0, 0) if it has none."""
+    f = os.path.join(path, task)
+    if not os.path.exists(f):
+        return 0, 0
+    txt = open(f, encoding="utf-8", errors="replace").read()
+    boxes = re.findall(r"^\s*- \[( |x|X)\]", txt, re.M)
+    return sum(b.lower() == "x" for b in boxes), len(boxes)
+
+
+def _bar(done, total, width=10):
+    if not total:
+        return "no checklist"
+    n = round(width * done / total)
+    return "█" * n + "░" * (width - n) + f"  {done}/{total}"
 STATUS_PROJECT = "bspline-status"
 OUT = os.path.join(os.path.dirname(__file__), "out")
 INTERVAL_S = 60
@@ -69,15 +86,19 @@ def collect():
     for s in SEATS:
         h = _handoff(s["path"])
         who = "worker (working)" if h.get("to") == "worker" else "advisor (reviewing)"
-        seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""), "updated": h.get("updated", "")})
+        d, t = _checklist(s["path"], s["task"])
+        seats.append({**s, "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
+                      "updated": h.get("updated", ""), "done": d, "total": t})
     commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b")}
     return seats, commits, _roadmap()
 
 
 def render(seats, commits, roadmap):
-    md = ["# B-Spline — progress", ""]
+    rd = sum(r[0] == "Done" for r in roadmap); rt = len(roadmap)
+    md = ["# B-Spline — progress", "", f"Roadmap: {_bar(rd, rt, 20)}", ""]
     for s in seats:
-        md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"{s['note']}", f"_updated {s['updated']}_", ""]
+        md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"Task: {_bar(s['done'], s['total'])}",
+               f"{s['note']}", f"_updated {s['updated']}_", ""]
     for st in ("In progress", "Queued", "Done"):
         rows = [r for r in roadmap if r[0] == st]
         if rows:
@@ -86,9 +107,17 @@ def render(seats, commits, roadmap):
         md += [f"## Recent commits — {b}"] + [f"- `{c.split('|')[0]}` {c.split('|')[2]} ({c.split('|')[1]})" for c in cs if c.count("|") >= 2] + [""]
     body = "\n".join(md)
     e = html.escape
+
+    def hbar(done, total, label):
+        if not total:
+            return f'<div class="bar"><span class="lbl">{e(label)}: no checklist</span></div>'
+        pct = round(100 * done / total)
+        return (f'<div class="bar"><div class="track"><div class="fill" style="width:{pct}%"></div></div>'
+                f'<span class="lbl">{e(label)} {done}/{total} · {pct}%</span></div>')
     cards = "".join(
         f'<section class="seat"><h2>{e(s["name"])} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
-        f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p><p>{e(s["note"])}</p>'
+        f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
+        f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p></section>' for s in seats)
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
@@ -107,10 +136,12 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}}
 .seat{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}} .seat h2{{margin-top:0}}
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
+.bar{{margin:8px 0}} .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}
+.fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
-<div class="grid">{cards}</div>{road}{com}</body></html>"""
+{hbar(rd, rt, "roadmap done")}<div class="grid">{cards}</div>{road}{com}</body></html>"""
     return body, page
 
 
