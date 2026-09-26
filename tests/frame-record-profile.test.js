@@ -10,6 +10,7 @@ import {
 import { P, persistableP, saveLastSession, loadLastSession } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import {
   frameCutProfile, frameFit, drawFrameProfile, setFrameProfileProvider, FRAME_PROFILE_GROUP_ID, frameInnerProfile, frameMiters,
+  FRAME_OUTLINE_COLOR, INACTIVE_LAYER_OPACITY, setEditorFocus,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 
 const T1 = 'template_1', T2 = 'template_2';
@@ -163,5 +164,35 @@ describe('frame thickness + miters (F8, Fred)', () => {
       expect(Math.abs(m.inner.y - m.outer.y)).toBeCloseTo(0.75, 9); // frame_thickness 0.75 in
       expect(Math.abs(Math.abs(m.inner.x - m.outer.x))).toBeGreaterThan(0); // runs inward, not along an edge
     }
+  });
+});
+
+describe('frame lines + the focus rule (F8, Fred)', () => {
+  const drawn = (tab) => {
+    const { editor, bg, sketch } = mockEditor();
+    if (tab) setEditorFocus(editor, tab);
+    setFrameProfileProvider(() => ({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: T1 }) }));
+    drawFrameProfile(editor);
+    return { editor, g: bg.findOne('#' + FRAME_PROFILE_GROUP_ID), sketch };
+  };
+
+  it('every frame line (outline, inner edge, miters) is drawn in the ONE declared colour', () => {
+    const { g } = drawn();
+    const stroked = g.children.filter((c) => c.attrs.stroke);
+    expect(stroked.map((c) => c.cls[0]).sort()).toEqual(['frame-cut-profile', 'frame-inner-edge',
+      'frame-miter', 'frame-miter', 'frame-miter', 'frame-miter']);
+    expect(new Set(stroked.map((c) => c.attrs.stroke.color))).toEqual(new Set([FRAME_OUTLINE_COLOR]));
+  });
+
+  it('Artwork tab: the frame is the faded one; Frame tab: the artwork is, with the SAME declared value', () => {
+    const art = drawn('artwork');
+    expect(art.g.attrs.opacity).toBe(INACTIVE_LAYER_OPACITY);
+    expect(art.sketch.attrs.opacity).toBe(null);
+    const frame = drawn('frame');
+    expect(frame.g.attrs.opacity).toBeUndefined(); // full
+    expect(frame.sketch.attrs.opacity).toBe(INACTIVE_LAYER_OPACITY);
+    // switching back on the same editor restores both
+    setEditorFocus(frame.editor, 'artwork');
+    expect([frame.g.attrs.opacity, frame.sketch.attrs.opacity]).toEqual([INACTIVE_LAYER_OPACITY, null]);
   });
 });

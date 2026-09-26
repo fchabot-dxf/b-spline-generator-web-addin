@@ -18,6 +18,30 @@ import { offsetOutlineInward } from './outline-offset.js';
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 export const FRAME_GRID_CLIP_ID = 'frame-grid-clip';
 
+/** F8 (Fred): every frame line (outline, inner edge, miters) in ONE colour. */
+export const FRAME_OUTLINE_COLOR = '#5d4037';
+/** F8 (Fred): the symmetric focus rule: whichever of frame / artwork is NOT
+ *  being edited is drawn at this opacity, the edited one at full. */
+export const INACTIVE_LAYER_OPACITY = 0.4;
+
+/**
+ * The editor's two modes (design §3.1). 'frame': the frame is edited, the
+ * artwork is a faded, LOCKED background (editor._artworkLocked: no selection,
+ * no shortcut reaches it; drawn from the same layer, never modified).
+ * 'artwork': the artwork is edited, the frame profile is the faded background.
+ * Display only: opacity lives on the layer / group, never on the drawing.
+ */
+export function setEditorFocus(editor, tab) {
+  if (!editor) return;
+  const frame = tab === 'frame';
+  editor._editorTab = frame ? 'frame' : 'artwork';
+  editor._artworkLocked = frame;
+  if (frame && typeof editor._deselect === 'function') editor._deselect();
+  if (editor._sketchLayer) editor._sketchLayer.attr('opacity', frame ? INACTIVE_LAYER_OPACITY : null);
+  const g = editor._bgLayer?.findOne ? editor._bgLayer.findOne('#' + FRAME_PROFILE_GROUP_ID) : null;
+  if (g) g.attr('opacity', frame ? null : INACTIVE_LAYER_OPACITY);
+}
+
 /** The declared fit rule (frame-defs `fit`, frame_definition.FRAME_FIT in
  *  Python): 2*frame_thickness < min(W, H) - 2*boundingboxoffset. */
 export function frameFit(widthIn, heightIn, frameThickness, bboxOffset) {
@@ -134,6 +158,7 @@ export function drawFrameProfile(editor) {
   if (!prof || prof.defects.length) return prof;
   const W = editor._mW, H = editor._mH;
   const g = editor._bgLayer.group().id(FRAME_PROFILE_GROUP_ID).attr('pointer-events', 'none');
+  if (editor._editorTab !== 'frame') g.attr('opacity', INACTIVE_LAYER_OPACITY); // the focus rule (setEditorFocus)
   // Everything outside the profile is cut away: board rect minus the outline (even-odd).
   g.path(`M0 0 H${W} V${H} H0 Z ${prof.pathD}`)
     .fill({ color: '#1f2933', opacity: 0.6 }).attr('fill-rule', 'evenodd').addClass('frame-cutaway');
@@ -145,13 +170,13 @@ export function drawFrameProfile(editor) {
     const innerD = primitivesToPathD(inner.primitives);
     const wood = spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3';
     g.path(`${prof.pathD} ${innerD}`).fill({ color: wood, opacity: 0.45 }).attr('fill-rule', 'evenodd').addClass('frame-band');
-    g.path(innerD).fill('none').stroke({ color: '#5d4037', width: 0.025 }).addClass('frame-inner-edge');
+    g.path(innerD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('frame-inner-edge');
     for (const m of frameMiters(prof.primitives, inner.primitives)) {
       g.path(`M${m.outer.x} ${m.outer.y} L${m.inner.x} ${m.inner.y}`).fill('none')
-        .stroke({ color: '#5d4037', width: 0.025 }).addClass('frame-miter');
+        .stroke({ color: FRAME_OUTLINE_COLOR, width: 0.025 }).addClass('frame-miter');
     }
   }
-  g.path(prof.pathD).fill('none').stroke({ color: '#2e7d32', width: 0.04 }).addClass('frame-cut-profile');
+  g.path(prof.pathD).fill('none').stroke({ color: FRAME_OUTLINE_COLOR, width: 0.04 }).addClass('frame-cut-profile');
   return prof;
 }
 

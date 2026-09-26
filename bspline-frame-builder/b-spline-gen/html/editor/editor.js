@@ -90,6 +90,9 @@ export class VectorEditor {
         this._bgLayer = null;
         this._gridLayer = null;
         this._sketchLayer = null;
+        // FB-APP F8: true in the editor's Frame tab (editor-frame-profile.js
+        // setEditorFocus): the artwork is a read-only background there.
+        this._artworkLocked = false;
         this._outlinePreviewLayer = null;
         this._handleLayer = null;
         this._highlightLayer = null;

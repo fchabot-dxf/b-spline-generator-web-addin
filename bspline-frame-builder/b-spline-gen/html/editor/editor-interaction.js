@@ -237,6 +237,7 @@ function _isEditorActive(editor) {
     const a = document.activeElement;
     if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return false;
     if (editor._editingTextEl) return false;
+    if (editor._artworkLocked) return false; // FB-APP F8: the Frame tab (artwork read-only)
     return true;
 }
 

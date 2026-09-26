@@ -3,10 +3,12 @@
  * room) and the round trip Frame -> Artwork -> Frame -> save -> reload with the
  * record intact and the artwork untouched.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { P, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { initFramePanel, setEditorTab, getEditorTab, syncFramePanel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { INACTIVE_LAYER_OPACITY } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { initInteraction } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js';
 
 const FIXTURE = `
   <input id="widthIn" value="7"><input id="heightIn" value="9">
@@ -34,7 +36,8 @@ function mockEditor() {
     attr(k, v) { writes.push([k, v]); if (v === null) delete layerAttrs[k]; else layerAttrs[k] = v; return sketch; },
     children: () => artwork,
   };
-  return { editor: { _sketchLayer: sketch, _mW: 7, _mH: 9 }, artwork, layerAttrs, writes };
+  const editor = { _sketchLayer: sketch, _mW: 7, _mH: 9, deselected: 0, _deselect() { editor.deselected++; } };
+  return { editor, artwork, layerAttrs, writes };
 }
 
 let root, mock;
@@ -77,12 +80,37 @@ describe('editor [Frame | Artwork] tabs', () => {
     expect(Number($('editorFrameThickness').max)).toBe(1.5); // limits come from the definition
   });
 
-  it('the artwork is view-only in the Frame tab and restored exactly in the Artwork tab', () => {
+  it('the Frame tab shows the artwork faded and LOCKED; the Artwork tab restores it exactly', () => {
     setEditorTab('frame');
-    expect(mock.layerAttrs.opacity).toBe(0.35);
+    expect(mock.layerAttrs.opacity).toBe(INACTIVE_LAYER_OPACITY);
+    expect(mock.editor._artworkLocked).toBe(true);
+    expect(mock.editor.deselected).toBe(1); // nothing of the art stays selected
     setEditorTab('artwork');
-    expect(mock.layerAttrs).toEqual({}); // the dim is removed, nothing else was ever written
+    expect(mock.editor._artworkLocked).toBe(false);
+    expect(mock.layerAttrs).toEqual({}); // the fade is removed, nothing else was ever written
     expect(mock.writes.every(([k]) => k === 'opacity')).toBe(true);
+  });
+
+  it('no editor shortcut reaches the art in the Frame tab (Delete, tool keys, copy/paste/select all)', () => {
+    const modal = document.createElement('div');
+    modal.id = 'svgEditorModal';
+    root.appendChild(modal);
+    const tool = document.createElement('button');
+    tool.dataset.key = 'p';
+    const toolClick = vi.fn();
+    tool.addEventListener('click', toolClick);
+    modal.appendChild(tool);
+    const ed = mock.editor;
+    Object.assign(ed, { _draw: { node: document.createElement('div') }, _selectedElements: [{}], deleteSelected: vi.fn() });
+    initInteraction(ed);
+    const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    setEditorTab('frame');
+    press('Delete'); press('p');
+    expect([ed.deleteSelected.mock.calls.length, toolClick.mock.calls.length]).toEqual([0, 0]);
+    setEditorTab('artwork'); // the same keys work again on the Artwork tab
+    ed._selectedElements = [{}];
+    press('Delete'); press('p');
+    expect([ed.deleteSelected.mock.calls.length, toolClick.mock.calls.length]).toEqual([1, 1]);
   });
 });
 

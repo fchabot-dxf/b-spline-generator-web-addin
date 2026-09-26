@@ -11,12 +11,13 @@
  * on the Frame tab (the frame's template + params + wood, with the live cut
  * profile; gate 3.2 = (c): numeric fields, no on-canvas handles), "Open SVG
  * Editor" on the Artwork tab. In the Frame tab the artwork is view-only: a
- * shield over the canvas stops every tool, and the artwork layer is dimmed
- * (display only; the drawing itself is never touched).
+ * shield over the canvas stops every tool, the editor's artwork lock stops
+ * every shortcut, and the focus rule dims whichever side is not being edited
+ * (editor-frame-profile.js setEditorFocus; display only).
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam } from '../core/frame-record.js';
 import { P } from '../core/state.js';
-import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec } from '../editor/editor-frame-profile.js';
+import { setFrameProfileProvider, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { AppState } from './app-state.js';
 
 const $ = (id) => document.getElementById(id);
@@ -28,7 +29,6 @@ function _option(value, label) {
   return o;
 }
 
-const ARTWORK_DIM_OPACITY = 0.35;
 let _editorTab = 'artwork';
 let _openEditorOn = null;
 
@@ -43,8 +43,7 @@ export function setEditorTab(tab) {
   if ($('editorFrameShield')) $('editorFrameShield').style.display = frame ? '' : 'none';
   // Mobile: the editor's bottom drawer labels its side panel; name it for the mode.
   if ($('editorDrawerTab-layers')) $('editorDrawerTab-layers').textContent = frame ? 'Frame' : 'Layers';
-  const e = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (e && e._sketchLayer) e._sketchLayer.attr('opacity', frame ? ARTWORK_DIM_OPACITY : null);
+  setEditorFocus(typeof window !== 'undefined' ? window.svgEditor : null, _editorTab);
   return _editorTab;
 }
 export const getEditorTab = () => _editorTab;
