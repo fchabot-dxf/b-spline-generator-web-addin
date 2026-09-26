@@ -10654,3 +10654,62 @@ either seat touched) — re-ran per this repo's own "an argued flake still train
 came back 1458/1458 clean.
 
 No edits to `bspline_gen_palette.html`.
+
+## Turn 292 — UI5 FINAL: the per-piece override panel UI (items 1, 3, 4) — DONE — NO FUSION, LAST SEAT A TURN
+
+Dispatch: "override panel UI (items 1,3,4)... Use the 5ed5468 schema module; no second source." Item 2
+(the schema, `editor-piece-override.js`) and the regenerate-clears half of item 3 already landed
+(5ed5468); this turn is the missing UI plus verifying the undo half of item 3 and item 4's tests/shots.
+
+**Panel.** New `lattice-piece-panel.js`, `mountSelectedPiecePanel(editor, bodyEl)` — a "Selected piece"
+section built via runtime DOM creation (`data-no-collapse`, same convention lattice-side-column.js's
+own icon row already established — no edits to `bspline_gen_palette.html`), shown only while exactly
+one rail/tie/node is selected. Reads/writes overrides EXCLUSIVELY through `editor-piece-override.js`
+(no second source, per the dispatch): a colour swatch (`openColorMosaic`, the same shared picker Colors
+uses) and a width stepper, each with its own Reset button that clears the override and repaints with
+the layer's own current default for that kind (`resolvePatternLayer` + `PATTERN_DEFAULTS`, T76 SE17-
+aware — the selected piece's own layer can be any of a pattern's four kind-layers). Mounted from BOTH
+`properties-lattice.js` and `properties-shape-lattice.js` (one shared module, not two near-duplicates) —
+the two files the dispatch named as what the Asus loop is waiting on.
+
+**Item 3 (undo).** Verified live rather than assumed: applied a width override, confirmed the DOM
+attribute + visual change, pressed Regenerate (cleared, as already landed), then called `editor.undo()`
+— the override attribute and its visual value came back exactly, confirming `pushState`'s own full-
+markup serialize/reparse round-trips a plain `data-*` attribute for free, as the original items-1-4
+research predicted, with no dedicated undo code needed.
+
+**Item 4 (tests).** Two layers:
+- `tests/editor-piece-override.test.js` (new): the schema module's own pure functions in isolation —
+  `pieceKindOf`'s kind mapping, colour override applies to stroke (rail/tie) vs fill (node), width
+  override applies directly (rail/tie) vs halved into `r` (node, diameter-in/radius-out), clear restores
+  a given default, and a genuinely-conditional before/after check on `hasColorOverride`/
+  `hasWidthOverride` (not just "always true" decoration).
+- `tests/editor-lattice-pattern-emit.test.js`: one new test each on `recolorOwnedKind`/
+  `rewidthOwnedKind` — "an OVERRIDDEN piece keeps its own colour/width, but is still counted as owned"
+  (mirroring the file's existing "a DETACHED piece" test). **Mutation-tested non-vacuous**: temporarily
+  deleted all three `hasAttribute(OVERRIDE_*_ATTR)` skip-checks (`recolorOwnedKind`/`rewidthOwnedKind`/
+  `rewidthOwnedKinds` all share the identical guard line) — exactly these 2 new tests failed, the other
+  47 in the file stayed green; restored, 49/49 again.
+- Live CDP (only the item-1 "only the selected piece changes" + export-carries-the-attrs assertions,
+  which need a real DOM/save round trip a unit test can't cheaply cover): selecting a rail, overriding
+  its colour, confirmed every OTHER rail on the layer stayed completely untouched (colour AND no
+  override attribute); Reset restored the exact original colour and removed the attribute;
+  `saveForRasterization()`'s own output string contains `data-override-color` and the picked hex
+  verbatim. Node kind verified separately (a "Select"-tool pixel click on a node is ambiguous with the
+  rail/tie it sits exactly on top of at an "at crossings" default — a PRE-EXISTING hit-test tie-break,
+  same class as UI5 item 5's own box-lattice finding, not this feature's own bug — so verified via
+  direct `editor._select()` instead): width override correctly halves into `r`, colour override sets
+  `fill`, not `stroke`.
+
+Screenshots (`tools/repro/piece_override_shots.mjs`, new, committed — matches this repo's own
+`frame_profile_shots.mjs`/`formula_field_shots.mjs` convention) — desktop + mobile, `shots\seatA\`. One
+operational note for whoever runs CDP screenshot scripts next: a HARDCODED output-path string literal
+inside an ad-hoc script silently no-ops `writeFileSync` in this environment (no thrown error, no file
+written) — passing the same path via `process.argv` instead writes it correctly. Confirmed by direct
+A/B test. Root cause not chased further (out of scope), but every repro/shots script in `tools/repro/`
+already takes its output path as a CLI arg, which is why this never surfaced before.
+
+`npx vitest run` -> **1515 passed** (up from 1504: 11 new, 0 removed), zero regressions.
+
+This is seat A's last UI5 turn (Fred moves to the regular add-in himself; the Asus loop was waiting on
+these two files). No edits to `bspline_gen_palette.html`.

@@ -26,6 +26,7 @@ import {
   nextSeed, recolorOwnedKind, rewidthOwnedKind, BOUNDARY_REF_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { save, _migrateLegacyPatternOntoLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
+import { OVERRIDE_COLOR_ATTR, OVERRIDE_WIDTH_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js';
 
 function _makeMockEditor() {
   let elements = [];
@@ -595,6 +596,29 @@ describe('recolorOwnedKind (SE7g amend, SE7i: layer-scoped): recolor owned piece
     expect(editor.notifyChangeCalls).toEqual(['commit']);
   });
 
+  // UI5 items 1-4 (per-piece overrides): the SAME "keeps its own colour"
+  // exemption a detached piece gets above, via an explicit attribute
+  // instead of losing OWNERSHIP_ATTR entirely (an overridden piece stays
+  // fully owned, so Regenerate still destroys + rebuilds it — the override
+  // clears "for free" on the NEXT Generate, unlike a genuinely detached
+  // piece, which Regenerate leaves alone forever).
+  it('an OVERRIDDEN piece of that kind keeps its own colour — untouched, but still counted as owned', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 44, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    const rails = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    expect(rails.length).toBeGreaterThan(1);
+    const overridden = rails[0];
+    overridden.attr(OVERRIDE_COLOR_ATTR, '#123456');
+    overridden.attr('stroke', '#123456');
+
+    const count = recolorOwnedKind(editor, editor._activeLayer, 'rails', '#999999');
+
+    expect(overridden.attr('stroke')).toBe('#123456'); // untouched
+    for (const el of rails.slice(1)) expect(el.attr('stroke')).toBe('#999999'); // every sibling DID recolor
+    expect(count).toBe(rails.length - 1); // the overridden one isn't counted as "recolored"
+    expect(overridden.attr(OWNERSHIP_ATTR)).toBeTruthy(); // still owned -- Regenerate will still rebuild it
+  });
+
   it('does nothing (no undo push) when nothing of that kind is owned yet on that layer', () => {
     const count = recolorOwnedKind(editor, 'layer-nonexistent', 'rails', '#101010');
     expect(count).toBe(0);
@@ -678,6 +702,24 @@ describe('rewidthOwnedKind (SE7i): re-width owned pieces in place, no reseed', (
     rewidthOwnedKind(editor, editor._activeLayer, 'rails', 0.9);
 
     expect(rail.attr('stroke-width')).toBe(originalWidth);
+  });
+
+  // UI5 items 1-4: same override exemption as recolorOwnedKind's own test.
+  it('an OVERRIDDEN piece of that kind keeps its own width — untouched, but still counted as owned', () => {
+    const pattern = { ...PATTERN_DEFAULTS, seed: 54, rails: { every: 2, offset: 0 } };
+    generatePattern(editor, pattern);
+    const rails = editor._sketchLayer.children().filter((el) => el.attr('data-lattice') === 'rail');
+    expect(rails.length).toBeGreaterThan(1);
+    const overridden = rails[0];
+    overridden.attr(OVERRIDE_WIDTH_ATTR, 0.75);
+    overridden.attr('stroke-width', 0.75);
+
+    const count = rewidthOwnedKind(editor, editor._activeLayer, 'rails', 0.3);
+
+    expect(overridden.attr('stroke-width')).toBe(0.75); // untouched
+    for (const el of rails.slice(1)) expect(el.attr('stroke-width')).toBe(0.3);
+    expect(count).toBe(rails.length - 1);
+    expect(overridden.attr(OWNERSHIP_ATTR)).toBeTruthy();
   });
 
   it('is exactly one undo step (not one per re-widthed element)', () => {

@@ -16,6 +16,7 @@ import {
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
+import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 
 /** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
  *  not once per file — Generate/Regenerate write into whichever layer is
@@ -578,4 +579,10 @@ export function initLatticeProperties(editor) {
     document.addEventListener('editorLayersChanged', (e) => {
         if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
     });
+
+    // UI5 items 1/3/4: the per-piece colour/width override panel — shared
+    // with properties-shape-lattice.js (lattice-piece-panel.js), mounted
+    // into THIS panel's own body via runtime DOM creation (no edits to
+    // bspline_gen_palette.html).
+    mountSelectedPiecePanel(editor, el('editorLatticePanelBody'));
 }

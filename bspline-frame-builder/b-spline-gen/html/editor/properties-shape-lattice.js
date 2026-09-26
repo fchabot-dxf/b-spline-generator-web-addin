@@ -35,6 +35,7 @@ import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
 import { inputProfileFor } from './editor-input.js';
+import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 
 // T59: the event this module dispatches after ANY programmatic change to
 // `p.shape` from OUTSIDE the panel's own field handlers (a param-handle
@@ -1195,4 +1196,8 @@ export function initShapeLatticeProperties(editor) {
     document.addEventListener(SHAPE_CHANGED_EVENT, (e) => {
         if (e.detail && e.detail.editor === editor) syncFieldsFromPattern();
     });
+
+    // UI5 items 1/3/4: shared with properties-lattice.js — see
+    // lattice-piece-panel.js's own header comment.
+    mountSelectedPiecePanel(editor, el('editorShapeLatticePanelBody'));
 }
