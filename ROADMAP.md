@@ -870,6 +870,14 @@ features already built from them) — check canReorder for each first; if any re
 inlay), move nothing and warn. Solid builder run later lands at the end and sees everything (Fred asked: "will the solid
 builder still see the frame sketch?" — yes). Seat A after UI2; advisor verifies live on Fred's layout, incl. solid builder.
 
+## Queued — LAT-SIZE: lattice size fields in the app, both lattice tools (Fred 2026-09-26: "yes")
+A declared SIZE (width, height) per lattice pattern, shown as a "Size" row in the Shape Lattice AND the box Lattice
+panels, default = board minus 1 in (the existing one declared margin constant), centred on the board. Shape Lattice:
+the contour + its rails/ties regenerate at that size and the SAME numbers go to Fusion as contour_width/contour_height
+(param values). Box Lattice: its fill area inside the board = that size (rails/ties fit inside; if it exports size
+dims, same parameter pattern — decide + log). Saved patterns without size read the default. Parity + sweep tests cover
+a non-default size. Seat B, after T74 and before SE17 (smaller; SE17 builds on the same patterns).
+
 ## Queued — SE17: lattice KINDS on separate layers → separate Fusion sketches linked by projection (Fred 2026-09-26)
 Fred: "I want ties on a layer and rails on another and nodes another" / "it's actually in Fusion that it matters most".
 App: the Lattice + Shape Lattice tools put rails, ties, nodes (and the contour) each on their OWN layer (own
