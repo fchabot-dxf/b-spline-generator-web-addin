@@ -897,7 +897,11 @@ to another sketch's curve is refused ('sketch == msketch'); a constraint to a PR
 rail moved 0.5in in its own sketch and the tie end followed (2.0, 0.5). Timeline order also lets Fred Project/Include
 by hand (earlier sketches visible to later ones). Tradeoffs Fred accepted: edits propagate after finishing the edited
 sketch (not live-drag across kinds); a deleted rail leaves a broken projection warning in the ties sketch; projected
-curves add visual clutter. Declared: the kind→layer map and the sketch build order (data), not per-kind code paths.
+curves add visual clutter. Declared: the kind→layer map and the sketch build order (data), not per-kind code paths. Fred: the kind-layers
+are ordinary layers — drag-reorder = draw stacking (rails over contour or vice versa) and the eye = show/hide, per kind.
+The APP stacking order is independent of the FUSION sketch build order, which stays contour → rails → ties → nodes
+(projection dependencies). A hidden kind-layer is still built in Fusion unless it's excluded from export (same rule
+as any hidden layer today — confirm + log).
 Parity: verify_sketch_against_manifest per sketch; spawn parity rule unchanged. Seat B after T74.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
