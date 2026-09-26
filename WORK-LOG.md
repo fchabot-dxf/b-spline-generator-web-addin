@@ -9565,3 +9565,70 @@ commit BEFORE committing it, per the dispatch's own check — both reported the 
 comparison again after the renormalize commit to confirm it touched ONLY the files `.gitattributes` actually
 declared a form for (see the commit's own reported file count in the pass-back note) and nothing further drifted
 on top of it.
+
+## Turn 273 — MOB6: app-wide slider scroll guard (mobile) — DONE
+
+Fred (phone, live site): "On UI where there is a lot of sliders I can't scroll without changing params
+inadvertently" — screenshots showed the Shape Lattice panel's waist/neck/body-width/S-curve sliders and the main
+palette's Seed section (Region Scale, Offset X/Y, Rotation, Peak Shape). A vertical swipe meant to scroll the
+panel was instead landing on the track and dragging the thumb.
+
+**Two-part fix, exactly as dispatched, declared once each — not per slider.**
+1. `input[type="range"] { touch-action: pan-y; }` (styles/base.css, next to `.cad-slider`'s own rules) — the
+   SELECTOR is the element type, not the `.cad-slider` class, specifically so it also covers the SVG editor's own
+   BARE range inputs that never got that class (Shape Lattice's `shapeParam-*` waist/neck/body/skeleton sliders,
+   `latticeTiesDensity`/`shapeLatticeTiesDensity`) — grepped every `type="range"` in the HTML first to confirm
+   both flavors exist before writing a selector that would've silently missed half of them.
+2. `main/slider-scroll-guard.js` (new file) exports `attachSliderScrollGuard()` — ONE delegated, document-level
+   `pointerdown`/`pointermove`/`pointerup`/`pointercancel` listener set, not per-slider wiring. Delegation (not a
+   one-time `querySelectorAll` sweep, the shape `attachNumberSteppers` next to it in main/ui-bindings.js already
+   uses) matters here specifically because `core/noise/tweaks-ui.js`'s "Edit Filter" sub-panel builds its own
+   `<input type="range">` elements LAZILY (only when that panel is first expanded) — a one-time sweep at bind
+   time would silently never see those. Records the slider's value on `pointerdown` (`pointerType==='touch'`
+   only — the ONE gate that leaves desktop mouse completely untouched, matching the dispatch's own "desktop
+   stays unchanged"); on `pointermove`, resolves the gesture the first time it clears an 8px threshold in either
+   axis — vertical-dominant restores the recorded value (dispatching real `input`/`change` events, not just a
+   property set, so anything already listening for live updates sees it the same as a real edit) and marks the
+   gesture `resolved` so later moves in the SAME gesture don't re-fire the restore; horizontal-dominant just
+   marks it `resolved: 'drag'` and leaves the value alone. This is the documented Chrome-Android backstop
+   `touch-action` alone doesn't cover — a touch can commit the slider's value to the touched position before the
+   browser has recognized the gesture as a scroll, so `pan-y` prevents the DRAG from continuing but not that
+   first jump; this guard is what actually undoes it.
+   Kept as its own zero-dependency file (not inlined into `bindControls`, which pulls in `core/state.js`,
+   `param-manager.js`, `core/engine.js`, and several other heavy modules at import time) specifically so the
+   guard is importable and testable in complete isolation — same reasoning `splitter.js` is its own file rather
+   than living inside `editor-drawer.js`. `main/ui-bindings.js` imports it and calls it once, right next to
+   `attachNumberSteppers()`.
+
+**Verify:**
+- `tests/slider-scroll-guard.test.js` (new, 6 tests) — a real `<input type="range">` in the DOM, guard attached,
+  synthetic `PointerEvent`s dispatched (happy-dom supports `PointerEvent` with `pointerType`/`clientX`/`clientY`
+  cleanly, confirmed by just trying it — no polyfill needed): a mostly-vertical gesture restores the pre-gesture
+  value and fires exactly one real `input` event; a mostly-horizontal one leaves an already-changed value alone;
+  movement under the 8px threshold in both axes touches nothing; a MOUSE `pointerType` is never touched by the
+  guard at all (asserts desktop-unchanged directly, not just by omission); a second `pointermove` within an
+  already-resolved scroll doesn't fire a second restore; and a fresh gesture after `pointerup` is independent of
+  the previous one's outcome (a scroll doesn't poison a later drag on the same slider).
+  **Mutation-tested non-vacuous**: temporarily short-circuited the restore branch (`if (false && ...)`) and
+  re-ran — 3 of the 6 tests failed exactly as expected (the ones asserting a value was restored), confirming
+  they actually exercise the fix rather than passing on the bug's own behavior; restored the real code and
+  re-ran green. `npx vitest run tests/slider-scroll-guard.test.js` -> 6/6 passed (post-restore).
+  Full suite: `npx vitest run` -> **1013 passed** (up from 1007 — the 6 new tests, zero regressions elsewhere).
+- Live (headless Chrome via CDP, hard-reloaded with cache ignored, real `Input.dispatchTouchEvent`/
+  `dispatchMouseEvent` — not just simulated DOM events) at 390x844 with touch emulation enabled:
+  - Confirmed `getComputedStyle(slider).touchAction === 'pan-y'` on an actual rendered slider (`carveZSlider`,
+    the "Carve Depth" control — the one slider visible without expanding any collapsed section).
+  - A real vertical touch swipe starting exactly on that slider's track (10 incremental `touchMove` steps, 15px
+    apart) left its value at **exactly 1.5, unchanged**, while `.cad-sidebar`'s own `scrollTop` (the actual
+    scrolling ancestor — checked the DOM ancestor chain first rather than assuming `document.scrollingElement`,
+    which was the wrong target and read 0 either way) moved from **0 to 180** — a genuine scroll, not a no-op.
+    Screenshot (`mob6-after-vertical-swipe.png`) shows the panel scrolled down to the collapsed SEED/SKELETON/
+    FILTER/etc. sections with the Carve Depth slider's thumb still at its original position.
+  - A real horizontal touch drag on the same slider (10 steps, 20px apart) changed its value from 1.5 to 20 (the
+    slider's own max) — confirms the guard doesn't also break legitimate touch dragging.
+  - Desktop (1400x900, touch emulation OFF): a real mouse-down/move/up drag on the same slider changed its value
+    from 1.5 to 14.6 — confirms desktop mouse behavior is genuinely unaffected, not just "should be" by
+    construction.
+- Did NOT touch `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js` or any Lattice/Shape
+  Lattice generation logic (seat B's own T72 lane) — this turn's changes are exactly the 2 files above plus the
+  new guard module and its test.
