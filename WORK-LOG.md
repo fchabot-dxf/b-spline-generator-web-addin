@@ -9632,3 +9632,77 @@ panel was instead landing on the track and dragging the thumb.
 - Did NOT touch `bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js` or any Lattice/Shape
   Lattice generation logic (seat B's own T72 lane) — this turn's changes are exactly the 2 files above plus the
   new guard module and its test.
+
+## Turn 276 — ADD1: two add-in Python bugs measured live in Fusion — DONE
+
+Both bugs are in b-spline-gen Python, found by the advisor's own live "Send to Fusion" run against constrained
+sketches. NO FUSION this turn (advisor verifies live); lattice/shape JS untouched (seat B's T72 lane).
+
+**Bug 1 — stale `sketch_manifest_builder` after Stop/Run.** Traced the actual reload chain rather than guessing:
+`bspline-frame-builder.py` (the REAL Fusion-registered add-in, `run()`/`stop()`) already has a deliberate hot-
+reload mechanism — `_force_wipe(names)` purges `sys.modules` entries (cascading to sub-packages) and
+`_load_submodule(...)` loads a sibling `.py` file fresh BY PATH, bypassing the cache entirely. `b-spline-gen.py`
+itself (loaded as `bspline_ui`) already gets the `_load_submodule` treatment, so IT was never stale. The actual
+gap: `b-spline-gen.py`'s own top-level `from sketch_manifest_builder import build_constrained_sketch` is a PLAIN
+bare-name import — and `'sketch_manifest_builder'` had no entry in `_bootstrap()`'s `_force_wipe([...])` list at
+all, so it survived every Stop->Start untouched. A freshly-reloaded `b-spline-gen.py` kept re-binding the SAME
+stale `sketch_manifest_builder` module object from Fusion's own startup, which still had the old
+`build_constrained_sketch` signature (missing `sketch_name_override`) — exactly the advisor's own measured
+symptom. `fb_engine`/`fb_engine.*` (the OTHER thing the dispatch named) turned out to be ALREADY covered — the
+existing wipe list already had a bare `'fb_engine'` entry, which `_force_wipe`'s own cascading logic already
+extends to every `fb_engine.*` submodule `sketch_manifest_builder.py` imports (`fb_engine.build_context`,
+`.constraints`, `.dimensions`) — so `'sketch_manifest_builder'` was the ONE missing name.
+Fixed by DECLARATION, not a hand-typed addition: `_bspline_gen_sibling_modules()` (new, pulled out as its own
+named function so it's independently testable) returns `_bare_module_names(b-spline-gen folder)` minus the entry
+file itself — the SAME "derive it from the folder's real contents" fix `_bare_module_names` already applies to
+template-maker/fusion-exporter (its own docstring: "TM1/TM2; a hand-typed list missed 8 names" — this bug was
+that exact class, just for a folder that had never gotten the treatment). A future second sibling file in
+b-spline-gen can't silently repeat this bug — it's covered by construction the moment it exists on disk.
+
+**Bug 2 — false "build failed ... 'offsets'" log.** `_build_constrained_sketch_for_layer`'s own success-path log
+line read `summary['offsets']['created']`/`summary['offsets']['issues']['count']` — T64 removed the whole
+offset/cap step (Slot entities now create their own width dimension as a side effect of geometry creation, no
+separate phase), so `build_constrained_sketch`'s return dict has never had an `'offsets'` key since. Every
+SUCCESSFUL build raised `KeyError('offsets')` inside the log statement itself, was caught by the surrounding
+`except Exception as e`, and logged "Constrained sketch build failed for {layer}: 'offsets'" — for a sketch that
+had already built fine moments earlier. Fixed by logging only the keys `build_constrained_sketch` actually
+returns (verified against its own return-statement + docstring in `sketch_manifest_builder.py`: `sketchName`,
+`entities`, `constraints`, `dimensions`, `parameters`, `parity`, `latticeConstrained`, `seconds` — no `offsets`),
+and added `parity_maxErr` (T68 item 2b's own field) per the dispatch's own ask — the one number that says whether
+the constrained result actually matches the manifest's intended geometry, which the old log never surfaced at
+all.
+Pulled the formatting itself out to a new zero-dependency module, `constrained_sketch_log.py` (
+`format_constrained_sketch_log(sketch_name, summary)`), rather than leaving it inlined in the method — `b-spline-
+gen.py` imports `adsk.core`/`adsk.fusion`/`adsk.cam` at module level AND calls `adsk.core.Application.get()` at
+IMPORT time, which would need a much bigger Fusion stub to test than this one pure dict-formatting function
+actually needs. Same reasoning MOB6's `main/slider-scroll-guard.js` (this repo's JS side) was split out for.
+
+**Verify (Python, `pytest`; NO FUSION per the dispatch):**
+- `bspline-frame-builder/test_bspline_frame_builder.py` (new, 4 tests) — loads `bspline-frame-builder.py` by path
+  (hyphenated filename, same `importlib.util.spec_from_file_location` mechanism the add-in's own
+  `_load_submodule` uses on ITS siblings) behind a minimal fake `adsk.core`/`adsk.fusion`/`adsk.cam` (extended
+  with empty `CustomEventHandler`/`CommandCreatedEventHandler` base classes once two MODULE-LEVEL class
+  statements needed real base classes to even exec, not just importable names). Asserts
+  `_bspline_gen_sibling_modules()` includes `'sketch_manifest_builder'` and excludes the entry file itself; a
+  test that drops a throwaway sibling `.py` file into the REAL b-spline-gen folder and confirms it's picked up
+  automatically (proving the list is genuinely derived, not hand-typed with a lucky match); a sanity check on
+  `_force_wipe` itself against a real `sys.modules` entry (bare name + a dotted sub-name both disappear).
+- `bspline-frame-builder/b-spline-gen/test_constrained_sketch_log.py` (new, 5 tests) — reuses
+  `test_sketch_manifest_builder.py`'s OWN adsk stub + `FakeDesign`/`_box_lattice_manifest` (importing it runs its
+  module-level `_install_adsk_stubs()` as a side effect) so `build_constrained_sketch` is called for REAL, giving
+  a genuine summary dict — not a hand-guessed fake of its shape, which is exactly the kind of drift that caused
+  this bug in the first place. One test asserts the real summary has no `'offsets'` key at all (proving the bug
+  was real against the actual function); the rest exercise `format_constrained_sketch_log` against that real
+  summary (no raise, `parity_maxErr` present, every other field present) plus one confirming a FUTURE missing key
+  still fails loudly with a `KeyError` naming that key (not silently) — so this exact class of bug is at least as
+  debuggable next time.
+  **Mutation-tested non-vacuous, both bugs**: reverted `_bspline_gen_sibling_modules()` to `return []` — 2/4
+  tests failed exactly as expected (the two asserting real coverage); reverted `format_constrained_sketch_log` to
+  re-add the old `summary['offsets']` access — 4/5 tests failed exactly as expected (every one exercising the
+  formatter; the one testing `build_constrained_sketch`'s own shape directly, unrelated to the formatter, correctly
+  kept passing). Restored both real fixes, re-ran everything green.
+  `pytest bspline-frame-builder/` (whole tree) -> **160 passed**, 0 failures (only 29 pre-existing, unrelated
+  "test returned non-None" style warnings in other files, not touched this turn).
+- JS suite untouched by this turn but re-run anyway as a sanity check: `npx vitest run` -> **1209 passed** (the
+  higher count than turn 273's own 1013 reflects lane-b's T64-T72 merge landing between turns, not anything from
+  this one).

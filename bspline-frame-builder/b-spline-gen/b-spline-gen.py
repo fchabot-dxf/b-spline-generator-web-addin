@@ -17,6 +17,7 @@ from datetime import datetime
 # before exec'ing this file), so a plain top-level import is safe here,
 # matching this file's own existing import style.
 from sketch_manifest_builder import build_constrained_sketch
+from constrained_sketch_log import format_constrained_sketch_log
 
 # imports check: removed diagnostic
 
@@ -1440,15 +1441,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             summary = build_constrained_sketch(
                 sketch_target, design, manifest, placement=plane, log_fn=_log,
                 sketch_name_override=f"Source - {sketch_name} [constrained]")
-            _log(
-                f"[SE15] {sketch_name}: entities={summary['entities']['created']}/"
-                f"{summary['entities']['created'] + len(summary['entities']['skipped'])} "
-                f"constraints_issues={summary['constraints']['count']} "
-                f"dim_issues={summary['dimensions']['count']} "
-                f"offsets={summary['offsets']['created']} offset_issues={summary['offsets']['issues']['count']} "
-                f"params(created={summary['parameters']['created']},updated={summary['parameters']['updated']}) "
-                f"{summary['seconds']}s"
-            )
+            # ADD1 (measured live): this log used to read summary['offsets']
+            # inline here — see constrained_sketch_log.py's own module
+            # docstring for why that raised KeyError on every SUCCESSFUL
+            # build and what replaced it.
+            _log(format_constrained_sketch_log(sketch_name, summary))
         except Exception as e:
             _log(f'[SE15] Constrained sketch build failed for {sketch_name}: {e}')
 
