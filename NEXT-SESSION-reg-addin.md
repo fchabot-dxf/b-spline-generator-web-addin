@@ -1,12 +1,13 @@
-# NEXT (reg-addin, Asus) — R4: STALE-PARAMS, LOG-ONLY (Bspline group: board + lattice)
+# NEXT (reg-addin, Asus) — R4: STALE-PARAMS, DELETE ON (Bspline group: board + lattice)
 
 **Ball: worker (reg-addin) · epoch 1 · R4.** NO FUSION (Fred live-checks after). R3 design (8df6681) ACCEPTED with the
 advisor's amendments below. Log = WORK-LOG-reg-addin.md. Work-commit subjects "R4 item N: …"; PUSH AFTER EVERY ITEM
 (the status page only sees origin).
 
 ## Rulings (advisor + home-PC advisor, 2026-09-26) — these override the design doc where they differ
-1. **LOG-ONLY.** Compute + log the candidates; **NO `deleteMe()` anywhere** in this turn. Deletion is switched on later,
-   after Fred has checked a few Sends.
+1. **AMENDED (Fred, 2026-09-26): NOT log-only — "just apply it".** Candidates that pass rules 3-4 ARE deleted
+   (`deleteMe()`), and every decision is still logged in last_send.json (`deleted`, `kept_referenced`, `kept_unstamped`,
+   `failed`). A `deleteMe()` that returns False or raises → `failed` + warning, never retried, never breaks Send.
 2. **ONE registry, the existing one:** add `LATTICE_OWNED_PARAMS` (stroke_width, rail_width, tie_width, node_diameter,
    half_width, contour_width, contour_height) right beside `_BOARD_OWNED_PARAMS` in
    `frame-builder/fb_engine/parameter_schema.py` + an accessor, tag group `Bspline`. That additive edit is the ONLY
@@ -34,11 +35,12 @@ properties-lattice.js, properties-shape-lattice.js, tools/repro/select_drag_shap
 - [ ] [R4-item-1] Registry: LATTICE_OWNED_PARAMS + accessor in parameter_schema.py (rule 2); pytest for it.
 - [ ] [R4-item-2] Stamp at create in sketch_manifest_builder.py (rule 5); pytest with the adsk stub: create stamps,
       update of an existing unstamped param does NOT stamp.
-- [ ] [R4-item-3] `b-spline-gen/param_ownership.py`: compute `{would_delete, kept_referenced, kept_unstamped,
+- [ ] [R4-item-3] `b-spline-gen/param_ownership.py`: compute `{deleted, kept_referenced, kept_unstamped,
       failed}` from the registry + stamps + payload names + dependentParameters (rules 3-4); pure/testable against a
-      fake params collection. Pytest: stale stamped registered → would_delete; referenced → kept_referenced with reason;
+      fake params collection. Pytest: stale stamped registered → deleted (deleteMe called exactly on it); referenced → kept_referenced with reason;
       registered-name but unstamped → kept_unstamped; UNREGISTERED param (any name, stamped or not) → never listed,
-      never stamped; in-payload → never listed; no deleteMe call ever recorded.
+      never stamped; in-payload → never listed; deleteMe returning False / raising → failed; deleteMe NEVER called on anything
+      unregistered, unstamped, in-payload or referenced.
 - [ ] [R4-item-4] Wire: one call in _handle_generate + `stale_params` in last_send.json (always present, empty lists
       when nothing); a guarded try so a failure here logs and never breaks Send. Update STALE-PARAMS-DESIGN.md to
       match the rulings (short "R4 rulings" section at the top; fix §2a/§2b/§2c/§2d). Add a short live-check recipe
