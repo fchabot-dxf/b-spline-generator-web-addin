@@ -1,17 +1,16 @@
-# NEXT (lane-b) — T70: SE14b — Shape Lattice CONTOUR as separate selectable, colourable SEGMENTS in the app
+# NEXT (lane-b) — T71: T69-fix-3 (loose contour + contour_width/height) + stroke default 0.25
 
-**Ball: worker (seat B) · epoch 2 · T70.** NO FUSION. T69 (02b9100) is being verified by the advisor in Fusion now; if it
-needs a fix you will get an `amend`.
-Fred: "we should also represent those separations in the add-in preview, to be able to select segments and color them".
-- The generated silhouette is drawn as ONE ELEMENT PER SEGMENT (line / circular arc, round caps, stroke = stroke_width,
-  colour per segment), not one path. Each is selectable and recolourable with the normal select tool.
-- The per-segment list must be the SAME piece list the manifest reads (seg0..segN, same ids and geometry): one
-  declaration, two consumers. The T68 parity test (tests/parity-app-manifest.test.js) must cover the contour segments.
-- The fill boundary = the segments chained into one closed loop — DERIVED at render time, not stored twice.
-- Straight/curve/kink styling stays mirrored per left/right pair; COLOUR is per segment (left ≠ right allowed).
-- A colour set on a segment survives a regenerate with the same segment count (key it by segment id); a count change
-  may reset it — say which in the WORK-LOG.
-- Drape/3D preview and SVG export also show per-segment colour.
-- Tests: N segments rendered = N manifest contour entities; recolour one segment → only it changes; regenerate keeps it.
-  Render the default hourglass + bottle with two segments recoloured to PNG and VIEW them before passing.
-Pass back: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T70: SE14b contour segments — <sha>, tests"`.
+**Ball: worker (seat B) · EPOCH 3 (fresh session) · T71.** NO FUSION (the advisor runs Fusion). Read the worker skill,
+then this file, then WORK-LOG-lane-b.md's "### T69-fix-3 — the synthesized FINAL spec" section (~line 8411): it is the
+ACCEPTED spec for this task. Implement it exactly, with these advisor rulings:
+- The flagged judgment call is CONFIRMED: with Symmetry gone, REVERT the mirror-Tangent dedup (restore all 8 Tangents)
+  AND the shoulder Equal drop (restore Equal(seg1,seg9)). If the advisor's live run then shows a specific Tangent/Equal
+  as OVER_CONSTRAINTS, it will be dropped by measurement, not by reasoning.
+- Fred's constraint vocabulary (SE15-CONSTRAINED-SKETCH-DESIGN.md "LOOSE CONTOUR" + "NO FIX"): NO Fix, NO Symmetry, NO
+  radius dims, NO length dims EXCEPT the contour's overall size = `contour_width` / `contour_height` (new independent
+  params, default = board minus 1 in; point-to-point Distance dims on corner points — the API rejects curves).
+- Stroke default 0.25 in (one declaration in PATTERN_DEFAULTS; read each `0.07` test hit's context before changing).
+- App/manifest parity must stay exact (tests/parity-app-manifest.test.js), including the inset contour.
+Scope: ONLY this. SE14b (contour segments selectable/colourable, investigation already in WORK-LOG) is the NEXT task.
+Commit by path, push, then from the WORKTREE root:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T71: loose contour + contour_width/height + stroke 0.25 — <sha>, tests"` and stop.
