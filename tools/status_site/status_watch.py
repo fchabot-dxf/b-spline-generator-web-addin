@@ -151,7 +151,7 @@ def render(seats, commits, roadmap):
         return (f'<div class="bar"><div class="track"><div class="fill" style="width:{pct}%"></div></div>'
                 f'<span class="lbl">{e(label)} {done}/{total} · {pct}%</span></div>')
     card = lambda s: (
-        f'<section class="seat"><h2>{e(s["name"])} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
+        f'<section class="seat"><h2>{(f'<a href="{e(s["url"])}" target="_blank" rel="noopener">{e(s["name"])} ↗</a>' if s.get("url") else e(s["name"]))} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'

@@ -1,5 +1,5 @@
 {
-  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change.",
+  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change. Optional 'url': the seat's Claude session link (Remote Control sessions only); the card title links to it.",
   "stations": {
     "home-pc": "Home PC",
     "asus": "Asus"
@@ -35,7 +35,8 @@
       "station": "asus",
       "branch": "main",
       "task": "NEXT-SESSION-reg-addin.md",
-      "commits": "^(R\\d|docs\\(reg-addin\\))"
+      "commits": "^(R\\d|docs\\(reg-addin\\))",
+      "url": "https://claude.ai/code/session_015NmKa8YAS4WHj5jjsPeiUh"
     }
   ]
 }
