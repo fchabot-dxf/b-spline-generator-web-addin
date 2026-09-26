@@ -995,8 +995,8 @@ and slider: (1) hourglass WAIST RADIUS, independent of the corner radius (replac
 coupling; gives the "subtle but large radius" waist); (2) hourglass TOP and BOTTOM corner radius separately (today one
 cornerRadius; the old value migrates to both); (3) bottle BODY SHOULDER radius (the neck-to-body transition). Old saved
 patterns keep their exact shape (migration test). F5 guarantees hold (dense sweep: simple outline, tangent joints).
-Shape Lattice first. Frames get handles for their EXISTING template params in F9. The new params reach frames only if
-Fred asks, since the Fusion frame is built by fb_engine's Python templates, which would need the same params (parity).
+Shape Lattice first. Frames get handles for their EXISTING template params in F9. Frames NEVER get the new params (Fred: "we don't need to add new
+parameters that aren't in the add-in right now"): frame handles drive ONLY the params the Frame Builder add-in already has.
 Fusion Shape Lattice export unchanged in kind (the geometry changes, no new radius dims: Fred's SE15 rule).
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
