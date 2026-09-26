@@ -822,3 +822,5 @@ amendments: one binding table, param-bound only once proven by goldens, seeded o
     advisor's merge gate).
 - **Processes:** the http.server (8784) and my Chrome instances are to be stopped at pass. Capacity
   is fine; no fresh session needed.
+
+- **F4 item 4: DONE, live-verified by Fred** on his machine ("frame builder looks fine"; unit resolver / addOffset2 / fit rule, merged 6dfdcaf). Noted: lane2 (BOUNDARY-GUIDE) edits core/preview/index.js; my 3D work stays in frame-mesh.js (this turn did not touch index.js).
