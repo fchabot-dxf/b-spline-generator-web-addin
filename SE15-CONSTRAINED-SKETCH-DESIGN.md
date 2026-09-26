@@ -590,7 +590,7 @@ reading `constraint_step`'s own code); a real "hundreds of pieces" lattice send,
   shared points between pieces; never a redundant second constraint on the same pair.
 
 ## Width decision (Fred 2026-09-25)
-Box Lattice: centerlines only (+ stroke_width param as reference). Shape Lattice: center-to-center SLOTS, centerline
+UPDATE (Fred: "box lattice needs to be slots too"): BOTH Box and Shape Lattice = center-to-center SLOTS, centerline
 end points fixed (anchored slots grow evenly on stroke_width edits; free ones drift lopsided - measured), nodes built
 on the slot centerline end points. Offsets removed.
 
