@@ -9829,3 +9829,46 @@ are OBSERVABLY IDENTICAL from Ties' own point of view, so the same test already 
 
 Verify: 1341/1341 vitest (1 new), 52/52 b-spline-gen pytest (a docstring-only change on the Python side, still
 green). Commit 2c62362, pushed. NO FUSION this whole turn.
+
+## T76 item 7 (FINAL) — parity per sketch, the three named test scenarios, the migration decision
+
+**Parity per sketch**: read `verify_sketch_against_manifest` closely before assuming this needed new code — it
+already reads `ctx.entity_map[sketch.name]` and `manifest['entities']`, BOTH already scoped to the one sketch
+currently being built, and `build_constrained_sketch` already calls it once per call. Since item 5 already made
+every kind get its own call, per-sketch parity was already true the moment item 5 landed. Added explicit
+`parity["mismatches"] == []` assertions to the existing shared-ctx test (proving it holds even with `ctx.entity_map`
+now spanning several sketches at once) rather than leaving this as an unverified claim.
+
+**The three named test scenarios**: all-shown was already covered throughout items 1-6. Rails-hidden turned out to
+already be exactly what item 6's own graceful-projection-miss test models (a missing `kind_to_sketch` entry looks
+identical whether it's because a caller didn't share the dict or because Rails was genuinely hidden and never
+built) — cross-referenced rather than duplicated. Contour-off got one new test: `splitManifestByKind` correctly
+omits the contour kind entirely when `pattern.contour.show === false` (mirroring Box Lattice's own "no shape at
+all" case exactly), and confirmed no rail/tie/node manifest is left holding a dangling projection that points at
+nothing.
+
+**The migration decision** (the dispatch's own explicit decide+log point — "migrate on read or keep as one layer"):
+decided on neither option AS STATED, but a third one that the whole feature's own fallback design already gives for
+free once named explicitly: pre-SE17 saved lattices load and stay as ONE layer, exactly as before this turn, with
+**no separate migration step at all** — but the INSTANT the user next presses Generate/Regenerate on one,
+`_ensureKindLayers` (item 2) splits it into kind-layers, using the IDENTICAL code path a brand-new pattern already
+takes (it has no "is this an old pattern" branch to speak of). This beats both named options: "keep as one layer"
+forever would permanently deny old files the kind-layer benefits; "migrate on read" would mean writing and trusting
+a whole new DOM-rewriting migration pass (reassigning `data-layer` on every existing rail/tie/node/contour element)
+that runs on EVERY load whether or not the user ever asked for it, for a risk this lazy approach avoids
+completely — a file that's loaded and never touched again is byte-for-byte unaffected. Verified with a new test:
+`recolorOwnedKind`/`detachAllOwned` still correctly act on a genuinely pre-SE17-shaped pattern object (no `.layers`
+field at all) via the exact same fallback path every OTHER item's own "act on everything" helper already needed.
+
+**Final live verification** (headless Chrome/CDP) — correctly styled this time, per the advisor's own mid-turn
+correction to serve from `bspline-frame-builder/` (not `b-spline-gen/html` directly) so `../../styles` resolves:
+Shape Lattice Generate on a fresh layer produces exactly the four expected layers (Rails/Contour/Ties/Nodes, in
+that creation order), `pattern.layers` correctly recorded end to end, the active layer lands on Rails, and a real
+hourglass lattice — green contour, red rails, yellow ties, node dots at every crossing — renders correctly on
+canvas, with the Layers panel showing all four, "Rails" highlighted as the active one. Screenshot:
+`C:\Users\danse\.bspline-status\shots\seatB\1741_T76-item-7_final.png`.
+
+Verify: 1343/1343 vitest (3 new), 52/52 b-spline-gen pytest (2 new assertions on an existing test). Commit abf9685,
+pushed. NO FUSION this whole turn.
+
+# T76 — SE17 complete: all 7 items landed (merge + items 1-7). Passing back to the advisor.
