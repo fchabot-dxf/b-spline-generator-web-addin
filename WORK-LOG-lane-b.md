@@ -8397,3 +8397,155 @@ unconfirmed generalizations beyond what was already flagged, and corrected one s
 Amendments polled clean before this commit; will poll once more immediately before passing, then continue into
 T70 (SE14b) proper.
 
+## Capacity report — stopping here; T69-fix-3 (a large amendment cascade) and T70 (SE14b) itself both queued, neither started
+
+**What happened**: right after T69-fix-2 (aa30f5b) was pushed, and while starting the T70 (SE14b) investigation
+below, NINE more amendments (T70 AMEND 6 through 14) landed in rapid succession — the advisor iterating live in
+Fusion with Fred, several amendments explicitly SUPERSEDING earlier ones in the SAME cascade (12 replaces 9/10/11;
+11 was even proposed then HELD after Fred said the advisor had misread him). Asked the user directly whether to
+push through T70's own substantial remaining implementation or stop and report capacity, given the turn had
+already produced 3 commits (T69, T69-fix, T69-fix-2) before this cascade even arrived — the user chose to stop and
+report. This entry is that report: a synthesized, ACTIONABLE spec for the next session (not a re-hash of the raw
+amendment chain), followed by the T70/SE14b investigation already completed, followed by the capacity call itself.
+
+### T69-fix-3 — the synthesized FINAL spec (not the raw amendment chain)
+
+Reading amendments 6-13 in isolation and implementing them in arrival order would be actively wrong — several
+supersede earlier ones outright. The FINAL state, after resolving every supersession:
+
+**Contour constraints — a near-total rollback of T69-FIX's own AMEND 3/4/5** (Fred: "dont use symmetry either",
+"no radius dim though, leave the sketch loose for now"):
+- REMOVE entirely: the `Symmetry` constraints on the contour (both the L/R mirror-pass ones AND the top/bottom
+  Symmetry-about-`horizontalAxis`), the `mirrorAxis`/`horizontalAxis` construction-Line entities, the
+  `Coincident(['origin', axisId])` anchors, the Radial dims (`corner_radius*half_width` on the shoulder,
+  `waist_radius` on the waist).
+- KEEP unchanged: Slot/Arc3PointSlot entities + their own `stroke_width` SlotWidth dims (T69's own mechanism,
+  untouched by any of this), the Coincident joint chain (always existed, pre-T69-FIX), H/V on straight segments.
+- **My own flagged judgment call, NOT yet confirmed by the advisor**: the mirror-Tangent DEDUP (dropping
+  Tangent(seg4,seg6) specifically) and the shoulder mirror-Equal DROP (dropping Equal(seg1,seg9)) were BOTH
+  justified purely by "redundant given the NEW Symmetry constraints" — with Symmetry now gone entirely, that
+  justification no longer holds, so BOTH should almost certainly be REVERTED (restore all 8 Tangents; restore
+  Equal(seg1,seg9), matching hip/waist's own unconditional Equal treatment) as PART of this same rollback, not
+  left half-applied. The advisor's own wording ("keep the redundant-Tangent dedupe IF STILL NEEDED") explicitly
+  leaves this as a judgment call for the implementer — flagging my own read here, not applying it myself.
+- Net effect: the mirror-pass logic collapses back to something close to T69's ORIGINAL, pre-AMEND-3 shape (plain
+  Equal for both Line and Arc mirror pairs, no Symmetry/axes/Radial) — geometry is inserted symmetric (by
+  construction, from the manifest's own coordinates) and left LOOSE, not explicitly re-constrained to stay so.
+
+**Contour overall size — KEPT, but redesigned twice more** (Fred: "W and H is good", then two value changes, then
+a parameter-design change):
+- Two Distance dims survive: width and height, but targeting CORNER POINTS on the contour centerline (e.g.
+  `seg11:S`/`seg11:E` and `seg4:E`/`seg0:S`-style pairs — whichever segment pair actually shares each corner via
+  the existing Coincident chain), NEVER whole curves — AMEND 6's own real measurement: `addDistanceDimension`'s
+  real signature is `(SketchPoint, SketchPoint, DimensionOrientations, textPoint[, isDriving])`, and passing
+  curves crashes with "Wrong number or type of arguments." **The shim's own `addDistanceDimension` must be
+  updated to REJECT curves** (so this exact regression fails in tests, matching the dispatch's own explicit ask)
+  — currently the fake accepts anything positionally; needs a type check against whatever this shim's own
+  SketchPoint-shaped objects are (`FakeSketchPoint`), raising/erroring for a `FakeSketchLine`/`FakeSketchArc`.
+- **FINAL parameter design** (AMEND 12, explicitly replacing 9/10/11 — 11 was proposed as a `contour_margin`
+  param, briefly HELD after a misread, then fully replaced by 12's own different shape, so do NOT implement
+  `contour_margin` at all): two NEW, INDEPENDENT user parameters, `contour_width`/`contour_height`, declared as
+  PLAIN NUMBERS (never an expression referencing `widthIn`/`heightIn`) — value = board size minus a margin.
+- **FINAL margin value** (AMEND 13, replacing 12's own 0.25in default): margin = **1 in** total (0.5in inset per
+  side) — on the standard 7x9 test board, `contour_width=6`, `contour_height=8`. Declare this ONE default margin
+  constant once in JS, consumed by BOTH the app's own drawn-contour inset (0.5in per side) and the manifest's
+  `contour_width`/`contour_height` parameter VALUES — one declaration, two consumers, the same discipline every
+  other shared constant in this module already follows.
+- Dims: `{type:'Distance', targets:[cornerPointIdA, cornerPointIdB], orientation:'Horizontal', expression:
+  'contour_width'}` (and the Vertical/`contour_height` sibling) — expression is the BARE parameter name now, no
+  arithmetic (AMEND 12 dropped the earlier `'widthIn - 0.25 in'` inline-arithmetic design from AMEND 9/10 too).
+- App-side: the drawn contour itself must ALSO be inset by the SAME margin (0.5in per side, centred) — meaning
+  `regenerateSilhouette`'s own boundary generation needs to actually shrink the silhouette's own region by the
+  declared margin before calling `generateSilhouette`, not just change what the MANIFEST claims — otherwise the
+  app draws one size and the manifest declares another, breaking parity (T68's own parity test must catch this;
+  the dispatch's own AMEND 9 text was explicit: "the build's parity check must still read 0").
+
+**Required test**: "the manifest declares no Symmetry, Radial, or Distance-targeting-a-curve for the contour" —
+the dispatch's own explicit ask (AMEND 7), still valid after 8/12/13's own partial reinstatement of Distance (now
+point-targeted, not curve-targeted — the test should assert Distance dims exist but with 2-point, not-a-bare-
+segment-id targets).
+
+**Tangential, separate item — T70 AMEND 14** (Fred: "Stroke width default to .25"): the LATTICE stroke default
+(`PATTERN_DEFAULTS.widths.rails`/`.ties`, still linked-equal by default) changes from 0.07in to 0.25in — covers
+rails, ties, AND (since T69) the Shape Lattice's own contour slot width, all via the SAME `stroke_width` manifest
+parameter's own seed value. ONE declared default, changed in ONE place (`editor-lattice-pattern.js`'s own
+`PATTERN_DEFAULTS`). A saved pattern with its own already-set width is UNCHANGED (defaults only affect a NEW/
+unset pattern). Every existing test asserting the literal `0.07` as "the default" needs updating to `0.25` — a
+mechanical but WIDE-reaching sweep (rails/ties/node-radius tests, shape-lattice tests, the manifest tests, the
+Python builder's own `stroke_width` parameter-value assertions) — grep for `0.07` across `tests/*.js` and
+`test_sketch_manifest_builder.py` before touching anything, since not every `0.07` literal is necessarily THIS
+default (a few tests intentionally pass a NON-default width to prove the mechanism is generic) — read each hit's
+own context before changing it, don't mechanically replace.
+
+**None of T69-fix-3 or AMEND 14 has been implemented** — this whole section is a synthesized spec for whoever
+picks this up next (fresh session or this same one, resumed), so they don't have to re-read and re-reconcile 9
+raw, partially-superseded amendment messages themselves.
+
+### T70 (SE14b) — investigation completed, zero implementation started
+
+Fred: "we should also represent those separations in the add-in preview, to be able to select segments and color
+them." Dispatched as: the generated silhouette becomes N separate selectable/colourable SVG elements (one per
+segment, round caps, stroke=stroke_width) instead of one path; the per-segment list must be the SAME piece list
+`buildSketchManifest` reads (T68's own parity test extended to cover it); the fill boundary is the segments
+chained into one closed loop, DERIVED at render time; styling (straight/curve/kink) stays mirrored per L/R pair,
+COLOUR is per-segment (L can differ from R); colour survives a same-count regenerate, keyed by segment id/index;
+drape/3D preview/SVG export also show per-segment colour; a visual PNG check (2 recoloured segments, hourglass +
+bottle) before passing.
+
+**Findings from a full investigation (an Explore agent's own survey, cross-checked against the actual source)**:
+- Rails/ties/nodes today are colour-per-KIND, not per-piece (`generatePattern` swaps `editor._color` before
+  looping over one whole kind; `recolorOwnedKind` bulk-recolours a WHOLE kind identically) — there is NO existing
+  per-piece colour override anywhere in this codebase to mirror; this is genuinely new ground.
+- Selectability is fully generic (`getNearbyElement`, editor-hit.js): any direct child of `_sketchLayer` with
+  `data-layer` and a declared `ELEMENT_CAPS` entry (line/path/circle/etc.) is automatically selectable — a `<line>`
+  or per-segment `<path>` needs NO new attribute to become genuinely selectable via the normal select tool.
+- A SEPARATE, already-existing per-segment interaction already exists for this exact silhouette:
+  `hitTestSegment`/`primitiveSegmentMap` (editor-shape-lattice-interaction.js) — a pure geometric, ARRAY-INDEX-
+  keyed distance test driving the EXISTING segment-tap style popup (straight/curve/kink/bulge/dir/cornerRadius).
+  Making segments real DOM elements creates a SECOND, independent "which segment did I click" answer (DOM
+  bbox-select vs. index-based geometric tap) that needs EXPLICIT reconciling — decide whether the tap-popup keeps
+  using the index-based test while marquee/click-select uses the new DOM elements, or unify them. Not resolved.
+- The ONE real, hard blocking dependency: `_findBoundaryElement` (editor-lattice-pattern.js) assumes exactly ONE
+  element per boundary-ref id, and `shapeToPrimitives`/`shapeToInnerBoundaryPrimitives` (editor-lattice-
+  boundary.js) both dispatch on a SINGLE element's own `.type` — the Shape Lattice's own LATTICE-FILL CLIPPING
+  (an entirely separate, already-shipped feature) reads the boundary through EXACTLY this path. N sibling
+  elements need: `_findBoundaryElement` to become plural (return ALL matches, ordered), and a NEW combining
+  function — concretely, `elements.flatMap(el => _primitivesFromD(el.attr('d')))` re-chained through the
+  ALREADY-EXISTING `primitivesToPathD` (editor-shape-lattice-generator.js) back into ONE closed-loop `d` string,
+  then through the ALREADY-EXISTING `insetPathDToPrimitives` (T68's own shared extraction) — reusing two already-
+  built functions, no new offset/geometry math needed. This is the change that most needs care: get it wrong and
+  the ALREADY-SHIPPED lattice-fill-clipping feature silently breaks for every Shape Lattice layer, not just new
+  per-segment-colour ones.
+- Drape (`core/preview/drape-svg.js`, `buildDrapeSvg`) and SVG export/save (`editor-io.js`) both already read the
+  live/serialized DOM GENERICALLY, one level of `_sketchLayer` children, no `<g>` recursion — N flat sibling
+  segment elements (each with its OWN `stroke`/`fill`) will already work for drape/export/3D-preview with ZERO
+  changes there, PROVIDED they are never wrapped in a `<g>` (the one recursion depth this whole area relies on).
+- Colour storage: `PATTERN.shape.segments[i]` already exists (style/bulge/dir/cornerRadius per index, mirror-
+  aware via `writeSegmentStyle`) — adding `color` as a new sibling key on each `segments[i]` object is the
+  cleanest, collision-free spot (no separate id system needed; segments have no id besides their own array
+  index, which this object is already keyed by). Open product question, not yet decided: should a MIRRORED
+  segment's colour auto-follow its own partner the way style/bulge/dir/cornerRadius already do, or deliberately
+  NOT mirror (so L/R can be coloured differently, which is what the dispatch's own wording implies is wanted)?
+
+**Nothing has been written for T70** — no rendering change, no boundary-resolution refactor, no colour-storage
+field, no UI, no tests, no visual check. The investigation above is a complete, actionable starting point, not a
+partial implementation to continue mid-stream.
+
+### The capacity call itself
+
+By the time the AMEND 6-14 cascade landed, this turn had already produced 3 real commits (T69 contour-as-slots,
+T69-FIX arg-order+symmetry, T69-fix-2 origin-anchor+size-dims) — each involving genuine, careful reasoning about
+constraint redundancy I could not independently verify without live Fusion access. T69-fix-3 (the cascade's own
+synthesized spec above) is ITSELF a substantial rework — a near-total rollback of the last commit's own
+Symmetry/axis/Radial mechanism, a NEW two-parameter size design that's already been revised 4 times in the
+cascade alone, plus a real shim gap (curve-rejection) to add correctly. T70 (SE14b) proper, on top of that, is a
+full rendering-architecture change with one genuinely hazardous dependency (the boundary-resolution refactor an
+ALREADY-SHIPPED feature relies on) plus a persistence-design decision plus a required visual verification step.
+Asked the user directly whether to push through or stop; the user chose to stop. Passing back now with this
+synthesized spec so the next turn — whether a fresh session or this same one resumed — can start implementing
+T69-fix-3 immediately without first re-deriving it from 9 raw, partially-superseded amendment messages, and can
+pick up T70 with the investigation already done.
+
+Amendments polled clean before this pass (10 new absorbed into the synthesis above, nothing left unaddressed in
+the mailbox). No code changed in this section — nothing to commit for it.
+
