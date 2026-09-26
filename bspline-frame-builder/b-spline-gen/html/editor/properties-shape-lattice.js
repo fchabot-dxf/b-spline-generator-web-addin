@@ -24,7 +24,10 @@ import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
 } from './editor-lattice-pattern.js';
-import { PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD } from './editor-shape-lattice-generator.js';
+import {
+    PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges,
+} from './editor-shape-lattice-generator.js';
+import { setEditorStatusHint } from './editor-ui.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
 import { insetRegionForContour, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
@@ -212,7 +215,21 @@ export function regenerateSilhouette(editor, p) {
     // OUTER edge lands exactly on the region, matching the manifest's own
     // parity (editor-sketch-manifest.js's manifestFromShape, called with
     // the SAME contourWidth as its own strokeWidth).
-    const { primitives, segments } = generateContourSilhouette(region, shape, contourWidth);
+    const { primitives, segments, hasUserSegments } = generateContourSilhouette(region, shape, contourWidth);
+    // SIL-RESOLVE (F5): the shared outline guard. The solver resolves every
+    // slider combination to a clean outline; this is the safety net for
+    // anything it can't foresee (e.g. per-segment style overrides). A looped /
+    // non-tangent outline is NEVER drawn: the last valid one stays, and the
+    // user is told why.
+    const defects = outlineDefects(primitives, { requireTangency: !hasUserSegments });
+    editor._shapeOutlineDefects = defects; // transient (never saved with the pattern)
+    if (defects.length) {
+        setEditorStatusHint(
+            `Shape Lattice: this outline would loop or kink (${defects[0].kind}), so the last valid outline is kept. `
+            + 'Adjust the shape or reset the segment styles.');
+        return shape.source === 'generated' && p.boundary && p.boundary.shapeId
+            ? _findBoundaryElements(editor, p.boundary.shapeId) : [];
+    }
     const contourColor = ({ ...PATTERN_DEFAULTS.colors, ...p.colors }).contour;
     const contourShow = p.contour.show !== false;
 
@@ -302,7 +319,9 @@ export async function writeSegmentStyle(editor, index, patch) {
     if (!Array.isArray(shape.segments)) shape.segments = _effectiveSegments(editor, shape);
     const n = shape.segments.length;
     const cur = shape.segments[index] || { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
-    const next = { ...cur, ...patch };
+    // SIL-RESOLVE (F5): a segment the user styled is USER-owned and survives
+    // param changes verbatim; every other segment is re-solved each time.
+    const next = { ...cur, ...patch, user: true };
     shape.segments[index] = next;
     const mirror = mirrorSegmentIndex(index, n);
     if (mirror !== index) shape.segments[mirror] = { ...next };
@@ -725,10 +744,24 @@ export function initShapeLatticeProperties(editor) {
         if (presetBottleEl) presetBottleEl.classList.toggle('active', shape.preset === 'bottle');
         _showPresetParams(shape.preset);
         if (shapeSeedEl) shapeSeedEl.value = shape.seed ?? PATTERN_DEFAULTS.shape.seed;
+        // SIL-RESOLVE (F5): each slider's min/max follow the generator's
+        // DECLARED feasible range for this board (conditional on the other
+        // params), and it shows the RESOLVED value, so the slider has no dead
+        // zone and what it shows is exactly what is drawn.
+        const preset = shape.preset === 'bottle' ? 'bottle' : 'hourglass';
+        const region = _shapeContourRegion(editor);
+        const cw = p.contour?.width != null ? p.contour.width
+            : ({ ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) }).rails;
+        const resolved = generateContourSilhouette(region, shape, cw).params;
+        const ranges = feasibleParamRanges(preset, region, resolved, (cw || 0) / 2);
         for (const [key, inputEl] of Object.entries(PARAM_INPUTS)) {
             if (!inputEl) continue;
+            if (ranges[key]) {
+                inputEl.min = String(Math.ceil(ranges[key].min * 100) / 100);
+                inputEl.max = String(Math.max(Math.ceil(ranges[key].min * 100), Math.floor(ranges[key].max * 100)) / 100);
+            }
             const presetDefault = PRESETS[shape.preset]?.params?.[key];
-            inputEl.value = shape.params?.[key] ?? presetDefault ?? inputEl.value;
+            inputEl.value = resolved?.[key] ?? shape.params?.[key] ?? presetDefault ?? inputEl.value;
         }
         _refreshSegmentList(p);
 

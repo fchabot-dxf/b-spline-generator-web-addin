@@ -121,6 +121,129 @@ export const PRESETS = {
   },
 };
 
+/**
+ * SIL-RESOLVE (F5) — DECLARED feasible ranges. Every preset param is resolved
+ * inside these, in the declared ORDER (a later param's range depends on the
+ * earlier ones), by the solvers AND read by the panel's sliders, so a slider
+ * never has a dead zone that silently clamps. Base ranges are the panel's
+ * own slider limits; the geometric limits below narrow them:
+ *
+ * HOURGLASS (depth d = hw*waistReach, shoulder radius Rs = hw*cornerRadius):
+ *   - the waist radius is Rw = max(d - Rs, WAIST_MIN_RADIUS_OF_DEPTH * d).
+ *     For Rw = d - Rs this is the original shared-column construction,
+ *     unchanged; below the floor the centres separate and the arcs stay
+ *     externally tangent (the old code let Rw go NEGATIVE here: Fred's loop);
+ *   - the notch half-height is dy = sqrt(d * (2*(Rs+Rw) - d)), so it needs
+ *     dy <= H = hh - stroke - |waistCenterY*hh| (the shoulder arc may not
+ *     start above the top corner). The minimum dy is d, so waistReach <= H/hw,
+ *     and then Rs <= (H^2/d + d)/2 - Rw;
+ *   - the drawn shoulder radius stays positive: Rs > stroke.
+ * BOTTLE: the derived hip centre must stay above the bottom edge:
+ *   neckLength <= (2hh - stroke - hw*(1-neckWidth)) / (2hh), so neckWidth has a
+ *   floor from the board's aspect; drawn radii and neck stay positive.
+ */
+export const WAIST_MIN_RADIUS_OF_DEPTH = 0.5;
+// Every straight horn keeps at least this length (fraction of the half-height):
+// at the feasible edge an arc would otherwise start exactly at a corner, a
+// zero-length line (and a zero-length entity in the Fusion export).
+export const HORN_MIN_OF_HALF_HEIGHT = 0.02;
+export const PARAM_ORDER = {
+  hourglass: ['waistCenterY', 'waistReach', 'cornerRadius'],
+  bottle: ['neckWidth', 'skeletonX', 'neckLength'],
+};
+const BASE_RANGES = {
+  hourglass: { waistCenterY: [-0.6, 0.6], waistReach: [0.05, 0.92], cornerRadius: [0.04, 0.95] },
+  bottle: { neckWidth: [0.05, 0.85], skeletonX: [0.1, 0.95], neckLength: [0.08, 0.85] },
+};
+const EPS_FRAC = 1e-3;
+
+/** Narrow [lo, hi] by a geometric bound; if the geometry leaves no room
+ *  inside the base range, validity wins (min = max = the geometric bound). */
+function _range(lo, hi, geoLo = -Infinity, geoHi = Infinity) {
+  const a = Math.max(lo, geoLo), b = Math.min(hi, geoHi);
+  return a <= b ? { min: a, max: b } : { min: Math.min(b, geoHi), max: Math.min(b, geoHi) };
+}
+
+function _hourglassRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const [lo, hi] = BASE_RANGES.hourglass[key];
+  if (key === 'waistCenterY') return _range(lo, hi);
+  const H = hh - stroke - Math.abs(v.waistCenterY) * hh - HORN_MIN_OF_HALF_HEIGHT * hh;
+  if (key === 'waistReach') return _range(lo, hi, -Infinity, H / hw);
+  const d = hw * v.waistReach;
+  const k = WAIST_MIN_RADIUS_OF_DEPTH;
+  const sMax = (H * H / d + d) / 2; // largest Rs + Rw that still fits vertically
+  // In the Rw = d - Rs branch S = d always fits; past it Rs = S - k*d.
+  const rsMax = Math.max(sMax - k * d, (1 - k) * d);
+  return _range(lo, hi, (stroke + EPS_FRAC * hw) / hw, rsMax / hw);
+}
+
+function _bottleRange(key, region, stroke, v) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const [lo, hi] = BASE_RANGES.bottle[key];
+  const [nlLo] = BASE_RANGES.bottle.neckLength;
+  if (key === 'neckWidth') {
+    // hip centre above the bottom edge even at the shortest neck:
+    // hw*(1-nw) <= 2hh*(1-nlLo) - stroke; and the drawn neck stays positive.
+    const floorFromHeight = 1 - (2 * hh * (1 - nlLo) - stroke - HORN_MIN_OF_HALF_HEIGHT * hh) / hw;
+    return _range(lo, hi, Math.max(floorFromHeight, (stroke + EPS_FRAC * hw) / hw));
+  }
+  const nw = v.neckWidth;
+  if (key === 'skeletonX') {
+    // the old span rule, plus the drawn body radius (hw - skelX) > stroke
+    return _range(nw + (1 - nw) * 0.15, nw + (1 - nw) * 0.85, -Infinity, 1 - (stroke + EPS_FRAC * hw) / hw);
+  }
+  const horn = HORN_MIN_OF_HALF_HEIGHT * hh;
+  const top = (2 * hh - stroke - horn - hw * (1 - nw)) / (2 * hh);
+  return _range(lo, hi, (stroke + horn) / (2 * hh), top);
+}
+
+/** `{ param: {min, max} }` for `preset` on `region`, each conditional on the
+ *  params resolved before it (PARAM_ORDER). `params` supplies those earlier
+ *  values (e.g. a solver's own `params` output). */
+export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
+  const fn = preset === 'bottle' ? _bottleRange : _hourglassRange;
+  const out = {};
+  for (const key of PARAM_ORDER[preset]) out[key] = fn(key, region, strokeHalfWidth, params);
+  return out;
+}
+
+/** Resolve a preset's params in declared order, each inside its feasible
+ *  range: explicit value (clamped only if genuinely infeasible), else the
+ *  default + seeded jitter. */
+function _resolveParams(preset, region, params, seed, strokeHalfWidth) {
+  const p = PRESETS[preset].params, j = PRESETS[preset].jitter, salt = SALT[preset];
+  const fn = preset === 'bottle' ? _bottleRange : _hourglassRange;
+  const v = {};
+  for (const key of PARAM_ORDER[preset]) {
+    const r = fn(key, region, strokeHalfWidth, v);
+    v[key] = _jitteredParam(params[key], p[key], j[key], seed, salt[key], r.min, r.max);
+  }
+  return v;
+}
+
+/** SIL-RESOLVE (F5): the hourglass construction from RESOLVED fraction params
+ *  (region-local, right side, Y-down). The ONE place this algebra lives; the
+ *  solver and the on-canvas handles (editor-shape-lattice-interaction.js)
+ *  both call it. */
+export function hourglassConstruction(region, resolved) {
+  const hw = region.w / 2, hh = region.h / 2;
+  const depth = hw * resolved.waistReach;
+  const cornerRadius = hw * resolved.cornerRadius;
+  const waistCenterY = hh * resolved.waistCenterY;
+  const radiusWaist = Math.max(depth - cornerRadius, WAIST_MIN_RADIUS_OF_DEPTH * depth);
+  const sumR = cornerRadius + radiusWaist;
+  const shoulderCx = hw - cornerRadius;
+  const waistCx = hw - depth + radiusWaist;
+  const notchHalfSpan = Math.sqrt(Math.max(0, depth * (2 * sumR - depth)));
+  return {
+    hw, hh, depth, cornerRadius, radiusWaist, waistCenterY, shoulderCx, waistCx, notchHalfSpan,
+    waistX: hw - depth, // the pinch's innermost x
+    shoulderY: waistCenterY - notchHalfSpan, hipY: waistCenterY + notchHalfSpan,
+    ux: (waistCx - shoulderCx) / sumR, uy: notchHalfSpan / sumR,
+  };
+}
+
 const SALT = {
   hourglass: { waistReach: 601, cornerRadius: 602, waistCenterY: 603 },
   bottle: { neckWidth: 611, skeletonX: 613, neckLength: 614 },
@@ -197,7 +320,10 @@ function _arcPrimitive(a, b, signedBulge, cx) {
     return { type: 'A', cx: mx, cy: my, rx: R, ry: R, phi: 0, theta1, dTheta };
   }
 
-  const bClamped = Math.max(-0.999, Math.min(0.999, signedBulge));
+  // SIL-RESOLVE (F5): was +/-0.999, which rebuilt near-semicircle arcs (bulge
+  // 0.999..1-1e-6) with a visibly wrong radius and centre (0.013 off on a
+  // 200-wide board): exactly the generalized waist arc just below a semicircle.
+  const bClamped = Math.max(-(1 - 1e-9), Math.min(1 - 1e-9, signedBulge));
   const R = Math.abs(((len / 2) * (1 + bClamped * bClamped)) / (2 * bClamped));
   const param = arcCenterParam(a.x, a.y, R, R, 0, 0, sweep, b.x, b.y);
   if (!param) return { type: 'L', p0: a, p1: b };
@@ -291,26 +417,17 @@ const STRAIGHT_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius
  * arc's own CENTER) a tangent junction point genuinely moves.
  */
 function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
-  const p = PRESETS.hourglass.params;
-  const j = PRESETS.hourglass.jitter;
-  const s = SALT.hourglass;
-  const waistReach = _jitteredParam(params.waistReach, p.waistReach, j.waistReach, seed, s.waistReach, 0.05, 0.92);
-  const cornerRadiusFrac = _jitteredParam(
-    params.cornerRadius, p.cornerRadius, j.cornerRadius, seed, s.cornerRadius, 0.04, 0.95 - waistReach
-  );
-  const waistCenterYFrac = _jitteredParam(
-    params.waistCenterY, p.waistCenterY, j.waistCenterY, seed, s.waistCenterY, -0.6, 0.6
-  );
+  // SIL-RESOLVE (F5): params resolved in declared order inside their
+  // declared feasible ranges (see feasibleParamRanges).
+  const { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac } =
+    _resolveParams('hourglass', region, params, seed, strokeHalfWidth);
 
-  const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
-  const waistX = hw * (1 - waistReach); // boundary reach at the pinch (local, right side, from centerline)
-  const cornerRadius = hw * cornerRadiusFrac; // shoulder/hip radius (real units)
-  const skelX = hw - cornerRadius; // shared arc-center column X (local, right side positive) -- NEVER shifted
-  const waistCenterY = hh * waistCenterYFrac; // local, Y-DOWN (0 = region's own vertical center) -- NEVER shifted
-  const radiusWaist = skelX - waistX;
-  const notchHalfSpan = cornerRadius + radiusWaist; // = halfW - waistX, shoulder/hip offset from waistCenterY
-  const shoulderY = waistCenterY - notchHalfSpan; // ABOVE (smaller Y) the waist -- an arc CENTER's own Y, never shifted
-  const hipY = waistCenterY + notchHalfSpan; // BELOW (larger Y) the waist -- an arc CENTER's own Y, never shifted
+  const cx0 = region.x + region.w / 2, cy0 = region.y + region.h / 2;
+  // Waist radius = the original shared-column value (depth - cornerRadius)
+  // while above the declared floor; below it the centres separate and the
+  // arcs stay externally tangent instead of going negative (Fred's loop).
+  const { hw, hh, cornerRadius, radiusWaist, shoulderCx, shoulderY, hipY, ux, uy } =
+    hourglassConstruction(region, { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac });
 
   // The ACTUAL drawn radii/walls (§ (2)/(1) above) -- everything from here
   // down uses these, never the raw params computed above directly.
@@ -325,15 +442,16 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // Right side, top -> bottom.
   const rTop = P(hwDrawn, -hhDrawn);
   const rShoulderHorn = P(hwDrawn, shoulderY);
-  const rShoulderWaistJct = P(skelX, waistCenterY - radiusWaistDrawn);
-  const rWaistHipJct = P(skelX, waistCenterY + radiusWaistDrawn);
+  // Tangent junctions lie on the centre line, the drawn radius out from each centre.
+  const rShoulderWaistJct = P(shoulderCx + cornerRadiusDrawn * ux, shoulderY + cornerRadiusDrawn * uy);
+  const rWaistHipJct = P(shoulderCx + cornerRadiusDrawn * ux, hipY - cornerRadiusDrawn * uy);
   const rHipHorn = P(hwDrawn, hipY);
   const rBottom = P(hwDrawn, hhDrawn);
   // Left side (exact mirror), bottom -> top.
   const lBottom = M(hwDrawn, hhDrawn);
   const lHipHorn = M(hwDrawn, hipY);
-  const lWaistHipJct = M(skelX, waistCenterY + radiusWaistDrawn);
-  const lShoulderWaistJct = M(skelX, waistCenterY - radiusWaistDrawn);
+  const lWaistHipJct = M(shoulderCx + cornerRadiusDrawn * ux, hipY - cornerRadiusDrawn * uy);
+  const lShoulderWaistJct = M(shoulderCx + cornerRadiusDrawn * ux, shoulderY + cornerRadiusDrawn * uy);
   const lShoulderHorn = M(hwDrawn, shoulderY);
   const lTop = M(hwDrawn, -hhDrawn);
 
@@ -361,9 +479,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
     STRAIGHT_SEGMENT, // lShoulderHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop
   ];
-  const segments = Array.isArray(segmentsOverride) && segmentsOverride.length === keypoints.length
-    ? segmentsOverride.map(_normalizeSegment)
-    : fresh;
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
 
   // T59 (SE14 Slice 3's own deferred "axis-locked parametric handles"):
   // the RESOLVED params (explicit value, or default+jitter, already
@@ -375,16 +491,41 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // unit values computed just above).
   const resolvedParams = { waistReach, cornerRadius: cornerRadiusFrac, waistCenterY: waistCenterYFrac };
 
-  return { keypoints, segments, cx: cxWorld, params: resolvedParams };
+  return { keypoints, segments, cx: cxWorld, params: resolvedParams, hasUserSegments };
 }
 
 function _normalizeSegment(seg) {
-  return {
+  const out = {
     style: (seg && seg.style) || 'straight',
     bulge: (seg && seg.bulge) || 0,
     dir: (seg && seg.dir) || 'out',
     cornerRadius: (seg && seg.cornerRadius) || 0,
   };
+  if (seg && seg.user === true) out.user = true;
+  return out;
+}
+
+/**
+ * SIL-RESOLVE (F5) — declared segment OWNERSHIP. A stored segment is
+ * USER-owned when the segment editor wrote it (`user: true`) or when its
+ * style/direction differs from what the solver produces (legacy styled
+ * segments saved before the flag existed). Every other stored segment is
+ * SOLVER-owned and is replaced by the fresh solve, so a slider change never
+ * reuses a bulge computed for the OLD params (measured: that alone made 8
+ * non-tangent joints at Fred's params). Returns the merged list plus
+ * whether any user-owned segment is in it.
+ */
+function _mergeSegments(fresh, override) {
+  if (!Array.isArray(override) || override.length !== fresh.length) return { segments: fresh, hasUserSegments: false };
+  let hasUserSegments = false;
+  const segments = fresh.map((f, i) => {
+    const o = _normalizeSegment(override[i]);
+    const own = o.user === true || o.style !== f.style || (o.style !== 'straight' && o.dir !== f.dir);
+    if (!own) return f;
+    hasUserSegments = true;
+    return { ...o, user: true };
+  });
+  return { segments, hasUserSegments };
 }
 
 /**
@@ -422,17 +563,9 @@ function _normalizeSegment(seg) {
 // neck/body arcs' own shared tangent point, not a center) is recomputed
 // from the ADJUSTED `radiusNeck`.
 function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
-  const p = PRESETS.bottle.params;
-  const j = PRESETS.bottle.jitter;
-  const s = SALT.bottle;
-  const neckWidth = _jitteredParam(params.neckWidth, p.neckWidth, j.neckWidth, seed, s.neckWidth, 0.05, 0.85);
-  const skeletonXFrac = _jitteredParam(
-    params.skeletonX, p.skeletonX, j.skeletonX, seed, s.skeletonX,
-    neckWidth + (1 - neckWidth) * 0.15, neckWidth + (1 - neckWidth) * 0.85
-  );
-  const neckLengthFrac = _jitteredParam(
-    params.neckLength, p.neckLength, j.neckLength, seed, s.neckLength, 0.08, 0.85
-  );
+  // SIL-RESOLVE (F5): declared-order resolution inside feasible ranges.
+  const { neckWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac } =
+    _resolveParams('bottle', region, params, seed, strokeHalfWidth);
 
   const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
   const neckHalfW = hw * neckWidth;
@@ -481,14 +614,12 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
     STRAIGHT_SEGMENT, // lNeckHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop
   ];
-  const segments = Array.isArray(segmentsOverride) && segmentsOverride.length === keypoints.length
-    ? segmentsOverride.map(_normalizeSegment)
-    : fresh;
+  const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
 
   // T59: see _solveHourglass's own doc comment on why this is returned.
   const resolvedParams = { neckWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac };
 
-  return { keypoints, segments, cx: cx0, params: resolvedParams };
+  return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments };
 }
 
 /**
@@ -525,14 +656,14 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
       ? _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth)
       : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
-  const { keypoints, segments, cx, params: resolvedParams } = solved;
+  const { keypoints, segments, cx, params: resolvedParams, hasUserSegments } = solved;
   const n = keypoints.length;
   const primitives = [];
   for (let i = 0; i < n; i++) {
     primitives.push(..._segmentToPrimitives(keypoints[i], keypoints[(i + 1) % n], segments[i], cx));
   }
 
-  return { preset, keypoints, segments, primitives, cx, params: resolvedParams };
+  return { preset, keypoints, segments, primitives, cx, params: resolvedParams, hasUserSegments };
 }
 
 /**
@@ -577,6 +708,77 @@ function _arcPointAt(prim, theta) {
   const cosPhi = Math.cos(prim.phi), sinPhi = Math.sin(prim.phi);
   const ex = prim.rx * Math.cos(theta), ey = prim.ry * Math.sin(theta);
   return { x: prim.cx + ex * cosPhi - ey * sinPhi, y: prim.cy + ex * sinPhi + ey * cosPhi };
+}
+
+/**
+ * SIL-RESOLVE (F5) — the declared outline GUARD (F3 AMEND 7b's inversion
+ * detector). Shared by the Shape Lattice preview and the future frame preview:
+ * a silhouette is drawable only if this returns []. Checks, on the closed
+ * primitive loop:
+ *   - every arc has a positive radius and sweeps less than a full half-turn
+ *     (+ float slack), so no reversed or looped arc;
+ *   - every joint that touches an ARC is tangent (a joint between two
+ *     straight lines may be a sharp corner, which is how the bounding-box
+ *     corners are built). `requireTangency: false` skips this when the user
+ *     has styled segments on purpose (a kink is a deliberate corner);
+ *   - the loop is SIMPLE: no two non-adjacent pieces cross.
+ * Returns a list of `{ kind, index, detail }`; empty means clean.
+ */
+export function outlineDefects(primitives, { samplesPerArc = 10, tangentTol = 1e-4, requireTangency = true } = {}) {
+  const defects = [];
+  const n = primitives.length;
+  const dirAt = (p, atEnd) => {
+    if (p.type === 'L') {
+      const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, len = Math.hypot(dx, dy) || 1;
+      return { x: dx / len, y: dy / len };
+    }
+    const th = atEnd ? p.theta1 + p.dTheta : p.theta1;
+    const s = p.dTheta > 0 ? 1 : -1; // travel direction along the arc (phi is always 0 here)
+    return { x: -Math.sin(th) * s, y: Math.cos(th) * s };
+  };
+  primitives.forEach((p, i) => {
+    if (p.type !== 'A') return;
+    if (!(p.rx > 0) || !(p.ry > 0)) defects.push({ kind: 'nonPositiveRadius', index: i, detail: p.rx });
+    if (Math.abs(p.dTheta) > Math.PI + 1e-6) defects.push({ kind: 'reversedArc', index: i, detail: p.dTheta });
+  });
+  primitives.forEach((p, i) => {
+    if (p.type === 'L' && Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) < 1e-9) {
+      defects.push({ kind: 'degenerateLine', index: i, detail: 0 });
+    }
+  });
+  for (let i = 0; i < n && requireTangency; i++) {
+    const a = primitives[i], b = primitives[(i + 1) % n];
+    if (a.type === 'L' && b.type === 'L') continue;
+    const ta = dirAt(a, true), tb = dirAt(b, false);
+    if (ta.x * tb.x + ta.y * tb.y < 1 - tangentTol) defects.push({ kind: 'notTangent', index: i, detail: ta.x * tb.x + ta.y * tb.y });
+  }
+  // Simple loop: polyline each piece, then test every non-adjacent pair.
+  const polys = primitives.map((p) => {
+    if (p.type === 'L') return [p.p0, p.p1];
+    const pts = [];
+    for (let k = 0; k <= samplesPerArc; k++) pts.push(_arcPointAt(p, p.theta1 + (p.dTheta * k) / samplesPerArc));
+    return pts;
+  });
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const hits = (p1, p2, q1, q2) => {
+    const d1 = cross(q1, q2, p1), d2 = cross(q1, q2, p2), d3 = cross(p1, p2, q1), d4 = cross(p1, p2, q2);
+    return ((d1 > 1e-12 && d2 < -1e-12) || (d1 < -1e-12 && d2 > 1e-12))
+      && ((d3 > 1e-12 && d4 < -1e-12) || (d3 < -1e-12 && d4 > 1e-12));
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent across the wraparound
+      const A = polys[i], B = polys[j];
+      let crossed = false;
+      for (let u = 0; u < A.length - 1 && !crossed; u++) {
+        for (let v = 0; v < B.length - 1; v++) {
+          if (hits(A[u], A[u + 1], B[v], B[v + 1])) { crossed = true; break; }
+        }
+      }
+      if (crossed) defects.push({ kind: 'selfIntersection', index: i, detail: j });
+    }
+  }
+  return defects;
 }
 
 const _fmt = (n) => (Math.round(n * 1000) / 1000).toString();

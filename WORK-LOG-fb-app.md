@@ -343,3 +343,108 @@ bridge is back.
   - What still stands: the sys.modules restore is unconfirmed. The advisor is handling the Fusion
     restart / add-in reload with Fred before the Frame Builder is used here.
   - **F4 item 4 = BLOCKED (Fusion unavailable)**, not failed. Items 1-3 are done.
+
+## Turn 8 — F5: SIL-RESOLVE — silhouette arcs never invert — DONE — NO FUSION
+
+The merge check: origin/main was already merged into fb-app at dispatch (b1fa602) and it is clean.
+The worktree had no node_modules, so I ran `npm ci` (lockfile, gitignored).
+
+**Two root causes, both measured. Fred's loop had BOTH.**
+1. **The solver.** The hourglass waist radius was `hw*waistReach - hw*cornerRadius`: NEGATIVE
+   whenever cornerRadius > waistReach. The clamp was written as `cornerRadius <= 0.95 - waistReach`,
+   but the condition that matters is `cornerRadius < waistReach`.
+   - Fred's sliders (waist reach ~28% of 0.05..0.92 = 0.294, corner radius ~70% of 0.04..0.6 =
+     0.432) sit squarely in that zone. The guard reports selfIntersection (shoulder <-> hip): the
+     "fish".
+   - AMEND 1's target (a shallow 0.4 in waist with a 1.75 in shoulder radius) was **impossible in the
+     old model**: shared-column arcs force Rs + Rw = depth.
+   - Bottle: the derived hip centre `neckCenterY + hw(1 - neckWidth)` fell below the bottom edge on
+     wide/short boards (notTangent, 196 of 343 at 12×6).
+2. **Stale segments.** The panel stores `shape.segments` after every Generate and passes them back;
+   they were reused **verbatim**, with bulges solved for the OLD params. Measured: at Fred's params
+   that alone gives 8 non-tangent joints even with the fixed solver, while a fresh solve is clean.
+   Only a preset switch ever cleared them.
+
+**Fixes (declared, one source each):**
+- **Feasible ranges.** `feasibleParamRanges(preset, region, params, stroke)` + `PARAM_ORDER`
+  (hourglass: waistCenterY → waistReach → cornerRadius; bottle: neckWidth → skeletonX →
+  neckLength), with `WAIST_MIN_RADIUS_OF_DEPTH = 0.5` and `HORN_MIN_OF_HALF_HEIGHT = 0.02`. The
+  solvers resolve every param inside its range via `_resolveParams`; the old hand-written clamps are
+  gone. Explicit in-range values are honoured exactly (tested); only a genuinely infeasible value is
+  clamped.
+- **Generalized hourglass tangency** in ONE exported `hourglassConstruction()`:
+  - `Rw = max(depth - Rs, 0.5*depth)`. While `depth - Rs >= 0.5*depth` this is exactly the old
+    shared-column shape (**existing in-range designs unchanged**; the old generator tests pass
+    untouched).
+  - Past it the centres separate, with external tangency and half-height
+    `dy = sqrt(d(2(Rs+Rw) - d))`, which reduces to the old `dy = d`.
+  - Junctions lie on the centre line; stroke inset as before.
+- **Zero-length horns** (found by the sweep: a param exactly at its feasible edge made the arc
+  start at the corner) now get a declared minimum horn length.
+- **Segment ownership** `_mergeSegments`:
+  - A stored segment is USER-owned if the editor wrote it (`writeSegmentStyle` now stamps
+    `user: true`) or its style/dir differs from the solver's. The second rule keeps legacy styled
+    segments saved before the flag.
+  - Everything else is re-solved each time.
+  - The result reports `hasUserSegments`.
+- **The guard** `outlineDefects(primitives, {requireTangency})` (F3 AMEND 7b, shared with the future
+  frame preview): positive radii, no arc past a half-turn, no zero-length line, tangency at every arc
+  joint (skipped when the user has styled segments, since a kink is deliberate), and a simple loop.
+  - `regenerateSilhouette` runs it before drawing. A defective outline is **never drawn**: the last
+    valid one stays, and the editor hint says why. Defects sit on `editor._shapeOutlineDefects`, NOT
+    on the saved pattern (two existing tests deep-compare `p.contour` and caught my first attempt).
+- **Handles.** `editor-shape-lattice-interaction.js` used a hand-copied duplicate of the old algebra
+  AND the buggy clamp. It now uses `hourglassConstruction` for anchors and `feasibleParamRanges` for
+  every drag clamp.
+- **Sliders.** `syncFieldsFromPattern` sets each slider's min/max from the feasible range (so no dead
+  zone) and shows the RESOLVED value.
+  - Visible effect: corner radius now spans 0.05..0.95 where the static HTML said 0.6, so Fred's
+    large radii are reachable. It shrinks live when a deep off-centre waist leaves less room.
+- **Precision cap found on the way.** `_arcPrimitive` clamped the bulge at ±0.999, which rebuilt
+  near-semicircle arcs with a visibly wrong radius and centre (0.013 off on a 200-wide board). That
+  is exactly the new waist just under a semicircle. Now ±(1 - 1e-9).
+
+**One existing test's contract changed, stated.** `reuses an explicit segments array verbatim ...
+across a seed change` pinned the stale-bulge behaviour. It now asserts the user-styled segment is kept
+verbatim and the rest equal a fresh solve.
+
+**Tests.**
+- New `tests/silhouette-resolve.test.js` (14):
+  - Fred's case (clean, radius kept);
+  - the AMEND 1 target (clean, Rs = 1.75 in kept, pinch at hw − 0.4 in, Rw < Rs);
+  - a dense sweep: both presets × 7³ slider grid × 5 boards (7×9 portrait, 9×7 landscape, 12×6,
+    5×5, 3×2 small) × 2 strokes, all clean;
+  - resolved values within the declared ranges; in-range values honoured exactly;
+  - stale segments re-solved; a user kink survives; legacy styled segments count as user-owned;
+  - the guard catches a crossing loop.
+- `properties-shape-lattice.test.js` +2: the slider max follows the range; a looping user-styled
+  outline is not drawn, the elements are unchanged and the hint is shown.
+- **RED FIRST:** before any solver change, Fred's case, the target and both sweeps failed on
+  geometry (Fred: 2 × selfIntersection; the target: 2).
+- **Mutations** (each restored from a copy, the suite green after: 101/101):
+  - waist radius allowed negative → 4 red;
+  - segments reused verbatim → 2 red;
+  - preview guard removed → 1 red;
+  - slider range not wired → 1 red;
+  - no minimum horn → 2 red.
+- Touched specs: 365 pass. **Full vitest: 1285 passed / 70 files, 0 failed** (run once, because the
+  generator feeds much of the app).
+
+**Screenshots** (`shots/seatC`):
+- `1757_F5_before-after-outlines.png`: HEAD vs F5 solver, Fred's case + AMEND 1 target.
+- `1759_F5_app-fred-case-BEFORE.png` / `-AFTER.png`: the real app from the styled server.
+  - Served from the `bspline-frame-builder` folder: BEFORE = a `git archive` of HEAD on :8785,
+    AFTER = the worktree on :8784.
+  - Driven by the new `tools/repro/shape_lattice_fred_case.mjs` (CDP, no deps, kept to re-run).
+  - BEFORE reproduces Fred's photo exactly (fish loops at the waist); AFTER is a clean hourglass at
+    the same sliders.
+- Both servers and Chrome instances were stopped afterwards (exit 127 = my own kill).
+
+**For Fred's eye (declared, tunable, not guessed further):** the AMEND 1 target's waist arc is 0.2 in
+(0.5 × depth), which reads a bit pinched at a 0.4 in depth. `WAIST_MIN_RADIUS_OF_DEPTH` is the one
+knob. Raising it rounds the waist but moves the switch point, so more existing shapes would change.
+
+**Coordination:** seat B's T76 edits lattice layers, not this solver. The files touched are the
+generator, the handles module and the Shape Lattice panel.
+
+**Processes:** clean. Capacity is fine.

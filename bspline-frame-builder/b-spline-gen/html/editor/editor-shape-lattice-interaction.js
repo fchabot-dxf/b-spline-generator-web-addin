@@ -35,7 +35,7 @@
  * mirrored side follows" falls out of the existing generator, it isn't
  * built here.
  */
-import { PRESETS } from './editor-shape-lattice-generator.js';
+import { PRESETS, feasibleParamRanges, hourglassConstruction } from './editor-shape-lattice-generator.js';
 
 /** SE14 §3 Q5 ruling default, duplicated from properties-shape-lattice.
  *  js's own `_boardRegion` (small, pure, state-free — same "duplicate
@@ -58,6 +58,12 @@ export function boardRegion(editor) {
 export function computeParamHandles(preset, region, resolvedParams) {
   const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // SIL-RESOLVE (F5): a handle clamps to the generator's own DECLARED
+  // feasible range (conditional on the other resolved params), never a
+  // hand-copied bound (the old cornerRadius bound 0.95 - waistReach was the
+  // one that let the waist radius go negative).
+  const R = feasibleParamRanges(preset, region, resolvedParams);
+  const within = (key, v) => clamp(v, R[key].min, R[key].max);
 
   if (preset === 'bottle') {
     const { neckWidth, skeletonX, neckLength } = resolvedParams;
@@ -68,7 +74,7 @@ export function computeParamHandles(preset, region, resolvedParams) {
       {
         key: 'neckWidth', label: 'Neck width', axis: 'x',
         anchor: { x: cx0 + neckHalfW, y: cy0 + (-hh + neckCenterY) / 2 }, // midway down the top horn — off the neckLength handle, which sits AT the horn corner
-        valueFromWorld: (pt) => clamp((pt.x - cx0) / hw, 0.05, 0.85),
+        valueFromWorld: (pt) => within('neckWidth', (pt.x - cx0) / hw),
       },
       {
         // T74 AMEND 3 (Fred: "it needs to fill the box same as hourglass"):
@@ -77,39 +83,34 @@ export function computeParamHandles(preset, region, resolvedParams) {
         // body always spans the full half-width now, nothing left to drag.
         key: 'skeletonX', label: 'S-curve tightness', axis: 'x',
         anchor: { x: cx0 + skelX, y: cy0 + neckCenterY }, // the neck arc's own CENTER — pure horizontal move, same reasoning as hourglass's cornerRadius
-        valueFromWorld: (pt) => clamp((pt.x - cx0) / hw, neckWidth + (1 - neckWidth) * 0.15, neckWidth + (1 - neckWidth) * 0.85),
+        valueFromWorld: (pt) => within('skeletonX', (pt.x - cx0) / hw),
       },
       {
         key: 'neckLength', label: 'Shoulder height', axis: 'y',
         anchor: { x: cx0 + neckHalfW, y: cy0 + neckCenterY }, // the neck horn corner itself
-        valueFromWorld: (pt) => clamp((pt.y - region.y) / region.h, 0.08, 0.85),
+        valueFromWorld: (pt) => within('neckLength', (pt.y - region.y) / region.h),
       },
     ];
   }
 
   // hourglass (default).
-  const { waistReach, cornerRadius, waistCenterY } = resolvedParams;
-  const waistX = hw * (1 - waistReach);
-  const cornerRadiusAbs = hw * cornerRadius;
-  const skelX = hw - cornerRadiusAbs;
-  const waistCenterYAbs = hh * waistCenterY;
-  const radiusWaist = skelX - waistX;
-  const shoulderY = waistCenterYAbs - (cornerRadiusAbs + radiusWaist); // == waistCenterYAbs - hw + waistX (cornerRadius cancels — see module header)
+  const g = hourglassConstruction(region, resolvedParams); // the generator's own construction, not a copy
+  const waistX = g.waistX, waistCenterYAbs = g.waistCenterY, skelX = g.shoulderCx, shoulderY = g.shoulderY;
   return [
     {
       key: 'waistReach', label: 'Waist reach', axis: 'x',
-      anchor: { x: cx0 + waistX, y: cy0 + waistCenterYAbs }, // the waist arc's own deepest point (an exact semicircle, T55's own proven invariant)
-      valueFromWorld: (pt) => clamp(1 - (pt.x - cx0) / hw, 0.05, 0.92),
+      anchor: { x: cx0 + waistX, y: cy0 + waistCenterYAbs }, // the waist arc's own deepest point (the pinch)
+      valueFromWorld: (pt) => within('waistReach', 1 - (pt.x - cx0) / hw),
     },
     {
       key: 'cornerRadius', label: 'Corner radius', axis: 'x',
-      anchor: { x: cx0 + skelX, y: cy0 + shoulderY }, // the shoulder arc's own CENTER (see module header for why this is exactly horizontal)
-      valueFromWorld: (pt) => clamp((cx0 + hw - pt.x) / hw, 0.04, 0.95 - waistReach),
+      anchor: { x: cx0 + skelX, y: cy0 + shoulderY }, // the shoulder arc's own CENTER
+      valueFromWorld: (pt) => within('cornerRadius', (cx0 + hw - pt.x) / hw),
     },
     {
       key: 'waistCenterY', label: 'Waist position', axis: 'y',
       anchor: { x: cx0, y: cy0 + waistCenterYAbs }, // on the centerline (off the waistReach handle, which sits at the waistX apex)
-      valueFromWorld: (pt) => clamp((pt.y - cy0) / hh, -0.6, 0.6),
+      valueFromWorld: (pt) => within('waistCenterY', (pt.y - cy0) / hh),
     },
   ];
 }

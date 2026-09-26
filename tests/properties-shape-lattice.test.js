@@ -177,6 +177,7 @@ function fixtureHTML() {
     <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeContourWidth" type="number">
+    <div id="editorStatusHint"></div>
   `;
 }
 
@@ -248,6 +249,38 @@ describe('initShapeLatticeProperties: Shape section', () => {
     expect(activeLayerPattern(editor).shape.seed).toBe(seedBefore);
     const dAfter = editor._sketchLayer.children().find((e) => e.attr('d'))?.attr('d');
     expect(dAfter).not.toBe(dBefore);
+  });
+
+  it('SIL-RESOLVE (F5): slider min/max follow the declared feasible range and show the resolved value', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const set = async (id, v) => {
+      const el = document.getElementById(id); el.value = String(v); el.dispatchEvent(new Event('change')); await flush();
+    };
+    // A deep, off-centre waist leaves little vertical room: the corner-radius
+    // range shrinks below the static HTML max (0.6).
+    await set('shapeParam-waistCenterY', 0.6);
+    await set('shapeParam-waistReach', 0.9);
+    const cr = document.getElementById('shapeParam-cornerRadius');
+    expect(parseFloat(cr.max)).toBeLessThan(0.6);
+    expect(parseFloat(cr.max)).toBeGreaterThanOrEqual(parseFloat(cr.min));
+    expect(editor._shapeOutlineDefects).toEqual([]);
+  });
+
+  it('SIL-RESOLVE (F5): an outline that would loop is never drawn; the last valid one stays and the user is told', async () => {
+    initShapeLatticeProperties(editor);
+    document.getElementById('shapeReroll').click();
+    await flush();
+    const segEls = () => editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR)).map((e) => e.attr('d'));
+    const before = segEls();
+    const shape = activeLayerPattern(editor).shape;
+    // A user-styled shoulder kinked so far inward it crosses the other side.
+    shape.segments = shape.segments.map((s, i) => (i === 1 || i === 9 ? { style: 'kink', bulge: 40, dir: 'in', cornerRadius: 0, user: true } : s));
+    regenerateSilhouette(editor, activeLayerPattern(editor));
+    expect(editor._shapeOutlineDefects.map((d) => d.kind)).toContain('selfIntersection');
+    expect(segEls()).toEqual(before);
+    expect(document.getElementById('editorStatusHint').textContent).toMatch(/would loop/);
   });
 
   it('T73: regenerating updates the SAME per-segment elements in place (N segments, not a growing pile)', async () => {
