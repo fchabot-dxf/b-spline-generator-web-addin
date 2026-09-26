@@ -236,3 +236,117 @@ freshness failures). Full `npx vitest run`: **80 files / 1515 passed**. No Fusio
 **Hands off, respected:** `fb-app`, `editor-shape-lattice-generator.js`, `core/frame-record.js`,
 `editor-frame-profile.js`, `frame-mesh.js`, `main/frame-panel.js`, `parametric_engine.py`,
 `solid_coordinator.py`, and every seat-A file, were not touched.
+
+## 2026-09-26 — turn 10 — R5: FORMULA-FIELDS stage 3 (Lattice + Shape Lattice panels)
+
+**Cross-session note first:** mid-turn, another session (b1) also started as "worker" against this SAME main
+checkout (Fred started it, apparently meaning it for a different lane). It found my uncommitted R5 files,
+correctly held off touching them, and messaged me. Confirmed ownership, it stood down and moved to its own
+worktree (`b-spline-generator-web-addin-lane2`) with its own HANDOFF.md. Its `wait` had consumed turn 10 (the
+correction-only re-pass, harmless) and re-registered `.proc/worker.pid` to its own PID — reclaimed with
+`proc_health.py register --role worker` afterward. Nothing of mine was lost (nothing had been committed yet).
+
+### item 1 — SURVEY (facts, file:line)
+
+Both panels share ONE structure (properties-lattice.js for the box Lattice tool, properties-shape-lattice.js
+for the Shape Lattice tool — near-identical field sets, Shape Lattice adds Boundary/Contour):
+- **Immediate-effect fields** have their OWN `on(el, 'change', …)` listener that re-projects right away:
+  Size Width/Height (`sizeWidthEl`/`sizeHeightEl` -> `updateSize` -> `readFieldsIntoPattern()` ->
+  `generatePattern` -> ONE `pushState`, properties-lattice.js:496-516), the width steppers
+  (`wireWidthStepper`/`wireLinkedWidthStepper`, :428-445), and (Shape Lattice only) Contour Width
+  (`contourWidthEl`, properties-shape-lattice.js:1122-1130).
+- **Deferred fields** (rails count/every/offset, ties count/density/span/anchor/rail-snap/one-ended/min-
+  spacing) have NO individual listener at all — they're read ONLY inside `readFieldsIntoPattern()`
+  (properties-lattice.js:267-395), itself called from three places: Orientation flip, Size change, and the
+  Generate button click (:547-558). A formula typed into one of these and left uncommitted is exactly as
+  invisible to the pattern as a plain typed number is today — nothing reads `.value` until one of those three
+  triggers fires. **Verified this is safe, not a gap:** the browser commits a formula on BLUR (native
+  `change`), and blur already fires before a button's own `click` handler runs (standard DOM focus-change
+  order) — so clicking Generate right after typing a formula, with no explicit Enter, still commits first.
+  Covered by a dedicated test (`lattice-formula-fields.test.js`, "a formula in a DEFERRED field... commits...
+  but waits for Generate, same as typing").
+- **Per-layer, not global:** every field reads/writes the ACTIVE layer's own `.pattern`
+  (properties-lattice.js's private `_currentPattern`, exported as `currentPatternLattice`; properties-shape-
+  lattice.js's own exported `currentPattern`) — `attachFormula`'s scope-as-thunk contract (already in
+  core/formula-field.js since R1) is exactly what this needs: no new live-sync plumbing, the thunk just calls
+  the panel's own accessor at evaluation time, so switching the active layer or Regenerating is picked up for
+  free.
+- **The per-piece override width field** (UI5, now merged) lives in `lattice-piece-panel.js`, built via
+  runtime DOM creation (`mountSelectedPiecePanel`, shared by both panels — ONE `<input class="lattice-piece-
+  width">` per host panel, reused across different selected pieces via `refresh()`, never recreated) — a
+  natural single attach point.
+- **A real gotcha found and avoided:** `latticeTiesDensity`/`shapeLatticeTiesDensity` is `type="range"` (a
+  slider), not a number field — attaching a formula binder there would have been meaningless (a slider can't
+  display arbitrary typed text). Excluded, named explicitly in both panels' own comments, not silently skipped.
+
+### item 2 — DECLARED scope (`editor/lattice-formula-fields.js`, new)
+
+One shared scope function `latticeScope(editor, currentPattern, extra=[])`, called by BOTH panels with their
+own live accessor — one module, not two forked copies (same "shared, not forked" shape `lattice-piece-panel.js`
+already established for UI5). Names, ALL reading live off the pattern (never a snapshot):
+`width`/`height` (the REAL resolved boundary size — `sizedBoardRegion(boardRegion(editor), pattern.size)`,
+the SAME pure resolver the engine and the Shape Lattice panel already use, so it's never null even when the
+Size fields are unset/auto), `stroke`/`railwidth`/`tiewidth`/`nodewidth`, `spacing`/`minspacing`,
+`railcountmin`/`railcountmax`/`tiecountmin`/`tiecountmax`, `tiedensity`, `railevery`/`railoffset`.
+**Board vs. lattice names are unambiguous by construction:** this scope has NO `boardw`/`boardh` at all — the
+STOCK panel's own `main/formula-fields.js` scope (R1/R2) is a completely separate declaration on a completely
+separate binder call; a lattice field's formula can only ever see the lattice names above, never `width`/
+`height` in R1/R2's stock sense, and vice versa (confirmed by `tests/formula.test.js` continuing to pass
+unchanged).
+**Excluded, with the reason** (same discipline as R2's stock scope):
+- Seed (`latticeSeed`/`shapeLatticeSeed`) — an integer id the user rerolls, not a quantity, same reasoning as
+  R2's excluded SEED-panel Seed.
+- Node ends/crossings/rail-ends, all mode/anchor/end-rule controls — checkboxes/selects, not number inputs.
+- Ties Density (both panels) — a `type="range"` slider, see item 1's gotcha above.
+- Contour Width's own CURRENT value has no name (e.g. no `contourstroke`) — its declared default is `null`
+  ("auto"), and there's no single obvious fallback number to expose as a name without inventing a resolution
+  rule I couldn't verify; the field itself is still formula-capable over the base scope, just doesn't
+  contribute its OWN name back into it. Flagged rather than guessed.
+
+### item 3 — Fred's case: "a rail exactly on the boundary"
+
+**No field today expresses this, and a formula doesn't change that** — traced the actual math, not just the
+field's own units:
+- Rails have exactly two placement modes: `every`/`offset` (grid-ROW indices — `_isRailRow`/`_railRows`,
+  editor-lattice-pattern.js:635-648, `(row - offset) % every === 0`) or `count` (a seeded pick within a
+  [min,max] range, auto-distributed). Neither takes an absolute inch position for a single rail.
+- `_resolveExtent` (editor-lattice-pattern.js:1848-1872) computes `jMin`/`jMax` for the 'board' mode as
+  `toLattice(region.{y, y+h}, spacing)` — i.e. grid indices derived from the RESOLVED region (which depends on
+  the raw board size `editor._mW`/`_mH`, NOT exposed as a formula name) divided by `spacing`. So even knowing
+  `height` (the resolved boundary height, which IS exposed), computing the exact `offset` that lands a rail on
+  `jMax` requires the RAW board size too, plus reproducing `_resolveExtent`'s own floor/ceil rounding — not
+  something "I just math it out" can reasonably mean.
+- Conclusion, stated rather than built (per the dispatch's own permission): this is genuinely
+  RAIL-SPACING's job (ROADMAP.md "Queued — RAIL-SPACING... Rails: Anchor [Top|Center|Bottom] + Spacing...
+  laid out from the boundary") — the fact that Rails has no Anchor control at all today (unlike Ties, which
+  already has one) is itself evidence nobody built absolute-position placement for Rails yet. Formula support
+  makes every OTHER field in this panel more expressive; it doesn't retroactively give Rails a placement mode
+  that doesn't exist.
+
+### item 4 — Tests + real-browser proof
+
+- `tests/lattice-formula-fields.test.js` (new, 14 tests): `latticeScope`'s own live-read behaviour (including
+  the never-null width/height resolution and the `extra` list); the box Lattice panel (immediate field = one
+  pushState + existing handler runs; a deferred field commits to a plain number but waits for Generate; range
+  clamp holds on a lattice field; a bad formula keeps the old value; the SAME scope thunk re-reads FRESH values
+  after the pattern changes underneath it — no stale snapshot; still works after switching the active layer,
+  SE7i); the Shape Lattice panel (Size Width over the same scope shape; Contour Width formula-capable); the
+  per-piece override width field (formula-capable when a scope is supplied; mounting with no scope, the old
+  call shape, never crashes and leaves it a plain number field — backward compatible).
+- `tools/repro/formula_field_shots.mjs` extended with a THIRD section: opens the SVG editor
+  (`#btnStampEdit`), switches to the Lattice tool, types `width*2` into Size Width, screenshots the live
+  preview (`= 16`), commits, and reads the value back from `window.svgEditor`'s own active-layer
+  `pattern.size.width` — `ok:true` on BOTH desktop and mobile, zero console errors.
+- `node tools/repro/select_drag_shape.mjs` rerun against the LOCAL build (not the deployed URL, so it actually
+  exercises this turn's edits) — **ALL CHECKS PASSED**, both lattice types: snap-to-spacing, ties-follow-rail,
+  end-stretch, the T73 contour clamp, and item 5's contour-anchored tie-end/node coincidence. Confirms
+  switching `type="number"` -> `type="text"` on the sidebar fields never touched canvas drag behaviour (the
+  two are unrelated code paths; verified rather than assumed — grepped for `.valueAsNumber`, which would have
+  broken on a text input, zero uses in this codebase).
+
+**Gate:** `npx vitest run`: **81 files / 1529 passed** (was 80/1515 before this turn). No Fusion.
+
+**Hands off, respected:** no edits to `editor-shape-lattice-interaction.js` (imported `boardRegion` from it,
+read-only) or `frame-builder/`; `properties-shape-lattice.js`'s own edit is exactly two additive blocks (an
+import line + the attach call at the end of `initShapeLatticeProperties`), no restructuring, matching the
+dispatch's "keep it small" instruction for that file.
