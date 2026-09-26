@@ -26,7 +26,7 @@ import {
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, primitiveToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
-import { insetRegionForContour } from './editor-lattice-boundary.js';
+import { insetRegionForContour, CONTOUR_STROKE_STYLE } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
@@ -223,7 +223,7 @@ export function regenerateSilhouette(editor, p) {
         return editor._sketchLayer
             .path(d)
             .fill('none')
-            .stroke({ linecap: 'round' })
+            .stroke(CONTOUR_STROKE_STYLE)
             .attr('data-layer', layerId)
             .attr(CONTOUR_SEG_INDEX_ATTR, i);
     });

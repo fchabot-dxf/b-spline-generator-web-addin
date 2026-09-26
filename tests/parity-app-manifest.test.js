@@ -53,6 +53,8 @@ function makeMockEditor(mW, mH) {
         if (typeof v === 'object' && v !== null) {
           if ('color' in v) store.stroke = v.color;
           if ('width' in v) store['stroke-width'] = v.width;
+          if ('linecap' in v) store['stroke-linecap'] = v.linecap;
+          if ('linejoin' in v) store['stroke-linejoin'] = v.linejoin;
         }
         return elObj;
       },
@@ -380,5 +382,40 @@ describe('parity: T73 AMEND 2 -- the VISIBLE contour segments (not just the opti
       expect(seg.attr('stroke-width')).toBe(strokeWidthParam.value);
       expect(seg.attr('stroke-width')).not.toBeCloseTo(0.02, 6); // non-vacuous: not the old fixed hairline
     }
+  });
+});
+
+describe('parity: T73 AMEND 4 -- every drawn contour element (SE14b segments AND the Border clone) uses round caps/joins, never a sharp/mitred corner', () => {
+  it('every contour segment carries stroke-linecap=round, stroke-linejoin=round', () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    regenerateSilhouette(editor, pattern);
+    const segEls = editor._sketchLayer.children().toArray().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(segEls.length).toBeGreaterThan(0); // non-vacuous
+    for (const seg of segEls) {
+      expect(seg.attr('stroke-linecap')).toBe('round');
+      expect(seg.attr('stroke-linejoin')).toBe('round');
+    }
+  });
+
+  it('the Border clone (a single combined closed-loop path, where a sharp miter join would actually show) also carries stroke-linecap=round, stroke-linejoin=round', async () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      widths: { ...PATTERN_DEFAULTS.widths, rails: 0.5, ties: 0.5 },
+      boundary: { ...PATTERN_DEFAULTS.boundary, border: { enabled: true, width: null, color: null } },
+    };
+    regenerateSilhouette(editor, pattern);
+    await generatePattern(editor, pattern);
+    const border = editor._sketchLayer.children().toArray().find((e) => e.attr('data-lattice') === 'border');
+    expect(border).toBeDefined(); // non-vacuous
+    expect(border.attr('stroke-linecap')).toBe('round');
+    expect(border.attr('stroke-linejoin')).toBe('round');
   });
 });

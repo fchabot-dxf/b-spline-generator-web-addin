@@ -55,6 +55,25 @@ const TAU = Math.PI * 2;
  *  declared number from a neutral home instead. */
 export const SILHOUETTE_STROKE_WIDTH = 0.02;
 
+/** T73 AMEND 4 (Fred, live screenshot: "these corners need to be rounded
+ *  since they are slots"): every drawn contour element's own stroke
+ *  style — declared HERE, ONCE (the same neutral, DOM-free home
+ *  SILHOUETTE_STROKE_WIDTH/CONTOUR_SIZE_INSET_IN already use), so
+ *  `regenerateSilhouette`'s own per-segment elements (properties-shape-
+ *  lattice.js) and the Border clone (editor-lattice-pattern.js's own
+ *  Border-piece emission — a SINGLE combined closed-loop path, unlike the
+ *  per-segment elements, so its own INTERNAL joints are exactly where a
+ *  default miter join would look sharp/pointed on a thick stroke) never
+ *  drift into two different corner styles. `linecap` matters for the
+ *  per-segment elements' own open ends (a gap between two adjacent
+ *  segments, still touching, reads as a smooth round tip rather than a
+ *  flat one); `linejoin` matters for the Border clone's own internal
+ *  vertices — applying BOTH everywhere is harmless where one is a no-op
+ *  (a lone-primitive path has no internal joint to round) and keeps this
+ *  a single declared style, not "which one applies where" case analysis
+ *  at each call site. */
+export const CONTOUR_STROKE_STYLE = { linecap: 'round', linejoin: 'round' };
+
 /** T71 (SE15 T69-fix-3, Fred: "W and H is good" + AMEND 13's own final
  *  margin value): the Shape Lattice contour's own overall size is the
  *  board minus a fixed 1in margin (0.5in inset per side, centred) —

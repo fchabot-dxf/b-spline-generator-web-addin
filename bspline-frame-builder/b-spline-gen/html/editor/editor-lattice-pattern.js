@@ -39,7 +39,7 @@ import { lcgPoints } from '../core/terrain.js';
 // defers to "Slice 3's own live-wiring caller".
 import {
   insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives,
-  insetGeneratedPresetPathDToPrimitives,
+  insetGeneratedPresetPathDToPrimitives, CONTOUR_STROKE_STYLE,
 } from './editor-lattice-boundary.js';
 // T73 (SE14b): the per-primitive <-> combined-d conversions the contour's
 // OWN N-segment rendering (properties-shape-lattice.js) and this file's
@@ -1866,7 +1866,12 @@ export async function generatePattern(editor, PATTERN) {
     clone.attr('data-layer', targetLayer);
     clone.attr(LATTICE_ATTR, 'border');
     clone.fill('none');
-    clone.stroke({ color: borderColor, width: borderWidth });
+    // T73 AMEND 4 (Fred: "these corners need to be rounded since they are
+    // slots"): the Border clone is ONE combined closed-loop path (unlike
+    // the per-segment contour elements) — its own internal joints are
+    // exactly where a default miter join looks sharp/pointed on a thick
+    // stroke, so CONTOUR_STROKE_STYLE's linejoin genuinely matters here.
+    clone.stroke({ ...CONTOUR_STROKE_STYLE, color: borderColor, width: borderWidth });
     clone.attr(OWNERSHIP_ATTR, PATTERN.id);
     if (boundaryEls.length <= 1) editor._sketchLayer.add(clone); // .path() above already lives in the layer; .clone() doesn't yet
   }
