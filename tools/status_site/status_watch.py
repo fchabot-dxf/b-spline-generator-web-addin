@@ -10,18 +10,16 @@ Run:  python tools/status_site/status_watch.py          (loop, every 60 s)
 Env:  CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID from the repo's .env
       (never printed). Project: STATUS_PROJECT below.
 """
-import hashlib, html, os, re, shutil, subprocess, sys, time
+import hashlib, html, json, os, re, shutil, subprocess, sys, time
 from datetime import datetime
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SEATS = [  # declared: which checkout is which seat, and its task file (checklist = progress)
-    {"name": "Seat A", "key": "seatA", "path": ROOT, "branch": "main", "task": "NEXT-SESSION.md"},
-    {"name": "Seat B", "key": "seatB", "path": ROOT + "-lane-b", "branch": "lane-b", "task": "NEXT-SESSION-lane-b.md"},
-    {"name": "Seat C", "key": "seatC", "path": ROOT + "-fb-app", "branch": "fb-app", "task": "NEXT-SESSION-fb-app.md"},
-    # remote seat: its checkout is on another machine, so everything is read from origin (its HANDOFF.md never leaves it)
-    {"name": "Asus (reg-addin)", "key": "asus", "path": None, "branch": "main", "task": "NEXT-SESSION-reg-addin.md",
-     "commits": r"^(R\d|docs\(reg-addin\))"},
-]
+# Declared seats (tools/status_site/seats.json): each names its STATION. Seats on this watcher's own station are read
+# from their local checkout; seats on another station from origin (their HANDOFF.md never leaves that machine).
+STATION = os.environ.get("BSPLINE_STATION", "home-pc")
+_SEATS_DOC = json.load(open(os.path.join(os.path.dirname(__file__), "seats.json"), encoding="utf-8"))
+STATIONS = _SEATS_DOC["stations"]
+SEATS = [{**s, "path": (ROOT + s.get("checkout", "")) if s["station"] == STATION else None} for s in _SEATS_DOC["seats"]]
 
 
 def _checklist(path, task, branch):
@@ -54,7 +52,7 @@ def _remote_state(s):
     last = next((l for l in _git(ROOT, "log", "--format=%cr|%s", "-100", "origin/" + s["branch"]).splitlines()
                  if re.match(s["commits"], l.split("|", 1)[1])), "")
     when, subj = (last.split("|", 1) + [""])[:2] if last else ("", "")
-    return {"turn": "-", "who": "remote (Asus)", "note": (ball.group(1).strip() if ball else "") +
+    return {"turn": "-", "who": "remote (" + STATIONS.get(s["station"], s["station"]) + ")", "note": (ball.group(1).strip() if ball else "") +
             (f"  | last: {subj}" if subj else ""), "updated": when}
 
 
@@ -149,13 +147,16 @@ def render(seats, commits, roadmap):
         pct = round(100 * done / total)
         return (f'<div class="bar"><div class="track"><div class="fill" style="width:{pct}%"></div></div>'
                 f'<span class="lbl">{e(label)} {done}/{total} · {pct}%</span></div>')
-    cards = "".join(
+    card = lambda s: (
         f'<section class="seat"><h2>{e(s["name"])} <small>{e(s["branch"])} · turn {e(s["turn"])}</small></h2>'
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
         + ('<div class="shots">' + "".join(f'<img class="thumb" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for x in s["shots"]) + "</div>" if s["shots"] else "")
-        + '</section>' for s in seats)
+        + '</section>')
+    cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
+                    + "".join(card(s) for s in seats if s["station"] == st) + "</div>"
+                    for st in STATIONS if any(s["station"] == st for s in seats))
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
     com = "".join(f'<details><summary>Commits — {e(b)} ({len(cs)})</summary><ul class="c">' + "".join(
@@ -178,7 +179,7 @@ dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cu
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
-<div class="grid">{cards}</div>{com}
+{cards}{com}
 <dialog id="lb"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></dialog>
 <script>
 const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');

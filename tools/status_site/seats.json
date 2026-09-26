@@ -1,0 +1,41 @@
+{
+  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change.",
+  "stations": {
+    "home-pc": "Home PC",
+    "asus": "Asus"
+  },
+  "seats": [
+    {
+      "key": "seatA",
+      "name": "Seat A",
+      "station": "home-pc",
+      "branch": "main",
+      "task": "NEXT-SESSION.md",
+      "checkout": ""
+    },
+    {
+      "key": "seatB",
+      "name": "Seat B",
+      "station": "home-pc",
+      "branch": "lane-b",
+      "task": "NEXT-SESSION-lane-b.md",
+      "checkout": "-lane-b"
+    },
+    {
+      "key": "seatC",
+      "name": "Seat C",
+      "station": "home-pc",
+      "branch": "fb-app",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-fb-app"
+    },
+    {
+      "key": "asus",
+      "name": "Reg-addin",
+      "station": "asus",
+      "branch": "main",
+      "task": "NEXT-SESSION-reg-addin.md",
+      "commits": "^(R\\d|docs\\(reg-addin\\))"
+    }
+  ]
+}
