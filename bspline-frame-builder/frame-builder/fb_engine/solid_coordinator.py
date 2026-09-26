@@ -7,6 +7,7 @@ from fb_engine.appearance_manager import AppearanceManager, APPEARANCE_PRESETS
 from fb_engine.appearance_strategy import AppearanceStrategy, DefaultAppearanceStrategy
 from fb_engine.document_discovery import DocumentDiscovery
 from fb_engine.extrusion_engine import ExtrusionEngine
+from fb_engine import timeline_order
 
 # --- VERSION STAMP (Diagnostic) ---
 FB_VERSION = "4.07.B"
@@ -151,6 +152,13 @@ class SolidCoordinator:
             self.appearance_strategy.finish(bodies, self.appearance_name, original_app)
 
             self.log.log(f"Finishing Phase: {time.time() - t_finish:.2f}s")
+
+            # 6. FB-ORDER: the extrudes + TRIM_CUT above were appended at the
+            # END of the timeline, i.e. after the inlay. Re-run the same
+            # reorder the sketch build ends with, so the whole frame block
+            # sits before the inlay (measured live in F2: without this they
+            # stayed after it).
+            timeline_order.ensure_frame_before_inlay(self.design, comp.name, self.log)
             self.log.log(f"SOLID SYNTHESIS FINISHED OK (Total: {time.time() - start_time:.2f}s)")
 
         except Exception:

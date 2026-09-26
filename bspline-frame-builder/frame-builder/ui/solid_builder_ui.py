@@ -25,6 +25,7 @@ from palette_scaffold import PaletteSpec, _PaletteBridgeMixin, make_palette
 # Modular imports - initialized by the Entry Point (bspline-frame-builder.py)
 frame_engine = None
 from fb_engine import solid_coordinator
+from fb_engine.frame_definition import DEFAULT_APPEARANCE, DEFAULT_FRAME_BOTTOM_EXPR
 
 # Standard Logger setup
 try:
@@ -156,8 +157,8 @@ def _build_fn(data, ctx):
 
         solid_coordinator.build_solid_logic_v3(
             to_face=data.get('to_face'),
-            start_offset_expr=data.get('offset', '-1 in'),
-            appearance_name=data.get('appearance', 'Polished Chrome'),
+            start_offset_expr=data.get('offset', DEFAULT_FRAME_BOTTOM_EXPR),
+            appearance_name=data.get('appearance', DEFAULT_APPEARANCE),
             external_logger=ctx.diag_logger
         )
         ctx.set_status("Solid frame complete")

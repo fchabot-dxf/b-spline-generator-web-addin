@@ -1,5 +1,10 @@
 # Template 1 - Hourglass — 18-Step Linear Construction
 
+> **STALE (FB-APP S0, 2026-09-26).** This page describes the retired build: `p14_drivers` and the
+> span/radius sliders (`ShoulderSpan`, `WaistSpan`, `ShoulderRadius`, …) no longer exist. The source of
+> truth is the phase files in this folder (`ls pNN_MM_*.py`) and each block's own docstring. Read those,
+> not this page.
+
 The Frame Builder Template 1 - Hourglass uses a **Multi-Sketch Sequence** to ensure maximum stability and modularity. The build progresses through 18 global phases across three distinct Fusion 360 sketches.
 
 ---

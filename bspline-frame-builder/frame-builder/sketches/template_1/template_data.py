@@ -1,6 +1,7 @@
 import os
 
 from template_loader import TemplateLoader
+from fb_engine.frame_definition import COMMON_FRAME_FEATURES
 
 # Per-template loader instance. State (caches, folder path) lives on the
 # instance so two templates can never share caches or step on each
@@ -82,6 +83,25 @@ SKETCH_3_PARAMETERS = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# FB-APP S1: this template's frame declaration, read by
+# fb_engine.frame_definition.build_frame_defs -> frame-defs.json (the app) and,
+# from S6, by the extruder. Region ids are the ones this template's own
+# p03_* phases create; test_frame_defs.py fails if any id is missing from the
+# blocks (so a renamed curve goes red before Fusion ever runs).
+# ---------------------------------------------------------------------------
+FRAME_SILHOUETTE_PRESET = "hourglass"   # the app's editor-shape-lattice-generator PRESETS key
+_OUTLINE = ['proj_top_edge', 'proj_horn_TR', 'proj_arc_shoulder_R', 'proj_arc_waist_R', 'proj_arc_hip_R', 'proj_horn_BR', 'proj_bottom_edge', 'proj_horn_BL', 'proj_arc_hip_L', 'proj_arc_waist_L', 'proj_arc_shoulder_L', 'proj_horn_TL']
+FRAME_REGIONS = {
+    "outline": _OUTLINE,                                   # p03_02 SourceID
+    "inner": ["inner_" + i for i in _OUTLINE],             # p03_02 TargetIDs
+    "miters": [[f"{c}:S", f"inner_{c}:S"] for c in     # p03_04 Source -> Target
+               ("proj_top_edge", "proj_horn_TR", "proj_bottom_edge", "proj_horn_BL")],
+    "surround": "surround_rect",                           # p03_05
+}
+FRAME_FEATURES = COMMON_FRAME_FEATURES
+
+
 def get_template_logic(ui_data=None):
     """
     Returns the parametric logic for Template 1.
@@ -112,4 +132,9 @@ def get_template_logic(ui_data=None):
         "Name": TEMPLATE_NAME,
         "Description": TEMPLATE_DESCRIPTION,
         "Sketches": [s1, s2, s3],
+        "Frame": {
+            "silhouettePreset": FRAME_SILHOUETTE_PRESET,
+            "regions": FRAME_REGIONS,
+            "features": [dict(f) for f in FRAME_FEATURES],
+        },
     }

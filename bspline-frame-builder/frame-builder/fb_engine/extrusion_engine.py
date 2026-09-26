@@ -12,6 +12,7 @@ Profile classification (BAR / SURROUND / VOID) lives in
 core gets vandalized -- sort order is enforced in ``_collect_profiles``.
 """
 import adsk.core, adsk.fusion, traceback
+from fb_engine.timeline_order import FRAME_MEMBER_ATTR
 
 
 # Treat any of these spellings as "no start offset". Fusion accepts
@@ -56,7 +57,7 @@ class ExtrusionEngine:
         new_bodies = []
         for prof, ctype, i in to_process:
             new_bodies.extend(
-                self._extrude_one_profile(extrudes, prof, ctype, i, prefix, to_def, start_def)
+                self._extrude_one_profile(extrudes, prof, ctype, i, prefix, to_def, start_def, comp.name)
             )
         return new_bodies
 
@@ -111,7 +112,7 @@ class ExtrusionEngine:
     # ------------------------------------------------------------------
     # Phase 3 -- single-profile extrusion
     # ------------------------------------------------------------------
-    def _extrude_one_profile(self, extrudes, prof, ctype, i, prefix, to_def, start_def):
+    def _extrude_one_profile(self, extrudes, prof, ctype, i, prefix, to_def, start_def, frame_comp_name=None):
         """Build one extrude feature (BAR or SURROUND), name it,
         clean up its faces, and return any new bodies.
 
@@ -164,16 +165,25 @@ class ExtrusionEngine:
                 f"bodies={feat.bodies.count} faces={feat.faces.count}"
             )
 
-            return self._finalize_feature(feat, prof, ctype, i, prefix)
+            return self._finalize_feature(feat, prof, ctype, i, prefix, frame_comp_name)
 
         except Exception as e:
             self.log.log(f"    EXTRUDE FAIL {i}: {e}", "ERROR")
             return []
 
-    def _finalize_feature(self, feat, prof, ctype, i, prefix):
-        """Apply post-extrusion housekeeping: feature name, body name,
-        and (for SURROUND) face appearance cleanup. Returns the bodies
-        the caller should accumulate."""
+    def _finalize_feature(self, feat, prof, ctype, i, prefix, frame_comp_name=None):
+        """Apply post-extrusion housekeeping: frame-membership stamp,
+        feature name, body name, and (for SURROUND) face appearance
+        cleanup. Returns the bodies the caller should accumulate."""
+        # Declared frame membership (timeline_order.FRAME_MEMBER_ATTR) on
+        # EVERY feature, BAR and SURROUND alike — FB-ORDER reads it. The
+        # SURROUND cut lives in the component of the body it cuts
+        # ('Clean', measured live), so ownership alone can't find it.
+        if frame_comp_name:
+            try:
+                feat.attributes.add(FRAME_MEMBER_ATTR[0], FRAME_MEMBER_ATTR[1], frame_comp_name)
+            except Exception as e:
+                self.log.log(f"    FRAME TAG FAIL {i}: {e}", "WARNING")
         if ctype == "BAR":
             label = self._profile_label(prof, i)
             name_full = f"frame_{label.lower()}"

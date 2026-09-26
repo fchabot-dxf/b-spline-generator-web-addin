@@ -4,17 +4,12 @@ Isolates the finicky search and assignment logic from the geometric engine.
 """
 import adsk.core, adsk.fusion, traceback
 
-# Preset appearances the UI dropdown will offer (Synchronized with Fusion 360 Library Names)
-APPEARANCE_PRESETS = [
-    # ── 3D Hardwoods (Downloaded) ────────────────────────────────────
-    "3D Ash - Unfinished",
-    "3D Maple - Unfinished",
-    "3D Pine - Unfinished",
-    # ── Standard finishes ────────────────────────────────────────────
-    "Paint - Enamel Glossy (White)",
-    "Aluminum",
-    "Brass",
-]
+# The appearances a frame can take: ONE declaration (FB-APP, Fred Q4), in
+# fb_engine.frame_definition. It was a separate list here (Ash / Maple / Pine
+# + Enamel / Aluminum / Brass) that nothing read, and it had drifted from the
+# palette's own 5 woods.
+from fb_engine.frame_definition import APPEARANCE_OPTIONS, DEFAULT_APPEARANCE  # noqa: E402
+APPEARANCE_PRESETS = list(APPEARANCE_OPTIONS)
 
 # Generic appearance names that indicate Fusion's default materials, not
 # a user's intentional finish. The capture path treats these as "needs

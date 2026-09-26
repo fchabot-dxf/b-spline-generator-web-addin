@@ -28,7 +28,7 @@ try:
         get_template_spec,
     )
     from fb_engine.document_discovery import DocumentDiscovery
-    from fb_engine.timeline_order import reorder_frame_before_inlay_in_design
+    from fb_engine.timeline_order import ensure_frame_before_inlay
     from fb_utils import fb_logger
     logger = fb_logger.DebugLogger(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     importlib.reload(parameter_schema)
@@ -196,9 +196,7 @@ class FrameBuilder:
             # this DOES vs. what "NO FUSION" leaves for the advisor to
             # verify live).
             if frame_comp:
-                result = reorder_frame_before_inlay_in_design(self.design, frame_comp.name, self.logger)
-                if not result["moved"] and result["reason"] not in ("no inlay present", "already in order"):
-                    self.logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
+                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger)
         except Exception as e:
             self.logger.log_error(f"CRASH in run_sketch_only: {e}")
             self.logger.log_error(traceback.format_exc())
@@ -233,9 +231,7 @@ class FrameBuilder:
             # so the moved block includes everything full synthesis just
             # built from the frame, not only its sketches.
             if frame_comp:
-                result = reorder_frame_before_inlay_in_design(self.design, frame_comp.name, self.logger)
-                if not result["moved"] and result["reason"] not in ("no inlay present", "already in order"):
-                    self.logger.log(f"FB-ORDER: frame NOT reordered before inlay — {result['reason']}", "WARNING")
+                ensure_frame_before_inlay(self.design, frame_comp.name, self.logger)
         except Exception as e:
             self.logger.log_error(f"CRASH in run_full_synthesis: {e}")
             self.logger.log_error(traceback.format_exc())
@@ -273,20 +269,17 @@ class FrameBuilder:
             self.logger.log("Skeletal parameter abort: No resolver", "ERROR")
             return
 
-        # 1. Base Requirements (Frame Architecture)
-        # Unit defaults flow through ParameterSchema so this site, the
-        # parametric_engine UI sync, and the sketch_builder_ui param sync
-        # all share one source of truth.
-        requirements = self.resolver.get_base_frame_requirements()
-        for name, val in requirements.items():
-            existing = self.user_params.itemByName(name)
-            if not existing:
-                unit = ParameterSchema.default_unit(name)
-                self.user_params.add(name, adsk.core.ValueInput.createByReal(val), unit, 'Frame Builder Requirement')
-            else:
-                existing.value = val
+        # FB-APP S0: the template's own SKETCH_N_PARAMETERS are the ONE
+        # declaration of every frame param (frame_thickness,
+        # boundingboxoffset, ...). The former hard-coded "base
+        # requirements" duplicated two of them (and re-wrote
+        # frame_thickness to -1.905 cm on every build before the template
+        # overwrote it) and created two params nothing read
+        # (Skel_Slot_Tolerance, Skel_Frame_Taper) — removed.
+        # test_board_params_ownership.py guards that every template
+        # declares the params the engine's phases reference.
 
-        # 2. Template-Specific Parameter Initialization (DNA Sync)
+        # Template-Specific Parameter Initialization (DNA Sync)
         # NOTE: ReadOnly parameters (e.g. widthIn, heightIn) are owned by the bspline add-in
         # and must never be written here — they are only referenced as Fusion expressions.
         template, _ = _resolve_template(style_id, ui_data)
