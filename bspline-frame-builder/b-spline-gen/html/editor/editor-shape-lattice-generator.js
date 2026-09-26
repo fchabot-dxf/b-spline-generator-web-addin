@@ -78,6 +78,25 @@ export const WIRED_STYLES = ['straight', 'curve', 'kink'];
  * randomization, since the shape's TOPOLOGY here is fixed by the preset,
  * only its proportions vary).
  */
+// T74 AMEND 0 (advisor, measured live in Fusion on 847f289: the bottle
+// spawned 0.45in off): `widthExpr` is the manifest's own contour_width
+// Distance dim's DRIVING expression — declared HERE, per preset, rather
+// than an if/else keyed by preset name in the manifest producer, so a
+// future preset's own author states its shape's true measured width
+// right alongside the params that determine it, not in a second,
+// separately-maintained lookup elsewhere. Written in this module's OWN
+// camelCase param names (`bodyWidth`, matching `params` above exactly) —
+// editor-sketch-manifest.js translates each token to its Fusion name
+// (PARAM_FUSION_NAMES, the SAME translation `parameters` itself already
+// gets) at the one place that boundary crossing already happens, not
+// duplicated here. A bare 'contour_width' (no multiplier) is exact for
+// the hourglass: its own body already touches the FULL contour width
+// unconditionally (no width-fraction param exists for it). The bottle's
+// own body sits at `bodyWidth * half_width` (`_solveBottle`'s own
+// formula — `bodyWidth` a genuine 0..1 fraction, never necessarily 1), so
+// its expression must include that same factor or Fusion stretches the
+// body straight out to the full contour_width regardless of the shape's
+// own intended proportions.
 export const PRESETS = {
   hourglass: {
     label: 'Hourglass',
@@ -87,6 +106,7 @@ export const PRESETS = {
       waistCenterY: 0, // -1..1: vertical position of the pinch, fraction of halfH (0 = region's own center)
     },
     jitter: { waistReach: 0.08, cornerRadius: 0.05, waistCenterY: 0.08 },
+    widthExpr: 'contour_width',
   },
   bottle: {
     label: 'Bottle',
@@ -97,6 +117,7 @@ export const PRESETS = {
       neckLength: 0.32, // 0-1: how far down the straight neck run extends before the S-curve, fraction of halfH
     },
     jitter: { neckWidth: 0.06, bodyWidth: 0.04, skeletonX: 0.05, neckLength: 0.06 },
+    widthExpr: 'contour_width * bodyWidth',
   },
 };
 
@@ -536,5 +557,63 @@ export function primitivesToPathD(primitives) {
     }
   }
   if (started) parts.push('Z');
+  return parts.join(' ');
+}
+
+/**
+ * T73 (SE14b): ONE primitive's own SELF-CONTAINED, OPEN `d` string — its
+ * own `M` start, then a single `L`/`A` command, NEVER a trailing `Z`.
+ * `primitivesToPathD` above can't be reused for a single-primitive call:
+ * it unconditionally appends `Z` once `started` is true, which for
+ * an `'L'` re-traces the same 2-point line back onto itself (harmless but
+ * redundant) and for an `'A'` draws a spurious straight chord across the
+ * arc's own two endpoints — visibly wrong for what's supposed to be an
+ * OPEN curve. Used to draw the contour as N independent per-segment
+ * elements (one call per primitive) rather than one combined closed path
+ * — each element's own `d` is exactly what a caller re-deriving the
+ * combined boundary (editor-lattice-pattern.js's own multi-element
+ * `_resolveBoundaryPrimitives`) can concatenate back into one closed loop,
+ * by simply joining every element's own commands and appending ONE
+ * trailing `Z` at the very end — never re-deriving the geometry a second
+ * way.
+ */
+export function primitiveToPathD(prim) {
+  if (prim.type === 'L') {
+    return `M ${_fmt(prim.p0.x)} ${_fmt(prim.p0.y)} L ${_fmt(prim.p1.x)} ${_fmt(prim.p1.y)}`;
+  }
+  if (prim.type === 'A') {
+    if (prim.rx <= 0 || prim.ry <= 0) return ''; // same defensive floor as primitivesToPathD
+    const p0 = _arcPointAt(prim, prim.theta1);
+    const p1 = _arcPointAt(prim, prim.theta1 + prim.dTheta);
+    const largeArc = Math.abs(prim.dTheta) > Math.PI ? 1 : 0;
+    const sweep = prim.dTheta > 0 ? 1 : 0;
+    const phiDeg = (prim.phi * 180) / Math.PI;
+    return `M ${_fmt(p0.x)} ${_fmt(p0.y)} A ${_fmt(prim.rx)} ${_fmt(prim.ry)} ${_fmt(phiDeg)} ${largeArc} ${sweep} ${_fmt(p1.x)} ${_fmt(p1.y)}`;
+  }
+  return '';
+}
+
+/**
+ * T73: the exact inverse of splitting a silhouette into N per-primitive
+ * `primitiveToPathD` strings — joins them back into ONE closed-loop `d`,
+ * in primitive order. Each input string is its own self-contained
+ * `M ... L|A ...` (never a `Z`, per `primitiveToPathD`'s own contract) —
+ * every one AFTER the first has its own leading `M x y` stripped (the
+ * SAME coordinate the previous segment's own command already ended at,
+ * by construction — the Coincident joint chain every adjacent pair of
+ * silhouette primitives already shares), then one trailing `Z` closes the
+ * whole loop. Lets `_resolveBoundaryPrimitives` (editor-lattice-
+ * pattern.js) re-derive the SAME combined boundary
+ * `insetPathDToPrimitives`/`insetGeneratedPresetPathDToPrimitives` already
+ * know how to inset, from N live per-segment elements instead of one.
+ */
+export function joinSegmentPathsIntoClosedD(dStrings) {
+  const nonEmpty = dStrings.filter(Boolean);
+  if (!nonEmpty.length) return '';
+  const parts = [nonEmpty[0]];
+  for (let i = 1; i < nonEmpty.length; i++) {
+    parts.push(nonEmpty[i].replace(/^M\s+-?[\d.]+\s+-?[\d.]+\s+/, ''));
+  }
+  parts.push('Z');
   return parts.join(' ');
 }

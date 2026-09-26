@@ -37,7 +37,16 @@ import { lcgPoints } from '../core/terrain.js';
 // element (see BOUNDARY_REF_ATTR below) — the ONE place in this codebase
 // that actually does the async DOM lookup _resolveExtent's own doc comment
 // defers to "Slice 3's own live-wiring caller".
-import { insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives } from './editor-lattice-boundary.js';
+import {
+  insideSpans, primitivesBBox, collinearSpans, shapeToInnerBoundaryPrimitives, shapeToPrimitives,
+  insetGeneratedPresetPathDToPrimitives, primitiveHitAt,
+} from './editor-lattice-boundary.js';
+// T73 (SE14b): the per-primitive <-> combined-d conversions the contour's
+// OWN N-segment rendering (properties-shape-lattice.js) and this file's
+// own multi-element boundary resolution (_resolveBoundaryPrimitives,
+// below) both need — a LEAF module (no import of this file, or anything
+// that imports it), so no circular-dependency risk pulling it in here.
+import { joinSegmentPathsIntoClosedD } from './editor-shape-lattice-generator.js';
 
 // SE7k: `constrain` (direction-guessing) was removed from editor-lattice.js
 // — this file never called it (only re-exported it), and nothing imports
@@ -83,63 +92,101 @@ export function hasGeneratedSilhouette(pattern) {
   return !!(pattern.shape && pattern.shape.source === 'generated' && pattern.extent && pattern.extent.mode === 'boundary');
 }
 
-/** T49: find the live element a PATTERN.boundary.shapeId links to, on
- *  ANY visible layer (a boundary shape need not live on the SAME layer
+/** T73 AMEND 3 (Fred: "I need rails to coincide to contour"): true exactly
+ *  when a Shape Lattice's rail/tie ends must reach the contour's own RAW
+ *  centerline (zero inset), rather than stopping short by the contour's
+ *  own half-stroke-width — i.e. a generated silhouette whose contour is
+ *  actually shown (SE14c's checkbox). "When the contour checkbox is OFF,
+ *  keep today's behaviour" (the amend's own words) is exactly `false`
+ *  here, unconditionally, regardless of any Border-feature width setting
+ *  (Border is a separate, optional decorative clone — irrelevant to where
+ *  rails/ties end). Declared once; both `_resolveBoundaryPrimitives`
+ *  below (the app's own drawing) and `shapeHalfInset` (editor-sketch-
+ *  manifest.js, the SAME clip boundary for the manifest) import this, so
+ *  neither can drift from the other. */
+export function usesContourCenterline(pattern) {
+  if (!hasGeneratedSilhouette(pattern)) return false;
+  return ({ ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) }).show !== false;
+}
+
+/** T73 (SE14b): the per-segment element's own index within its contour —
+ *  a new, second attribute alongside BOUNDARY_REF_ATTR (which N sibling
+ *  elements now all share the SAME value of) so `_findBoundaryElements`
+ *  below can return them in the CORRECT connectivity order (DOM child
+ *  order is not guaranteed to match — a color-picker's own `.clone()`
+ *  path, or a future re-ordering, could disturb it) and so a color-write
+ *  can map "this clicked element" back to "this `shape.segments[i]`". */
+export const CONTOUR_SEG_INDEX_ATTR = 'data-contour-seg';
+
+/** T49/T73: find every live element a PATTERN.boundary.shapeId links to,
+ *  on ANY visible layer (a boundary shape need not live on the SAME layer
  *  the Lattice pattern itself generates into — same "anyVisibleLayer"
- *  relaxation Select/Node mode's own hit-test already uses). Returns null
- *  if the id is unset or the element was deleted — the caller's own
- *  "declined gracefully" fallback (same shape `insideSpans` itself uses
- *  for a degenerate boundary) covers that, not an exception here.
+ *  relaxation Select/Node mode's own hit-test already uses), returned in
+ *  `CONTOUR_SEG_INDEX_ATTR` order. Returns `[]` if the id is unset or
+ *  every element was deleted — the caller's own "declined gracefully"
+ *  fallback (same shape `insideSpans` itself uses for a degenerate
+ *  boundary) covers that, not an exception here.
  *
  *  T58 (SE14 Slice 3): exported (same underscore-kept convention as
  *  `stampBoundaryRef`/`_resolveExtent` below) — the Shape Lattice tool's
- *  own Generate needs to find its ALREADY-linked silhouette `<path>` (to
- *  update its `d` in place, keeping the same link) before calling
+ *  own Generate needs to find its ALREADY-linked silhouette element(s) (to
+ *  update their `d` in place, keeping the same link) before calling
  *  `generatePattern`, the same lookup this file already had exactly one
- *  internal caller for. */
-export function _findBoundaryElement(editor, shapeId) {
-  if (!editor || !editor._sketchLayer || !shapeId) return null;
+ *  internal caller for.
+ *
+ *  T73: was `_findBoundaryElement` (singular, returned the FIRST match
+ *  and stopped) — a HAND-PICKED boundary (Box Lattice, or Shape Lattice's
+ *  own "Pick shape…") is still always exactly one arbitrary element, so
+ *  this plural form degrades to a length-1 array for that case with no
+ *  separate code path needed; a GENERATED Shape Lattice silhouette is now
+ *  N per-segment elements sharing one `shapeId`, which the old singular
+ *  form would have silently truncated to "just the first segment" for
+ *  every caller (fill-clip resolution, the contour-color swatch, the
+ *  hand-edit-detection compare) — not a hypothetical, the actual reason
+ *  this changed. Elements missing `CONTOUR_SEG_INDEX_ATTR` (a hand-picked
+ *  shape never has it) sort last, in original order, which is a no-op
+ *  for the length-1 case. */
+export function _findBoundaryElements(editor, shapeId) {
+  if (!editor || !editor._sketchLayer || !shapeId) return [];
   const children = editor._sketchLayer.children().toArray();
-  for (const ch of children) {
-    if (ch && ch.node && ch.node.getAttribute(BOUNDARY_REF_ATTR) === shapeId) return ch;
-  }
-  return null;
+  const matches = children.filter((ch) => ch && ch.node && ch.node.getAttribute(BOUNDARY_REF_ATTR) === shapeId);
+  const segIndex = (ch) => {
+    const raw = ch.node.getAttribute(CONTOUR_SEG_INDEX_ATTR);
+    return raw == null ? Infinity : Number(raw);
+  };
+  return matches.sort((a, b) => segIndex(a) - segIndex(b));
 }
 
 /**
  * T50: the effective stroke width a boundary shape actually renders with —
- * shared by the Border piece's own emission (below) AND
+ * shared by the manifest's own `shapeHalfInset` AND
  * `_resolveBoundaryPrimitives`'s own inward-offset amount (T51), so the
- * two always agree (if Border's own visible width changes, the fill's
- * cut point moves with it, never independently). Advisor's own rule,
- * verbatim: the Border piece's OWN width when Border is on (it's the
- * thing actually drawn, so it's authoritative); else the LIVE boundary
- * element's own current `stroke-width`, IF it's visibly stroked (`stroke`
- * set and not `'none'`, width > 0); else 0 (an unstroked/fill-only
- * boundary has no stroke to cut inside of).
+ * two always agree.
  *
- * T72 (AMEND 3, Fred: "boundary width auto doesnt seem to apply"): Border
- * width 'auto' (`border.width == null`) used to fall back to the LIVE
- * boundary element's own `stroke-width` unconditionally — correct for a
- * HAND-PICKED boundary (T49's own original ruling: inherit whatever that
- * shape is actually drawn with), but wrong for the Shape Lattice tool's
- * OWN generated silhouette, whose drawn stroke is ALWAYS a fixed, thin
+ * T72 (AMEND 3, Fred: "boundary width auto doesnt seem to apply"): 'auto'
+ * (`pattern.contour.width == null`) used to fall back to the LIVE boundary
+ * element's own `stroke-width` unconditionally — correct for a HAND-PICKED
+ * boundary (T49's own original ruling: inherit whatever that shape is
+ * actually drawn with), but wrong for the Shape Lattice tool's OWN
+ * generated silhouette, whose drawn stroke is ALWAYS a fixed, thin
  * hairline (SILHOUETTE_STROKE_WIDTH — regenerateSilhouette's own T68
- * AMEND1 rule, unrelated to Border), never a meaningful "auto" value —
- * the visible symptom was a hairline-thin Border on a preset whose
- * lattice/Fusion-slot stroke is 0.25in. For a generated silhouette
- * specifically, 'auto' now means the SAME `widths.rails` the manifest's
- * own `stroke_width` parameter and every rail/tie already use — and,
- * since `widths` is read fresh on every call (no cached value), it
- * follows live when the lattice stroke width changes, same as the
- * dispatch's own explicit ask.
+ * AMEND1 rule), never a meaningful "auto" value. For a generated
+ * silhouette specifically, 'auto' now means the SAME `widths.rails` the
+ * manifest's own `stroke_width` parameter and every rail/tie already use
+ * — and, since `widths` is read fresh on every call (no cached value), it
+ * follows live when the lattice stroke width changes.
+ *
+ * T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't see it at all"):
+ * renamed from `_effectiveBorderWidth` — the retired Border clone's own
+ * `border.enabled`/`border.width` gate is gone; the ONE contour width is
+ * now `pattern.contour.width` (null = auto), read regardless of the
+ * `contour.show` on/off toggle (callers already gate drawing on `show`
+ * separately; this function only ever answers "how wide, if drawn").
  */
-function _effectiveBorderWidth(boundaryEl, pattern, boundary, widths) {
-  if (boundary.border && boundary.border.enabled) {
-    if (boundary.border.width != null) return boundary.border.width;
-    if (hasGeneratedSilhouette(pattern)) return widths.rails;
-    return parseFloat(boundaryEl.attr('stroke-width')) || widths.rails;
-  }
+function _effectiveContourWidth(boundaryEl, pattern, widths) {
+  const contour = pattern.contour || {};
+  if (contour.width != null) return contour.width;
+  if (hasGeneratedSilhouette(pattern)) return widths.rails;
   const strokeAttr = boundaryEl.attr('stroke');
   const sw = parseFloat(boundaryEl.attr('stroke-width'));
   if (strokeAttr && strokeAttr !== 'none' && sw > 0) return sw;
@@ -222,26 +269,54 @@ function _bakeWorldTransform(el, primitives) {
  */
 async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   const shapeId = PATTERN.boundary && PATTERN.boundary.shapeId;
-  const boundaryEl = _findBoundaryElement(editor, shapeId);
-  if (!boundaryEl) return { boundaryEl: null, primitives: [] };
+  const boundaryEls = _findBoundaryElements(editor, shapeId);
+  if (!boundaryEls.length) return { boundaryEl: null, boundaryEls, primitives: [] };
+  const boundaryEl = boundaryEls[0]; // representative: width/transform (T73: identical across every segment of the SAME generated contour, by construction — never individually transformed)
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
-  const halfWidth = edge === 'centerline' ? 0 : _effectiveBorderWidth(boundaryEl, PATTERN, boundary, widths) / 2;
-  let localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
-  // T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
-  // own contour-size inset): a collapsed inner-offset boundary (self-
-  // intersection — see insetPathDToPrimitives's own T72 doc comment,
-  // editor-lattice-boundary.js) silently zeroed the ENTIRE lattice fill.
-  // Falling back to the raw, un-inset boundary is only safe for a
-  // GENERATED preset's own silhouette (a numerical curve-fitting artifact,
-  // never a feature the user actually drew thin on purpose) — a
-  // HAND-PICKED boundary shape keeps declining to `[]` on collapse
-  // unchanged (editor-lattice-boundary.test.js's own "thin arm... the
-  // WHOLE shape declines" case documents why: using the raw edge there
-  // would put rails ON TOP of a stroke the user genuinely drew that thin).
-  if (!localPrimitives.length && halfWidth > 0 && PATTERN.shape && PATTERN.shape.source === 'generated') {
-    localPrimitives = await shapeToPrimitives(boundaryEl);
+  // T73 AMEND 3: a Shape Lattice with its contour shown clips rails/ties
+  // to the contour's own RAW centerline (zero inset), same as an explicit
+  // edge:'centerline' choice — see usesContourCenterline's own doc comment.
+  const halfWidth = (edge === 'centerline' || usesContourCenterline(PATTERN))
+    ? 0
+    : _effectiveContourWidth(boundaryEl, PATTERN, widths) / 2;
+  // T73 (SE14b): a GENERATED contour is now N per-segment elements
+  // sharing one shapeId — shapeToInnerBoundaryPrimitives's own per-TYPE
+  // dispatch (rect/circle/ellipse/polygon/path/text) has no "N paths"
+  // case, and never needs one: a hand-picked boundary (Box Lattice, or
+  // Shape Lattice's own "Pick shape…") is still always exactly one
+  // element of whatever type the user drew, so that path is UNCHANGED
+  // below. For N>1, join each segment's own `d` into ONE combined closed
+  // `d` first (the SAME primitive-list-to-`d` relationship
+  // `primitivesToPathD`/`primitiveToPathD` already declare, just run
+  // backwards) — from there it's the IDENTICAL `d`-string-in/primitives-
+  // out inset call a single-path boundary already used.
+  let localPrimitives;
+  if (boundaryEls.length > 1) {
+    // insetGeneratedPresetPathDToPrimitives's own halfWidth<=0 case
+    // already degrades to the raw, un-inset primitives (its own inner
+    // insetPathDToPrimitives call does that first) — the SAME 'centerline'
+    // edge-mode behavior the single-element branch below gets from
+    // shapeToInnerBoundaryPrimitives, so this one call covers both.
+    const combinedD = joinSegmentPathsIntoClosedD(boundaryEls.map((el) => el.attr('d') || ''));
+    localPrimitives = insetGeneratedPresetPathDToPrimitives(combinedD, halfWidth);
+  } else {
+    localPrimitives = await shapeToInnerBoundaryPrimitives(boundaryEl, halfWidth);
+    // T72 (bug: the default Bottle preset generated 0 rails/ties after T71's
+    // own contour-size inset): a collapsed inner-offset boundary (self-
+    // intersection — see insetPathDToPrimitives's own T72 doc comment,
+    // editor-lattice-boundary.js) silently zeroed the ENTIRE lattice fill.
+    // Falling back to the raw, un-inset boundary is only safe for a
+    // GENERATED preset's own silhouette (a numerical curve-fitting artifact,
+    // never a feature the user actually drew thin on purpose) — a
+    // HAND-PICKED boundary shape keeps declining to `[]` on collapse
+    // unchanged (editor-lattice-boundary.test.js's own "thin arm... the
+    // WHOLE shape declines" case documents why: using the raw edge there
+    // would put rails ON TOP of a stroke the user genuinely drew that thin).
+    if (!localPrimitives.length && halfWidth > 0 && PATTERN.shape && PATTERN.shape.source === 'generated') {
+      localPrimitives = await shapeToPrimitives(boundaryEl);
+    }
   }
-  return { boundaryEl, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
+  return { boundaryEl, boundaryEls, primitives: _bakeWorldTransform(boundaryEl, localPrimitives) };
 }
 
 /** Strip OWNERSHIP_ATTR from each given element that carries it. Pure DOM
@@ -372,9 +447,16 @@ export const PATTERN_DEFAULTS = {
   // default spacing (0.25), computed once here rather than re-derived from
   // the CURRENT spacing on every read: changing Spacing later must not
   // silently re-widen an already-tuned Widths value (same "declared once,
-  // independently editable" shape PATTERN.colors already has). `nodeRadius`
-  // matches emitNode's own internal `r` (a radius, not a diameter) — the
-  // panel's "Node size" stepper edits this same value directly.
+  // independently editable" shape PATTERN.colors already has). NODE-D
+  // (Fred: "node size should be entered as diameter not radius"):
+  // `nodeDiameter` is what the panel's "Node size" stepper edits directly
+  // and what the manifest's own `node_diameter` parameter/Diameter
+  // dimension use — every DRAWING call site (emitNode's own `r` param) is
+  // a real radius, so each one divides by 2 at the one point it reads
+  // this field, rather than emitNode itself changing contract. A saved
+  // pattern's own OLD `nodeRadius` value is converted once on read (app-
+  // init.js's own MIGRATIONS array, doubled — the same physical node
+  // size, just re-expressed).
   // T58 ADD-ON (Fred: "I normally want ties and rails to be the same
   // width"): `linkRailsTies` (default true, a NEW layer's own starting
   // point) ties widths.ties to widths.rails in the panel's own UI (one
@@ -395,7 +477,7 @@ export const PATTERN_DEFAULTS = {
   widths: {
     rails: 0.25,
     ties: 0.25,
-    nodeRadius: LATTICE_STYLE.node.radiusFactor * 0.25,  // 0.075
+    nodeDiameter: LATTICE_STYLE.node.radiusFactor * 0.25 * 2,  // 0.15
     linkRailsTies: true,
   },
   seed: 42,
@@ -424,7 +506,16 @@ export const PATTERN_DEFAULTS = {
     edge: 'inner-stroke',
     runs: null,
     joints: { freq: 1, shape: 'circle', size: null },
-    border: { enabled: false, width: null, color: null },
+    // T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't see it at
+    // all"): the separate "Border" clone feature (a SECOND, optional
+    // outline a user could enable independently of the SE14b contour
+    // itself) is RETIRED — `boundary.border` used to live here
+    // ({enabled,width,color}); its width concept moves to
+    // `contour.width` below (the ONE thing that's now ever drawn), its
+    // colour concept was already redundant with `colors.contour` (the
+    // Colors row's own swatch, unaffected by this). A saved pattern's
+    // old boundary.border fields are migrated once on read (properties-
+    // shape-lattice.js's own syncFieldsFromPattern).
   },
   // T58 (SE14 Slice 3): the Shape Lattice tool's own generated-silhouette
   // state (SE14-SHAPE-LATTICE-DESIGN.md §2) — declared here alongside
@@ -454,7 +545,23 @@ export const PATTERN_DEFAULTS = {
   // A saved pattern with no `contour` key at all (every pattern before
   // this turn) reads `show` as true via the SAME `{ ...PATTERN_DEFAULTS,
   // ...PATTERN }` merge every other field already relies on.
-  contour: { show: true },
+  //
+  // T73 (SE14b): `segmentColors[i]` is the per-DRAWN-SEGMENT color
+  // override, indexed by PRIMITIVE index — the SAME index `generateSilhouette`'s
+  // own `primitives[i]` and the manifest's own `seg{i}` ids already use
+  // (NOT `shape.segments[i]`'s topology index: `_segmentToPrimitives`
+  // expands a single 'kink' style-segment into 2 primitives, so the two
+  // arrays can diverge in length). `regenerateSilhouette` carries this
+  // array forward across a regenerate that keeps the SAME primitive count,
+  // and resets it (`[]`) when the count changes — a changed count means
+  // index i no longer names the same drawn edge.
+  //
+  // T74 AMEND 1: `width` is the ONE declared width the contour's own
+  // drawn segments use (`null` = auto = `widths.rails`, a NUMBER =
+  // explicit override) — replaces the retired `boundary.border.width`.
+  // Colour is NOT duplicated here: `colors.contour` (the Colors row's own
+  // swatch) is already the ONE place for it.
+  contour: { show: true, width: null, segmentColors: [] },
 };
 
 /** SE7g (Fred: "the generate button needs to automatically use a new
@@ -1175,13 +1282,80 @@ export function computePattern(PATTERN, opts = {}) {
   // row/column) changes with orientation, via _rowScanLine/_colScanLine.
   const isBoundary = rawExtent.mode === 'boundary';
   const boundaryPrimitives = rawExtent.primitives || [];
-  // T49: Border-piece gating for the "fix first" collinear-edge span (an
-  // edge-collinear rail/tie is DROPPED when Border draws that same edge
-  // itself — no double stroke) — and the ending-rule/halfWidth inputs
-  // every boundary-crossing end now needs. `halfWidth` is in the SAME
-  // lattice-unit space as everything else here (inches / spacing).
-  const borderEnabled = isBoundary && !!(boundary.border && boundary.border.enabled);
-  const endRule = boundary.endRule || PATTERN_DEFAULTS.boundary.endRule;
+  // T49: the ending-rule/halfWidth inputs every boundary-crossing end now
+  // needs. `halfWidth` is in the SAME lattice-unit space as everything
+  // else here (inches / spacing). (T74 AMEND 1: the retired Border clone
+  // used to gate the "fix first" collinear-edge span here too, dropping
+  // an edge-collinear rail/tie to avoid a double stroke when Border drew
+  // that same edge itself — Border is gone, so that union is now always
+  // taken; see the three `_unionSpans(inside, collinearSpans(...))` call
+  // sites below, unconditional now.)
+  // T73 AMEND 3: a Shape Lattice with its contour shown forces 'on-
+  // boundary' regardless of the pattern's own stored endRule -- the rail/
+  // tie's own centerline must reach the contour's centerline EXACTLY (no
+  // pull-back), so its stroke deliberately overlaps the contour's own
+  // stroke ("the slot caps then overlap the contour slot," Fred's own
+  // words) rather than stopping half a stroke-width short of it.
+  const endRule = (isBoundary && usesContourCenterline(PATTERN))
+    ? 'on-boundary'
+    : (boundary.endRule || PATTERN_DEFAULTS.boundary.endRule);
+  // T73 AMEND 3: when (and only when) a piece's own end is BOTH a real
+  // boundary crossing AND this contour-centerline mode, attribute that
+  // end to the specific contour primitive it landed on — `manifestFromLattice`
+  // reads this to declare the Coincident constraint the amend asks for.
+  // `tol` is the contour's own known precision ceiling (T73 AMEND 3's own
+  // WORK-LOG entry: the drawn contour round-trips through a 3-decimal-
+  // rounded `d` string), not the amend's aspirational "1e-6" — a tighter
+  // tolerance would silently miss genuine joints the string-rounding
+  // nudged by a thousandth of an inch.
+  const contourHitTol = 2e-3 / P.spacing;
+  // T73 AMEND 3b (Fred: "maybe you'll need to do something special for
+  // the waist section?"): a near-tangent graze (a rail/tie's own
+  // direction nearly PARALLEL to the contour's own tangent right where
+  // they meet — e.g. a vertical rail barely clipping the very tip of a
+  // concave waist arc) gets no Coincident at all: the crossing is too
+  // shallow to be a real, solvable point-on-curve relationship. Declared
+  // once, in degrees (matching the amend's own "~10 deg" wording) rather
+  // than a pre-converted radian/cosine constant, so it stays legible.
+  const MIN_CROSSING_ANGLE_DEG = 10;
+  function contourHit(scanLine, position, isCrossing) {
+    if (endRule !== 'on-boundary' || !isCrossing) return undefined;
+    const pt = { x: scanLine.point.x + scanLine.dir.x * position, y: scanLine.point.y + scanLine.dir.y * position };
+    const hit = primitiveHitAt(pt, boundaryPrimitives, contourHitTol);
+    if (!hit) return undefined;
+    // The angle check applies ONLY to a genuine mid-primitive crossing
+    // (hit.end === null) — a JOINT landing (hit.end 'S'/'E', two contour
+    // segments meeting at a shared point, e.g. a horn meeting the top/
+    // bottom cap) is an EXACT point-to-point match regardless of what
+    // angle the two segments happen to meet at; "near-tangent" is a
+    // curve-crossing concept, meaningless for a corner. Self-caught: the
+    // first version of this check applied unconditionally and silently
+    // suppressed a real fraction of every rail's own perfectly-valid
+    // corner Coincidents whenever `primitiveHitAt`'s own first-found
+    // primitive at that corner happened to be near-parallel to the rail
+    // (found via a live sweep across waistReach values, not assumed).
+    if (hit.end) return hit;
+    // scanLine.dir and hit.tangent are both unit vectors; |dot| is
+    // cos(angle) between the two LINES (direction sign doesn't matter --
+    // a rail crossing "backwards" along a tangent is still a graze).
+    const cosAngle = Math.abs(scanLine.dir.x * hit.tangent.x + scanLine.dir.y * hit.tangent.y);
+    const angleDeg = (Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI;
+    return angleDeg < MIN_CROSSING_ANGLE_DEG ? undefined : hit;
+  }
+  // T73 AMEND 3b: a split piece shorter than this (e.g. the tiny sliver
+  // left over from a near-tangent graze that still passes the ANGLE check
+  // above, or any other short remainder at a contour crossing) is dropped
+  // entirely — never a real, buildable slot — same "declared once, both
+  // consumers" placement as the rest of this contour-centerline mode:
+  // dropping it HERE, inside computePattern, means neither generatePattern
+  // nor manifestFromLattice needs a second copy of this specific check
+  // (they keep their own, more permissive MIN_PIECE_LENGTH_IN as a general
+  // backstop, unrelated to this contour-specific threshold). "~2x stroke
+  // width" per the amend, one per kind since rails/ties can have different
+  // widths.
+  const MIN_RAIL_PIECE_STROKE_MULT = 2;
+  const minRailPieceLattice = endRule === 'on-boundary' ? (MIN_RAIL_PIECE_STROKE_MULT * widths.rails) / P.spacing : 0;
+  const minTiePieceLattice = endRule === 'on-boundary' ? (MIN_RAIL_PIECE_STROKE_MULT * widths.ties) / P.spacing : 0;
   // "i,j,kind" occupied keys are always built from REAL (un-oriented)
   // lattice coordinates (_collectOccupied, below) — re-key them into the
   // SAME canonical frame the rest of this function reads i/j in, once,
@@ -1224,13 +1398,11 @@ export function computePattern(PATTERN, opts = {}) {
   const halfRail = widths.rails / 2 / P.spacing;
   for (const j of railRows) {
     let pieces;
+    const rowScan = isBoundary ? _rowScanLine(j, orientation) : null;
     if (isBoundary) {
-      const rowScan = _rowScanLine(j, orientation);
       const inside = insideSpans(rowScan, boundaryPrimitives);
-      // T49 "fix first": union in the collinear-edge span UNLESS Border
-      // will draw that same edge itself (then insideSpans alone is right
-      // — the edge-collinear rail is dropped, no double stroke).
-      const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(rowScan, boundaryPrimitives));
+      // T49 "fix first": union in the collinear-edge span.
+      const combined = _unionSpans(inside, collinearSpans(rowScan, boundaryPrimitives));
       pieces = _clipToSpans(iMin, iMax, combined);
     } else {
       pieces = [{ a: iMin, b: iMax, aIsCrossing: false, bIsCrossing: false }];
@@ -1241,8 +1413,23 @@ export function computePattern(PATTERN, opts = {}) {
       // shape now, not the raw one) — the ending rule applies directly,
       // no separate per-crossing shrink step (T50's own dead end, deleted).
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfRail);
+      // T73 AMEND 3b: only a genuinely SPLIT row (a boundary crossing
+      // divided it into >1 piece — e.g. a near-tangent graze at the waist
+      // leaving a tiny sliver) is checked against MIN_RAIL_PIECE; an
+      // ordinary un-split, full-length rail is never at risk of this,
+      // whatever its own length happens to be.
+      if (pieces.length > 1 && Math.abs(b - a) < minRailPieceLattice) continue;
       if (_occupiedHas(occupied, a, j, 'rail')) continue;
-      segments.push({ kind: 'rail', a: { i: a, j }, b: { i: b, j } });
+      segments.push({
+        kind: 'rail', a: { i: a, j }, b: { i: b, j },
+        aContourHit: rowScan ? contourHit(rowScan, a, piece.aIsCrossing) : undefined,
+        bContourHit: rowScan ? contourHit(rowScan, b, piece.bIsCrossing) : undefined,
+        // T73 AMEND 3c: every piece of the SAME row is one original rail,
+        // split by a boundary crossing mid-row (e.g. a vertical rail
+        // crossing the hourglass waist twice) -- `j` is already a stable,
+        // unique-per-row key, reused directly rather than a second counter.
+        railGroup: j,
+      });
       if (aJoint && !_occupiedHas(occupied, a, j, 'node')) addNode(a, j);
       if (bJoint && !_occupiedHas(occupied, b, j, 'node')) addNode(b, j);
     }
@@ -1303,7 +1490,7 @@ export function computePattern(PATTERN, opts = {}) {
     const lo = Math.min(jStart, jEnd), hi = Math.max(jStart, jEnd);
     const colScan = _colScanLine(i, orientation);
     const inside = insideSpans(colScan, boundaryPrimitives);
-    const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
+    const combined = _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
     const pieces = _clipToSpans(lo, hi, combined);
     return pieces.length === 1 && pieces[0].a === lo && pieces[0].b === hi;
   };
@@ -1389,12 +1576,13 @@ export function computePattern(PATTERN, opts = {}) {
     // never pulls that one back, leaving the free end's own crossing
     // status untouched either way.
     let pieces;
+    let colScan = null;
     if (anchored && !oneEndedFree) {
       pieces = [{ a: jStart, b: jEnd, aIsCrossing: false, bIsCrossing: false }];
     } else if (isBoundary) {
-      const colScan = _colScanLine(i, orientation);
+      colScan = _colScanLine(i, orientation);
       const inside = insideSpans(colScan, boundaryPrimitives);
-      const combined = borderEnabled ? inside : _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
+      const combined = _unionSpans(inside, collinearSpans(colScan, boundaryPrimitives));
       pieces = _clipToSpans(Math.min(jStart, jEnd), Math.max(jStart, jEnd), combined);
       if (oneEndedFree) {
         pieces = pieces.map((p) => ({
@@ -1422,8 +1610,18 @@ export function computePattern(PATTERN, opts = {}) {
     for (const piece of pieces) {
       // T51: same as the rails loop above — no separate shrink step.
       const { a, b, aJoint, bJoint } = _applyEndRule(piece.a, piece.b, piece.aIsCrossing, piece.bIsCrossing, endRule, halfTie);
+      // T73 AMEND 3b: same "only a genuinely split column" scoping as the
+      // rails loop above.
+      if (pieces.length > 1 && Math.abs(b - a) < minTiePieceLattice) continue;
       if (_occupiedHas(occupied, i, a, 'tie')) continue;
-      segments.push({ kind: 'tie', a: { i, j: a }, b: { i, j: b } });
+      segments.push({
+        kind: 'tie', a: { i, j: a }, b: { i, j: b },
+        aContourHit: colScan ? contourHit(colScan, a, piece.aIsCrossing) : undefined,
+        bContourHit: colScan ? contourHit(colScan, b, piece.bIsCrossing) : undefined,
+        // T73 AMEND 3c: same "one original piece, split mid-column" idea
+        // as the rails loop above — `i` is unique per tie slot already.
+        railGroup: i,
+      });
 
       if (nodes.ends) {
         if (!_occupiedHas(occupied, i, a, 'node')) addNode(i, a);
@@ -1465,6 +1663,14 @@ export function computePattern(PATTERN, opts = {}) {
       kind: s.kind,
       a: orient(s.a, orientation),
       b: orient(s.b, orientation),
+      // T73 AMEND 3: aContourHit/bContourHit are {index,end} attribution
+      // against the CONTOUR's own primitive list, not lattice {i,j}
+      // points — orientation-independent, passed through unchanged.
+      aContourHit: s.aContourHit,
+      bContourHit: s.bContourHit,
+      // T73 AMEND 3c: a row/column key, not a lattice point — also
+      // orientation-independent, passed through unchanged.
+      railGroup: s.railGroup,
     })),
     nodePoints: nodePoints.map((p) => orient(p, orientation)),
   };
@@ -1680,14 +1886,15 @@ export async function generatePattern(editor, PATTERN) {
   const spacing = PATTERN.spacing || PATTERN_DEFAULTS.spacing;
   const isBoundary = PATTERN.extent && PATTERN.extent.mode === 'boundary';
   let boundaryEl = null;
+  let boundaryEls = [];
   let extent;
   if (isBoundary) {
     // T51: the resolved primitives are ALREADY the shape's own true
     // inward-offset boundary (or the raw shape, when unstroked/
-    // centerline) — _resolveBoundaryPrimitives does the inset itself now,
-    // reusing the SAME boundary/widths the Border piece reads below.
+    // centerline) — _resolveBoundaryPrimitives does the inset itself now.
     const resolved = await _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths);
     boundaryEl = resolved.boundaryEl;
+    boundaryEls = resolved.boundaryEls;
     extent = _resolveExtent(editor, PATTERN, resolved.primitives);
   } else {
     extent = _resolveExtent(editor, PATTERN);
@@ -1738,30 +1945,17 @@ export async function generatePattern(editor, PATTERN) {
     // (findNodeAt, editor-lattice.js:99) — a belt-and-suspenders no-op if
     // occupied-detection already steered clear of it; returns null if so,
     // which tagOwned's own null-check handles.
-    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeRadius));
+    tagOwned(emitNode(editor, fromLattice(p, spacing), widths.nodeDiameter / 2));
   }
   editor._color = previousColor;
 
-  // T49 (SE13 §7, "the Border piece"): "the SAME d/shape geometry, just
-  // re-stroked" — clone the LINKED boundary element itself rather than
-  // re-deriving its geometry from the primitive list, so it decodes
-  // through the SAME OUTLINE_KINDS export path the source element already
-  // does (§8's own "zero new export code" claim, not just argued). Fred's
-  // own ruling (T49 dispatch, "Border defaults to the boundary shape's
-  // own stroke"): a null width/color inherits the LIVE boundary element's
-  // own current stroke-width/stroke, not a Lattice color.
-  if (isBoundary && boundary.border && boundary.border.enabled && boundaryEl) {
-    const borderColor = boundary.border.color || boundaryEl.attr('stroke') || '#000000';
-    const borderWidth = _effectiveBorderWidth(boundaryEl, PATTERN, boundary, widths);
-    const clone = boundaryEl.clone();
-    clone.attr(BOUNDARY_REF_ATTR, null); // the clone is a COPY, not the link itself
-    clone.attr('data-layer', targetLayer);
-    clone.attr(LATTICE_ATTR, 'border');
-    clone.fill('none');
-    clone.stroke({ color: borderColor, width: borderWidth });
-    clone.attr(OWNERSHIP_ATTR, PATTERN.id);
-    editor._sketchLayer.add(clone);
-  }
+  // T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't see it at
+  // all"): the separate "Border" clone piece (T49 SE13 §7) — a SECOND,
+  // independently-toggled outline drawn from the boundary element's own
+  // geometry — is RETIRED. The SE14b contour segments themselves are now
+  // the ONE thing ever drawn for a boundary/contour, gated solely by
+  // `contour.show` (see usesContourCenterline / the emitter that draws
+  // those segments); there is nothing left for this block to add.
 
   if (typeof editor.pushState === 'function') editor.pushState();
   // T59 (a genuine, measured, PRE-EXISTING bug — confirmed live via CDP,
@@ -1861,23 +2055,36 @@ function _ownedOnLayer(editor, layerId, latticeKind) {
  *   for the NEXT Generate to use).
  *
  * T72 (AMEND 2): `kind === 'contour'` is a genuinely different shape, not
- * a 4th `COLOR_KIND_TO_LATTICE_ATTR` entry — the contour is ONE linked
- * `<path>`, found by `PATTERN.boundary.shapeId` (the exact lookup
- * `regenerateSilhouette` itself uses), never a `data-lattice`/
- * OWNERSHIP_ATTR-marked piece the rails/ties/nodes filter can see. SE14b's
- * own later per-segment split will need its own recolor path when that
- * lands; this one recolors today's single-path contour.
+ * a 4th `COLOR_KIND_TO_LATTICE_ATTR` entry — the contour is N linked
+ * per-segment elements, found by `PATTERN.boundary.shapeId` (the exact
+ * lookup `regenerateSilhouette` itself uses), never a `data-lattice`/
+ * OWNERSHIP_ATTR-marked piece the rails/ties/nodes filter can see.
+ *
+ * T73 (SE14b): this is the CONTOUR'S OWN DEFAULT colour swatch — it
+ * recolors every segment that does NOT carry its own explicit per-segment
+ * override (`PATTERN.contour.segmentColors[i]`, keyed by PRIMITIVE index —
+ * NOT `shape.segments[i]`'s topology index, see that field's own doc
+ * comment in PATTERN_DEFAULTS — set via the normal select tool + toolbar
+ * color picker, see `editor.setColor`'s own new contour-aware branch),
+ * exactly like a rail/tie's own DEFAULT color never overwrites a
+ * hand-detached piece's own color above. A segment WITH an override is
+ * still counted as "owned" (still real, still Generate-managed) for the
+ * @returns below, just left alone here.
  */
 export function recolorOwnedKind(editor, layerId, kind, color) {
   if (kind === 'contour') {
     const layer = Array.isArray(editor?._layers) ? editor._layers.find((l) => l.id === layerId) : null;
     const shapeId = layer?.pattern?.boundary?.shapeId;
-    const pathEl = shapeId ? _findBoundaryElement(editor, shapeId) : null;
-    if (!pathEl) return 0;
-    pathEl.stroke({ color });
+    const segmentColors = layer?.pattern?.contour?.segmentColors;
+    const segEls = shapeId ? _findBoundaryElements(editor, shapeId) : [];
+    if (!segEls.length) return 0;
+    for (let i = 0; i < segEls.length; i++) {
+      const override = Array.isArray(segmentColors) ? segmentColors[i] : null;
+      if (!override) segEls[i].stroke({ color });
+    }
     if (typeof editor.pushState === 'function') editor.pushState();
     if (typeof editor._notifyChange === 'function') editor._notifyChange('commit');
-    return 1;
+    return segEls.length;
   }
   const latticeKind = COLOR_KIND_TO_LATTICE_ATTR[kind];
   if (!latticeKind) return 0;
@@ -1901,10 +2108,12 @@ export function recolorOwnedKind(editor, layerId, kind, color) {
  * above — re-widths every element the given LAYER owns of ONE kind, IN
  * PLACE, no reseed. Rails/ties: `stroke-width` (inches, same unit
  * PATTERN.widths.rails/ties already stores). Nodes: `r` (the circle's own
- * radius attribute) — PATTERN.widths.nodeRadius is already a radius, so
- * no ×2/÷2 conversion here; only emitNode's OWN construction call needs
- * `r*2` (svg.js's circle() takes a diameter), a detail that stays local
- * to that one call site. One undo step, skipped when nothing was owned.
+ * RADIUS attribute) — NODE-D: `value` here is PATTERN.widths.nodeDiameter
+ * (the panel's own stepper writes it as a diameter directly), so this is
+ * the ONE place that divides by 2 for the live re-width, mirroring
+ * emitNode's OWN construction call (editor-lattice.js, `r*2` since
+ * svg.js's `circle()` takes a diameter) — the SAME diameter-in/radius-
+ * out conversion, just at the two different points each one needs it.
  *
  * @returns {number} how many elements were re-widthed.
  */
@@ -1914,7 +2123,7 @@ export function rewidthOwnedKind(editor, layerId, kind, value) {
   const owned = _ownedOnLayer(editor, layerId, latticeKind);
   for (const ch of owned) {
     if (latticeKind === 'node') {
-      ch.attr('r', value);
+      ch.attr('r', value / 2);
     } else {
       ch.attr('stroke-width', value);
     }

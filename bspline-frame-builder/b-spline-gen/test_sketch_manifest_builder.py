@@ -341,6 +341,10 @@ class FakeSketchDimensions:
         return d
 
     def addDiameterDimension(self, target, text_pt):
+        # NODE-D: was stubbed but never logged (never exercised by a real
+        # manifest until node_diameter) -- matches addRadialDimension's own
+        # logging convention now that it's a real, called path.
+        CALL_LOG.append(("dim:Diameter",))
         d = FakeDimension()
         self._items.append(d)
         return d
@@ -726,10 +730,10 @@ def _box_lattice_manifest(constrained=True):
         "parameters": [
             {"name": "rail_width", "value": 0.07, "unit": "in"},
             {"name": "tie_width", "value": 0.07, "unit": "in"},
-            {"name": "node_radius", "value": 0.075, "unit": "in"},
+            {"name": "node_diameter", "value": 0.15, "unit": "in"},
         ],
         "dimensions": [
-            {"type": "Radial", "target": "node0", "expression": "node_radius"},
+            {"type": "Diameter", "target": "node0", "expression": "node_diameter"},
             {"type": "SlotWidth", "target": "rail0", "expression": "rail_width"},
             {"type": "SlotWidth", "target": "rail1", "expression": "rail_width"},
             {"type": "SlotWidth", "target": "tie0", "expression": "tie_width"},
@@ -784,7 +788,7 @@ def test_build_order_parameters_before_geometry_before_constraints_before_dimens
     first_param_idx = min(i for i, k in enumerate(kinds) if k == "param:add")
     first_geom_idx = min(i for i, k in enumerate(kinds) if k.startswith("geom:") or k == "slot:addCenterToCenterSlot")
     first_constraint_idx = min(i for i, k in enumerate(kinds) if k.startswith("constraint:"))
-    first_dim_idx = min(i for i, k in enumerate(kinds) if k == "dim:Radial")
+    first_dim_idx = min(i for i, k in enumerate(kinds) if k == "dim:Diameter")  # NODE-D: node0's own dim, was dim:Radial
 
     assert first_param_idx < first_geom_idx, "parameters must be created BEFORE geometry"
     assert first_geom_idx < first_constraint_idx, "geometry (incl. slots) must exist BEFORE constraints reference it"
@@ -1093,7 +1097,7 @@ def test_slot_width_dimension_expressions_match_the_manifest(call_log):
     exprs = [d.parameter.expression for d in sketch.sketchDimensions]
     assert exprs.count("rail_width") == 2  # rail0, rail1
     assert exprs.count("tie_width") == 1  # tie0
-    assert "node_radius" in exprs
+    assert "node_diameter" in exprs
 
 
 def test_no_symmetry_constraint_is_ever_added_for_a_slot(call_log):

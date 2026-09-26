@@ -1,21 +1,16 @@
-# NEXT (lane-b) — T72: SE15c threshold + deep-waist no-lattice bug + SE14c contour checkbox
+# NEXT (lane-b) — T74: close AMEND 3b thresholds + SE14d (remove Pick shape) + NODE-D (node size as diameter)
 
-**Ball: worker (seat B) · epoch 3 · T72.** NO FUSION. T71 (8566623) is being verified live by the advisor; if it needs a
-fix you get an `amend`. Three items, in this order, one commit each:
-## 1. SE15c — raise SKETCH_PIECE_THRESHOLD 60 → 300 (editor-sketch-manifest.js)
-Advisor MEASURED in Fusion, 16 rails / 97 pieces: plain (current) 61 s, drift 0.139" at stroke 0.5, rails visibly
-tilted; constrained 90 s, 0 fails, exact parity, drift 0.030". A 14-rail hourglass (101 pieces, 170 constraints) built
-with 0 constraint fails. Update the SE15 doc number + any test that pins 60.
-## 2. Bug — Shape Lattice, Hourglass with waistReach 0.8 + cornerRadius 0.4 generates NO rails/ties at all
-Advisor reproduced (headless, default 7x9 board, Hourglass preset, shapeParam-waistReach=0.8, shapeParam-cornerRadius=0.4,
-Generate): the contour draws correctly (deep waist), the layer has 0 rail/tie/node elements, manifest has only the 12
-contour segs. Find why (boundary resolution? inset polygon self-intersecting / empty? rails clipped to nothing?), fix
-the root cause, and add a test with these params that asserts rails > 0.
-## 3. SE14c — "Contour" checkbox in the Shape Lattice panel (Fred)
-Fred: "I'd want a checkbox for the actual contour, I still want rails and ties to be contoured but sometimes don't
-want the contour profile". Declared flag (e.g. contour.show, default true) + checkbox in the C1 style. OFF = the contour
-is still computed and still clips/fits rails & ties exactly as now, but its segments are not drawn, not in SVG export /
-Send to Fusion, and not in the manifest (no contour slots, no contour_width/height params/dims). Saved patterns without
-the key read true. Parity test covers both states. Render ON and OFF to PNG and view before passing.
-Pass back: `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "T72: SE15c + deep-waist fix + SE14c — <shas>, tests"`.
-SE14b (contour segments selectable/colourable) is the task after this.
+**Ball: worker (seat B) · epoch 4 · T74.** NO FUSION. T73 accepted pending the advisor's live Fusion run (if it fails
+you get an `amend`). Three items, one commit each, in order:
+1. AMEND 3b leftovers: a declared near-tangent threshold (no Coincident when a rail/tie crosses a contour segment at
+   < ~10 deg — leave that end free) and a declared MIN_RAIL_PIECE (drop split pieces shorter than ~2x stroke width).
+   Tests incl. a deep-waist hourglass with vertical rails.
+2. SE14d (ROADMAP.md on main, "## Queued — SE14d"): remove "Pick shape…" from the Shape Lattice panel as a SWEEP
+   (button, handler, panel state/strings, tests guarding only that UI — each link removed or kept with a named reason);
+   KEEP the boundary machinery the generated silhouette uses; saved patterns with a picked boundary still load (decide
+   + log). NOTE: seat A's UI2 (on main, merged later) mounts this panel into a side column via TOOL_PANEL_MOUNTS in
+   editor/lattice-side-column.js and decorates sections by title — don't rename section titles.
+3. NODE-D (ROADMAP.md "## Queued — NODE-D"): Node size entered as DIAMETER in both lattice panels (default 0.15);
+   Fusion param `node_diameter` + a DIAMETER dimension per node circle (replaces node_radius + radial dims); old saved
+   radius values convert once on read.
+Pass back: `cd <lane-b worktree> && python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T74 — <shas>"`.

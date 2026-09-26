@@ -478,7 +478,7 @@ describe('initLatticeProperties (T58 ADD-ON): linked Rails & ties width', () => 
   it('an EXISTING pattern with rails !== ties (no linkRailsTies key) loads UNLINKED — "no silent change"', () => {
     editor._layers[0].pattern = {
       ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
-      widths: { rails: 0.1, ties: 0.04, nodeRadius: 0.075 }, // no linkRailsTies key at all — a pre-T58 saved pattern
+      widths: { rails: 0.1, ties: 0.04, nodeDiameter: 0.15 }, // no linkRailsTies key at all — a pre-T58 saved pattern
     };
     initLatticeProperties(editor);
     expect(document.getElementById('latticeWidthLinkToggle').classList.contains('active')).toBe(false);
@@ -488,7 +488,7 @@ describe('initLatticeProperties (T58 ADD-ON): linked Rails & ties width', () => 
   it('an EXISTING pattern with rails === ties (no linkRailsTies key) loads LINKED', () => {
     editor._layers[0].pattern = {
       ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
-      widths: { rails: 0.08, ties: 0.08, nodeRadius: 0.075 },
+      widths: { rails: 0.08, ties: 0.08, nodeDiameter: 0.15 },
     };
     initLatticeProperties(editor);
     expect(document.getElementById('latticeWidthLinkToggle').classList.contains('active')).toBe(true);

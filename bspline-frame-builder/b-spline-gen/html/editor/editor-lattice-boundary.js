@@ -42,7 +42,7 @@ const TAU = Math.PI * 2;
  *  already fixed for once: "a live browser test found a 0.5in board-wide
  *  stroke on a 0.5in rail pitch" — found again live once, this project's
  *  own history: a 0.5in default stroke on the silhouette's own pinched
- *  waist inset the boundary's own inner-fill cut (`_effectiveBorderWidth`/
+ *  waist inset the boundary's own inner-fill cut (`_effectiveContourWidth`/
  *  `edge:'inner-stroke'`, editor-lattice-pattern.js) far enough inward to
  *  leave ZERO room for any rail/tie at all — confirmed live (0 rails/0
  *  ties after Generate), not assumed from reading the code alone.
@@ -54,6 +54,25 @@ const TAU = Math.PI * 2;
  *  dependency direction; this way each side genuinely reads the SAME
  *  declared number from a neutral home instead. */
 export const SILHOUETTE_STROKE_WIDTH = 0.02;
+
+/** T73 AMEND 4 (Fred, live screenshot: "these corners need to be rounded
+ *  since they are slots"): every drawn contour element's own stroke
+ *  style — declared HERE, ONCE (the same neutral, DOM-free home
+ *  SILHOUETTE_STROKE_WIDTH/CONTOUR_SIZE_INSET_IN already use), so
+ *  `regenerateSilhouette`'s own per-segment elements (properties-shape-
+ *  lattice.js) and the Border clone (editor-lattice-pattern.js's own
+ *  Border-piece emission — a SINGLE combined closed-loop path, unlike the
+ *  per-segment elements, so its own INTERNAL joints are exactly where a
+ *  default miter join would look sharp/pointed on a thick stroke) never
+ *  drift into two different corner styles. `linecap` matters for the
+ *  per-segment elements' own open ends (a gap between two adjacent
+ *  segments, still touching, reads as a smooth round tip rather than a
+ *  flat one); `linejoin` matters for the Border clone's own internal
+ *  vertices — applying BOTH everywhere is harmless where one is a no-op
+ *  (a lone-primitive path has no internal joint to round) and keeps this
+ *  a single declared style, not "which one applies where" case analysis
+ *  at each call site. */
+export const CONTOUR_STROKE_STYLE = { linecap: 'round', linejoin: 'round' };
 
 /** T71 (SE15 T69-fix-3, Fred: "W and H is good" + AMEND 13's own final
  *  margin value): the Shape Lattice contour's own overall size is the
@@ -564,6 +583,68 @@ export function insideSpans(scanLine, primitives) {
     if (hi - lo > 1e-9) spans.push([lo, hi]); // drop zero-length (tangent) spans
   }
   return spans;
+}
+
+/**
+ * T73 AMEND 3 (Fred: "I need rails to coincide to contour") — the
+ * attribution `insideSpans` above deliberately doesn't do: given a WORLD
+ * point already known to sit ON some primitive in the list (a rail/tie
+ * end computed via the SAME 'on-boundary' endRule this amend introduced),
+ * find WHICH one, and whether the point is essentially at that
+ * primitive's own start/end (`'S'`/`'E'`) or genuinely mid-primitive
+ * (`null`) — the exact distinction `manifestFromLattice`'s own Coincident
+ * emission needs (point-to-point at a joint, point-on-curve mid-span,
+ * same "3-way end/mid-span/none" shape `pieceEndOrCurveTarget`,
+ * editor-sketch-manifest.js, already establishes for rail/tie/node
+ * relations — this is that SAME distinction, for a contour primitive
+ * instead of a lattice-grid piece). Only 'L' and 'A' are handled: every
+ * preset this module's own callers ever hand it is built exclusively from
+ * those two (this file's own header, T58's own established invariant),
+ * and 'A' is always a true circular arc here (rx===ry, phi===0 — the SAME
+ * invariant `manifestFromShape`'s own ArcCenter emission already leans
+ * on), so a plain radius/angle-sweep check is exact, not an approximation
+ * this file otherwise reserves for elliptical/cubic curves. Returns
+ * `{index, end, tangent}` for the FIRST matching primitive within `tol`
+ * (`tangent` a UNIT vector along the primitive AT that point — a line's
+ * own constant direction, or an arc's radius rotated 90° the sweep's own
+ * way — T73 AMEND 3b's own near-tangent-graze check needs this: the angle
+ * between a rail/tie's own direction and the contour's own tangent right
+ * where they meet), or `null` if the point isn't on anything (shouldn't
+ * happen for a genuine `insideSpans`-derived crossing, but a caller with a
+ * stale/mismatched primitive list should get a clean miss, not a wrong
+ * answer).
+ */
+export function primitiveHitAt(pt, primitives, tol) {
+  for (let i = 0; i < primitives.length; i++) {
+    const prim = primitives[i];
+    if (prim.type === 'L') {
+      const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-9) continue;
+      const t = Math.max(0, Math.min(1, ((pt.x - prim.p0.x) * dx + (pt.y - prim.p0.y) * dy) / (len * len)));
+      const projX = prim.p0.x + t * dx, projY = prim.p0.y + t * dy;
+      if (Math.hypot(pt.x - projX, pt.y - projY) > tol) continue;
+      const along = t * len;
+      return { index: i, end: along <= tol ? 'S' : (along >= len - tol ? 'E' : null), tangent: { x: dx / len, y: dy / len } };
+    }
+    if (prim.type === 'A') {
+      if (Math.abs(Math.hypot(pt.x - prim.cx, pt.y - prim.cy) - prim.rx) > tol) continue;
+      const TAU = Math.PI * 2;
+      const rawTheta = Math.atan2(pt.y - prim.cy, pt.x - prim.cx);
+      const theta = (((rawTheta - prim.theta1) % TAU) + TAU) % TAU;
+      const sweep = prim.dTheta;
+      const sweepAbs = Math.abs(sweep);
+      const traveled = sweep >= 0 ? theta : ((TAU - theta) % TAU);
+      const angTol = tol / Math.max(prim.rx, 1e-6);
+      if (traveled > sweepAbs + angTol) continue;
+      // d/dθ of (cx + r·cosθ, cy + r·sinθ) is r·(-sinθ, cosθ) — the CCW
+      // tangent; a CW sweep (dTheta<0) travels the opposite way.
+      const dir = sweep >= 0 ? 1 : -1;
+      const tangent = { x: -Math.sin(rawTheta) * dir, y: Math.cos(rawTheta) * dir };
+      return { index: i, end: traveled <= angTol ? 'S' : (traveled >= sweepAbs - angTol ? 'E' : null), tangent };
+    }
+  }
+  return null;
 }
 
 /**

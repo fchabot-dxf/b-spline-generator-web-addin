@@ -87,7 +87,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
     rails: { mode: 'every', every: 2, offset: 0 },
     ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
     nodes: { ends: true, crossings: true, railEnds: false },
-    widths: { rails: 0.07, ties: 0.05, nodeRadius: 0.075, linkRailsTies: false },
+    widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
     seed: 42,
   };
   const EXTENT = { iMin: 0, jMin: 0, iMax: 8, jMax: 8 };
@@ -201,9 +201,16 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       rails: { mode: 'every', every: 2, offset: 0 },
       ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
       nodes: { ends: false, crossings: false, railEnds: false },
-      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      // T73 AMEND 3: a shown contour now clips the lattice to the RAW
+      // (wider) centerline instead of the contour-half-width inset this
+      // T66 fixture was originally tuned against -- pinning contour.show
+      // false here keeps this historical regression fixture reproducing
+      // the SAME degenerate-piece geometry it always has, independent of
+      // AMEND 3's own, unrelated change to the shown-contour case.
+      contour: { show: false },
       seed: 42,
     };
     // Independent re-derivation: recompute the RAW (pre-filter) segments
@@ -416,7 +423,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('T63: linked rail/tie widths (linkRailsTies true, the default) share ONE stroke_width param, not rail_width+tie_width', () => {
     const linkedPattern = {
       ...PATTERN,
-      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
     };
     const manifest = manifestFromLattice(linkedPattern, EXTENT);
     expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
@@ -434,7 +441,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('T63: an UNLINKED layer whose rail/tie widths genuinely differ still gets separate rail_width/tie_width (non-vacuous: verified against the SAME fixture the default-linked test above uses, just with the flag flipped)', () => {
     const unlinkedPattern = {
       ...PATTERN,
-      widths: { rails: 0.07, ties: 0.05, nodeRadius: 0.075, linkRailsTies: false },
+      widths: { rails: 0.07, ties: 0.05, nodeDiameter: 0.15, linkRailsTies: false },
     };
     const manifest = manifestFromLattice(unlinkedPattern, EXTENT);
     expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(false);
@@ -445,7 +452,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
   it('T63: an UNLINKED layer whose rail/tie widths happen to be EQUAL still uses stroke_width (the "linked OR equal" rule, not "linked flag alone")', () => {
     const unlinkedButEqual = {
       ...PATTERN,
-      widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: false },
+      widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: false },
     };
     const manifest = manifestFromLattice(unlinkedButEqual, EXTENT);
     expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(true);
@@ -598,6 +605,65 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
       if (!['half_width', 'stroke_width', 'contour_width', 'contour_height'].includes(p.name)) expect(p.unit).toBeNull();
     }
   });
+
+  it('T73 AMEND 1 (advisor, measured live in Fusion on main 660f417): the contour_width/contour_height Distance dims are anchored on the contour\'s OWN geometric extremes (min-x/max-x, min-y/max-y), never merely the first mirror pair a search happens to visit -- Bottle\'s NECK (narrower than its body) previously got forced to the full contour_width', () => {
+    const shape = { preset, seed: 42, params: {} };
+    const { primitives } = generateSilhouette(REGION, shape);
+    const manifest = manifestFromShape(shape, REGION);
+
+    // T74 AMEND 0: the width dim's own expression is now PER-PRESET (the
+    // bottle's own body is a bodyWidth FRACTION of contour_width, so its
+    // expression is 'contour_width * body_width', not the bare name) --
+    // found by orientation, not by matching a specific expression string.
+    const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Horizontal');
+    const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Vertical');
+    expect(widthDim).toBeDefined(); // non-vacuous
+    expect(heightDim).toBeDefined();
+    expect(widthDim.orientation).toBe('Horizontal');
+    expect(heightDim.orientation).toBe('Vertical');
+
+    const [wA, wB] = widthDim.targets.map((t) => pointOf(manifest.entities, t));
+    const [hA, hB] = heightDim.targets.map((t) => pointOf(manifest.entities, t));
+    // NOTE: the dim's own driven VALUE (region.w/h, already covered by the
+    // "parameters carry..." test above) is NOT the same claim as "the raw,
+    // undriven geometry already measures region.w/h apart" -- a Distance
+    // dim is a DRIVING dimension; its whole job is to STRETCH whatever the
+    // raw generated geometry measured (params like bodyWidth jitter narrower
+    // than the full region on purpose) out to the declared value once Fusion
+    // solves it. The bug was never "wrong VALUE" -- it's "wrong POINTS":
+    // independent oracle, the anchor points must sit at the contour's own
+    // TRUE geometric extremes (every Line primitive's own endpoints), never
+    // an incidental mirror pair narrower than the shape's real widest/
+    // tallest point (e.g. Bottle's neck).
+    const xs = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.x, p.p1.x] : []));
+    const ys = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.y, p.p1.y] : []));
+    expect(Math.min(wA.x, wB.x)).toBeCloseTo(Math.min(...xs), 9);
+    expect(Math.max(wA.x, wB.x)).toBeCloseTo(Math.max(...xs), 9);
+    expect(Math.min(hA.y, hB.y)).toBeCloseTo(Math.min(...ys), 9);
+    expect(Math.max(hA.y, hB.y)).toBeCloseTo(Math.max(...ys), 9);
+  });
+
+  it('T74 AMEND 0 (advisor, measured live in Fusion on 847f289: the bottle spawned 0.45in off): each size dim\'s own EXPRESSION evaluates (using the manifest\'s own declared parameter values) to exactly the distance between its two anchor points in the raw, undriven geometry -- a Distance dim is a DRIVING dimension, so a mismatch here means Fusion silently re-shapes the contour to whatever the expression DOES evaluate to, not what the points actually measure', () => {
+    const shape = { preset, seed: 42, params: {} };
+    const manifest = manifestFromShape(shape, REGION);
+    const paramValue = Object.fromEntries(manifest.parameters.map((p) => [p.name, p.value]));
+    const evalExpr = (expr) => expr.split('*').map((tok) => {
+      const name = tok.trim();
+      expect(name in paramValue).toBe(true); // non-vacuous: every token must be a REAL declared parameter
+      return paramValue[name];
+    }).reduce((a, b) => a * b, 1);
+
+    const widthDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Horizontal');
+    const heightDim = manifest.dimensions.find((d) => d.type === 'Distance' && d.orientation === 'Vertical');
+    const [wA, wB] = widthDim.targets.map((t) => pointOf(manifest.entities, t));
+    const [hA, hB] = heightDim.targets.map((t) => pointOf(manifest.entities, t));
+
+    // A Fusion 'Horizontal'/'Vertical' Distance dim reads only the ONE
+    // relevant axis between its two points, not the full point-to-point
+    // distance -- matching AMEND 1's own oracle above.
+    expect(evalExpr(widthDim.expression)).toBeCloseTo(Math.abs(wB.x - wA.x), 9);
+    expect(evalExpr(heightDim.expression)).toBeCloseTo(Math.abs(hB.y - hA.y), 9);
+  });
 });
 
 describe('manifestFromShape — hourglass-specific: shoulder<->hip cross-tie', () => {
@@ -703,17 +769,33 @@ describe('manifestFromShape — T71 (T69-fix-3): loose contour -- Symmetry/mirro
     expect(manifest.constraints.some((c) => c.type === 'Equal' && c.targets.includes('seg2') && c.targets.includes('seg8'))).toBe(true);
   });
 
-  it('a horizontal point-to-point Distance dim (=contour_width, a NEW independent parameter) ties the first Line mirror pair, and a vertical one (=contour_height) ties the top/bottom self-mirroring edges -- both driven by region.w/region.h, never widthIn/heightIn', () => {
+  it('a horizontal point-to-point Distance dim (=contour_width, a NEW independent parameter) ties the contour\'s own left/right extreme corners, and a vertical one (=contour_height) ties its top/bottom extreme corners -- both driven by region.w/region.h, never widthIn/heightIn', () => {
     const shape = { preset: 'hourglass', seed: 42, params: {} };
+    const { primitives } = generateSilhouette(REGION, shape);
     const manifest = manifestFromShape(shape, REGION);
     const widthDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Horizontal');
     expect(widthDim).toBeDefined();
     expect(widthDim.expression).toBe('contour_width');
-    expect(new Set(widthDim.targets.map((t) => t.split(':')[0]))).toEqual(new Set(['seg0', 'seg10']));
     const heightDim = manifest.dimensions.find((c) => c.type === 'Distance' && c.orientation === 'Vertical');
     expect(heightDim).toBeDefined();
     expect(heightDim.expression).toBe('contour_height');
-    expect(new Set(heightDim.targets.map((t) => t.split(':')[0]))).toEqual(new Set(['seg5', 'seg11']));
+    // T73 AMEND 1: which SPECIFIC segment anchors each dim is no longer
+    // asserted by hardcoded id -- the hourglass's 4 horn segments (the
+    // top/bottom horn on each side) all sit at the identical left/right
+    // extreme x, so any one of them is an equally valid, equally correct
+    // anchor (the earlier hardcoded 'seg0'/'seg10' expectation was really
+    // asserting an INCIDENTAL detail of the old, since-fixed mirror-pair
+    // search order, not a real requirement). Assert the GEOMETRIC property
+    // that actually matters instead: the anchor points sit at the
+    // contour's own true min-x/max-x (width) and min-y/max-y (height).
+    const [wA, wB] = widthDim.targets.map((t) => pointOf(manifest.entities, t));
+    const [hA, hB] = heightDim.targets.map((t) => pointOf(manifest.entities, t));
+    const xs = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.x, p.p1.x] : []));
+    const ys = primitives.flatMap((p) => (p.type === 'L' ? [p.p0.y, p.p1.y] : []));
+    expect(Math.min(wA.x, wB.x)).toBeCloseTo(Math.min(...xs), 9);
+    expect(Math.max(wA.x, wB.x)).toBeCloseTo(Math.max(...xs), 9);
+    expect(Math.min(hA.y, hB.y)).toBeCloseTo(Math.min(...ys), 9);
+    expect(Math.max(hA.y, hB.y)).toBeCloseTo(Math.max(...ys), 9);
     // The dims' own VALUES are independent numbers (region.w/region.h at
     // whatever region manifestFromShape was actually called with), never
     // an expression referencing the board's own widthIn/heightIn.
@@ -738,7 +820,7 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     rails: { mode: 'every', every: 2, offset: 0 },
     ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 2, railSnapRows: 0 },
     nodes: { ends: false, crossings: false, railEnds: false },
-    widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
+    widths: { rails: 0.07, ties: 0.07, nodeDiameter: 0.15, linkRailsTies: true },
     seed: 42,
   };
   // buildSketchManifest resolves its OWN board extent internally
@@ -993,7 +1075,7 @@ describe('buildSketchManifest — T72: the default Bottle preset (and a deep-wai
   });
 });
 
-describe('buildSketchManifest — T72 (SE14c): contour.show=false omits the contour from the manifest but leaves the lattice fill byte-for-byte identical', () => {
+describe('buildSketchManifest — T72 (SE14c) + T73 AMEND 3: contour.show=false omits the contour from the manifest and keeps the OLD (contour-inset) lattice boundary; show=true clips the lattice fill to the contour\'s own wider, raw centerline instead', () => {
   function shapePattern(contour) {
     return {
       ...PATTERN_DEFAULTS, spacing: 0.25,
@@ -1020,13 +1102,16 @@ describe('buildSketchManifest — T72 (SE14c): contour.show=false omits the cont
     expect(manifest.contourWidthMode).toBeNull();
   });
 
-  it('the lattice fill is UNCHANGED by the toggle -- same rail/tie/node entities, same latticePieceCount, ON vs OFF (the dispatch\'s own "clips/fits exactly as now" requirement)', () => {
+  it('T73 AMEND 3 supersedes the ORIGINAL T72 invariant here: ON now clips the lattice fill to the contour\'s wider, RAW centerline (rails/ties reach it exactly, Fred\'s own "coincide to contour" ask), while OFF keeps the narrower, contour-half-width-inset boundary this describe block\'s OWN name still documents -- so the two are now deliberately DIFFERENT, never byte-identical', () => {
     const on = buildSketchManifest(shapePattern(), REGION, {});
     const off = buildSketchManifest(shapePattern({ show: false }), REGION, {});
     expect(on.latticePieceCount).toBeGreaterThan(0); // non-vacuous
-    expect(off.latticePieceCount).toBe(on.latticePieceCount);
-    const latticeOnly = (m) => m.entities.filter((e) => !e.id.startsWith('seg'));
-    expect(latticeOnly(off)).toEqual(latticeOnly(on));
+    expect(off.latticePieceCount).toBeGreaterThan(0);
+    // ON's own boundary is strictly WIDER (reaches the raw centerline
+    // instead of stopping short by the contour's own half-stroke-width),
+    // so it has room for at least as many lattice pieces as OFF, and for
+    // this fixture strictly more.
+    expect(on.latticePieceCount).toBeGreaterThan(off.latticePieceCount);
   });
 
   it('a saved pattern with no `contour` key at all reads as shown (true) -- pre-T72 patterns are unaffected', () => {

@@ -8748,3 +8748,426 @@ confirmed stopped, `proc_health.py watch` clean.
 Verify (final, after AMEND 5): 1203/1203 vitest, 33/33 pytest. Amendments polled clean immediately before this
 pass. NO FUSION this whole turn, per the dispatch.
 
+## T73 (SE14b) — Shape Lattice contour as N selectable, per-segment-colourable segments
+
+Per the dispatch (Fred: "we should also represent those separations in the add-in preview, to be able to select
+segments and color them" / "contour can have per segment colors within lattice right?"), using the T70/SE14b
+capacity-report investigation (b62fd4d) named in the dispatch: the rendering pipeline, the boundary-resolution-
+reads-one-DOM-element hazard, the segment-tap interaction question, and the colour-persistence design.
+
+**Rewrite**: the contour is now drawn as ONE `<path>` PER PRIMITIVE (line/arc, round caps, stroke=`widths.rails`,
+"auto = lattice stroke width" per T72 item 6) instead of one combined path, all sharing a single `boundary-ref` id
+(`data-contour-seg` holds each one's own primitive index — the SAME index `generateSilhouette`'s own `primitives[i]`
+and the manifest's own `seg{i}` ids already use). `_findBoundaryElement` → `_findBoundaryElements` (plural,
+order-sorted by that index) so the already-shipped lattice-fill-clipping code (a hard dependency on boundary-element
+resolution) degrades correctly for both the old N=1 hand-picked case and the new N>1 generated case: the N segment
+`d` strings are rejoined into one closed loop (`joinSegmentPathsIntoClosedD`) and fed to the SAME
+`insetGeneratedPresetPathDToPrimitives` generated presets already used — no new inset math, no geometry stored
+twice. The Border-piece emission and `recolorOwnedKind`'s `'contour'` branch were rewired the same way.
+
+**Parity gap found and fixed**: making the contour's own drawn stroke width `widths.rails` instead of a fixed
+hairline (the dispatch's own explicit "auto = lattice stroke width" ask) meant `_effectiveBorderWidth`'s Border-off
+fallback — which reads the live boundary element's own `stroke-width` — now returns `widths.rails` too, but
+`editor-sketch-manifest.js`'s own `shapeHalfInset` still assumed the OLD hairline constant for that same fallback.
+That divergence clips the app's lattice fill and the manifest's lattice fill against two DIFFERENT effective
+boundaries — caught by the full test run (77 failures: rails/ties count mismatches across
+`shape-lattice-param-sweep.test.js` and `parity-app-manifest.test.js`), not assumed from reading the code. Fixed by
+having `shapeHalfInset` read `widths.rails` too, matching the app's now-uniform behavior; the app/manifest "d" byte-
+for-byte parity test was rewritten for the new N-elements-per-primitive shape rather than deleted.
+
+**Colour-persistence bug self-caught before committing**: the first draft stored a segment's colour override on
+`shape.segments[i].color`, keyed by the pre-existing STYLE-segment index (kink/bulge/dir/cornerRadius, T58's own
+"Segments" panel section). Running the full suite didn't catch this one — it's a design bug, not a regression — a
+second look caught it: `generateSilhouette`'s own `_normalizeSegment` rebuilds a FRESH `{style,bulge,dir,
+cornerRadius}` object on every single call and drops any other field, so a colour written there would never survive
+even a same-preset regenerate. Worse, `_segmentToPrimitives` expands one 'kink' style-segment into TWO line
+primitives, so `shape.segments.length` can be smaller than the drawn primitive count — the style-segment index and
+the drawn-primitive index are genuinely different axes, not just different names for the same thing. Redeclared as
+`PATTERN.contour.segmentColors[i]`, a new parallel array keyed by PRIMITIVE index (matching `CONTOUR_SEG_INDEX_ATTR`
+and the manifest's `seg{i}` ids), carried forward across a regenerate that keeps the SAME primitive count and reset
+to `[]` when it changes (preset swap, or a style edit that adds/removes a kink) — "a count change resets them," per
+the dispatch.
+
+**editor.setColor** now persists a recoloured contour segment's override into that array when the selection carries
+`CONTOUR_SEG_INDEX_ATTR`, via a plain module function (not an instance method — `editor-color.test.js`'s own
+`VectorEditor.prototype.setColor.call(mock, …)` pattern exercises real mocks that never carry every instance
+method, only the ones a test explicitly re-attaches, so a `this.foo()` call would have broken that whole file).
+`recolorOwnedKind`'s contour branch reads the same array so the contour's own default-colour swatch still skips any
+segment carrying an override, matching rails/ties/nodes' existing default-vs-override rule.
+
+**Verified unchanged, no code needed**: `manifestFromShape`'s own `seg{i}` ids already index by primitive, matching
+the DOM side exactly — no manifest change beyond `shapeHalfInset` above. The tap-a-segment style popup
+(`hitTestSegment`, editor-shape-lattice-interaction.js) is pure geometry + its own `primitiveSegmentMap` (primitive
+index → style-segment index, already existed for the kink-expansion case) and is gated to the Shape Lattice TOOL's
+own mode (`shapeLatticeHandler`) — the normal SELECT tool (a different mode) hit-tests the new per-segment DOM
+elements individually with zero extra plumbing, so "selectable with the normal select tool" and "tap a segment to
+edit its style" are different tools, never in conflict. SVG export / Fusion-geometry extraction
+(`_parseLayerContent`, editor-io.js) and the drape preview both walk `_sketchLayer.children()` generically by
+`data-layer`/`display`, with no contour-specific special case — each segment's own live `stroke` color and
+`display` already carry through "for free."
+
+**Tests**: `tests/shape-lattice-segment-color.test.js` (new) covers the dispatch's own acceptance list — N drawn
+segments = N manifest contour entities; recolour one → only it changes; regenerate (same count) keeps it;
+regenerate (preset swap, different count) resets it; the show-contour checkbox off hides ALL N segments, not just
+one. Updated `tests/parity-app-manifest.test.js` (the byte-for-byte "d" test) and 3 call sites in
+`tests/properties-shape-lattice.test.js` for `regenerateSilhouette`'s new return type (array of N elements, not
+one) — every real caller already discarded the return value, only tests read it.
+
+**Rendered and viewed**: hourglass (12 primitives) and bottle (10 primitives), 2 segments recoloured each (indices
+1 and 4), straight from the pure geometry engine via headless Chrome (same "no live app needed" technique T72 item
+3 used) — both shapes drew correctly, only the 2 targeted segments took the override colour, everything else stayed
+the default contour green. Script was scratch (session scratchpad, not committed).
+
+Verify: 1208/1208 vitest (1203 + 5 new), 151/151 pytest. Amendments polled clean before each commit. NO FUSION this
+whole turn, per the dispatch. Two commits: 859eb70 (per-segment rewrite + shapeHalfInset parity fix + existing-test
+updates), a455a28 (colour-persistence hook + new test file).
+
+## T73 AMEND 1 — contour_width/height Distance dims anchor by geometry, not iteration-order luck
+
+Delivered via a direct cross-session message from the advisor (not the usual NEXT-SESSION-lane-b.md dispatch file),
+flagged as a BLOCKER to fix before anything else, "measured live in Fusion on main 660f417": the default Bottle
+preset spawns with its contour up to 3.07in off.
+
+Verified the root cause independently by reading the code before touching anything (not just trusting the report):
+`manifestFromShape`'s width/height Distance-dim anchor points were a SIDE EFFECT of the mirror-pair Equal-constraint
+search — `widthPairIds` captured whichever Line mirror pair that search visited FIRST in primitive-iteration order,
+and `selfMirrorHorizontalIds` similarly grabbed the first self-mirroring horizontal pair. For Bottle that first Line
+pair is seg0/seg8 — the NECK horns (confirmed against `_solveBottle`'s own `fresh` segment array: index 0 is
+`rTop -> rNeckHorn`) — so the contour_width Distance dim forced the NECK out to the full board width once Fusion
+solved it. Hourglass's own first mirror pair (seg0/seg10) happens to already be the outer/widest horns, so it
+"passed" — coincidence, not correctness.
+
+Fixed by choosing the anchor points BY GEOMETRY: the contour's own actual corners at min-x/max-x (width) and
+min-y/max-y (height), found directly from every LINE primitive's own endpoints only (deliberately never an arc's —
+`primitivesBBox`'s existing arc handling uses the arc's full bounding CIRCLE, which can overshoot a gently-curved,
+large-radius arc's own visible sweep; every arc in these presets is tangent to, never past, its neighboring
+horn/cap by construction, so a plain Line-endpoint scan is both simpler and safer than reusing that general-purpose
+bbox helper here).
+
+New test (`tests/editor-sketch-manifest.test.js`, inside the existing `describe.each(['hourglass','bottle'])` block)
+confirmed FAILING FIRST against the unfixed code before any fix was applied: Bottle's anchor points measured 3.56in
+narrower than the contour's true width (closely matching the live "~3.07in off" report — same bug, independently
+reproduced from pure geometry, no Fusion needed); hourglass passed even unfixed, matching the "passed by luck"
+diagnosis exactly. Also caught and fixed a design mistake in my OWN first draft of that test: it asserted the RAW,
+undriven geometry should already measure exactly `region.w`/`region.h` apart — wrong, since `bodyWidth` (and every
+other shape param) carries deliberate seeded jitter that can narrow the raw shape below the full region on purpose;
+the Distance dim's whole job is to DRIVE it there once Fusion solves the sketch, not to already equal it beforehand.
+Corrected to assert only the property that actually matters: the anchor points sit at the raw geometry's own true
+extremes. Separately fixed a pre-existing test that hardcoded the OLD algorithm's own incidental segment ids
+(`seg0`/`seg10`) as if they were a real requirement — hourglass has 4 horn segments tied at the identical extreme x
+(my fix's deterministic first-found tie-break landed on `seg0`/`seg6` instead, equally correct, equally valid) — so
+it was rewritten to assert the geometric property instead of hardcoded ids, avoiding reintroducing the same
+brittleness this whole AMEND exists to fix.
+
+Verify: 1210/1210 vitest (1208 + 2 new), 151/151 pytest. Amendments polled clean before commit. Commit 65545ef,
+pushed. NO FUSION.
+
+## T73 AMEND 2 — confirmed already satisfied (no code change), verification test added
+
+Delivered via cross-session message, not the dispatch file (advisor DMing the worker mid-task, an established
+pattern from earlier lanes). Claim: the visible contour segments (not just the optional Border clone) should draw
+at the lattice stroke width, auto — measured against main 660f417 (pre-SE14b), where the silhouette was still a
+fixed 0.02 hairline. Checked against THIS session's own already-committed SE14b rewrite (859eb70) before writing
+any code: `regenerateSilhouette` already sets every segment's own `contourWidth = widths.rails` unconditionally, so
+the claim was already true here, just unverified. Added the exact parity test the amend asked for
+(`tests/parity-app-manifest.test.js`) instead of leaving it an assumption. 1211/1211 vitest. Commit 8447247, pushed.
+
+## T73 AMEND 3 (geometry half) — rails/ties reach the contour's raw centerline
+
+Fred, from 2 Fusion screenshots of a rail stopping short of the contour, unconnected: "I need rails to coincide to
+contour." Root-caused by reading the code first: a rail/tie end used to stop half the CONTOUR's own stroke-width
+short of centerline (`_resolveBoundaryPrimitives`'s own boundary-edge inset) AND THEN half the RAIL's own
+stroke-width short of THAT already-shrunk boundary (the default `'inset'` endRule) — a real, compounding, visible
+gap on both counts.
+
+New `usesContourCenterline(pattern)` (editor-lattice-pattern.js) declares, once, exactly when this applies: a
+generated silhouette whose contour is shown. `_resolveBoundaryPrimitives` (app) and `shapeHalfInset` (manifest, T71)
+both force zero inset in that case; `computePattern` forces `endRule:'on-boundary'` (an EXISTING, already-tested
+rule — "the crossing point IS the final endpoint," never built before because nothing needed it) instead of the
+default `'inset'`. Rail/tie centerlines now reach the contour's own centerline exactly, deliberately overlapping its
+stroke ("the slot caps then overlap the contour slot," Fred's own words) rather than stopping short. "Contour
+checkbox OFF: keep today's behaviour" per the amend — untouched.
+
+**Self-caught bug, before committing:** the fix's own zero-inset case exposed a pre-existing, previously-masked
+precision asymmetry between app and manifest. Both sides round-trip contour coordinates through a `d`-string when
+insetting by a POSITIVE amount (the app via its drawn segments' own already-string-rounded `d` attrs;
+the manifest via `primitivesToPathD`) — but the manifest's own `resolveShapeBoundaryExtent` had a
+`halfInset > 0 ? ... : primitives` shortcut that used FULL double-precision primitives directly whenever inset was
+exactly 0, while the app's own equivalent path (`insetGeneratedPresetPathDToPrimitives`'s own `strokeHalfWidth<=0`
+branch) still reparses from a string even at zero inset. The two sides only disagreed by ~0.001in — invisible
+normally, but enough to flip whether a rail/tie piece exists at all right at a razor's-edge extreme param. Caught by
+running the FULL test suite immediately (not just the new geometry test): 108 failures, every one at a deep-waist-
+style extreme in the T72 AMEND 5 sweep. Fixed by removing the manifest's own shortcut — it now always round-trips
+through the same `d`-string path the app structurally always has to (its geometry lives in DOM string attributes;
+there is no way for it to be more precise than that).
+
+**Also superseded** T72 SE14c's own "contour.show toggle changes nothing about the lattice fill" invariant, which
+this amend explicitly overrides for the ON case (a wider boundary now genuinely fits more pieces) — updated the 2
+tests that asserted ON===OFF to assert the intended new relationship (ON >= OFF, strictly more somewhere) instead,
+and repointed one T66 regression fixture (a specific historical degenerate-piece case, unrelated to this amend) at
+`contour.show:false` so it keeps reproducing the exact geometry it always has.
+
+New `tests/shape-lattice-rails-on-contour.test.js`: an independent point-on-line/point-on-arc oracle (no re-use of
+production crossing code) confirms every rail's own two ends land within ~1e-3in (the contour's own known
+`_fmt`-rounding ceiling, not exact double precision) of the RAW contour primitives, on the dense vertical hourglass
+(12 rails, the amend's own named case) and the bottle — plus a non-vacuous baseline proving a real, larger gap
+exists with the contour hidden (so the ON case is a genuine change, not always-true regardless of the toggle).
+Rendered and viewed both shapes: rails now visibly reach and overlap the contour, correctly splitting into 2 pieces
+where a rail crosses the hourglass waist twice (AMEND 3b's own "vertical rails through the waist" case — the
+existing multi-span architecture handled the SPLIT for free once the boundary/endRule fix landed; only the
+CONSTRAINT side of that case is still open, see below).
+
+**Deferred to a follow-up commit** (explicitly staged, matching this project's own "land what's solid, commit, then
+continue" precedent for oversized asks): the Coincident CONSTRAINT declaration in the manifest (wiring each
+contour-touching rail/tie end to its specific `segN`) — this commit is the geometry only. AMEND 3b's own edge cases
+(near-tangent grazes dropped below a declared minimum, an end exactly at a segment JOINT constraining to one segN
+only, not two point-on-curves) and AMEND 3c (Collinear + `railGroup` membership between same-rail split pieces) are
+also queued there, since they're refinements of the same constraint-emission work, not the geometry.
+
+Verify: 1214/1214 vitest, 151/151 pytest. Amendments polled clean before commit. Commit dc3c984, pushed. NO FUSION.
+
+## T73 AMEND 4 — round caps/joins on every drawn contour element
+
+Fred, live screenshot: "these corners need to be rounded since they are slots." Declared once
+(`CONTOUR_STROKE_STYLE`, editor-lattice-boundary.js — the same neutral home `SILHOUETTE_STROKE_WIDTH`/
+`CONTOUR_SIZE_INSET_IN` already use): `{linecap:'round', linejoin:'round'}`, applied to BOTH drawn contour element
+kinds — the SE14b per-segment elements (already had `linecap` alone; now the shared full style) and the Border
+clone (previously had neither). Root cause, found before touching anything: the Border clone is a SINGLE combined
+closed-loop path (`joinSegmentPathsIntoClosedD`) with a real internal vertex at every contour segment joint — unlike
+the per-segment elements (each a lone L or A, no internal joint of its own) — so a default miter join there
+genuinely does show as a sharp/pointed corner on a thick stroke, exactly the reported symptom; `linejoin` is a
+no-op on the per-segment elements specifically, but applying the identical full style everywhere avoids reasoning
+about which attribute matters at which call site for one declared constant.
+
+Tests confirm every contour segment and the Border clone both carry `stroke-linecap=round`/`stroke-linejoin=round`.
+Rendered and viewed a 0.5in-stroke hourglass and bottle: corners are now visibly rounded.
+
+Verify: 1216/1216 vitest, 151/151 pytest. Amendments polled clean before commit. Commit 263c645, pushed. NO FUSION.
+
+## Process correction — handoff.py cwd
+
+Caught by the advisor: every `handoff.py` call this whole session (wait/amendments/sig/pass) had been running against the
+MAIN checkout's own handoff channel, not lane-b's own — no explicit `cd` in those specific bash commands, so they ran in
+whatever the tool's default cwd happened to be. This meant polling "no new amendments" was checking the WRONG file the
+entire time; every AMEND 1-4 I'd received arrived via direct cross-session messages instead, and my own turn-165 pass-
+back at the end of the prior SE14b session never reached lane-b's real channel either (lane-b's own `.handoff/worker.last`
+was still sitting at 165, un-advanced, confirmed by reading the file directly). Fixed going forward: every handoff.py
+call now runs with an explicit `cd` to the lane-b worktree in the SAME bash command. Also confirmed and corrected: the
+apparent turn-276 "ADD1" dispatch earlier in this session was main's own channel (seat A's task, already done by seat A
+per the advisor) — never mine, correctly left untouched.
+
+## T73 AMEND 3 (constraint) — Coincident from each rail/tie end to its contour segment
+
+Completes AMEND 3's own full ask (the geometry half landed as dc3c984): every rail/tie end `computePattern` already
+attributes to a contour crossing (`usesContourCenterline` mode) now gets a declared Coincident constraint in the
+manifest, wiring it to the specific contour segment (line or arc) it landed on.
+
+New `primitiveHitAt(pt, primitives, tol)` (editor-lattice-boundary.js, alongside `insideSpans`): given a point already
+known to sit on some primitive in the list, finds WHICH one and whether it's at that primitive's own S/E (a joint
+between two contour segments) or genuinely mid-primitive. This ALSO satisfies AMEND 3b's own "an end at a joint
+constrains to ONE segment only, never two point-on-curves" requirement by construction — the function returns the
+FIRST matching primitive with its own S/E flag already, so the emitted constraint is already point-to-point at that
+one segment; no separate dedup pass was needed.
+
+`computePattern` attributes each boundary-crossing rail/tie end (only when `endRule` is `'on-boundary'`) via a new
+`aContourHit`/`bContourHit` field, converting the scan-line's own scalar crossing position back to a world point
+first. `manifestFromLattice` reads it to emit the Coincident, reusing the SAME "point-to-point at an end, point-on-
+curve mid-primitive" convention `pieceEndOrCurveTarget` already established for tie-on-rail/node relations.
+
+**Self-caught bug** (a temporary debug trace, not guesswork): `computePattern`'s own final return re-mapped every
+segment down to a bare `{kind, a, b}` object before returning it, silently dropping the two new fields one line after
+they were correctly computed — the attribution itself was right the whole time; the return statement threw it away.
+Fixed by passing both fields through in that same map.
+
+New tests (`tests/shape-lattice-rails-on-contour.test.js`): for the dense vertical hourglass and bottle, every rail end
+has EXACTLY ONE Coincident to a `seg*` entity, independently verified against that constraint's own resolved point
+(not just its declared shape, and not by re-trusting `primitiveHitAt`); contour hidden emits zero `seg*` Coincidents.
+A manual sweep (ad hoc, not a committed test) across both presets x both orientations x 3 rail counts found zero
+duplicate or self-referencing Coincident constraints anywhere.
+
+**Disclosed, deferred scope**: AMEND 3b's own explicit near-tangent-angle threshold (dropping a Coincident whose
+crossing angle is under ~10°) and a dedicated `MIN_RAIL_PIECE` (a stricter drop-threshold than the existing
+`MIN_PIECE_LENGTH_IN`) are not implemented — relying on the existing length filter for now, a judgment call under
+real time constraints, not a silent gap.
+
+Verify: 1219/1219 vitest, 151/151 pytest. Amendments polled clean before commit (correct lane-b cwd this time). Commit
+fa878f1, pushed. NO FUSION.
+
+## T73 AMEND 3c — Collinear + railGroup for split same-rail/tie pieces
+
+Fred: "rails can have colinearity." When a boundary crossing splits one original rail/tie into several pieces (e.g. a
+vertical rail crossing the hourglass waist twice — AMEND 3b's own case (a), already handled for free by the existing
+multi-span `_clipToSpans` architecture once the boundary/endRule fix landed), giving every piece its own Horizontal/
+Vertical constraint over-constrains once a Collinear between them already fixes the later pieces' own direction.
+
+`computePattern` now tags every rail/tie segment with `railGroup` — the row `j` / column `i` it came from, already a
+stable, unique-per-row/column key, reused directly rather than declaring a second counter. `manifestFromLattice`
+declares it as plain DATA on the entity itself too (not just an internal bookkeeping key — "the relation is derived
+from data," the amend's own words), via `addSlotPieces`'s own new optional `railGroup` passthrough (harmless/absent
+for its other caller, the contour's own single-piece slot emission). Only the FIRST piece of each group gets its own
+axis constraint (`emitAxisOncePerGroup` — deliberately only marks a group "seen" once a REAL axis constraint actually
+fires, so a hypothetical non-axis-aligned piece could never silently poison the rest of its own group's chance at
+one); `collinearForGroups` links every group's own consecutive pieces (already position-sorted by construction —
+`_clipToSpans` emits spans ascending, never re-sorted downstream) with one Collinear constraint each, applied
+identically to both rails and ties.
+
+New tests confirm, on the dense vertical hourglass: every multi-piece group gets exactly (pieces-1) Collinear
+constraints in the correct consecutive order, axis constraints appear only on each group's own first piece, and an
+un-split rail is entirely unaffected by the dedup logic. A manual sweep (ad hoc) across both presets x both
+orientations x 3 rail counts confirmed the expected split-group/axis/Collinear pattern throughout, no anomalies.
+
+This closes out T73 AMEND 3's full scope (3 core, 3b's splitting behavior, 3c) except the two explicitly disclosed
+AMEND 3b items above (near-tangent-angle threshold, dedicated MIN_RAIL_PIECE).
+
+Verify: 1221/1221 vitest, 151/151 pytest. Amendments polled clean before commit. Commit 23f1584, pushed. NO FUSION.
+
+# T74 — AMEND 0 (blocker), AMEND 3b close-out, SE14d, NODE-D
+
+## T74 AMEND 0 (BLOCKER, own commit first) — per-preset contour_width dim expression
+
+Advisor, measured live in Fusion on 847f289: hourglass spawns exact, but the bottle spawns 0.45in off. AMEND 1's
+own geometry fix (T73) already targets the RIGHT points (the body's own vertical horns), but the dim's VALUE
+(contour_width=6) doesn't match what those points actually measure in the raw geometry (5.564 = contour_width *
+body_width, since bodyWidth is a genuine 0..1 fraction of the available half-width, `_solveBottle`'s own formula,
+never necessarily 1) — Fusion, solving a DRIVING dimension, stretches the body straight out to contour_width,
+distorting the shape.
+
+Declared per preset, in the preset's own data (`PRESETS[preset].widthExpr`, editor-shape-lattice-generator.js) —
+per the amend's own explicit instruction ("declare the expression per preset... in the preset's own shape data, not
+an if/else in the builder"). Written in the geometry engine's own camelCase param names (`bodyWidth`) — the
+geometry engine has zero Fusion-naming awareness by design, so `editor-sketch-manifest.js`'s new `resolveWidthExpr`
+translates each token via the SAME `PARAM_FUSION_NAMES` table `parameters` itself already uses. Height needs no
+factor for either preset: both presets' own top/bottom caps always span the full contour_height unconditionally
+(verified directly in `_solveHourglass`/`_solveBottle` — half-height is always `region.h/2`).
+
+New test evaluates every Distance dim's own expression against the manifest's declared parameter values and
+asserts it equals the distance between that dim's two target points, on the SAME axis a Fusion Horizontal/Vertical
+dim actually reads (self-caught: my own first draft compared against the full point-to-point hypot distance, which
+overstates a Horizontal/Vertical-only reading whenever the two points differ in the OTHER axis too). Confirmed
+failing first against the pre-fix expression (bottle: 6 vs 6.492, a 0.508in gap — matching the live ~0.45in
+report; hourglass passed even unfixed).
+
+Verify: 1223/1223 vitest, 151/151 pytest. Commit 9a86638, pushed.
+
+## T74 item 1 — AMEND 3b close-out: near-tangent threshold + MIN_RAIL_PIECE
+
+Closes the two AMEND 3b items disclosed as deferred at the end of T73. `primitiveHitAt` now also returns the
+contour's own tangent direction at the hit point; `computePattern`'s `contourHit` compares it against the rail/
+tie's own scanline direction and suppresses the Coincident below a declared 10° threshold.
+
+**Self-caught bug**, found via a live sweep across `waistReach` values (not assumed): the first version applied the
+angle check unconditionally, silently suppressing a real fraction of every rail's own perfectly-valid CORNER
+Coincidents whenever `primitiveHitAt`'s first-found primitive at that joint happened to be near-parallel to the
+rail — a joint (`hit.end` 'S'/'E') is an EXACT point-to-point match regardless of what angle the two segments meet
+at; "near-tangent" only makes sense for a genuine mid-primitive landing (`hit.end` null). Fixed by skipping the
+angle check entirely for joints.
+
+MIN_RAIL_PIECE (2x the relevant stroke width) is checked inside `computePattern` itself, only for a genuinely
+SPLIT row/column — an ordinary un-split rail is never at risk regardless of its own length.
+
+New tests: a REAL deep-waist hourglass fixture (waistReach 0.15, dense vertical rails — found live, not contrived)
+shows rails split by the waist keeping exactly one Coincident on their clean end, with an independently-computed
+crossing angle confirming the kept end is >=10° and the dropped end is <10°. MIN_RAIL_PIECE verified
+deterministically by inflating the lattice stroke width so its own 2x threshold exceeds an EXISTING split piece's
+real length, rather than hunting for a naturally tiny sliver.
+
+Verify: 1225/1225 vitest, 151/151 pytest. Commit ecae8d3, pushed.
+
+## T74 item 2 (SE14d) — remove "Pick shape…" from the Shape Lattice panel
+
+Fred: "boundary pick shape isn't useful, it might just be another tool." A sweep: removed the button, its click
+handler, and the now-dead "next click picks a target" canvas dispatcher (its only remaining caller — box-Lattice's
+own former Pick-shape UI was already removed in T58). KEPT everything the GENERATED silhouette path shares with a
+hand-picked boundary: `shape.source==='picked'` semantics (`detectShapeLatticeDetach`'s auto-detach safety net, the
+`reuseExisting` regenerate guard, `_resolveBoundaryPrimitives`'s collapse-fallback), the endRule segmented control
+(NOT picked-only — read whenever `usesContourCenterline` is false), and `boundary.edge` (data-only, no UI row
+exists for it). The "Boundary" section heading text is untouched, for seat A's own title-based
+`TOOL_PANEL_MOUNTS` decoration on main.
+
+**Decided (not left ambiguous)** on the ROADMAP's "saved patterns with a picked boundary still load — decide +
+log": a picked pattern already renders/fills correctly today with no branch on `shape.source` anywhere in the
+draw/fill path — removing the CREATE-a-new-pick button doesn't change that. Left the existing "touching a
+Shape-section control on a picked pattern silently converts it to generated" behavior exactly as-is (already
+documented in-code as deliberate) — a new read-only-mode gate would be a feature addition beyond this sweep's own
+scope, and the edge case only shrinks over time since new picked patterns can no longer be created.
+
+Tests: removed the 2 tests exclusively about the button/dispatch mechanism; kept and rewrote the 3rd
+(regenerate-never-overwrites-a-hand-pick contract) to seed `shape.source='picked'`/`boundary.shapeId` directly.
+
+Verify: 1223/1223 vitest, 151/151 pytest. Commit 9b4a8bc, pushed.
+
+## T74 item 3 (NODE-D) — node size entered/stored as diameter, not radius
+
+Fred: "node size should be entered as diameter not radius." Renamed `PATTERN.widths.nodeRadius` → `nodeDiameter`
+everywhere (default 0.075 → 0.15, same physical size, re-expressed). `emitNode` itself is UNCHANGED (still takes a
+real radius, a general-purpose utility) — every caller divides by 2 at the point it reads `widths.nodeDiameter`,
+rather than changing `emitNode`'s own contract.
+
+Manifest: `node_radius` param → `node_diameter`; the node's `Radial` dimension → `Diameter`; the Circle entity's
+own `radius` field stays a true radius (Fusion geometry needs one). Python builder: added the `"Diameter"` branch
+to `_apply_declared_dimensions`, mirroring the existing `"Radial"` one — `fb_engine/dimensions.py`'s own
+`addDiameterDimension` was already built (T60's own research) but never exercised by a real manifest until now.
+
+**Self-caught while running the full Python suite**: `FakeDesign`'s own `addDiameterDimension` stub existed but
+never logged to `CALL_LOG` (unlike `addRadialDimension`) — a real, pre-existing test-infra gap invisible until this
+change made it the first real caller. Fixed the stub and the one order-check test that hardcoded `"dim:Radial"`.
+
+Migration (`app-init.js`'s `MIGRATIONS` array, `node-radius-to-diameter`): mirrors `layer-carve-flag`'s own exact
+convention, gated on the CURRENT shape (not a version number). Doubles the old radius into the new diameter field
+and removes the stale key, so a saved pattern's own CUSTOM node size survives the rename instead of the
+`PATTERN_DEFAULTS` merge silently substituting the new default for a value it can no longer find under the old
+name. New tests/migrations.test.js coverage: conversion, already-migrated left alone, no-pattern layer untouched,
+mixed roster, idempotent on a second run.
+
+Verify: 1228/1228 vitest, 151/151 pytest. Commit 6544851, pushed. NO FUSION this whole turn.
+
+
+## T74 AMEND 1 — merge "show contour" + Border's "draw boundary" into ONE Contour control
+
+Fred (mid-task amendment, "do it together with SE14d"): "if draw boundary is off I shouldn't see it at all." The
+SE14c "show contour" checkbox and the separate Border section's own "draw boundary" checkbox were two independent
+on/off switches for what reads as one thing — turning Border off left the SE14b contour segments themselves still
+visible. Retired the whole Border clone feature (`PATTERN.boundary.border = {enabled, width, color}` — a SECOND,
+independently-toggled outline drawn from the boundary element's own geometry) entirely, not just its UI: deleted
+the Border-piece emission block in `generatePattern`, the `borderEnabled` gate on the "fix first" collinear-edge
+span (now always taken — an edge-collinear rail/tie is always kept, since there's no second stroke to double up
+against), and `_effectiveBorderWidth` (renamed `_effectiveContourWidth`, drops the `border.enabled` gate, keeps its
+3-branch resolution: explicit `contour.width` override → generated-silhouette auto (`widths.rails`) → hand-picked
+live-DOM-read fallback). `editor-sketch-manifest.js`'s own `shapeHalfInset` updated to match. Border's colour
+concept was NOT duplicated into `contour` — `colors.contour` (the Colors row's own swatch) was already the one
+place for it, never relocated.
+
+HTML: one `[x] Contour` checkbox (id `shapeLatticeContourShow`, reused) + one width field (new id
+`shapeLatticeContourWidth`, renamed from `shapeLatticeBorderWidth`) under a section still titled "Contour" (was
+briefly "Boundary" post-SE14d) so seat A's own title-based `TOOL_PANEL_MOUNTS` tint still applies. Checked the box
+Lattice panel per the dispatch's own ask — it has no Border control at all (moved to Shape Lattice entirely back
+in T58), so nothing to migrate there.
+
+**Self-caught bug while wiring the width field**: the existing `contourShowEl` change handler replaced
+`p.contour` outright (`p.contour = { show: ... }`), silently dropping `segmentColors` (and now `width`) on every
+plain checkbox toggle. Fixed to spread the existing object first.
+
+Migration (`app-init.js` MIGRATIONS, `border-to-contour-width`, mirrors `node-radius-to-diameter`'s own
+gate-on-current-shape convention): an already-saved `boundary.border.width` becomes `contour.width`; the merged
+`contour.show` is `border.enabled OR (old contour.show !== false)` — an enabled Border wins, since it was the
+thing actually drawn even when SE14b's own contour segments were hidden, so a document that used to show
+something visually keeps showing it. Border's colour field is dropped, never migrated (redundant with
+`colors.contour`, which every saved pattern already carries).
+
+Tests: rewrote/removed the Border-specific describe blocks across `editor-lattice-pattern-boundary-emit.test.js`
+(the whole "Border piece (§7)" describe deleted — nothing left to test once the clone element is retired; its one
+surviving width-override behavior folded into the existing "T50" describe via `contour.width`),
+`editor-lattice-pattern-ending.test.js` ("fix first" now has one unconditional-keep behavior, not two toggled
+ones), `parity-app-manifest.test.js` (two Border-clone-specific tests removed as redundant with their sibling
+contour-segment tests), and `properties-shape-lattice.test.js` (Border checkbox/color tests → one Contour-width
+test). Added a new `border-to-contour-width` describe to `migrations.test.js` (6 cases: explicit width, Border-off
+both show states, no-border-at-all no-op, no-pattern-layer no-op, idempotent). A stale CSS touch-sizing selector
+(`#shapeLatticeBorderEnabled`, `editor.css`'s coarse-pointer media query) would have silently stopped enlarging
+the merged checkbox on touch — repointed to `#shapeLatticeContourShow`.
+
+Viewed before committing: a throwaway vitest+CDP render (real `regenerateSilhouette`/`generatePattern`, not a
+reimplementation) confirmed all three states side by side — auto-width thin contour, an explicit 0.6" override
+rendering visibly thicker with rounded corners, and OFF drawing nothing at all while rails/ties still hug the
+exact same hourglass waist.
+
+Verify: 1223/1223 vitest, 33/33 pytest. Commit 01a7c4e, pushed. NO FUSION this whole turn.

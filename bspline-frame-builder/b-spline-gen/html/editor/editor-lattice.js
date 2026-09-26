@@ -407,9 +407,10 @@ export function emitSegment(editor, kind, a, b, widthOverride) {
  *  on — off-grid (Circle tool with no grid active) falls back to the
  *  fixed DEFAULT_NODE_RADIUS_IN, unchanged from before.
  *
- *  @param {number} [radiusOverride] SE7i: the generator's own PATTERN.
- *   widths.nodeRadius (inches), same generator-only scope as
- *   emitSegment's widthOverride above. */
+ *  @param {number} [radiusOverride] SE7i: derived from the generator's
+ *   own PATTERN.widths.nodeDiameter (NODE-D: stored/edited as a diameter,
+ *   halved by each caller before reaching this always-a-radius param),
+ *   same generator-only scope as emitSegment's widthOverride above. */
 export function emitNode(editor, p, radiusOverride) {
   if (findNodeAt(editor, p)) return null;
   const grid = editor._grid;

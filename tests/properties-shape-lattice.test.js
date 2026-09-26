@@ -1,14 +1,15 @@
 /**
  * T58 (SE14 Slice 3) — wires the Shape Lattice tool's own panel
  * (#editorShapeLatticePanel): Shape (preset/seed/params), Segments
- * (per-segment style + mirroring), and the Fill/Boundary/Ending/Border
+ * (per-segment style + mirroring), and the Fill/Boundary/Ending/Contour
  * section this tool now OWNS (moved here from properties-lattice.js's
  * own panel — "the box # Lattice loses its Boundary row"). Same
  * lightweight-but-real `_sketchLayer` mock shape as
  * tests/properties-lattice.test.js's own (so generatePattern/
  * generateSilhouette actually run, not stubs), extended with `.path()`
  * (the silhouette's own element kind, which the box-Lattice mock never
- * needed) and `.clone()` (generatePattern's own Border-piece branch).
+ * needed) and `.clone()` (SVG.js's own real API, mirrored here for parity
+ * with the other mocks in this test suite).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
@@ -16,7 +17,7 @@ import {
   paramHandleRecords, renderShapeLatticeHandles, detectShapeLatticeDetach, openSegmentStyleBar,
   currentPattern, currentShape,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, stampBoundaryRef } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -99,11 +100,6 @@ function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mockPickTarget(attrs = {}) {
-  const store = { ...attrs };
-  return { attr: (k, ...rest) => (rest.length === 0 ? store[k] : (store[k] = rest[0], undefined)) };
-}
-
 /** The full panel markup this module reads — one shared fixture, same
  *  "one big fixture, not N tiny ones" shape properties-lattice.test.js's
  *  own per-describe-block fixtures already use, just consolidated since
@@ -178,14 +174,10 @@ function fixtureHTML() {
     <button id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
     <input id="shapeLatticeWidthNodes" type="number">
 
-    <button id="shapeLatticePickShape"></button>
-    <span id="shapeLatticeBoundaryStatus">No shape picked</span>
+    <span id="shapeLatticeBoundaryStatus"></span>
     <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
-    <input id="shapeLatticeBorderEnabled" type="checkbox">
-    <input id="shapeLatticeBorderWidth" type="number">
-    <button id="shapeLatticeBorderColor"></button>
-    <button id="shapeLatticeBorderColorAuto" class="editor-fillmode-btn active"></button>
+    <input id="shapeLatticeContourWidth" type="number">
   `;
 }
 
@@ -259,14 +251,17 @@ describe('initShapeLatticeProperties: Shape section', () => {
     expect(dAfter).not.toBe(dBefore);
   });
 
-  it('regenerating updates the SAME linked path element in place (one path, not a growing pile)', async () => {
+  it('T73: regenerating updates the SAME per-segment elements in place (N segments, not a growing pile)', async () => {
     initShapeLatticeProperties(editor);
     document.getElementById('shapeReroll').click();
     await flush();
+    const firstSegs = editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    const countAfterFirst = firstSegs.length;
+    expect(countAfterFirst).toBeGreaterThan(0);
     document.getElementById('shapeReroll').click();
     await flush();
-    const paths = editor._sketchLayer.children().filter((e) => e.attr('d'));
-    expect(paths.length).toBe(1);
+    const segs = editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(segs.length).toBe(countAfterFirst);
   });
 });
 
@@ -390,67 +385,33 @@ describe('initShapeLatticeProperties: Fill + Generate', () => {
     expect(activeLayerPattern(editor).boundary.endRule).toBe('loose');
   });
 
-  it('Border enabled/width checkboxes write PATTERN.boundary.border on Generate', async () => {
+  it('T74 AMEND 1: the Contour width field writes PATTERN.contour.width on Generate', async () => {
     initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticeBorderEnabled').checked = true;
-    document.getElementById('shapeLatticeBorderWidth').value = '0.1';
+    document.getElementById('shapeLatticeContourWidth').value = '0.1';
     document.getElementById('shapeLatticeGenerate').click();
     await flush();
-    const border = activeLayerPattern(editor).boundary.border;
-    expect(border.enabled).toBe(true);
-    expect(border.width).toBe(0.1);
-  });
-
-  it('the Border color swatch: picking a color sets an explicit override; clicking "auto" resets it to null', () => {
-    initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticeBorderColor').click();
-    const targetHex = '#1a237e';
-    document.querySelector(`.color-mosaic-cell[title="${targetHex}"]`).click();
-    expect(activeLayerPattern(editor).boundary.border.color).toBe(targetHex);
-    expect(document.getElementById('shapeLatticeBorderColorAuto').classList.contains('active')).toBe(false);
-
-    document.getElementById('shapeLatticeBorderColorAuto').click();
-    expect(activeLayerPattern(editor).boundary.border.color).toBeNull();
-    expect(document.getElementById('shapeLatticeBorderColorAuto').classList.contains('active')).toBe(true);
+    expect(activeLayerPattern(editor).contour.width).toBe(0.1);
   });
 });
 
-describe('initShapeLatticeProperties: Pick shape (T49 mechanism, reused)', () => {
-  it('arms editor._boundaryPickCallback; invoking it stamps data-boundary-ref, sets PATTERN.boundary.shapeId, marks shape.source picked, and does NOT auto-generate', () => {
+describe('initShapeLatticeProperties: a saved pattern with a hand-picked boundary (SE14d: no UI to create a new one, but an existing one keeps working)', () => {
+  it('generating a silhouette on a pattern with an existing hand-picked boundary mints a FRESH path, leaving the picked element untouched (never overwrites a shape the user drew)', async () => {
     initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticePickShape').click();
-    expect(typeof editor._boundaryPickCallback).toBe('function');
-
-    const target = mockPickTarget();
-    editor._boundaryPickCallback(target);
-
-    const id = target.attr('data-boundary-ref');
-    expect(id).toBeTruthy();
-    expect(activeLayerPattern(editor).boundary.shapeId).toBe(id);
-    expect(activeLayerPattern(editor).extent).toEqual({ mode: 'boundary' });
-    expect(activeLayerPattern(editor).shape.source).toBe('picked');
-    expect(document.getElementById('shapeLatticeBoundaryStatus').textContent).toMatch(/linked/i);
-    // non-vacuous: no rails/ties were emitted just from picking
-    expect(editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail')).toBeUndefined();
-  });
-
-  it('a click on empty canvas (no hit) cancels the pick without touching PATTERN.boundary', () => {
-    initShapeLatticeProperties(editor);
-    document.getElementById('shapeLatticePickShape').click();
-    editor._boundaryPickCallback(null);
-    expect(document.getElementById('shapeLatticeBoundaryStatus').textContent).toMatch(/cancel/i);
-    expect(activeLayerPattern(editor)?.boundary?.shapeId ?? null).toBeNull();
-  });
-
-  it('generating a silhouette AFTER a hand pick mints a FRESH path, leaving the picked element untouched (never overwrites a shape the user drew)', async () => {
-    initShapeLatticeProperties(editor);
-    // A REAL element the mock's own _findBoundaryElement CAN find (unlike
-    // a bare mockPickTarget, which is never in _sketchLayer's own children
-    // — using one here would let this test pass trivially even without
-    // the guard under test, since the lookup would already miss it).
+    // A REAL element the mock's own _findBoundaryElements CAN find (unlike
+    // a bare target object never added to _sketchLayer's own children —
+    // using one here would let this test pass trivially even without the
+    // guard under test, since the lookup would already miss it). SE14d
+    // removed the "Pick shape…" button; a pre-existing picked pattern
+    // (loaded from a save, or seeded directly here the way this test
+    // does) still carries this exact shape/boundary state and must still
+    // behave identically — nothing in `regenerateSilhouette`'s own
+    // `reuseExisting` guard is button-driven.
     const handDrawnCircle = editor._sketchLayer.circle(3).center(1, 1);
-    document.getElementById('shapeLatticePickShape').click();
-    editor._boundaryPickCallback(handDrawnCircle);
+    const id = stampBoundaryRef(handDrawnCircle);
+    const p = currentPattern(editor);
+    p.boundary = { ...PATTERN_DEFAULTS.boundary, ...p.boundary, shapeId: id };
+    p.extent = { mode: 'boundary' };
+    currentShape(p).source = 'picked';
     expect(handDrawnCircle.attr('r')).toBe(1.5); // the circle's own real geometry, unrelated to any path 'd'
 
     document.getElementById('shapeReroll').click();
@@ -485,7 +446,7 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     cb.dispatchEvent(new Event('change'));
     await flush();
 
-    expect(activeLayerPattern(editor).contour).toEqual({ show: false });
+    expect(activeLayerPattern(editor).contour).toEqual({ show: false, width: null, segmentColors: [] });
     expect(pathEl.attr('display')).toBe('none'); // SAME element, still live -- just hidden
   });
 
@@ -503,7 +464,7 @@ describe('initShapeLatticeProperties (T72, SE14c): "show contour" checkbox', () 
     cb.checked = true;
     cb.dispatchEvent(new Event('change'));
     await flush();
-    expect(activeLayerPattern(editor).contour).toEqual({ show: true });
+    expect(activeLayerPattern(editor).contour).toEqual({ show: true, width: null, segmentColors: [] });
     expect(pathEl.attr('display')).not.toBe('none');
   });
 });
@@ -564,7 +525,7 @@ describe('initShapeLatticeProperties (T58 ADD-ON): linked Rails & ties width', (
   it('an EXISTING pattern with rails !== ties (no linkRailsTies key) loads UNLINKED — "no silent change"', () => {
     editor._layers[0].pattern = {
       ...JSON.parse(JSON.stringify(PATTERN_DEFAULTS)),
-      widths: { rails: 0.1, ties: 0.04, nodeRadius: 0.075 },
+      widths: { rails: 0.1, ties: 0.04, nodeDiameter: 0.15 },
     };
     initShapeLatticeProperties(editor);
     expect(document.getElementById('shapeLatticeWidthLinkToggle').classList.contains('active')).toBe(false);
@@ -579,31 +540,34 @@ describe('initShapeLatticeProperties (T58 ADD-ON): linked Rails & ties width', (
  * whole point of lifting them out of the panel's own closures.
  */
 describe('properties-shape-lattice.js: module-level exports (T59)', () => {
-  it('regenerateSilhouette creates the linked path; a second call updates it IN PLACE (same element)', () => {
+  it('T73: regenerateSilhouette creates the N linked per-segment paths; a second call (same segment count) updates them IN PLACE (same elements)', () => {
     const p = currentPattern(editor);
-    regenerateSilhouette(editor, p);
-    const first = editor._sketchLayer.children().find((e) => e.attr('d'));
-    expect(first).toBeDefined();
+    const first = regenerateSilhouette(editor, p);
+    expect(first.length).toBeGreaterThan(0);
     currentShape(p).params = { waistReach: 0.8 };
-    regenerateSilhouette(editor, p);
-    const paths = editor._sketchLayer.children().filter((e) => e.attr('d'));
-    expect(paths.length).toBe(1);
-    expect(paths[0]).toBe(first);
+    const second = regenerateSilhouette(editor, p);
+    const paths = editor._sketchLayer.children().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(paths.length).toBe(first.length);
+    expect(second.every((el, i) => el === first[i])).toBe(true);
   });
 
   it('T72 (AMEND 2): a freshly-minted contour draws in PATTERN.colors.contour, not the general drawing tool\'s current color', () => {
     const p = currentPattern(editor);
     editor._color = '#ff00ff'; // a DIFFERENT color -- proves the contour does NOT inherit this
-    const pathEl = regenerateSilhouette(editor, p);
-    expect(pathEl.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
-    expect(pathEl.attr('stroke')).not.toBe('#ff00ff');
+    const pathEls = regenerateSilhouette(editor, p);
+    for (const pathEl of pathEls) {
+      expect(pathEl.attr('stroke')).toBe(PATTERN_DEFAULTS.colors.contour);
+      expect(pathEl.attr('stroke')).not.toBe('#ff00ff');
+    }
   });
 
   it('T72 (AMEND 2): a custom PATTERN.colors.contour is honored for a freshly-minted path', () => {
     const p = currentPattern(editor);
     p.colors = { ...PATTERN_DEFAULTS.colors, contour: '#ab12cd' };
-    const pathEl = regenerateSilhouette(editor, p);
-    expect(pathEl.attr('stroke')).toBe('#ab12cd');
+    const pathEls = regenerateSilhouette(editor, p);
+    for (const pathEl of pathEls) {
+      expect(pathEl.attr('stroke')).toBe('#ab12cd');
+    }
   });
 
   it('regenerateSilhouetteAndFill fills AND dispatches SHAPE_CHANGED_EVENT', async () => {
@@ -694,10 +658,11 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       expect(currentShape(p).source).toBe('generated');
     });
 
-    it('non-vacuous: flips to \'picked\' when the linked path\'s own `d` has been hand-edited (a real Node-mode drag, simulated)', () => {
+    it('non-vacuous: flips to \'picked\' when a linked segment\'s own `d` has been hand-edited (a real Node-mode drag, simulated)', () => {
       const p = currentPattern(editor);
-      const pathEl = regenerateSilhouette(editor, p);
-      pathEl.attr('d', pathEl.attr('d') + ' L 0.01 0.01'); // simulate a hand node-drag mutating the live d
+      const pathEls = regenerateSilhouette(editor, p);
+      const seg = pathEls[0];
+      seg.attr('d', seg.attr('d') + ' L 0.01 0.01'); // simulate a hand node-drag mutating the live d
       detectShapeLatticeDetach(editor);
       expect(currentShape(p).source).toBe('picked');
     });

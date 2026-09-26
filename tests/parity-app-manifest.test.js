@@ -18,10 +18,10 @@
  * `regenerateSilhouette` run FOR REAL against it, not a stub.
  */
 import { describe, it, expect } from 'vitest';
-import { generatePattern, PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { generatePattern, PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { regenerateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-shape-lattice.js';
-import { generateSilhouette, primitivesToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { generateSilhouette, primitiveToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { insetRegionForContour } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 function makeMockEditor(mW, mH) {
@@ -32,7 +32,7 @@ function makeMockEditor(mW, mH) {
   // element's own tag name) — a mock element missing it silently resolves
   // the boundary to zero primitives, no error, just an empty drawing.
   // `stroke()` also needs to capture `width` (not just `color`), since
-  // `_effectiveBorderWidth` (editor-lattice-pattern.js) reads the drawn
+  // `_effectiveContourWidth` (editor-lattice-pattern.js) reads the drawn
   // boundary's own live `stroke-width` back.
   function makeElement(type, initial) {
     const store = { ...initial };
@@ -53,6 +53,8 @@ function makeMockEditor(mW, mH) {
         if (typeof v === 'object' && v !== null) {
           if ('color' in v) store.stroke = v.color;
           if ('width' in v) store['stroke-width'] = v.width;
+          if ('linecap' in v) store['stroke-linecap'] = v.linecap;
+          if ('linejoin' in v) store['stroke-linejoin'] = v.linejoin;
         }
         return elObj;
       },
@@ -70,10 +72,8 @@ function makeMockEditor(mW, mH) {
     line(x1, y1, x2, y2) { const e = makeElement('line', { x1, y1, x2, y2 }); elements.push(e); return e; },
     circle(d) { const e = makeElement('circle', { r: d / 2 }); elements.push(e); return e; },
     path(d) { const e = makeElement('path', { d }); elements.push(e); return e; },
-    // T72 (AMEND 3 parity test): the Border piece (generatePattern, §7)
-    // builds its own clone via boundaryEl.clone() (a standalone element,
-    // NOT auto-tracked) then calls sketchLayer.add(clone) to register it —
-    // this mock never needed that path before this test.
+    // T72 (AMEND 3 parity test): registers a standalone (not auto-tracked)
+    // cloned element, mirroring SVG.js's own `.add()`.
     add(e) { elements.push(e); return e; },
     children() { const arr = elements.slice(); arr.toArray = () => arr; return arr; },
     node: {},
@@ -187,7 +187,7 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     checkLatticeParity(editor, manifest, region);
   });
 
-  it('the drawn contour path\'s own "d" matches primitivesToPathD(primitives) exactly (the app draws precisely what generateSilhouette says, byte for byte)', () => {
+  it('T73: the drawn per-segment contour paths\' own "d" each match primitiveToPathD(primitives[i]) exactly, in segment order (the app draws precisely what generateSilhouette says, byte for byte)', () => {
     const editor = makeMockEditor(7, 9);
     const pattern = shapePattern();
     const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
@@ -196,9 +196,13 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
     // declared contour-size margin (regenerateSilhouette's own
     // `_shapeContourRegion`) -- this oracle must build from the SAME region.
     const { primitives } = generateSilhouette(insetRegionForContour(region), pattern.shape);
-    const pathEl = editor._sketchLayer.children().toArray().find((e) => e.attr('d'));
-    expect(pathEl).toBeDefined(); // non-vacuous: a contour path was actually drawn
-    expect(pathEl.attr('d')).toBe(primitivesToPathD(primitives));
+    const segEls = editor._sketchLayer.children().toArray()
+      .filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR))
+      .sort((a, b) => Number(a.attr(CONTOUR_SEG_INDEX_ATTR)) - Number(b.attr(CONTOUR_SEG_INDEX_ATTR)));
+    expect(segEls.length).toBe(primitives.length); // non-vacuous: N segments drawn, N primitives declared
+    for (let i = 0; i < primitives.length; i++) {
+      expect(segEls[i].attr('d')).toBe(primitiveToPathD(primitives[i]));
+    }
   });
 
   it('every contour primitive\'s own defining points (transformed through the SAME carve-space formula) has exactly one matching manifest seg entity, and vice versa — lines by p1/p2, arcs by p1/pMid/p2', () => {
@@ -261,7 +265,7 @@ describe('parity: shape lattice (bottle) — T72 regression: the default Bottle 
   });
 });
 
-describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice parity; OFF hides/omits the contour only', () => {
+describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice parity; OFF hides/omits the contour and (T73 AMEND 3) keeps the narrower contour-inset fill boundary, ON clips to the contour\'s own wider raw centerline', () => {
   function shapePattern(contour) {
     return {
       ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
@@ -309,7 +313,7 @@ describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice par
     expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
   });
 
-  it('rail/tie/node counts are IDENTICAL between ON and OFF -- the toggle changes nothing about the fill', async () => {
+  it('T73 AMEND 3: ON has AT LEAST as many rail/tie/node pieces as OFF (its own boundary reaches further out, to the contour\'s raw centerline) -- superseding the earlier "toggle changes nothing about the fill" invariant', async () => {
     const editorOn = makeMockEditor(7, 9);
     const patternOn = shapePattern();
     regenerateSilhouette(editorOn, patternOn);
@@ -319,33 +323,56 @@ describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice par
     regenerateSilhouette(editorOff, patternOff);
     await generatePattern(editorOff, patternOff);
     const countByKind = (editor, kind) => editor._sketchLayer.children().toArray().filter((e) => e.attr('data-lattice') === kind).length;
+    let sawStrictlyMore = false;
     for (const kind of ['rail', 'tie', 'node']) {
       expect(countByKind(editorOn, kind)).toBeGreaterThan(0); // non-vacuous
-      expect(countByKind(editorOff, kind)).toBe(countByKind(editorOn, kind));
+      expect(countByKind(editorOff, kind)).toBeGreaterThan(0);
+      expect(countByKind(editorOn, kind)).toBeGreaterThanOrEqual(countByKind(editorOff, kind));
+      if (countByKind(editorOn, kind) > countByKind(editorOff, kind)) sawStrictlyMore = true;
     }
+    expect(sawStrictlyMore).toBe(true); // non-vacuous: ON's own wider boundary genuinely fits more, somewhere
   });
 });
 
-describe('parity: T72 AMEND 3 -- Border width "auto" on a GENERATED silhouette matches the manifest\'s own stroke_width', () => {
-  it('the drawn Border\'s own stroke-width equals buildSketchManifest\'s stroke_width parameter, not the silhouette\'s own fixed hairline', async () => {
+describe('parity: T73 AMEND 2 -- the VISIBLE contour segments draw at the lattice stroke width, auto', () => {
+  it('every drawn contour segment\'s own stroke-width equals buildSketchManifest\'s stroke_width parameter, never the old fixed hairline', async () => {
     const editor = makeMockEditor(7, 9);
     const pattern = {
       ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
       widths: { ...PATTERN_DEFAULTS.widths, rails: 0.25, ties: 0.25 },
-      boundary: { ...PATTERN_DEFAULTS.boundary, border: { enabled: true, width: null, color: null } },
     };
     regenerateSilhouette(editor, pattern);
     await generatePattern(editor, pattern);
 
-    const border = editor._sketchLayer.children().toArray().find((e) => e.attr('data-lattice') === 'border');
-    expect(border).toBeDefined(); // non-vacuous: Border actually drew
+    const segEls = editor._sketchLayer.children().toArray().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(segEls.length).toBeGreaterThan(0); // non-vacuous
     const region = { x: 0, y: 0, w: editor._mW, h: editor._mH };
     const manifest = buildSketchManifest(pattern, region, {});
     const strokeWidthParam = manifest.parameters.find((p) => p.name === 'stroke_width');
     expect(strokeWidthParam).toBeDefined();
-    expect(border.attr('stroke-width')).toBe(strokeWidthParam.value);
-    expect(border.attr('stroke-width')).not.toBeCloseTo(0.02, 6); // non-vacuous: not the silhouette's own hairline
+    for (const seg of segEls) {
+      expect(seg.attr('stroke-width')).toBe(strokeWidthParam.value);
+      expect(seg.attr('stroke-width')).not.toBeCloseTo(0.02, 6); // non-vacuous: not the old fixed hairline
+    }
+  });
+});
+
+describe('parity: T73 AMEND 4 -- every drawn contour segment uses round caps/joins, never a sharp/mitred corner', () => {
+  it('every contour segment carries stroke-linecap=round, stroke-linejoin=round', () => {
+    const editor = makeMockEditor(7, 9);
+    const pattern = {
+      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      extent: { mode: 'boundary' },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+    };
+    regenerateSilhouette(editor, pattern);
+    const segEls = editor._sketchLayer.children().toArray().filter((e) => e.node.hasAttribute(CONTOUR_SEG_INDEX_ATTR));
+    expect(segEls.length).toBeGreaterThan(0); // non-vacuous
+    for (const seg of segEls) {
+      expect(seg.attr('stroke-linecap')).toBe('round');
+      expect(seg.attr('stroke-linejoin')).toBe('round');
+    }
   });
 });

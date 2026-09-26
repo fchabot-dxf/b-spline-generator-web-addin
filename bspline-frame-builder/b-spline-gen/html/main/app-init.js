@@ -221,6 +221,103 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    id: 'node-radius-to-diameter',
+    // NODE-D (Fred: "node size should be entered as diameter not
+    // radius"): every layer's own `.pattern.widths.nodeRadius` (a lattice
+    // layer's own node size, OLD meaning: a radius) is now
+    // `.pattern.widths.nodeDiameter` (NEW meaning: a diameter — the
+    // PATTERN_DEFAULTS.widths merge every reader already does would
+    // otherwise silently substitute the NEW default for a custom OLD
+    // value instead of converting it, since the merge has no `nodeRadius`
+    // key to find). Same "gate on current shape, not a version number"
+    // convention as layer-carve-flag above, and the SAME data-editor-
+    // layers JSON round-trip, since that's where `.pattern` actually
+    // lives (editor-io.js's own `open()`, not this file).
+    when: (p) => {
+      if (!p.editorSvg) return false;
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return false;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.widths
+          && l.pattern.widths.nodeRadius !== undefined && l.pattern.widths.nodeDiameter === undefined);
+      } catch (_) {
+        return false;
+      }
+    },
+    apply: (p) => {
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        if (!Array.isArray(layers)) return;
+        layers.forEach((l) => {
+          const w = l && l.pattern && l.pattern.widths;
+          if (w && w.nodeRadius !== undefined && w.nodeDiameter === undefined) {
+            w.nodeDiameter = w.nodeRadius * 2;
+            delete w.nodeRadius;
+          }
+        });
+        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
+      } catch (e) {
+        console.warn('[migration] node-radius-to-diameter failed:', e);
+      }
+    },
+  },
+  {
+    id: 'border-to-contour-width',
+    // T74 AMEND 1 (Fred: "if draw boundary is off I shouldn't see it at
+    // all"): the separate "Border" clone feature (`pattern.boundary.border
+    // = {enabled, width, color}`) is retired — its ONE surviving concept,
+    // width, moves to `pattern.contour.width` (colour was already
+    // redundant with `pattern.colors.contour`, dropped here, never
+    // migrated). The old "show contour" checkbox (`contour.show`) and
+    // Border's own "draw boundary" checkbox (`border.enabled`) become the
+    // ONE `contour.show` — since Border's clone was "the thing actually
+    // drawn" whenever it was on (even if the SE14b contour segments
+    // themselves were hidden), an enabled Border wins the merge so a
+    // saved document that used to show something visually keeps showing
+    // it. Same "gate on current shape" / data-editor-layers JSON
+    // round-trip convention as node-radius-to-diameter above.
+    when: (p) => {
+      if (!p.editorSvg) return false;
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return false;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        return Array.isArray(layers) && layers.some((l) => l && l.pattern && l.pattern.boundary
+          && l.pattern.boundary.border !== undefined);
+      } catch (_) {
+        return false;
+      }
+    },
+    apply: (p) => {
+      const m = p.editorSvg.match(/data-editor-layers="([^"]*)"/);
+      if (!m) return;
+      try {
+        const layers = JSON.parse(m[1].replace(/&quot;/g, '"'));
+        if (!Array.isArray(layers)) return;
+        layers.forEach((l) => {
+          const pat = l && l.pattern;
+          if (!pat || !pat.boundary || pat.boundary.border === undefined) return;
+          const border = pat.boundary.border || {};
+          const contour = pat.contour || {};
+          const mergedShow = !!border.enabled || contour.show !== false;
+          const mergedWidth = contour.width !== undefined
+            ? contour.width
+            : (border.width != null ? border.width : null);
+          pat.contour = { ...contour, show: mergedShow, width: mergedWidth };
+          delete pat.boundary.border;
+        });
+        const newAttr = JSON.stringify(layers).replace(/"/g, '&quot;');
+        p.editorSvg = p.editorSvg.replace(m[0], `data-editor-layers="${newAttr}"`);
+      } catch (e) {
+        console.warn('[migration] border-to-contour-width failed:', e);
+      }
+    },
+  },
 ];
 
 export function runMigrations(p = P) {

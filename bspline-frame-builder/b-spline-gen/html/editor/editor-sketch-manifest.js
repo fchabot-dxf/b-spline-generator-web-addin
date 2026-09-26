@@ -53,12 +53,12 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH, insetRegionForContour,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
 } from './editor-lattice-boundary.js';
-import { generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
+import { generateSilhouette, primitivesToPathD, PRESETS } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
 /** §6: below this many rails+ties+nodes, every piece gets its own H/V +
@@ -207,8 +207,16 @@ function pieceEndOrCurveTarget(pt, seg, id) {
  *  expression" pattern this module already uses for every other
  *  dimensioned quantity). */
 function addSlotPieces(entities, dimensions, pieces, paramName, widthValue) {
-  for (const { id, p1, p2 } of pieces) {
-    entities.push({ id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue });
+  for (const { id, p1, p2, railGroup } of pieces) {
+    const entity = { id, type: 'Slot', p1: [p1.x, p1.y], p2: [p2.x, p2.y], width: widthValue };
+    // T73 AMEND 3c (Fred: "rails can have colinearity"): a piece's OWN
+    // railGroup (only rail/tie pieces carry one — the contour's own
+    // single-piece call site below never passes it) is plain DATA here,
+    // not just an internal bookkeeping key — declared once, so a future
+    // consumer never needs to re-derive "which pieces were originally one
+    // rail" from the Collinear constraints below.
+    if (railGroup !== undefined) entity.railGroup = railGroup;
+    entities.push(entity);
     dimensions.push({ type: 'SlotWidth', target: id, expression: paramName });
   }
 }
@@ -271,19 +279,73 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // independently-maintained copies of the same threshold.
   const pieceLength = (p1, p2) => Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
+  // T73 AMEND 3 (Fred: "I need rails to coincide to contour"): a rail/tie
+  // end `computePattern` attributed to a specific contour primitive
+  // (`usesContourCenterline` mode only — `seg.?ContourHit` is `undefined`
+  // otherwise, same "absent field, not a branch" convention every other
+  // optional per-piece signal in this module already uses) gets a
+  // Coincident to that primitive's own `seg{index}` entity — point-to-
+  // point (`:S`/`:E`) when the crossing landed AT that primitive's own
+  // end (a JOINT between two contour segments: `primitiveHitAt` already
+  // returns the FIRST matching primitive with its S/E flag, so this is
+  // ALREADY "one segment only, point-to-point," never a second point-on-
+  // curve to the neighboring segment — AMEND 3b's own over-constraint
+  // concern, satisfied by construction, not a separate dedup pass), else
+  // bare `seg{index}` (point-on-curve, mid-primitive).
+  const contourHitConstraint = (pieceId, suffix, hit) => {
+    if (!hit) return;
+    const segId = toEntityId('seg', hit.index);
+    constraints.push({ type: 'Coincident', targets: [`${pieceId}:${suffix}`, hit.end ? `${segId}:${hit.end}` : segId] });
+  };
+
+  // T73 AMEND 3c (Fred: "rails can have colinearity"): when a boundary
+  // crossing mid-row/column splits one original rail/tie into several
+  // pieces (`railGroup`, computePattern's own row/column key), giving
+  // EVERY piece its own Horizontal/Vertical constraint over-constrains —
+  // an H/V on the first piece plus a Collinear to the next already fixes
+  // the second piece's own direction. `emitAxisOncePerGroup` (below)
+  // tracks which groups already got theirs; `collinearForGroup` (after
+  // both loops) links each group's own consecutive pieces, in the SAME
+  // order they were pushed (already position-sorted — `_clipToSpans`
+  // iterates spans ascending, so pieces of one row/column emit in that
+  // order already, never re-sorted here).
+  function emitAxisOncePerGroup(seenGroups, railGroup, axis, id) {
+    if (railGroup != null && seenGroups.has(railGroup)) return;
+    if (!axis) return; // never mark a group "seen" on a no-op -- a genuinely
+    // diagonal piece (shouldn't happen for a rail/tie, but never assumed)
+    // leaves the group's direction UNconstrained, so the next piece must
+    // still get its own attempt rather than being silently skipped too.
+    if (railGroup != null) seenGroups.add(railGroup);
+    constraints.push({ type: axis, targets: [id] });
+  }
+  function collinearForGroups(pieces) {
+    const byGroup = new Map();
+    for (const p of pieces) {
+      if (p.railGroup == null) continue;
+      if (!byGroup.has(p.railGroup)) byGroup.set(p.railGroup, []);
+      byGroup.get(p.railGroup).push(p.id);
+    }
+    for (const ids of byGroup.values()) {
+      for (let k = 1; k < ids.length; k++) constraints.push({ type: 'Collinear', targets: [ids[k - 1], ids[k]] });
+    }
+  }
+
+  const railAxisGroupsSeen = new Set();
   const railPieces = [];
   railsCanon.forEach((seg, idx) => {
     const id = toEntityId('rail', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
+    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.rails.push(id);
-    railPieces.push({ id, p1, p2 });
+    railPieces.push({ id, p1, p2, railGroup: seg.railGroup });
     if (constrained) {
-      const axis = axisConstraintType(p1, p2);
-      if (axis) constraints.push({ type: axis, targets: [id] });
+      emitAxisOncePerGroup(railAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
+      contourHitConstraint(id, 'S', seg.aContourHit);
+      contourHitConstraint(id, 'E', seg.bContourHit);
     }
   });
+  if (constrained) collinearForGroups(railPieces);
 
   // T67 (advisor's own real Fusion run — a box-lattice shape run hit a
   // "node24:C + tie12:S over-constrained" failure mid-run, not seen again
@@ -300,17 +362,17 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // redundant leg of the same triangle rather than declaring all three.
   const tieEndToRailTarget = {};
 
+  const tieAxisGroupsSeen = new Set();
   const tiePieces = [];
   tiesCanon.forEach((seg, idx) => {
     const id = toEntityId('tie', idx);
     const p1 = fromLattice(seg.a, spacing), p2 = fromLattice(seg.b, spacing);
     if (pieceLength(p1, p2) < MIN_PIECE_LENGTH_IN) return;
-    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y] });
+    if (!isSlotMode) entities.push({ id, type: 'Line', p1: [p1.x, p1.y], p2: [p2.x, p2.y], railGroup: seg.railGroup });
     groups.ties.push(id);
-    tiePieces.push({ id, p1, p2 });
+    tiePieces.push({ id, p1, p2, railGroup: seg.railGroup });
     if (constrained) {
-      const axis = axisConstraintType(p1, p2);
-      if (axis) constraints.push({ type: axis, targets: [id] });
+      emitAxisOncePerGroup(tieAxisGroupsSeen, seg.railGroup, axisConstraintType(p1, p2), id);
       // "tie-end-on-rail" (ROADMAP.md:765) — a plain equality check on the
       // already-computed lattice coordinates, §3's own doc comment; no
       // geometric search needed. T66: now uses the SAME 3-way end/mid-
@@ -333,8 +395,11 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
           }
         }
       });
+      contourHitConstraint(id, 'S', seg.aContourHit);
+      contourHitConstraint(id, 'E', seg.bContourHit);
     }
   });
+  if (constrained) collinearForGroups(tiePieces);
 
   // T64 CHANGE (amendment #1's own "NODES: node circle CENTER coincident
   // to the slot centerline END point... crossing nodes: center
@@ -378,7 +443,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   nodePoints.forEach((pt, idx) => {
     const id = toEntityId('node', idx);
     const p = fromLattice(pt, spacing);
-    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeRadius });
+    entities.push({ id, type: 'Circle', center: [p.x, p.y], radius: widths.nodeDiameter / 2 });
     groups.nodes.push(id);
     if (constrained) {
       for (const target of nodePieceCoincidences(pt)) {
@@ -406,7 +471,7 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
   // supported) — `linked` is true whenever EITHER the link flag is on OR
   // the two widths just happen to already match, so "separate names"
   // is reserved for the one case that actually NEEDS two numbers.
-  // node_radius is untouched either way (never linked to rail/tie width).
+  // node_diameter is untouched either way (never linked to rail/tie width).
   const strokeWidthLinked = widths.linkRailsTies !== false || widths.rails === widths.ties;
   if (strokeWidthLinked) {
     if (railPieces.length || tiePieces.length) {
@@ -425,8 +490,13 @@ export function manifestFromLattice(pattern, extent, widthMode = SKETCH_WIDTH_MO
     }
   }
   if (nodePoints.length) {
-    parameters.push({ name: 'node_radius', value: widths.nodeRadius, unit: 'in' });
-    groups.nodes.forEach((id) => dimensions.push({ type: 'Radial', target: id, expression: 'node_radius' }));
+    // NODE-D (Fred: "node size should be entered as diameter not radius"):
+    // node_diameter replaces node_radius; each Circle entity's own
+    // `radius` field is STILL a true radius (Fusion's own Circle geometry
+    // needs one) — only the declared PARAMETER + its DRIVING dimension
+    // are diameter-based now, matching what the panel's stepper edits.
+    parameters.push({ name: 'node_diameter', value: widths.nodeDiameter, unit: 'in' });
+    groups.nodes.forEach((id) => dimensions.push({ type: 'Diameter', target: id, expression: 'node_diameter' }));
   }
 
   return { entities, constraints, parameters, dimensions, groups, pieceCount, constrained };
@@ -440,6 +510,20 @@ const PARAM_FUSION_NAMES = {
   hourglass: { waistReach: 'waist_reach', cornerRadius: 'corner_radius', waistCenterY: 'waist_center_y' },
   bottle: { neckWidth: 'neck_width', bodyWidth: 'body_width', skeletonX: 'skeleton_x', neckLength: 'neck_length' },
 };
+
+// T74 AMEND 0: `PRESETS[preset].widthExpr` (editor-shape-lattice-
+// generator.js — declared once, alongside the params that determine it)
+// is written in THIS module's own camelCase param names; translate each
+// token to its Fusion name via the SAME `nameTable` `parameters` itself
+// already uses below, so the two never drift apart. A token that isn't a
+// resolved param (`contour_width` itself) passes through unchanged.
+function resolveWidthExpr(preset, nameTable) {
+  const raw = (PRESETS[preset] && PRESETS[preset].widthExpr) || 'contour_width';
+  return raw.split('*').map((tok) => {
+    const name = tok.trim();
+    return nameTable[name] || name;
+  }).join(' * ');
+}
 
 /**
  * §3's own `_manifestFromShape` — `shape` (a layer's own
@@ -563,15 +647,11 @@ export function manifestFromShape(shape, region, opts = {}) {
   // second mirror-index formula.
   // T71 (AMEND 6/12/13's own real-Fusion measurement: addDistanceDimension
   // only ever accepts 2 SketchPoints, never a curve — "Wrong number or
-  // type of arguments"): `widthPairIds`/`selfMirrorHorizontalIds` below are
-  // STILL discovered the same way (a representative Line mirror pair, and
-  // the 2 self-mirroring horizontal edges) — the overall-size Distance
-  // dims (below) now just target ONE POINT on each entity (`:S`) rather
-  // than the whole curve; which end is picked doesn't affect the measured
-  // VALUE (a Horizontal/Vertical-oriented Distance reads only the
-  // corresponding axis of the two points), just which real SketchPoint
-  // anchors it.
-  let widthPairIds = null;
+  // type of arguments"): the overall-size Distance dims (below) target
+  // ONE POINT on each entity (`:S`) rather than the whole curve; which end
+  // is picked doesn't affect the measured VALUE (a Horizontal/Vertical-
+  // oriented Distance reads only the corresponding axis of the two
+  // points), just which real SketchPoint anchors it.
   const seen = new Set();
   for (let i = 0; i < n; i++) {
     const mi = mirrorSegmentIndex(i, n);
@@ -584,19 +664,45 @@ export function manifestFromShape(shape, region, opts = {}) {
     const primA = primitives[primIdxI], primB = primitives[primIdxMi];
     if (primA.type !== primB.type) continue; // never structurally mixed in these presets; skip rather than guess
     const idA = idsByPrimIndex[primIdxI], idB = idsByPrimIndex[primIdxMi];
-    if (primA.type === 'L' && !widthPairIds) widthPairIds = [idA, idB];
     constraints.push({ type: 'Equal', targets: [idA, idB] });
   }
 
-  const selfMirrorHorizontalIds = [];
-  for (let i = 0; i < n; i++) {
-    if (mirrorSegmentIndex(i, n) !== i) continue;
-    const primIdx = segMap.indexOf(i);
-    const prim = primitives[primIdx];
-    if (prim.type === 'L' && axisConstraintType(prim.p0, prim.p1) === 'Horizontal') {
-      selfMirrorHorizontalIds.push(idsByPrimIndex[primIdx]);
+  // T73 AMEND 1 (advisor, measured live in Fusion on main 660f417): the
+  // overall-size Distance dims used to anchor on whichever Line mirror
+  // pair / self-mirroring horizontal pair the Equal loop above found
+  // FIRST in primitive-iteration order — for the Bottle preset that's
+  // seg0/seg8, the NECK sides, so Fusion's own solver forced the NECK to
+  // contour_width (up to 3.07in off, live-measured); the hourglass only
+  // ever passed by luck, because ITS first mirror pair already happens to
+  // be the outer/widest sides. Fixed by choosing the anchor points BY
+  // GEOMETRY instead: the contour's own actual corners at min-x/max-x
+  // (width) and min-y/max-y (height), found directly from every LINE
+  // primitive's own endpoints (never an arc's — an arc's full bounding
+  // circle can overshoot its own visible sweep, e.g. a gently-curved arc
+  // with a large radius). Every preset this module knows builds its
+  // outline as top cap -> vertical "horn" -> arc -> ... -> bottom cap ->
+  // vertical "horn" -> arc -> ..., with every arc tangent to (never past)
+  // its neighboring horn/cap, so a Line's own endpoint is always the true
+  // extreme, by construction, never an incidental one.
+  let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+  for (const prim of primitives) {
+    if (prim.type !== 'L') continue;
+    for (const pt of [prim.p0, prim.p1]) {
+      if (pt.x < xMin) xMin = pt.x;
+      if (pt.x > xMax) xMax = pt.x;
+      if (pt.y < yMin) yMin = pt.y;
+      if (pt.y > yMax) yMax = pt.y;
     }
   }
+  const firstLineIdAt = (axis, value) => {
+    const idx = primitives.findIndex((prim) => prim.type === 'L'
+      && Math.abs(prim.p0[axis] - value) < EPS && Math.abs(prim.p1[axis] - value) < EPS);
+    return idx === -1 ? null : idsByPrimIndex[idx];
+  };
+  const leftId = firstLineIdAt('x', xMin), rightId = firstLineIdAt('x', xMax);
+  const widthPairIds = (leftId && rightId) ? [leftId, rightId] : null;
+  const topId = firstLineIdAt('y', yMin), bottomId = firstLineIdAt('y', yMax);
+  const heightPairIds = (topId && bottomId) ? [topId, bottomId] : [];
 
   const nameTable = PARAM_FUSION_NAMES[preset] || {};
   const parameters = Object.entries(params).map(([key, value]) => ({
@@ -623,11 +729,11 @@ export function manifestFromShape(shape, region, opts = {}) {
     parameters.push({ name: 'contour_width', value: region.w, unit: 'in' });
     dimensions.push({
       type: 'Distance', targets: [`${widthPairIds[0]}:S`, `${widthPairIds[1]}:S`],
-      orientation: 'Horizontal', expression: 'contour_width',
+      orientation: 'Horizontal', expression: resolveWidthExpr(preset, nameTable),
     });
   }
-  if (selfMirrorHorizontalIds.length === 2) {
-    const [topId, bottomId] = selfMirrorHorizontalIds;
+  if (heightPairIds.length === 2) {
+    const [topId, bottomId] = heightPairIds;
     parameters.push({ name: 'contour_height', value: region.h, unit: 'in' });
     dimensions.push({
       type: 'Distance', targets: [`${topId}:S`, `${bottomId}:S`],
@@ -686,22 +792,30 @@ function resolveBoardExtent(pattern, region) {
 // — this WORK-LOG's own T61 entry had already disclosed this exact gap
 // as "a real, named follow-up, not built this turn"; now built): the
 // SAME half-inset the app's own drawing applies before clipping the
-// lattice fill (`_effectiveBorderWidth` + `boundary.edge`, editor-
+// lattice fill (`_effectiveContourWidth` + `boundary.edge`, editor-
 // lattice-pattern.js's own `_resolveBoundaryPrimitives`) — DOM-free here,
-// since a GENERATED shape's own drawn boundary element is ALWAYS stroked
-// at `SILHOUETTE_STROKE_WIDTH` (`regenerateSilhouette`) regardless of
-// whether the separate Border FEATURE is enabled; the only way this
-// differs from what a live element's own stroke-width would report is an
-// EXPLICIT `boundary.border.width` override, which is plain DATA already
+// since a GENERATED shape's own drawn boundary element(s) are ALWAYS
+// stroked at `widths.rails` (T73: `regenerateSilhouette`'s per-segment
+// contour width, "auto = lattice stroke width" per T72 item 6); the only
+// way this differs from what a live element's own stroke-width would
+// report is an EXPLICIT `contour.width` override (T74 AMEND 1, replaces
+// the retired `boundary.border.width`), which is plain DATA already
 // available here, no DOM read needed for it either.
 function shapeHalfInset(pattern) {
+  // T73 AMEND 3 (Fred: "I need rails to coincide to contour"): a shown
+  // contour clips the lattice fill to the contour's own RAW centerline —
+  // see usesContourCenterline's own doc comment (editor-lattice-
+  // pattern.js) for why this is unconditional (never gated on the
+  // now-retired Border feature) and why "contour hidden" alone keeps
+  // today's inset behavior below.
+  if (usesContourCenterline(pattern)) return 0;
   const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
   if (edge === 'centerline') return 0;
-  const borderWidth = (boundary.border && boundary.border.enabled && boundary.border.width != null)
-    ? boundary.border.width
-    : SILHOUETTE_STROKE_WIDTH;
-  return borderWidth / 2;
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
+  const contour = { ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) };
+  const contourWidth = contour.width != null ? contour.width : widths.rails;
+  return contourWidth / 2;
 }
 
 // Mirrors `_resolveExtent`'s own 'boundary' branch, fed the silhouette's
@@ -723,9 +837,19 @@ function resolveShapeBoundaryExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const { primitives } = generateSilhouette(region, pattern.shape);
   const halfInset = shapeHalfInset(pattern);
-  const insetPrimitives = halfInset > 0
-    ? insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset)
-    : primitives;
+  // T73 AMEND 3: ALWAYS round-trip through the d-string (even at
+  // halfInset===0, insetGeneratedPresetPathDToPrimitives's own
+  // strokeHalfWidth<=0 branch already reparses from the string rather than
+  // returning `primitives` untouched) — the app's OWN equivalent zero-
+  // inset path (_resolveBoundaryPrimitives -> insetGeneratedPresetPathDTo-
+  // Primitives against the DOM segments' own already-string-rounded `d`
+  // attributes) has NO way to reach full floating-point precision either,
+  // so skipping this round-trip here ONLY at halfInset===0 would silently
+  // reintroduce a real, if tiny, coordinate mismatch between the app and
+  // the manifest right at the razor's-edge params (e.g. a deep hourglass
+  // waist) where a 0.001in rounding difference decides whether a rail/tie
+  // piece exists at all — caught live by the T72 AMEND 5 param sweep.
+  const insetPrimitives = insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset);
   const scaled = insetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
   const bbox = primitivesBBox(scaled);
   if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };

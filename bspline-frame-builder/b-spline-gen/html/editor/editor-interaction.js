@@ -430,26 +430,6 @@ function handleStart(editor, e) {
     // mouse/pen — INPUT_PROFILE's markerOffsetPx: 0).
     const pt = editor._snap(applyTouchMarkerOffset(editor, editor._getMousePoint(e)), e.altKey, 'start');
 
-    // T49 (SE13 Slice 3): a one-shot "next click picks a target element"
-    // affordance for the Lattice panel's "Pick shape..." button — checked
-    // BEFORE the mode dispatch (same reasoning as the pan check above: it
-    // must intercept the click no matter which tool happens to be active
-    // when the user clicks Pick). Reuses the SAME hit-test
-    // selectHandler/nodeHandler already share (_getNearbyElement,
-    // anyVisibleLayer) rather than inventing a third, divergent one — no
-    // existing "pick a target, then callback" primitive was found anywhere
-    // in this codebase (checked), so this is deliberately the smallest
-    // addition that reuses everything else. A click on empty space (no
-    // hit) still consumes the arm and calls back with `null` — the caller
-    // decides what "picked nothing" means, not this dispatcher.
-    if (editor._boundaryPickCallback) {
-        const cb = editor._boundaryPickCallback;
-        editor._boundaryPickCallback = null;
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
-        cb(hit || null);
-        return;
-    }
-
     const handler = getModeHandler(editor._currentMode);
     if (handler.start) handler.start(editor, pt, e);
 }
@@ -1304,7 +1284,7 @@ function _emitStyled(editor, kind, a, b) {
     const previousColor = editor._color;
     editor._color = colors[styleKey];
     const el = kind === 'node'
-        ? emitNode(editor, a, widths.nodeRadius)
+        ? emitNode(editor, a, widths.nodeDiameter / 2)
         : emitSegment(editor, kind, a, b, widths[styleKey]);
     editor._color = previousColor;
     return el;

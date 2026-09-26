@@ -22,7 +22,7 @@ const MODE_HINTS = {
   expand: 'Expand — use the Detail input + EXPAND button in the top bar to offset/outline your paths.',
   erase:  'Eraser — drag through shapes to cut them. Filled shapes get clipped; open strokes split at the cut (endcaps preserved). Width follows the stroke width.',
   lattice: 'Lattice — pick Rail, Tie, or Node above, then drag (Node: just click). Auto-nodes mark the ends and crossings. Drag onto an existing piece to move it instead.',
-  shapeLattice: 'Shape Lattice — pick a preset and Generate a silhouette, or Pick shape… to fill one you drew. Edit a segment’s style in the panel, then Generate to fill it.',
+  shapeLattice: 'Shape Lattice — pick a preset and Generate a silhouette. Edit a segment’s style in the panel, then Generate to fill it.',
 };
 
 // Anchor-mode hint replaces the pen mode hint while the user is actively
