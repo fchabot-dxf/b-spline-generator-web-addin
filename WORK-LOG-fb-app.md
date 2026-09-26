@@ -334,3 +334,12 @@ radius). Not started.
 
 **Processes:** clean. Capacity is fine. Item 4 wants a fresh, **short-step** live pass once the
 bridge is back.
+- **CORRECTION to the item-4 entry above (advisor's root cause).**
+  - The bridge did not hang because of my script. This PC's Fusion shows **"Session Suspended —
+    suspended by FredASUS-TUF"**: Fred opened Fusion on his other machine, and his account allows
+    one session.
+  - So the "one short step per call" lesson was the wrong diagnosis; the memory note is rewritten to
+    the real cause.
+  - What still stands: the sys.modules restore is unconfirmed. The advisor is handling the Fusion
+    restart / add-in reload with Fred before the Frame Builder is used here.
+  - **F4 item 4 = BLOCKED (Fusion unavailable)**, not failed. Items 1-3 are done.
