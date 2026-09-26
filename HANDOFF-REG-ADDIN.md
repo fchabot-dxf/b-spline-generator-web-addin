@@ -72,6 +72,9 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
 - **Design rules** (all in ROADMAP.md / SE15-CONSTRAINED-SKETCH-DESIGN.md): never Fix; no Symmetry; only the contour
   size dims; acceptance = spawn parity; a coincident follows ONE curve, not a path; lattice overrides don't survive
   Regenerate and never get a param.
+- **Lattice grid (Fred 2026-09-26)**: rails and ties live on the 0.25 in grid by nature. Count mode spreads rails
+  evenly and rounds each to a grid row, so gaps may differ by one grid step (0.25 in). Intended, don't "fix" it. Only
+  the contour is off-grid, so anything anchored to the contour snaps to the contour, not the grid (UI5 item 5).
 - **Progress page**: https://bspline-status.pages.dev. The watcher runs on the home PC and reads that PC's local
   checkouts, so your Asus commits won't show there. It tracks seats A/B/C only.
 - **Handoff loop files**: `HANDOFF.md` / `NEXT-SESSION.md` / `WORK-LOG.md` on main belong to seat A's loop until it
