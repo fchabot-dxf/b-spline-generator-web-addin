@@ -9563,3 +9563,27 @@ Verify: 1266/1266 vitest (5 new), 40/40 pytest (untouched, no Python touched thi
 NO FUSION this whole turn.
 
 **T75 — all 5 items complete.** Passing back to the advisor.
+
+# T76 — SE17: lattice kinds on separate layers → separate Fusion sketches linked by projection
+
+## Merge origin/main into lane-b (required first, per dispatch)
+
+Brought in seat A's own UI2-UI5 work (colour-coded/collapsible lattice sections, pinned Generate styling, and —
+most relevant here — the Shape Lattice Select-drag fix that now shares the box tool's own constrained lattice-move
+path) plus FB-ORDER. One real conflict: `editor-interaction.js`'s `shapeLatticeHandler.start` — seat A's new
+lattice-piece-hit-test block (UI4 item 0 / UI5 AMEND 2) was built against the OLD, pre-LAT-SIZE
+`_shapeContourRegion(editor)` single-arg signature (main never had T75's own change), while lane-b's own side had
+already rethreaded a `p` (pattern) variable through to `_shapeContourRegion(editor, p)`. Resolved by keeping seat
+A's whole inserted block verbatim and restoring the two-line `const p = currentPattern(editor); const shape =
+currentShape(p);` at its own tail, so both the new Select/move behavior and LAT-SIZE's own region-sizing plumbing
+survive together — nothing from either side dropped.
+
+Verify: 1303/1303 vitest, 45/45 b-spline-gen pytest, 189/189 frame-builder pytest (all pre-existing, none touched by
+the resolution itself). Commit 1117d08, pushed.
+
+Spec read in full from `ROADMAP.md` on main, "SE17" entry, before starting: kind→layer map (contour/rails/ties/
+nodes) is DATA; Fusion sketch build order is FIXED (contour → rails → ties → nodes, independent of the app's own
+layer stacking order) because later sketches PROJECT curves from earlier ones for their cross-kind constraints (a
+direct cross-sketch constraint is refused — advisor-measured); hidden kind-layers are not exported and their
+dependents keep exact geometry but lose the cross-kind link; migration of pre-SE17 single-layer lattices is an
+explicit decide+log.
