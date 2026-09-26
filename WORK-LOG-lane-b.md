@@ -9947,3 +9947,36 @@ already established. `editor-sketch-manifest.test.js`'s shared `PATTERN` fixture
 one call site that needed isolating got a spread override), so no other test in that describe block was affected.
 
 Verify: 1360/1360 vitest (14 new). Commit 9862107, pushed. NO FUSION this whole turn.
+
+## T77 item 3 — sweep test across seeds x counts x presets x orientations; parity + kind-layer split unaffected
+
+Item 2's own test file already ran a deep SEED sweep (50 seeds) at a fixed count range/orientation/no-shape. This
+item crosses the OTHER three dimensions the dispatch names explicitly — new
+`tests/editor-lattice-pattern-tie-gap-sweep.test.js`:
+
+**Seeds x counts x presets x orientations** (36 cases: 2 presets [hourglass, bottle] x 2 orientations x 3 tie-count
+ranges x 3 seeds), through the REAL `generatePattern` + mock-editor pipeline — same harness
+`shape-lattice-param-sweep.test.js`'s own T72 AMEND 5 sweep already established, copied rather than shared (this
+codebase's own per-sweep-file convention). Checks the ACTUALLY DRAWN tie `<line>` elements' real model-space
+coordinates, via a NEW orientation-agnostic oracle (`findDrawnViolation`): a tie's own two endpoints always share
+exactly one coordinate (its column axis) and differ along the other (its own span), regardless of orientation, so
+the oracle needs no separate horizontal/vertical branch and never has to consult `pattern.orientation` itself —
+determined per-pair straight from the drawn geometry. Verified this oracle is doing real work (not vacuously
+passing) before trusting it: printed real generated tie geometry from both a box-lattice and a shape-lattice
+(hourglass, vertical) pattern, found a genuine pre-existing 0.25in adjacent-gap pair in the raw (minSpacing:0)
+output, and confirmed the oracle correctly flags it as a violation at 0.5in and correctly clears it at 0.1in.
+
+**Parity app==manifest unchanged**: a dedicated test forces real drops (`minSpacing: 1.5`, well above the 0.5
+default) and confirms `buildSketchManifest`'s own tie entities still match the drawn ties 1:1 — not just "some
+ties", the EXACT same count, proving the manifest and the app agree on WHICH ties survived the filter, not only how
+many.
+
+**Kind-layer split (SE17) unaffected**: same forced-drop scenario, confirming the pattern still splits into exactly
+Rails/Ties/Nodes (`pattern.layers` populated, 3 layers) and every SURVIVING drawn tie is still correctly owned by
+the Ties layer (`data-layer` matches) — the drop-some-candidates behavior doesn't confuse T76's own per-kind
+partitioning, which only ever looks at each element's own `data-lattice` kind, never the count.
+
+Verify: 1398/1398 vitest (38 new), 52/52 b-spline-gen pytest, 196/196 frame-builder pytest (both pre-existing,
+untouched by this item). Commit ba84ef4, pushed. NO FUSION this whole turn.
+
+# T77 — TIE-GAP complete: all 3 items landed. Passing back to the advisor.
