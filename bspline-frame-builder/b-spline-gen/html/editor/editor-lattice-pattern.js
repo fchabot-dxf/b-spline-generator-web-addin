@@ -2041,7 +2041,7 @@ const COLOR_KIND_TO_LATTICE_ATTR = { rails: 'rail', ties: 'tie', nodes: 'node' }
  *  the shared filter `recolorOwnedKind`/`rewidthOwnedKind`/`detachAllOwned`
  *  all apply, now that ownership is layer-scoped rather than id-matched
  *  (a layer only ever holds one pattern's generated content at a time). */
-function _ownedOnLayer(editor, layerId, latticeKind) {
+export function _ownedOnLayer(editor, layerId, latticeKind) {
   if (!editor || !editor._sketchLayer || !layerId) return [];
   return editor._sketchLayer.children().toArray().filter(
     (ch) => ch && ch.node
@@ -2049,6 +2049,30 @@ function _ownedOnLayer(editor, layerId, latticeKind) {
       && ch.node.hasAttribute(OWNERSHIP_ATTR)
       && (!latticeKind || ch.node.getAttribute(LATTICE_ATTR) === latticeKind)
   );
+}
+
+/**
+ * T74 AMEND 5 (Fred, live: a hand-drawn layer got sent to Fusion as a
+ * LATTICE constrained sketch instead of its own artwork): every element on
+ * `layerId` that's genuinely part of `pattern`'s own generated content —
+ * `_ownedOnLayer`'s own rails/ties/nodes PLUS a generated silhouette's own
+ * contour segments, which never carry OWNERSHIP_ATTR at all
+ * (`regenerateSilhouette`'s own separate `data-boundary-ref` link,
+ * properties-shape-lattice.js) but are just as much "this pattern's own
+ * drawn content" for export purposes. The single, declared answer to
+ * "does this layer actually have real lattice content right now" — used
+ * BOTH to decide whether a layer earns a sketchManifest at all (a stale
+ * `.pattern` object with nothing actually drawn from it must not), and to
+ * know exactly which elements a MIXED layer's own plain-SVG export must
+ * exclude (already fully represented by the manifest, so re-importing
+ * them as flat SVG curves too would duplicate the geometry).
+ */
+export function latticeOwnedElementsOnLayer(editor, layerId, pattern) {
+  const owned = _ownedOnLayer(editor, layerId);
+  const shapeId = pattern && hasGeneratedSilhouette(pattern) && pattern.boundary && pattern.boundary.shapeId;
+  if (!shapeId) return owned;
+  const contour = _findBoundaryElements(editor, shapeId).filter((ch) => ch.node.getAttribute('data-layer') === layerId);
+  return [...owned, ...contour];
 }
 
 /**

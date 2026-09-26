@@ -174,7 +174,6 @@ function fixtureHTML() {
     <button id="shapeLatticeWidthLinkToggle" class="editor-fillmode-btn active"></button>
     <input id="shapeLatticeWidthNodes" type="number">
 
-    <span id="shapeLatticeBoundaryStatus"></span>
     <div role="group" id="shapeLatticeEndRule"></div>
     <input id="shapeLatticeContourShow" type="checkbox" checked>
     <input id="shapeLatticeContourWidth" type="number">
@@ -609,13 +608,15 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       expect(paramHandleRecords(editor)).toEqual([]);
     });
 
-    it('one handle per declared param, for the CURRENT preset (bottle: 4)', () => {
+    it('one handle per declared param, for the CURRENT preset (bottle: 3)', () => {
       const p = currentPattern(editor);
       currentShape(p).preset = 'bottle';
       regenerateSilhouette(editor, p); // T72: a real Generate must have run first
       const records = paramHandleRecords(editor);
-      expect(records.length).toBe(4);
-      expect(records.map((r) => r.key).sort()).toEqual(['bodyWidth', 'neckLength', 'neckWidth', 'skeletonX']);
+      // T74 AMEND 3: 'bodyWidth' retired -- the bottle's body always spans
+      // the full contour width now, same as the hourglass.
+      expect(records.length).toBe(3);
+      expect(records.map((r) => r.key).sort()).toEqual(['neckLength', 'neckWidth', 'skeletonX']);
     });
 
     it('non-vacuous: renderShapeLatticeHandles draws exactly one circle per record into _handleLayer', () => {

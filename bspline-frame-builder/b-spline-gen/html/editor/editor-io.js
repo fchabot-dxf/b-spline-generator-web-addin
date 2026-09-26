@@ -7,7 +7,7 @@ import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../cor
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { applyToolingDefaults, addLayer, setActiveLayer, isExported } from './layers.js';
-import { OWNERSHIP_ATTR } from './editor-lattice-pattern.js';
+import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
 import { textGlyphPathD } from './editor-expand-text.js';
@@ -140,7 +140,7 @@ function _serializeLayersAttr(editor) {
  *  "" (empty stamp); a clean parse now returns the content. Real sketch children
  *  carry no svgjs: attrs, so output stays byte-identical there.
  */
-function _parseLayerContent(editor, layerId, dpi) {
+function _parseLayerContent(editor, layerId, dpi, options = {}) {
     if (!editor || !editor._draw || !editor._sketchLayer) return null;
     const targetId = String(layerId);
     const raw = serializeEditor(editor, { forRaster: true });
@@ -158,6 +158,23 @@ function _parseLayerContent(editor, layerId, dpi) {
     const root = doc.documentElement;
     if (!root) return null;
 
+    // T74 AMEND 5 (export-flow.js's own _fusionLayerSvg): a MIXED layer
+    // (real lattice/contour content AND hand-drawn/other elements) that's
+    // ALSO earning a sketchManifest must exclude that pattern's own
+    // lattice/contour content HERE — it's already fully represented by
+    // the manifest, so re-importing it as flat SVG curves too would
+    // duplicate the geometry in Fusion. `data-lattice-gen` marks an owned
+    // rail/tie/node directly; a generated silhouette's own contour
+    // segments carry NO OWNERSHIP_ATTR at all (regenerateSilhouette's own
+    // separate `data-boundary-ref` link, properties-shape-lattice.js) so
+    // both attributes are checked, matching latticeOwnedElementsOnLayer's
+    // own declared definition of "this pattern's own drawn content"
+    // (editor-lattice-pattern.js) exactly — never a second, independently
+    // re-derived definition of the same thing.
+    const excludePattern = options.excludeLatticeOwnedFor;
+    const excludeShapeId = excludePattern && hasGeneratedSilhouette(excludePattern)
+        && excludePattern.boundary && excludePattern.boundary.shapeId;
+
     // T72 (SE14c, Fred: "sometimes don't want the contour profile"): a
     // contour hidden via PATTERN.contour.show=false stays a REAL, live
     // element (regenerateSilhouette only ever sets `display:none` on it,
@@ -170,8 +187,10 @@ function _parseLayerContent(editor, layerId, dpi) {
     let kept = 0;
     Array.from(root.children).forEach(ch => {
         const lid = ch.getAttribute('data-layer');
-        if (lid == null || String(lid) !== targetId || ch.getAttribute('display') === 'none') ch.remove();
-        else kept++;
+        if (lid == null || String(lid) !== targetId || ch.getAttribute('display') === 'none') { ch.remove(); return; }
+        if (excludePattern && (ch.hasAttribute(OWNERSHIP_ATTR)
+            || (excludeShapeId && ch.getAttribute(BOUNDARY_REF_ATTR) === excludeShapeId))) { ch.remove(); return; }
+        kept++;
     });
     if (kept === 0) return null;
 
@@ -289,8 +308,8 @@ function _buildOutlineReplacementNodes(doc, result, ch) {
     return [decorate(outlinePath)];
 }
 
-async function _getLayerSvgForFusion(editor, layerId, dpi) {
-    const parsed = _parseLayerContent(editor, layerId, dpi);
+async function _getLayerSvgForFusion(editor, layerId, dpi, options = {}) {
+    const parsed = _parseLayerContent(editor, layerId, dpi, options);
     if (!parsed) return { svg: '', declined: 0, declinedKinds: [] };
     const { doc, root, svgOpen, targetId } = parsed;
 
@@ -354,10 +373,17 @@ async function _getLayerSvgForFusion(editor, layerId, dpi) {
  * declined}) instead of a plain string — text glyph outlines need an
  * async font fetch, so any 'fusion' caller must await regardless of
  * whether THIS layer's own pick happens to need one.
+ *
+ * T74 AMEND 5: `options.excludeLatticeOwnedFor` (a PATTERN object), when
+ * given, strips that pattern's own lattice/contour content out of the
+ * returned SVG (see _parseLayerContent's own doc comment) — export-flow.js's
+ * own mixed-layer case, never passed by any other caller, so every
+ * existing caller (the carve mask, wizard-availability checks) keeps
+ * getting byte-for-byte the same output as before this option existed.
  */
 export function getLayerSvg(editor, layerId, dpi = 96, options = {}) {
-    if (options.geometry === 'fusion') return _getLayerSvgForFusion(editor, layerId, dpi);
-    const parsed = _parseLayerContent(editor, layerId, dpi);
+    if (options.geometry === 'fusion') return _getLayerSvgForFusion(editor, layerId, dpi, options);
+    const parsed = _parseLayerContent(editor, layerId, dpi, options);
     if (!parsed) return "";
     const inner = stripSvgjsAttributes(parsed.root.innerHTML);
     return `${parsed.svgOpen}${inner}</svg>`;

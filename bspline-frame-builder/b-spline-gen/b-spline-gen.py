@@ -689,6 +689,42 @@ class PaletteClosedHandler(adsk.core.UserInterfaceGeneralEventHandler):
             _log(f'Error in PaletteClosedHandler:\n{traceback.format_exc()}')
 
 
+def _svg_layer_import_plan(layers, design_available):
+    """T74 AMEND 5: the PURE per-layer decision `_import_all_svg_layers`
+    executes — entirely Fusion-API-free (no adsk.* references anywhere
+    in this function) so it's directly unit-testable without a live
+    Fusion session or a heavy adsk.* stub surface, unlike the rest of
+    this class. One entry per layer, `sketch_name` computed the same way
+    the real loop always has:
+      build_constrained: a real sketchManifest AND a Design in scope —
+        the constrained-sketch path runs.
+      manifest_skipped_no_design: a manifest exists but there's no Design
+        in scope — constrained sketch skipped (logged separately by the
+        caller), never silently conflated with "no manifest at all".
+      import_svg: `svg` is non-empty — export-flow.js already strips a
+        pattern's own lattice/contour content out of it whenever a
+        manifest was attached for that layer, so this never duplicates
+        the constrained sketch's own geometry; a layer with no manifest
+        gets its full, unfiltered svg here, exactly as before T74."""
+    plan = []
+    for layer in layers:
+        idx = layer.get('index', 1)
+        cfg = layer.get('config', {})
+        svg = layer.get('svg', '')
+        manifest = layer.get('sketchManifest')
+        prof = cfg.get('profile', 'flat')
+        depth = cfg.get('depth', 0)
+        plan.append({
+            'sketch_name': f"L{idx} - {prof} ({depth}\")",
+            'manifest': manifest,
+            'svg': svg,
+            'build_constrained': bool(manifest and design_available),
+            'manifest_skipped_no_design': bool(manifest and not design_available),
+            'import_svg': bool(svg),
+        })
+    return plan
+
+
 # ── Palette HTML event handler ────────────────────────────────────────────────
 class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
     def __init__(self):
@@ -1357,11 +1393,29 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         T63 (SE15 §7): a layer carrying a `sketchManifest` (set by
         export-flow.js's own _fusionLayerManifest, gated on the SAME
         includeSVG toggle as `.svg`) gets a REAL constrained sketch via
-        build_constrained_sketch INSTEAD of the plain SVG import — the
-        carve stamp itself is untouched either way (it's driven by the
-        STEP body's own 3D geometry, generated earlier in _handle_generate,
-        not by this sketch-import step at all). Every other layer's own
-        plain-SVG path is byte-for-byte unchanged."""
+        build_constrained_sketch. T74 AMEND 5 (Fred, live: a hand-drawn
+        layer was sent as a LATTICE constrained sketch instead of its own
+        artwork): a manifest is now attached ONLY when the layer actually
+        contains pieces owned by that pattern (export-flow.js's own fix),
+        and building the constrained sketch no longer EXCLUDES the plain
+        SVG import — a MIXED layer (lattice content AND hand-drawn/other
+        elements) gets BOTH: the constrained sketch for the lattice, then
+        whatever's left of `svg` (export-flow.js already strips that same
+        pattern's own lattice/contour content out of it whenever a
+        manifest is attached, so this never duplicates the sketch's own
+        geometry). A layer with no manifest at all still gets its full,
+        unfiltered `svg` imported, exactly as before this turn.
+
+        The one narrow, pre-existing edge case this doesn't fully solve:
+        if `design` is falsy (no active Design in scope), the constrained
+        sketch is skipped entirely — but export-flow.js has ALREADY
+        stripped the lattice/contour content out of `svg` before sending,
+        having no way to know whether Python will find a usable `design`
+        at import time. That lattice content is lost for this one
+        request (a pre-existing "manifest present but no Design" fallback
+        was already degraded before this turn — it never built a
+        constrained sketch either — this turn just narrows what the
+        fallback recovers, from the full flat geometry to none)."""
         layers = stamp_data.get('layers', [])
 
         if not layers:
@@ -1396,34 +1450,38 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     max_val = val
                     top_face = face
 
-        for layer in layers:
-            idx = layer.get('index', 1)
-            cfg = layer.get('config', {})
-            svg = layer.get('svg', '')
-            manifest = layer.get('sketchManifest')
+        for step in _svg_layer_import_plan(layers, design is not None):
+            sketch_name = step['sketch_name']
+            # T74 AMEND 5: ONE construction plane per layer, computed lazily
+            # (only if this layer actually imports something) and SHARED by
+            # both import paths below — previously each path computed its
+            # own, so a mixed layer would have ended up with two identically
+            # -named, identically-placed planes for no reason.
+            plane = None
 
-            # Generate a descriptive name for the sketch
-            prof  = cfg.get('profile', 'flat')
-            depth = cfg.get('depth', 0)
-            sketch_name = f"L{idx} - {prof} ({depth}\")"
-
-            if manifest and design:
+            if step['build_constrained']:
                 _log(f'[SE15] Starting constrained-sketch build: {sketch_name}')
-                self._build_constrained_sketch_for_layer(sketch_target, design, manifest, sketch_name, top_face, orientation)
-            else:
-                if manifest and not design:
-                    _log(f'[SE15] Manifest present for {sketch_name} but no active Design in scope — falling back to plain SVG.')
+                plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
+                self._build_constrained_sketch_for_layer(sketch_target, design, step['manifest'], sketch_name, plane)
+            elif step['manifest_skipped_no_design']:
+                _log(f'[SE15] Manifest present for {sketch_name} but no active Design in scope — constrained sketch skipped; importing whatever plain SVG remains.')
+
+            if step['import_svg']:
                 _log(f'[STAMP] Starting Import: {sketch_name}')
-                self._import_single_layer_svg(sketch_target, svg, sketch_name, top_face, orientation, params)
+                if plane is None:
+                    plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
+                self._import_single_layer_svg(sketch_target, step['svg'], plane, sketch_name, params)
 
     def _compute_artwork_plane(self, sketch_target, sketch_name, top_face, orientation='z-up'):
         """The SAME offset-above-peak construction plane every flat 2D
         sketch import (SVG stamp OR, since T63, a constrained sketch)
-        lands on — extracted from _import_single_layer_svg's own steps
-        3-4 so both callers share the ONE placement decision (SE15's own
-        open question #4, kept at today's default per the advisor's
-        "Answers": "keep _import_single_layer_svg's construction-plane
-        placement... revisit after use")."""
+        lands on (SE15's own open question #4, kept at today's default
+        per the advisor's "Answers": "keep _import_single_layer_svg's
+        construction-plane placement... revisit after use"). T74 AMEND 5:
+        called ONCE per layer by _import_all_svg_layers, which then hands
+        the SAME plane object to whichever of _build_constrained_sketch_
+        for_layer / _import_single_layer_svg actually runs (a mixed layer
+        runs both, on the ONE plane, not two identically-placed ones)."""
         if orientation == 'y-up':
             target_plane = sketch_target.xZConstructionPlane
         else:
@@ -1442,14 +1500,16 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         artwork_plane.name = f"Plane for {sketch_name}"
         return artwork_plane
 
-    def _build_constrained_sketch_for_layer(self, sketch_target, design, manifest, sketch_name, top_face, orientation='z-up'):
+    def _build_constrained_sketch_for_layer(self, sketch_target, design, manifest, sketch_name, plane):
         """T63 (SE15 §7): builds a real constrained sketch for one layer,
-        via sketch_manifest_builder.build_constrained_sketch — same
-        placement _import_single_layer_svg itself uses (_compute_artwork_
-        plane above). Failures here are caught and logged, never abort
-        the rest of _handle_generate's own per-layer loop (same "skip +
-        report" discipline build_constrained_sketch's own internals
-        already apply one level down).
+        via sketch_manifest_builder.build_constrained_sketch — placed on
+        `plane` (T74 AMEND 5: computed ONCE by the caller and shared with
+        `_import_single_layer_svg` for a mixed layer, rather than each
+        path minting its own identically-placed, identically-named
+        construction plane). Failures here are caught and logged, never
+        abort the rest of _handle_generate's own per-layer loop (same
+        "skip + report" discipline build_constrained_sketch's own
+        internals already apply one level down).
 
         T64: names the sketch to match the plain-SVG path's own scheme
         (`Source - {sketch_name} [constrained]`, e.g. "Source - L1 - vbit
@@ -1457,7 +1517,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         fall back to the manifest's own generic `sketchName` field
         ("Layer 1") — the advisor's own real Fusion run found the mismatch."""
         try:
-            plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
             summary = build_constrained_sketch(
                 sketch_target, design, manifest, placement=plane, log_fn=_log,
                 sketch_name_override=f"Source - {sketch_name} [constrained]")
@@ -1469,8 +1528,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         except Exception as e:
             _log(f'[SE15] Constrained sketch build failed for {sketch_name}: {e}')
 
-    def _import_single_layer_svg(self, sketch_target, svg_text, sketch_name, top_face, orientation='z-up', params=None):
-        """Imports a single SVG string and projects it."""
+    def _import_single_layer_svg(self, sketch_target, svg_text, plane, sketch_name, params=None):
+        """Imports a single SVG string and projects it onto `plane` (T74
+        AMEND 5: computed ONCE by the caller and shared with
+        _build_constrained_sketch_for_layer for a mixed layer, rather
+        than minting a second, identically-placed construction plane)."""
         try:
             dpi = 96.0 # standard
             # DYNAMIC SCALE: Use design's board size or FALLBACK to 7x9 only if missing
@@ -1486,11 +1548,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 tmp.write(svg_text)
                 tmp_path = tmp.name
 
-            # 3-4. Plane (shared with the constrained-sketch path — see _compute_artwork_plane)
-            artwork_plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
-
-            # 5. Create Sketch and Import
-            sketch = sketch_target.sketches.add(artwork_plane)
+            # 3. Create Sketch and Import
+            sketch = sketch_target.sketches.add(plane)
             sketch.name = f"Source - {sketch_name}"
 
             import_mgr = adsk.core.Application.get().importManager
@@ -1499,7 +1558,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             import_mgr.importToTarget(svg_options, sketch)
 
 
-            # 6. Preserving Calibration Boundary Lines (User likes them for alignment)
+            # 4. Preserving Calibration Boundary Lines (User likes them for alignment)
             _log(f'[STAMP] Preserving 7x9 border lines for {sketch_name}')
 
             # Cleanup temp file

@@ -85,18 +85,21 @@ export const WIRED_STYLES = ['straight', 'curve', 'kink'];
 // future preset's own author states its shape's true measured width
 // right alongside the params that determine it, not in a second,
 // separately-maintained lookup elsewhere. Written in this module's OWN
-// camelCase param names (`bodyWidth`, matching `params` above exactly) —
-// editor-sketch-manifest.js translates each token to its Fusion name
-// (PARAM_FUSION_NAMES, the SAME translation `parameters` itself already
-// gets) at the one place that boundary crossing already happens, not
-// duplicated here. A bare 'contour_width' (no multiplier) is exact for
-// the hourglass: its own body already touches the FULL contour width
-// unconditionally (no width-fraction param exists for it). The bottle's
-// own body sits at `bodyWidth * half_width` (`_solveBottle`'s own
-// formula — `bodyWidth` a genuine 0..1 fraction, never necessarily 1), so
-// its expression must include that same factor or Fusion stretches the
-// body straight out to the full contour_width regardless of the shape's
-// own intended proportions.
+// camelCase param names — editor-sketch-manifest.js translates each token
+// to its Fusion name (PARAM_FUSION_NAMES, the SAME translation
+// `parameters` itself already gets) at the one place that boundary
+// crossing already happens, not duplicated here. Both presets' own body
+// touches the FULL contour width unconditionally (no width-fraction param
+// exists for either), so neither declares an explicit `widthExpr` here —
+// `resolveWidthExpr`'s own default ('contour_width') already covers both.
+// T74 AMEND 3 (Fred: "it needs to fill the box same as hourglass"):
+// the bottle's own `bodyWidth` fraction (previously the reason it DID
+// need an explicit multiplied `widthExpr` here) is RETIRED — its body
+// now always spans the full half-width, same as the hourglass, so the
+// two presets' own width expressions are identical and the per-preset
+// multiplier mechanism sits unused (kept, not deleted, as a declared slot
+// for a FUTURE preset whose body genuinely is a fraction of the contour
+// width — see resolveWidthExpr's own doc comment).
 export const PRESETS = {
   hourglass: {
     label: 'Hourglass',
@@ -106,24 +109,21 @@ export const PRESETS = {
       waistCenterY: 0, // -1..1: vertical position of the pinch, fraction of halfH (0 = region's own center)
     },
     jitter: { waistReach: 0.08, cornerRadius: 0.05, waistCenterY: 0.08 },
-    widthExpr: 'contour_width',
   },
   bottle: {
     label: 'Bottle',
     params: {
       neckWidth: 0.5, // 0-1: narrow top half-width, fraction of halfW
-      bodyWidth: 0.92, // 0-1: wide bottom half-width, fraction of halfW
-      skeletonX: 0.72, // fraction of halfW, must sit strictly between neckWidth and bodyWidth (S-curve tightness)
+      skeletonX: 0.72, // fraction of halfW, must sit strictly between neckWidth and 1 (S-curve tightness)
       neckLength: 0.32, // 0-1: how far down the straight neck run extends before the S-curve, fraction of halfH
     },
-    jitter: { neckWidth: 0.06, bodyWidth: 0.04, skeletonX: 0.05, neckLength: 0.06 },
-    widthExpr: 'contour_width * bodyWidth',
+    jitter: { neckWidth: 0.06, skeletonX: 0.05, neckLength: 0.06 },
   },
 };
 
 const SALT = {
   hourglass: { waistReach: 601, cornerRadius: 602, waistCenterY: 603 },
-  bottle: { neckWidth: 611, bodyWidth: 612, skeletonX: 613, neckLength: 614 },
+  bottle: { neckWidth: 611, skeletonX: 613, neckLength: 614 },
 };
 
 /** Explicit param value wins; else default + a gentle seeded jitter,
@@ -274,7 +274,23 @@ const STRAIGHT_SEGMENT = { style: 'straight', bulge: 0, dir: 'out', cornerRadius
  * its own two endpoints sit at `waistCenterY +/- radius_waist` on the
  * SAME x=skelX as its center, i.e. diametrically opposite.
  */
-function _solveHourglass(region, params, segmentsOverride, seed) {
+/**
+ * T74 AMEND 2 `strokeHalfWidth` — a TRUE analytic inward offset of the
+ * whole drawn contour by a constant amount (0 = today's exact behavior,
+ * every arc CENTER (`skelX`/`shoulderY`/`hipY`/`waistCenterY`) stays
+ * exactly where it always was; verified numerically (region 7x9,
+ * defaults, halfWidth=0.1) before writing this comment: the shoulder arc
+ * (convex, radius shrinks by halfWidth) and the waist arc (concave,
+ * radius GROWS by halfWidth) land on the EXACT SAME shared tangent point
+ * either way, confirming the sign for each. Only three kinds of
+ * quantities ever change here: (1) an OUTER wall coordinate used directly
+ * (`hw`/`hh`) shrinks toward center by `strokeHalfWidth`; (2) a radius
+ * shrinks (convex) or grows (concave) by `strokeHalfWidth`; (3) an
+ * arc-to-arc tangent junction's own position (`waistCenterY ∓
+ * radiusWaist`) is recomputed from the ADJUSTED radius, since (unlike an
+ * arc's own CENTER) a tangent junction point genuinely moves.
+ */
+function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
   const p = PRESETS.hourglass.params;
   const j = PRESETS.hourglass.jitter;
   const s = SALT.hourglass;
@@ -289,30 +305,37 @@ function _solveHourglass(region, params, segmentsOverride, seed) {
   const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
   const waistX = hw * (1 - waistReach); // boundary reach at the pinch (local, right side, from centerline)
   const cornerRadius = hw * cornerRadiusFrac; // shoulder/hip radius (real units)
-  const skelX = hw - cornerRadius; // shared arc-center column X (local, right side positive)
-  const waistCenterY = hh * waistCenterYFrac; // local, Y-DOWN (0 = region's own vertical center)
+  const skelX = hw - cornerRadius; // shared arc-center column X (local, right side positive) -- NEVER shifted
+  const waistCenterY = hh * waistCenterYFrac; // local, Y-DOWN (0 = region's own vertical center) -- NEVER shifted
   const radiusWaist = skelX - waistX;
   const notchHalfSpan = cornerRadius + radiusWaist; // = halfW - waistX, shoulder/hip offset from waistCenterY
-  const shoulderY = waistCenterY - notchHalfSpan; // ABOVE (smaller Y) the waist
-  const hipY = waistCenterY + notchHalfSpan; // BELOW (larger Y) the waist
+  const shoulderY = waistCenterY - notchHalfSpan; // ABOVE (smaller Y) the waist -- an arc CENTER's own Y, never shifted
+  const hipY = waistCenterY + notchHalfSpan; // BELOW (larger Y) the waist -- an arc CENTER's own Y, never shifted
+
+  // The ACTUAL drawn radii/walls (§ (2)/(1) above) -- everything from here
+  // down uses these, never the raw params computed above directly.
+  const cornerRadiusDrawn = cornerRadius - strokeHalfWidth; // convex: shrinks
+  const radiusWaistDrawn = radiusWaist + strokeHalfWidth; // concave: grows
+  const hwDrawn = hw - strokeHalfWidth;
+  const hhDrawn = hh - strokeHalfWidth;
 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y }); // local (right-positive, Y-down) -> world
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y }); // mirrored (left side)
 
   // Right side, top -> bottom.
-  const rTop = P(hw, -hh);
-  const rShoulderHorn = P(hw, shoulderY);
-  const rShoulderWaistJct = P(skelX, waistCenterY - radiusWaist);
-  const rWaistHipJct = P(skelX, waistCenterY + radiusWaist);
-  const rHipHorn = P(hw, hipY);
-  const rBottom = P(hw, hh);
+  const rTop = P(hwDrawn, -hhDrawn);
+  const rShoulderHorn = P(hwDrawn, shoulderY);
+  const rShoulderWaistJct = P(skelX, waistCenterY - radiusWaistDrawn);
+  const rWaistHipJct = P(skelX, waistCenterY + radiusWaistDrawn);
+  const rHipHorn = P(hwDrawn, hipY);
+  const rBottom = P(hwDrawn, hhDrawn);
   // Left side (exact mirror), bottom -> top.
-  const lBottom = M(hw, hh);
-  const lHipHorn = M(hw, hipY);
-  const lWaistHipJct = M(skelX, waistCenterY + radiusWaist);
-  const lShoulderWaistJct = M(skelX, waistCenterY - radiusWaist);
-  const lShoulderHorn = M(hw, shoulderY);
-  const lTop = M(hw, -hh);
+  const lBottom = M(hwDrawn, hhDrawn);
+  const lHipHorn = M(hwDrawn, hipY);
+  const lWaistHipJct = M(skelX, waistCenterY + radiusWaistDrawn);
+  const lShoulderWaistJct = M(skelX, waistCenterY - radiusWaistDrawn);
+  const lShoulderHorn = M(hwDrawn, shoulderY);
+  const lTop = M(hwDrawn, -hhDrawn);
 
   const keypoints = [
     rTop, rShoulderHorn, rShoulderWaistJct, rWaistHipJct, rHipHorn, rBottom,
@@ -326,15 +349,15 @@ function _solveHourglass(region, params, segmentsOverride, seed) {
   // LAST entry, matching the loop's own wraparound.
   const fresh = [
     STRAIGHT_SEGMENT, // rTop -> rShoulderHorn (horn)
-    _curveSegment(rShoulderHorn, rShoulderWaistJct, cornerRadius, true), // shoulder, convex
-    _curveSegment(rShoulderWaistJct, rWaistHipJct, radiusWaist, false), // waist, concave
-    _curveSegment(rWaistHipJct, rHipHorn, cornerRadius, true), // hip, convex
+    _curveSegment(rShoulderHorn, rShoulderWaistJct, cornerRadiusDrawn, true), // shoulder, convex
+    _curveSegment(rShoulderWaistJct, rWaistHipJct, radiusWaistDrawn, false), // waist, concave
+    _curveSegment(rWaistHipJct, rHipHorn, cornerRadiusDrawn, true), // hip, convex
     STRAIGHT_SEGMENT, // rHipHorn -> rBottom (horn)
     STRAIGHT_SEGMENT, // bottom edge: rBottom -> lBottom
     STRAIGHT_SEGMENT, // lBottom -> lHipHorn (horn)
-    _curveSegment(lHipHorn, lWaistHipJct, cornerRadius, true), // hip, convex
-    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaist, false), // waist, concave
-    _curveSegment(lShoulderWaistJct, lShoulderHorn, cornerRadius, true), // shoulder, convex
+    _curveSegment(lHipHorn, lWaistHipJct, cornerRadiusDrawn, true), // hip, convex
+    _curveSegment(lWaistHipJct, lShoulderWaistJct, radiusWaistDrawn, false), // waist, concave
+    _curveSegment(lShoulderWaistJct, lShoulderHorn, cornerRadiusDrawn, true), // shoulder, convex
     STRAIGHT_SEGMENT, // lShoulderHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop
   ];
@@ -372,26 +395,40 @@ function _normalizeSegment(seg) {
  *
  * Same closed-form shape as the hourglass (shared skeleton column X,
  * `skelX`, cancels out of the arc-arc tangency): with `neckHalfW` (narrow
- * top) and `bodyHalfW` (wide bottom),
+ * top) and `hw` (wide bottom — T74 AMEND 3, see below),
  *   hipCenterY - neckCenterY = radius_neck + radius_body
- *                             = (skelX-neckHalfW) + (bodyHalfW-skelX)
- *                             = bodyHalfW - neckHalfW
+ *                             = (skelX-neckHalfW) + (hw-skelX)
+ *                             = hw - neckHalfW
  * `neckCenterY` is the one independent Y anchor (derived from the
  * declared `neckLength`); `hipCenterY` (and hence the body horn's own
  * length) is DERIVED, not independently settable — same disclosed
  * "tangency removes a degree of freedom" finding as the hourglass.
+ *
+ * T74 AMEND 3 (Fred: "it needs to fill the box same as hourglass"): the
+ * body's own half-width used to be `hw * bodyWidth`, a genuine 0..1
+ * fraction never necessarily 1 — retired entirely, along with `bodyWidth`
+ * itself (params/jitter/salt/handle/manifest-name/widthExpr, everywhere).
+ * The body now always sits at the FULL `hw`, exactly like the hourglass's
+ * own body already did — the bottle "fills the box" the same way, so its
+ * own contour_width Distance dim is now the SAME bare expression the
+ * hourglass uses (resolveWidthExpr's own default), never a scaled one.
  */
-function _solveBottle(region, params, segmentsOverride, seed) {
+// T74 AMEND 2 `strokeHalfWidth` — same analytic inward offset as
+// `_solveHourglass`'s own doc comment describes (verified there
+// numerically): `skelX`/`neckCenterY`/`hipCenterY` are arc CENTERS and
+// never shift; `neckHalfW`/`hw`/`hh` are outer-wall coordinates and shrink
+// toward center by `strokeHalfWidth`; `radiusNeck` (concave) grows and
+// `radiusBody` (convex) shrinks by `strokeHalfWidth`; `junctionY` (the
+// neck/body arcs' own shared tangent point, not a center) is recomputed
+// from the ADJUSTED `radiusNeck`.
+function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 0) {
   const p = PRESETS.bottle.params;
   const j = PRESETS.bottle.jitter;
   const s = SALT.bottle;
   const neckWidth = _jitteredParam(params.neckWidth, p.neckWidth, j.neckWidth, seed, s.neckWidth, 0.05, 0.85);
-  const bodyWidth = _jitteredParam(
-    params.bodyWidth, p.bodyWidth, j.bodyWidth, seed, s.bodyWidth, Math.min(0.98, neckWidth + 0.08), 0.98
-  );
   const skeletonXFrac = _jitteredParam(
     params.skeletonX, p.skeletonX, j.skeletonX, seed, s.skeletonX,
-    neckWidth + (bodyWidth - neckWidth) * 0.15, neckWidth + (bodyWidth - neckWidth) * 0.85
+    neckWidth + (1 - neckWidth) * 0.15, neckWidth + (1 - neckWidth) * 0.85
   );
   const neckLengthFrac = _jitteredParam(
     params.neckLength, p.neckLength, j.neckLength, seed, s.neckLength, 0.08, 0.85
@@ -399,27 +436,33 @@ function _solveBottle(region, params, segmentsOverride, seed) {
 
   const hw = region.w / 2, hh = region.h / 2, cx0 = region.x + hw, cy0 = region.y + hh;
   const neckHalfW = hw * neckWidth;
-  const bodyHalfW = hw * bodyWidth;
-  const skelX = hw * skeletonXFrac;
+  const skelX = hw * skeletonXFrac; // arc-center column X -- NEVER shifted
   const radiusNeck = skelX - neckHalfW; // concave (upper) arc
-  const radiusBody = bodyHalfW - skelX; // convex (lower) arc
-  const neckCenterY = -hh + hh * 2 * neckLengthFrac; // local Y-down; top edge at -hh
-  const hipCenterY = neckCenterY + radiusNeck + radiusBody; // derived (tangency)
-  const junctionY = neckCenterY + radiusNeck; // shared tangent point, on x=skelX
+  const radiusBody = hw - skelX; // convex (lower) arc
+  const neckCenterY = -hh + hh * 2 * neckLengthFrac; // local Y-down; top edge at -hh -- an arc CENTER's own Y, never shifted
+  const hipCenterY = neckCenterY + radiusNeck + radiusBody; // derived (tangency) -- an arc CENTER's own Y, never shifted
+
+  // The ACTUAL drawn radii/walls -- everything from here down uses these.
+  const radiusNeckDrawn = radiusNeck + strokeHalfWidth; // concave: grows
+  const radiusBodyDrawn = radiusBody - strokeHalfWidth; // convex: shrinks
+  const hwDrawn = hw - strokeHalfWidth;
+  const hhDrawn = hh - strokeHalfWidth;
+  const neckHalfWDrawn = neckHalfW - strokeHalfWidth;
+  const junctionY = neckCenterY + radiusNeckDrawn; // shared tangent point, on x=skelX -- moves with the drawn radius
 
   const P = (x, y) => ({ x: cx0 + x, y: cy0 + y });
   const M = (x, y) => ({ x: cx0 - x, y: cy0 + y });
 
-  const rTop = P(neckHalfW, -hh);
-  const rNeckHorn = P(neckHalfW, neckCenterY);
+  const rTop = P(neckHalfWDrawn, -hhDrawn);
+  const rNeckHorn = P(neckHalfWDrawn, neckCenterY);
   const rJunction = P(skelX, junctionY);
-  const rHipHorn = P(bodyHalfW, hipCenterY);
-  const rBottom = P(bodyHalfW, hh);
-  const lBottom = M(bodyHalfW, hh);
-  const lHipHorn = M(bodyHalfW, hipCenterY);
+  const rHipHorn = P(hwDrawn, hipCenterY);
+  const rBottom = P(hwDrawn, hhDrawn);
+  const lBottom = M(hwDrawn, hhDrawn);
+  const lHipHorn = M(hwDrawn, hipCenterY);
   const lJunction = M(skelX, junctionY);
-  const lNeckHorn = M(neckHalfW, neckCenterY);
-  const lTop = M(neckHalfW, -hh);
+  const lNeckHorn = M(neckHalfWDrawn, neckCenterY);
+  const lTop = M(neckHalfWDrawn, -hhDrawn);
 
   const keypoints = [rTop, rNeckHorn, rJunction, rHipHorn, rBottom, lBottom, lHipHorn, lJunction, lNeckHorn, lTop];
 
@@ -428,13 +471,13 @@ function _solveBottle(region, params, segmentsOverride, seed) {
   // the top edge (lTop -> rTop) is the LAST entry.
   const fresh = [
     STRAIGHT_SEGMENT, // rTop -> rNeckHorn (horn)
-    _curveSegment(rNeckHorn, rJunction, radiusNeck, false), // neck/waist, concave
-    _curveSegment(rJunction, rHipHorn, radiusBody, true), // hip/body, convex
+    _curveSegment(rNeckHorn, rJunction, radiusNeckDrawn, false), // neck/waist, concave
+    _curveSegment(rJunction, rHipHorn, radiusBodyDrawn, true), // hip/body, convex
     STRAIGHT_SEGMENT, // rHipHorn -> rBottom (horn)
     STRAIGHT_SEGMENT, // bottom edge
     STRAIGHT_SEGMENT, // lBottom -> lHipHorn (horn)
-    _curveSegment(lHipHorn, lJunction, radiusBody, true), // hip/body, convex
-    _curveSegment(lJunction, lNeckHorn, radiusNeck, false), // neck/waist, concave
+    _curveSegment(lHipHorn, lJunction, radiusBodyDrawn, true), // hip/body, convex
+    _curveSegment(lJunction, lNeckHorn, radiusNeckDrawn, false), // neck/waist, concave
     STRAIGHT_SEGMENT, // lNeckHorn -> lTop (horn)
     STRAIGHT_SEGMENT, // top edge: lTop -> rTop
   ];
@@ -443,7 +486,7 @@ function _solveBottle(region, params, segmentsOverride, seed) {
     : fresh;
 
   // T59: see _solveHourglass's own doc comment on why this is returned.
-  const resolvedParams = { neckWidth, bodyWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac };
+  const resolvedParams = { neckWidth, skeletonX: skeletonXFrac, neckLength: neckLengthFrac };
 
   return { keypoints, segments, cx: cx0, params: resolvedParams };
 }
@@ -471,7 +514,7 @@ function _solveBottle(region, params, segmentsOverride, seed) {
  * caller (an on-canvas param handle, T59) learns a param's CURRENT value
  * when it was never explicitly pinned.
  */
-export function generateSilhouette(region, shape) {
+export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
   const preset = (shape && shape.preset) || 'hourglass';
   const seed = ((shape && shape.seed) || 42) >>> 0;
   const params = (shape && shape.params) || {};
@@ -479,8 +522,8 @@ export function generateSilhouette(region, shape) {
 
   const solved =
     preset === 'bottle'
-      ? _solveBottle(region, params, segmentsOverride, seed)
-      : _solveHourglass(region, params, segmentsOverride, seed);
+      ? _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth)
+      : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams } = solved;
   const n = keypoints.length;
@@ -490,6 +533,35 @@ export function generateSilhouette(region, shape) {
   }
 
   return { preset, keypoints, segments, primitives, cx, params: resolvedParams };
+}
+
+/**
+ * T74 AMEND 2/3 (Fred, confirmed after back-and-forth): `contour_width`/
+ * `contour_height` declare the OUTSIDE edge of the drawn stroke, not its
+ * centerline. `generateSilhouette`'s own optional 3rd arg (`strokeHalfWidth`,
+ * default 0 — every existing caller/test keeps working against the exact
+ * SAME "touches region" geometry it always has) is a TRUE, ANALYTIC inward
+ * offset applied INSIDE each solver (see `_solveHourglass`/`_solveBottle`'s
+ * own doc comments for the verified per-quantity derivation: outer walls
+ * shrink toward center by `strokeHalfWidth`, a CONVEX arc's radius shrinks
+ * by the same amount, a CONCAVE arc's radius GROWS by it, every arc CENTER
+ * stays exactly fixed) — never a generic path-offset/re-parse, so the
+ * primitive list keeps its EXACT topology (same count, same order, same
+ * types) no matter the inset amount, which `manifestFromShape`'s own
+ * segment/mirror/tangent-constraint bookkeeping depends on. "The neck and
+ * other features scale the same way from the outside" falls out for free:
+ * every internal feature is defined relative to a wall or another arc's
+ * radius, so shrinking/growing radii by the SAME constant amount threads
+ * through consistently, with no per-feature special-casing needed here.
+ *
+ * Every real consumer of "the contour's own actual drawn geometry" — the
+ * app's own `regenerateSilhouette`, the manifest's own `manifestFromShape`,
+ * and the lattice-fill's own `resolveShapeBoundaryExtent` — calls THIS
+ * wrapper, never bare `generateSilhouette`, so app / Fusion / fill-clip
+ * geometry can never drift into three independently-computed insets.
+ */
+export function generateContourSilhouette(region, shape, strokeWidth) {
+  return generateSilhouette(region, shape, (strokeWidth || 0) / 2);
 }
 
 /** T58 (SE14 Slice 3) — an `A` primitive's own END point, run FORWARD

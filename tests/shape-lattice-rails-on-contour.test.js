@@ -34,7 +34,7 @@
 import { describe, it, expect } from 'vitest';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { buildSketchManifest } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
-import { generateSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { generateContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { insetRegionForContour } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 
 const REGION = { x: 0, y: 0, w: 7, h: 9 };
@@ -57,9 +57,17 @@ const TOL = 2e-3;
 // STILL applies insetRegionForContour (the SEPARATE, unrelated 0.5in
 // board margin every generated contour is built from, T71) -- skipping
 // that would silhouette a differently-SIZED shape entirely, not just a
-// differently-inset one.
+// differently-inset one. T74 AMEND 2: ALSO applies generateContourSilhouette's
+// own stroke-half-inset (the SAME effective contour stroke width
+// `_effectiveContourStrokeWidth`/`usesContourCenterline`'s own real
+// consumer, editor-sketch-manifest.js, resolves) -- with the contour
+// shown, "the contour's own RAW centerline" IS this stroke-inset geometry
+// now, not the bare, un-inset generateSilhouette output.
 function rawContourPrimitivesForTest(pattern, region) {
-  return generateSilhouette(insetRegionForContour(region), pattern.shape).primitives;
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
+  const contour = { ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) };
+  const strokeWidth = contour.width != null ? contour.width : widths.rails;
+  return generateContourSilhouette(insetRegionForContour(region), pattern.shape, strokeWidth).primitives;
 }
 
 // Independent point-on-primitive oracle (distance-based, no re-use of any
@@ -366,13 +374,21 @@ describe('T73 AMEND 3c: split same-rail pieces get Collinear, and only the FIRST
 });
 
 describe('T74 (AMEND 3b close-out): a near-tangent graze at the waist gets no Coincident on that one shallow end, but keeps its clean end', () => {
-  it('deep-waist hourglass (waistReach 0.15), dense vertical rails: rails split by the waist have EXACTLY ONE Coincident (their clean, far end); the missing end\'s own independently-measured crossing angle is under 10 deg, the kept end\'s is not', () => {
+  // T74 AMEND 2: the whole contour shrank by a constant stroke/2 (its
+  // centerline is now inset from the declared outside size), so the OLD
+  // fixture's own exact waistReach/rails/spacing combo (chosen live,
+  // pre-AMEND-2, to land a rail right at the waist's shallow-angle tip) no
+  // longer reproduces a graze at all -- re-swept live against the NEW
+  // geometry (same method as the original discovery) to find a combo that
+  // still does: a deeper waist (0.8, much closer to the skeleton than
+  // 0.15) with coarser rails/spacing.
+  it('deep-waist hourglass (waistReach 0.8), coarse vertical rails: rails split by the waist have EXACTLY ONE Coincident (their clean, far end); the missing end\'s own independently-measured crossing angle is under 10 deg, the kept end\'s is not', () => {
     const pattern = {
-      ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
+      ...PATTERN_DEFAULTS, spacing: 0.15, seed: 42,
       orientation: 'vertical',
-      rails: { mode: 'count', count: [20, 20] },
+      rails: { mode: 'count', count: [10, 10] },
       extent: { mode: 'boundary' },
-      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: { waistReach: 0.15 }, segments: null },
+      shape: { source: 'generated', preset: 'hourglass', seed: 42, params: { waistReach: 0.8 }, segments: null },
     };
     const primitives = rawContourPrimitivesForTest(pattern, REGION);
     const manifest = buildSketchManifest(pattern, REGION, {});
@@ -411,12 +427,21 @@ describe('T74 (AMEND 3b close-out): a near-tangent graze at the waist gets no Co
 
 describe('T74 (AMEND 3b close-out): MIN_RAIL_PIECE drops a split piece too short to be a real slot', () => {
   it('inflating the lattice stroke width (so 2x it exceeds an EXISTING split piece\'s own real length) drops exactly those pieces, keeping every remaining piece at or above the new threshold', () => {
+    // T74 AMEND 2: `widths.rails` is now ALSO the effective CONTOUR stroke
+    // width (`_effectiveContourStrokeWidth`'s own auto-fallback) whenever
+    // `contour.width` is left unset -- inflating it here would ALSO shrink
+    // the boundary's own stroke-inset centerline, confounding "does a
+    // wider rail/tie stroke drop more pieces" with "does a smaller
+    // boundary produce an entirely different row/column layout". Pinning
+    // `contour.width` explicitly decouples the two, isolating the ONE
+    // variable this test actually means to vary.
     const basePattern = {
       ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
       orientation: 'vertical',
       rails: { mode: 'count', count: [20, 20] },
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: { waistReach: 0.3 }, segments: null },
+      contour: { ...PATTERN_DEFAULTS.contour, width: PATTERN_DEFAULTS.widths.rails },
     };
     const railLength = (r) => Math.hypot(r.p2[0] - r.p1[0], r.p2[1] - r.p1[1]);
 

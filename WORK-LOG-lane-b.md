@@ -9171,3 +9171,234 @@ rendering visibly thicker with rounded corners, and OFF drawing nothing at all w
 exact same hourglass waist.
 
 Verify: 1223/1223 vitest, 33/33 pytest. Commit 01a7c4e, pushed. NO FUSION this whole turn.
+
+## T74 AMEND 2/3 — contour_width/height mean the OUTSIDE size; bottle fills the box like the hourglass
+
+**AMEND 2** (Fred, confirmed after back-and-forth with the advisor): `contour_width`/`contour_height` now declare the
+OUTSIDE edge of the drawn stroke, never its centerline. The Distance dims stay targeted on the centerline (no anchor-
+point churn) and compensate by subtracting `stroke_width` in their own expression (`contour_width - stroke_width`,
+`contour_height - stroke_width`) — the parameter VALUES themselves are unchanged (still `region.w`/`region.h`, the
+outside/declared size; the advisor's own explicit "don't bump any parameter value" ruling, option C of three I'd
+sketched).
+
+Two earlier options I proposed and the advisor rejected, for the record: (A) bump `contour_width`'s own value by
+`stroke_width/coefficient` so the dim's expression still matched the raw geometry exactly for the bottle's own
+`* body_width` case; (B) a flat `region.w + stroke_width` bump, accepting a small mismatch for bottle specifically.
+Both tried to keep the OLD geometry (centerline = declared size) and patch the dim math around it. The advisor's own
+answer instead changes the GEOMETRY: the drawn contour's own centerline moves inward by half its stroke width, so the
+size stays the size and the dim's compensating subtraction is exact for every preset, no per-preset carve-out.
+
+Implementation: `generateSilhouette` (editor-shape-lattice-generator.js) gained an optional 3rd arg,
+`strokeHalfWidth` (default 0 — every existing caller/test keeps hitting the exact same "touches region" geometry it
+always has). Non-zero, it insets the drawn contour ANALYTICALLY inside `_solveHourglass`/`_solveBottle` themselves:
+an outer wall coordinate used directly (`hw`/`hh`) shrinks toward center by `strokeHalfWidth`; a CONVEX arc's radius
+shrinks by the same amount; a CONCAVE arc's radius GROWS by it; every arc's own CENTER never moves. Verified
+numerically before writing any of this (not assumed): for the default hourglass on a 7x9 board with
+`strokeHalfWidth=0.1`, the shoulder arc (convex, center (2.73,-1.925), radius 0.77→0.67) and the waist arc (concave,
+center (2.73,0), radius 1.155→1.255) land on the IDENTICAL shared tangent point (2.73,-1.255) either way — confirming
+both the wall-shrink and the opposite-signed radius adjustment before trusting them in the real solvers.
+
+**First attempt, abandoned**: a generic path-offset/re-parse (`insetGeneratedPresetPathDToPrimitives`, the SAME
+utility T68 AMEND 1 uses for a different, already-established stroke-related inset) applied to the FINAL primitive
+list. Immediately broke `manifestFromShape`'s own segment/mirror/tangent-constraint bookkeeping — a generic offset
+algorithm doesn't guarantee the SAME primitive count/order as the input (it re-derives topology from the offset
+curve's own geometry, collapsing/splitting segments near tight features), and `segMap`/mirror-pairing/kink-detection
+all assume a strict 1:1 correspondence with the ORIGINAL segment list. Full-suite run surfaced this immediately as
+`Cannot read properties of undefined (reading 'style')` across ~100 tests — caught before it went anywhere near
+Fusion. The analytic, in-solver approach (above) preserves EXACT topology by construction (same count, same order,
+same types), which the generic approach fundamentally can't guarantee.
+
+A new `generateContourSilhouette(region, shape, strokeWidth)` wrapper is the ONE place every real consumer of "the
+contour's own actual drawn geometry" now calls, never bare `generateSilhouette`: the app's own `regenerateSilhouette`
+(properties-shape-lattice.js), the manifest's own `manifestFromShape`, and the lattice-fill's own
+`resolveShapeBoundaryExtent` (editor-sketch-manifest.js) — so app/Fusion/fill-clip geometry can never drift into
+three independently-computed insets. `editor-sketch-manifest.js` also gained a small shared
+`_effectiveContourStrokeWidth(pattern)` helper (`shapeHalfInset`'s own 3-line computation, factored out) so
+`resolveShapeBoundaryExtent`'s NEW call into `generateContourSilhouette` uses the exact same effective width.
+
+**Self-caught, real pre-existing gap this surfaced**: `buildSketchManifest`'s own call into `manifestFromShape`
+passed `strokeWidth: widths.rails` UNCONDITIONALLY, silently ignoring T74 AMEND 1's own `pattern.contour.width`
+override — an app/manifest mismatch for anyone who'd set an explicit contour width override. Fixed to use the SAME
+`_effectiveContourStrokeWidth` helper `resolveShapeBoundaryExtent` already used.
+
+Also self-caught while wiring the app side: `detectShapeLatticeDetach` (properties-shape-lattice.js) independently
+re-derives the contour's own "expected" `d` string to detect a hand-edit — it called bare `generateSilhouette`,
+which would have flagged EVERY freshly-generated pattern as hand-edited the moment `regenerateSilhouette` started
+drawing the (now genuinely different) stroke-inset geometry, silently flipping `shape.source` to `'picked'` right
+after a normal Generate. Fixed to use `generateContourSilhouette` with the same effective width.
+
+**AMEND 3** (Fred: "it needs to fill the box same as hourglass") supersedes the bottle-specific part of AMEND 2:
+`bodyWidth` — the bottle's own 0..1 fraction of `hw` its body used to sit at, the whole reason its width dim needed
+a `* body_width` multiplier — is retired as a full sweep: the param, its jitter half-range, its salt constant, its
+own on-canvas drag handle (editor-shape-lattice-interaction.js), the manifest's own Fusion-name mapping, the now-
+dead per-preset `widthExpr` override, the HTML slider row, and every test asserting any of the above. The bottle's
+body now always spans the full `hw` (identical to the hourglass's own body), so BOTH presets' width dims are the
+exact same bare `resolveWidthExpr` default — the per-preset multiplier mechanism in `resolveWidthExpr` itself is
+kept (not deleted) as a declared, currently-unused slot for a FUTURE preset whose body genuinely is a fraction of
+its own contour width. A saved pattern with an old `body_width` value simply stops being read — no migration
+needed, since nothing looks for that key in `PRESETS.bottle.params` anymore.
+
+**Test-oracle fallout** (full suite ran to 22 failures immediately after the geometry change, worked through
+individually):
+- Several tests built an independent "raw" geometry oracle via bare `generateSilhouette` to compare against
+  `manifestFromShape`'s/`regenerateSilhouette`'s own ACTUAL (now stroke-inset) output — updated each oracle to call
+  `generateContourSilhouette` with the same effective width the production code actually uses.
+- The "ON has at least as many rail/tie/node pieces as OFF" parity test (T73 AMEND 3) happened to use a stroke width
+  EXACTLY equal to its own spacing (0.25 both) — a coincidental exact ratio that, after the boundary sizes shifted
+  by the new stroke-based inset, landed ON's and OFF's boundaries on opposite sides of a grid-snap for the 'rail'
+  kind specifically (measured live: ON=5, OFF=7 — reproduced, then confirmed to disappear entirely with a narrower,
+  more realistic 0.15 stroke, which the fixture now uses).
+- The MIN_RAIL_PIECE close-out test inflated `widths.rails` to push a split piece below the 2x-stroke drop
+  threshold — not realizing that value is now ALSO the effective CONTOUR stroke width, so inflating it also shrank
+  the boundary itself, confounding "does a wider rail/tie stroke drop more pieces" with "does a smaller boundary
+  produce an entirely different row/column layout" (measured: 8 survivors vs. an expected 22). Fixed by pinning
+  `pattern.contour.width` explicitly in that test, decoupling the two variables it was conflating.
+- The near-tangent-graze fixture's exact `waistReach: 0.15` / 20 rails / 0.25 spacing combo no longer reproduces a
+  graze at all under the uniformly-shrunk geometry (swept the ENTIRE waistReach range at that rail count/spacing
+  live — zero grazes anywhere). Re-swept live across waistReach x rail-count x spacing combos (same method as the
+  original discovery) to find one that still does: `waistReach: 0.8`, 10 rails, 0.15 spacing.
+
+Verify: 1223/1223 vitest, 33/33 pytest. Viewed before committing: a throwaway vitest+CDP render of both presets at
+thin (0.05) and thick (0.5) stroke widths, each against a dashed red "outside" reference box — the drawn stroke's
+own outer edge hugs that box exactly at any stroke width (thin or thick), and the bottle's body now touches the box
+across its full width the same way the hourglass's own body always has. Commit fcac51d, pushed. NO FUSION this
+whole turn.
+
+## T74 AMEND 5 (BUG, done first per the advisor) — manifest only for layers with real lattice content; mixed layer sends both
+
+Fred, live: with 2 layers (L1 = hourglass Shape Lattice, L2 = hand-drawn organic pattern), Send to Fusion built L2 as
+a LATTICE constrained sketch instead of its own drawn artwork. The advisor confirmed the exact shape against a real
+Send payload (dumped to `~/.bspline-frame-builder/last_send.json` — the add-in now writes one on every Send, for
+exactly this kind of live cross-check): L2's own `svg` field held 4 hand-drawn `<path>` elements and ZERO
+`data-lattice` occurrences, yet its `sketchManifest` carried 31 entities from a stale BOX-lattice pattern
+(`contourWidthMode: null`) — the Lattice tool had been opened on that layer at some point, materializing a stored
+`.pattern` object, but nothing was ever actually generated from it there.
+
+**Cause**: `_fusionLayerManifest` (export-flow.js) attached a manifest whenever `editorLayer.pattern` existed at
+all — never checking whether the layer's OWN live DOM content actually had anything real to represent.
+
+**Fix, declared once**: a new `latticeOwnedElementsOnLayer(editor, layerId, pattern)` (editor-lattice-pattern.js) is
+the ONE answer to "does this layer actually have real lattice content right now" — `_ownedOnLayer`'s own
+OWNERSHIP_ATTR-tagged rails/ties/nodes PLUS (a genuine trap the research agent I dispatched for this caught before
+I wrote any code) a generated silhouette's own contour segments, which carry NO OWNERSHIP_ATTR at all
+(`regenerateSilhouette`'s own separate `data-boundary-ref` link) — a naive "OWNERSHIP_ATTR-only" check would have
+correctly fixed the reported bug but WRONGLY classified a Shape Lattice's own visible contour as "not lattice
+content" the moment I built the mixed-layer SVG-exclusion half below (next paragraph), duplicating the contour
+geometry (once via the manifest's own `seg*` entities, once as plain SVG curves). `_fusionLayerManifest` now gates
+on this function's own result being non-empty, never `.pattern` alone.
+
+**The mixed-layer half** (also explicitly required, not optional): previously, `b-spline-gen.py`'s own
+`_import_all_svg_layers` treated "build the constrained sketch" and "import plain SVG" as a strict either/or (`if
+manifest and design: ... else: ...`) — a layer earning a manifest had its OWN full SVG (rails/ties/nodes/contour
+AND any hand-drawn extras in the SAME layer) silently DROPPED, never imported at all. Fixed on BOTH sides:
+- JS: `getLayerSvg` gained an opt-in `excludeLatticeOwnedFor` option (a pattern) — strips that pattern's own
+  lattice/contour content (by the SAME `OWNERSHIP_ATTR`/`data-boundary-ref` check `latticeOwnedElementsOnLayer`
+  uses, never a second, independently-derived definition) out of the returned SVG. Never passed by any OTHER
+  caller (the carve mask, wizard-availability checks), so their own byte-for-byte contract stays untouched.
+  `export-flow.js`'s own `sendToFusion` now resolves each layer's manifest BEFORE its SVG (was after), threading
+  the pattern through so a mixed layer's own SVG excludes exactly what its manifest already covers. **Self-caught
+  while wiring this**: an empty result after exclusion (a PURE lattice layer, nothing left once its own content is
+  stripped) must never fall back to the unfiltered `l.svg` — the existing `svg || l.svg` fallback pattern would have
+  silently reintroduced the EXACT duplicate-geometry bug this exclusion exists to prevent; fixed to fall back to
+  `''` instead whenever exclusion was requested.
+- Python: `_import_all_svg_layers`'s per-layer branching is no longer either/or — a layer now builds its
+  constrained sketch (when it has one) AND separately imports whatever's left of `svg` (when there's anything left),
+  as two independent decisions. Extracted the PURE per-layer decision (no `adsk.*` reference anywhere in it) into a
+  new module-level `_svg_layer_import_plan(layers, design_available)`, specifically so it's directly unit-testable
+  without a live Fusion session — the real per-layer loop just executes the plan it returns. Both import paths now
+  share ONE construction plane per layer (computed once, lazily, by the caller) instead of each minting its own
+  identically-placed, identically-named plane when both ran for the same layer (previously silent, cosmetic waste
+  the research agent flagged as unverified whether Fusion would even accept without auto-renaming — moot now, there
+  aren't two).
+
+**One known, narrow, pre-existing edge case NOT fully solved, disclosed rather than silently patched over**: when
+no active Design is in scope at import time, `export-flow.js` has ALREADY stripped the lattice content out of `svg`
+before sending — it has no way to know Python's own runtime `design` availability when it builds the payload. That
+lattice content is lost for that one request. This "manifest present but no Design" fallback was ALREADY degraded
+before this turn (it never built a constrained sketch either, just imported the full flat SVG) — this turn only
+narrows what it recovers, from the full flat geometry down to none. Not fixed this turn (would need the wire format
+to carry BOTH the full and the stripped SVG, a real design question, not just an oversight).
+
+**Research delegated, not guessed**: dispatched a background research agent (read-only) to map every function this
+fix touches — `_fusionLayerManifest`/`_fusionLayerSvg`/the `bakedLayers` construction (export-flow.js),
+`OWNERSHIP_ATTR`/`_ownedOnLayer` and every ownership-related export (editor-lattice-pattern.js), `getLayerSvg`'s
+FULL option surface (editor-io.js, confirmed there was NO existing exclude/filter option), and BOTH Python import
+methods' own side effects (planes/sketches/parameters, and whether they can coexist per-layer) — before writing any
+code. Its single most load-bearing finding: contour segments don't carry OWNERSHIP_ATTR, the trap noted above.
+
+**Tests**: `tests/export-flow.test.js`'s own `_fusionLayerManifest` describe block — extended its mock editor to
+seed real owned DOM elements (previously `children: () => []`, unable to represent ownership at all, which is
+exactly why the two existing manifest-gating tests that expected a REAL manifest silently passed with zero owned
+content before this fix); added the exact reported-bug case (a `.pattern` with zero owned pieces returns null). `tests/editor-io-fusion-geometry.test.js` — a new describe block for `excludeLatticeOwnedFor`: pure
+hand-drawn (unaffected), pure lattice (excludes to nothing, `''`, never a fallback), mixed (owned pieces stripped,
+hand-drawn survives), contour segments (stripped when the shapeId matches a GENERATED silhouette, survives for a
+wrong shapeId or a hand-picked/non-generated pattern), and the `{geometry:'fusion'}` path (same shared filter).
+`bspline-frame-builder/b-spline-gen/test_svg_layer_import_plan.py` — the FIRST test file to import `b-spline-gen.py`
+at all (a real Fusion add-in entry point with several classes subclassing `adsk.core.*` event-handler bases at
+module level); a minimal, narrowly-scoped `adsk`/`adsk.core`/`adsk.fusion`/`adsk.cam` stub (covering exactly the 16
+symbols the file references anywhere, grep-verified, most only needing to exist as attributes since they're never
+touched by anything this suite calls) makes the import succeed on the first attempt. Covers every case the advisor
+named (hand-drawn-only → no manifest, full svg import; mixed → both) plus the "no Design in scope" fallback and the
+exact two-layer shape from the real bug report. The real Send payload itself is preserved at
+`tests/fixtures/t74-amend5-mixed-layers-last-send.json` as a reference artifact (per the advisor's own ask) for live
+cross-checking — NOT wired into an automated assertion, since the fixture still reflects the OLD, buggy manifest
+attachment (it predates this fix) and asserting against it as-is would mean asserting the bug's own wrong behavior.
+
+Verify: 1232/1232 vitest, 40/40 pytest (33 pre-existing + 7 new). Commit 7d715b6, pushed. NO FUSION this whole turn.
+
+## T74 AMEND 4 — Contour section markup cleanup (Shape linked gone, settings inside one container, edge-rule audit)
+
+Fred, live screenshot after the AMEND 1 merge caught two markup leftovers in the Shape Lattice panel's own "Contour"
+section.
+
+**(1) "Shape linked" retired.** `shapeLatticeBoundaryStatus` ("Shape linked" / "No shape picked") was a Pick-shape-
+era readout. SE14d already removed the ONLY way to pick a NEW boundary shape (the "Pick shape…" button) — a saved
+pattern with an OLD picked boundary can still load (SE14d's own "decide + log" ruling), but there's no way to reach
+"No shape picked" from the UI at all any more; once Generate has run (the tool's own normal, immediate first action),
+this line could only ever say "Shape linked" — a status line that can only say one thing isn't a status line. Removed
+as a full sweep: the `<span>` element, and both JS-side writes to it (`regenerateSilhouette`'s own write right after
+minting/reusing the link, and `syncFieldsFromPattern`'s own read-back on tool-open).
+
+**(2) One container, not two.** The tinted "Contour" block's own container div ended right after the title (plus the
+now-removed status line) — the edge-rule segmented group, the Contour checkbox, and its width field sat OUTSIDE that
+div, as SIBLINGS in the panel body, not children of it. Seat A's own side-column decorator (UI2, `editor/lattice-
+side-column.js`, merged into main after this seat's own T58) tints/collapses a section by its CONTAINER DIV + title,
+matching every OTHER section in this SAME panel's own single-div convention (Widths, Fill seed, Shape, Segments,
+Ties, ...) — so those three controls rendered visually OUTSIDE the tint, exactly the "split section" bug reported.
+Fixed by moving all of it inside the one Contour div.
+
+**(3) Edge-rule audit** (Boundary/Inset/Joint/Loose, `shapeLatticeEndRule`/`BOUNDARY_END_RULES`) — done by reading
+`_applyEndRule`'s own dispatch (editor-lattice-pattern.js) rather than assumed, since T73 AMEND 3 raised a real
+question: does this control still do anything meaningfully different across its 4 options, post-"rails/ties now end
+ON the contour centerline + Coincident"? Findings, logged here as asked:
+  - **Boundary** (`on-boundary`): the rail/tie's own end lands EXACTLY at the boundary crossing point — zero pull-
+    back. In the manifest, when the contour is shown, this is the SAME point AMEND 3's own Coincident constraint
+    anchors to (that mechanism is independent of this control's own value, always applies for a shown contour).
+  - **Inset** (the stored DEFAULT): pulls the end back from the crossing by HALF THE RAIL/TIE'S OWN STROKE WIDTH —
+    a real, nonzero, genuinely different amount from Boundary (`widths.rails/2` or `widths.ties/2`, never zero for
+    any real lattice stroke).
+  - **Joint**: the SAME crossing-point geometry as Boundary, PLUS drops an actual NODE circle there — a real,
+    visually distinguishing difference from Boundary even though the two share the same endpoint coordinates.
+  - **Loose**: snaps the end back to the NEAREST WHOLE GRID-SPACING stop still inside the boundary (a full cell
+    short, not half a stroke) — degrades to Inset's own behavior when the span is too short for any such stop to
+    exist. Visibly the shortest of the four.
+  All four remain genuinely, measurably distinct from each other — **nothing removed**. What IS true, and is exactly
+  what prompted the audit: ALL FOUR only ever take effect while the contour is OFF (or a legacy picked-boundary
+  layer, `shape.source==='picked'`, which SE14d can no longer create new ones of but which still loads). Whenever
+  the contour is shown — the tool's own default, most-common state — `usesContourCenterline(pattern)` forces
+  `endRule='on-boundary'` UNCONDITIONALLY, ignoring whatever this control is set to; the control has been a
+  sometimes-silent no-op since T73 AMEND 3 landed, just never disclosed as such in its own UI. Rather than sweep
+  options that are NOT actually dead, relabeled: a new "Rail ends (contour off only)" caption above the segmented
+  group, and each option's own tooltip now states its real behavior plus the "only applies with the contour off"
+  caveat, so toggling this while the contour is on no longer reads as a silent bug.
+
+Verified with a REAL render, not just unit tests: started a local static HTTP server over the actual palette HTML
+(`main.js`'s own module bootstrap runs against a real `fred-host.js` browser shim, so the FULL app — including
+`initShapeLatticeProperties`'s own real wiring — boots outside Fusion), force-revealed the normally screen-gated
+editor panel via a small injected script (the panel and its own `BOUNDARY_END_RULES`-built buttons were ALREADY
+present/wired in the DOM even while hidden — no re-init needed), and screenshotted the real, live-rendered Shape
+Lattice panel. Confirms: the status line is gone, and the "Contour" section — title, "Rail ends" label, the 4
+edge-rule buttons, the Contour checkbox, and the width field — now renders as ONE visual block, with "Fill seed"
+correctly remaining its own separate section right after it (not accidentally merged in too).
+
+Verify: 1232/1232 vitest, 40/40 pytest (untouched by this item). Commit 41bf2d1, pushed. NO FUSION this whole turn.
