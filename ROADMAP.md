@@ -852,6 +852,21 @@ With SE14d (seat B, after T73). Lattice + Shape Lattice "Node size" field shows/
 node_radius + radial dims). Declare which quantity is stored once; saved patterns with the old radius value load
 correctly (convert on read, one place). Parity + builder tests updated; advisor verifies live.
 
+## Queued — FB-ORDER: frame before inlay in the timeline; board params owned by Send to Fusion (Fred 2026-09-26)
+Fred: the inlay sketch (Source - L1 …) should interact with the frame-builder sketches (T1_2_shape_outline …), but the
+frame is generated after it, so the inlay can't see it; "only Send to Fusion can create" widthIn/heightIn; "move the
+frame before the inlay but still after the initial comp creation". Target timeline:
+  [Send to Fusion: B-Spline Set comp + body] → [Frame_1 comp + its sketches/features] → [Plane for L…][Source - L… inlay]
+Rules (declared, not hand-rolled): (1) OWNERSHIP: widthIn/heightIn (the board params) are created/updated ONLY by
+Send to Fusion; the frame builder READS them and, if missing, stops with a clear "Run Send to Fusion first" — its
+_sync_user_parameters must skip the board params (a declared owned-by list). (2) ORDER: after the frame builds, it
+moves its own timeline items (occurrence creation, sketches, planes, features) to just BEFORE the earliest inlay item
+(plane/sketch named "Plane for L…"/"Source - L…"), never before the initial comp/body. Advisor MEASURED in a scratch
+doc: TimelineObject.reorder of a LATER sketch to an EARLIER index works (canReorder True); moving the earlier inlay/plane
+LATER is refused (canReorder False). So move the frame earlier, not the inlay later. Also measured: API sketch.project()
+of later geometry into an earlier sketch works, stays linked, follows edits, survives a timeline rollback — but the
+UI won't do that by hand, hence the reorder. Seat A after UI2; advisor verifies live on Fred's layout.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
