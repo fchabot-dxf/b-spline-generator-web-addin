@@ -10338,3 +10338,39 @@ nested interaction code — same "live-verified, not unit-tested" honesty this s
 this class of code — flagged here rather than silently claimed as covered), zero regressions.
 
 No edits to `bspline_gen_palette.html`.
+
+## Turn 284 — UI4 item 0b: Clear then Regenerate produces nothing — INVESTIGATED, NOT REPRODUCED (not fixed) — NO FUSION
+
+Attempted to reproduce with the dispatch's own suggested pattern (real CDP mouse-driven Clear + Generate
+clicks, `window.confirm` stubbed to accept the Clear dialog) before writing any fix — per this session's own
+"measure, don't fabricate a fix for something you can't confirm" rule. Result: genuinely could NOT get a
+reliable repro, across a wide spread of conditions:
+- Box Lattice, board-mode (default) extent: the VERY FIRST trial showed 0 pieces after Clear -> Regenerate —
+  but re-running the IDENTICAL script (unmodified) 3 more times immediately after, and again after varying
+  the Clear-to-Generate delay (0ms/50ms/300ms/1000ms) and across 15 further plain repeated-Generate trials
+  (no Clear at all, to rule out a seed-dependent degenerate case unrelated to Clear), every subsequent trial
+  produced normal non-zero output (30-46 pieces). Never reproduced a second time despite ~20 total attempts.
+- Shape Lattice, boundary-mode extent (the dispatch's own explicit hypothesis: "re-creating the silhouette"):
+  confirmed LIVE that Clear genuinely deletes the boundary-linked contour element
+  (`document.querySelectorAll('[data-boundary-ref="<shapeId>"]').length` -> `0` right after Clear, while
+  `layer.pattern.boundary.shapeId` itself is untouched, still pointing at the now-gone element) — exactly the
+  scenario the dispatch describes. Regenerate afterward still correctly rebuilt everything (25 -> 50
+  pieces+contour-segments) — Shape Lattice's silhouette is fully parametric (`shape.params`/seed), so losing
+  the STAMPED reference element doesn't block re-deriving it.
+- Read `generatePattern`/`_resolveExtent`/`_collectOccupied` (`editor-lattice-pattern.js`) end to end looking
+  for anything that reads DOM state Clear would invalidate: board-mode extent comes from `editor._mW`/`_mH`
+  (document dimensions, untouched by Clear); `_collectOccupied` only ever collects NON-owned (hand-drawn)
+  pieces on the active layer, empty before AND after Clear in every scenario tested; the ownership-sweep
+  immediately before regenerating iterates `_sketchLayer.children()`, which is simply empty (not broken) right
+  after Clear. Found no code path that behaves differently on an EMPTY canvas versus one already holding the
+  previous generation's own owned pieces.
+- This investigation happened either side of the lane-b T74 merge (`85c7e1a`, pulled mid-investigation via
+  `git pull --ff-only` on a clean tree per the advisor's own instructions) — confirmed via `git diff` that
+  merge's own 26-line change to this file is an unrelated NEW export (`latticeOwnedElementsOnLayer`, T74
+  AMEND 5's manifest fix) that doesn't touch anything on this bug's own suspected code paths.
+
+**Not marking this done.** No code change landed (nothing to fix without a reliable repro to fix it AGAINST —
+a speculative change here risks masking a real, different-shaped bug or introducing a new one). If this
+recurs, the single most useful thing to capture next time is the EXACT starting state (a freshly generated
+pattern vs. one loaded from a saved document; which extent mode; whether any OTHER action happened between
+Generate and Clear) — my own ~20-trial sweep couldn't isolate a condition that reproduces it.
