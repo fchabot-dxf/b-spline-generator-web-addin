@@ -8748,3 +8748,77 @@ confirmed stopped, `proc_health.py watch` clean.
 Verify (final, after AMEND 5): 1203/1203 vitest, 33/33 pytest. Amendments polled clean immediately before this
 pass. NO FUSION this whole turn, per the dispatch.
 
+## T73 (SE14b) — Shape Lattice contour as N selectable, per-segment-colourable segments
+
+Per the dispatch (Fred: "we should also represent those separations in the add-in preview, to be able to select
+segments and color them" / "contour can have per segment colors within lattice right?"), using the T70/SE14b
+capacity-report investigation (b62fd4d) named in the dispatch: the rendering pipeline, the boundary-resolution-
+reads-one-DOM-element hazard, the segment-tap interaction question, and the colour-persistence design.
+
+**Rewrite**: the contour is now drawn as ONE `<path>` PER PRIMITIVE (line/arc, round caps, stroke=`widths.rails`,
+"auto = lattice stroke width" per T72 item 6) instead of one combined path, all sharing a single `boundary-ref` id
+(`data-contour-seg` holds each one's own primitive index — the SAME index `generateSilhouette`'s own `primitives[i]`
+and the manifest's own `seg{i}` ids already use). `_findBoundaryElement` → `_findBoundaryElements` (plural,
+order-sorted by that index) so the already-shipped lattice-fill-clipping code (a hard dependency on boundary-element
+resolution) degrades correctly for both the old N=1 hand-picked case and the new N>1 generated case: the N segment
+`d` strings are rejoined into one closed loop (`joinSegmentPathsIntoClosedD`) and fed to the SAME
+`insetGeneratedPresetPathDToPrimitives` generated presets already used — no new inset math, no geometry stored
+twice. The Border-piece emission and `recolorOwnedKind`'s `'contour'` branch were rewired the same way.
+
+**Parity gap found and fixed**: making the contour's own drawn stroke width `widths.rails` instead of a fixed
+hairline (the dispatch's own explicit "auto = lattice stroke width" ask) meant `_effectiveBorderWidth`'s Border-off
+fallback — which reads the live boundary element's own `stroke-width` — now returns `widths.rails` too, but
+`editor-sketch-manifest.js`'s own `shapeHalfInset` still assumed the OLD hairline constant for that same fallback.
+That divergence clips the app's lattice fill and the manifest's lattice fill against two DIFFERENT effective
+boundaries — caught by the full test run (77 failures: rails/ties count mismatches across
+`shape-lattice-param-sweep.test.js` and `parity-app-manifest.test.js`), not assumed from reading the code. Fixed by
+having `shapeHalfInset` read `widths.rails` too, matching the app's now-uniform behavior; the app/manifest "d" byte-
+for-byte parity test was rewritten for the new N-elements-per-primitive shape rather than deleted.
+
+**Colour-persistence bug self-caught before committing**: the first draft stored a segment's colour override on
+`shape.segments[i].color`, keyed by the pre-existing STYLE-segment index (kink/bulge/dir/cornerRadius, T58's own
+"Segments" panel section). Running the full suite didn't catch this one — it's a design bug, not a regression — a
+second look caught it: `generateSilhouette`'s own `_normalizeSegment` rebuilds a FRESH `{style,bulge,dir,
+cornerRadius}` object on every single call and drops any other field, so a colour written there would never survive
+even a same-preset regenerate. Worse, `_segmentToPrimitives` expands one 'kink' style-segment into TWO line
+primitives, so `shape.segments.length` can be smaller than the drawn primitive count — the style-segment index and
+the drawn-primitive index are genuinely different axes, not just different names for the same thing. Redeclared as
+`PATTERN.contour.segmentColors[i]`, a new parallel array keyed by PRIMITIVE index (matching `CONTOUR_SEG_INDEX_ATTR`
+and the manifest's `seg{i}` ids), carried forward across a regenerate that keeps the SAME primitive count and reset
+to `[]` when it changes (preset swap, or a style edit that adds/removes a kink) — "a count change resets them," per
+the dispatch.
+
+**editor.setColor** now persists a recoloured contour segment's override into that array when the selection carries
+`CONTOUR_SEG_INDEX_ATTR`, via a plain module function (not an instance method — `editor-color.test.js`'s own
+`VectorEditor.prototype.setColor.call(mock, …)` pattern exercises real mocks that never carry every instance
+method, only the ones a test explicitly re-attaches, so a `this.foo()` call would have broken that whole file).
+`recolorOwnedKind`'s contour branch reads the same array so the contour's own default-colour swatch still skips any
+segment carrying an override, matching rails/ties/nodes' existing default-vs-override rule.
+
+**Verified unchanged, no code needed**: `manifestFromShape`'s own `seg{i}` ids already index by primitive, matching
+the DOM side exactly — no manifest change beyond `shapeHalfInset` above. The tap-a-segment style popup
+(`hitTestSegment`, editor-shape-lattice-interaction.js) is pure geometry + its own `primitiveSegmentMap` (primitive
+index → style-segment index, already existed for the kink-expansion case) and is gated to the Shape Lattice TOOL's
+own mode (`shapeLatticeHandler`) — the normal SELECT tool (a different mode) hit-tests the new per-segment DOM
+elements individually with zero extra plumbing, so "selectable with the normal select tool" and "tap a segment to
+edit its style" are different tools, never in conflict. SVG export / Fusion-geometry extraction
+(`_parseLayerContent`, editor-io.js) and the drape preview both walk `_sketchLayer.children()` generically by
+`data-layer`/`display`, with no contour-specific special case — each segment's own live `stroke` color and
+`display` already carry through "for free."
+
+**Tests**: `tests/shape-lattice-segment-color.test.js` (new) covers the dispatch's own acceptance list — N drawn
+segments = N manifest contour entities; recolour one → only it changes; regenerate (same count) keeps it;
+regenerate (preset swap, different count) resets it; the show-contour checkbox off hides ALL N segments, not just
+one. Updated `tests/parity-app-manifest.test.js` (the byte-for-byte "d" test) and 3 call sites in
+`tests/properties-shape-lattice.test.js` for `regenerateSilhouette`'s new return type (array of N elements, not
+one) — every real caller already discarded the return value, only tests read it.
+
+**Rendered and viewed**: hourglass (12 primitives) and bottle (10 primitives), 2 segments recoloured each (indices
+1 and 4), straight from the pure geometry engine via headless Chrome (same "no live app needed" technique T72 item
+3 used) — both shapes drew correctly, only the 2 targeted segments took the override colour, everything else stayed
+the default contour green. Script was scratch (session scratchpad, not committed).
+
+Verify: 1208/1208 vitest (1203 + 5 new), 151/151 pytest. Amendments polled clean before each commit. NO FUSION this
+whole turn, per the dispatch. Two commits: 859eb70 (per-segment rewrite + shapeHalfInset parity fix + existing-test
+updates), a455a28 (colour-persistence hook + new test file).
+
