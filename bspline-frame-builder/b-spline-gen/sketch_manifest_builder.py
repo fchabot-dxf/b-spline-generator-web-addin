@@ -255,6 +255,93 @@ def _find_slot_centerline(curves, p1, p2, line_count_before):
     return None
 
 
+def _find_arc_slot_centerline(curves, p1, p_mid, p2, arc_count_before):
+    """T69 (SE15b): the arc-shaped sibling of `_find_slot_centerline`, for
+    `addThreePointArcSlot` — the advisor's own measured shape ('a
+    construction centerline arc through the 3 points, sides +-w/2, end
+    caps') gives no more of a trustworthy return value than
+    `addCenterToCenterSlot` did (T65's own "generic vector" finding), so
+    this diffs `curves.sketchArcs`' own count before/after the call (the
+    SAME technique, arcs instead of lines) and, within that new slice,
+    requires BOTH a construction-curve flag AND actually passing through
+    all 3 given points (within tolerance) to call something the
+    centerline. Per the dispatch's own explicit instruction ("if you can't
+    identify an arc slot's centerline robustly... log it and skip that
+    seg, never guess"): if zero or more than one arc in the new slice
+    satisfies both, this returns None rather than picking one — the
+    caller raises, which `_create_geometry`'s own per-entity try/except
+    turns into a skip+report, never a silent wrong pick."""
+    arcs = curves.sketchArcs
+    try:
+        count = arcs.count
+    except Exception:
+        return None
+    candidates = []
+    for i in range(arc_count_before, count):
+        a = arcs.item(i)
+        try:
+            if not getattr(a, "isConstruction", False):
+                continue
+            center = a.centerSketchPoint.geometry
+            radius = center.distanceTo(a.startSketchPoint.geometry)
+            on_circle = lambda pt: abs(center.distanceTo(pt) - radius) < 1e-7  # noqa: E731
+            if on_circle(p1) and on_circle(p_mid) and on_circle(p2):
+                candidates.append(a)
+        except Exception:
+            continue
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, width_expression):
+    """T69 (SE15b, Fred: "want the shape contour to be made of slots") — a
+    contour ARC segment becomes a Fusion-native three-point arc slot
+    (`addThreePointArcSlot`), the arc-shaped sibling of `_create_slot_
+    entity`'s own center-to-center Line slot: a construction CENTERLINE
+    arc through the manifest's own p1/pMid/p2, two side arcs at +-width/2,
+    two end caps, and its own width dimension (the advisor's own measured
+    shape — this API surface itself is NOT verified live this turn, NO
+    FUSION; the advisor verifies after merge, same disclosed-uncertainty
+    posture `_create_slot_entity` carried before T65's own real run
+    confirmed it).
+
+    Registers the CENTERLINE (never the visible slot body) under this
+    segment's own manifest id, its own :S/:E by PROXIMITY to p1/p2 — the
+    SAME technique T67 already applies to a plain Arc3Point, since
+    `addThreePointArcSlot`'s own centerline is expected to normalize to
+    CCW exactly like `addByThreePoints` does (unverified live this turn) —
+    and :C for the centre. Every EXISTING contour constraint (Coincident
+    chain, Tangent, H/V, Equal, the hourglass's own shoulder<->hip Radial)
+    already targets this SAME id/suffix scheme, so they re-target onto the
+    centerline with NO changes of their own — a real re-target, not an
+    additive mechanism, exactly like the Line-slot case.
+
+    If the centerline can't be identified UNIQUELY, this raises rather
+    than guessing — `_find_arc_slot_centerline`'s own doc comment has the
+    "never guess" reasoning; the caller (`_create_geometry`)'s existing
+    per-entity try/except turns that into a skip+report, the same
+    contract every other entity type in this module already has."""
+    p1 = _to_point3d(ent["p1"])
+    p_mid = _to_point3d(ent["pMid"])
+    p2 = _to_point3d(ent["p2"])
+    width_in = ent.get("width", 0.07)
+    value_input = adsk.core.ValueInput.createByReal(width_in * IN_TO_CM)
+    arc_count_before = curves.sketchArcs.count
+    sketch.addThreePointArcSlot(p1, p_mid, p2, value_input, True)
+    centerline = _find_arc_slot_centerline(curves, p1, p_mid, p2, arc_count_before)
+    if not centerline:
+        raise RuntimeError(f"could not identify the arc slot's own centerline for {ent['id']}")
+    ctx.set_id(centerline, s_name, "arc", override_id=ent["id"])
+    sp, ep = centerline.startSketchPoint, centerline.endSketchPoint
+    if sp.geometry.distanceTo(p1) > ep.geometry.distanceTo(p1):
+        sp, ep = ep, sp
+    ctx.set_id(sp, s_name, "point", override_id=f"{ent['id']}:S")
+    ctx.set_id(ep, s_name, "point", override_id=f"{ent['id']}:E")
+    ctx.set_id(centerline.centerSketchPoint, s_name, "point", override_id=f"{ent['id']}:C")
+    if width_expression:
+        _drive_last_dimension(ctx, sketch, width_expression, f"{ent['id']}_width")
+    return centerline
+
+
 def _drive_last_dimension(ctx, sketch, expression, semantic_name):
     """After a geometry call that creates its OWN dimension as a side
     effect (addCenterToCenterSlot's own width dimension; previously also
@@ -385,6 +472,8 @@ def _create_geometry(ctx, sketch, s_name, entities, dimensions=None):
                 _create_arc3_entity(ctx, curves, s_name, ent)
             elif etype == "Slot":
                 _create_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
+            elif etype == "Arc3PointSlot":
+                _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, slot_width_expr_by_id.get(eid))
             else:
                 skipped.append({"id": eid, "type": etype, "reason": "unknown entity type"})
                 ctx.logger.log(f"GEOM SKIP: unknown type '{etype}' for {eid}", "WARNING")
@@ -483,20 +572,24 @@ def verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002):
     """Compares every manifest entity's DECLARED geometry (inches) against
     what `ctx.entity_map[sketch.name]` actually holds after the full
     build — Slot/Line by centerline ends (order-preserving: for a Slot,
-    `_find_slot_centerline` only ever registers the line whose own start/
-    end ALREADY matched p1/p2 exactly at creation time, so this is really
-    checking whether the LATER constraint/dimension pass moved it away
-    again); Circle by center+radius; Arc3Point by ends compared ORDER-FREE
-    (Fusion's own `addByThreePoints` always normalizes to CCW, so which
-    manifest point becomes `.startSketchPoint` vs `.endSketchPoint` isn't
-    guaranteed — this checks the actual geometry, not `_create_arc3_
-    entity`'s own proximity-tagged :S/:E, so it stays correct regardless of
-    that function's own labeling) plus radius/center derived from the
-    manifest's own p1/pMid/p2 via `_circumcircle`. ArcCenter is not
-    checked — T65's own `applyCarvePlacement` always converts it to
-    Arc3Point before a manifest reaches this module; a raw pre-placement
-    manifest fed straight to `build_from_manifest_file` is a dev-only path
-    outside this check's scope.
+    `_find_slot_centerline`/`_find_arc_slot_centerline` only ever register
+    the centerline whose own start/end ALREADY matched p1/p2 (or p1/pMid/p2)
+    exactly at creation time, so this is really checking whether the LATER
+    constraint/dimension pass moved it away again); Circle by center+radius;
+    Arc3Point/Arc3PointSlot (T69: the SAME check either way — a contour arc
+    slot's own construction centerline is geometrically identical to a
+    plain Arc3Point for this purpose) by ends compared ORDER-FREE (Fusion's
+    own `addByThreePoints`/`addThreePointArcSlot` both always normalize to
+    CCW, so which manifest point becomes `.startSketchPoint` vs
+    `.endSketchPoint` isn't guaranteed — this checks the actual geometry,
+    not `_create_arc3_entity`/`_create_arc3_slot_entity`'s own proximity-
+    tagged :S/:E, so it stays correct regardless of either function's own
+    labeling) plus radius/center derived from the manifest's own
+    p1/pMid/p2 via `_circumcircle`. ArcCenter is not checked — T65's own
+    `applyCarvePlacement` always converts it to Arc3Point before a manifest
+    reaches this module; a raw pre-placement manifest fed straight to
+    `build_from_manifest_file` is a dev-only path outside this check's
+    scope.
 
     Never raises: an entity missing from entity_map (already reported
     under entities.skipped) or a lookup that throws counts as a mismatch
@@ -515,7 +608,7 @@ def verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002):
         eid = ent.get("id")
         entity = g_map.get(eid)
         if not entity:
-            if etype in ("Slot", "Line", "Circle", "Arc3Point"):
+            if etype in ("Slot", "Line", "Circle", "Arc3Point", "Arc3PointSlot"):
                 mismatches.append(eid)
             continue
         try:
@@ -527,7 +620,7 @@ def verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002):
                 ca = _point_in(entity.centerSketchPoint.geometry)
                 ra_in = entity.radius / IN_TO_CM
                 err = max(_dist(ca, ent["center"]), abs(ra_in - ent["radius"]))
-            elif etype == "Arc3Point":
+            elif etype in ("Arc3Point", "Arc3PointSlot"):
                 sa = _point_in(entity.startSketchPoint.geometry)
                 ea = _point_in(entity.endSketchPoint.geometry)
                 end_err = min(

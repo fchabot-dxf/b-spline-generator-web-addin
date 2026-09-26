@@ -100,6 +100,24 @@ export const SKETCH_PIECE_THRESHOLD = 60;
  *  centerlines only 0.005in; 0.2in -> 0.07in returned EXACTLY). */
 export const SKETCH_WIDTH_MODE = { boxLattice: 'slot', shapeLattice: 'slot' };
 
+/** T69 (SE15b, Fred: "want the shape contour to be made of slots") — the
+ *  Shape Lattice silhouette's own CONTOUR gets the SAME 'slot'-vs-
+ *  'centerline' choice SKETCH_WIDTH_MODE already declares for rails/ties,
+ *  as its OWN separate declared constant (never the SAME field —
+ *  SKETCH_WIDTH_MODE/`manifest.widthMode` is already established,
+ *  including in this module's own tests, as scoped to the LATTICE FILL
+ *  only; overloading it to also mean "and the contour" would be a silent
+ *  meaning-change on an existing field, not a new declaration). 'slot' is
+ *  the default (a contour Line becomes a Fusion-native center-to-center
+ *  slot via `addCenterToCenterSlot`, EXACTLY the same entity/dimension
+ *  shape a rail/tie slot already uses; a contour Arc3Point becomes a
+ *  three-point ARC slot via `addThreePointArcSlot` — a genuinely new
+ *  Fusion API surface, unverified this turn, NO FUSION); 'centerline' (a
+ *  bare, undimensioned Line/ArcCenter, today's pre-T69 shape) stays a
+ *  real, available alternative, matching SKETCH_WIDTH_MODE's own
+ *  'centerline' — never removed, just no longer the default. */
+export const SKETCH_CONTOUR_WIDTH_MODE = 'slot';
+
 const EPS = 1e-9;
 
 function toEntityId(kind, index) {
@@ -417,8 +435,29 @@ const PARAM_FUSION_NAMES = {
  * `generateSilhouette` (unchanged) then walks its own `primitives` list —
  * the SAME flat list `primitivesToPathD` already walks — building one
  * manifest entity per primitive.
+ *
+ * T69: `opts.widthMode` (default `SKETCH_CONTOUR_WIDTH_MODE`, i.e. 'slot')
+ * decides whether each primitive becomes a Fusion-native SLOT (`Slot` for
+ * a Line, reusing the EXACT `addSlotPieces` helper rails/ties already use
+ * — a contour Line-slot IS a rail/tie slot, same shape, same mechanism;
+ * `ArcCenterSlot` for an arc, a pre-carve sibling of `ArcCenter` that
+ * `applyCarvePlacement` below turns into `Arc3PointSlot` post-placement,
+ * the arc-shaped sibling of a Line's `Slot`) or the plain pre-T69
+ * `Line`/`ArcCenter` ('centerline' mode, still real and available, just
+ * no longer the default). `opts.strokeWidth` (default
+ * `PATTERN_DEFAULTS.widths.rails`, since no caller-supplied `pattern`
+ * object reaches this function) is the slot's own SEED width in inches;
+ * `buildSketchManifest` always passes the layer's own real
+ * `pattern.widths.rails` so the contour ends up the SAME stock thickness
+ * as the rails/ties it's built alongside, per the dispatch's own "same
+ * param as rails/ties" instruction — Fusion re-drives it via the
+ * 'stroke_width' expression afterward either way, so this seed number is
+ * a real starting value, never the final one.
  */
-export function manifestFromShape(shape, region) {
+export function manifestFromShape(shape, region, opts = {}) {
+  const widthMode = opts.widthMode ?? SKETCH_CONTOUR_WIDTH_MODE;
+  const strokeWidth = opts.strokeWidth ?? PATTERN_DEFAULTS.widths.rails;
+  const isSlotMode = widthMode !== 'centerline';
   const result = generateSilhouette(region, shape);
   const { preset, segments, primitives, params } = result;
   const n = segments.length;
@@ -426,22 +465,36 @@ export function manifestFromShape(shape, region) {
 
   const entities = [];
   const constraints = [];
+  const dimensions = [];
   const groups = { silhouette: [] };
 
   const idsByPrimIndex = primitives.map((prim, i) => {
     const id = toEntityId('seg', i);
     if (prim.type === 'L') {
-      entities.push({ id, type: 'Line', p1: [prim.p0.x, prim.p0.y], p2: [prim.p1.x, prim.p1.y] });
+      if (isSlotMode) {
+        addSlotPieces(entities, dimensions, [{ id, p1: prim.p0, p2: prim.p1 }], 'stroke_width', strokeWidth);
+      } else {
+        entities.push({ id, type: 'Line', p1: [prim.p0.x, prim.p0.y], p2: [prim.p1.x, prim.p1.y] });
+      }
       const axis = axisConstraintType(prim.p0, prim.p1);
       if (axis) constraints.push({ type: axis, targets: [id] });
     } else {
       // rx===ry, phi===0 always — T58's own established, tested invariant
       // (this module's own header + editor-shape-lattice-generator.js's
       // own primitivesToPathD doc comment).
-      entities.push({
-        id, type: 'ArcCenter', center: [prim.cx, prim.cy], radius: prim.rx,
-        startAngleDeg: (prim.theta1 * 180) / Math.PI, sweepDeg: (prim.dTheta * 180) / Math.PI,
-      });
+      if (isSlotMode) {
+        entities.push({
+          id, type: 'ArcCenterSlot', center: [prim.cx, prim.cy], radius: prim.rx,
+          startAngleDeg: (prim.theta1 * 180) / Math.PI, sweepDeg: (prim.dTheta * 180) / Math.PI,
+          width: strokeWidth,
+        });
+        dimensions.push({ type: 'SlotWidth', target: id, expression: 'stroke_width' });
+      } else {
+        entities.push({
+          id, type: 'ArcCenter', center: [prim.cx, prim.cy], radius: prim.rx,
+          startAngleDeg: (prim.theta1 * 180) / Math.PI, sweepDeg: (prim.dTheta * 180) / Math.PI,
+        });
+      }
     }
     groups.silhouette.push(id);
     return id;
@@ -493,8 +546,14 @@ export function manifestFromShape(shape, region) {
     name: nameTable[key] || key, value, unit: null,
   }));
   parameters.push({ name: 'half_width', value: region.w / 2, unit: 'in' });
+  // T69: declared independently of manifestFromLattice's OWN 'stroke_width'
+  // push (rails/ties, only when linked) — this function has no visibility
+  // into that link state at all, so it always declares its own, by name;
+  // Python's create-OR-UPDATE parameter sync (_sync_manifest_parameters)
+  // harmlessly reconciles a duplicate declaration of the same name/value
+  // in the common linked case, and is the ONLY source of it when unlinked.
+  if (isSlotMode && entities.length) parameters.push({ name: 'stroke_width', value: strokeWidth, unit: 'in' });
 
-  const dimensions = [];
   // Hourglass-only, §4's own "a FEW driving dimensions" example (§1):
   // the shoulder arc's own radius, driven by corner_radius * half_width —
   // ONLY when segment 1 is still a real arc (not overridden away from
@@ -662,6 +721,14 @@ function applyCarvePlacement(manifest, region) {
       return { ...e, center: [c.x, c.y] };
     } else if (e.type === 'ArcCenter') {
       return toCarveArc3Point(e, region);
+    } else if (e.type === 'ArcCenterSlot') {
+      // T69: the arc-shaped sibling of the Line/Slot branch above — the
+      // SAME point-based reflection (never an angle-negation, per T65's
+      // own doc comment on toCarveArc3Point), just tagged as a slot
+      // afterward, carrying its own `width` through untouched (a plain
+      // number, never a coordinate — nothing to transform).
+      const arc3 = toCarveArc3Point(e, region);
+      return { ...arc3, type: 'Arc3PointSlot', width: e.width };
     }
     return e;
   });
@@ -695,13 +762,22 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   const widthMode = hasShape ? SKETCH_WIDTH_MODE.shapeLattice : SKETCH_WIDTH_MODE.boxLattice;
   const extent = hasShape ? resolveShapeBoundaryExtent(pattern, region) : resolveBoardExtent(pattern, region);
   const lattice = manifestFromLattice(pattern, extent, widthMode);
+  // T69: the contour's own slot width matches the layer's own REAL
+  // rails/ties width (`pattern.widths.rails`, merged over
+  // PATTERN_DEFAULTS.widths the SAME way manifestFromLattice's own
+  // `widths` local already does) — "same param as rails/ties" (the
+  // dispatch's own instruction), not manifestFromShape's own no-pattern-
+  // visibility fallback default.
+  const widths = { ...PATTERN_DEFAULTS.widths, ...(pattern.widths || {}) };
+  const contourWidthMode = hasShape ? SKETCH_CONTOUR_WIDTH_MODE : null;
   const shape = hasShape
-    ? manifestFromShape(pattern.shape, region)
+    ? manifestFromShape(pattern.shape, region, { widthMode: contourWidthMode, strokeWidth: widths.rails })
     : { entities: [], constraints: [], parameters: [], dimensions: [], groups: {} };
 
   const manifest = {
     version: 1,
     widthMode,
+    contourWidthMode,
     layerId: opts.layerId ?? null,
     sketchName: opts.sketchName || 'Sketch',
     units: 'in',

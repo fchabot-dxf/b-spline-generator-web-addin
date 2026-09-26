@@ -99,7 +99,10 @@ function pointsMatch(manifestP, [x, y], tol = 1e-6) {
 function checkLatticeParity(editor, manifest, region) {
   const drawn = editor._sketchLayer.children().toArray().filter((e) => e.attr('data-lattice'));
   const drawnPieces = drawn.filter((e) => e.attr('data-lattice') === 'rail' || e.attr('data-lattice') === 'tie');
-  const manifestPieces = manifest.entities.filter((e) => e.type === 'Slot');
+  // T69: the contour's own segN entities are ALSO type 'Slot'/'Arc3PointSlot'
+  // now -- excluded here by id prefix, since this check is specifically
+  // about the LATTICE FILL (rails/ties), not the silhouette contour.
+  const manifestPieces = manifest.entities.filter((e) => e.type === 'Slot' && !e.id.startsWith('seg'));
   expect(drawnPieces.length).toBe(manifestPieces.length); // non-vacuous: counts themselves must agree
   const usedManifest = new Set();
   for (const d of drawnPieces) {
@@ -213,8 +216,8 @@ describe('parity: shape lattice (hourglass) — app drawing vs buildSketchManife
       }
       const p1 = toCarvePoint(rawP1, region), p2 = toCarvePoint(rawP2, region);
       const matches = contourEntities.filter((e) => {
-        if (isLine) return e.type === 'Line' && pointsMatch(e.p1, [p1.x, p1.y]) && pointsMatch(e.p2, [p2.x, p2.y]);
-        if (e.type !== 'Arc3Point') return false;
+        if (isLine) return (e.type === 'Line' || e.type === 'Slot') && pointsMatch(e.p1, [p1.x, p1.y]) && pointsMatch(e.p2, [p2.x, p2.y]);
+        if (e.type !== 'Arc3Point' && e.type !== 'Arc3PointSlot') return false;
         const pMid = toCarvePoint(rawPMid, region);
         return pointsMatch(e.p1, [p1.x, p1.y]) && pointsMatch(e.pMid, [pMid.x, pMid.y]) && pointsMatch(e.p2, [p2.x, p2.y]);
       });

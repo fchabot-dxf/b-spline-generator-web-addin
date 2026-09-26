@@ -193,6 +193,18 @@ def _circumcenter(a, b, c):
     return FakePoint3D(ux, uy)
 
 
+def _ccw_normalized_ends(p1, p_mid, p2):
+    """Shared by `addByThreePoints` and (T69) `addThreePointArcSlot`'s own
+    fake: both real Fusion methods normalize their OWN result to run
+    COUNTER-CLOCKWISE (T67's own real-Fusion measurement for the former;
+    the SAME convention is assumed here for the latter, unverified live
+    this turn — NO FUSION) — a clockwise-ordered (p1, pMid, p2) comes back
+    with start/end SWAPPED relative to the given p1/p2. One declared
+    signed-area test, not two copies of it."""
+    signed_area = (p_mid.x - p1.x) * (p2.y - p1.y) - (p_mid.y - p1.y) * (p2.x - p1.x)
+    return (p1, p2) if signed_area >= 0 else (p2, p1)
+
+
 class FakeSketchArcs:
     def __init__(self, sketch):
         self._sketch = sketch
@@ -218,15 +230,21 @@ class FakeSketchArcs:
         # (T65's own first version of this fake always assigned
         # start=p1/end=p2 regardless of winding, which is why this exact
         # bug shipped once already without any test catching it).
-        signed_area = (p_mid.x - p1.x) * (p2.y - p1.y) - (p_mid.y - p1.y) * (p2.x - p1.x)
-        if signed_area >= 0:
-            arc.startSketchPoint = FakeSketchPoint(p1)
-            arc.endSketchPoint = FakeSketchPoint(p2)
-        else:
-            arc.startSketchPoint = FakeSketchPoint(p2)
-            arc.endSketchPoint = FakeSketchPoint(p1)
+        start, end = _ccw_normalized_ends(p1, p_mid, p2)
+        arc.startSketchPoint = FakeSketchPoint(start)
+        arc.endSketchPoint = FakeSketchPoint(end)
         self._sketch._curves.append(arc)
         return arc
+
+    @property
+    def count(self):
+        # T69: addThreePointArcSlot's own fake (FakeSketch, below) diffs
+        # this count before/after, the SAME "diff the collection" idiom
+        # FakeSketchLines already provides for addCenterToCenterSlot.
+        return len([c for c in self._sketch._curves if isinstance(c, FakeSketchArc)])
+
+    def item(self, i):
+        return [c for c in self._sketch._curves if isinstance(c, FakeSketchArc)][i]
 
 
 class FakeSketchCircles:
@@ -422,6 +440,47 @@ class FakeSketch:
             result.add(c)
         return result
 
+    # T69 (SE15b, Fred: "want the shape contour to be made of slots") — the
+    # arc-shaped sibling of addCenterToCenterSlot above. Per the dispatch's
+    # own advisor-measured shape: a construction CENTERLINE arc through the
+    # 3 given points, two side arcs at +-width/2 (same center/radius +-
+    # half_w — offsetting an ARC perpendicular means adjusting its RADIUS,
+    # never translating its center, unlike a Line's own parallel-translate
+    # side lines above), two end caps, one width dimension. NOT geometrically
+    # faithful on the caps (plain lines, never truly tangent) — same "proves
+    # orchestration, not Fusion's own solver" posture every fake in this
+    # file already carries; what matters for _create_arc3_slot_entity's own
+    # tests is that a UNIQUE, CONSTRUCTION, 3-point-matching arc exists to
+    # find. Uses the SAME CCW-normalization helper addByThreePoints already
+    # uses (T67's own real-Fusion measurement of that method; assumed, not
+    # verified live, for this one).
+    def addThreePointArcSlot(self, p1, p_mid, p2, value_input, create_width_dim):
+        CALL_LOG.append(("slot:addThreePointArcSlot", p1.x, p1.y, p_mid.x, p_mid.y, p2.x, p2.y, value_input.value, create_width_dim))
+        center = _circumcenter(p1, p_mid, p2)
+        radius = center.distanceTo(p1)
+        centerline = FakeCurveBase.__new__(FakeSketchArc)
+        FakeCurveBase.__init__(centerline)
+        centerline.isConstruction = True
+        centerline.centerSketchPoint = FakeSketchPoint(center)
+        start, end = _ccw_normalized_ends(p1, p_mid, p2)
+        centerline.startSketchPoint = FakeSketchPoint(start)
+        centerline.endSketchPoint = FakeSketchPoint(end)
+        self._curves.append(centerline)
+
+        half_w = value_input.value / 2.0
+        side_outer = FakeSketchArc(center, FakePoint3D(center.x + radius + half_w, center.y), math.pi)
+        side_inner = FakeSketchArc(center, FakePoint3D(center.x + radius - half_w, center.y), math.pi)
+        cap1 = FakeSketchLine(centerline.startSketchPoint.geometry, side_outer.startSketchPoint.geometry)
+        cap2 = FakeSketchLine(centerline.endSketchPoint.geometry, side_outer.endSketchPoint.geometry)
+        for c in (side_outer, side_inner, cap1, cap2):
+            self._curves.append(c)
+        if create_width_dim:
+            self.sketchDimensions._items.append(FakeDimension())
+        result = FakeObjectCollection()
+        for c in (side_outer, side_inner, cap1, cap2):
+            result.add(c)
+        return result
+
 
 class _FakeSketchesFactory:
     def __init__(self, component):
@@ -537,6 +596,7 @@ from sketch_manifest_builder import (  # noqa: E402
     _create_arc3_entity,
     _create_slot_entity,
     _create_circle_entity,
+    _create_arc3_slot_entity,
     verify_sketch_against_manifest,
     _Logger,
     IN_TO_CM,
@@ -1078,6 +1138,146 @@ def test_verify_sketch_against_manifest_arc3point_ends_compared_order_free():
     assert parity["maxErr"] < 1e-6
 
 
+# ---------------------------------------------------------------------------
+# T69 (SE15b) — the shape contour becomes slots too: _create_arc3_slot_entity
+# (Fred: "want the shape contour to be made of slots")
+# ---------------------------------------------------------------------------
+def test_arc3_point_slot_entity_builds_via_addThreePointArcSlot_and_registers_the_construction_centerline():
+    design = FakeDesign()
+    logger = _Logger()
+    ctx = BuildContext(design.rootComponent, design, logger)
+    s_name = "TestSketch"
+    ctx.entity_map[s_name] = {}
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    curves = sketch.sketchCurves
+    ent = {"id": "seg1", "type": "Arc3PointSlot", "p1": [1.0, 0.0], "pMid": [1.5, 0.5], "p2": [1.0, 1.0], "width": 0.07}
+    _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, "stroke_width")
+
+    centerline = ctx.entity_map[s_name]["seg1"]
+    assert centerline.isConstruction is True
+    assert ctx.entity_map[s_name]["seg1:S"].geometry.distanceTo(_to_point3d(ent["p1"])) < 1e-9
+    assert ctx.entity_map[s_name]["seg1:E"].geometry.distanceTo(_to_point3d(ent["p2"])) < 1e-9
+    expected_center = _circumcenter(_to_point3d(ent["p1"]), _to_point3d(ent["pMid"]), _to_point3d(ent["p2"]))
+    assert ctx.entity_map[s_name]["seg1:C"].geometry.distanceTo(expected_center) < 1e-9
+    # A width dimension was created AND driven by the given expression.
+    assert sketch.sketchDimensions.count == 1
+    assert sketch.sketchDimensions.item(0).parameter.expression == "stroke_width"
+
+
+def test_arc3_point_slot_S_E_survive_addThreePointArcSlot_own_CCW_normalization_even_for_a_clockwise_input():
+    """Mirror of test_arc3point_S_E_survive_addByThreePoints_own_CCW_
+    normalization... above, for the slot version: a CLOCKWISE (p1, pMid,
+    p2) forces the fake's own addThreePointArcSlot to swap start/end
+    relative to the manifest's own p1/p2 — _create_arc3_slot_entity's own
+    proximity-based relabeling must still tag :S/:E correctly regardless."""
+    design = FakeDesign()
+    logger = _Logger()
+    ctx = BuildContext(design.rootComponent, design, logger)
+    s_name = "TestSketch"
+    ctx.entity_map[s_name] = {}
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    curves = sketch.sketchCurves
+    # p1/pMid/p2 ordered CLOCKWISE (same fixture already used for the
+    # plain-Arc3Point CCW test above).
+    ent = {"id": "seg1", "type": "Arc3PointSlot", "p1": [1.0, 1.0], "pMid": [1.5, 0.5], "p2": [1.0, 0.0], "width": 0.07}
+    _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, None)
+
+    tagged_start = ctx.entity_map[s_name]["seg1:S"]
+    tagged_end = ctx.entity_map[s_name]["seg1:E"]
+    assert tagged_start.geometry.distanceTo(_to_point3d(ent["p1"])) < 1e-9
+    assert tagged_end.geometry.distanceTo(_to_point3d(ent["p2"])) < 1e-9
+
+
+def test_arc3_point_slot_centerline_not_uniquely_identifiable_raises_never_guesses():
+    """The dispatch's own explicit instruction: 'if you can't identify an
+    arc slot's centerline robustly... log it and skip that seg, never
+    guess.' Simulated by swapping in a broken addThreePointArcSlot that
+    never marks its own centerline as a construction curve — _find_arc_
+    slot_centerline then finds ZERO candidates (not one it merely
+    dislikes), so _create_arc3_slot_entity must raise rather than picking
+    the wrong arc; wrapped in _create_geometry (a separate test below)
+    this becomes a skip+report, never a silent wrong pick or a crash.
+    Manual save/restore of the class method (not the pytest `monkeypatch`
+    fixture) so this test also runs under this file's own plain-`python3`
+    fallback mode, same as every other test here."""
+    real_add = FakeSketch.addThreePointArcSlot
+
+    def _broken_add(self, p1, p_mid, p2, value_input, create_width_dim):
+        result = real_add(self, p1, p_mid, p2, value_input, create_width_dim)
+        for c in self._curves:
+            if isinstance(c, FakeSketchArc):
+                c.isConstruction = False
+        return result
+
+    FakeSketch.addThreePointArcSlot = _broken_add
+    try:
+        design = FakeDesign()
+        logger = _Logger()
+        ctx = BuildContext(design.rootComponent, design, logger)
+        s_name = "TestSketch"
+        ctx.entity_map[s_name] = {}
+        sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+        curves = sketch.sketchCurves
+        ent = {"id": "seg1", "type": "Arc3PointSlot", "p1": [1.0, 0.0], "pMid": [1.5, 0.5], "p2": [1.0, 1.0], "width": 0.07}
+        with pytest.raises(RuntimeError, match="could not identify the arc slot"):
+            _create_arc3_slot_entity(ctx, sketch, curves, s_name, ent, None)
+    finally:
+        FakeSketch.addThreePointArcSlot = real_add
+
+
+def _shape_contour_slot_manifest():
+    """T69: a minimal, hand-built manifest for a Shape Lattice contour in
+    slot mode -- one Line-slot segment tangent-Coincident to one arc-slot
+    segment (mirroring what manifestFromShape now actually emits by
+    default), both driven by the SAME 'stroke_width' parameter rails/ties
+    use, matching the dispatch's own "same param as rails/ties" ask."""
+    return {
+        "version": 1, "layerId": "1", "sketchName": "Test Shape Contour Slots",
+        "units": "in", "region": {"x": 0, "y": 0, "w": 7, "h": 9}, "widthMode": "slot",
+        "entities": [
+            {"id": "seg0", "type": "Slot", "p1": [0.0, 0.0], "p2": [1.0, 0.0], "width": 0.07},
+            {"id": "seg1", "type": "Arc3PointSlot", "p1": [1.0, 0.0], "pMid": [1.5, 0.5], "p2": [1.0, 1.0], "width": 0.07},
+        ],
+        "constraints": [
+            {"type": "Horizontal", "targets": ["seg0"]},
+            {"type": "Coincident", "targets": ["seg0:E", "seg1:S"]},
+            {"type": "Tangent", "targets": ["seg0", "seg1"]},
+        ],
+        "parameters": [{"name": "stroke_width", "value": 0.07, "unit": "in"}],
+        "dimensions": [
+            {"type": "SlotWidth", "target": "seg0", "expression": "stroke_width"},
+            {"type": "SlotWidth", "target": "seg1", "expression": "stroke_width"},
+        ],
+        "groups": {"silhouette": ["seg0", "seg1"]},
+        "latticePieceCount": 0,
+        "latticeConstrained": True,
+    }
+
+
+def test_shape_contour_as_slots_end_to_end_builds_dimensions_and_reports_zero_parity_mismatches(call_log):
+    """End-to-end via build_constrained_sketch (the real orchestration,
+    not a direct unit call): both the Line contour segment (a Slot,
+    already-existing machinery) and the Arc3PointSlot contour segment
+    (T69, new) get created, dimensioned via 'stroke_width', their
+    EXISTING constraints (Horizontal/Coincident/Tangent) re-target onto
+    the centerlines with no special-casing, and the parity check (T68)
+    reads them both back with zero mismatches on this untouched build."""
+    design = FakeDesign()
+    manifest = _shape_contour_slot_manifest()
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["entities"]["created"] == 2
+    assert summary["entities"]["skipped"] == []
+    kinds = [entry[0] for entry in call_log]
+    assert "slot:addCenterToCenterSlot" in kinds
+    assert "slot:addThreePointArcSlot" in kinds
+    assert kinds.count("constraint:Horizontal") == 1
+    assert kinds.count("constraint:Coincident") == 1
+    assert kinds.count("constraint:Tangent") == 1
+    assert summary["dimensions"]["count"] == 0  # no DIM MISS/CRASH/... markers
+    assert summary["parity"]["mismatches"] == []
+    assert summary["parity"]["maxErr"] < 1e-6
+
+
 if __name__ == "__main__":
     # Plain-Python fallback (no pytest needed), same dual-mode convention
     # frame-builder/test_templates.py already documents.
@@ -1106,6 +1306,10 @@ if __name__ == "__main__":
         test_verify_sketch_against_manifest_reports_no_mismatches_on_an_exact_unmoved_build,
         test_verify_sketch_against_manifest_reports_a_moved_point_as_mismatch,
         test_verify_sketch_against_manifest_arc3point_ends_compared_order_free,
+        test_arc3_point_slot_entity_builds_via_addThreePointArcSlot_and_registers_the_construction_centerline,
+        test_arc3_point_slot_S_E_survive_addThreePointArcSlot_own_CCW_normalization_even_for_a_clockwise_input,
+        test_arc3_point_slot_centerline_not_uniquely_identifiable_raises_never_guesses,
+        test_shape_contour_as_slots_end_to_end_builds_dimensions_and_reports_zero_parity_mismatches,
     ]
     passed, failed = 0, 0
     for t in tests:

@@ -8100,3 +8100,101 @@ turn, flagging it now as unstarted and scoped for a fresh turn.
 
 Amendments polled clean before this commit; will poll once more immediately before passing.
 
+## T69 — SE15b: the shape contour becomes slots too (the item T68 deferred, done in full this turn)
+
+**Dispatch**: exactly the one remaining item, "the ONE item, nothing else this turn" — Fred: "want the shape
+contour to be made of slots." A contour Line becomes a Fusion-native center-to-center slot; a contour Arc3Point
+becomes a three-point ARC slot (`addThreePointArcSlot`, a brand-new Fusion API surface — NO FUSION this turn, the
+advisor verifies live after merge). NEVER Fix; joints stay separate points + explicit Coincident, unchanged.
+
+### Design: declared, not a builder special case
+
+A new constant, `SKETCH_CONTOUR_WIDTH_MODE` (editor-sketch-manifest.js), governs the CONTOUR's own slot-vs-
+centerline choice — deliberately its OWN field, never overloading the EXISTING `widthMode`/`SKETCH_WIDTH_MODE`,
+which this module's own tests already establish as scoped to the LATTICE FILL only. Default: `'slot'`.
+`manifest.contourWidthMode` exposes the choice at the top level, `null` when there's no contour at all (a plain
+box lattice layer).
+
+- **Contour Line → `Slot`**: reuses `addSlotPieces` DIRECTLY — a contour Line-slot IS a rail/tie slot, byte-for-
+  byte the same entity/dimension shape, so this is a genuine "declare, don't hand-roll a second copy" win: zero
+  new production logic needed for this half of the mechanism.
+- **Contour Arc → `ArcCenterSlot`** (pre-carve, natural space) → **`Arc3PointSlot`** (post-carve, carve space,
+  via `applyCarvePlacement`'s new branch, a straight sibling of the existing `ArcCenter`→`Arc3Point` branch — same
+  `toCarveArc3Point` helper, reused, just re-tagged and carrying `width` through untouched).
+- **Width**: seeded from the layer's own REAL `pattern.widths.rails` (merged over `PATTERN_DEFAULTS.widths` the
+  same way `manifestFromLattice` already does), driven by the SAME `'stroke_width'` Fusion parameter rails/ties
+  use when linked — per the dispatch's own "same param as rails/ties" instruction. `manifestFromShape` declares
+  its own `stroke_width` parameter entry independently (it has no visibility into the lattice's own link state);
+  Python's existing create-or-update parameter sync harmlessly reconciles the common case where both sides
+  declare the identical name/value, and is the ONLY source of it when rails/ties are unlinked.
+- **Constraints**: the EXISTING Coincident chain / Tangent / H-V / Equal / hourglass Radial emission logic in
+  `manifestFromShape` needed ZERO changes — it only ever targets entities by bare id or `:S`/`:E`/`:C` suffix,
+  never by type, so it re-targets onto the new slot centerlines for free. This is the "re-target, not additive"
+  the dispatch asked for, achieved by NOT having written type-aware constraint logic in the first place (T61).
+- **Python**: new `_create_arc3_slot_entity` (`sketch.addThreePointArcSlot`) is the arc-shaped sibling of
+  `_create_slot_entity` — registers the CENTERLINE (never the visible body) under the seg id, `:S`/`:E` by the
+  SAME proximity technique T67 already uses for a plain Arc3Point (Fusion's own CCW normalization is expected to
+  apply to this method too, unverified live), `:C` for the centre. `_find_arc_slot_centerline` diffs
+  `sketchArcs`' own count before/after (mirroring `_find_slot_centerline`'s established "generic vector, diff the
+  collection" technique) and requires BOTH a construction-curve flag AND actually passing through all 3 given
+  points before calling something the centerline — per the dispatch's own explicit "if you can't identify it
+  robustly, log it and skip, never guess": zero or ambiguous candidates raise, caught by `_create_geometry`'s
+  existing per-entity try/except into a skip+report, never a silent wrong pick.
+- **`verify_sketch_against_manifest`** (T68) extended to treat `Arc3PointSlot` identically to `Arc3Point` — the
+  parity check is geometry-based (order-free ends + circumcircle-derived radius/center), not representation-
+  specific, so this was a 2-line addition to two existing tuples/conditions, not new logic.
+
+### Test-file surgery: an existing default changed, so existing assertions had to follow
+
+`manifestFromShape`'s own default flipped (matching the SAME precedent T64 already set for rails/ties: flip the
+default, update the tests, keep `'centerline'` real and available via an explicit `{widthMode:'centerline'}`
+override) — this touched roughly a dozen existing assertions across `tests/editor-sketch-manifest.test.js` that
+checked `e.type === 'Line'`/`'ArcCenter'`/`'Arc3Point'` for CONTOUR entities specifically. Each site's own
+GEOMETRIC claim (Coincident shares a point, Tangent touches an arc, Equal pairs matching radius/length, the H/V
+carve-transform invariant, the carve-placed bbox) was UNCHANGED — only the type-string literal needed updating,
+confirmed by reading each test's own purpose before touching it rather than mechanically search-replacing. Two
+tests needed a real rewrite, not just a type-string swap: the parameters-count test (`stroke_width` is a genuinely
+NEW parameter, so `+1` became `+2`, and the unit-null loop needed to exclude it too) and the kink-override test
+(its own `manifest.dimensions.some(...)` assertion was checking "no dimension targets a kink segment" when its
+REAL intent — per its own title — was specifically about the hourglass Radial dimension; a kink Line legitimately
+gets its OWN SlotWidth dimension now, so the assertion was narrowed to `d.type === 'Radial'` to keep testing what
+it always meant to test). Also touched `tests/parity-app-manifest.test.js` (T68): its own `checkLatticeParity`
+counted ALL `type==='Slot'` entities as lattice pieces, which now over-counts (contour Line-slots are ALSO type
+`'Slot'`) — fixed by excluding `id.startsWith('seg')`; its own contour-primitive-parity test's type check
+similarly widened to accept `'Slot'`/`'Arc3PointSlot'` alongside the old `'Line'`/`'Arc3Point'`.
+
+### Non-vacuous, both languages, by measurement
+
+**JS**: reverted `SKETCH_CONTOUR_WIDTH_MODE` to `'centerline'` (scratchpad backup, MD5-restored after) — exactly
+the 7 tests that assert the new default's own shape failed, the T68 parity suite (which reads `generateSilhouette`
+primitives directly, never a manifest type tag) stayed green throughout, confirming the two test files are
+checking genuinely different things and neither is accidentally propping up the other.
+
+**Python**: three separate mutations, each isolated and MD5-restored in turn: (1) disabling the `_create_geometry`
+dispatch branch for `Arc3PointSlot` broke exactly the one end-to-end test (`entities.created` dropped 2→1); (2)
+disabling the proximity-based S/E swap in `_create_arc3_slot_entity` broke exactly the CCW-survival test; (3)
+disabling `_find_arc_slot_centerline`'s own construction-flag check broke exactly the "never guess" test (it
+stopped raising, since the deliberately-broken fake's non-construction arc became a false match instead of no
+match at all) — confirming that test really does depend on the construction-flag gate, not just on the fake
+happening to produce zero arcs some other way.
+
+**Full suites**: JS 1039/1039 (64 files, up from 1036 at T68's own commit — 3 genuinely new tests: the
+`widthMode:'centerline'` alternative-still-works case for both hourglass/bottle, plus the box-lattice-has-no-
+contourWidthMode case; the ~7 other touched tests changed their own assertions in place, not a net addition).
+Python 146/146 (`pytest`), 27/27
+(plain-`python3` fallback — one pre-existing test, `test_build_from_manifest_file_reads_json_and_builds`, was
+already missing from that list before this turn; left alone, noted here rather than silently fixed, since it's
+unrelated to T69's own scope).
+
+### A pre-existing shim gap, closed as part of this: FakeSketchArcs never modeled `.count`/`.item()`
+
+Needed for `_find_arc_slot_centerline`'s own "diff the collection" technique — added, mirroring `FakeSketchLines`'
+own established shape exactly. Also factored the CCW-normalization signed-area test (previously inline only in
+`addByThreePoints`) into a shared `_ccw_normalized_ends` helper, now used by both that method's own fake AND the
+new `addThreePointArcSlot` fake — one declared check, not two copies of the same formula.
+
+This closes T68's own deferred item 1 in full. Both of T67's original deferrals (parity checks, contour-as-slots)
+are now done.
+
+Amendments polled clean before this commit; will poll once more immediately before passing.
+

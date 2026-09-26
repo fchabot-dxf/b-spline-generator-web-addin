@@ -34,7 +34,7 @@ function pointOf(entities, target) {
     if (suffix === 'E') return { x: e.p2[0], y: e.p2[1] };
     return null;
   }
-  if (e.type === 'ArcCenter') {
+  if (e.type === 'ArcCenter' || e.type === 'ArcCenterSlot') {
     const angle = (deg) => (deg * Math.PI) / 180;
     const at = (deg) => ({
       x: e.center[0] + e.radius * Math.cos(angle(deg)),
@@ -44,7 +44,7 @@ function pointOf(entities, target) {
     if (suffix === 'E') return at(e.startAngleDeg + e.sweepDeg);
     return { x: e.center[0], y: e.center[1] };
   }
-  if (e.type === 'Arc3Point') {
+  if (e.type === 'Arc3Point' || e.type === 'Arc3PointSlot') {
     // T65: post-carve-placement arcs carry their 3 defining points
     // directly (see toCarveArc3Point) -- no center/angle to recompute.
     if (suffix === 'S') return { x: e.p1[0], y: e.p1[1] };
@@ -483,7 +483,7 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
 });
 
 describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
-  it('entities match generateSilhouette primitives 1:1 (independent re-run)', () => {
+  it('T69: entities match generateSilhouette primitives 1:1 (independent re-run) -- default contour width mode is now slot', () => {
     const shape = { preset, seed: 42, params: {} };
     const { primitives } = generateSilhouette(REGION, shape);
     const manifest = manifestFromShape(shape, REGION);
@@ -491,17 +491,32 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     primitives.forEach((prim, i) => {
       const e = entityById(manifest.entities, `seg${i}`);
       if (prim.type === 'L') {
-        expect(e.type).toBe('Line');
+        expect(e.type).toBe('Slot');
         expect(e.p1).toEqual([prim.p0.x, prim.p0.y]);
         expect(e.p2).toEqual([prim.p1.x, prim.p1.y]);
       } else {
-        expect(e.type).toBe('ArcCenter');
+        expect(e.type).toBe('ArcCenterSlot');
         expect(e.center).toEqual([prim.cx, prim.cy]);
         expect(e.radius).toBeCloseTo(prim.rx, 9);
         expect(e.startAngleDeg).toBeCloseTo((prim.theta1 * 180) / Math.PI, 9);
         expect(e.sweepDeg).toBeCloseTo((prim.dTheta * 180) / Math.PI, 9);
       }
+      expect(e.width).toBeGreaterThan(0);
+      expect(manifest.dimensions.some((d) => d.type === 'SlotWidth' && d.target === e.id && d.expression === 'stroke_width')).toBe(true);
     });
+  });
+
+  it('T69: widthMode "centerline" is still a real, available alternative -- plain Line/ArcCenter, no width, no SlotWidth dims', () => {
+    const shape = { preset, seed: 42, params: {} };
+    const { primitives } = generateSilhouette(REGION, shape);
+    const manifest = manifestFromShape(shape, REGION, { widthMode: 'centerline' });
+    primitives.forEach((prim, i) => {
+      const e = entityById(manifest.entities, `seg${i}`);
+      expect(e.type).toBe(prim.type === 'L' ? 'Line' : 'ArcCenter');
+      expect(e.width).toBeUndefined();
+    });
+    expect(manifest.dimensions.some((d) => d.type === 'SlotWidth')).toBe(false);
+    expect(manifest.parameters.some((p) => p.name === 'stroke_width')).toBe(false);
   });
 
   it('every Coincident constraint is a genuinely shared point (independent coordinate check)', () => {
@@ -523,7 +538,7 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     expect(tangents.length).toBeGreaterThan(0);
     for (const c of tangents) {
       const types = c.targets.map((id) => entityById(manifest.entities, id).type);
-      expect(types.includes('ArcCenter')).toBe(true);
+      expect(types.some((t) => t === 'ArcCenter' || t === 'ArcCenterSlot')).toBe(true);
     }
   });
 
@@ -535,7 +550,7 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     for (const c of equals) {
       const [a, b] = c.targets.map((id) => entityById(manifest.entities, id));
       expect(a.type).toBe(b.type);
-      if (a.type === 'ArcCenter') expect(a.radius).toBeCloseTo(b.radius, 6);
+      if (a.type === 'ArcCenter' || a.type === 'ArcCenterSlot') expect(a.radius).toBeCloseTo(b.radius, 6);
       else {
         const lenA = Math.hypot(a.p2[0] - a.p1[0], a.p2[1] - a.p1[1]);
         const lenB = Math.hypot(b.p2[0] - b.p1[0], b.p2[1] - b.p1[1]);
@@ -544,15 +559,19 @@ describe.each(['hourglass', 'bottle'])('manifestFromShape(%s)', (preset) => {
     }
   });
 
-  it('parameters carry the resolved params (snake_case, unit:null) plus half_width (unit:in)', () => {
+  it('parameters carry the resolved params (snake_case, unit:null) plus half_width (unit:in) plus (T69) stroke_width (unit:in)', () => {
     const shape = { preset, seed: 42, params: {} };
     const { params } = generateSilhouette(REGION, shape);
     const manifest = manifestFromShape(shape, REGION);
     const halfWidth = manifest.parameters.find((p) => p.name === 'half_width');
     expect(halfWidth.value).toBeCloseTo(REGION.w / 2, 9);
     expect(halfWidth.unit).toBe('in');
-    expect(manifest.parameters.length).toBe(Object.keys(params).length + 1);
-    for (const p of manifest.parameters) if (p.name !== 'half_width') expect(p.unit).toBeNull();
+    const strokeWidth = manifest.parameters.find((p) => p.name === 'stroke_width');
+    expect(strokeWidth.unit).toBe('in');
+    expect(manifest.parameters.length).toBe(Object.keys(params).length + 2);
+    for (const p of manifest.parameters) {
+      if (p.name !== 'half_width' && p.name !== 'stroke_width') expect(p.unit).toBeNull();
+    }
   });
 });
 
@@ -581,9 +600,18 @@ describe('manifestFromShape — hourglass-specific: shoulder<->hip cross-tie', (
     const kinkIds = ['seg1', 'seg2'];
     const badTangent = manifest.constraints.some((c) => c.type === 'Tangent' && c.targets.some((t) => kinkIds.includes(t)));
     expect(badTangent).toBe(false);
-    const badEqual = manifest.constraints.some((c) => c.type === 'Equal' && c.targets.some((t) => kinkIds.includes(t)) && c.targets.some((t) => t.startsWith('seg') && !kinkIds.includes(t) && manifest.entities.find((e) => e.id === t)?.type === 'ArcCenter'));
+    const badEqual = manifest.constraints.some((c) => c.type === 'Equal' && c.targets.some((t) => kinkIds.includes(t)) && c.targets.some((t) => {
+      if (!t.startsWith('seg') || kinkIds.includes(t)) return false;
+      const et = manifest.entities.find((e) => e.id === t)?.type;
+      return et === 'ArcCenter' || et === 'ArcCenterSlot';
+    }));
     expect(badEqual).toBe(false);
-    expect(manifest.dimensions.some((d) => kinkIds.includes(d.target))).toBe(false);
+    // T69: a kink Line still gets its OWN SlotWidth dimension (every
+    // contour Slot does, unconditionally) -- what this test actually
+    // guards is the hourglass-specific RADIAL dimension (there's no
+    // "radius" to drive once seg1 is a kink, not an arc), so this checks
+    // only THAT type, not dimensions in general.
+    expect(manifest.dimensions.some((d) => d.type === 'Radial' && kinkIds.includes(d.target))).toBe(false);
   });
 });
 
@@ -662,7 +690,7 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     const manifest = buildSketchManifest(shapePattern, REGION, {});
     const arcIndex = primitives.indexOf(arcPrim);
     const e = manifest.entities.find((en) => en.id === `seg${arcIndex}`);
-    expect(e.type).toBe('Arc3Point');
+    expect(e.type).toBe('Arc3PointSlot'); // T69: contour arcs default to slot mode now
 
     // Independent re-derivation: the arc's own 3 defining points in NATURAL
     // (pre-carve) board space, computed straight from the primitive's own
@@ -689,7 +717,7 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
     };
     const manifest = buildSketchManifest(shapePattern, REGION, {});
-    const arcs = manifest.entities.filter((e) => e.type === 'Arc3Point');
+    const arcs = manifest.entities.filter((e) => e.type === 'Arc3PointSlot');
     expect(arcs.length).toBeGreaterThan(0); // non-vacuous
     // Every silhouette segment's own :E must land exactly on the NEXT
     // segment's own :S -- re-derived independently via pointOf (which for
@@ -739,8 +767,8 @@ describe('buildSketchManifest — T64 carve-space placement (centered + Y-flippe
     const sampled = [];
     for (const id of manifest.groups.silhouette) {
       const e = manifest.entities.find((en) => en.id === id);
-      if (e.type === 'Line') sampled.push({ x: e.p1[0], y: e.p1[1] }, { x: e.p2[0], y: e.p2[1] });
-      else if (e.type === 'Arc3Point') sampled.push({ x: e.p1[0], y: e.p1[1] }, { x: e.pMid[0], y: e.pMid[1] }, { x: e.p2[0], y: e.p2[1] });
+      if (e.type === 'Line' || e.type === 'Slot') sampled.push({ x: e.p1[0], y: e.p1[1] }, { x: e.p2[0], y: e.p2[1] });
+      else if (e.type === 'Arc3Point' || e.type === 'Arc3PointSlot') sampled.push({ x: e.p1[0], y: e.p1[1] }, { x: e.pMid[0], y: e.pMid[1] }, { x: e.p2[0], y: e.p2[1] });
     }
     // An arc's own extreme point (e.g. the top of a circle) can bulge past
     // its own start/mid/end sample points, so the ACTUAL bbox may exceed
@@ -841,7 +869,7 @@ describe('buildSketchManifest — composition', () => {
     expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
   });
 
-  it('T64: a Shape Lattice layer ALSO gets widthMode "slot" for its own lattice fill, plus the silhouette entities widthMode never touches', () => {
+  it('T64/T69: a Shape Lattice layer gets widthMode "slot" for its own lattice fill, AND (T69) its own silhouette contour becomes slots too (Fred: "want the shape contour to be made of slots")', () => {
     const basePattern = {
       ...PATTERN_DEFAULTS, spacing: 0.25,
       rails: { mode: 'every', every: 1, offset: 0 },
@@ -854,13 +882,27 @@ describe('buildSketchManifest — composition', () => {
     };
     const manifest = buildSketchManifest(shapePattern, REGION, {});
     expect(manifest.widthMode).toBe('slot');
+    expect(manifest.contourWidthMode).toBe('slot');
     const railIds = manifest.entities.filter((e) => e.id.match(/^rail\d+$/)).map((e) => e.id);
     expect(railIds.length).toBeGreaterThan(0);
     expect(entityById(manifest.entities, railIds[0]).type).toBe('Slot');
-    // The silhouette's own segments stay plain Line/ArcCenter, untouched
-    // by widthMode (only rails/ties become slots — §4's own "the
-    // silhouette's own boundary centerline is NOT separately offset by a
-    // rail/tie/node width").
-    expect(manifest.entities.some((e) => e.id.startsWith('seg') && (e.type === 'Line' || e.type === 'ArcCenter'))).toBe(true);
+    // T69: the silhouette's own segments are NOW slots too -- a Line
+    // becomes 'Slot' (the EXACT same entity/dimension shape a rail/tie
+    // slot already uses), an arc becomes 'Arc3PointSlot' (post-carve) --
+    // driven by the SAME 'stroke_width' expression rails/ties use when
+    // linked, per the dispatch's own "same param as rails/ties" ask.
+    const segIds = manifest.entities.filter((e) => e.id.startsWith('seg')).map((e) => e.id);
+    expect(segIds.length).toBeGreaterThan(0);
+    for (const id of segIds) {
+      const e = entityById(manifest.entities, id);
+      expect(e.type === 'Slot' || e.type === 'Arc3PointSlot').toBe(true);
+      expect(manifest.dimensions.some((d) => d.type === 'SlotWidth' && d.target === id && d.expression === 'stroke_width')).toBe(true);
+    }
+  });
+
+  it('T69: a box lattice layer (no shape at all) never gets a contourWidthMode -- there is no contour to have one', () => {
+    const pattern = { ...PATTERN_DEFAULTS, spacing: 0.25 };
+    const manifest = buildSketchManifest(pattern, REGION, {});
+    expect(manifest.contourWidthMode).toBeNull();
   });
 });
