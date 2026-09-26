@@ -10259,3 +10259,82 @@ No edits to `bspline_gen_palette.html`'s LATTICE panel markup (still off-limits)
 `sticky-actions` swap earlier this turn and this turn's layer/CSS fixes all touch OTHER parts of that same
 file (the main app sidebar, `editor.css`, `editor/layers.js`), never the Lattice/Shape Lattice panel sections
 seat B owns.
+
+## Turn 284 — UI4 item 0: Shape Lattice Select-drag didn't persist ("moved 0.000" / pieces replaced) — DONE — NO FUSION
+
+Reproduced live via real CDP mouse drags (`Input.dispatchMouseEvent` press/move×8/release, exactly the
+dispatch's own suggested pattern) before touching any code — found THREE distinct, stacked causes, fixed each
+in turn, re-measuring after each fix rather than assuming the first fix closed it.
+
+**Cause 1 — a rail/tie/node click could be swallowed by the segment-style-bar hit-test.**
+`shapeLatticeHandler.start` (`editor-interaction.js`) ran `hitTestSegment` (a "nearest CONTOUR edge within
+~10px tolerance" check, `editor-shape-lattice-interaction.js`) BEFORE ever checking for an existing lattice
+piece under the cursor — since rails/ties routinely sit close to (or exactly on) the silhouette's own edge,
+this could open the "edit this segment's style" popover instead of ever reaching selection. Confirmed live:
+after a plain tap on a rail, `document.body`'s children gained a `DIV.shape-lattice-segment-bar` — the click
+never reached `selectHandler` at all. Fixed by checking for an existing rail/tie/node hit FIRST, same
+priority order `latticeHandler.start` (the box Lattice tool) already uses.
+
+**Cause 2 — every Shape Lattice pattern is boundary-linked to its OWN contour, so ANY commit regenerated
+everything.** `editor.js`'s `_notifyChange('commit')` unconditionally calls `refreshBoundaryPatterns`
+whenever the active layer's pattern has `extent.mode === 'boundary'` — true for EVERY Shape Lattice pattern
+by design (its fill is generated using its own contour as the boundary shape, confirmed live:
+`getLayerPattern(editor).extent.mode === 'boundary'` on an ordinary freshly-generated Shape Lattice layer).
+`refreshBoundaryPatterns`'s own doc comment explicitly says it regenerates "on EVERY commit... not just a
+commit that touched the linked shape specifically" as a deliberate simplification — but a plain Select-mode
+piece move (via the generic `translateSelection`, `editor-interaction.js`) is ALSO a commit, and has NOTHING
+to do with the contour changing, yet triggered the exact same full regenerate, discarding the just-moved
+piece and replacing every piece with fresh elements. Fixed with a small, targeted, one-shot flag:
+`selectHandler.start` now sets `editor._skipBoundaryRefillOnce = true` the instant it grabs an existing
+rail/tie/node (never for a contour hit, where a refill legitimately IS still wanted), reset to `false` at the
+top of every gesture so a stale value from an earlier no-op click can never leak into a later, unrelated
+commit; `refreshBoundaryPatterns` consumes (reads-then-clears) it as its very first check. Unit-tested in
+isolation (`tests/editor-lattice-pattern-boundary-emit.test.js`, reusing that file's own existing
+`_makeMockEditor` harness): the flag suppresses exactly one regenerate and doesn't leave the function
+permanently dead afterward. **Mutation-tested non-vacuous**: removed the flag check — the new test failed,
+the other 11 in the file stayed green; restored, all 12 green again.
+
+**Cause 3 — a rail/tie touching the silhouette's own straight edge can be geometrically IDENTICAL to that
+edge's own contour segment.** Even after fixing causes 1 and 2, the TOPMOST rail of a freshly-generated
+pattern still didn't move — traced to `getNearbyElement`'s (`editor-hit.js`) own bbox-CENTER distance
+tie-break: confirmed live that the topmost rail (`M 0.5 0.5 L 6.5 0.5`) and its own contour segment
+(`data-contour-seg="11"`, same exact path) have IDENTICAL bounding boxes, so the tie-break is a genuine
+exact tie — and since the contour is added to the sketch layer before the rails during generation, it always
+wins ties (`<`, strict). Rather than touch `getNearbyElement` itself (shared by every mode's own
+hit-testing — a distance-tie-break change there risks other pickers), added a small, self-contained,
+NOT-exported `_getNearbyLatticePiece` search scoped to ONLY rail/tie/node-tagged elements (a contour segment
+can never match it, tie or not) — used by `shapeLatticeHandler.start`'s own cause-1 fix above. Threaded the
+pre-resolved hit through to `selectHandler.start` via a new optional 4th parameter (`presetHit`, defaulting
+to that function's own existing generic hit-test when omitted — every OTHER caller is unaffected) so
+`selectHandler` acts on the CORRECT element instead of re-running its own ambiguous generic search and
+re-finding the contour again.
+
+**A fourth thing investigated and found to be a NON-bug**, worth recording so it isn't re-investigated later:
+the dispatch's own "dragging a NODE on the box Lattice... left a duplicate (26 -> 27 nodes)" report.
+Measured directly: `editor._sketchLayer.children()` (the REAL, functional pattern data) stayed at the SAME
+count before and after such a drag, both for a box-Lattice node AND a Shape-Lattice tie; the naive
+`document.querySelectorAll('[data-lattice="..."]')` count some verification step must have used goes up by
+exactly the number of SELECTED elements, because `editor-ui.js`'s own `updateSelectionHighlight` renders a
+`.clone()` of each selected element (a `pointer-events:none` glow, into a separate `_highlightLayer`) that
+retains the SAME `data-lattice`/other attributes as the original — a long-standing, correct, intentional
+mechanism used for every selection in this app (any shape, not just lattice pieces), not something this
+turn's Select feature introduced or broke. Confirmed by comparing `_sketchLayer.children()` count (unchanged)
+against the raw DOM count (`+1`, always exactly the highlight clone) for both lattice types.
+
+Live verification (CDP), both lattice types, real mouse drags:
+- Shape Lattice: a MIDDLE rail (not touching the contour) moved and persisted correctly even before cause 3's
+  fix. The TOPMOST rail (touching the contour) — the harder case — moved by the exact drag distance (40px)
+  and persisted, `transform` shows a real translation, `_sketchLayer`'s own rail count stayed correct (6, no
+  duplication), after ALL THREE fixes landed. A tie drag (a non-boundary-touching piece) also moved and
+  persisted correctly.
+- Box Lattice: unaffected by any of this turn's changes (`latticeHandler.start`'s own
+  `_beginLatticeMove`/`_finishLatticeMove` mechanism, confirmed in Turn 282, was never in the code paths
+  touched here) — re-confirmed live: a rail move and a node move both still work exactly as before, real
+  `_sketchLayer` counts unchanged.
+
+Full suite: `npx vitest run` -> **1258 passed** (up from 1257 — 1 new isolated unit test for cause 2's fix;
+causes 1 and 3 are DOM-click-dispatch-pipeline fixes with no existing unit-test scaffold reaching that deeply
+nested interaction code — same "live-verified, not unit-tested" honesty this session has used throughout for
+this class of code — flagged here rather than silently claimed as covered), zero regressions.
+
+No edits to `bspline_gen_palette.html`.

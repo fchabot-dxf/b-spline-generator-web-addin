@@ -158,6 +158,42 @@ describe('refreshBoundaryPatterns (§9, commit-only link refresh)', () => {
     expect(editor.notifyChangeCalls).toEqual([]); // no generatePattern call was fired at all
   });
 
+  /**
+   * UI4 item 0 (Fred, live: a Select-mode drag on a Shape Lattice
+   * rail/tie/node "moved 0.000" and a tie drag REPLACED every piece with
+   * fresh elements) -- root cause: every Shape Lattice pattern IS
+   * boundary-linked to its own contour (extent.mode === 'boundary' is how
+   * a Shape Lattice's fill is represented), so this function fired -- and
+   * unconditionally regenerated, discarding the just-moved piece -- on
+   * EVERY commit, including a plain piece move that never touched the
+   * boundary/contour at all. editor-interaction.js's selectHandler.start
+   * now sets editor._skipBoundaryRefillOnce = true immediately before a
+   * commit that grabbed an existing rail/tie/node (never for a contour
+   * hit); this is the pure-logic half of that fix -- the DOM/click-
+   * dispatch half is covered live (WORK-LOG), no existing scaffold reaches
+   * that deeply nested interaction code from a unit test.
+   */
+  it('UI4 item 0: a boundary-mode refill is skipped once when _skipBoundaryRefillOnce is set (a plain lattice-piece move), and the flag is consumed (cleared) after', async () => {
+    const boundaryEl = editor._addBoundaryRect(0, 0, 10, 8);
+    editor._layers[0].pattern = {
+      ...PATTERN_DEFAULTS, rails: { every: 4, offset: 0 }, ties: { ...PATTERN_DEFAULTS.ties, mode: 'density', density: 0 },
+      extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(boundaryEl), endRule: 'on-boundary' },
+    };
+
+    editor._skipBoundaryRefillOnce = true;
+    refreshBoundaryPatterns(editor);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(editor.notifyChangeCalls).toEqual([]); // skipped -- no regenerate fired
+    expect(editor._skipBoundaryRefillOnce).toBe(false); // consumed, not left dangling for a LATER unrelated commit
+
+    // A SUBSEQUENT call (the flag no longer set) proceeds normally --
+    // proves this is a one-shot skip, not a permanent kill switch.
+    refreshBoundaryPatterns(editor);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rails = editor._sketchLayer.children().filter((e) => e.attr('data-lattice') === 'rail');
+    expect(rails.length).toBeGreaterThan(0);
+  });
+
   it('does nothing when boundary mode is set but no shape is linked yet', () => {
     editor._layers[0].pattern = { ...PATTERN_DEFAULTS, extent: { mode: 'boundary' }, boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: null } };
     refreshBoundaryPatterns(editor);

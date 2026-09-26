@@ -2008,6 +2008,20 @@ export async function generatePattern(editor, PATTERN) {
 export function refreshBoundaryPatterns(editor) {
   if (_boundaryRefillInProgress) return;
   if (!editor) return;
+  // UI4 item 0 (Fred, live: dragging a rail/tie/node in Select mode
+  // "moved 0.000" / replaced every piece with fresh ones) — every Shape
+  // Lattice pattern IS boundary-linked to its own contour by design, so
+  // this function used to fire (and unconditionally regenerate, wiping
+  // the just-moved piece) on EVERY commit, including a plain piece move
+  // that never touched the boundary/contour at all.
+  // editor-interaction.js's selectHandler.start sets this flag ONLY when
+  // the just-grabbed element is a rail/tie/node (never a contour
+  // 'border' hit, where a refill legitimately IS still wanted) —
+  // consumed here, once, per gesture.
+  if (editor._skipBoundaryRefillOnce) {
+    editor._skipBoundaryRefillOnce = false;
+    return;
+  }
   const pattern = getLayerPattern(editor);
   if (!pattern || !pattern.extent || pattern.extent.mode !== 'boundary') return;
   if (!pattern.boundary || !pattern.boundary.shapeId) return;

@@ -549,7 +549,16 @@ function handleEnd(editor, e) {
 // ─── Mode handlers ──────────────────────────────────────────────────
 
 const selectHandler = {
-    start(editor, pt, e) {
+    // UI4 item 0: `presetHit` lets a caller that already resolved (and
+    // trusts) a specific element skip this function's own generic
+    // hit-test — shapeLatticeHandler.start passes one it found via
+    // _getNearbyLatticePiece, since the generic editor._getNearbyElement
+    // below can be a genuine bbox-center-distance TIE between a rail/tie
+    // that touches the silhouette's own edge and that edge's own contour
+    // segment (identical endpoints — confirmed live), a tie the generic
+    // search resolves in the contour's favor (DOM order). Every other
+    // caller omits it and keeps today's own hit-test exactly.
+    start(editor, pt, e, presetHit = null) {
         const shift = !!(e && e.shiftKey);
         if ((editor._selectedElements || []).length) {
             const grabbed = hitTestHandle(editor._transformHandles, pt);
@@ -564,8 +573,17 @@ const selectHandler = {
         // SE7h add-on (Fred: generated Rails/Ties/Nodes were unclickable):
         // 'select' mode hit-tests across every VISIBLE layer, not just the
         // active one — see isOnVisibleLayer's own doc comment (layers.js).
-        const hit = editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
+        const hit = presetHit || editor._getNearbyElement(pt, getDynamicTolerance(editor, 10, 'slopPx'), { anyVisibleLayer: true });
         editor._dragMoved = false;
+        // UI4 item 0 (Fred, live: a Select-mode drag on a Shape Lattice
+        // rail/tie/node "moved 0.000" and a tie drag REPLACED every
+        // piece with fresh elements): reset every gesture fresh — a
+        // stale `true` from an earlier no-op click (no _dragMoved, so
+        // refreshBoundaryPatterns never got to consume/clear it) must
+        // never leak into a LATER, unrelated commit. Set true below only
+        // when the hit is an actual rail/tie/node — never for a contour
+        // ('border') hit, where a boundary refill legitimately IS wanted.
+        editor._skipBoundaryRefillOnce = false;
         if (hit) {
             // Clicking an element on a DIFFERENT layer makes that layer
             // the active one — the natural expectation that clicking
@@ -574,6 +592,8 @@ const selectHandler = {
             // sidebar just to select what you can already see and click.
             const hitLayer = getElementLayer(hit);
             if (hitLayer !== getActiveLayer(editor)) setActiveLayer(editor, hitLayer);
+            const hitKind = hit.node.getAttribute(LATTICE_ATTR);
+            editor._skipBoundaryRefillOnce = hitKind === 'rail' || hitKind === 'tie' || hitKind === 'node';
             editor._isDragging = true;
             editor._lastDragPt = pt;
             if (shift) editor._selectAdd(hit);
@@ -1566,6 +1586,40 @@ const latticeHandler = {
     },
 };
 
+/** UI4 item 0 (Fred, live: a Select tap on the topmost/bottommost rail
+ *  of a Shape Lattice silhouette hit the CONTOUR instead) — a rail/tie
+ *  that touches the silhouette's own straight edge can have IDENTICAL
+ *  endpoints to that edge's own contour segment (confirmed live: both
+ *  `M 0.5 0.5 L 6.5 0.5`), so `getNearbyElement`'s generic bbox-CENTER
+ *  distance tie-break (editor-hit.js) is a genuine tie between them —
+ *  and the contour, added to the DOM first, always wins ties (`<` is
+ *  strict). Rather than touch that shared, heavily-used function (used
+ *  by every mode's own hit-testing; a distance-tie-break change there
+ *  risks other pickers), this is a small, self-contained search scoped
+ *  to ONLY rail/tie/node elements — a contour segment can never match it
+ *  at all, tie or not. Same bbox-center distance math as
+ *  getNearbyElement for consistency; not exported, this file's own use
+ *  only (shapeLatticeHandler.start, below). */
+function _getNearbyLatticePiece(editor, pt, tol) {
+    if (!editor._sketchLayer) return null;
+    let bestEl = null;
+    let bestDistSq = Infinity;
+    editor._sketchLayer.children().toArray().forEach((el) => {
+        const kind = el.node.getAttribute(LATTICE_ATTR);
+        if (kind !== 'rail' && kind !== 'tie' && kind !== 'node') return;
+        const b = worldBbox(el);
+        const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;
+        const buffer = tol + (sw / 2);
+        if (pt.x >= b.x - buffer && pt.x <= b.x2 + buffer && pt.y >= b.y - buffer && pt.y <= b.y2 + buffer) {
+            const cx = (b.x + b.x2) / 2;
+            const cy = (b.y + b.y2) / 2;
+            const dSq = (pt.x - cx) ** 2 + (pt.y - cy) ** 2;
+            if (dSq < bestDistSq) { bestDistSq = dSq; bestEl = el; }
+        }
+    });
+    return bestEl;
+}
+
 /**
  * T59 (SE14's own deferred "Slice 3 editing model") — the Shape Lattice
  * tool's own canvas gestures: drag an axis-locked param handle, or tap a
@@ -1620,6 +1674,27 @@ const shapeLatticeHandler = {
             // fixed vertical shift, editor-grid.js:203-206 — no other
             // state it could depend on mid-drag).
             editor._shapeLatticeDragOffsetY = rawPt.y - pt.y;
+            return;
+        }
+        // UI4 item 0 (Fred, live: a Select-mode tap/drag on a rail/tie/
+        // node opened the segment style bar instead of selecting the
+        // piece): hitTestSegment below is a "nearest contour edge within
+        // tolerance" check, not an exact hit-test — a rail/tie/node lying
+        // anywhere near the contour (common: rails span corner-to-corner,
+        // so their own body can sit within slopPx of the silhouette edge)
+        // could win it before an existing lattice piece was ever checked.
+        // A piece under the cursor is a more specific target than "close
+        // to some edge" and must take priority — same order
+        // latticeHandler.start already uses for the box Lattice tool.
+        // _getNearbyLatticePiece (this file, above), not the generic
+        // editor._getNearbyElement — a rail/tie touching the silhouette's
+        // own edge can have IDENTICAL endpoints to that edge's own
+        // contour segment (confirmed live), which the generic hit-test's
+        // bbox-center tie-break resolves in the CONTOUR's favor.
+        const latticeTol = getDynamicTolerance(editor, 10, 'slopPx');
+        const latticeHit = _getNearbyLatticePiece(editor, rawPt, latticeTol);
+        if (latticeHit) {
+            selectHandler.start(editor, pt, e, latticeHit);
             return;
         }
         const shape = currentShape(currentPattern(editor));
