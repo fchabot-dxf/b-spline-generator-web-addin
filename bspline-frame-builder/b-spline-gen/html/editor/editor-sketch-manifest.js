@@ -55,8 +55,8 @@
  */
 import { computePattern, PATTERN_DEFAULTS } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice } from './editor-lattice.js';
-import { primitivesBBox } from './editor-lattice-boundary.js';
-import { generateSilhouette } from './editor-shape-lattice-generator.js';
+import { primitivesBBox, insetPathDToPrimitives, SILHOUETTE_STROKE_WIDTH } from './editor-lattice-boundary.js';
+import { generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
 /** §6: below this many rails+ties+nodes, every piece gets its own H/V +
@@ -540,19 +540,46 @@ function resolveBoardExtent(pattern, region) {
   };
 }
 
+// T68 AMEND 1 (advisor, measured live on the DEFAULT Shape Lattice layer
+// — this WORK-LOG's own T61 entry had already disclosed this exact gap
+// as "a real, named follow-up, not built this turn"; now built): the
+// SAME half-inset the app's own drawing applies before clipping the
+// lattice fill (`_effectiveBorderWidth` + `boundary.edge`, editor-
+// lattice-pattern.js's own `_resolveBoundaryPrimitives`) — DOM-free here,
+// since a GENERATED shape's own drawn boundary element is ALWAYS stroked
+// at `SILHOUETTE_STROKE_WIDTH` (`regenerateSilhouette`) regardless of
+// whether the separate Border FEATURE is enabled; the only way this
+// differs from what a live element's own stroke-width would report is an
+// EXPLICIT `boundary.border.width` override, which is plain DATA already
+// available here, no DOM read needed for it either.
+function shapeHalfInset(pattern) {
+  const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
+  const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
+  if (edge === 'centerline') return 0;
+  const borderWidth = (boundary.border && boundary.border.enabled && boundary.border.width != null)
+    ? boundary.border.width
+    : SILHOUETTE_STROKE_WIDTH;
+  return borderWidth / 2;
+}
+
 // Mirrors `_resolveExtent`'s own 'boundary' branch, fed the silhouette's
 // OWN primitives directly (already pure, from `generateSilhouette`) rather
 // than a live DOM element's — "two tools sharing one engine" (T58 design)
 // without the DOM lookup `_resolveBoundaryPrimitives` needs for a
-// HAND-PICKED boundary shape. Disclosed scope-narrowing (WORK-LOG-lane-b.md
-// T61): this clips the lattice fill to the silhouette's own RAW centerline,
-// not the Border-enabled inner-stroke inset `_resolveBoundaryPrimitives`
-// applies for a live layer — full border-aware clipping here is a real,
-// named follow-up, not built this turn.
+// HAND-PICKED boundary shape. T68: now applies the SAME inward inset
+// `insetPathDToPrimitives` (editor-lattice-boundary.js, shared with the
+// app's own drawing — "one function, never two computations", the
+// advisor's own fix instruction) BEFORE scaling to lattice units, so the
+// lattice fill clips against the SAME effective boundary the app itself
+// draws against, not the silhouette's own raw, un-inset centerline.
 function resolveShapeBoundaryExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const { primitives } = generateSilhouette(region, pattern.shape);
-  const scaled = primitives.map((p) => scalePrimitiveToLattice(p, spacing));
+  const halfInset = shapeHalfInset(pattern);
+  const insetPrimitives = halfInset > 0
+    ? insetPathDToPrimitives(primitivesToPathD(primitives), halfInset)
+    : primitives;
+  const scaled = insetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
   const bbox = primitivesBBox(scaled);
   if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };
   return {

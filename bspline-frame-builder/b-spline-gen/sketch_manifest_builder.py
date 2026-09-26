@@ -439,6 +439,126 @@ def _apply_radial_dimensions(ctx, sketch, s_name, dimensions):
 
 
 # ---------------------------------------------------------------------------
+# Parity — T68 item 2b (Fred: "make sure the drawing in the addin matches
+# the one we insert in fusion"). Reads back what build_constrained_sketch
+# ACTUALLY built (via ctx.entity_map, keyed by the SAME manifest ids
+# _create_*_entity already registers them under) and compares against the
+# manifest's own DECLARED geometry — a mismatch beyond `tol` means the
+# constraint/dimension solve pulled geometry away from where the manifest
+# said it should be, not a build failure (the entity was still created).
+# ---------------------------------------------------------------------------
+def _point_in(pt_cm):
+    """A Fusion Point3D (CM) -> [x, y] in INCHES, the manifest's own
+    convention (§1: "units": "in") — the inverse of _to_point3d."""
+    return [pt_cm.x / IN_TO_CM, pt_cm.y / IN_TO_CM]
+
+
+def _dist(a, b):
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _circumcircle(p1, p_mid, p2):
+    """Center+radius (inches) of the circle through 3 points — the
+    manifest's own Arc3Point entity never stores center/radius directly
+    (T65's own fix: the JS side stopped re-deriving an angle representation
+    after a reflection), so this derives the manifest's own IMPLIED circle
+    from its declared p1/pMid/p2, to compare against the actual built arc's
+    real center/radius. Standard circumcenter formula; returns None for 3
+    (near-)collinear points (an infinite/undefined radius — never expected
+    for a real silhouette arc, so callers skip the radius check in that
+    case rather than raising)."""
+    ax, ay = p1
+    bx, by = p_mid
+    cx, cy = p2
+    d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    if abs(d) < 1e-12:
+        return None
+    ux = ((ax ** 2 + ay ** 2) * (by - cy) + (bx ** 2 + by ** 2) * (cy - ay) + (cx ** 2 + cy ** 2) * (ay - by)) / d
+    uy = ((ax ** 2 + ay ** 2) * (cx - bx) + (bx ** 2 + by ** 2) * (ax - cx) + (cx ** 2 + cy ** 2) * (bx - ax)) / d
+    radius = math.hypot(ax - ux, ay - uy)
+    return [ux, uy], radius
+
+
+def verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002):
+    """Compares every manifest entity's DECLARED geometry (inches) against
+    what `ctx.entity_map[sketch.name]` actually holds after the full
+    build — Slot/Line by centerline ends (order-preserving: for a Slot,
+    `_find_slot_centerline` only ever registers the line whose own start/
+    end ALREADY matched p1/p2 exactly at creation time, so this is really
+    checking whether the LATER constraint/dimension pass moved it away
+    again); Circle by center+radius; Arc3Point by ends compared ORDER-FREE
+    (Fusion's own `addByThreePoints` always normalizes to CCW, so which
+    manifest point becomes `.startSketchPoint` vs `.endSketchPoint` isn't
+    guaranteed — this checks the actual geometry, not `_create_arc3_
+    entity`'s own proximity-tagged :S/:E, so it stays correct regardless of
+    that function's own labeling) plus radius/center derived from the
+    manifest's own p1/pMid/p2 via `_circumcircle`. ArcCenter is not
+    checked — T65's own `applyCarvePlacement` always converts it to
+    Arc3Point before a manifest reaches this module; a raw pre-placement
+    manifest fed straight to `build_from_manifest_file` is a dev-only path
+    outside this check's scope.
+
+    Never raises: an entity missing from entity_map (already reported
+    under entities.skipped) or a lookup that throws counts as a mismatch
+    with no contribution to maxErr, rather than aborting the whole check —
+    matching every other phase in this module (`_create_geometry`,
+    `_apply_constraints`, ...), where one bad entity never takes down the
+    rest.
+
+    Returns {"maxErr": float inches (0.0 if nothing to check), "mismatches":
+    [id, ...]}. Logs one WARNING (count + first 5 ids) when non-empty."""
+    g_map = ctx.entity_map.get(sketch.name, {})
+    max_err = 0.0
+    mismatches = []
+    for ent in manifest.get("entities", []):
+        etype = ent.get("type")
+        eid = ent.get("id")
+        entity = g_map.get(eid)
+        if not entity:
+            if etype in ("Slot", "Line", "Circle", "Arc3Point"):
+                mismatches.append(eid)
+            continue
+        try:
+            if etype in ("Slot", "Line"):
+                p1a = _point_in(entity.startSketchPoint.geometry)
+                p2a = _point_in(entity.endSketchPoint.geometry)
+                err = max(_dist(p1a, ent["p1"]), _dist(p2a, ent["p2"]))
+            elif etype == "Circle":
+                ca = _point_in(entity.centerSketchPoint.geometry)
+                ra_in = entity.radius / IN_TO_CM
+                err = max(_dist(ca, ent["center"]), abs(ra_in - ent["radius"]))
+            elif etype == "Arc3Point":
+                sa = _point_in(entity.startSketchPoint.geometry)
+                ea = _point_in(entity.endSketchPoint.geometry)
+                end_err = min(
+                    max(_dist(sa, ent["p1"]), _dist(ea, ent["p2"])),
+                    max(_dist(sa, ent["p2"]), _dist(ea, ent["p1"])),
+                )
+                circum = _circumcircle(ent["p1"], ent["pMid"], ent["p2"])
+                if circum:
+                    exp_center, exp_radius = circum
+                    ca = _point_in(entity.centerSketchPoint.geometry)
+                    ra_in = entity.radius / IN_TO_CM
+                    err = max(end_err, _dist(ca, exp_center), abs(ra_in - exp_radius))
+                else:
+                    err = end_err
+            else:
+                continue
+        except Exception as e:
+            ctx.logger.log(f"PARITY CHECK FAIL: {eid}: {e}", "WARNING")
+            mismatches.append(eid)
+            continue
+        max_err = max(max_err, err)
+        if err > tol:
+            mismatches.append(eid)
+    if mismatches:
+        ctx.logger.log(
+            f"PARITY WARNING: {len(mismatches)} entity(ies) drifted beyond {tol}in from the manifest: {mismatches[:5]}",
+            "WARNING")
+    return {"maxErr": round(max_err, 6), "mismatches": mismatches}
+
+
+# ---------------------------------------------------------------------------
 # User parameters — create-or-update, arbitrary manifest-declared names
 # ---------------------------------------------------------------------------
 def _sync_manifest_parameters(ctx, parameters):
@@ -537,7 +657,9 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
 
     Returns a summary dict: {sketchName, entities:{created,skipped},
     constraints:{count,first_reasons}, dimensions:{count,first_reasons},
-    parameters:{created,updated,failed}, latticeConstrained, seconds}.
+    parameters:{created,updated,failed}, parity:{maxErr,mismatches} (T68
+    item 2b — see verify_sketch_against_manifest's own doc comment),
+    latticeConstrained, seconds}.
     """
     t0 = time.time()
     logger = _Logger(log_fn)
@@ -587,6 +709,7 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
         logger.records, markers=("CONSTRAINT SKIP", "CONSTRAINT FAIL", "CONSTRAINT MISS", "CONSTRAINT WRAP FAIL"))
     dim_issues = _summarize_issues(
         logger.records, markers=("DIM MISS", "DIM CRASH", "DIM NODIM", "DIM EXPR FAIL", "DIM WRAP FAIL", "DIM NAME FAIL"))
+    parity = verify_sketch_against_manifest(ctx, sketch, manifest)
 
     return {
         "sketchName": s_name,
@@ -594,6 +717,7 @@ def build_constrained_sketch(sketch_target, design, manifest, placement=None, ui
         "constraints": constraint_issues,
         "dimensions": dim_issues,
         "parameters": {"created": p_created, "updated": p_updated, "failed": p_failed},
+        "parity": parity,
         "latticeConstrained": manifest.get("latticeConstrained"),
         "seconds": round(time.time() - t0, 2),
     }

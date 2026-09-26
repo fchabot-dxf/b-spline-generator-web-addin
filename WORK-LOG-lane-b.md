@@ -7980,3 +7980,123 @@ delivering a shallow or under-tested version of either amendment.
 
 Amendments polled clean immediately before this commit and will be polled again immediately before passing.
 
+## T68 — SE15/SE15b parity: a REAL app/manifest divergence found and fixed (shape-lattice boundary inset), plus the Python read-back check; contour-as-slots deliberately deferred
+
+**Dispatch**: exactly the two items T67 deferred — (1) shape contour as slots, (2) app/Fusion parity checks — with
+explicit permission to split across turns, finishing the smaller item (2) first. AMEND 1 arrived mid-task (also
+already visible in `NEXT-SESSION-lane-b.md` and re-confirmed via a fresh `handoff.py amendments` poll): the
+advisor's own live-Fusion measurement of T67's own build (3105d74) — same session, same Shape Lattice layer — found
+the app drew 4 rails/7 ties/12 nodes while the manifest produced 6 rails/11 ties/22 nodes (extra rails at the
+board's own top/bottom edge, rail x-ends off by ~0.01in each side), while the BOX manifest matched exactly and
+Fusion↔manifest agreed to 1e-15 for both — meaning the whole gap was app↔manifest, on the Shape tool only. This
+turn tackled item 2 first, per the dispatch's own instruction; item 1 was NOT started (see "why deferred" below).
+
+### Item 2a — JS parity test (`tests/parity-app-manifest.test.js`, NEW FILE) — found and fixed a real bug
+
+Wrote the test AMEND 1 asked for first (box AND shape, default + one non-default seed, `oneEnded` 0 and 2; every
+drawn rail/tie/node/contour-segment piece must have exactly one identical `buildSketchManifest` entity and vice
+versa, 1e-6in tolerance) — using a real mock editor/sketchLayer, `generatePattern`/`regenerateSilhouette` run FOR
+REAL against it, not stubbed.
+
+**Root cause (confirmed against the advisor's own numbers before touching any test)**: the app's own boundary-mode
+extent resolution (`_resolveExtent`→`shapeToInnerBoundaryPrimitives`) insets the boundary INWARD by half the
+silhouette's own live stroke width before clipping the lattice fill against it (`boundary.edge` defaults to
+`'inner-stroke'`, not `'centerline'`; a generated silhouette is always stroked at `SILHOUETTE_STROKE_WIDTH=0.02in`,
+so a 0.01in inset by default) — while the manifest-side `resolveShapeBoundaryExtent` (editor-sketch-manifest.js)
+computed its own extent from the RAW, un-inset primitives, never applying any inset at all. Two edge rails that
+the app correctly excludes (they'd sit ON or past the inset boundary) survive in the manifest instead, and every
+boundary-clipped rail's own x-ends land ~0.01in further out than what's actually drawn — exactly the advisor's own
+measured symptom, on the shape tool only (box mode has no boundary inset at all, so it was never affected).
+
+**Fix, by declaration (the advisor's own instruction: "one shared piece list ... never two computations")**:
+- Extracted `insetPathDToPrimitives(d, strokeHalfWidth)` in `editor-lattice-boundary.js` — a genuinely SHARED pure
+  function, refactored out of `shapeToInnerBoundaryPrimitives`'s own 'path' branch rather than a copy.
+- Moved `SILHOUETTE_STROKE_WIDTH` from `properties-shape-lattice.js` (DOM-touching) to `editor-lattice-boundary.js`
+  (pure, already imported by the manifest module) — one declared constant, read by both the app's own
+  `regenerateSilhouette` (via import, not re-declaration) and the manifest's own inset calculation.
+- New `shapeHalfInset(pattern)` + rewritten `resolveShapeBoundaryExtent` (editor-sketch-manifest.js): computes the
+  SAME half-inset the app's own `_effectiveBorderWidth` would resolve to for a generated silhouette (boundary.edge
+  centerline → 0; else `boundary.border.width` if explicitly overridden, else `SILHOUETTE_STROKE_WIDTH`), applies
+  `insetPathDToPrimitives` to the silhouette's own primitives (via `primitivesToPathD`, the SAME function the app
+  itself uses to draw the boundary path) BEFORE scaling to lattice units — one function, one computation, now
+  consumed by both sides instead of two independent re-derivations.
+
+**A second, unrelated bug found while proving the fix**: my own new test's mock editor never set `.type` on its
+created elements (copied from `properties-lattice.test.js`'s simpler mock, which never needs it — board mode never
+calls the boundary-primitive dispatch at all). `shapeToInnerBoundaryPrimitives`/`shapeToPrimitives` dispatch on
+`el.type` directly (a real SVG.js element's own tag name), not `el.attr('type')` — this is the EXACT same gotcha
+`properties-shape-lattice.test.js`'s own mock already has an explicit comment about ("found live: the first
+attempt at this test filed 'no rail found' against a mock missing exactly this"), just not yet applied to this
+NEW file. With `.type` unset, the boundary silently resolved to zero primitives, so `generatePattern` drew ZERO
+rails/ties/nodes for the shape-lattice case (only the boundary path itself) — which was masking whether the REAL
+fix above actually worked, since the app side of the comparison had nothing to compare. Fixed by threading a
+`type` parameter through `makeElement`/`line()`/`circle()`/`path()`/`clone()`, matching the already-proven pattern.
+Also fixed `stroke()` to capture `width` (not just `color`) into the mock's own store, since the app's own
+`_effectiveBorderWidth` reads the drawn boundary's own live `stroke-width` back — needed for the APP's side of the
+comparison to compute its own halfWidth correctly, even though the production FIX itself is pure and never reads
+the DOM (uses the declared constant directly).
+
+**Non-vacuous, by measurement, not by construction**: with the mock fixed but the production fix still in place,
+all 8 tests pass. Reverted the production fix (`shapeHalfInset` forced to return 0, simulating the exact pre-fix
+bug) and re-ran: exactly the 3 shape-lattice-fill parity tests failed (`oneEnded=0`, `oneEnded=2`, non-default seed
+17) — box-lattice tests and the two contour-primitive-only tests (which never depend on the inset) stayed green.
+Restored from the scratchpad backup, MD5-verified byte-identical. Full JS suite: 1036/1036 (64 files) — the app-
+side refactor (`insetPathDToPrimitives` extraction) alone was already confirmed safe earlier (1033/1035, only the
+2 not-yet-fixed shape-lattice tests red) before the mock fix landed.
+
+### Item 2b — Python `verify_sketch_against_manifest` (`sketch_manifest_builder.py`)
+
+New function, called automatically at the end of `build_constrained_sketch`; summary gains
+`"parity": {"maxErr", "mismatches": [ids]}`. Reads back what `ctx.entity_map` actually holds (keyed by the SAME
+manifest ids `_create_*_entity` already registers under) and compares against the manifest's own declared
+geometry, in inches: Slot/Line by centerline ends (order-preserving — `_find_slot_centerline`'s own exact-match
+search already guarantees p1→start/p2→end at CREATION time, so this is really checking whether the LATER
+constraint/dimension pass dragged it away again); Circle by center+radius; Arc3Point by ends compared ORDER-FREE
+(Fusion's own `addByThreePoints` always normalizes to CCW, so which manifest point becomes `.startSketchPoint` is
+not guaranteed — this checks the actual geometry, not `_create_arc3_entity`'s own proximity-tagged :S/:E) plus a
+radius/center derived from the manifest's own p1/pMid/p2 via a standard circumcenter formula (`_circumcircle`).
+ArcCenter is not checked — T65's own `applyCarvePlacement` always converts it to Arc3Point before a manifest
+reaches this module. Never raises: a missing/failed lookup counts as a mismatch, never aborts the rest of the
+check. Logs one WARNING (count + first 5 ids) when mismatches is non-empty.
+
+**A real fake-shim gap found while writing this**: `FakeSketchArc` (the test file's own adsk shim) never modeled
+`.radius` — no production code had ever read it back before (real `adsk.fusion.SketchArc.radius` is a genuine
+read-only property; the fake simply never needed to fake it). My own new Arc3Point radius check was the first
+caller, and it failed with an `AttributeError`-caused false mismatch until a `@property` was added (computed from
+the arc's own center/start distance, same as real Fusion) — a shim fix, not a production bug, but a real gap
+nonetheless: a `.radius` read on ANY sketch arc in this whole test suite would have silently misbehaved before now.
+
+**Tests** (`test_sketch_manifest_builder.py`, +3, 24/24 total): an end-to-end exact/unmoved build (via
+`_box_lattice_manifest`) reports zero mismatches, maxErr ~0 — FakeSketch's own `addCenterToCenterSlot`/
+`addByCenterRadius` build geometry EXACTLY at the manifest's own p1/p2/center, so this proves the "clean" path.
+A direct unit test (same ctx/sketch-construction style as the existing arc3 CCW test) builds a Slot via
+`_create_slot_entity`, then mutates its own endSketchPoint's geometry by +0.05in AFTER creation (simulating a
+constraint solve dragging it away) — confirms it comes back as the sole mismatch with `maxErr≈0.05`. A companion
+test feeds a CLOCKWISE `(p1,pMid,p2)` Arc3Point (forcing the fake's own CCW-normalization swap) and confirms
+`verify_sketch_against_manifest` reports NO mismatch despite `.startSketchPoint != p1` — proving the order-free
+comparison actually does something, not just documented intent.
+
+**Mutation-tested both new behaviors separately** (scratchpad backup/MD5-restore each time): (1) forced the
+mismatch-append line to `if False` — broke exactly the "moved point" test, nothing else. (2) forced the Arc3Point
+end comparison to direct-order-only (dropped the swapped-pairing branch) — broke exactly the "order-free" test,
+nothing else. Both restores confirmed byte-identical via `md5sum`. Full Python suite: 142/142 (up from 21 pre-T68
+in this module's own file: now 24/24 there).
+
+### Item 1 (contour as slots, SE15b) — NOT STARTED, deliberately deferred
+
+Per the dispatch's own explicit permission ("finish item 2 FIRST... then item 1... if it is too big for one turn").
+Item 2 alone required a genuine root-cause investigation (a real app/manifest divergence, confirmed against the
+advisor's own live numbers before any fix was written) plus TWO separate test-infrastructure gaps found and fixed
+along the way (the mock `.type`/`stroke-width` gap, the fake `.radius` gap) — each demanded actually understanding
+why a symptom occurred, not just porting a described fix. Item 1 is its own substantial, architecturally-significant
+piece of work on top of that: a brand-new Fusion API surface (`addThreePointArcSlot`) with an unverified return
+shape needing a from-scratch shim model (including its own CCW normalization, mirroring the discipline
+`addCenterToCenterSlot` needed before the advisor's own real measurement corrected T64), a full re-target of every
+EXISTING contour constraint (Coincident chain, Tangent, H/V, Equal, the hourglass's own Radial dims) onto new
+centerline entities instead of the plain Line/Arc3Point ones, and an explicit "report, don't Fix" discipline for a
+genuinely new over-constraint risk. Per this project's own "capacity is a reportable fact" rule: rather than rush a
+geometry-correctness-critical change with an unverified API surface into the tail end of an already-substantial
+turn, flagging it now as unstarted and scoped for a fresh turn.
+
+Amendments polled clean before this commit; will poll once more immediately before passing.
+

@@ -137,6 +137,19 @@ class FakeSketchArc(FakeCurveBase):
         end = FakePoint3D(center.x + r * math.cos(theta1), center.y + r * math.sin(theta1))
         self.endSketchPoint = FakeSketchPoint(end)
 
+    @property
+    def radius(self):
+        # T68 item 2b: real adsk.fusion.SketchArc exposes a genuine
+        # read-only `.radius` (computed from its own center/start) —
+        # no production code needed it before verify_sketch_against_
+        # manifest (this module's own FIRST caller that reads an arc's
+        # radius back), so the fake never modeled it until now. A
+        # @property works for BOTH construction paths below, including
+        # addByThreePoints' own bypass of __init__ (FakeCurveBase.__new__),
+        # since it only needs centerSketchPoint/startSketchPoint to
+        # already be set, which both paths guarantee before returning.
+        return self.centerSketchPoint.geometry.distanceTo(self.startSketchPoint.geometry)
+
 
 class FakeSketchCircle(FakeCurveBase):
     def __init__(self, center, radius):
@@ -522,6 +535,9 @@ from sketch_manifest_builder import (  # noqa: E402
     _to_point3d,
     _sync_manifest_parameters,
     _create_arc3_entity,
+    _create_slot_entity,
+    _create_circle_entity,
+    verify_sketch_against_manifest,
     _Logger,
     IN_TO_CM,
 )
@@ -992,6 +1008,76 @@ def test_build_from_manifest_file_raises_clearly_with_no_active_design():
         build_from_manifest_file("does_not_matter.json")
 
 
+# ---------------------------------------------------------------------------
+# T68 item 2b — verify_sketch_against_manifest (Fred: "make sure the drawing
+# in the addin matches the one we insert in fusion")
+# ---------------------------------------------------------------------------
+def test_verify_sketch_against_manifest_reports_no_mismatches_on_an_exact_unmoved_build(call_log):
+    """An end-to-end build via build_constrained_sketch, never touched
+    after creation — FakeSketch's own addCenterToCenterSlot/addByCenterRadius
+    build the centerline/circle EXACTLY at the manifest's own p1/p2/center
+    (see FakeSketch's own doc comment), so parity should read as a clean
+    exact match: maxErr ~0, mismatches empty."""
+    design = FakeDesign()
+    manifest = _box_lattice_manifest(constrained=True)
+    summary = build_constrained_sketch(design.rootComponent, design, manifest)
+    assert summary["parity"]["mismatches"] == []
+    assert summary["parity"]["maxErr"] < 1e-6
+
+
+def test_verify_sketch_against_manifest_reports_a_moved_point_as_mismatch():
+    """Direct unit test (same ctx/sketch-construction style as the
+    addByThreePoints CCW test above): build a Slot's own centerline via
+    _create_slot_entity, then mutate its endSketchPoint's geometry AFTER
+    creation (simulating a constraint/dimension solve that dragged it away
+    from where the manifest declared it) — the moved entity's own id must
+    come back in `mismatches`, and maxErr must reflect the actual distance
+    moved, comfortably above the default 0.002in tol."""
+    design = FakeDesign()
+    logger = _Logger()
+    ctx = BuildContext(design.rootComponent, design, logger)
+    s_name = "TestSketch"
+    ctx.entity_map[s_name] = {}
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    curves = sketch.sketchCurves
+    ent = {"id": "rail0", "type": "Slot", "p1": [0.25, 1.0], "p2": [6.75, 1.0], "width": 0.07}
+    _create_slot_entity(ctx, sketch, curves, s_name, ent, None)
+
+    centerline = ctx.entity_map[s_name]["rail0"]
+    centerline.endSketchPoint.geometry.x += 0.05 * IN_TO_CM  # moved 0.05in in X
+
+    manifest = {"entities": [ent]}
+    parity = verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002)
+    assert parity["mismatches"] == ["rail0"]
+    assert parity["maxErr"] == pytest.approx(0.05, abs=1e-6)
+
+
+def test_verify_sketch_against_manifest_arc3point_ends_compared_order_free():
+    """Companion to test_arc3point_S_E_survive_addByThreePoints_own_CCW_
+    normalization_even_for_a_clockwise_input above: feed a CLOCKWISE
+    (p1, pMid, p2) so the fake's own addByThreePoints swaps start/end
+    relative to the manifest's own p1/p2 (matching real Fusion's own CCW
+    normalization, per T67's doc comment on _create_arc3_entity). Even
+    though `.startSketchPoint` != manifest p1 here, verify_sketch_against_
+    manifest must NOT report a mismatch — its own end comparison is
+    order-free by design, unlike _create_arc3_entity's own proximity-
+    tagged :S/:E (which this check deliberately does not rely on)."""
+    design = FakeDesign()
+    logger = _Logger()
+    ctx = BuildContext(design.rootComponent, design, logger)
+    s_name = "TestSketch"
+    ctx.entity_map[s_name] = {}
+    sketch = design.rootComponent.sketches.add(design.rootComponent.xYConstructionPlane)
+    curves = sketch.sketchCurves
+    ent = {"id": "seg1", "type": "Arc3Point", "p1": [1.0, 1.0], "pMid": [1.5, 0.5], "p2": [1.0, 0.0]}
+    _create_arc3_entity(ctx, curves, s_name, ent)
+
+    manifest = {"entities": [ent]}
+    parity = verify_sketch_against_manifest(ctx, sketch, manifest, tol=0.002)
+    assert parity["mismatches"] == []
+    assert parity["maxErr"] < 1e-6
+
+
 if __name__ == "__main__":
     # Plain-Python fallback (no pytest needed), same dual-mode convention
     # frame-builder/test_templates.py already documents.
@@ -1017,6 +1103,9 @@ if __name__ == "__main__":
         test_length_parameters_created_with_unit_bearing_expression,
         test_unitless_parameters_created_with_createByReal,
         test_build_from_manifest_file_raises_clearly_with_no_active_design,
+        test_verify_sketch_against_manifest_reports_no_mismatches_on_an_exact_unmoved_build,
+        test_verify_sketch_against_manifest_reports_a_moved_point_as_mismatch,
+        test_verify_sketch_against_manifest_arc3point_ends_compared_order_free,
     ]
     passed, failed = 0, 0
     for t in tests:

@@ -26,6 +26,7 @@ import {
 } from './editor-lattice-pattern.js';
 import { PRESETS, generateSilhouette, primitivesToPathD } from './editor-shape-lattice-generator.js';
 import { boardRegion, computeParamHandles, mirrorSegmentIndex } from './editor-shape-lattice-interaction.js';
+import { SILHOUETTE_STROKE_WIDTH } from './editor-lattice-boundary.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer, ensureActiveLayer } from './layers.js';
 import { viewScale } from './editor-view.js';
@@ -81,17 +82,10 @@ const PARAM_ROWS = {
   bottle: Object.keys(PRESETS.bottle.params),
 };
 
-/** The generated silhouette's own stroke width — a small, FIXED value,
- *  deliberately NOT `editor._strokeWidth` (the general drawing tool's own
- *  CURRENT setting). Same bug class `emitSegment` (editor-lattice.js) was
- *  already fixed for once: "a live browser test found a 0.5in board-wide
- *  stroke on a 0.5in rail pitch" — found again live here, this turn: a
- *  0.5in default stroke on the silhouette's own pinched waist inset the
- *  boundary's own inner-fill cut (`_effectiveBorderWidth`/`edge:
- *  'inner-stroke'`, editor-lattice-pattern.js) far enough inward to leave
- *  ZERO room for any rail/tie at all — confirmed live (0 rails/0 ties
- *  after Generate), not assumed from reading the code alone. */
-const SILHOUETTE_STROKE_WIDTH = 0.02;
+// T68 AMEND 1: SILHOUETTE_STROKE_WIDTH moved to editor-lattice-boundary.js
+// (its own doc comment there has the full history) — imported here now,
+// not declared, so the manifest producer can read the identical number
+// from that same neutral, DOM-free home.
 
 /** SE7i's own per-layer pattern lookup, duplicated here (not imported)
  *  the same way `_fmix32` is duplicated per-file elsewhere in this
