@@ -92,11 +92,12 @@ def render(seats, commits, roadmap):
         f'<p class="t">updated {e(s["updated"])}</p></section>' for s in seats)
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
+    done = [r for r in roadmap if r[0] == "Done"][-8:]
     road = (f'<h2>In progress / queued</h2><ul>{lst([r for r in roadmap if r[0] != "Done"], "q")}</ul>'
-            f'<h2>Recently done</h2><ul>{lst([r for r in roadmap if r[0] == "Done"][-8:], "d")}</ul>')
-    com = "".join(f'<h2>Commits — {e(b)}</h2><ul class="c">' + "".join(
+            f'<details><summary>Recently done ({len(done)})</summary><ul>{lst(done, "d")}</ul></details>')
+    com = "".join(f'<details><summary>Commits — {e(b)} ({len(cs)})</summary><ul class="c">' + "".join(
         f'<li><code>{e(c.split("|")[0])}</code> {e(c.split("|")[2])} <span>{e(c.split("|")[1])}</span></li>'
-        for c in cs if c.count("|") >= 2) + "</ul>" for b, cs in commits.items())
+        for c in cs if c.count("|") >= 2) + "</ul></details>" for b, cs in commits.items())
     page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="60"><title>B-Spline progress</title><style>
 :root{{--bg:#f6f7f9;--fg:#1c2330;--mut:#667085;--card:#fff;--w:#1d6fd8;--a:#b86a00;--line:#e3e6eb}}
@@ -106,6 +107,7 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}}
 .seat{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}} .seat h2{{margin-top:0}}
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
+details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
 <div class="grid">{cards}</div>{road}{com}</body></html>"""
