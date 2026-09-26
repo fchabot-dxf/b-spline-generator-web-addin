@@ -1035,9 +1035,10 @@ def test_length_parameters_created_with_unit_bearing_expression(call_log):
 
 
 def test_a_freshly_created_lattice_param_is_stamped_bspline_owner(call_log):
-    """STALE-PARAMS R4 item 2 (ruling 5): a param CREATED by
-    _sync_manifest_parameters carries the Bspline.owner=1 attribute — the
-    cleanup pass (R4 item 3) reads this to prove "we made this"."""
+    """STALE-PARAMS R4 item 2: a param CREATED by _sync_manifest_parameters
+    carries the Bspline.owner=1 attribute — the cleanup pass (R4 item 3)
+    reads this for its audit trail (ruling 5 makes the REGISTRY, not the
+    stamp, the ownership decision — see the module's own docstring)."""
     design = FakeDesign()
     ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
     _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
@@ -1046,32 +1047,32 @@ def test_a_freshly_created_lattice_param_is_stamped_bspline_owner(call_log):
     assert tag is not None and tag.value == "1"
 
 
-def test_updating_an_existing_UNSTAMPED_param_does_not_stamp_it(call_log):
-    """A param that already exists with this name but was never stamped
-    (e.g. Fred typed a parameter called 'rail_width' himself before ever
-    running a lattice build) must NOT be retroactively marked "ours" just
-    because a later Send happens to sync its value — stamping is CREATE
-    only. This is the one behaviour asymmetry vs. the board params'
-    stamp-on-every-touch (documented in _stamp_bspline_owner_on_create's
-    own docstring, and flagged as an open question in
-    STALE-PARAMS-DESIGN.md for the two NEW groups)."""
+def test_updating_an_existing_UNSTAMPED_registered_param_ADOPTS_it(call_log):
+    """AMENDED (Fred, ruling 5, "take over existing params"): a param that
+    already exists with a REGISTERED name but was never stamped (e.g. it
+    predates this feature, or Fred happened to type a parameter called
+    'rail_width' himself) IS stamped the next time a Send syncs it —
+    "registered name = ours, whether or not an older version stamped it."
+    This reverses the first-committed version of this test (which asserted
+    the opposite, create-only, behaviour) per the advisor's amendment."""
     design = FakeDesign()
-    fred_owned = design.userParameters.add("rail_width", types.SimpleNamespace(value=0.05), "in", "Fred's own param")
-    assert fred_owned.attributes.itemByName("Bspline", "owner") is None  # sanity: add() alone never stamps
+    pre_existing = design.userParameters.add("rail_width", types.SimpleNamespace(value=0.05), "in", "pre-existing")
+    assert pre_existing.attributes.itemByName("Bspline", "owner") is None  # sanity: add() alone never stamps
 
     ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
     created, updated, failed = _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.09, "unit": "in"}])
 
     assert (created, updated, failed) == (0, 1, [])
-    assert fred_owned.expression == "0.09"  # the value still syncs — only the stamp is withheld
-    assert fred_owned.attributes.itemByName("Bspline", "owner") is None
+    assert pre_existing.expression == "0.09"
+    tag = pre_existing.attributes.itemByName("Bspline", "owner")
+    assert tag is not None and tag.value == "1"  # adopted on this touch
 
 
-def test_a_second_sync_of_the_same_param_keeps_its_create_time_stamp(call_log):
+def test_a_second_sync_of_the_same_param_keeps_its_stamp(call_log):
     """The normal create-then-update-on-rebuild path (already covered by
     test_parameters_created_then_updated_on_a_second_build) must still
-    carry the stamp after the SECOND (update) call — proving the stamp
-    isn't somehow cleared on update, only that update never WRITES it."""
+    carry the stamp after the SECOND (update) call — and the stamp helper
+    is idempotent (no double-add) on that second touch."""
     design = FakeDesign()
     ctx = types.SimpleNamespace(design=design, logger=types.SimpleNamespace(log=lambda *a, **k: None))
     _sync_manifest_parameters(ctx, [{"name": "rail_width", "value": 0.07, "unit": "in"}])
