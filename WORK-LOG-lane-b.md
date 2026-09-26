@@ -9540,3 +9540,26 @@ further to add on the manifest side, matching the roadmap's own explicit split (
 colour) rather than inventing new Fusion-appearance machinery for a "small" item.
 
 Verify: 1261/1261 vitest (7 new), 40/40 pytest (untouched). Commit da63682, pushed. NO FUSION this whole turn.
+
+## T75 item 5 — Tests: parity + sweep for a non-default Size (the remaining gap)
+
+Two of this item's own three asks were already fully satisfied by earlier items this turn: override width -> a
+hardcoded dim got its own dedicated tests under item 3 (`editor-sketch-manifest.test.js` + `export-flow.test.js`);
+rail-ends visibility already had 2 tests from item 4. The one real gap was a non-default `pattern.size` swept
+against this codebase's own standing app/manifest PARITY oracle (`parity-app-manifest.test.js`, T68 AMEND 2's own
+"permanent, declared check" that every app-drawn piece matches exactly one manifest entity and vice versa) — every
+existing parity sweep there (oneEnded, seed) predates LAT-SIZE and never exercised `pattern.size` at all.
+
+Added a 2-value size sweep (`{width:3,height:4}` — both axes set; `{width:2,height:null}` — one axis auto-falls-back)
+to BOTH the box lattice and shape lattice (hourglass) parity describe blocks. `checkLatticeParity` itself needed no
+changes and no size-awareness — it only ever diffs whatever the app actually drew against whatever the manifest
+actually declared, so a real divergence between `_resolveExtent`'s 'board' branch (app) and `resolveBoardExtent`/
+`sizedBoardRegion` (manifest) would show up here as a genuine mismatch, not something the test's own oracle could
+paper over. Also added a non-vacuous control (default size vs `{width:2,height:2}`) proving a non-default size
+actually MOVES the drawn rail geometry — without it, a sweep that silently produced the same fill region every time
+(a bug hiding as "still passes") would go unnoticed.
+
+Verify: 1266/1266 vitest (5 new), 40/40 pytest (untouched, no Python touched this item). Commit fde15b6, pushed.
+NO FUSION this whole turn.
+
+**T75 — all 5 items complete.** Passing back to the advisor.
