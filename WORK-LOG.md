@@ -10374,3 +10374,43 @@ a speculative change here risks masking a real, different-shaped bug or introduc
 recurs, the single most useful thing to capture next time is the EXACT starting state (a freshly generated
 pattern vs. one loaded from a saved document; which extent mode; whether any OTHER action happened between
 Generate and Clear) — my own ~20-trial sweep couldn't isolate a condition that reproduces it.
+
+## Turn 284 — UI4 item 0c: box tool Regenerate on a Shape-Lattice layer rebuilt the shape — DONE — NO FUSION
+
+**Root cause.** `properties-lattice.js`'s `_currentPattern(editor)` returns the SAME `layer.pattern` object
+every panel shares (mutated in place, never copied) — `readFieldsIntoPattern()` (the box panel's own Generate
+click handler) already overwrites every box-lattice field (orientation/rails/ties/nodes/colors/widths/seed)
+on it, but until now left `extent`/`boundary`/`shape` (`properties-shape-lattice.js`'s own fields, written the
+last time THAT panel generated on this same layer) completely untouched. `generatePattern`
+(`editor-lattice-pattern.js`) branches on `PATTERN.extent.mode === 'boundary'` to decide whether to fill a
+shape's own contour at all — a stale `'boundary'` extent left on the layer silently kept the BOX panel's own
+Generate button running that same path. Confirmed live: generating a Shape Lattice, switching to the box
+Lattice tool, and pressing its "Regenerate" reproduced exactly the report (still boundary-mode, contour
+untouched).
+
+**Fix — the declared rule (Fred): the ACTIVE TOOL decides the kind.** `readFieldsIntoPattern()` now
+unconditionally `delete`s `p.extent`/`p.boundary`/`p.shape` at the very start, every press, regardless of what
+the layer's pattern held before — this panel IS the box Lattice tool, so its own Generate must always produce
+a genuine board-mode box-lattice pattern. Also swept the OLD contour segments a prior Shape Lattice generation
+left behind: `generatePattern`'s own ownership-sweep only clears `OWNERSHIP_ATTR`'d rails/ties/nodes, but a
+contour segment uses a completely different attribute scheme (`data-boundary-ref`/`data-contour-seg`, never
+`OWNERSHIP_ATTR`) and was invisible to that sweep — confirmed live, the old contour survived as orphaned
+visual clutter even after the extent/boundary/shape fields were correctly reset. Fixed by capturing the OLD
+`p.boundary.shapeId` and removing every matching element (`_findBoundaryElements`, already exported from
+`editor-lattice-pattern.js`, imported here) BEFORE dropping the field that's the only handle left to find them
+by.
+
+Tests (`tests/properties-lattice.test.js`, 2 new, reusing that file's own existing mock-editor harness): a
+stale `extent`/`boundary`/`shape` set directly on the mock layer's pattern (simulating a prior Shape Lattice
+generation) is fully gone after pressing the box panel's own Generate; a fake leftover contour segment (same
+attribute shape `_findBoundaryElements` looks for, no `OWNERSHIP_ATTR`) is genuinely removed from
+`_sketchLayer`, not just visually hidden. **Mutation-tested non-vacuous**: removed the whole fix block —
+exactly those 2 tests failed, the other 25 in the file stayed green; restored, all 27 green again.
+
+Live verification (CDP): generated a Shape Lattice (12 contour segments, `extent.mode:'boundary'`), switched
+to the box Lattice tool, pressed its Regenerate — resulting pattern has no `boundary`/`shape` fields, extent
+back to board-default, contour segment count `0` (fully swept), a normal full-width/full-height box lattice
+rendered (screenshot confirms: straight corner-to-corner rails, no leftover hourglass silhouette).
+
+Full suite: `npx vitest run` -> **1269 passed** (up from 1267 — the 2 new tests), zero regressions. No edits
+to `bspline_gen_palette.html`.

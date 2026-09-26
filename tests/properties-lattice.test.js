@@ -165,6 +165,59 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(btn.textContent).toBe('Regenerate');
   });
+
+  // UI4 item 0c (Fred: "layer holds a SHAPE lattice -> switch to the BOX
+  // Lattice tool -> its Regenerate rebuilds the SHAPE"): _currentPattern
+  // returns the SAME layer.pattern object every panel shares (mutated in
+  // place) -- a prior Shape Lattice generation on this layer leaves
+  // extent.mode:'boundary' + boundary/shape fields sitting on it, which
+  // generatePattern reads to decide whether to fill a boundary shape at
+  // all. The declared rule: the ACTIVE TOOL (this panel) decides the
+  // kind, so its own Generate/Regenerate must reset those away every
+  // time, and sweep the OLD contour segments (a different attribute
+  // scheme -- data-boundary-ref -- invisible to generatePattern's own
+  // OWNERSHIP_ATTR-only sweep) rather than leaving them as orphaned
+  // clutter.
+  it('UI4 item 0c: pressing Generate on the box Lattice panel resets a stale extent/boundary/shape left by a prior Shape Lattice generation on this layer', () => {
+    initLatticeProperties(editor);
+    const pattern = activeLayerPattern(editor) || {};
+    editor._layers[0].pattern = {
+      ...pattern,
+      extent: { mode: 'boundary' },
+      boundary: { shapeId: 'b-test1', endRule: 'on-boundary' },
+      shape: { source: 'generated', params: {} },
+    };
+
+    document.getElementById('latticeGenerate').click();
+
+    const after = activeLayerPattern(editor);
+    expect(after.extent).toBeUndefined();
+    expect(after.boundary).toBeUndefined();
+    expect(after.shape).toBeUndefined();
+  });
+
+  it('UI4 item 0c: also sweeps the OLD contour segments a prior Shape Lattice generation left on this layer (a different attribute scheme, invisible to the ownership-only sweep)', () => {
+    initLatticeProperties(editor);
+    // A fake leftover contour segment: same layer, tagged with the
+    // boundary ref the stale pattern points at, no OWNERSHIP_ATTR (a real
+    // contour segment never carries one -- confirmed by reading
+    // editor-lattice-pattern.js's own _findBoundaryElements/stampBoundaryRef).
+    const contourSeg = editor._sketchLayer.line(0, 0, 1, 0);
+    contourSeg.attr('data-layer', '0');
+    contourSeg.attr('data-boundary-ref', 'b-test1');
+    editor._layers[0].pattern = {
+      ...(activeLayerPattern(editor) || {}),
+      extent: { mode: 'boundary' },
+      boundary: { shapeId: 'b-test1', endRule: 'on-boundary' },
+      shape: { source: 'generated', params: {} },
+    };
+
+    document.getElementById('latticeGenerate').click();
+
+    const remaining = editor._sketchLayer.children().toArray()
+      .filter((ch) => ch.node.getAttribute('data-boundary-ref') === 'b-test1');
+    expect(remaining).toHaveLength(0);
+  });
 });
 
 describe('initLatticeProperties (SE7g amend): Colors row swatches', () => {

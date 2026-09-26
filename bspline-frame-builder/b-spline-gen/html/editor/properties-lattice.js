@@ -12,6 +12,7 @@ import { GRID_SPACINGS } from './editor-grid.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
     PATTERN_DEFAULTS, generatePattern, detachAllOwned, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
+    _findBoundaryElements,
 } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
@@ -241,6 +242,42 @@ export function initLatticeProperties(editor) {
      *  contract) and return it. */
     function readFieldsIntoPattern() {
         const p = _currentPattern(editor);
+        // UI4 item 0c (Fred: "the layer holds a SHAPE lattice -> switch to
+        // the BOX Lattice tool -> its Regenerate rebuilds the SHAPE"):
+        // _currentPattern returns the SAME layer.pattern object every
+        // panel shares (mutated in place, not copied) — this function
+        // already overwrites every BOX-lattice field (orientation/rails/
+        // ties/nodes/colors/widths/seed) below, but until now left
+        // `extent`/`boundary`/`shape` (properties-shape-lattice.js's own
+        // fields, set when THAT panel last generated on this layer)
+        // completely untouched. generatePattern branches on
+        // `PATTERN.extent.mode === 'boundary'` to decide whether to fill
+        // a hand-drawn/self-contour boundary at all — a stale 'boundary'
+        // extent left over from a prior Shape Lattice generation on this
+        // same layer silently kept running that path even from the BOX
+        // panel's own Generate button. The declared rule (Fred): the
+        // ACTIVE TOOL decides the kind — this panel is the box Lattice
+        // tool, so every Generate/Regenerate from here unconditionally
+        // resets the pattern to plain 'board' extent and drops the
+        // Shape-Lattice-only fields, regardless of what the layer's
+        // pattern held before. generatePattern's own ownership-sweep
+        // only clears OWNERSHIP_ATTR'd rails/ties/nodes — a prior Shape
+        // Lattice's own CONTOUR segments use a separate attribute scheme
+        // (data-contour-seg/data-boundary-ref) and are invisible to that
+        // sweep, so they'd otherwise survive as orphaned visual clutter
+        // (confirmed live) even though "Regenerate clears the layer's
+        // generated pieces" is exactly what Fred asked for. Swept here,
+        // BEFORE p.boundary is dropped below (it's the only handle left
+        // to find them by).
+        if (p.boundary && p.boundary.shapeId) {
+            const activeLayer = getActiveLayer(editor);
+            _findBoundaryElements(editor, p.boundary.shapeId)
+                .filter((ch) => ch.node.getAttribute('data-layer') === activeLayer)
+                .forEach((ch) => ch.remove());
+        }
+        delete p.extent;
+        delete p.boundary;
+        delete p.shape;
         // SE7h: the segmented control's own `.active` state IS the source
         // of truth (same "read the control, not a separate variable" shape
         // as nodesEndsEl.checked below) — Vertical active means vertical,
