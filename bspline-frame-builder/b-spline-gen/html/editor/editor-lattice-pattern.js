@@ -92,6 +92,23 @@ export function hasGeneratedSilhouette(pattern) {
   return !!(pattern.shape && pattern.shape.source === 'generated' && pattern.extent && pattern.extent.mode === 'boundary');
 }
 
+/** T73 AMEND 3 (Fred: "I need rails to coincide to contour"): true exactly
+ *  when a Shape Lattice's rail/tie ends must reach the contour's own RAW
+ *  centerline (zero inset), rather than stopping short by the contour's
+ *  own half-stroke-width — i.e. a generated silhouette whose contour is
+ *  actually shown (SE14c's checkbox). "When the contour checkbox is OFF,
+ *  keep today's behaviour" (the amend's own words) is exactly `false`
+ *  here, unconditionally, regardless of any Border-feature width setting
+ *  (Border is a separate, optional decorative clone — irrelevant to where
+ *  rails/ties end). Declared once; both `_resolveBoundaryPrimitives`
+ *  below (the app's own drawing) and `shapeHalfInset` (editor-sketch-
+ *  manifest.js, the SAME clip boundary for the manifest) import this, so
+ *  neither can drift from the other. */
+export function usesContourCenterline(pattern) {
+  if (!hasGeneratedSilhouette(pattern)) return false;
+  return ({ ...PATTERN_DEFAULTS.contour, ...(pattern.contour || {}) }).show !== false;
+}
+
 /** T73 (SE14b): the per-segment element's own index within its contour —
  *  a new, second attribute alongside BOUNDARY_REF_ATTR (which N sibling
  *  elements now all share the SAME value of) so `_findBoundaryElements`
@@ -260,7 +277,12 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths) {
   if (!boundaryEls.length) return { boundaryEl: null, boundaryEls, primitives: [] };
   const boundaryEl = boundaryEls[0]; // representative: width/transform (T73: identical across every segment of the SAME generated contour, by construction — never individually transformed)
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
-  const halfWidth = edge === 'centerline' ? 0 : _effectiveBorderWidth(boundaryEl, PATTERN, boundary, widths) / 2;
+  // T73 AMEND 3: a Shape Lattice with its contour shown clips rails/ties
+  // to the contour's own RAW centerline (zero inset), same as an explicit
+  // edge:'centerline' choice — see usesContourCenterline's own doc comment.
+  const halfWidth = (edge === 'centerline' || usesContourCenterline(PATTERN))
+    ? 0
+    : _effectiveBorderWidth(boundaryEl, PATTERN, boundary, widths) / 2;
   // T73 (SE14b): a GENERATED contour is now N per-segment elements
   // sharing one shapeId — shapeToInnerBoundaryPrimitives's own per-TYPE
   // dispatch (rect/circle/ellipse/polygon/path/text) has no "N paths"
@@ -1248,7 +1270,15 @@ export function computePattern(PATTERN, opts = {}) {
   // every boundary-crossing end now needs. `halfWidth` is in the SAME
   // lattice-unit space as everything else here (inches / spacing).
   const borderEnabled = isBoundary && !!(boundary.border && boundary.border.enabled);
-  const endRule = boundary.endRule || PATTERN_DEFAULTS.boundary.endRule;
+  // T73 AMEND 3: a Shape Lattice with its contour shown forces 'on-
+  // boundary' regardless of the pattern's own stored endRule -- the rail/
+  // tie's own centerline must reach the contour's centerline EXACTLY (no
+  // pull-back), so its stroke deliberately overlaps the contour's own
+  // stroke ("the slot caps then overlap the contour slot," Fred's own
+  // words) rather than stopping half a stroke-width short of it.
+  const endRule = (isBoundary && usesContourCenterline(PATTERN))
+    ? 'on-boundary'
+    : (boundary.endRule || PATTERN_DEFAULTS.boundary.endRule);
   // "i,j,kind" occupied keys are always built from REAL (un-oriented)
   // lattice coordinates (_collectOccupied, below) — re-key them into the
   // SAME canonical frame the rest of this function reads i/j in, once,

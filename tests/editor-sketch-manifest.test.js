@@ -204,6 +204,13 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       widths: { rails: 0.07, ties: 0.07, nodeRadius: 0.075, linkRailsTies: true },
       extent: { mode: 'boundary' },
       shape: { source: 'generated', preset: 'hourglass', seed: 42, params: {}, segments: null },
+      // T73 AMEND 3: a shown contour now clips the lattice to the RAW
+      // (wider) centerline instead of the contour-half-width inset this
+      // T66 fixture was originally tuned against -- pinning contour.show
+      // false here keeps this historical regression fixture reproducing
+      // the SAME degenerate-piece geometry it always has, independent of
+      // AMEND 3's own, unrelated change to the shown-contour case.
+      contour: { show: false },
       seed: 42,
     };
     // Independent re-derivation: recompute the RAW (pre-filter) segments
@@ -1042,7 +1049,7 @@ describe('buildSketchManifest — T72: the default Bottle preset (and a deep-wai
   });
 });
 
-describe('buildSketchManifest — T72 (SE14c): contour.show=false omits the contour from the manifest but leaves the lattice fill byte-for-byte identical', () => {
+describe('buildSketchManifest — T72 (SE14c) + T73 AMEND 3: contour.show=false omits the contour from the manifest and keeps the OLD (contour-inset) lattice boundary; show=true clips the lattice fill to the contour\'s own wider, raw centerline instead', () => {
   function shapePattern(contour) {
     return {
       ...PATTERN_DEFAULTS, spacing: 0.25,
@@ -1069,13 +1076,16 @@ describe('buildSketchManifest — T72 (SE14c): contour.show=false omits the cont
     expect(manifest.contourWidthMode).toBeNull();
   });
 
-  it('the lattice fill is UNCHANGED by the toggle -- same rail/tie/node entities, same latticePieceCount, ON vs OFF (the dispatch\'s own "clips/fits exactly as now" requirement)', () => {
+  it('T73 AMEND 3 supersedes the ORIGINAL T72 invariant here: ON now clips the lattice fill to the contour\'s wider, RAW centerline (rails/ties reach it exactly, Fred\'s own "coincide to contour" ask), while OFF keeps the narrower, contour-half-width-inset boundary this describe block\'s OWN name still documents -- so the two are now deliberately DIFFERENT, never byte-identical', () => {
     const on = buildSketchManifest(shapePattern(), REGION, {});
     const off = buildSketchManifest(shapePattern({ show: false }), REGION, {});
     expect(on.latticePieceCount).toBeGreaterThan(0); // non-vacuous
-    expect(off.latticePieceCount).toBe(on.latticePieceCount);
-    const latticeOnly = (m) => m.entities.filter((e) => !e.id.startsWith('seg'));
-    expect(latticeOnly(off)).toEqual(latticeOnly(on));
+    expect(off.latticePieceCount).toBeGreaterThan(0);
+    // ON's own boundary is strictly WIDER (reaches the raw centerline
+    // instead of stopping short by the contour's own half-stroke-width),
+    // so it has room for at least as many lattice pieces as OFF, and for
+    // this fixture strictly more.
+    expect(on.latticePieceCount).toBeGreaterThan(off.latticePieceCount);
   });
 
   it('a saved pattern with no `contour` key at all reads as shown (true) -- pre-T72 patterns are unaffected', () => {

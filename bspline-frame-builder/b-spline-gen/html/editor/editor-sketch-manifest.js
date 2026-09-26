@@ -53,7 +53,7 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
   primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetRegionForContour,
@@ -718,6 +718,12 @@ function resolveBoardExtent(pattern, region) {
 // EXPLICIT `boundary.border.width` override, which is plain DATA already
 // available here, no DOM read needed for it either.
 function shapeHalfInset(pattern) {
+  // T73 AMEND 3 (Fred: "I need rails to coincide to contour"): a shown
+  // contour clips the lattice fill to the contour's own RAW centerline —
+  // see usesContourCenterline's own doc comment (editor-lattice-
+  // pattern.js) for why this is unconditional (never Border-width-gated)
+  // and why "contour hidden" alone keeps today's inset behavior below.
+  if (usesContourCenterline(pattern)) return 0;
   const boundary = { ...PATTERN_DEFAULTS.boundary, ...(pattern.boundary || {}) };
   const edge = boundary.edge || PATTERN_DEFAULTS.boundary.edge;
   if (edge === 'centerline') return 0;
@@ -747,9 +753,19 @@ function resolveShapeBoundaryExtent(pattern, region) {
   const spacing = pattern.spacing || PATTERN_DEFAULTS.spacing;
   const { primitives } = generateSilhouette(region, pattern.shape);
   const halfInset = shapeHalfInset(pattern);
-  const insetPrimitives = halfInset > 0
-    ? insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset)
-    : primitives;
+  // T73 AMEND 3: ALWAYS round-trip through the d-string (even at
+  // halfInset===0, insetGeneratedPresetPathDToPrimitives's own
+  // strokeHalfWidth<=0 branch already reparses from the string rather than
+  // returning `primitives` untouched) — the app's OWN equivalent zero-
+  // inset path (_resolveBoundaryPrimitives -> insetGeneratedPresetPathDTo-
+  // Primitives against the DOM segments' own already-string-rounded `d`
+  // attributes) has NO way to reach full floating-point precision either,
+  // so skipping this round-trip here ONLY at halfInset===0 would silently
+  // reintroduce a real, if tiny, coordinate mismatch between the app and
+  // the manifest right at the razor's-edge params (e.g. a deep hourglass
+  // waist) where a 0.001in rounding difference decides whether a rail/tie
+  // piece exists at all — caught live by the T72 AMEND 5 param sweep.
+  const insetPrimitives = insetGeneratedPresetPathDToPrimitives(primitivesToPathD(primitives), halfInset);
   const scaled = insetPrimitives.map((p) => scalePrimitiveToLattice(p, spacing));
   const bbox = primitivesBBox(scaled);
   if (!bbox) return { iMin: 0, jMin: 0, iMax: -1, jMax: -1, mode: 'boundary', primitives: [] };

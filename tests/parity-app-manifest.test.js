@@ -265,7 +265,7 @@ describe('parity: shape lattice (bottle) — T72 regression: the default Bottle 
   });
 });
 
-describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice parity; OFF hides/omits the contour only', () => {
+describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice parity; OFF hides/omits the contour and (T73 AMEND 3) keeps the narrower contour-inset fill boundary, ON clips to the contour\'s own wider raw centerline', () => {
   function shapePattern(contour) {
     return {
       ...PATTERN_DEFAULTS, spacing: 0.25, seed: 42,
@@ -313,7 +313,7 @@ describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice par
     expect(manifest.entities.some((e) => e.id.startsWith('seg'))).toBe(false);
   });
 
-  it('rail/tie/node counts are IDENTICAL between ON and OFF -- the toggle changes nothing about the fill', async () => {
+  it('T73 AMEND 3: ON has AT LEAST as many rail/tie/node pieces as OFF (its own boundary reaches further out, to the contour\'s raw centerline) -- superseding the earlier "toggle changes nothing about the fill" invariant', async () => {
     const editorOn = makeMockEditor(7, 9);
     const patternOn = shapePattern();
     regenerateSilhouette(editorOn, patternOn);
@@ -323,10 +323,14 @@ describe('parity: SE14c contour.show toggle — ON and OFF both hold lattice par
     regenerateSilhouette(editorOff, patternOff);
     await generatePattern(editorOff, patternOff);
     const countByKind = (editor, kind) => editor._sketchLayer.children().toArray().filter((e) => e.attr('data-lattice') === kind).length;
+    let sawStrictlyMore = false;
     for (const kind of ['rail', 'tie', 'node']) {
       expect(countByKind(editorOn, kind)).toBeGreaterThan(0); // non-vacuous
-      expect(countByKind(editorOff, kind)).toBe(countByKind(editorOn, kind));
+      expect(countByKind(editorOff, kind)).toBeGreaterThan(0);
+      expect(countByKind(editorOn, kind)).toBeGreaterThanOrEqual(countByKind(editorOff, kind));
+      if (countByKind(editorOn, kind) > countByKind(editorOff, kind)) sawStrictlyMore = true;
     }
+    expect(sawStrictlyMore).toBe(true); // non-vacuous: ON's own wider boundary genuinely fits more, somewhere
   });
 });
 
