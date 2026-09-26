@@ -9263,3 +9263,85 @@ thin (0.05) and thick (0.5) stroke widths, each against a dashed red "outside" r
 own outer edge hugs that box exactly at any stroke width (thin or thick), and the bottle's body now touches the box
 across its full width the same way the hourglass's own body always has. Commit fcac51d, pushed. NO FUSION this
 whole turn.
+
+## T74 AMEND 5 (BUG, done first per the advisor) — manifest only for layers with real lattice content; mixed layer sends both
+
+Fred, live: with 2 layers (L1 = hourglass Shape Lattice, L2 = hand-drawn organic pattern), Send to Fusion built L2 as
+a LATTICE constrained sketch instead of its own drawn artwork. The advisor confirmed the exact shape against a real
+Send payload (dumped to `~/.bspline-frame-builder/last_send.json` — the add-in now writes one on every Send, for
+exactly this kind of live cross-check): L2's own `svg` field held 4 hand-drawn `<path>` elements and ZERO
+`data-lattice` occurrences, yet its `sketchManifest` carried 31 entities from a stale BOX-lattice pattern
+(`contourWidthMode: null`) — the Lattice tool had been opened on that layer at some point, materializing a stored
+`.pattern` object, but nothing was ever actually generated from it there.
+
+**Cause**: `_fusionLayerManifest` (export-flow.js) attached a manifest whenever `editorLayer.pattern` existed at
+all — never checking whether the layer's OWN live DOM content actually had anything real to represent.
+
+**Fix, declared once**: a new `latticeOwnedElementsOnLayer(editor, layerId, pattern)` (editor-lattice-pattern.js) is
+the ONE answer to "does this layer actually have real lattice content right now" — `_ownedOnLayer`'s own
+OWNERSHIP_ATTR-tagged rails/ties/nodes PLUS (a genuine trap the research agent I dispatched for this caught before
+I wrote any code) a generated silhouette's own contour segments, which carry NO OWNERSHIP_ATTR at all
+(`regenerateSilhouette`'s own separate `data-boundary-ref` link) — a naive "OWNERSHIP_ATTR-only" check would have
+correctly fixed the reported bug but WRONGLY classified a Shape Lattice's own visible contour as "not lattice
+content" the moment I built the mixed-layer SVG-exclusion half below (next paragraph), duplicating the contour
+geometry (once via the manifest's own `seg*` entities, once as plain SVG curves). `_fusionLayerManifest` now gates
+on this function's own result being non-empty, never `.pattern` alone.
+
+**The mixed-layer half** (also explicitly required, not optional): previously, `b-spline-gen.py`'s own
+`_import_all_svg_layers` treated "build the constrained sketch" and "import plain SVG" as a strict either/or (`if
+manifest and design: ... else: ...`) — a layer earning a manifest had its OWN full SVG (rails/ties/nodes/contour
+AND any hand-drawn extras in the SAME layer) silently DROPPED, never imported at all. Fixed on BOTH sides:
+- JS: `getLayerSvg` gained an opt-in `excludeLatticeOwnedFor` option (a pattern) — strips that pattern's own
+  lattice/contour content (by the SAME `OWNERSHIP_ATTR`/`data-boundary-ref` check `latticeOwnedElementsOnLayer`
+  uses, never a second, independently-derived definition) out of the returned SVG. Never passed by any OTHER
+  caller (the carve mask, wizard-availability checks), so their own byte-for-byte contract stays untouched.
+  `export-flow.js`'s own `sendToFusion` now resolves each layer's manifest BEFORE its SVG (was after), threading
+  the pattern through so a mixed layer's own SVG excludes exactly what its manifest already covers. **Self-caught
+  while wiring this**: an empty result after exclusion (a PURE lattice layer, nothing left once its own content is
+  stripped) must never fall back to the unfiltered `l.svg` — the existing `svg || l.svg` fallback pattern would have
+  silently reintroduced the EXACT duplicate-geometry bug this exclusion exists to prevent; fixed to fall back to
+  `''` instead whenever exclusion was requested.
+- Python: `_import_all_svg_layers`'s per-layer branching is no longer either/or — a layer now builds its
+  constrained sketch (when it has one) AND separately imports whatever's left of `svg` (when there's anything left),
+  as two independent decisions. Extracted the PURE per-layer decision (no `adsk.*` reference anywhere in it) into a
+  new module-level `_svg_layer_import_plan(layers, design_available)`, specifically so it's directly unit-testable
+  without a live Fusion session — the real per-layer loop just executes the plan it returns. Both import paths now
+  share ONE construction plane per layer (computed once, lazily, by the caller) instead of each minting its own
+  identically-placed, identically-named plane when both ran for the same layer (previously silent, cosmetic waste
+  the research agent flagged as unverified whether Fusion would even accept without auto-renaming — moot now, there
+  aren't two).
+
+**One known, narrow, pre-existing edge case NOT fully solved, disclosed rather than silently patched over**: when
+no active Design is in scope at import time, `export-flow.js` has ALREADY stripped the lattice content out of `svg`
+before sending — it has no way to know Python's own runtime `design` availability when it builds the payload. That
+lattice content is lost for that one request. This "manifest present but no Design" fallback was ALREADY degraded
+before this turn (it never built a constrained sketch either, just imported the full flat SVG) — this turn only
+narrows what it recovers, from the full flat geometry down to none. Not fixed this turn (would need the wire format
+to carry BOTH the full and the stripped SVG, a real design question, not just an oversight).
+
+**Research delegated, not guessed**: dispatched a background research agent (read-only) to map every function this
+fix touches — `_fusionLayerManifest`/`_fusionLayerSvg`/the `bakedLayers` construction (export-flow.js),
+`OWNERSHIP_ATTR`/`_ownedOnLayer` and every ownership-related export (editor-lattice-pattern.js), `getLayerSvg`'s
+FULL option surface (editor-io.js, confirmed there was NO existing exclude/filter option), and BOTH Python import
+methods' own side effects (planes/sketches/parameters, and whether they can coexist per-layer) — before writing any
+code. Its single most load-bearing finding: contour segments don't carry OWNERSHIP_ATTR, the trap noted above.
+
+**Tests**: `tests/export-flow.test.js`'s own `_fusionLayerManifest` describe block — extended its mock editor to
+seed real owned DOM elements (previously `children: () => []`, unable to represent ownership at all, which is
+exactly why the two existing manifest-gating tests that expected a REAL manifest silently passed with zero owned
+content before this fix); added the exact reported-bug case (a `.pattern` with zero owned pieces returns null). `tests/editor-io-fusion-geometry.test.js` — a new describe block for `excludeLatticeOwnedFor`: pure
+hand-drawn (unaffected), pure lattice (excludes to nothing, `''`, never a fallback), mixed (owned pieces stripped,
+hand-drawn survives), contour segments (stripped when the shapeId matches a GENERATED silhouette, survives for a
+wrong shapeId or a hand-picked/non-generated pattern), and the `{geometry:'fusion'}` path (same shared filter).
+`bspline-frame-builder/b-spline-gen/test_svg_layer_import_plan.py` — the FIRST test file to import `b-spline-gen.py`
+at all (a real Fusion add-in entry point with several classes subclassing `adsk.core.*` event-handler bases at
+module level); a minimal, narrowly-scoped `adsk`/`adsk.core`/`adsk.fusion`/`adsk.cam` stub (covering exactly the 16
+symbols the file references anywhere, grep-verified, most only needing to exist as attributes since they're never
+touched by anything this suite calls) makes the import succeed on the first attempt. Covers every case the advisor
+named (hand-drawn-only → no manifest, full svg import; mixed → both) plus the "no Design in scope" fallback and the
+exact two-layer shape from the real bug report. The real Send payload itself is preserved at
+`tests/fixtures/t74-amend5-mixed-layers-last-send.json` as a reference artifact (per the advisor's own ask) for live
+cross-checking — NOT wired into an automated assertion, since the fixture still reflects the OLD, buggy manifest
+attachment (it predates this fix) and asserting against it as-is would mean asserting the bug's own wrong behavior.
+
+Verify: 1232/1232 vitest, 40/40 pytest (33 pre-existing + 7 new). Commit 7d715b6, pushed. NO FUSION this whole turn.
