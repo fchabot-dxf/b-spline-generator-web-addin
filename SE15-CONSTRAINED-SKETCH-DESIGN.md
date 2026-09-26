@@ -585,7 +585,9 @@ reading `constraint_step`'s own code); a real "hundreds of pieces" lattice send,
 - `SketchPoint.merge(other)` fuses two points into ONE with no constraint = what UI snapping does ("auto-coincident").
 - addCoincident on points that are ALREADY one point (shared/merged) or already forced together -> "Failed to solve"
   (redundant = over-constrained). That is the real quirk, not exact placement.
-- Therefore: point<->point = share/merge (never also Coincident); point<->curve = Coincident (exact placement fine).
+- Fred 2026-09-25: "I don't want merging of points, I need to be able to separate the coincident joints" -> EVERY
+  joint = separate points + ONE explicit Coincident (point-point or point-on-curve), exact placement; no merge, no
+  shared points between pieces; never a redundant second constraint on the same pair.
 
 ## Width decision (Fred 2026-09-25)
 Box Lattice: centerlines only (+ stroke_width param as reference). Shape Lattice: center-to-center SLOTS, centerline
