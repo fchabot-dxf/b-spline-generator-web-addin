@@ -574,7 +574,10 @@ reading `constraint_step`'s own code); a real "hundreds of pieces" lattice send,
    std::vector (a Python list), not an ObjectCollection — the classic `sketch.offset` path is proven; use it.
 3. Timing: 100 rails × 2 offsets = 20.6 s (~0.1 s per piece, before caps/param wiring). A typical lattice (6-7 rails +
    8-13 ties ≈ 20 pieces) ≈ 2-4 s — fine. Threshold default: 60 pieces constrained; above → plain geometry (declared,
-   tunable).
+   tunable). **T72 update (advisor, live Fusion, 2026-09-26):** this timing-only number undersold the plain-geometry
+   path's own real cost — 16 rails/97 pieces measured plain at 61s with 0.139in drift and visibly tilted rails,
+   vs. constrained at 90s with 0 constraint failures and 0.030in drift. `SKETCH_PIECE_THRESHOLD` raised to **300**
+   (editor-sketch-manifest.js) on that basis; a 14-rail/101-piece/170-constraint hourglass also built clean.
 4. Placement: keep `_import_single_layer_svg`'s construction-plane placement (peak of the part + 5 cm, one plane per layer) — CONFIRMED by Fred 2026-09-25: "ok it's fine like that".
 5. Default: a constrained-sketch send REPLACES that layer's plain SVG sketch, and the carve STAMP still runs
    (relief + editable sketch from one send). Revisit after use.

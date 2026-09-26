@@ -459,7 +459,9 @@ describe('manifestFromLattice — box lattice (no shape)', () => {
       ties: { mode: 'density', density: 1, anchor: 'free', spanMin: 1, spanMax: 1, railSnapRows: 0 },
       nodes: { ends: false, crossings: false, railEnds: false },
     };
-    const bigExtent = { iMin: 0, jMin: 0, iMax: 60, jMax: 60 };
+    // T72 (SKETCH_PIECE_THRESHOLD raised 60 -> 300): a big-enough extent to
+    // clear the new, higher threshold with real headroom.
+    const bigExtent = { iMin: 0, jMin: 0, iMax: 200, jMax: 200 };
     const manifest = manifestFromLattice(bigPattern, bigExtent);
     expect(manifest.pieceCount).toBeGreaterThanOrEqual(SKETCH_PIECE_THRESHOLD);
     expect(manifest.constrained).toBe(false);

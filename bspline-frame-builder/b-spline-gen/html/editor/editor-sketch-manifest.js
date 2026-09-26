@@ -64,13 +64,21 @@ import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-
  *  real, selectable Line/Circle geometry, just unconstrained beyond what
  *  the entity itself implies) — the width/offset/cap mechanism (§4) runs
  *  identically either way (§6: "not a separate code path, the SAME one,
- *  just with the per-piece relationship constraints skipped"). Value per
- *  the advisor's own live Fusion measurement (SE15-CONSTRAINED-SKETCH-
+ *  just with the per-piece relationship constraints skipped").
+ *  T72 (SE15c, advisor's own live Fusion measurement, superseding the
+ *  original 60): 16 rails / 97 pieces — plain (the pre-T72 default) 61s,
+ *  0.139in drift at stroke 0.5, rails visibly tilted; constrained 90s, 0
+ *  constraint failures, exact parity, 0.030in drift. A 14-rail hourglass
+ *  (101 pieces, 170 constraints) also built with 0 constraint failures at
+ *  the constrained path. The ORIGINAL value (SE15-CONSTRAINED-SKETCH-
  *  DESIGN.md, "Answers" §3: "100 rails x 2 offsets = 20.6s... threshold
- *  default: 60 pieces constrained; above -> plain geometry"), not guessed
- *  here — a declared constant, not a magic number inline (§6's own bar).
+ *  default: 60 pieces constrained; above -> plain geometry") measured
+ *  timing alone, before this project ever built the plain-geometry path's
+ *  own real drift/tilt cost — 300 is the new declared value, not guessed
+ *  here either — a declared constant, not a magic number inline (§6's own
+ *  bar).
  */
-export const SKETCH_PIECE_THRESHOLD = 60;
+export const SKETCH_PIECE_THRESHOLD = 300;
 
 /** T64 (5 mid-turn amendments, final state): every rail/tie piece becomes
  *  a Fusion-native SLOT (`addCenterToCenterSlot`), for BOTH a plain box
