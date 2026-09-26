@@ -15,13 +15,13 @@ you get an `amend`). Three items, one commit each, in order:
    radius values convert once on read.
 Pass back: `cd <lane-b worktree> && python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "epoch 4 — T74 — <shas>"`.
 
-## Checklist (T74 incl. amendments) — tick `- [x]` in THIS file as you commit each item; the progress page counts them
-- [x] AMEND 0: per-preset contour_width dim expression (bottle)
-- [x] 1. AMEND 3b close-out: near-tangent threshold + MIN_RAIL_PIECE
-- [x] 2. SE14d: remove "Pick shape…"
-- [x] 3. NODE-D: node size as diameter
-- [x] AMEND 1: one Contour control (show + width + colour)
-- [x] AMEND 2: size = OUTSIDE of contour; centerline dims = size − stroke_width; app centerline inset stroke/2
-- [x] AMEND 3: bottle body fills the box; remove body_width as a sweep
-- [ ] AMEND 4: Contour section cleanup ("Shape linked" gone, settings inside, edge-rule audit)
-- [x] AMEND 5 (BUG, first): manifest only for layers that contain owned lattice pieces; mixed layer = sketch + plain SVG of the rest
+## Checklist (T74 incl. amendments) — progress is automatic: commit subjects starting with the tag words (e.g. "T74 AMEND 4: …") mark the item done
+- [x] [T74-AMEND-0] per-preset contour_width dim expression (bottle)
+- [x] [T74-item-1] AMEND 3b close-out: near-tangent threshold + MIN_RAIL_PIECE
+- [x] [T74-item-2] SE14d remove "Pick shape…"
+- [x] [T74-item-3] NODE-D node size as diameter
+- [x] [T74-AMEND-1] one Contour control (show + width + colour)
+- [x] [T74-AMEND-2] size = OUTSIDE of contour; centerline dims = size − stroke_width; app centerline inset stroke/2
+- [x] [T74-AMEND-3] bottle body fills the box; remove body_width as a sweep
+- [ ] [T74-AMEND-4] Contour section cleanup ("Shape linked" gone, settings inside, edge-rule audit)
+- [x] [T74-AMEND-5] manifest only for layers that contain owned lattice pieces; mixed layer = sketch + plain SVG of the rest
