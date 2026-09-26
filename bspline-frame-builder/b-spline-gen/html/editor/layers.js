@@ -252,6 +252,17 @@ export function addLayer(editor, opts = {}) {
   // another action (e.g. auto-create-on-first-draw — task 2) so the two
   // collapse into one undo step. Default is a discrete undo entry.
   if (!opts.skipUndo && typeof editor.pushState === 'function') editor.pushState();
+  // UI4 item 6 (Fred, live: a layer added from the main sidebar vanished
+  // when the editor reopened): every OTHER roster mutator below
+  // (removeLayer/reorderLayer/setLayerVisible/setLayerCarve/
+  // setLayerShowColor) calls this — addLayer was the one that didn't,
+  // so a freshly-added EMPTY layer lived only in the in-memory
+  // editor._layers, never reached P.editorSvg's persisted
+  // data-editor-layers roster (editor-io.js's _serializeLayersAttr,
+  // which already handles empty layers correctly — this was a missing
+  // WRITE, not a missing read), and open()'s unconditional rebuild-
+  // from-persisted-roster silently dropped it on the editor's next open.
+  if (editor._onChange) editor._onChange();
   return layer;
 }
 
@@ -288,6 +299,10 @@ function renameLayer(editor, id, newName) {
   layer.name = trimmed || layer.name;
   renderLayersPanel(editor);
   if (typeof editor.pushState === 'function') editor.pushState();
+  // UI4 item 6: same missing-persist gap addLayer had (see its own
+  // comment) -- a rename otherwise doesn't survive the editor being
+  // closed and reopened either.
+  if (editor._onChange) editor._onChange();
 }
 
 /** Move sourceId to be just before/after targetId in render order. The

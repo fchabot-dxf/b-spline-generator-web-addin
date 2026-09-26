@@ -1211,11 +1211,23 @@
    click handler (layers.js) and for the layer-row-only additions below
    (icon sizing, the enlarged tap target) that don't belong on every
    text-label segmented button app-wide. */
-.layer-row .segmented-group { height: auto; }
+/* UI4 item 7 (Fred, live: side-column layer name truncates to "Lay…"):
+   this group has no flex-shrink of its own, but its 3 buttons' own
+   min-width:24px already puts a floor under how far it CAN shrink — so
+   under real squeeze (the narrower side column, 236px vs the main
+   sidebar's 260px) it was .layer-name's OWN `min-width:0` (below) that
+   absorbed the entire shortfall instead, down to a sliver. flex-shrink:0
+   here matches .layer-handle/.layer-delete's own existing treatment
+   (both already never shrink) — ONE thing (the name) giving way,
+   predictably, rather than two competing for the same slack. Slightly
+   tighter horizontal padding (was 6px all sides) reclaims a few more px
+   for the name on top of that, matching the item's own "buttons
+   compact" half. */
+.layer-row .segmented-group { height: auto; flex-shrink: 0; }
 .layer-row .editor-fillmode-btn {
     position: relative;
     min-width: 24px;
-    padding: 6px;
+    padding: 6px 4px;
 }
 /* Enlarges the tap target vertically (to ~40px) without growing the
    visible ~30px cell — extends into the row's own top/bottom padding,
@@ -1320,7 +1332,13 @@
 
 .layer-name {
     flex: 1;
-    min-width: 0;
+    /* UI4 item 7: was min-width:0 -- the only flexible-with-no-floor
+       child in the row, so it silently absorbed the ENTIRE shortfall
+       whenever the row's other (already near-minimum) children didn't
+       fit the column, down to "Lay…". A real floor means ellipsis only
+       ever eats into the LESS important trailing tool-summary span
+       first, same mobile drawer fix. */
+    min-width: 50px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

@@ -10198,3 +10198,64 @@ own top minus its scroll parent's top) = `0` for all 6 combinations (3 cards × 
   unmet.
 
 Checklist items 1 and 2 ticked in `NEXT-SESSION.md`.
+
+## Turn 284 — UI4 items 6/7: layer-add persistence bug + side-column name truncation — DONE — NO FUSION
+
+**Item 6 (Fred, live: a layer added from the main sidebar vanishes when the editor reopens).** Investigated
+(Explore agent) before touching anything, since the dispatch's own hypothesis ("two layer lists not sharing
+one source?") needed checking against the real code, not assumed. Finding: there are NOT two layer lists —
+`window.svgEditor._layers` is already the ONE shared live roster, rendered into BOTH `#stampLayersList` (main
+sidebar) and `#editorLayersList` (editor panel) by the same `renderLayersPanel`/`renderLayerList`
+(`editor/layers.js`), confirmed already working correctly for every OTHER mutation (visibility/carve/
+showColor/reorder/remove) while the app stays in one continuous session. The REAL bug is narrower: `editor.
+open()` (`editor/editor-io.js`) unconditionally wipes and REBUILDS `_layers` from the PERSISTED document
+(`P.editorSvg`'s `data-editor-layers` JSON attribute, or a content-based fallback reconciler that can only
+ever see layers with actual drawn elements on them) every time the editor is opened — and `addLayer()`
+(`editor/layers.js`) was the ONE roster mutator that never called `editor._onChange()`, so a freshly-added
+EMPTY layer lived only in memory and never reached that persisted document at all. Every sibling mutator
+(`removeLayer`, `reorderLayer`, `setLayerVisible`, `setLayerCarve`, `setLayerShowColor`) already made this
+call; `addLayer` (and `renameLayer`, same gap, same fix) were the outliers. Fixed by adding the same
+`if (editor._onChange) editor._onChange();` call both were missing, mirroring `removeLayer`'s own line exactly
+— a one-line-each fix once the actual gap was identified, not a new mechanism.
+- Tests (`tests/editor-layer-list.test.js`, new `describe` block, 2 tests): `addLayer` calls `editor._onChange()`
+  exactly once; renaming a layer via the REAL dblclick -> input -> Enter path (not calling the unexported
+  `renameLayer` directly — it isn't exported, so this drives the actual DOM handler chain) also calls it.
+  **Mutation-tested non-vacuous**: reverted both `_onChange()` calls — exactly those 2 tests failed, the other
+  28 in the same file stayed green; restored, all 30 green again.
+- Live verification (CDP): added "Layer 2" via the real `#stampAddLayer` button, confirmed `window.svgEditor.
+  _layers` shows both; clicked `#editorCancel` (confirmed `#svgEditorModal`'s own `display` actually went
+  `flex` -> `none`, a real close, not a no-op), reopened via `#btnStampEdit` (confirmed `display` went back to
+  `flex`) — `_layers` still showed BOTH "Layer 1" AND "Layer 2" after this real close/reopen cycle, the exact
+  repro. Screenshot confirms both rows visible in the editor's own Layers panel, names fully legible (also
+  incidentally re-confirms item 7's fix on real data, not just a synthetic name).
+
+**Item 7 (Fred, live: side-column Layers row truncates the name to "Lay…").** Measured live first (CDP
+`getBoundingClientRect` on each `.layer-row` child) rather than guessing: at the side column's real 236px
+width, the row's own content — `.layer-handle` (14px, `flex-shrink:0`) + `.layer-name` + the 3-button
+`.segmented-group` (~80px, no floor of its OWN despite its buttons' `min-width:24px`) + `.layer-delete` (18px,
+`flex-shrink:0`) + gaps/padding — left `.layer-name` (the ONLY child with `min-width:0`, i.e. no floor at all)
+squeezed to 36px, well under what even "Layer 1" alone needs, let alone with its own inline tool-summary span
+(" · V .25\""). A PRE-EXISTING container-query rule (`@container (max-width:260px) { .layer-tool-summary {
+display:none; } }`) already hides that summary at this width and IS firing correctly (confirmed via computed
+style, not assumed) — that mechanism was never the gap; the gap was purely `.layer-name` having no floor at
+all while its neighbour `.segmented-group` also had none of its own (relying only on its children's incidental
+min-widths). Fixed by giving `.layer-name` a real `min-width:50px` and `.layer-row .segmented-group` an
+explicit `flex-shrink:0` (matching `.layer-handle`/`.layer-delete`'s own existing treatment) so the
+name is the intentionally-last thing to compress, not the only thing; tightened
+`.layer-row .editor-fillmode-btn`'s own padding (6px all sides -> 6px vertical/4px horizontal) to reclaim a
+little more room on top of that ("buttons compact", the dispatch's own other suggested lever). One shared
+`.layer-row`/`.layer-name` rule covers the main sidebar, the desktop side column, AND the mobile drawer (no
+separate per-surface rule exists — confirmed via grep, "the row is now identical at ALL widths" per its own
+MOB4-era comment), so no separate mobile fix was needed.
+- No new unit test (a pure CSS layout change — this repo's own test suite doesn't assert `getComputedStyle`
+  layout widths anywhere, since happy-dom doesn't run a real layout/flexbox engine to make such an assertion
+  meaningful). Verified live instead: screenshot shows "Layer 1" (and, after item 6's own live test, "Layer 2")
+  rendering FULLY, not truncated, in the real 236px-wide editor side column.
+
+Full suite: `npx vitest run` -> **1257 passed** (up from 1255 — the 2 new addLayer/renameLayer tests), zero
+regressions. Checklist items 6 and 7 ticked in `NEXT-SESSION.md`.
+
+No edits to `bspline_gen_palette.html`'s LATTICE panel markup (still off-limits) — the main-sidebar
+`sticky-actions` swap earlier this turn and this turn's layer/CSS fixes all touch OTHER parts of that same
+file (the main app sidebar, `editor.css`, `editor/layers.js`), never the Lattice/Shape Lattice panel sections
+seat B owns.

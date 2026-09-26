@@ -30,10 +30,10 @@ that item, and push — the progress page (bspline-status.pages.dev) counts the 
       declared data (data-override-color / data-override-width, one schema), rendered live.
 - [ ] 4. Regenerate clears overrides (no warning — Fred); Undo restores them.
 - [ ] 5. Tests for 1, 3, 4; full suite green; WORK-LOG entry.
-- [ ] 6. BUG (Fred, live): a layer added from the MAIN sidebar (Vector Stamping → Layers +, e.g. "Layer 2") does NOT exist
+- [x] 6. BUG (Fred, live): a layer added from the MAIN sidebar (Vector Stamping → Layers +, e.g. "Layer 2") does NOT exist
       in the editor when it opens — the editor shows only Layer 1. Reproduce headless, root-cause (the editor rebuilding
       layers from saved artwork and dropping an EMPTY layer? two layer lists not sharing one source?) and fix by ONE
       declared layer list both surfaces read. Test: add in main → open editor → both layers present, same order/active.
-- [ ] 7. The side-column Layers row truncates the name ("Lay…") next to its eye/3D/palette buttons — let the name use the
+- [x] 7. The side-column Layers row truncates the name ("Lay…") next to its eye/3D/palette buttons — let the name use the
       available width (buttons compact / name min-width), same fix in the mobile drawer.
 Commit by path, push, then `python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "UI4 — <shas>"`.

@@ -5,9 +5,9 @@
  * panel and the Vector Stamping sidebar's compact layer browser never
  * disagree — same data, same render, same handlers.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  renderLayerList, renderLayersPanel, applyLayerState,
+  renderLayerList, renderLayersPanel, applyLayerState, addLayer,
   isCarved, isExported, showsColor, isOnVisibleLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
@@ -285,6 +285,51 @@ describe('isOnVisibleLayer (SE7h add-on)', () => {
   it('an element whose data-layer names NO layer record at all (legacy/pre-layers content) is always testable', () => {
     const editor = { _activeLayer: '0', _layers: [{ id: '0', visible: true }] };
     expect(isOnVisibleLayer(editor, mockElement('some-unknown-id'))).toBe(true);
+  });
+});
+
+// UI4 item 6 (Fred, live: a layer added from the main sidebar vanished
+// when the editor was reopened) — root cause: addLayer/renameLayer were
+// the only two layer-roster mutators in this file that never called
+// editor._onChange(), so a freshly-added/renamed layer never reached the
+// persisted document (P.editorSvg's data-editor-layers roster,
+// editor-io.js) that editor.open() rebuilds _layers FROM on every
+// subsequent open — an empty layer has no drawn content for the
+// content-based fallback reconciler to find either, so it was silently
+// dropped. Every OTHER mutator (removeLayer, reorderLayer,
+// setLayerVisible, setLayerCarve, setLayerShowColor) already called this;
+// these tests prove the two outliers now do too.
+describe('addLayer / renameLayer call editor._onChange() (UI4 item 6)', () => {
+  it('addLayer calls editor._onChange() so the new layer gets persisted, not just rendered', () => {
+    const onChange = vi.fn();
+    const editor = mockEditor([], null);
+    editor._onChange = onChange;
+    editor.pushState = () => {};
+
+    addLayer(editor);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(editor._layers).toHaveLength(1);
+  });
+
+  it('renaming a layer (the real dblclick -> input -> Enter path) also calls editor._onChange()', () => {
+    const onChange = vi.fn();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const editor = mockEditor([mockLayer('0', { name: 'Layer 1' })], '0');
+    editor._onChange = onChange;
+    editor.pushState = () => {};
+
+    renderLayerList(container, editor);
+    const nameEl = container.querySelector('.layer-name');
+    nameEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const input = container.querySelector('.layer-name-input');
+    input.value = 'Renamed';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(editor._layers[0].name).toBe('Renamed');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    container.remove();
   });
 });
 
