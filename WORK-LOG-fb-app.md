@@ -263,3 +263,74 @@ presets exist in the app's `PRESETS`. Mutations:
 - Fusion is left clean: the scratch docs are closed, Fred's doc still has its 6 timeline items, no
   claude modules or worktree paths remain, and the advisor was told twice when I was out.
 - Fast tier: **135 passed, 0 failed.** `gen_frame_defs --check` is fresh.
+
+## Turn 6 — F4: FB-FIX (unit resolver, list-typed addOffset2, board-too-small) — items 1-3 DONE (fakes) / item 4 NOT verified live (bridge hung)
+
+**item 1: the ONE unit resolver.**
+- `ParameterSchema.UNIT_TO_CM` (cm/mm/m/in/inch/inches/"/ft) plus `ParameterSchema.to_cm(value,
+  default_unit)`, and a `ResolveError`.
+- `BuildContext.resolve_val`'s shadow-state branch now parses the UI value with the param's
+  DECLARED unit:
+  - `'0.75 in'` gives 1.905 cm (it was a silent 0);
+  - a bare `0.75` is **inches** (it was taken as 0.75 cm, a latent wrong-units bug);
+  - toggles (en_/ck_) stay unitless.
+- A failed resolve raises `ResolveError` (logged FAIL RESOLVE). `offset_step` re-raises it instead
+  of swallowing it as OFFSET CRASH, so `build_template` reports "CRASH in Sketch" and stops.
+  Never a silent 0.
+- Numeric literals in blocks keep meaning cm (unchanged).
+
+**item 2: addOffset2.** The root cause was the argument type: `createOffsetInput` wants a Python
+list of SketchCurve (SWIG std::vector), and the code passed an ObjectCollection.
+- `_as_curve_list(coll)` now converts it.
+- A declared `OFFSET_SIDE = "inward"` + `_ensure_inward`: if the result bbox is larger than the
+  source, the driving expression is flipped to `-(<expr>)`, keeping it parametric. Which sign Fusion
+  picks by default is UNVERIFIED (needs live).
+- The fallback log went DEBUG → WARNING: "FALLING BACK to a NON-parametric offset".
+
+**item 3: board too small.**
+- `frame_definition.FRAME_FIT` (rule + message) and `frame_fit(w, h, ft, bbo)`, emitted into
+  `frame-defs.json` as `fit` (regenerated; fresh).
+- `FrameBuilder._check_frame_fit()` runs after `_create_skeletal_parameters` in both build paths.
+  It reads the doc's own params, warns "FRAME FIT: Board too small …", and sets `self.fit`, which
+  `build_frame_logic` / `build_sketch_logic_v3` now return (they returned None before).
+- Warn, not abort, per spec. Known gap: the hourglass waist can be stricter than this bbox rule.
+
+**Tests** (+13 pure in test_fb_fix.py, +10 engine in test_board_params_ownership.py): to_cm table,
+never-zero cases, fit rule incl. **the rule predicts every live golden (0 bars ⇔ too small)**,
+resolve_val cases, addOffset2 gets a list (fake mirrors the SWIG TypeError), the fallback is a
+WARNING, and the build-level fit warning. Mutations, each file's pre-change copy restored from the
+scratchpad:
+- build_context → 4 red (the 2 that pass pin already-true behaviour: toggles, expressions);
+- offsets → 2 red;
+- frame_engine → 2 red;
+- fit rule min→max → 5 red.
+
+⚠ **Trap hit:** the min→max mutation is the same file size, and the restore landed in the same
+second, so the stale `.pyc` stayed valid and the "restored" run still showed 5 red. Deleting that
+module's pyc cleared it. Saved to memory. Fast tier: **168 passed, 0 failed**; frame-defs fresh.
+Checkpoint commit 5a28608 (pushed before the live attempt).
+
+**item 4: NOT VERIFIED LIVE.**
+- The advisor granted a ~15 min window.
+- My harness (scratchpad `f4_live.py`) did everything in ONE fusion_execute call:
+  - snapshotted every fb_engine.* / sketches* / template_loader / frame_engine_core module;
+  - loaded the worktree fb_engine as a package by file location (no sys.path change);
+  - built T1 7×9 with `ui_data frame_thickness='0.75 in'`, extruded, and edited
+    `frame_thickness` → 0.5 in with `adsk.doEvents()`;
+  - restored the modules in a `finally`.
+- **The bridge timed out, and 3 tiny follow-up probes timed out too.**
+- A PrintWindow capture of Fusion's own window (to the scratchpad, NOT the published shots folder)
+  shows the UI responsive with only Fred's `Untitled*` tab, so my scratch doc appears closed and the
+  `finally` most likely ran. That is **UNCONFIRMED**: I cannot read sys.modules without the bridge.
+- The advisor was told at once, with the recommendation: Fred saves (his doc is unsaved), then
+  restarts Fusion or reloads the add-in properly before using the Frame Builder here.
+- I restarted nothing (unsaved user doc). Nothing measured from this run; the goldens were not
+  re-recorded.
+- Lesson saved to memory: one short step per fusion_execute; never leave a module swap spanning a
+  slow step.
+
+**Queued (advisor heads-up):** F5 SIL-RESOLVE (the Shape Lattice hourglass loops at a high corner
+radius). Not started.
+
+**Processes:** clean. Capacity is fine. Item 4 wants a fresh, **short-step** live pass once the
+bridge is back.
