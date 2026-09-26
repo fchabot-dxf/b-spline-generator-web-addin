@@ -1488,15 +1488,13 @@
    still on top: invisible white-on-white, caught live via CDP. Wrapping
    the button in its own slot sidesteps that fight entirely — the
    button's own background/radius are untouched, and this class owns a
-   DIFFERENT element.) */
-.lattice-side-column-pinned-slot {
-    position: sticky;
-    top: 0;
-    z-index: 3;
-    background: #fdfdfd;
-    padding: 8px 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
+   DIFFERENT element.)
+   UI4 AMEND 4b: this class's own position/background/padding/shadow
+   rule was REMOVED from here — lattice-side-column.js now also puts
+   `sticky-actions` (layout-app.css) on the same slot div, which is the
+   ONE declared pinned-action style shared with the main sidebar's own
+   "Generate New Seed" card. PINNED_SLOT_CLASS itself stays as a pure
+   identifying hook (`closest()` in _unmount) with no CSS of its own. */
 
 /* =========================================================================
    UI2 — colour-coded Lattice/Shape Lattice panel sections (Fred's own

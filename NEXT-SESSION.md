@@ -5,10 +5,10 @@
 that item, and push — the progress page (bspline-status.pages.dev) counts the ticks.
 
 ## Checklist
-- [ ] 1. Pinned-action style (AMEND 4b): ONE shared sticky style for the main sidebar "Generate New Seed" and both lattice
+- [x] 1. Pinned-action style (AMEND 4b): ONE shared sticky style for the main sidebar "Generate New Seed" and both lattice
       Regenerates — top:0 with NO gap above (nothing visible above while scrolling), opaque background full column width,
       full-width button. Root-cause the gap, note it in WORK-LOG.
-- [ ] 2. Screenshots of all three scrolled mid-list, desktop + ~1024px (iPad) — viewed before ticking.
+- [x] 2. Screenshots of all three scrolled mid-list, desktop + ~1024px (iPad) — viewed before ticking.
 - [ ] 3. Per-piece overrides (AMEND 3): selected rail/tie/node/contour piece shows COLOUR + WIDTH with an override; stored as
       declared data (data-override-color / data-override-width, one schema), rendered live.
 - [ ] 4. Regenerate clears overrides (no warning — Fred); Undo restores them.

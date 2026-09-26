@@ -199,8 +199,10 @@ describe('initLatticeSideColumn', () => {
     // UI2-FIX: Generate mounts wrapped in its own opaque pinned-slot div
     // (a plain rectangle so scrolled content can't peek through the
     // button's own rounded corners) rather than as a bare direct child.
-    expect(ids).toEqual(['lattice-side-column-pinned-slot', 'layers-header', 'editorLayersList', 'editorLatticePanelBody', 'latticeDetachAll']);
-    expect(document.getElementById('latticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot');
+    // UI4 AMEND 4b: the slot ALSO carries `sticky-actions`, the one
+    // shared pinned-action style (also on the main sidebar's own card).
+    expect(ids).toEqual(['lattice-side-column-pinned-slot sticky-actions', 'layers-header', 'editorLayersList', 'editorLatticePanelBody', 'latticeDetachAll']);
+    expect(document.getElementById('latticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
 
     expect(document.getElementById('editorLatticePanel').style.display).toBe('none');
   });
@@ -229,8 +231,8 @@ describe('initLatticeSideColumn', () => {
 
     const layersPanel = document.getElementById('editorLayersPanel');
     const ids = Array.from(layersPanel.children).map((c) => c.id || c.className);
-    expect(ids).toEqual(['lattice-side-column-pinned-slot', 'layers-header', 'editorLayersList', 'editorShapeLatticePanelBody', 'shapeLatticeDetachAll']);
-    expect(document.getElementById('shapeLatticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot');
+    expect(ids).toEqual(['lattice-side-column-pinned-slot sticky-actions', 'layers-header', 'editorLayersList', 'editorShapeLatticePanelBody', 'shapeLatticeDetachAll']);
+    expect(document.getElementById('shapeLatticeGenerate').parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
     expect(document.getElementById('editorLatticePanel').style.display).toBe('');
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
   });

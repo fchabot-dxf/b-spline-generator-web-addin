@@ -194,10 +194,18 @@ function _isDesktop() {
 // out from behind the pinned Generate bar). The BUTTON's own rounded
 // corners (`.cad-btn-primary`'s `border-radius`) don't cover a full
 // rectangular band — scrolled content shows through the corner gaps.
-// Generate is wrapped in its OWN plain-rectangle slot div (this class,
-// styled in styles/editor.css with an opaque background + padding + a
-// bottom shadow) so the STICKY element is a full-width square backdrop,
-// with the rounded button floating inside it, not the button itself.
+// Generate is wrapped in its OWN plain-rectangle slot div so the STICKY
+// element is a full-width square backdrop, with the rounded button
+// floating inside it, not the button itself. PINNED_SLOT_CLASS is kept
+// as an identifying hook (closest() in _unmount, below) — the actual
+// visual styling comes from `sticky-actions` (UI4 AMEND 4b: ONE shared
+// pinned-action style, also applied to the main sidebar's own "Generate
+// New Seed" card in bspline_gen_palette.html, layout-app.css). Its
+// negative margins + top:-14px compensate for the `aside` tag rule's own
+// 14px padding on THIS column too (#editorLayersPanel is itself an
+// `<aside>`) — confirmed live: without it, "Grid & rails"'s own title
+// bar peeked through a 14px gap above Generate while scrolled, the exact
+// bug Fred reported on the main sidebar's card.
 const PINNED_SLOT_CLASS = 'lattice-side-column-pinned-slot';
 
 let _mountedMode = null;
@@ -238,7 +246,7 @@ function _mount(mode, layersPanelEl) {
   // layers-list, untouched] -> [this tool's own settings body] -> [Detach all].
   if (generateEl) {
     const pinnedSlot = document.createElement('div');
-    pinnedSlot.className = PINNED_SLOT_CLASS;
+    pinnedSlot.className = PINNED_SLOT_CLASS + ' sticky-actions';
     pinnedSlot.appendChild(generateEl);
     layersPanelEl.insertBefore(pinnedSlot, layersPanelEl.firstChild);
   }

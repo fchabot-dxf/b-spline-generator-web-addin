@@ -10139,3 +10139,62 @@ No edits to `bspline_gen_palette.html` — confirmed via `git status --short` be
 the 2 test files. (`.gitignore`/`ROADMAP.md`/`tools/` also show as changed in `git status` — confirmed via
 `git diff`/`ls` these are the ADVISOR's own concurrent work, not touched by this turn; excluded from this
 commit by committing explicit paths only, per the two-seats-one-index rule.)
+
+## Turn 284 — UI4 item 1/2: shared pinned-action style fix (AMEND 4b) — DONE — NO FUSION
+
+**Root cause (measured live via CDP, not guessed):** every `<aside>` element in this app gets `padding: 14px
+14px 60px 14px` from ONE bare tag-selector rule (`layout-app.css`'s own `aside { ... }`) — both `.cad-sidebar`
+(the main sidebar) AND `#editorLayersPanel`/`.editor-layers-panel` (the lattice side column) ARE `<aside>`
+elements, so BOTH inherit it. A `position:sticky; top:0` child of either sticks relative to the scroll
+container's PADDING edge — CSS spec behaviour, not a bug in the sticky rule itself — which leaves a 14px band
+ABOVE the stuck element where the padding (and, critically, whatever content has scrolled INTO that band)
+shows through. Confirmed live on both: `getBoundingClientRect().top - parent.getBoundingClientRect().top` was
+exactly `14` for both the main sidebar's old `.cad-panel-section` card and the lattice column's own
+`.lattice-side-column-pinned-slot`, and a screenshot of each mid-scroll showed real content (Stock Dimensions'
+own rows; "Grid & rails"' own title bar) visibly peeking through that exact band — matching Fred's own
+"(X)(Y) labels peek above it" / "the Layer row scrolls visibly above it" reports precisely.
+
+**The fix already existed, declared, just never applied.** `layout-app.css` already has a `.sticky-actions`
+class (comment: "Pin the seed + undo/redo block to the top of the sidebar... negative margins extend it
+edge-to-edge over the aside's padding, and top:-14px compensates for that same padding") — the EXACT
+compensation this bug needs, with the SAME hardcoded 14px matching the `aside` rule's own value. It was simply
+never wired to `bspline_gen_palette.html`'s real "Generate New Seed" markup (which instead had its own ad-hoc
+inline-styled `.cad-panel-section` div, missing the compensation), and never applied to the lattice side
+column's own pinned slot at all. Fixed both to use this ONE shared class, satisfying AMEND 4b's "ONE shared
+sticky style... not a second" literally (not just in spirit) — `bspline_gen_palette.html` and `editor.css` are
+both already loaded by the same page, so `.sticky-actions` (layout-app.css) is reachable from both surfaces
+with no duplication:
+- `bspline_gen_palette.html`: the "Generate New Seed" wrapper's ad-hoc inline styles replaced with
+  `class="sticky-actions"` outright.
+- `lattice-side-column.js`'s `_mount()`: the pinned slot now gets `PINNED_SLOT_CLASS + ' sticky-actions'` —
+  `PINNED_SLOT_CLASS` (`lattice-side-column-pinned-slot`) kept as a pure identifying hook (`closest()` in
+  `_unmount`, unaffected by which OTHER classes ride along), `sticky-actions` supplies the actual visuals.
+  Removed `.lattice-side-column-pinned-slot`'s own now-redundant CSS rule (position/background/padding/shadow)
+  from `editor.css` entirely — one declared style, not two overlapping ones.
+- Updated the 2 existing UI3 tests asserting this element's exact `className` string (now
+  `'lattice-side-column-pinned-slot sticky-actions'`). **Mutation-tested non-vacuous**: reverted the class
+  change — exactly those 2 tests failed, the other 24 in the same file stayed green; restored, all 26 green
+  again. No NEW test written for the main-sidebar markup swap itself (a static class-attribute change, no JS
+  logic of its own — nothing in this repo's own convention unit-tests bare markup that no JS module reads);
+  covered instead by the live verification below.
+- Full suite: **1255 passed**, zero regressions (same count as end of Turn 282 — no new test files/counts,
+  only the 2 updated assertions).
+
+**Live verification (CDP), scrolled mid-list, desktop (1400×700) AND iPad width (1024×768 — short enough to
+force REAL scrolling on both, confirmed via `scrollHeight > clientHeight` before screenshotting; an earlier
+900px-tall attempt never actually needed to scroll at all, which would have been a vacuous check):**
+screenshots of all three cards (main sidebar's "Generate New Seed", Lattice's "Generate", Shape Lattice's
+"Generate") at both sizes — each stays flush at the very top of its own scroll column with nothing visible
+above it, opaque background, full-width button, subtle bottom shadow. Measured `gapAbove` (sticky element's
+own top minus its scroll parent's top) = `0` for all 6 combinations (3 cards × 2 sizes).
+- **One measured, understood, NOT "fixed" non-issue**: the lattice column's pinned slot renders `220px` wide
+  against its own `236px`-wide parent (a real 16px gap, right side only) — the main sidebar's own card showed
+  no such gap. Root-caused: `#editorLayersPanel` has enough content to need a real (space-reserving) vertical
+  scrollbar; `.cad-sidebar` at this test's own content height did not. The 16px is the scrollbar's own track
+  width, not a residual padding gap — `.sticky-actions`'s negative-margin compensation targets the horizontal
+  PADDING specifically (confirmed: the slot's LEFT edge matches the parent's left edge within 1px on both
+  cards), and a scrollbar reserving real interactive space isn't something to render underneath. Noted here
+  rather than silently left unexplained, since AMEND 4b's own "edge to edge" wording could otherwise read as
+  unmet.
+
+Checklist items 1 and 2 ticked in `NEXT-SESSION.md`.
