@@ -870,6 +870,20 @@ features already built from them) — check canReorder for each first; if any re
 inlay), move nothing and warn. Solid builder run later lands at the end and sees everything (Fred asked: "will the solid
 builder still see the frame sketch?" — yes). Seat A after UI2; advisor verifies live on Fred's layout, incl. solid builder.
 
+## Queued — SE17: lattice KINDS on separate layers → separate Fusion sketches linked by projection (Fred 2026-09-26)
+Fred: "I want ties on a layer and rails on another and nodes another" / "it's actually in Fusion that it matters most".
+App: the Lattice + Shape Lattice tools put rails, ties, nodes (and the contour) each on their OWN layer (own
+visibility, colour, carve config, export) — still one generated pattern (regenerate/detach act on all its kind-layers).
+Fusion: one sketch per kind-layer, built in dependency order contour → rails → ties → nodes; each later sketch
+PROJECTS the curves it relates to from the earlier sketches and puts its cross-kind constraints (tie-on-rail,
+rail-on-contour, node-at-joint, Collinear) on those projections. Advisor MEASURED (scratch doc): a direct constraint
+to another sketch's curve is refused ('sketch == msketch'); a constraint to a PROJECTED copy works and follows — the
+rail moved 0.5in in its own sketch and the tie end followed (2.0, 0.5). Timeline order also lets Fred Project/Include
+by hand (earlier sketches visible to later ones). Tradeoffs Fred accepted: edits propagate after finishing the edited
+sketch (not live-drag across kinds); a deleted rail leaves a broken projection warning in the ties sketch; projected
+curves add visual clutter. Declared: the kind→layer map and the sketch build order (data), not per-kind code paths.
+Parity: verify_sketch_against_manifest per sketch; spawn parity rule unchanged. Seat B after T74.
+
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
 sidebar, so I can keep parametrability in lattice". → ✂ Split tool (main tool rail + Lattice/Shape Lattice panels):
