@@ -131,7 +131,7 @@ def render(seats, commits, roadmap):
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
-        + ('<div class="shots">' + "".join(f'<a href="shots/{e(s["key"])}/{e(x)}" target="_blank"><img src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy"></a>' for x in s["shots"]) + "</div>" if s["shots"] else "")
+        + ('<div class="shots">' + "".join(f'<img class="thumb" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for x in s["shots"]) + "</div>" if s["shots"] else "")
         + '</section>' for s in seats)
     def lst(rows, cls):
         return "".join(f'<li class="{cls}">{e(r[2])}{" <em>" + e(r[1]) + "</em>" if r[1] else ""}</li>' for r in rows)
@@ -149,11 +149,20 @@ h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} sm
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
 .bar{{margin:8px 0}} .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
+img.thumb{{cursor:zoom-in}} dialog#lb{{border:0;padding:0;background:transparent;max-width:96vw;max-height:94vh}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
+dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:zoom-out}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
 .shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
 </style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
-<div class="grid">{cards}</div>{com}</body></html>"""
+<div class="grid">{cards}</div>{com}
+<dialog id="lb"><figure><img id="lbImg" alt=""><figcaption id="lbCap"></figcaption></figure></dialog>
+<script>
+const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
+function openShot(t){{ im.src=t.src; cap.textContent=t.alt; lb.showModal(); }}
+document.addEventListener('click',ev=>{{ const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog')){{ lb.close(); }} }});
+document.addEventListener('keydown',ev=>{{ const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
+</script></body></html>"""
     return body, page
 
 
