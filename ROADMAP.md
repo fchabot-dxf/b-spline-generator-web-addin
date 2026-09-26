@@ -815,3 +815,11 @@ segments = center-to-center slots, shoulder/waist/hip = 3-point arc slots, cente
 border_width (or stroke_width), joints = separate points + explicit Coincident + Tangent on the centerlines, a vertical
 construction line + Symmetry for left/right, a few named params (waist_depth, waist_height, corner_radius).
 DECIDED (Fred: "it can be separate slot parts"): slot chain, overlapping joints accepted; no closed-loop offset. After T64.
+
+## Queued — SE14b: Shape Lattice CONTOUR as separate selectable SEGMENTS in the app (Fred 2026-09-25)
+Fred: "then we should also represent those separations in the add-in preview, to be able to select segments and color
+them". The generated silhouette is emitted as ONE ELEMENT PER SEGMENT (line / circular arc, round caps, stroke =
+stroke_width or border_width, colour per segment) instead of one path — each selectable, recolourable, shown per
+segment in the drape/3D preview and exported per segment (→ one Fusion slot each, SE15b). The fill boundary = the
+segments chained into one closed loop (derived, not stored twice). Straight/curve/kink styling stays mirrored per pair;
+COLOUR is per segment (left ≠ right allowed). Hand node-edit still detaches from the generator. Pair with SE15b.
