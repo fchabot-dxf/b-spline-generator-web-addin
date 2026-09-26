@@ -865,7 +865,10 @@ moves its own timeline items (occurrence creation, sketches, planes, features) t
 doc: TimelineObject.reorder of a LATER sketch to an EARLIER index works (canReorder True); moving the earlier inlay/plane
 LATER is refused (canReorder False). So move the frame earlier, not the inlay later. Also measured: API sketch.project()
 of later geometry into an earlier sketch works, stays linked, follows edits, survives a timeline rollback — but the
-UI won't do that by hand, hence the reorder. Seat A after UI2; advisor verifies live on Fred's layout.
+UI won't do that by hand, hence the reorder. Move the frame block as ONE UNIT in its original order (occurrence, sketches, planes, AND any solid-builder
+features already built from them) — check canReorder for each first; if any refuses (e.g. a frame feature depends on the
+inlay), move nothing and warn. Solid builder run later lands at the end and sees everything (Fred asked: "will the solid
+builder still see the frame sketch?" — yes). Seat A after UI2; advisor verifies live on Fred's layout, incl. solid builder.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
 Fred: "a tool to separate slot rails and ties lines into shared coincident points ... in both lattice and main tool
