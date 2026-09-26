@@ -64,7 +64,8 @@ The advisor will tell you when A and B are merged. Then do `git pull` and they a
    Do it after seat B's TIE-GAP lands (same panels).
 7. **FORMULA-FIELDS** (ROADMAP.md): number fields accept + - * / ( ) and names (width, height, stroke, count);
    evaluated on Enter, stores the number. Typing a name opens an autocomplete dropdown showing each value.
-8. **BOUNDARY-GUIDE** (ROADMAP.md): the lattice boundary box shows in the editor as a guide, hidden in the 3D preview.
+8. **BOUNDARY-GUIDE** (ROADMAP.md): the lattice boundary box shows in the editor as a guide, hidden in the 3D preview. Remove the "Draw boundary"
+   toggle (always drawn); the Shape Lattice Contour checkbox stays.
 9. **UI4 item 0b**: still open, couldn't be reproduced. Needs your exact steps.
 10. Anything new you find. ROADMAP.md is the plan of record; add entries in the same "Queued — NAME: … (Fred date)" form.
 

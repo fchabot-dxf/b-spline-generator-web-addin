@@ -971,8 +971,10 @@ the old value. AUTOCOMPLETE (Fred: "when typing a variable we can have a dropdow
 Fred: "in editor show the boundary box but hide it in the 3D preview". The lattice boundary box (the Size W x H
 rectangle) is a GUIDE: always visible in the editor (dashed, non-exported, like F6's frame profile in the background
 layer), never rendered/stamped in the 3D preview. Declare it as guide geometry (one flag/role read by both the editor
-renderer and the 3D/stamp path), not a special case in the 3D code. Open point to confirm with Fred when built: when
-"Draw boundary" / the Shape Lattice contour is ON it is REAL geometry (exported to Fusion); does it still hide from 3D?
+renderer and the 3D/stamp path), not a special case in the 3D code. Fred: "don't toggle draw boundary, it's by default": the boundary
+is ALWAYS drawn in the editor, so REMOVE the "Draw boundary" toggle (a removal: sweep the whole chain, field -> pattern key ->
+readers -> tests; old saved patterns read it as ignored). The Shape Lattice "Contour" checkbox (SE14c, real exported geometry) is a
+separate thing and stays.
 Test: boundary present in editor DOM, absent from the 3D input; export unchanged.
 
 ## Queued — SE16: ✂ CUT tool (and Join) for rails/ties/lines — MAIN TOOL RAIL ONLY (Fred 2026-09-25)
