@@ -1,38 +1,52 @@
-# NEXT (reg-addin, Asus) — R3: STALE-PARAMS design (DESIGN ONLY, no product code)
+# NEXT (reg-addin, Asus) — R4: STALE-PARAMS, LOG-ONLY (Bspline group: board + lattice)
 
-**Ball: worker (reg-addin) · epoch 1 · R3.** NO FUSION, NO product-code edits. R2 (809f870 lockfile, c20e538) ACCEPTED.
-Plan of record = HANDOFF-REG-ADDIN.md §3 item 5. Log = WORK-LOG-reg-addin.md. Commit subject "R3 item N: …".
+**Ball: worker (reg-addin) · epoch 1 · R4.** NO FUSION (Fred live-checks after). R3 design (8df6681) ACCEPTED with the
+advisor's amendments below. Log = WORK-LOG-reg-addin.md. Work-commit subjects "R4 item N: …"; PUSH AFTER EVERY ITEM
+(the status page only sees origin).
 
-Why design-first: Send will DELETE user parameters in Fred's Fusion designs — an irreversible move on his data.
-The advisor gates the plan before any code is written (R4 implements what's blessed).
+## Rulings (advisor + home-PC advisor, 2026-09-26) — these override the design doc where they differ
+1. **LOG-ONLY.** Compute + log the candidates; **NO `deleteMe()` anywhere** in this turn. Deletion is switched on later,
+   after Fred has checked a few Sends.
+2. **ONE registry, the existing one:** add `LATTICE_OWNED_PARAMS` (stroke_width, rail_width, tie_width, node_diameter,
+   half_width, contour_width, contour_height) right beside `_BOARD_OWNED_PARAMS` in
+   `frame-builder/fb_engine/parameter_schema.py` + an accessor, tag group `Bspline`. That additive edit is the ONLY
+   change allowed in frame-builder/. The cleanup LOGIC lives in `b-spline-gen/` (e.g. `param_ownership.py`) and READS
+   the registry — it never holds its own name list. No `fb_engine/param_ownership.py`.
+3. **Candidate = registered (board or lattice) + stamped `Bspline.owner` + not in this Send's payload + no dependents.**
+   Unregistered OR unstamped → never touched and never stamped, whatever its name.
+4. **Reference guard = `Parameter.dependentParameters` ONLY** (feature/sketch dims are model parameters, so it covers
+   both param→param and dimension references). Drop the hand-rolled regex expression scan. Mark it "verify live" for Fred.
+5. **Stamp at CREATE only** for the lattice params (`sketch_manifest_builder.py` `_sync_manifest_parameters`, in the
+   `user_params.add` branch). Do NOT change the board's existing stamp-on-touch (widthIn/heightIn are always in the
+   payload, so they can never be candidates). Pre-existing unstamped lattice params stay unmanaged — name it in the log.
+6. **Scope: Bspline group only.** Frame params (FrameBuilder.owner) belong to seat C — don't touch parametric_engine.py /
+   solid_coordinator.py.
+7. **b-spline-gen.py footprint = ONE call** at the end of `_handle_generate` (non-preview path, after geometry) + the
+   `stale_params` key in the last_send.json dump. Keep it that small (seat C's S5 will merge there later).
+8. Drop the undo claim from the design doc (palette-driven Sends may not be one command transaction); it's moot while log-only.
 
-## Hands off (unchanged)
-Seat A (UI5 still merging): editor-lattice-pattern.js, editor-ui.js, editor.js, editor-piece-override.js,
-properties-lattice.js, properties-shape-lattice.js, tools/repro/select_drag_shape.mjs. Seat C (fb-app): frame-record.js,
-editor-frame-profile.js, frame-mesh.js, editor-shape-lattice-generator.js, frame-builder/, FB-APP-DESIGN.md (READ it
-from origin/fb-app — `git show origin/fb-app:FB-APP-DESIGN.md` — never edit or check out fb-app).
+## Hands off
+fb-app; editor-shape-lattice-generator.js; core/frame-record.js, editor-frame-profile.js, frame-mesh.js, main/frame-panel.js;
+frame-builder/ except rule 2; seat A's files (editor-lattice-pattern.js, editor-ui.js, editor.js, editor-piece-override.js,
+properties-lattice.js, properties-shape-lattice.js, tools/repro/select_drag_shape.mjs). Need one? STOP and say so.
 
 ## Checklist
-- [ ] [R3-item-1] SURVEY (facts, with file:line): every user parameter the add-in creates today — where (b-spline-gen.py,
-      sketch_manifest_builder.py, the Send/payload path, the Frame Builder side), its name pattern, whether it's created
-      conditionally (e.g. contour_width only with a contour, per-piece dims, widthIn/heightIn from Send), and how an
-      existing one is updated vs re-created. Also: what marks a param as ours today, if anything (comment? attribute? name?).
-- [ ] [R3-item-2] DESIGN `STALE-PARAMS-DESIGN.md` (repo root):
-      a) ONE declared ownership list (data, one module) of the params/patterns the add-in owns — incl. frame params, with
-         names cross-checked against FB-APP-DESIGN.md on fb-app (list any mismatch for the home advisor to settle).
-      b) how "created by us" is proven at delete time (proposal: an attribute/comment stamp written at creation; a param
-         that matches a name but lacks the stamp = Fred's, NEVER deleted).
-      c) the delete rule: owned + stamped + not in this Send's payload + NOT referenced by any other param expression or
-         by a feature/sketch dimension outside what this Send rebuilds → delete; anything referenced → keep + log why.
-      d) ordering vs the rebuild (delete after the new sketches exist? before?), undo story in Fusion, dry-run/log output
-         (last_send.json gets a "stale_params" section), and what Fred sees.
-      e) the tests (pytest shim: declared list, stamp check, reference guard, dry-run) + the live-check script for Fred.
-      f) open questions for Fred, each with a recommended default.
-- [ ] [R3-item-3] Add a ROADMAP entry pointer (new line under the existing stale-param/queue entry — don't rewrite others').
+- [ ] [R4-item-1] Registry: LATTICE_OWNED_PARAMS + accessor in parameter_schema.py (rule 2); pytest for it.
+- [ ] [R4-item-2] Stamp at create in sketch_manifest_builder.py (rule 5); pytest with the adsk stub: create stamps,
+      update of an existing unstamped param does NOT stamp.
+- [ ] [R4-item-3] `b-spline-gen/param_ownership.py`: compute `{would_delete, kept_referenced, kept_unstamped,
+      failed}` from the registry + stamps + payload names + dependentParameters (rules 3-4); pure/testable against a
+      fake params collection. Pytest: stale stamped registered → would_delete; referenced → kept_referenced with reason;
+      registered-name but unstamped → kept_unstamped; UNREGISTERED param (any name, stamped or not) → never listed,
+      never stamped; in-payload → never listed; no deleteMe call ever recorded.
+- [ ] [R4-item-4] Wire: one call in _handle_generate + `stale_params` in last_send.json (always present, empty lists
+      when nothing); a guarded try so a failure here logs and never breaks Send. Update STALE-PARAMS-DESIGN.md to
+      match the rulings (short "R4 rulings" section at the top; fix §2a/§2b/§2c/§2d). Add a short live-check recipe
+      for Fred to the WORK-LOG (what to Send, what to read in last_send.json).
 
-## Gate
-Docs only — no test run needed beyond `git diff --stat` showing only .md files.
+## Gate (fast tier)
+`python -m pytest -q` in `bspline-frame-builder/` (touched + full is quick) + vitest smoke only if JS touched. No Fusion.
 
 ## Finish
-Commit by path, `git pull --rebase`, push main. From the REPO ROOT:
-`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R3 — <sha>"`.
+Commit by path, `git pull --rebase`, push main after each item. From the REPO ROOT:
+`python ~/.claude/skills/multi-agent-handoff/handoff.py pass --to advisor --note "R4 — <shas>"`.
